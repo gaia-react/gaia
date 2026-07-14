@@ -250,6 +250,11 @@ transforms:
           - ".gaia/cli/templates/**"
           - ".gaia/cli/src/automation/templates/**"
           - ".github/workflows/**"
+          # Shipped .github/audit/** scripts name Code Audit Team members by
+          # design (gate-pending-members.sh decides which members CI cannot
+          # clear), so a maintainer-only member name is likelier to be
+          # introduced here than anywhere else this check scans.
+          - ".github/audit/**"
           - ".specify/extensions/gaia/**"
 
       # ---- Never-present-on-adopter workflows referenced in shipped surfaces ----

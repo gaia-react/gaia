@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # PreToolUse Bash hook: deny dangerous `rm -rf` invocations.
 #
-# Denied targets (case-insensitive on flags):
+# The `rm` command word is matched case-insensitively and through quote/backslash
+# splitting, so `RM`, `r""m`, and `r\m` are all the command `rm`, exactly as bash
+# resolves them. Flags are matched case-insensitively too.
+#
+# Denied targets:
 #   - any command using --no-preserve-root
 #   - rm -rf / (root)
 #   - rm -rf $HOME, ${HOME}, ~, ~/, $HOME/...
@@ -9,6 +13,7 @@
 #   - rm -rf *   (unscoped glob)
 #   - rm -rf .*  (dotfile glob, incl. the .[!.]* / ..?* / {.,}* spellings)
 #   - rm -rf .git
+#   - rm -rf .claude (the Claude config: hooks, skills, agents, rules, settings)
 #   - rm -rf node_modules (anywhere, must use pnpm clean / explicit path)
 #
 # Allowed (whitelist of safe scratch paths):
@@ -134,17 +139,53 @@ neutralize_quoted_separators() {
   printf '%s' "$out"
 }
 
+# The `rm` command word, matched the way bash RESOLVES it rather than the way it
+# is spelled. Bash removes quote and backslash bytes from a word before resolving
+# it, so `r""m`, `"r"m`, `r"m"`, and `r\m` are all the command `rm`; and macOS
+# ships a case-insensitive volume by default, so `/bin/RM` really is `/bin/rm` and
+# `RM -rf ~` really deletes home.
+#
+# The target half of this guard already normalizes exactly this way (it strips
+# quotes and backslashes per token, below). The command half has to agree, or a
+# spelling of the WORD carries every protected target out through the matching
+# sites in one move, before a single deny arm is reachable. The flag half was
+# already case-tolerant (`[rRfF]`), which is what made the command half's
+# case-sensitivity an oversight rather than a decision.
+#
+# The class is the three bytes bash's quote removal drops: backslash, double
+# quote, single quote. The backslash leads it deliberately. A POSIX bracket
+# expression takes a backslash literally, so the set is the same either way, but a
+# TRAILING one would sit against the closing `]` and read as an escape of it to
+# anything that does not implement that rule, leaving the bracket unterminated.
+# Leading, the worst case is that a stricter engine reads `\"` as an escaped quote
+# and the set quietly loses the backslash: the pattern stays well-formed and only
+# `r\m` degrades to today's verdict.
+#
+# All THREE `rm`-matching sites share this rule: the two greps below, which take
+# it as an ERE, and the walk gate immediately below, which needs the glob spelling
+# of it. Anything that widens one has to widen the others in step, so the greps
+# take it from one definition and the gate's comment states the tie explicitly.
+rm_word="[Rr][\\\"']*[Mm][\\\"']*"
+rm_anchor="(^|[^[:alnum:]_-])${rm_word}[[:space:]]+"
+
 # Only pay for the character walk when it could change an outcome. This hook runs
 # on EVERY Bash call, and the walk is O(n) bash over the command string, so a long
 # inline `git commit -m "…" && git push` would otherwise pay for nothing.
 #
 # All three ingredients are required, and gating on `rm` is equivalence-preserving
 # rather than a heuristic: the walk only ever rewrites `;`, `&`, and `|` to spaces,
-# so it can neither synthesize the letters of `rm` nor remove them. A command with
-# no `rm` substring therefore cannot pass the short-circuit grep below whether or
-# not it was walked, which makes skipping the walk for such a command a no-op by
-# construction, not a judgment call.
-if [[ "$cmd" == *rm* && "$cmd" == *[\"\']* && "$cmd" == *[\;\&\|]* ]]; then
+# so it can neither synthesize the letters of `rm` nor remove them, and it neither
+# writes nor deletes a quote or backslash byte. The probe below therefore returns
+# the same verdict on the walked command as on the unwalked one, which makes
+# skipping the walk a no-op by construction, not a judgment call.
+#
+# The probe is the glob spelling of the command-word rule above, and it has to
+# stay in step with it: drop the bytes bash's quote removal drops, then match `rm`
+# case-insensitively. A gate that knows only the literal lowercase spelling skips
+# the walk for `RM -rf ";" $HOME`, segment extraction then stops at the quoted `;`,
+# and `$HOME` is never tokenized, so widening the greps alone leaves this site
+# blind and the whole fix hollow.
+if [[ "${cmd//[\"\'\\]/}" == *[Rr][Mm]* && "$cmd" == *[\"\']* && "$cmd" == *[\;\&\|]* ]]; then
   cmd=$(neutralize_quoted_separators "$cmd")
 fi
 
@@ -163,7 +204,7 @@ fi
 # false-deny surface: `git rm --cached -r .` now denies (the canonical
 # `git rm -r --cached .` already did), which is annoying but safe. Widen this
 # regex only with that asymmetry in mind.
-if ! grep -Eq '(^|[^[:alnum:]_-])rm[[:space:]]+[^;&|]*(-[a-zA-Z]*[rRfF]|--recursive|--force|--no-preserve-root)' <<<"$cmd"; then
+if ! grep -Eq "${rm_anchor}[^;&|]*(-[a-zA-Z]*[rRfF]|--recursive|--force|--no-preserve-root)" <<<"$cmd"; then
   exit 0
 fi
 
@@ -191,7 +232,7 @@ fi
 # command whose leading `rm` is benign is an ordinary cleanup shape
 # (`rm -rf node_modules && rm -rf dist`), so stopping at the first match let a
 # dangerous target ride along behind a harmless one.
-rm_segments=$(grep -oE '(^|[^[:alnum:]_-])rm[[:space:]]+[^;&|]*' <<<"$cmd" || true)
+rm_segments=$(grep -oE "${rm_anchor}[^;&|]*" <<<"$cmd" || true)
 [[ -n "$rm_segments" ]] || exit 0
 
 # A here-string keeps the loop in the current shell, so deny()'s exit is the
@@ -206,8 +247,7 @@ while IFS= read -r rm_segment; do
   # array-guard lint stays a zero-exception gate: on bash 3.2 a bare "${tokens[@]}"
   # over an empty array aborts under `set -u`.
   for tok in ${tokens[@]+"${tokens[@]}"}; do
-    # Skip the literal `rm` word and flag tokens.
-    [[ "$tok" == "rm" ]] && continue
+    # Skip flag tokens.
     [[ "$tok" == -* ]] && continue
 
     # Drop every quote character before matching. `read -r -a` word-splits but
@@ -227,6 +267,18 @@ while IFS= read -r rm_segment; do
     # escapes would be half a fix.
     tok=${tok//\\/}
     [[ -n "$tok" ]] || continue
+
+    # Skip the command word itself, recognized the way the anchor above recognizes
+    # it: AFTER quote and backslash removal, and case-insensitively. Matching it
+    # here by its literal lowercase spelling would leave a fourth site reading the
+    # word as it is typed rather than as bash resolves it, so `RM` and `r""m` would
+    # fall through and be judged as if they were targets.
+    #
+    # That fall-through is harmless only for as long as the normalized word `rm`
+    # matches no deny arm and lands on the catch-all below, which is an invisible
+    # constraint to hang a guard on: it silently binds anyone who later adds an arm.
+    # Skipping the word as a word retires the constraint instead of relying on it.
+    [[ "$tok" == [Rr][Mm] ]] && continue
 
     # `$PWD` spells the cwd, so `$PWD/.git` IS `.git` and a bare `$PWD` IS `.`.
     # Rewrite the prefix and let the arms below judge whatever is left, rather
@@ -328,6 +380,16 @@ while IFS= read -r rm_segment; do
         ;;
       .git|./.git|.git/*|./.git/*)
         deny "BLOCKED: rm -rf of .git is forbidden."
+        ;;
+      # `.claude` is `.git`'s peer, not a lesser sibling: it is the whole Claude
+      # configuration (hooks, skills, agents, rules, settings.json), it sits in
+      # the cwd of every session, and losing it is unrecoverable in the same way.
+      # The dotfile-glob and brace-glob arms above already deny the globs that
+      # sweep it up, and they name it in their own deny text, so the direct
+      # spelling of it denies here rather than being the one shape that walks past
+      # a guard advertising the target.
+      .claude|./.claude|.claude/*|./.claude/*)
+        deny "BLOCKED: rm -rf of .claude is forbidden, it removes the hooks, skills, agents, and settings."
         ;;
       node_modules|./node_modules|*/node_modules|node_modules/*)
         deny "BLOCKED: rm -rf of node_modules is forbidden, use 'pnpm store prune' or remove deliberately."

@@ -78,7 +78,14 @@ setup() {
   # subshell, so an assignment made inside run_step would not survive back here.
   STEP_OUTPUT="$BATS_TEST_TMPDIR/github-output"
   : > "$STEP_OUTPUT"
+  # Same subshell caveat: the comment-step stub's log and its $RUNNER_TEMP are
+  # declared here so assertions back in the test body can read them.
+  COMMENT_LOG="$BATS_TEST_TMPDIR/comment.log"
+  rm -f "$COMMENT_LOG"
+  RUNNER_TEMP_DIR="$BATS_TEST_TMPDIR/runner-temp"
+  mkdir -p "$RUNNER_TEMP_DIR"
   install_gh_mock
+  install_upsert_stub
 }
 
 # Fake `gh` on a prepended PATH: records every `gh api` argv.
@@ -97,6 +104,17 @@ esac
 EOF
   chmod +x "$GH_BIN/gh"
   export PATH="$GH_BIN:$PATH"
+}
+
+# Stub the PR-comment upsert the terminal status steps shell out to, recording
+# the comment text ($2) so a test asserts what the AUTHOR is actually told
+# rather than grepping the step's YAML for a phrase.
+install_upsert_stub() {
+  cat > "$RUNNER_TEMP_DIR/cra-status-upsert.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$2" >> "$COMMENT_LOG"
+EOF
+  chmod +x "$RUNNER_TEMP_DIR/cra-status-upsert.sh"
 }
 
 # Extract one step's `run:` shell body from the workflow YAML and dedent it.
@@ -147,6 +165,16 @@ commit_maintainer_only_diff() {
   git -C "$SANDBOX" commit --quiet -m "maintainer-only change"
 }
 
+# docs-only -> no member owns it AND has_source == 'false', so the out-of-scope
+# skip step runs past the members-pending branch and reaches the version guard.
+commit_docs_only_diff() {
+  git -C "$SANDBOX" checkout --quiet -b feature
+  mkdir -p "$SANDBOX/docs"
+  echo "# notes" > "$SANDBOX/docs/notes.md"
+  git -C "$SANDBOX" add docs/notes.md
+  git -C "$SANDBOX" commit --quiet -m "docs only"
+}
+
 # The frontend's clean marker is keyed to the TREE it audited, not the commit,
 # so pass a tree sha. Keying it to the commit would leave the step's lookup
 # empty-handed.
@@ -169,6 +197,18 @@ run_step() {
        HEAD_SHA="$sha" \
        AUDIT_SHA="$sha" \
        PR_BASE_SHA="$(base_sha)" \
+       bash "$body" )
+}
+
+# Run the terminal comment step's body against the stubbed upsert, with the two
+# outputs it consumes from the out-of-scope status step bound explicitly.
+run_comment_step() {
+  local body="$1" members_pending="$2" status_posted="$3"
+  ( cd "$SANDBOX" \
+    && RUNNER_TEMP="$RUNNER_TEMP_DIR" \
+       PR_NUMBER="1" \
+       MEMBERS_PENDING="$members_pending" \
+       STATUS_POSTED="$status_posted" \
        bash "$body" )
 }
 
@@ -425,11 +465,7 @@ run_step() {
 @test "out-of-scope skip: a genuinely unowned diff still posts success" {
   body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
   # docs-only: no member owns it, so the skip is a real skip.
-  git -C "$SANDBOX" checkout --quiet -b feature
-  mkdir -p "$SANDBOX/docs"
-  echo "# notes" > "$SANDBOX/docs/notes.md"
-  git -C "$SANDBOX" add docs/notes.md
-  git -C "$SANDBOX" commit --quiet -m "docs only"
+  commit_docs_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
 
   run run_step "$body" "$sha"
@@ -439,4 +475,105 @@ run_step() {
   tree="$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")"
   grep -qF "state=success" "$POST_LOG"
   grep -qF "description=1.2.3 ${tree}" "$POST_LOG"
+
+  # The stamp really happened, so the comment step is entitled to say the gate is
+  # satisfied. This is the true half that the version-guard tests below pin false.
+  grep -qF "status_posted=true" "$STEP_OUTPUT"
+}
+
+# -----------------------------------------------------------------------------
+# out-of-scope skip: the .gaia/VERSION guard exits WITHOUT posting a status, so
+# the terminal comment must not claim a stamp that never landed.
+#
+# The guard fails CLOSED (no status posted -> the required GAIA-Audit check is
+# absent -> the merge button is shut), so this is author confusion, not a bypass.
+# But the free-skip comment says "GAIA-Audit commit status stamped on HEAD so the
+# merge gate is satisfied with no local audit run", which is the exact opposite
+# of what happened, and the only truthful signal is buried in the step log.
+#
+# Both triggers land on the same `exit 0`: `tr -d '\r' < .gaia/VERSION | awk` is
+# a PIPELINE, so a MISSING file leaves awk with no input -- it prints nothing and
+# exits 0 -- and the substitution yields "" exactly as an EMPTY file does. Under
+# `set -e` neither shape fails the step.
+# -----------------------------------------------------------------------------
+
+@test "out-of-scope skip: an empty .gaia/VERSION posts no status and publishes status_posted=false" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
+  commit_docs_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  # A botched merge, a partial checkout, an adopter who emptied it.
+  : > "$SANDBOX/.gaia/VERSION"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  # Nothing was stamped: the required check is ABSENT, not green.
+  [ ! -f "$POST_LOG" ]
+
+  # ...and the step says so, so the comment step can tell this apart from a stamp.
+  grep -qF "status_posted=false" "$STEP_OUTPUT"
+}
+
+@test "out-of-scope skip: a missing .gaia/VERSION posts no status and publishes status_posted=false" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
+  commit_docs_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  rm -f "$SANDBOX/.gaia/VERSION"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "status_posted=false" "$STEP_OUTPUT"
+}
+
+@test "comment: no status stamped means the comment never claims the merge gate is satisfied" {
+  body="$(extract_step_body 'Status - skipped (no source changes)')"
+
+  run run_comment_step "$body" "" "false"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  # The free-skip claim is what #711 is about: it must not survive a no-stamp run.
+  grep -qF "the merge gate is satisfied" "$COMMENT_LOG" && return 1
+  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
+}
+
+@test "comment: an unset status_posted is read as no-stamp, never as a stamp" {
+  # Fail-safe default. If the status step is ever reshaped so the output goes
+  # missing, the comment must degrade to the cautious message, not the green one.
+  body="$(extract_step_body 'Status - skipped (no source changes)')"
+
+  run run_comment_step "$body" "" ""
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "the merge gate is satisfied" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "comment: a real stamp still gets the free-skip message" {
+  body="$(extract_step_body 'Status - skipped (no source changes)')"
+
+  run run_comment_step "$body" "" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "the merge gate is satisfied" "$COMMENT_LOG"
+  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "comment: a pending member still outranks the version guard in the message" {
+  # MEMBERS_PENDING is checked first: when a member is pending the status step
+  # posted `pending` and never reached the version guard, so that message wins.
+  body="$(extract_step_body 'Status - skipped (no source changes)')"
+
+  run run_comment_step "$body" "code-audit-maintainer-node" ""
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "GAIA-Audit is pending, not green" "$COMMENT_LOG"
+  grep -qF "the merge gate is satisfied" "$COMMENT_LOG" && return 1
+  return 0
 }
