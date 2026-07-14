@@ -160,7 +160,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Wiki Sync]]: `/gaia-wiki sync` + drift hooks: keep the wiki convergent with code without spawned sub-Claudes.
 - [[Wiki Consolidate]]: `/gaia-wiki consolidate`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.
 - [[GAIA Init Workflow]]: `/gaia init` subcommands: strip-branding, configure-i18n, rename, wire-statusline, configure-automation, finalize, resume.
-- [[Telemetry]]: three-stream telemetry (mentorship, cloud projection, analytics), `.gaia/cli/` workspace, `.gaia/cli/gaia` bundled binary, profile computation, adaptation injection.
+- [[GAIA CLI]]: the `.gaia/cli/` workspace, the `.gaia/cli/gaia` bundled binary, and the adoption ping (`gaia ping`) sent on `/gaia-init`, `/setup-gaia`, and `/update-gaia` completion.
 - [[Token Cost Readout]]: per-action token-to-dollar pricing off one shared pricing lib; the `by_model` field, the committed `token-rates.json` rate table, the roll-up's read-time dollar block, and the tally's own per-phase `dollars` snapshot in the `cost.json` sidecar record, each with its degrade markers.
 - [[Cost Data Contract]]: the `cost.jsonl` record schema (every field + type), the execute aggregation rule, the schema_version evolution rule, the retention-at-merge rule, and `token-tally.sh` as the single source of truth for the emitted schema.
 - [[Serena Integration]]: Serena handles live code; the wiki handles institutional memory.

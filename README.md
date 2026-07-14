@@ -140,19 +140,6 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 - **Bundled skills** (`typescript`, `react-code`, `tailwind`, `tdd`, `playwright-cli`, `skeleton-loaders`, `eslint-fixes`, `a11y-fixes`) autoload for matching tasks. Scaffolding skills (`new-component`, `new-hook`, `new-route`, `new-service`) fire on natural-language asks.
 - **MCP servers.** [Serena](https://github.com/oraios/serena) gives Claude LSP-backed code intelligence: symbol lookups, references, and types instead of grepping the codebase.
 
-### Mentorship
-
-GAIA includes an optional, local-only adaptive mentorship layer that observes your patterns through GAIA's structured event stream and adapts Claude's responses to you over time. Default off. Opt in during `/gaia-init` or any time afterward.
-
-```bash
-gaia mentorship enable      # turn on
-gaia mentorship disable     # stop emit and adaptation
-gaia mentorship status      # show state and file location
-gaia mentorship purge       # delete all mentorship data
-```
-
-[Read more](https://gaiareact.com/mentorship/) about what it observes, what it never observes, where data lives, and how privacy is built into the design.
-
 ## Working in a GAIA Project
 
 GAIA is driven through Claude. Ask for what you need.

@@ -17,7 +17,7 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | Path | Owner | Kind | Retention |
 |---|---|---|---|
 | `.project-id`, `setup-state.json` | setup / identity | live | permanent identity |
-| `mentorship.json`, `declined-updates.json` | mentorship / `/update-deps` | live | permanent preference |
+| `declined-updates.json` | `/update-deps` | live | permanent preference |
 | `.patched-statusline.sh`, `maintainer-statusline.sh` | statusline | live | regenerated |
 | `audit/<tree>.ok`, `audit/<tree>.<member>.ok` | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its tree is no longer live |
 | `audit/<sha>.dispositions.json` | [[Code Review Audit Agent]] merge gate | ephemeral | spent once orphaned |
@@ -27,13 +27,13 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |
 | `debt/` | debt sentinel | live | symlinked to the main worktree's copy so a debt fix merged from a linked worktree arms the main checkout's count cache and sentinel; recomputed |
 | `cache/` | [[GAIA Spec]] / gate sessions | ephemeral | reaped on SPEC merge/close and the merged-SPEC age reap; stale entries age-swept |
-| `cache/shared/` | release / statusline (`update-gaia`, `check-updates.sh`, coaching) | live | symlinked to the main worktree's copy so every linked worktree shares one copy; self-pruned by its owners (tarball prune on update, coaching marker cleared each session) |
+| `cache/shared/` | release / statusline (`update-gaia`, `check-updates.sh`) | live | symlinked to the main worktree's copy so every linked worktree shares one copy; self-pruned by its owners (tarball prune on update) |
 | `specs/` | [[GAIA Spec]] | live | a merged folder is kept at merge; age-reaped after the retention window |
 | `specs/ledger.json` | [[GAIA Spec]] | live | per-machine number cache |
 | `plans/PLAN-NNN/` | [[GAIA Plan]] | live | a merged folder is kept at merge (reduced to `SUMMARY.md` + `cost.json`, `RUNNING` cleared); age-reaped after the retention window |
 | `plans/ledger.json` | [[GAIA Plan]] | live | per-machine number cache |
 | `handoff/`, `forensics/` | [[GAIA Handoff]] / [[Forensics]] | live | drop zones |
-| `telemetry/` | [[Telemetry]] | live | append-only logs |
+| `telemetry/` | [[Cost Data Contract]] | live | the cost ledger (`cost.jsonl`) and the `/gaia-spec` pacing log (`spec-pacing.jsonl`), both append-only |
 
 Worktree creation symlinks a second, disjoint set alongside the six `.gaia/local/` paths above: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't rows in the table above.
 
@@ -55,6 +55,6 @@ The sweep is fail-safe: any inability to prove a thing is dead (no git, an unrea
 
 ## Deciding by hand
 
-Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for a merged spec. The append-only ledgers (`red-ledger/observations.jsonl`, `audit/worthiness.jsonl`, `telemetry`), the identity files (`.project-id`, `setup-state.json`, `mentorship.json`), and `.gaia/local/specs/ledger.json` (and the `specs/` store it lives in) are the load-bearing exceptions; deleting the ledger drops per-machine draft-resume state and the local half of SPEC-number allocation.
+Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for a merged spec. The append-only ledgers (`red-ledger/observations.jsonl`, `audit/worthiness.jsonl`, `telemetry`), the identity files (`.project-id`, `setup-state.json`), and `.gaia/local/specs/ledger.json` (and the `specs/` store it lives in) are the load-bearing exceptions; deleting the ledger drops per-machine draft-resume state and the local half of SPEC-number allocation.
 
 See [[Claude Hooks]] for the hook surface and [[Audit Disposition and Debt Fix]] for the marker lifecycle.

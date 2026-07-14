@@ -81,10 +81,6 @@ The wiki sync system is convergent: the user's already-paid-for Claude session d
 - **`wiki-commit-nudge.sh`** (PostToolUse, Bash): fires after `git commit` invocations. Injects a `[wiki nudge]` line with the short SHA, subject, file count, and current drift count. Skips merge / amend / `wiki:` subjects to avoid loops. Never spawns sub-processes.
 - **`wiki-squash-autocommits.sh`** (Stop): folds adjacent `wiki: auto-commit` subjects into a single PR-branch commit. Failed `gh pr create` / `gh pr merge` preserves the working tree (no silent reset).
 
-### Other events
-
-- **`telemetry-task-postuse.sh`** (PostToolUse, matcher `Task`): fires when a subagent/Task completes. A thin pipe to `gaia telemetry parse-stdin`, which extracts structured-trailer events from the Task output and dispatches `gaia telemetry emit` for each. No-op when `.gaia/cli/gaia` is absent; always exits 0 so telemetry never blocks the flow. See [[Telemetry]].
-
 `update-deps` and `update-gaia` are surfaced via the **statusline** (not a hook); see [[Claude Skills]] § Statusline update indicators. The statusline surface is chosen over a SessionStart `<system-reminder>` because system-reminders are visible only to the model; passive statusline indicators are visible to the user.
 
 ## Adding hooks
