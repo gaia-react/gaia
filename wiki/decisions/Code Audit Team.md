@@ -48,10 +48,18 @@ A zero-match dispatch (the resolver finds nothing, or is absent/unusable) falls 
 
 | Member | Globs | Scope | `push_fixes` |
 | --- | --- | --- | --- |
-| `code-audit-maintainer-shell` | `.gaia/**/*.sh`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh` | maintainer-only | `false` |
+| `code-audit-maintainer-shell` | `.gaia/**/*.sh`, `.gaia/**/*.bats`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh`, `.github/**/*.bats` | maintainer-only | `false` |
 | `code-audit-maintainer-node` | `.gaia/cli/src/**` | maintainer-only | `false` |
 
 `code-audit-maintainer-shell` and `code-audit-maintainer-node` review framework source the frontend auditor never scoped: `code-audit-maintainer-shell` covers the framework bash GAIA ships and runs (`.gaia/**/*.sh`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh`), with a hook-contract lens, `shellcheck` as a deterministic oracle, and bash 3.2 / BSD-vs-GNU portability review; `code-audit-maintainer-node` covers `.gaia/cli/src/**` (the CLI's own TypeScript), with correctness, error handling, filesystem/IO safety, Zod schema fitness, and shell/`gh` injection-safety review. Both are advisory-only, no self-heal: a maintainer member never pushes a fix commit, it reviews and reports. Both are release-excluded (their agent files, roster entries, and glob references are marker-wrapped and stripped from the adopter bundle), so an adopter clone's Code Audit Team never dispatches them.
+
+### The bats suites are owned, deliberately
+
+`code-audit-maintainer-shell` also owns the `.bats` suites guarding that bash (`.gaia/**/*.bats`, `.github/**/*.bats`), which together cover every bats tree in the repo: `.gaia/scripts/tests/`, `.gaia/tests/{forensics,hooks,lib,sandbox,statusline}/`, `.github/audit/tests/`, and `.github/forensics/tests/`.
+
+Ownership is the deliberate choice because a `.bats` file is not a `.sh` file: without a bats glob, a diff touching only test suites matches no member's globs, dispatches an empty member set, and rides the merge gate's out-of-scope bypass. Those suites are the only enforcement standing behind the framework's shell, so a commit that weakens, skips, or deletes one is simultaneously the change least affordable to merge unreviewed and the one that most easily escapes review. The shell member is the natural owner: bats suites are bash, `shellcheck` parses them as bash and reports genuine defects in them, and the reviewer who knows the script knows what its suite is supposed to prove. The agent carries a bats-specific lens for the failure modes a suite's own green run cannot catch: assertions that structurally cannot fail (per `.claude/rules/bats-assertions.md`), a silently loosened or deleted assertion, and a `skip` that retires coverage.
+
+A bats-only diff therefore dispatches `code-audit-maintainer-shell` and requires its clearance, the same as any other change to the framework's shell.
 <!-- gaia:maintainer-only:end -->
 
 ## Ruleset-aware required-check confirmation

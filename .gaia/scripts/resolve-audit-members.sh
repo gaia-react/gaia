@@ -131,9 +131,11 @@ auditors:
   - name: code-audit-maintainer-shell
     globs:
       - ".gaia/**/*.sh"
+      - ".gaia/**/*.bats"
       - ".claude/hooks/**/*.sh"
       - ".specify/extensions/gaia/lib/*.sh"
       - ".github/**/*.sh"
+      - ".github/**/*.bats"
     scope: maintainer-only
     push_fixes: false
   - name: code-audit-maintainer-node
