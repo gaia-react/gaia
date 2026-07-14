@@ -8,20 +8,24 @@ tags: [concept, ci, review]
 
 # PR Merge Workflow
 
-Mandatory before any `gh pr merge`. Machine-enforced by `.claude/hooks/pr-merge-audit-check.sh`, which denies `gh pr merge` calls when no `code-review-audit` marker exists for the current HEAD SHA.
+Mandatory before any `gh pr merge`. Machine-enforced by `.claude/hooks/pr-merge-audit-check.sh`, which denies `gh pr merge` calls until every Code Audit Team member this diff dispatches has its own clearance marker for the current HEAD.
 
 The gate is **repo-scoped** via `.claude/hooks/lib/repo-scope.sh`: it enforces this repo's audit contract only. A `gh pr merge` positively aimed at a different repo (`-R owner/other`, or `cd <other> &&`) is allowed; this repo's audit markers have no bearing on a sibling repo's merge. Scoping is fail-closed: any ambiguity still enforces.
 
+## Who audits: the dispatched member set
+
+The gate is a roster, not a single agent. `bash .gaia/scripts/resolve-audit-spawn.sh` names the Code Audit Team members this diff owes an audit to, one per line, deduped and sorted; empty output means nothing in the diff is auditable and no member is owed. Every member the oracle names writes its own clearance marker (see Marker key below). See [[Code Audit Team]] for the roster and dispatch mechanism.
+
 ## Marker-first: check before you audit
 
-The hook requires a **marker to exist** for the content at HEAD, not that you personally run the audit. The marker comes from one of two producers: CI (`code-review-audit.yml` stamps the `GAIA-Audit` status) or the local `code-review-audit` agent (writes `.gaia/local/audit/<tree-sha>.ok`, a `GAIA-Audit:` trailer, and a `GAIA-Audit` success status). Which producer runs is a **per-author mode**, `ci` or `local`, resolved by the shared helper both sides call identically:
+The hook requires a **marker to exist** for the content at HEAD, not that you personally run the audit. The marker comes from one of two producers: CI (`code-review-audit.yml` stamps the `GAIA-Audit` status) or the local `code-audit-frontend` agent (writes `.gaia/local/audit/<tree-sha>.ok`, a `GAIA-Audit:` trailer, and a `GAIA-Audit` success status). Which producer runs is a **per-author mode**, `ci` or `local`, resolved by the shared helper both sides call identically:
 
 ```bash
 eval "$(bash .gaia/scripts/read-audit-ci-config.sh --resolve-author "$(gh pr view <N> --json author --jq .author.login)")"
 # resolved_mode (ci|local) and should_run (true|false) are now in scope
 ```
 
-CI and the local path read the same `resolved_mode`, so they never disagree about who audits. The mode lives in `.gaia/audit-ci.yml`, a team `default_mode` plus per-developer `audit_authors` overrides and a sticky `override_label` that forces `ci`; it is per-author and never `off`. The audit has no `automation.json` entry, so don't look for one. Resolve the mode first:
+CI and the local path read the same `resolved_mode`, so they never disagree about who audits. The mode decides who produces the **default member's** signal, CI or a local run; it says nothing about which Code Audit Team members are owed a signal at all, that is the roster's call (see "Who audits" above). CI audits the default member's surface only, so a diff that also dispatches a specialized member always needs a local spawn for that member regardless of mode. The mode lives in `.gaia/audit-ci.yml`, a team `default_mode` plus per-developer `audit_authors` overrides and a sticky `override_label` that forces `ci`; it is per-author and never `off`. The audit has no `automation.json` entry, so don't look for one. Resolve the mode first:
 
 - `resolved_mode == ci` with the workflow present, or the override label set → **wait for CI's `GAIA-Audit` success** (the check states below).
 - `resolved_mode == local`, or the workflow absent → **run the local agent** as the producer; on a clean pass it writes the marker, then posts the `GAIA-Audit` success status so the github.com button clears too.
@@ -33,7 +37,7 @@ test -f .github/workflows/code-review-audit.yml && echo present || echo absent
 git rev-parse HEAD   # the SHA the marker must match
 ```
 
-`test -f .github/workflows/code-review-audit.yml`: **present** → the CI audit is configured (it installs only via `/setup-gaia`); trust / wait for the `GAIA-Audit` marker. **Absent** → the CI audit is not set up; run the local `code-review-audit` agent. The `GAIA-Audit` check state stays authoritative for the final go/no-go (it handles secret-rotated and `gate_label` edge cases where the file is present but no marker lands).
+`test -f .github/workflows/code-review-audit.yml`: **present** → the CI audit is configured (it installs only via `/setup-gaia`); trust / wait for the `GAIA-Audit` marker. **Absent** → the CI audit is not set up; run the local `code-audit-frontend` agent. The `GAIA-Audit` check state stays authoritative for the final go/no-go (it handles secret-rotated and `gate_label` edge cases where the file is present but no marker lands).
 
 When the file is **present**, consult the PR's check state:
 
@@ -59,16 +63,32 @@ Spawning the local agent when CI has already stamped the marker is redundant; sk
 
 ## Four-step protocol
 
-### 1. Run code-review-audit (when CI is not auditing this PR)
+### 1. Spawn the dispatched Code Audit Team members
 
-When the decision above sends you here (no `GAIA-Audit` marker and CI will not stamp one), spawn the agent on the PR's changes:
+**Roster-first: resolve the members, then spawn exactly those.** Before any `gh pr merge`, resolve which Code Audit Team members this branch's diff dispatches:
 
+```bash
+bash .gaia/scripts/resolve-audit-spawn.sh
 ```
-Task(
-  subagent_type="code-review-audit",
-  prompt="Review all changes in the current branch compared to main. Identify security vulnerabilities, performance issues, code smells, anti-patterns, and refactoring opportunities."
-)
-```
+
+It prints one member (agent) name per line, deduped and sorted, and always exits 0. That output is the spawn set.
+
+- **One or more names** → spawn each named member, in parallel from a single tool-call message. Do not wait for the merge deny-hook to name them; that round-trip is friction:
+
+  ```
+  Task(
+    subagent_type="<member-name>",
+    prompt="Review all changes in the current branch compared to main. Identify security vulnerabilities, performance issues, code smells, anti-patterns, and refactoring opportunities."
+  )
+  ```
+
+- **No names** → no changed file is auditable. No marker is owed, and `gh pr merge` clears with no audit spawn. An empty answer is safe to act on *because* it came from the oracle: the oracle, not the raw dispatch resolver, is what accounts for the in-scope-but-ownerless case the merge gate still blocks on.
+
+- **The oracle is absent** (an older checkout, an interrupted install) → fall back to `bash .gaia/scripts/resolve-audit-members.sh`, and treat an EMPTY result as "spawn `code-audit-frontend`" (fail-closed). Never treat an unanswerable question as "nothing owed".
+
+Skip a spawn for a member already cleared for HEAD: its marker exists, or (for the default member) one of the bypass signals in the marker-handshake table already applies to this PR. The spawn set names who *can* be required, not who is still outstanding.
+
+On a clean pass each member writes its own marker and calls `post-audit-status.sh`. The merge deny-hook requires **every** dispatched member's marker, so one member withholding holds the gate shut for all. If a member declines to write its marker, its report names what remains unaddressed; resolve those, commit, push (HEAD moves), then re-spawn the pending members on the new HEAD. A member that cleared the previous HEAD must be re-spawned too: its marker is keyed to the old SHA. Never hand-write a marker to bypass the gate.
 
 ### 2. Fix all issues
 
@@ -94,16 +114,23 @@ Two artifacts under `.gaia/local/audit/` stay **commit**-keyed, because their re
 
 #### Signals
 
-The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove the audit ran clean against the content being merged, plus three bypasses for PRs that need no audit signal:
+The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove the **default member's** audit ran clean against the content being merged, plus three bypasses that waive its signal entirely. A specialized member's own marker (last row below) is a separate, mandatory signal the hook additionally requires whenever the roster dispatches that member:
 
 | Signal                                                                    | Source                       | How it gets there                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.gaia/local/audit/<tree-sha>.ok`                                         | Local audit agent            | Agent writes it on a clean pass, keyed to HEAD's **tree** (see Marker key below). Each specialized Code Audit Team member writes its own `.gaia/local/audit/<tree-sha>.<member>.ok`, and the hook requires every dispatched member's marker.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `.gaia/local/audit/<tree-sha>.ok`                                         | Local audit agent            | Agent writes it on a clean pass, keyed to HEAD's **tree** (see Marker key below).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `GAIA-Audit:` commit-message trailer on HEAD                              | Local audit agent            | `audit-stamp-trailer.sh` writes an empty commit with the trailer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `GAIA-Audit` GitHub commit status on HEAD, `state: success`, description `<version> <tree>` | CI (`code-review-audit.yml`) or the local audit agent | CI stamps this after a full audit (on the audit SHA) and on HEAD when the un-audited delta is entirely out of audit scope. The local agent posts the same `state: success` status after it writes the marker, gated on the marker existing first (`post-audit-status.sh`), so a `local`-mode merge clears the github.com button too; when `gh` is unauthenticated the marker still clears the Claude path while the button stays blocked. The status is a commit-status POST on HEAD's existing sha, not a commit, so the button clears without the status path adding to history. (The trailer signal in the row above is what carries the marker in a commit: on an already-pushed HEAD it rides an empty `chore: code review audit passed` commit, since published history is never amended.) Every reader requires `state == success`: a `pending` status (the CI local-mode stand-down) carrying HEAD's version+tree is never treated as cleared.                                                                                                                                                                                                                                                                                                                                                                                                     |
 | PR title matches `^chore\(deps(-dev)?\):` (bypass)                        | `/update-deps` wrapper       | Wrapper opens dep-bump PRs with the canonical prefix; the local quality gate stands in for the audit signal. On a `main`/`master` run the skill also merges the PR itself once required checks are green (`gh pr merge --auto`), verifies the terminal `MERGED` state, and cleans up the local branch; on any other branch it pushes and leaves the PR to the branch owner.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Every changed file is out of audit scope (bypass)                         | `pr-merge-audit-check.sh`    | The PR's full diff against its merge base with the default branch touches only out-of-scope surfaces: `wiki/`, `.claude/`, `.specify/`, `.gaia/`, `docs/`, root-level markdown. The agent has no rules that apply, so no marker is required. This mirrors `code-review-audit.yml`'s `has_source` skip locally, so the gate clears even when the installed workflow predates the out-of-scope status stamp or CI is absent. Evaluated fail-closed: any in-scope path (`app/`, `test/`, configs, `.github/workflows/`) keeps the marker mandatory, so a PR carrying auditable source can never reach this bypass. |
 | Audit-workflow re-render is the only in-scope change (bypass)              | `pr-merge-audit-check.sh`    | The one in-scope path the PR changes is `.github/workflows/code-review-audit.yml` AND its committed bytes are a verbatim re-render of the bundled template (`.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`, proven by git-blob identity: equal blob SHAs mean byte-identical files), with every other changed path out of scope. This is the self-mod-only case `/update-gaia` Step 12 produces: it refreshes a stale audit workflow by copying the release template verbatim. CI self-mod-skips such a PR (no stamp lands), and the out-of-scope bypass above denies because `.github/workflows/` is in scope, so this bypass clears the merge without a ceremonial local re-audit of bytes that are GAIA's own template, not adopter code. Stricter than the out-of-scope bypass and fail-closed: an adopter edit (bytes diverge from the template), a second in-scope path, or an absent template keeps the marker mandatory. |
+| `.gaia/local/audit/<tree-sha>.<member>.ok`                                | Specialized Code Audit Team member | The member writes it on a clean pass, keyed to the same tree sha as the default member's marker (see Marker key below). This is a specialized member's **sole** clearance signal: no CI, trailer, or bypass equivalent produces it. |
+
+A non-empty dispatched set means an in-scope file exists, so the out-of-scope bypass above is unreachable there; both bypass rows apply on the zero-match dispatch path only.
+
+<!-- gaia:maintainer-only:start -->
+In this repo the roster also claims framework shell and CLI source living under some of the out-of-scope bypass's prefixes: `code-audit-maintainer-shell` owns `.gaia/**/*.sh`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, and `.github/**/*.sh`; `code-audit-maintainer-node` owns `.gaia/cli/src/**`. A diff touching any of those paths dispatches that specialized member, so the dispatched set is non-empty and the out-of-scope bypass is never reached there.
+<!-- gaia:maintainer-only:end -->
 
 Tree-sha equality is the load-bearing check for both the trailer and the status: identical trees mean identical content, so an audit on a different commit SHA but the same tree is auditing the same code.
 
@@ -131,7 +158,7 @@ The ledger is local-flow-only. In CI each audit runs in a fresh ephemeral job, s
 First clear the **CHANGELOG gate** below: decide whether this PR needs an `## [Unreleased]` entry and land it on the branch before merging.
 <!-- gaia:maintainer-only:end -->
 
-Once the marker exists for HEAD, run `gh pr merge`. The hook short-circuits to allow the call.
+Once **every dispatched member's** marker exists for HEAD, run `gh pr merge`. The hook short-circuits to allow the call.
 
 <!-- gaia:maintainer-only:start -->
 ## CHANGELOG gate (maintainer-only)
@@ -188,13 +215,13 @@ the [[Determinism Classifier]] labels it) has no worthiness-ledger line matching
 its current content. It checks presence and signal match only, never the
 keep/fix/delete verdict, scopes to the emergent tests this PR changed (a no-op
 when none changed), and fails open on missing tooling. It is a separate denial
-from the code-review-audit marker above; both must clear. See [[Worthiness
+from the Code Audit Team markers above; both must clear. See [[Worthiness
 Presence Gate]] for the full contract.
 
 ## No exceptions
 
-- Never merge without a marker for HEAD. The hook denies it. The audit must cover the merged content; CI produces the marker when it audits the PR, otherwise the local agent does.
-- Never hand-write a marker file to bypass the gate. The agent (local or CI) owns marker emission.
-- When CI is not auditing an **in-scope** PR (`.github/workflows/code-review-audit.yml` is absent, Actions disabled, the workflow inactive, or a `gate_label` excludes it), the local `code-review-audit` agent is the only way to produce the marker; run it. A PR whose entire diff is out of audit scope needs no marker; the hook's out-of-scope bypass clears it.
+- Never merge without a marker for HEAD from every member the roster dispatches. The hook denies it. Each member's own audit must cover the merged content; CI produces the default member's marker when it audits the PR, otherwise the local `code-audit-frontend` agent does. A specialized member is always local-only, it has no CI producer.
+- Never hand-write a marker file to bypass the gate. Each member (local, or for the default member, CI) owns its own marker's emission.
+- When CI is not auditing an **in-scope** PR (`.github/workflows/code-review-audit.yml` is absent, Actions disabled, the workflow inactive, or a `gate_label` excludes it), the local `code-audit-frontend` agent is the only way to produce the default member's marker; run it. A PR whose entire diff is out of audit scope needs no marker; the hook's out-of-scope bypass clears it.
 
 See [[Code Review Audit Agent]], [[Quality Gate]], [[Git Workflow]].

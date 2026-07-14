@@ -510,7 +510,7 @@ Three audit-specific rules override the agent's defaults; do NOT "fix" them back
 
 - **Screen on `security_sensitive`, never on the class.** A finding is security-class **only** when its block's `security_sensitive: true` (its content reads as a security concern or is secret-shaped), never merely because it carries `holistic/unclassified`, which is the expected class for an audit finding (knowledge/doc hygiene maps to no seeded class by construction). This is the agent's own rule rather than an audit-specific carve-out: `.claude/agents/code-audit-frontend.md` section B screens on content and severity and excludes the fallback class as a trigger, precisely because a class-keyed screen would divert every finding and file nothing on a public repo. Screen on the flag, then apply the agent's **section D** visibility gate (PUBLIC/INTERNAL → divert, never a public issue; confirmed PRIVATE → file through E).
 - **Build the dedup key from the block's own fields:** `<!-- gaia-debt-key: v1 class=<finding_class> path=<path> line=<line> -->` from the block's `finding_class` (or `holistic/unclassified`), `path`, and `line`. Dedup per the file-tech-debt skill's dedup procedure (open + declined-closed + keyless `path:line` fallback) so a repeated audit never re-files a standing wiki-internal problem. Map `severity` → the `severity:<tier>` label and carry the block's `handler` as the `Handler:` line.
-- **Do NOT write a `<HEAD>.dispositions.json` sidecar.** That sidecar gates the code-audit-frontend marker; the audit produces no marker (its PR clears via the out-of-scope bypass, see `## Publish`). Writing one would make `audit-disposition-check.sh` gate the audit's own merge on a filing it never needed. File the issues; write no sidecar.
+- **Do NOT write a `<HEAD>.dispositions.json` sidecar.** That sidecar gates the code-audit-frontend marker; the audit's own PR clears the merge gate through the out-of-scope bypass whenever the oracle finds nothing owed for its diff (see `## Publish`). Writing one would make `audit-disposition-check.sh` gate the audit's own merge on a filing it never needed. File the issues; write no sidecar.
 
 Record the filed / diverted / deduped counts for the final summary. A backend-absent or transient `gh` failure is never fatal: file what you can, note the rest, and let the main conversation publish regardless.
 
@@ -579,7 +579,13 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
    git commit -F <commit-message-file>
    ```
 
-   Subject: `chore(audit): <concise summary of what was pruned / shrunk / promoted>`. The diff touches only out-of-scope surfaces (`wiki/`, `.claude/`, root `CLAUDE.md`), so the PR clears the merge gate through the PR Merge Workflow's **out-of-scope bypass** with no `code-audit-frontend` marker. Run the Quality Gate first **only** if the applied diff touched a gate-affecting file (`.ts|tsx|js|jsx|mjs|cjs|css` or gate config); a docs-only audit diff has nothing for it to check. (A rare audit edit to a nested `CLAUDE.md` under an in-scope path such as `app/` defeats the bypass, in that case follow the PR Merge Workflow's marker handshake like any in-scope PR.)
+   Subject: `chore(audit): <concise summary of what was pruned / shrunk / promoted>`. The diff is expected to touch only out-of-scope surfaces (`wiki/`, `.claude/`, root `CLAUDE.md`), in which case the PR clears the merge gate through the PR Merge Workflow's **out-of-scope bypass** with no `code-audit-frontend` marker. Do not assume it. Before `gh pr merge`, run
+
+   ```bash
+   bash .gaia/scripts/resolve-audit-spawn.sh
+   ```
+
+   Empty output confirms the bypass applies and no marker is owed (this also covers the rare case of an audit edit to a nested `CLAUDE.md` under an in-scope path such as `app/`, which would otherwise silently defeat the bypass). If it names any member, spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR. Run the Quality Gate first **only** if the applied diff touched a gate-affecting file (`.ts|tsx|js|jsx|mjs|cjs|css` or gate config); a docs-only audit diff has nothing for it to check.
    <!-- gaia:maintainer-only:start -->
 
    Then clear the **CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md`: decide whether the change warrants a `## [Unreleased]` entry (pure pruning / consolidation is usually an internal, no-entry change; a rule or concept-page behavior change is worthy) and, if so, land it on the branch before merging (HEAD moves, so any bypass/marker must still cover the new HEAD). Scrubbed from adopter bundles.
@@ -593,7 +599,7 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
    gh pr merge <N> --squash --delete-branch --auto
    ```
 
-   `--auto` queues the merge behind required checks (no marker is owed via the bypass). Verify the terminal state before any local cleanup:
+   `--auto` queues the merge behind required checks (the oracle check before `gh pr create` already confirmed whether a marker is owed). Verify the terminal state before any local cleanup:
 
    ```bash
    for i in 1 2 3 4 5; do

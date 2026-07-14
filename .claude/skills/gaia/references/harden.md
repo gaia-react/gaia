@@ -216,7 +216,15 @@ git push -u origin "$BRANCH"
 gh pr create --title "<commit subject>" --body-file <pr-body-file>
 ```
 
-Route the commit message through a file, never `-m`. Subject: `chore(harden): <the approved forms, e.g. "promote use-effect-derived-state rule">`. The diff touches only `.claude/rules/**` and enforcement wiring, all out of `code-audit-frontend` scope, so the PR clears the merge gate through the PR Merge Workflow's out-of-scope bypass.
+Route the commit message through a file, never `-m`. Subject: `chore(harden): <the approved forms, e.g. "promote use-effect-derived-state rule">`.
+
+The diff is expected to touch only `.claude/rules/**` and enforcement wiring, in which case the PR clears the merge gate through the PR Merge Workflow's out-of-scope bypass with no marker. Do not assume it: the approved "deterministic check" form can edit enforcement wiring including the CI workflow, an audited surface. Before `gh pr merge`, run
+
+```bash
+bash .gaia/scripts/resolve-audit-spawn.sh
+```
+
+Empty output confirms the bypass applies and no marker is owed. If it names any member, this run's diff reached an audited surface: spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR.
 
 <!-- gaia:maintainer-only:start -->
 Clear the **CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md` before `gh pr create`, so the PR carries it whether it merges now or after review: a promoted policy rule that changes how the agent works usually warrants a `## [Unreleased]` entry. Scrubbed from adopter bundles.
@@ -227,10 +235,10 @@ Clear the **CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md` before `gh
 - **header:** `"Merge harden PR?"`
 - **question:** `"You approved every candidate. Merge PR #<N> now, or leave it open for review?"`
 - **options (this exact order):**
-  1. `{ label: "Merge", description: "Squash-merge PR #<N> now through the out-of-scope bypass." }`
+  1. `{ label: "Merge", description: "Squash-merge PR #<N> now; the earlier oracle check confirmed whether the bypass applies." }`
   2. `{ label: "Leave open", description: "Keep the PR open; you merge it after review." }`
 
-- **Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto` (`--auto` queues behind required checks; no marker owed via the bypass), bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes), and on `MERGED` clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`); if it is still queued when the poll window closes, print the PR URL, note the merge is queued, and leave the branch in place.
+- **Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto` (`--auto` queues behind required checks; the oracle check before `gh pr create` already confirmed whether a marker is owed for this diff), bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes), and on `MERGED` clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`); if it is still queued when the poll window closes, print the PR URL, note the merge is queued, and leave the branch in place.
 - **Leave open** → report the PR URL and stop.
 
 **If the `all-approved` flag is false** (any candidate was declined or deferred), do not prompt: report the PR URL, note it is open for review, and stop. Never run `gh pr merge` on this path.
