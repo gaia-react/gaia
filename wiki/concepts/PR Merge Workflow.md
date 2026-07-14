@@ -158,7 +158,7 @@ The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove
 A non-empty dispatched set means an in-scope file exists, so the out-of-scope bypass above is unreachable there; both bypass rows apply on the zero-match dispatch path only.
 
 <!-- gaia:maintainer-only:start -->
-In this repo the roster also claims framework shell and CLI source living under some of the out-of-scope bypass's prefixes: `code-audit-maintainer-shell` owns `.gaia/**/*.sh`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, and `.github/**/*.sh`; `code-audit-maintainer-node` owns `.gaia/cli/src/**`. A diff touching any of those paths dispatches that specialized member, so the dispatched set is non-empty and the out-of-scope bypass is never reached there.
+In this repo the roster also claims framework shell and CLI source living under some of the out-of-scope bypass's prefixes: `code-audit-maintainer-shell` owns `.gaia/**/*.sh`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, and `.github/**/*.sh`, plus the bats suites guarding that shell (`.gaia/**/*.bats`, `.github/**/*.bats`); `code-audit-maintainer-node` owns `.gaia/cli/src/**`. A diff touching any of those paths dispatches that specialized member, so the dispatched set is non-empty and the out-of-scope bypass is never reached there. A bats-only diff is the case that motivates the bats globs: without them it matched no member, and the bypass cleared it to merge unaudited.
 <!-- gaia:maintainer-only:end -->
 
 Tree-sha equality is the load-bearing check for both the trailer and the status: identical trees mean identical content, so an audit on a different commit SHA but the same tree is auditing the same code.
