@@ -372,7 +372,7 @@ After the chosen branch executes:
 
 ## Phase 3: GitHub repository (skip if provisioning already complete)
 
-Judge this phase from the **repo/branch/push state cached in Phase 1**, not merely `origin` presence. If the repo exists, the default branch is pushed, and no repo mutation is owed, print `GitHub repository already provisioned.` and fall through to Phase 4 without touching GitHub.
+Judge this phase from the **repo/branch/push state cached in Phase 1**, not merely `origin` presence. If the repo exists, the default branch is pushed, and no repo mutation is owed, print `GitHub repository already provisioned.` and fall through to Phase 3.5 without touching GitHub.
 
 Otherwise, this is the **first user-facing interaction for a first adopter**. Ask (AskUserQuestion) with these three options:
 
@@ -488,7 +488,7 @@ Reached from Option 1 (after create) or Option 2 (adopt). Run the admin probe fo
 .gaia/cli/gaia setup-ci check-admin --owner <owner> --repo <repo> --json
 ```
 
-Cache `admin` and `auth_status`. **If `admin` is not `true` (or `auth_status != "ok"`)**, none of the GitHub mutations below fire; print the admin-note and skip straight to Phase 4 (which will also degrade):
+Cache `admin` and `auth_status`. **If `admin` is not `true` (or `auth_status != "ok"`)**, none of the GitHub mutations below fire; print the admin-note and skip straight to Phase 3.5 (which runs its own admin probe and fails closed the same way; Phase 4 will also degrade):
 
 ```
 GitHub provisioning and CI wiring need repo-admin permission and an authenticated gh (yours: admin=<admin>, auth_status=<auth_status>). Skipping the admin-only steps (branch protection, required-check registration, Dependabot alerts, delete-branch-on-merge, the bot-token secret, and the CI commit). Per-machine setup and your per-developer audit-mode choice still complete. Ask a repo admin to finish the GitHub side, or gain admin access and re-run /setup-gaia.
@@ -562,7 +562,144 @@ gh api "repos/<owner>/<repo>/automated-security-fixes" --jq .enabled            
 
 Assert `automated-security-fixes` is `false`, and write **no** `.github/dependabot.yml`. **`/update-deps` owns package updates** in GAIA; Dependabot is enabled for alert visibility only, never as a second PR-opening bot.
 
-All Phase-3 GitHub mutations (create, protection, vuln-alerts, delete-branch) are net-new, admin-gated, security-sensitive calls. A non-admin runner degrades gracefully: skip the mutation, print the admin-note above, and continue to Phase 4.
+All Phase-3 GitHub mutations (create, protection, vuln-alerts, delete-branch) are net-new, admin-gated, security-sensitive calls. A non-admin runner degrades gracefully: skip the mutation, print the admin-note above, and continue to Phase 3.5.
+
+## Phase 3.5: Team git isolation policy (always evaluated)
+
+This is a **committed team setting**, not per-machine state: whether `/gaia-plan` and `/gaia-debt` isolate
+their work in a feature branch or a git worktree by default. It sits here, after Phase 3 returns rather than
+inside it, because Phase 3 short-circuits entirely once the repo is already provisioned, and an
+already-provisioned repo is what every developer after the first one hits. This section always runs, whether
+Phase 3 above just created a repo, adopted one, or short-circuited straight through, and it carries its own
+commit: Phase 4's finalize commit never runs on a provisioned-repo path, so relying on it here would leave the
+policy written to disk but never committed.
+
+### Gate 1: `.gaia/automation.json` absent
+
+```bash
+if [ ! -f .gaia/automation.json ]; then
+  echo "No .gaia/automation.json in this clone, so there is nothing to record the team's git isolation policy in. Skipping the question."
+  # Continue to Phase 4.
+fi
+```
+
+No code path in `/setup-gaia` creates `.gaia/automation.json`; the only creator is `gaia init
+configure-automation`, which is create-only. Every other writer, including the write shell-out below, fails
+closed with `config_missing` on a missing file. This guard must run, and must run first: skipping it would
+surface that failure to the admin instead of a clean, honest skip. `/setup-gaia` completes with exit 0 either
+way.
+
+### Gate 2: the key's own presence
+
+```bash
+HAS_POLICY="$(jq -r 'has("isolation_policy")' .gaia/automation.json 2>/dev/null || echo false)"
+```
+
+- `HAS_POLICY` is `true` and `RECONFIGURE` is NOT set → the decision stands. **Skip silently**: do not
+  re-prompt, do not flip the settled value.
+- `HAS_POLICY` is `false`, OR `RECONFIGURE` is set → an answer is owed. Continue to Gate 3.
+
+Answering the question below writes the key, so its presence alone is a sufficient "already asked" signal. No
+separate marker file, no `SETUP_STEPS` entry, no `mark-step` call; `.gaia/automation.json` is the source of
+truth here, the same shape as the sandbox decision's `gaia sandbox status` marker above.
+
+### Gate 3: this clause's own `check-admin` probe (fail closed)
+
+Gated behind Gate 2, so the `gh api` round-trip only costs anything on a repo that still owes an answer. Reuse
+Phase 1's cached `detect-remote` values (`found`, `host`, `owner`, `repo`):
+
+```bash
+.gaia/cli/gaia setup-ci check-admin --owner <owner> --repo <repo> --json
+```
+
+Fail closed, silently (skip the question, no error, no output), on any of:
+
+- `detect-remote` reported `found: false` (no GitHub origin at all);
+- `host != "github.com"`;
+- `admin` is not `true`;
+- `auth_status` is not `"ok"`.
+
+A developer who is not a repo admin is never asked for the team policy and sees no error, unlike Gate 1's skip
+above, which does print one informational line.
+
+### The question
+
+Tell the user (in their language, detected from earlier context): "Let's set your team's default git
+isolation policy."
+
+Show the explainer (this block stays English regardless of UI language, it's the canonical contract):
+
+> Worktrees buy you the ability to run a GAIA task without touching your current checkout, so you can keep
+> coding, or run a second GAIA task, while it works. They cost:
+>
+> - a separate checkout per task, whose first quality-gate run installs its own `node_modules` (a one-time
+>   install; the real disk cost ranges from tens of megabytes on a copy-on-write filesystem to the full
+>   install size elsewhere);
+> - your editor indexes that second checkout as well as the main one;
+> - a dev server started inside a worktree collides on the same port as one in the main checkout;
+> - a crashed session can leave a worktree behind for you to remove by hand.
+>
+> Scope limit: this policy governs `/gaia-plan` and `/gaia-debt` only. `/gaia-audit`, `/gaia-harden`, and
+> `/gaia-wiki` still work in the main checkout. And while a GAIA task holds your session in a worktree,
+> `/update-deps` and `/update-gaia` refuse to run there; run them from a separate session on the main
+> checkout.
+
+Use `AskUserQuestion`, header **`Isolation policy`**, with these three options in this exact order:
+
+- **Prefer branches (Recommended)**
+- **Prefer worktrees**
+- **Always use worktrees**
+
+On a choice, run **The write** below with the matching value: `Prefer branches (Recommended)` →
+`prefer-branch`, `Prefer worktrees` → `prefer-worktree`, `Always use worktrees` → `always-worktree`.
+
+**Declining** ("Other", or dismissing the question) writes nothing and commits nothing. The key stays absent,
+so the question re-fires on a later explicit `/setup-gaia` run, a bounded cost since this is a setup command,
+not a per-task prompt.
+
+### The write
+
+```bash
+.gaia/cli/gaia setup-ci write-isolation-policy <always-worktree|prefer-worktree|prefer-branch>
+```
+
+If this exits non-zero, surface the structured-error JSON verbatim and skip **The commit** below. Do not
+retry, do not hand-write the key.
+
+### The commit
+
+Mirrors Phase 4's finalize-commit mechanics, including the main-branch hook standdown: this clause carries its
+own commit because Phase 4's finalize commit never runs on a provisioned-repo path.
+
+**Separate Bash call, first** (the `block-main-destructive-git.sh` PreToolUse hook reads this sentinel before
+the command runs, so bundling it into the same call as `git commit` would not yet exist when the hook checks):
+
+```bash
+mkdir -p .gaia/local
+touch .gaia/local/setup-in-progress
+```
+
+**Then, in its own call:**
+
+```bash
+git add .gaia/automation.json
+git commit -m "chore(gaia): set the team git isolation policy to <value>"
+git push origin <current-branch>
+```
+
+**Then, in its own call, unconditionally** (even if the commit or push failed, a lingering sentinel keeps
+main-branch protection suspended on this machine):
+
+```bash
+rm -f .gaia/local/setup-in-progress
+```
+
+**Branch on the push result honestly.** A repository ruleset can reject even an admin's direct push (`GH006`).
+If the push fails, say so in one line and tell the admin the value is committed locally and needs a push (or
+a PR); do not report success on a failed push. The commit itself makes the policy real for this machine's next
+run; the push is what makes it real for the team.
+
+Fall through to Phase 4.
 
 ## Phase 4: CI wiring (admin-gated; skip if `setup_complete`)
 

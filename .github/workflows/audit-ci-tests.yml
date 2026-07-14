@@ -69,6 +69,13 @@ jobs:
               # plan.md is already listed above.
               - '.claude/skills/gaia/references/isolation.md'
               - '.claude/skills/gaia/references/debt.md'
+              # The doc-setup-gaia-isolation and doc-gaia-init-isolation suites
+              # (.gaia/tests/lib/) grep the /setup-gaia Phase 3.5 clause and the
+              # /gaia-init Step 9 question block; trigger on the two command
+              # files that carry that prose so an edit to either re-runs its
+              # suite.
+              - '.claude/commands/setup-gaia.md'
+              - '.claude/commands/gaia-init.md'
               - '.gaia/tests/forensics/**'
               - '.gaia/tests/hooks/**'
               - '.gaia/tests/lib/**'
