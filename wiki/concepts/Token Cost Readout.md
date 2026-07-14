@@ -3,13 +3,13 @@ type: concept
 title: Token Cost Readout
 status: active
 created: 2026-07-04
-updated: 2026-07-07
+updated: 2026-07-14
 tags: [concept, cost, token-accounting]
 ---
 
 # Token Cost Readout
 
-GAIA prices the ground-truth token usage of each workflow action (`/gaia-spec`, `/gaia-plan`, and KICKOFF plan execution) into a dollar estimate. Two scripts share the pricing math: `.gaia/scripts/token-tally.sh` writes a per-action ledger record and also prices a generation-time `dollars` figure into each `cost.json` sidecar record it writes, alongside the matching `cost.jsonl` row (the write half), and `.gaia/scripts/token-rollup.sh` reads the ledger, sums a full-cycle spec / plan / execute / total breakdown, and appends a dollar figure (the read half). The roll-up renders at `gh pr merge` via a `PostToolUse` hook and on demand from the command line.
+GAIA prices the ground-truth token usage of each workflow action into a dollar estimate: `/gaia-spec`, `/gaia-plan`, KICKOFF plan execution, and each of the six maintenance commands (`/gaia-audit`, `/gaia-debt`, `/gaia-fitness`, `/gaia-forensics`, `/gaia-harden`, `/gaia-wiki`). Two scripts share the pricing math: `.gaia/scripts/token-tally.sh` writes a per-action ledger record and, for `/gaia-spec`, `/gaia-plan`, and plan execution, also prices a generation-time `dollars` figure into each `cost.json` sidecar record it writes, alongside the matching `cost.jsonl` row (the write half); `.gaia/scripts/token-rollup.sh` reads the ledger, sums a full-cycle spec / plan / execute / total breakdown, and appends a dollar figure (the read half). The roll-up renders at `gh pr merge` via a `PostToolUse` hook and on demand from the command line.
 
 The write half is documented in full in [[Cost Data Contract]]; this page covers the surfaces the dollar estimate rests on: the `by_model` field, the committed rate table, the shared pricing lib both scripts source, the roll-up's dollar block, and the tally's own per-run dollar figure.
 
@@ -88,7 +88,14 @@ Like the token readout, the dollar block runs under a strict never-block contrac
 
 ## The tally-time dollar figure
 
-There is no per-section markdown cost line anymore: `token-tally.sh`'s dollar estimate, priced from that run's own in-process `by_model`, lives in the `cost.json` sidecar record's `dollars` field and in the matching `cost.jsonl` row alongside it, not in any per-folder markdown file. `token-tally.sh` still prints its own four-bucket-plus-total-plus-elapsed stdout block (plus a partial marker when the token read is incomplete), but the workflow does not restate that block to the user. `/gaia-spec`, `/gaia-plan`, and the executed-plan closeout each report exactly one pinned line instead: `Cost: ~<total> tokens, $<dollars>, <elapsed>`, with a per-stage dollar breakdown appended when the roll-up prices more than one stage (e.g. `(spec $0.40 + plan $0.48)`). `<total>` abbreviates the token count to millions with one decimal and a `~` prefix; `<dollars>` and `<elapsed>` come from the same sources described below. Never fabricated: an unpriceable dollar figure renders `cost unavailable` in the line, and a partial/lower-bound figure carries that marker through. The three surfaces are kept in sync so the line reads identically regardless of which workflow emitted it.
+There is no per-section markdown cost line anymore: for `/gaia-spec`, `/gaia-plan`, and plan execution, `token-tally.sh`'s dollar estimate, priced from that run's own in-process `by_model`, lives in the `cost.json` sidecar record's `dollars` field and in the matching `cost.jsonl` row alongside it, not in any per-folder markdown file. `token-tally.sh` still prints its own four-bucket-plus-total-plus-elapsed stdout block for these three actions (plus a partial marker when the token read is incomplete), but the workflow does not restate that block to the user.
+
+There are two assembly paths for the pinned `Cost:` line, depending on which action produced it:
+
+- **`spec` / `plan` / `execute`.** The tally prints its four-bucket block; the caller reads `<dollars>` out of the `cost.json` sidecar's record and assembles the pinned line itself. `/gaia-spec`, `/gaia-plan`, and the executed-plan closeout each report exactly one pinned line: `Cost: ~<total> tokens, $<dollars>, <elapsed>`, with a per-stage dollar breakdown appended when the roll-up prices more than one stage (e.g. `(spec $0.40 + plan $0.48)`).
+- **`command`.** A maintenance-command record has no sidecar for the caller to read a figure out of, so the tally prints the **finished line itself** on stdout, in place of the four-bucket block, and the caller relays it **verbatim** as the last line of its report. This is what keeps every surface byte-identical by construction.
+
+`<total>` abbreviates the token count to millions with one decimal and a `~` prefix (`~5.2M`). `<dollars>` renders `$X.XX`; an unpriceable figure renders the literal `cost unavailable` in its place. `<elapsed>` renders `<N>h<M>m<S>s`, dropped along with its preceding comma when unavailable. A partial figure appends ` (partial: lower bound)`. A command line carries no per-stage breakdown parenthetical, a command run has exactly one stage; only the full-cycle roll-up line carries one. Never fabricated: an unpriceable dollar figure always renders `cost unavailable`, and a partial/lower-bound figure always carries that marker through. Every surface emitting this line is kept in sync so it reads identically regardless of which workflow emitted it.
 
 ## Snapshot vs live
 

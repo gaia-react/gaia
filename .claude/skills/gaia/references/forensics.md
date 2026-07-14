@@ -160,9 +160,15 @@ command -v gh
       --label gaia-forensics \
       --title "forensics: <class>, <one-line user description>" \
       --body-file <tempfile>
+    rc=$?
+    [ "$rc" -ne 0 ] && bash .gaia/scripts/token-tally.sh --action command --command gaia-forensics
+    exit "$rc"
     ```
 
     Use `--body-file` so multiline bodies survive shell escaping intact. At this point, before `gh_issue_url` is added back to the local frontmatter, the GH-issue body must be byte-identical to the local file body (frontmatter included) so the deterministic parser at `.github/forensics/parse-issue-body.sh` extracts the same `class` from either input.
+
+    On failure (`rc != 0`), the cost record is written right here with no `--github-*` flags (there is no issue), and the non-zero status reaches the caller unchanged. On success (`rc = 0`), this line emits nothing; the run continues below and step 9 emits the one record carrying the issue pass-through. Exactly one record either way.
+
     - On success: capture the issue URL printed by `gh`. Record it in the frontmatter `gh_issue_url` field of the already-saved local file (update the file in place). Then verify the `gaia-forensics` label actually attached (GitHub silently drops labels when the issue author lacks triage access on `gaia-react/gaia`, the common case for an adopter filing upstream):
 
       ```bash
@@ -171,13 +177,13 @@ command -v gh
 
       - `gaia-forensics` present: the report is filed and label-gated triage will fire. Continue to step 9 unchanged.
       - `gaia-forensics` absent (silently dropped): keep the issue and the back-filled `gh_issue_url`, the report is filed. Do NOT attempt to add the label yourself (an adopter without triage access cannot) and do NOT fail the run. Continue to step 9, which prints the label-dropped warning.
-    - On non-zero `gh` exit: surface `gh`'s stderr verbatim. Leave the local report in place. Exit non-zero. Do not retry or partially file.
+    - On non-zero `gh` exit: surface `gh`'s stderr verbatim (the Bash tool result already carries it). The cost record was already written above and `rc` already carries the non-zero status through to the caller. Leave the local report in place. Do not retry or partially file.
 
     Do NOT pre-check `gh auth status`. Do NOT pre-check label existence before create. Rely on `gh`'s native error for both conditions. The label verification above runs only *after* a successful create, on the issue that now exists.
 
 ### 9. Confirm
 
-On any successful exit, print a single confirmation line:
+Record cost (see **Cost record (run end)** below), then print a single confirmation line:
 
 - If GH issue was filed: `Report: .gaia/local/forensics/<timestamp>-<class>.md | Issue: <issue URL>`
 - If locally saved only: `Report: .gaia/local/forensics/<timestamp>-<class>.md`
@@ -188,7 +194,28 @@ If the GH issue was filed but step 8's label verification found `gaia-forensics`
 
 Exit zero regardless, the report is saved and the issue exists.
 
-Exit read-only. No git operations, no cleanup beyond the temp file.
+Exit read-only. No git mutation (the tally call below inspects `git branch --show-current` and `git rev-parse`, never a write), no cleanup beyond the temp file.
+
+## Cost record (run end)
+
+Every path that ends the run appends exactly one cost record:
+
+```bash
+bash .gaia/scripts/token-tally.sh --action command --command gaia-forensics
+```
+
+- User-config branch, `gh` not installed, and the user answering `No` all exit zero with no issue filed: run the bare call above at step 9, no `--github-*` flags.
+- Issue filed successfully: at step 9, append the pass-through, sourced from the `gh_issue_url` frontmatter this run already persisted to its own report, never reconstructed, never looked up:
+
+  ```bash
+  bash .gaia/scripts/token-tally.sh --action command --command gaia-forensics \
+    --github-type issue --github-number <N> --github-repo 'gaia-react/gaia'
+  ```
+
+  The repo the issue lives in is hardcoded (`gaia-react/gaia`); it is not necessarily the repo the command ran in.
+- `gh issue create` failing is the one path with a real shell exit status to preserve. That record is already written inline by step 8's exit-status shim (no `--github-*` flags, there is no issue) and is not repeated at step 9, that path exits non-zero before step 9 runs.
+
+Exactly one record per run, on every path.
 
 ## Output schema (load-bearing)
 

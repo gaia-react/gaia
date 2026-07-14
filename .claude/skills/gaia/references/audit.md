@@ -28,7 +28,7 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 **Default (`/gaia-audit`)** → Stage 1 (Research), then either auto-apply (clean audit) or the **decision gate**, then branch.
 
 1. Spawn the Stage 1 (Research) subagent below. Wait for it to return. Stage 1 writes the report with `status: draft`.
-2. If Stage 1 failed (no report path printed), do not gate or spawn Stage 2. Surface the error and stop.
+2. If Stage 1 failed (no report path printed), do not gate or spawn Stage 2. Surface the error and stop. (Run ends here; see `## Cost record (run end)`.)
 3. **If Stage 1 reported 0 actions** (a clean audit: its printed totals and the report's `Actions proposed: 0` Summary line both show none), skip both the round and the gate and spawn the Stage 2 (Apply) subagent below directly. Briefly tell the user the audit was clean and you are finalizing it. With no in-scope actions there is nothing to verify, review, or approve; Stage 2 flips the report `status: draft → applied`, files any out-of-scope findings (filing is non-destructive and idempotent, so it needs no gate), and busts the statusline nudge. (Leaving a 0-action report at the gate is the exact path that strands a `draft` that then nudges indefinitely.) A 0-action run changes no in-repo file, so the main conversation's Publish step no-ops.
 4. **If Stage 1 reported ≥1 action**, run the **classification-verification round** in the main conversation before the decision gate (full procedure: `## Classification-verification round (recommended)`). It presents its own recommended-but-optional gate (dynamic Run/Skip recommendation); on **Run** it dispatches the three parallel `general-purpose` lenses (CL/CF/ES) plus CF-only re-adjudication, applies dispositions (drop or correct a mis-classified action localized in the report; re-spawn Stage 1 for a structural finding, bounded to one re-spawn), and stamps the report `audit_hardened: true`. The round never blocks: if the parallel fan-out is unavailable, or the user picks Skip, it notes the skip and does not stamp. Then proceed to the decision gate (next step).
 5. **Then present the decision gate** (still the ≥1-action branch): **in the main conversation** summarize the now-hardened report's findings to the user, then ask via `AskUserQuestion`:
@@ -40,7 +40,7 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
      3. `{ label: "Decline", description: "Delete the report; nothing is applied, filed, or published." }`
    - **Apply** → spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest non-`applied` report, no path argument needed. When Stage 2 returns, run the Publish procedure (`## Publish (commit / PR / merge)`) in the main conversation.
    - **Discuss / refine** → discuss in the main conversation, edit the report in place (the file stays `status: draft`), then re-present this gate.
-   - **Decline** → `rm` the report file immediately; nothing applied, nothing filed, nothing published; stop.
+   - **Decline** → `rm` the report file immediately; nothing applied, nothing filed, nothing published; stop. (Run ends here; see `## Cost record (run end)`.)
 
 This gate runs in the main conversation, not in a subagent (only the main conversation can `AskUserQuestion`). "Apply" is the one-keystroke fast path that keeps the one-go feel.
 
@@ -560,7 +560,7 @@ handoff: changes are uncommitted; the main conversation runs Publish next (branc
 
 Runs in the **main conversation** after Stage 2 returns, on any finalizing path (gated Apply, 0-action auto-apply, `--apply`). It does for the audit's in-repo edits what `/update-deps` Phase 8 does for a dep bump and `/gaia-debt`'s "Drive the PR to merge" does for a fix. It never runs on Decline.
 
-**If Stage 2's diff footprint is empty, skip this entire section.** A memory-only or 0-action run touched no in-repo file, memory edits live under `$HOME/.claude`, outside the repo, and are never committed. Tell the user the audit is finalized and stop.
+**If Stage 2's diff footprint is empty, skip this entire section.** A memory-only or 0-action run touched no in-repo file, memory edits live under `$HOME/.claude`, outside the repo, and are never committed. Tell the user the audit is finalized and stop. (Run ends here; see `## Cost record (run end)`.)
 
 Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md` edits. Branch on where the run started, mirroring `/update-deps` Phase 8:
 
@@ -617,7 +617,9 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
      git fetch --prune origin
      ```
 
-   - **still queued** → print the PR URL, note auto-merge is queued and lands when checks pass, and **do not** delete the local branch or switch off it.
+     (Run ends here; see `## Cost record (run end)`.)
+
+   - **still queued** → print the PR URL, note auto-merge is queued and lands when checks pass, and **do not** delete the local branch or switch off it. (Run ends here; see `## Cost record (run end)`.)
 
 ### On any other branch, or in CI (no new branch)
 
@@ -627,6 +629,35 @@ git commit -F <commit-message-file>
 git push
 ```
 
-Do not open a PR and do not merge; the branch owner (the user, or the CI workflow) drives it from here.
+Do not open a PR and do not merge; the branch owner (the user, or the CI workflow) drives it from here. (Run ends here; see `## Cost record (run end)`.)
 
-If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push or blocked merge is the user's call to resolve.
+If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push or blocked merge is the user's call to resolve. (Run ends here; see `## Cost record (run end)`, passing `--github-*` only if `gh pr create` already succeeded before the failure.)
+
+## Cost record (run end)
+
+Every path that ends a `/gaia-audit` run appends exactly one cost record, the run-ending paths above:
+
+- Stage 1 failure (no report path).
+- The decision gate's Decline.
+- Publish's empty-diff-footprint no-op.
+- Publish's merge outcomes on a main-branch run, `MERGED` or still-queued.
+- Publish's no-PR path on any other branch or in CI.
+- Publish's non-zero-exit STOP on `git push` / `gh pr create` / `gh pr merge`.
+
+Standalone final step, one call:
+
+```bash
+bash .gaia/scripts/token-tally.sh --action command --command gaia-audit
+```
+
+**Artifact pass-through.** When this run opened a pull request and the URL `gh pr create` printed appeared in this run's own Bash tool result, append:
+
+```bash
+  --github-type pr --github-number <N> --github-repo '<owner>/<name>'
+```
+
+Never look the number up (`gh pr list`, `gh pr view`), never reuse a number from an earlier run, a different branch, or a `gh` command run outside this workflow, and never guess. If this run did not itself print a creation URL, pass no `--github-*` flags at all; the record correctly carries no artifact, and that is not an error.
+
+**Report the line verbatim.** The tally prints exactly one line on stdout, e.g. `Cost: ~5.2M tokens, $4.12, 6m39s`. Relay it as the last line of the run's report; do not reassemble, reformat, or re-derive it.
+
+The tally never blocks, never fails, and never turns a failed run into a successful one: it runs as a bare call with no exit-status ceremony around it. On a path that ends in an error (a rejected push, a blocked merge), record the cost, then report the failure exactly as before; recording the cost never implies success.

@@ -10,7 +10,13 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  */
 import {execFileSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {run} from './chain.js';
@@ -130,6 +136,13 @@ const gitCalls = (recorded: RecordedCall[]): RecordedCall[] =>
 const ghCalls = (recorded: RecordedCall[]): RecordedCall[] =>
   recorded.filter((entry) => entry.command === 'gh');
 
+const TALLY_SCRIPT = '.gaia/scripts/token-tally.sh';
+
+const tallyCalls = (recorded: RecordedCall[]): RecordedCall[] =>
+  recorded.filter(
+    (entry) => entry.command === 'bash' && entry.args[0] === TALLY_SCRIPT
+  );
+
 describe('wiki chain', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -244,6 +257,45 @@ describe('wiki chain', () => {
       const exit = run(['begin', '--bogus'], {cwd: sandbox.root});
       expect(exit).toBe(1);
       expect(stdio.errors.join('')).toContain('unknown flag');
+    });
+
+    test('makes zero tally calls, on-main or in-place', () => {
+      sandbox = setupSandbox();
+      const inPlaceRecorded: RecordedCall[] = [];
+      const inPlaceRunner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+        ],
+        inPlaceRecorded
+      );
+
+      run(['begin'], {cwd: sandbox.root, runner: inPlaceRunner});
+      expect(tallyCalls(inPlaceRecorded)).toHaveLength(0);
+
+      const onMainRecorded: RecordedCall[] = [];
+      const onMainRunner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('main\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n'),
+          },
+        ],
+        onMainRecorded
+      );
+
+      run(['begin', '--branch-aware'], {
+        cwd: sandbox.root,
+        runner: onMainRunner,
+        today: '2026-05-07',
+      });
+      expect(tallyCalls(onMainRecorded)).toHaveLength(0);
     });
   });
 
@@ -361,6 +413,43 @@ describe('wiki chain', () => {
         args: ['reset', 'HEAD', '--', 'wiki'],
         command: 'git',
       });
+    });
+
+    test('makes zero tally calls, committing or no-op', () => {
+      sandbox = setupSandbox();
+      const committingRecorded: RecordedCall[] = [];
+      const committingRunner = buildRunner(
+        [
+          {
+            argv: ['status', '--porcelain=v1', '-uall'],
+            result: okResult(' M wiki/log.md\n'),
+          },
+        ],
+        committingRecorded
+      );
+
+      run(['commit', '--label', 'wiki: x'], {
+        cwd: sandbox.root,
+        runner: committingRunner,
+      });
+      expect(tallyCalls(committingRecorded)).toHaveLength(0);
+
+      const noopRecorded: RecordedCall[] = [];
+      const noopRunner = buildRunner(
+        [
+          {
+            argv: ['status', '--porcelain=v1', '-uall'],
+            result: okResult(''),
+          },
+        ],
+        noopRecorded
+      );
+
+      run(['commit', '--label', 'wiki: x'], {
+        cwd: sandbox.root,
+        runner: noopRunner,
+      });
+      expect(tallyCalls(noopRecorded)).toHaveLength(0);
     });
   });
 
@@ -638,6 +727,626 @@ describe('wiki chain', () => {
       const exit = run(['finish', '--bogus'], {cwd: sandbox.root});
       expect(exit).toBe(1);
       expect(stdio.errors.join('')).toContain('unknown flag');
+    });
+  });
+
+  describe('finish: tally emission', () => {
+    const SUCCESS_TALLY_ARGV = [
+      TALLY_SCRIPT,
+      '--action',
+      'command',
+      '--command',
+      'gaia-wiki',
+      '--github-type',
+      'pr',
+      '--github-number',
+      '712',
+      '--github-repo',
+      'gaia-react/gaia',
+    ];
+
+    const NO_ARTIFACT_TALLY_ARGV = [
+      TALLY_SCRIPT,
+      '--action',
+      'command',
+      '--command',
+      'gaia-wiki',
+    ];
+
+    test('full success: exactly 1 tally call, exact pass-through argv, cost line written through', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-bbbbbbb\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('3\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'create',
+              '--title',
+              'wiki: maintenance chain through bbbbbbb',
+              '--body',
+              'Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.',
+            ],
+            result: okResult('https://github.com/gaia-react/gaia/pull/712\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'view',
+              'wiki-sync/2026-05-07-bbbbbbb',
+              '--json',
+              'state',
+              '--jq',
+              '.state',
+            ],
+            result: okResult('MERGED\n'),
+          },
+          {
+            argv: SUCCESS_TALLY_ARGV,
+            result: okResult('Cost: ~1.2M tokens, $0.90, 3m4s\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish', '--branch-aware'], {
+        cwd: sandbox.root,
+        runner,
+        sleep: () => undefined,
+      });
+      expect(exit).toBe(0);
+
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({args: SUCCESS_TALLY_ARGV, command: 'bash'});
+      expect(stdio.outputs.join('')).toContain(
+        'Cost: ~1.2M tokens, $0.90, 3m4s'
+      );
+    });
+
+    test('empty branch: exactly 1 tally call, no artifact', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-ccccccc\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('0\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {cwd: sandbox.root, runner});
+      expect(exit).toBe(0);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({
+        args: NO_ARTIFACT_TALLY_ARGV,
+        command: 'bash',
+      });
+    });
+
+    test('empty branch, dirty tree: exactly 1 tally call, no artifact', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-eeeeeee\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('0\n'),
+          },
+          {
+            argv: ['status', '--porcelain=v1', '-uall'],
+            result: okResult(' M wiki/log.md\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {cwd: sandbox.root, runner});
+      expect(exit).toBe(0);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({
+        args: NO_ARTIFACT_TALLY_ARGV,
+        command: 'bash',
+      });
+    });
+
+    test('in-place run: exactly 1 tally call, no artifact', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {cwd: sandbox.root, runner});
+      expect(exit).toBe(0);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({
+        args: NO_ARTIFACT_TALLY_ARGV,
+        command: 'bash',
+      });
+    });
+
+    test('git push fails: exactly 1 tally call, no artifact, exit code unchanged', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-ddddddd\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('2\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('dddddddddddddddddddddddddddddddddddddddd\n'),
+          },
+          {
+            argv: ['push', '-u', 'origin', 'wiki-sync/2026-05-07-ddddddd'],
+            result: failResult(128, 'remote: rejected'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {cwd: sandbox.root, runner});
+      expect(exit).toBe(2);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({
+        args: NO_ARTIFACT_TALLY_ARGV,
+        command: 'bash',
+      });
+    });
+
+    test('gh pr create fails: exactly 1 tally call, no artifact, exit code unchanged', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-1111111\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('2\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('1111111111111111111111111111111111111111\n'),
+          },
+          {
+            argv: ['push', '-u', 'origin', 'wiki-sync/2026-05-07-1111111'],
+            result: okResult(''),
+          },
+          {
+            argv: [
+              'pr',
+              'create',
+              '--title',
+              'wiki: maintenance chain through 1111111',
+              '--body',
+              'Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.',
+            ],
+            result: failResult(1, 'gh: create failed'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {cwd: sandbox.root, runner});
+      expect(exit).toBe(2);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({
+        args: NO_ARTIFACT_TALLY_ARGV,
+        command: 'bash',
+      });
+    });
+
+    test('gh pr merge fails after gh pr create succeeded: exactly 1 tally call, carries the artifact, exit code unchanged', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-2222222\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('2\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('2222222222222222222222222222222222222222\n'),
+          },
+          {
+            argv: ['push', '-u', 'origin', 'wiki-sync/2026-05-07-2222222'],
+            result: okResult(''),
+          },
+          {
+            argv: [
+              'pr',
+              'create',
+              '--title',
+              'wiki: maintenance chain through 2222222',
+              '--body',
+              'Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.',
+            ],
+            result: okResult('https://github.com/gaia-react/gaia/pull/712\n'),
+          },
+          {
+            argv: ['pr', 'merge', '--squash', '--auto', '--delete-branch'],
+            result: failResult(1, 'gh: merge failed'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {cwd: sandbox.root, runner});
+      expect(exit).toBe(2);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({args: SUCCESS_TALLY_ARGV, command: 'bash'});
+    });
+
+    test('rev-list fails: exactly 1 tally call, exit code unchanged', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-3333333\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: failResult(128, 'fatal: bad revision'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {cwd: sandbox.root, runner});
+      expect(exit).toBe(2);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({
+        args: NO_ARTIFACT_TALLY_ARGV,
+        command: 'bash',
+      });
+    });
+
+    test('merge-poll timeout: exactly 1 tally call, carries the artifact', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-fffffff\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('2\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('ffffffffffffffffffffffffffffffffffffffff\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'create',
+              '--title',
+              'wiki: maintenance chain through fffffff',
+              '--body',
+              'Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.',
+            ],
+            result: okResult('https://github.com/gaia-react/gaia/pull/712\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'view',
+              'wiki-sync/2026-05-07-fffffff',
+              '--json',
+              'state',
+              '--jq',
+              '.state',
+            ],
+            result: okResult('OPEN\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish', '--branch-aware'], {
+        cwd: sandbox.root,
+        mergePollAttempts: 3,
+        runner,
+        sleep: () => undefined,
+      });
+      expect(exit).toBe(0);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({args: SUCCESS_TALLY_ARGV, command: 'bash'});
+    });
+
+    test('gh pr create prints a non-URL: tally called once, no artifact', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-4444444\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('2\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('4444444444444444444444444444444444444444\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'create',
+              '--title',
+              'wiki: maintenance chain through 4444444',
+              '--body',
+              'Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.',
+            ],
+            result: okResult('Creating pull request...\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'view',
+              'wiki-sync/2026-05-07-4444444',
+              '--json',
+              'state',
+              '--jq',
+              '.state',
+            ],
+            result: okResult('MERGED\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {
+        cwd: sandbox.root,
+        runner,
+        sleep: () => undefined,
+      });
+      expect(exit).toBe(0);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({
+        args: NO_ARTIFACT_TALLY_ARGV,
+        command: 'bash',
+      });
+    });
+
+    test('gh pr create prints an injection-shaped URL: no artifact, no CANARY file created', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-5555555\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('2\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('5555555555555555555555555555555555555555\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'create',
+              '--title',
+              'wiki: maintenance chain through 5555555',
+              '--body',
+              'Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.',
+            ],
+            result: okResult('https://github.com/o$(touch CANARY)/n/pull/1\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'view',
+              'wiki-sync/2026-05-07-5555555',
+              '--json',
+              'state',
+              '--jq',
+              '.state',
+            ],
+            result: okResult('MERGED\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {
+        cwd: sandbox.root,
+        runner,
+        sleep: () => undefined,
+      });
+      expect(exit).toBe(0);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({
+        args: NO_ARTIFACT_TALLY_ARGV,
+        command: 'bash',
+      });
+      expect(existsSync(path.join(sandbox.root, 'CANARY'))).toBe(false);
+    });
+
+    test('gh pr create prints an issue URL: no artifact (only /pull/ parses)', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-6666666\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('2\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('6666666666666666666666666666666666666666\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'create',
+              '--title',
+              'wiki: maintenance chain through 6666666',
+              '--body',
+              'Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.',
+            ],
+            result: okResult('https://github.com/gaia-react/gaia/issues/415\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'view',
+              'wiki-sync/2026-05-07-6666666',
+              '--json',
+              'state',
+              '--jq',
+              '.state',
+            ],
+            result: okResult('MERGED\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {
+        cwd: sandbox.root,
+        runner,
+        sleep: () => undefined,
+      });
+      expect(exit).toBe(0);
+      const calls = tallyCalls(recorded);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({
+        args: NO_ARTIFACT_TALLY_ARGV,
+        command: 'bash',
+      });
+    });
+
+    test('tally call returning non-zero status and empty stdout does not affect exit code or stdout', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          {
+            argv: NO_ARTIFACT_TALLY_ARGV,
+            result: failResult(1, 'tally: unexpected error'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish'], {cwd: sandbox.root, runner});
+      expect(exit).toBe(0);
+      expect(stdio.outputs.join('')).not.toContain('Cost:');
     });
   });
 

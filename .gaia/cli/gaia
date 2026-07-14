@@ -27471,6 +27471,7 @@ var finalizeMerge = (options) => {
 
 // src/wiki/chain.ts
 var WIKI_CHAIN_BRANCH_PREFIX = "wiki-sync/";
+var TALLY_SCRIPT = ".gaia/scripts/token-tally.sh";
 var passthroughFailure2 = (result, command, args) => passthroughFailure({ args, command, prefix: "chain", result });
 var stepOk = commandSucceeded;
 var safeOutput3 = (value) => value ?? "";
@@ -27504,6 +27505,13 @@ var resolveRoot3 = (cwdOption, action) => {
       message: "gaia wiki chain must run inside a git repository",
       subcommand: `wiki chain ${action}`
     });
+    return null;
+  }
+};
+var resolveRepoRootOrNull = (cwd) => {
+  try {
+    return resolveRepoRoot(cwd);
+  } catch {
     return null;
   }
 };
@@ -27658,7 +27666,41 @@ var finishEmptyBranch = (options) => {
   );
   return EXIT_CODES.OK;
 };
-var finish = (argv, options) => {
+var PR_URL = /https:\/\/github\.com\/([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)\/pull\/(\d+)/u;
+var parsePrUrl = (text) => {
+  const match = PR_URL.exec(text);
+  if (match === null) return void 0;
+  const number4 = Number.parseInt(match[2], 10);
+  if (!Number.isSafeInteger(number4) || number4 <= 0) return void 0;
+  return { number: number4, repo: match[1] };
+};
+var emitWikiTally = (options, artifact) => {
+  try {
+    const cwd = options.cwd ?? process.cwd();
+    const runner = options.runner ?? defaultRunner;
+    const repoRoot = resolveRepoRootOrNull(cwd);
+    if (repoRoot === null) return;
+    const args = [
+      TALLY_SCRIPT,
+      "--action",
+      "command",
+      "--command",
+      "gaia-wiki",
+      ...artifact === void 0 ? [] : [
+        "--github-type",
+        "pr",
+        "--github-number",
+        String(artifact.number),
+        "--github-repo",
+        artifact.repo
+      ]
+    ];
+    const result = runner("bash", args, { cwd: repoRoot });
+    process.stdout.write(safeOutput3(result.stdout));
+  } catch {
+  }
+};
+var runFinish = (argv, options) => {
   const parsed = parseBranchAware(argv);
   if (!parsed.ok) {
     structuredError({
@@ -27666,12 +27708,12 @@ var finish = (argv, options) => {
       message: parsed.message,
       subcommand: "wiki chain finish"
     });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return { code: EXIT_CODES.UNKNOWN_SUBCOMMAND };
   }
   const cwd = options.cwd ?? process.cwd();
   const runner = options.runner ?? defaultRunner;
   const repoRoot = resolveRoot3(cwd, "finish");
-  if (repoRoot === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  if (repoRoot === null) return { code: EXIT_CODES.UNKNOWN_SUBCOMMAND };
   let branch;
   try {
     branch = currentBranch(repoRoot, runner);
@@ -27680,23 +27722,23 @@ var finish = (argv, options) => {
       `chain: ${error51 instanceof Error ? error51.message : String(error51)}
 `
     );
-    return UNEXPECTED_EXIT9;
+    return { code: UNEXPECTED_EXIT9 };
   }
   if (!branch.startsWith(WIKI_CHAIN_BRANCH_PREFIX)) {
     process.stdout.write(
       `chain finish: in-place commits remain on ${branch}; no PR opened
 `
     );
-    return EXIT_CODES.OK;
+    return { code: EXIT_CODES.OK };
   }
   const base = defaultBranch(repoRoot, runner);
   const countArgs = ["rev-list", "--count", `${base}..HEAD`];
   const countResult = runner("git", countArgs, { cwd: repoRoot });
   if (!stepOk(countResult))
-    return passthroughFailure2(countResult, "git", countArgs);
+    return { code: passthroughFailure2(countResult, "git", countArgs) };
   const ahead = Number.parseInt(safeOutput3(countResult.stdout).trim(), 10);
   if (!Number.isNaN(ahead) && ahead === 0) {
-    return finishEmptyBranch({ base, branch, repoRoot, runner });
+    return { code: finishEmptyBranch({ base, branch, repoRoot, runner }) };
   }
   const shortHead = resolveShortHead(runner, repoRoot) ?? branch;
   const prTitle = `wiki: maintenance chain through ${shortHead}`;
@@ -27712,20 +27754,36 @@ var finish = (argv, options) => {
       command: "gh"
     }
   ];
+  let artifact;
   for (const step of remoteSequence) {
     const result = runner(step.command, step.args, { cwd: repoRoot });
-    if (!stepOk(result))
-      return passthroughFailure2(result, step.command, step.args);
+    if (!stepOk(result)) {
+      return {
+        artifact,
+        code: passthroughFailure2(result, step.command, step.args)
+      };
+    }
+    if (step.command === "gh" && step.args[0] === "pr" && step.args[1] === "create") {
+      artifact = parsePrUrl(safeOutput3(result.stdout));
+    }
   }
-  return finalizeMerge({
-    attempts: options.mergePollAttempts,
-    base,
-    branch,
-    cwd: repoRoot,
-    prefix: "chain finish",
-    runner,
-    sleep: options.sleep
-  });
+  return {
+    artifact,
+    code: finalizeMerge({
+      attempts: options.mergePollAttempts,
+      base,
+      branch,
+      cwd: repoRoot,
+      prefix: "chain finish",
+      runner,
+      sleep: options.sleep
+    })
+  };
+};
+var finish = (argv, options) => {
+  const outcome = runFinish(argv, options);
+  emitWikiTally(options, outcome.artifact);
+  return outcome.code;
 };
 var ACTIONS = {
   begin,
