@@ -16,7 +16,7 @@ The maintainer repo keeps it in-tree as the live gate.
 
 The workflow authenticates via whichever secret `/setup-gaia` wires: it always wires both `claude_code_oauth_token` and `anthropic_api_key`, so a repo using `ANTHROPIC_API_KEY` instead of `CLAUDE_CODE_OAUTH_TOKEN` (or vice versa) authenticates without any extra configuration. Before asking which token type to provision, `/setup-gaia` checks whether a `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` secret is already reachable by the repo, at repo scope or via an org-wide secret, and reuses it instead of provisioning a new one, so a repo inside an org that sets the token org-wide never needs a repo-level copy.
 
-The gate has two complementary signals: the existing local marker file at `.gaia/local/audit/<sha>.ok` (gates `gh pr merge` on the contributor's machine, see [[PR Merge Workflow]]) and the `GAIA-Audit:` commit trailer (travels with the commit so CI can recognize an already-audited tree and skip its own run).
+The gate has two complementary signals: the existing local marker file at `.gaia/local/audit/<tree-sha>.ok` (gates `gh pr merge` on the contributor's machine, see [[PR Merge Workflow]]) and the `GAIA-Audit:` commit trailer (travels with the commit so CI can recognize an already-audited tree and skip its own run). Both key on the tree, not the commit sha, so an empty commit never invalidates either.
 
 ## Trigger
 
@@ -207,6 +207,6 @@ A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, an
 - [[Incremental CI Skipping]]: the cross-workflow "since-last-green" mechanism this audit's no-auditable-delta skip is an instance of.
 - [[Code Review Audit Agent]]: the agent the workflow invokes.
 - [[Code Audit Team]]: the config-driven roster this workflow's `code-audit-frontend` job is one member of; the dispatch resolver and AND-aggregator that require every dispatched member's clearance at the local merge gate.
-- [[PR Merge Workflow]]: the local-side gate handshake (`.gaia/local/audit/<sha>.ok` marker file).
+- [[PR Merge Workflow]]: the local-side gate handshake (`.gaia/local/audit/<tree-sha>.ok` marker file).
 - [[Quality Gate]]: the lint/typecheck/test/knip gate that still runs alongside this audit.
 - Forensics Triage Workflow: sibling autonomous CI workflow built on the same `claude-code-action` setup.

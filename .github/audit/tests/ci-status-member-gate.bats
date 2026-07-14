@@ -147,10 +147,15 @@ commit_maintainer_only_diff() {
   git -C "$SANDBOX" commit --quiet -m "maintainer-only change"
 }
 
+# The frontend's clean marker is keyed to the TREE it audited, not the commit,
+# so pass a tree sha. Keying it to the commit would leave the step's lookup
+# empty-handed.
 write_frontend_marker() {
   mkdir -p "$SANDBOX/.gaia/local/audit"
   printf '{}' > "$SANDBOX/.gaia/local/audit/$1.ok"
 }
+
+sandbox_tree() { git -C "$SANDBOX" rev-parse "HEAD^{tree}"; }
 
 run_gate() { ( cd "$SANDBOX" && bash .github/audit/gate-pending-members.sh "$@" ); }
 
@@ -296,7 +301,7 @@ run_step() {
   body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
   commit_mixed_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  write_frontend_marker "$sha"
+  write_frontend_marker "$(sandbox_tree)"
 
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
@@ -319,7 +324,7 @@ run_step() {
   body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  write_frontend_marker "$sha"
+  write_frontend_marker "$(sandbox_tree)"
 
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]

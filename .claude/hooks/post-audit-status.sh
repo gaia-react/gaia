@@ -17,8 +17,8 @@
 #   .claude/hooks/post-audit-status.sh <marker-path>
 #
 #   <marker-path>  The marker file the calling member's agent just wrote
-#                  (.gaia/local/audit/<HEAD-sha>.ok for code-audit-frontend,
-#                  .gaia/local/audit/<HEAD-sha>.<member>.ok for a specialized
+#                  (.gaia/local/audit/<tree-sha>.ok for code-audit-frontend,
+#                  .gaia/local/audit/<tree-sha>.<member>.ok for a specialized
 #                  member). Its existence gates this call; the agent passes
 #                  the path it wrote in the marker step.
 #
@@ -31,6 +31,15 @@
 #   into a cleared gate. Order-independent: each member calls this script
 #   after writing its own marker, so whichever member finishes last is the one
 #   whose call actually posts.
+#
+#   Order-independence rests on the TREE key. Markers are named for HEAD's tree,
+#   not its commit sha, so code-audit-frontend's GAIA-Audit trailer stamp -- an
+#   empty commit, which advances HEAD while leaving the tree byte-identical --
+#   does not orphan a sibling member's marker. Keyed to the commit, the stamp
+#   would invalidate every marker written before it, and the member that
+#   finished last would find the others' markers gone and decline forever. The
+#   POST itself still targets the commit sha: a GitHub commit status has nowhere
+#   else to land.
 #
 # Exit codes
 #   0 , Posted successfully OR declined (precondition failed). One stdout
@@ -139,9 +148,9 @@ if [ -x "$resolver" ]; then
   while IFS= read -r m; do
     [ -n "$m" ] || continue
     if [ "$m" = "code-audit-frontend" ]; then
-      member_marker="${repo_root}/.gaia/local/audit/${head_sha}.ok"
+      member_marker="${repo_root}/.gaia/local/audit/${tree_sha}.ok"
     else
-      member_marker="${repo_root}/.gaia/local/audit/${head_sha}.${m}.ok"
+      member_marker="${repo_root}/.gaia/local/audit/${tree_sha}.${m}.ok"
     fi
     [ -f "$member_marker" ] || pending="${pending}${pending:+ }${m}"
   done <<< "$members"

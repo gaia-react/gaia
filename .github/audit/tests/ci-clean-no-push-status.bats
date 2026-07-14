@@ -56,10 +56,26 @@ setup() {
 }
 
 @test "clean-no-push step derives the marker and tree from the pushed head" {
-  run grep -F 'marker=".gaia/local/audit/${HEAD_SHA}.ok"' "$STEP"
-  [ "$status" -eq 0 ]
+  # The marker is keyed to the pushed head's TREE, not its commit sha: the agent
+  # names its marker for the tree it audited, so a commit-keyed lookup here would
+  # never find it. The tree must therefore be resolved BEFORE the marker path is
+  # built.
   run grep -F 'tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"' "$STEP"
   [ "$status" -eq 0 ]
+  run grep -F 'marker=".gaia/local/audit/${tree_sha}.ok"' "$STEP"
+  [ "$status" -eq 0 ]
+
+  # The commit-keyed marker path must not return.
+  run grep -F 'marker=".gaia/local/audit/${HEAD_SHA}.ok"' "$STEP"
+  [ "$status" -ne 0 ]
+
+  # Ordering guard: the tree must be resolved above the marker lookup, or the
+  # guard tests an empty key and every clean audit silently stops stamping.
+  tree_line=$(grep -nF 'tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"' "$STEP" | head -1 | cut -d: -f1)
+  marker_line=$(grep -nF 'marker=".gaia/local/audit/${tree_sha}.ok"' "$STEP" | head -1 | cut -d: -f1)
+  [ -n "$tree_line" ]
+  [ -n "$marker_line" ]
+  [ "$tree_line" -lt "$marker_line" ]
 }
 
 @test "clean-no-push status POST is non-fatal (guarded, never reds a clean audit)" {

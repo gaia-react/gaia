@@ -335,7 +335,8 @@ jobs:
             not pass `AUDIT_SELF_HEALED=true` (the helper's amend path would
             rewrite a commit the workflow runner does not own). On a clean
             report you MUST also write the local clean marker file
-            `.gaia/local/audit/<HEAD-sha>.ok` for the current HEAD (the "Audit
+            `.gaia/local/audit/<tree-sha>.ok`, named for HEAD's TREE
+            (`git rev-parse HEAD^{tree}`), not its commit sha (the "Audit
             marker" step in the agent definition). Write it even if the trailer
             stamp declines or makes no commit: when nothing is pushed, the
             workflow promotes this marker to the durable GAIA-Audit commit
@@ -649,11 +650,11 @@ jobs:
           # rationale (CI runs one auditor; every co-dispatched member clears
           # locally) and fails open, loudly, on an unusable resolver.
           #
-          # Gate on the member SET, never on marker files keyed to $AUDIT_SHA: on
-          # this path the agent's marker is named for the trailer/self-heal HEAD,
-          # which is deliberately NOT $AUDIT_SHA (the marker commit is dropped,
-          # or HEAD~1 is stamped), so a marker-file lookup here would
-          # false-negative and block every clean self-heal.
+          # Gate on the member SET, not on marker files. CI is not the member
+          # that would have written them: it runs code-audit-frontend alone, and
+          # every specialized member clears locally, so no maintainer marker can
+          # exist in this runner's workspace to look up. The member SET is the
+          # only signal here that can name a member CI cannot clear.
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           if [ -n "$pending" ]; then
             echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
@@ -738,17 +739,24 @@ jobs:
           # no-push case (clean-no-commit and refused alike).
           #
           # Proven-clean guard (must never false-pass): the audit agent writes
-          # the local marker file .gaia/local/audit/<HEAD>.ok ONLY when the
+          # the local marker file .gaia/local/audit/<tree>.ok ONLY when the
           # review is clean (no Critical, every Important addressed, every
           # Suggestion fixed or none). It is NEVER written while findings
-          # remain. In the clean-no-commit case HEAD == the pushed head, so the
-          # marker is named for $HEAD_SHA. A dirty audit also reaches this step
-          # (it pushed nothing), but its marker is absent, so no status is
-          # stamped and the merge stays blocked until a local audit clears it.
-          # This is the same artifact the merge hook trusts as its first accepted
-          # signal. The marker lives under .gaia/local/ (gitignored), so it
-          # exists only in this runner's workspace and only for this run.
-          marker=".gaia/local/audit/${HEAD_SHA}.ok"
+          # remain. A dirty audit also reaches this step (it pushed nothing), but
+          # its marker is absent, so no status is stamped and the merge stays
+          # blocked until a local audit clears it. This is the same artifact the
+          # merge hook trusts as its first accepted signal. The marker lives
+          # under .gaia/local/ (gitignored), so it exists only in this runner's
+          # workspace and only for this run.
+          #
+          # The marker is keyed to the TREE, so look it up by the pushed head's
+          # tree rather than by $HEAD_SHA. Nothing was pushed on this path, so
+          # the pushed head's tree IS the tree that will merge, and it is exactly
+          # what the agent vouched for -- even if the agent left an unpushed
+          # local commit (a declined trailer stamp, a refused self-heal) that
+          # moved the runner's HEAD off the pushed head without changing content.
+          tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"
+          marker=".gaia/local/audit/${tree_sha}.ok"
           if [ ! -f "$marker" ]; then
             echo "code-review-audit: clean marker ${marker} absent; audit not proven clean, not stamping." >&2
             exit 0
@@ -785,7 +793,7 @@ jobs:
             echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
             exit 0
           fi
-          tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"
+          # $tree_sha is already resolved above, where it keyed the marker lookup.
           # Non-fatal POST: a failed status side-effect must never red a clean
           # audit. The gate is the GAIA-Audit status itself -- if this POST
           # fails, the status simply does not land and the local merge path

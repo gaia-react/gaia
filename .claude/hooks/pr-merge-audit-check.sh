@@ -11,12 +11,21 @@
 # code-audit-frontend alone. A non-empty dispatched set instead runs the
 # member-aware gate further down: code-audit-frontend by the same signals,
 # each SPECIALIZED member <m> by its own marker
-# .gaia/local/audit/<sha>.<m>.ok (the sole clearance signal for maintainer
+# .gaia/local/audit/<tree>.<m>.ok (the sole clearance signal for maintainer
 # members, which are local/advisory-only with no CI/trailer equivalent).
+#
+# Markers are keyed to HEAD's TREE, not its commit sha. A marker attests that a
+# member audited CONTENT, and the tree is the content. code-audit-frontend
+# stamps the GAIA-Audit trailer as an empty commit, which advances HEAD while
+# leaving the tree byte-identical; keyed to the commit, that stamp would orphan
+# every sibling member's marker and deny a diff the whole team had already
+# cleared. Keyed to the tree, the team's markers can be written in any order and
+# survive the stamp, while a commit that genuinely edits the tree still
+# invalidates all of them.
 #
 # code-audit-frontend / legacy-gate signals:
 #
-#   1. Local marker file at .gaia/local/audit/<sha>.ok, written by the
+#   1. Local marker file at .gaia/local/audit/<tree>.ok, written by the
 #      audit agent at the end of a clean local review.
 #
 #   2. GAIA-Audit trailer on HEAD's commit message, when the trailer's
@@ -121,7 +130,20 @@ if [ -z "$sha" ]; then
   exit 0
 fi
 
-marker=".gaia/local/audit/${sha}.ok"
+# Resolve HEAD's TREE, the key every Code Audit Team marker is named for. A
+# marker attests that a member audited CONTENT, and the tree IS the content, so
+# an empty commit (code-audit-frontend's GAIA-Audit trailer stamp) advances HEAD
+# without invalidating anything: same tree, same markers, no sibling member
+# orphaned. A commit that genuinely edits the tree still invalidates every
+# marker, which is the whole point of the gate.
+#
+# Fail-closed if the tree does not resolve: an empty $tree yields a marker path
+# no member ever writes, so the deny path below fires. The commit sha stays in
+# use for the signals that are genuinely commit-scoped (the GitHub status API,
+# the deny message).
+tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
+
+marker=".gaia/local/audit/${tree}.ok"
 
 # --- code-audit-frontend clearance signals -----------------------------------
 #
@@ -425,7 +447,7 @@ fi
 # A non-empty dispatched set means at least one changed file is owned by a
 # Code Audit Team member (FC-2). Every dispatched member must clear:
 # code-audit-frontend via frontend_cleared() above, each specialized member
-# <m> via its own marker .gaia/local/audit/<sha>.<m>.ok.
+# <m> via its own marker .gaia/local/audit/<tree>.<m>.ok.
 
 all_cleared=1
 report=""
@@ -445,7 +467,7 @@ while IFS= read -r m; do
 "
     fi
   else
-    member_marker=".gaia/local/audit/${sha}.${m}.ok"
+    member_marker=".gaia/local/audit/${tree}.${m}.ok"
     if [ -f "$member_marker" ]; then
       report="${report}  - ${m}: CLEARED
 "
@@ -461,12 +483,14 @@ if [ "$all_cleared" -eq 1 ]; then
   exit 0
 fi
 
-reason="PR merge gate: not every dispatched Code Audit Team member has cleared HEAD ${sha:0:12}.
+reason="PR merge gate: not every dispatched Code Audit Team member has cleared HEAD ${sha:0:12} (tree ${tree:0:12}).
 
 ${report}
 To unblock: spawn each PENDING member's agent on HEAD so it writes its marker
-(code-audit-frontend writes .gaia/local/audit/${sha}.ok; each specialized
-member writes .gaia/local/audit/${sha}.<member>.ok), then retry gh pr merge.
+(code-audit-frontend writes .gaia/local/audit/${tree}.ok; each specialized
+member writes .gaia/local/audit/${tree}.<member>.ok), then retry gh pr merge.
+Markers are keyed to HEAD's tree, so members can run in any order and a
+GAIA-Audit trailer stamp (an empty commit) never invalidates one.
 
 LOCAL-SYNC FAILURE NOTE: if a previous gh pr merge exited with
 'fatal: main is already used by worktree at <path>', the GitHub-side merge
