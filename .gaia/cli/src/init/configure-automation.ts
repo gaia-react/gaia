@@ -20,7 +20,14 @@
  */
 import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
-import type {AutomationConfig} from '../schemas/automation-config.js';
+import {
+  isIsolationPolicy,
+  ISOLATION_POLICIES,
+} from '../schemas/automation-config.js';
+import type {
+  AutomationConfig,
+  IsolationPolicy,
+} from '../schemas/automation-config.js';
 import {writeAutomationConfig} from '../setup-ci/util/automation-write.js';
 import {structuredError} from '../stderr.js';
 import {markStepCompleted} from './util/state.js';
@@ -30,7 +37,8 @@ const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
   --update-deps <ci|local|off> \
   --pnpm-audit <ci|local|off> \
   --stale-branches <ci|local|off> \
-  [--sandbox-recommended <true|false>]
+  [--sandbox-recommended <true|false>] \
+  [--isolation-policy <${ISOLATION_POLICIES.join('|')}>]
 
   Write .gaia/automation.json with the user's tool-mode selections and
   setup_complete: false. Phase A of GAIA CI; no GitHub repo or workflow
@@ -46,6 +54,9 @@ const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
     --sandbox-recommended <true|false>
       Records the owner's Bash-sandbox recommendation. Omitted entirely
       when the flag is absent (no recommendation on file).
+    --isolation-policy <${ISOLATION_POLICIES.join('|')}>
+      Records the team's git isolation policy. Omitted entirely when the
+      flag is absent (no policy on file).
 
   Exit codes:
     0   success (no stdout)
@@ -72,6 +83,7 @@ type FlagParseSuccess = {
 };
 
 type Flags = {
+  isolationPolicy?: IsolationPolicy;
   pnpmAudit: ToolMode;
   sandboxRecommended?: boolean;
   staleBranches: ToolMode;
@@ -175,6 +187,34 @@ const takeSandboxRecommended = (
   return {ok: true, value: taken.value === 'true'};
 };
 
+const ISOLATION_POLICY_FLAG = '--isolation-policy';
+
+const takeIsolationPolicy = (
+  argv: readonly string[],
+  index: number,
+  current: IsolationPolicy | undefined
+): {message: string; ok: false} | {ok: true; value: IsolationPolicy} => {
+  if (current !== undefined) {
+    return {
+      message: `${ISOLATION_POLICY_FLAG} specified twice`,
+      ok: false,
+    };
+  }
+
+  const taken = takeValue(argv, index, ISOLATION_POLICY_FLAG);
+
+  if (!taken.ok) return taken;
+
+  if (!isIsolationPolicy(taken.value)) {
+    return {
+      message: `${ISOLATION_POLICY_FLAG} must be one of: ${ISOLATION_POLICIES.join(', ')}`,
+      ok: false,
+    };
+  }
+
+  return {ok: true, value: taken.value};
+};
+
 const applyToolFlag = (
   argv: readonly string[],
   index: number,
@@ -198,20 +238,67 @@ const applyToolFlag = (
   return {ok: true};
 };
 
+// The two scalar (non tool-mode) flags, `--sandbox-recommended` and
+// `--isolation-policy`, each follow the identical take-and-assign shape;
+// dispatching through a table (rather than an if/else-if chain) keeps
+// `parseFlags` itself flat, mirroring `FLAG_SPECS` / `applyToolFlag` above.
+type ScalarFlagHandler = (
+  argv: readonly string[],
+  index: number,
+  scalars: ScalarFlags
+) => {message: string; ok: false} | {ok: true};
+
+type ScalarFlags = {
+  isolationPolicy: IsolationPolicy | undefined;
+  sandboxRecommended: boolean | undefined;
+};
+
+const SCALAR_FLAG_HANDLERS = new Map<string, ScalarFlagHandler>([
+  [
+    ISOLATION_POLICY_FLAG,
+    (argv, index, scalars) => {
+      const taken = takeIsolationPolicy(argv, index, scalars.isolationPolicy);
+
+      if (!taken.ok) return taken;
+      scalars.isolationPolicy = taken.value;
+
+      return {ok: true};
+    },
+  ],
+  [
+    SANDBOX_RECOMMENDED_FLAG,
+    (argv, index, scalars) => {
+      const taken = takeSandboxRecommended(
+        argv,
+        index,
+        scalars.sandboxRecommended
+      );
+
+      if (!taken.ok) return taken;
+      scalars.sandboxRecommended = taken.value;
+
+      return {ok: true};
+    },
+  ],
+]);
+
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   const flags: Partial<Flags> = {};
-  let sandboxRecommended: boolean | undefined;
+  const scalars: ScalarFlags = {
+    isolationPolicy: undefined,
+    sandboxRecommended: undefined,
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
+    const scalarHandler = SCALAR_FLAG_HANDLERS.get(token);
 
-    if (token === SANDBOX_RECOMMENDED_FLAG) {
-      const taken = takeSandboxRecommended(argv, index + 1, sandboxRecommended);
-
-      if (!taken.ok) return taken;
-      sandboxRecommended = taken.value;
-    } else {
+    if (scalarHandler === undefined) {
       const applied = applyToolFlag(argv, index + 1, {flags, token});
+
+      if (!applied.ok) return applied;
+    } else {
+      const applied = scalarHandler(argv, index + 1, scalars);
 
       if (!applied.ok) return applied;
     }
@@ -227,8 +314,9 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 
   return {
     flags: {
+      isolationPolicy: scalars.isolationPolicy,
       pnpmAudit: flags.pnpmAudit,
-      sandboxRecommended,
+      sandboxRecommended: scalars.sandboxRecommended,
       staleBranches: flags.staleBranches,
       updateDeps: flags.updateDeps,
       wiki: flags.wiki,
@@ -238,6 +326,14 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 };
 
 const buildConfig = (flags: Flags): AutomationConfig => ({
+  // Omit the key entirely when the flag was never passed (no policy on
+  // file), rather than writing an explicit `undefined`. This is
+  // load-bearing: the `/setup-gaia` clause is gated on the key's absence,
+  // so a default here would make the clause unreachable for every new
+  // project.
+  ...(flags.isolationPolicy === undefined ?
+    {}
+  : {isolation_policy: flags.isolationPolicy}),
   pnpm_audit: {mode: flags.pnpmAudit, schedule: 'daily'},
   // Omit the key entirely when the flag was never passed (no recommendation
   // on file), rather than writing an explicit `undefined`.

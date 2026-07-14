@@ -561,9 +561,34 @@ Use AskUserQuestion (in the user's language; this configuration block stays in E
 
 Hold the answer as `true` (recommend) or `false` (don't recommend, including the non-response/Automatic default).
 
+### Team git isolation policy
+
+Independent of the tool-mode branch and the sandbox recommendation above, record how this team wants `/gaia-plan` and `/gaia-debt` to isolate their work: a feature branch cut in the current checkout, or a separate git worktree. Unlike the sandbox recommendation, this is a **committed, team-level setting**, not something every machine resolves for itself.
+
+Worktrees buy you the ability to run a GAIA task without touching your current checkout, so you can keep coding, or run a second GAIA task, while it works. They cost:
+
+- a separate checkout per task, whose first quality-gate run installs its own `node_modules` (a one-time install; the real disk cost ranges from tens of megabytes on a copy-on-write filesystem to the full install size elsewhere);
+- your editor indexes that second checkout as well as the main one;
+- a dev server started inside a worktree collides on the same port as one in the main checkout;
+- a crashed session can leave a worktree behind for you to remove by hand.
+
+Scope limit: this policy governs `/gaia-plan` and `/gaia-debt` only. `/gaia-audit`, `/gaia-harden`, and `/gaia-wiki` still work in the main checkout. And while a GAIA task holds your session in a worktree, `/update-deps` and `/update-gaia` refuse to run there; run them from a separate session on the main checkout.
+
+_Non-response: SAFE-DEFAULT. Omit the flag entirely, which leaves the key absent and leaves the `/setup-gaia` question live for the owner to answer later. Automatic mode: same, no re-ask._
+
+Use AskUserQuestion, with header `Isolation policy` (in the user's language; this configuration block stays in English):
+
+> How should this team isolate `/gaia-plan` and `/gaia-debt` work?
+>
+> - **Prefer branches (Recommended).** Default. GAIA cuts a feature branch and works in the current checkout.
+> - **Prefer worktrees.** GAIA leads with a worktree, so you can keep working, or run another GAIA task, at the same time.
+> - **Always use worktrees.** GAIA always works in a worktree, no question asked.
+
+Hold the answer as `prefer-branch`, `prefer-worktree`, or `always-worktree`, or as "omitted" on a non-response, "Other", or Automatic mode.
+
 ### Apply the answer
 
-Once you have a value for each of the four tools (from Branch A, Branch B, or a resumed run's saved arguments) and the sandbox recommendation above, run, ALWAYS, the terminal write:
+Once you have a value for each of the four tools (from Branch A, Branch B, or a resumed run's saved arguments), the sandbox recommendation, and the isolation-policy answer above, run, ALWAYS, the terminal write:
 
 ```bash
 .gaia/cli/gaia init configure-automation \
@@ -571,10 +596,11 @@ Once you have a value for each of the four tools (from Branch A, Branch B, or a 
   --update-deps <update-deps-mode> \
   --pnpm-audit <pnpm-audit-mode> \
   --stale-branches <stale-branches-mode> \
-  --sandbox-recommended <true|false>
+  --sandbox-recommended <true|false> \
+  [--isolation-policy <always-worktree|prefer-worktree|prefer-branch>]
 ```
 
-Substitute each `<*-mode>` with the derived selection (`ci` is only valid on the CI-enabled branch; the CI-declined branch substitutes `local` or `off`) and `<true|false>` with the sandbox recommendation. This call is mandatory on every exit path, there is no Step 9 branch that skips it.
+Substitute each `<*-mode>` with the derived selection (`ci` is only valid on the CI-enabled branch; the CI-declined branch substitutes `local` or `off`) and `<true|false>` with the sandbox recommendation. Append `--isolation-policy <value>` **only** when the user chose one of the three labels above. On a non-response, on "Other", or in Automatic mode, **omit the flag entirely**: omitting it omits the key, which leaves the team policy unset and leaves `/setup-gaia`'s question live for the owner to answer later. Never substitute a default value for a missing answer here. This call is mandatory on every exit path, there is no Step 9 branch that skips it.
 
 If the CLI exits non-zero, surface the structured-error JSON verbatim and stop. The user can re-run the failing command manually after addressing the cause, then resume `/gaia-init` with `.gaia/cli/gaia init resume`.
 

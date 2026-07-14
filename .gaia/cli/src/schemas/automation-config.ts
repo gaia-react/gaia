@@ -1,7 +1,7 @@
 import {z} from 'zod';
 /**
  * Zod schema + read helpers for `.gaia/automation.json`, the committed
- * GAIA CI configuration file.
+ * file carrying GAIA CI configuration and team-level GAIA preferences.
  *
  * Per the SPEC-001 slice 1 contract: a missing config file means
  * "GAIA CI not configured"; every defer / cron read returns a no-op
@@ -42,7 +42,32 @@ export const UpdateGaiaConfigSchema = z.object({
 
 export type UpdateGaiaConfig = z.infer<typeof UpdateGaiaConfigSchema>;
 
+/**
+ * The team's git isolation strategy for `/gaia-plan` and `/gaia-debt`
+ * orchestration. Read at the CONSUMER (the shared isolation fragment's
+ * `case`), never at the config-parse boundary: `AutomationConfigSchema`
+ * stores the raw string permissively (see `isolation_policy` below) so an
+ * unrecognized or future value never malforms the whole config.
+ */
+export const ISOLATION_POLICIES = [
+  'always-worktree',
+  'prefer-branch',
+  'prefer-worktree',
+] as const;
+
+export type IsolationPolicy = (typeof ISOLATION_POLICIES)[number];
+
+export const isIsolationPolicy = (value: string): value is IsolationPolicy =>
+  (ISOLATION_POLICIES as readonly string[]).includes(value);
+
 export const AutomationConfigSchema = z.object({
+  // Permissive by contract: an absent key, an unrecognized string, and a
+  // non-string value must all leave the config parsing `ok`. A bare
+  // `z.literal([...])` union would reject a typo or a future value and
+  // malform the whole config, which reddens every adopter's scheduled
+  // cron. The three known values are validated at the WRITE boundary (the
+  // CLI) and at the CONSUMER (the fragment's `case`), not here.
+  isolation_policy: z.string().optional().catch(undefined),
   pnpm_audit: ToolConfigSchema,
   sandbox_recommended: z.boolean().optional(),
   setup_complete: z.boolean(),
@@ -99,14 +124,23 @@ export const CONFIG_KEY_TO_TOOL_ID: Readonly<Record<string, ToolId>> = {
 export const parseAutomationConfig = (raw: unknown): AutomationConfig =>
   AutomationConfigSchema.parse(raw);
 
-export type ReadAutomationConfigResult =
-  | {config: AutomationConfig; status: 'ok'}
+/**
+ * Raw-preserving variant of `readAutomationConfig`. `raw` is the
+ * unstripped `JSON.parse` output, so a key a newer binary wrote (and
+ * this schema doesn't yet know about) survives a read-merge-write cycle
+ * instead of being dropped by Zod's default `.strip()` behaviour. Write
+ * primitives that must preserve forward-compatibility (e.g.
+ * `setup-ci write-isolation-policy`) read-merge onto `raw`, never onto
+ * `config`.
+ */
+export type ReadAutomationConfigRawResult =
+  | {config: AutomationConfig; raw: Record<string, unknown>; status: 'ok'}
   | {error: string; status: 'malformed'}
   | {status: 'missing'};
 
-export const readAutomationConfig = (
+export const readAutomationConfigRaw = (
   repoRoot: string
-): ReadAutomationConfigResult => {
+): ReadAutomationConfigRawResult => {
   const filePath = automationConfigPath(repoRoot);
 
   if (!existsSync(filePath)) return {status: 'missing'};
@@ -142,5 +176,29 @@ export const readAutomationConfig = (
     };
   }
 
-  return {config: result.data, status: 'ok'};
+  // The schema is a `z.object(...)`, so a successful `safeParse` implies
+  // `parsed` was itself an object; the cast just names that fact for
+  // TypeScript, `parsed` came straight from `JSON.parse` unstripped.
+  return {
+    config: result.data,
+    raw: parsed as Record<string, unknown>,
+    status: 'ok',
+  };
+};
+
+export type ReadAutomationConfigResult =
+  | {config: AutomationConfig; status: 'ok'}
+  | {error: string; status: 'malformed'}
+  | {status: 'missing'};
+
+export const readAutomationConfig = (
+  repoRoot: string
+): ReadAutomationConfigResult => {
+  const result = readAutomationConfigRaw(repoRoot);
+
+  if (result.status === 'ok') {
+    return {config: result.config, status: 'ok'};
+  }
+
+  return result;
 };

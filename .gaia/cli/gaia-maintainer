@@ -15137,7 +15137,20 @@ var ToolConfigSchema = external_exports.object({
 var UpdateGaiaConfigSchema = external_exports.object({
   mode: external_exports.literal("local")
 });
+var ISOLATION_POLICIES = [
+  "always-worktree",
+  "prefer-branch",
+  "prefer-worktree"
+];
+var isIsolationPolicy = (value) => ISOLATION_POLICIES.includes(value);
 var AutomationConfigSchema = external_exports.object({
+  // Permissive by contract: an absent key, an unrecognized string, and a
+  // non-string value must all leave the config parsing `ok`. A bare
+  // `z.literal([...])` union would reject a typo or a future value and
+  // malform the whole config, which reddens every adopter's scheduled
+  // cron. The three known values are validated at the WRITE boundary (the
+  // CLI) and at the CONSUMER (the fragment's `case`), not here.
+  isolation_policy: external_exports.string().optional().catch(void 0),
   pnpm_audit: ToolConfigSchema,
   sandbox_recommended: external_exports.boolean().optional(),
   setup_complete: external_exports.boolean(),
@@ -15154,7 +15167,7 @@ var TOOL_ID_TO_CONFIG_KEY = {
   "update-deps": "update_deps",
   wiki: "wiki"
 };
-var readAutomationConfig = (repoRoot) => {
+var readAutomationConfigRaw = (repoRoot) => {
   const filePath = automationConfigPath(repoRoot);
   if (!existsSync5(filePath)) return { status: "missing" };
   let raw;
@@ -15182,7 +15195,18 @@ var readAutomationConfig = (repoRoot) => {
       status: "malformed"
     };
   }
-  return { config: result.data, status: "ok" };
+  return {
+    config: result.data,
+    raw: parsed,
+    status: "ok"
+  };
+};
+var readAutomationConfig = (repoRoot) => {
+  const result = readAutomationConfigRaw(repoRoot);
+  if (result.status === "ok") {
+    return { config: result.config, status: "ok" };
+  }
+  return result;
 };
 
 // src/wiki/util/git.ts
@@ -16382,7 +16406,8 @@ var HELP_TEXT9 = String.raw`Usage: gaia init configure-automation \
   --update-deps <ci|local|off> \
   --pnpm-audit <ci|local|off> \
   --stale-branches <ci|local|off> \
-  [--sandbox-recommended <true|false>]
+  [--sandbox-recommended <true|false>] \
+  [--isolation-policy <${ISOLATION_POLICIES.join("|")}>]
 
   Write .gaia/automation.json with the user's tool-mode selections and
   setup_complete: false. Phase A of GAIA CI; no GitHub repo or workflow
@@ -16398,6 +16423,9 @@ var HELP_TEXT9 = String.raw`Usage: gaia init configure-automation \
     --sandbox-recommended <true|false>
       Records the owner's Bash-sandbox recommendation. Omitted entirely
       when the flag is absent (no recommendation on file).
+    --isolation-policy <${ISOLATION_POLICIES.join("|")}>
+      Records the team's git isolation policy. Omitted entirely when the
+      flag is absent (no policy on file).
 
   Exit codes:
     0   success (no stdout)
@@ -16459,6 +16487,24 @@ var takeSandboxRecommended = (argv, index, current) => {
   }
   return { ok: true, value: taken.value === "true" };
 };
+var ISOLATION_POLICY_FLAG = "--isolation-policy";
+var takeIsolationPolicy = (argv, index, current) => {
+  if (current !== void 0) {
+    return {
+      message: `${ISOLATION_POLICY_FLAG} specified twice`,
+      ok: false
+    };
+  }
+  const taken = takeValue(argv, index, ISOLATION_POLICY_FLAG);
+  if (!taken.ok) return taken;
+  if (!isIsolationPolicy(taken.value)) {
+    return {
+      message: `${ISOLATION_POLICY_FLAG} must be one of: ${ISOLATION_POLICIES.join(", ")}`,
+      ok: false
+    };
+  }
+  return { ok: true, value: taken.value };
+};
 var applyToolFlag = (argv, index, context) => {
   const { flags, token } = context;
   const spec = FLAG_SPECS.get(token);
@@ -16473,17 +16519,44 @@ var applyToolFlag = (argv, index, context) => {
   flags[spec.key] = taken.mode;
   return { ok: true };
 };
+var SCALAR_FLAG_HANDLERS = /* @__PURE__ */ new Map([
+  [
+    ISOLATION_POLICY_FLAG,
+    (argv, index, scalars) => {
+      const taken = takeIsolationPolicy(argv, index, scalars.isolationPolicy);
+      if (!taken.ok) return taken;
+      scalars.isolationPolicy = taken.value;
+      return { ok: true };
+    }
+  ],
+  [
+    SANDBOX_RECOMMENDED_FLAG,
+    (argv, index, scalars) => {
+      const taken = takeSandboxRecommended(
+        argv,
+        index,
+        scalars.sandboxRecommended
+      );
+      if (!taken.ok) return taken;
+      scalars.sandboxRecommended = taken.value;
+      return { ok: true };
+    }
+  ]
+]);
 var parseFlags2 = (argv) => {
   const flags = {};
-  let sandboxRecommended;
+  const scalars = {
+    isolationPolicy: void 0,
+    sandboxRecommended: void 0
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    if (token === SANDBOX_RECOMMENDED_FLAG) {
-      const taken = takeSandboxRecommended(argv, index + 1, sandboxRecommended);
-      if (!taken.ok) return taken;
-      sandboxRecommended = taken.value;
-    } else {
+    const scalarHandler = SCALAR_FLAG_HANDLERS.get(token);
+    if (scalarHandler === void 0) {
       const applied = applyToolFlag(argv, index + 1, { flags, token });
+      if (!applied.ok) return applied;
+    } else {
+      const applied = scalarHandler(argv, index + 1, scalars);
       if (!applied.ok) return applied;
     }
     index += 1;
@@ -16495,8 +16568,9 @@ var parseFlags2 = (argv) => {
   }
   return {
     flags: {
+      isolationPolicy: scalars.isolationPolicy,
       pnpmAudit: flags.pnpmAudit,
-      sandboxRecommended,
+      sandboxRecommended: scalars.sandboxRecommended,
       staleBranches: flags.staleBranches,
       updateDeps: flags.updateDeps,
       wiki: flags.wiki
@@ -16505,6 +16579,12 @@ var parseFlags2 = (argv) => {
   };
 };
 var buildConfig = (flags) => ({
+  // Omit the key entirely when the flag was never passed (no policy on
+  // file), rather than writing an explicit `undefined`. This is
+  // load-bearing: the `/setup-gaia` clause is gated on the key's absence,
+  // so a default here would make the clause unreachable for every new
+  // project.
+  ...flags.isolationPolicy === void 0 ? {} : { isolation_policy: flags.isolationPolicy },
   pnpm_audit: { mode: flags.pnpmAudit, schedule: "daily" },
   // Omit the key entirely when the flag was never passed (no recommendation
   // on file), rather than writing an explicit `undefined`.
@@ -30309,6 +30389,7 @@ var finalizeMerge = (options) => {
 
 // src/wiki/chain.ts
 var WIKI_CHAIN_BRANCH_PREFIX = "wiki-sync/";
+var TALLY_SCRIPT = ".gaia/scripts/token-tally.sh";
 var passthroughFailure3 = (result, command, args) => passthroughFailure2({ args, command, prefix: "chain", result });
 var stepOk = commandSucceeded;
 var safeOutput3 = (value) => value ?? "";
@@ -30342,6 +30423,13 @@ var resolveRoot = (cwdOption, action) => {
       message: "gaia wiki chain must run inside a git repository",
       subcommand: `wiki chain ${action}`
     });
+    return null;
+  }
+};
+var resolveRepoRootOrNull = (cwd) => {
+  try {
+    return resolveRepoRoot2(cwd);
+  } catch {
     return null;
   }
 };
@@ -30496,7 +30584,41 @@ var finishEmptyBranch = (options) => {
   );
   return EXIT_CODES.OK;
 };
-var finish = (argv, options) => {
+var PR_URL = /https:\/\/github\.com\/([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)\/pull\/(\d+)/u;
+var parsePrUrl = (text) => {
+  const match = PR_URL.exec(text);
+  if (match === null) return void 0;
+  const number4 = Number.parseInt(match[2], 10);
+  if (!Number.isSafeInteger(number4) || number4 <= 0) return void 0;
+  return { number: number4, repo: match[1] };
+};
+var emitWikiTally = (options, artifact) => {
+  try {
+    const cwd = options.cwd ?? process.cwd();
+    const runner = options.runner ?? defaultRunner5;
+    const repoRoot = resolveRepoRootOrNull(cwd);
+    if (repoRoot === null) return;
+    const args = [
+      TALLY_SCRIPT,
+      "--action",
+      "command",
+      "--command",
+      "gaia-wiki",
+      ...artifact === void 0 ? [] : [
+        "--github-type",
+        "pr",
+        "--github-number",
+        String(artifact.number),
+        "--github-repo",
+        artifact.repo
+      ]
+    ];
+    const result = runner("bash", args, { cwd: repoRoot });
+    process.stdout.write(safeOutput3(result.stdout));
+  } catch {
+  }
+};
+var runFinish = (argv, options) => {
   const parsed = parseBranchAware(argv);
   if (!parsed.ok) {
     structuredError({
@@ -30504,12 +30626,12 @@ var finish = (argv, options) => {
       message: parsed.message,
       subcommand: "wiki chain finish"
     });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return { code: EXIT_CODES.UNKNOWN_SUBCOMMAND };
   }
   const cwd = options.cwd ?? process.cwd();
   const runner = options.runner ?? defaultRunner5;
   const repoRoot = resolveRoot(cwd, "finish");
-  if (repoRoot === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  if (repoRoot === null) return { code: EXIT_CODES.UNKNOWN_SUBCOMMAND };
   let branch;
   try {
     branch = currentBranch(repoRoot, runner);
@@ -30518,23 +30640,23 @@ var finish = (argv, options) => {
       `chain: ${error51 instanceof Error ? error51.message : String(error51)}
 `
     );
-    return UNEXPECTED_EXIT17;
+    return { code: UNEXPECTED_EXIT17 };
   }
   if (!branch.startsWith(WIKI_CHAIN_BRANCH_PREFIX)) {
     process.stdout.write(
       `chain finish: in-place commits remain on ${branch}; no PR opened
 `
     );
-    return EXIT_CODES.OK;
+    return { code: EXIT_CODES.OK };
   }
   const base = defaultBranch(repoRoot, runner);
   const countArgs = ["rev-list", "--count", `${base}..HEAD`];
   const countResult = runner("git", countArgs, { cwd: repoRoot });
   if (!stepOk(countResult))
-    return passthroughFailure3(countResult, "git", countArgs);
+    return { code: passthroughFailure3(countResult, "git", countArgs) };
   const ahead = Number.parseInt(safeOutput3(countResult.stdout).trim(), 10);
   if (!Number.isNaN(ahead) && ahead === 0) {
-    return finishEmptyBranch({ base, branch, repoRoot, runner });
+    return { code: finishEmptyBranch({ base, branch, repoRoot, runner }) };
   }
   const shortHead = resolveShortHead(runner, repoRoot) ?? branch;
   const prTitle = `wiki: maintenance chain through ${shortHead}`;
@@ -30550,20 +30672,36 @@ var finish = (argv, options) => {
       command: "gh"
     }
   ];
+  let artifact;
   for (const step of remoteSequence) {
     const result = runner(step.command, step.args, { cwd: repoRoot });
-    if (!stepOk(result))
-      return passthroughFailure3(result, step.command, step.args);
+    if (!stepOk(result)) {
+      return {
+        artifact,
+        code: passthroughFailure3(result, step.command, step.args)
+      };
+    }
+    if (step.command === "gh" && step.args[0] === "pr" && step.args[1] === "create") {
+      artifact = parsePrUrl(safeOutput3(result.stdout));
+    }
   }
-  return finalizeMerge({
-    attempts: options.mergePollAttempts,
-    base,
-    branch,
-    cwd: repoRoot,
-    prefix: "chain finish",
-    runner,
-    sleep: options.sleep
-  });
+  return {
+    artifact,
+    code: finalizeMerge({
+      attempts: options.mergePollAttempts,
+      base,
+      branch,
+      cwd: repoRoot,
+      prefix: "chain finish",
+      runner,
+      sleep: options.sleep
+    })
+  };
+};
+var finish = (argv, options) => {
+  const outcome = runFinish(argv, options);
+  emitWikiTally(options, outcome.artifact);
+  return outcome.code;
 };
 var ACTIONS = {
   begin,
