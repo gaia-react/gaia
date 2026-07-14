@@ -63,6 +63,12 @@ jobs:
               - '.claude/skills/gaia/references/spec.md'
               - '.claude/skills/gaia/references/plan.md'
               - '.claude/agents/code-audit-frontend.md'
+              # The doc-isolation suite (.gaia/tests/lib/) renders the prompt out
+              # of the shared isolation reference and greps both callers' pointer
+              # wiring, so the fragment and debt.md are sources it guards too.
+              # plan.md is already listed above.
+              - '.claude/skills/gaia/references/isolation.md'
+              - '.claude/skills/gaia/references/debt.md'
               - '.gaia/tests/forensics/**'
               - '.gaia/tests/hooks/**'
               - '.gaia/tests/lib/**'

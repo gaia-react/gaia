@@ -1,0 +1,4 @@
+question: On main. How should this plan's work be isolated?
+header: Branch mode
+option1: Create a feature branch in place (Recommended) | Default. Branch is cut from HEAD and the orchestrator works in the current checkout. Simple, predictable, safe.
+option2: Create a git worktree | Gives this plan its own separate working copy, cut from main under .claude/worktrees/. You can keep working on your current branch, or run another plan, at the same time without the two colliding.

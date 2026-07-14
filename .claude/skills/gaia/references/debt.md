@@ -214,31 +214,13 @@ A security-class issue's detail never reaches a public PR, the PR comment, or th
 
 This section runs once per fix, single issue or batch, after the security screen above and before the fix unit's branch or worktree exists. Ordering rationale: the security screen can divert and stop a security-class fix before any branch exists, so isolation runs after it and a diverted fix never creates a worktree.
 
-**Check the current branch.**
+**Branch naming.** Single-issue fix: `debt/<issue-number>-<slug>` (`<slug>` a 2-4 word kebab-case reduction of the issue title). Batch fix: `debt/<members-joined-by-dash>-batch`, members ascending, e.g. `debt/42-45-47-batch`: naming every member lets `git branch --list` (in the reconcile above) protect non-lowest batch members past branch-cut without leaning on the age grace. Whichever isolation mode runs, including the forced worktree, the branch carries this name.
 
-**If HEAD is on `main`/`master`:** ask via `AskUserQuestion` (the one new interactive gate here; it fires every time HEAD is main/master, never silently defaults):
+Then isolate the fix:
 
-- question: `"On main. How should this debt fix be isolated?"`
-- header: `"Branch mode"`
-- options (in this exact order):
-  1. `{ label: "Create a feature branch in place (Recommended)", description: "Default. Branch is cut from HEAD and the fix works in the current checkout. Simple, predictable, safe." }`
-  2. `{ label: "Create a git worktree", description: "Gives this fix its own separate working copy, cut from main under .claude/worktrees/. You can keep working on your current branch, or run another task, at the same time without the two colliding." }`
+> Read `.claude/skills/gaia/references/isolation.md` and apply it now, with `{{SUBJECT}}` = "this debt fix", `{{WORKER}}` = "the fix", `{{OWNER}}` = "this fix", `{{SIBLING}}` = "another task".
 
-If the user picks **Other** with custom text, surface a clarifying question rather than guessing; feature-branch and worktree are the two supported modes.
-
-**Branch naming.** Single-issue fix: `debt/<issue-number>-<slug>` (`<slug>` a 2-4 word kebab-case reduction of the issue title). Batch fix: `debt/<members-joined-by-dash>-batch`, members ascending, e.g. `debt/42-45-47-batch`: naming every member lets `git branch --list` (in the reconcile above) protect non-lowest batch members past branch-cut without leaning on the age grace. Whichever isolation mode runs, including the forced worktree below, the branch carries this name.
-
-**If HEAD is on any other branch:** do not offer feature-branch-in-place. Because you are already on a branch, this fix's work goes into its own git worktree cut from main so it does not tangle with the current branch. State that to the user in one line, then proceed straight into Worktree creation below. No `AskUserQuestion` fires here.
-
-### Worktree creation (worktree-mode fixes only)
-
-When pre-flight selects worktree mode, chosen from main or forced on the not-on-main path, create the worktree with the runtime tool, passing the branch name above as the worktree name:
-
-    EnterWorktree({name: "<branch-name>"})
-
-The `WorktreeCreate` hook (`.gaia/scripts/create-worktree.sh`) cuts the branch fresh from the remote default branch and switches the session into `.claude/worktrees/<branch-name>/`, so run no manual `git checkout -b`. Every later step, implementing the fix(es), the Quality Gate, commit, push, `gh pr create`, the Code Audit Team marker gate, and the merge, runs from inside the worktree.
-
-Feature-branch mode keeps today's behavior: cut the branch of the same name from the default branch and work in the current checkout.
+The reference owns the decision order, the prompt, and the worktree-creation call; take the branch name it needs from the naming rule above. In worktree mode every later step, implementing the fix(es), the Quality Gate, commit, push, `gh pr create`, the Code Audit Team marker gate, and the merge, runs from inside the worktree.
 
 ## Resolve the selected unit
 
@@ -278,7 +260,7 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
   On confirmed `MERGED`, each member's `Closes #N` already closed its issue, and a closed issue leaves the open backlog and the count on its own, so stripping `debt:in-progress` here is best-effort/cosmetic: `gh issue edit <n> --remove-label debt:in-progress` for each member, ignoring failure. A queued `--auto` merge that has not yet landed is still in progress: leave its claim in place; close-on-merge and the next fix's reconcile settle it once the merge completes.
 
   On `MERGED`, run post-merge cleanup by isolation mode:
-  - **Feature-branch mode:** unchanged. `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`.
+  - **Feature-branch isolation:** unchanged. `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`.
   - **Worktree mode:** run Post-merge worktree cleanup below instead. Do not `git branch -D` a worktree-held branch.
 
 Each `Closes #N` line in the PR body auto-closes its issue on merge, so on a batch, the single merge closes every member issue and no separate close call is needed for any of them.
