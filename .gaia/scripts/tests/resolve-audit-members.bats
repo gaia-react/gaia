@@ -71,9 +71,11 @@ auditors:
   - name: code-audit-maintainer-shell
     globs:
       - ".gaia/**/*.sh"
+      - ".gaia/**/*.bats"
       - ".claude/hooks/**/*.sh"
       - ".specify/extensions/gaia/lib/*.sh"
       - ".github/**/*.sh"
+      - ".github/**/*.bats"
     scope: maintainer-only
     push_fixes: false
   - name: code-audit-maintainer-node
@@ -376,6 +378,71 @@ YAML
   notrepo="$BATS_TEST_TMPDIR/notrepo"
   mkdir -p "$notrepo"
   run bash -c 'cd "$1" && GIT_CEILING_DIRECTORIES="$1" "$2" 2>/dev/null' _ "$notrepo" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# ---------------------------------------------------------------------------
+# 21. Bats-only diff under .gaia/ → maintainer-shell
+#     The suites guarding the framework's own bash are owned, not out of scope:
+#     a commit that weakens, skips, or deletes one is gated like any other
+#     shell change. Both bats trees under .gaia/ are covered by the one
+#     `.gaia/**/*.bats` glob.
+# ---------------------------------------------------------------------------
+
+@test "bats-only diff under .gaia dispatches maintainer-shell" {
+  write_full_roster
+  stage .gaia/scripts/tests/resolve-audit-members.bats .gaia/tests/hooks/session-stop.bats
+  commit "test"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-shell" ]
+}
+
+# ---------------------------------------------------------------------------
+# 22. Bats-only diff under .github/ → maintainer-shell
+#     `.github/**/*.bats` mirrors the `.github/**/*.sh` glob: the suites that
+#     test the CI-side shell are owned by the member that owns that shell.
+# ---------------------------------------------------------------------------
+
+@test "bats-only diff under .github dispatches maintainer-shell" {
+  write_full_roster
+  stage .github/audit/tests/post-audit-status.bats
+  commit "test"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-shell" ]
+}
+
+# ---------------------------------------------------------------------------
+# 23. Built-in default roster also owns the bats suites.
+#     Pins the SECOND literal copy of the roster (the one inside the script).
+#     Without a bats glob there, a bats-only diff on a clone carrying no
+#     audit-ci.yml resolves to an empty member set and rides the merge gate's
+#     out-of-scope bypass.
+# ---------------------------------------------------------------------------
+
+@test "built-in default roster dispatches maintainer-shell for a bats-only diff" {
+  # No config file at all → the script's built-in roster applies.
+  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  stage .gaia/scripts/tests/token-tally.bats
+  commit "test"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-shell" ]
+}
+
+# ---------------------------------------------------------------------------
+# 24. An adopter clone (maintainer entries scrubbed) never dispatches a
+#     maintainer member for a bats file, and the suites are not in the default
+#     member's auditable-base set, so the diff is correctly out of scope there.
+# ---------------------------------------------------------------------------
+
+@test "adopter roster dispatches nothing for a bats-only diff" {
+  write_adopter_roster
+  stage .gaia/scripts/tests/token-tally.bats
+  commit "test"
+  run run_resolver
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
