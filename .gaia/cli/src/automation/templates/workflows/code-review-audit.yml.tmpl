@@ -685,27 +685,19 @@ jobs:
           # That window is sub-second, and it fails CLOSED, so it is strictly
           # safer than the unconditional overwrite it replaces.
           #
-          # The combined-status endpoint returns the LATEST status per context,
-          # which is exactly "what the gate currently reads".
-          #
-          # Exit 0 = a success for $2 IS the live status. 1 = definitively not.
-          # 2 = could NOT ask (auth blip, rate limit, network). A caller must
-          # never collapse 2 into 1: posting `pending` over a status we failed to
-          # read is precisely the clobber this guard exists to prevent, and it
-          # would reintroduce the bug on exactly the flaky runs where it is
-          # hardest to diagnose. Standing down instead still fails CLOSED -- an
-          # absent required check blocks the merge just as a `pending` one does.
-          audit_success_live() {
-            _live_out="$(gh api "repos/${GITHUB_REPOSITORY}/commits/$1/status" \
-              --jq '.statuses[] | select(.context == "GAIA-Audit" and .state == "success") | .description' \
-              2>/dev/null)" || return 2
-            printf '%s\n' "$_live_out" | grep -qF "$2"
-          }
-
+          # .github/audit/audit-success-present.sh owns the read and its contract:
+          # 0 = a success for this tree IS live, 1 = definitively not, 2 = could
+          # NOT ask. A caller must never collapse 2 into 1 -- posting `pending`
+          # over a status we merely failed to read is precisely the clobber this
+          # guard exists to prevent, and it would reintroduce the bug on exactly
+          # the flaky runs where it is hardest to diagnose. Standing down on 2
+          # still fails CLOSED: an absent required check blocks the merge just as
+          # a `pending` one does. All three stamp steps below consult the one
+          # script rather than each carrying a copy of the predicate.
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           if [ -n "$pending" ]; then
             tree_sha="$(git rev-parse "${AUDIT_SHA}^{tree}")"
-            _live=0; audit_success_live "${AUDIT_SHA}" "${tree_sha}" || _live=$?
+            _live=0; bash .github/audit/audit-success-present.sh "${AUDIT_SHA}" "${tree_sha}" || _live=$?
             if [ "$_live" -eq 0 ]; then
               echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
               exit 0
@@ -836,16 +828,9 @@ jobs:
           # Exit 2 means the status could not be READ, which must not be collapsed
           # into "no success live"; the first stamp step carries the rationale.
           # $tree_sha is already resolved above, where it keyed the marker lookup.
-          audit_success_live() {
-            _live_out="$(gh api "repos/${GITHUB_REPOSITORY}/commits/$1/status" \
-              --jq '.statuses[] | select(.context == "GAIA-Audit" and .state == "success") | .description' \
-              2>/dev/null)" || return 2
-            printf '%s\n' "$_live_out" | grep -qF "$2"
-          }
-
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           if [ -n "$pending" ]; then
-            _live=0; audit_success_live "${HEAD_SHA}" "${tree_sha}" || _live=$?
+            _live=0; bash .github/audit/audit-success-present.sh "${HEAD_SHA}" "${tree_sha}" || _live=$?
             if [ "$_live" -eq 0 ]; then
               echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
               exit 0
@@ -964,13 +949,6 @@ jobs:
           # the clobber.
           # Exit 2 means the status could not be READ, which must not be collapsed
           # into "no success live"; the first stamp step carries the rationale.
-          audit_success_live() {
-            _live_out="$(gh api "repos/${GITHUB_REPOSITORY}/commits/$1/status" \
-              --jq '.statuses[] | select(.context == "GAIA-Audit" and .state == "success") | .description' \
-              2>/dev/null)" || return 2
-            printf '%s\n' "$_live_out" | grep -qF "$2"
-          }
-
           head_sha="$(git rev-parse HEAD)"
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           # Publish the gate result so the terminal comment step reports the
@@ -991,9 +969,18 @@ jobs:
             # output exists to prevent.
             echo "status_posted=false" >> "$GITHUB_OUTPUT"
             tree_sha="$(git rev-parse "${head_sha}^{tree}")"
-            _live=0; audit_success_live "${head_sha}" "${tree_sha}" || _live=$?
+            _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${tree_sha}" || _live=$?
             if [ "$_live" -eq 0 ]; then
               echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
+              # Publish the stand-down so the terminal comment step tells the
+              # truth. members_pending stays non-empty here (CI cannot see a
+              # local marker, so it still names those members), and the comment
+              # step branches on members_pending FIRST -- so without this output
+              # the author is told "GAIA-Audit is pending, run the dispatched
+              # member(s) locally to clear the merge gate" while the gate is in
+              # fact already green. That is the same misleading-comment class the
+              # other branches guard against, merely inverted.
+              echo "success_live=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             if [ "$_live" -eq 2 ]; then
@@ -1260,8 +1247,22 @@ jobs:
         env:
           MEMBERS_PENDING: ${{ steps.oos-status.outputs.members_pending }}
           STATUS_POSTED: ${{ steps.oos-status.outputs.status_posted }}
+          SUCCESS_LIVE: ${{ steps.oos-status.outputs.success_live }}
         run: |
           set -eu
+          # Checked BEFORE members_pending, which is still non-empty on this
+          # path: the status step stood down because a GAIA-Audit success for
+          # this commit's tree is already live, meaning every dispatched member
+          # cleared locally and CI deliberately declined to overwrite it with
+          # `pending`. CI cannot see a local marker, so it still names those
+          # members as pending -- and the members_pending branch below would
+          # therefore tell the author to clear a gate that is already green.
+          # Under-claiming is as much a lie as over-claiming here.
+          if [ "${SUCCESS_LIVE:-}" = "true" ]; then
+            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+              "code-review-audit skipped: no files in the frontend auditor's scope. GAIA-Audit is already green for this commit's tree, every dispatched member has cleared. No action needed"
+            exit 0
+          fi
           # "No source changes" is frontend-relative: has_source mirrors that
           # member's auditable-base set. When a SPECIALIZED member still owns a
           # changed file, the status step above posted `pending`, not `success`,

@@ -121,7 +121,14 @@ USAGE
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --base)
-      if [ "$#" -lt 2 ]; then
+      # `[ -z "$2" ]` is not redundant with the arity check. `--base "$REF"` with
+      # REF unset (QUOTED, so the word survives) arrives as $#=2 with an empty
+      # $2, which would otherwise set BASE_OVERRIDE="" and be silently treated as
+      # "no override at all" -- a mangled query answered from a base the caller
+      # never asked for. The arity check alone only catches the UNQUOTED mangle,
+      # where the empty word vanishes before the script sees it. Both shapes are
+      # the same operator error and both must fail closed.
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then
         # Fail-closed, exactly as the unknown-flag arm below. A `--base` with no
         # ref is an unparseable query, and empty stdout is NOT neutral here: the
         # output contract above defines it as "no member is owed", so answering
@@ -204,7 +211,13 @@ EOF
 if [ -x "$resolver" ]; then
   set --
   [ -n "$BASE_OVERRIDE" ] && set -- --base "$BASE_OVERRIDE"
-  members="$(bash "$resolver" "$@" 2>/dev/null || true)"
+  # The resolver's stderr passes THROUGH deliberately. Only stdout is the
+  # contract, so its diagnostics cost the caller nothing, and swallowing them
+  # would leave an operator debugging "why was my specialized member not
+  # spawned?" with no signal at all: a malformed `auditors:` block in
+  # .gaia/audit-ci.yml makes the resolver warn and return an empty set, and this
+  # script would then quietly fall through to the ownerless probe.
+  members="$(bash "$resolver" "$@" || true)"
   if [ -n "$members" ]; then
     printf '%s\n' "$members"
     exit 0

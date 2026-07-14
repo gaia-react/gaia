@@ -49,8 +49,10 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
   GATE="$REPO_ROOT/.github/audit/gate-pending-members.sh"
+  PRESENT="$REPO_ROOT/.github/audit/audit-success-present.sh"
   [ -f "$WORKFLOW" ] || skip "code-review-audit.yml not found"
   [ -f "$GATE" ] || skip "gate-pending-members.sh not found"
+  [ -f "$PRESENT" ] || skip "audit-success-present.sh not found"
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/.gaia"
@@ -64,12 +66,15 @@ setup() {
   git -C "$SANDBOX" add .gaia/VERSION README.md
   git -C "$SANDBOX" commit --quiet -m "init"
 
-  # The real resolver and the real gate, so the decision under test is shipped.
+  # The real resolver, the real gate, and the real non-clobber read, so every
+  # decision under test is shipped code rather than a fixture of it.
   mkdir -p "$SANDBOX/.gaia/scripts" "$SANDBOX/.github/audit"
   cp "$REPO_ROOT/.gaia/scripts/resolve-audit-members.sh" "$SANDBOX/.gaia/scripts/"
   cp "$GATE" "$SANDBOX/.github/audit/"
+  cp "$PRESENT" "$SANDBOX/.github/audit/"
   chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-members.sh" \
-           "$SANDBOX/.github/audit/gate-pending-members.sh"
+           "$SANDBOX/.github/audit/gate-pending-members.sh" \
+           "$SANDBOX/.github/audit/audit-success-present.sh"
 
   POST_LOG="$BATS_TEST_TMPDIR/gh-post.log"
   rm -f "$POST_LOG"
@@ -249,12 +254,13 @@ run_step() {
 # Run the terminal comment step's body against the stubbed upsert, with the two
 # outputs it consumes from the out-of-scope status step bound explicitly.
 run_comment_step() {
-  local body="$1" members_pending="$2" status_posted="$3"
+  local body="$1" members_pending="$2" status_posted="$3" success_live="${4:-}"
   ( cd "$SANDBOX" \
     && RUNNER_TEMP="$RUNNER_TEMP_DIR" \
        PR_NUMBER="1" \
        MEMBERS_PENDING="$members_pending" \
        STATUS_POSTED="$status_posted" \
+       SUCCESS_LIVE="$success_live" \
        bash "$body" )
 }
 
@@ -810,4 +816,48 @@ run_comment_step() {
 
   [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
   grep -qF "could not be read" <<<"$output"
+}
+
+@test "non-clobber: the out-of-scope skip publishes success_live=true when it stands down on a live success" {
+  commit_maintainer_only_diff
+  local sha tree body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  tree="$(sandbox_tree)"
+  canned_success_for_tree "$tree"
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+  grep -qF "success_live=true" "$STEP_OUTPUT"
+}
+
+@test "non-clobber: the PR comment says ALREADY GREEN, not 'run the members locally', when the gate is live" {
+  # Asserts what the AUTHOR actually reads, not just the step output. On this
+  # path members_pending is still non-empty (CI cannot see a local marker), and
+  # the comment step branches on members_pending FIRST -- so without the
+  # success_live branch the author is told to clear a merge gate that is already
+  # green. Under-claiming is as much a lie as over-claiming.
+  local body
+  body="$(extract_step_body "Status - skipped (no source changes)")"
+  run run_comment_step "$body" "code-audit-maintainer-shell" "false" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "already green" "$COMMENT_LOG"
+  grep -qF "No action needed" "$COMMENT_LOG"
+  # The misleading instruction must NOT appear.
+  grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "non-clobber: the PR comment STILL says 'pending' when no success is live (regression)" {
+  # The success_live branch must not swallow the genuinely-pending case.
+  local body
+  body="$(extract_step_body "Status - skipped (no source changes)")"
+  run run_comment_step "$body" "code-audit-maintainer-shell" "false" ""
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "pending, not green" "$COMMENT_LOG"
+  grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG"
 }

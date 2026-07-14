@@ -366,3 +366,13 @@ code-audit-maintainer-shell"
   grep -qF -- "--base requires a <ref> argument" <<<"$output"
   grep -qF -- "failing closed" <<<"$output"
 }
+
+@test "--base with a QUOTED empty ref fails closed (arity check alone would miss it)" {
+  # `--base "$REF"` with REF unset: the empty word SURVIVES quoting, so $#==2 and
+  # the arity guard does not fire. Without the `[ -z "$2" ]` companion the script
+  # would set BASE_OVERRIDE="" and silently answer from a base the caller never
+  # asked for. Same operator error as the unquoted mangle; same fail-closed answer.
+  run bash -c '( cd "$1" && REF="" && "$2" --base "$REF" 2>/dev/null )' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
