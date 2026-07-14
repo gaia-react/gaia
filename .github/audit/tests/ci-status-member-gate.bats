@@ -62,6 +62,19 @@ setup() {
   WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
   GATE="$REPO_ROOT/.github/audit/gate-pending-members.sh"
   PRESENT="$REPO_ROOT/.github/audit/audit-success-present.sh"
+
+  # Every spelling `gh` accepts for the pending-state field: the long `--field`
+  # and the `-f` / `-F` short forms, whole-pair quoting (`-f 'state=pending'`),
+  # and value-quoting (`--field state="pending"`). Match the VALUE, tolerating an
+  # optional opening quote, rather than anchoring on any one spelling.
+  #
+  # This is load-bearing, not pedantry. A pending writer this pattern cannot see
+  # is invisible to the lock below, and a writer the lock cannot see is precisely
+  # the fourth-writer failure this suite exists to prevent -- arriving again, just
+  # under a different spelling. Value-quoting is the likely slip, because the very
+  # next argument in each of these `gh api` calls is a quoted `--field
+  # description="..."`, so quoting `state` by analogy is a natural mistake.
+  PENDING_WRITER_RE="state=[\"']?pending"
   [ -f "$WORKFLOW" ] || skip "code-review-audit.yml not found"
   [ -f "$GATE" ] || skip "gate-pending-members.sh not found"
   [ -f "$PRESENT" ] || skip "audit-success-present.sh not found"
@@ -182,6 +195,17 @@ status_read_fails() {
 # exists to prevent -- restored on exactly the runs where the guard is missing.
 remove_guard_script() {
   rm -f "$SANDBOX/.github/audit/audit-success-present.sh"
+}
+
+# How many steps in the workflow POST a `pending` GAIA-Audit status. CODE lines
+# only: the workflow is dense with prose about this very mechanism, so a comment
+# that happened to write the literal string would inflate the count and fail the
+# lock on a change that added no writer at all. The tempting repair for that red
+# is to bump the expected count -- which would permanently blind the lock to a
+# real fifth writer, the same silent blinding this test exists to prevent,
+# arriving through the front door. Strip the comments; keep the match loose.
+count_pending_writers() {
+  grep -v '^[[:space:]]*#' "$WORKFLOW" | grep -cE -- "$PENDING_WRITER_RE"
 }
 
 # Stub the PR-comment upsert the terminal status steps shell out to, recording
@@ -1085,28 +1109,13 @@ run_comment_step() {
     # Enumerating the stand-down codes is the bug: `-eq 2` alone lets 127 (and
     # every other unexpected exit) fall through to the POST.
     if grep -qF -- '"$_live" -eq 2' "$body"; then return 1; fi
-    # Match the field VALUE, not the `--field` spelling: `gh` also accepts `-f`,
-    # and a writer spelled `-f state=pending` would evade a stricter pattern and
-    # slip past this lock silently -- the same "the check never named it" failure
-    # that let the fourth writer ship unguarded.
-    grep -qF -- "state=pending" "$body" || return 1
+    grep -qE -- "$PENDING_WRITER_RE" "$body" || return 1
     grep -qF -- "audit-success-present.sh" "$body" || return 1
     grep -qF -- '"$_live" -ne 1' "$body" || return 1
   done
 
   # ...and these four are the WHOLE set, so the loop above covers every pending
   # writer there is. A fifth added without a guard trips this count.
-  #
-  # Count CODE lines only. The loose value match is deliberate -- it catches the
-  # `-f state=pending` spelling that a `--field`-anchored pattern missed -- but
-  # the workflow is dense with prose about this exact mechanism (68 of its lines
-  # mention `pending`), so a comment that happens to write `state=pending`
-  # literally would inflate this count and fail the lock on a change that added
-  # no writer at all. The tempting repair for that red is to bump the expected
-  # count, which would permanently blind the lock to a real fifth writer -- the
-  # same silent-blinding this test exists to prevent, arriving through the front
-  # door. Stripping comment lines keeps every spelling `gh` accepts (`--field`,
-  # `-f`, quoted) counted while costing the lock nothing.
-  run bash -c 'grep -v "^[[:space:]]*#" "$1" | grep -cF -- "state=pending"' _ "$WORKFLOW"
+  run count_pending_writers
   [ "$output" -eq 4 ]
 }
