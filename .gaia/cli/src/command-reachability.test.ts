@@ -25,8 +25,8 @@ import {describe, expect, test} from 'vitest';
  * guard.
  *
  * Scope boundary (v1): only `SUBCOMMAND_HANDLERS`-dispatched commands. The
- * `if (subcommand === '...')` routers (`mentorship`, `telemetry`, `scaffold`)
- * use a different dispatch shape and are out of scope. The oracle is a
+ * `if (subcommand === '...')` routers (`scaffold`) use a different dispatch
+ * shape and are out of scope. The oracle is a
  * substring match, so an invocation-shaped string in operator-facing prose
  * (e.g. a recovery hint in a CI PR body) counts as reachable; that is the
  * intended floor, the target is the command referenced by nothing at all.

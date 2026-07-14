@@ -132,7 +132,7 @@ describe('wiki dead-paths', () => {
   test('ignores gitignored runtime paths under .gaia/local', () => {
     sandbox.writeFile(
       'wiki/concepts/Runtime.md',
-      '# Runtime\n\nCache at `.gaia/local/cache/shared/coaching-active.txt` and `.gaia/local/i18n.json`.\n'
+      '# Runtime\n\nCache at `.gaia/local/cache/shared/update-check.json` and `.gaia/local/i18n.json`.\n'
     );
 
     expect(findDeadPaths(sandbox.root)).toEqual([]);

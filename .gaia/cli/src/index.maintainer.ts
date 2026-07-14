@@ -13,18 +13,15 @@
  * added here too unless it is intentionally adopter-only.
  */
 /* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
-import {run as runFetchCoaching} from './adaptation/inject.js';
 import {run as runAutomation} from './automation/index.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runFitness} from './fitness/index.js';
 import {run as runInit} from './init/index.js';
-import {run as runMentorship} from './mentorship/index.js';
 import {run as runReactPerf} from './react-perf/index.js';
 import {run as runRelease} from './release/index.js';
 import {run as runScaffold} from './scaffold/index.js';
 import {run as runSetup} from './setup/index.js';
 import {structuredError} from './stderr.js';
-import {run as runTelemetry} from './telemetry/index.js';
 import {run as runUpdateDeps} from './update-deps/index.js';
 import {run as runUpdate} from './update/index.js';
 import {run as runWiki} from './wiki/index.js';
@@ -33,10 +30,6 @@ const HELP_TEXT = `Usage: gaia-maintainer <subcommand> [args]
 
 Maintainer-only binary. Adopters use 'gaia' (no release namespace).
 
-  telemetry emit <event_type> [--field value ...]
-  telemetry compute-profile
-  mentorship enable|disable|purge|status
-  mentorship analytics enable|disable|dry-run
   scaffold component|hook|route|service
   react-perf reduce <raw.json> [--frame-budget-ms N]
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
@@ -65,12 +58,10 @@ const SUBCOMMAND_HANDLERS: Readonly<
   automation: runAutomation,
   fitness: runFitness,
   init: runInit,
-  mentorship: runMentorship,
   'react-perf': runReactPerf,
   release: runRelease,
   scaffold: runScaffold,
   setup: runSetup,
-  telemetry: runTelemetry,
   update: runUpdate,
   'update-deps': runUpdateDeps,
   wiki: runWiki,
@@ -84,10 +75,6 @@ const main = async (): Promise<number> => {
     printHelp();
 
     return EXIT_CODES.OK;
-  }
-
-  if (subcommand === '_internal-fetch-coaching') {
-    return runFetchCoaching(rest);
   }
 
   const handler = SUBCOMMAND_HANDLERS[subcommand];
