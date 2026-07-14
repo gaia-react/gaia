@@ -73,7 +73,7 @@ bash .gaia/scripts/resolve-audit-spawn.sh
 
 It prints one member (agent) name per line, deduped and sorted, and always exits 0. That output is the spawn set.
 
-- **One or more names** → spawn each named member, in parallel from a single tool-call message. Do not wait for the merge deny-hook to name them; that round-trip is friction:
+- **One or more names** → spawn each named member, in parallel from a single tool-call message (with one exception, see [[#Sequencing a self-healing member]] below). Do not wait for the merge deny-hook to name them; that round-trip is friction:
 
   ```
   Task(
@@ -88,7 +88,20 @@ It prints one member (agent) name per line, deduped and sorted, and always exits
 
 Skip a spawn for a member already cleared for HEAD: its marker exists, or (for the default member) one of the bypass signals in the marker-handshake table already applies to this PR. The spawn set names who *can* be required, not who is still outstanding.
 
-On a clean pass each member writes its own marker and calls `post-audit-status.sh`. The merge deny-hook requires **every** dispatched member's marker, so one member withholding holds the gate shut for all. If a member declines to write its marker, its report names what remains unaddressed; resolve those, commit, push (HEAD moves), then re-spawn the pending members on the new HEAD. A member that cleared the previous HEAD must be re-spawned too: its marker is keyed to the old SHA. Never hand-write a marker to bypass the gate.
+On a clean pass each member writes its own marker and calls `post-audit-status.sh`. The merge deny-hook requires **every** dispatched member's marker, so one member withholding holds the gate shut for all. If a member declines to write its marker, its report names what remains unaddressed; resolve those, commit, push (HEAD moves), then re-spawn the pending members on the new HEAD. A member that cleared the previous tree must be re-spawned too: its marker is keyed to that tree, and a commit that changes content changes the tree. Never hand-write a marker to bypass the gate.
+
+#### Sequencing a self-healing member
+
+Markers are tree-keyed, so members are order-independent and parallel dispatch is the default (see [[#Marker key]]). That holds as long as no member **changes the tree while its siblings are running**, and exactly one member can: `code-audit-frontend` is the only member that self-heals. The others are advisory and edit nothing.
+
+The two things it writes are not equivalent, and the difference is what decides the dispatch order:
+
+- Its **trailer stamp** is an empty commit. It advances HEAD and leaves the tree byte-identical, so it invalidates no marker, including its siblings'. This is the case the tree key exists for, and it is why parallel dispatch is safe in general.
+- A **self-heal is a real content edit**. It produces a new tree, which correctly invalidates *every* marker for the old one, its siblings' included. That is the gate working as designed, not a bug: the siblings cleared content that is no longer what would merge, so they genuinely owe a re-audit.
+
+The failure mode is only about wasted work. Dispatch all members at once and a mid-flight self-heal orphans the markers the siblings are in the middle of earning, forcing a full re-spawn of the whole roster. Two members can also race on the working tree, which makes a sibling's oracle runs read a tree that is being rewritten underneath them.
+
+So when a self-heal is plausible (any diff `code-audit-frontend` owns, which is most in-scope diffs), **run `code-audit-frontend` first and alone, let the tree settle, then dispatch the remaining members in parallel against the settled tree.** When the frontend is not in the spawn set, or the diff is one it cannot self-heal (an instruction/convention surface such as `.claude/**`, `.specify/**`, or `wiki/**`, where it refuses by design), the plain parallel dispatch above applies with no sequencing.
 
 ### 2. Fix all issues
 
@@ -109,6 +122,8 @@ Marker files are named for HEAD's **tree** sha (`git rev-parse HEAD^{tree}`), no
 The tree key is what makes the team's markers order-independent. `code-audit-frontend` stamps the `GAIA-Audit:` trailer, and on an already-pushed HEAD that stamp lands as an **empty commit**: it advances HEAD while leaving the tree byte-identical. Keyed to the commit sha, that stamp orphans every marker written before it, so on a multi-member diff the members that had already cleared the identical tree would read as pending and the gate would block a PR the whole team had passed. The only way through was to run the frontend first and alone, then re-run every other member against the post-stamp HEAD. Keyed to the tree, each member writes its marker whenever it finishes, the stamp changes nothing, and the members can run in parallel.
 
 The key does not weaken the gate. A commit that genuinely edits the tree produces a different tree sha and invalidates every marker for the old one, which is exactly the re-audit the gate exists to force. What it stops forcing is a re-audit of content that never changed.
+
+That cuts both ways, and it is what [[#Sequencing a self-healing member]] is about: a `code-audit-frontend` **self-heal** is a genuine tree edit, so it invalidates its siblings' markers along with its own. The trailer stamp above is tree-neutral and parallel-safe; a self-heal is neither.
 
 Two artifacts under `.gaia/local/audit/` stay **commit**-keyed, because their readers resolve `git rev-parse HEAD` at merge time rather than comparing content: the disposition sidecar (`<HEAD-sha>.dispositions.json`) and the re-run carry-forward ledger (`<base-sha>.rerun.json`). `local-janitor.sh` sweeps both key families out of one directory, so it accepts either key when deciding whether a file is still live.
 
