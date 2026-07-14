@@ -14,7 +14,7 @@
 # invariant).
 #
 # Usage:
-#   audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>]
+#   audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>] [--marker <MARKER_PATH>]
 #
 #   --shape       one of the caller shape ids below (FC-2).
 #   --path        file-backed shape: the expected output file, which the
@@ -26,6 +26,13 @@
 #                 passed, that AUDIT.md path must also exist for a REAL
 #                 classification (the 7c-with-directives dispatch). Ignored
 #                 for every other shape.
+#   --marker      optional; honored ONLY for --shape audit-team-member. When
+#                 the file at this path exists, classification short-circuits
+#                 to REAL without inspecting --path: the dispatched member
+#                 already wrote its clearance marker (a clean pass, or an
+#                 advisory member's non-Critical dirty pass), which is proof
+#                 enough of a real dispatch on its own. Ignored for every
+#                 other shape.
 #
 # Caller shapes (FC-2), REAL iff:
 #   spec-selfreview-file  file exists AND `jq -e .` parses AND (top-level is
@@ -51,6 +58,21 @@
 #                         no-op.
 #   cra-refuter           content contains a standalone verdict token
 #                         REFUTED, DOWNGRADE, or STANDS
+#   audit-team-member     --marker path exists (a clean or non-blocking-dirty
+#                         pass already wrote its clearance marker), OR the
+#                         captured return in --path carries a backticked
+#                         `` `<path>:<line>` `` finding-location token (any
+#                         Code Audit Team member's shared Output Format
+#                         template bolds every reported finding's Location
+#                         field this way, blocking or not), OR the return
+#                         carries code-audit-frontend's terse LOCAL
+#                         return-contract preamble, the literal string
+#                         "Remaining in-scope:". Covers every real outcome a
+#                         top-level member can return: clean, advisory-dirty,
+#                         blocking-dirty full report, and blocking-dirty terse
+#                         ledger-pointer. A bare harness-reminder / output-
+#                         style echo carries none of the three and classifies
+#                         NO-OP.
 #
 # Exit code IS the boolean: 0 = REAL (not a no-op), 1 = NO-OP, 2 = usage
 # error (unknown --shape, missing --shape/--path). Also prints `real` or
@@ -75,14 +97,15 @@ set -uo pipefail
 
 usage() {
   cat <<'EOF' >&2
-usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>]
+usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>] [--marker <MARKER_PATH>]
 
   --shape  one of: spec-selfreview-file, spec-findings-file,
            spec-verdict-file, applier-summary, plan-findings,
-           cra-specialist, cra-refuter
+           cra-specialist, cra-refuter, audit-team-member
   --path   file-backed shape: expected output file.
            return-conformance shape: captured-return temp file.
   --audit-md  optional; honored only for --shape applier-summary.
+  --marker    optional; honored only for --shape audit-team-member.
 
 exit 0 = real, 1 = noop, 2 = usage error.
 EOF
@@ -104,6 +127,7 @@ noop() {
 SHAPE=""
 TARGET_PATH=""
 AUDIT_MD=""
+MARKER_PATH=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -117,6 +141,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --audit-md)
       AUDIT_MD="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --marker)
+      MARKER_PATH="${2:-}"
       shift 2 2>/dev/null || shift
       ;;
     *)
@@ -134,7 +162,7 @@ if [ -z "$SHAPE" ] || [ -z "$TARGET_PATH" ]; then
 fi
 
 case "$SHAPE" in
-  spec-selfreview-file|spec-findings-file|spec-verdict-file|applier-summary|plan-findings|cra-specialist|cra-refuter)
+  spec-selfreview-file|spec-findings-file|spec-verdict-file|applier-summary|plan-findings|cra-specialist|cra-refuter|audit-team-member)
     ;;
   *)
     echo "audit-noop-detect: unknown --shape '$SHAPE'" >&2
@@ -223,6 +251,27 @@ case "$SHAPE" in
     [ -f "$TARGET_PATH" ] || noop
     content="$(cat "$TARGET_PATH" 2>/dev/null)"
     if printf '%s' "$content" | grep -Eq '\b(REFUTED|DOWNGRADE|STANDS)\b'; then
+      real
+    else
+      noop
+    fi
+    ;;
+
+  audit-team-member)
+    # The marker is conditional (withheld on a blocking finding), unlike the
+    # file-backed shapes above whose file always writes on any real
+    # completion, so its absence alone cannot mean no-op. Check it first as a
+    # same-cost short-circuit; fall through to content inspection either way
+    # it does not conclusively rule NO-OP on its own.
+    if [ -n "$MARKER_PATH" ] && [ -f "$MARKER_PATH" ]; then
+      real
+    fi
+    [ -f "$TARGET_PATH" ] || noop
+    content="$(cat "$TARGET_PATH" 2>/dev/null)"
+    # shellcheck disable=SC2016
+    if printf '%s' "$content" | grep -Eq '`[^`]+:[0-9]+`'; then
+      real
+    elif printf '%s' "$content" | grep -Fq 'Remaining in-scope:'; then
       real
     else
       noop
