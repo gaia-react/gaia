@@ -22,7 +22,7 @@ The `/gaia init` namespace provides subcommands for on-boarding a cloned GAIA te
 
 **`bootstrap-env`**: Copies `.env.example` to `.env` when `.env` does not yet exist, running as a CLI subprocess so it bypasses Claude Code's `Write(.env)` deny rule. No-op when `.env` already exists or `.env.example` is absent.
 
-**`configure-automation`**: Writes a runtime-generated automation config file (`automation.json` under `.gaia/`, not checked in; created on first run) with the four maintenance-tool mode selections (wiki, update-deps, pnpm-audit, stale-branches) and `setup_complete: false`. `/setup-gaia` later flips `setup_complete` to `true`.
+**`configure-automation`**: Writes an automation config file (`automation.json` under `.gaia/`; created on first run) with the four maintenance-tool mode selections (wiki, update-deps, pnpm-audit, stale-branches) and `setup_complete: false`. `/setup-gaia` later flips `setup_complete` to `true` and commits the file as part of its finalize step; it is absent from `.gaia/manifest.json`, so `/update-gaia` never touches it, and it also carries committed team-level GAIA preferences (such as the git isolation policy, once a team sets one) alongside the CI configuration.
 
 **`finalize`**: Deletes `.claude/commands/gaia-init.md` so init cannot be re-run. It does not commit; the user reviews and commits the init changes.
 

@@ -7,6 +7,7 @@ import path from 'node:path';
 import {
   AutomationConfigSchema,
   CONFIG_KEY_TO_TOOL_ID,
+  ISOLATION_POLICIES,
   parseAutomationConfig,
   readAutomationConfig,
   TOOL_ID_TO_CONFIG_KEY,
@@ -112,6 +113,62 @@ describe('schemas/automation-config', () => {
         })
       ).toThrow(z.ZodError);
     });
+
+    test('parses when isolation_policy is absent (tolerated)', () => {
+      const parsed = AutomationConfigSchema.parse(VALID_CONFIG);
+      expect(parsed.isolation_policy).toBeUndefined();
+    });
+
+    for (const policy of ISOLATION_POLICIES) {
+      test(`parses and retains a known isolation_policy (${policy})`, () => {
+        const parsed = AutomationConfigSchema.parse({
+          ...VALID_CONFIG,
+          isolation_policy: policy,
+        });
+        expect(parsed.isolation_policy).toBe(policy);
+      });
+    }
+
+    test('parses an unrecognized isolation_policy value without malforming the config', () => {
+      const parsed = AutomationConfigSchema.parse({
+        ...VALID_CONFIG,
+        isolation_policy: 'always-wortree',
+      });
+      expect(parsed.isolation_policy).toBe('always-wortree');
+    });
+
+    test('parses a non-string isolation_policy without malforming the config', () => {
+      const parsed = AutomationConfigSchema.parse({
+        ...VALID_CONFIG,
+        isolation_policy: 42,
+      });
+      expect(parsed.isolation_policy).toBeUndefined();
+    });
+
+    test('tolerates an unknown key (never .strict())', () => {
+      expect(() =>
+        AutomationConfigSchema.parse({
+          ...VALID_CONFIG,
+          some_future_key: 'x',
+        })
+      ).not.toThrow();
+    });
+
+    test('version is still 1', () => {
+      expect(() =>
+        AutomationConfigSchema.parse({
+          ...VALID_CONFIG,
+          isolation_policy: 'prefer-branch',
+          version: 2,
+        })
+      ).toThrow(z.ZodError);
+
+      const parsed = AutomationConfigSchema.parse({
+        ...VALID_CONFIG,
+        isolation_policy: 'prefer-branch',
+      });
+      expect(parsed.version).toBe(1);
+    });
   });
 
   describe('TOOL_ID_TO_CONFIG_KEY <-> CONFIG_KEY_TO_TOOL_ID round-trip', () => {
@@ -174,6 +231,26 @@ describe('schemas/automation-config', () => {
       writeFileSync(sandbox.configPath, JSON.stringify(rest), 'utf8');
       const result = readAutomationConfig(sandbox.root);
       expect(result.status).toBe('malformed');
+    });
+
+    test('returns {status: "ok"} for an unrecognized isolation_policy value', () => {
+      writeFileSync(
+        sandbox.configPath,
+        JSON.stringify({...VALID_CONFIG, isolation_policy: 'always-wortree'}),
+        'utf8'
+      );
+      const result = readAutomationConfig(sandbox.root);
+      expect(result.status).toBe('ok');
+    });
+
+    test('returns {status: "ok"} for a non-string isolation_policy value', () => {
+      writeFileSync(
+        sandbox.configPath,
+        JSON.stringify({...VALID_CONFIG, isolation_policy: 42}),
+        'utf8'
+      );
+      const result = readAutomationConfig(sandbox.root);
+      expect(result.status).toBe('ok');
     });
   });
 });

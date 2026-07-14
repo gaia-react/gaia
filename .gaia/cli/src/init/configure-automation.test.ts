@@ -227,6 +227,49 @@ describe('init configure-automation', () => {
     expect(existsSync(automationConfigPath(sandbox.root))).toBe(false);
   });
 
+  test.each(['always-worktree', 'prefer-branch', 'prefer-worktree'] as const)(
+    '--isolation-policy %s writes isolation_policy: %s',
+    (policy) => {
+      sandbox = setupSandbox();
+
+      const exit = run([...allCiArgs, '--isolation-policy', policy], {
+        cwd: sandbox.root,
+      });
+      expect(exit).toBe(0);
+
+      const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
+      const parsed = AutomationConfigSchema.parse(JSON.parse(raw));
+      expect(parsed.isolation_policy).toBe(policy);
+    }
+  );
+
+  test('omitting --isolation-policy omits the key entirely', () => {
+    sandbox = setupSandbox();
+
+    const exit = run(allCiArgs, {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
+    const written: Record<string, unknown> = JSON.parse(raw);
+    expect('isolation_policy' in written).toBe(false);
+
+    const result = readAutomationConfig(sandbox.root);
+    expect(result.status).toBe('ok');
+  });
+
+  test('exit 1 when --isolation-policy value is invalid', () => {
+    sandbox = setupSandbox();
+
+    const exit = run([...allCiArgs, '--isolation-policy', 'bogus'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain(
+      '--isolation-policy must be one of: always-worktree, prefer-branch, prefer-worktree'
+    );
+    expect(existsSync(automationConfigPath(sandbox.root))).toBe(false);
+  });
+
   test('configure-automation writes complete config with all-local modes (CI-declined derivation)', () => {
     sandbox = setupSandbox();
 

@@ -1,6 +1,7 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {writeFileSync} from 'node:fs';
 import path from 'node:path';
+import {EXIT_CODES} from '../../exit.js';
 import {run as runCronDecide} from '../cron-decide.js';
 import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
 import type {Sandbox} from './sandbox.js';
@@ -134,5 +135,22 @@ describe('automation cron-decide', () => {
     expect(decision.decision).toBe('skip');
     expect(decision.reason).toBe('tool_off');
     expect(decision.skip_log_line).toContain('cron-decide not yet implemented');
+  });
+
+  test('no adopter cron turns red when isolation_policy is absent (UAT-002)', () => {
+    sandbox.writeConfig(VALID_BASE_CONFIG);
+    const exit = runCronDecide(['wiki', '--json'], {cwd: sandbox.root});
+    expect(exit).toBe(EXIT_CODES.OK);
+  });
+
+  test('no adopter cron turns red when isolation_policy is a typo or future value (UAT-013)', () => {
+    // `isolation_policy` is a permissive `z.string()` in `AutomationConfig`,
+    // so a bogus value needs no cast: it is already a valid string.
+    sandbox.writeConfig({
+      ...VALID_BASE_CONFIG,
+      isolation_policy: 'bogus',
+    });
+    const exit = runCronDecide(['wiki', '--json'], {cwd: sandbox.root});
+    expect(exit).toBe(EXIT_CODES.OK);
   });
 });
