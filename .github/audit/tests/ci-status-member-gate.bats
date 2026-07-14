@@ -918,7 +918,7 @@ run_comment_step() {
 @test "local-mode stand-down: posts pending when no success is live (unchanged behavior)" {
   # Regression lock on the pre-existing behavior: with nothing to protect, the
   # guard is inert and the step blocks the merge exactly as it always has.
-  local sha body
+  local sha tree body
   body="$(extract_step_body 'Stand down (local-mode, no override)')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
@@ -1085,13 +1085,17 @@ run_comment_step() {
     # Enumerating the stand-down codes is the bug: `-eq 2` alone lets 127 (and
     # every other unexpected exit) fall through to the POST.
     if grep -qF -- '"$_live" -eq 2' "$body"; then return 1; fi
-    grep -qF -- "--field state=pending" "$body" || return 1
+    # Match the field VALUE, not the `--field` spelling: `gh` also accepts `-f`,
+    # and a writer spelled `-f state=pending` would evade a stricter pattern and
+    # slip past this lock silently -- the same "the check never named it" failure
+    # that let the fourth writer ship unguarded.
+    grep -qF -- "state=pending" "$body" || return 1
     grep -qF -- "audit-success-present.sh" "$body" || return 1
     grep -qF -- '"$_live" -ne 1' "$body" || return 1
   done
 
   # ...and these four are the WHOLE set, so the loop above covers every pending
   # writer there is. A fifth added without a guard trips this count.
-  run grep -cF -- "--field state=pending" "$WORKFLOW"
+  run grep -cF -- "state=pending" "$WORKFLOW"
   [ "$output" -eq 4 ]
 }

@@ -937,7 +937,7 @@ jobs:
           # CLOSED: with no status posted the required GAIA-Audit check is absent,
           # which blocks the merge just as a `pending` one does. The first stamp
           # step carries the full rationale.
-          tree_sha="$(git rev-parse "HEAD^{tree}")"
+          tree_sha="$(git rev-parse "${head_sha}^{tree}")"
           _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${tree_sha}" || _live=$?
           if [ "$_live" -eq 0 ]; then
             echo "code-review-audit: local mode, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
