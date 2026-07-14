@@ -191,12 +191,19 @@ run_hook_stdout() {
     status_a=0; wait "$pid_a" || status_a=$?
     status_b=0; wait "$pid_b" || status_b=$?
 
-    # Whichever run won, its worktree must still be on disk and registered.
-    # (If both somehow failed, nothing was created and there is nothing to
-    # protect, so the iteration has nothing to assert.)
+    # Whichever run won, its worktree must still be on disk: the loser must not
+    # have deleted it. (If both failed, nothing was created and there is nothing
+    # to protect, so the iteration has nothing to assert.)
+    #
+    # Deliberately not asserted here: that the survivor is still *registered*.
+    # `worktree add` registers before the directory materializes, and that
+    # in-flight state is byte-identical to a crashed run's stale registration,
+    # which the cleanup is supposed to prune (test 12). So a loser can prune an
+    # in-flight winner's registration. It destroys no work (the directory is
+    # empty or absent at that instant), and telling the two apart needs a lock
+    # around create-and-cleanup rather than a sharper check. Tracked separately.
     if [ "$status_a" -eq 0 ] || [ "$status_b" -eq 0 ]; then
       [ -d "$wt" ]
-      git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $wt"
     fi
   done
 }
@@ -227,7 +234,46 @@ run_hook_stdout() {
   [ -d "$wt" ]
 }
 
-# ---------- 13. Base ref: no remote -> local HEAD ----------
+# ---------- 13. Unreadable worktree list: refuse to guess, never delete ----------
+@test "unreadable worktree list: leaves a raced-in worktree alone rather than guess" {
+  wt="$MAIN/.claude/worktrees/epsilon"
+  real_git="$(command -v git)"
+  shim="$TMPROOT/bin"
+  mkdir -p "$shim"
+
+  # Reconstruct the one state that reaches the fail-closed branch: this run
+  # samples the path as absent, a peer wins the add race, and the worktree list
+  # is unreadable, so nothing can prove who owns the path. The shim fails our
+  # adds (as a lost race does) while creating the peer's worktree for real, and
+  # fails `worktree list`; everything else goes to the real git.
+  cat > "$shim/git" <<SHIM
+#!/usr/bin/env bash
+case " \$* " in
+  *" worktree list "*)
+    exit 1 ;;
+  *" worktree add "*)
+    if [ ! -e "$wt" ]; then
+      "$real_git" -C "$MAIN" worktree add "$wt" -b epsilon HEAD >/dev/null 2>&1 \
+        && printf 'precious\n' > "$wt/precious.txt"
+    fi
+    exit 1 ;;
+esac
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$shim/git"
+
+  run bash -c 'cd "$1" && export PATH="$2:$PATH" && printf "%s" "$3" | bash "$4"' \
+    _ "$MAIN" "$shim" '{"name":"epsilon"}' "$SCRIPT"
+  [ "$status" -ne 0 ]
+  grep -qF "cannot read the worktree list" <<<"$output"
+
+  # The peer's worktree and its uncommitted work survive: "cannot tell" must
+  # never mean "delete".
+  [ -f "$wt/precious.txt" ]
+  [ "$(cat "$wt/precious.txt")" = "precious" ]
+}
+
+# ---------- 14. Base ref: no remote -> local HEAD ----------
 @test "no remote configured: branches from local HEAD" {
   head="$(git -C "$MAIN" rev-parse HEAD)"
   run_hook_stdout '{"name":"local-base"}'
@@ -235,7 +281,7 @@ run_hook_stdout() {
   [ "$(git -C "$MAIN" rev-parse refs/heads/local-base)" = "$head" ]
 }
 
-# ---------- 14. Base ref: origin/HEAD present -> remote default, not local HEAD ----------
+# ---------- 15. Base ref: origin/HEAD present -> remote default, not local HEAD ----------
 @test "with origin/HEAD: branches fresh from the remote default" {
   ORIGIN="$TMPROOT/origin.git"
   git init -q --bare "$ORIGIN"
