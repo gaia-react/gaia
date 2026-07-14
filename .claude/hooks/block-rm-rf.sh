@@ -293,10 +293,18 @@ main() {
     # only for as long as the normalized `rm` matched no deny arm and fell through to
     # the catch-all, which silently bound anyone who later added an arm.
     #
-    # `${#tokens[@]}` is the count form the array-guard lint accepts, and unlike a
-    # bare "${tokens[@]}" it is safe on an empty array under `set -u` on bash 3.2.
-    # (tokens is provably non-empty anyway: rm_segment is guarded non-empty above and
-    # always carries the word.)
+    # `${#tokens[@]}` is the count form the array-guard lint accepts, and unlike a bare
+    # "${tokens[@]}" it is safe under `set -u` on bash 3.2 for an ASSIGNED array, empty
+    # or not. Assigned is the load-bearing word. On 3.2 the count of a declared-but-
+    # never-assigned array is a fatal unbound-variable abort rather than 0, and the
+    # `local tokens` in main's declaration list is what makes that state representable
+    # at all. The `read -r -a tokens` immediately above is what rules it out, because it
+    # assigns unconditionally, even on wordless input. Keep it ahead of every count: a
+    # `continue` slipped in between would abort the hook mid-body, and an aborted guard
+    # emits no deny, which is a silent allow.
+    #
+    # (tokens is provably non-empty here anyway: rm_segment is guarded non-empty above
+    # and always carries the word.)
     for ((i = 1; i < ${#tokens[@]}; i++)); do
       tok=${tokens[i]}
 
