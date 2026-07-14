@@ -299,9 +299,12 @@ main() {
     # never-assigned array is a fatal unbound-variable abort rather than 0, and the
     # `local tokens` in main's declaration list is what makes that state representable
     # at all. The `read -r -a tokens` immediately above is what rules it out, because it
-    # assigns unconditionally, even on wordless input. Keep it ahead of every count: a
-    # `continue` slipped in between would abort the hook mid-body, and an aborted guard
-    # emits no deny, which is a silent allow.
+    # assigns unconditionally, even on wordless input. Two edits would break that and
+    # leave `tokens` unset at a count: adding a count UPSTREAM of the read, or making
+    # the read CONDITIONAL. Either aborts the hook mid-body, and an aborted guard emits
+    # no deny, which is a silent allow. (A `continue` slipped between the read and the
+    # count is harmless by contrast: it skips the count along with the rest of the
+    # iteration.)
     #
     # (tokens is provably non-empty here anyway: rm_segment is guarded non-empty above
     # and always carries the word.)
