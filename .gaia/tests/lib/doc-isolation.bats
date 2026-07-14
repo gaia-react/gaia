@@ -447,6 +447,26 @@ render_for_policy() {
   ! grep -qE '^- option `branch`, description: `Default\. ' "$FRAG"
 }
 
+@test "the Default. prefix rule is stated in the fragment, not only in this renderer" {
+  # render() and render_for_policy() SYNTHESIZE the prefix, hardcoding
+  # `desc="Default. $desc"` just as they hardcode ` (Recommended)`. That is only
+  # safe while the fragment is independently pinned to still CARRY the rule.
+  # Without this test, deleting the rule paragraph leaves every other test here
+  # green -- the renderer keeps emitting the prefix, so the fixtures still match
+  # byte-for-byte -- while the shipped fragment no longer tells the agent to
+  # apply it. The gate would be measuring the renderer instead of the artifact,
+  # the exact trap this suite's header opens by warning about. The marker rule
+  # is pinned by its own count assertion above; this is the prefix rule's.
+  grep -qF 'Prefix the `branch` option' "$FRAG" || return 1
+  grep -qF 'when, and only when, `branch` is the **lead**' "$FRAG" || return 1
+
+  # Exactly one `Default. ` fragment-wide: the rule's own backticked literal.
+  # Zero means the rule was dropped; two would mean it was ALSO baked back into
+  # the description literal, which the test above forbids on its last line.
+  count="$(grep -oF 'Default. ' "$FRAG" | wc -l | tr -d ' ')"
+  [ "$count" = 1 ]
+}
+
 @test "UAT-016: already-inside-a-linked-worktree detection uses --git-common-dir + --show-toplevel and runs first" {
   already="$(frag_heading_line '### Already inside a linked worktree')"
   nomain="$(frag_heading_line '### HEAD is not on')"
