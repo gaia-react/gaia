@@ -67,10 +67,21 @@ if ! git -C "$project_root" worktree add "$worktree_path" -b "$worktree_name" "$
     # the path belongs to someone else. Re-read the list here rather than trust
     # the pre-add sample alone, because a peer session racing us on this name
     # can have created and registered it inside our check-to-add window.
+    #
+    # Fail closed on an unreadable list: it cannot prove the path is ours, and
+    # not deleting other people's work is this guard's entire purpose.
+    if ! wt_list="$(git -C "$project_root" worktree list --porcelain 2>/dev/null)"; then
+      printf 'create-worktree: cannot read the worktree list; leaving %s alone\n' "$worktree_path" >&2
+      exit 1
+    fi
+
+    # `-e` is load-bearing, not redundant with the grep: git keeps listing a
+    # worktree whose directory is gone (it is merely prunable), so the grep
+    # alone would read a crashed run's stale registration as live and skip the
+    # cleanup that prunes it, wedging this name for every later run.
     # Here-string, not a pipe: `git ... | grep -q` under pipefail lets grep's
     # early exit SIGPIPE the upstream write and flip a match into a false miss.
     # `-x` (whole-line) because `worktree /path/alpha` prefixes `.../alpha2`.
-    wt_list="$(git -C "$project_root" worktree list --porcelain 2>/dev/null || true)"
     if [ "$path_pre_existed" -eq 1 ] \
       || { [ -e "$worktree_path" ] && grep -qxF "worktree $worktree_path" <<<"$wt_list"; }; then
       # Not ours to delete. Say so: a name collision is the likeliest reason the

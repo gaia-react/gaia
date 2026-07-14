@@ -201,7 +201,33 @@ run_hook_stdout() {
   done
 }
 
-# ---------- 12. Base ref: no remote -> local HEAD ----------
+# ---------- 12. Stale registration: a crashed run's leftovers still self-heal ----------
+@test "registered but missing worktree: the failing run prunes the stale registration" {
+  run_hook_stdout '{"name":"delta"}'
+  [ "$status" -eq 0 ]
+  wt="$MAIN/.claude/worktrees/delta"
+
+  # A crashed session: the directory is gone, git's registration is not. git
+  # keeps listing such a worktree (merely prunable), which is why the leave-it-
+  # intact guard tests the filesystem too and not just the worktree list. Guard
+  # on the list alone and this stale entry reads as live, the cleanup never
+  # prunes it, and the name is wedged forever.
+  rm -rf "$wt"
+  git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $wt"
+
+  # This run still fails (the stale registration holds the branch), but it must
+  # prune the registration on the way out: nothing of anyone's is on disk here.
+  run_hook '{"name":"delta"}'
+  [ "$status" -ne 0 ]
+  git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $wt" && return 1
+
+  # The name is usable again.
+  run_hook_stdout '{"name":"delta"}'
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+}
+
+# ---------- 13. Base ref: no remote -> local HEAD ----------
 @test "no remote configured: branches from local HEAD" {
   head="$(git -C "$MAIN" rev-parse HEAD)"
   run_hook_stdout '{"name":"local-base"}'
@@ -209,7 +235,7 @@ run_hook_stdout() {
   [ "$(git -C "$MAIN" rev-parse refs/heads/local-base)" = "$head" ]
 }
 
-# ---------- 13. Base ref: origin/HEAD present -> remote default, not local HEAD ----------
+# ---------- 14. Base ref: origin/HEAD present -> remote default, not local HEAD ----------
 @test "with origin/HEAD: branches fresh from the remote default" {
   ORIGIN="$TMPROOT/origin.git"
   git init -q --bare "$ORIGIN"
