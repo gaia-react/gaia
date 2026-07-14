@@ -1148,6 +1148,23 @@ run_comment_step() {
   [ "$status" -eq 2 ]
 }
 
+@test "guard: an unresolvable repo slug is unanswerable (exit 2), never 'no success live'" {
+  # The FOURTH and last "could not ask" door. With $GITHUB_REPOSITORY unset the
+  # guard falls back to `gh repo view` to name the repo; when that yields nothing
+  # it has no repo to query and cannot ask. Unset, not empty-string: the script
+  # reads `${GITHUB_REPOSITORY:-}`, so an empty value takes the same branch, but
+  # unsetting it is the honest shape of "running outside Actions".
+  #
+  # Pinned because the other three doors are, and a door nobody names is a door
+  # nobody notices closing. There is no live failure mode today (every caller is
+  # an Actions step, where $GITHUB_REPOSITORY is always set, so this path is
+  # unreachable in CI); it goes live the moment anything outside Actions calls the
+  # guard -- a hook, a local script, the by-hand debugging its own header invites
+  # -- which is exactly the future the other pins were written for.
+  run env -u GITHUB_REPOSITORY PATH="$GH_BIN:$PATH" bash "$PRESENT" "deadbeef" "cafe"
+  [ "$status" -eq 2 ]
+}
+
 @test "every step that POSTs pending consults the guard and posts only on a definitive 1" {
   # The structural lock, and the one assertion that would have caught the gap the
   # behavioral tests above missed for a release: a guard is only as good as the
