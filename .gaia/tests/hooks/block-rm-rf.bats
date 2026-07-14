@@ -703,6 +703,83 @@ t'
   assert_denied_because 'rm -rf of absolute path'
 }
 
+# --- the command word may be PATH-QUALIFIED ---
+#
+# `/bin/rm` and `/usr/bin/rm` are the command `rm`, spelled with a path. The
+# anchor's leading boundary byte is the `/` in front of the word, so segment
+# extraction begins at `/rm …` and the token `/rm` gets judged as though it were a
+# TARGET: it trips the absolute-path arm, denies a whitelisted target, and blames
+# `/rm`, a path the user never wrote.
+#
+# The word is skipped by POSITION (it is always the segment's first token), never by
+# spelling. A spelling test broad enough to cover `/rm` (say `*/[Rr][Mm]`) would
+# equally skip `/usr/bin/rm` when it is the TARGET, turning an absolute-path deny
+# into an allow. Both directions are pinned below.
+
+@test "/bin/rm -rf dist (path-qualified word, whitelisted target) is allowed" {
+  run_hook_bash '/bin/rm -rf dist'
+  assert_allowed
+}
+
+@test "/usr/bin/rm -rf dist (path-qualified word, whitelisted target) is allowed" {
+  run_hook_bash '/usr/bin/rm -rf dist'
+  assert_allowed
+}
+
+@test "/bin/RM -rf dist (path-qualified, uppercase word) is allowed" {
+  run_hook_bash '/bin/RM -rf dist'
+  assert_allowed
+}
+
+@test "/bin/rm -rf build/output (path-qualified word) is allowed" {
+  run_hook_bash '/bin/rm -rf build/output'
+  assert_allowed
+}
+
+@test "echo hi && /bin/rm -rf dist (path-qualified word in a later segment) is allowed" {
+  run_hook_bash 'echo hi && /bin/rm -rf dist'
+  assert_allowed
+}
+
+# The dangerous shapes must still deny, and must deny via the TARGET's own arm.
+# They deny today as well, but for the wrong reason: the `/rm` token is what trips
+# the absolute-path arm, not the operand. So a fix that merely stops `/rm` being
+# read as a target could silently turn these into allows. assert_denied_because is
+# what pins the right reason, and therefore the real fix.
+
+@test "/bin/rm -rf / denies via the target's own absolute-path arm" {
+  run_hook_bash '/bin/rm -rf /'
+  assert_denied_because "BLOCKED: rm -rf of absolute path '/' is forbidden."
+}
+
+@test "/bin/rm -rf \$HOME denies via the \$HOME arm" {
+  run_hook_bash '/bin/rm -rf $HOME'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "/bin/rm -rf .git denies via the .git arm" {
+  run_hook_bash '/bin/rm -rf .git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "/usr/bin/rm -rf .claude denies via the .claude arm" {
+  run_hook_bash '/usr/bin/rm -rf .claude'
+  assert_denied_because 'BLOCKED: rm -rf of .claude is forbidden'
+}
+
+# The rm binary as the TARGET is an absolute path and stays denied. This is the
+# case that forbids recognizing the command word by spelling.
+
+@test "rm -rf /usr/bin/rm (the rm binary as the target) is denied" {
+  run_hook_bash 'rm -rf /usr/bin/rm'
+  assert_denied_because "BLOCKED: rm -rf of absolute path '/usr/bin/rm' is forbidden."
+}
+
+@test "rm -rf /bin/rm (the rm binary as the target) is denied" {
+  run_hook_bash 'rm -rf /bin/rm'
+  assert_denied_because "BLOCKED: rm -rf of absolute path '/bin/rm' is forbidden."
+}
+
 # --- allowed: whitelisted scratch paths ---
 
 @test "rm -rf .gaia/local/plans/x is allowed" {

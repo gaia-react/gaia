@@ -256,11 +256,35 @@ main() {
 
     # Tokenize and inspect non-flag args.
     read -r -a tokens <<<"$rm_segment"
-    # tokens is provably non-empty here (rm_segment is guarded non-empty above and
-    # always carries the `rm` token), but guard the expansion anyway so the
-    # array-guard lint stays a zero-exception gate: on bash 3.2 a bare "${tokens[@]}"
-    # over an empty array aborts under `set -u`.
-    for tok in ${tokens[@]+"${tokens[@]}"}; do
+
+    # Start at index 1. Token 0 is the `rm` command word, and it is never an operand:
+    # the anchor above begins every segment AT that word (after its leading boundary
+    # byte, if any), so whatever spelling carried it here (`rm`, `RM`, `r""m`, `r\m`)
+    # arrives first and nothing else can.
+    #
+    # Skipping it by POSITION rather than by spelling is what admits a PATH-QUALIFIED
+    # command word. `/bin/rm` reaches this loop as the token `/rm`, because the
+    # anchor's boundary byte is the `/` in front of the word, and a guard that
+    # recognizes the word only by its spelling judges `/rm` as a TARGET: it trips the
+    # absolute-path arm and denies a whitelisted `dist`, blaming a path the user never
+    # wrote.
+    #
+    # Widening the spelling test to cover `/rm` is the fix that looks right and is
+    # not: any pattern loose enough to match `/rm` (say `*/[Rr][Mm]`) also matches
+    # `/usr/bin/rm` when that is the TARGET, so `rm -rf /usr/bin/rm` would stop being
+    # an absolute-path deny. Position separates the two for free.
+    #
+    # It also retires an invisible constraint. Skipping the word by spelling was safe
+    # only for as long as the normalized `rm` matched no deny arm and fell through to
+    # the catch-all, which silently bound anyone who later added an arm.
+    #
+    # `${#tokens[@]}` is the count form the array-guard lint accepts, and unlike a
+    # bare "${tokens[@]}" it is safe on an empty array under `set -u` on bash 3.2.
+    # (tokens is provably non-empty anyway: rm_segment is guarded non-empty above and
+    # always carries the word.)
+    for ((i = 1; i < ${#tokens[@]}; i++)); do
+      tok=${tokens[i]}
+
       # Skip flag tokens.
       [[ "$tok" == -* ]] && continue
 
@@ -281,18 +305,6 @@ main() {
       # escapes would be half a fix.
       tok=${tok//\\/}
       [[ -n "$tok" ]] || continue
-
-      # Skip the command word itself, recognized the way the anchor above recognizes
-      # it: AFTER quote and backslash removal, and case-insensitively. Matching it
-      # here by its literal lowercase spelling would leave a fourth site reading the
-      # word as it is typed rather than as bash resolves it, so `RM` and `r""m` would
-      # fall through and be judged as if they were targets.
-      #
-      # That fall-through is harmless only for as long as the normalized word `rm`
-      # matches no deny arm and lands on the catch-all below, which is an invisible
-      # constraint to hang a guard on: it silently binds anyone who later adds an arm.
-      # Skipping the word as a word retires the constraint instead of relying on it.
-      [[ "$tok" == [Rr][Mm] ]] && continue
 
       # `$PWD` spells the cwd, so `$PWD/.git` IS `.git` and a bare `$PWD` IS `.`.
       # Rewrite the prefix and let the arms below judge whatever is left, rather
