@@ -74,6 +74,16 @@ setup() {
   # under a different spelling. Value-quoting is the likely slip, because the very
   # next argument in each of these `gh api` calls is a quoted `--field
   # description="..."`, so quoting `state` by analogy is a natural mistake.
+  #
+  # The lock's BOUNDARY, stated so the next author knows what it does and does not
+  # promise: it assumes every writer posts the status via `gh api` with the state
+  # as a `--field`/`-f`/`-F`/`--raw-field` argument. A writer that passes a JSON
+  # body (`gh api --input -`), builds the value indirectly (`--field
+  # state="$st"`), or shells out to `curl` carries no literal `state=`, evades
+  # this pattern, and ships unseen. That is a deliberate frontier, not an
+  # oversight: closing it fully is a losing arms race against every way a string
+  # can be spelled, and all four real writers use the `--field` form, so a fifth
+  # would be copied from an adjacent one. Trust the lock exactly this far.
   PENDING_WRITER_RE="state=[\"']?pending"
   [ -f "$WORKFLOW" ] || skip "code-review-audit.yml not found"
   [ -f "$GATE" ] || skip "gate-pending-members.sh not found"
@@ -1091,6 +1101,46 @@ run_comment_step() {
 
   [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
   return 0
+}
+
+# -----------------------------------------------------------------------------
+# audit-success-present.sh's own exit contract
+#
+# Every lock above pins the CALLERS. They are only as sound as the exit codes the
+# guard hands them, and the guard's contract has exactly one rule: an unanswerable
+# question returns 2, NEVER 1. A 1 means "definitively no success live", which is
+# the caller's signal to POST `pending` over whatever is currently there. Collapse
+# any "could not ask" path into a 1 and the #734 clobber returns at the SOURCE,
+# below every call-site lock in this file -- all four callers would be dutifully
+# testing `-ne 1` against an answer that is already a lie.
+#
+# The read-failure path was the only one pinned. Collapsing the usage-error path
+# or the gh-absent path to `exit 1` left the whole suite green: a guard that
+# cannot ask, reporting "definitively not live", with nothing to catch it. That is
+# the same "a suite that never names a path cannot notice it is broken" shape that
+# let the fourth pending writer ship unguarded in the first place, pointed this
+# time at the guard rather than at its callers.
+# -----------------------------------------------------------------------------
+
+@test "guard: no arguments at all is unanswerable (exit 2), never 'no success live'" {
+  run bash "$PRESENT"
+  [ "$status" -eq 2 ]
+}
+
+@test "guard: a missing tree argument is unanswerable (exit 2), never 'no success live'" {
+  # An empty tree would make the guard's fixed-string match succeed against ANY
+  # description, standing the gate down on a success that vouches for nothing.
+  run bash "$PRESENT" "deadbeef"
+  [ "$status" -eq 2 ]
+}
+
+@test "guard: an absent gh is unanswerable (exit 2), never 'no success live'" {
+  # No `gh` on PATH: the guard cannot read the status at all. That is the purest
+  # "could not ask" there is, and it must never be reported as "not live".
+  local empty_bin="$BATS_TEST_TMPDIR/empty-bin"
+  mkdir -p "$empty_bin"
+  run env PATH="$empty_bin" /bin/bash "$PRESENT" "deadbeef" "cafe"
+  [ "$status" -eq 2 ]
 }
 
 @test "every step that POSTs pending consults the guard and posts only on a definitive 1" {
