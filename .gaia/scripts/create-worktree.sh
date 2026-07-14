@@ -63,10 +63,19 @@ fi
 if ! git -C "$project_root" worktree add "$worktree_path" -b "$worktree_name" "$base_ref" >/dev/null 2>&1; then
   if ! git -C "$project_root" worktree add "$worktree_path" "$worktree_name" >/dev/null 2>&1; then
     printf 'create-worktree: git worktree add failed for %s\n' "$worktree_path" >&2
-    if [ "$path_pre_existed" -eq 1 ]; then
-      # Not ours to delete: it was on disk before this run. Leave it, and say so,
-      # since a name collision is the likeliest reason the add failed at all.
-      printf 'create-worktree: %s pre-existed this run; leaving it intact\n' "$worktree_path" >&2
+    # Both adds failed, so this run registered nothing: any live worktree now at
+    # the path belongs to someone else. Re-read the list here rather than trust
+    # the pre-add sample alone, because a peer session racing us on this name
+    # can have created and registered it inside our check-to-add window.
+    # Here-string, not a pipe: `git ... | grep -q` under pipefail lets grep's
+    # early exit SIGPIPE the upstream write and flip a match into a false miss.
+    # `-x` (whole-line) because `worktree /path/alpha` prefixes `.../alpha2`.
+    wt_list="$(git -C "$project_root" worktree list --porcelain 2>/dev/null || true)"
+    if [ "$path_pre_existed" -eq 1 ] \
+      || { [ -e "$worktree_path" ] && grep -qxF "worktree $worktree_path" <<<"$wt_list"; }; then
+      # Not ours to delete. Say so: a name collision is the likeliest reason the
+      # add failed at all, and the operator needs a way out.
+      printf 'create-worktree: %s was not created by this run; leaving it intact (remove it yourself, or retry with a different worktree name)\n' "$worktree_path" >&2
     else
       # `git worktree remove --force` clears both the directory and the stale
       # .git/worktrees/ registration; rm -rf is the fallback if git itself

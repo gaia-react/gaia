@@ -73,7 +73,7 @@ run_hook_stdout() {
   # stdout is exactly the worktree path under .claude/worktrees/.
   [ "$output" = "$MAIN/.claude/worktrees/alpha" ]
   # Worktree is registered with git.
-  git -C "$MAIN" worktree list --porcelain | grep -qF "worktree $MAIN/.claude/worktrees/alpha"
+  git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $MAIN/.claude/worktrees/alpha"
   # Branch was created.
   git -C "$MAIN" show-ref --verify --quiet refs/heads/alpha
   # The post-create link-worktree delegation ran inside the worktree.
@@ -149,12 +149,12 @@ run_hook_stdout() {
   run_hook '{"name":"alpha"}'
   [ "$status" -ne 0 ]
   grep -qF "git worktree add failed" <<<"$output"
-  grep -qF "pre-existed this run" <<<"$output"
+  grep -qF "was not created by this run" <<<"$output"
 
   # The colliding worktree, its uncommitted work, and its branch all survive.
   [ -f "$wt/precious.txt" ]
   [ "$(cat "$wt/precious.txt")" = "precious" ]
-  git -C "$MAIN" worktree list --porcelain | grep -qF "worktree $wt"
+  git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $wt"
   git -C "$MAIN" show-ref --verify --quiet refs/heads/alpha
 }
 
@@ -173,7 +173,35 @@ run_hook_stdout() {
   [ "$(cat "$wt/keep.txt")" = "user data" ]
 }
 
-# ---------- 11. Base ref: no remote -> local HEAD ----------
+# ---------- 11. Collision cleanup: the loser of a race must not clean up the winner ----------
+@test "concurrent runs on the same name: the winner's worktree survives" {
+  # Two sessions launching on the same name at once. Only one `worktree add` can
+  # win; the loser's cleanup must not remove what the winner just created. The
+  # pre-add existence sample cannot see this: the winner registers the path
+  # inside the loser's check-to-add window.
+  for i in 1 2 3 4 5; do
+    name="race$i"
+    wt="$MAIN/.claude/worktrees/$name"
+
+    (cd "$MAIN" && printf '{"name":"%s"}' "$name" | bash "$SCRIPT" >/dev/null 2>&1) &
+    pid_a=$!
+    (cd "$MAIN" && printf '{"name":"%s"}' "$name" | bash "$SCRIPT" >/dev/null 2>&1) &
+    pid_b=$!
+
+    status_a=0; wait "$pid_a" || status_a=$?
+    status_b=0; wait "$pid_b" || status_b=$?
+
+    # Whichever run won, its worktree must still be on disk and registered.
+    # (If both somehow failed, nothing was created and there is nothing to
+    # protect, so the iteration has nothing to assert.)
+    if [ "$status_a" -eq 0 ] || [ "$status_b" -eq 0 ]; then
+      [ -d "$wt" ]
+      git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $wt"
+    fi
+  done
+}
+
+# ---------- 12. Base ref: no remote -> local HEAD ----------
 @test "no remote configured: branches from local HEAD" {
   head="$(git -C "$MAIN" rev-parse HEAD)"
   run_hook_stdout '{"name":"local-base"}'
@@ -181,7 +209,7 @@ run_hook_stdout() {
   [ "$(git -C "$MAIN" rev-parse refs/heads/local-base)" = "$head" ]
 }
 
-# ---------- 12. Base ref: origin/HEAD present -> remote default, not local HEAD ----------
+# ---------- 13. Base ref: origin/HEAD present -> remote default, not local HEAD ----------
 @test "with origin/HEAD: branches fresh from the remote default" {
   ORIGIN="$TMPROOT/origin.git"
   git init -q --bare "$ORIGIN"
