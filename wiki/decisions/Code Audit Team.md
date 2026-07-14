@@ -29,7 +29,7 @@ Each `auditors:` entry carries a `name`, a `globs` list, a `scope` (`adopter` or
 The local merge deny-hook (`.claude/hooks/pr-merge-audit-check.sh`) resolves the dispatched member set and requires **every** dispatched member's own clearance signal before allowing `gh pr merge`:
 
 - `code-audit-frontend` clears via any of its existing signals (local `.ok` marker, `GAIA-Audit` commit trailer, GitHub CI status, `chore(deps)` bypass, or the self-mod-only GAIA-update bypass).
-- A specialized member clears via its own marker file, `.gaia/local/audit/<sha>.<member>.ok`, the sole clearance signal for maintainer members (local/advisory-only, no CI or trailer equivalent).
+- A specialized member clears via its own marker file, `.gaia/local/audit/<tree-sha>.<member>.ok`, the sole clearance signal for maintainer members (local/advisory-only, no CI or trailer equivalent). Markers key to HEAD's tree, so members can run in any order and `code-audit-frontend`'s trailer stamp (an empty commit) never orphans a sibling's marker. See [[PR Merge Workflow]], Marker key.
 
 A zero-match dispatch (the resolver finds nothing, or is absent/unusable) falls through to the **legacy single-signal gate**, evaluated for `code-audit-frontend` alone, unchanged from before the roster existed. This is a fail-closed fallback, not an auto-allow: the legacy gate's own out-of-scope bypass still denies an ownerless-but-in-scope file (e.g. a root `Dockerfile`) with no marker.
 

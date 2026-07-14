@@ -116,8 +116,10 @@ commit_mixed_diff() {
   head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${head_sha}.ok"
-  printf '{"sha":"%s"}\n' "$head_sha" > "$SANDBOX/$marker"
+  # The marker is keyed to the TREE; the status POST still targets the COMMIT
+  # (a GitHub commit status has nowhere else to land).
+  marker=".gaia/local/audit/${tree}.ok"
+  printf '{"sha":"%s","tree":"%s"}\n' "$head_sha" "$tree" > "$SANDBOX/$marker"
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -146,9 +148,10 @@ commit_mixed_diff() {
 @test "local producer: gh unauthenticated → marker stays, no status post (fail-safe asymmetry)" {
   install_gh_mock fail
   head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${head_sha}.ok"
-  printf '{"sha":"%s"}\n' "$head_sha" > "$SANDBOX/$marker"
+  marker=".gaia/local/audit/${tree}.ok"
+  printf '{"sha":"%s","tree":"%s"}\n' "$head_sha" "$tree" > "$SANDBOX/$marker"
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -169,9 +172,9 @@ commit_mixed_diff() {
   install_resolver
   commit_mixed_diff
 
-  head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${head_sha}.ok"
+  marker=".gaia/local/audit/${tree}.ok"
   printf '{}' > "$SANDBOX/$marker"
 
   run run_helper "$marker"
@@ -192,9 +195,9 @@ commit_mixed_diff() {
   head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${head_sha}.ok"
+  marker=".gaia/local/audit/${tree}.ok"
   printf '{}' > "$SANDBOX/$marker"
-  printf '{}' > "$SANDBOX/.gaia/local/audit/${head_sha}.code-audit-maintainer-shell.ok"
+  printf '{}' > "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok"
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -206,13 +209,48 @@ commit_mixed_diff() {
   grep -q "description=1.2.3 ${tree}" "$POST_LOG"
 }
 
+# The order-independence the helper's header promises, and that a commit key
+# cannot actually deliver. A specialized member clears the tree and writes its
+# marker; code-audit-frontend then stamps the GAIA-Audit trailer as an empty
+# commit and writes its own. Keyed to HEAD, the frontend's stamp orphans the
+# sibling's marker and the POST declines "members pending" even though both
+# members audited the identical tree. Keyed to the tree, the POST goes through.
+@test "member-aware POST: a sibling's marker survives the trailer stamp's empty commit" {
+  install_gh_mock ok
+  install_resolver
+  commit_mixed_diff
+
+  tree=$(current_tree)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  # The specialized member clears the tree first, before the frontend stamps.
+  printf '{}' > "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok"
+
+  # code-audit-frontend stamps the trailer: an empty commit, identical tree.
+  git -C "$SANDBOX" commit -q --allow-empty -m "chore: code review audit passed"
+  [ "$(current_tree)" = "$tree" ]
+  stamped_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+
+  marker=".gaia/local/audit/${tree}.ok"
+  printf '{}' > "$SANDBOX/$marker"
+
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "status: posted GAIA-Audit success "* ]]
+
+  # The status lands on the post-stamp commit, carrying the unchanged tree.
+  [ -f "$POST_LOG" ]
+  grep -q "statuses/${stamped_sha}" "$POST_LOG"
+  grep -q "state=success" "$POST_LOG"
+  grep -q "description=1.2.3 ${tree}" "$POST_LOG"
+}
+
 @test "member-aware POST: resolver absent falls back to the single-marker POST on a mixed diff" {
   install_gh_mock ok
   commit_mixed_diff
 
-  head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${head_sha}.ok"
+  marker=".gaia/local/audit/${tree}.ok"
   printf '{}' > "$SANDBOX/$marker"
 
   # No resolver copied into SANDBOX: the member-aware gate is skipped and the
