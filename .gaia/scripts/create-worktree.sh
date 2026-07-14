@@ -47,17 +47,33 @@ worktree_path="$project_root/.claude/worktrees/$worktree_name"
 
 mkdir -p "$(dirname "$worktree_path")"
 
+# Record whether the target path is already there before we touch it. The
+# failure cleanup below force-removes $worktree_path, and on a name collision
+# (a peer session already holding a worktree of this name) both `worktree add`
+# attempts fail, so that cleanup would delete someone else's worktree along
+# with any uncommitted work in it. Only clean up a path this run created.
+path_pre_existed=0
+if [ -e "$worktree_path" ]; then
+  path_pre_existed=1
+fi
+
 # Try new branch first; if name already exists, check out the existing one.
 # Silence git entirely (stdout too): "HEAD is now at ..." is written to stdout,
 # and the hook's stdout must carry only the worktree path for the harness.
 if ! git -C "$project_root" worktree add "$worktree_path" -b "$worktree_name" "$base_ref" >/dev/null 2>&1; then
   if ! git -C "$project_root" worktree add "$worktree_path" "$worktree_name" >/dev/null 2>&1; then
     printf 'create-worktree: git worktree add failed for %s\n' "$worktree_path" >&2
-    # `git worktree remove --force` clears both the directory and the stale
-    # .git/worktrees/ registration; rm -rf is the fallback if git itself
-    # can't clean up. rmdir alone would leave a non-empty dir behind.
-    git -C "$project_root" worktree remove --force "$worktree_path" 2>/dev/null \
-      || rm -rf "$worktree_path" 2>/dev/null || true
+    if [ "$path_pre_existed" -eq 1 ]; then
+      # Not ours to delete: it was on disk before this run. Leave it, and say so,
+      # since a name collision is the likeliest reason the add failed at all.
+      printf 'create-worktree: %s pre-existed this run; leaving it intact\n' "$worktree_path" >&2
+    else
+      # `git worktree remove --force` clears both the directory and the stale
+      # .git/worktrees/ registration; rm -rf is the fallback if git itself
+      # can't clean up. rmdir alone would leave a non-empty dir behind.
+      git -C "$project_root" worktree remove --force "$worktree_path" 2>/dev/null \
+        || rm -rf "$worktree_path" 2>/dev/null || true
+    fi
     exit 1
   fi
 fi

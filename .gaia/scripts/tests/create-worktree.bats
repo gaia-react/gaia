@@ -135,7 +135,45 @@ run_hook_stdout() {
   git -C "$MAIN" show-ref --verify --quiet refs/heads/feat/x
 }
 
-# ---------- 9. Base ref: no remote -> local HEAD ----------
+# ---------- 9. Collision cleanup: never destroy a worktree this run didn't create ----------
+@test "name collision with a live worktree: fails without destroying it" {
+  # First run creates the worktree a peer session would be sitting in.
+  run_hook_stdout '{"name":"alpha"}'
+  [ "$status" -eq 0 ]
+  wt="$MAIN/.claude/worktrees/alpha"
+
+  # Uncommitted work in that worktree: exactly what a force-remove would destroy.
+  printf 'precious\n' > "$wt/precious.txt"
+
+  # Second run collides on the same name, so both `worktree add` attempts fail.
+  run_hook '{"name":"alpha"}'
+  [ "$status" -ne 0 ]
+  grep -qF "git worktree add failed" <<<"$output"
+  grep -qF "pre-existed this run" <<<"$output"
+
+  # The colliding worktree, its uncommitted work, and its branch all survive.
+  [ -f "$wt/precious.txt" ]
+  [ "$(cat "$wt/precious.txt")" = "precious" ]
+  git -C "$MAIN" worktree list --porcelain | grep -qF "worktree $wt"
+  git -C "$MAIN" show-ref --verify --quiet refs/heads/alpha
+}
+
+# ---------- 10. Collision cleanup: a pre-existing plain directory is not ours either ----------
+@test "collision with a pre-existing non-worktree directory: leaves it intact" {
+  wt="$MAIN/.claude/worktrees/beta"
+  mkdir -p "$wt"
+  printf 'user data\n' > "$wt/keep.txt"
+
+  run_hook '{"name":"beta"}'
+  [ "$status" -ne 0 ]
+
+  # `worktree remove --force` fails here (not a worktree), so today's fallback
+  # `rm -rf` is what would eat the directory. It must not run.
+  [ -f "$wt/keep.txt" ]
+  [ "$(cat "$wt/keep.txt")" = "user data" ]
+}
+
+# ---------- 11. Base ref: no remote -> local HEAD ----------
 @test "no remote configured: branches from local HEAD" {
   head="$(git -C "$MAIN" rev-parse HEAD)"
   run_hook_stdout '{"name":"local-base"}'
@@ -143,7 +181,7 @@ run_hook_stdout() {
   [ "$(git -C "$MAIN" rev-parse refs/heads/local-base)" = "$head" ]
 }
 
-# ---------- 10. Base ref: origin/HEAD present -> remote default, not local HEAD ----------
+# ---------- 12. Base ref: origin/HEAD present -> remote default, not local HEAD ----------
 @test "with origin/HEAD: branches fresh from the remote default" {
   ORIGIN="$TMPROOT/origin.git"
   git init -q --bare "$ORIGIN"
