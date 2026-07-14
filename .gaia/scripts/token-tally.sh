@@ -59,6 +59,24 @@
 # are never both set. An unclassifiable or absent key degrades to a partial row
 # with both ids null, never a mistyped id.
 #
+# A second CLI shape, one standalone unattributed row per maintenance-command
+# run, carrying the GitHub artifact (if any) that run produced:
+#   bash .gaia/scripts/token-tally.sh --action command --command <name> \
+#     [--run-id <id>] \
+#     [--github-type pr|issue] [--github-number <int>] [--github-repo <owner>/<name>] \
+#     [--session-id <id>] [--projects-root <dir>] [--ledger <path>] \
+#     [--rate-table <path>] [--cache-dir <dir>]
+#
+# `--command` is validated against a closed set of the maintenance commands; an
+# unrecognized or absent value degrades to a partial row rather than a crash or
+# a fabricated name. `--run-id` is a test seam (production callers omit it and
+# get a generated id). The three `--github-*` flags are the ONLY source of the
+# `github` object on a command record, no breadcrumb is ever read for this
+# action; an incomplete or invalid set just omits `github`, never marks
+# partial. `--action execute` additionally reads (and never deletes) the
+# gh-artifact breadcrumb .claude/hooks/capture-gh-artifact.sh writes, so its
+# `github` object comes from that breadcrumb instead.
+#
 # DO NOT add `set -e`; each step is guarded independently so one failure cannot
 # abort the never-block guarantee.
 
@@ -70,6 +88,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" 2>/dev/null || true
 # shellcheck source=.gaia/scripts/audit-window-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/audit-window-lib.sh" 2>/dev/null || true
+# shellcheck source=.gaia/scripts/gh-artifact-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/gh-artifact-lib.sh" 2>/dev/null || true
 
 log() {
   printf '%s\n' "$*" >&2
@@ -183,11 +203,16 @@ PROJECTS_ROOT_ARG=""
 LEDGER_OVERRIDE=""
 RATE_TABLE_OVERRIDE=""
 CACHE_DIR_ARG=""
+COMMAND_ARG=""
+RUN_ID_ARG=""
+GITHUB_TYPE_ARG=""
+GITHUB_NUMBER_ARG=""
+GITHUB_REPO_ARG=""
 
 while [[ $# -gt 0 ]]; do
   key="$1"
   case "$key" in
-    --action|--spec-id|--plan-id|--plan-slug|--out-dir|--session-id|--projects-root|--ledger|--rate-table|--cache-dir)
+    --action|--spec-id|--plan-id|--plan-slug|--out-dir|--session-id|--projects-root|--ledger|--rate-table|--cache-dir|--command|--run-id|--github-type|--github-number|--github-repo)
       val="${2:-}"
       case "$key" in
         --action)        ACTION="$val" ;;
@@ -200,6 +225,11 @@ while [[ $# -gt 0 ]]; do
         --ledger)        LEDGER_OVERRIDE="$val" ;;
         --rate-table)    RATE_TABLE_OVERRIDE="$val" ;;
         --cache-dir)     CACHE_DIR_ARG="$val" ;;
+        --command)       COMMAND_ARG="$val" ;;
+        --run-id)        RUN_ID_ARG="$val" ;;
+        --github-type)   GITHUB_TYPE_ARG="$val" ;;
+        --github-number) GITHUB_NUMBER_ARG="$val" ;;
+        --github-repo)   GITHUB_REPO_ARG="$val" ;;
       esac
       # `shift 2` fails (and does NOT shift) when a flag is the final arg with no
       # value, which would spin this loop forever; fall back to a single shift.
@@ -237,12 +267,12 @@ fi
 FEATURE="${SPEC_ID_OUT:-$PLAN_ID_OUT}"
 
 # Missing required flags are belt-and-suspenders (callers pass well-formed args);
-# degrade to partial rather than crash. --action review is exempt from the
-# feature-identity and --out-dir checks (COV-001): a review record is
-# legitimately unattributed (both ids null is valid, not a defect) and writes
-# no cost.json sidecar, so neither absence may mark it partial (UAT-007, the
+# degrade to partial rather than crash. --action review/command are exempt from
+# the feature-identity and --out-dir checks (COV-001): both kinds are
+# legitimately unattributed (both ids null is valid, not a defect) and write no
+# cost.json sidecar, so neither absence may mark them partial (UAT-007, the
 # SPEC's never-mark-partial clause).
-if [[ "$ACTION" != "review" ]]; then
+if [[ "$ACTION" != "review" && "$ACTION" != "command" ]]; then
   [[ -z "$FEATURE" ]] && { log "token-tally: no feature identity (--spec-id SPEC-* or --plan-id PLAN-*)"; partial=1; }
   [[ -z "$OUT_DIR" ]] && { log "token-tally: missing --out-dir"; partial=1; }
 fi
@@ -252,6 +282,61 @@ if [[ "$ACTION" == "plan" || "$ACTION" == "execute" ]] && [[ -z "$PLAN_SLUG" ]];
   partial=1
 fi
 [[ -z "$SESSION_ID" ]] && { log "token-tally: no session id (--session-id or CLAUDE_CODE_SESSION_ID)"; partial=1; }
+
+# ---------- --command validation + run_id generation (--action command only) ----------
+# Closed set: an unrecognized value is carried through verbatim into `command`
+# and sets partial; an absent value writes command:null and sets partial.
+# Never crashes, never fabricates a name (mirrors the SPEC-*/PLAN-* prefix
+# degrade above).
+COMMAND_OUT=""
+RUN_ID_OUT=""
+if [[ "$ACTION" == "command" ]]; then
+  case "$COMMAND_ARG" in
+    gaia-audit|gaia-debt|gaia-fitness|gaia-forensics|gaia-harden|gaia-wiki)
+      COMMAND_OUT="$COMMAND_ARG"
+      ;;
+    "")
+      log "token-tally: missing --command for action=command"
+      partial=1
+      ;;
+    *)
+      log "token-tally: unrecognized --command value: $COMMAND_ARG"
+      COMMAND_OUT="$COMMAND_ARG"
+      partial=1
+      ;;
+  esac
+
+  # run_id: <slug>-<YYYYMMDDTHHMMSSZ>-<4 lowercase hex>. --run-id overrides
+  # verbatim (a test seam; production callers omit it). The hex suffix is not
+  # a uniqueness guarantee, only what keeps two same-second runs distinct.
+  if [[ -n "$RUN_ID_ARG" ]]; then
+    RUN_ID_OUT="$RUN_ID_ARG"
+  else
+    run_slug="$(printf '%s' "$COMMAND_ARG" | tr -dc 'A-Za-z0-9._-')"
+    [[ -z "$run_slug" ]] && run_slug="unknown"
+    run_hex="$(printf '%04x' "$((RANDOM % 65536))")"
+    RUN_ID_OUT="${run_slug}-$(date -u +%Y%m%dT%H%M%SZ)-${run_hex}"
+  fi
+fi
+
+# ---------- github pass-through for --action command (FC-4/FC-5; no breadcrumb read) ----------
+# Built ONLY from --github-* flags: never looked up, never reused across runs,
+# never guessed. Any missing/invalid flag omits the key entirely and logs to
+# stderr; the artifact's absence never marks the record partial. The repo
+# slug's character class is validated in bash BEFORE it ever reaches jq, and
+# only ever through --arg/--argjson, never string interpolation.
+GITHUB_JSON=""
+if [[ "$ACTION" == "command" ]]; then
+  if [[ "$GITHUB_TYPE_ARG" == "pr" || "$GITHUB_TYPE_ARG" == "issue" ]] \
+     && [[ "$GITHUB_NUMBER_ARG" =~ ^[1-9][0-9]*$ ]] \
+     && [[ "$GITHUB_REPO_ARG" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+    GITHUB_JSON="$(jq -nc --arg type "$GITHUB_TYPE_ARG" --argjson number "$GITHUB_NUMBER_ARG" --arg repo "$GITHUB_REPO_ARG" \
+      '{type: $type, number: $number, repo: $repo}' 2>/dev/null || true)"
+    jq -e 'type == "object"' >/dev/null 2>&1 <<<"$GITHUB_JSON" || GITHUB_JSON=""
+  elif [[ -n "$GITHUB_TYPE_ARG$GITHUB_NUMBER_ARG$GITHUB_REPO_ARG" ]]; then
+    log "token-tally: incomplete/invalid --github-* flags for action=command; omitting github"
+  fi
+fi
 
 # ---------- single-pass tally over main transcript + sidecars ----------
 # Per file, ONE streaming read emits {usage:[{id,u,m}], tmin, tmax} where usage is
@@ -732,17 +817,16 @@ if jq -e 'length > 0' >/dev/null 2>&1 <<<"$BY_MODEL"; then
   # else: rate table unresolvable/unreadable -> leave dollars/rate_table_id null.
 fi
 
-# ---------- FC-2: nest the adversarial-audit annotation (spec/plan only) ----------
-# A strict subset drill-down of the phase record just aggregated above: never
-# summed into total/buckets/dollars, and omitted entirely (never fabricated)
-# when the breadcrumb is absent/unparseable, its session_id does not match
-# this tally's session, or its window catches zero sidecar activity.
-AUDIT_JSON=""
-if [[ "$ACTION" == "spec" || "$ACTION" == "plan" ]]; then
-  # --cache-dir (test seam) defaults to <main_root>/.gaia/local/cache, deriving
-  # main_root the same git-common-dir way ledger-path-lib.sh derives the ledger
-  # main_root -- NOT via compute_project_id, which returns a hash, not a path
-  # (CG-002).
+# ---------- CACHE_DIR resolution (hoisted): spec/plan's FC-2 audit-window
+#            breadcrumb AND execute's FC-6 gh-artifact breadcrumb both resolve
+#            through this one derivation. --cache-dir (test seam) defaults to
+#            <main_root>/.gaia/local/cache, deriving main_root the same
+#            git-common-dir way ledger-path-lib.sh derives the ledger main_root
+#            -- NOT via compute_project_id, which returns a hash, not a path
+#            (CG-002). A command or review run pays nothing for this (guarded
+#            out below).
+CACHE_DIR=""
+if [[ "$ACTION" == "spec" || "$ACTION" == "plan" || "$ACTION" == "execute" ]]; then
   CACHE_DIR="$CACHE_DIR_ARG"
   if [[ -z "$CACHE_DIR" ]]; then
     audit_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
@@ -755,7 +839,20 @@ if [[ "$ACTION" == "spec" || "$ACTION" == "plan" ]]; then
       [[ -n "$audit_main_root" ]] && CACHE_DIR="$audit_main_root/.gaia/local/cache"
     fi
   fi
+fi
 
+# ---------- git_branch (moved up: FC-6's execute breadcrumb read below needs
+#            it before the record build; project identity stays at its
+#            original site further down) ----------
+GIT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+
+# ---------- FC-2: nest the adversarial-audit annotation (spec/plan only) ----------
+# A strict subset drill-down of the phase record just aggregated above: never
+# summed into total/buckets/dollars, and omitted entirely (never fabricated)
+# when the breadcrumb is absent/unparseable, its session_id does not match
+# this tally's session, or its window catches zero sidecar activity.
+AUDIT_JSON=""
+if [[ "$ACTION" == "spec" || "$ACTION" == "plan" ]]; then
   # The breadcrumb key MUST match what task-breadcrumb-emit writes (FC-1,
   # DP-002 / CG-001): spec -> $SPEC_ID_OUT; spec-derived plan -> "<spec_id>-plan"
   # (namespaced by the SPEC id, never $PLAN_SLUG, which is the literal
@@ -843,6 +940,23 @@ fi
 # $tmp_phase's last reader was the FC-2 block just above; safe to remove now.
 [[ -n "$tmp_phase" && "$tmp_phase" != "$tmp" ]] && rm -f "$tmp_phase" 2>/dev/null
 
+# ---------- FC-6: github on --action execute (breadcrumb, read-only, never deletes) ----------
+# --action execute only; spec/plan/review/command never read it. A match
+# requires the breadcrumb's session_id AND branch to equal this run's, and its
+# ts to be within the TTL (the lib enforces all three); the lib never deletes
+# it, so every cumulative commit-triggered row re-reads the same breadcrumb.
+# The lib being absent/unsourceable, or nothing matching, both just omit
+# `github`, never fail.
+if [[ "$ACTION" == "execute" ]] && declare -F gaia_gh_artifact_read >/dev/null 2>&1; then
+  gh_bc_path="$(gaia_gh_artifact_path "$CACHE_DIR")"
+  if [[ -n "$gh_bc_path" ]]; then
+    gh_bc="$(gaia_gh_artifact_read "$gh_bc_path" "$SESSION_ID" "$GIT_BRANCH")"
+    if [[ -n "$gh_bc" ]] && jq -e 'type == "object"' >/dev/null 2>&1 <<<"$gh_bc"; then
+      GITHUB_JSON="$gh_bc"
+    fi
+  fi
+fi
+
 # Display title: stdout uses `<feature>/<slug>`.
 if [[ "$ACTION" == "spec" ]]; then
   out_title="$ACTION $FEATURE"
@@ -915,8 +1029,8 @@ if [[ -n "$ledger" && "$(basename "$ledger")" == "cost.jsonl" ]]; then
   fi
 fi
 
-# ---------- git_branch + project identity (UAT-008) ----------
-GIT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+# ---------- project identity (UAT-008; git_branch is computed earlier, before
+#            the CACHE_DIR/FC-2/FC-6 breadcrumb block, which needs it) ----------
 PROJECT_ID="$(compute_project_id 2>/dev/null || true)"
 
 # ---------- seq (UAT-009) ----------
@@ -965,6 +1079,9 @@ rec="$(jq -nc \
   --arg ts "$TS" \
   --arg session_cwd "$SESSION_CWD" \
   --arg audit_json "$AUDIT_JSON" \
+  --arg command_val "$COMMAND_OUT" \
+  --arg run_id_val "$RUN_ID_OUT" \
+  --arg github_json "$GITHUB_JSON" \
   '
     {
       schema_version: 1,
@@ -979,6 +1096,8 @@ rec="$(jq -nc \
     + (if ($by_model | type) == "object" and ($by_model | length) > 0 then {by_model: $by_model} else {} end)
     + (if ($by_agent_type | type) == "object" and ($by_agent_type | length) > 0 then {by_agent_type: $by_agent_type} else {} end)
     + (if $audit_json != "" then {audit: ($audit_json | fromjson)} else {} end)
+    + (if $kind == "command" then {command: (if $command_val == "" then null else $command_val end), run_id: $run_id_val} else {} end)
+    + (if $github_json != "" then {github: ($github_json | fromjson)} else {} end)
     + {
         dollars: $dollars,
         rate_table_id: (if $rate_table_id == "" then null else $rate_table_id end),
@@ -1047,8 +1166,10 @@ fi
 # plan-authoring cost (written by /gaia-plan) and the plan-execution cost
 # (written by the KICKOFF git-op hook on each commit) never overwrite or sum.
 # Never blocks: a jq failure leaves the prior sidecar untouched and logs to
-# stderr; it never aborts the tally and never fabricates.
-if [[ -n "$OUT_DIR" && -n "$rec" ]]; then
+# stderr; it never aborts the tally and never fabricates. A command record is
+# unattributed and sidecar-less like review: no cost.json, ever, even if
+# --out-dir is somehow supplied.
+if [[ -n "$OUT_DIR" && -n "$rec" && "$ACTION" != "command" ]]; then
   mkdir -p "$OUT_DIR" 2>/dev/null
   sidecar="$OUT_DIR/cost.json"
   if [[ -f "$sidecar" ]]; then
@@ -1063,20 +1184,37 @@ if [[ -n "$OUT_DIR" && -n "$rec" ]]; then
   fi
 fi
 
-# ---------- stdout tally block (README C4) ----------
-printf 'Cost (%s):\n' "$out_title"
-printf '  Fresh input:  %s\n' "$FRESH"
-printf '  Cache write:  %s\n' "$CWRITE"
-printf '  Cache read:   %s\n' "$CREAD"
-printf '  Output:       %s\n' "$OUT"
-printf '  Total:        %s\n' "$TOTAL"
-if [[ "$DUR_AVAIL" == "true" ]]; then
-  printf '  Elapsed:      %s  (first to last model turn: %s to %s)\n' "$HUMAN" "$LOCAL_START" "$LOCAL_END"
+# ---------- stdout tally block (README C4; FC-7 for --action command) ----------
+if [[ "$ACTION" == "command" ]]; then
+  # Exactly one line, no per-stage breakdown (a command run has one stage), so
+  # every command surface relays a byte-identical line. Never bash integer
+  # arithmetic (it would truncate); LC_ALL=C keeps a locale's comma decimal
+  # separator from leaking in.
+  t_human="$(LC_ALL=C awk -v t="$TOTAL" 'BEGIN{printf "%.1f", t/1000000}')"
+  if [[ "$COST_DOLLARS_RAW" == "null" ]]; then
+    cost_part="cost unavailable"
+  else
+    cost_part="$(LC_ALL=C awk -v d="$COST_DOLLARS_RAW" 'BEGIN{printf "$%.2f", d}')"
+  fi
+  line="Cost: ~${t_human}M tokens, ${cost_part}"
+  [[ "$DUR_AVAIL" == "true" ]] && line="${line}, ${HUMAN}"
+  [[ "$partial" -ne 0 ]] && line="${line} (partial: lower bound)"
+  printf '%s\n' "$line"
 else
-  printf '  Elapsed:      unavailable (no readable turn timestamps)\n'
-fi
-if [[ "$partial" -ne 0 ]]; then
-  printf '  (partial: figures are a lower bound; some inputs were unreadable)\n'
+  printf 'Cost (%s):\n' "$out_title"
+  printf '  Fresh input:  %s\n' "$FRESH"
+  printf '  Cache write:  %s\n' "$CWRITE"
+  printf '  Cache read:   %s\n' "$CREAD"
+  printf '  Output:       %s\n' "$OUT"
+  printf '  Total:        %s\n' "$TOTAL"
+  if [[ "$DUR_AVAIL" == "true" ]]; then
+    printf '  Elapsed:      %s  (first to last model turn: %s to %s)\n' "$HUMAN" "$LOCAL_START" "$LOCAL_END"
+  else
+    printf '  Elapsed:      unavailable (no readable turn timestamps)\n'
+  fi
+  if [[ "$partial" -ne 0 ]]; then
+    printf '  (partial: figures are a lower bound; some inputs were unreadable)\n'
+  fi
 fi
 
 exit 0
