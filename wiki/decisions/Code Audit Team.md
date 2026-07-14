@@ -24,6 +24,14 @@ Each `auditors:` entry carries a `name`, a `globs` list, a `scope` (`adopter` or
 
 `.gaia/scripts/resolve-audit-members.sh` turns the current branch's diff into the **dispatched member set**: the deduped, lexically-sorted list of member names owning at least one changed file. Per changed file, a specialized (non-default) member whose globs match wins first; failing that, a file inside the default member's auditable-base set falls to the default member; anything else has no owner and is out of scope. Empty stdout means the whole diff is out of audit scope. The resolver reads the roster from `.gaia/audit-ci.yml` when present, else falls back to a hard-coded built-in roster (itself marker-wrapped for the maintainer-only entries), so it never depends on the config file existing. It is generic over the roster: a new member is a config entry plus an agent file, no resolver edit.
 
+## Spawning: the same set, resolved ahead of the gate
+
+The gates are reactive: they deny, they never spawn. `.gaia/scripts/resolve-audit-spawn.sh` is the spawn-side reader of the same dispatch, so the pre-merge procedure resolves the member set and spawns exactly those members instead of guessing one.
+
+The spawn set equals the dispatched member set, with one addition: on a zero-match dispatch it names the default member whenever any changed path is in scope but owned by nobody, mirroring the merge gate's legacy fallback (which still requires the default member's clearance there). That makes the spawn set a superset of what the gate can require, so no diff exists where the gate demands a marker nothing was spawned to produce.
+
+A member with nothing to audit is never spawned, and if a stale caller spawns it anyway, it self-skips (each member's agent file carries the skip clause).
+
 ## AND-aggregation at the merge gate
 
 The local merge deny-hook (`.claude/hooks/pr-merge-audit-check.sh`) resolves the dispatched member set and requires **every** dispatched member's own clearance signal before allowing `gh pr merge`:

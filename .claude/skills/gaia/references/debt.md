@@ -1,6 +1,6 @@
 # /gaia-debt
 
-Fix the `tech-debt` backlog the audit files. `/gaia-debt` reads the open `tech-debt` issues, orders them deterministically (highest severity then oldest first, no model call), recommends the top candidate, and resolves **one fix unit** per invocation, a single issue or a user-approved related batch of issues, on a fresh branch through the same `code-audit-frontend` marker gate every feature PR passes, with one `Closes #N` per member issue in the PR body so the merge closes every issue in the unit natively.
+Fix the `tech-debt` backlog the audit files. `/gaia-debt` reads the open `tech-debt` issues, orders them deterministically (highest severity then oldest first, no model call), recommends the top candidate, and resolves **one fix unit** per invocation, a single issue or a user-approved related batch of issues, on a fresh branch through the same Code Audit Team marker gate every feature PR passes, with one `Closes #N` per member issue in the PR body so the merge closes every issue in the unit natively.
 
 The ordering is a pure, source-checkable sort over the issues' severity labels and `createdAt` timestamps. It never calls a model to rank the backlog, and it never resolves more than one fix unit per run.
 
@@ -8,7 +8,7 @@ The ordering is a pure, source-checkable sort over the issues' severity labels a
 
 Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the fix unit is chosen and isolated the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There are **up to two** up-front interactive decisions, in order: (1) the candidate/batch pick, only when the backlog holds two or more issues, and (2) the isolation-mode pick (`## Pre-flight isolation (branch vs worktree)` below), only when HEAD is on `main`/`master`, a silent forced worktree with no prompt on any other branch. After both, the flow does not pause for confirmation. Pause only when input is genuinely needed (those two picks) or something unexpected blocks the path (a security-class diversion, a rejected push, a gate that will not go green). Resolve **one fix unit** per invocation, a single issue or a user-confirmed related batch; the skill never auto-advances to an unrelated issue.
 
-The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). Once the PR is up it drives straight through to merge with no second confirmation, resolving the PR to completion the standard way: the same `code-audit-frontend` marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
+The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). Once the PR is up it drives straight through to merge with no second confirmation, resolving the PR to completion the standard way: the same Code Audit Team marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
 
 ## Argument parsing
 
@@ -236,7 +236,7 @@ When pre-flight selects worktree mode, chosen from main or forced on the not-on-
 
     EnterWorktree({name: "<branch-name>"})
 
-The `WorktreeCreate` hook (`.gaia/scripts/create-worktree.sh`) cuts the branch fresh from the remote default branch and switches the session into `.claude/worktrees/<branch-name>/`, so run no manual `git checkout -b`. Every later step, implementing the fix(es), the Quality Gate, commit, push, `gh pr create`, the `code-audit-frontend` marker gate, and the merge, runs from inside the worktree.
+The `WorktreeCreate` hook (`.gaia/scripts/create-worktree.sh`) cuts the branch fresh from the remote default branch and switches the session into `.claude/worktrees/<branch-name>/`, so run no manual `git checkout -b`. Every later step, implementing the fix(es), the Quality Gate, commit, push, `gh pr create`, the Code Audit Team marker gate, and the merge, runs from inside the worktree.
 
 Feature-branch mode keeps today's behavior: cut the branch of the same name from the default branch and work in the current checkout.
 
@@ -250,7 +250,7 @@ The **fix unit** is the selected (non-diverted) member set: a single issue, or e
 4. **Run the Quality Gate** (`.claude/rules/quality-gate.md`) once for the combined diff, then commit and push.
 5. **Open one PR** with `gh pr create`. The PR body includes **one `Closes #N` line per member issue** (GitHub's auto-close keyword) so the single merge closes every issue in the unit natively. Security-class detail still never reaches a public PR: a security-class issue is either withheld from the offered batch or peeled and diverted by the screen above, so no security-class member ever reaches a public `Closes #N` PR.
 
-The PR is an ordinary in-scope source change: it passes the **same** `code-audit-frontend` marker gate as any feature PR, one gate for the combined diff. Let the normal gate produce a real marker; do not bypass, fake, or pre-empt it. Getting that marker and completing the merge are covered under *Drive the PR to merge* below.
+The PR is an ordinary in-scope source change: it passes the **same** Code Audit Team marker gate as any feature PR, one gate for the combined diff. Let the normal gate produce a real marker; do not bypass, fake, or pre-empt it. Getting that marker and completing the merge are covered under *Drive the PR to merge* below.
 
 ## Touch the debt-count sentinel
 
@@ -269,7 +269,7 @@ Once the PR is up, drive it straight to merge with no confirmation prompt: the f
 Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read it, don't merge from memory. Follow its marker handshake; do **not** substitute a bare `gh pr merge`:
 
 - **Resolve the audit mode** for the PR author with the workflow's portable helper (`.gaia/scripts/read-audit-ci-config.sh --resolve-author <login>`). This reads the project's own `.gaia/audit-ci.yml` (team `default_mode` plus per-author overrides), so the flow obeys an adopter's config instead of assuming the maintainer's CI.
-- **Get a real marker for HEAD.** In `ci` mode, wait for CI's `GAIA-Audit` success status (a `pending` status is not a marker, and `--auto` cannot skip this: the local merge hook denies `gh pr merge` until the marker exists). In `local` mode, or when the audit workflow is absent, run the `code-audit-frontend` agent as the producer; on a clean pass it writes the marker and posts the success status. If the whole diff is out of audit scope, the workflow's out-of-scope bypass clears the merge with no marker. Never hand-write, fake, or pre-empt the marker, an in-scope debt fix earns its marker the same way every feature PR does.
+- **Get a real marker for HEAD.** In `ci` mode, wait for CI's `GAIA-Audit` success status (a `pending` status is not a marker, and `--auto` cannot skip this: the local merge hook denies `gh pr merge` until the marker exists). In `local` mode, or when the audit workflow is absent, resolve the spawn set with `bash .gaia/scripts/resolve-audit-spawn.sh` and run each named member as the producer of its own marker; on a clean pass each writes its marker and posts the success status. CI runs the default member only, so a diff that dispatches a specialized member always needs a local spawn for that member regardless of mode. If the whole diff is out of audit scope (the oracle names no member), the workflow's out-of-scope bypass clears the merge with no marker. Never hand-write, fake, or pre-empt the marker, an in-scope debt fix earns its marker the same way every feature PR does.
   <!-- gaia:maintainer-only:start -->
 - **Clear the CHANGELOG gate.** The workflow's maintainer-only CHANGELOG gate applies to debt PRs too: decide whether the fix needs an `## [Unreleased]` entry and, if so, land it on the branch before merging (re-confirm the marker still covers HEAD after the extra commit). Scrubbed from adopter bundles, so adopters never run this step.
   <!-- gaia:maintainer-only:end -->

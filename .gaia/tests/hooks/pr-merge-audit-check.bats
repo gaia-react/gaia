@@ -41,6 +41,7 @@
 setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
   RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
+  SPAWN_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-spawn.sh
   REPO=$(mktemp -d -t pr-merge-test-XXXXXX)
 
   git -C "$REPO" init --quiet --initial-branch=main
@@ -59,6 +60,8 @@ setup() {
   mkdir -p "$REPO/.gaia/scripts"
   cp "$RESOLVER_ABS" "$REPO/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$REPO/.gaia/scripts/resolve-audit-members.sh"
+  cp "$SPAWN_ABS" "$REPO/.gaia/scripts/resolve-audit-spawn.sh"
+  chmod +x "$REPO/.gaia/scripts/resolve-audit-spawn.sh"
 }
 
 teardown() {
@@ -96,6 +99,54 @@ write_marker() {
   tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   mkdir -p "$REPO/.gaia/local/audit"
   printf '{}' > "$REPO/.gaia/local/audit/${tree}${suffix}.ok"
+}
+
+# Print the spawn set the oracle resolves for REPO's current diff.
+spawn_set() {
+  ( cd "$REPO" && bash .gaia/scripts/resolve-audit-spawn.sh 2>/dev/null )
+}
+
+# Write a clearance marker for every name in a spawn-set (newline-separated)
+# string, mapping each to its FC-2 suffix: code-audit-frontend -> "",
+# any other member <m> -> ".<m>".
+write_markers_for_spawn_set() {
+  local set="$1" name
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    if [ "$name" = "code-audit-frontend" ]; then
+      write_marker ""
+    else
+      write_marker ".$name"
+    fi
+  done <<<"$set"
+}
+
+# Assert the most recent run_merge_hook call allowed the merge.
+assert_allowed() {
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  return 0
+}
+
+# Assert the most recent run_merge_hook call denied the merge.
+assert_denied() {
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
+  return 0
+}
+
+# Assert NAME is present as a whole line in NEWLINE-separated SET.
+assert_in_set() {
+  local name="$1" set="$2"
+  grep -qxF -- "$name" <<<"$set" || return 1
+  return 0
+}
+
+# Assert NAME is absent as a whole line from NEWLINE-separated SET.
+assert_not_in_set() {
+  local name="$1" set="$2"
+  grep -qxF -- "$name" <<<"$set" && return 1
+  return 0
 }
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
@@ -343,4 +394,165 @@ write_marker() {
   run_merge_hook
   [ "$status" -eq 0 ]
   grep -qF '"permissionDecision": "deny"' <<< "$output" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# FC-4 deadlock-freedom invariant: the spawn oracle's output and the merge
+# gate's clearance requirements derive from the same source of truth.
+#
+#   No deadlock:     write a marker for every name the oracle prints for a
+#                     diff -> the hook must ALLOW. If it denies, the gate
+#                     wants a marker the spawn procedure never produces.
+#   No useless spawn: withhold one spawned member's marker (all others
+#                     present) -> the hook must DENY. If it allows, that
+#                     member was spawned for nothing.
+#
+# The hazard: a zero-match dispatch does NOT auto-allow. The hook falls
+# through to the legacy out-of-scope gate, which still demands the default
+# member's clearance unless every changed path is on its allowlist. An
+# in-scope-but-ownerless diff (root Dockerfile, public/**, ...) therefore
+# resolves to an EMPTY dispatched set yet still DENIES without that
+# clearance; the oracle's ownerless probe is what covers it.
+# ---------------------------------------------------------------------------
+
+@test "FC-4 no-deadlock: app/x.tsx spawns the default member alone, and its marker allows" {
+  commit_files "app/x.tsx" "export const X = 1"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-frontend" ]
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-deadlock: root tsconfig.json spawns the default member alone, and its marker allows" {
+  commit_files "tsconfig.json" '{"compilerOptions":{}}'
+  set=$(spawn_set)
+  [ "$set" = "code-audit-frontend" ]
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-deadlock: a CI workflow spawns the default member alone, and its marker allows" {
+  commit_files ".github/workflows/ci.yml" "name: CI"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-frontend" ]
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-deadlock: framework shell spawns the shell member only (not the default), and its marker allows" {
+  commit_files ".gaia/scripts/y.sh" "#!/bin/bash"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-maintainer-shell" ]
+  assert_not_in_set "code-audit-frontend" "$set"
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-deadlock: framework CLI TypeScript spawns the node member only (not the default), and its marker allows" {
+  commit_files ".gaia/cli/src/foo.ts" "export const foo = 1"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-maintainer-node" ]
+  assert_not_in_set "code-audit-frontend" "$set"
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-deadlock: mixed app/ + framework shell spawns both, sorted, and their markers allow" {
+  commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
+  set=$(spawn_set)
+  expected=$'code-audit-frontend\ncode-audit-maintainer-shell'
+  [ "$set" = "$expected" ]
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-deadlock: wiki + .claude + root markdown spawns nobody, and no markers still allows" {
+  commit_files \
+    "wiki/x.md" "doc" \
+    ".claude/rules/y.md" "rule" \
+    "README.md" "# changed again"
+  set=$(spawn_set)
+  [ -z "$set" ]
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-deadlock: root Dockerfile (in-scope, ownerless) denies unmarked and allows once spawned" {
+  commit_files "Dockerfile" "FROM scratch"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-frontend" ]
+
+  # The hazard, made concrete: the dispatched set is empty (nothing OWNS a
+  # Dockerfile), but the legacy out-of-scope gate still denies because
+  # Dockerfile is in-scope. Writing no markers must still deny.
+  run_merge_hook
+  assert_denied
+
+  # The oracle's ownerless probe names the default member for exactly this
+  # case, so spawning it and writing its marker clears the gate.
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-deadlock: nested public/** (in-scope, ownerless) denies unmarked and allows once spawned" {
+  commit_files "public/logo.svg" "<svg></svg>"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-frontend" ]
+
+  run_merge_hook
+  assert_denied
+
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-deadlock: ownerless Dockerfile riding with a specialized member spawns the specialized member only" {
+  # The dispatched set here is non-empty (the shell member owns y.sh), so the
+  # hook takes the member-aware path and never reaches its legacy out-of-scope
+  # gate: the Dockerfile is audited by nobody. This is the gate's own
+  # documented behavior (FC-4's ownerless-plus-specialized row), not a defect,
+  # and the oracle mirrors it exactly. Do NOT "fix" the oracle to add the
+  # default member here: that would spawn a member the gate does not require,
+  # breaking the no-useless-spawn half of the invariant.
+  commit_files "Dockerfile" "FROM scratch" ".gaia/scripts/y.sh" "#!/bin/bash"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-maintainer-shell" ]
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
+# --- No useless spawn: withholding a spawned member's marker must deny -----
+
+@test "FC-4 no-useless-spawn: mixed diff denies while only the default member's marker is present" {
+  commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
+  write_marker ""
+  run_merge_hook
+  assert_denied
+}
+
+@test "FC-4 no-useless-spawn: mixed diff denies with only the shell marker, then allows once both are present" {
+  commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
+  write_marker ".code-audit-maintainer-shell"
+  run_merge_hook
+  assert_denied
+
+  write_marker ""
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-useless-spawn: framework-shell-only diff denies with a frontend marker instead of the shell one" {
+  commit_files ".gaia/scripts/y.sh" "#!/bin/bash"
+  write_marker ""
+  run_merge_hook
+  assert_denied
 }

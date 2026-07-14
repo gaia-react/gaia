@@ -236,7 +236,13 @@ Ask once, via `AskUserQuestion`, after the card (the card is the information the
 
 ## Step 8, Publish (commit / PR / merge)
 
-Reached only on **Publish** from Step 7. It does for fitness's heal diff what `/gaia-audit`'s Publish and `/update-deps` Phase 8 do: commit the working-tree changes and drive the PR to merge on a main-branch run, or commit and push on any other branch. The diff touches only out-of-audit-scope surfaces (`.claude/**`, `CLAUDE.md`, `.gitignore`, `.gaia/manifest.json`, `.claude/settings.json`), so the PR clears the merge gate through the PR Merge Workflow's out-of-scope bypass with no `code-audit-frontend` marker.
+Reached only on **Publish** from Step 7. It does for fitness's heal diff what `/gaia-audit`'s Publish and `/update-deps` Phase 8 do: commit the working-tree changes and drive the PR to merge on a main-branch run, or commit and push on any other branch. The diff is expected to touch only out-of-audit-scope surfaces (`.claude/**`, `CLAUDE.md`, `.gitignore`, `.gaia/manifest.json`, `.claude/settings.json`), in which case the PR clears the merge gate through the PR Merge Workflow's out-of-scope bypass with no `code-audit-frontend` marker. Do not assume it: a heal fix can restore a framework surface the roster claims, and `.gitignore` itself is treated as in scope by the gate. Before `gh pr merge`, run
+
+```bash
+bash .gaia/scripts/resolve-audit-spawn.sh
+```
+
+Empty output confirms the bypass applies and no marker is owed. If it names any member, this run's heal diff reached an audited surface: spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR.
 
 Run the Quality Gate (`.claude/rules/quality-gate.md`) first **only** if the applied diff touched a gate-affecting file (`.ts|tsx|js|jsx|mjs|cjs|css` or gate config); a config/docs-only heal has nothing for it to check.
 
@@ -264,7 +270,7 @@ Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH`
    gh pr merge <N> --squash --delete-branch --auto
    ```
 
-   `--auto` queues the merge behind required checks (no marker owed via the bypass). Bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes):
+   `--auto` queues the merge behind required checks (the oracle check above already confirmed whether a marker is owed for this diff). Bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes):
 
    - **`MERGED`** → clean up, then print the merged PR URL:
 
@@ -276,7 +282,7 @@ Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH`
 
    - **still queued** → print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
 
-   Caveat: if the heal edited a nested `CLAUDE.md` under an in-scope path such as `app/`, the out-of-scope bypass no longer covers the diff; follow the PR Merge Workflow's marker handshake like any in-scope PR.
+   Caveat: the oracle check above already covers this. A heal edit to a nested `CLAUDE.md` under an in-scope path such as `app/` is exactly the kind of reached-an-audited-surface diff the oracle detects; if it named a member, the marker handshake ran before this PR was even opened.
 
 ### Any other branch (in-place heal)
 
