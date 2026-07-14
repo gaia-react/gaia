@@ -57,27 +57,16 @@
 #
 # This is heuristic defense-in-depth behind settings.json permissions, not a
 # sandbox. It is the second layer, never the first.
-set -euo pipefail
-
-payload=$(cat)
-cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
-
-[[ -n "$cmd" ]] || exit 0
-
-# Splice backslash-newline continuations before anything else looks at $cmd.
-# Both greps below are line-oriented, so a target on a continuation line carries
-# no `rm` token of its own, no segment is ever extracted for it, and it becomes
-# invisible to the guard, while the byte-identical one-line command is denied.
-# A multi-line `rm -rf \` is idiomatic, not contrived, and the target is a plain
-# literal token, exactly what this guard claims to match.
 #
-# Join with NOTHING, not a space: bash removes the backslash-newline entirely,
-# so a continuation splitting a token mid-word (`$HOM\` + newline + `E`)
-# reassembles into that one token. A space-join would instead cut it into two
-# fragments that match no pattern, which is the bypass rather than the fix. The
-# space that already precedes a normal continuation's backslash is what keeps
-# the token boundary in the idiomatic case, so nothing is lost here.
-cmd=${cmd//\\$'\n'/}
+# LAYOUT. Everything above `main` is a definition: sourcing this file defines the
+# helpers and constants and runs nothing. The executed body lives in `main`,
+# called from the bottom only when the file is run rather than sourced, so a test
+# can source the file and assert an internal helper directly instead of inferring
+# it from an end-to-end verdict. `set -euo pipefail` therefore sits inside `main`,
+# not at the top: at the top, a `source` would push those options onto the
+# *caller's* shell. Nothing above `main` depends on them (function definitions do
+# not execute, and the two assignments cannot fail), so the executed path still
+# sets them before its first real command.
 
 # Neutralize `;`, `&`, and `|` INSIDE quoted spans, rewriting each to a space.
 #
@@ -105,7 +94,9 @@ cmd=${cmd//\\$'\n'/}
 # literally named `r;m`, never as `rm`), so the divergence would surface as a false
 # deny rather than a bypass, but the gate's justification is an equivalence proof
 # and a deletion falsifies it. Do not switch this to a deletion without re-deriving
-# that proof, or dropping the gate with it.
+# that proof, or dropping the gate with it. The proof is asserted directly, on this
+# function, by the position-preserving cases in .gaia/tests/hooks/block-rm-rf.bats:
+# a deletion fails them even though it changes no end-to-end verdict.
 #
 # This only ever WIDENS what gets inspected, so it can add denials and never
 # remove one.
@@ -168,46 +159,6 @@ neutralize_quoted_separators() {
 rm_word="[Rr][\\\"']*[Mm][\\\"']*"
 rm_anchor="(^|[^[:alnum:]_-])${rm_word}[[:space:]]+"
 
-# Only pay for the character walk when it could change an outcome. This hook runs
-# on EVERY Bash call, and the walk is O(n) bash over the command string, so a long
-# inline `git commit -m "…" && git push` would otherwise pay for nothing.
-#
-# All three ingredients are required, and gating on `rm` is equivalence-preserving
-# rather than a heuristic: the walk only ever rewrites `;`, `&`, and `|` to spaces,
-# so it can neither synthesize the letters of `rm` nor remove them, and it neither
-# writes nor deletes a quote or backslash byte. The probe below therefore returns
-# the same verdict on the walked command as on the unwalked one, which makes
-# skipping the walk a no-op by construction, not a judgment call.
-#
-# The probe is the glob spelling of the command-word rule above, and it has to
-# stay in step with it: drop the bytes bash's quote removal drops, then match `rm`
-# case-insensitively. A gate that knows only the literal lowercase spelling skips
-# the walk for `RM -rf ";" $HOME`, segment extraction then stops at the quoted `;`,
-# and `$HOME` is never tokenized, so widening the greps alone leaves this site
-# blind and the whole fix hollow.
-if [[ "${cmd//[\"\'\\]/}" == *[Rr][Mm]* && "$cmd" == *[\"\']* && "$cmd" == *[\;\&\|]* ]]; then
-  cmd=$(neutralize_quoted_separators "$cmd")
-fi
-
-# Short-circuit: only act on commands containing `rm` with `-rf`/`-fr`/`-r -f`/etc.
-#
-# The flag is matched anywhere in the rm segment, not just immediately after
-# `rm`. GNU getopt permutes argv, so `rm $HOME -rf` is exactly `rm -rf $HOME`
-# and deletes home on Linux (CI, devcontainers, Linux adopters); BSD/macOS `rm`
-# does not permute, which is why an operand-first invocation looks harmless when
-# hand-tested on a Mac. Requiring adjacency let both that shape and a leading
-# `--no-preserve-root` exit here, before the deny logic below ever ran.
-#
-# A looser short-circuit is fail-safe, not free. It can only ADD denials, never
-# turn a previously-denied command into an allow, because it decides what to
-# *inspect* and the case arms below decide what to block. It does widen the
-# false-deny surface: `git rm --cached -r .` now denies (the canonical
-# `git rm -r --cached .` already did), which is annoying but safe. Widen this
-# regex only with that asymmetry in mind.
-if ! grep -Eq "${rm_anchor}[^;&|]*(-[a-zA-Z]*[rRfF]|--recursive|--force|--no-preserve-root)" <<<"$cmd"; then
-  exit 0
-fi
-
 deny() {
   jq -n --arg r "$1" '{
     hookSpecificOutput: {
@@ -219,207 +170,280 @@ deny() {
   exit 0
 }
 
-# 1. --no-preserve-root is always denied.
-if grep -Eq -- '--no-preserve-root' <<<"$cmd"; then
-  deny "BLOCKED: rm with --no-preserve-root is forbidden."
-fi
+main() {
+  set -euo pipefail
 
-# 2. Catastrophic targets.
-#    Match an rm token followed (after flags) by one of: /, ~, ~/, \$HOME, ., *, .git, node_modules
-#    We scan every whitespace-separated token after `rm`.
-# Extract the rm-segments: each runs from an `rm` to the next `;`/`&&`/`||`/`|`
-# or end-of-line. EVERY segment is inspected, not just the first: a chained
-# command whose leading `rm` is benign is an ordinary cleanup shape
-# (`rm -rf node_modules && rm -rf dist`), so stopping at the first match let a
-# dangerous target ride along behind a harmless one.
-rm_segments=$(grep -oE "${rm_anchor}[^;&|]*" <<<"$cmd" || true)
-[[ -n "$rm_segments" ]] || exit 0
+  payload=$(cat)
+  cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
 
-# A here-string keeps the loop in the current shell, so deny()'s exit is the
-# hook's exit rather than a subshell's.
-while IFS= read -r rm_segment; do
-  [[ -n "$rm_segment" ]] || continue
+  [[ -n "$cmd" ]] || exit 0
 
-  # Tokenize and inspect non-flag args.
-  read -r -a tokens <<<"$rm_segment"
-  # tokens is provably non-empty here (rm_segment is guarded non-empty above and
-  # always carries the `rm` token), but guard the expansion anyway so the
-  # array-guard lint stays a zero-exception gate: on bash 3.2 a bare "${tokens[@]}"
-  # over an empty array aborts under `set -u`.
-  for tok in ${tokens[@]+"${tokens[@]}"}; do
-    # Skip flag tokens.
-    [[ "$tok" == -* ]] && continue
+  # Splice backslash-newline continuations before anything else looks at $cmd.
+  # Both greps below are line-oriented, so a target on a continuation line carries
+  # no `rm` token of its own, no segment is ever extracted for it, and it becomes
+  # invisible to the guard, while the byte-identical one-line command is denied.
+  # A multi-line `rm -rf \` is idiomatic, not contrived, and the target is a plain
+  # literal token, exactly what this guard claims to match.
+  #
+  # Join with NOTHING, not a space: bash removes the backslash-newline entirely,
+  # so a continuation splitting a token mid-word (`$HOM\` + newline + `E`)
+  # reassembles into that one token. A space-join would instead cut it into two
+  # fragments that match no pattern, which is the bypass rather than the fix. The
+  # space that already precedes a normal continuation's backslash is what keeps
+  # the token boundary in the idiomatic case, so nothing is lost here.
+  cmd=${cmd//\\$'\n'/}
 
-    # Drop every quote character before matching. `read -r -a` word-splits but
-    # does not remove quotes, so the token for `rm -rf "$HOME"` is the literal
-    # 7-character "$HOME" (quotes included) and matches none of the patterns
-    # below. Quoting the expansion is the *careful* way to write the command, so
-    # a quote-blind guard misses precisely the well-written form and catches only
-    # the sloppy one. Removing all quotes rather than just a surrounding pair also
-    # covers `rm -rf "$HOME"/projects`, where the quotes sit mid-token. A path
-    # whose real name contains a quote character is not a case worth protecting
-    # here: the cost is a false deny, which fails safe.
-    tok=${tok//\"/}
-    tok=${tok//\'/}
-    # Backslash goes for the same reason, and it is the same defect: bash strips
-    # a backslash before an ordinary character, so `\/` reassembles into `/` and
-    # hands root to rm while matching no pattern here. Stripping quotes but not
-    # escapes would be half a fix.
-    tok=${tok//\\/}
-    [[ -n "$tok" ]] || continue
+  # Only pay for the character walk when it could change an outcome. This hook runs
+  # on EVERY Bash call, and the walk is O(n) bash over the command string, so a long
+  # inline `git commit -m "…" && git push` would otherwise pay for nothing.
+  #
+  # All three ingredients are required, and gating on `rm` is equivalence-preserving
+  # rather than a heuristic: the walk only ever rewrites `;`, `&`, and `|` to spaces,
+  # so it can neither synthesize the letters of `rm` nor remove them, and it neither
+  # writes nor deletes a quote or backslash byte. The probe below therefore returns
+  # the same verdict on the walked command as on the unwalked one, which makes
+  # skipping the walk a no-op by construction, not a judgment call.
+  #
+  # The probe is the glob spelling of the command-word rule above, and it has to
+  # stay in step with it: drop the bytes bash's quote removal drops, then match `rm`
+  # case-insensitively. A gate that knows only the literal lowercase spelling skips
+  # the walk for `RM -rf ";" $HOME`, segment extraction then stops at the quoted `;`,
+  # and `$HOME` is never tokenized, so widening the greps alone leaves this site
+  # blind and the whole fix hollow.
+  if [[ "${cmd//[\"\'\\]/}" == *[Rr][Mm]* && "$cmd" == *[\"\']* && "$cmd" == *[\;\&\|]* ]]; then
+    cmd=$(neutralize_quoted_separators "$cmd")
+  fi
 
-    # Skip the command word itself, recognized the way the anchor above recognizes
-    # it: AFTER quote and backslash removal, and case-insensitively. Matching it
-    # here by its literal lowercase spelling would leave a fourth site reading the
-    # word as it is typed rather than as bash resolves it, so `RM` and `r""m` would
-    # fall through and be judged as if they were targets.
-    #
-    # That fall-through is harmless only for as long as the normalized word `rm`
-    # matches no deny arm and lands on the catch-all below, which is an invisible
-    # constraint to hang a guard on: it silently binds anyone who later adds an arm.
-    # Skipping the word as a word retires the constraint instead of relying on it.
-    [[ "$tok" == [Rr][Mm] ]] && continue
+  # Short-circuit: only act on commands containing `rm` with `-rf`/`-fr`/`-r -f`/etc.
+  #
+  # The flag is matched anywhere in the rm segment, not just immediately after
+  # `rm`. GNU getopt permutes argv, so `rm $HOME -rf` is exactly `rm -rf $HOME`
+  # and deletes home on Linux (CI, devcontainers, Linux adopters); BSD/macOS `rm`
+  # does not permute, which is why an operand-first invocation looks harmless when
+  # hand-tested on a Mac. Requiring adjacency let both that shape and a leading
+  # `--no-preserve-root` exit here, before the deny logic below ever ran.
+  #
+  # A looser short-circuit is fail-safe, not free. It can only ADD denials, never
+  # turn a previously-denied command into an allow, because it decides what to
+  # *inspect* and the case arms below decide what to block. It does widen the
+  # false-deny surface: `git rm --cached -r .` now denies (the canonical
+  # `git rm -r --cached .` already did), which is annoying but safe. Widen this
+  # regex only with that asymmetry in mind.
+  if ! grep -Eq "${rm_anchor}[^;&|]*(-[a-zA-Z]*[rRfF]|--recursive|--force|--no-preserve-root)" <<<"$cmd"; then
+    exit 0
+  fi
 
-    # `$PWD` spells the cwd, so `$PWD/.git` IS `.git` and a bare `$PWD` IS `.`.
-    # Rewrite the prefix and let the arms below judge whatever is left, rather
-    # than growing a parallel set of $PWD arms that would drift from them. This
-    # is why `$PWD/dist` stays on the dist whitelist while `$PWD/.git` reaches
-    # the .git arm: denying every $PWD path would be the easy over-fix.
-    case "$tok" in
-      # `$PWD/` with nothing after it is still the cwd. It has to be caught here,
-      # ahead of the prefix strips below, or the strip yields an empty token that
-      # falls through to the catch-all and allows it.
-      '$PWD'|'${PWD}'|'$PWD/'|'${PWD}/') tok='.' ;;
-      '$PWD/'*) tok=${tok#'$PWD/'} ;;
-      '${PWD}/'*) tok=${tok#'${PWD}/'} ;;
-    esac
-    [[ -n "$tok" ]] || continue
+  # 1. --no-preserve-root is always denied.
+  if grep -Eq -- '--no-preserve-root' <<<"$cmd"; then
+    deny "BLOCKED: rm with --no-preserve-root is forbidden."
+  fi
 
-    # Normalize the way bash reads the path, so every arm below sees one spelling
-    # of a target rather than an unbounded family of them. Bash collapses `//` to
-    # `/`, and a `./` prefix is cosmetic and repeatable, so `.*`, `./.*`,
-    # `././.*`, and `.//.*` are all the same cwd dotfile glob, and `.//.git` is
-    # `.git`. Stripping a single `./` would close only the spelling people reach
-    # for by accident and leave every evasion spelling of it open, which is the
-    # half-fix the arms below exist to avoid.
-    #
-    # `./` alone is left intact (the strip requires something after the slash),
-    # so the cwd arm still owns it rather than reducing it to an empty token.
-    while [[ "$tok" == *//* ]]; do
-      tok=${tok//\/\//\/}
-    done
-    while [[ "$tok" == ./?* ]]; do
-      tok=${tok#./}
-    done
+  # 2. Catastrophic targets.
+  #    Match an rm token followed (after flags) by one of: /, ~, ~/, \$HOME, ., *, .git, node_modules
+  #    We scan every whitespace-separated token after `rm`.
+  # Extract the rm-segments: each runs from an `rm` to the next `;`/`&&`/`||`/`|`
+  # or end-of-line. EVERY segment is inspected, not just the first: a chained
+  # command whose leading `rm` is benign is an ordinary cleanup shape
+  # (`rm -rf node_modules && rm -rf dist`), so stopping at the first match let a
+  # dangerous target ride along behind a harmless one.
+  rm_segments=$(grep -oE "${rm_anchor}[^;&|]*" <<<"$cmd" || true)
+  [[ -n "$rm_segments" ]] || exit 0
 
-    # Unscoped expansions in the FIRST path segment. These expand in the cwd, so
-    # they sweep up `.git` and `.claude`.
-    #
-    # `rm -rf .*` is the one hole here that is plausibly an ACCIDENT rather than
-    # evasion. It sits precisely between `rm -rf .` and `rm -rf *`, both denied,
-    # and anyone reaching for `.*` is trying to clear dotfiles, which is exactly
-    # when `.git` is the thing they least want to lose. `rm` refuses `.` and
-    # `..`, so everything else goes: the repo history and the whole `.claude`
-    # config. The `.[!.]*` and `..?*` idioms people reach for to skip `.` and
-    # `..` still match `.git`, so they are the same hole, not a safer spelling.
-    #
-    # Only the first segment counts. A glob deeper in the path expands inside a
-    # named directory, which is what makes the whitelisted `.gaia/local/plans/*`
-    # an ordinary cleanup rather than this. The normalization above already
-    # removed any `./` prefix, so the first segment is whatever precedes the
-    # first slash.
-    first_seg=${tok%%/*}
-    if [[ "$first_seg" == .* && "$first_seg" == *[*?\[]* ]]; then
-      deny "BLOCKED: rm -rf of a dotfile glob ('$tok') is forbidden, it removes .git and .claude."
-    fi
+  # A here-string keeps the loop in the current shell, so deny()'s exit is the
+  # hook's exit rather than a subshell's.
+  while IFS= read -r rm_segment; do
+    [[ -n "$rm_segment" ]] || continue
 
-    # `{.,}*` expands to `.* *`, the dotfile glob and the unscoped glob at once,
-    # spelled so that neither arm below sees either one. A comma is what makes a
-    # brace group an expansion list: `${HOME}` has none, so the parameter-
-    # expansion arms below still own it. The `*` requirement keeps a scoped
-    # `dist/{a,b}` allowed, and anchoring on the first segment keeps the brace
-    # group that reaches the cwd distinct from one nested under a named dir.
-    if [[ "$first_seg" == *'{'*','*'}'* && "$tok" == *'*'* ]]; then
-      deny "BLOCKED: rm -rf of an unscoped brace glob ('$tok') is forbidden, it removes .git and .claude."
-    fi
+    # Tokenize and inspect non-flag args.
+    read -r -a tokens <<<"$rm_segment"
+    # tokens is provably non-empty here (rm_segment is guarded non-empty above and
+    # always carries the `rm` token), but guard the expansion anyway so the
+    # array-guard lint stays a zero-exception gate: on bash 3.2 a bare "${tokens[@]}"
+    # over an empty array aborts under `set -u`.
+    for tok in ${tokens[@]+"${tokens[@]}"}; do
+      # Skip flag tokens.
+      [[ "$tok" == -* ]] && continue
 
-    # SC2088 (tilde does not expand in quotes) is disabled for this whole case: the
-    # `~` / `$HOME` patterns below are literal match targets, not paths to expand.
-    # They are tested against the raw command string, where the user's unexpanded
-    # token is exactly what must be caught; expanding here would break the guard.
-    # The directive has to sit in front of the `case` itself, not the branch (SC1124).
-    # shellcheck disable=SC2088
-    case "$tok" in
-      /|/*)
-        # Allow specific safe absolute prefixes, currently none whitelisted absolutely.
-        deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
-        ;;
-      # The brace form is matched alongside the bare one. `${HOME}` is if anything
-      # the more careful spelling of the expansion, and leaving it out reproduced
-      # the exact bug the quote-strip above fixes: the guard catching only the
-      # casual spelling of the target and missing the deliberate one. Neighbours
-      # like ${HOMEBREW_PREFIX} do not match, the arms are anchored, not prefixes.
-      # The backslash-escaped arms (\$HOME, \${HOME}) are unreachable now that the
-      # strip above removes backslashes before matching. They stay as belt-and-braces.
-      # Do not read them as proof the strip is redundant and delete the strip: the
-      # strip is what catches \/ and \.git, which have no arms of their own.
+      # Drop every quote character before matching. `read -r -a` word-splits but
+      # does not remove quotes, so the token for `rm -rf "$HOME"` is the literal
+      # 7-character "$HOME" (quotes included) and matches none of the patterns
+      # below. Quoting the expansion is the *careful* way to write the command, so
+      # a quote-blind guard misses precisely the well-written form and catches only
+      # the sloppy one. Removing all quotes rather than just a surrounding pair also
+      # covers `rm -rf "$HOME"/projects`, where the quotes sit mid-token. A path
+      # whose real name contains a quote character is not a case worth protecting
+      # here: the cost is a false deny, which fails safe.
+      tok=${tok//\"/}
+      tok=${tok//\'/}
+      # Backslash goes for the same reason, and it is the same defect: bash strips
+      # a backslash before an ordinary character, so `\/` reassembles into `/` and
+      # hands root to rm while matching no pattern here. Stripping quotes but not
+      # escapes would be half a fix.
+      tok=${tok//\\/}
+      [[ -n "$tok" ]] || continue
+
+      # Skip the command word itself, recognized the way the anchor above recognizes
+      # it: AFTER quote and backslash removal, and case-insensitively. Matching it
+      # here by its literal lowercase spelling would leave a fourth site reading the
+      # word as it is typed rather than as bash resolves it, so `RM` and `r""m` would
+      # fall through and be judged as if they were targets.
       #
-      # The tilde arm is a prefix match, not the three literals `~`, `~/`, `~/…`,
-      # because `~user` is a home directory too: `~root` names root's home and
-      # matched none of the literal arms. A `~foo` that is not a real user stays
-      # literal in bash and removes a directory named `~foo`, so denying it is a
-      # false deny, which fails safe.
-      '~'*|'$HOME'|'$HOME/'*|'\$HOME'|'\$HOME/'*|'${HOME}'|'${HOME}/'*|'\${HOME}'|'\${HOME}/'*)
-        deny "BLOCKED: rm -rf of \$HOME / ~ is forbidden."
-        ;;
-      '.'|'./')
-        deny "BLOCKED: rm -rf of cwd ('.') is forbidden."
-        ;;
-      '*'|'./*')
-        deny "BLOCKED: rm -rf of unscoped glob ('*') is forbidden."
-        ;;
-      .git|./.git|.git/*|./.git/*)
-        deny "BLOCKED: rm -rf of .git is forbidden."
-        ;;
-      # `.claude` is `.git`'s peer, not a lesser sibling: it is the whole Claude
-      # configuration (hooks, skills, agents, rules, settings.json), it sits in
-      # the cwd of every session, and losing it is unrecoverable in the same way.
-      # The dotfile-glob and brace-glob arms above already deny the globs that
-      # sweep it up, and they name it in their own deny text, so the direct
-      # spelling of it denies here rather than being the one shape that walks past
-      # a guard advertising the target.
-      .claude|./.claude|.claude/*|./.claude/*)
-        deny "BLOCKED: rm -rf of .claude is forbidden, it removes the hooks, skills, agents, and settings."
-        ;;
-      node_modules|./node_modules|*/node_modules|node_modules/*)
-        deny "BLOCKED: rm -rf of node_modules is forbidden, use 'pnpm store prune' or remove deliberately."
-        ;;
-      .gaia/local/plans/*|./.gaia/local/plans/*)
-        : # whitelisted
-        ;;
-      .gaia/local/specs/*|./.gaia/local/specs/*)
-        : # whitelisted (colocated plan scratch under specs/<SPEC-ID>/plan)
-        ;;
-      .gaia/local/audit/*|./.gaia/local/audit/*)
-        : # whitelisted
-        ;;
-      .gaia/local/handoff/*|./.gaia/local/handoff/*)
-        : # whitelisted
-        ;;
-      .gaia/local/cache/*|./.gaia/local/cache/*)
-        : # whitelisted
-        ;;
-      dist|dist/*|./dist|./dist/*)
-        : # whitelisted
-        ;;
-      build|build/*|./build|./build/*)
-        : # whitelisted
-        ;;
-      *)
-        : # unknown relative path, let it through; permissions / other hooks may still gate it.
-        ;;
-    esac
-  done
-done <<<"$rm_segments"
+      # That fall-through is harmless only for as long as the normalized word `rm`
+      # matches no deny arm and lands on the catch-all below, which is an invisible
+      # constraint to hang a guard on: it silently binds anyone who later adds an arm.
+      # Skipping the word as a word retires the constraint instead of relying on it.
+      [[ "$tok" == [Rr][Mm] ]] && continue
 
-exit 0
+      # `$PWD` spells the cwd, so `$PWD/.git` IS `.git` and a bare `$PWD` IS `.`.
+      # Rewrite the prefix and let the arms below judge whatever is left, rather
+      # than growing a parallel set of $PWD arms that would drift from them. This
+      # is why `$PWD/dist` stays on the dist whitelist while `$PWD/.git` reaches
+      # the .git arm: denying every $PWD path would be the easy over-fix.
+      case "$tok" in
+        # `$PWD/` with nothing after it is still the cwd. It has to be caught here,
+        # ahead of the prefix strips below, or the strip yields an empty token that
+        # falls through to the catch-all and allows it.
+        '$PWD'|'${PWD}'|'$PWD/'|'${PWD}/') tok='.' ;;
+        '$PWD/'*) tok=${tok#'$PWD/'} ;;
+        '${PWD}/'*) tok=${tok#'${PWD}/'} ;;
+      esac
+      [[ -n "$tok" ]] || continue
+
+      # Normalize the way bash reads the path, so every arm below sees one spelling
+      # of a target rather than an unbounded family of them. Bash collapses `//` to
+      # `/`, and a `./` prefix is cosmetic and repeatable, so `.*`, `./.*`,
+      # `././.*`, and `.//.*` are all the same cwd dotfile glob, and `.//.git` is
+      # `.git`. Stripping a single `./` would close only the spelling people reach
+      # for by accident and leave every evasion spelling of it open, which is the
+      # half-fix the arms below exist to avoid.
+      #
+      # `./` alone is left intact (the strip requires something after the slash),
+      # so the cwd arm still owns it rather than reducing it to an empty token.
+      while [[ "$tok" == *//* ]]; do
+        tok=${tok//\/\//\/}
+      done
+      while [[ "$tok" == ./?* ]]; do
+        tok=${tok#./}
+      done
+
+      # Unscoped expansions in the FIRST path segment. These expand in the cwd, so
+      # they sweep up `.git` and `.claude`.
+      #
+      # `rm -rf .*` is the one hole here that is plausibly an ACCIDENT rather than
+      # evasion. It sits precisely between `rm -rf .` and `rm -rf *`, both denied,
+      # and anyone reaching for `.*` is trying to clear dotfiles, which is exactly
+      # when `.git` is the thing they least want to lose. `rm` refuses `.` and
+      # `..`, so everything else goes: the repo history and the whole `.claude`
+      # config. The `.[!.]*` and `..?*` idioms people reach for to skip `.` and
+      # `..` still match `.git`, so they are the same hole, not a safer spelling.
+      #
+      # Only the first segment counts. A glob deeper in the path expands inside a
+      # named directory, which is what makes the whitelisted `.gaia/local/plans/*`
+      # an ordinary cleanup rather than this. The normalization above already
+      # removed any `./` prefix, so the first segment is whatever precedes the
+      # first slash.
+      first_seg=${tok%%/*}
+      if [[ "$first_seg" == .* && "$first_seg" == *[*?\[]* ]]; then
+        deny "BLOCKED: rm -rf of a dotfile glob ('$tok') is forbidden, it removes .git and .claude."
+      fi
+
+      # `{.,}*` expands to `.* *`, the dotfile glob and the unscoped glob at once,
+      # spelled so that neither arm below sees either one. A comma is what makes a
+      # brace group an expansion list: `${HOME}` has none, so the parameter-
+      # expansion arms below still own it. The `*` requirement keeps a scoped
+      # `dist/{a,b}` allowed, and anchoring on the first segment keeps the brace
+      # group that reaches the cwd distinct from one nested under a named dir.
+      if [[ "$first_seg" == *'{'*','*'}'* && "$tok" == *'*'* ]]; then
+        deny "BLOCKED: rm -rf of an unscoped brace glob ('$tok') is forbidden, it removes .git and .claude."
+      fi
+
+      # SC2088 (tilde does not expand in quotes) is disabled for this whole case: the
+      # `~` / `$HOME` patterns below are literal match targets, not paths to expand.
+      # They are tested against the raw command string, where the user's unexpanded
+      # token is exactly what must be caught; expanding here would break the guard.
+      # The directive has to sit in front of the `case` itself, not the branch (SC1124).
+      # shellcheck disable=SC2088
+      case "$tok" in
+        /|/*)
+          # Allow specific safe absolute prefixes, currently none whitelisted absolutely.
+          deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
+          ;;
+        # The brace form is matched alongside the bare one. `${HOME}` is if anything
+        # the more careful spelling of the expansion, and leaving it out reproduced
+        # the exact bug the quote-strip above fixes: the guard catching only the
+        # casual spelling of the target and missing the deliberate one. Neighbours
+        # like ${HOMEBREW_PREFIX} do not match, the arms are anchored, not prefixes.
+        # The backslash-escaped arms (\$HOME, \${HOME}) are unreachable now that the
+        # strip above removes backslashes before matching. They stay as belt-and-braces.
+        # Do not read them as proof the strip is redundant and delete the strip: the
+        # strip is what catches \/ and \.git, which have no arms of their own.
+        #
+        # The tilde arm is a prefix match, not the three literals `~`, `~/`, `~/…`,
+        # because `~user` is a home directory too: `~root` names root's home and
+        # matched none of the literal arms. A `~foo` that is not a real user stays
+        # literal in bash and removes a directory named `~foo`, so denying it is a
+        # false deny, which fails safe.
+        '~'*|'$HOME'|'$HOME/'*|'\$HOME'|'\$HOME/'*|'${HOME}'|'${HOME}/'*|'\${HOME}'|'\${HOME}/'*)
+          deny "BLOCKED: rm -rf of \$HOME / ~ is forbidden."
+          ;;
+        '.'|'./')
+          deny "BLOCKED: rm -rf of cwd ('.') is forbidden."
+          ;;
+        '*'|'./*')
+          deny "BLOCKED: rm -rf of unscoped glob ('*') is forbidden."
+          ;;
+        .git|./.git|.git/*|./.git/*)
+          deny "BLOCKED: rm -rf of .git is forbidden."
+          ;;
+        # `.claude` is `.git`'s peer, not a lesser sibling: it is the whole Claude
+        # configuration (hooks, skills, agents, rules, settings.json), it sits in
+        # the cwd of every session, and losing it is unrecoverable in the same way.
+        # The dotfile-glob and brace-glob arms above already deny the globs that
+        # sweep it up, and they name it in their own deny text, so the direct
+        # spelling of it denies here rather than being the one shape that walks past
+        # a guard advertising the target.
+        .claude|./.claude|.claude/*|./.claude/*)
+          deny "BLOCKED: rm -rf of .claude is forbidden, it removes the hooks, skills, agents, and settings."
+          ;;
+        node_modules|./node_modules|*/node_modules|node_modules/*)
+          deny "BLOCKED: rm -rf of node_modules is forbidden, use 'pnpm store prune' or remove deliberately."
+          ;;
+        .gaia/local/plans/*|./.gaia/local/plans/*)
+          : # whitelisted
+          ;;
+        .gaia/local/specs/*|./.gaia/local/specs/*)
+          : # whitelisted (colocated plan scratch under specs/<SPEC-ID>/plan)
+          ;;
+        .gaia/local/audit/*|./.gaia/local/audit/*)
+          : # whitelisted
+          ;;
+        .gaia/local/handoff/*|./.gaia/local/handoff/*)
+          : # whitelisted
+          ;;
+        .gaia/local/cache/*|./.gaia/local/cache/*)
+          : # whitelisted
+          ;;
+        dist|dist/*|./dist|./dist/*)
+          : # whitelisted
+          ;;
+        build|build/*|./build|./build/*)
+          : # whitelisted
+          ;;
+        *)
+          : # unknown relative path, let it through; permissions / other hooks may still gate it.
+          ;;
+      esac
+    done
+  done <<<"$rm_segments"
+
+  exit 0
+}
+
+# Run the body only when EXECUTED. A `source` stops here with the helpers above
+# defined and stdin untouched, which is what lets the suite assert
+# neutralize_quoted_separators directly: its position-preserving invariant is what
+# makes the walk's fast-path gate a no-op, and no end-to-end payload can reach it
+# (substitution and deletion agree on every verdict a caller could ever provoke).
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
