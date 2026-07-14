@@ -92,6 +92,13 @@ render() {
       desc="$(frag_line "^- option \`$key\`, description: ")"
       if [ "$key" = "$lead" ]; then
         label="$label (Recommended)"
+        # The `Default. ` prefix is applied at one site, and only to the branch
+        # option when it leads. Baked into the literal it would survive into
+        # prefer-worktree, where it would contradict the marker by calling the
+        # non-recommended option the default.
+        if [ "$key" = branch ]; then
+          desc="Default. $desc"
+        fi
       fi
       printf 'option%s: %s | %s\n' "$n" "$label" "$desc"
     done
@@ -139,6 +146,13 @@ render_for_policy() {
       desc="$(frag_line "^- option \`$key\`, description: ")"
       if [ "$key" = "$lead" ]; then
         label="$label (Recommended)"
+        # The `Default. ` prefix is applied at one site, and only to the branch
+        # option when it leads. Baked into the literal it would survive into
+        # prefer-worktree, where it would contradict the marker by calling the
+        # non-recommended option the default.
+        if [ "$key" = branch ]; then
+          desc="Default. $desc"
+        fi
       fi
       printf 'option%s: %s | %s\n' "$n" "$label" "$desc"
     done
@@ -409,6 +423,28 @@ render_for_policy() {
   # policy-branch order/lead pairs now exist.
   count="$(grep -oF '(Recommended)' "$FRAG" | wc -l | tr -d ' ')"
   [ "$count" = 1 ]
+}
+
+@test "no option's DESCRIPTION carries a recommendation signal the marker does not own" {
+  # The marker assertions above only inspect labels. A recommendation word baked
+  # into a description would sail past them: under prefer-worktree the branch
+  # option is presented second, unmarked, and a description opening with
+  # `Default.` would tell the user the non-recommended option is the default, on
+  # every run. Inspect past the `|` separator, where the descriptions live.
+  worktree_rendered="$(render_for_policy "prefer-worktree" "this plan's work" "the orchestrator" "this plan" "another plan")"
+
+  descriptions="$(printf '%s\n' "$worktree_rendered" | grep '^option' | sed -E 's/^[^|]*\| //')"
+  printf '%s\n' "$descriptions" | grep -qiE 'default\.|recommended' && return 1
+
+  # ...while prefer-branch, where the branch option genuinely IS the default and
+  # leads, still says so. The prefix is policy-driven, not deleted.
+  branch_rendered="$(render_for_policy "prefer-branch" "this plan's work" "the orchestrator" "this plan" "another plan")"
+  printf '%s\n' "$branch_rendered" \
+    | grep -qF 'option1: Create a feature branch in place (Recommended) | Default. Branch is cut from HEAD' || return 1
+
+  # The prefix is never baked into the description literal, so it cannot leak
+  # into a policy that does not lead with the branch option.
+  ! grep -qE '^- option `branch`, description: `Default\. ' "$FRAG"
 }
 
 @test "UAT-016: already-inside-a-linked-worktree detection uses --git-common-dir + --show-toplevel and runs first" {

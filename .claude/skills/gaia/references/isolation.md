@@ -113,7 +113,7 @@ and set `RESOLVED_MODE=feature-branch`. On the worktree answer, set `RESOLVED_MO
 - question: `On main. How should {{SUBJECT}} be isolated?`
 - header: `Branch mode`
 - option `branch`, label: `Create a feature branch in place`
-- option `branch`, description: `Default. Branch is cut from HEAD and {{WORKER}} works in the current checkout. Simple, predictable, safe.`
+- option `branch`, description: `Branch is cut from HEAD and {{WORKER}} works in the current checkout. Simple, predictable, safe.`
 - option `worktree`, label: `Create a git worktree`
 - option `worktree`, description: `Gives {{OWNER}} its own separate working copy, cut from main under .claude/worktrees/. You can keep working on your current branch, or run {{SIBLING}}, at the same time without the two colliding.`
 
@@ -123,6 +123,13 @@ Present the two options in the order the resolved `POLICY` names below (the `alw
 the `prefer-branch` row). Append the marker ` (Recommended)` to the **lead** option's label, and to no other
 option's. This is the one and only site that applies the marker; it is never baked into a label literal, so
 which option leads can change without editing a literal.
+
+Prefix the `branch` option's description with `Default. ` when, and only when, `branch` is the **lead**
+option. This is the one and only site that applies the prefix; like the marker, it is never baked into a
+description literal. The prompt then carries exactly one recommendation signal: under `prefer-branch` the
+branch option both leads and calls itself the default, which is what it renders today; under
+`prefer-worktree` the worktree option leads and the branch option no longer contradicts it by claiming to be
+the default.
 
 ##### `prefer-branch` (also the default: absent key, unreadable config, missing file, unrecognized value)
 
