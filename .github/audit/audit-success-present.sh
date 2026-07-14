@@ -13,8 +13,10 @@
 #   reverts to pending, `gh pr merge` is rejected by branch protection, nothing
 #   re-posts, and the gate stays shut until a human re-runs the producer by hand.
 #
-#   Every GAIA-Audit stamp step in .github/workflows/code-review-audit.yml calls
-#   this before posting `pending`, and stands down when it answers 0 or 2.
+#   Every step in .github/workflows/code-review-audit.yml that POSTs `pending`
+#   calls this first -- the three stamp steps AND the local-mode stand-down --
+#   and each posts `pending` ONLY on a definitive 1, standing down on every other
+#   exit. See "Exit codes" below for why the test is `-ne 1` and not `-eq 2`.
 #
 # Usage
 #   .github/audit/audit-success-present.sh <sha> <tree-sha>
@@ -32,14 +34,34 @@
 #      content; the caller must not overwrite it.
 #   1  Definitively NOT live (no GAIA-Audit success for this tree). The caller
 #      proceeds to post `pending` as normal.
-#   2  Could NOT ask: the status read failed (auth blip, rate limit, network).
-#      Callers must NEVER collapse 2 into 1. Posting `pending` over a status we
-#      failed to read is precisely the clobber this guard exists to prevent, and
-#      it would reintroduce the bug on exactly the flaky runs where it is hardest
-#      to diagnose. Standing down instead still fails CLOSED: an absent required
-#      check blocks the merge just as a `pending` one does.
-#   2  Also returned on a usage error (missing argument), for the same
-#      fail-closed reason: an unanswerable question is never "no success live".
+#   2  Could NOT ask. Callers must NEVER collapse 2 into 1. Posting `pending`
+#      over a status we failed to read is precisely the clobber this guard exists
+#      to prevent, and it would reintroduce the bug on exactly the flaky runs
+#      where it is hardest to diagnose. Standing down instead still fails CLOSED:
+#      an absent required check blocks the merge just as a `pending` one does.
+#
+#      There are exactly FOUR ways to be unable to ask, and all four exit 2. This
+#      list is exhaustive by design: a door that is not named here is a door the
+#      next reader does not know to keep shut, and each has a regression lock in
+#      .github/audit/tests/ci-status-member-gate.bats pinning it to 2.
+#
+#        - A usage error (either argument missing). An empty tree would make the
+#          match below succeed against anything, standing the gate down on a
+#          status that vouches for nothing.
+#        - `gh` is not installed, so the status cannot be read at all.
+#        - The repo slug does not resolve: $GITHUB_REPOSITORY is unset (i.e. we
+#          are outside Actions) AND the `gh repo view` fallback yields nothing, so
+#          there is no repo to query.
+#        - The status read itself failed (auth blip, rate limit, network).
+#
+#   Test for a definitive 1, never for "not 0 and not 2". The exit space is open:
+#   the INVOCATION can fail outside this contract -- most importantly 127 when
+#   this file is absent or unreadable, which is even more "could not ask" than a
+#   2 -- and a caller that enumerates the stand-down codes lets every unenumerated
+#   one fall through and POST `pending` over a live success. That is the same
+#   collapse the 2 contract forbids, arriving by a different door, and it is
+#   loudest exactly when this guard is broken or missing. Inverting the test makes
+#   standing down the default and the POST the exception.
 #
 # Notes
 #   - The COMBINED-status endpoint (/commits/<sha>/status) is deliberate: it

@@ -692,8 +692,19 @@ jobs:
           # guard exists to prevent, and it would reintroduce the bug on exactly
           # the flaky runs where it is hardest to diagnose. Standing down on 2
           # still fails CLOSED: an absent required check blocks the merge just as
-          # a `pending` one does. All three stamp steps below consult the one
-          # script rather than each carrying a copy of the predicate.
+          # a `pending` one does. All FOUR steps that POST `pending` (the three
+          # stamp steps and the local-mode stand-down) consult the one script
+          # rather than each carrying a copy of the predicate.
+          #
+          # Every caller therefore tests for a DEFINITIVE 1 before posting, never
+          # for "not 0 and not 2". The exit space is open: the invocation itself
+          # can fail outside the script's own contract -- 127 when the file is
+          # absent or unreadable, a signal death, some exit code a future version
+          # adds -- and each of those is MORE unanswerable than a 2, not less. A
+          # caller that enumerates the stand-down codes lets every unenumerated
+          # one fall through to the POST, which silently restores the clobber on
+          # exactly the runs where the guard is broken. Inverting the test makes
+          # the stand-down the default and the POST the exception.
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           if [ -n "$pending" ]; then
             tree_sha="$(git rev-parse "${AUDIT_SHA}^{tree}")"
@@ -702,8 +713,8 @@ jobs:
               echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
               exit 0
             fi
-            if [ "$_live" -eq 2 ]; then
-              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read; standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
+            if [ "$_live" -ne 1 ]; then
+              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
               exit 0
             fi
             echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
@@ -825,8 +836,11 @@ jobs:
           # local member-aware producer posts once every dispatched member has
           # cleared, and the merge gate would never re-open on its own. Skip the
           # POST when a GAIA-Audit success for THIS EXACT TREE is already live.
-          # Exit 2 means the status could not be READ, which must not be collapsed
-          # into "no success live"; the first stamp step carries the rationale.
+          # Post `pending` ONLY on a definitive 1 ("no success live"). Every other
+          # exit is unanswerable and stands down -- 2 ("could not ask"), 127 (the
+          # guard script absent), anything else -- because collapsing an
+          # unanswerable read into "no success live" is the clobber this guard
+          # exists to prevent; the first stamp step carries the full rationale.
           # $tree_sha is already resolved above, where it keyed the marker lookup.
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           if [ -n "$pending" ]; then
@@ -835,8 +849,8 @@ jobs:
               echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
               exit 0
             fi
-            if [ "$_live" -eq 2 ]; then
-              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read; standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
+            if [ "$_live" -ne 1 ]; then
+              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
               exit 0
             fi
             echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
@@ -897,11 +911,52 @@ jobs:
           # success-stamp paths and never reach here, so exactly one terminal
           # status lands per run.
           head_sha="$(git rev-parse HEAD)"
+
+          # Non-clobbering pending POST, exactly as the three stamp steps above
+          # do it -- and this is the step where the clobber bites HARDEST, not
+          # least. Local mode is the common maintainer path, and this step's `if:`
+          # depends only on the label gate, chore-deps, has_source, self_modified
+          # and should_run: NONE of those change once a `success` is live. The
+          # workflow also triggers on `labeled`/`unlabeled`, which re-run it on
+          # the SAME head sha with no new push. So: the author runs the audit
+          # locally, every dispatched member clears, post-audit-status.sh posts
+          # `success` -- and then any label touched on the PR re-fires this step,
+          # which unguarded overwrites that success with `pending`. Branch
+          # protection then rejects the merge and nothing re-posts, so the gate
+          # stays shut until a human re-runs the producer by hand.
+          #
+          # The tree, not the sha, is the marker's identity: a success naming an
+          # OLDER tree vouches for content that is no longer what would merge and
+          # correctly does NOT stand this step down. Nothing is pushed on this
+          # path (CI does not run the audit here), so the runner's HEAD is the
+          # pushed head and its tree is the tree that would merge.
+          #
+          # Post `pending` ONLY on a definitive 1 ("no success live"); stand down
+          # on 0, on 2 ("could not ask"), and on every other exit (127 when the
+          # guard script is absent, and anything else). Standing down fails
+          # CLOSED: with no status posted the required GAIA-Audit check is absent,
+          # which blocks the merge just as a `pending` one does. The first stamp
+          # step carries the full rationale.
+          tree_sha="$(git rev-parse "${head_sha}^{tree}")"
+          _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${tree_sha}" || _live=$?
+          if [ "$_live" -eq 0 ]; then
+            echo "code-review-audit: local mode, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
+            exit 0
+          fi
+          if [ "$_live" -ne 1 ]; then
+            echo "code-review-audit: local mode, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
+            exit 0
+          fi
+
+          # Non-fatal, like the three sibling pending POSTs: a transient POST
+          # failure must not red an otherwise-green job. If it fails no status
+          # lands, the required check stays unfulfilled, and the button stays
+          # shut. Fail-safe in every direction.
           gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
             --method POST \
             --field state=pending \
             --field context=GAIA-Audit \
-            --field description="local-mode stand-down: audit pending"
+            --field description="local-mode stand-down: audit pending" || true
 
       - name: Write GAIA-Audit commit status (out-of-scope skip)
         id: oos-status
@@ -947,8 +1002,11 @@ jobs:
           # fires when the ONLY dispatched members are ones CI cannot run (their
           # globs sit outside has_source), so it is the most common way to hit
           # the clobber.
-          # Exit 2 means the status could not be READ, which must not be collapsed
-          # into "no success live"; the first stamp step carries the rationale.
+          # Post `pending` ONLY on a definitive 1 ("no success live"). Every other
+          # exit is unanswerable and stands down -- 2 ("could not ask"), 127 (the
+          # guard script absent), anything else -- because collapsing an
+          # unanswerable read into "no success live" is the clobber this guard
+          # exists to prevent; the first stamp step carries the full rationale.
           head_sha="$(git rev-parse HEAD)"
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           # Publish the gate result so the terminal comment step reports the
@@ -983,8 +1041,8 @@ jobs:
               echo "success_live=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            if [ "$_live" -eq 2 ]; then
-              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read; standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
+            if [ "$_live" -ne 1 ]; then
+              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
               exit 0
             fi
             echo "code-review-audit: out-of-scope for the frontend member, but members pending ${pending}; posting pending, not success." >&2
@@ -1009,7 +1067,7 @@ jobs:
             echo "status_posted=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          tree_sha="$(git rev-parse "HEAD^{tree}")"
+          tree_sha="$(git rev-parse "${head_sha}^{tree}")"
           gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
             --method POST \
             --field state=success \
@@ -1316,10 +1374,17 @@ jobs:
 
       - name: Status - local-mode stand-down
         # Green terminal step for the local-mode stand-down path. The JOB
-        # stays green-by-design; the GATE is the `GAIA-Audit` STATUS, which
-        # the stand-down step posted as `pending` (blocking the required
-        # check). Gated identically to the stand-down step so exactly one
-        # terminal status step fires per run.
+        # stays green-by-design; the GATE is the `GAIA-Audit` STATUS. The
+        # stand-down step posts that status as `pending` ONLY when it reads
+        # back a definitive "no success live" for HEAD's tree. When a success
+        # IS live it leaves it alone (the local producer already cleared every
+        # dispatched member, so the gate is legitimately green), and when the
+        # read is unanswerable it posts nothing, which fails closed: an absent
+        # required check blocks the merge just as a `pending` one does. The
+        # message below holds on all three, because it points the author at the
+        # local merge path, which is a no-op when the gate is already green.
+        # Gated identically to the stand-down step so exactly one terminal
+        # status step fires per run.
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.chore-deps.outputs.skip == 'false' &&

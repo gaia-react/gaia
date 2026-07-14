@@ -39,6 +39,16 @@ jobs:
             code:
               - '.github/audit/**'
               - '.github/workflows/audit-ci-tests.yml'
+              # ci-status-member-gate.bats EXECUTES `run:` bodies extracted from
+              # code-review-audit.yml, so that workflow is a source this suite
+              # guards, not just a consumer of it. Its structural lock pins the
+              # set of steps that POST a `pending` GAIA-Audit status and fails on
+              # an unguarded new one -- but the edit that adds such a step touches
+              # only the workflow, which matches none of the other paths here, so
+              # without this line the filter would report `code=false`, skip every
+              # bats step, and green the job having run zero tests. Same test-dir/
+              # source-dir pairing as the three instruction files below.
+              - '.github/workflows/code-review-audit.yml'
               # '.claude/hooks/**' is the superset of the specific hooks this
               # suite used to filter on (repo-scope.sh, pr-merge-audit-check.sh,
               # post-audit-status.sh); it now also covers every hook exercised
