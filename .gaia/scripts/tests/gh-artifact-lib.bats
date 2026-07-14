@@ -287,10 +287,11 @@ setup() {
 
 # ---------- 23 ----------
 @test "gaia_gh_artifact_read: a ts more than 60s in the future echoes nothing" {
-  future_ts="$(date -u -v+2H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"
-  if [ -z "$future_ts" ]; then
-    future_ts="$(date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)"
-  fi
+  # Build the future stamp with jq, not date: BSD date wants -v+2H and GNU date
+  # wants -d '+2 hours', and the losing form exits non-zero, which aborts the
+  # test under bats' set -e before any fallback runs. jq is already the reader's
+  # own clock, so this matches what it parses.
+  future_ts="$(jq -rn '(now + 7200) | todateiso8601')"
   future="$BATS_TEST_TMPDIR/read-future.json"
   printf '{"type":"pr","number":1,"repo":"gaia-react/gaia","branch":"branch-a","session_id":"sess-xyz","ts":"%s"}' "$future_ts" >"$future"
   run gaia_gh_artifact_read "$future" "sess-xyz" "branch-a"
