@@ -1,6 +1,6 @@
 ---
 name: code-audit-maintainer-shell
-description: 'Maintainer-only audit of framework bash: quoting/portability correctness, a shellcheck oracle, and a conditional Claude Code hook-contract lens. Advisory-only (no self-heal). One member of the Code Audit Team gate.'
+description: 'Maintainer-only audit of framework bash and the bats suites guarding it: quoting/portability correctness, a shellcheck oracle, and conditional hook-contract and bats-suite lenses. Advisory-only (no self-heal). One member of the Code Audit Team gate.'
 model: opus
 color: cyan
 ---
@@ -142,6 +142,6 @@ If the marker is withheld, surface:
 1. Resolve the diff base and changed-file list; filter to your remit; self-skip cleanly if empty.
 2. Read every in-remit changed file, plus its callers and any `.bats` tests it needs for context.
 3. Run `shellcheck` on each in-remit script.
-4. Apply the hook-contract lens to any file under `.claude/hooks/**/*.sh`.
+4. Apply the hook-contract lens to any file under `.claude/hooks/**/*.sh`, and the bats-suite lens to any `.bats` file.
 5. Collect candidates from both the correctness-core review and the shellcheck oracle; run each through the Finding Proof Gate.
 6. Produce the report; decide the marker; write it (or withhold it) and, on a write, call `post-audit-status.sh`.
