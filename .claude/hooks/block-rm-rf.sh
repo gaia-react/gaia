@@ -42,6 +42,15 @@
 # guard learns to catch reveals another it does not: treat the deny list as a
 # floor, never a ceiling. Known holes are tracked as tech debt.
 #
+# One such hole sits at the seam between the two halves. When the command word is
+# not literally spelled (`$RMBIN`, an alias), no anchor matches, so the guard never
+# identifies the command as an `rm` at all and every protected target passes: that
+# is the computed-command case above. A target whose final path component is
+# literally `rm` (`$RMBIN /usr/bin/rm -rf`) is the same hole, not a narrower one:
+# it lands where the command word would sit, and the word is skipped by position.
+# Nothing the deny list claims is lost, because a computed command word already
+# carried `/`, `$HOME`, `.git`, `.claude`, and `node_modules` straight through.
+#
 # One direction is deliberately NOT repaired, and it looks like a bug. The guard
 # denies commands that merely *mention* a target in a quoted string, so
 # `git commit -m "fix: rm -rf $HOME bypass"` is a false deny. Making a quoted
@@ -172,6 +181,12 @@ deny() {
 
 main() {
   set -euo pipefail
+
+  # Declared, not assigned: `local x=$(cmd)` would mask a non-zero status behind
+  # `local`'s own exit code and defeat the errexit above, which is what carries the
+  # fail-open on a missing jq. The file is sourceable, so scoping these also keeps a
+  # caller that invokes `main` from having its own globals clobbered.
+  local payload cmd rm_segments rm_segment tokens tok i first_seg
 
   payload=$(cat)
   cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
