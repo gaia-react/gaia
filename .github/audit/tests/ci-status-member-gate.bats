@@ -88,8 +88,22 @@ setup() {
   install_upsert_stub
 }
 
-# Fake `gh` on a prepended PATH: records every `gh api` argv.
+# Fake `gh` on a prepended PATH: records every `gh api` WRITE argv.
+#
+# The combined-status READ that each stamp step's non-clobber guard performs
+# (`gh api repos/<slug>/commits/<sha>/status`) is served, NOT recorded: $POST_LOG
+# is asserted throughout as "what this step WROTE", and several tests assert the
+# log does not exist at all. Recording a read there would turn every read into a
+# phantom write.
+#
+# $GH_CANNED_SUCCESS_DESC (exported by a test) is the GAIA-Audit description the
+# read returns, standing in for a `success` status the local member-aware
+# producer already posted. Unset => the read returns nothing, i.e. no live
+# success, which is the pre-existing behavior every older test relies on.
 install_gh_mock() {
+  # No live success unless a test asks for one. Defensive: a leaked value would
+  # silently stand the gate down in an unrelated test.
+  unset GH_CANNED_SUCCESS_DESC
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
   cat > "$GH_BIN/gh" <<EOF
@@ -98,12 +112,31 @@ record="$POST_LOG"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 case "$1" in
-  api) printf '%s\n' "$*" >> "$record"; exit 0 ;;
-  *)   exit 0 ;;
+  api)
+    # Reads end in /status (combined status). Writes are POSTs to /statuses/<sha>,
+    # which end in the sha, so the two never collide.
+    case "$2" in
+      */status)
+        if [ -n "${GH_CANNED_SUCCESS_DESC:-}" ]; then
+          printf '%s\n' "$GH_CANNED_SUCCESS_DESC"
+        fi
+        exit 0
+        ;;
+    esac
+    printf '%s\n' "$*" >> "$record"
+    exit 0
+    ;;
+  *) exit 0 ;;
 esac
 EOF
   chmod +x "$GH_BIN/gh"
   export PATH="$GH_BIN:$PATH"
+}
+
+# Stand in for a `success` GAIA-Audit status the local producer already posted
+# for a given tree. post-audit-status.sh's description shape is "<version> <tree>".
+canned_success_for_tree() {
+  export GH_CANNED_SUCCESS_DESC="1.2.3 $1"
 }
 
 # Stub the PR-comment upsert the terminal status steps shell out to, recording
@@ -576,4 +609,142 @@ run_comment_step() {
   grep -qF "GAIA-Audit is pending, not green" "$COMMENT_LOG"
   grep -qF "the merge gate is satisfied" "$COMMENT_LOG" && return 1
   return 0
+}
+
+# -----------------------------------------------------------------------------
+# Non-clobbering pending POST
+#
+# A GitHub commit status has no compare-and-set: for a given context the newest
+# write wins outright. CI cannot run a maintainer-only member, so it declines to
+# post success and posts `pending`. The LOCAL member-aware producer
+# (.claude/hooks/post-audit-status.sh) posts `success` once EVERY dispatched
+# member has cleared. Nothing sequences the two writers, so an unconditional
+# `pending` here overwrites a legitimate `success`: the required check reverts to
+# pending, `gh pr merge` is rejected by branch protection, and nothing re-posts.
+# On a PR whose dispatched set is entirely maintainer-only -- the shape of most
+# framework-maintenance PRs -- that is the common path, not an edge case.
+#
+# The guard: skip the pending POST when a GAIA-Audit `success` is already the
+# LIVE status on the sha AND carries THIS EXACT TREE. It must still fail CLOSED
+# for a stale-tree success and for no success at all.
+# -----------------------------------------------------------------------------
+
+@test "non-clobber: out-of-scope skip does NOT overwrite a live success for the current tree" {
+  # The #734 headline shape: dispatched set is maintainer-only, so has_source is
+  # false and this is the step that fires. The local producer has already cleared
+  # every member and posted success.
+  commit_maintainer_only_diff
+  local sha tree body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  tree="$(sandbox_tree)"
+  canned_success_for_tree "$tree"
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  # The whole point: nothing was written, so the live success survives.
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  grep -qF "not clobbering" <<<"$output"
+}
+
+@test "non-clobber: out-of-scope skip still publishes status_posted=false when it stands down" {
+  # This step stamped nothing on the stand-down path, so it must not claim it did.
+  commit_maintainer_only_diff
+  local sha tree body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  tree="$(sandbox_tree)"
+  canned_success_for_tree "$tree"
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+  grep -qF "status_posted=false" "$STEP_OUTPUT"
+}
+
+@test "non-clobber: a STALE success (different tree) does NOT suppress the pending POST" {
+  # Fail-closed. A success naming an older tree vouches for content that is no
+  # longer what would merge, so it must not stand the gate down.
+  commit_maintainer_only_diff
+  local sha body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  canned_success_for_tree "0000000000000000000000000000000000000000"
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  grep -qF "state=pending" "$POST_LOG"
+  grep -qF "code-audit-maintainer-node" "$POST_LOG"
+  grep -qF "state=success" "$POST_LOG" && return 1
+  return 0
+}
+
+@test "non-clobber: no live success at all still posts pending (unchanged behavior)" {
+  # Regression lock on the pre-existing path: with nothing to protect, the guard
+  # is inert and the gate behaves exactly as before.
+  commit_maintainer_only_diff
+  local sha body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  grep -qF "state=pending" "$POST_LOG"
+  grep -qF "code-audit-maintainer-node" "$POST_LOG"
+}
+
+@test "non-clobber: the self-heal stamp step does NOT overwrite a live success for the current tree" {
+  # Mixed diff: has_source is true, so CI runs the frontend member and this is
+  # the step that fires, but a maintainer member is co-dispatched and still
+  # pending from CI's point of view.
+  commit_mixed_diff
+  local sha tree body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  tree="$(sandbox_tree)"
+  canned_success_for_tree "$tree"
+
+  body="$(extract_step_body "Write GAIA-Audit commit status")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  grep -qF "not clobbering" <<<"$output"
+}
+
+@test "non-clobber: the clean-no-push stamp step does NOT overwrite a live success for the current tree" {
+  commit_mixed_diff
+  local sha tree body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  tree="$(sandbox_tree)"
+  write_frontend_marker "$tree"
+  canned_success_for_tree "$tree"
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (clean, no push)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  grep -qF "not clobbering" <<<"$output"
+}
+
+@test "non-clobber: the guard never suppresses a legitimate SUCCESS post" {
+  # The guard lives only on the members-pending branch. An app-only diff has
+  # nothing pending, so the step must still post success even with a live status.
+  commit_app_only_diff
+  local sha tree body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  tree="$(sandbox_tree)"
+  canned_success_for_tree "$tree"
+
+  body="$(extract_step_body "Write GAIA-Audit commit status")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  grep -qF "state=success" "$POST_LOG"
+  grep -qF "description=1.2.3 ${tree}" "$POST_LOG"
 }
