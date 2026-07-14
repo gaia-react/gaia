@@ -34,14 +34,25 @@
 #      content; the caller must not overwrite it.
 #   1  Definitively NOT live (no GAIA-Audit success for this tree). The caller
 #      proceeds to post `pending` as normal.
-#   2  Could NOT ask: the status read failed (auth blip, rate limit, network).
-#      Callers must NEVER collapse 2 into 1. Posting `pending` over a status we
-#      failed to read is precisely the clobber this guard exists to prevent, and
-#      it would reintroduce the bug on exactly the flaky runs where it is hardest
-#      to diagnose. Standing down instead still fails CLOSED: an absent required
-#      check blocks the merge just as a `pending` one does.
-#   2  Also returned on a usage error (missing argument), for the same
-#      fail-closed reason: an unanswerable question is never "no success live".
+#   2  Could NOT ask. Callers must NEVER collapse 2 into 1. Posting `pending`
+#      over a status we failed to read is precisely the clobber this guard exists
+#      to prevent, and it would reintroduce the bug on exactly the flaky runs
+#      where it is hardest to diagnose. Standing down instead still fails CLOSED:
+#      an absent required check blocks the merge just as a `pending` one does.
+#
+#      There are exactly FOUR ways to be unable to ask, and all four exit 2. This
+#      list is exhaustive by design: a door that is not named here is a door the
+#      next reader does not know to keep shut, and each has a regression lock in
+#      .github/audit/tests/ci-status-member-gate.bats pinning it to 2.
+#
+#        - A usage error (either argument missing). An empty tree would make the
+#          match below succeed against anything, standing the gate down on a
+#          status that vouches for nothing.
+#        - `gh` is not installed, so the status cannot be read at all.
+#        - The repo slug does not resolve: $GITHUB_REPOSITORY is unset (i.e. we
+#          are outside Actions) AND the `gh repo view` fallback yields nothing, so
+#          there is no repo to query.
+#        - The status read itself failed (auth blip, rate limit, network).
 #
 #   Test for a definitive 1, never for "not 0 and not 2". The exit space is open:
 #   the INVOCATION can fail outside this contract -- most importantly 127 when
