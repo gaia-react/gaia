@@ -110,7 +110,7 @@ if ! descriptions="$(gh api "repos/${repo}/commits/${sha}/status" \
   exit 2
 fi
 
-if printf '%s\n' "$descriptions" | grep -qF -- "$tree"; then
+if grep -qF -- "$tree" <<<"$descriptions"; then
   exit 0
 fi
 
