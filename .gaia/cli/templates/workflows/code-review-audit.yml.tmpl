@@ -1374,10 +1374,17 @@ jobs:
 
       - name: Status - local-mode stand-down
         # Green terminal step for the local-mode stand-down path. The JOB
-        # stays green-by-design; the GATE is the `GAIA-Audit` STATUS, which
-        # the stand-down step posted as `pending` (blocking the required
-        # check). Gated identically to the stand-down step so exactly one
-        # terminal status step fires per run.
+        # stays green-by-design; the GATE is the `GAIA-Audit` STATUS. The
+        # stand-down step posts that status as `pending` ONLY when it reads
+        # back a definitive "no success live" for HEAD's tree. When a success
+        # IS live it leaves it alone (the local producer already cleared every
+        # dispatched member, so the gate is legitimately green), and when the
+        # read is unanswerable it posts nothing, which fails closed: an absent
+        # required check blocks the merge just as a `pending` one does. The
+        # message below holds on all three, because it points the author at the
+        # local merge path, which is a no-op when the gate is already green.
+        # Gated identically to the stand-down step so exactly one terminal
+        # status step fires per run.
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.chore-deps.outputs.skip == 'false' &&
