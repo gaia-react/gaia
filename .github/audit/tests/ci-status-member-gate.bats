@@ -1096,6 +1096,17 @@ run_comment_step() {
 
   # ...and these four are the WHOLE set, so the loop above covers every pending
   # writer there is. A fifth added without a guard trips this count.
-  run grep -cF -- "state=pending" "$WORKFLOW"
+  #
+  # Count CODE lines only. The loose value match is deliberate -- it catches the
+  # `-f state=pending` spelling that a `--field`-anchored pattern missed -- but
+  # the workflow is dense with prose about this exact mechanism (68 of its lines
+  # mention `pending`), so a comment that happens to write `state=pending`
+  # literally would inflate this count and fail the lock on a change that added
+  # no writer at all. The tempting repair for that red is to bump the expected
+  # count, which would permanently blind the lock to a real fifth writer -- the
+  # same silent-blinding this test exists to prevent, arriving through the front
+  # door. Stripping comment lines keeps every spelling `gh` accepts (`--field`,
+  # `-f`, quoted) counted while costing the lock nothing.
+  run bash -c 'grep -v "^[[:space:]]*#" "$1" | grep -cF -- "state=pending"' _ "$WORKFLOW"
   [ "$output" -eq 4 ]
 }
