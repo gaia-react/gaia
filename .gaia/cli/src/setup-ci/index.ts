@@ -23,6 +23,7 @@ import {run as runOptOutTeam} from './opt-out-team.js';
 import {run as runStatus} from './status.js';
 import {run as runVerifyRun} from './verify-run.js';
 import {run as runWarnExistingTools} from './warn-existing-tools.js';
+import {run as runWriteIsolationPolicy} from './write-isolation-policy.js';
 import {run as runWriteToolMode} from './write-tool-mode.js';
 
 const HELP_TEXT = `Usage: gaia setup-ci <subcommand> [args]
@@ -45,6 +46,7 @@ const HELP_TEXT = `Usage: gaia setup-ci <subcommand> [args]
                                            Trigger workflow_dispatch and watch run.
   finalize                                 Flip setup_complete=true.
   write-tool-mode <tool> <mode>            Set a tool's mode in .gaia/automation.json.
+  write-isolation-policy <policy>          Set the team's git isolation policy in .gaia/automation.json.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -65,6 +67,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   status: runStatus,
   'verify-run': runVerifyRun,
   'warn-existing-tools': runWarnExistingTools,
+  'write-isolation-policy': runWriteIsolationPolicy,
   'write-tool-mode': runWriteToolMode,
 };
 

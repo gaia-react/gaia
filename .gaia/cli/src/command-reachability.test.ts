@@ -43,6 +43,10 @@ const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map([
     'sandbox seed',
     'Inspection/debug verb: prints the seed settings fragment as JSON. The setup flow calls `gaia sandbox apply`, which computes and writes the seed internally, so `seed` has no external invoker by design.',
   ],
+  [
+    'setup-ci write-isolation-policy',
+    'Pending wiring, not invoker-less by design: the `/setup-gaia` team-isolation clause is its external invoker and lands one phase after the verb itself. This entry is transitional. The "no stale entries" test drops it the moment that clause ships, so it cannot outlive the gap it covers.',
+  ],
 ]);
 
 // Directories under the repo root scanned for invocation strings. None of

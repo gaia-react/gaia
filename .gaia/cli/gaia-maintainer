@@ -15137,7 +15137,20 @@ var ToolConfigSchema = external_exports.object({
 var UpdateGaiaConfigSchema = external_exports.object({
   mode: external_exports.literal("local")
 });
+var ISOLATION_POLICIES = [
+  "always-worktree",
+  "prefer-branch",
+  "prefer-worktree"
+];
+var isIsolationPolicy = (value) => ISOLATION_POLICIES.includes(value);
 var AutomationConfigSchema = external_exports.object({
+  // Permissive by contract: an absent key, an unrecognized string, and a
+  // non-string value must all leave the config parsing `ok`. A bare
+  // `z.literal([...])` union would reject a typo or a future value and
+  // malform the whole config, which reddens every adopter's scheduled
+  // cron. The three known values are validated at the WRITE boundary (the
+  // CLI) and at the CONSUMER (the fragment's `case`), not here.
+  isolation_policy: external_exports.string().optional().catch(void 0),
   pnpm_audit: ToolConfigSchema,
   sandbox_recommended: external_exports.boolean().optional(),
   setup_complete: external_exports.boolean(),
@@ -15154,7 +15167,7 @@ var TOOL_ID_TO_CONFIG_KEY = {
   "update-deps": "update_deps",
   wiki: "wiki"
 };
-var readAutomationConfig = (repoRoot) => {
+var readAutomationConfigRaw = (repoRoot) => {
   const filePath = automationConfigPath(repoRoot);
   if (!existsSync5(filePath)) return { status: "missing" };
   let raw;
@@ -15182,7 +15195,18 @@ var readAutomationConfig = (repoRoot) => {
       status: "malformed"
     };
   }
-  return { config: result.data, status: "ok" };
+  return {
+    config: result.data,
+    raw: parsed,
+    status: "ok"
+  };
+};
+var readAutomationConfig = (repoRoot) => {
+  const result = readAutomationConfigRaw(repoRoot);
+  if (result.status === "ok") {
+    return { config: result.config, status: "ok" };
+  }
+  return result;
 };
 
 // src/wiki/util/git.ts
@@ -16382,7 +16406,8 @@ var HELP_TEXT9 = String.raw`Usage: gaia init configure-automation \
   --update-deps <ci|local|off> \
   --pnpm-audit <ci|local|off> \
   --stale-branches <ci|local|off> \
-  [--sandbox-recommended <true|false>]
+  [--sandbox-recommended <true|false>] \
+  [--isolation-policy <${ISOLATION_POLICIES.join("|")}>]
 
   Write .gaia/automation.json with the user's tool-mode selections and
   setup_complete: false. Phase A of GAIA CI; no GitHub repo or workflow
@@ -16398,6 +16423,9 @@ var HELP_TEXT9 = String.raw`Usage: gaia init configure-automation \
     --sandbox-recommended <true|false>
       Records the owner's Bash-sandbox recommendation. Omitted entirely
       when the flag is absent (no recommendation on file).
+    --isolation-policy <${ISOLATION_POLICIES.join("|")}>
+      Records the team's git isolation policy. Omitted entirely when the
+      flag is absent (no policy on file).
 
   Exit codes:
     0   success (no stdout)
@@ -16459,6 +16487,24 @@ var takeSandboxRecommended = (argv, index, current) => {
   }
   return { ok: true, value: taken.value === "true" };
 };
+var ISOLATION_POLICY_FLAG = "--isolation-policy";
+var takeIsolationPolicy = (argv, index, current) => {
+  if (current !== void 0) {
+    return {
+      message: `${ISOLATION_POLICY_FLAG} specified twice`,
+      ok: false
+    };
+  }
+  const taken = takeValue(argv, index, ISOLATION_POLICY_FLAG);
+  if (!taken.ok) return taken;
+  if (!isIsolationPolicy(taken.value)) {
+    return {
+      message: `${ISOLATION_POLICY_FLAG} must be one of: ${ISOLATION_POLICIES.join(", ")}`,
+      ok: false
+    };
+  }
+  return { ok: true, value: taken.value };
+};
 var applyToolFlag = (argv, index, context) => {
   const { flags, token } = context;
   const spec = FLAG_SPECS.get(token);
@@ -16473,17 +16519,44 @@ var applyToolFlag = (argv, index, context) => {
   flags[spec.key] = taken.mode;
   return { ok: true };
 };
+var SCALAR_FLAG_HANDLERS = /* @__PURE__ */ new Map([
+  [
+    ISOLATION_POLICY_FLAG,
+    (argv, index, scalars) => {
+      const taken = takeIsolationPolicy(argv, index, scalars.isolationPolicy);
+      if (!taken.ok) return taken;
+      scalars.isolationPolicy = taken.value;
+      return { ok: true };
+    }
+  ],
+  [
+    SANDBOX_RECOMMENDED_FLAG,
+    (argv, index, scalars) => {
+      const taken = takeSandboxRecommended(
+        argv,
+        index,
+        scalars.sandboxRecommended
+      );
+      if (!taken.ok) return taken;
+      scalars.sandboxRecommended = taken.value;
+      return { ok: true };
+    }
+  ]
+]);
 var parseFlags2 = (argv) => {
   const flags = {};
-  let sandboxRecommended;
+  const scalars = {
+    isolationPolicy: void 0,
+    sandboxRecommended: void 0
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    if (token === SANDBOX_RECOMMENDED_FLAG) {
-      const taken = takeSandboxRecommended(argv, index + 1, sandboxRecommended);
-      if (!taken.ok) return taken;
-      sandboxRecommended = taken.value;
-    } else {
+    const scalarHandler = SCALAR_FLAG_HANDLERS.get(token);
+    if (scalarHandler === void 0) {
       const applied = applyToolFlag(argv, index + 1, { flags, token });
+      if (!applied.ok) return applied;
+    } else {
+      const applied = scalarHandler(argv, index + 1, scalars);
       if (!applied.ok) return applied;
     }
     index += 1;
@@ -16495,8 +16568,9 @@ var parseFlags2 = (argv) => {
   }
   return {
     flags: {
+      isolationPolicy: scalars.isolationPolicy,
       pnpmAudit: flags.pnpmAudit,
-      sandboxRecommended,
+      sandboxRecommended: scalars.sandboxRecommended,
       staleBranches: flags.staleBranches,
       updateDeps: flags.updateDeps,
       wiki: flags.wiki
@@ -16505,6 +16579,12 @@ var parseFlags2 = (argv) => {
   };
 };
 var buildConfig = (flags) => ({
+  // Omit the key entirely when the flag was never passed (no policy on
+  // file), rather than writing an explicit `undefined`. This is
+  // load-bearing: the `/setup-gaia` clause is gated on the key's absence,
+  // so a default here would make the clause unreachable for every new
+  // project.
+  ...flags.isolationPolicy === void 0 ? {} : { isolation_policy: flags.isolationPolicy },
   pnpm_audit: { mode: flags.pnpmAudit, schedule: "daily" },
   // Omit the key entirely when the flag was never passed (no recommendation
   // on file), rather than writing an explicit `undefined`.
