@@ -380,11 +380,22 @@ days_ago() {
 
 # --- Sweep #2: orphaned audit markers --------------------------------------
 #
-# A marker (<sha>.ok, <sha>.dispositions.json, or the per-member
-# <sha>.<member>.ok the Code Audit Team writes) is live only while its <sha> is
-# HEAD or reachable from a local branch. The per-member markers matter here: the
-# sha-strip must peel the whole suffix, or a live <HEAD>.<member>.ok resolves to
-# no commit, reads as dead, and gets deleted out from under the merge gate.
+# The drop-zone holds two key families, and the sweep keeps each alive by its
+# own rule:
+#
+#   TREE-keyed  <tree>.ok and <tree>.<member>.ok -- the Code Audit Team's
+#     clearance markers. A marker attests that a member audited a TREE, so it
+#     is live while that tree is the one about to merge: HEAD's tree, or the
+#     tree of a local branch tip / another worktree's HEAD.
+#
+#   COMMIT-keyed  <sha>.dispositions.json -- the disposition sidecar, keyed to
+#     the commit the marker-backstop hook resolves at merge time. It is live
+#     while its commit is HEAD or reachable from a local branch.
+#
+# Both families are swept by one glob, so the liveness test accepts either key.
+# The per-member markers matter here: the key-strip must peel the whole suffix,
+# or a live <tree>.<member>.ok resolves to no object, reads as dead, and gets
+# deleted out from under the merge gate.
 
 # seed_audit_file <name>: drops one file into the audit drop-zone.
 seed_audit_file() {
@@ -405,46 +416,137 @@ orphan_sha() {
   git -C "$REPO" branch -q -D throwaway
 }
 
-@test "sweep 2: orphaned .ok / .dispositions.json markers are swept, HEAD's is kept" {
+# head_tree: the tree the Code Audit Team keys its markers to.
+head_tree() {
+  git -C "$REPO" rev-parse "HEAD^{tree}"
+}
+
+@test "sweep 2: an orphaned tree marker is swept, HEAD's tree marker is kept" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  tree=$(head_tree)
+  seed_audit_file "$dead_tree.ok"
+  seed_audit_file "$tree.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$tree.ok" ]
+}
+
+# The regression this whole key change exists for: code-audit-frontend stamps
+# the GAIA-Audit trailer as an EMPTY commit, which advances HEAD while leaving
+# the tree byte-identical. A commit-keyed marker is orphaned the instant that
+# lands (and the janitor then reaps it); a tree-keyed one survives, because the
+# content it vouches for did not change.
+@test "sweep 2: a tree marker survives the trailer stamp's empty commit" {
+  make_repo
+  tree=$(head_tree)
+  seed_audit_file "$tree.ok"
+  seed_audit_file "$tree.code-audit-maintainer-shell.ok"
+  git -C "$REPO" commit -q --allow-empty -m "chore: code review audit passed"
+  # The empty commit moved HEAD but not the tree.
+  [ "$(head_tree)" = "$tree" ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$tree.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$tree.code-audit-maintainer-shell.ok" ]
+}
+
+@test "sweep 2: a LIVE per-member <tree>.<member>.ok is never deleted" {
+  make_repo
+  tree=$(head_tree)
+  seed_audit_file "$tree.ok"
+  seed_audit_file "$tree.code-audit-maintainer-shell.ok"
+  seed_audit_file "$tree.code-audit-maintainer-node.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$tree.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$tree.code-audit-maintainer-shell.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$tree.code-audit-maintainer-node.ok" ]
+}
+
+@test "sweep 2: an orphaned per-member <tree>.<member>.ok is swept" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  seed_audit_file "$dead_tree.code-audit-maintainer-shell.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.code-audit-maintainer-shell.ok" ]
+}
+
+# The audit drop-zone is symlinked into every linked worktree, so one janitor
+# run sweeps the markers of every checkout. A sibling branch's tree marker must
+# outlive a sweep launched from another branch, or the janitor deletes a live
+# marker out from under a parallel audit.
+@test "sweep 2: a tree marker for another local branch's tip is kept" {
+  make_repo
+  git -C "$REPO" checkout -q -b sibling
+  echo sibling > "$REPO/sibling"
+  git -C "$REPO" add sibling
+  git -C "$REPO" commit -q -m sibling
+  sibling_tree=$(head_tree)
+  git -C "$REPO" checkout -q main
+  seed_audit_file "$sibling_tree.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$sibling_tree.ok" ]
+}
+
+# The other half of the live-tree set, and the one most likely to regress
+# silently: a linked worktree's HEAD. A detached worktree HEAD is named by no
+# branch, so the branch-tip scan alone cannot see its tree. The drop-zone is
+# shared across worktrees, so missing it means a sweep in one checkout deletes
+# the marker a parallel audit in another checkout is about to merge on.
+@test "sweep 2: a tree marker for a linked worktree's detached HEAD is kept" {
+  make_repo
+  # A commit reachable from no branch, checked out detached in a linked worktree.
+  git -C "$REPO" checkout -q -b throwaway
+  echo detached > "$REPO/detached"
+  git -C "$REPO" add detached
+  git -C "$REPO" commit -q -m detached
+  wt_sha=$(git -C "$REPO" rev-parse HEAD)
+  wt_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  git -C "$REPO" checkout -q main
+  # Inside $REPO so teardown reclaims it with the repo; a path in the shared tmp
+  # parent would outlive the test and collide on the next run.
+  git -C "$REPO" worktree add -q --detach "$REPO/.linked-wt" "$wt_sha"
+  git -C "$REPO" branch -q -D throwaway
+
+  # No branch names that tree now; only the linked worktree's HEAD does.
+  run bash -c "git -C '$REPO' for-each-ref --format='%(objectname)' refs/heads/ | while read -r c; do git -C '$REPO' rev-parse \"\${c}^{tree}\"; done"
+  grep -qxF "$wt_tree" <<< "$output" && return 1
+
+  seed_audit_file "$wt_tree.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$wt_tree.ok" ]
+}
+
+# The disposition sidecar stays COMMIT-keyed: the marker-backstop hook resolves
+# `git rev-parse HEAD` at merge time to find it. It shares the sweep's glob, so
+# the liveness test must still accept a commit key.
+@test "sweep 2: a commit-keyed dispositions sidecar for HEAD is kept, an orphan swept" {
   make_repo
   dead=$(orphan_sha)
   head=$(git -C "$REPO" rev-parse HEAD)
-  seed_audit_file "$dead.ok"
+  seed_audit_file "$head.dispositions.json"
   seed_audit_file "$dead.dispositions.json"
-  seed_audit_file "$head.ok"
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$head.dispositions.json" ]
   [ ! -e "$REPO/.gaia/local/audit/$dead.dispositions.json" ]
-  [ -f "$REPO/.gaia/local/audit/$head.ok" ]
 }
 
-@test "sweep 2: a LIVE per-member <HEAD>.<member>.ok is never deleted" {
-  make_repo
-  head=$(git -C "$REPO" rev-parse HEAD)
-  seed_audit_file "$head.ok"
-  seed_audit_file "$head.code-audit-maintainer-shell.ok"
-  seed_audit_file "$head.code-audit-maintainer-node.ok"
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$head.ok" ]
-  [ -f "$REPO/.gaia/local/audit/$head.code-audit-maintainer-shell.ok" ]
-  [ -f "$REPO/.gaia/local/audit/$head.code-audit-maintainer-node.ok" ]
-}
-
-@test "sweep 2: an orphaned per-member <sha>.<member>.ok is swept" {
-  make_repo
-  dead=$(orphan_sha)
-  seed_audit_file "$dead.code-audit-maintainer-shell.ok"
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead.code-audit-maintainer-shell.ok" ]
-}
-
-@test "sweep 2: a bogus-sha marker is swept (an unresolvable sha is dead)" {
+@test "sweep 2: a bogus-key marker is swept (an unresolvable key is dead)" {
   make_repo
   seed_audit_file "notasha.ok"
   cd "$REPO"

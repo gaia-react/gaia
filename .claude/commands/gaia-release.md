@@ -120,7 +120,7 @@ gh pr create --base main --head "release/v<NEW_VERSION>" \
 
 ### 10. Code-review-audit + marker handshake
 
-The release PR is **not** exempt from the merge gate, `.claude/hooks/pr-merge-audit-check.sh` denies `gh pr merge` until a `code-audit-frontend` marker exists for the release commit's HEAD SHA. Run the four-step protocol in `wiki/concepts/PR Merge Workflow.md`: spawn `code-audit-frontend` on the branch, fix every Critical and Important finding, push (HEAD moves), re-spawn until the agent writes `.gaia/local/audit/<HEAD-sha>.ok`. Knip / react-doctor advisories never block the marker.
+The release PR is **not** exempt from the merge gate, `.claude/hooks/pr-merge-audit-check.sh` denies `gh pr merge` until a `code-audit-frontend` marker exists for the release commit's tree. Run the four-step protocol in `wiki/concepts/PR Merge Workflow.md`: spawn `code-audit-frontend` on the branch, fix every Critical and Important finding, push (the tree changes), re-spawn until the agent writes `.gaia/local/audit/<tree-sha>.ok`. Knip / react-doctor advisories never block the marker.
 
 The fix step reads the re-run carry-forward ledger (`.gaia/local/audit/<base-sha>.rerun.json`) for the deterministic list of what to fix (`remaining[]`) and what the last round already fixed (`fixed_last_round[]`), instead of relying on the previous round's full report. Each re-spawn reads the same ledger; the base is stable across fix rounds, so the path does not change as HEAD moves. The audit's LOCAL Task return is terse (pointer + counts); the per-finding detail is in the ledger. Fail-open: if the ledger is absent, corrupt, or stale, fix from the report's open findings as today.
 

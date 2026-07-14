@@ -86,14 +86,16 @@ run_merge_hook() {
   run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS'"
 }
 
-# Write a Code Audit Team clearance marker for REPO's current HEAD.
-#   write_marker ""                              -> <sha>.ok (frontend/default)
-#   write_marker ".code-audit-maintainer-shell"   -> <sha>.code-audit-maintainer-shell.ok
+# Write a Code Audit Team clearance marker for REPO's current HEAD TREE. A
+# marker attests that a member audited the tree, not the commit, so it survives
+# an empty commit (the GAIA-Audit trailer stamp) that leaves the tree identical.
+#   write_marker ""                              -> <tree>.ok (frontend/default)
+#   write_marker ".code-audit-maintainer-shell"   -> <tree>.code-audit-maintainer-shell.ok
 write_marker() {
-  local suffix="$1" sha
-  sha=$(git -C "$REPO" rev-parse HEAD)
+  local suffix="$1" tree
+  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   mkdir -p "$REPO/.gaia/local/audit"
-  printf '{}' > "$REPO/.gaia/local/audit/${sha}${suffix}.ok"
+  printf '{}' > "$REPO/.gaia/local/audit/${tree}${suffix}.ok"
 }
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
@@ -304,4 +306,41 @@ write_marker() {
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
+}
+
+# The regression the tree key exists for. Every dispatched member audits one
+# tree and writes its marker; code-audit-frontend then stamps the GAIA-Audit
+# trailer, which lands as an EMPTY commit -- HEAD advances, the tree does not.
+# Keyed to HEAD, every sibling member's marker is orphaned by that stamp and the
+# gate denies a diff all members already cleared. Keyed to the tree, the markers
+# still name the content being merged, so the gate clears.
+@test "AND-aggregator: every member's marker survives the trailer stamp's empty commit" {
+  commit_files "app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x"
+  write_marker ""
+  write_marker ".code-audit-maintainer-shell"
+
+  # code-audit-frontend stamps the trailer: an empty commit, identical tree.
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  git -C "$REPO" commit -q --allow-empty -m "chore: code review audit passed"
+  [ "$(git -C "$REPO" rev-parse "HEAD^{tree}")" = "$before_tree" ]
+
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'"permissionDecision": "deny"'* ]]
+}
+
+# The other half of the contract: tree-keying must not turn the gate into a
+# rubber stamp. A commit that actually CHANGES the tree invalidates every
+# marker, because the content the members cleared is no longer the content
+# being merged.
+@test "AND-aggregator: a marker does NOT survive a commit that changes the tree" {
+  commit_files "app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x"
+  write_marker ""
+  write_marker ".code-audit-maintainer-shell"
+
+  commit_files "app/b.ts" "export const b = 2"
+
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<< "$output" || return 1
 }

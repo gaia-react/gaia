@@ -26,12 +26,13 @@
 #      is the provable-death signal (the normal per-branch PR-merge cleanup runs
 #      no `git branch -D` here because the landing is fire-and-forget). This
 #      sweep is git-scoped, so it runs before the .gaia/local guard below.
-#   2. audit/<sha>.ok, audit/<sha>.dispositions.json, and the per-member
-#      audit/<sha>.<member>.ok, whose <sha> is neither HEAD nor reachable from
-#      any local branch. A marker gates `gh pr merge` only when its <sha> ==
-#      HEAD; once the PR squash-merges to a new sha the audited branch tip is
-#      orphaned (reflog-only) and the marker is spent. A <sha> that is not a
-#      valid commit (bogus/garbage) is treated as dead.
+#   2. audit/<tree>.ok and the per-member audit/<tree>.<member>.ok, whose <tree>
+#      is no longer live (not HEAD's tree, and not the tree of any local branch
+#      tip or other worktree's HEAD); plus audit/<sha>.dispositions.json, whose
+#      <sha> is neither HEAD nor reachable from any local branch. A marker gates
+#      `gh pr merge` only when its <tree> == HEAD's tree; once the PR
+#      squash-merges, the audited tree is orphaned and the marker is spent. A key
+#      that resolves to no git object (bogus/garbage) is treated as dead.
 #      2b. audit/<sha>.rerun.json carry-forward ledgers, on a DIFFERENT signal.
 #      A ledger is keyed on the incremental base (a fork point), which is an
 #      ancestor of the default branch, so reachability can never prove it dead.
@@ -124,27 +125,82 @@ migrate="$root/.gaia/scripts/ledger-status-migrate.sh"
 [ -f "$migrate" ] && bash "$migrate" "$root" >/dev/null 2>&1 || true
 
 # --- 2. Orphaned audit markers ---------------------------------------------
+#
+# Two key families share this sweep, each with its own liveness rule:
+#
+#   TREE-keyed  <tree>.ok / <tree>.<member>.ok, the Code Audit Team's clearance
+#     markers. A marker attests that a member audited a TREE, so it stays live
+#     while that tree is one that can still merge. Keying on the tree is what
+#     lets a marker survive code-audit-frontend's GAIA-Audit trailer stamp: the
+#     stamp is an empty commit, so it advances HEAD while leaving the tree
+#     byte-identical, and a commit-keyed marker would be orphaned by content
+#     that never changed.
+#
+#   COMMIT-keyed  <sha>.dispositions.json, the disposition sidecar. The
+#     marker-backstop hook resolves `git rev-parse HEAD` at merge time to find
+#     it, so it is keyed to the commit, and stays live while that commit is
+#     HEAD or reachable from a local branch.
+#
+# A key is kept when EITHER rule holds. The two key spaces cannot collide: git
+# hashes a tree and a commit as different object types, so a given 40-hex key
+# resolves as at most one of them.
 head_sha=$(git -C "$root" rev-parse HEAD 2>/dev/null || true)
+head_tree=$(git -C "$root" rev-parse "HEAD^{tree}" 2>/dev/null || true)
+
+# The live tree set: every tree an audit could still be merging. Local refs are
+# shared across linked worktrees, and the audit drop-zone is symlinked into each
+# of them, so a sweep launched from one worktree judges every worktree's
+# markers. Collect the branch tips AND each worktree's HEAD (which covers a
+# detached checkout no branch names) so a sweep here never reaps a live marker
+# belonging to a parallel audit over there.
+live_trees=$(
+  {
+    git -C "$root" for-each-ref --format='%(objectname)' refs/heads/ 2>/dev/null || true
+    git -C "$root" worktree list --porcelain 2>/dev/null \
+      | awk '$1 == "HEAD" { print $2 }' || true
+  } | sort -u | while IFS= read -r commit; do
+    [ -n "$commit" ] || continue
+    git -C "$root" rev-parse "${commit}^{tree}" 2>/dev/null || true
+  done
+)
+
 audit_dir="$local_dir/audit"
 if [ -d "$audit_dir" ]; then
   for marker in "$audit_dir"/*.ok "$audit_dir"/*.dispositions.json; do
     [ -e "$marker" ] || continue          # glob did not match
     base=${marker##*/}
-    # A sha never contains a dot, so strip from the FIRST one. That resolves
-    # every suffix family uniformly: the plain <sha>.ok and
-    # <sha>.dispositions.json, and the per-member <sha>.<member>.ok the Code
+    # An object id never contains a dot, so strip from the FIRST one. That
+    # resolves every suffix family uniformly: the plain <tree>.ok and
+    # <sha>.dispositions.json, and the per-member <tree>.<member>.ok the Code
     # Audit Team writes. Peeling only the trailing .ok would leave
-    # "<sha>.<member>", which resolves to no commit, so a LIVE member marker at
-    # HEAD would read as dead and be deleted out from under the merge gate.
-    sha=${base%%.*}
+    # "<tree>.<member>", which resolves to no object, so a LIVE member marker
+    # for HEAD's tree would read as dead and be deleted out from under the
+    # merge gate.
+    key=${base%%.*}
 
     keep=0
-    # The one live marker is the one for the commit about to merge: HEAD.
-    [ -n "$head_sha" ] && [ "$sha" = "$head_sha" ] && keep=1
-    # Otherwise keep iff the sha is a real commit reachable from a local branch
-    # (a still-open feature line); orphaned reflog-only tips fall through.
-    if [ "$keep" -eq 0 ] && git -C "$root" cat-file -e "${sha}^{commit}" 2>/dev/null; then
-      [ -n "$(git -C "$root" branch --contains "$sha" 2>/dev/null)" ] && keep=1
+    # Tree-keyed: the tree about to merge here.
+    [ -n "$head_tree" ] && [ "$key" = "$head_tree" ] && keep=1
+    # Tree-keyed: a tree still named by a local branch tip or another
+    # worktree's HEAD (a still-open feature line, or a parallel audit).
+    #
+    # Match with a herestring, never `printf ... | grep -q`. Under `pipefail`,
+    # `grep -q` exits the instant it matches, `printf` then takes SIGPIPE, and
+    # the pipeline reports 141 -- so a MATCH would read as a miss and this
+    # reaps the live marker it just found. The herestring has no pipe, so
+    # grep's own status is the answer.
+    if [ "$keep" -eq 0 ] && [ -n "$live_trees" ] \
+       && grep -qxF -- "$key" <<< "$live_trees"; then
+      keep=1
+    fi
+    # Commit-keyed: the commit about to merge here.
+    [ "$keep" -eq 0 ] && [ -n "$head_sha" ] && [ "$key" = "$head_sha" ] && keep=1
+    # Commit-keyed: a real commit reachable from a local branch (a still-open
+    # feature line); orphaned reflog-only tips fall through. A tree key never
+    # reaches the `branch --contains` call: peeling a tree to ^{commit} fails,
+    # so cat-file -e guards it.
+    if [ "$keep" -eq 0 ] && git -C "$root" cat-file -e "${key}^{commit}" 2>/dev/null; then
+      [ -n "$(git -C "$root" branch --contains "$key" 2>/dev/null)" ] && keep=1
     fi
 
     [ "$keep" -eq 1 ] && continue

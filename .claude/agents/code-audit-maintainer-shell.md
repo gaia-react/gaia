@@ -93,25 +93,28 @@ Same format. Advisory: never block the marker on their own, but note whether the
 
 On a genuinely clean pass, no Critical finding, every Important finding either fixed in the working tree since the last invocation (verify by re-reading the file, never trust a prior chat claim) or explicitly acknowledged by the operator with a stated reason, and the shellcheck oracle clean or its findings resolved the same way, write the per-member marker:
 
+The marker is keyed to HEAD's **tree**, not its commit sha. It attests that you audited CONTENT, and the tree is the content, so your marker survives `code-audit-frontend`'s `GAIA-Audit` trailer stamp (an empty commit: it advances HEAD while leaving the tree byte-identical). That is what lets the team's members run in any order. A commit that genuinely edits the tree still invalidates your marker, and you must re-audit.
+
 ```bash
 mkdir -p .gaia/local/audit
 HEAD_SHA="$(git rev-parse HEAD)"
-marker=".gaia/local/audit/${HEAD_SHA}.code-audit-maintainer-shell.ok"
+TREE_SHA="$(git rev-parse HEAD^{tree})"
+marker=".gaia/local/audit/${TREE_SHA}.code-audit-maintainer-shell.ok"
 if [ ! -f "$marker" ]; then
-  printf '{"sha":"%s","audited_at":"%s"}\n' \
-    "$HEAD_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  printf '{"sha":"%s","tree":"%s","audited_at":"%s"}\n' \
+    "$HEAD_SHA" "$TREE_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     > "$marker"
 fi
 ```
 
 Withhold the marker on any unresolved Critical or unaddressed/unacknowledged Important finding; withholding it holds the shared `GAIA-Audit` gate shut via the AND-aggregator, since this member is part of the dispatched set for the diff.
 
-You write **only** this marker. Never write the frontend member's `.gaia/local/audit/<HEAD-sha>.ok`, never write or amend a `GAIA-Audit` trailer, never call `.claude/hooks/audit-stamp-trailer.sh`, and never post a `GAIA-Audit` status directly, those belong to `code-audit-frontend` alone.
+You write **only** this marker. Never write the frontend member's `.gaia/local/audit/<tree-sha>.ok`, never write or amend a `GAIA-Audit` trailer, never call `.claude/hooks/audit-stamp-trailer.sh`, and never post a `GAIA-Audit` status directly, those belong to `code-audit-frontend` alone.
 
 **Immediately after writing your marker** (never on a withheld marker), call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
 
 ```bash
-.claude/hooks/post-audit-status.sh ".gaia/local/audit/${HEAD_SHA}.code-audit-maintainer-shell.ok"
+.claude/hooks/post-audit-status.sh ".gaia/local/audit/${TREE_SHA}.code-audit-maintainer-shell.ok"
 ```
 
 This call is best-effort and guarded; you are not deciding whether the status posts, the helper resolves the full dispatched member set and declines until every member's marker exists. Surface its one-line output (`status: posted GAIA-Audit success <sha>` or `status: declined: <reason>`) in your report.
