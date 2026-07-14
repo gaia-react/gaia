@@ -339,3 +339,30 @@ code-audit-maintainer-shell"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "--base with no <ref> fails closed to code-audit-frontend, never 'nobody owed'" {
+  # The trap this locks: `--base` with a missing argument used to exit 0 with
+  # EMPTY stdout, and empty stdout is not an error channel here -- the output
+  # contract defines it as "no member is owed". So a mangled query told the
+  # caller to spawn nobody while the merge deny-hook still demanded markers,
+  # which is the silent-bypass class the oracle exists to eliminate. It must
+  # answer exactly like the unknown-flag arm.
+  run bash -c '( cd "$1" && "$2" --base 2>/dev/null )' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+@test "--base with an unquoted empty ref fails closed (the realistic caller mangle)" {
+  # How this is actually reached in the wild: `--base $REF` with REF unset or
+  # empty, unquoted, so the ref word vanishes before the script ever sees it.
+  run bash -c '( cd "$1" && REF="" && "$2" --base $REF 2>/dev/null )' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+@test "--base with no <ref> prints a fail-closed warning to stderr" {
+  run bash -c '( cd "$1" && "$2" --base 2>&1 >/dev/null )' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "--base requires a <ref> argument" <<<"$output"
+  grep -qF -- "failing closed" <<<"$output"
+}

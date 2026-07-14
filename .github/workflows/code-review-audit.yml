@@ -687,17 +687,31 @@ jobs:
           #
           # The combined-status endpoint returns the LATEST status per context,
           # which is exactly "what the gate currently reads".
-          audit_success_present() {
-            gh api "repos/${GITHUB_REPOSITORY}/commits/$1/status" \
+          #
+          # Exit 0 = a success for $2 IS the live status. 1 = definitively not.
+          # 2 = could NOT ask (auth blip, rate limit, network). A caller must
+          # never collapse 2 into 1: posting `pending` over a status we failed to
+          # read is precisely the clobber this guard exists to prevent, and it
+          # would reintroduce the bug on exactly the flaky runs where it is
+          # hardest to diagnose. Standing down instead still fails CLOSED -- an
+          # absent required check blocks the merge just as a `pending` one does.
+          audit_success_live() {
+            _live_out="$(gh api "repos/${GITHUB_REPOSITORY}/commits/$1/status" \
               --jq '.statuses[] | select(.context == "GAIA-Audit" and .state == "success") | .description' \
-              2>/dev/null | grep -qF "$2"
+              2>/dev/null)" || return 2
+            printf '%s\n' "$_live_out" | grep -qF "$2"
           }
 
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           if [ -n "$pending" ]; then
             tree_sha="$(git rev-parse "${AUDIT_SHA}^{tree}")"
-            if audit_success_present "${AUDIT_SHA}" "${tree_sha}"; then
+            _live=0; audit_success_live "${AUDIT_SHA}" "${tree_sha}" || _live=$?
+            if [ "$_live" -eq 0 ]; then
               echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
+              exit 0
+            fi
+            if [ "$_live" -eq 2 ]; then
+              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read; standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
               exit 0
             fi
             echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
@@ -819,17 +833,25 @@ jobs:
           # local member-aware producer posts once every dispatched member has
           # cleared, and the merge gate would never re-open on its own. Skip the
           # POST when a GAIA-Audit success for THIS EXACT TREE is already live.
+          # Exit 2 means the status could not be READ, which must not be collapsed
+          # into "no success live"; the first stamp step carries the rationale.
           # $tree_sha is already resolved above, where it keyed the marker lookup.
-          audit_success_present() {
-            gh api "repos/${GITHUB_REPOSITORY}/commits/$1/status" \
+          audit_success_live() {
+            _live_out="$(gh api "repos/${GITHUB_REPOSITORY}/commits/$1/status" \
               --jq '.statuses[] | select(.context == "GAIA-Audit" and .state == "success") | .description' \
-              2>/dev/null | grep -qF "$2"
+              2>/dev/null)" || return 2
+            printf '%s\n' "$_live_out" | grep -qF "$2"
           }
 
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           if [ -n "$pending" ]; then
-            if audit_success_present "${HEAD_SHA}" "${tree_sha}"; then
+            _live=0; audit_success_live "${HEAD_SHA}" "${tree_sha}" || _live=$?
+            if [ "$_live" -eq 0 ]; then
               echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
+              exit 0
+            fi
+            if [ "$_live" -eq 2 ]; then
+              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read; standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
               exit 0
             fi
             echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
@@ -940,10 +962,13 @@ jobs:
           # fires when the ONLY dispatched members are ones CI cannot run (their
           # globs sit outside has_source), so it is the most common way to hit
           # the clobber.
-          audit_success_present() {
-            gh api "repos/${GITHUB_REPOSITORY}/commits/$1/status" \
+          # Exit 2 means the status could not be READ, which must not be collapsed
+          # into "no success live"; the first stamp step carries the rationale.
+          audit_success_live() {
+            _live_out="$(gh api "repos/${GITHUB_REPOSITORY}/commits/$1/status" \
               --jq '.statuses[] | select(.context == "GAIA-Audit" and .state == "success") | .description' \
-              2>/dev/null | grep -qF "$2"
+              2>/dev/null)" || return 2
+            printf '%s\n' "$_live_out" | grep -qF "$2"
           }
 
           head_sha="$(git rev-parse HEAD)"
@@ -966,8 +991,13 @@ jobs:
             # output exists to prevent.
             echo "status_posted=false" >> "$GITHUB_OUTPUT"
             tree_sha="$(git rev-parse "${head_sha}^{tree}")"
-            if audit_success_present "${head_sha}" "${tree_sha}"; then
+            _live=0; audit_success_live "${head_sha}" "${tree_sha}" || _live=$?
+            if [ "$_live" -eq 0 ]; then
               echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
+              exit 0
+            fi
+            if [ "$_live" -eq 2 ]; then
+              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read; standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
               exit 0
             fi
             echo "code-review-audit: out-of-scope for the frontend member, but members pending ${pending}; posting pending, not success." >&2

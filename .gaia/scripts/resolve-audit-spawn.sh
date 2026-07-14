@@ -30,6 +30,12 @@
 #                                      EMPTY stdout, which is exactly why
 #                                      this script parses its own arguments
 #                                      instead of inheriting that behavior.)
+#   --base with no <ref>            -> same fail-closed answer as an unknown
+#                                      flag, and for the same reason: it is an
+#                                      unparseable query, so it must not answer
+#                                      "nobody owed". Empty stdout is a real
+#                                      answer here ("no member is owed"), never
+#                                      an error channel.
 #   not in a git repo               -> nothing, exit 0. The merge deny-hook
 #                                      also exits permissively when it cannot
 #                                      resolve a SHA, so there is nothing to
@@ -116,7 +122,16 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --base)
       if [ "$#" -lt 2 ]; then
-        echo "resolve-audit-spawn: --base requires a <ref> argument" >&2
+        # Fail-closed, exactly as the unknown-flag arm below. A `--base` with no
+        # ref is an unparseable query, and empty stdout is NOT neutral here: the
+        # output contract above defines it as "no member is owed", so answering
+        # empty would tell the caller to spawn nobody while the merge deny-hook
+        # still demands markers. That is the silent-bypass class this script
+        # exists to eliminate. Reachable via an unquoted empty ref
+        # (`--base $REF` with REF unset), the standard way a caller mangles a
+        # flag argument.
+        echo "resolve-audit-spawn: --base requires a <ref> argument, failing closed to code-audit-frontend" >&2
+        echo "code-audit-frontend"
         exit 0
       fi
       BASE_OVERRIDE="$2"

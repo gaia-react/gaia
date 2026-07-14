@@ -104,6 +104,7 @@ install_gh_mock() {
   # No live success unless a test asks for one. Defensive: a leaked value would
   # silently stand the gate down in an unrelated test.
   unset GH_CANNED_SUCCESS_DESC
+  unset GH_STATUS_READ_FAILS
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
   cat > "$GH_BIN/gh" <<EOF
@@ -117,6 +118,13 @@ case "$1" in
     # which end in the sha, so the two never collide.
     case "$2" in
       */status)
+        # Simulate an unreadable status (auth blip, rate limit, network): gh
+        # exits non-zero. The guard must treat this as "could not ask", NOT as
+        # "no success live".
+        if [ -n "${GH_STATUS_READ_FAILS:-}" ]; then
+          echo "gh: could not read status" >&2
+          exit 1
+        fi
         if [ -n "${GH_CANNED_SUCCESS_DESC:-}" ]; then
           printf '%s\n' "$GH_CANNED_SUCCESS_DESC"
         fi
@@ -137,6 +145,11 @@ EOF
 # for a given tree. post-audit-status.sh's description shape is "<version> <tree>".
 canned_success_for_tree() {
   export GH_CANNED_SUCCESS_DESC="1.2.3 $1"
+}
+
+# Make the combined-status READ fail, standing in for a transient API/auth error.
+status_read_fails() {
+  export GH_STATUS_READ_FAILS=1
 }
 
 # Stub the PR-comment upsert the terminal status steps shell out to, recording
@@ -747,4 +760,54 @@ run_comment_step() {
   [ -f "$POST_LOG" ]
   grep -qF "state=success" "$POST_LOG"
   grep -qF "description=1.2.3 ${tree}" "$POST_LOG"
+}
+
+@test "non-clobber: an UNREADABLE status stands down instead of posting pending" {
+  # The subtle half of the fix. `gh api | grep -q` returns non-zero identically
+  # for "no success is live" and "I could not reach the API", so collapsing the
+  # two would re-post pending on a transient auth/rate-limit blip and clobber a
+  # success it simply failed to see -- reintroducing the bug on exactly the flaky
+  # runs where it is hardest to diagnose. Standing down still fails CLOSED: an
+  # absent required check blocks the merge just as a pending one does.
+  commit_maintainer_only_diff
+  local sha body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_read_fails
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  grep -qF "could not be read" <<<"$output"
+}
+
+@test "non-clobber: an unreadable status stands down on the self-heal stamp step too" {
+  commit_mixed_diff
+  local sha body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_read_fails
+
+  body="$(extract_step_body "Write GAIA-Audit commit status")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  grep -qF "could not be read" <<<"$output"
+}
+
+@test "non-clobber: an unreadable status stands down on the clean-no-push stamp step too" {
+  commit_mixed_diff
+  local sha tree body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  tree="$(sandbox_tree)"
+  write_frontend_marker "$tree"
+  status_read_fails
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (clean, no push)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  grep -qF "could not be read" <<<"$output"
 }
