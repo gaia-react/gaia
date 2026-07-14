@@ -895,6 +895,12 @@ jobs:
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.decision.outputs.should_run == 'false'
+        env:
+          # The PUSHED PR head sha, straight from the event payload, exactly as
+          # the stamp steps above take it: `git rev-parse HEAD` in the runner
+          # can point at a local, never-pushed commit and POSTing a status to a
+          # sha GitHub does not have returns HTTP 422.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
           # Local-mode stand-down: this author's resolved mode is `local` with
@@ -910,7 +916,7 @@ jobs:
           # == false): out-of-scope / self-mod PRs take the existing
           # success-stamp paths and never reach here, so exactly one terminal
           # status lands per run.
-          head_sha="$(git rev-parse HEAD)"
+          head_sha="${HEAD_SHA}"
 
           # Non-clobbering pending POST, exactly as the three stamp steps above
           # do it -- and this is the step where the clobber bites HARDEST, not
@@ -965,6 +971,11 @@ jobs:
           steps.chore-deps.outputs.skip == 'false' &&
           steps.source-changes.outputs.has_source == 'false'
         env:
+          # The PUSHED PR head sha, straight from the event payload, exactly as
+          # the stamp steps above take it: `git rev-parse HEAD` in the runner
+          # can point at a local, never-pushed commit and POSTing a status to a
+          # sha GitHub does not have returns HTTP 422.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           # The FULL-PR base, not steps.base.outputs.base (the incremental audit
           # base). Membership is a function of the whole PR diff; see
           # .github/audit/gate-pending-members.sh "Full-PR scope".
@@ -1007,7 +1018,7 @@ jobs:
           # guard script absent), anything else -- because collapsing an
           # unanswerable read into "no success live" is the clobber this guard
           # exists to prevent; the first stamp step carries the full rationale.
-          head_sha="$(git rev-parse HEAD)"
+          head_sha="${HEAD_SHA}"
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           # Publish the gate result so the terminal comment step reports the
           # truth. Without this the author is told "the merge gate is satisfied
@@ -1025,7 +1036,7 @@ jobs:
             # the safe direction (a live success posted by the local producer
             # still clears the gate); over-claiming a stamp is the failure this
             # output exists to prevent.
-            echo "status_posted=false" >> "$GITHUB_OUTPUT"
+            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
             tree_sha="$(git rev-parse "${head_sha}^{tree}")"
             _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${tree_sha}" || _live=$?
             if [ "$_live" -eq 0 ]; then
@@ -1043,6 +1054,13 @@ jobs:
             fi
             if [ "$_live" -ne 1 ]; then
               echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
+              # Publish the unanswerable read so the terminal comment step can
+              # tell the author the gate's true state is unknown, rather than
+              # asserting "pending, not green" -- a claim this step never
+              # verified on this exit. Under-claiming (this branch already
+              # stamped nothing) is safe; a false assertion about the state a
+              # failed read could not establish is not.
+              echo "read_failed=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "code-review-audit: out-of-scope for the frontend member, but members pending ${pending}; posting pending, not success." >&2
@@ -1064,7 +1082,7 @@ jobs:
           version="${version%"${version##*[![:space:]]}"}"
           if [ -z "$version" ]; then
             echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
-            echo "status_posted=false" >> "$GITHUB_OUTPUT"
+            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           tree_sha="$(git rev-parse "${head_sha}^{tree}")"
@@ -1077,7 +1095,7 @@ jobs:
           # unguarded `gh api` above fails the step under `set -e`, which skips the
           # comment step outright, but an output written first would outlive a
           # later reshape that tolerated the failure.
-          echo "status_posted=true" >> "$GITHUB_OUTPUT"
+          echo "success_stamped=true" >> "$GITHUB_OUTPUT"
 
       - name: Re-trigger and stamp required checks on new HEAD
         if: |
@@ -1304,8 +1322,9 @@ jobs:
           steps.source-changes.outputs.has_source == 'false'
         env:
           MEMBERS_PENDING: ${{ steps.oos-status.outputs.members_pending }}
-          STATUS_POSTED: ${{ steps.oos-status.outputs.status_posted }}
+          SUCCESS_STAMPED: ${{ steps.oos-status.outputs.success_stamped }}
           SUCCESS_LIVE: ${{ steps.oos-status.outputs.success_live }}
+          READ_FAILED: ${{ steps.oos-status.outputs.read_failed }}
         run: |
           set -eu
           # Checked BEFORE members_pending, which is still non-empty on this
@@ -1319,6 +1338,17 @@ jobs:
           if [ "${SUCCESS_LIVE:-}" = "true" ]; then
             bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
               "code-review-audit skipped: no files in the frontend auditor's scope. GAIA-Audit is already green for this commit's tree, every dispatched member has cleared. No action needed"
+            exit 0
+          fi
+          # Also checked BEFORE members_pending: the status step could not tell
+          # whether a GAIA-Audit success for this tree is already live (the
+          # non-clobber guard's read failed), so it stood down having stamped
+          # nothing. The members_pending branch below asserts "pending, not
+          # green", a claim this step never verified on this exit; the gate's
+          # true state is exactly what the guard could not read.
+          if [ "${READ_FAILED:-}" = "true" ]; then
+            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+              "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, and the current GAIA-Audit status could not be read, so its state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
             exit 0
           fi
           # "No source changes" is frontend-relative: has_source mirrors that
@@ -1339,7 +1369,7 @@ jobs:
           # signal buried in that step's log. Anything other than a confirmed
           # `true` is read as no-stamp, so a future reshape that drops the output
           # degrades to the cautious message rather than a false green.
-          if [ "${STATUS_POSTED:-}" != "true" ]; then
+          if [ "${SUCCESS_STAMPED:-}" != "true" ]; then
             bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
               "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit), but NO GAIA-Audit commit status was stamped on HEAD, so the merge gate is NOT satisfied. Most likely .gaia/VERSION is missing or empty; see the 'Write GAIA-Audit commit status (out-of-scope skip)' step log. Restore .gaia/VERSION, or run a local audit, to clear the gate"
             exit 0

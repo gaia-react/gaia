@@ -317,16 +317,17 @@ run_step() {
        bash "$body" )
 }
 
-# Run the terminal comment step's body against the stubbed upsert, with the two
+# Run the terminal comment step's body against the stubbed upsert, with the
 # outputs it consumes from the out-of-scope status step bound explicitly.
 run_comment_step() {
-  local body="$1" members_pending="$2" status_posted="$3" success_live="${4:-}"
+  local body="$1" members_pending="$2" success_stamped="$3" success_live="${4:-}" read_failed="${5:-}"
   ( cd "$SANDBOX" \
     && RUNNER_TEMP="$RUNNER_TEMP_DIR" \
        PR_NUMBER="1" \
        MEMBERS_PENDING="$members_pending" \
-       STATUS_POSTED="$status_posted" \
+       SUCCESS_STAMPED="$success_stamped" \
        SUCCESS_LIVE="$success_live" \
+       READ_FAILED="$read_failed" \
        bash "$body" )
 }
 
@@ -449,6 +450,29 @@ run_comment_step() {
   # PR_BASE_SHA is the PR's base sha from the event payload, for all three steps.
   run grep -cF 'PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}' "$WORKFLOW"
   [ "$output" -eq 3 ]
+}
+
+@test "the local-mode stand-down and the out-of-scope skip take their sha from the event payload, not git rev-parse HEAD" {
+  # A bare `git rev-parse HEAD` in the runner can point at a local,
+  # never-pushed commit (an empty trailer marker, a refused self-heal), and
+  # POSTing a status to a sha GitHub does not have returns HTTP 422. The
+  # clean-no-push stamp step already reads HEAD_SHA from the event payload
+  # directly, and the self-heal push stamp reads AUDIT_SHA from push-fixes'
+  # own event-anchored resolution; these two steps are the last of the four
+  # writers to anchor the same way.
+  for step in \
+    "Stand down (local-mode, no override)" \
+    "Write GAIA-Audit commit status (out-of-scope skip)"
+  do
+    body="$(extract_step_body "$step")"
+    grep -qF 'head_sha="${HEAD_SHA}"' "$body" || return 1
+    grep -qF 'git rev-parse HEAD)"' "$body" && return 1
+  done
+
+  # One HEAD_SHA event-payload binding for each of these two steps, the
+  # unrelated source-changes step, and the pre-existing clean-no-push stamp.
+  run grep -cF 'HEAD_SHA: ${{ github.event.pull_request.head.sha }}' "$WORKFLOW"
+  [ "$output" -eq 4 ]
 }
 
 # -----------------------------------------------------------------------------
@@ -596,7 +620,7 @@ run_comment_step() {
 
   # The stamp really happened, so the comment step is entitled to say the gate is
   # satisfied. This is the true half that the version-guard tests below pin false.
-  grep -qF "status_posted=true" "$STEP_OUTPUT"
+  grep -qF "success_stamped=true" "$STEP_OUTPUT"
 }
 
 # -----------------------------------------------------------------------------
@@ -615,7 +639,7 @@ run_comment_step() {
 # `set -e` neither shape fails the step.
 # -----------------------------------------------------------------------------
 
-@test "out-of-scope skip: an empty .gaia/VERSION posts no status and publishes status_posted=false" {
+@test "out-of-scope skip: an empty .gaia/VERSION posts no status and publishes success_stamped=false" {
   body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
   commit_docs_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
@@ -629,10 +653,10 @@ run_comment_step() {
   [ ! -f "$POST_LOG" ]
 
   # ...and the step says so, so the comment step can tell this apart from a stamp.
-  grep -qF "status_posted=false" "$STEP_OUTPUT"
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
 }
 
-@test "out-of-scope skip: a missing .gaia/VERSION posts no status and publishes status_posted=false" {
+@test "out-of-scope skip: a missing .gaia/VERSION posts no status and publishes success_stamped=false" {
   body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
   commit_docs_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
@@ -642,7 +666,7 @@ run_comment_step() {
   [ "$status" -eq 0 ]
 
   [ ! -f "$POST_LOG" ]
-  grep -qF "status_posted=false" "$STEP_OUTPUT"
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
 }
 
 @test "comment: no status stamped means the comment never claims the merge gate is satisfied" {
@@ -657,7 +681,7 @@ run_comment_step() {
   grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
 }
 
-@test "comment: an unset status_posted is read as no-stamp, never as a stamp" {
+@test "comment: an unset success_stamped is read as no-stamp, never as a stamp" {
   # Fail-safe default. If the status step is ever reshaped so the output goes
   # missing, the comment must degrade to the cautious message, not the green one.
   body="$(extract_step_body 'Status - skipped (no source changes)')"
@@ -733,7 +757,7 @@ run_comment_step() {
   grep -qF "not clobbering" <<<"$output"
 }
 
-@test "non-clobber: out-of-scope skip still publishes status_posted=false when it stands down" {
+@test "non-clobber: out-of-scope skip still publishes success_stamped=false when it stands down" {
   # This step stamped nothing on the stand-down path, so it must not claim it did.
   commit_maintainer_only_diff
   local sha tree body
@@ -744,7 +768,7 @@ run_comment_step() {
   body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
-  grep -qF "status_posted=false" "$STEP_OUTPUT"
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
 }
 
 @test "non-clobber: a STALE success (different tree) does NOT suppress the pending POST" {
@@ -852,6 +876,11 @@ run_comment_step() {
 
   [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
   grep -qF "could not be read" <<<"$output"
+
+  # The step stamped nothing AND could not tell whether a success is already
+  # live: publish that so the terminal comment step does not assert "pending,
+  # not green", a claim this exit never verified.
+  grep -qF "read_failed=true" "$STEP_OUTPUT"
 }
 
 @test "non-clobber: an unreadable status stands down on the self-heal stamp step too" {
@@ -926,6 +955,36 @@ run_comment_step() {
   [ -f "$COMMENT_LOG" ]
   grep -qF "pending, not green" "$COMMENT_LOG"
   grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG"
+}
+
+@test "read-failed: the PR comment says the gate's state is unknown, not 'pending, not green'" {
+  # The status step could not tell whether a success is already live (the
+  # non-clobber guard's read failed) and stamped nothing. Asserting "pending,
+  # not green" here would be a claim that exit never verified.
+  local body
+  body="$(extract_step_body "Status - skipped (no source changes)")"
+  run run_comment_step "$body" "code-audit-maintainer-shell" "false" "" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "could not be read, so its state is unknown" "$COMMENT_LOG"
+  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "read-failed: outranks members_pending, exactly as success_live does" {
+  # READ_FAILED and SUCCESS_LIVE are both checked before MEMBERS_PENDING, which
+  # stays non-empty on this path (CI cannot see a local marker). Without this
+  # ordering the members_pending branch would fire first and assert a state
+  # this step's own read never established.
+  local body
+  body="$(extract_step_body "Status - skipped (no source changes)")"
+  run run_comment_step "$body" "code-audit-maintainer-shell" "false" "" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "GAIA-Audit is pending, not green" "$COMMENT_LOG" && return 1
+  return 0
 }
 
 # -----------------------------------------------------------------------------
