@@ -11,6 +11,18 @@
 #   2. "Write GAIA-Audit commit status (clean, no push)" (clean-no-commit path)
 #   3. "Write GAIA-Audit commit status (out-of-scope skip)" (has_source == false)
 #
+# FOUR steps can POST `state=pending`, which is the other half of the gate and a
+# different set: the three above, PLUS
+#
+#   4. "Stand down (local-mode, no override)"            (should_run == false)
+#
+# The pending writers are tested as their own group at the bottom of this file,
+# because a `pending` POST clobbers a live `success` (a commit status has no
+# compare-and-set) and every one of the four must consult the non-clobber guard
+# before writing. Naming all four here is load-bearing: the local-mode stand-down
+# shipped unguarded precisely because this suite tested only the steps it names,
+# and a suite that never names a step cannot notice it is broken.
+#
 # What they guard against: stamping success on the FRONTEND member's clearance
 # alone. CI runs exactly ONE auditor (the audit step's prompt dispatches
 # code-audit-frontend), so every OTHER member the resolver dispatches is
@@ -155,6 +167,21 @@ canned_success_for_tree() {
 # Make the combined-status READ fail, standing in for a transient API/auth error.
 status_read_fails() {
   export GH_STATUS_READ_FAILS=1
+}
+
+# Delete the non-clobber guard from the sandbox, so a caller's
+# `bash .github/audit/audit-success-present.sh ...` exits 127 rather than
+# returning one of the script's own 0/1/2 codes.
+#
+# This is not a contrived fixture. It stands in for a partial checkout, a botched
+# merge, an adopter whose install predates the script -- and, more generally, for
+# the fact that the exit space is OPEN: the invocation can fail outside the
+# script's contract even when the script itself is correct. A caller that
+# enumerates the stand-down codes (`-eq 0`, `-eq 2`) lets every unenumerated one
+# fall straight through to the `pending` POST, which is the clobber the guard
+# exists to prevent -- restored on exactly the runs where the guard is missing.
+remove_guard_script() {
+  rm -f "$SANDBOX/.github/audit/audit-success-present.sh"
 }
 
 # Stub the PR-comment upsert the terminal status steps shell out to, recording
@@ -860,4 +887,211 @@ run_comment_step() {
   [ -f "$COMMENT_LOG" ]
   grep -qF "pending, not green" "$COMMENT_LOG"
   grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG"
+}
+
+# -----------------------------------------------------------------------------
+# The local-mode stand-down: the FOURTH pending writer
+#
+# The non-clobber guard shipped on three of the four steps that POST `pending`.
+# This one -- the step that fires on the most common maintainer path, local audit
+# mode with no override label -- POSTed unconditionally, so the clobber it was
+# meant to close was still live.
+#
+# Its `if:` depends only on the label gate, chore-deps, has_source, self_modified
+# and should_run. NONE of those change once a `success` is live. The workflow
+# triggers on `labeled` and `unlabeled`, which re-run it on the SAME head sha with
+# no new push. So:
+#
+#   1. The author pushes sha S; this step POSTs `pending`.
+#   2. The author audits locally; every dispatched member clears and
+#      post-audit-status.sh POSTs `success` on S.
+#   3. Any label is added or removed. The workflow re-runs on S.
+#   4. should_run is still false, this step fires again, and POSTs `pending`
+#      straight over the success.
+#   5. Branch protection rejects the merge. Nothing re-posts. The gate is stuck
+#      shut until a human re-runs the producer by hand.
+#
+# It fails CLOSED, so it is a stuck gate rather than an unaudited merge -- but it
+# is the #734 clobber on the path most maintainers actually take.
+# -----------------------------------------------------------------------------
+
+@test "local-mode stand-down: posts pending when no success is live (unchanged behavior)" {
+  # Regression lock on the pre-existing behavior: with nothing to protect, the
+  # guard is inert and the step blocks the merge exactly as it always has.
+  local sha body
+  body="$(extract_step_body 'Stand down (local-mode, no override)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  grep -qF "statuses/${sha}" "$POST_LOG"
+  grep -qF "state=pending" "$POST_LOG"
+  grep -qF "context=GAIA-Audit" "$POST_LOG"
+
+  # The description must not carry the cleared "<version> <tree-sha>" shape, so a
+  # state-blind reader cannot mistake this pending for cleared.
+  tree="$(sandbox_tree)"
+  grep -qF "description=1.2.3 ${tree}" "$POST_LOG" && return 1
+  return 0
+}
+
+@test "local-mode stand-down: does NOT overwrite a live success for the current tree" {
+  # The headline shape. The local producer has already cleared every dispatched
+  # member and posted success on this exact tree; a re-run of this step (a label
+  # touched, no new push) must not write over it.
+  local sha body
+  body="$(extract_step_body 'Stand down (local-mode, no override)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  canned_success_for_tree "$(sandbox_tree)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  # The whole point: nothing was written, so the live success survives and the
+  # merge button stays open.
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  grep -qF "not clobbering" <<<"$output"
+}
+
+@test "local-mode stand-down: a STALE success (different tree) still posts pending" {
+  # Fail-closed, and the reason the guard is keyed to the TREE and not the sha: a
+  # success naming an older tree vouches for content that is no longer what would
+  # merge, so it must NOT stand this step down. Without this the guard would wave
+  # through every push after the first cleared one.
+  local sha body
+  body="$(extract_step_body 'Stand down (local-mode, no override)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  canned_success_for_tree "0000000000000000000000000000000000000000"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  grep -qF "state=pending" "$POST_LOG"
+  grep -qF "context=GAIA-Audit" "$POST_LOG"
+}
+
+@test "local-mode stand-down: an UNREADABLE status stands down instead of posting pending" {
+  # A transient auth/rate-limit blip must not be read as "no success live". The
+  # step has no way to tell those apart from the read alone, so it stands down.
+  local sha body
+  body="$(extract_step_body 'Stand down (local-mode, no override)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_read_fails
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  grep -qF "could not be read" <<<"$output"
+}
+
+# -----------------------------------------------------------------------------
+# An unexpected guard exit is unanswerable, never "no success live"
+#
+# audit-success-present.sh returns 0/1/2 by contract, but the INVOCATION can fail
+# outside that contract -- above all with 127 when the script is absent or
+# unreadable. A caller that enumerates the stand-down codes (`-eq 0`, `-eq 2`)
+# lets 127 fall through and POST `pending` over a live success: the clobber comes
+# back, and it comes back precisely on the runs where the guard is broken, which
+# is where it is hardest to diagnose.
+#
+# So every caller tests for a DEFINITIVE 1 and stands down on everything else.
+# Each case below cans a live success AND removes the guard: a caller that
+# collapses 127 into "no success live" clobbers it, and the test fails.
+# -----------------------------------------------------------------------------
+
+@test "missing guard: the local-mode stand-down stands down rather than posting pending" {
+  local sha body
+  body="$(extract_step_body 'Stand down (local-mode, no override)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  canned_success_for_tree "$(sandbox_tree)"
+  remove_guard_script
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  return 0
+}
+
+@test "missing guard: the self-heal stamp step stands down rather than posting pending" {
+  local sha body
+  commit_mixed_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  canned_success_for_tree "$(sandbox_tree)"
+  remove_guard_script
+
+  body="$(extract_step_body 'Write GAIA-Audit commit status')"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  return 0
+}
+
+@test "missing guard: the clean-no-push stamp step stands down rather than posting pending" {
+  local sha tree body
+  commit_mixed_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  tree="$(sandbox_tree)"
+  write_frontend_marker "$tree"
+  canned_success_for_tree "$tree"
+  remove_guard_script
+
+  body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  return 0
+}
+
+@test "missing guard: the out-of-scope skip stands down rather than posting pending" {
+  local sha body
+  commit_maintainer_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  canned_success_for_tree "$(sandbox_tree)"
+  remove_guard_script
+
+  body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  return 0
+}
+
+@test "every step that POSTs pending consults the guard and posts only on a definitive 1" {
+  # The structural lock, and the one assertion that would have caught the gap the
+  # behavioral tests above missed for a release: a guard is only as good as the
+  # set of callers that use it, and a suite that tests three of four writers says
+  # nothing about the fourth. Pin the whole set.
+  local step body
+  for step in \
+    "Write GAIA-Audit commit status" \
+    "Write GAIA-Audit commit status (clean, no push)" \
+    "Write GAIA-Audit commit status (out-of-scope skip)" \
+    "Stand down (local-mode, no override)"
+  do
+    body="$(extract_step_body "$step")"
+    # Enumerating the stand-down codes is the bug: `-eq 2` alone lets 127 (and
+    # every other unexpected exit) fall through to the POST.
+    if grep -qF -- '"$_live" -eq 2' "$body"; then return 1; fi
+    grep -qF -- "--field state=pending" "$body" || return 1
+    grep -qF -- "audit-success-present.sh" "$body" || return 1
+    grep -qF -- '"$_live" -ne 1' "$body" || return 1
+  done
+
+  # ...and these four are the WHOLE set, so the loop above covers every pending
+  # writer there is. A fifth added without a guard trips this count.
+  run grep -cF -- "--field state=pending" "$WORKFLOW"
+  [ "$output" -eq 4 ]
 }

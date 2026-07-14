@@ -13,8 +13,10 @@
 #   reverts to pending, `gh pr merge` is rejected by branch protection, nothing
 #   re-posts, and the gate stays shut until a human re-runs the producer by hand.
 #
-#   Every GAIA-Audit stamp step in .github/workflows/code-review-audit.yml calls
-#   this before posting `pending`, and stands down when it answers 0 or 2.
+#   Every step in .github/workflows/code-review-audit.yml that POSTs `pending`
+#   calls this first -- the three stamp steps AND the local-mode stand-down --
+#   and each posts `pending` ONLY on a definitive 1, standing down on every other
+#   exit. See "Exit codes" below for why the test is `-ne 1` and not `-eq 2`.
 #
 # Usage
 #   .github/audit/audit-success-present.sh <sha> <tree-sha>
@@ -40,6 +42,15 @@
 #      check blocks the merge just as a `pending` one does.
 #   2  Also returned on a usage error (missing argument), for the same
 #      fail-closed reason: an unanswerable question is never "no success live".
+#
+#   Test for a definitive 1, never for "not 0 and not 2". The exit space is open:
+#   the INVOCATION can fail outside this contract -- most importantly 127 when
+#   this file is absent or unreadable, which is even more "could not ask" than a
+#   2 -- and a caller that enumerates the stand-down codes lets every unenumerated
+#   one fall through and POST `pending` over a live success. That is the same
+#   collapse the 2 contract forbids, arriving by a different door, and it is
+#   loudest exactly when this guard is broken or missing. Inverting the test makes
+#   standing down the default and the POST the exception.
 #
 # Notes
 #   - The COMBINED-status endpoint (/commits/<sha>/status) is deliberate: it
