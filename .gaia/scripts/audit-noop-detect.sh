@@ -268,10 +268,17 @@ case "$SHAPE" in
     fi
     [ -f "$TARGET_PATH" ] || noop
     content="$(cat "$TARGET_PATH" 2>/dev/null)"
+    # Here-string, not a `printf | grep -q` pipe: under `pipefail`, grep -q's
+    # early exit on a large early match SIGPIPEs the upstream writer, and the
+    # pipeline's exit code collapses to that SIGPIPE, not grep's match. A
+    # full audit report comfortably exceeds the pipe buffer, so this is the
+    # same hazard #748 removed from the success-present guard, not a
+    # theoretical one. shellcheck disable=SC2016 (literal backticks, not a
+    # command substitution).
     # shellcheck disable=SC2016
-    if printf '%s' "$content" | grep -Eq '`[^`]+:[0-9]+`'; then
+    if grep -Eq '`[^`]+:[0-9]+`' <<<"$content"; then
       real
-    elif printf '%s' "$content" | grep -Fq 'Remaining in-scope:'; then
+    elif grep -Fq 'Remaining in-scope:' <<<"$content"; then
       real
     else
       noop

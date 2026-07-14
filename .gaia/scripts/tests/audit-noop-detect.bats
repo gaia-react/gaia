@@ -259,6 +259,60 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
+# audit-team-member (return-conformance, optional --marker companion check)
+# ---------------------------------------------------------------------------
+
+@test "audit-team-member: --marker path exists is REAL regardless of --path content" {
+  marker="$BATS_TEST_TMPDIR/marker.ok"
+  : > "$marker"
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member: no marker, backticked Location finding is REAL" {
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/audit-team-member/finding-block.txt" --marker "$BATS_TEST_TMPDIR/does-not-exist.ok"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member: no marker, terse LOCAL return-contract preamble is REAL" {
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/audit-team-member/terse-return.txt" --marker "$BATS_TEST_TMPDIR/does-not-exist.ok"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member: no marker, harness-reminder-echo return is NO-OP" {
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "audit-team-member: no marker, absent --path is NO-OP" {
+  run "$SCRIPT" --shape audit-team-member --path "$BATS_TEST_TMPDIR/does-not-exist.txt" --marker "$BATS_TEST_TMPDIR/also-does-not-exist.ok"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "audit-team-member: large (>64KB) blocking-dirty report with an early Location token is still REAL, not a pipefail/SIGPIPE misclassification" {
+  large="$BATS_TEST_TMPDIR/large-finding.txt"
+  {
+    printf '### Critical Issues (Must Fix)\n'
+    printf -- '- **Location**: `app/foo.ts:42`\n'
+    printf -- '- **Issue**: a real finding near the front of a large report.\n'
+    # Pad well past a pipe buffer (64KB) so a `printf | grep -q` pipe would
+    # SIGPIPE the writer under `pipefail` before the file is fully consumed.
+    for _ in $(seq 1 1000); do
+      printf '%s\n' "padding padding padding padding padding padding padding padding padding padding"
+    done
+  } > "$large"
+  [ "$(wc -c < "$large" | tr -d ' ')" -gt 65536 ]
+  run "$SCRIPT" --shape audit-team-member --path "$large" --marker "$BATS_TEST_TMPDIR/does-not-exist.ok"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+# ---------------------------------------------------------------------------
 # Cross-cutting: exit-code-is-the-boolean contract, purity
 # ---------------------------------------------------------------------------
 
