@@ -47,7 +47,7 @@ It prints JSON to stdout:
 }
 ```
 
-Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_numbers`, `area_tags`, `severity_max`. The tally already drops classes a promoted rule covers and classes the decline ledger suppresses, so every entry it returns is an open candidate. Coverage detection is class-level and scope-blind in v1: a promoted rule suppresses its `finding_class` regardless of the rule's `paths:` glob, because coverage keys only on the provenance marker's `finding_class`, not on scope. `harden-tally` is network-dependent and non-fatal: a `gh` failure yields an empty candidate list rather than an error, and it always exits 0. The emitted JSON carries a `gh_ok` boolean that separates a real all-clear from a failed window read. When `gh_ok` is `false`, the merged-PR window could not be read (a `gh`/network outage), which is NOT an all-clear: report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claim no findings. When `gh_ok` is `true` and `candidate_count` is `0`, report "no recurring findings crossed the threshold in the last 90 days" and stop.
+Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_numbers`, `area_tags`, `severity_max`. The tally already drops classes a promoted rule covers and classes the decline ledger suppresses, so every entry it returns is an open candidate. Coverage detection is class-level and scope-blind in v1: a promoted rule suppresses its `finding_class` regardless of the rule's `paths:` glob, because coverage keys only on the provenance marker's `finding_class`, not on scope. `harden-tally` is network-dependent and non-fatal: a `gh` failure yields an empty candidate list rather than an error, and it always exits 0. The emitted JSON carries a `gh_ok` boolean that separates a real all-clear from a failed window read. When `gh_ok` is `false`, the merged-PR window could not be read (a `gh`/network outage), which is NOT an all-clear: report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claim no findings. (Run ends here; see `## Cost record (run end)`.) When `gh_ok` is `true` and `candidate_count` is `0`, report "no recurring findings crossed the threshold in the last 90 days" and stop. (Run ends here; see `## Cost record (run end)`.)
 
 ## Judge-the-form logic (the heart of the command)
 
@@ -190,7 +190,7 @@ The `marker.test.ts` guard asserts every doc copy reproduces `markerComment(...)
 
 Runs once, in `review` mode only, after the last candidate is dispositioned. `list` and `why` never reach it (they author nothing). It exists so an engineer who approved at least one change does not then have to ask for a branch and PR by hand.
 
-**Precondition.** During the per-candidate loop, track whether any candidate was approved through a handler that writes to the working tree: **new prose rule**, **edit existing prose rule**, or **enforcement edit**. The scaffold-only handlers (deterministic-check sketch, skill scaffold) write no file and never count, and decline / defer produce no change. If no approval produced a working-tree change, there is nothing to publish: say so briefly and stop.
+**Precondition.** During the per-candidate loop, track whether any candidate was approved through a handler that writes to the working tree: **new prose rule**, **edit existing prose rule**, or **enforcement edit**. The scaffold-only handlers (deterministic-check sketch, skill scaffold) write no file and never count, and decline / defer produce no change. If no approval produced a working-tree change, there is nothing to publish: say so briefly and stop. (Run ends here; see `## Cost record (run end)`.)
 
 **Also track an `all-approved` flag:** true when **every candidate this run was approved** (approve or redirect; a single decline or defer breaks it). It does not affect whether to publish, it gates only the merge prompt below.
 
@@ -200,9 +200,9 @@ Runs once, in `review` mode only, after the last candidate is dispositioned. `li
 git status --porcelain
 ```
 
-If it is empty, no-op (a redirect or an unapplied too-invasive edit can leave the approval count and the tree disagreeing); report that nothing landed and stop.
+If it is empty, no-op (a redirect or an unapplied too-invasive edit can leave the approval count and the tree disagreeing); report that nothing landed and stop. (Run ends here; see `## Cost record (run end)`.)
 
-**Repo-state safety.** Branching needs a safe state. If HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, do not branch: leave the approved changes in the working tree, tell the engineer they ship through normal PR review, and stop.
+**Repo-state safety.** Branching needs a safe state. If HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, do not branch: leave the approved changes in the working tree, tell the engineer they ship through normal PR review, and stop. (Run ends here; see `## Cost record (run end)`.)
 
 **On the default branch (main/master):** create the branch (the uncommitted approved edits follow the checkout), commit, push, and open a PR.
 
@@ -238,22 +238,51 @@ Clear the **CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md` before `gh
   1. `{ label: "Merge", description: "Squash-merge PR #<N> now; the earlier oracle check confirmed whether the bypass applies." }`
   2. `{ label: "Leave open", description: "Keep the PR open; you merge it after review." }`
 
-- **Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto` (`--auto` queues behind required checks; the oracle check before `gh pr create` already confirmed whether a marker is owed for this diff), bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes), and on `MERGED` clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`); if it is still queued when the poll window closes, print the PR URL, note the merge is queued, and leave the branch in place.
-- **Leave open** → report the PR URL and stop.
+- **Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto` (`--auto` queues behind required checks; the oracle check before `gh pr create` already confirmed whether a marker is owed for this diff), bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes), and on `MERGED` clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`); if it is still queued when the poll window closes, print the PR URL, note the merge is queued, and leave the branch in place. Either way, the run ends here; see `## Cost record (run end)`.
+- **Leave open** → report the PR URL and stop. (Run ends here; see `## Cost record (run end)`.)
 
-**If the `all-approved` flag is false** (any candidate was declined or deferred), do not prompt: report the PR URL, note it is open for review, and stop. Never run `gh pr merge` on this path.
+**If the `all-approved` flag is false** (any candidate was declined or deferred), do not prompt: report the PR URL, note it is open for review, and stop. Never run `gh pr merge` on this path. (Run ends here; see `## Cost record (run end)`.)
 
-**On any other branch:** do not branch, commit, or PR. Leave the approved changes in the working tree and tell the engineer they ride the current branch's own PR (today's behavior). The end-of-run automation targets only the main-branch case, where a branch has to be made.
+**On any other branch:** do not branch, commit, or PR. Leave the approved changes in the working tree and tell the engineer they ride the current branch's own PR (today's behavior). The end-of-run automation targets only the main-branch case, where a branch has to be made. (Run ends here; see `## Cost record (run end)`.)
 
-If any `git` or `gh` command above exits non-zero, print the error and STOP. Do not retry, force-push, or amend; a rejected push is the engineer's call to resolve.
+If any `git` or `gh` command above exits non-zero, print the error and STOP. Do not retry, force-push, or amend; a rejected push is the engineer's call to resolve. (Run ends here; see `## Cost record (run end)`, passing `--github-*` only if `gh pr create` already succeeded before the failure.)
 
 ## list subcommand
 
-Run `harden-tally`, then for each candidate print one line: `finding_class`, distinct-PR count, the PRs, and the recommended form (from judge-the-form, edit-vs-new + which-form). Author nothing and prompt for nothing.
+Run `harden-tally`, then for each candidate print one line: `finding_class`, distinct-PR count, the PRs, and the recommended form (from judge-the-form, edit-vs-new + which-form). Author nothing and prompt for nothing. (Run ends here; see `## Cost record (run end)`.)
 
 ## why subcommand
 
-Run `harden-tally`, find the candidate whose `finding_class` matches the argument. Explain it: what the finding is, the distinct PRs it recurred on (`pr_numbers`), its max severity, the recommended form, and the rationale (including whether an existing artifact should be edited instead). If no candidate matches, say so and list the open candidates. Author nothing and prompt for nothing.
+Run `harden-tally`, find the candidate whose `finding_class` matches the argument. Explain it: what the finding is, the distinct PRs it recurred on (`pr_numbers`), its max severity, the recommended form, and the rationale (including whether an existing artifact should be edited instead). If no candidate matches, say so and list the open candidates. Author nothing and prompt for nothing. (Run ends here; see `## Cost record (run end)`.)
+
+## Cost record (run end)
+
+Every path that ends a `/gaia-harden` run appends exactly one cost record, the run-ending paths above:
+
+- `list` and `why` printing their result.
+- The `gh_ok: false` and zero-candidate stops from the live candidate fetch.
+- Publish's no-change stop (no approval touched the working tree, or `git status --porcelain` came back empty).
+- Publish's unsafe-repo-state stop.
+- Publish's merge outcomes: `MERGED`, still queued, "Leave open", `all-approved` false, or any other-branch no-op.
+- Publish's non-zero-exit STOP on a `git` or `gh` command.
+
+Standalone final step, one call:
+
+```bash
+bash .gaia/scripts/token-tally.sh --action command --command gaia-harden
+```
+
+**Artifact pass-through.** When this run opened a pull request and the URL `gh pr create` printed appeared in this run's own Bash tool result, append:
+
+```bash
+  --github-type pr --github-number <N> --github-repo '<owner>/<name>'
+```
+
+Never look the number up (`gh pr list`, `gh pr view`), never reuse a number from an earlier run, a different branch, or a `gh` command run outside this workflow, and never guess. If this run did not itself print a creation URL, pass no `--github-*` flags at all; the record correctly carries no artifact, and that is not an error.
+
+**Report the line verbatim.** The tally prints exactly one line on stdout, e.g. `Cost: ~5.2M tokens, $4.12, 6m39s`. Relay it as the last line of the run's report; do not reassemble, reformat, or re-derive it.
+
+The tally never blocks, never fails, and never turns a failed run into a successful one: it runs as a bare call with no exit-status ceremony around it. On a path that ends in an error (a rejected push, a blocked merge), record the cost, then report the failure exactly as before; recording the cost never implies success.
 
 ## Guardrails
 

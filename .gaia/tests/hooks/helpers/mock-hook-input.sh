@@ -3,7 +3,7 @@
 # Usage:
 #   mock-hook-input.sh user-prompt-submit <session_id> [prompt]
 #   mock-hook-input.sh pre-tool-use <session_id> <tool_name> <command>
-#   mock-hook-input.sh post-tool-use <session_id> <tool_name> <command>
+#   mock-hook-input.sh post-tool-use <session_id> <tool_name> <command> [stdout]
 #   mock-hook-input.sh stop <session_id>
 set -euo pipefail
 
@@ -25,8 +25,9 @@ case "$event" in
   post-tool-use)
     tool="${3:?tool_name required}"
     cmd="${4:?command required}"
-    jq -n --arg sid "$session_id" --arg t "$tool" --arg c "$cmd" \
-      '{session_id: $sid, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "PostToolUse", tool_name: $t, tool_input: {command: $c}, tool_response: {stdout: "", stderr: "", interrupted: false}}'
+    out="${5:-}"
+    jq -n --arg sid "$session_id" --arg t "$tool" --arg c "$cmd" --arg o "$out" \
+      '{session_id: $sid, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "PostToolUse", tool_name: $t, tool_input: {command: $c}, tool_response: {stdout: $o, stderr: "", interrupted: false}}'
     ;;
   stop)
     jq -n --arg sid "$session_id" \

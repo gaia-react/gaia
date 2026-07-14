@@ -43,6 +43,8 @@ import type {PassthroughFailureOptions} from './util/land.js';
 
 const WIKI_CHAIN_BRANCH_PREFIX = 'wiki-sync/';
 
+const TALLY_SCRIPT = '.gaia/scripts/token-tally.sh';
+
 const passthroughFailure = (
   result: PassthroughFailureOptions['result'],
   command: string,
@@ -80,6 +82,15 @@ const HELP_TEXT = `Usage: gaia wiki chain <begin|commit|finish> [args]
     2  unexpected (git/gh failure)
 `;
 
+/** `runFinish`'s result: the exit code plus whatever artifact it observed. */
+type FinishOutcome = {
+  artifact?: GhArtifact;
+  code: number;
+};
+
+/** The GitHub artifact `finish` passed through to the cost tally. */
+type GhArtifact = {number: number; repo: string};
+
 type RunOptions = {
   cwd?: string;
   /** Override the merge-poll attempt count in `finish` (tests pass a small n). */
@@ -101,6 +112,17 @@ const resolveRoot = (cwdOption: string, action: string): null | string => {
       subcommand: `wiki chain ${action}`,
     });
 
+    return null;
+  }
+};
+
+// Telemetry-only variant of `resolveRoot`: `emitWikiTally` must never surface
+// an error of its own, so a repo-root failure degrades to "skip the tally"
+// rather than a structured stderr message.
+const resolveRepoRootOrNull = (cwd: string): null | string => {
+  try {
+    return resolveRepoRoot(cwd);
+  } catch {
     return null;
   }
 };
@@ -334,7 +356,73 @@ const finishEmptyBranch = (options: FinishEmptyBranchOptions): number => {
   return EXIT_CODES.OK;
 };
 
-const finish = (argv: readonly string[], options: RunOptions): number => {
+const PR_URL =
+  /https:\/\/github\.com\/([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)\/pull\/(\d+)/u;
+
+/**
+ * Parse the first anchored `.../pull/<n>` URL out of `gh pr create`'s stdout.
+ * A non-URL line, an `/issues/` URL, or an owner/repo outside the safe
+ * character class all return `undefined` rather than a partial artifact.
+ */
+const parsePrUrl = (text: string): GhArtifact | undefined => {
+  const match = PR_URL.exec(text);
+
+  if (match === null) return undefined;
+
+  const number = Number.parseInt(match[2], 10);
+
+  if (!Number.isSafeInteger(number) || number <= 0) return undefined;
+
+  return {number, repo: match[1]};
+};
+
+/**
+ * Emit this run's `kind: "command"` cost record and write the tally's
+ * `Cost:` line through to stdout. `defaultRunner` captures a spawned child's
+ * stdout instead of inheriting it, so without this explicit write the line
+ * is silently swallowed and `/gaia-wiki` prints no cost at all.
+ *
+ * Never throws and never influences `finish`'s exit code: a missing script,
+ * a non-zero tally exit, or empty stdout are all silently fine.
+ */
+const emitWikiTally = (options: RunOptions, artifact?: GhArtifact): void => {
+  try {
+    const cwd = options.cwd ?? process.cwd();
+    const runner = options.runner ?? defaultRunner;
+    const repoRoot = resolveRepoRootOrNull(cwd);
+
+    if (repoRoot === null) return;
+
+    const args = [
+      TALLY_SCRIPT,
+      '--action',
+      'command',
+      '--command',
+      'gaia-wiki',
+      ...(artifact === undefined ?
+        []
+      : [
+          '--github-type',
+          'pr',
+          '--github-number',
+          String(artifact.number),
+          '--github-repo',
+          artifact.repo,
+        ]),
+    ];
+
+    const result = runner('bash', args, {cwd: repoRoot});
+
+    process.stdout.write(safeOutput(result.stdout));
+  } catch {
+    // Telemetry is best-effort; a thrown error here must not surface.
+  }
+};
+
+const runFinish = (
+  argv: readonly string[],
+  options: RunOptions
+): FinishOutcome => {
   const parsed = parseBranchAware(argv);
 
   if (!parsed.ok) {
@@ -344,14 +432,14 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
       subcommand: 'wiki chain finish',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
 
   const cwd = options.cwd ?? process.cwd();
   const runner = options.runner ?? defaultRunner;
   const repoRoot = resolveRoot(cwd, 'finish');
 
-  if (repoRoot === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  if (repoRoot === null) return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND};
 
   let branch: string;
 
@@ -362,7 +450,7 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
       `chain: ${error instanceof Error ? error.message : String(error)}\n`
     );
 
-    return UNEXPECTED_EXIT;
+    return {code: UNEXPECTED_EXIT};
   }
 
   if (!branch.startsWith(WIKI_CHAIN_BRANCH_PREFIX)) {
@@ -372,7 +460,7 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
       `chain finish: in-place commits remain on ${branch}; no PR opened\n`
     );
 
-    return EXIT_CODES.OK;
+    return {code: EXIT_CODES.OK};
   }
 
   const base = defaultBranch(repoRoot, runner);
@@ -380,12 +468,12 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
   const countResult = runner('git', countArgs, {cwd: repoRoot});
 
   if (!stepOk(countResult))
-    return passthroughFailure(countResult, 'git', countArgs);
+    return {code: passthroughFailure(countResult, 'git', countArgs)};
 
   const ahead = Number.parseInt(safeOutput(countResult.stdout).trim(), 10);
 
   if (!Number.isNaN(ahead) && ahead === 0) {
-    return finishEmptyBranch({base, branch, repoRoot, runner});
+    return {code: finishEmptyBranch({base, branch, repoRoot, runner})};
   }
 
   const shortHead = resolveShortHead(runner, repoRoot) ?? branch;
@@ -408,25 +496,50 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
     },
   ];
 
+  let artifact: GhArtifact | undefined;
+
   for (const step of remoteSequence) {
     const result = runner(step.command, step.args, {cwd: repoRoot});
 
-    if (!stepOk(result))
-      return passthroughFailure(result, step.command, step.args);
+    if (!stepOk(result)) {
+      return {
+        artifact,
+        code: passthroughFailure(result, step.command, step.args),
+      };
+    }
+
+    if (
+      step.command === 'gh' &&
+      step.args[0] === 'pr' &&
+      step.args[1] === 'create'
+    ) {
+      artifact = parsePrUrl(safeOutput(result.stdout));
+    }
   }
 
   // Land like any other PR: `--auto` waits for the gate to go green server side,
   // then finalizeMerge polls for the merge and cleans up locally (or defers to
   // the session-start janitor on timeout).
-  return finalizeMerge({
-    attempts: options.mergePollAttempts,
-    base,
-    branch,
-    cwd: repoRoot,
-    prefix: 'chain finish',
-    runner,
-    sleep: options.sleep,
-  });
+  return {
+    artifact,
+    code: finalizeMerge({
+      attempts: options.mergePollAttempts,
+      base,
+      branch,
+      cwd: repoRoot,
+      prefix: 'chain finish',
+      runner,
+      sleep: options.sleep,
+    }),
+  };
+};
+
+const finish = (argv: readonly string[], options: RunOptions): number => {
+  const outcome = runFinish(argv, options);
+
+  emitWikiTally(options, outcome.artifact);
+
+  return outcome.code;
 };
 
 const ACTIONS: Readonly<
