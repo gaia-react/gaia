@@ -196,12 +196,13 @@ run_hook_stdout() {
     # to protect, so the iteration has nothing to assert.)
     #
     # Deliberately not asserted here: that the survivor is still *registered*.
-    # `worktree add` registers before the directory materializes, and that
-    # in-flight state is byte-identical to a crashed run's stale registration,
-    # which the cleanup is supposed to prune (test 12). So a loser can prune an
-    # in-flight winner's registration. It destroys no work (the directory is
-    # empty or absent at that instant), and telling the two apart needs a lock
-    # around create-and-cleanup rather than a sharper check. Tracked separately.
+    # The guard decides from a snapshot (the list read, the `-e` test) while the
+    # peer keeps moving, so no inspection-only check closes the window. `add`
+    # creates the directory before the entry becomes listable, so a loser can
+    # catch a winner mid-add with the directory present but not yet listed, take
+    # the destructive branch, and delete the in-flight checkout. It destroys no
+    # uncommitted work (nobody has written to it yet), and closing it needs a
+    # lock around create-and-cleanup, not a sharper check. Tracked in #762.
     if [ "$status_a" -eq 0 ] || [ "$status_b" -eq 0 ]; then
       [ -d "$wt" ]
     fi
