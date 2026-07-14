@@ -872,9 +872,14 @@ jobs:
           # is shut, which is the same class of misleading green the workflow
           # already guards against elsewhere.
           echo "members_pending=${pending}" >> "$GITHUB_OUTPUT"
+          # Publish whether the SUCCESS status actually landed, on every exit
+          # path, for the same reason members_pending exists: the terminal comment
+          # step must never claim a stamp that did not happen. `false` here is not
+          # a failure, it means "the merge gate is NOT cleared by this step".
           if [ -n "$pending" ]; then
             echo "code-review-audit: out-of-scope for the frontend member, but members pending ${pending}; posting pending, not success." >&2
             desc="$(printf 'members pending: %s' "$pending" | cut -c1-140)"
+            echo "status_posted=false" >> "$GITHUB_OUTPUT"
             gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
               --method POST \
               --field state=pending \
@@ -883,11 +888,16 @@ jobs:
             exit 0
           fi
 
+          # A missing .gaia/VERSION reaches here identically to an empty one: the
+          # read is a PIPELINE, so a failed redirect still leaves awk exiting 0 on
+          # no input and the substitution yields "". Neither shape trips `set -e`,
+          # so both land on the exit below having posted NOTHING.
           version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
           version="${version#"${version%%[![:space:]]*}"}"
           version="${version%"${version##*[![:space:]]}"}"
           if [ -z "$version" ]; then
             echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
+            echo "status_posted=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           tree_sha="$(git rev-parse "HEAD^{tree}")"
@@ -896,6 +906,11 @@ jobs:
             --field state=success \
             --field context=GAIA-Audit \
             --field description="${version} ${tree_sha}"
+          # Last, so it records a POST that returned non-zero as no-stamp: the
+          # unguarded `gh api` above fails the step under `set -e`, which skips the
+          # comment step outright, but an output written first would outlive a
+          # later reshape that tolerated the failure.
+          echo "status_posted=true" >> "$GITHUB_OUTPUT"
 
       - name: Re-trigger and stamp required checks on new HEAD
         if: |
@@ -1122,6 +1137,7 @@ jobs:
           steps.source-changes.outputs.has_source == 'false'
         env:
           MEMBERS_PENDING: ${{ steps.oos-status.outputs.members_pending }}
+          STATUS_POSTED: ${{ steps.oos-status.outputs.status_posted }}
         run: |
           set -eu
           # "No source changes" is frontend-relative: has_source mirrors that
@@ -1133,6 +1149,18 @@ jobs:
           if [ -n "${MEMBERS_PENDING:-}" ]; then
             bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
               "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
+            exit 0
+          fi
+          # The status step can also bow out having posted NOTHING (.gaia/VERSION
+          # missing or empty). The gate fails closed there -- an absent required
+          # check shuts the button -- so the free-skip message below would tell the
+          # author the exact opposite of what happened, with the only truthful
+          # signal buried in that step's log. Anything other than a confirmed
+          # `true` is read as no-stamp, so a future reshape that drops the output
+          # degrades to the cautious message rather than a false green.
+          if [ "${STATUS_POSTED:-}" != "true" ]; then
+            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+              "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit), but NO GAIA-Audit commit status was stamped on HEAD, so the merge gate is NOT satisfied. Most likely .gaia/VERSION is missing or empty; see the 'Write GAIA-Audit commit status (out-of-scope skip)' step log. Restore .gaia/VERSION, or run a local audit, to clear the gate"
             exit 0
           fi
           bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
