@@ -772,70 +772,66 @@ After producing the report (which includes the adversarial verification of Criti
   4. **Every identified out-of-scope finding has a disposition** (the disposition gate, see Scope classification and out-of-scope disposition). Verify after filing: re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) immediately before writing the marker, then apply the sidecar marker-write rule, write on `filed` / `diverted` / `waived` / `pending(transient)`; withhold **only** on `pending(definitive)`.
 - **Do NOT write the marker** when any in-scope Critical Issue exists, any in-scope Important Issue remains unaddressed, any in-scope Suggestion is either unaddressed or escalated, or any out-of-scope finding's disposition is `pending(definitive)`. Escalated in-scope suggestions block unconditionally, the operator must fix or explicitly accept the escalation, commit, and re-invoke this agent on the new HEAD before the marker is written. A `pending(definitive)` out-of-scope disposition (a present, writable backend with a genuinely-missing filing) blocks the same way; backend-absent (`waived`), transient (`pending(transient)`), and diverted findings fail open and never withhold the marker.
 
-Decide the disposition entries (section F) at this marker-decision point regardless of the outcome, but write the sidecar **file** (`.gaia/local/audit/<HEAD-sha>.dispositions.json`) keyed to the **post-stamp HEAD commit**, folded into the marker-write sequence below (`$HEAD_SHA`, step 2a) when the marker is warranted, or keyed to the current (unmoved) HEAD when it is not, so the marker-backstop hook (which resolves `git rev-parse HEAD` at merge time) finds it and can verify the marker's claimed dispositions. The sidecar is keyed to the **commit** while the marker is keyed to the **tree**: the backstop looks the sidecar up by `git rev-parse HEAD`, so it must be named for the commit that will be sitting at HEAD when the merge is attempted.
+Decide the disposition entries (section F) at this marker-decision point regardless of the outcome, but write the sidecar **file** (`.gaia/local/audit/<HEAD-sha>.dispositions.json`) keyed to the **post-stamp HEAD commit**, folded into the handshake below as the dispositions-sidecar step (`$HEAD_SHA`) when the marker is warranted, or keyed to the current (unmoved) HEAD when it is not, so the marker-backstop hook (which resolves `git rev-parse HEAD` at merge time) finds it and can verify the marker's claimed dispositions. The sidecar is keyed to the **commit** while the marker is keyed to the **tree**: the backstop looks the sidecar up by `git rev-parse HEAD`, so it must be named for the commit that will be sitting at HEAD when the merge is attempted.
 
 Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block the marker.
 
-When the marker is warranted, the write is a "stamp → mark → status → push" sequence: first stamp HEAD locally with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule, but never pushes); then re-read HEAD and its tree (HEAD may have moved due to amend / empty-commit) and write the marker file for the tree; then post the `GAIA-Audit` success commit status on HEAD, gated on the marker file already existing; _then_ push. Marker-before-push is load-bearing, it ensures a `chore: code review audit passed` commit never reaches remote history without a corresponding marker, even if the marker write step is interrupted (the un-pushed commit is recoverable via `git reset --hard HEAD~1`). The status POST is gated on the marker so it never runs inline with the clean judgment ahead of the marker write; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The shared clearance writer (`.gaia/scripts/audit-write-clearance.sh`) records the marker atomically; an earned clearance strictly dominates, replacing any prior marker for this tree (a stale legacy body, or a carried clearance) rather than being suppressed by it:
+When the marker is warranted, the write is a mark → stamp → re-mark → push → status sequence, run in that fixed order. The marker is written first, before the stamp, so it feeds the member-aware stamp gate immediately below and closes the crash window: a trailer is never believed while any dispatched member's own marker, this one included, is missing. The stamp runs next: the helper picks amend vs empty-commit per the placement rule and never pushes. Because the stamp can move HEAD (the empty-commit path) or amend it (the amend path), the marker is then re-written so its `sha` field lands on the post-stamp HEAD rather than the pre-stamp one the first write recorded; carry-forward locates a prior clearance's disposition sidecar via the marker's `sha` field, so a marker left pointing at the pre-stamp commit would send a future carry-forward looking under the wrong sha and silently miss it. The trailer commit is pushed next, before the status call, only on the empty-commit path and only on an attached tracking branch, since that push is what makes the remote PR head the trailer commit and lets the status POST (which targets the remote head) land on the sha branch protection checks; on the amend path there is nothing new to push, and the status helper declines `audited tree not on pushed head` until the operator pushes, which is the correct fail-safe. Finally, the `GAIA-Audit` success commit status is posted, gated on the marker file already existing; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The shared clearance writer (`.gaia/scripts/audit-write-clearance.sh`) records the marker atomically both times; an earned clearance strictly dominates, replacing any prior marker for this tree (a stale legacy body, or a carried clearance) rather than being suppressed by it:
 
 ```bash
-# 1. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per
-#    the placement rule). The helper creates the commit locally only,
-#    push is deferred to step 3, AFTER the marker write proves the audit
-#    is clean.
+# 1. Write the earned clearance BEFORE the stamp runs. The shared writer
+#    resolves HEAD, HEAD's TREE, the version and the filename from --root
+#    (the working root), so the marker is keyed to the TREE the audit ENDS
+#    on -- after any self-heal edits, before the trailer stamp below. The
+#    marker is keyed to the TREE, not HEAD: it attests this member audited
+#    CONTENT, and the tree IS the content, so the empty-commit stamp below
+#    does not orphan a sibling member's marker, and the stamp never changes
+#    the tree, so this key is final. Writing the marker first feeds the
+#    member-aware stamp gate in step 2 and closes the crash window: a
+#    trailer is never believed while any dispatched member's own marker,
+#    this one included, is missing. An earned clearance strictly dominates:
+#    it replaces any prior marker for this tree rather than being
+#    suppressed by it. The writer prints the marker path it wrote.
+marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-frontend \
+  --provenance earned)"
+
+# 2. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per the
+#    placement rule). Member-aware: it declines `members pending <list>`
+#    when a co-dispatched member has not yet written its own marker for
+#    this tree, expected on a multi-member diff and harmless, the last
+#    member to clear is the one whose call actually lands the trailer.
+#    The helper creates the commit locally only, push is deferred to
+#    step 4, after the marker is re-written below.
 stamp_line=$(
   AUDIT_TREE_SHA="$AUDIT_TREE_SHA" AUDIT_SELF_HEALED="$AUDIT_SELF_HEALED" \
     .claude/hooks/audit-stamp-trailer.sh
 )
 
-# 2. Write the earned clearance via the one shared writer. It resolves HEAD,
-#    HEAD's TREE, the version and the filename from --root (the working root),
-#    so the marker is keyed to the TREE the audit ENDS on -- after any
-#    self-heal edits and the trailer stamp above. The marker is keyed to the
-#    TREE, not HEAD: it attests this member audited CONTENT, and the tree IS
-#    the content, so the empty-commit stamp above does not orphan a sibling
-#    member's marker. An earned clearance strictly dominates: it replaces any
-#    prior marker for this tree rather than being suppressed by it. The writer
-#    prints the marker path it wrote; HEAD_SHA is still needed for the
-#    commit-keyed sidecar below.
+# 3. Re-write the same earned clearance now that the stamp has run. The
+#    stamp can move HEAD (empty-commit path) or amend it (amend path)
+#    while leaving the tree untouched, so this re-write is an atomic,
+#    idempotent overwrite of the same tree-keyed marker: a harmless
+#    refresh on the empty-commit path, a repair of the `sha` field on the
+#    amend path. This keeps the marker's `sha` field on the post-stamp
+#    HEAD instead of the pre-stamp one step 1 recorded, which is what
+#    carry-forward's sidecar lookup (step 6) depends on. HEAD_SHA is
+#    captured here for the commit-keyed sidecar below.
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-frontend \
   --provenance earned)"
 HEAD_SHA="$(git rev-parse HEAD)"
 
-# 2a. Write the disposition-ledger sidecar (section F) keyed to the post-stamp
-#     HEAD COMMIT -- not the tree the marker above uses. The marker-backstop
-#     hook resolves `git rev-parse HEAD` at merge time to find this file, so it
-#     must be named for the commit that will be at HEAD then; a sidecar keyed to
-#     the pre-stamp HEAD would be orphaned and the backstop would fail open. The
-#     JSON "sha" field is set to $HEAD_SHA to match the filename.
-sidecar=".gaia/local/audit/${HEAD_SHA}.dispositions.json"
-# Write the section-F dispositions JSON (decided at the marker-decision point,
-# with "sha":"$HEAD_SHA") to "$sidecar".
-
-# 2b. Post the GAIA-Audit success status on HEAD, gated on the marker
-#     existing first (the helper re-checks `[ -f "$marker" ]`). Best-effort:
-#     gh absent / unauthenticated skips the POST and the marker still clears
-#     the Claude merge path, while the github.com button stays blocked until
-#     a success status lands. The status POST never runs ahead of the marker.
-audit_status_line=$(.claude/hooks/post-audit-status.sh "$marker")
-
-# 2c. Clean-pass cleanup of the re-run ledger (LOCAL only): the marker is
-#     written, so the re-run loop ended clean for this base. Remove the
-#     base-keyed ledger best-effort. Skip in CI (the ledger is never written
-#     there). See "Re-run carry-forward ledger". This is an additional
-#     best-effort file op; it does not alter the marker / trailer / status /
-#     dispositions-sidecar writes.
-if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ] && [ -n "$BASE_SHA" ]; then
-  rm -f ".gaia/local/audit/${BASE_SHA}.rerun.json"
-fi
-
-# 3. Push the stamp commit only when the helper created an empty commit
-#    AND HEAD is on an attached tracking branch with an upstream. Amend
-#    paths add no new commit (the next operator push carries the
-#    trailer); detached HEAD has no upstream from the agent's vantage
-#    (CI's own commit-and-push step handles propagation).
+# 4. Push the stamp commit, BEFORE the status call, only when the helper
+#    created an empty commit AND HEAD is on an attached tracking branch
+#    with an upstream. Amend paths add no new commit (the next operator
+#    push carries the trailer); detached HEAD has no upstream from the
+#    agent's vantage (CI's own commit-and-push step handles propagation).
+#    Pushing here, ahead of step 5, is what makes the remote PR head the
+#    trailer commit, so the status POST lands on the sha branch
+#    protection checks instead of a local-only one.
 push_status="not_attempted"
 if [ "$stamp_line" = "stamp: empty commit (created locally)" ]; then
   head_branch=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
@@ -852,6 +848,35 @@ if [ "$stamp_line" = "stamp: empty commit (created locally)" ]; then
   else
     push_status="detached"
   fi
+fi
+
+# 5. Post the GAIA-Audit success status on the remote PR head, gated on
+#    the marker existing first (the helper re-checks `[ -f "$marker" ]`).
+#    Best-effort: gh absent / unauthenticated skips the POST and the
+#    marker still clears the Claude merge path, while the github.com
+#    button stays blocked until a success status lands. The status POST
+#    never runs ahead of the marker.
+audit_status_line=$(.claude/hooks/post-audit-status.sh "$marker")
+
+# 6. Write the disposition-ledger sidecar (section F) keyed to the
+#    post-stamp HEAD COMMIT captured in step 3 -- not the tree the marker
+#    uses. The marker-backstop hook resolves `git rev-parse HEAD` at
+#    merge time to find this file, so it must be named for the commit
+#    that will be at HEAD then; a sidecar keyed to the pre-stamp HEAD
+#    would be orphaned and the backstop would fail open. The JSON "sha"
+#    field is set to $HEAD_SHA to match the filename.
+sidecar=".gaia/local/audit/${HEAD_SHA}.dispositions.json"
+# Write the section-F dispositions JSON (decided at the marker-decision point,
+# with "sha":"$HEAD_SHA") to "$sidecar".
+
+# 7. Clean-pass cleanup of the re-run ledger (LOCAL only): the marker is
+#    written, so the re-run loop ended clean for this base. Remove the
+#    base-keyed ledger best-effort. Skip in CI (the ledger is never written
+#    there). See "Re-run carry-forward ledger". This is an additional
+#    best-effort file op; it does not alter the marker / trailer / status /
+#    dispositions-sidecar writes.
+if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ] && [ -n "$BASE_SHA" ]; then
+  rm -f ".gaia/local/audit/${BASE_SHA}.rerun.json"
 fi
 ```
 
