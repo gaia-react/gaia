@@ -327,29 +327,23 @@
       "Edit(public/**)",
       "Edit(test/**)",
       "Edit(wiki/**)",
-      "WebFetch(domain:context7.com)",
-      "Write(.gaia/local/audit/**)",
-      "Write(.gaia/local/handoff/**)",
-      "Write(.gaia/local/plans/**)",
-      "Write(.gaia/local/specs/**)"
+      "WebFetch(domain:context7.com)"
     ],
     "deny": [
       "Bash(git push --force-with-lease *main*)",
       "Bash(git push --force-with-lease *master*)",
       "Bash(git reset --hard HEAD~*)",
       "Edit(.env)",
+      "Edit(.gaia/local/audit/*.carried)",
+      "Edit(.gaia/local/audit/*.ok)",
+      "Edit(.gaia/local/audit/*.refused)",
       "Edit(.husky/_/**)",
       "Edit(pnpm-lock.yaml)",
       "Read(**/*.key)",
       "Read(**/*.pem)",
       "Read(**/*credential*)",
       "Read(**/secrets/*)",
-      "Read(.env)",
-      "Write(.env)",
-      "Write(.gaia/local/audit/*.carried)",
-      "Write(.gaia/local/audit/*.ok)",
-      "Write(.gaia/local/audit/*.refused)",
-      "Write(pnpm-lock.yaml)"
+      "Read(.env)"
     ]
   },
   "enabledPlugins": {
