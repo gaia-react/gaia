@@ -263,8 +263,39 @@ case "$SHAPE" in
     # completion, so its absence alone cannot mean no-op. Check it first as a
     # same-cost short-circuit; fall through to content inspection either way
     # it does not conclusively rule NO-OP on its own.
+    #
+    # Short-circuit to real ONLY when $MARKER_PATH is a writer-produced EARNED
+    # clearance: the body parses, provenance is "earned", and the body tree
+    # equals the filename key. A carried clearance lives at a distinct
+    # filename the detector is never handed, and a legacy or hand-written
+    # marker is not writer-shaped, so both fall through to the content
+    # inspection below (unchanged). Marker existence alone no longer
+    # authorizes real. With jq absent the body cannot be inspected, so
+    # existence degrades to real as before.
     if [ -n "$MARKER_PATH" ] && [ -f "$MARKER_PATH" ]; then
-      real
+      if ! command -v jq >/dev/null 2>&1; then
+        real
+      fi
+      # Resolve the clearance reader from this script's own on-disk location
+      # (.gaia/scripts -> ../../.claude/hooks/lib), never from cwd.
+      _acd_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)"
+      if [ -n "$_acd_lib" ] && [ -f "$_acd_lib/audit-clearance.sh" ]; then
+        # shellcheck source=/dev/null
+        . "$_acd_lib/audit-clearance.sh"
+        _acd_base="$(basename "$MARKER_PATH")"
+        _acd_stem="${_acd_base%.ok}"
+        _acd_tree="${_acd_stem%%.*}"
+        _acd_member_part="${_acd_stem#"$_acd_tree"}"
+        if [ -z "$_acd_member_part" ]; then
+          _acd_member="code-audit-frontend"
+        else
+          _acd_member="${_acd_member_part#.}"
+        fi
+        if clearance_acceptable "$MARKER_PATH" "$_acd_member" "$_acd_tree" \
+           && [ "$(clearance_field "$MARKER_PATH" provenance)" = "earned" ]; then
+          real
+        fi
+      fi
     fi
     [ -f "$TARGET_PATH" ] || noop
     content="$(cat "$TARGET_PATH" 2>/dev/null)"

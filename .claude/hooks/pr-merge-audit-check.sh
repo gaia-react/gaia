@@ -123,6 +123,64 @@ if type cmd_targets_foreign_repo >/dev/null 2>&1 \
   exit 0
 fi
 
+# Load the shared clearance reader from this hook's OWN on-disk location
+# (never cwd, never $repo_root). The bats suites run this hook by absolute
+# path from a sandbox cwd that has no .claude/, so a cwd-relative source would
+# miss the lib and flip every clearance check. Loaded lazily here, after the
+# early exits above, because this hook fires on every Bash tool call.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-clearance.sh"
+fi
+
+# Load the shared ownership classifier + machinery list from the same
+# on-disk location. check_out_of_scope_pr() and check_self_mod_only_update_pr()
+# below depend on the classifier to know what a changed path is; an absent or
+# unreadable module means this gate cannot know what it is gating, so it
+# denies rather than fall through to a degraded, uninformed gate. This is a
+# new, deliberate fail-closed path distinct from every other guard in this
+# hook (which fail OPEN on an unusable lookup).
+_scope_lib="$_lib_dir/audit-scope.sh"
+_machinery_lib="$_lib_dir/audit-machinery.sh"
+if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ]; then
+  jq -n --arg r "PR merge gate: cannot load the ownership classifier (.claude/hooks/lib/audit-scope.sh and .claude/hooks/lib/audit-machinery.sh must both exist and be readable). This gate's out-of-scope and self-mod-only bypasses depend on that module to know what a changed path is, so it denies rather than guess. Restore both files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+  exit 0
+fi
+# shellcheck source=/dev/null
+. "$_scope_lib"
+# shellcheck source=/dev/null
+. "$_machinery_lib"
+
+# Carry-forward predicate + shared disposition logic. This hook is the sole
+# minting authority for a carried clearance, so it loads both. Unlike the
+# classifier above, an absent carry-forward lib is NOT fail-closed: the
+# pre-clear simply never fires and the gate still demands every member's own
+# clearance. Loaded lazily here, after the early exits, resolved from this
+# hook's own on-disk location.
+if [ -f "$_lib_dir/audit-carry-forward.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-carry-forward.sh"
+fi
+if [ -f "$_lib_dir/audit-dispositions.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-dispositions.sh"
+fi
+
+# The shared clearance writer and the status producer, resolved from this
+# hook's own location (never $root: the bats suites run this hook by absolute
+# path against a sandbox root that carries neither script, and the REAL scripts
+# operate on --root correctly). _writer mints the carried clearance; _post_status
+# POSTs the GAIA-Audit status.
+_writer="$_lib_dir/../../../.gaia/scripts/audit-write-clearance.sh"
+_post_status="$_lib_dir/../post-audit-status.sh"
+
 # Resolve HEAD SHA. If we cannot (no git, detached state we can't read),
 # fall back to permissive: this hook only enforces in repos where git answers.
 sha=$(git rev-parse HEAD 2>/dev/null || true)
@@ -143,7 +201,29 @@ fi
 # the deny message).
 tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
 
+# The audited working root. clearance_member_cleared builds its marker paths
+# from this; the hook runs with cwd at the repo root, so a bare toplevel query
+# answers it (fall back to pwd only when git cannot).
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# Parse the roster ONCE per run (never once per path); the classifier module
+# was sourced above.
+audit_scope_init "$root"
+
 marker=".gaia/local/audit/${tree}.ok"
+
+# Human-readable state of a local marker file for a deny message. The gate now
+# accepts only a writer-produced clearance, so a file that exists but is not
+# writer-shaped is neither "cleared" nor "missing": name that third state so an
+# operator staring at a present marker while the gate says "missing" is not
+# left guessing.
+marker_state() {
+  if [ -f "$1" ]; then
+    printf '(present but not a valid clearance; re-run the member'\''s agent)'
+  else
+    printf '(missing)'
+  fi
+}
 
 # --- code-audit-frontend clearance signals -----------------------------------
 #
@@ -251,8 +331,9 @@ check_chore_deps_pr() {
 # on a surface outside audit scope. The agent has no rules that apply to wiki,
 # instruction files, .gaia metadata, or prose, so there is nothing to audit and
 # no marker is required, the same determination code-review-audit.yml's
-# `has_source` check makes when it skips. Keep the out-of-scope set below in
-# sync with that check's complement (.github/workflows/code-review-audit.yml).
+# `has_source` check makes when it skips. The allowlist itself lives in the
+# shared classifier (audit_out_of_scope_allowlisted), the ONE place this
+# literal set is defined.
 # Legacy-gate only: FC-4's auditable-base mirrors this check's complement, so
 # any in-scope path here also dispatches a member, a non-empty dispatched set
 # never reaches this function.
@@ -280,19 +361,11 @@ check_out_of_scope_pr() {
   changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null) || return 1
   [ -n "$changed" ] || return 1
 
-  # First in-scope (or unrecognized) path makes the marker mandatory. `case`
-  # globs match across slashes, so `wiki/*` covers `wiki/concepts/foo.md`. The
-  # `*/*` arm catches every other nested path (app/, test/, configs in
-  # subdirs); the final `*)` arm catches root-level files that are not markdown
-  # (package.json, tsconfig.json, *.config.ts, …).
+  # First path the shared classifier does not allowlist makes the marker
+  # mandatory.
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    case "$path" in
-      wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) continue ;;
-      */*) return 1 ;;
-      *.md) continue ;;
-      *) return 1 ;;
-    esac
+    audit_out_of_scope_allowlisted "$path" || return 1
   done <<< "$changed"
 
   return 0
@@ -336,20 +409,17 @@ check_self_mod_only_update_pr() {
   changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null) || return 1
   [ -n "$changed" ] || return 1
 
-  # Classify every changed path. Out-of-scope surfaces are always fine; the ONE
-  # permitted in-scope path is the audit workflow itself. Any other in-scope
-  # path (app/, test/, configs, a different workflow) denies immediately. The
-  # quoted "$audit_wf" arm is a literal match (no globbing) and precedes the
-  # catch-all `*/*` arm, so the workflow path is recognized before `*/*` claims
-  # it; every other nested path still falls to `*/*` and denies.
+  # Classify every changed path via the shared ORDERED THREE-WAY classifier
+  # (audit_self_mod_classify): out-of-scope surfaces are always fine; the ONE
+  # permitted in-scope path is the audit workflow itself; any other in-scope
+  # path (app/, test/, configs, a different workflow) denies immediately.
   seen_audit_wf=0
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    case "$path" in
-      wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) continue ;;
-      "$audit_wf") seen_audit_wf=1 ;;
-      */*) return 1 ;;
-      *.md) continue ;;
+    class="$(audit_self_mod_classify "$path")"
+    case "$class" in
+      out-of-scope) continue ;;
+      audit-workflow) seen_audit_wf=1 ;;
       *) return 1 ;;
     esac
   done <<< "$changed"
@@ -372,12 +442,55 @@ check_self_mod_only_update_pr() {
 # (marker, trailer, CI status, chore(deps), self-mod-only). Reused by both the
 # legacy gate and the member-aware gate below.
 frontend_cleared() {
-  [ -f "$marker" ] && return 0
+  clearance_member_cleared "$root" "$tree" code-audit-frontend && return 0
   check_trailer && return 0
   check_github_status && return 0
   check_chore_deps_pr && return 0
   check_self_mod_only_update_pr && return 0
   return 1
+}
+
+# try_carry_forward MEMBER: attempt to carry the member's earned clearance
+# forward to HEAD's tree. On success it MINTS the carried clearance via the
+# shared writer (the only producer) and carries the anchor's disposition record
+# in the same operation, then returns 0. On any refusal it returns 1 and the
+# reason is already on stderr (from cf_select_anchor / cf_may_carry). This hook
+# is the deterministic authority: it computes its own base and mints nothing
+# from a caller-supplied ref. Carry-forward pre-clears a member; it can NEVER
+# remove one from the required set the gate computed from the whole-branch diff.
+#
+# This does not, and cannot, defend against a forged clearance: an actor who can
+# rewrite the working tree can rewrite the anchor too. It raises no security bar.
+try_carry_forward() {
+  local m="$1" anchor anchor_marker anchor_sha anchor_sidecar head_sidecar
+  command -v cf_enabled >/dev/null 2>&1 || return 1
+  cf_enabled || return 1
+  anchor="$(cf_select_anchor "$root" "$m" "$tree")"
+  [ -n "$anchor" ] || return 1
+  cf_may_carry "$root" "$m" "$anchor" "$tree" || return 1
+
+  # Mint the carried clearance via the shared writer. Never hand-write a marker.
+  bash "$_writer" --root "$root" --member "$m" --provenance carried \
+    --anchor-tree "$anchor" >/dev/null 2>&1 || true
+  # The writer declines a carried write only when an earned marker already
+  # exists (which also clears the member); require the member cleared now.
+  clearance_member_cleared "$root" "$tree" "$m" || return 1
+
+  # Carry the disposition record in the SAME operation, and ONLY when the
+  # anchor's recorded commit is an ancestor of HEAD: a non-ancestor carry would
+  # import one branch's filed-issue records into another's sidecar, where they
+  # can deny a merge whose operator cannot clear them. Merge INTO HEAD's sidecar
+  # (HEAD's fresh entry always wins), never overwrite it.
+  anchor_marker="$(clearance_earned_path "$root" "$anchor" "$m")"
+  anchor_sha="$(clearance_field "$anchor_marker" sha)"
+  if [ -n "$anchor_sha" ] && git merge-base --is-ancestor "$anchor_sha" HEAD 2>/dev/null; then
+    anchor_sidecar="$root/.gaia/local/audit/${anchor_sha}.dispositions.json"
+    head_sidecar="$root/.gaia/local/audit/${sha}.dispositions.json"
+    if [ -f "$anchor_sidecar" ] && command -v disposition_merge >/dev/null 2>&1; then
+      disposition_merge "$anchor_sidecar" "$head_sidecar" || true
+    fi
+  fi
+  return 0
 }
 
 # --- Dispatch: resolve the Code Audit Team member set for this diff ---------
@@ -403,7 +516,7 @@ if [ -z "$members" ]; then
   reason="PR merge gate: no code-audit-frontend signal for HEAD ${sha:0:12}.
 
 None of the accepted signals is present:
-  - Local marker:    ${marker} (missing)
+  - Local marker:    ${marker} $(marker_state "$marker")
   - Commit trailer:  ${trailer_status:-missing}
   - GitHub CI status: absent or version/tree mismatch
   - chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
@@ -450,36 +563,101 @@ fi
 # <m> via its own marker .gaia/local/audit/<tree>.<m>.ok.
 
 all_cleared=1
+any_carried=0
+cleared_marker=""
 report=""
 while IFS= read -r m; do
   [ -n "$m" ] || continue
+
+  member_cleared=0
+  member_carried=0
   if [ "$m" = "code-audit-frontend" ]; then
-    if frontend_cleared; then
-      report="${report}  - code-audit-frontend: CLEARED
+    frontend_cleared && member_cleared=1
+  else
+    clearance_member_cleared "$root" "$tree" "$m" && member_cleared=1
+  fi
+
+  # Not already cleared: try to carry an earned clearance forward. On carry this
+  # mints the carried clearance and carries its disposition record; on refusal
+  # the member stays pending and its reason is on stderr. Pre-clear, never
+  # shrink the required set.
+  if [ "$member_cleared" -eq 0 ] && try_carry_forward "$m"; then
+    member_cleared=1
+    member_carried=1
+    any_carried=1
+  fi
+
+  if [ "$member_cleared" -eq 1 ]; then
+    if [ "$member_carried" -eq 1 ]; then
+      report="${report}  - ${m}: CLEARED (carried)
 "
+      [ -z "$cleared_marker" ] && cleared_marker="$(clearance_carried_path "$root" "$tree" "$m")"
     else
-      all_cleared=0
+      report="${report}  - ${m}: CLEARED
+"
+    fi
+  else
+    all_cleared=0
+    if [ "$m" = "code-audit-frontend" ]; then
       report="${report}  - code-audit-frontend: PENDING
-      Local marker:    ${marker} (missing)
+      Local marker:    ${marker} $(marker_state "$marker")
       Commit trailer:  ${trailer_status:-missing}
       GitHub CI status: absent or version/tree mismatch
       chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
 "
-    fi
-  else
-    member_marker=".gaia/local/audit/${tree}.${m}.ok"
-    if [ -f "$member_marker" ]; then
-      report="${report}  - ${m}: CLEARED
-"
     else
-      all_cleared=0
-      report="${report}  - ${m}: PENDING (marker ${member_marker} missing)
+      member_marker=".gaia/local/audit/${tree}.${m}.ok"
+      report="${report}  - ${m}: PENDING (marker ${member_marker} $(marker_state "$member_marker"))
 "
     fi
   fi
 done <<< "$members"
 
 if [ "$all_cleared" -eq 1 ]; then
+  # Every dispatched member cleared. When at least one clearance was CARRIED,
+  # two extra steps run inside this authority (not the sibling hooks, whose
+  # execution order is not a contract).
+  if [ "$any_carried" -eq 1 ]; then
+    # Re-run the disposition backstop's filed-key verification on HEAD's
+    # (now carried-into) sidecar. Under carry-forward nobody re-spawns a member
+    # to regenerate it, and audit-disposition-check.sh's absent-sidecar arm
+    # fails open, so a filed finding whose tech-debt issue no longer exists would
+    # otherwise slip through.
+    if command -v disposition_offenders >/dev/null 2>&1; then
+      cf_offenders="$(disposition_offenders "$root/.gaia/local/audit/${sha}.dispositions.json" 2>/dev/null || true)"
+      if [ -n "$cf_offenders" ]; then
+        cf_offender_list=$(printf '%s' "$cf_offenders" | sed 's/^/  - /')
+        reason="PR merge gate: a carried Code Audit Team clearance imported a disposition that does not hold for HEAD ${sha:0:12}.
+
+Offending finding key(s):
+
+${cf_offender_list}
+
+A member's clearance carried forward, but its disposition record names a filed
+tech-debt issue that no longer exists (or a pending(definitive) entry). Re-spawn
+the member's agent on this HEAD so it re-files the missing disposition, then
+retry gh pr merge.
+
+See wiki/concepts/PR Merge Workflow.md for the full contract."
+        jq -n --arg r "$reason" '{
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: $r
+          }
+        }'
+        exit 0
+      fi
+    fi
+
+    # POST the GAIA-Audit status so the required check is satisfied. The
+    # producer reads the clearance provenance on disk and appends `carried` to
+    # the description itself; this call passes a clearance it just verified.
+    # Best-effort: a failed POST never inverts into a cleared gate.
+    if [ -n "$cleared_marker" ] && [ -f "$_post_status" ]; then
+      bash "$_post_status" "$cleared_marker" >/dev/null 2>&1 || true
+    fi
+  fi
   exit 0
 fi
 

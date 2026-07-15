@@ -65,6 +65,11 @@ auditors:
       - ".specify/extensions/gaia/lib/*.sh"
       - ".github/**/*.sh"
       - ".github/**/*.bats"
+      - ".gaia/audit-ci.yml"
+      - ".gaia/VERSION"
+      - ".claude/agents/code-audit-*.md"
+      - ".claude/rules/**"
+      - ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
     scope: maintainer-only
     push_fixes: false
   - name: code-audit-maintainer-node

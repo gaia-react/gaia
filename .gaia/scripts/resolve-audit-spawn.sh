@@ -8,17 +8,33 @@
 # .gaia/scripts/resolve-audit-members.sh, the DISPATCH resolver it wraps.
 #
 # Usage:
-#   resolve-audit-spawn.sh [--base <ref>]
+#   resolve-audit-spawn.sh [--base <ref>] [--no-carry-forward]
 #     --base <ref>  Diff base override. Forwarded to resolve-audit-members.sh
 #                   AND honored by this script's own ownerless probe below.
+#     --no-carry-forward
+#                   Skip the carry-forward filter entirely and emit the
+#                   pre-feature output byte-for-byte. The frontend member's
+#                   self-skip probe uses this: it must key on "the diff does not
+#                   dispatch me", never on "I was pre-cleared", so that a member
+#                   omitted for being pre-cleared can still be deliberately
+#                   spawned to catch a bad carry.
 #     --help | -h   Print this usage and exit 0. This is NOT a dispatch
 #                   query: its stdout is never a member list.
 #
-# Output contract:
+# Output contract (CHANGED by carry-forward, and stated honestly):
 #   One Code Audit Team member (agent) name per line, deduped and lexically
-#   sorted (LC_ALL=C, inherited verbatim from the dispatch resolver). EMPTY
-#   stdout means nothing in this diff is auditable: no member is owed. Exit
-#   code is 0 on EVERY path, so callers parse stdout unconditionally.
+#   sorted (LC_ALL=C, inherited verbatim from the dispatch resolver). Exit code
+#   is 0 on EVERY path, so callers parse stdout unconditionally.
+#
+#   EMPTY stdout now carries TWO meanings, told apart by stderr: EITHER nothing
+#   in this diff is auditable (no member is owed), OR every dispatched member's
+#   clearance carried forward (stderr: `carry-forward: spawn-list empty:
+#   all-members-carried`). The all-carried state was unreachable before this
+#   filter, because the script fails closed to a non-empty list; the filter adds
+#   it. The eight callers, the permission grant
+#   (.claude/settings.json, `Bash(bash .gaia/scripts/resolve-audit-spawn.sh:*)`,
+#   which already covers --no-carry-forward), and the mints-nothing nature are
+#   all unchanged: this script writes no clearance artifact on any path.
 #
 # Branch table:
 #   --help / -h                     -> usage on stdout, exit 0.
@@ -61,7 +77,8 @@
 #   resolver names nobody           -> run the ownerless probe.
 #
 # The ownerless probe (mirrors check_out_of_scope_pr in
-# .claude/hooks/pr-merge-audit-check.sh):
+# .claude/hooks/pr-merge-audit-check.sh, via the shared classifier both
+# consult):
 #   The merge deny-hook does NOT auto-allow on a zero-match dispatch. When
 #   the dispatch resolver returns an EMPTY set, the deny-hook falls through
 #   to a LEGACY single-signal gate that still requires the default member's
@@ -79,15 +96,15 @@
 #        1 there and the merge denies; fail-closed mirror).
 #     3. Empty diff -> the default member (the hook's bypass treats an empty
 #        diff as unusable input, not as "nothing to audit"; mirror it).
-#     4. Otherwise classify every changed path with the hook's own `case`
-#        arms. Any path outside {wiki/, .claude/, .specify/, .gaia/, docs/,
-#        root *.md} is IN SCOPE and prints the default member. All paths
-#        out of scope prints nothing.
+#     4. Otherwise classify every changed path via the shared out-of-scope
+#        allowlist predicate. Any path outside {wiki/, .claude/, .specify/,
+#        .gaia/, docs/, root *.md} is IN SCOPE and prints the default member.
+#        All paths out of scope prints nothing.
 #   The default member on this path is not a roster assumption and not
 #   per-member special-casing: it mirrors the deny-hook's own hardcoded
 #   legacy fallback, which is the sole authority on what clears that path.
-#   Keep this probe's `case` arms in sync with check_out_of_scope_pr() in
-#   .claude/hooks/pr-merge-audit-check.sh if that allowlist ever changes.
+#   The classifier module unavailable: fails closed to the default member,
+#   the same class of answer as every other unusable-query path below.
 #
 # Bash 3.2 compatible (macOS default): no associative arrays, no `mapfile`,
 # no `${var^^}`. No `cd` (per .claude/rules/shell-cwd.md); the repo root is
@@ -107,19 +124,26 @@ set -euo pipefail
 # resolver below; it is reconstructed explicitly from BASE_OVERRIDE instead.
 
 BASE_OVERRIDE=""
+NO_CARRY_FORWARD=0
 
 print_usage() {
   cat <<'USAGE'
-Usage: resolve-audit-spawn.sh [--base <ref>]
+Usage: resolve-audit-spawn.sh [--base <ref>] [--no-carry-forward]
   Emits the Code Audit Team SPAWN set (one member name per line, sorted) for
   the current branch's diff: the members to proactively spawn before
-  `gh pr merge`. Empty output = nothing in this diff is auditable, no member
-  is owed. Exit 0 always.
+  `gh pr merge`. Empty output means EITHER nothing in this diff is auditable
+  (no member is owed) OR every dispatched member carried forward; stderr tells
+  them apart. --no-carry-forward skips the filter and emits the pre-feature
+  output byte-for-byte. Exit 0 always.
 USAGE
 }
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --no-carry-forward)
+      NO_CARRY_FORWARD=1
+      shift
+      ;;
     --base)
       # `[ -z "$2" ]` is not redundant with the arity check. `--base "$REF"` with
       # REF unset (QUOTED, so the word survives) arrives as $#=2 with an empty
@@ -166,10 +190,78 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 resolver="$repo_root/.gaia/scripts/resolve-audit-members.sh"
 
+# --- Load the shared ownership classifier ------------------------------------
+#
+# Resolved from this script's OWN on-disk location, never cwd, never
+# $repo_root. Absent or unreadable module: the ownerless probe below fails
+# closed to the default member, same as its other unusable-query branches.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-scope.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-scope.sh"
+fi
+# The carry-forward predicate (also sources scope/machinery/clearance). Absent
+# or jq-disabled -> cf_filter passes the member list through unchanged: this
+# script is a query, not a gate, and MINTS NOTHING on any path.
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-carry-forward.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-carry-forward.sh"
+fi
+
+# --- The carry-forward filter (mints nothing) ------------------------------
+#
+# Reads a newline-separated member list on $1, prints the members that did NOT
+# carry forward. A member is dropped when it holds an earned anchor whose delta
+# to HEAD's tree touches nothing it owns and no audit machinery. Pure query: it
+# calls the shared predicate (cf_select_anchor / cf_may_carry), which reads and
+# never writes. Refusal reasons are on the predicate's stderr.
+#
+# jq absent (or the predicate lib missing) disables the whole feature and
+# passes the list through unchanged, degrading to today's spawn-everyone
+# behavior; the single `carry-forward: disabled: jq not found` note goes to
+# stderr only when jq itself is the missing piece.
+cf_filter() {
+  local members="$1" head_tree m out="" anchor
+
+  command -v cf_select_anchor >/dev/null 2>&1 || { printf '%s' "$members"; return 0; }
+  if ! cf_enabled; then
+    echo "carry-forward: disabled: jq not found" >&2
+    printf '%s' "$members"
+    return 0
+  fi
+
+  head_tree="$(git -C "$repo_root" rev-parse "HEAD^{tree}" 2>/dev/null || true)"
+  if [ -z "$head_tree" ]; then
+    printf '%s' "$members"
+    return 0
+  fi
+
+  while IFS= read -r m; do
+    [ -n "$m" ] || continue
+    anchor="$(cf_select_anchor "$repo_root" "$m" "$head_tree")"
+    if [ -n "$anchor" ] && cf_may_carry "$repo_root" "$m" "$anchor" "$head_tree"; then
+      continue
+    fi
+    out="${out}${m}
+"
+  done <<EOF
+$members
+EOF
+
+  printf '%s' "$out"
+  return 0
+}
+
 # --- The ownerless probe ---------------------------------------------------
 
 ownerless_probe() {
   local default_branch base changed path
+
+  if ! command -v audit_out_of_scope_allowlisted >/dev/null 2>&1; then
+    echo "resolve-audit-spawn: ownership classifier unavailable, failing closed to code-audit-frontend" >&2
+    echo "code-audit-frontend"
+    return 0
+  fi
 
   if [ -n "$BASE_OVERRIDE" ]; then
     base="$BASE_OVERRIDE"
@@ -193,12 +285,9 @@ ownerless_probe() {
 
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    case "$path" in
-      wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) continue ;;
-      */*) echo "code-audit-frontend"; return 0 ;;
-      *.md) continue ;;
-      *) echo "code-audit-frontend"; return 0 ;;
-    esac
+    audit_out_of_scope_allowlisted "$path" && continue
+    echo "code-audit-frontend"
+    return 0
   done <<EOF
 $changed
 EOF
@@ -218,11 +307,30 @@ if [ -x "$resolver" ]; then
   # .gaia/audit-ci.yml makes the resolver warn and return an empty set, and this
   # script would then quietly fall through to the ownerless probe.
   members="$(bash "$resolver" "$@" || true)"
-  if [ -n "$members" ]; then
-    printf '%s\n' "$members"
+
+  # Branch the three states on whether the RESOLVER named anyone, captured
+  # BEFORE the carry-forward filter, never on the post-filter list. The filter
+  # may legitimately empty a non-empty resolver set (every member carried), and
+  # the fail-closed answers (an unresolvable base, an unreadable roster) live in
+  # the ownerless probe, which must stay reachable ONLY when the resolver itself
+  # named nobody.
+  resolver_named=0
+  [ -n "$members" ] && resolver_named=1
+
+  if [ "$resolver_named" -eq 1 ]; then
+    if [ "$NO_CARRY_FORWARD" -eq 0 ]; then
+      members="$(cf_filter "$members")"
+      if [ -z "$members" ]; then
+        echo "carry-forward: spawn-list empty: all-members-carried" >&2
+      fi
+    fi
+    # The ownerless probe is now UNREACHABLE: once the resolver named anyone,
+    # this exit fires regardless of whether the filter emptied the list.
+    [ -n "$members" ] && printf '%s\n' "$members"
     exit 0
   fi
 fi
 
+# Reached ONLY when the resolver named nobody (or is absent/non-executable).
 ownerless_probe
 exit 0

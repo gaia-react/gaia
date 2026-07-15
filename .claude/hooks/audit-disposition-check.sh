@@ -86,93 +86,26 @@ sha=$(git rev-parse HEAD 2>/dev/null || true)
 
 sidecar=".gaia/local/audit/${sha}.dispositions.json"
 
-# Absent sidecar -> fail-open: no identified out-of-scope findings recorded for
-# this HEAD (or a pre-feature marker). Nothing to verify.
-[ -f "$sidecar" ] || exit 0
-
-# Unparseable sidecar -> fail-open: never block on a corrupt artifact; the
-# agent's verify-after-file is the primary gate.
-jq -e . "$sidecar" >/dev/null 2>&1 || exit 0
-
-# backend "absent" -> the feature waived; nothing to verify.
-backend=$(jq -r '.backend // ""' "$sidecar" 2>/dev/null || true)
-[ "$backend" = "absent" ] && exit 0
-
-# ---------------------------------------------------------------------------
-# Collect offenders from two independent sources:
-#   (a) pending(definitive) entries  -> deterministic deny, no backend needed.
-#   (b) filed entries whose key has no matching tech-debt issue (open OR
-#       closed) on a REACHABLE backend.
-# diverted / waived / pending(transient) are skipped (fail-open by contract).
-# ---------------------------------------------------------------------------
-offenders=""
-
-# (a) pending(definitive): a genuinely-missing disposition. Deny regardless of
-# backend reachability, this is a local sidecar fact, not a network claim.
-pending_keys=$(jq -r '
-  .findings[]?
-  | select((.disposition // "") == "pending"
-       and (.pending_reason // "") == "definitive")
-  | (.key // "(no key)")' "$sidecar" 2>/dev/null || true)
-if [ -n "$pending_keys" ]; then
-  while IFS= read -r k; do
-    [ -n "$k" ] || continue
-    offenders="${offenders}pending(definitive): ${k}
-"
-  done <<< "$pending_keys"
+# Load the shared disposition logic from this hook's OWN on-disk location
+# (never cwd, never $repo_root). The offender collection lives in the lib so
+# this hook and the minting authority (pr-merge-audit-check.sh) share ONE
+# implementation rather than two. An absent lib is an inability to verify, so
+# it fails open (exit 0), consistent with every other guard in this hook.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+if [ -z "$_lib_dir" ] || [ ! -f "$_lib_dir/audit-dispositions.sh" ]; then
+  exit 0
 fi
+# shellcheck source=/dev/null
+. "$_lib_dir/audit-dispositions.sh"
 
-# (b) filed entries: each key must resolve to a tech-debt issue, OPEN or
-# CLOSED. A filed entry whose tech-debt issue was later fixed/closed by
-# /gaia-debt (a fully honored disposition) is absent from the OPEN set; the
-# dedup procedure (its closed-issue step) is closed-aware, so this hook must be too, else
-# a satisfied disposition false-blocks the merge. Only query the backend when
-# there is at least one filed entry to verify.
-filed_keys=$(jq -r '
-  .findings[]?
-  | select((.disposition // "") == "filed")
-  | (.key // empty)' "$sidecar" 2>/dev/null || true)
-
-if [ -n "$filed_keys" ]; then
-  # Query tech-debt issues (open AND closed, via --state all) ONCE. Capture
-  # output AND success: gh exits non-zero on any backend failure (no gh,
-  # unauthenticated, unresolved repo, Issues disabled, rate-limit, 5xx), in
-  # which case we FAIL OPEN and skip the filed checks entirely (never block on
-  # a transient/absent backend). A high --limit avoids a false deny when a real
-  # issue sits past the default 30-issue page.
-  issues_json=""
-  gh_ok=0
-  if command -v gh >/dev/null 2>&1; then
-    if issues_json=$(gh issue list --label tech-debt --state all \
-        --json number,body --limit 1000 2>/dev/null) \
-       && printf '%s' "$issues_json" | jq -e . >/dev/null 2>&1; then
-      gh_ok=1
-    fi
-  fi
-
-  if [ "$gh_ok" -eq 1 ]; then
-    while IFS= read -r key; do
-      [ -n "$key" ] || continue
-      # Match = some issue body (open OR closed) CONTAINS the WRAPPED dedup key
-      # `<!-- gaia-debt-key: ${key} -->` as a substring (the sidecar-to-issue
-      # key relationship).
-      # Reconstruct the wrapper here: matching the bare inner key would
-      # false-match a sibling issue whose line number has this key's line as a
-      # digit prefix (`line=4` is a substring of `line=42 -->`). A match on a
-      # CLOSED issue means the disposition was filed (and likely fixed) ->
-      # satisfied. Never whole-line equality.
-      needle="<!-- gaia-debt-key: ${key} -->"
-      present=$(printf '%s' "$issues_json" \
-        | jq -r --arg k "$needle" 'any(.[]?; (.body // "") | contains($k))' \
-            2>/dev/null || true)
-      if [ "$present" != "true" ]; then
-        offenders="${offenders}filed-but-missing: ${key}
-"
-      fi
-    done <<< "$filed_keys"
-  fi
-  # gh_ok == 0 -> backend unreachable/transient: fail open, no filed offenders.
-fi
+# Collect offenders: (a) pending(definitive) entries (a genuinely-missing
+# disposition, denied regardless of backend reachability); (b) filed entries
+# whose key resolves to no tech-debt issue, open OR closed, on a REACHABLE
+# backend. diverted / waived / pending(transient) are skipped. Empty = clean.
+# Fail-open on no sidecar / unparseable / backend "absent" / any gh failure all
+# live inside the lib. A CLOSED matching issue is a SATISFIED disposition, not
+# an offender.
+offenders="$(disposition_offenders "$sidecar" 2>/dev/null || true)"
 
 # ---------------------------------------------------------------------------
 # Decision: allow when no offenders; otherwise deny.

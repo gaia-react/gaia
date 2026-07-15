@@ -35,7 +35,18 @@
 #      when its <tree> == HEAD's tree; once the PR squash-merges, the audited
 #      tree is orphaned and the marker (and its progress breadcrumbs) are
 #      spent. A key that resolves to no git object (bogus/garbage) is treated
-#      as dead.
+#      as dead. The same reachability rule also sweeps audit/<tree>.carried
+#      and audit/<tree>.refused (and their per-member forms), the
+#      carry-forward feature's carried-clearance and refusal artifacts.
+#
+#      An earned marker (a *.ok file only) additionally survives past
+#      reachability for GAIA_AUDIT_MARKER_RETENTION_HOURS (default 72) hours
+#      measured from its recorded audited_at, so it can still serve as a
+#      carry-forward anchor after the session that earned it ends. A carried
+#      clearance or a refusal gets no such window: reachability is the only
+#      thing that keeps either alive. A marker kept by the window carries its
+#      disposition sidecar with it, so a retained anchor is never missing the
+#      sidecar carry-forward needs.
 #      2b. audit/<sha>.rerun.json carry-forward ledgers, on a DIFFERENT signal.
 #      A ledger is keyed on the incremental base (a fork point), which is an
 #      ancestor of the default branch, so reachability can never prove it dead.
@@ -172,9 +183,49 @@ live_trees=$(
   done
 )
 
+# Retention window: an earned marker (*.ok only) that no reachability arm
+# above keeps still survives GAIA_AUDIT_MARKER_RETENTION_HOURS (default 72)
+# past its own recorded audited_at, so a carry-forward anchor outlives the
+# session that earned it. "now" and the window are both computed ONCE here,
+# never once per marker, and the arm itself never calls git. A non-numeric
+# override falls back to the default rather than disabling the window. A
+# carried clearance or a refusal never reads this window: only reachability
+# keeps either alive.
+retention_hours="${GAIA_AUDIT_MARKER_RETENTION_HOURS:-72}"
+case "$retention_hours" in '' | *[!0-9]*) retention_hours=72 ;; esac
+retention_seconds=$(( retention_hours * 3600 ))
+now_epoch=$(date -u +%s 2>/dev/null || echo 0)
+have_jq=0
+command -v jq >/dev/null 2>&1 && have_jq=1
+
+# janitor_marker_epoch_and_sha <path>: prints "<audited_at epoch>\t<sha>" on
+# stdout when the body parses and carries an audited_at; nothing otherwise.
+# ONE jq fork total: jq's own fromdateiso8601 computes the epoch, so no
+# separate parse step re-reads the file. A missing/unparseable audited_at (or
+# a missing sha) still prints nothing for the piece that failed; the caller
+# treats an unparseable epoch as "not retained by this arm" and falls through
+# to the existing reachability arms below.
+janitor_marker_epoch_and_sha() {
+  jq -r '
+    (.audited_at // empty) as $a
+    | (.sha // empty) as $s
+    | if $a == "" then empty
+      else (($a | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) | tostring) + "\t" + $s
+      end
+  ' "$1" 2>/dev/null
+}
+
+# shas of *.ok markers this pass retains by the window arm, one per line. A
+# disposition sidecar keyed to one of these shas is kept alongside its marker
+# further down in the SAME pass (the glob below visits every *.ok before any
+# *.dispositions.json), so retention never orphans the sidecar a carried
+# anchor needs.
+window_retained_shas=""
+
 audit_dir="$local_dir/audit"
 if [ -d "$audit_dir" ]; then
-  for marker in "$audit_dir"/*.ok "$audit_dir"/*.dispositions.json "$audit_dir"/*.progress.log; do
+  for marker in "$audit_dir"/*.ok "$audit_dir"/*.carried "$audit_dir"/*.refused \
+                "$audit_dir"/*.dispositions.json "$audit_dir"/*.progress.log; do
     [ -e "$marker" ] || continue          # glob did not match
     base=${marker##*/}
     # An object id never contains a dot, so strip from the FIRST one. That
@@ -203,6 +254,35 @@ if [ -d "$audit_dir" ]; then
     fi
     # Commit-keyed: the commit about to merge here.
     [ "$keep" -eq 0 ] && [ -n "$head_sha" ] && [ "$key" = "$head_sha" ] && keep=1
+    # Commit-keyed: a disposition sidecar whose marker this same pass retained
+    # by the window arm below. Fork-free (a herestring grep, matching the
+    # live_trees idiom above), so it costs nothing for a marker the earlier
+    # arms already decided.
+    if [ "$keep" -eq 0 ] && [ -n "$window_retained_shas" ] \
+       && grep -qxF -- "$key" <<< "$window_retained_shas"; then
+      keep=1
+    fi
+
+    # Retention window: earned markers only (a *.ok filename), and only once
+    # every fork-free arm above has already missed. Skips the jq fork
+    # entirely for any other filename (a *.carried, *.refused, or
+    # *.dispositions.json never reaches this arm), and for jq itself absent.
+    if [ "$keep" -eq 0 ] && [ "$have_jq" -eq 1 ] && [ "${marker##*.}" = "ok" ]; then
+      fields=$(janitor_marker_epoch_and_sha "$marker")
+      if [ -n "$fields" ]; then
+        epoch=${fields%%$'\t'*}
+        marker_sha=${fields#*$'\t'}
+        case "$epoch" in '' | *[!0-9]*) epoch="" ;; esac
+        if [ -n "$epoch" ]; then
+          age=$(( now_epoch - epoch ))
+          if [ "$age" -ge 0 ] && [ "$age" -le "$retention_seconds" ]; then
+            keep=1
+            [ -n "$marker_sha" ] && window_retained_shas="${window_retained_shas}${marker_sha}
+"
+          fi
+        fi
+      fi
+    fi
     # Commit-keyed: a real commit reachable from a local branch (a still-open
     # feature line); orphaned reflog-only tips fall through. A tree key never
     # reaches the `branch --contains` call: peeling a tree to ^{commit} fails,

@@ -116,6 +116,14 @@ setup() {
            "$SANDBOX/.github/audit/gate-pending-members.sh" \
            "$SANDBOX/.github/audit/audit-success-present.sh"
 
+  # The resolver copy resolves its libs relative to ITSELF
+  # ($SANDBOX/.claude/hooks/lib/), so provision the shared ownership
+  # classifier alongside it.
+  mkdir -p "$SANDBOX/.claude/hooks/lib"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
+
   POST_LOG="$BATS_TEST_TMPDIR/gh-post.log"
   rm -f "$POST_LOG"
   # A real $GITHUB_OUTPUT file, as in CI, so a step that publishes an output can
@@ -296,8 +304,14 @@ commit_docs_only_diff() {
 # so pass a tree sha. Keying it to the commit would leave the step's lookup
 # empty-handed.
 write_frontend_marker() {
+  local tree="$1" sha
+  sha=$(git -C "$SANDBOX" rev-parse HEAD)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  printf '{}' > "$SANDBOX/.gaia/local/audit/$1.ok"
+  # Writer-shaped schema-2 EARNED clearance (the shared reader rejects a bare
+  # `{}`). The CI status steps test only marker existence, but keep the fixture
+  # honest so nothing here depends on a body the writer never produces.
+  printf '{"version":"1.2.3","schema":2,"member":"code-audit-frontend","provenance":"earned","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
+    "$sha" "$tree" > "$SANDBOX/.gaia/local/audit/$1.ok"
 }
 
 sandbox_tree() { git -C "$SANDBOX" rev-parse "HEAD^{tree}"; }

@@ -262,9 +262,15 @@ setup() {
 # audit-team-member (return-conformance, optional --marker companion check)
 # ---------------------------------------------------------------------------
 
-@test "audit-team-member: --marker path exists is REAL regardless of --path content" {
+# A writer-produced EARNED clearance short-circuits to real regardless of the
+# --path content. Marker EXISTENCE alone no longer suffices: the body must be a
+# writer-shaped earned clearance whose `tree` equals the filename key (an empty
+# or legacy body falls through, covered below).
+@test "audit-team-member: writer-produced EARNED --marker is REAL regardless of --path content" {
   marker="$BATS_TEST_TMPDIR/marker.ok"
-  : > "$marker"
+  # Filename key is "marker" (stem up to the first dot), so the body tree must
+  # equal it for clearance_acceptable.
+  printf '{"version":"1.6.1","schema":2,"member":"code-audit-frontend","provenance":"earned","sha":"deadbeef","tree":"marker","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' > "$marker"
   run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$marker"
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]
@@ -290,6 +296,58 @@ setup() {
 
 @test "audit-team-member: no marker, absent --path is NO-OP" {
   run "$SCRIPT" --shape audit-team-member --path "$BATS_TEST_TMPDIR/does-not-exist.txt" --marker "$BATS_TEST_TMPDIR/also-does-not-exist.ok"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+# ---------------------------------------------------------------------------
+# audit-team-member: the marker short-circuit fires ONLY on a writer-produced
+# EARNED clearance whose body tree equals the filename key. A carried
+# clearance (distinct filename, never handed as the .ok marker), a
+# legacy/hand-written body, and no marker all fall through to the content
+# inspection, which on text carrying neither a backticked path:line token nor
+# "Remaining in-scope:" is noop.
+# ---------------------------------------------------------------------------
+
+# Write a writer-shaped schema-2 clearance for TREE at PATH with PROVENANCE
+# (earned|carried), member code-audit-frontend.
+_noop_write_clearance() {
+  local path="$1" tree="$2" prov="$3"
+  printf '{"version":"1.6.1","schema":2,"member":"code-audit-frontend","provenance":"%s","sha":"deadbeef","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
+    "$prov" "$tree" > "$path"
+}
+
+@test "audit-team-member: writer-produced EARNED marker + token-free text is REAL" {
+  tree="aabbccddeeff00112233445566778899aabbccdd"
+  marker="$BATS_TEST_TMPDIR/${tree}.ok"
+  _noop_write_clearance "$marker" "$tree" earned
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member: CARRIED clearance (no earned .ok) + token-free text is NO-OP" {
+  tree="aabbccddeeff00112233445566778899aabbccdd"
+  # Only the carried artifact exists; the agent's .ok marker path is absent, so
+  # the short-circuit is never handed a writer-produced earned marker.
+  _noop_write_clearance "$BATS_TEST_TMPDIR/${tree}.carried" "$tree" carried
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${tree}.ok"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "audit-team-member: no marker at all + token-free text is NO-OP (unregressed)" {
+  tree="aabbccddeeff00112233445566778899aabbccdd"
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${tree}.ok"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "audit-team-member: legacy-bodied marker + token-free text is NO-OP (existence no longer authorizes real)" {
+  tree="aabbccddeeff00112233445566778899aabbccdd"
+  marker="$BATS_TEST_TMPDIR/${tree}.ok"
+  printf '{"sha":"deadbeef","tree":"%s","audited_at":"2026-01-01T00:00:00Z"}\n' "$tree" > "$marker"
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$marker"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
 }

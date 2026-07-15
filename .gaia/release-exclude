@@ -34,6 +34,8 @@
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md
 .claude/commands/distribution-audit.md
+# Maintainer-only Code Audit Team spawn-list optimization; adopters resolve required members via resolve-audit-members.sh and the frontend self-skip is fail-closed on its absence.
+.gaia/scripts/resolve-audit-spawn.sh
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that

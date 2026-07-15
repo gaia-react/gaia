@@ -42,6 +42,7 @@ setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
   RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
   SPAWN_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-spawn.sh
+  LIB_DIR=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)
   REPO=$(mktemp -d -t pr-merge-test-XXXXXX)
 
   git -C "$REPO" init --quiet --initial-branch=main
@@ -62,6 +63,16 @@ setup() {
   chmod +x "$REPO/.gaia/scripts/resolve-audit-members.sh"
   cp "$SPAWN_ABS" "$REPO/.gaia/scripts/resolve-audit-spawn.sh"
   chmod +x "$REPO/.gaia/scripts/resolve-audit-spawn.sh"
+
+  # The two copies above resolve their libs relative to THEMSELVES
+  # ($REPO/.claude/hooks/lib/), not the real repo, so the sandbox needs its
+  # own copy of the shared ownership classifier alongside them. The real
+  # hook (run by absolute path via $HOOK_ABS, never copied) resolves its own
+  # libs to the real repo regardless.
+  mkdir -p "$REPO/.claude/hooks/lib"
+  cp "$LIB_DIR/audit-scope.sh" "$REPO/.claude/hooks/lib/audit-scope.sh"
+  cp "$LIB_DIR/audit-machinery.sh" "$REPO/.claude/hooks/lib/audit-machinery.sh"
+  cp "$LIB_DIR/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
 }
 
 teardown() {
@@ -92,13 +103,26 @@ run_merge_hook() {
 # Write a Code Audit Team clearance marker for REPO's current HEAD TREE. A
 # marker attests that a member audited the tree, not the commit, so it survives
 # an empty commit (the GAIA-Audit trailer stamp) that leaves the tree identical.
+# The body is a writer-shaped schema-2 clearance (the gate now accepts only
+# such bodies, never a bare `{}`): its `tree` equals the filename key and its
+# `member` matches the member the suffix names.
 #   write_marker ""                              -> <tree>.ok (frontend/default)
 #   write_marker ".code-audit-maintainer-shell"   -> <tree>.code-audit-maintainer-shell.ok
 write_marker() {
-  local suffix="$1" tree
+  local suffix="$1" tree sha member sidecar
   tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  sha=$(git -C "$REPO" rev-parse HEAD)
+  if [ -z "$suffix" ]; then
+    member="code-audit-frontend"
+    sidecar="true"
+  else
+    member="${suffix#.}"
+    sidecar="false"
+  fi
   mkdir -p "$REPO/.gaia/local/audit"
-  printf '{}' > "$REPO/.gaia/local/audit/${tree}${suffix}.ok"
+  printf '{"version":"1.4.0","schema":2,"member":"%s","provenance":"earned","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$sha" "$tree" "$sidecar" \
+    > "$REPO/.gaia/local/audit/${tree}${suffix}.ok"
 }
 
 # Print the spawn set the oracle resolves for REPO's current diff.
@@ -147,6 +171,73 @@ assert_not_in_set() {
   local name="$1" set="$2"
   grep -qxF -- "$name" <<<"$set" && return 1
   return 0
+}
+
+# --- Carry-forward fixtures (Phase 3) --------------------------------------
+
+# The dispatch resolver's own view of the whole-branch diff (the CONTROL that a
+# member's absence from the spawn set is carry-forward's doing, not a fixture in
+# which the member was never dispatched).
+resolve_members() {
+  ( cd "$REPO" && bash .gaia/scripts/resolve-audit-members.sh 2>/dev/null )
+}
+
+# Seed a frontend EARNED clearance for a specific tree/sha plus its disposition
+# sidecar, so it can serve as a carry-forward anchor (the sidecar-missing drop
+# needs the sidecar present).
+#   seed_anchor_frontend TREE SHA [AAT] [FINDINGS_JSON] [BACKEND]
+seed_anchor_frontend() {
+  local tree="$1" sha="$2" aat="${3:-2026-01-01T00:00:00Z}" findings="${4:-[]}" backend="${5:-absent}"
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{"version":"1.4.0","schema":2,"member":"code-audit-frontend","provenance":"earned","sha":"%s","tree":"%s","audited_at":"%s","sidecar":true}\n' \
+    "$sha" "$tree" "$aat" > "$REPO/.gaia/local/audit/${tree}.ok"
+  printf '{"schema":1,"backend":"%s","findings":%s}\n' "$backend" "$findings" \
+    > "$REPO/.gaia/local/audit/${sha}.dispositions.json"
+}
+
+# Write a frontend CARRIED clearance for a tree (no earned marker), so the
+# member reads as cleared via the carried artifact.
+write_carried_frontend() {
+  local tree="$1" sha
+  sha=$(git -C "$REPO" rev-parse HEAD)
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{"version":"1.4.0","schema":2,"member":"code-audit-frontend","provenance":"carried","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true,"anchor_tree":"%s"}\n' \
+    "$sha" "$tree" "$tree" > "$REPO/.gaia/local/audit/${tree}.carried"
+}
+
+# Install a gh stub on a prepended PATH. `gh issue list` prints $1 (default []).
+# GET statuses return null (so the frontend is NOT cleared via a CI status,
+# forcing carry-forward), `gh pr view` returns an empty title (no chore(deps)),
+# and a `--method POST` records its argv to POST_LOG so the description can be
+# asserted.
+install_gh_stub() {
+  local issues="${1:-[]}"
+  GH_BIN="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$GH_BIN"
+  POST_LOG="$BATS_TEST_TMPDIR/post.log"
+  rm -f "$POST_LOG"
+  printf '%s' "$issues" > "$BATS_TEST_TMPDIR/issues.json"
+  cat > "$GH_BIN/gh" <<EOF
+#!/usr/bin/env bash
+post_log="$POST_LOG"
+issues_file="$BATS_TEST_TMPDIR/issues.json"
+EOF
+  cat >> "$GH_BIN/gh" <<'EOF'
+case "$1" in
+  auth) exit 0 ;;
+  repo) printf 'gaia-react/gaia\n'; exit 0 ;;
+  pr) printf '\n'; exit 0 ;;
+  issue) cat "$issues_file"; exit 0 ;;
+  api)
+    case "$*" in
+      *"--method POST"*) printf '%s\n' "$*" >> "$post_log"; exit 0 ;;
+      *) printf 'null\n'; exit 0 ;;
+    esac ;;
+  *) exit 0 ;;
+esac
+EOF
+  chmod +x "$GH_BIN/gh"
+  export PATH="$GH_BIN:$PATH"
 }
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
@@ -555,4 +646,79 @@ assert_not_in_set() {
   write_marker ""
   run_merge_hook
   assert_denied
+}
+
+# ---------------------------------------------------------------------------
+# Carry-forward: the authority mints a carried clearance and allows, never
+# shrinks the required set, and re-verifies filed dispositions after a carry.
+# ---------------------------------------------------------------------------
+
+@test "UAT-001: a wiki-only commit carries the frontend clearance forward and allows, minting a carried clearance" {
+  install_gh_stub
+  # app/ change -> tree T1; seed the frontend earned anchor + a clean sidecar.
+  commit_files "app/x.ts" "export const x = 1"
+  t1=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  s1=$(git -C "$REPO" rev-parse HEAD)
+  seed_anchor_frontend "$t1" "$s1"
+  # A wiki-only commit -> tree T2, with NO clearance artifact for T2.
+  commit_files "wiki/x.md" "doc"
+  t2=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  # CONTROL: the whole-branch diff still dispatches the frontend member, so its
+  # absence from the spawn list is provably carry-forward's doing.
+  members=$(resolve_members)
+  assert_in_set "code-audit-frontend" "$members"
+
+  run_merge_hook
+  assert_allowed
+  # A carried clearance was minted at T2's distinct filename.
+  [ -f "$REPO/.gaia/local/audit/${t2}.carried" ]
+  # The status POST carries the `carried` provenance token in its description.
+  [ -f "$POST_LOG" ]
+  grep -q "description=1.4.0 ${t2} carried" "$POST_LOG"
+}
+
+@test "UAT-004: a carried frontend clearance never removes a co-dispatched member from the required set" {
+  # The whole-branch diff touches app/ AND a NON-machinery shell script, so both
+  # code-audit-frontend and code-audit-maintainer-shell are required.
+  commit_files "app/x.ts" "export const x = 1" ".gaia/scripts/token-tally.sh" "echo tally"
+  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  # frontend holds a CARRIED clearance for HEAD's tree; the shell member none.
+  write_carried_frontend "$tree"
+
+  # CONTROL: the required set derives from the whole-branch diff (both members),
+  # not the clearance pool (which would be the frontend alone).
+  members=$(resolve_members)
+  assert_in_set "code-audit-frontend" "$members"
+  assert_in_set "code-audit-maintainer-shell" "$members"
+
+  run_merge_hook
+  assert_denied
+  grep -q "code-audit-maintainer-shell: PENDING" <<<"$output" || return 1
+}
+
+@test "UAT-010: a carried disposition whose filed key resolves to no issue denies (carry-then-deny)" {
+  # gh reachable, but the tech-debt issue list is empty: the anchor's filed key
+  # resolves to nothing.
+  install_gh_stub '[]'
+  commit_files "app/x.ts" "export const x = 1"
+  t1=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  s1=$(git -C "$REPO" rev-parse HEAD)
+  # The anchor's audit filed a disposition on a REACHABLE backend.
+  seed_anchor_frontend "$t1" "$s1" "2026-01-01T00:00:00Z" \
+    '[{"key":"v1 class=x path=app/x.ts line=1","disposition":"filed"}]' "github"
+  # A wiki-only commit -> tree T2; the anchor commit is an ancestor of HEAD.
+  commit_files "wiki/x.md" "doc"
+  t2=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  s2=$(git -C "$REPO" rev-parse HEAD)
+
+  run_merge_hook
+  assert_denied
+  grep -q "filed-but-missing" <<<"$output" || return 1
+  grep -q "v1 class=x path=app/x.ts line=1" <<<"$output" || return 1
+  # The carry DID happen: the carried clearance was minted and the anchor's
+  # disposition record merged into HEAD's sidecar in the same operation.
+  [ -f "$REPO/.gaia/local/audit/${t2}.carried" ]
+  [ -f "$REPO/.gaia/local/audit/${s2}.dispositions.json" ]
+  [ "$(jq -r '.findings[0].disposition' "$REPO/.gaia/local/audit/${s2}.dispositions.json")" = "filed" ]
 }

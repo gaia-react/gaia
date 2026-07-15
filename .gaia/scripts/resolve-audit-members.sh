@@ -100,200 +100,29 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# --- Resolve the repo root + config path -------------------------------------
+# --- Resolve the repo root -----------------------------------------------
 #
 # Not in a git repo -> nothing to diff; emit nothing and exit 0.
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$repo_root" ] || exit 0
-config_file="$repo_root/.gaia/audit-ci.yml"
 
-# --- Built-in default roster --------------------------------------------------
+# --- Load the shared ownership classifier ------------------------------------
 #
-# Used only when audit-ci.yml has no `auditors:` block. Emitted as the same
-# YAML shape the config uses so ONE parser handles both. The maintainer-only
-# entries are wrapped in `# gaia:maintainer-only` markers; the release scrub
-# strips marker-delimited blocks from shipped `.sh` files, so the shipped
-# script's fallback carries only the default (frontend) member.
-
-builtin_roster() {
-  cat <<'YAML'
-auditors:
-  - name: code-audit-frontend
-    globs:
-      - "app/**"
-      - "test/**"
-      - ".storybook/**"
-    scope: adopter
-    push_fixes: true
-    default: true
-  # gaia:maintainer-only:start
-  - name: code-audit-maintainer-shell
-    globs:
-      - ".gaia/**/*.sh"
-      - ".gaia/**/*.bats"
-      - ".claude/hooks/**/*.sh"
-      - ".specify/extensions/gaia/lib/*.sh"
-      - ".github/**/*.sh"
-      - ".github/**/*.bats"
-    scope: maintainer-only
-    push_fixes: false
-  - name: code-audit-maintainer-node
-    globs:
-      - ".gaia/cli/src/**"
-    scope: maintainer-only
-    push_fixes: false
-  # gaia:maintainer-only:end
-YAML
-}
-
-# --- Roster parser ------------------------------------------------------------
-#
-# Reads a YAML `auditors:` list-of-maps on stdin and emits one record per line:
-#   DEFAULT <name>            the single default member's name
-#   GLOB <name> <regex>       one specialized-member glob, pre-compiled to an
-#                             anchored ERE (default-member globs are NOT emitted;
-#                             the default owns the auditable-base set instead)
-# Member names and the compiled regexes contain no spaces, so downstream
-# `read -r kind a b` splits them cleanly.
-
-parse_auditors() {
-  awk '
-    function unq(s) {
-      if (s ~ /^".*"$/) return substr(s, 2, length(s) - 2)
-      if (s ~ /^'\''.*'\''$/) return substr(s, 2, length(s) - 2)
-      return s
-    }
-    # Convert a posix glob (**, *) into an anchored ERE, matched against
-    # repo-relative POSIX paths. Mirrors scrub.ts globToRegex: escape ERE
-    # specials (not *), then handle **/, **, * via sentinels so single-* is
-    # not re-substituted.
-    function glob_to_regex(glob,   g) {
-      g = glob
-      gsub(/\\/, "\\\\", g)
-      gsub(/\./, "\\.", g)
-      gsub(/\+/, "\\+", g)
-      gsub(/\^/, "\\^", g)
-      gsub(/\$/, "\\$", g)
-      gsub(/\(/, "\\(", g)
-      gsub(/\)/, "\\)", g)
-      gsub(/\[/, "\\[", g)
-      gsub(/\]/, "\\]", g)
-      gsub(/\{/, "\\{", g)
-      gsub(/\}/, "\\}", g)
-      gsub(/\|/, "\\|", g)
-      gsub(/\*\*\//, "@@DIRSTAR@@", g)
-      gsub(/\*\*/,   "@@STAR@@", g)
-      gsub(/\*/,     "[^/]*", g)
-      gsub(/@@STAR@@/,   ".*", g)
-      gsub(/@@DIRSTAR@@/, "(.*/)?", g)
-      return "^" g "$"
-    }
-    function flush(   i) {
-      if (have_member) {
-        if (is_default) {
-          print "DEFAULT " member
-        } else {
-          for (i = 1; i <= nglobs; i++) print "GLOB " member " " glob_to_regex(globs[i])
-        }
-      }
-      have_member = 0; member = ""; is_default = 0; nglobs = 0; in_globs = 0
-    }
-    BEGIN { in_auditors = 0; in_globs = 0; have_member = 0; member = ""; is_default = 0; nglobs = 0 }
-    {
-      raw = $0
-      # Top-level `auditors:` key opens the block.
-      if (raw ~ /^auditors[[:space:]]*:/) { in_auditors = 1; next }
-      if (!in_auditors) next
-      # Any other top-level key (column 0, a letter) closes the block.
-      if (raw ~ /^[A-Za-z_]/) { flush(); in_auditors = 0; next }
-      # Blank lines and comments (including the maintainer-only markers) are
-      # skipped and never end a member or the block.
-      if (raw ~ /^[[:space:]]*$/) next
-      if (raw ~ /^[[:space:]]*#/) next
-      # New member: `- name: X`.
-      if (raw ~ /^[[:space:]]*-[[:space:]]+name[[:space:]]*:/) {
-        flush()
-        have_member = 1
-        v = raw
-        sub(/^[[:space:]]*-[[:space:]]+name[[:space:]]*:[[:space:]]*/, "", v)
-        sub(/[[:space:]]+#.*$/, "", v)
-        sub(/^[[:space:]]+/, "", v); sub(/[[:space:]]+$/, "", v)
-        member = unq(v)
-        next
-      }
-      # `globs:` opens the glob sublist.
-      if (raw ~ /^[[:space:]]+globs[[:space:]]*:/) { in_globs = 1; next }
-      # `default: <bool>`.
-      if (raw ~ /^[[:space:]]+default[[:space:]]*:/) {
-        in_globs = 0
-        v = raw
-        sub(/^[[:space:]]+default[[:space:]]*:[[:space:]]*/, "", v)
-        sub(/[[:space:]]+#.*$/, "", v)
-        sub(/^[[:space:]]+/, "", v); sub(/[[:space:]]+$/, "", v)
-        if (tolower(v) == "true") is_default = 1
-        next
-      }
-      # Any other member-level scalar key (scope, push_fixes, ...) ends globs.
-      if (raw ~ /^[[:space:]]+[A-Za-z_]+[[:space:]]*:/) { in_globs = 0; next }
-      # A `- <value>` list item while inside globs is one glob.
-      if (in_globs && raw ~ /^[[:space:]]*-[[:space:]]+/) {
-        g = raw
-        sub(/^[[:space:]]*-[[:space:]]+/, "", g)
-        sub(/[[:space:]]+#.*$/, "", g)
-        sub(/^[[:space:]]+/, "", g); sub(/[[:space:]]+$/, "", g)
-        g = unq(g)
-        if (g != "") { nglobs++; globs[nglobs] = g }
-        next
-      }
-    }
-    END { flush() }
-  '
-}
-
-# Roster records: prefer the config `auditors:` block; fall back to built-in.
-records=""
-if [ -f "$config_file" ]; then
-  records="$(parse_auditors < "$config_file")"
+# Resolved from this script's OWN on-disk location, never cwd, never
+# $repo_root: the bats suites run this script with cwd inside a sandbox that
+# has no .claude/ at all. Absent or unreadable module: this resolver is a
+# query, not a gate, so it fails safe to its existing empty-stdout contract
+# rather than crash. (The merge gate, not this resolver, is where an absent
+# module must deny.)
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -z "$_lib_dir" ] || [ ! -f "$_lib_dir/audit-scope.sh" ]; then
+  exit 0
 fi
-if [ -z "$records" ]; then
-  records="$(builtin_roster | parse_auditors)"
-fi
+# shellcheck source=/dev/null
+. "$_lib_dir/audit-scope.sh"
 
-# Load records into parallel arrays (bash 3.2: indexed arrays, no assoc).
-default_member=""
-spec_count=0
-spec_member=()
-spec_regex=()
-# Split each record on whitespace (default IFS): `KIND NAME [REGEX]`. The
-# regex is the trailing field and carries no spaces, so it lands in `b` whole.
-while read -r kind a b; do
-  case "$kind" in
-    DEFAULT)
-      default_member="$a"
-      ;;
-    GLOB)
-      spec_member[spec_count]="$a"
-      spec_regex[spec_count]="$b"
-      spec_count=$((spec_count + 1))
-      ;;
-  esac
-done <<EOF
-$records
-EOF
-
-# --- Auditable-base set (default member's implicit domain) -------------------
-
-in_auditable_base() {
-  case "$1" in
-    app/*|test/*|.storybook/*|.github/workflows/*) return 0 ;;
-    */*) return 1 ;;
-    package.json|pnpm-lock.yaml|pnpm-workspace.yaml) return 0 ;;
-    tsconfig*.json) return 0 ;;
-    *.config.ts|*.config.mts|*.config.mjs|*.config.cjs|*.config.js) return 0 ;;
-    *) return 1 ;;
-  esac
-}
+audit_scope_init "$repo_root"
 
 # --- Resolve the diff base + changed files -----------------------------------
 
@@ -317,33 +146,12 @@ base="$(resolve_base)"
 changed="$(git -C "$repo_root" diff --name-only "${base}...HEAD" 2>/dev/null || true)"
 [ -n "$changed" ] || exit 0
 
-# --- Dispatch ----------------------------------------------------------------
+# --- Dispatch: batch-classify every changed path, collect unique owners -----
+#
+# Deduped, lexically-sorted member names. Empty input -> empty output (the
+# batch predicate emits nothing for an ownerless path; `awk` here drops the
+# "-" placeholder rather than the member name).
 
-members_out=""
-add_member() {
-  members_out="${members_out}$1
-"
-}
-
-while IFS= read -r path; do
-  [ -n "$path" ] || continue
-  matched_specialized=0
-  i=0
-  while [ "$i" -lt "$spec_count" ]; do
-    if [[ "$path" =~ ${spec_regex[$i]} ]]; then
-      add_member "${spec_member[$i]}"
-      matched_specialized=1
-    fi
-    i=$((i + 1))
-  done
-  if [ "$matched_specialized" -eq 0 ] && [ -n "$default_member" ]; then
-    if in_auditable_base "$path"; then
-      add_member "$default_member"
-    fi
-  fi
-done <<EOF
-$changed
-EOF
-
-# Deduped, lexically-sorted member names. Empty input -> empty output.
-printf '%s' "$members_out" | LC_ALL=C sort -u
+printf '%s\n' "$changed" | audit_owners_for_paths \
+  | awk -F'\t' '$2 != "-" { print $2 }' \
+  | LC_ALL=C sort -u

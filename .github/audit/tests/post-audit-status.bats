@@ -84,14 +84,36 @@ current_tree() {
   git -C "$SANDBOX" rev-parse "HEAD^{tree}"
 }
 
+# Write a writer-shaped schema-2 EARNED clearance for MEMBER at PATH (an
+# absolute path under SANDBOX). The precondition now accepts only such bodies,
+# not a bare `{}`: `tree` equals the filename key and `member` matches.
+write_body() {
+  local path="$1" member="$2" tree sha sidecar
+  tree=$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")
+  sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  if [ "$member" = "code-audit-frontend" ]; then sidecar="true"; else sidecar="false"; fi
+  mkdir -p "$(dirname "$path")"
+  printf '{"version":"1.2.3","schema":2,"member":"%s","provenance":"earned","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$sha" "$tree" "$sidecar" > "$path"
+}
+
 # Copy the real resolver script into SANDBOX so a test can exercise the
 # member-aware gate. Untracked, so it never appears in a git diff itself.
 install_resolver() {
-  local resolver_abs
+  local resolver_abs lib_dir
   resolver_abs="$THIS_DIR/../../../.gaia/scripts/resolve-audit-members.sh"
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$resolver_abs" "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
+
+  # The resolver copy resolves its libs relative to ITSELF
+  # ($SANDBOX/.claude/hooks/lib/), so provision the shared ownership
+  # classifier alongside it.
+  lib_dir="$THIS_DIR/../../../.claude/hooks/lib"
+  mkdir -p "$SANDBOX/.claude/hooks/lib"
+  cp "$lib_dir/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+  cp "$lib_dir/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
+  cp "$lib_dir/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
 }
 
 # Commit a mixed app/ + .gaia/**/*.sh change on a new `feature` branch off
@@ -119,7 +141,7 @@ commit_mixed_diff() {
   # The marker is keyed to the TREE; the status POST still targets the COMMIT
   # (a GitHub commit status has nowhere else to land).
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{"sha":"%s","tree":"%s"}\n' "$head_sha" "$tree" > "$SANDBOX/$marker"
+  write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -151,7 +173,7 @@ commit_mixed_diff() {
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{"sha":"%s","tree":"%s"}\n' "$head_sha" "$tree" > "$SANDBOX/$marker"
+  write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -175,7 +197,7 @@ commit_mixed_diff() {
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{}' > "$SANDBOX/$marker"
+  write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -196,8 +218,8 @@ commit_mixed_diff() {
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{}' > "$SANDBOX/$marker"
-  printf '{}' > "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok"
+  write_body "$SANDBOX/$marker" code-audit-frontend
+  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -223,7 +245,7 @@ commit_mixed_diff() {
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   # The specialized member clears the tree first, before the frontend stamps.
-  printf '{}' > "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok"
+  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
 
   # code-audit-frontend stamps the trailer: an empty commit, identical tree.
   git -C "$SANDBOX" commit -q --allow-empty -m "chore: code review audit passed"
@@ -231,7 +253,7 @@ commit_mixed_diff() {
   stamped_sha=$(git -C "$SANDBOX" rev-parse HEAD)
 
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{}' > "$SANDBOX/$marker"
+  write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -251,11 +273,90 @@ commit_mixed_diff() {
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{}' > "$SANDBOX/$marker"
+  write_body "$SANDBOX/$marker" code-audit-frontend
 
   # No resolver copied into SANDBOX: the member-aware gate is skipped and the
   # frontend marker alone clears the POST, same as today.
   run run_helper "$marker"
   [ "$status" -eq 0 ]
   [[ "$output" == "status: posted GAIA-Audit success "* ]]
+}
+
+# -----------------------------------------------------------------------------
+# UAT-009: provenance in the description. A mixed (one earned, one carried) set
+# posts "<version> <tree> carried"; an all-earned set posts the two-field shape.
+# -----------------------------------------------------------------------------
+
+# Write a writer-shaped schema-2 CARRIED clearance for MEMBER at PATH.
+write_carried_body() {
+  local path="$1" member="$2" tree sha sidecar
+  tree=$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")
+  sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  if [ "$member" = "code-audit-frontend" ]; then sidecar="true"; else sidecar="false"; fi
+  mkdir -p "$(dirname "$path")"
+  printf '{"version":"1.2.3","schema":2,"member":"%s","provenance":"carried","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s,"anchor_tree":"%s"}\n' \
+    "$member" "$sha" "$tree" "$sidecar" "$tree" > "$path"
+}
+
+@test "UAT-009: a carried member appends the carried token to the description" {
+  install_gh_mock ok
+  install_resolver
+  commit_mixed_diff
+
+  tree=$(current_tree)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  marker=".gaia/local/audit/${tree}.ok"
+  write_body "$SANDBOX/$marker" code-audit-frontend
+  # The shell member's clearance is CARRIED, not earned.
+  write_carried_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.carried" code-audit-maintainer-shell
+
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "status: posted GAIA-Audit success "* ]]
+  [ -f "$POST_LOG" ]
+  grep -q "description=1.2.3 ${tree} carried" "$POST_LOG"
+}
+
+@test "UAT-009: an all-earned set posts the two-field description (no carried token)" {
+  install_gh_mock ok
+  install_resolver
+  commit_mixed_diff
+
+  tree=$(current_tree)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  marker=".gaia/local/audit/${tree}.ok"
+  write_body "$SANDBOX/$marker" code-audit-frontend
+  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
+
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  [ -f "$POST_LOG" ]
+  grep -q "description=1.2.3 ${tree}" "$POST_LOG"
+  # No carried token appended.
+  grep -q "description=1.2.3 ${tree} carried" "$POST_LOG" && return 1
+  return 0
+}
+
+@test "UAT-009 third reader: audit-success-present.sh accepts a carried (three-field) description" {
+  SP="$THIS_DIR/../audit-success-present.sh"
+  [ -x "$SP" ] || skip "audit-success-present.sh not executable"
+  tree=$(current_tree)
+  sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  # gh mock: a GET of commits/<sha>/status yields a carried description.
+  GH3="$BATS_TEST_TMPDIR/bin3"
+  mkdir -p "$GH3"
+  cat > "$GH3/gh" <<EOF
+#!/usr/bin/env bash
+desc="1.2.3 ${tree} carried"
+EOF
+  cat >> "$GH3/gh" <<'EOF'
+case "$*" in
+  *"repo view"*) printf 'gaia-react/gaia\n' ;;
+  *"/status"*) printf '%s\n' "$desc" ;;
+  *) exit 0 ;;
+esac
+EOF
+  chmod +x "$GH3/gh"
+  run env PATH="$GH3:$PATH" GITHUB_REPOSITORY="gaia-react/gaia" "$SP" "$sha" "$tree"
+  [ "$status" -eq 0 ]
 }

@@ -17,6 +17,8 @@ setup() {
 teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
   [ -n "${ORIGIN:-}" ] && rm -rf "$ORIGIN"
+  [ -n "${SHIM_DIR:-}" ] && rm -rf "$SHIM_DIR"
+  return 0
 }
 
 # Stand up a repo with a real bare origin so upstream-track state is faithful.
@@ -653,6 +655,278 @@ seed_rerun_ledger() {
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -f "$REPO/.gaia/local/audit/deadbeef.rerun.json" ]
+}
+
+# --- Retention window: earned anchor markers survive past reachability -----
+#
+# Carry-forward's anchor pool needs a marker to survive the operator's own
+# session boundary, not just the mid-session sweep. An earned marker's own
+# recorded audited_at buys it GAIA_AUDIT_MARKER_RETENTION_HOURS (default 72)
+# past whatever the reachability arms above would otherwise grant it; a
+# carried clearance or a refusal gets no such window, since neither can ever
+# anchor a later carry-forward.
+
+# hours_ago <n>: portable ISO8601 timestamp n hours in the past, computed with
+# jq (never `date -d`/`date -j`), matching days_ago's cross-platform epoch
+# rule above.
+hours_ago() {
+  jq -rn --argjson n "$1" '(now - ($n * 3600)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
+}
+
+# seed_earned_marker <tree> <audited_at_iso> <sha>: writes a schema-2 earned
+# clearance body (default member) at <tree>.ok.
+seed_earned_marker() {
+  local tree="$1" audited_at="$2" sha="$3"
+  mkdir -p "$REPO/.gaia/local/audit"
+  jq -cn --arg tree "$tree" --arg audited_at "$audited_at" --arg sha "$sha" '
+    {version: "1.6.1", schema: 2, member: "code-audit-frontend", provenance: "earned",
+     sha: $sha, tree: $tree, audited_at: $audited_at, sidecar: true}
+  ' > "$REPO/.gaia/local/audit/$tree.ok"
+}
+
+# seed_carried_marker <tree> <audited_at_iso> <sha> <anchor_tree>: writes a
+# schema-2 carried clearance body at <tree>.carried.
+seed_carried_marker() {
+  local tree="$1" audited_at="$2" sha="$3" anchor="$4"
+  mkdir -p "$REPO/.gaia/local/audit"
+  jq -cn --arg tree "$tree" --arg audited_at "$audited_at" --arg sha "$sha" --arg anchor "$anchor" '
+    {version: "1.6.1", schema: 2, member: "code-audit-frontend", provenance: "carried",
+     sha: $sha, tree: $tree, audited_at: $audited_at, sidecar: true, anchor_tree: $anchor}
+  ' > "$REPO/.gaia/local/audit/$tree.carried"
+}
+
+# orphan_sha2: a second, distinct orphan commit/tree from orphan_sha (a
+# different filename, so the two can never collide on an identical tree or
+# commit hash when both are created inside the same test).
+orphan_sha2() {
+  git -C "$REPO" checkout -q -b throwaway2
+  echo orphan2 > "$REPO/orphan2"
+  git -C "$REPO" add orphan2
+  git -C "$REPO" commit -q -m orphan2
+  git -C "$REPO" rev-parse HEAD
+  git -C "$REPO" checkout -q main
+  git -C "$REPO" branch -q -D throwaway2
+}
+
+@test "UAT-018: a window-retained anchor keeps its sidecar; a carried clearance gets no window; reachability-kept survives regardless of age" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  dead2=$(orphan_sha2)
+  dead2_tree=$(git -C "$REPO" rev-parse "${dead2}^{tree}")
+  tree=$(head_tree)
+
+  # Member M's earned clearance for an unreachable tree, inside the 72h window.
+  seed_earned_marker "$dead_tree" "$(hours_ago 1)" "$dead"
+  seed_audit_file "$dead.dispositions.json"
+
+  # A carried clearance for an equally unreachable tree: reachability only,
+  # never the window, even with an equally fresh audited_at.
+  seed_carried_marker "$dead2_tree" "$(hours_ago 1)" "$dead2" "$dead2_tree"
+
+  # A marker outside the window whose tree IS HEAD's tree: the existing
+  # reachability arm keeps it regardless of age.
+  seed_earned_marker "$tree" "$(hours_ago 1000)" "$(git -C "$REPO" rev-parse HEAD)"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+
+  [ -f "$REPO/.gaia/local/audit/$dead_tree.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$dead.dispositions.json" ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead2_tree.carried" ]
+  [ -f "$REPO/.gaia/local/audit/$tree.ok" ]
+}
+
+@test "UAT-019: an out-of-window earned marker on an unreachable tree is reaped" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_earned_marker "$dead_tree" "$(hours_ago 2)" "$dead"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.ok" ]
+}
+
+@test "retention: a sidecar whose marker is NOT retained (out of window, unreachable) is still reaped" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_earned_marker "$dead_tree" "$(hours_ago 2)" "$dead"
+  seed_audit_file "$dead.dispositions.json"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.ok" ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead.dispositions.json" ]
+}
+
+@test "sweep 2: an orphaned carried clearance is reaped, and a live one is kept (reachability only)" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  tree=$(head_tree)
+  seed_carried_marker "$dead_tree" "$(hours_ago 1)" "$dead" "$dead_tree"
+  seed_carried_marker "$tree" "$(hours_ago 1)" "$(git -C "$REPO" rev-parse HEAD)" "$tree"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.carried" ]
+  [ -f "$REPO/.gaia/local/audit/$tree.carried" ]
+}
+
+@test "sweep 2: an orphaned refusal is reaped, and a live one is kept" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  tree=$(head_tree)
+  seed_audit_file "$dead_tree.refused"
+  seed_audit_file "$tree.refused"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.refused" ]
+  [ -f "$REPO/.gaia/local/audit/$tree.refused" ]
+}
+
+# --- Cost budget: fork counts, never wall clock (CG-005) --------------------
+#
+# The retention arm must sit after every fork-free reachability arm and
+# before the fork-paying git arm, so it never makes the common case (a
+# reachability-kept marker) more expensive than it is today. Each test
+# measures a BASELINE run against an empty audit dir, then a second run with
+# exactly one marker added, and asserts the DELTA -- isolating that one
+# marker's own contribution from every other sweep's constant cost (the
+# branch scan, the live-tree computation, ...), which runs unconditionally
+# either way.
+
+# shim_git_and_jq_counters: puts wrapper `git` and `jq` binaries at the front
+# of PATH. Each wrapper appends one line to its own counter file, then execs
+# the real binary (resolved via `command -v` BEFORE the shim dir is
+# prepended, so the wrapper never calls itself).
+shim_git_and_jq_counters() {
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  GIT_COUNTER="$SHIM_DIR/git.count"
+  JQ_COUNTER="$SHIM_DIR/jq.count"
+  : > "$GIT_COUNTER"
+  : > "$JQ_COUNTER"
+  local real_git real_jq
+  real_git=$(command -v git)
+  real_jq=$(command -v jq)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+echo x >> "$GIT_COUNTER"
+exec "$real_git" "\$@"
+SHIM
+  cat > "$SHIM_DIR/jq" <<SHIM
+#!/bin/bash
+echo x >> "$JQ_COUNTER"
+exec "$real_jq" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git" "$SHIM_DIR/jq"
+}
+
+git_fork_count() { wc -l < "$GIT_COUNTER" | tr -d ' '; }
+jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
+
+@test "budget: a reachability-retained marker costs ZERO git and ZERO jq forks in the keep chain" {
+  make_repo
+  shim_git_and_jq_counters
+  tree=$(head_tree)
+  mkdir -p "$REPO/.gaia/local/audit"
+  cd "$REPO"
+
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  base_git=$(git_fork_count)
+  base_jq=$(jq_fork_count)
+
+  seed_earned_marker "$tree" "$(hours_ago 1)" "$(git -C "$REPO" rev-parse HEAD)"
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$tree.ok" ]
+
+  [ "$(git_fork_count)" -eq "$base_git" ]
+  [ "$(jq_fork_count)" -eq "$base_jq" ]
+}
+
+@test "budget: a window-retained marker costs ZERO git forks and EXACTLY ONE jq fork" {
+  make_repo
+  shim_git_and_jq_counters
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  mkdir -p "$REPO/.gaia/local/audit"
+  cd "$REPO"
+
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  base_git=$(git_fork_count)
+  base_jq=$(jq_fork_count)
+
+  seed_earned_marker "$dead_tree" "$(hours_ago 1)" "$dead"
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$dead_tree.ok" ]
+
+  [ "$(git_fork_count)" -eq "$base_git" ]
+  [ "$(jq_fork_count)" -eq "$((base_jq + 1))" ]
+}
+
+@test "budget: a marker retained by neither costs the same git forks as today, plus at most one jq fork" {
+  make_repo
+  shim_git_and_jq_counters
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  mkdir -p "$REPO/.gaia/local/audit"
+  cd "$REPO"
+
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  base_git=$(git_fork_count)
+  base_jq=$(jq_fork_count)
+
+  seed_earned_marker "$dead_tree" "$(hours_ago 2)" "$dead"
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.ok" ]
+
+  # Same git fork count as an unreachable *.ok marker paid before this
+  # change: one cat-file -e that fails (a tree key never peels to ^{commit}),
+  # so branch --contains is never reached.
+  [ "$(git_fork_count)" -eq "$((base_git + 1))" ]
+  [ "$(jq_fork_count)" -le "$((base_jq + 1))" ]
+}
+
+@test "budget: a non-*.ok artifact triggers ZERO jq forks; the filename short-circuit fires before the fork" {
+  make_repo
+  shim_git_and_jq_counters
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  mkdir -p "$REPO/.gaia/local/audit"
+  cd "$REPO"
+
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  base_jq=$(jq_fork_count)
+
+  seed_audit_file "$dead_tree.progress.log"
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.progress.log" ]
+
+  [ "$(jq_fork_count)" -eq "$base_jq" ]
 }
 
 # --- Sweep #4: the telemetry drop-zone split --------------------------------

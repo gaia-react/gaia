@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-07-14
+updated: 2026-07-15
 tags: [concept, claude, review]
 ---
 
@@ -105,6 +105,10 @@ The audit's verify-after-file re-query is agent behavior, not code. `.claude/hoo
 2. a `pending(definitive)` entry.
 
 It fails open everywhere else: no sidecar, backend `absent`, every `filed` entry confirmed, all entries diverted/waived/pending(transient), or any `gh`/tooling failure. A match is an issue body that **contains** the sidecar key as a substring, never whole-line equality. The CI workflow grants the job `issues: write` and adds `Bash(gh:*)` to the agent's `--allowedTools` so the same filing path runs from CI.
+
+### A carried clearance also writes the sidecar
+
+The audit agent is not the sidecar's only writer. When [[PR Merge Workflow#Carry-forward|carry-forward]] pre-clears a member from an earlier tree, the merge gate carries that anchor's disposition record into HEAD's sidecar in the same operation, merging rather than overwriting: HEAD's own fresh entry always wins a key collision, and a carried entry may only add keys it does not already have, so a carry can never downgrade or hide a live finding. This only happens when the anchor's recorded commit is an ancestor of HEAD; a non-ancestor anchor's disposition record is never imported. After the merge the gate re-runs the same `filed`-key verification this backstop hook performs, on HEAD's now carried-into sidecar, so a filed finding whose tech-debt issue no longer exists still blocks the merge even though nobody re-ran the audit agent for HEAD's exact tree.
 
 ### Sibling: the re-run carry-forward ledger
 
