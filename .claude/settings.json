@@ -270,6 +270,7 @@
   },
   "permissions": {
     "allow": [
+      "Bash(bash .gaia/scripts/audit-write-clearance.sh:*)",
       "Bash(bash .gaia/scripts/plan-archive.sh:*)",
       "Bash(bash .gaia/scripts/plan-resume-point.sh:*)",
       "Bash(bash .gaia/scripts/resolve-audit-spawn.sh:*)",
@@ -345,6 +346,9 @@
       "Read(**/secrets/*)",
       "Read(.env)",
       "Write(.env)",
+      "Write(.gaia/local/audit/*.carried)",
+      "Write(.gaia/local/audit/*.ok)",
+      "Write(.gaia/local/audit/*.refused)",
       "Write(pnpm-lock.yaml)"
     ]
   },

@@ -296,8 +296,14 @@ commit_docs_only_diff() {
 # so pass a tree sha. Keying it to the commit would leave the step's lookup
 # empty-handed.
 write_frontend_marker() {
+  local tree="$1" sha
+  sha=$(git -C "$SANDBOX" rev-parse HEAD)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  printf '{}' > "$SANDBOX/.gaia/local/audit/$1.ok"
+  # Writer-shaped schema-2 EARNED clearance (the shared reader rejects a bare
+  # `{}`). The CI status steps test only marker existence, but keep the fixture
+  # honest so nothing here depends on a body the writer never produces.
+  printf '{"version":"1.2.3","schema":2,"member":"code-audit-frontend","provenance":"earned","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
+    "$sha" "$tree" > "$SANDBOX/.gaia/local/audit/$1.ok"
 }
 
 sandbox_tree() { git -C "$SANDBOX" rev-parse "HEAD^{tree}"; }

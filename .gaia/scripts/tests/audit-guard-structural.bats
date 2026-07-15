@@ -27,6 +27,14 @@ setup() {
   CRA_MD="$REPO_ROOT/.claude/agents/code-audit-frontend.md"
   HELPER="$REPO_ROOT/.gaia/scripts/audit-noop-detect.sh"
 
+  # SPEC-042 clearance-writer surfaces (UAT-020 structural half + PLAN-001).
+  SHELL_MD="$REPO_ROOT/.claude/agents/code-audit-maintainer-shell.md"
+  NODE_MD="$REPO_ROOT/.claude/agents/code-audit-maintainer-node.md"
+  WRITER="$REPO_ROOT/.gaia/scripts/audit-write-clearance.sh"
+  AUDIT_WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
+  WF_TMPL_ARTIFACT="$REPO_ROOT/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+  WF_TMPL_SOURCE="$REPO_ROOT/.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl"
+
   # FC-3: the byte-identical guard-line substring, verbatim.
   GUARD_LINE="Lead with a tool call, not prose: your first action is a Read of the artifact under audit, and you emit your structured result before any prose."
   # FC-4: the stable retry-prefix template substring (UAT-002).
@@ -255,4 +263,60 @@ assert_predicate_retry_fallback() {
 
 @test "helper reference: code-audit-frontend.md calls the real audit-noop-detect.sh path" {
   grep -qF -- ".gaia/scripts/audit-noop-detect.sh" "$CRA_MD"
+}
+
+# ---------------------------------------------------------------------------
+# 6. Shared clearance writer: each Code Audit Team member's definition invokes
+#    the ONE shared writer, and NONE still carries the inline marker `printf`
+#    or the `[ ! -f "$marker" ]` idempotence guard. This negative assertion is
+#    load-bearing: a missed producer keeps writing a legacy-bodied marker that
+#    every existence-only consumer honors, so the gate passes and the only
+#    symptom is a member that silently never carries forward.
+# ---------------------------------------------------------------------------
+
+@test "writer surfaces exist: the three agent definitions and the writer script" {
+  [ -f "$CRA_MD" ]
+  [ -f "$SHELL_MD" ]
+  [ -f "$NODE_MD" ]
+  [ -f "$WRITER" ]
+}
+
+@test "clearance writer: each code-audit-*.md invokes the shared writer, none keeps the inline printf or the [ ! -f marker ] guard" {
+  local md
+  for md in "$CRA_MD" "$SHELL_MD" "$NODE_MD"; do
+    # Positive: invokes the one shared writer.
+    grep -qF -- ".gaia/scripts/audit-write-clearance.sh" "$md" || return 1
+    # Negative: no inline marker printf (the bad case is a present match).
+    grep -qF -- 'printf '\''{"sha"' "$md" && return 1
+    # Negative: no idempotence guard (the bad case is a present match).
+    grep -qF -- '[ ! -f "$marker" ]' "$md" && return 1
+  done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# 7. PLAN-001: CI's agent tool policy must grant the writer, or the required
+#    GAIA-Audit check never stamps. The `--allowedTools` line names the writer
+#    in the live workflow AND both byte-identical bundled templates, and all
+#    three agree.
+# ---------------------------------------------------------------------------
+
+@test "PLAN-001: --allowedTools names the writer in the workflow and both templates, all three identical" {
+  local line_wf line_src line_art
+  line_wf="$(grep -F -- '--allowedTools' "$AUDIT_WORKFLOW" | head -n1)"
+  line_src="$(grep -F -- '--allowedTools' "$WF_TMPL_SOURCE" | head -n1)"
+  line_art="$(grep -F -- '--allowedTools' "$WF_TMPL_ARTIFACT" | head -n1)"
+  [ -n "$line_wf" ]
+  grep -qF -- "audit-write-clearance.sh" <<<"$line_wf" || return 1
+  grep -qF -- "audit-write-clearance.sh" <<<"$line_src" || return 1
+  grep -qF -- "audit-write-clearance.sh" <<<"$line_art" || return 1
+  [ "$line_wf" = "$line_src" ]
+  [ "$line_src" = "$line_art" ]
+}
+
+@test "PLAN-001: the two bundled workflow templates are byte-identical" {
+  local a b
+  a="$(git -C "$REPO_ROOT" hash-object "$WF_TMPL_SOURCE")"
+  b="$(git -C "$REPO_ROOT" hash-object "$WF_TMPL_ARTIFACT")"
+  [ "$a" = "$b" ]
 }

@@ -123,6 +123,17 @@ if type cmd_targets_foreign_repo >/dev/null 2>&1 \
   exit 0
 fi
 
+# Load the shared clearance reader from this hook's OWN on-disk location
+# (never cwd, never $repo_root). The bats suites run this hook by absolute
+# path from a sandbox cwd that has no .claude/, so a cwd-relative source would
+# miss the lib and flip every clearance check. Loaded lazily here, after the
+# early exits above, because this hook fires on every Bash tool call.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-clearance.sh"
+fi
+
 # Resolve HEAD SHA. If we cannot (no git, detached state we can't read),
 # fall back to permissive: this hook only enforces in repos where git answers.
 sha=$(git rev-parse HEAD 2>/dev/null || true)
@@ -143,7 +154,25 @@ fi
 # the deny message).
 tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
 
+# The audited working root. clearance_member_cleared builds its marker paths
+# from this; the hook runs with cwd at the repo root, so a bare toplevel query
+# answers it (fall back to pwd only when git cannot).
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
 marker=".gaia/local/audit/${tree}.ok"
+
+# Human-readable state of a local marker file for a deny message. The gate now
+# accepts only a writer-produced clearance, so a file that exists but is not
+# writer-shaped is neither "cleared" nor "missing": name that third state so an
+# operator staring at a present marker while the gate says "missing" is not
+# left guessing.
+marker_state() {
+  if [ -f "$1" ]; then
+    printf '(present but not a valid clearance; re-run the member'\''s agent)'
+  else
+    printf '(missing)'
+  fi
+}
 
 # --- code-audit-frontend clearance signals -----------------------------------
 #
@@ -372,7 +401,7 @@ check_self_mod_only_update_pr() {
 # (marker, trailer, CI status, chore(deps), self-mod-only). Reused by both the
 # legacy gate and the member-aware gate below.
 frontend_cleared() {
-  [ -f "$marker" ] && return 0
+  clearance_member_cleared "$root" "$tree" code-audit-frontend && return 0
   check_trailer && return 0
   check_github_status && return 0
   check_chore_deps_pr && return 0
@@ -403,7 +432,7 @@ if [ -z "$members" ]; then
   reason="PR merge gate: no code-audit-frontend signal for HEAD ${sha:0:12}.
 
 None of the accepted signals is present:
-  - Local marker:    ${marker} (missing)
+  - Local marker:    ${marker} $(marker_state "$marker")
   - Commit trailer:  ${trailer_status:-missing}
   - GitHub CI status: absent or version/tree mismatch
   - chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
@@ -460,7 +489,7 @@ while IFS= read -r m; do
     else
       all_cleared=0
       report="${report}  - code-audit-frontend: PENDING
-      Local marker:    ${marker} (missing)
+      Local marker:    ${marker} $(marker_state "$marker")
       Commit trailer:  ${trailer_status:-missing}
       GitHub CI status: absent or version/tree mismatch
       chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
@@ -468,12 +497,12 @@ while IFS= read -r m; do
     fi
   else
     member_marker=".gaia/local/audit/${tree}.${m}.ok"
-    if [ -f "$member_marker" ]; then
+    if clearance_member_cleared "$root" "$tree" "$m"; then
       report="${report}  - ${m}: CLEARED
 "
     else
       all_cleared=0
-      report="${report}  - ${m}: PENDING (marker ${member_marker} missing)
+      report="${report}  - ${m}: PENDING (marker ${member_marker} $(marker_state "$member_marker"))
 "
     fi
   fi

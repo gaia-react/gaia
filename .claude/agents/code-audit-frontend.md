@@ -392,7 +392,7 @@ A specialist or refuter that no-op'd twice and fell back to inline review/refuta
 
 **Best-effort, never blocking:** wrap every breadcrumb write so that a `Write`/`Edit` failure is swallowed and never aborts or alters the audit result. A missing or partial progress file is harmless -- the workflow print step handles it gracefully. Do NOT harden a breadcrumb write into a blocking step.
 
-**Directory:** `.gaia/local/audit/` is already gitignored via `.gaia/local/` in `.gitignore`. The marker step creates the directory with `mkdir -p .gaia/local/audit` before writing the `<sha>.ok` file; your first breadcrumb write must also ensure the directory exists (run `mkdir -p .gaia/local/audit` before the `Write` call, wrapped in the same best-effort guard).
+**Directory:** `.gaia/local/audit/` is already gitignored via `.gaia/local/` in `.gitignore`. The shared clearance writer creates the directory before writing the `<sha>.ok` file; your first breadcrumb write must also ensure the directory exists (run `mkdir -p .gaia/local/audit` before the `Write` call, wrapped in the same best-effort guard).
 
 **Locally harmless:** when the agent runs locally the file is simply written to a gitignored path. No behavioral change, no secrets risk.
 
@@ -774,7 +774,7 @@ Decide the disposition entries (section F) at this marker-decision point regardl
 
 Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block the marker.
 
-When the marker is warranted, the write is a "stamp → mark → status → push" sequence: first stamp HEAD locally with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule, but never pushes); then re-read HEAD and its tree (HEAD may have moved due to amend / empty-commit) and write the marker file for the tree; then post the `GAIA-Audit` success commit status on HEAD, gated on the marker file already existing; _then_ push. Marker-before-push is load-bearing, it ensures a `chore: code review audit passed` commit never reaches remote history without a corresponding marker, even if the marker write step is interrupted (the un-pushed commit is recoverable via `git reset --hard HEAD~1`). The status POST is gated on the marker so it never runs inline with the clean judgment ahead of the marker write; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The `[ ! -f "$marker" ]` guard makes the write idempotent, re-running the audit on the same HEAD never overwrites an existing marker:
+When the marker is warranted, the write is a "stamp → mark → status → push" sequence: first stamp HEAD locally with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule, but never pushes); then re-read HEAD and its tree (HEAD may have moved due to amend / empty-commit) and write the marker file for the tree; then post the `GAIA-Audit` success commit status on HEAD, gated on the marker file already existing; _then_ push. Marker-before-push is load-bearing, it ensures a `chore: code review audit passed` commit never reaches remote history without a corresponding marker, even if the marker write step is interrupted (the un-pushed commit is recoverable via `git reset --hard HEAD~1`). The status POST is gated on the marker so it never runs inline with the clean judgment ahead of the marker write; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The shared clearance writer (`.gaia/scripts/audit-write-clearance.sh`) records the marker atomically; an earned clearance strictly dominates, replacing any prior marker for this tree (a stale legacy body, or a carried clearance) rather than being suppressed by it:
 
 ```bash
 # 1. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per
@@ -786,24 +786,21 @@ stamp_line=$(
     .claude/hooks/audit-stamp-trailer.sh
 )
 
-# 2. Re-read HEAD and its TREE (HEAD may have moved due to amend /
-#    empty-commit; the tree is unchanged by an empty commit, and by an amend
-#    that only rewrites the message). The marker is keyed to the TREE: it
-#    attests that this member audited CONTENT, and the tree IS the content.
-#    Keying it to HEAD would orphan every sibling member's marker the instant
-#    the trailer stamp above lands, because that stamp moves HEAD without
-#    changing a byte of the tree. Re-read the tree here rather than reusing
-#    $AUDIT_TREE_SHA: a self-heal pass edits files, so the tree the audit
-#    ENDS on is the one to vouch for, not the one it started on.
+# 2. Write the earned clearance via the one shared writer. It resolves HEAD,
+#    HEAD's TREE, the version and the filename from --root (the working root),
+#    so the marker is keyed to the TREE the audit ENDS on -- after any
+#    self-heal edits and the trailer stamp above. The marker is keyed to the
+#    TREE, not HEAD: it attests this member audited CONTENT, and the tree IS
+#    the content, so the empty-commit stamp above does not orphan a sibling
+#    member's marker. An earned clearance strictly dominates: it replaces any
+#    prior marker for this tree rather than being suppressed by it. The writer
+#    prints the marker path it wrote; HEAD_SHA is still needed for the
+#    commit-keyed sidecar below.
+marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-frontend \
+  --provenance earned)"
 HEAD_SHA="$(git rev-parse HEAD)"
-TREE_SHA="$(git rev-parse HEAD^{tree})"
-mkdir -p .gaia/local/audit
-marker=".gaia/local/audit/${TREE_SHA}.ok"
-if [ ! -f "$marker" ]; then
-  printf '{"sha":"%s","tree":"%s","audited_at":"%s"}\n' \
-    "$HEAD_SHA" "$TREE_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    > "$marker"
-fi
 
 # 2a. Write the disposition-ledger sidecar (section F) keyed to the post-stamp
 #     HEAD COMMIT -- not the tree the marker above uses. The marker-backstop
@@ -891,11 +888,20 @@ If you do not write the marker, surface this instead:
 
 > Audit marker NOT written. Address findings, commit, and re-invoke this agent on the new HEAD before merging.
 
+When you withhold the marker after genuinely auditing this exact tree (a real audit that refuses the content), **record the refusal** with the same shared writer. A refusal is a first-class, tree-keyed artifact: it is the only way this member says "I read this exact tree and I refuse", and carry-forward treats it as absolute.
+
+```bash
+bash .gaia/scripts/audit-write-clearance.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-frontend \
+  --provenance refused
+```
+
 Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to the **current** HEAD, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(git rev-parse HEAD).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same HEAD remains backstop-checkable against a real sidecar.
 
 Also on a non-clean pass (marker NOT written), **write/update the re-run ledger** (LOCAL only, best-effort), the deterministic carry-forward briefing the next re-audit and the fixer read. Skip in CI (`GITHUB_ACTIONS`/`CI` set) and skip when `BASE_SHA` is empty. Set `round` to the prior valid same-branch same-base ledger's `round` + 1 (else 1), carrying `first_seen_round` for findings that persist across rounds; populate `remaining` (in-scope open findings: Critical + unaddressed Important + unresolved/escalated Suggestions), `fixed_last_round` (in-scope findings self-healed this round), `head_sha` = current HEAD, `branch`, `base_sha` = `BASE_SHA`, and `updated_at`. Write atomically (temp file + `mv`); a write failure never aborts the audit. This is an additional best-effort file write alongside the disposition sidecar above; it must NOT alter, replace, or reorder the marker / trailer / status / dispositions-sidecar writes. See "Re-run carry-forward ledger".
 
-Never write a marker for a SHA other than current `HEAD`. The agent-side guard above prevents accidental overwrite; the hook-side `[ -f "$marker" ]` check is what unblocks `gh pr merge` once the marker exists.
+Never write a marker for a SHA other than current `HEAD`. The shared writer keys the marker to the working root's tree; the hook-side clearance check (`clearance_member_cleared`) is what unblocks `gh pr merge` once a writer-produced marker for that tree exists.
 
 ## GAIA-Audit trailer (CI handshake)
 

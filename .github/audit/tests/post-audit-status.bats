@@ -84,6 +84,19 @@ current_tree() {
   git -C "$SANDBOX" rev-parse "HEAD^{tree}"
 }
 
+# Write a writer-shaped schema-2 EARNED clearance for MEMBER at PATH (an
+# absolute path under SANDBOX). The precondition now accepts only such bodies,
+# not a bare `{}`: `tree` equals the filename key and `member` matches.
+write_body() {
+  local path="$1" member="$2" tree sha sidecar
+  tree=$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")
+  sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  if [ "$member" = "code-audit-frontend" ]; then sidecar="true"; else sidecar="false"; fi
+  mkdir -p "$(dirname "$path")"
+  printf '{"version":"1.2.3","schema":2,"member":"%s","provenance":"earned","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$sha" "$tree" "$sidecar" > "$path"
+}
+
 # Copy the real resolver script into SANDBOX so a test can exercise the
 # member-aware gate. Untracked, so it never appears in a git diff itself.
 install_resolver() {
@@ -119,7 +132,7 @@ commit_mixed_diff() {
   # The marker is keyed to the TREE; the status POST still targets the COMMIT
   # (a GitHub commit status has nowhere else to land).
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{"sha":"%s","tree":"%s"}\n' "$head_sha" "$tree" > "$SANDBOX/$marker"
+  write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -151,7 +164,7 @@ commit_mixed_diff() {
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{"sha":"%s","tree":"%s"}\n' "$head_sha" "$tree" > "$SANDBOX/$marker"
+  write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -175,7 +188,7 @@ commit_mixed_diff() {
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{}' > "$SANDBOX/$marker"
+  write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -196,8 +209,8 @@ commit_mixed_diff() {
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{}' > "$SANDBOX/$marker"
-  printf '{}' > "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok"
+  write_body "$SANDBOX/$marker" code-audit-frontend
+  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -223,7 +236,7 @@ commit_mixed_diff() {
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   # The specialized member clears the tree first, before the frontend stamps.
-  printf '{}' > "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok"
+  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
 
   # code-audit-frontend stamps the trailer: an empty commit, identical tree.
   git -C "$SANDBOX" commit -q --allow-empty -m "chore: code review audit passed"
@@ -231,7 +244,7 @@ commit_mixed_diff() {
   stamped_sha=$(git -C "$SANDBOX" rev-parse HEAD)
 
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{}' > "$SANDBOX/$marker"
+  write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -251,7 +264,7 @@ commit_mixed_diff() {
   tree=$(current_tree)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   marker=".gaia/local/audit/${tree}.ok"
-  printf '{}' > "$SANDBOX/$marker"
+  write_body "$SANDBOX/$marker" code-audit-frontend
 
   # No resolver copied into SANDBOX: the member-aware gate is skipped and the
   # frontend marker alone clears the POST, same as today.

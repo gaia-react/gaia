@@ -47,6 +47,7 @@
 #          status: posted GAIA-Audit success <short-sha>
 #        Decline lines (prefix "status: declined: "):
 #          marker absent
+#          marker not a valid clearance
 #          gh absent
 #          gh unauthenticated
 #          version file missing
@@ -72,6 +73,14 @@
 
 set -euo pipefail
 
+# Load the shared clearance reader from this hook's OWN on-disk location
+# (never cwd, never $repo_root), per the frozen library resolution basis.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-clearance.sh"
+fi
+
 emit_posted() {
   printf 'status: posted GAIA-Audit success %s\n' "$1"
 }
@@ -93,6 +102,23 @@ fi
 # Marker-first: the marker the caller wrote is the literal precondition.
 if [ ! -f "$marker" ]; then
   emit_decline "marker absent"
+  exit 0
+fi
+
+# The gate accepts only a writer-produced clearance. Derive the member and tree
+# from the marker filename and require a writer-shaped body: a present but
+# legacy or hand-written marker is not a clearance and must not clear the POST.
+marker_base="$(basename "$marker")"
+marker_stem="${marker_base%.ok}"
+marker_tree="${marker_stem%%.*}"
+marker_member_part="${marker_stem#"$marker_tree"}"
+if [ -z "$marker_member_part" ]; then
+  marker_member="code-audit-frontend"
+else
+  marker_member="${marker_member_part#.}"
+fi
+if ! clearance_acceptable "$marker" "$marker_member" "$marker_tree"; then
+  emit_decline "marker not a valid clearance"
   exit 0
 fi
 
@@ -147,12 +173,8 @@ if [ -x "$resolver" ]; then
   pending=""
   while IFS= read -r m; do
     [ -n "$m" ] || continue
-    if [ "$m" = "code-audit-frontend" ]; then
-      member_marker="${repo_root}/.gaia/local/audit/${tree_sha}.ok"
-    else
-      member_marker="${repo_root}/.gaia/local/audit/${tree_sha}.${m}.ok"
-    fi
-    [ -f "$member_marker" ] || pending="${pending}${pending:+ }${m}"
+    clearance_member_cleared "$repo_root" "$tree_sha" "$m" \
+      || pending="${pending}${pending:+ }${m}"
   done <<< "$members"
 
   if [ -n "$pending" ]; then

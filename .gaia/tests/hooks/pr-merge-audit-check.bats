@@ -92,13 +92,26 @@ run_merge_hook() {
 # Write a Code Audit Team clearance marker for REPO's current HEAD TREE. A
 # marker attests that a member audited the tree, not the commit, so it survives
 # an empty commit (the GAIA-Audit trailer stamp) that leaves the tree identical.
+# The body is a writer-shaped schema-2 clearance (the gate now accepts only
+# such bodies, never a bare `{}`): its `tree` equals the filename key and its
+# `member` matches the member the suffix names.
 #   write_marker ""                              -> <tree>.ok (frontend/default)
 #   write_marker ".code-audit-maintainer-shell"   -> <tree>.code-audit-maintainer-shell.ok
 write_marker() {
-  local suffix="$1" tree
+  local suffix="$1" tree sha member sidecar
   tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  sha=$(git -C "$REPO" rev-parse HEAD)
+  if [ -z "$suffix" ]; then
+    member="code-audit-frontend"
+    sidecar="true"
+  else
+    member="${suffix#.}"
+    sidecar="false"
+  fi
   mkdir -p "$REPO/.gaia/local/audit"
-  printf '{}' > "$REPO/.gaia/local/audit/${tree}${suffix}.ok"
+  printf '{"version":"1.4.0","schema":2,"member":"%s","provenance":"earned","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$sha" "$tree" "$sidecar" \
+    > "$REPO/.gaia/local/audit/${tree}${suffix}.ok"
 }
 
 # Print the spawn set the oracle resolves for REPO's current diff.
