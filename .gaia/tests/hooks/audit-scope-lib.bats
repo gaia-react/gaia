@@ -184,7 +184,18 @@ golden_setup() {
   mkdir -p "$GREPO/.gaia"
   printf '1.4.0\n' > "$GREPO/.gaia/VERSION"
   echo "# readme" > "$GREPO/README.md"
-  git -C "$GREPO" add .gaia/VERSION README.md
+  # Seed the bundled audit-workflow template on the base (main). In the real
+  # tree it already lives there; a /update-gaia self-mod PR refreshes the
+  # installed .github/workflows/code-review-audit.yml to match it and never
+  # re-commits the template itself. The template is maintainer-shell-owned in
+  # both rosters, so a diff that CHANGED it would dispatch that member and never
+  # reach the frontend-only self-mod bypass. Keeping it on the base, out of the
+  # self-mod diff, is what makes the self-mod golden cases representative.
+  mkdir -p "$GREPO/.gaia/cli/templates/workflows"
+  printf 'name: Code Review Audit\n' \
+    > "$GREPO/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+  git -C "$GREPO" add .gaia/VERSION README.md \
+    .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
   git -C "$GREPO" commit --quiet -m "init"
   git -C "$GREPO" checkout --quiet -b feature
 
@@ -274,9 +285,10 @@ golden_run_hook() {
 
 @test "golden table: self-mod-only with a template-matching workflow blob allows" {
   golden_setup
-  golden_commit \
-    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
-    ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" "name: Code Review Audit"
+  # Only the installed workflow changes; the template is already on the base
+  # (seeded in golden_setup) with identical bytes, so the blob-identity check
+  # passes and the frontend-only self-mod bypass clears the merge.
+  golden_commit ".github/workflows/code-review-audit.yml" "name: Code Review Audit"
   golden_run_hook
   golden_teardown
   [ "$status" -eq 0 ]
@@ -288,7 +300,6 @@ golden_run_hook() {
   golden_setup
   golden_commit \
     ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
-    ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" "name: Code Review Audit" \
     "app/evil.ts" "export const evil = 1;"
   golden_run_hook
   golden_teardown
@@ -299,9 +310,11 @@ golden_run_hook() {
 
 @test "golden table: self-mod with an edited (non-template-matching) workflow denies" {
   golden_setup
+  # The installed workflow is customized, so its bytes no longer equal the
+  # template seeded on the base: the blob-identity check fails and the self-mod
+  # bypass does not fire.
   golden_commit \
-    ".github/workflows/code-review-audit.yml" "name: Code Review Audit (customized)" \
-    ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" "name: Code Review Audit"
+    ".github/workflows/code-review-audit.yml" "name: Code Review Audit (customized)"
   golden_run_hook
   golden_teardown
   [ "$status" -eq 0 ]
@@ -331,19 +344,20 @@ golden_run_hook() {
 }
 
 # ---------------------------------------------------------------------------
-# SEC-007: every machinery path is roster-claimed. Run against the real
-# .gaia/audit-ci.yml (the maintainer roster); bats suites are release-
-# excluded, so this only ever runs where the maintainer members exist.
+# SEC-007: every machinery path is roster-claimed, against BOTH rosters the
+# module can load: the committed .gaia/audit-ci.yml (the maintainer roster)
+# and the builtin fallback (_audit_scope_builtin_roster, consulted when that
+# config is absent or unparseable). Bats suites are release-excluded, so this
+# only ever runs where the maintainer members exist.
 # ---------------------------------------------------------------------------
 
-@test "SEC-007: audit_owner_for_path returns a non-empty member for every machinery path" {
-  # shellcheck source=/dev/null
-  . "$SCOPE_LIB"
-  # shellcheck source=/dev/null
-  . "$MACHINERY_LIB"
-  audit_scope_init "$REPO_ROOT"
-
-  fail=0
+# Assert audit_owner_for_path returns a non-empty owner for every machinery
+# path in $AUDIT_MACHINERY_PATHS, against whichever roster the caller already
+# init'd. Real files under a `/**` prefix are enumerated from $REPO_ROOT; only
+# the roster source (committed config vs builtin fallback) differs per caller.
+# Ends in the pass/fail check, so it is safe as a @test's final command.
+assert_every_machinery_path_owned() {
+  local entry prefix rep owner tracked fail=0
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
     case "$entry" in
@@ -375,8 +389,35 @@ golden_run_hook() {
   done <<EOF
 $AUDIT_MACHINERY_PATHS
 EOF
-
   [ "$fail" -eq 0 ]
+}
+
+@test "SEC-007: audit_owner_for_path returns a non-empty member for every machinery path" {
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIB"
+  # shellcheck source=/dev/null
+  . "$MACHINERY_LIB"
+  audit_scope_init "$REPO_ROOT"
+
+  assert_every_machinery_path_owned
+}
+
+@test "SEC-007 (fallback): the builtin roster claims every machinery path too" {
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIB"
+  # shellcheck source=/dev/null
+  . "$MACHINERY_LIB"
+  # An empty root has no .gaia/audit-ci.yml, so audit_scope_init falls back to
+  # _audit_scope_builtin_roster: the roster under test is the builtin one. It
+  # must grant code-audit-maintainer-shell the same declarative surfaces the
+  # committed roster does (.gaia/audit-ci.yml, .gaia/VERSION, the agent defs,
+  # .claude/rules/**, the bundled workflow .tmpl), or a degraded merge gate
+  # dispatches nobody for a change to one of them and merges it unaudited.
+  EMPTY_ROOT=$(mktemp -d -t audit-scope-builtin-XXXXXX)
+  audit_scope_init "$EMPTY_ROOT"
+  rm -rf "$EMPTY_ROOT"
+
+  assert_every_machinery_path_owned
 }
 
 # ---------------------------------------------------------------------------
