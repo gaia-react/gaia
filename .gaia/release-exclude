@@ -154,6 +154,10 @@ wiki/decisions/Forensics Triage Workflow.md
 # shellcheck over GAIA's framework bash via the `.gaia/tests/shell-lint.sh`
 # harness (already excluded by the `.gaia/tests` entry in category 3); adopters
 # run that bash but never author it, so the linter guarding it has no adopter
+# surface. `distribution-audit-pr.yml` fails a PR that introduces a
+# newly-shipping file the committed manifest does not answer, by running the
+# maintainer-only `gaia-maintainer release manifest --check`; the binary and the
+# manifest exist only on the GAIA team's clone, so the gate has no adopter
 # surface. All would be silent
 # passengers at best and confusing CI failures at worst on adopter clones.
 .github/workflows/release.yml
@@ -163,6 +167,7 @@ wiki/decisions/Forensics Triage Workflow.md
 .github/workflows/forensics-triage.yml
 .github/workflows/code-review-audit.yml
 .github/workflows/shell-lint.yml
+.github/workflows/distribution-audit-pr.yml
 .github/forensics
 
 # --- 10. Maintainer-only health-audit infrastructure ---

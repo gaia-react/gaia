@@ -244,11 +244,12 @@ assert_allowed() {
 }
 
 @test "permissions.deny still contains the exact .env backstop entries" {
+  # Read(.env) blocks reads; Edit(.env) blocks every file-writing tool (Write,
+  # Edit, MultiEdit, NotebookEdit), so a separate Write(.env) deny is redundant
+  # and is intentionally absent.
   run jq -e '.permissions.deny | index("Read(.env)")' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
   run jq -e '.permissions.deny | index("Edit(.env)")' "$SETTINGS_ABS"
-  [ "$status" -eq 0 ]
-  run jq -e '.permissions.deny | index("Write(.env)")' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }
 

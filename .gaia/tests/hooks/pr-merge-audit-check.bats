@@ -91,6 +91,25 @@ commit_files() {
   git -C "$REPO" commit --quiet -m "change"
 }
 
+# Seed the bundled audit-workflow template onto the BASE commit (main), out of
+# the feature diff, then re-point feature at it. This mirrors the real
+# /update-gaia self-mod PR: the template already exists on the base and only the
+# installed .github/workflows/code-review-audit.yml is refreshed. The template is
+# maintainer-shell-owned, so committing it in the feature diff would dispatch that
+# member and defeat the frontend-only self-mod bypass under test; keeping it on
+# the base leaves the diff self-mod-clean while still giving the blob-identity
+# check a template to compare against. The template-absent case deliberately does
+# NOT call this.
+seed_base_template() {
+  git -C "$REPO" checkout --quiet main
+  mkdir -p "$REPO/.gaia/cli/templates/workflows"
+  printf 'name: Code Review Audit\n' \
+    > "$REPO/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+  git -C "$REPO" add .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
+  git -C "$REPO" commit --quiet -m "seed bundled template on base"
+  git -C "$REPO" checkout --quiet -B feature main
+}
+
 # Run the hook with a `gh pr merge` command, from inside the repo.
 run_merge_hook() {
   local cmd="${1:-gh pr merge 30 --squash --delete-branch}"
@@ -317,9 +336,9 @@ EOF
 # ---------------------------------------------------------------------------
 
 @test "allows a self-mod-only update PR (workflow bytes == bundled template)" {
+  seed_base_template
   commit_files \
     ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
-    ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" "name: Code Review Audit" \
     "wiki/log.md" "entry"
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -329,9 +348,9 @@ EOF
 @test "denies a workflow edit that does NOT match the bundled template" {
   # Adopter customization (self-hosted runner, extra secret) diverges from the
   # template, so there IS something to audit; the marker stays mandatory.
+  seed_base_template
   commit_files \
-    ".github/workflows/code-review-audit.yml" "name: Code Review Audit (customized)" \
-    ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" "name: Code Review Audit"
+    ".github/workflows/code-review-audit.yml" "name: Code Review Audit (customized)"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
@@ -340,9 +359,9 @@ EOF
 @test "denies a verbatim workflow re-render smuggling in-scope source" {
   # A matching re-render cannot mask an app/ change; the marker is mandatory the
   # moment any auditable path appears.
+  seed_base_template
   commit_files \
     ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
-    ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" "name: Code Review Audit" \
     "app/evil.ts" "export const evil = 1"
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -361,9 +380,9 @@ EOF
 @test "denies a second workflow alongside the matching audit re-render" {
   # Only the audit workflow is a permitted in-scope path; any other workflow
   # file keeps the marker mandatory.
+  seed_base_template
   commit_files \
     ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
-    ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" "name: Code Review Audit" \
     ".github/workflows/tests.yml" "name: Tests"
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -564,9 +583,12 @@ EOF
 }
 
 @test "FC-4 no-deadlock: wiki + .claude + root markdown spawns nobody, and no markers still allows" {
+  # .claude/commands/ is out of audit scope and owned by no roster member.
+  # .claude/rules/** and .claude/agents/code-audit-*.md ARE maintainer-shell-owned,
+  # so this uses a genuinely-ownerless .claude path to keep the spawn set empty.
   commit_files \
     "wiki/x.md" "doc" \
-    ".claude/rules/y.md" "rule" \
+    ".claude/commands/y.md" "command" \
     "README.md" "# changed again"
   set=$(spawn_set)
   [ -z "$set" ]
