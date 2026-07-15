@@ -413,7 +413,7 @@ jobs:
                refuses any self-heal that touches them.
           claude_args: |
             --max-turns ${{ steps.config.outputs.max_turns }}
-            --allowedTools Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*),Bash(gh:*),Bash(bash .gaia/scripts/audit-write-clearance.sh:*)
+            --allowedTools "Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*),Bash(gh:*),Bash(bash .gaia/scripts/audit-write-clearance.sh:*)"
             --verbose
 
       - name: Print audit progress breadcrumbs
