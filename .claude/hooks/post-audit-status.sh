@@ -53,6 +53,7 @@
 #          version file missing
 #          version file empty
 #          repo slug unresolved
+#          audited tree not on pushed head
 #          members pending <list>
 #          post failed
 #   2 , Usage error (no marker path argument). Stderr.
@@ -158,10 +159,32 @@ if [ -z "$version" ]; then
   exit 0
 fi
 
-head_sha=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)
+# The sha branch protection checks is the PR head on the REMOTE, not local HEAD.
+# On the empty-commit stamp path local HEAD is an un-pushed commit origin has
+# never seen, so a status posted there 422s and never lands (#726). Target the
+# pushed PR head instead (mirrors CI, which posts on pull_request.head.sha).
+head_sha="$(gh pr view --json headRefOid --jq .headRefOid 2>/dev/null || true)"
+if [ -z "$head_sha" ]; then
+  # No PR resolvable: fall back to the upstream tracking tip, then local HEAD.
+  head_sha="$(git -C "$repo_root" rev-parse '@{u}' 2>/dev/null || true)"
+fi
+if [ -z "$head_sha" ]; then
+  head_sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
+fi
+
 tree_sha=$(git -C "$repo_root" rev-parse "HEAD^{tree}" 2>/dev/null || true)
 if [ -z "$head_sha" ] || [ -z "$tree_sha" ]; then
   emit_decline "repo slug unresolved"
+  exit 0
+fi
+
+# Never green a tree the target sha does not carry. The audited tree (local
+# HEAD's tree) must equal the target sha's tree; otherwise the audited content
+# is not on the remote head yet (un-pushed tree-changing work, e.g. an unpushed
+# self-heal) and posting would falsely clear a stale head. Decline instead.
+target_tree="$(git -C "$repo_root" rev-parse "${head_sha}^{tree}" 2>/dev/null || true)"
+if [ -z "$target_tree" ] || [ "$target_tree" != "$tree_sha" ]; then
+  emit_decline "audited tree not on pushed head"
   exit 0
 fi
 

@@ -36,7 +36,7 @@ base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null || git merge-b
 changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null || true)
 ```
 
-Filter `changed` against the globs above. **If none match, skip cleanly**: write no marker (there is nothing to gate), do not call `post-audit-status.sh`, and return a one-line note that no changed file fell in your remit. Only review the files that do match; a mixed diff carrying both frontend and shell changes is not your concern outside your own globs.
+Filter `changed` against the globs above. **If none match, skip cleanly**: write no marker (there is nothing to gate), do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, and return a one-line note that no changed file fell in your remit. Only review the files that do match; a mixed diff carrying both frontend and shell changes is not your concern outside your own globs.
 
 ## Review dimensions (shared correctness core)
 
@@ -112,9 +112,11 @@ Same format. Advisory: never block the marker on their own, but note whether the
 
 ## Gate handshake (per-member marker)
 
-On a genuinely clean pass, no Critical finding, every Important finding either fixed in the working tree since the last invocation (verify by re-reading the file, never trust a prior chat claim) or explicitly acknowledged by the operator with a stated reason, and the shellcheck oracle clean or its findings resolved the same way, write the per-member marker:
+On a genuinely clean pass, no Critical finding, every Important finding either fixed in the working tree since the last invocation (verify by re-reading the file, never trust a prior chat claim) or explicitly acknowledged by the operator with a stated reason, and the shellcheck oracle clean or its findings resolved the same way, run the handshake below in order: mark, stamp, re-mark, status.
 
-The marker is keyed to HEAD's **tree**, not its commit sha. It attests that you audited CONTENT, and the tree is the content, so your marker survives `code-audit-frontend`'s `GAIA-Audit` trailer stamp (an empty commit: it advances HEAD while leaving the tree byte-identical). That is what lets the team's members run in any order. A commit that genuinely edits the tree still invalidates your marker, and you must re-audit.
+**1. Mark (pre-stamp).** Write the per-member marker:
+
+The marker is keyed to HEAD's **tree**, not its commit sha. It attests that you audited CONTENT, and the tree is the content, so your marker survives the `GAIA-Audit` trailer stamp below (an empty commit: it advances HEAD while leaving the tree byte-identical). That is what lets the team's members run in any order. A commit that genuinely edits the tree still invalidates your marker, and you must re-audit. Writing the marker before the stamp also feeds the member-aware stamp gate in step 2: the trailer is never stamped while any dispatched member's own marker, this one included, is missing.
 
 ```bash
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
@@ -125,7 +127,7 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
 
 The shared writer resolves HEAD, the tree, and the filename from `--root`, writes atomically, and prints the marker path it wrote. An earned clearance strictly dominates: it replaces any prior marker for this tree rather than being suppressed by it.
 
-Withhold the marker on any unresolved Critical or unaddressed/unacknowledged Important finding; withholding it holds the shared `GAIA-Audit` gate shut via the AND-aggregator, since this member is part of the dispatched set for the diff. When you withhold after genuinely auditing this exact tree, **record the refusal** with the same shared writer so carry-forward treats it as absolute:
+Withhold the marker on any unresolved Critical or unaddressed/unacknowledged Important finding; withholding it holds the shared `GAIA-Audit` gate shut via the AND-aggregator, since this member is part of the dispatched set for the diff. When you withhold after genuinely auditing this exact tree, **record the refusal** with the same shared writer so carry-forward treats it as absolute, and stop here, the remaining handshake steps below apply only to a written marker:
 
 ```bash
 bash .gaia/scripts/audit-write-clearance.sh \
@@ -134,9 +136,28 @@ bash .gaia/scripts/audit-write-clearance.sh \
   --provenance refused
 ```
 
-You write **only** this marker. Never write the frontend member's `.gaia/local/audit/<tree-sha>.ok`, never write or amend a `GAIA-Audit` trailer, never call `.claude/hooks/audit-stamp-trailer.sh`, and never post a `GAIA-Audit` status directly, those belong to `code-audit-frontend` alone.
+**2. Stamp.** On a written marker, call the trailer stamp:
 
-**Immediately after writing your marker** (never on a withheld marker), call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
+```bash
+stamp_line=$(.claude/hooks/audit-stamp-trailer.sh)
+```
+
+Driving the stamp is no longer frontend-only. It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this tree, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. You never push, here or anywhere else: the trailer commit this call may create is a tree-preserving local commit the local merge gate does not need pushed (it reads tree-keyed markers), and the member-aware status call in step 4 clears independently via the remote head. **Accepted cost:** when you are the last member to clear on a mixed diff, your trailer stays local and never reaches the remote, so CI re-audits that diff rather than skipping it via the trailer; this is redundant work only, the merge still clears via the remote-head status, and preserving the maintainers-never-push boundary is worth it. Surface the returned `stamp_line` in your report.
+
+**3. Re-mark (post-stamp).** Re-run the same earned write:
+
+```bash
+marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-maintainer-shell \
+  --provenance earned)"
+```
+
+The stamp in step 2 can move HEAD (an empty commit) or amend it, while leaving the tree untouched, so this re-write is an atomic, idempotent overwrite of the same tree-keyed marker, a harmless refresh either way. It exists to keep the marker's `sha` field on the post-stamp HEAD rather than the pre-stamp one step 1 recorded: carry-forward locates a prior clearance's disposition sidecar via the marker's `sha` field, and a marker left pointing at the pre-stamp commit would send a future carry-forward looking under the wrong sha and silently miss it.
+
+You write **only** this marker. Never write the frontend member's `.gaia/local/audit/<tree-sha>.ok`, and never post a `GAIA-Audit` status directly, that belongs to the shared helper in step 4.
+
+**4. Status.** Immediately after the stamp and re-mark steps (never on a withheld marker), call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
 
 ```bash
 .claude/hooks/post-audit-status.sh "$marker"
@@ -155,4 +176,4 @@ If the marker is withheld, surface:
 3. Run `shellcheck` on each in-remit script.
 4. Apply the hook-contract lens to any file under `.claude/hooks/**/*.sh`, and the bats-suite lens to any `.bats` file.
 5. Collect candidates from both the correctness-core review and the shellcheck oracle; run each through the Finding Proof Gate.
-6. Produce the report; decide the marker; write it (or withhold it) and, on a write, call `post-audit-status.sh`.
+6. Produce the report; decide the marker; write it (or withhold it) and, on a write, stamp the trailer, re-write the marker, and call `post-audit-status.sh`.

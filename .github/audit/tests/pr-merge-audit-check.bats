@@ -153,3 +153,43 @@ EOF
   decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')
   [ "$decision" = "deny" ]
 }
+
+# -----------------------------------------------------------------------------
+# 4. Newest-first list: a newer failure shadows an older matching success
+#    (latest-per-context) → deny gh pr merge
+# -----------------------------------------------------------------------------
+
+@test "merge hook: newest GAIA-Audit failure shadows an older matching success, denies gh pr merge" {
+  # GitHub's list endpoint returns statuses newest first. The newest
+  # GAIA-Audit entry is a failure; an older entry is a matching success. Under
+  # the pre-fix jq (select success, then first) the older success would still
+  # clear; the latest-per-context fix takes the newest entry regardless of
+  # state, so the failure shadows it and the gate denies.
+  tree=$(current_tree)
+  install_gh_array_mock \
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"failure\",\"description\":\"1.2.3 ${tree}\"},{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${tree}\"}]"
+
+  run run_hook
+  [ "$status" -eq 0 ]
+  decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')
+  [ "$decision" = "deny" ]
+}
+
+# -----------------------------------------------------------------------------
+# 5. Newest-first list: a matching success is the newest entry, over an older
+#    non-matching entry → allow (happy path preserved)
+# -----------------------------------------------------------------------------
+
+@test "merge hook: newest GAIA-Audit success over an older entry allows gh pr merge" {
+  # Mirror of test 4: the newest entry is the matching success, with an older
+  # non-matching entry behind it. Confirms latest-per-context does not
+  # regress the happy path when the statuses list has more than one entry.
+  tree=$(current_tree)
+  install_gh_array_mock \
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${tree}\"},{\"context\":\"GAIA-Audit\",\"state\":\"failure\",\"description\":\"1.2.3 ${tree}\"}]"
+
+  run run_hook
+  [ "$status" -eq 0 ]
+  # Allow path: the hook exits 0 with no output (no deny JSON).
+  [ -z "$output" ]
+}

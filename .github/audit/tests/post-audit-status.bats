@@ -8,9 +8,16 @@
 # audit-ci-tests.yml suite as the other GAIA-Audit readers/producers.
 #
 # `gh` is mocked on a prepended PATH. The mock answers `gh auth status` (ok or
-# fail per the test), `gh repo view --json nameWithOwner` (a fixed slug), and
-# `gh api .../statuses ... --method POST` (records the invocation so the test
-# asserts the posted state/context/description).
+# fail per the test), `gh repo view --json nameWithOwner` (a fixed slug),
+# `gh pr view --json headRefOid` (the pushed head sha captured by push_branch),
+# and `gh api .../statuses ... --method POST` (records the invocation only when
+# the target sha exists on a bare remote, proving it is genuinely fetchable,
+# not just that the mock accepted it unconditionally).
+#
+# SANDBOX pushes to a bare remote (origin) so `gh pr view`'s resolution has a
+# real pushed head to target, and so the mock can reject a status posted to a
+# sha the remote doesn't carry -- the same 422 an unpushed target sha gets from
+# the real GitHub API.
 #
 # Coverage:
 #   1. Marker present  → posts state=success context=GAIA-Audit "<version> <tree>"
@@ -20,6 +27,10 @@
 #      declines ("members pending ...") while the maintainer-shell member's
 #      marker is absent, posts success once both markers are present, and
 #      (resolver absent) falls back to the single-marker POST unchanged.
+#   4. Status target: posts to the pushed PR head sha, not local HEAD, so an
+#      unpushed empty-commit trailer stamp never orphans the status POST
+#      (#726); declines "audited tree not on pushed head" when local HEAD's
+#      tree genuinely isn't on the pushed head.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -38,14 +49,40 @@ setup() {
   git -C "$SANDBOX" add .gaia/VERSION README.md
   git -C "$SANDBOX" commit --quiet -m "init"
 
+  # A bare remote makes the pushed head sha fetchable, so the gh mock's `api`
+  # case can prove a POST targets a sha the remote actually carries instead of
+  # accepting anything unconditionally (the gap that let #726 hide).
+  REMOTE="$BATS_TEST_TMPDIR/remote.git"
+  PUSHED_HEAD_FILE="$BATS_TEST_TMPDIR/pushed-head"
+  git init --quiet --bare "$REMOTE"
+  git -C "$SANDBOX" remote add origin "$REMOTE"
+  push_branch
+
   POST_LOG="$BATS_TEST_TMPDIR/gh-post.log"
   rm -f "$POST_LOG"
+}
+
+# Push SANDBOX's current branch to origin and record the pushed head sha (both
+# in $PUSHED_HEAD and in $PUSHED_HEAD_FILE, which the gh mock's `pr` case reads
+# at run time) -- the sha the retargeted POST must land on.
+push_branch() {
+  local branch
+  branch="$(git -C "$SANDBOX" rev-parse --abbrev-ref HEAD)"
+  git -C "$SANDBOX" push --quiet --set-upstream origin "$branch"
+  PUSHED_HEAD="$(git -C "$SANDBOX" rev-parse HEAD)"
+  printf '%s' "$PUSHED_HEAD" > "$PUSHED_HEAD_FILE"
 }
 
 # Install a fake `gh` on a prepended PATH.
 #   auth   → exit 0 (ok) or 1 (fail) per $1
 #   repo   → print the fixed slug for `gh repo view --json nameWithOwner --jq`
-#   api    → append the full argv to POST_LOG and exit 0 (success)
+#   pr     → print the pushed head sha (from PUSHED_HEAD_FILE, written by
+#            push_branch) for `gh pr view --json headRefOid --jq .headRefOid`
+#   api    → verify the `statuses/<sha>` target exists on the bare REMOTE
+#            before accepting: append the full argv to POST_LOG and exit 0
+#            only when the sha is a fetchable commit there, else exit 1 and
+#            record nothing (the same 422 a real unpushed target sha gets),
+#            so a regression to the local unpushed sha fails the test.
 install_gh_mock() {
   local auth_ok="$1"
   GH_BIN="$BATS_TEST_TMPDIR/bin"
@@ -54,6 +91,8 @@ install_gh_mock() {
 #!/usr/bin/env bash
 auth_ok="$auth_ok"
 record="$POST_LOG"
+remote="$REMOTE"
+pushed_head_file="$PUSHED_HEAD_FILE"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 case "$1" in
@@ -63,9 +102,17 @@ case "$1" in
   repo)
     printf 'gaia-react/gaia\n'
     ;;
+  pr)
+    [ -f "$pushed_head_file" ] && cat "$pushed_head_file" || exit 1
+    ;;
   api)
-    printf '%s\n' "$*" >> "$record"
-    exit 0
+    sha="${2##*statuses/}"
+    sha="${sha%% *}"
+    if [ -n "$sha" ] && git -C "$remote" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+      printf '%s\n' "$*" >> "$record"
+      exit 0
+    fi
+    exit 1
     ;;
   *)
     exit 0
@@ -127,6 +174,9 @@ commit_mixed_diff() {
   echo "#!/bin/bash" > "$SANDBOX/.gaia/scripts/example.sh"
   git -C "$SANDBOX" add app/x.ts .gaia/scripts/example.sh
   git -C "$SANDBOX" commit --quiet -m "mixed change"
+  # Push before any later local-only stamp commit, so the pushed head sha this
+  # captures is the one post-audit-status.sh must target (not local HEAD).
+  push_branch
 }
 
 # -----------------------------------------------------------------------------
@@ -247,7 +297,13 @@ commit_mixed_diff() {
   # The specialized member clears the tree first, before the frontend stamps.
   write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
 
-  # code-audit-frontend stamps the trailer: an empty commit, identical tree.
+  # Push before the stamp: pushed_head is the fetchable sha the retargeted POST
+  # must land on.
+  push_branch
+  pushed_head="$PUSHED_HEAD"
+
+  # code-audit-frontend stamps the trailer: an empty commit, identical tree,
+  # left UNPUSHED -- the sha the pre-fix code targeted, which 422s (#726).
   git -C "$SANDBOX" commit -q --allow-empty -m "chore: code review audit passed"
   [ "$(current_tree)" = "$tree" ]
   stamped_sha=$(git -C "$SANDBOX" rev-parse HEAD)
@@ -257,11 +313,13 @@ commit_mixed_diff() {
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
-  [[ "$output" == "status: posted GAIA-Audit success "* ]]
+  grep -qF -- "status: posted GAIA-Audit success " <<<"$output" || return 1
 
-  # The status lands on the post-stamp commit, carrying the unchanged tree.
+  # The status lands on the pushed (pre-stamp) head, not the unpushed stamp,
+  # carrying the unchanged tree.
   [ -f "$POST_LOG" ]
-  grep -q "statuses/${stamped_sha}" "$POST_LOG"
+  grep -q "statuses/${pushed_head}" "$POST_LOG"
+  grep -qF -- "statuses/${stamped_sha}" "$POST_LOG" && return 1
   grep -q "state=success" "$POST_LOG"
   grep -q "description=1.2.3 ${tree}" "$POST_LOG"
 }
@@ -280,6 +338,61 @@ commit_mixed_diff() {
   run run_helper "$marker"
   [ "$status" -eq 0 ]
   [[ "$output" == "status: posted GAIA-Audit success "* ]]
+}
+
+# -----------------------------------------------------------------------------
+# 4. Status target (#726): posts to the pushed PR head sha, not local HEAD, and
+#    declines when the audited tree genuinely isn't on the pushed head.
+# -----------------------------------------------------------------------------
+
+@test "local producer: declines when the audited tree is not on the pushed head (unpushed tree-changing work)" {
+  install_gh_mock ok
+
+  # Unpushed tree-changing work (e.g. an unpushed self-heal): local HEAD's tree
+  # now differs from the pushed head's tree (still the init commit's).
+  echo "changed" >> "$SANDBOX/README.md"
+  git -C "$SANDBOX" add README.md
+  git -C "$SANDBOX" commit --quiet -m "unpushed tree change"
+
+  tree=$(current_tree)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  marker=".gaia/local/audit/${tree}.ok"
+  write_body "$SANDBOX/$marker" code-audit-frontend
+
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: audited tree not on pushed head" ]
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "#726: status posts to the pushed head sha, not the unpushed empty-commit stamp" {
+  install_gh_mock ok
+  install_resolver
+  commit_mixed_diff
+
+  tree=$(current_tree)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
+  marker=".gaia/local/audit/${tree}.ok"
+  write_body "$SANDBOX/$marker" code-audit-frontend
+  pushed_head="$PUSHED_HEAD"
+
+  # The empty-commit trailer stamp: a local, un-pushed commit. Under the
+  # pre-fix code (target local HEAD) the mock rejects this sha as absent from
+  # the remote and no POST is recorded, reproducing #726.
+  git -C "$SANDBOX" commit -q --allow-empty -m "chore: code review audit passed"
+  [ "$(current_tree)" = "$tree" ]
+  unpushed_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  [ "$unpushed_sha" != "$pushed_head" ]
+
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: posted GAIA-Audit success " <<<"$output" || return 1
+
+  [ -f "$POST_LOG" ]
+  grep -q "statuses/${pushed_head}" "$POST_LOG"
+  grep -qF -- "statuses/${unpushed_sha}" "$POST_LOG" && return 1
+  return 0
 }
 
 # -----------------------------------------------------------------------------
