@@ -320,3 +320,27 @@ assert_predicate_retry_fallback() {
   b="$(git -C "$REPO_ROOT" hash-object "$WF_TMPL_ARTIFACT")"
   [ "$a" = "$b" ]
 }
+
+# ---------------------------------------------------------------------------
+# UAT-013: the frontend member's self-skip block invokes the UNFILTERED spawn
+# oracle (resolve-audit-spawn.sh --no-carry-forward). A filtered self-skip would
+# stand the member down on "I was pre-cleared", disabling the one lever that can
+# catch a bad carry. The block must contain ZERO bare resolve-audit-spawn.sh
+# calls (every occurrence carries --no-carry-forward).
+# ---------------------------------------------------------------------------
+
+@test "UAT-013: the frontend self-skip invokes resolve-audit-spawn.sh --no-carry-forward" {
+  block="$(section_between "$CRA_MD" '^## Remit and self-skip' '^## Extension Loading')"
+  assert_section_nonempty "code-audit-frontend.md Remit and self-skip" "$block"
+  grep -qF -- "resolve-audit-spawn.sh --no-carry-forward" <<<"$block" || return 1
+}
+
+@test "UAT-013: the self-skip block contains no bare resolve-audit-spawn.sh call (all carry --no-carry-forward)" {
+  block="$(section_between "$CRA_MD" '^## Remit and self-skip' '^## Extension Loading')"
+  assert_section_nonempty "code-audit-frontend.md Remit and self-skip" "$block"
+  # Every line that invokes the spawn oracle must carry the flag. A bare
+  # invocation (resolve-audit-spawn.sh NOT immediately followed by
+  # --no-carry-forward) is the bad case.
+  bare="$(grep -F -- "resolve-audit-spawn.sh" <<<"$block" | grep -vF -- "resolve-audit-spawn.sh --no-carry-forward" || true)"
+  [ -z "$bare" ]
+}

@@ -158,6 +158,29 @@ fi
 # shellcheck source=/dev/null
 . "$_machinery_lib"
 
+# Carry-forward predicate + shared disposition logic. This hook is the sole
+# minting authority for a carried clearance, so it loads both. Unlike the
+# classifier above, an absent carry-forward lib is NOT fail-closed: the
+# pre-clear simply never fires and the gate still demands every member's own
+# clearance. Loaded lazily here, after the early exits, resolved from this
+# hook's own on-disk location.
+if [ -f "$_lib_dir/audit-carry-forward.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-carry-forward.sh"
+fi
+if [ -f "$_lib_dir/audit-dispositions.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-dispositions.sh"
+fi
+
+# The shared clearance writer and the status producer, resolved from this
+# hook's own location (never $root: the bats suites run this hook by absolute
+# path against a sandbox root that carries neither script, and the REAL scripts
+# operate on --root correctly). _writer mints the carried clearance; _post_status
+# POSTs the GAIA-Audit status.
+_writer="$_lib_dir/../../../.gaia/scripts/audit-write-clearance.sh"
+_post_status="$_lib_dir/../post-audit-status.sh"
+
 # Resolve HEAD SHA. If we cannot (no git, detached state we can't read),
 # fall back to permissive: this hook only enforces in repos where git answers.
 sha=$(git rev-parse HEAD 2>/dev/null || true)
@@ -427,6 +450,49 @@ frontend_cleared() {
   return 1
 }
 
+# try_carry_forward MEMBER: attempt to carry the member's earned clearance
+# forward to HEAD's tree. On success it MINTS the carried clearance via the
+# shared writer (the only producer) and carries the anchor's disposition record
+# in the same operation, then returns 0. On any refusal it returns 1 and the
+# reason is already on stderr (from cf_select_anchor / cf_may_carry). This hook
+# is the deterministic authority: it computes its own base and mints nothing
+# from a caller-supplied ref. Carry-forward pre-clears a member; it can NEVER
+# remove one from the required set the gate computed from the whole-branch diff.
+#
+# This does not, and cannot, defend against a forged clearance: an actor who can
+# rewrite the working tree can rewrite the anchor too. It raises no security bar.
+try_carry_forward() {
+  local m="$1" anchor anchor_marker anchor_sha anchor_sidecar head_sidecar
+  command -v cf_enabled >/dev/null 2>&1 || return 1
+  cf_enabled || return 1
+  anchor="$(cf_select_anchor "$root" "$m" "$tree")"
+  [ -n "$anchor" ] || return 1
+  cf_may_carry "$root" "$m" "$anchor" "$tree" || return 1
+
+  # Mint the carried clearance via the shared writer. Never hand-write a marker.
+  bash "$_writer" --root "$root" --member "$m" --provenance carried \
+    --anchor-tree "$anchor" >/dev/null 2>&1 || true
+  # The writer declines a carried write only when an earned marker already
+  # exists (which also clears the member); require the member cleared now.
+  clearance_member_cleared "$root" "$tree" "$m" || return 1
+
+  # Carry the disposition record in the SAME operation, and ONLY when the
+  # anchor's recorded commit is an ancestor of HEAD: a non-ancestor carry would
+  # import one branch's filed-issue records into another's sidecar, where they
+  # can deny a merge whose operator cannot clear them. Merge INTO HEAD's sidecar
+  # (HEAD's fresh entry always wins), never overwrite it.
+  anchor_marker="$(clearance_earned_path "$root" "$anchor" "$m")"
+  anchor_sha="$(clearance_field "$anchor_marker" sha)"
+  if [ -n "$anchor_sha" ] && git merge-base --is-ancestor "$anchor_sha" HEAD 2>/dev/null; then
+    anchor_sidecar="$root/.gaia/local/audit/${anchor_sha}.dispositions.json"
+    head_sidecar="$root/.gaia/local/audit/${sha}.dispositions.json"
+    if [ -f "$anchor_sidecar" ] && command -v disposition_merge >/dev/null 2>&1; then
+      disposition_merge "$anchor_sidecar" "$head_sidecar" || true
+    fi
+  fi
+  return 0
+}
+
 # --- Dispatch: resolve the Code Audit Team member set for this diff ---------
 members=""
 if [ -x .gaia/scripts/resolve-audit-members.sh ]; then
@@ -497,29 +563,50 @@ fi
 # <m> via its own marker .gaia/local/audit/<tree>.<m>.ok.
 
 all_cleared=1
+any_carried=0
+cleared_marker=""
 report=""
 while IFS= read -r m; do
   [ -n "$m" ] || continue
+
+  member_cleared=0
+  member_carried=0
   if [ "$m" = "code-audit-frontend" ]; then
-    if frontend_cleared; then
-      report="${report}  - code-audit-frontend: CLEARED
+    frontend_cleared && member_cleared=1
+  else
+    clearance_member_cleared "$root" "$tree" "$m" && member_cleared=1
+  fi
+
+  # Not already cleared: try to carry an earned clearance forward. On carry this
+  # mints the carried clearance and carries its disposition record; on refusal
+  # the member stays pending and its reason is on stderr. Pre-clear, never
+  # shrink the required set.
+  if [ "$member_cleared" -eq 0 ] && try_carry_forward "$m"; then
+    member_cleared=1
+    member_carried=1
+    any_carried=1
+  fi
+
+  if [ "$member_cleared" -eq 1 ]; then
+    if [ "$member_carried" -eq 1 ]; then
+      report="${report}  - ${m}: CLEARED (carried)
 "
+      [ -z "$cleared_marker" ] && cleared_marker="$(clearance_carried_path "$root" "$tree" "$m")"
     else
-      all_cleared=0
+      report="${report}  - ${m}: CLEARED
+"
+    fi
+  else
+    all_cleared=0
+    if [ "$m" = "code-audit-frontend" ]; then
       report="${report}  - code-audit-frontend: PENDING
       Local marker:    ${marker} $(marker_state "$marker")
       Commit trailer:  ${trailer_status:-missing}
       GitHub CI status: absent or version/tree mismatch
       chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
 "
-    fi
-  else
-    member_marker=".gaia/local/audit/${tree}.${m}.ok"
-    if clearance_member_cleared "$root" "$tree" "$m"; then
-      report="${report}  - ${m}: CLEARED
-"
     else
-      all_cleared=0
+      member_marker=".gaia/local/audit/${tree}.${m}.ok"
       report="${report}  - ${m}: PENDING (marker ${member_marker} $(marker_state "$member_marker"))
 "
     fi
@@ -527,6 +614,50 @@ while IFS= read -r m; do
 done <<< "$members"
 
 if [ "$all_cleared" -eq 1 ]; then
+  # Every dispatched member cleared. When at least one clearance was CARRIED,
+  # two extra steps run inside this authority (not the sibling hooks, whose
+  # execution order is not a contract).
+  if [ "$any_carried" -eq 1 ]; then
+    # Re-run the disposition backstop's filed-key verification on HEAD's
+    # (now carried-into) sidecar. Under carry-forward nobody re-spawns a member
+    # to regenerate it, and audit-disposition-check.sh's absent-sidecar arm
+    # fails open, so a filed finding whose tech-debt issue no longer exists would
+    # otherwise slip through.
+    if command -v disposition_offenders >/dev/null 2>&1; then
+      cf_offenders="$(disposition_offenders "$root/.gaia/local/audit/${sha}.dispositions.json" 2>/dev/null || true)"
+      if [ -n "$cf_offenders" ]; then
+        cf_offender_list=$(printf '%s' "$cf_offenders" | sed 's/^/  - /')
+        reason="PR merge gate: a carried Code Audit Team clearance imported a disposition that does not hold for HEAD ${sha:0:12}.
+
+Offending finding key(s):
+
+${cf_offender_list}
+
+A member's clearance carried forward, but its disposition record names a filed
+tech-debt issue that no longer exists (or a pending(definitive) entry). Re-spawn
+the member's agent on this HEAD so it re-files the missing disposition, then
+retry gh pr merge.
+
+See wiki/concepts/PR Merge Workflow.md for the full contract."
+        jq -n --arg r "$reason" '{
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: $r
+          }
+        }'
+        exit 0
+      fi
+    fi
+
+    # POST the GAIA-Audit status so the required check is satisfied. The
+    # producer reads the clearance provenance on disk and appends `carried` to
+    # the description itself; this call passes a clearance it just verified.
+    # Best-effort: a failed POST never inverts into a cleared gate.
+    if [ -n "$cleared_marker" ] && [ -f "$_post_status" ]; then
+      bash "$_post_status" "$cleared_marker" >/dev/null 2>&1 || true
+    fi
+  fi
   exit 0
 fi
 

@@ -29,6 +29,10 @@ setup() {
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/.gaia/scripts" "$SANDBOX/.claude/hooks/lib"
 
+  # An untracked VERSION so the carry-forward predicate's version filter has a
+  # literal to match; untracked so it never enters the diff under test.
+  printf '1.6.1\n' > "$SANDBOX/.gaia/VERSION"
+
   git -C "$SANDBOX" init --quiet --initial-branch=main
   git -C "$SANDBOX" config user.email "test@example.com"
   git -C "$SANDBOX" config user.name "Test"
@@ -56,8 +60,12 @@ setup() {
 
 # Run the oracle with cwd inside the sandbox so its own
 # `git rev-parse --show-toplevel` lookup hits the fixture. Args pass through.
+# stderr is dropped: only stdout is the contract, and the carry-forward filter
+# now emits per-member diagnostics (`carry-forward: declined <m>: no-anchor`
+# when the pool holds no usable anchor) that bats would otherwise merge into
+# $output. Tests that assert on stderr redirect it themselves via `run bash -c`.
 run_oracle() {
-  ( cd "$SANDBOX" && "$SCRIPT" "$@" )
+  ( cd "$SANDBOX" && "$SCRIPT" "$@" 2>/dev/null )
 }
 
 # Stage one or more changed files (created with placeholder content).
@@ -106,6 +114,46 @@ auditors:
     scope: maintainer-only
     push_fixes: false
 YAML
+}
+
+# --- Carry-forward fixtures (Phase 3) --------------------------------------
+
+tree_sha() { git -C "$SANDBOX" rev-parse "HEAD^{tree}"; }
+commit_sha() { git -C "$SANDBOX" rev-parse HEAD; }
+resolve_members() { ( cd "$SANDBOX" && bash .gaia/scripts/resolve-audit-members.sh 2>/dev/null ); }
+oracle_stderr() { ( cd "$SANDBOX" && "$SCRIPT" "$@" 2>&1 1>/dev/null ); }
+oracle_stdout() { ( cd "$SANDBOX" && "$SCRIPT" "$@" 2>/dev/null ); }
+
+# Seed a writer-shaped earned anchor for MEMBER at TREE/SHA (frontend gets a
+# sidecar; specialized members do not).
+seed_anchor() {
+  local member="$1" tree="$2" sha="$3" aat="${4:-2026-07-14T10:00:00Z}" infix sidecar
+  if [ "$member" = "code-audit-frontend" ]; then infix=""; sidecar="true"; else infix=".$member"; sidecar="false"; fi
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  printf '{"version":"1.6.1","schema":2,"member":"%s","provenance":"earned","sha":"%s","tree":"%s","audited_at":"%s","sidecar":%s}\n' \
+    "$member" "$sha" "$tree" "$aat" "$sidecar" > "$SANDBOX/.gaia/local/audit/${tree}${infix}.ok"
+  [ "$sidecar" = "true" ] && printf '{"schema":1,"backend":"absent","findings":[]}\n' \
+    > "$SANDBOX/.gaia/local/audit/${sha}.dispositions.json"
+  return 0
+}
+
+# A PATH whose dir carries every binary these scripts need EXCEPT jq, so
+# `command -v jq` fails and carry-forward disables itself.
+path_without_jq() {
+  local d="$BATS_TEST_TMPDIR/nojq-bin" b p
+  mkdir -p "$d"
+  for b in env bash sh git awk sed grep sort head tail tr cat cut wc dirname basename mktemp date rm mkdir printf test expr; do
+    p="$(command -v "$b" 2>/dev/null)" && ln -sf "$p" "$d/$b"
+  done
+  printf '%s' "$d"
+}
+
+# Snapshot every file in the audit pool (name + content hash), to prove the
+# oracle mints nothing.
+pool_snapshot() {
+  local dir="$SANDBOX/.gaia/local/audit"
+  [ -d "$dir" ] || { printf '<no-pool>'; return 0; }
+  ( cd "$dir" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; shasum "$f" 2>/dev/null; done )
 }
 
 # ---------------------------------------------------------------------------
@@ -386,4 +434,169 @@ code-audit-maintainer-shell"
   run bash -c '( cd "$1" && REF="" && "$2" --base "$REF" 2>/dev/null )' _ "$SANDBOX" "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-frontend" ]
+}
+
+# ---------------------------------------------------------------------------
+# Carry-forward filter (Phase 3). The oracle drops a member whose earned
+# clearance carries forward to HEAD, MINTS NOTHING, and its stderr names the
+# reason for every member that does NOT carry.
+# ---------------------------------------------------------------------------
+
+@test "UAT-002: frontend carries across a shell-only fix; the shell member is still spawned" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  t1="$(tree_sha)"; s1="$(commit_sha)"
+  seed_anchor code-audit-frontend "$t1" "$s1"
+  # The operator fixes only a NON-machinery shell file (outside the frontend's remit).
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+
+  # CONTROL: the whole-branch diff dispatches BOTH members.
+  members="$(resolve_members)"
+  grep -qxF "code-audit-frontend" <<<"$members" || return 1
+  grep -qxF "code-audit-maintainer-shell" <<<"$members" || return 1
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+  grep -qxF "code-audit-maintainer-shell" <<<"$output" || return 1
+  grep -qxF "code-audit-frontend" <<<"$output" && return 1
+  return 0
+}
+
+@test "UAT-003: shell carries across an app-only fix; the frontend member is still spawned" {
+  write_full_roster
+  stage .gaia/scripts/foo.sh; commit "chore"
+  t1="$(tree_sha)"; s1="$(commit_sha)"
+  seed_anchor code-audit-maintainer-shell "$t1" "$s1"
+  stage app/y.ts; commit "feat"
+
+  members="$(resolve_members)"
+  grep -qxF "code-audit-frontend" <<<"$members" || return 1
+  grep -qxF "code-audit-maintainer-shell" <<<"$members" || return 1
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+  grep -qxF "code-audit-frontend" <<<"$output" || return 1
+  grep -qxF "code-audit-maintainer-shell" <<<"$output" && return 1
+  return 0
+}
+
+@test "UAT-012: --base with an attacker ref mints NO clearance artifact anywhere" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  # A scratch pool with a decoy file; the oracle must leave it byte-identical.
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  printf 'decoy\n' > "$SANDBOX/.gaia/local/audit/decoy"
+  before="$(pool_snapshot)"
+  run run_oracle --base HEAD~1
+  [ "$status" -eq 0 ]
+  after="$(pool_snapshot)"
+  [ "$before" = "$after" ]
+}
+
+@test "mints-nothing: a normal filtering run creates no file under the pool" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  t1="$(tree_sha)"; s1="$(commit_sha)"
+  seed_anchor code-audit-frontend "$t1" "$s1"
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+  before="$(pool_snapshot)"
+  run run_oracle
+  [ "$status" -eq 0 ]
+  after="$(pool_snapshot)"
+  [ "$before" = "$after" ]
+}
+
+@test "UAT-016: an unparseable anchor spawns that member while a valid anchor carries the other" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  t1="$(tree_sha)"; s1="$(commit_sha)"
+  seed_anchor code-audit-frontend "$t1" "$s1"
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+  # The shell member's only anchor candidate is unparseable.
+  garbage="$(printf '%040d' 9)"
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  printf 'not json {\n' > "$SANDBOX/.gaia/local/audit/${garbage}.code-audit-maintainer-shell.ok"
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+  grep -qxF "code-audit-maintainer-shell" <<<"$output" || return 1
+  grep -qxF "code-audit-frontend" <<<"$output" && return 1
+
+  # stderr names the shell member's reason from the closed vocabulary; no abort.
+  err="$(oracle_stderr)"
+  grep -qE "carry-forward: (declined|drop) code-audit-maintainer-shell:" <<<"$err" || return 1
+}
+
+@test "UAT-016: jq absent disables carry-forward; both members named, one disabled note on stderr" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  t1="$(tree_sha)"; s1="$(commit_sha)"
+  seed_anchor code-audit-frontend "$t1" "$s1"
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+
+  nojq="$(path_without_jq)"
+  out="$( cd "$SANDBOX" && PATH="$nojq" "$SCRIPT" 2>/dev/null )"
+  # Carry-forward disabled -> no filtering -> BOTH members named.
+  grep -qxF "code-audit-frontend" <<<"$out" || return 1
+  grep -qxF "code-audit-maintainer-shell" <<<"$out" || return 1
+  err="$( cd "$SANDBOX" && PATH="$nojq" "$SCRIPT" 2>&1 1>/dev/null )"
+  grep -qF "carry-forward: disabled: jq not found" <<<"$err" || return 1
+}
+
+@test "UAT-017(a): all dispatched members carried -> empty stdout, all-members-carried, probe unreachable" {
+  write_full_roster
+  # T1 carries app/ AND an in-scope ownerless Dockerfile; the frontend cleared it.
+  stage app/x.tsx Dockerfile; commit "feat"
+  t1="$(tree_sha)"; s1="$(commit_sha)"
+  seed_anchor code-audit-frontend "$t1" "$s1"
+  # A wiki-only commit -> the anchor-to-HEAD delta is frontend-clean.
+  stage wiki/x.md; commit "docs"
+
+  # CONTROL: the resolver still dispatches the frontend member.
+  members="$(resolve_members)"
+  grep -qxF "code-audit-frontend" <<<"$members" || return 1
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+  # Empty stdout: the frontend carried. The ownerless probe is UNREACHABLE even
+  # though the whole diff carries a Dockerfile that would make it emit frontend.
+  [ -z "$output" ]
+  grep -qxF "code-audit-frontend" <<<"$output" && return 1
+  err="$(oracle_stderr)"
+  grep -qF "carry-forward: spawn-list empty: all-members-carried" <<<"$err" || return 1
+}
+
+@test "UAT-017(b): control -- an unresolvable base still fails closed to a non-empty frontend" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  run run_oracle --base does-not-exist-ref
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+@test "UAT-017(c): control -- an unreadable roster (non-executable resolver) fails closed to frontend" {
+  write_full_roster
+  chmod -x "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
+  stage app/x.tsx; commit "feat"
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+@test "--no-carry-forward emits the pre-feature output byte-for-byte (skips the filter)" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  t1="$(tree_sha)"; s1="$(commit_sha)"
+  seed_anchor code-audit-frontend "$t1" "$s1"
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+
+  # Without the flag the frontend carries and is dropped.
+  filtered="$(oracle_stdout)"
+  grep -qxF "code-audit-frontend" <<<"$filtered" && return 1
+
+  # With --no-carry-forward the output equals the raw dispatch resolver output.
+  raw="$(resolve_members)"
+  unfiltered="$(oracle_stdout --no-carry-forward)"
+  [ "$unfiltered" = "$raw" ]
+  grep -qxF "code-audit-frontend" <<<"$unfiltered" || return 1
 }

@@ -108,8 +108,13 @@ fi
 # The gate accepts only a writer-produced clearance. Derive the member and tree
 # from the marker filename and require a writer-shaped body: a present but
 # legacy or hand-written marker is not a clearance and must not clear the POST.
+# The authority POSTs the path of a CARRIED clearance, so strip any of the three
+# provenance extensions (only one ever matches a given filename).
 marker_base="$(basename "$marker")"
-marker_stem="${marker_base%.ok}"
+marker_stem="$marker_base"
+marker_stem="${marker_stem%.ok}"
+marker_stem="${marker_stem%.carried}"
+marker_stem="${marker_stem%.refused}"
 marker_tree="${marker_stem%%.*}"
 marker_member_part="${marker_stem#"$marker_tree"}"
 if [ -z "$marker_member_part" ]; then
@@ -167,14 +172,27 @@ fi
 # maintainer member still withholds over an unresolved finding. Resolver
 # absent/unusable falls back to today's single-marker POST unchanged, a
 # partial/early-resume tree is never bricked.
+# carried is set when ANY dispatched member's clearance is carried (not earned).
+# The producer decides the description shape from the state on disk; there is no
+# CLI flag, which is what makes it deterministic.
+carried=0
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ -x "$resolver" ]; then
   members="$(bash "$resolver" 2>/dev/null || true)"
   pending=""
   while IFS= read -r m; do
     [ -n "$m" ] || continue
-    clearance_member_cleared "$repo_root" "$tree_sha" "$m" \
-      || pending="${pending}${pending:+ }${m}"
+    if clearance_member_cleared "$repo_root" "$tree_sha" "$m"; then
+      # Prefer the earned marker; a member cleared only by its carried marker
+      # makes the whole status carried.
+      ep="$(clearance_earned_path "$repo_root" "$tree_sha" "$m")"
+      if ! clearance_acceptable "$ep" "$m" "$tree_sha"; then
+        cp="$(clearance_carried_path "$repo_root" "$tree_sha" "$m")"
+        clearance_acceptable "$cp" "$m" "$tree_sha" && carried=1
+      fi
+    else
+      pending="${pending}${pending:+ }${m}"
+    fi
   done <<< "$members"
 
   if [ -n "$pending" ]; then
@@ -182,6 +200,14 @@ if [ -x "$resolver" ]; then
     exit 0
   fi
 fi
+
+# Description: today's two-field "<version> <tree>" when every dispatched
+# member's clearance is earned; "<version> <tree> carried" when any is carried.
+# The third field is invisible to CI's base resolver's field-1-only parse (so a
+# carried clearance can never anchor the incremental review base) while a
+# substring reader still accepts it, and the merge gate tolerates it.
+desc="${version} ${tree_sha}"
+[ "$carried" -eq 1 ] && desc="${desc} carried"
 
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
 if [ -z "$repo" ]; then
@@ -193,7 +219,7 @@ if gh api "repos/${repo}/statuses/${head_sha}" \
   --method POST \
   --field state=success \
   --field context=GAIA-Audit \
-  --field description="${version} ${tree_sha}" >/dev/null 2>&1; then
+  --field description="${desc}" >/dev/null 2>&1; then
   emit_posted "$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || echo "$head_sha")"
   exit 0
 fi

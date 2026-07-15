@@ -165,8 +165,16 @@ trailer_version_for() {
 # source, so such a commit is not a usable base from the status path. Needs
 # gh + GH_TOKEN + repo slug; a missing token / absent gh / API failure / no
 # success status all yield empty (the walk continues).
+#
+# Provenance reject: a carried clearance POSTs the description "<version> <tree>
+# carried" (a THIRD field). A carried clearance must satisfy the required
+# GAIA-Audit check, but must NEVER anchor CI's incremental review base, because
+# no agent read that tree. This resolver parses field 1 alone, so without an
+# explicit reject a carried status would be indistinguishable from an earned
+# one here; return empty on any description carrying a third field so a carried
+# clearance can never advance the base a future audit reviews FROM.
 status_version_for() {
-  local sha="$1" repo desc
+  local sha="$1" repo desc nf
   [ -n "${GH_TOKEN:-}" ] || return 0
   command -v gh >/dev/null 2>&1 || return 0
   repo="${GITHUB_REPOSITORY:-}"
@@ -177,6 +185,8 @@ status_version_for() {
   if [ -z "$desc" ] || [ "$desc" = "null" ]; then
     return 0
   fi
+  nf=$(printf '%s' "$desc" | awk '{print NF}')
+  [ -n "$nf" ] && [ "$nf" -gt 2 ] && return 0
   printf '%s' "$desc" | awk '{print $1}'
 }
 

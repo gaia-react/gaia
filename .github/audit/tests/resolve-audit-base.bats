@@ -399,3 +399,38 @@ GAIA-Audit: 1.2.3 abc123
   [ "$status" -eq 0 ]
   [ "$output" = "$base" ]
 }
+
+# -----------------------------------------------------------------------------
+# UAT-009 provenance reject: a CARRIED clearance POSTs a THREE-field description
+# "<version> <tree> carried". status_version_for parses field 1 alone, so
+# without the reject a carried status would be indistinguishable from an earned
+# one here. The reject returns empty for any description with a third field, so
+# a carried clearance can NEVER anchor CI's incremental review base.
+# -----------------------------------------------------------------------------
+
+@test "status base: a CARRIED (three-field) success status is rejected as a base -> main ref" {
+  add_commit a
+  base="$(sha_of HEAD)"
+  add_commit b
+  base_tree="$(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
+  install_gh_array_mock \
+    "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${base_tree} carried\"}]"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "main" ]
+}
+
+# The trailer channel is structurally immune with NO change: the anchored,
+# strictly-two-field trailer regex rejects a provenance-bearing trailer, so no
+# GAIA-Audit trailer is ever honored for a carried clearance.
+@test "trailer channel: a three-field GAIA-Audit trailer is structurally rejected -> main ref" {
+  add_commit a
+  amend_head_with_raw_message "a
+
+GAIA-Audit: 1.2.3 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}') carried
+"
+  add_commit b
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "main" ]
+}
