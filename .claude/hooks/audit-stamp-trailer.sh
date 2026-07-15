@@ -36,6 +36,7 @@
 #          not in a git repo
 #          already stamped
 #          members pending <list>
+#          stamp lock contended
 #   2 , Usage / unexpected error. Stderr.
 #
 # References
@@ -75,6 +76,40 @@ emit_decline() {
 
 emit_error() {
   printf 'audit-stamp-trailer: %s\n' "$1" >&2
+}
+
+# -----------------------------------------------------------------------------
+# Stamp lock
+# -----------------------------------------------------------------------------
+
+# Portable mutex for the already-stamped-guard-through-commit critical
+# section. flock is absent on macOS, so this uses mkdir's atomicity instead.
+# Recovers a lock left behind by a crashed holder (stale past $stale seconds)
+# so the gate can never wedge shut.
+_stamp_lock_dir=""
+acquire_stamp_lock() {
+  local lock="$1" timeout=45 stale=15 waited=0 now mtime age
+  while ! mkdir "$lock" 2>/dev/null; do
+    # Held. Recover a stale lock left by a crashed holder.
+    now="$(date +%s 2>/dev/null || echo 0)"
+    # GNU stat first (-c %Y), then BSD/macOS stat (-f %m).
+    mtime="$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null || echo 0)"
+    if [ "$now" -gt 0 ] && [ "$mtime" -gt 0 ]; then
+      age=$(( now - mtime ))
+      if [ "$age" -ge "$stale" ]; then
+        rm -rf "$lock" 2>/dev/null || true
+        continue
+      fi
+    fi
+    if [ "$waited" -ge "$timeout" ]; then
+      return 1
+    fi
+    sleep 1
+    waited=$(( waited + 1 ))
+  done
+  _stamp_lock_dir="$lock"
+  trap 'if [ -n "$_stamp_lock_dir" ]; then rm -rf "$_stamp_lock_dir" 2>/dev/null || true; fi' EXIT
+  return 0
 }
 
 # -----------------------------------------------------------------------------
@@ -141,6 +176,21 @@ if [ -n "$audit_tree" ] && [ "$audit_tree" != "$current_tree" ]; then
   exit 0
 fi
 
+# A multi-member diff has all three Code Audit Team members invoke this hook
+# after writing their markers, and the member-aware gate below only passes
+# once the last member clears. Two members can pass the already-stamped
+# guard near-simultaneously (neither sees a trailer yet) and both reach the
+# commit. The mutex below serializes the whole already-stamped-guard through
+# final-commit region so only one racer stamps; the loser sees the winner's
+# trailer and declines "already stamped". The lock lives under the
+# per-worktree git dir so its granularity matches git's own index.lock:
+# it never falsely contends across separate worktrees of the same repo.
+lock_dir="$(git -C "$repo_root" rev-parse --absolute-git-dir 2>/dev/null || echo "${repo_root}/.git")/gaia-audit-stamp.lock"
+if ! acquire_stamp_lock "$lock_dir"; then
+  emit_decline "stamp lock contended"
+  exit 0
+fi
+
 # -----------------------------------------------------------------------------
 # Already-stamped guard
 # -----------------------------------------------------------------------------
@@ -157,8 +207,8 @@ fi
 
 # -----------------------------------------------------------------------------
 # Member-aware gate: the trailer certifies that EVERY dispatched Code Audit Team
-# member cleared this tree, not just the caller. Mirrors the same gate the
-# GAIA-Audit status POST runs (.claude/hooks/post-audit-status.sh:168-202).
+# member cleared this tree, not just the caller. Mirrors the member-aware gate
+# in .claude/hooks/post-audit-status.sh.
 # Resolver absent/non-executable, or the clearance lib unavailable, falls back
 # to the caller's own clean judgment (today's behavior) so a partial or
 # early-resume tree is never bricked (never a fail-closed deadlock).

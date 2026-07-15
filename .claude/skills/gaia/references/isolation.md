@@ -155,9 +155,11 @@ name fresh from the remote default branch (`main`), else local HEAD, lands it un
 caller runs no manual `git checkout -b`. Everything the caller does after this point runs from inside the
 worktree.
 
-## Export: `RESOLVED_MODE`
+## Export: `RESOLVED_MODE` and `RESOLVED_ROOT`
 
-This reference exports the isolation mode it resolved as `RESOLVED_MODE`, with exactly two values:
+This reference exports two values.
+
+`RESOLVED_MODE` is the isolation mode it resolved, with exactly two values:
 
 | `RESOLVED_MODE` | Meaning |
 |---|---|
@@ -166,3 +168,16 @@ This reference exports the isolation mode it resolved as `RESOLVED_MODE`, with e
 
 Every arm above sets it, including the two that never prompt, so it is always defined by the time the caller
 resumes. A caller that has no use for it ignores it.
+
+`RESOLVED_ROOT` is the absolute path of the working copy the resolved arm left the session in: the current
+checkout's own path under `feature-branch`, or the freshly-entered worktree's path under `worktree`. Every arm
+above leaves the session's cwd inside the resolved working copy, so the caller derives `RESOLVED_ROOT` once,
+immediately after this reference returns, by reading it fresh from that cwd:
+
+```bash
+RESOLVED_ROOT="$(git rev-parse --show-toplevel)"
+```
+
+Read it once, after the arm has switched cwd (worktree creation, or the feature-branch arm's in-place
+checkout), never before. Every later sub-agent dispatch this session makes, each task sub-agent and each
+pre-merge Code Audit Team member, interpolates this same value rather than re-deriving it ad hoc.

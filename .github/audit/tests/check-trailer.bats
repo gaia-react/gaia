@@ -35,7 +35,8 @@
 #  15. Malformed status description              → skip=false reason=no-trailer
 #  16. Pending status, matching version+tree      → skip=false reason=no-trailer
 #  17. Success status, matching version+tree      → skip=true  reason=status-matches
-#  18. Pending + success both present             → skip=true  (success picked)
+#  18. Newest = success, older failure present    → skip=true  (newest wins)
+#  19. Newest = failure, older success present    → skip=false (newest shadows)
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -115,11 +116,12 @@ EOF
 
 # Install a fake `gh` that returns a full JSON statuses array and runs the
 # script's real `--jq` expression against it. This exercises the production
-# state filter (map(select(... and .state == "success"))), so the test sees
-# exactly what the reader sees: a pending status is filtered out at the source,
-# a success status survives, and a SHA carrying both is resolved to the success
-# one regardless of array position. The mock parses its own argv for the value
-# following `--jq` and pipes the crafted array through the real jq.
+# newest-per-context filter (map(select(.context == ...)) | first | select(.state
+# == "success")), so the test sees exactly what the reader sees: the array's
+# FIRST entry (the list is newest-first) is the only one considered, and it
+# must itself be state:success, an older success elsewhere in the array never
+# rescues a newer non-success entry. The mock parses its own argv for the
+# value following `--jq` and pipes the crafted array through the real jq.
 #   $1 JSON array string (the raw statuses payload the real API would return).
 # Also sets GH_TOKEN + GITHUB_REPOSITORY so check_status_fallback runs.
 install_gh_array_mock() {
@@ -461,15 +463,16 @@ reason=status-matches"
 }
 
 # -----------------------------------------------------------------------------
-# 18. Pending + success both present → success picked (skip=true)
+# 18. Newest = success, older failure present → skip=true (newest wins)
 # -----------------------------------------------------------------------------
 
-@test "status fallback: pending+success both present picks success" {
+@test "status fallback: newest success with older failure present skips" {
   tree=$(current_tree)
-  # Pending first, success last; both carry HEAD's version+tree. The
-  # select-inside-map filter picks the success regardless of position.
+  # Array is newest-first: the failure is older (listed second), the
+  # matching success is newest (listed first). The newest entry is
+  # state:success, so it clears the audit.
   install_gh_array_mock \
-    "[{\"context\":\"GAIA-Audit\",\"state\":\"pending\",\"description\":\"1.2.3 ${tree}\"},{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${tree}\"}]"
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${tree}\"},{\"context\":\"GAIA-Audit\",\"state\":\"failure\",\"description\":\"1.2.3 ${tree}\"}]"
 
   run run_in_sandbox
   [ "$status" -eq 0 ]
@@ -477,5 +480,26 @@ reason=status-matches"
 matched_version=1.2.3
 matched_tree=${tree}
 reason=status-matches"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 19. Newest = failure/pending, older success present → skip=false (shadowed)
+# -----------------------------------------------------------------------------
+
+@test "status fallback: newest failure with older success present does NOT skip" {
+  tree=$(current_tree)
+  # Array is newest-first: the failure is newest (listed first), the
+  # matching success is older (listed second). A newer non-success entry
+  # shadows the older success; the audit is NOT skipped.
+  install_gh_array_mock \
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"failure\",\"description\":\"1.2.3 ${tree}\"},{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${tree}\"}]"
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=false
+matched_version=
+matched_tree=
+reason=no-trailer"
   [ "$output" = "$expected" ]
 }

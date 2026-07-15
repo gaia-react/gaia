@@ -243,7 +243,16 @@ if gh api "repos/${repo}/statuses/${head_sha}" \
   --field state=success \
   --field context=GAIA-Audit \
   --field description="${desc}" >/dev/null 2>&1; then
-  emit_posted "$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || echo "$head_sha")"
+  # Surface the sha we POSTed to (the remote PR head), never local HEAD: on the
+  # empty-commit stamp path local HEAD is an un-pushed commit while head_sha is
+  # the pushed PR head, so the two differ. Assert the surfaced short sha
+  # re-resolves to head_sha; on a mismatch surface the full head_sha and warn.
+  posted_short="$(git -C "$repo_root" rev-parse --short "$head_sha" 2>/dev/null || echo "$head_sha")"
+  if [ "$(git -C "$repo_root" rev-parse "$posted_short" 2>/dev/null || true)" != "$(git -C "$repo_root" rev-parse "$head_sha" 2>/dev/null || true)" ]; then
+    emit_error "posted-sha mismatch: surfaced ${posted_short} does not resolve to POSTed ${head_sha}"
+    posted_short="$head_sha"
+  fi
+  emit_posted "$posted_short"
   exit 0
 fi
 
