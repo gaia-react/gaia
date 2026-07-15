@@ -96,8 +96,12 @@ audit_self_mod_classify() {
 # --- Roster parsing (moved, not copied) --------------------------------------
 #
 # Used only when <root>/.gaia/audit-ci.yml has no `auditors:` block. Emitted
-# as the same YAML shape the config uses, so ONE parser handles both. The
-# maintainer-only entries are wrapped in `# gaia:maintainer-only` markers;
+# as the same YAML shape the config uses, so ONE parser handles both. Its
+# members and their globs mirror the committed .gaia/audit-ci.yml roster and
+# must stay in step with it: a glob present there but missing here leaves that
+# path ownerless in the degraded fallback, so the merge gate dispatches nobody
+# for a change to it. The maintainer-only entries are wrapped in
+# `# gaia:maintainer-only` markers;
 # the release scrub strips marker-delimited blocks from shipped `.sh` files,
 # so a shipped script's fallback carries only the default (frontend) member.
 # These markers MUST survive verbatim: dropping, reflowing, or moving them
@@ -124,6 +128,11 @@ auditors:
       - ".specify/extensions/gaia/lib/*.sh"
       - ".github/**/*.sh"
       - ".github/**/*.bats"
+      - ".gaia/audit-ci.yml"
+      - ".gaia/VERSION"
+      - ".claude/agents/code-audit-*.md"
+      - ".claude/rules/**"
+      - ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
     scope: maintainer-only
     push_fixes: false
   - name: code-audit-maintainer-node
