@@ -35,6 +35,7 @@
 #          tree changed since audit started
 #          not in a git repo
 #          already stamped
+#          members pending <list>
 #   2 , Usage / unexpected error. Stderr.
 #
 # References
@@ -51,6 +52,14 @@
 #     trailer through git's RFC 822 folder.
 
 set -euo pipefail
+
+# Load the shared clearance reader from this hook's OWN on-disk location
+# (never cwd, never $repo_root), per the frozen library-resolution basis.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-clearance.sh"
+fi
 
 # -----------------------------------------------------------------------------
 # Output helpers
@@ -144,6 +153,29 @@ fi
 if git -C "$repo_root" log -1 --format='%B' | grep -q "^GAIA-Audit:"; then
   emit_decline "already stamped"
   exit 0
+fi
+
+# -----------------------------------------------------------------------------
+# Member-aware gate: the trailer certifies that EVERY dispatched Code Audit Team
+# member cleared this tree, not just the caller. Mirrors the same gate the
+# GAIA-Audit status POST runs (.claude/hooks/post-audit-status.sh:168-202).
+# Resolver absent/non-executable, or the clearance lib unavailable, falls back
+# to the caller's own clean judgment (today's behavior) so a partial or
+# early-resume tree is never bricked (never a fail-closed deadlock).
+# -----------------------------------------------------------------------------
+resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
+if [ -x "$resolver" ] && command -v clearance_member_cleared >/dev/null 2>&1; then
+  members="$(bash "$resolver" 2>/dev/null || true)"
+  pending=""
+  while IFS= read -r m; do
+    [ -n "$m" ] || continue
+    clearance_member_cleared "$repo_root" "$current_tree" "$m" \
+      || pending="${pending}${pending:+ }${m}"
+  done <<< "$members"
+  if [ -n "$pending" ]; then
+    emit_decline "members pending ${pending}"
+    exit 0
+  fi
 fi
 
 # -----------------------------------------------------------------------------
