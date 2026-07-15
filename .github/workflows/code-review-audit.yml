@@ -334,10 +334,13 @@ jobs:
             `chore: code review audit passed` commit carrying the trailer; do
             not pass `AUDIT_SELF_HEALED=true` (the helper's amend path would
             rewrite a commit the workflow runner does not own). On a clean
-            report you MUST also write the local clean marker file
-            `.gaia/local/audit/<tree-sha>.ok`, named for HEAD's TREE
-            (`git rev-parse HEAD^{tree}`), not its commit sha (the "Audit
-            marker" step in the agent definition). Write it even if the trailer
+            report you MUST also write the local clean marker via the shared
+            clearance writer, `bash .gaia/scripts/audit-write-clearance.sh
+            --root "$(git rev-parse --show-toplevel)" --member
+            code-audit-frontend --provenance earned`, which resolves HEAD's
+            TREE from `--root` and writes `.gaia/local/audit/<tree-sha>.ok`
+            keyed to that tree, not the commit sha (the "Audit marker" step in
+            the agent definition). Write it even if the trailer
             stamp declines or makes no commit: when nothing is pushed, the
             workflow promotes this marker to the durable GAIA-Audit commit
             status on HEAD, and a clean audit that leaves no marker strands the

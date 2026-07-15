@@ -12,6 +12,14 @@
 # guard is heuristic defense-in-depth, not a sandbox: it always exits 0,
 # carrying the allow/deny decision in stdout JSON.
 
+# shellcheck disable=SC2317
+# SC2317 (command appears unreachable) is a structural false positive on every
+# @test block below: bats invokes each test body through its own runner, which
+# static shellcheck cannot see, so it marks the blocks unreachable. The directive
+# is file-wide because the false positive is intrinsic to the bats structure, not
+# to any single test, and it masks no genuine signal: SC2317 cannot reason about
+# an indirectly-invoked bats suite at all.
+
 setup() {
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-env-read.sh"
@@ -110,6 +118,10 @@ assert_allowed() {
 }
 
 @test "x=\$(<.env) is denied" {
+  # The single-quoting is deliberate: the payload must reach the hook verbatim
+  # so it classifies the literal command text. Never double-quote it, which
+  # would expand $(<.env) here and defeat the test.
+  # shellcheck disable=SC2016
   run_hook_bash 'x=$(<.env)'
   assert_denied
 }
@@ -244,11 +256,12 @@ assert_allowed() {
 }
 
 @test "permissions.deny still contains the exact .env backstop entries" {
+  # Read(.env) blocks reads; Edit(.env) blocks every file-writing tool (Write,
+  # Edit, MultiEdit, NotebookEdit), so a separate Write(.env) deny is redundant
+  # and is intentionally absent.
   run jq -e '.permissions.deny | index("Read(.env)")' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
   run jq -e '.permissions.deny | index("Edit(.env)")' "$SETTINGS_ABS"
-  [ "$status" -eq 0 ]
-  run jq -e '.permissions.deny | index("Write(.env)")' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }
 
