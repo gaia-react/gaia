@@ -1,0 +1,107 @@
+name: Distribution Audit (PR)
+
+# Per-PR distribution gate. Fails a pull request that introduces a
+# newly-shipping file the committed .gaia/manifest.json does not answer, so each
+# feature answers its own distribution surface at its own PR instead of
+# deferring an unbounded backlog to a later, unrelated /distribution-audit run.
+#
+# `.gaia/cli/gaia-maintainer release manifest --check --json` reports every
+# classified, non-release-excluded, git-tracked file the committed manifest has
+# never acknowledged as `missing`. This gate does NOT fail on the whole
+# `missing` set: a pre-existing backlog from earlier merges is not this PR's to
+# drain. It fails only on the intersection of `missing` with the files this PR
+# touches, so each PR is answerable for exactly the surface it added.
+#
+# Maintainer-only: `gaia-maintainer` and the release manifest exist only on the
+# GAIA team's clone; adopters never run GAIA releases. Release-excluded
+# alongside the other maintainer-only workflows (category 9); on an adopter
+# clone this would be a silent passenger at best and a confusing red check at
+# worst.
+#
+# Pinned action SHA matches the sibling maintainer workflows:
+#   actions/checkout @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
+
+# No `push:` trigger. The gate only ever has something to say about a proposed
+# change; a push-to-main run would be a no-op cluttering the dashboard. Merges
+# land via PR, so the PR run is the gate.
+on:
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only token: this job checks out, runs the committed maintainer binary,
+# and reports. It never writes to the repo. On a fork PR the `pull_request`
+# trigger exposes no secrets, so the worst a hostile PR-controlled binary can do
+# is misbehave on an ephemeral runner with a read-only token, the same bound
+# cli-tests.yml accepts when it runs PR-controlled `.gaia/cli/**` code.
+permissions:
+  contents: read
+
+jobs:
+  distribution-audit-pr:
+    name: Unanswered newly-shipping files
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 so both the base and head commits are present for the
+      # diff below. The default merge-ref checkout has both as parents, but a
+      # shallow clone would not contain them.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+      - name: Gate unanswered newly-shipping files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Files this PR adds or modifies on the head side. Three-dot compares
+          # from the point head diverged from base, so only the PR's own changes
+          # count. Deletions are excluded; even if one slipped through it could
+          # never intersect `missing`, which is built from `git ls-files` of the
+          # head tree.
+          git diff --name-only --diff-filter=ACMR "${BASE_SHA}...${HEAD_SHA}" \
+            | LC_ALL=C sort -u > /tmp/pr-changed.txt
+
+          # `--check` is read-only and exits non-zero on ANY drift (a
+          # pre-existing backlog included), so treat a non-zero exit as data,
+          # not failure: capture stdout and read `missing` from it. Exit >= 2 is
+          # a genuine git/filesystem failure, not a drift signal.
+          check_rc=0
+          check_json="$(./.gaia/cli/gaia-maintainer release manifest --check --json)" || check_rc=$?
+          if [ "${check_rc}" -ge 2 ]; then
+            echo "::error::release manifest --check exited ${check_rc}; cannot evaluate the distribution gate" >&2
+            printf '%s\n' "${check_json}" >&2
+            exit 1
+          fi
+
+          # Fail-safe: exit 1 normally carries a JSON report, but it also covers
+          # an absent committed manifest, which prints nothing to stdout. If
+          # stdout is not valid JSON the gate cannot be evaluated, so fail loudly
+          # rather than pass blind.
+          if ! printf '%s' "${check_json}" | jq -e . >/dev/null 2>&1; then
+            echo "::error::release manifest --check produced no JSON report (exit ${check_rc}); cannot evaluate the distribution gate" >&2
+            exit 1
+          fi
+
+          # `missing` = every classified, non-excluded, tracked file the
+          # committed manifest has never acknowledged. Intersect it with this
+          # PR's changed files so the gate holds each PR to exactly the shipping
+          # surface it introduced, never a backlog inherited from earlier merges.
+          printf '%s' "${check_json}" \
+            | jq -r '(.missing // [])[].file' \
+            | LC_ALL=C sort -u > /tmp/missing.txt
+          offenders="$(LC_ALL=C comm -12 /tmp/missing.txt /tmp/pr-changed.txt)"
+
+          if [ -n "${offenders}" ]; then
+            count="$(printf '%s\n' "${offenders}" | grep -c '.')"
+            echo "::error::${count} newly-shipping file(s) in this PR are unanswered in .gaia/manifest.json. Run /distribution-audit, answer ship-or-withhold for each, and commit the regenerated .gaia/manifest.json (and .gaia/release-exclude for any withheld file) to this branch."
+            echo "Unanswered newly-shipping files:"
+            printf '%s\n' "${offenders}" | sed 's/^/  - /'
+            exit 1
+          fi
+
+          echo "Distribution gate: no unanswered newly-shipping files in this PR's changed set."
