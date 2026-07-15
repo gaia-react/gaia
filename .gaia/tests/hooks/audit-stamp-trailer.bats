@@ -504,3 +504,44 @@ commit_mixed_diff() {
   trailer=$(trailer_on_head)
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
 }
+
+# -----------------------------------------------------------------------------
+# Concurrency: the guard-through-commit critical section is mutex-serialized
+# -----------------------------------------------------------------------------
+
+@test "concurrency: two racing stampers stamp exactly once, no double-commit, no index.lock" {
+  before_count=$(git -C "$REPO" rev-list --count HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  # Detached HEAD (as in the "detached HEAD" stamp-path test above) puts both
+  # racers on the empty-commit path with no resolver installed in $REPO, so
+  # the member-aware gate is skipped and both racers reach the commit region
+  # near-simultaneously, the scenario the stamp lock exists to serialize.
+  git -C "$REPO" checkout --quiet --detach HEAD
+
+  # Redirect each racer's output into $REMOTE (a scratch bare-repo dir, torn
+  # down by teardown()) rather than into $REPO, writing an output file inside
+  # $REPO would itself dirty the tree the hook is about to check.
+  ( cd "$REPO"; AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" "$HOOK_ABS" >"$REMOTE/o1" 2>&1 ) & p1=$!
+  ( cd "$REPO"; AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" "$HOOK_ABS" >"$REMOTE/o2" 2>&1 ) & p2=$!
+  wait "$p1"; s1=$?
+  wait "$p2"; s2=$?
+
+  [ "$s1" -eq 0 ]
+  [ "$s2" -eq 0 ]
+
+  after_count=$(git -C "$REPO" rev-list --count HEAD)
+  [ $((after_count - before_count)) -eq 1 ]
+
+  trailer_count=$(git -C "$REPO" log -1 --format='%B' \
+    | git -C "$REPO" interpret-trailers --parse \
+    | grep -c '^GAIA-Audit:' || true)
+  [ "$trailer_count" -eq 1 ]
+
+  combined="$(cat "$REMOTE/o1" "$REMOTE/o2")"
+  grep -qF -- "stamp: empty commit (created locally)" <<<"$combined" || return 1
+  grep -qF -- "stamp: declined: already stamped" <<<"$combined" || return 1
+
+  grep -qiF -- "index.lock" <<<"$combined" && return 1
+  return 0
+}

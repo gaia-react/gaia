@@ -30,7 +30,9 @@
 #   4. Status target: posts to the pushed PR head sha, not local HEAD, so an
 #      unpushed empty-commit trailer stamp never orphans the status POST
 #      (#726); declines "audited tree not on pushed head" when local HEAD's
-#      tree genuinely isn't on the pushed head.
+#      tree genuinely isn't on the pushed head. The surfaced "status: posted"
+#      line carries the short form of the POSTed sha, not local HEAD's short
+#      sha, on this same divergence (#794).
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -393,6 +395,32 @@ commit_mixed_diff() {
   grep -q "statuses/${pushed_head}" "$POST_LOG"
   grep -qF -- "statuses/${unpushed_sha}" "$POST_LOG" && return 1
   return 0
+}
+
+@test "#794: the posted-status line surfaces the short POSTed sha, not local HEAD's short sha" {
+  install_gh_mock ok
+  install_resolver
+  commit_mixed_diff
+
+  tree=$(current_tree)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
+  marker=".gaia/local/audit/${tree}.ok"
+  write_body "$SANDBOX/$marker" code-audit-frontend
+  pushed_head="$PUSHED_HEAD"
+  pushed_head_short=$(git -C "$SANDBOX" rev-parse --short "$pushed_head")
+
+  # The empty-commit trailer stamp: a local, un-pushed commit ahead of the
+  # pushed head, tree unchanged so the audited-tree gate still passes. Local
+  # HEAD's short sha now diverges from the pushed head's short sha.
+  git -C "$SANDBOX" commit -q --allow-empty -m "chore: code review audit passed"
+  [ "$(current_tree)" = "$tree" ]
+  local_head_short=$(git -C "$SANDBOX" rev-parse --short HEAD)
+  [ "$local_head_short" != "$pushed_head_short" ]
+
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: posted GAIA-Audit success ${pushed_head_short}" ]
 }
 
 # -----------------------------------------------------------------------------
