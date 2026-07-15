@@ -144,6 +144,7 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 - `.github/workflows/audit-ci-tests.yml`: runs the bats suite for `.github/audit/check-trailer.sh`. Adopters receive that script as GAIA-controlled (`owned`) code they never modify, so the suite only guards maintainer edits.
 - `.github/workflows/distribution.yml`: runs the `.gaia/tests/distribution/` harness on a GitHub runner. Manual trigger only (`workflow_dispatch`); the maintainer's `CLAUDE_CODE_OAUTH_TOKEN` org secret authenticates the in-container `claude` calls used by Layer 2 scenarios. Adopters never run distribution tests against their own scaffold, so the workflow is irrelevant on their side.
 - `.github/workflows/forensics-triage.yml`: runs autonomous Claude Code triage against `gaia-forensics`-labeled issues on the upstream `gaia-react/gaia` repo, with helpers under `.github/forensics/` (also excluded). Adopters never triage GAIA's own issues, so neither the workflow nor its helpers belong on their clone.
+- `.github/workflows/distribution-audit-pr.yml`: the per-PR distribution gate (see below). Runs `gaia-maintainer release manifest --check`; the binary and the manifest are maintainer-only, so the gate has no adopter surface.
 
 `tests.yml` and `chromatic.yml` DO ship; both are adopter-relevant. Their `paths-filter` allowlists are written without reference to maintainer-only paths so the filter stays meaningful on an adopter clone.
 
@@ -175,6 +176,14 @@ These ARE distributed but excluded from `.gaia/manifest.json` by the classifier 
 - `.gaia/VERSION`, `.gaia/manifest.json`: bumped only by `/update-gaia`.
 
 The classifier is in `.gaia/cli/src/release/manifest.ts`, `ADOPTER_OWNED_SENTINELS` constant.
+
+## Per-PR distribution gate
+
+`.github/workflows/distribution-audit-pr.yml` enforces the manifest answer-contract at PR time. A feature PR that adds a git-tracked, non-release-excluded, classified file, one that would newly ship to adopters, must acknowledge it in `.gaia/manifest.json` before it merges, so the ship-or-withhold decision lands with the feature that creates the file rather than accumulating as an unanswered backlog left for a later, unrelated `/distribution-audit` run.
+
+The gate runs `gaia-maintainer release manifest --check --json` and reads its `missing` array (every classified file the committed manifest has never acknowledged). It fails only on the intersection of `missing` with the files the PR touches: a pre-existing backlog inherited from earlier merges is not the current PR's to drain, so a PR is never blocked by a file it did not introduce. To clear a failure, run `/distribution-audit`, answer ship-or-withhold for each named file, and commit the regenerated manifest (and `.gaia/release-exclude` for any withheld file) to the branch.
+
+This is the PR-time complement to release Step 10, which regenerates the manifest with `--allow-undecided`: the release path must never start failing on a tree that carries a new file, so it takes the escape hatch by design, while the per-PR gate is where a newly-shipping file is actually answered.
 
 ## create-gaia bootstrapper
 
