@@ -116,6 +116,14 @@ setup() {
            "$SANDBOX/.github/audit/gate-pending-members.sh" \
            "$SANDBOX/.github/audit/audit-success-present.sh"
 
+  # The resolver copy resolves its libs relative to ITSELF
+  # ($SANDBOX/.claude/hooks/lib/), so provision the shared ownership
+  # classifier alongside it.
+  mkdir -p "$SANDBOX/.claude/hooks/lib"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
+
   POST_LOG="$BATS_TEST_TMPDIR/gh-post.log"
   rm -f "$POST_LOG"
   # A real $GITHUB_OUTPUT file, as in CI, so a step that publishes an output can

@@ -100,11 +100,20 @@ write_body() {
 # Copy the real resolver script into SANDBOX so a test can exercise the
 # member-aware gate. Untracked, so it never appears in a git diff itself.
 install_resolver() {
-  local resolver_abs
+  local resolver_abs lib_dir
   resolver_abs="$THIS_DIR/../../../.gaia/scripts/resolve-audit-members.sh"
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$resolver_abs" "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
+
+  # The resolver copy resolves its libs relative to ITSELF
+  # ($SANDBOX/.claude/hooks/lib/), so provision the shared ownership
+  # classifier alongside it.
+  lib_dir="$THIS_DIR/../../../.claude/hooks/lib"
+  mkdir -p "$SANDBOX/.claude/hooks/lib"
+  cp "$lib_dir/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+  cp "$lib_dir/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
+  cp "$lib_dir/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
 }
 
 # Commit a mixed app/ + .gaia/**/*.sh change on a new `feature` branch off

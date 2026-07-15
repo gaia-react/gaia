@@ -61,7 +61,8 @@
 #   resolver names nobody           -> run the ownerless probe.
 #
 # The ownerless probe (mirrors check_out_of_scope_pr in
-# .claude/hooks/pr-merge-audit-check.sh):
+# .claude/hooks/pr-merge-audit-check.sh, via the shared classifier both
+# consult):
 #   The merge deny-hook does NOT auto-allow on a zero-match dispatch. When
 #   the dispatch resolver returns an EMPTY set, the deny-hook falls through
 #   to a LEGACY single-signal gate that still requires the default member's
@@ -79,15 +80,15 @@
 #        1 there and the merge denies; fail-closed mirror).
 #     3. Empty diff -> the default member (the hook's bypass treats an empty
 #        diff as unusable input, not as "nothing to audit"; mirror it).
-#     4. Otherwise classify every changed path with the hook's own `case`
-#        arms. Any path outside {wiki/, .claude/, .specify/, .gaia/, docs/,
-#        root *.md} is IN SCOPE and prints the default member. All paths
-#        out of scope prints nothing.
+#     4. Otherwise classify every changed path via the shared out-of-scope
+#        allowlist predicate. Any path outside {wiki/, .claude/, .specify/,
+#        .gaia/, docs/, root *.md} is IN SCOPE and prints the default member.
+#        All paths out of scope prints nothing.
 #   The default member on this path is not a roster assumption and not
 #   per-member special-casing: it mirrors the deny-hook's own hardcoded
 #   legacy fallback, which is the sole authority on what clears that path.
-#   Keep this probe's `case` arms in sync with check_out_of_scope_pr() in
-#   .claude/hooks/pr-merge-audit-check.sh if that allowlist ever changes.
+#   The classifier module unavailable: fails closed to the default member,
+#   the same class of answer as every other unusable-query path below.
 #
 # Bash 3.2 compatible (macOS default): no associative arrays, no `mapfile`,
 # no `${var^^}`. No `cd` (per .claude/rules/shell-cwd.md); the repo root is
@@ -166,10 +167,27 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 resolver="$repo_root/.gaia/scripts/resolve-audit-members.sh"
 
+# --- Load the shared ownership classifier ------------------------------------
+#
+# Resolved from this script's OWN on-disk location, never cwd, never
+# $repo_root. Absent or unreadable module: the ownerless probe below fails
+# closed to the default member, same as its other unusable-query branches.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-scope.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-scope.sh"
+fi
+
 # --- The ownerless probe ---------------------------------------------------
 
 ownerless_probe() {
   local default_branch base changed path
+
+  if ! command -v audit_out_of_scope_allowlisted >/dev/null 2>&1; then
+    echo "resolve-audit-spawn: ownership classifier unavailable, failing closed to code-audit-frontend" >&2
+    echo "code-audit-frontend"
+    return 0
+  fi
 
   if [ -n "$BASE_OVERRIDE" ]; then
     base="$BASE_OVERRIDE"
@@ -193,12 +211,9 @@ ownerless_probe() {
 
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    case "$path" in
-      wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) continue ;;
-      */*) echo "code-audit-frontend"; return 0 ;;
-      *.md) continue ;;
-      *) echo "code-audit-frontend"; return 0 ;;
-    esac
+    audit_out_of_scope_allowlisted "$path" && continue
+    echo "code-audit-frontend"
+    return 0
   done <<EOF
 $changed
 EOF

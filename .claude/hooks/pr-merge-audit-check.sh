@@ -134,6 +134,30 @@ if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
   . "$_lib_dir/audit-clearance.sh"
 fi
 
+# Load the shared ownership classifier + machinery list from the same
+# on-disk location. check_out_of_scope_pr() and check_self_mod_only_update_pr()
+# below depend on the classifier to know what a changed path is; an absent or
+# unreadable module means this gate cannot know what it is gating, so it
+# denies rather than fall through to a degraded, uninformed gate. This is a
+# new, deliberate fail-closed path distinct from every other guard in this
+# hook (which fail OPEN on an unusable lookup).
+_scope_lib="$_lib_dir/audit-scope.sh"
+_machinery_lib="$_lib_dir/audit-machinery.sh"
+if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ]; then
+  jq -n --arg r "PR merge gate: cannot load the ownership classifier (.claude/hooks/lib/audit-scope.sh and .claude/hooks/lib/audit-machinery.sh must both exist and be readable). This gate's out-of-scope and self-mod-only bypasses depend on that module to know what a changed path is, so it denies rather than guess. Restore both files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+  exit 0
+fi
+# shellcheck source=/dev/null
+. "$_scope_lib"
+# shellcheck source=/dev/null
+. "$_machinery_lib"
+
 # Resolve HEAD SHA. If we cannot (no git, detached state we can't read),
 # fall back to permissive: this hook only enforces in repos where git answers.
 sha=$(git rev-parse HEAD 2>/dev/null || true)
@@ -158,6 +182,10 @@ tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
 # from this; the hook runs with cwd at the repo root, so a bare toplevel query
 # answers it (fall back to pwd only when git cannot).
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# Parse the roster ONCE per run (never once per path); the classifier module
+# was sourced above.
+audit_scope_init "$root"
 
 marker=".gaia/local/audit/${tree}.ok"
 
@@ -280,8 +308,9 @@ check_chore_deps_pr() {
 # on a surface outside audit scope. The agent has no rules that apply to wiki,
 # instruction files, .gaia metadata, or prose, so there is nothing to audit and
 # no marker is required, the same determination code-review-audit.yml's
-# `has_source` check makes when it skips. Keep the out-of-scope set below in
-# sync with that check's complement (.github/workflows/code-review-audit.yml).
+# `has_source` check makes when it skips. The allowlist itself lives in the
+# shared classifier (audit_out_of_scope_allowlisted), the ONE place this
+# literal set is defined.
 # Legacy-gate only: FC-4's auditable-base mirrors this check's complement, so
 # any in-scope path here also dispatches a member, a non-empty dispatched set
 # never reaches this function.
@@ -309,19 +338,11 @@ check_out_of_scope_pr() {
   changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null) || return 1
   [ -n "$changed" ] || return 1
 
-  # First in-scope (or unrecognized) path makes the marker mandatory. `case`
-  # globs match across slashes, so `wiki/*` covers `wiki/concepts/foo.md`. The
-  # `*/*` arm catches every other nested path (app/, test/, configs in
-  # subdirs); the final `*)` arm catches root-level files that are not markdown
-  # (package.json, tsconfig.json, *.config.ts, …).
+  # First path the shared classifier does not allowlist makes the marker
+  # mandatory.
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    case "$path" in
-      wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) continue ;;
-      */*) return 1 ;;
-      *.md) continue ;;
-      *) return 1 ;;
-    esac
+    audit_out_of_scope_allowlisted "$path" || return 1
   done <<< "$changed"
 
   return 0
@@ -365,20 +386,17 @@ check_self_mod_only_update_pr() {
   changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null) || return 1
   [ -n "$changed" ] || return 1
 
-  # Classify every changed path. Out-of-scope surfaces are always fine; the ONE
-  # permitted in-scope path is the audit workflow itself. Any other in-scope
-  # path (app/, test/, configs, a different workflow) denies immediately. The
-  # quoted "$audit_wf" arm is a literal match (no globbing) and precedes the
-  # catch-all `*/*` arm, so the workflow path is recognized before `*/*` claims
-  # it; every other nested path still falls to `*/*` and denies.
+  # Classify every changed path via the shared ORDERED THREE-WAY classifier
+  # (audit_self_mod_classify): out-of-scope surfaces are always fine; the ONE
+  # permitted in-scope path is the audit workflow itself; any other in-scope
+  # path (app/, test/, configs, a different workflow) denies immediately.
   seen_audit_wf=0
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    case "$path" in
-      wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) continue ;;
-      "$audit_wf") seen_audit_wf=1 ;;
-      */*) return 1 ;;
-      *.md) continue ;;
+    class="$(audit_self_mod_classify "$path")"
+    case "$class" in
+      out-of-scope) continue ;;
+      audit-workflow) seen_audit_wf=1 ;;
       *) return 1 ;;
     esac
   done <<< "$changed"

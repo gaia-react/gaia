@@ -22,11 +22,12 @@ setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIR/../resolve-audit-spawn.sh"
   RESOLVER_SRC="$THIS_DIR/../resolve-audit-members.sh"
+  LIB_DIR="$THIS_DIR/../../../.claude/hooks/lib"
   [ -x "$SCRIPT" ] || skip "resolve-audit-spawn.sh not executable"
   [ -x "$RESOLVER_SRC" ] || skip "resolve-audit-members.sh not executable"
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
-  mkdir -p "$SANDBOX/.gaia/scripts"
+  mkdir -p "$SANDBOX/.gaia/scripts" "$SANDBOX/.claude/hooks/lib"
 
   git -C "$SANDBOX" init --quiet --initial-branch=main
   git -C "$SANDBOX" config user.email "test@example.com"
@@ -43,6 +44,14 @@ setup() {
   # Both scripts, untracked, so neither ever appears in the diff under test.
   cp "$RESOLVER_SRC" "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
+
+  # The copied resolver resolves its lib relative to ITSELF
+  # ($SANDBOX/.claude/hooks/lib/), not the real repo, so the sandbox needs its
+  # own copy of the shared ownership classifier alongside it. Untracked, so
+  # it never appears in the diff under test either.
+  cp "$LIB_DIR/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+  cp "$LIB_DIR/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
+  cp "$LIB_DIR/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
 }
 
 # Run the oracle with cwd inside the sandbox so its own

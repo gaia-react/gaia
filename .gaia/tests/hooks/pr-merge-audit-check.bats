@@ -42,6 +42,7 @@ setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
   RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
   SPAWN_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-spawn.sh
+  LIB_DIR=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)
   REPO=$(mktemp -d -t pr-merge-test-XXXXXX)
 
   git -C "$REPO" init --quiet --initial-branch=main
@@ -62,6 +63,16 @@ setup() {
   chmod +x "$REPO/.gaia/scripts/resolve-audit-members.sh"
   cp "$SPAWN_ABS" "$REPO/.gaia/scripts/resolve-audit-spawn.sh"
   chmod +x "$REPO/.gaia/scripts/resolve-audit-spawn.sh"
+
+  # The two copies above resolve their libs relative to THEMSELVES
+  # ($REPO/.claude/hooks/lib/), not the real repo, so the sandbox needs its
+  # own copy of the shared ownership classifier alongside them. The real
+  # hook (run by absolute path via $HOOK_ABS, never copied) resolves its own
+  # libs to the real repo regardless.
+  mkdir -p "$REPO/.claude/hooks/lib"
+  cp "$LIB_DIR/audit-scope.sh" "$REPO/.claude/hooks/lib/audit-scope.sh"
+  cp "$LIB_DIR/audit-machinery.sh" "$REPO/.claude/hooks/lib/audit-machinery.sh"
+  cp "$LIB_DIR/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
 }
 
 teardown() {

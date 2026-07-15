@@ -276,6 +276,17 @@ scrub_maintainer_only() {
   cp "$WRITER" "$ADOPTER/.gaia/scripts/audit-write-clearance.sh"
   chmod +x "$ADOPTER/.gaia/scripts/audit-write-clearance.sh"
 
+  # The resolver copy resolves its libs relative to ITSELF
+  # ($ADOPTER/.claude/hooks/lib/), so provision the shared ownership
+  # classifier alongside it. The scrubbed .gaia/audit-ci.yml (written above)
+  # still drives the single-member roster; the lib's builtin fallback is
+  # consulted only when the config has no auditors block, which it does.
+  _lib_src="$(dirname "$READER")"
+  mkdir -p "$ADOPTER/.claude/hooks/lib"
+  cp "$_lib_src/audit-scope.sh" "$ADOPTER/.claude/hooks/lib/audit-scope.sh"
+  cp "$_lib_src/audit-machinery.sh" "$ADOPTER/.claude/hooks/lib/audit-machinery.sh"
+  cp "$_lib_src/audit-clearance.sh" "$ADOPTER/.claude/hooks/lib/audit-clearance.sh"
+
   # The roster really did collapse: a .gaia/**/*.sh change (which the scrubbed-
   # away maintainer-shell member would own) resolves to NOBODY now.
   echo "#!/bin/bash" > "$ADOPTER/.gaia/scripts/probe.sh"
