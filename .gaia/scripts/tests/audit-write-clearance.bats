@@ -55,7 +55,9 @@ member_digest() {
 @test "UAT-020: omitting --root exits 2 with a usage message on stderr" {
   run bash "$WRITER" --member code-audit-frontend --provenance earned
   [ "$status" -eq 2 ]
-  # bats `run` captures only stdout; the usage text is on stderr.
+  # bats `run` merges stderr into `$output`, so `$output` cannot tell the two
+  # apart. Re-run with stdout discarded to prove the usage text goes to stderr
+  # specifically, which is what this test claims.
   err="$(bash "$WRITER" --member code-audit-frontend --provenance earned 2>&1 1>/dev/null || true)"
   grep -qF "usage" <<<"$err"
   grep -qF "root is required" <<<"$err"
