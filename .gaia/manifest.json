@@ -37,8 +37,8 @@
     ".claude/hooks/check-story-exists.sh": "owned",
     ".claude/hooks/debt-sentinel-touch.sh": "owned",
     ".claude/hooks/debt-session-reconcile.sh": "owned",
-    ".claude/hooks/lib/audit-carry-forward.sh": "owned",
     ".claude/hooks/lib/audit-clearance.sh": "owned",
+    ".claude/hooks/lib/audit-digest.sh": "owned",
     ".claude/hooks/lib/audit-dispositions.sh": "owned",
     ".claude/hooks/lib/audit-machinery.sh": "owned",
     ".claude/hooks/lib/audit-scope.sh": "owned",
@@ -185,6 +185,8 @@
     ".gaia/scripts/append-audit-author.sh": "owned",
     ".gaia/scripts/archived-backlog-migrate.sh": "owned",
     ".gaia/scripts/audit-ledger/append-worthiness.mjs": "owned",
+    ".gaia/scripts/audit-machinery-complete.sh": "owned",
+    ".gaia/scripts/audit-member-digest.sh": "owned",
     ".gaia/scripts/audit-noop-detect.sh": "owned",
     ".gaia/scripts/audit-window-lib.sh": "owned",
     ".gaia/scripts/audit-write-clearance.sh": "owned",
@@ -600,6 +602,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-15T11:24:16.877Z",
+  "generated": "2026-07-16T14:52:09.100Z",
   "version": "1.6.1"
 }

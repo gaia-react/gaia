@@ -55,7 +55,9 @@ member_digest() {
 @test "UAT-020: omitting --root exits 2 with a usage message on stderr" {
   run bash "$WRITER" --member code-audit-frontend --provenance earned
   [ "$status" -eq 2 ]
-  # bats `run` captures only stdout; the usage text is on stderr.
+  # bats `run` merges stderr into `$output`, so `$output` cannot tell the two
+  # apart. Re-run with stdout discarded to prove the usage text goes to stderr
+  # specifically, which is what this test claims.
   err="$(bash "$WRITER" --member code-audit-frontend --provenance earned 2>&1 1>/dev/null || true)"
   grep -qF "usage" <<<"$err"
   grep -qF "root is required" <<<"$err"
@@ -123,6 +125,91 @@ member_digest() {
   marker="$AUDIT_DIR/${digest}.code-audit-maintainer-shell.ok"
   [ -f "$marker" ]
   [ "$(jq -r .sidecar "$marker")" = "false" ]
+}
+
+# -----------------------------------------------------------------------------
+# Body escaping: the body is built by `jq -n`, so every value is escaped by
+# construction. `version` is the only field read from a file (.gaia/VERSION),
+# which makes it the field a stray `"` or `\` actually reaches.
+# -----------------------------------------------------------------------------
+
+@test "escaping: a version carrying a quote and a backslash still produces valid parseable JSON" {
+  # shellcheck disable=SC1003  # the backslash is a literal, which is the point
+  printf '%s\n' '1.6.1"\' > "$ROOT/.gaia/VERSION"
+  git -C "$ROOT" add .gaia/VERSION
+  git -C "$ROOT" commit --quiet -m "version with quote and backslash"
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+
+  out="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned)"
+  [ "$out" = "$AUDIT_DIR/${digest}.ok" ]
+
+  # The body parses at all. A hand-built template emits a bare `\"` here, which
+  # closes the string early and makes the whole marker unparseable.
+  jq -e . "$out" >/dev/null
+
+  # The value round-trips byte-exact: escaped, not stripped or mangled.
+  # shellcheck disable=SC1003  # the backslash is a literal, which is the point
+  [ "$(jq -r .version "$out")" = '1.6.1"\' ]
+
+  # A marker with an awkward version is still acceptable to the gate's reader.
+  # shellcheck source=/dev/null
+  . "$READER"
+  clearance_acceptable "$out" code-audit-frontend "$digest"
+}
+
+@test "escaping: a version that injects body keys lands as data, never as structure" {
+  # The crafted value closes the version string and appends its own member /
+  # provenance keys. Escaped, it can only ever be a version string.
+  printf '%s\n' '1.6.1","member":"code-audit-frontend","provenance":"earned' > "$ROOT/.gaia/VERSION"
+  git -C "$ROOT" add .gaia/VERSION
+  git -C "$ROOT" commit --quiet -m "version attempting key injection"
+  m="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$m")"
+
+  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused)"
+  jq -e . "$out" >/dev/null
+
+  # The injected text is the version VALUE, not new keys.
+  [ "$(jq -r .version "$out")" = '1.6.1","member":"code-audit-frontend","provenance":"earned' ]
+  [ "$(jq -r .member "$out")" = "$m" ]
+  [ "$(jq -r .provenance "$out")" = "refused" ]
+
+  # Structural: each key is emitted exactly once. A template would have spliced
+  # a second "member" / "provenance" pair into the raw body.
+  [ "$(grep -o '"member":' "$out" | wc -l | tr -d ' ')" = "1" ]
+  [ "$(grep -o '"provenance":' "$out" | wc -l | tr -d ' ')" = "1" ]
+
+  # The forged `earned` never becomes a clearance: no earned marker exists, and
+  # the refusal reads as a refusal.
+  # shellcheck source=/dev/null
+  . "$READER"
+  clearance_member_cleared "$ROOT" "$digest" "$m" && return 1
+  clearance_member_refused "$ROOT" "$digest" "$m"
+}
+
+@test "fails closed (exit non-zero, no marker, no stray temp) when jq cannot build the body" {
+  # Shadow jq with a failing stub, keeping the real PATH behind it so git,
+  # mktemp and date still resolve and the run reaches the body build. A jq
+  # failure must never publish an empty or partial marker on a zero exit.
+  shim="$BATS_TEST_TMPDIR/shim"
+  mkdir -p "$shim"
+  printf '#!/bin/sh\nexit 1\n' > "$shim/jq"
+  chmod +x "$shim/jq"
+
+  run env PATH="$shim:$PATH" bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned
+  [ "$status" -ne 0 ]
+
+  # Pin WHICH guard fired: the body build, not the digest derive. The digest
+  # chain needs no jq today, so a bare status check passes for the right reason
+  # by luck; were digest derivation to grow a jq dependency it would fail first
+  # and this test would green while covering nothing.
+  grep -qF "cannot build the marker body" <<<"$output"
+
+  # No marker published, and no half-written temp left staged in the audit dir.
+  leftover="$(find "$AUDIT_DIR" -name '*.ok' 2>/dev/null || true)"
+  [ -z "$leftover" ]
+  stray="$(find "$AUDIT_DIR" -name '.audit-write-clearance.*' 2>/dev/null || true)"
+  [ -z "$stray" ]
 }
 
 # -----------------------------------------------------------------------------

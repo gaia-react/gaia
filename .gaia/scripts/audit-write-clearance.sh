@@ -22,9 +22,13 @@
 #   - Every write lands unconditionally: it overwrites a stale body at the
 #     same path. There is no create-only guard and no carried family to
 #     dominate; provenance is earned or refused only.
-#   - Exit 0 on write; stdout is the marker path. Exit 2 on a usage error, or
-#     when the member's content digest cannot be derived (message on
-#     stderr) -- never a marker written keyed to an empty or partial digest.
+#   - Exit 0 on write; stdout is the marker path. Exit 2 on a usage error, when
+#     the member's content digest cannot be derived, or when the body cannot be
+#     built (message on stderr) -- never a marker written keyed to an empty or
+#     partial digest, and never an empty or partial body published.
+#   - jq is REQUIRED: it builds the body, so every value is escaped by
+#     construction. Absent jq the writer fails closed rather than emitting a
+#     hand-assembled body. The gate's reader requires jq for the same reason.
 #
 # This writer is NOT evidence-gated: it takes no --report, calls no detector,
 # and its body carries no evidence block. It raises the forgery bar (a forged
@@ -124,6 +128,13 @@ if [ -z "$digest" ]; then
   exit 2
 fi
 
+# jq builds the body. Fail closed here rather than at the write, so a missing
+# jq never leaves a half-provisioned audit dir behind.
+command -v jq >/dev/null 2>&1 || {
+  err "jq is required to write a clearance marker"
+  exit 2
+}
+
 # Resolve the real HEAD tree and commit sha from the root, never from CWD.
 # Plain data fields on the body now, not the filename key.
 tree="$(git -C "$ROOT" rev-parse "HEAD^{tree}" 2>/dev/null || true)"
@@ -184,9 +195,28 @@ if [ -z "$tmp" ]; then
   exit 2
 fi
 
-printf '{"version":"%s","schema":3,"member":"%s","provenance":"%s","digest":"%s","tree":"%s","sha":"%s","audited_at":"%s","sidecar":%s}\n' \
-  "$version" "$MEMBER" "$PROVENANCE" "$digest" "$tree" "$sha" "$audited_at" "$sidecar" \
-  > "$tmp"
+# Body built by `jq -n`, never a hand-assembled template: every value is
+# escaped by construction, so a field carrying a `"` or `\` can never emit
+# malformed JSON. `-c` keeps the compact single-line shape the marker's
+# consumers read. A jq failure must not publish an empty or partial marker.
+jq -cn \
+  --arg version "$version" \
+  --argjson schema 3 \
+  --arg member "$MEMBER" \
+  --arg provenance "$PROVENANCE" \
+  --arg digest "$digest" \
+  --arg tree "$tree" \
+  --arg sha "$sha" \
+  --arg audited_at "$audited_at" \
+  --argjson sidecar "$sidecar" \
+  '{version: $version, schema: $schema, member: $member,
+    provenance: $provenance, digest: $digest, tree: $tree, sha: $sha,
+    audited_at: $audited_at, sidecar: $sidecar}' \
+  > "$tmp" || {
+  rm -f "$tmp"
+  err "cannot build the marker body"
+  exit 2
+}
 
 mv -f "$tmp" "$target" || {
   rm -f "$tmp"
