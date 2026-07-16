@@ -5,31 +5,26 @@
 #
 # Usage:
 #   audit-write-clearance.sh --root <path> --member <name> \
-#                            --provenance earned|carried|refused \
-#                            [--anchor-tree <sha>]   # REQUIRED when carried
+#                            --provenance earned|refused \
 #                            [--help|-h]
 #
-#   --root         REQUIRED. The audited working root. The tree is resolved
-#                  with `git -C <root> rev-parse HEAD^{tree}`, never from the
-#                  caller's CWD, which bounds a worktree run from stamping a
-#                  marker keyed to another tree.
+#   --root         REQUIRED. The audited working root. The member's content
+#                  digest is derived from it (never from the caller's CWD)
+#                  via the digest engine (.claude/hooks/lib/audit-digest.sh),
+#                  which bounds a worktree run from stamping a marker keyed to
+#                  another worktree's content.
 #   --member       REQUIRED. The Code Audit Team member writing the clearance.
-#   --provenance   REQUIRED. earned | carried | refused.
-#   --anchor-tree  REQUIRED for --provenance carried; the tree the carried
-#                  clearance was carried forward FROM.
+#   --provenance   REQUIRED. earned | refused.
 #
 # Behavior (all contract):
 #   - Creates <root>/.gaia/local/audit/ if absent.
 #   - Writes ATOMICALLY: a temp file in the target directory, then `mv`.
-#   - Earned strictly dominates carried. An `earned` write lands
-#     unconditionally: it overwrites a legacy-bodied marker at the same path
-#     and removes the member's carried artifact for that tree if one exists.
-#     There is NO `[ ! -f "$marker" ]` guard.
-#   - A `carried` write is create-only: it never overwrites an EARNED marker,
-#     and declines (`declined: earned-clearance-exists`) when one exists.
-#   - Exit 0 on any decided outcome; stdout is the marker path on a write, or
-#     `declined: earned-clearance-exists` when a carried write is blocked.
-#     Exit 2 on a usage error (message on stderr).
+#   - Every write lands unconditionally: it overwrites a stale body at the
+#     same path. There is no create-only guard and no carried family to
+#     dominate; provenance is earned or refused only.
+#   - Exit 0 on write; stdout is the marker path. Exit 2 on a usage error, or
+#     when the member's content digest cannot be derived (message on
+#     stderr) -- never a marker written keyed to an empty or partial digest.
 #
 # This writer is NOT evidence-gated: it takes no --report, calls no detector,
 # and its body carries no evidence block. It raises the forgery bar (a forged
@@ -46,8 +41,7 @@ DEFAULT_MEMBER="code-audit-frontend"
 usage() {
   cat <<'EOF' >&2
 usage: audit-write-clearance.sh --root <path> --member <name>
-                                --provenance earned|carried|refused
-                                [--anchor-tree <sha>]  # required when carried
+                                --provenance earned|refused
                                 [--help|-h]
 EOF
 }
@@ -56,10 +50,17 @@ err() {
   printf 'audit-write-clearance: %s\n' "$1" >&2
 }
 
+# Resolve the digest engine from THIS file's own on-disk location, never cwd,
+# never $ROOT: .gaia/scripts -> ../../.claude/hooks/lib.
+_write_clearance_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -n "${_write_clearance_lib_dir:-}" ] && [ -f "$_write_clearance_lib_dir/audit-digest.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_write_clearance_lib_dir/audit-digest.sh"
+fi
+
 ROOT=""
 MEMBER=""
 PROVENANCE=""
-ANCHOR_TREE=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -73,10 +74,6 @@ while [ "$#" -gt 0 ]; do
       ;;
     --provenance)
       PROVENANCE="${2:-}"
-      shift 2 2>/dev/null || shift
-      ;;
-    --anchor-tree)
-      ANCHOR_TREE="${2:-}"
       shift 2 2>/dev/null || shift
       ;;
     --help|-h)
@@ -102,25 +99,33 @@ if [ -z "$MEMBER" ]; then
   exit 2
 fi
 case "$PROVENANCE" in
-  earned|carried|refused) ;;
+  earned|refused) ;;
   "")
     err "--provenance is required"
     usage
     exit 2
     ;;
   *)
-    err "invalid --provenance '$PROVENANCE' (want earned|carried|refused)"
+    err "invalid --provenance '$PROVENANCE' (want earned|refused)"
     usage
     exit 2
     ;;
 esac
-if [ "$PROVENANCE" = "carried" ] && [ -z "$ANCHOR_TREE" ]; then
-  err "--anchor-tree is required when --provenance is carried"
-  usage
+
+# The member's content digest is the marker's validity key. Fail closed: never
+# write a marker keyed to an empty or partial digest.
+command -v audit_member_digest >/dev/null 2>&1 || {
+  err "cannot load the digest engine (.claude/hooks/lib/audit-digest.sh)"
+  exit 2
+}
+digest="$(audit_member_digest "$ROOT" "$MEMBER" 2>/dev/null || true)"
+if [ -z "$digest" ]; then
+  err "cannot derive a content digest for member '$MEMBER' at --root '$ROOT'"
   exit 2
 fi
 
-# Resolve the audited tree and HEAD commit from the root, never from CWD.
+# Resolve the real HEAD tree and commit sha from the root, never from CWD.
+# Plain data fields on the body now, not the filename key.
 tree="$(git -C "$ROOT" rev-parse "HEAD^{tree}" 2>/dev/null || true)"
 if [ -z "$tree" ]; then
   err "cannot resolve HEAD tree for --root '$ROOT'"
@@ -128,8 +133,8 @@ if [ -z "$tree" ]; then
 fi
 sha="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
 
-# Version is the .gaia/VERSION literal under the root. Advisory to
-# carry-forward, never a merge-gate contract.
+# Version is the .gaia/VERSION literal under the root. Advisory data, never a
+# merge-gate contract.
 version=""
 version_file="${ROOT}/.gaia/VERSION"
 if [ -f "$version_file" ]; then
@@ -150,57 +155,38 @@ audited_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 audit_dir="${ROOT}/.gaia/local/audit"
 
-# Filename family for this member/provenance.
+# Filename family for this member/provenance: keyed to the member's content
+# digest, not the tree.
 if [ "$MEMBER" = "$DEFAULT_MEMBER" ]; then
   infix=""
 else
   infix=".${MEMBER}"
 fi
-earned_path="${audit_dir}/${tree}${infix}.ok"
-carried_path="${audit_dir}/${tree}${infix}.carried"
-refused_path="${audit_dir}/${tree}${infix}.refused"
+earned_path="${audit_dir}/${digest}${infix}.ok"
+refused_path="${audit_dir}/${digest}${infix}.refused"
 
 case "$PROVENANCE" in
   earned)  target="$earned_path" ;;
-  carried) target="$carried_path" ;;
   refused) target="$refused_path" ;;
 esac
-
-# Carried is create-only: it never overwrites an earned marker.
-if [ "$PROVENANCE" = "carried" ] && [ -f "$earned_path" ]; then
-  printf 'declined: earned-clearance-exists\n'
-  exit 0
-fi
 
 mkdir -p "$audit_dir" || {
   err "cannot create audit directory '$audit_dir'"
   exit 2
 }
 
-# Earned strictly dominates carried: remove any carried artifact for this
-# tree/member before landing the earned marker.
-if [ "$PROVENANCE" = "earned" ]; then
-  rm -f "$carried_path"
-fi
-
 # Atomic write: temp file in the SAME directory as the target, then mv. A torn
-# marker would clear the existence-testing merge gate while failing
-# carry-forward's stricter body check, so the publish must be a single rename.
+# marker would clear the existence-testing merge gate while failing the
+# reader's stricter body check, so the publish must be a single rename.
 tmp="$(mktemp "${audit_dir}/.audit-write-clearance.XXXXXX" 2>/dev/null || true)"
 if [ -z "$tmp" ]; then
   err "cannot create temp file in '$audit_dir'"
   exit 2
 fi
 
-if [ "$PROVENANCE" = "carried" ]; then
-  printf '{"version":"%s","schema":2,"member":"%s","provenance":"%s","sha":"%s","tree":"%s","audited_at":"%s","sidecar":%s,"anchor_tree":"%s"}\n' \
-    "$version" "$MEMBER" "$PROVENANCE" "$sha" "$tree" "$audited_at" "$sidecar" "$ANCHOR_TREE" \
-    > "$tmp"
-else
-  printf '{"version":"%s","schema":2,"member":"%s","provenance":"%s","sha":"%s","tree":"%s","audited_at":"%s","sidecar":%s}\n' \
-    "$version" "$MEMBER" "$PROVENANCE" "$sha" "$tree" "$audited_at" "$sidecar" \
-    > "$tmp"
-fi
+printf '{"version":"%s","schema":3,"member":"%s","provenance":"%s","digest":"%s","tree":"%s","sha":"%s","audited_at":"%s","sidecar":%s}\n' \
+  "$version" "$MEMBER" "$PROVENANCE" "$digest" "$tree" "$sha" "$audited_at" "$sidecar" \
+  > "$tmp"
 
 mv -f "$tmp" "$target" || {
   rm -f "$tmp"

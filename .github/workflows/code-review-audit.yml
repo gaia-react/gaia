@@ -337,10 +337,11 @@ jobs:
             report you MUST also write the local clean marker via the shared
             clearance writer, `bash .gaia/scripts/audit-write-clearance.sh
             --root "$(git rev-parse --show-toplevel)" --member
-            code-audit-frontend --provenance earned`, which resolves HEAD's
-            TREE from `--root` and writes `.gaia/local/audit/<tree-sha>.ok`
-            keyed to that tree, not the commit sha (the "Audit marker" step in
-            the agent definition). Write it even if the trailer
+            code-audit-frontend --provenance earned`, which resolves the
+            member's content digest from `--root` and writes
+            `.gaia/local/audit/<digest>.ok` keyed to that digest, not the
+            commit sha or tree (the "Audit marker" step in the agent
+            definition). Write it even if the trailer
             stamp declines or makes no commit: when nothing is pushed, the
             workflow promotes this marker to the durable GAIA-Audit commit
             status on HEAD, and a clean audit that leaves no marker strands the
@@ -662,6 +663,19 @@ jobs:
             exit 0
           fi
 
+          # Recompute the frontend member's content digest (C1) for the exact
+          # sha being stamped, and resolve its real tree as a plain data
+          # field. Fail closed: never post a status (pending or success) on
+          # an unrecomputable digest -- mirrors the .gaia/VERSION guard
+          # below, which also skips the POST and logs rather than guessing.
+          tree_sha="$(git rev-parse "${AUDIT_SHA}^{tree}")"
+          if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
+              --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
+              --ref "${AUDIT_SHA}")"; then
+            echo "code-review-audit: could not recompute the frontend digest for ${AUDIT_SHA}; skipping status." >&2
+            exit 0
+          fi
+
           # Member-aware gate: never stamp success on the frontend's clearance
           # alone. .github/audit/gate-pending-members.sh carries the full
           # rationale (CI runs one auditor; every co-dispatched member clears
@@ -689,12 +703,12 @@ jobs:
           # edge case.
           #
           # So: skip the pending POST when a GAIA-Audit `success` is already the
-          # LIVE status on this sha AND carries THIS EXACT TREE. Such a success
-          # means every dispatched member has already cleared this content, so
-          # CI has nothing truer to say than the answer already there. A success
-          # naming an OLDER tree is correctly ignored (the tree is the marker's
-          # identity), and a sha nobody has cleared has no such success, so this
-          # still fails closed in every direction.
+          # LIVE status on this sha AND carries THIS EXACT FRONTEND DIGEST. Such
+          # a success means every dispatched member has already cleared this
+          # content, so CI has nothing truer to say than the answer already
+          # there. A success naming a DIFFERENT digest is correctly ignored (the
+          # digest is the marker's identity), and a sha nobody has cleared has
+          # no such success, so this still fails closed in every direction.
           #
           # Residual race, deliberately accepted and not papered over: if the
           # local POST lands between this read and the write below, `pending`
@@ -703,7 +717,7 @@ jobs:
           # safer than the unconditional overwrite it replaces.
           #
           # .github/audit/audit-success-present.sh owns the read and its contract:
-          # 0 = a success for this tree IS live, 1 = definitively not, 2 = could
+          # 0 = a success for this digest IS live, 1 = definitively not, 2 = could
           # NOT ask. A caller must never collapse 2 into 1 -- posting `pending`
           # over a status we merely failed to read is precisely the clobber this
           # guard exists to prevent, and it would reintroduce the bug on exactly
@@ -724,10 +738,9 @@ jobs:
           # the stand-down the default and the POST the exception.
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           if [ -n "$pending" ]; then
-            tree_sha="$(git rev-parse "${AUDIT_SHA}^{tree}")"
-            _live=0; bash .github/audit/audit-success-present.sh "${AUDIT_SHA}" "${tree_sha}" || _live=$?
+            _live=0; bash .github/audit/audit-success-present.sh "${AUDIT_SHA}" "${frontend_digest}" || _live=$?
             if [ "$_live" -eq 0 ]; then
-              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
+              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
               exit 0
             fi
             if [ "$_live" -ne 1 ]; then
@@ -755,12 +768,11 @@ jobs:
             echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
             exit 0
           fi
-          tree_sha="$(git rev-parse "${AUDIT_SHA}^{tree}")"
           gh api "repos/${GITHUB_REPOSITORY}/statuses/${AUDIT_SHA}" \
             --method POST \
             --field state=success \
             --field context=GAIA-Audit \
-            --field description="${version} ${tree_sha}"
+            --field description="${version} ${frontend_digest} ${tree_sha}"
 
       - name: Write GAIA-Audit commit status (clean, no push)
         if: |
@@ -816,7 +828,7 @@ jobs:
           # no-push case (clean-no-commit and refused alike).
           #
           # Proven-clean guard (must never false-pass): the audit agent writes
-          # the local marker file .gaia/local/audit/<tree>.ok ONLY when the
+          # the local marker file .gaia/local/audit/<digest>.ok ONLY when the
           # review is clean (no Critical, every Important addressed, every
           # Suggestion fixed or none). It is NEVER written while findings
           # remain. A dirty audit also reaches this step (it pushed nothing), but
@@ -826,14 +838,23 @@ jobs:
           # under .gaia/local/ (gitignored), so it exists only in this runner's
           # workspace and only for this run.
           #
-          # The marker is keyed to the TREE, so look it up by the pushed head's
-          # tree rather than by $HEAD_SHA. Nothing was pushed on this path, so
-          # the pushed head's tree IS the tree that will merge, and it is exactly
-          # what the agent vouched for -- even if the agent left an unpushed
-          # local commit (a declined trailer stamp, a refused self-heal) that
-          # moved the runner's HEAD off the pushed head without changing content.
+          # The marker is keyed to the frontend member's content digest (C1), so
+          # recompute it for the pushed head's tree and look it up by that,
+          # rather than by $HEAD_SHA or the tree directly. Nothing was pushed on
+          # this path, so the pushed head's tree IS the tree that will merge, and
+          # its digest is exactly what the agent vouched for -- even if the agent
+          # left an unpushed local commit (a declined trailer stamp, a refused
+          # self-heal) that moved the runner's HEAD off the pushed head without
+          # changing content. Fail closed: never stamp on an unrecomputable
+          # digest.
           tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"
-          marker=".gaia/local/audit/${tree_sha}.ok"
+          if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
+              --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
+              --ref "${HEAD_SHA}")"; then
+            echo "code-review-audit: could not recompute the frontend digest for ${HEAD_SHA}; skipping status." >&2
+            exit 0
+          fi
+          marker=".gaia/local/audit/${frontend_digest}.ok"
           if [ ! -f "$marker" ]; then
             echo "code-review-audit: clean marker ${marker} absent; audit not proven clean, not stamping." >&2
             exit 0
@@ -844,26 +865,28 @@ jobs:
           # auditor. .github/audit/gate-pending-members.sh names every
           # co-dispatched member CI cannot clear; each clears locally instead.
           #
-          # The pending description deliberately carries NO "<version> <tree-sha>"
-          # cleared shape, so even a state-blind reader cannot mistake it for
-          # cleared (same defense-in-depth as the local-mode stand-down).
+          # The pending description deliberately carries NO "<version>
+          # <frontend-digest> <tree>" cleared shape, so even a state-blind reader
+          # cannot mistake it for cleared (same defense-in-depth as the
+          # local-mode stand-down).
           # Non-clobbering pending POST. Same rationale as the "Write GAIA-Audit
           # commit status" step above: a commit status has no compare-and-set,
           # so an unconditional `pending` here would overwrite the `success` the
           # local member-aware producer posts once every dispatched member has
           # cleared, and the merge gate would never re-open on its own. Skip the
-          # POST when a GAIA-Audit success for THIS EXACT TREE is already live.
-          # Post `pending` ONLY on a definitive 1 ("no success live"). Every other
-          # exit is unanswerable and stands down -- 2 ("could not ask"), 127 (the
-          # guard script absent), anything else -- because collapsing an
-          # unanswerable read into "no success live" is the clobber this guard
-          # exists to prevent; the first stamp step carries the full rationale.
-          # $tree_sha is already resolved above, where it keyed the marker lookup.
+          # POST when a GAIA-Audit success for THIS EXACT FRONTEND DIGEST is
+          # already live. Post `pending` ONLY on a definitive 1 ("no success
+          # live"). Every other exit is unanswerable and stands down -- 2
+          # ("could not ask"), 127 (the guard script absent), anything else --
+          # because collapsing an unanswerable read into "no success live" is the
+          # clobber this guard exists to prevent; the first stamp step carries
+          # the full rationale. $frontend_digest is already resolved above,
+          # where it keyed the marker lookup.
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
           if [ -n "$pending" ]; then
-            _live=0; bash .github/audit/audit-success-present.sh "${HEAD_SHA}" "${tree_sha}" || _live=$?
+            _live=0; bash .github/audit/audit-success-present.sh "${HEAD_SHA}" "${frontend_digest}" || _live=$?
             if [ "$_live" -eq 0 ]; then
-              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
+              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
               exit 0
             fi
             if [ "$_live" -ne 1 ]; then
@@ -891,7 +914,8 @@ jobs:
             echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
             exit 0
           fi
-          # $tree_sha is already resolved above, where it keyed the marker lookup.
+          # $frontend_digest and $tree_sha are already resolved above, where the
+          # digest keyed the marker lookup.
           # Non-fatal POST: a failed status side-effect must never red a clean
           # audit. The gate is the GAIA-Audit status itself -- if this POST
           # fails, the status simply does not land and the local merge path
@@ -901,7 +925,7 @@ jobs:
               --method POST \
               --field state=success \
               --field context=GAIA-Audit \
-              --field description="${version} ${tree_sha}"; then
+              --field description="${version} ${frontend_digest} ${tree_sha}"; then
             echo "code-review-audit: GAIA-Audit status POST to ${HEAD_SHA} failed (non-fatal); local merge path will re-stamp." >&2
           fi
 
@@ -925,14 +949,14 @@ jobs:
           # the audit (no tokens spent); the local merge path runs it instead.
           # Post a `pending` GAIA-Audit status on HEAD so the required check
           # blocks the merge button until the local audit clears it. The
-          # description deliberately carries NO `<version> <tree-sha>` cleared
-          # shape -- a fixed sentinel that cannot match HEAD's tree -- so even a
-          # state-blind reader cannot mistake it for cleared (defense in depth
-          # behind the state-aware readers, which reject any non-success state).
-          # Subordinate to the scope gates (has_source == true && self_modified
-          # == false): out-of-scope / self-mod PRs take the existing
-          # success-stamp paths and never reach here, so exactly one terminal
-          # status lands per run.
+          # description deliberately carries NO `<version> <frontend-digest>
+          # <tree>` cleared shape -- a fixed sentinel that cannot match any real
+          # digest -- so even a state-blind reader cannot mistake it for cleared
+          # (defense in depth behind the state-aware readers, which reject any
+          # non-success state). Subordinate to the scope gates (has_source ==
+          # true && self_modified == false): out-of-scope / self-mod PRs take
+          # the existing success-stamp paths and never reach here, so exactly
+          # one terminal status lands per run.
           head_sha="${HEAD_SHA}"
 
           # Non-clobbering pending POST, exactly as the three stamp steps above
@@ -948,11 +972,14 @@ jobs:
           # protection then rejects the merge and nothing re-posts, so the gate
           # stays shut until a human re-runs the producer by hand.
           #
-          # The tree, not the sha, is the marker's identity: a success naming an
-          # OLDER tree vouches for content that is no longer what would merge and
-          # correctly does NOT stand this step down. Nothing is pushed on this
-          # path (CI does not run the audit here), so the runner's HEAD is the
-          # pushed head and its tree is the tree that would merge.
+          # The frontend digest, not the sha, is the marker's identity: a success
+          # naming a DIFFERENT digest vouches for content that is no longer what
+          # would merge and correctly does NOT stand this step down. Nothing is
+          # pushed on this path (CI does not run the audit here), so the
+          # runner's HEAD is the pushed head and its digest is the digest that
+          # would merge. Fail closed on an unrecomputable digest: stand down
+          # rather than risk posting pending without being able to verify
+          # whether a live success already covers this exact content.
           #
           # Post `pending` ONLY on a definitive 1 ("no success live"); stand down
           # on 0, on 2 ("could not ask"), and on every other exit (127 when the
@@ -960,10 +987,15 @@ jobs:
           # CLOSED: with no status posted the required GAIA-Audit check is absent,
           # which blocks the merge just as a `pending` one does. The first stamp
           # step carries the full rationale.
-          tree_sha="$(git rev-parse "${head_sha}^{tree}")"
-          _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${tree_sha}" || _live=$?
+          if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
+              --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
+              --ref "${head_sha}")"; then
+            echo "code-review-audit: could not recompute the frontend digest for ${head_sha}; standing down." >&2
+            exit 0
+          fi
+          _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${frontend_digest}" || _live=$?
           if [ "$_live" -eq 0 ]; then
-            echo "code-review-audit: local mode, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
+            echo "code-review-audit: local mode, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
             exit 0
           fi
           if [ "$_live" -ne 1 ]; then
@@ -1043,6 +1075,21 @@ jobs:
           # is shut, which is the same class of misleading green the workflow
           # already guards against elsewhere.
           echo "members_pending=${pending}" >> "$GITHUB_OUTPUT"
+
+          # Recompute the frontend digest for HEAD's tree (C1); the non-clobber
+          # read and the eventual success description are both keyed to it.
+          # Computed once, ahead of the branch below, since both the pending
+          # path and the success path need it. Fail closed: never post a
+          # status (pending or success) on an unrecomputable digest.
+          tree_sha="$(git rev-parse "${head_sha}^{tree}")"
+          if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
+              --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
+              --ref "${head_sha}")"; then
+            echo "code-review-audit: could not recompute the frontend digest for ${head_sha}; skipping status." >&2
+            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # Publish whether the SUCCESS status actually landed, on every exit
           # path, for the same reason members_pending exists: the terminal comment
           # step must never claim a stamp that did not happen. `false` here is not
@@ -1054,10 +1101,9 @@ jobs:
             # still clears the gate); over-claiming a stamp is the failure this
             # output exists to prevent.
             echo "success_stamped=false" >> "$GITHUB_OUTPUT"
-            tree_sha="$(git rev-parse "${head_sha}^{tree}")"
-            _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${tree_sha}" || _live=$?
+            _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${frontend_digest}" || _live=$?
             if [ "$_live" -eq 0 ]; then
-              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for tree ${tree_sha} is already live; not clobbering it with pending." >&2
+              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
               # Publish the stand-down so the terminal comment step tells the
               # truth. members_pending stays non-empty here (CI cannot see a
               # local marker, so it still names those members), and the comment
@@ -1102,12 +1148,11 @@ jobs:
             echo "success_stamped=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          tree_sha="$(git rev-parse "${head_sha}^{tree}")"
           gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
             --method POST \
             --field state=success \
             --field context=GAIA-Audit \
-            --field description="${version} ${tree_sha}"
+            --field description="${version} ${frontend_digest} ${tree_sha}"
           # Last, so it records a POST that returned non-zero as no-stamp: the
           # unguarded `gh api` above fails the step under `set -e`, which skips the
           # comment step outright, but an output written first would outlive a

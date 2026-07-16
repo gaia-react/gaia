@@ -27,32 +27,30 @@
 #      is the provable-death signal (the normal per-branch PR-merge cleanup runs
 #      no `git branch -D` here because the landing is fire-and-forget). This
 #      sweep is git-scoped, so it runs before the .gaia/local guard below.
-#   2. audit/<tree>.ok, the per-member audit/<tree>.<member>.ok, and
-#      audit/<tree>.progress.log, whose <tree> is no longer live (not HEAD's
-#      tree, and not the tree of any local branch tip or other worktree's
-#      HEAD); plus audit/<sha>.dispositions.json, whose <sha> is neither HEAD
-#      nor reachable from any local branch. A marker gates `gh pr merge` only
-#      when its <tree> == HEAD's tree; once the PR squash-merges, the audited
-#      tree is orphaned and the marker (and its progress breadcrumbs) are
-#      spent. A key that resolves to no git object (bogus/garbage) is treated
-#      as dead. The same reachability rule also sweeps audit/<tree>.carried
-#      and audit/<tree>.refused (and their per-member forms), the
-#      carry-forward feature's carried-clearance and refusal artifacts.
-#
-#      An earned marker (a *.ok file only) additionally survives past
-#      reachability for GAIA_AUDIT_MARKER_RETENTION_HOURS (default 72) hours
-#      measured from its recorded audited_at, so it can still serve as a
-#      carry-forward anchor after the session that earned it ends. A carried
-#      clearance or a refusal gets no such window: reachability is the only
-#      thing that keeps either alive. A marker kept by the window carries its
-#      disposition sidecar with it, so a retained anchor is never missing the
-#      sidecar carry-forward needs.
-#      2b. audit/<sha>.rerun.json carry-forward ledgers, on a DIFFERENT signal.
-#      A ledger is keyed on the incremental base (a fork point), which is an
-#      ancestor of the default branch, so reachability can never prove it dead.
-#      It dies with the branch it records instead: code-audit-frontend deletes
-#      it on a clean pass, so a ledger outliving its branch belongs to a line
-#      abandoned before it ever reached clean, and nothing else reaps it.
+#   2. audit/<digest>.ok, the per-member audit/<digest>.<member>.ok, and
+#      audit/<digest>.refused (and their per-member forms) -- the Code Audit
+#      Team's earned and refused clearance markers. <digest> is a content
+#      digest over exactly the files the audited member owns plus the shared
+#      gate machinery, not a git object, so liveness is read off each
+#      marker's own body: a marker is kept when its recorded tree (a plain
+#      data field) is a live branch or worktree tip, or when it is still
+#      within GAIA_AUDIT_MARKER_RETENTION_HOURS (default 72) of its own
+#      recorded audited_at, or -- for the frontend earned marker only --
+#      when its co-keyed disposition sidecar still holds a still-open
+#      out-of-scope finding. Everything else is spent residue and is reaped:
+#      any old-scheme (pre-digest) marker, any body lacking a `.digest`
+#      field, the deleted carry-forward feature's `.carried` family, and the
+#      CI-observability audit/<tree>.progress.log breadcrumb (a data
+#      artifact, never re-keyed as if it were a clearance). The disposition
+#      sidecar audit/<digest>.dispositions.json is reaped alongside its
+#      marker unless its own digest is one still holding an open receipt.
+#      2b. audit/<sha>.rerun.json carry-forward ledgers, on a DIFFERENT
+#      signal. A ledger is keyed on the incremental base (a fork point),
+#      which is an ancestor of the default branch, so no tree/branch
+#      liveness test can ever prove it dead. It dies with the branch it
+#      records instead: code-audit-frontend deletes it on a clean pass, so a
+#      ledger outliving its branch belongs to a line abandoned before it ever
+#      reached clean, and nothing else reaps it.
 #   3. plans/<slug>/ and colocated specs/<SPEC-ID>/plan[-N]/ dirs whose RUNNING
 #      sentinel names a branch that no longer exists AND is not marked
 #      DEFERRED/PAUSED/PARKED. Branch-gone + not-parked alone is not enough to
@@ -143,28 +141,47 @@ sweep="$root/.gaia/scripts/mentorship-cleanup-sweep.sh"
 
 # --- 2. Orphaned audit markers ---------------------------------------------
 #
-# Two key families share this sweep, each with its own liveness rule:
+# A clearance marker's filename key is a 64-hex CONTENT DIGEST over exactly
+# the files the audited member owns plus the shared gate machinery, not a git
+# tree or commit sha, so the key resolves to no git object and no
+# `cat-file`/`branch --contains` reachability call can ever answer "live" for
+# one. Liveness is read off each marker's own JSON body instead, through
+# three cheap, key-shape-agnostic keep-arms that never recompute a digest:
 #
-#   TREE-keyed  <tree>.ok / <tree>.<member>.ok, the Code Audit Team's clearance
-#     markers, and <tree>.progress.log, the same run's CI-observability
-#     breadcrumbs. A marker attests that a member audited a TREE, so it stays
-#     live while that tree is one that can still merge; a progress log
-#     describes the same TREE and dies with it. Keying on the tree is what
-#     lets a marker survive code-audit-frontend's GAIA-Audit trailer stamp: the
-#     stamp is an empty commit, so it advances HEAD while leaving the tree
-#     byte-identical, and a commit-keyed marker would be orphaned by content
-#     that never changed.
+#   Keep-arm A (live-tree)        keep any new-scheme marker whose body
+#     `.tree` (the real HEAD^{tree} recorded as plain data at write time) is
+#     one of the once-computed live_trees (every local branch tip and linked
+#     worktree HEAD). Preserves a marker for a live idle branch.
+#   Keep-arm B (retention window) keep any new-scheme `.ok`/`.refused` marker
+#     within GAIA_AUDIT_MARKER_RETENTION_HOURS (default 72) of its own
+#     recorded `audited_at`, so a marker outlives the session that earned it
+#     even once its tree falls off every branch tip.
+#   Keep-arm C (open-receipt durability) keep a frontend `<digest>.ok` marker
+#     together with its co-keyed `<digest>.dispositions.json` sidecar
+#     whenever that sidecar still holds a still-open entry (disposition
+#     "filed", or "pending" with pending_reason "definitive" -- the same
+#     predicate the disposition seed-forward machinery uses), so a >72h idle
+#     gap between audit rounds can never let a still-open out-of-scope
+#     receipt age out from under a live predecessor.
 #
-#   COMMIT-keyed  <sha>.dispositions.json, the disposition sidecar. The
-#     marker-backstop hook resolves `git rev-parse HEAD` at merge time to find
-#     it, so it is keyed to the commit, and stays live while that commit is
-#     HEAD or reachable from a local branch.
+# A marker is NEW-SCHEME iff its filename stem-before-first-dot is 64-hex AND
+# its body's `.digest` equals that stem; only a new-scheme `.ok`/`.refused`
+# marker is keep-eligible at all. Every old-scheme artifact -- a 40-hex
+# tree/sha-keyed `.ok`/`.refused`, any `.carried` (the deleted carry-forward
+# family), an old sha-keyed `<sha>.dispositions.json`, a `<tree>.progress.log`
+# CI-observability breadcrumb (a data artifact, never re-keyed as if it were
+# a clearance), or a body lacking `.digest` -- fails that structural test and
+# is reaped, cheaply completing the cutover with no migration code.
 #
-# A key is kept when EITHER rule holds. The two key spaces cannot collide: git
-# hashes a tree and a commit as different object types, so a given 40-hex key
-# resolves as at most one of them.
-head_sha=$(git -C "$root" rev-parse HEAD 2>/dev/null || true)
-head_tree=$(git -C "$root" rev-parse "HEAD^{tree}" 2>/dev/null || true)
+# A digest-keyed `<digest>.dispositions.json` sidecar is kept iff its digest
+# is in the open-receipt set (keep-arm C) OR a same-digest `.ok`/`.refused`
+# marker was kept this same pass by arm A or B; otherwise it is reaped
+# alongside its marker, preserving co-reap symmetry.
+#
+# One O(markers + sidecars) pass: live_trees is computed once, "now" and the
+# retention window are computed once, and the open-receipt set is one bounded
+# jq read per sidecar (there are few -- only the frontend files one). No git
+# call and no digest recompute happens inside the per-marker loop.
 
 # The live tree set: every tree an audit could still be merging. Local refs are
 # shared across linked worktrees, and the audit drop-zone is symlinked into each
@@ -183,14 +200,8 @@ live_trees=$(
   done
 )
 
-# Retention window: an earned marker (*.ok only) that no reachability arm
-# above keeps still survives GAIA_AUDIT_MARKER_RETENTION_HOURS (default 72)
-# past its own recorded audited_at, so a carry-forward anchor outlives the
-# session that earned it. "now" and the window are both computed ONCE here,
-# never once per marker, and the arm itself never calls git. A non-numeric
-# override falls back to the default rather than disabling the window. A
-# carried clearance or a refusal never reads this window: only reachability
-# keeps either alive.
+# Retention window: computed ONCE here, never once per marker. A non-numeric
+# override falls back to the default rather than disabling the window.
 retention_hours="${GAIA_AUDIT_MARKER_RETENTION_HOURS:-72}"
 case "$retention_hours" in '' | *[!0-9]*) retention_hours=72 ;; esac
 retention_seconds=$(( retention_hours * 3600 ))
@@ -198,111 +209,163 @@ now_epoch=$(date -u +%s 2>/dev/null || echo 0)
 have_jq=0
 command -v jq >/dev/null 2>&1 && have_jq=1
 
-# janitor_marker_epoch_and_sha <path>: prints "<audited_at epoch>\t<sha>" on
-# stdout when the body parses and carries an audited_at; nothing otherwise.
-# ONE jq fork total: jq's own fromdateiso8601 computes the epoch, so no
-# separate parse step re-reads the file. A missing/unparseable audited_at (or
-# a missing sha) still prints nothing for the piece that failed; the caller
-# treats an unparseable epoch as "not retained by this arm" and falls through
-# to the existing reachability arms below.
-janitor_marker_epoch_and_sha() {
-  jq -r '
-    (.audited_at // empty) as $a
-    | (.sha // empty) as $s
-    | if $a == "" then empty
-      else (($a | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) | tostring) + "\t" + $s
-      end
+# janitor_digest_key <str>: exit 0 iff <str> is exactly 64 lowercase-hex
+# characters, the new-scheme filename-key shape. Pure string test, no fork.
+janitor_digest_key() {
+  case "$1" in
+    *[!0-9a-f]*) return 1 ;;
+  esac
+  [ "${#1}" -eq 64 ]
+}
+
+# janitor_new_scheme_fields <path> <expected_digest>: ONE jq fork. Prints
+# "<tree>\t<audited_at-epoch>" on stdout ONLY when the body's `.digest`
+# equals <expected_digest> (the new-scheme validity gate); prints nothing for
+# an old-scheme body, an unparseable one, or a digest mismatch, so the caller
+# falls through to reap on empty output alone. A malformed `audited_at`
+# yields an empty epoch field (via jq `try`/`catch`) rather than failing the
+# whole read, so a live-tree marker with a corrupt timestamp still keeps via
+# keep-arm A.
+janitor_new_scheme_fields() {
+  jq -r --arg digest "$2" '
+    if (.digest // empty) == $digest then
+      (.tree // "") + "\t" +
+      ((.audited_at // "") as $a
+        | if $a == "" then ""
+          else (try (($a | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) | tostring) catch "")
+          end)
+    else empty end
   ' "$1" 2>/dev/null
 }
 
-# shas of *.ok markers this pass retains by the window arm, one per line. A
-# disposition sidecar keyed to one of these shas is kept alongside its marker
-# further down in the SAME pass (the glob below visits every *.ok before any
-# *.dispositions.json), so retention never orphans the sidecar a carried
-# anchor needs.
-window_retained_shas=""
+# janitor_sidecar_has_open_receipt <path>: ONE jq fork. Exit 0 iff the
+# sidecar holds at least one still-open entry, using the SAME predicate
+# task-dispositions' disposition_seed_forward uses: disposition "filed", OR
+# disposition "pending" with pending_reason "definitive".
+janitor_sidecar_has_open_receipt() {
+  jq -e '
+    any(.findings[]?;
+      ((.disposition // "") == "filed")
+      or (((.disposition // "") == "pending") and ((.pending_reason // "") == "definitive"))
+    )
+  ' "$1" >/dev/null 2>&1
+}
 
 audit_dir="$local_dir/audit"
 if [ -d "$audit_dir" ]; then
-  for marker in "$audit_dir"/*.ok "$audit_dir"/*.carried "$audit_dir"/*.refused \
+  # Keep-arm C precompute: the digests of every dispositions sidecar that
+  # still holds a still-open entry. Only the frontend files a sidecar, so
+  # this set is small: one bounded jq read per sidecar file, never per
+  # marker. jq absent -> empty set, a no-op (a marker then survives only by
+  # A/B); acceptable because the disposition GATE itself fails closed on jq
+  # absence, so a lost receipt can never silently clear a merge that way.
+  open_receipt_digests=""
+  if [ "$have_jq" -eq 1 ]; then
+    for sidecar in "$audit_dir"/*.dispositions.json; do
+      [ -e "$sidecar" ] || continue          # glob did not match
+      sbase=${sidecar##*/}
+      sdigest=${sbase%%.*}
+      janitor_digest_key "$sdigest" || continue
+      if janitor_sidecar_has_open_receipt "$sidecar"; then
+        open_receipt_digests="${open_receipt_digests}${sdigest}
+"
+      fi
+    done
+  fi
+
+  # Digests of *.ok/*.refused markers this pass keeps by arm A or B, one per
+  # line. A co-keyed sidecar checked further below (the glob visits every
+  # *.ok/*.refused before any *.dispositions.json) uses this set as its
+  # second keep condition, alongside the open-receipt set above.
+  kept_marker_digests=""
+
+  for marker in "$audit_dir"/*.ok "$audit_dir"/*.refused "$audit_dir"/*.carried \
                 "$audit_dir"/*.dispositions.json "$audit_dir"/*.progress.log; do
     [ -e "$marker" ] || continue          # glob did not match
     base=${marker##*/}
-    # An object id never contains a dot, so strip from the FIRST one. That
-    # resolves every suffix family uniformly: the plain <tree>.ok and
-    # <sha>.dispositions.json, the per-member <tree>.<member>.ok the Code
-    # Audit Team writes, and <tree>.progress.log. Peeling only the trailing
-    # .ok would leave "<tree>.<member>", which resolves to no object, so a
-    # LIVE member marker for HEAD's tree would read as dead and be deleted
-    # out from under the merge gate.
+    # An object id never contains a dot, so strip from the FIRST one -- the
+    # same idiom the old tree/sha scheme used, now isolating the digest: the
+    # plain <digest>.ok, the per-member <digest>.<member>.ok, and
+    # <digest>.dispositions.json all resolve correctly.
     key=${base%%.*}
-
     keep=0
-    # Tree-keyed: the tree about to merge here.
-    [ -n "$head_tree" ] && [ "$key" = "$head_tree" ] && keep=1
-    # Tree-keyed: a tree still named by a local branch tip or another
-    # worktree's HEAD (a still-open feature line, or a parallel audit).
-    #
-    # Match with a herestring, never `printf ... | grep -q`. Under `pipefail`,
-    # `grep -q` exits the instant it matches, `printf` then takes SIGPIPE, and
-    # the pipeline reports 141 -- so a MATCH would read as a miss and this
-    # reaps the live marker it just found. The herestring has no pipe, so
-    # grep's own status is the answer.
-    if [ "$keep" -eq 0 ] && [ -n "$live_trees" ] \
-       && grep -qxF -- "$key" <<< "$live_trees"; then
-      keep=1
-    fi
-    # Commit-keyed: the commit about to merge here.
-    [ "$keep" -eq 0 ] && [ -n "$head_sha" ] && [ "$key" = "$head_sha" ] && keep=1
-    # Commit-keyed: a disposition sidecar whose marker this same pass retained
-    # by the window arm below. Fork-free (a herestring grep, matching the
-    # live_trees idiom above), so it costs nothing for a marker the earlier
-    # arms already decided.
-    if [ "$keep" -eq 0 ] && [ -n "$window_retained_shas" ] \
-       && grep -qxF -- "$key" <<< "$window_retained_shas"; then
-      keep=1
-    fi
 
-    # Retention window: earned markers only (a *.ok filename), and only once
-    # every fork-free arm above has already missed. Skips the jq fork
-    # entirely for any other filename (a *.carried, *.refused, or
-    # *.dispositions.json never reaches this arm), and for jq itself absent.
-    if [ "$keep" -eq 0 ] && [ "$have_jq" -eq 1 ] && [ "${marker##*.}" = "ok" ]; then
-      fields=$(janitor_marker_epoch_and_sha "$marker")
-      if [ -n "$fields" ]; then
-        epoch=${fields%%$'\t'*}
-        marker_sha=${fields#*$'\t'}
-        case "$epoch" in '' | *[!0-9]*) epoch="" ;; esac
-        if [ -n "$epoch" ]; then
-          age=$(( now_epoch - epoch ))
-          if [ "$age" -ge 0 ] && [ "$age" -le "$retention_seconds" ]; then
-            keep=1
-            [ -n "$marker_sha" ] && window_retained_shas="${window_retained_shas}${marker_sha}
+    case "$base" in
+      *.ok | *.refused)
+        if [ "$have_jq" -eq 1 ] && janitor_digest_key "$key"; then
+          fields=$(janitor_new_scheme_fields "$marker" "$key")
+          if [ -n "$fields" ]; then
+            body_tree=${fields%%$'\t'*}
+            body_epoch=${fields#*$'\t'}
+
+            # Keep-arm A: the marker's own tree is a live branch/worktree tip.
+            #
+            # Match with a herestring, never `printf ... | grep -q`. Under
+            # `pipefail`, `grep -q` exits the instant it matches, `printf`
+            # then takes SIGPIPE, and the pipeline reports 141 -- so a MATCH
+            # would read as a miss and this reaps the live marker it just
+            # found. The herestring has no pipe, so grep's own status is the
+            # answer.
+            if [ -n "$body_tree" ] && [ -n "$live_trees" ] \
+               && grep -qxF -- "$body_tree" <<< "$live_trees"; then
+              keep=1
+            fi
+            # Keep-arm B: within the retention window of its own audited_at.
+            if [ "$keep" -eq 0 ] && [ -n "$body_epoch" ]; then
+              case "$body_epoch" in '' | *[!0-9]*) body_epoch="" ;; esac
+              if [ -n "$body_epoch" ]; then
+                age=$(( now_epoch - body_epoch ))
+                if [ "$age" -ge 0 ] && [ "$age" -le "$retention_seconds" ]; then
+                  keep=1
+                fi
+              fi
+            fi
+            # Keep-arm C: the frontend earned marker for a still-open
+            # receipt. Only the infix-free <digest>.ok family files a
+            # sidecar, so this never fires for a specialist or a refusal.
+            if [ "$keep" -eq 0 ] && [ "$base" = "${key}.ok" ] \
+               && [ -n "$open_receipt_digests" ] \
+               && grep -qxF -- "$key" <<< "$open_receipt_digests"; then
+              keep=1
+            fi
+
+            [ "$keep" -eq 1 ] && kept_marker_digests="${kept_marker_digests}${key}
 "
           fi
         fi
-      fi
-    fi
-    # Commit-keyed: a real commit reachable from a local branch (a still-open
-    # feature line); orphaned reflog-only tips fall through. A tree key never
-    # reaches the `branch --contains` call: peeling a tree to ^{commit} fails,
-    # so cat-file -e guards it.
-    if [ "$keep" -eq 0 ] && git -C "$root" cat-file -e "${key}^{commit}" 2>/dev/null; then
-      [ -n "$(git -C "$root" branch --contains "$key" 2>/dev/null)" ] && keep=1
-    fi
+        ;;
+      *.dispositions.json)
+        # Co-reap symmetry, amended for keep-arm C: a sidecar is kept iff its
+        # digest is a still-open receipt, OR a same-digest marker survived
+        # this same pass by arm A/B; otherwise it is reaped alongside its
+        # marker. An old sha-keyed sidecar (never 64-hex) matches neither set
+        # and falls straight through.
+        if [ -n "$open_receipt_digests" ] && grep -qxF -- "$key" <<< "$open_receipt_digests"; then
+          keep=1
+        elif [ -n "$kept_marker_digests" ] && grep -qxF -- "$key" <<< "$kept_marker_digests"; then
+          keep=1
+        fi
+        ;;
+      *)
+        # *.carried (the deleted carry-forward family) and *.progress.log (a
+        # CI-observability breadcrumb, never a validity artifact) are always
+        # spent residue under the digest scheme: nothing keeps either alive.
+        ;;
+    esac
 
     [ "$keep" -eq 1 ] && continue
     rm -f -- "$marker"
   done
 
-  # 2b. Re-run carry-forward ledgers. These need a DIFFERENT liveness test than
-  # the markers above: a ledger is keyed on the incremental base (the fork point
-  # `git merge-base "$BASE_REF" HEAD`), not a branch tip, and a fork point is an
-  # ancestor of the default branch by construction, so `branch --contains` always
-  # answers "reachable" and the reachability test above can never reap one. The
-  # ledger's real death signal is the branch it was audited for, which it records:
-  # code-audit-frontend deletes the ledger on a clean pass, so one that outlives
-  # its branch belongs to a line abandoned before it ever reached clean.
+  # 2b. Re-run carry-forward ledgers. These need a DIFFERENT liveness test
+  # than the markers above: a ledger is keyed on the incremental base (the
+  # fork point `git merge-base "$BASE_REF" HEAD`), not a branch tip or a
+  # marker's recorded tree, and a fork point is an ancestor of the default
+  # branch by construction, so no tree/branch liveness test can ever prove
+  # one dead. The ledger's real death signal is the branch it was audited
+  # for, which it records: code-audit-frontend deletes the ledger on a clean
+  # pass, so one that outlives its branch belongs to a line abandoned before
+  # it ever reached clean.
   # Fail-safe: no jq, an unparseable ledger, or no recorded branch skips the file.
   for ledger in "$audit_dir"/*.rerun.json; do
     [ -e "$ledger" ] || continue          # glob did not match

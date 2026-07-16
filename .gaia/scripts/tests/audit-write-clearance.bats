@@ -3,12 +3,14 @@
 # every Code Audit Team clearance artifact, and its acceptance by the shared
 # reader .claude/hooks/lib/audit-clearance.sh.
 #
-# The writer takes the audited working root as a REQUIRED argument, resolves
-# the tree from it (never from CWD), writes atomically, and records a versioned
-# schema-2 body with a `provenance` field. It is NOT evidence-gated: it takes
-# no --report, calls no detector, and its body carries no evidence block. An
-# earned clearance strictly dominates a carried one; a carried clearance is
-# create-only.
+# The writer takes the audited working root as a REQUIRED argument, derives
+# the member's content digest from it via the digest engine
+# (.claude/hooks/lib/audit-digest.sh, never from CWD), writes atomically, and
+# records a versioned schema-3 body with a `provenance` field. It is NOT
+# evidence-gated: it takes no --report, calls no detector, and its body
+# carries no evidence block. Provenance is earned or refused only; there is no
+# carried family, no --anchor-tree, and every write lands unconditionally
+# (overwrites a stale body at the same path).
 #
 # Assertion style (.claude/rules/bats-assertions.md): macOS's system bash 3.2
 # does not fail a @test on a false bare `[[ ]]` that is not the last command,
@@ -18,9 +20,10 @@ setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   WRITER="$THIS_DIR/../audit-write-clearance.sh"
   READER="$THIS_DIR/../../../.claude/hooks/lib/audit-clearance.sh"
+  DIGEST_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-digest.sh"
   RESOLVER="$THIS_DIR/../resolve-audit-members.sh"
-  MERGE_GATE="$THIS_DIR/../../../.claude/hooks/pr-merge-audit-check.sh"
   [ -x "$WRITER" ] || skip "audit-write-clearance.sh not executable"
+  [ -f "$DIGEST_LIB" ] || skip "audit-digest.sh not present"
   command -v jq >/dev/null 2>&1 || skip "jq not available"
 
   ROOT="$BATS_TEST_TMPDIR/root"
@@ -39,8 +42,14 @@ setup() {
   AUDIT_DIR="$ROOT/.gaia/local/audit"
 }
 
+# member_digest <root> <member> -> 64-hex digest on stdout
+member_digest() {
+  local root="$1" member="$2"
+  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIB" "$root" "$member"
+}
+
 # -----------------------------------------------------------------------------
-# UAT-020: required --root, tree resolved from the root, atomic write, body
+# Required --root, digest resolved from the root, atomic write, body
 # -----------------------------------------------------------------------------
 
 @test "UAT-020: omitting --root exits 2 with a usage message on stderr" {
@@ -52,7 +61,7 @@ setup() {
   grep -qF "root is required" <<<"$err"
 }
 
-@test "UAT-020: resolves the tree from --root, never the caller's CWD" {
+@test "resolves the digest from --root, never the caller's CWD" {
   other="$BATS_TEST_TMPDIR/other"
   mkdir -p "$other"
   git -C "$other" init --quiet --initial-branch=main
@@ -62,15 +71,18 @@ setup() {
   echo "different content entirely" > "$other/x.txt"
   git -C "$other" add x.txt
   git -C "$other" commit --quiet -m "other"
-  other_tree="$(git -C "$other" rev-parse "HEAD^{tree}")"
-  [ "$other_tree" != "$TREE" ]
+  other_digest="$(member_digest "$other" code-audit-frontend)"
+  root_digest="$(member_digest "$ROOT" code-audit-frontend)"
+  [ -n "$other_digest" ]
+  [ -n "$root_digest" ]
+  [ "$other_digest" != "$root_digest" ]
 
   # Run with CWD inside `other`, but --root pointing at ROOT.
   out="$( cd "$other" && bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned )"
-  [ "$out" = "$AUDIT_DIR/${TREE}.ok" ]
-  [ -f "$AUDIT_DIR/${TREE}.ok" ]
-  # The CWD's tree was NOT used as the key.
-  [ ! -f "$AUDIT_DIR/${other_tree}.ok" ]
+  [ "$out" = "$AUDIT_DIR/${root_digest}.ok" ]
+  [ -f "$AUDIT_DIR/${root_digest}.ok" ]
+  # The CWD's digest was NOT used as the key.
+  [ ! -f "$AUDIT_DIR/${other_digest}.ok" ]
 }
 
 @test "UAT-020: writes atomically via a temp file in the target dir + mv, leaving no stray temp" {
@@ -84,45 +96,54 @@ setup() {
   [ -z "$leftover" ]
 }
 
-@test "UAT-020: earned body records the schema-2 fields, no evidence key, no second sidecar pointer" {
+@test "earned body records the schema-3 fields, digest as validity key, no carried leftovers" {
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
   bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned >/dev/null
-  marker="$AUDIT_DIR/${TREE}.ok"
+  marker="$AUDIT_DIR/${digest}.ok"
+  [ -f "$marker" ]
   [ "$(jq -r .version "$marker")" = "1.6.1" ]
-  [ "$(jq -r .schema "$marker")" = "2" ]
+  [ "$(jq -r .schema "$marker")" = "3" ]
   [ "$(jq -r .member "$marker")" = "code-audit-frontend" ]
   [ "$(jq -r .provenance "$marker")" = "earned" ]
+  [ "$(jq -r .digest "$marker")" = "$digest" ]
   [ "$(jq -r .sha "$marker")" = "$HEAD_SHA" ]
   [ "$(jq -r .tree "$marker")" = "$TREE" ]
   [ "$(jq -r .sidecar "$marker")" = "true" ]
   grep -qE '"audited_at":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"' "$marker"
-  # No evidence block; the sidecar path derives from `sha`, so no second pointer.
+  # No evidence block, no anchor_tree, no second sidecar pointer.
   [ "$(jq -r 'has("evidence")' "$marker")" = "false" ]
   [ "$(jq -r 'has("sidecar_path")' "$marker")" = "false" ]
   [ "$(jq -r 'has("report")' "$marker")" = "false" ]
+  [ "$(jq -r 'has("anchor_tree")' "$marker")" = "false" ]
 }
 
-@test "UAT-020: a specialized member's earned sidecar flag is false" {
+@test "a specialized member's earned sidecar flag is false" {
+  digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned >/dev/null
-  [ "$(jq -r .sidecar "$AUDIT_DIR/${TREE}.code-audit-maintainer-shell.ok")" = "false" ]
+  marker="$AUDIT_DIR/${digest}.code-audit-maintainer-shell.ok"
+  [ -f "$marker" ]
+  [ "$(jq -r .sidecar "$marker")" = "false" ]
 }
 
 # -----------------------------------------------------------------------------
-# Clean, zero-finding earned write lands for ALL THREE members (the deadlock
-# the dropped evidence gate would have caused). No report, no detector.
+# Clean, zero-finding earned write lands for ALL THREE members. No report, no
+# detector; each member's filename stem equals its own body .digest.
 # -----------------------------------------------------------------------------
 
 @test "clean zero-finding earned write lands for all three members, no detector involved" {
   for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
+    d="$(member_digest "$ROOT" "$m")"
     out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned)"
     if [ "$m" = "code-audit-frontend" ]; then
-      expect="$AUDIT_DIR/${TREE}.ok"
+      expect="$AUDIT_DIR/${d}.ok"
     else
-      expect="$AUDIT_DIR/${TREE}.${m}.ok"
+      expect="$AUDIT_DIR/${d}.${m}.ok"
     fi
     [ "$out" = "$expect" ]
     [ -f "$expect" ]
     [ "$(jq -r .member "$expect")" = "$m" ]
     [ "$(jq -r .provenance "$expect")" = "earned" ]
+    [ "$(jq -r .digest "$expect")" = "$d" ]
   done
 }
 
@@ -134,67 +155,20 @@ setup() {
 }
 
 # -----------------------------------------------------------------------------
-# UAT-007: earned strictly dominates carried; carried is create-only
+# Hard cutover: carried / anchor-tree are gone. Rejected as usage errors.
 # -----------------------------------------------------------------------------
 
-@test "UAT-007a: an earned write removes an existing carried artifact (no guard suppresses it)" {
-  m="code-audit-maintainer-node"
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance carried --anchor-tree "$TREE" >/dev/null
-  [ -f "$AUDIT_DIR/${TREE}.${m}.carried" ]
-
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned)"
-  [ "$out" = "$AUDIT_DIR/${TREE}.${m}.ok" ]
-  [ -f "$AUDIT_DIR/${TREE}.${m}.ok" ]
-  # The carried artifact is gone.
-  [ ! -f "$AUDIT_DIR/${TREE}.${m}.carried" ]
-}
-
-@test "UAT-007b: carried is create-only, refused when an earned marker exists, earned untouched" {
-  m="code-audit-frontend"
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned >/dev/null
-  marker="$AUDIT_DIR/${TREE}.ok"
-  before_prov="$(jq -r .provenance "$marker")"
-  before_at="$(jq -r .audited_at "$marker")"
-
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance carried --anchor-tree "$TREE")"
-  [ "$out" = "declined: earned-clearance-exists" ]
-  # No carried artifact was created.
-  [ ! -f "$AUDIT_DIR/${TREE}.carried" ]
-  # The earned marker is unchanged.
-  [ "$(jq -r .provenance "$marker")" = "$before_prov" ]
-  [ "$(jq -r .audited_at "$marker")" = "$before_at" ]
-}
-
-@test "UAT-007c: an earned write replaces a legacy-bodied marker at the same path" {
-  m="code-audit-frontend"
-  mkdir -p "$AUDIT_DIR"
-  printf '{"sha":"old","tree":"%s","audited_at":"1999-01-01T00:00:00Z"}\n' "$TREE" > "$AUDIT_DIR/${TREE}.ok"
-
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned)"
-  [ "$out" = "$AUDIT_DIR/${TREE}.ok" ]
-  [ "$(jq -r .provenance "$AUDIT_DIR/${TREE}.ok")" = "earned" ]
-  [ "$(jq -r .schema "$AUDIT_DIR/${TREE}.ok")" = "2" ]
-}
-
-# -----------------------------------------------------------------------------
-# Refusals: a first-class, tree-keyed artifact; not evidence-gated
-# -----------------------------------------------------------------------------
-
-@test "refusal: --provenance refused lands at the .refused filename, provenance refused, no report needed" {
-  m="code-audit-maintainer-shell"
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused)"
-  [ "$out" = "$AUDIT_DIR/${TREE}.${m}.refused" ]
-  [ "$(jq -r .provenance "$out")" = "refused" ]
-  [ "$(jq -r .member "$out")" = "$m" ]
-  [ "$(jq -r .tree "$out")" = "$TREE" ]
-
-  # The default member's refusal carries no member infix.
-  out2="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance refused)"
-  [ "$out2" = "$AUDIT_DIR/${TREE}.refused" ]
-}
-
-@test "usage: --provenance carried without --anchor-tree exits 2" {
+@test "usage: --provenance carried is rejected, no marker written" {
   run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance carried
+  [ "$status" -eq 2 ]
+  # AUDIT_DIR may not even exist (the writer fails before mkdir -p); `find` on
+  # a missing dir exits non-zero, so guard with `|| true` under bats' set -e.
+  leftover="$(find "$AUDIT_DIR" -name '*.carried' 2>/dev/null || true)"
+  [ -z "$leftover" ]
+}
+
+@test "usage: --anchor-tree is rejected as an unrecognized argument" {
+  run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --anchor-tree "$TREE"
   [ "$status" -eq 2 ]
 }
 
@@ -204,34 +178,168 @@ setup() {
 }
 
 # -----------------------------------------------------------------------------
-# Acceptance, end to end: the reader accepts writer-produced markers only
+# Fail-closed: the digest must derive, or nothing is written (SC7/UAT-013).
 # -----------------------------------------------------------------------------
 
-@test "acceptance: a writer-produced earned marker satisfies clearance_acceptable; legacy and key-mismatch do not" {
+@test "fails closed (exit non-zero, no marker) when the digest cannot be derived" {
+  sha256sum() { return 1; }
+  shasum() { return 1; }
+  export -f sha256sum shasum
+  run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned
+  [ "$status" -ne 0 ]
+  # AUDIT_DIR may not even exist (the writer fails before mkdir -p); `find` on
+  # a missing dir exits non-zero, so guard with `|| true` under bats' set -e.
+  leftover="$(find "$AUDIT_DIR" -name '*.ok' 2>/dev/null || true)"
+  [ -z "$leftover" ]
+}
+
+@test "an earned write replaces a stale body at the same digest path" {
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+  mkdir -p "$AUDIT_DIR"
+  printf '{"sha":"old","tree":"%s","audited_at":"1999-01-01T00:00:00Z"}\n' "$TREE" > "$AUDIT_DIR/${digest}.ok"
+
+  out="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned)"
+  [ "$out" = "$AUDIT_DIR/${digest}.ok" ]
+  [ "$(jq -r .provenance "$AUDIT_DIR/${digest}.ok")" = "earned" ]
+  [ "$(jq -r .schema "$AUDIT_DIR/${digest}.ok")" = "3" ]
+  [ "$(jq -r .digest "$AUDIT_DIR/${digest}.ok")" = "$digest" ]
+}
+
+# -----------------------------------------------------------------------------
+# Refusals: a first-class, digest-keyed artifact; not evidence-gated
+# -----------------------------------------------------------------------------
+
+@test "refusal: --provenance refused lands at the digest-keyed .refused filename" {
+  m="code-audit-maintainer-shell"
+  d="$(member_digest "$ROOT" "$m")"
+  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused)"
+  [ "$out" = "$AUDIT_DIR/${d}.${m}.refused" ]
+  [ "$(jq -r .provenance "$out")" = "refused" ]
+  [ "$(jq -r .member "$out")" = "$m" ]
+  [ "$(jq -r .digest "$out")" = "$d" ]
+  [ "$(jq -r .tree "$out")" = "$TREE" ]
+
+  # The default member's refusal carries no member infix.
+  fd="$(member_digest "$ROOT" code-audit-frontend)"
+  out2="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance refused)"
+  [ "$out2" = "$AUDIT_DIR/${fd}.refused" ]
+}
+
+@test "clearance_member_refused matches a writer-produced refusal for the exact digest" {
   # shellcheck source=/dev/null
   . "$READER"
+  m="code-audit-maintainer-shell"
+  d="$(member_digest "$ROOT" "$m")"
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused >/dev/null
+  clearance_member_refused "$ROOT" "$d" "$m"
+
+  # A digest mismatch does not match.
+  clearance_member_refused "$ROOT" "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" "$m" && return 1
+
+  # An earned marker for a different member+digest is not a refusal.
+  fd="$(member_digest "$ROOT" code-audit-frontend)"
   bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned >/dev/null
-  marker="$AUDIT_DIR/${TREE}.ok"
-
-  clearance_acceptable "$marker" code-audit-frontend "$TREE"
-
-  # A hand-written legacy body at the same path does NOT satisfy the reader.
-  printf '{"sha":"x","tree":"%s","audited_at":"z"}\n' "$TREE" > "$AUDIT_DIR/legacy.ok"
-  clearance_acceptable "$AUDIT_DIR/legacy.ok" code-audit-frontend "$TREE" && return 1
-
-  # A writer-produced marker whose filename key disagrees with its body tree
-  # (checked against the wrong key) does NOT satisfy the reader.
-  cp "$marker" "$AUDIT_DIR/ffffffffffffffffffffffffffffffffffffffff.ok"
-  clearance_acceptable "$AUDIT_DIR/ffffffffffffffffffffffffffffffffffffffff.ok" \
-    code-audit-frontend "ffffffffffffffffffffffffffffffffffffffff" && return 1
-
+  clearance_member_refused "$ROOT" "$fd" code-audit-frontend && return 1
   return 0
 }
 
 # -----------------------------------------------------------------------------
-# UAT-021: the adopter shape. The release scrub strips the maintainer-only
-# blocks; the roster collapses to the single default member, and the shipped
-# writer + shipped merge gate complete a merge with no maintainer member.
+# Reader: clearance_member_cleared is earned-only, no carried fallback
+# (the .carried family and clearance_carried_path no longer exist).
+# -----------------------------------------------------------------------------
+
+@test "structural: clearance_carried_path is deleted from the reader" {
+  # shellcheck source=/dev/null
+  . "$READER"
+  command -v clearance_carried_path >/dev/null 2>&1 && return 1
+  return 0
+}
+
+@test "clearance_member_cleared: earned only, no carried fallback" {
+  # shellcheck source=/dev/null
+  . "$READER"
+  d="$(member_digest "$ROOT" code-audit-frontend)"
+  # Not cleared before any write.
+  clearance_member_cleared "$ROOT" "$d" code-audit-frontend && return 1
+
+  bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned >/dev/null
+  clearance_member_cleared "$ROOT" "$d" code-audit-frontend
+
+  # A refusal for a DIFFERENT member+digest never makes that member cleared.
+  rd="$(member_digest "$ROOT" code-audit-maintainer-node)"
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused >/dev/null
+  clearance_member_cleared "$ROOT" "$rd" code-audit-maintainer-node && return 1
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# Acceptance, end to end: the reader accepts writer-produced earned markers
+# only, matched to the exact digest and member (UAT-007).
+# -----------------------------------------------------------------------------
+
+@test "acceptance: a writer-produced earned marker satisfies clearance_acceptable; legacy, digest-mismatch, member-mismatch, refused do not" {
+  # shellcheck source=/dev/null
+  . "$READER"
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+  bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned >/dev/null
+  marker="$AUDIT_DIR/${digest}.ok"
+
+  clearance_acceptable "$marker" code-audit-frontend "$digest"
+
+  # A hand-written legacy body (no .digest field) does NOT satisfy the reader.
+  printf '{"sha":"x","tree":"%s","audited_at":"z"}\n' "$TREE" > "$AUDIT_DIR/legacy.ok"
+  clearance_acceptable "$AUDIT_DIR/legacy.ok" code-audit-frontend "$digest" && return 1
+
+  # A digest mismatch does NOT satisfy the reader.
+  clearance_acceptable "$marker" code-audit-frontend "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" && return 1
+
+  # A member mismatch does NOT satisfy the reader.
+  clearance_acceptable "$marker" code-audit-maintainer-shell "$digest" && return 1
+
+  # A refused body does NOT satisfy clearance_acceptable (earned only).
+  node_digest="$(member_digest "$ROOT" code-audit-maintainer-node)"
+  refused_out="$(bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused)"
+  clearance_acceptable "$refused_out" code-audit-maintainer-node "$node_digest" && return 1
+
+  return 0
+}
+
+@test "jq absent: clearance_acceptable and clearance_member_refused fail closed, never bare-existence" {
+  # shellcheck source=/dev/null
+  . "$READER"
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+  bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned >/dev/null
+  marker="$AUDIT_DIR/${digest}.ok"
+  [ -f "$marker" ]
+
+  node_digest="$(member_digest "$ROOT" code-audit-maintainer-node)"
+  refused_out="$(bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused)"
+  [ -f "$refused_out" ]
+
+  emptybin="$BATS_TEST_TMPDIR/emptybin"
+  mkdir -p "$emptybin"
+  OLDPATH="$PATH"
+  PATH="$emptybin"
+  if command -v jq >/dev/null 2>&1; then
+    PATH="$OLDPATH"
+    skip "could not simulate jq absence on this PATH"
+  fi
+
+  status1=0
+  clearance_acceptable "$marker" code-audit-frontend "$digest" || status1=$?
+  status2=0
+  clearance_member_refused "$ROOT" "$node_digest" code-audit-maintainer-node || status2=$?
+
+  PATH="$OLDPATH"
+
+  [ "$status1" -eq 1 ]
+  [ "$status2" -eq 1 ]
+}
+
+# -----------------------------------------------------------------------------
+# The adopter shape. The release scrub strips the maintainer-only blocks; the
+# roster collapses to the single default member, and the shipped writer
+# produces a valid digest-keyed marker with no maintainer member.
 # -----------------------------------------------------------------------------
 
 # Strip # gaia:maintainer-only:start ... :end blocks (inclusive), as the
@@ -244,7 +352,7 @@ scrub_maintainer_only() {
   ' "$1"
 }
 
-@test "UAT-021: adopter shape collapses the roster and completes a merge via the shipped writer + gate" {
+@test "UAT-021: adopter shape collapses the roster and the shipped writer produces a valid digest-keyed marker" {
   ADOPTER="$BATS_TEST_TMPDIR/adopter"
   mkdir -p "$ADOPTER/.gaia/scripts"
   printf '1.6.1\n' > "$ADOPTER/.gaia/VERSION"
@@ -276,16 +384,18 @@ scrub_maintainer_only() {
   cp "$WRITER" "$ADOPTER/.gaia/scripts/audit-write-clearance.sh"
   chmod +x "$ADOPTER/.gaia/scripts/audit-write-clearance.sh"
 
-  # The resolver copy resolves its libs relative to ITSELF
-  # ($ADOPTER/.claude/hooks/lib/), so provision the shared ownership
-  # classifier alongside it. The scrubbed .gaia/audit-ci.yml (written above)
-  # still drives the single-member roster; the lib's builtin fallback is
-  # consulted only when the config has no auditors block, which it does.
+  # The writer copy resolves its digest lib relative to ITSELF
+  # ($ADOPTER/.claude/hooks/lib/), and the resolver copy resolves its
+  # ownership classifier the same way, so provision both there. The scrubbed
+  # .gaia/audit-ci.yml (written above) still drives the single-member roster;
+  # the lib's builtin fallback is consulted only when the config has no
+  # auditors block, which it does.
   _lib_src="$(dirname "$READER")"
   mkdir -p "$ADOPTER/.claude/hooks/lib"
   cp "$_lib_src/audit-scope.sh" "$ADOPTER/.claude/hooks/lib/audit-scope.sh"
   cp "$_lib_src/audit-machinery.sh" "$ADOPTER/.claude/hooks/lib/audit-machinery.sh"
   cp "$_lib_src/audit-clearance.sh" "$ADOPTER/.claude/hooks/lib/audit-clearance.sh"
+  cp "$DIGEST_LIB" "$ADOPTER/.claude/hooks/lib/audit-digest.sh"
 
   # The roster really did collapse: a .gaia/**/*.sh change (which the scrubbed-
   # away maintainer-shell member would own) resolves to NOBODY now.
@@ -301,17 +411,13 @@ scrub_maintainer_only() {
   members="$( cd "$ADOPTER" && bash .gaia/scripts/resolve-audit-members.sh )"
   [ "$members" = "code-audit-frontend" ]
 
-  # The shipped writer writes the default member's marker.
+  # The shipped writer writes the default member's digest-keyed marker.
   out="$( cd "$ADOPTER" && bash .gaia/scripts/audit-write-clearance.sh \
     --root "$ADOPTER" --member code-audit-frontend --provenance earned )"
-  adopter_tree="$(git -C "$ADOPTER" rev-parse "HEAD^{tree}")"
-  [ "$out" = "$ADOPTER/.gaia/local/audit/${adopter_tree}.ok" ]
+  adopter_digest="$(member_digest "$ADOPTER" code-audit-frontend)"
+  [ "$out" = "$ADOPTER/.gaia/local/audit/${adopter_digest}.ok" ]
   [ -f "$out" ]
-
-  # The shipped merge gate allows the merge (no maintainer member is demanded).
-  input="$(jq -nc '{tool_name:"Bash",tool_input:{command:"gh pr merge 1 --squash"}}')"
-  run bash -c "cd '$ADOPTER' && printf '%s' '$input' | bash '$MERGE_GATE'"
-  [ "$status" -eq 0 ]
-  grep -qF '"permissionDecision": "deny"' <<<"$output" && return 1
-  return 0
+  [ "$(jq -r .schema "$out")" = "3" ]
+  [ "$(jq -r .digest "$out")" = "$adopter_digest" ]
+  [ "$(jq -r .member "$out")" = "code-audit-frontend" ]
 }

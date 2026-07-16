@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 # Structural, regression, and invariant tests for the shared ownership
 # classifier (UAT-015), covering the parts owned by the ownership-classifier
-# phase: exactly-one-classifier (part 1), every-consumer-sources-it minus the
-# carry-forward predicate half (part 2), the four in-scope sets staying
-# separately named (part 3), the golden behavior table (part 4), and
+# phase: exactly-one-classifier (part 1), every-consumer-sources-it
+# (part 2), the four in-scope sets staying separately named (part 3), the
+# golden behavior table (part 4), and
 # absent-module -> DENY (part 5). Plus two further invariants: SEC-007 (every
 # machinery path is roster-claimed) and the scrub-marker survival check.
 #
@@ -21,7 +21,6 @@ setup() {
   RESOLVER="$REPO_ROOT/.gaia/scripts/resolve-audit-members.sh"
   SPAWN="$REPO_ROOT/.gaia/scripts/resolve-audit-spawn.sh"
   HOOK="$REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
-  CF_LIB="$REPO_ROOT/.claude/hooks/lib/audit-carry-forward.sh"
 
   ALLOWLIST_LITERAL='wiki/*|.claude/*|.specify/*|.gaia/*|docs/*'
 }
@@ -51,9 +50,8 @@ extract_function() {
 }
 
 # ---------------------------------------------------------------------------
-# Part 2 (minus the carry-forward-predicate half, added in a later phase):
-# every consumer sources the module and calls audit_scope_init once per run,
-# never once per path.
+# Part 2: every consumer sources the module and calls audit_scope_init once
+# per run, never once per path.
 # ---------------------------------------------------------------------------
 
 @test "surfaces exist: the classifier, the machinery list, and all three consumers" {
@@ -93,31 +91,6 @@ extract_function() {
     [ -z "$dispatch_loop" ] && continue
     grep -qF "audit_scope_init" <<<"$dispatch_loop" && return 1
   done
-  true
-}
-
-# Part 2, carry-forward-predicate half (the fourth consumer). The predicate
-# sources audit-scope.sh and calls audit_scope_init once per run, never once
-# per path.
-
-@test "the carry-forward predicate sources audit-scope.sh" {
-  [ -f "$CF_LIB" ]
-  grep -qF -- "audit-scope.sh" "$CF_LIB" || return 1
-}
-
-@test "the carry-forward predicate calls audit_scope_init exactly once (never once per path)" {
-  [ -f "$CF_LIB" ]
-  # Exactly one INVOCATION (matched by its quoted argument, so the defensive
-  # `command -v audit_scope_init` existence guard is not counted), in the
-  # scope-init guard, so a member set never re-parses the roster once per delta
-  # path. One call total cannot be per-path.
-  count="$(grep -c 'audit_scope_init "' "$CF_LIB")"
-  [ "$count" -eq 1 ]
-  # No `while ... read` dispatch loop in the predicate contains the init call.
-  loop="$(awk '/while IFS=.*read/,/done/' "$CF_LIB")"
-  if [ -n "$loop" ]; then
-    grep -qF "audit_scope_init" <<<"$loop" && return 1
-  fi
   true
 }
 

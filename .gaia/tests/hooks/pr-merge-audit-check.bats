@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Tests for the two no-marker bypasses in .claude/hooks/pr-merge-audit-check.sh.
+# Tests for .claude/hooks/pr-merge-audit-check.sh.
 #
 # The hook denies `gh pr merge` unless a code-review-audit signal exists for
 # HEAD. Signal 5 (check_out_of_scope_pr) is a fail-closed allowlist bypass: it
@@ -18,6 +18,13 @@
 # GAIA-Audit stamp can land, but the changed bytes ARE GAIA's own template, not
 # adopter code. Fail-closed: a non-matching workflow byte, a second in-scope
 # path, or an absent template falls through to the normal deny.
+#
+# Every Code Audit Team marker is keyed to a member's own CONTENT DIGEST (a
+# sha256 over exactly the files that member owns plus the shared gate
+# machinery, folding the in-scope-but-ownerless paths into the default
+# member's set), not the whole tree and not the commit. There is no
+# carry-forward clearance machinery: a marker either validates for the
+# CURRENT digest or it does not.
 #
 # Each test drives the hook exactly as the harness does: a PreToolUse JSON
 # payload on stdin, run with the repo as the working directory (the hook uses
@@ -66,13 +73,15 @@ setup() {
 
   # The two copies above resolve their libs relative to THEMSELVES
   # ($REPO/.claude/hooks/lib/), not the real repo, so the sandbox needs its
-  # own copy of the shared ownership classifier alongside them. The real
-  # hook (run by absolute path via $HOOK_ABS, never copied) resolves its own
-  # libs to the real repo regardless.
+  # own copy of the shared ownership classifier + digest engine + clearance
+  # reader alongside them. The real hook (run by absolute path via
+  # $HOOK_ABS, never copied) resolves its own libs to the real repo
+  # regardless.
   mkdir -p "$REPO/.claude/hooks/lib"
   cp "$LIB_DIR/audit-scope.sh" "$REPO/.claude/hooks/lib/audit-scope.sh"
   cp "$LIB_DIR/audit-machinery.sh" "$REPO/.claude/hooks/lib/audit-machinery.sh"
   cp "$LIB_DIR/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
+  cp "$LIB_DIR/audit-digest.sh" "$REPO/.claude/hooks/lib/audit-digest.sh"
 }
 
 teardown() {
@@ -119,29 +128,63 @@ run_merge_hook() {
   run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS'"
 }
 
-# Write a Code Audit Team clearance marker for REPO's current HEAD TREE. A
-# marker attests that a member audited the tree, not the commit, so it survives
-# an empty commit (the GAIA-Audit trailer stamp) that leaves the tree identical.
-# The body is a writer-shaped schema-2 clearance (the gate now accepts only
-# such bodies, never a bare `{}`): its `tree` equals the filename key and its
-# `member` matches the member the suffix names.
-#   write_marker ""                              -> <tree>.ok (frontend/default)
-#   write_marker ".code-audit-maintainer-shell"   -> <tree>.code-audit-maintainer-shell.ok
+# Compute MEMBER's real content digest for REPO's current HEAD, via the real
+# digest engine (never re-derived by hand), so fixtures stay in lockstep with
+# whatever the hook itself would compute.
+member_digest_for() {
+  local member="$1"
+  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$LIB_DIR/audit-digest.sh" "$REPO" "$member"
+}
+
+# Write a Code Audit Team EARNED clearance marker for MEMBER, keyed to
+# MEMBER's own content digest at REPO's current HEAD (schema 3). A marker
+# attests that a member audited exactly the files it owns plus gate
+# machinery, so it survives any change outside that set.
+#   write_marker "code-audit-frontend"
+#   write_marker "code-audit-maintainer-shell"
 write_marker() {
-  local suffix="$1" tree sha member sidecar
-  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  local member="$1" digest sha tree infix sidecar
+  digest="$(member_digest_for "$member")"
   sha=$(git -C "$REPO" rev-parse HEAD)
-  if [ -z "$suffix" ]; then
-    member="code-audit-frontend"
-    sidecar="true"
-  else
-    member="${suffix#.}"
-    sidecar="false"
-  fi
+  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  if [ "$member" = "code-audit-frontend" ]; then infix=""; sidecar="true"; else infix=".$member"; sidecar="false"; fi
   mkdir -p "$REPO/.gaia/local/audit"
-  printf '{"version":"1.4.0","schema":2,"member":"%s","provenance":"earned","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
-    "$member" "$sha" "$tree" "$sidecar" \
-    > "$REPO/.gaia/local/audit/${tree}${suffix}.ok"
+  printf '{"version":"1.4.0","schema":3,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$digest" "$tree" "$sha" "$sidecar" \
+    > "$REPO/.gaia/local/audit/${digest}${infix}.ok"
+  # The frontend agent always writes a companion disposition sidecar in the
+  # SAME audit run (sidecar:true above records that fact); mirror it here so
+  # an ordinary marker fixture does not trip the C4 fail-closed
+  # absent-sidecar check. The dedicated test for that check removes the
+  # sidecar this writes; write_sidecar overwrites it for the offender tests.
+  if [ "$member" = "code-audit-frontend" ] && [ ! -f "$REPO/.gaia/local/audit/${digest}.dispositions.json" ]; then
+    printf '{"schema":1,"backend":"absent","findings":[]}\n' \
+      > "$REPO/.gaia/local/audit/${digest}.dispositions.json"
+  fi
+}
+
+# Write a REFUSAL artifact for MEMBER, keyed to the SAME digest write_marker
+# would use right now (the current-content digest).
+write_refused() {
+  local member="$1" digest sha tree infix
+  digest="$(member_digest_for "$member")"
+  sha=$(git -C "$REPO" rev-parse HEAD)
+  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  if [ "$member" = "code-audit-frontend" ]; then infix=""; else infix=".$member"; fi
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{"version":"1.4.0","schema":3,"member":"%s","provenance":"refused","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:01Z","sidecar":false}\n' \
+    "$member" "$digest" "$tree" "$sha" \
+    > "$REPO/.gaia/local/audit/${digest}${infix}.refused"
+}
+
+# Write a frontend disposition sidecar keyed to the frontend digest AT REPO's
+# current HEAD.
+write_sidecar() {
+  local findings="${1:-[]}" backend="${2:-absent}" digest
+  digest="$(member_digest_for code-audit-frontend)"
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{"schema":1,"backend":"%s","findings":%s}\n' "$backend" "$findings" \
+    > "$REPO/.gaia/local/audit/${digest}.dispositions.json"
 }
 
 # Print the spawn set the oracle resolves for REPO's current diff.
@@ -149,19 +192,48 @@ spawn_set() {
   ( cd "$REPO" && bash .gaia/scripts/resolve-audit-spawn.sh 2>/dev/null )
 }
 
-# Write a clearance marker for every name in a spawn-set (newline-separated)
-# string, mapping each to its FC-2 suffix: code-audit-frontend -> "",
-# any other member <m> -> ".<m>".
+# Write an earned clearance marker for every name in a spawn-set
+# (newline-separated) string.
 write_markers_for_spawn_set() {
   local set="$1" name
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    if [ "$name" = "code-audit-frontend" ]; then
-      write_marker ""
-    else
-      write_marker ".$name"
-    fi
+    write_marker "$name"
   done <<<"$set"
+}
+
+# Snapshot every file in the audit pool (name + content hash), to prove a run
+# mints nothing.
+pool_snapshot() {
+  local dir="$REPO/.gaia/local/audit"
+  [ -d "$dir" ] || { printf '<no-pool>'; return 0; }
+  ( cd "$dir" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; shasum "$f" 2>/dev/null; done )
+}
+
+# Install a gh stub on a prepended PATH. `gh issue list` prints $1 (default []).
+# GET statuses return null (so the frontend is NOT cleared via a CI status),
+# `gh pr view` returns an empty title (no chore(deps) bypass).
+install_gh_stub() {
+  local issues="${1:-[]}"
+  GH_BIN="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$GH_BIN"
+  printf '%s' "$issues" > "$BATS_TEST_TMPDIR/issues.json"
+  cat > "$GH_BIN/gh" <<EOF
+#!/usr/bin/env bash
+issues_file="$BATS_TEST_TMPDIR/issues.json"
+EOF
+  cat >> "$GH_BIN/gh" <<'EOF'
+case "$1" in
+  auth) exit 0 ;;
+  repo) printf 'gaia-react/gaia\n'; exit 0 ;;
+  pr) printf '\n'; exit 0 ;;
+  issue) cat "$issues_file"; exit 0 ;;
+  api) printf 'null\n'; exit 0 ;;
+  *) exit 0 ;;
+esac
+EOF
+  chmod +x "$GH_BIN/gh"
+  export PATH="$GH_BIN:$PATH"
 }
 
 # Assert the most recent run_merge_hook call allowed the merge.
@@ -190,73 +262,6 @@ assert_not_in_set() {
   local name="$1" set="$2"
   grep -qxF -- "$name" <<<"$set" && return 1
   return 0
-}
-
-# --- Carry-forward fixtures (Phase 3) --------------------------------------
-
-# The dispatch resolver's own view of the whole-branch diff (the CONTROL that a
-# member's absence from the spawn set is carry-forward's doing, not a fixture in
-# which the member was never dispatched).
-resolve_members() {
-  ( cd "$REPO" && bash .gaia/scripts/resolve-audit-members.sh 2>/dev/null )
-}
-
-# Seed a frontend EARNED clearance for a specific tree/sha plus its disposition
-# sidecar, so it can serve as a carry-forward anchor (the sidecar-missing drop
-# needs the sidecar present).
-#   seed_anchor_frontend TREE SHA [AAT] [FINDINGS_JSON] [BACKEND]
-seed_anchor_frontend() {
-  local tree="$1" sha="$2" aat="${3:-2026-01-01T00:00:00Z}" findings="${4:-[]}" backend="${5:-absent}"
-  mkdir -p "$REPO/.gaia/local/audit"
-  printf '{"version":"1.4.0","schema":2,"member":"code-audit-frontend","provenance":"earned","sha":"%s","tree":"%s","audited_at":"%s","sidecar":true}\n' \
-    "$sha" "$tree" "$aat" > "$REPO/.gaia/local/audit/${tree}.ok"
-  printf '{"schema":1,"backend":"%s","findings":%s}\n' "$backend" "$findings" \
-    > "$REPO/.gaia/local/audit/${sha}.dispositions.json"
-}
-
-# Write a frontend CARRIED clearance for a tree (no earned marker), so the
-# member reads as cleared via the carried artifact.
-write_carried_frontend() {
-  local tree="$1" sha
-  sha=$(git -C "$REPO" rev-parse HEAD)
-  mkdir -p "$REPO/.gaia/local/audit"
-  printf '{"version":"1.4.0","schema":2,"member":"code-audit-frontend","provenance":"carried","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true,"anchor_tree":"%s"}\n' \
-    "$sha" "$tree" "$tree" > "$REPO/.gaia/local/audit/${tree}.carried"
-}
-
-# Install a gh stub on a prepended PATH. `gh issue list` prints $1 (default []).
-# GET statuses return null (so the frontend is NOT cleared via a CI status,
-# forcing carry-forward), `gh pr view` returns an empty title (no chore(deps)),
-# and a `--method POST` records its argv to POST_LOG so the description can be
-# asserted.
-install_gh_stub() {
-  local issues="${1:-[]}"
-  GH_BIN="$BATS_TEST_TMPDIR/bin"
-  mkdir -p "$GH_BIN"
-  POST_LOG="$BATS_TEST_TMPDIR/post.log"
-  rm -f "$POST_LOG"
-  printf '%s' "$issues" > "$BATS_TEST_TMPDIR/issues.json"
-  cat > "$GH_BIN/gh" <<EOF
-#!/usr/bin/env bash
-post_log="$POST_LOG"
-issues_file="$BATS_TEST_TMPDIR/issues.json"
-EOF
-  cat >> "$GH_BIN/gh" <<'EOF'
-case "$1" in
-  auth) exit 0 ;;
-  repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) printf '\n'; exit 0 ;;
-  issue) cat "$issues_file"; exit 0 ;;
-  api)
-    case "$*" in
-      *"--method POST"*) printf '%s\n' "$*" >> "$post_log"; exit 0 ;;
-      *) printf 'null\n'; exit 0 ;;
-    esac ;;
-  *) exit 0 ;;
-esac
-EOF
-  chmod +x "$GH_BIN/gh"
-  export PATH="$GH_BIN:$PATH"
 }
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
@@ -399,7 +404,7 @@ EOF
 
 @test "AND-aggregator: app-only diff allows once the frontend marker is present (regression)" {
   commit_files "app/x.ts" "export const x = 1"
-  write_marker ""
+  write_marker "code-audit-frontend"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
@@ -409,7 +414,7 @@ EOF
   commit_files \
     "app/x.ts" "export const x = 1" \
     ".gaia/scripts/example.sh" "#!/bin/bash"
-  write_marker ""
+  write_marker "code-audit-frontend"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
@@ -419,8 +424,8 @@ EOF
   commit_files \
     "app/x.ts" "export const x = 1" \
     ".gaia/scripts/example.sh" "#!/bin/bash"
-  write_marker ""
-  write_marker ".code-audit-maintainer-shell"
+  write_marker "code-audit-frontend"
+  write_marker "code-audit-maintainer-shell"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
@@ -435,7 +440,7 @@ EOF
 
 @test "AND-aggregator: .gaia .sh-only diff allows once the maintainer-shell marker is present" {
   commit_files ".gaia/scripts/example.sh" "#!/bin/bash"
-  write_marker ".code-audit-maintainer-shell"
+  write_marker "code-audit-maintainer-shell"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
@@ -450,7 +455,7 @@ EOF
 
 @test "AND-aggregator: root Dockerfile-only diff allows once the legacy marker is present" {
   commit_files "Dockerfile" "FROM scratch"
-  write_marker ""
+  write_marker "code-audit-frontend"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
@@ -463,47 +468,208 @@ EOF
   [ "$status" -eq 0 ]
   grep -qF '"permissionDecision": "deny"' <<< "$output" || return 1
 
-  write_marker ""
+  write_marker "code-audit-frontend"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
 }
 
-# The regression the tree key exists for. Every dispatched member audits one
-# tree and writes its marker; code-audit-frontend then stamps the GAIA-Audit
-# trailer, which lands as an EMPTY commit -- HEAD advances, the tree does not.
-# Keyed to HEAD, every sibling member's marker is orphaned by that stamp and the
-# gate denies a diff all members already cleared. Keyed to the tree, the markers
-# still name the content being merged, so the gate clears.
-@test "AND-aggregator: every member's marker survives the trailer stamp's empty commit" {
+# The regression digest keying exists for. Every dispatched member audits its
+# own owned-plus-machinery content and writes its marker; code-audit-frontend
+# then stamps the GAIA-Audit trailer, which lands as an EMPTY commit -- HEAD
+# advances, every blob stays byte-identical. A member's digest is a sha256
+# over blob shas, so it does not rotate either, and no sibling member's marker
+# is orphaned by the stamp.
+@test "AND-aggregator: every member's marker survives the trailer stamp's empty commit (digest is content-keyed)" {
   commit_files "app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x"
-  write_marker ""
-  write_marker ".code-audit-maintainer-shell"
+  write_marker "code-audit-frontend"
+  write_marker "code-audit-maintainer-shell"
 
-  # code-audit-frontend stamps the trailer: an empty commit, identical tree.
-  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  before_frontend="$(member_digest_for code-audit-frontend)"
+  before_shell="$(member_digest_for code-audit-maintainer-shell)"
   git -C "$REPO" commit -q --allow-empty -m "chore: code review audit passed"
-  [ "$(git -C "$REPO" rev-parse "HEAD^{tree}")" = "$before_tree" ]
+  [ "$(member_digest_for code-audit-frontend)" = "$before_frontend" ]
+  [ "$(member_digest_for code-audit-maintainer-shell)" = "$before_shell" ]
 
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
 }
 
-# The other half of the contract: tree-keying must not turn the gate into a
-# rubber stamp. A commit that actually CHANGES the tree invalidates every
-# marker, because the content the members cleared is no longer the content
-# being merged.
-@test "AND-aggregator: a marker does NOT survive a commit that changes the tree" {
-  commit_files "app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x"
-  write_marker ""
-  write_marker ".code-audit-maintainer-shell"
+# ---------------------------------------------------------------------------
+# UAT-001 (flagship): an out-of-glob-only commit rotates no member's digest,
+# so every existing marker keeps validating with ZERO re-dispatch and ZERO
+# new marker minting, at both the spawn oracle and the merge gate.
+# ---------------------------------------------------------------------------
 
-  commit_files "app/b.ts" "export const b = 2"
+@test "UAT-001: an out-of-glob commit (CHANGELOG.md) leaves every digest unchanged; zero re-dispatch, zero new marker" {
+  commit_files "app/x.ts" "export const x = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
+  write_marker "code-audit-frontend"
+  write_marker "code-audit-maintainer-shell"
+  frontend_before="$(member_digest_for code-audit-frontend)"
+  shell_before="$(member_digest_for code-audit-maintainer-shell)"
+
+  commit_files "CHANGELOG.md" "## [Unreleased]\n- entry"
+
+  [ "$(member_digest_for code-audit-frontend)" = "$frontend_before" ]
+  [ "$(member_digest_for code-audit-maintainer-shell)" = "$shell_before" ]
+
+  set=$(spawn_set)
+  [ -z "$set" ]
+
+  before_pool="$(pool_snapshot)"
+  run_merge_hook
+  assert_allowed
+  after_pool="$(pool_snapshot)"
+  [ "$before_pool" = "$after_pool" ]
+}
+
+# ---------------------------------------------------------------------------
+# UAT-002: a change to a file a single member owns rotates exactly that
+# member's digest; every unrelated member keeps its clearance.
+# ---------------------------------------------------------------------------
+
+@test "UAT-002: a maintainer-node-owned change rotates only that member's digest" {
+  commit_files "app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x" ".gaia/cli/src/foo.ts" "export const foo = 1"
+  write_marker "code-audit-frontend"
+  write_marker "code-audit-maintainer-shell"
+  write_marker "code-audit-maintainer-node"
+  frontend_before="$(member_digest_for code-audit-frontend)"
+  shell_before="$(member_digest_for code-audit-maintainer-shell)"
+
+  commit_files ".gaia/cli/src/foo.ts" "export const foo = 2"
+
+  [ "$(member_digest_for code-audit-frontend)" = "$frontend_before" ]
+  [ "$(member_digest_for code-audit-maintainer-shell)" = "$shell_before" ]
 
   run_merge_hook
   [ "$status" -eq 0 ]
   grep -qF '"permissionDecision": "deny"' <<< "$output" || return 1
+  grep -qF "code-audit-frontend: CLEARED" <<< "$output" || return 1
+  grep -qF "code-audit-maintainer-shell: CLEARED" <<< "$output" || return 1
+  grep -qF "code-audit-maintainer-node: PENDING" <<< "$output" || return 1
+
+  write_marker "code-audit-maintainer-node"
+  run_merge_hook
+  assert_allowed
+}
+
+# ---------------------------------------------------------------------------
+# UAT-003: a gate-machinery change rotates every member's digest, so the
+# full team is re-dispatched, not just the owner of the touched file.
+# ---------------------------------------------------------------------------
+
+@test "UAT-003: a machinery-file change rotates every member's digest and re-dispatches the full team" {
+  commit_files "app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x" ".gaia/cli/src/foo.ts" "export const foo = 1"
+  write_marker "code-audit-frontend"
+  write_marker "code-audit-maintainer-shell"
+  write_marker "code-audit-maintainer-node"
+
+  # audit-write-clearance.sh is gate machinery, and (unlike audit-scope.sh /
+  # audit-machinery.sh / audit-clearance.sh) is NOT one of the fixture copies
+  # setup() places under $REPO/.claude/hooks/lib/ for the sandboxed resolver
+  # scripts' own dependency resolution, so writing it here cannot clobber
+  # those and break the resolver. A change to it rotates EVERY digest.
+  commit_files ".gaia/scripts/audit-write-clearance.sh" "# machinery touch"
+
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<< "$output" || return 1
+  grep -qF "code-audit-frontend: PENDING" <<< "$output" || return 1
+  grep -qF "code-audit-maintainer-shell: PENDING" <<< "$output" || return 1
+  grep -qF "code-audit-maintainer-node: PENDING" <<< "$output" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# UAT-004 / C6: the gate checks the refused family before the earned family,
+# so a live refusal for the current digest denies unconditionally even with a
+# same-digest earned marker present.
+# ---------------------------------------------------------------------------
+
+@test "UAT-004: a live refusal for the SAME digest denies even with a valid earned marker present (frontend)" {
+  commit_files "app/x.ts" "export const x = 1"
+  write_marker "code-audit-frontend"
+  write_refused "code-audit-frontend"
+
+  run_merge_hook
+  assert_denied
+}
+
+@test "UAT-004: refusal precedence also applies to a specialized member" {
+  commit_files "app/x.ts" "export const x = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
+  write_marker "code-audit-frontend"
+  write_marker "code-audit-maintainer-shell"
+  write_refused "code-audit-maintainer-shell"
+
+  run_merge_hook
+  assert_denied
+  grep -qF "code-audit-maintainer-shell: REFUSED" <<< "$output" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# UAT-011: the in-scope-but-ownerless band is closed structurally by the
+# frontend digest fold, not by a bespoke guard. A stale frontend marker
+# (earned before an ownerless in-scope path was added) no longer validates.
+# ---------------------------------------------------------------------------
+
+@test "UAT-011: a stale frontend marker does not clear a merge that adds an in-scope-but-ownerless Dockerfile" {
+  commit_files "app/x.ts" "export const x = 1"
+  write_marker "code-audit-frontend"
+  commit_files "Dockerfile" "FROM scratch"
+
+  run_merge_hook
+  assert_denied
+}
+
+@test "UAT-011: a stale frontend marker does not clear a merge that adds a nested ownerless public asset" {
+  commit_files "app/x.ts" "export const x = 1"
+  write_marker "code-audit-frontend"
+  commit_files "public/logo.svg" "<svg></svg>"
+
+  run_merge_hook
+  assert_denied
+}
+
+# ---------------------------------------------------------------------------
+# C4: the disposition read is re-keyed to the frontend digest and runs
+# whenever the frontend's own earned marker is valid (not only after a
+# carry, there is no carry-forward anymore). Fail closed on an absent
+# sidecar; deny on an offender; allow on a clean sidecar.
+# ---------------------------------------------------------------------------
+
+@test "C4: frontend marker valid but disposition sidecar absent denies (fail-closed)" {
+  commit_files "app/x.ts" "export const x = 1"
+  write_marker "code-audit-frontend"
+  # write_marker auto-pairs a clean sidecar (mirroring the real agent flow);
+  # remove it to exercise the fail-closed absent-sidecar path specifically.
+  digest="$(member_digest_for code-audit-frontend)"
+  rm -f "$REPO/.gaia/local/audit/${digest}.dispositions.json"
+
+  run_merge_hook
+  assert_denied
+  grep -qF "disposition sidecar" <<< "$output" || return 1
+}
+
+@test "C4: a filed disposition whose issue no longer exists denies on the normal earned path" {
+  install_gh_stub '[]'
+  commit_files "app/x.ts" "export const x = 1"
+  write_marker "code-audit-frontend"
+  write_sidecar '[{"key":"v1 class=x path=app/x.ts line=1","disposition":"filed"}]' "github"
+
+  run_merge_hook
+  assert_denied
+  grep -qF "filed-but-missing" <<< "$output" || return 1
+  grep -qF "v1 class=x path=app/x.ts line=1" <<< "$output" || return 1
+}
+
+@test "C4: a clean disposition sidecar allows the merge" {
+  install_gh_stub '[]'
+  commit_files "app/x.ts" "export const x = 1"
+  write_marker "code-audit-frontend"
+  write_sidecar '[]' "absent"
+
+  run_merge_hook
+  assert_allowed
 }
 
 # ---------------------------------------------------------------------------
@@ -647,100 +813,25 @@ EOF
 
 @test "FC-4 no-useless-spawn: mixed diff denies while only the default member's marker is present" {
   commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
-  write_marker ""
+  write_marker "code-audit-frontend"
   run_merge_hook
   assert_denied
 }
 
 @test "FC-4 no-useless-spawn: mixed diff denies with only the shell marker, then allows once both are present" {
   commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
-  write_marker ".code-audit-maintainer-shell"
+  write_marker "code-audit-maintainer-shell"
   run_merge_hook
   assert_denied
 
-  write_marker ""
+  write_marker "code-audit-frontend"
   run_merge_hook
   assert_allowed
 }
 
 @test "FC-4 no-useless-spawn: framework-shell-only diff denies with a frontend marker instead of the shell one" {
   commit_files ".gaia/scripts/y.sh" "#!/bin/bash"
-  write_marker ""
+  write_marker "code-audit-frontend"
   run_merge_hook
   assert_denied
-}
-
-# ---------------------------------------------------------------------------
-# Carry-forward: the authority mints a carried clearance and allows, never
-# shrinks the required set, and re-verifies filed dispositions after a carry.
-# ---------------------------------------------------------------------------
-
-@test "UAT-001: a wiki-only commit carries the frontend clearance forward and allows, minting a carried clearance" {
-  install_gh_stub
-  # app/ change -> tree T1; seed the frontend earned anchor + a clean sidecar.
-  commit_files "app/x.ts" "export const x = 1"
-  t1=$(git -C "$REPO" rev-parse "HEAD^{tree}")
-  s1=$(git -C "$REPO" rev-parse HEAD)
-  seed_anchor_frontend "$t1" "$s1"
-  # A wiki-only commit -> tree T2, with NO clearance artifact for T2.
-  commit_files "wiki/x.md" "doc"
-  t2=$(git -C "$REPO" rev-parse "HEAD^{tree}")
-
-  # CONTROL: the whole-branch diff still dispatches the frontend member, so its
-  # absence from the spawn list is provably carry-forward's doing.
-  members=$(resolve_members)
-  assert_in_set "code-audit-frontend" "$members"
-
-  run_merge_hook
-  assert_allowed
-  # A carried clearance was minted at T2's distinct filename.
-  [ -f "$REPO/.gaia/local/audit/${t2}.carried" ]
-  # The status POST carries the `carried` provenance token in its description.
-  [ -f "$POST_LOG" ]
-  grep -q "description=1.4.0 ${t2} carried" "$POST_LOG"
-}
-
-@test "UAT-004: a carried frontend clearance never removes a co-dispatched member from the required set" {
-  # The whole-branch diff touches app/ AND a NON-machinery shell script, so both
-  # code-audit-frontend and code-audit-maintainer-shell are required.
-  commit_files "app/x.ts" "export const x = 1" ".gaia/scripts/token-tally.sh" "echo tally"
-  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
-  # frontend holds a CARRIED clearance for HEAD's tree; the shell member none.
-  write_carried_frontend "$tree"
-
-  # CONTROL: the required set derives from the whole-branch diff (both members),
-  # not the clearance pool (which would be the frontend alone).
-  members=$(resolve_members)
-  assert_in_set "code-audit-frontend" "$members"
-  assert_in_set "code-audit-maintainer-shell" "$members"
-
-  run_merge_hook
-  assert_denied
-  grep -q "code-audit-maintainer-shell: PENDING" <<<"$output" || return 1
-}
-
-@test "UAT-010: a carried disposition whose filed key resolves to no issue denies (carry-then-deny)" {
-  # gh reachable, but the tech-debt issue list is empty: the anchor's filed key
-  # resolves to nothing.
-  install_gh_stub '[]'
-  commit_files "app/x.ts" "export const x = 1"
-  t1=$(git -C "$REPO" rev-parse "HEAD^{tree}")
-  s1=$(git -C "$REPO" rev-parse HEAD)
-  # The anchor's audit filed a disposition on a REACHABLE backend.
-  seed_anchor_frontend "$t1" "$s1" "2026-01-01T00:00:00Z" \
-    '[{"key":"v1 class=x path=app/x.ts line=1","disposition":"filed"}]' "github"
-  # A wiki-only commit -> tree T2; the anchor commit is an ancestor of HEAD.
-  commit_files "wiki/x.md" "doc"
-  t2=$(git -C "$REPO" rev-parse "HEAD^{tree}")
-  s2=$(git -C "$REPO" rev-parse HEAD)
-
-  run_merge_hook
-  assert_denied
-  grep -q "filed-but-missing" <<<"$output" || return 1
-  grep -q "v1 class=x path=app/x.ts line=1" <<<"$output" || return 1
-  # The carry DID happen: the carried clearance was minted and the anchor's
-  # disposition record merged into HEAD's sidecar in the same operation.
-  [ -f "$REPO/.gaia/local/audit/${t2}.carried" ]
-  [ -f "$REPO/.gaia/local/audit/${s2}.dispositions.json" ]
-  [ "$(jq -r '.findings[0].disposition' "$REPO/.gaia/local/audit/${s2}.dispositions.json")" = "filed" ]
 }

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-07-07
+updated: 2026-07-16
 tags: [concept, claude, agent, review]
 ---
 
@@ -50,7 +50,7 @@ The benefit lands when an audit completes between pushes: a follow-up push revie
 
 The local fix → re-audit loop carries its state across rounds in a gitignored per-base file, `.gaia/local/audit/<base-sha>.rerun.json`. The ledger holds the in-scope findings still open, what was fixed last round, the cleared/incremental base, and a round counter, so the carried state is deterministic and lossless instead of living in the orchestrator thread's degrading memory.
 
-The ledger keys on the incremental base (the fork point `git merge-base "$BASE_REF" HEAD`, resolved the same way the audit resolves its review base), not HEAD. The per-HEAD marker (`<sha>.ok`) and the dispositions sidecar (`<sha>.dispositions.json`) key on HEAD because they certify the exact commit being merged, which moves with every fix commit. The ledger accumulates "what is still wrong relative to the cleared base," and that base fork point is stable across fix rounds within one loop, so the remaining items survive the HEAD moves each fix commit produces with no HEAD-chaining logic. Its `remaining[]` carries in-scope open findings only; out-of-scope findings stay in the dispositions sidecar (see [[Audit Disposition and Debt Fix]]).
+The ledger keys on the incremental base (the fork point `git merge-base "$BASE_REF" HEAD`, resolved the same way the audit resolves its review base), not HEAD. The per-member marker (`<digest>.ok` for the frontend, `<digest>.<member>.ok` for a specialist) and the dispositions sidecar (`<frontend-digest>.dispositions.json`) key on each member's own content digest, not HEAD, because they certify the content that member reviewed. A fix commit that touches frontend-owned content rotates the frontend digest, and both artifacts, just as a HEAD move used to; a commit that touches nothing any member owns and no machinery leaves every digest, and every marker, valid. The ledger accumulates "what is still wrong relative to the cleared base," and that base fork point is stable across fix rounds within one loop, so the remaining items survive the HEAD moves each fix commit produces with no HEAD-chaining logic. Its `remaining[]` carries in-scope open findings only; out-of-scope findings stay in the dispositions sidecar (see [[Audit Disposition and Debt Fix]]).
 
 The next re-audit and the fixer read the ledger for a deterministic, lossless briefing instead of a main-thread-authored prompt summary. Because the detail lives in the ledger, the agent's local Task return is then a terse pointer plus counts (remaining Critical/Important/Suggestion, escalated, fixed-this-round, out-of-scope dispositions) rather than a full per-round report, so the orchestrator stops absorbing the round's full output each pass. On a non-clean pass the audit writes/updates the ledger and increments the round; on a clean pass (the marker writes) it removes the ledger.
 

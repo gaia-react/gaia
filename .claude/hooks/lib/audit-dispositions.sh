@@ -2,25 +2,31 @@
 # audit-dispositions.sh: the shared disposition-ledger logic for the Code Audit
 # Team. Sourced, never executed; does no work at source time.
 #
-# One implementation, two consumers: the deterministic backstop hook
-# (.claude/hooks/audit-disposition-check.sh) and the minting authority
-# (.claude/hooks/pr-merge-audit-check.sh). The authority re-runs the filed-key
-# verification on HEAD's carried-into sidecar, which the sibling hook cannot be
-# relied on to do (its execution order against the authority is not a contract),
-# so the check lives here where both share it.
+# The disposition-ledger sidecar is keyed to the frontend member's content
+# digest (<frontend-digest>.dispositions.json), valid iff the frontend earned
+# marker for that digest is valid. Two functions, two callers each:
 #
 #   disposition_offenders <sidecar>
 #       Prints one offender line per unmet disposition on stdout; empty output
 #       (and exit 0) means clean. FAIL-OPEN everywhere it cannot prove an
 #       inconsistency: no sidecar, unparseable sidecar, backend "absent", or any
 #       gh/tooling failure. Blocks ONLY on a confirmed present-backend
-#       filed-but-missing key or a pending(definitive) entry.
+#       filed-but-missing key or a pending(definitive) entry. Called by both
+#       the deterministic backstop hook (.claude/hooks/audit-disposition-check.sh)
+#       and the merge gate (.claude/hooks/pr-merge-audit-check.sh) to re-verify
+#       the current sidecar's claims.
 #
-#   disposition_merge <anchor-sidecar> <head-sidecar>
-#       Merges the anchor's disposition record INTO head's, in place. HEAD's
-#       fresh entry always wins on a key collision (a carried entry may only ADD
-#       keys); the strictest backend wins (a non-"absent" side is never silenced
-#       by an "absent" one).
+#   disposition_seed_forward <prev-sidecar> <new-sidecar>
+#       Unions every still-open entry (`filed`, or `pending` with
+#       `pending_reason` "definitive") from <prev-sidecar> into <new-sidecar>,
+#       in place. A fresh incremental audit does not re-encounter a prior
+#       out-of-scope finding, so a digest rotation alone would silently drop a
+#       still-open receipt; the code-audit-frontend agent calls this when it
+#       writes the sidecar for a new frontend digest, seeding it from the
+#       immediately-prior frontend digest's sidecar so the receipt survives the
+#       rotation. HEAD's fresh entry always wins on a key collision (a seeded
+#       entry may only ADD keys). A plain still-open union: no anchor
+#       selection, no ancestry, no backend precedence.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
@@ -101,53 +107,56 @@ EOF
   return 0
 }
 
-# --- disposition_merge <anchor-sidecar> <head-sidecar> -----------------------
+# --- disposition_seed_forward <prev-sidecar> <new-sidecar> -------------------
 #
-# Merges the anchor's disposition record INTO head's, writing head in place
-# (atomically: temp file + mv). Contract, not the implementer's choice, because
-# merge-conflict resolution inside a gate cannot be left to the implementer:
+# Unions every still-open entry from <prev-sidecar> into <new-sidecar>, writing
+# <new-sidecar> in place (atomically: temp file + mv). "Still-open" is the SAME
+# predicate the janitor's open-receipt keep-arm applies:
 #
-#   - On a key collision, HEAD's fresh entry always wins; a carried entry may
-#     only ADD keys (a carry can never downgrade a live finding).
-#   - The strictest backend wins: if either side is non-"absent", the merged
-#     backend is the non-"absent" one, so a carried entry recorded under a
-#     reachable backend is never silenced by an "absent" short-circuit inherited
-#     from a sibling's write.
+#   .disposition == "filed"
+#   OR (.disposition == "pending" AND .pending_reason == "definitive")
 #
-# A missing head sidecar is treated as an empty record, so the merge writes the
-# anchor's findings through (all keys are new). A missing/unparseable anchor
-# sidecar is a no-op. Fail-safe: any error leaves head untouched.
-disposition_merge() {
-  local anchor="$1" head="$2"
-  local anchor_json head_json merged tmp
+# On a key collision, HEAD's fresh entry in <new-sidecar> always wins; a seeded
+# entry may only ADD keys, never overwrite one already present. A plain
+# still-open union: no anchor selection, no ancestry walk, no backend
+# precedence logic.
+#
+# A missing <new-sidecar> is treated as an empty record, so still-open entries
+# write through (all keys are new). A missing/unparseable <prev-sidecar>, an
+# absent jq, or any error is a no-op that leaves <new-sidecar> untouched.
+disposition_seed_forward() {
+  local prev="$1" new="$2"
+  local prev_json new_json merged tmp
 
   command -v jq >/dev/null 2>&1 || return 0
-  [ -n "$anchor" ] && [ -n "$head" ] || return 0
-  [ -f "$anchor" ] || return 0
-  anchor_json=$(jq -e . "$anchor" 2>/dev/null) || return 0
+  [ -n "$prev" ] && [ -n "$new" ] || return 0
+  [ -f "$prev" ] || return 0
+  prev_json=$(jq -e . "$prev" 2>/dev/null) || return 0
 
-  if [ -f "$head" ]; then
-    head_json=$(jq -e . "$head" 2>/dev/null) || head_json='{}'
+  if [ -f "$new" ]; then
+    new_json=$(jq -e . "$new" 2>/dev/null) || new_json='{}'
   else
-    head_json='{}'
+    new_json='{}'
   fi
 
-  merged=$(printf '%s\n%s\n' "$anchor_json" "$head_json" | jq -s '
-    .[0] as $anchor | .[1] as $head |
-    ($head.findings // []) as $hf |
-    ([ $hf[] | .key ]) as $hkeys |
-    ($anchor.findings // []) as $af |
-    ($af | map(select((.key as $k | $hkeys | index($k)) | not))) as $newf |
-    ($head.backend // "absent") as $hb |
-    ($anchor.backend // "absent") as $ab |
-    (if $hb != "absent" then $hb elif $ab != "absent" then $ab else "absent" end) as $backend |
-    $head | .findings = ($hf + $newf) | .backend = $backend
+  merged=$(printf '%s\n%s\n' "$prev_json" "$new_json" | jq -s '
+    .[0] as $prev | .[1] as $new |
+    ($new.findings // []) as $nf |
+    ([ $nf[] | .key ]) as $nkeys |
+    ($prev.findings // []) as $pf |
+    ([ $pf[] | select(
+        (.disposition // "") == "filed"
+        or ((.disposition // "") == "pending" and (.pending_reason // "") == "definitive")
+      )
+    ]) as $still_open |
+    ($still_open | map(select((.key as $k | $nkeys | index($k)) | not))) as $seeded |
+    $new | .findings = ($nf + $seeded)
   ' 2>/dev/null) || return 0
   [ -n "$merged" ] || return 0
 
-  mkdir -p "$(dirname "$head")" 2>/dev/null || true
-  tmp=$(mktemp "$(dirname "$head")/.audit-dispositions.XXXXXX" 2>/dev/null) || return 0
+  mkdir -p "$(dirname "$new")" 2>/dev/null || true
+  tmp=$(mktemp "$(dirname "$new")/.audit-dispositions.XXXXXX" 2>/dev/null) || return 0
   printf '%s\n' "$merged" > "$tmp" || { rm -f "$tmp"; return 0; }
-  mv -f "$tmp" "$head" 2>/dev/null || { rm -f "$tmp"; return 0; }
+  mv -f "$tmp" "$new" 2>/dev/null || { rm -f "$tmp"; return 0; }
   return 0
 }

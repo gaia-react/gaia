@@ -17,10 +17,11 @@
 #   .claude/hooks/post-audit-status.sh <marker-path>
 #
 #   <marker-path>  The marker file the calling member's agent just wrote
-#                  (.gaia/local/audit/<tree-sha>.ok for code-audit-frontend,
-#                  .gaia/local/audit/<tree-sha>.<member>.ok for a specialized
-#                  member). Its existence gates this call; the agent passes
-#                  the path it wrote in the marker step.
+#                  (.gaia/local/audit/<digest>.ok for code-audit-frontend,
+#                  .gaia/local/audit/<digest>.<member>.ok for a specialized
+#                  member, <digest> the member's own 64-hex content digest).
+#                  Its existence gates this call; the agent passes the path
+#                  it wrote in the marker step.
 #
 # Behavior
 #   Best-effort and fail-safe-asymmetric: when gh is absent or unauthenticated,
@@ -32,13 +33,14 @@
 #   after writing its own marker, so whichever member finishes last is the one
 #   whose call actually posts.
 #
-#   Order-independence rests on the TREE key. Markers are named for HEAD's tree,
-#   not its commit sha, so code-audit-frontend's GAIA-Audit trailer stamp -- an
-#   empty commit, which advances HEAD while leaving the tree byte-identical --
-#   does not orphan a sibling member's marker. Keyed to the commit, the stamp
-#   would invalidate every marker written before it, and the member that
-#   finished last would find the others' markers gone and decline forever. The
-#   POST itself still targets the commit sha: a GitHub commit status has nowhere
+#   Order-independence rests on the DIGEST key. Markers are named for the
+#   member's own content digest, not its commit sha, so code-audit-frontend's
+#   GAIA-Audit trailer stamp -- an empty commit, which advances HEAD while
+#   leaving every blob byte-identical -- rotates no member's digest and does
+#   not orphan a sibling member's marker. Keyed to the commit, the stamp would
+#   invalidate every marker written before it, and the member that finished
+#   last would find the others' markers gone and decline forever. The POST
+#   itself still targets the commit sha: a GitHub commit status has nowhere
 #   else to land.
 #
 # Exit codes
@@ -52,6 +54,7 @@
 #          gh unauthenticated
 #          version file missing
 #          version file empty
+#          frontend digest unavailable
 #          repo slug unresolved
 #          audited tree not on pushed head
 #          members pending <list>
@@ -68,18 +71,24 @@
 #   - Bash 3.2 compatible (macOS-default bash).
 #   - Never `cd`s (per .claude/rules/shell-cwd.md). Resolves the repo root via
 #     git rev-parse and uses repo-relative paths from there.
-#   - The success description "<version> <tree-sha>" matches what every
+#   - The success description "<version> <frontend-digest> <tree-sha>" (three
+#     positional fields; field 2 is the digest) matches what every
 #     state-aware GAIA-Audit reader accepts as cleared, and state=success
 #     distinguishes it from the CI local-mode stand-down's pending sentinel.
 
 set -euo pipefail
 
-# Load the shared clearance reader from this hook's OWN on-disk location
-# (never cwd, never $repo_root), per the frozen library resolution basis.
+# Load the shared clearance reader + digest engine from this hook's OWN
+# on-disk location (never cwd, never $repo_root), per the frozen library
+# resolution basis.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
   # shellcheck source=/dev/null
   . "$_lib_dir/audit-clearance.sh"
+fi
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-digest.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-digest.sh"
 fi
 
 emit_posted() {
@@ -106,24 +115,24 @@ if [ ! -f "$marker" ]; then
   exit 0
 fi
 
-# The gate accepts only a writer-produced clearance. Derive the member and tree
-# from the marker filename and require a writer-shaped body: a present but
-# legacy or hand-written marker is not a clearance and must not clear the POST.
-# The authority POSTs the path of a CARRIED clearance, so strip any of the three
-# provenance extensions (only one ever matches a given filename).
+# The gate accepts only a writer-produced clearance. Derive the member and
+# digest from the marker filename and require a writer-shaped body: a present
+# but legacy or hand-written marker is not a clearance and must not clear the
+# POST. Only two provenance extensions exist (there is no carried family), so
+# strip either (only one ever matches a given filename); the stem before the
+# first remaining dot is the 64-hex digest, the remainder is the member infix.
 marker_base="$(basename "$marker")"
 marker_stem="$marker_base"
 marker_stem="${marker_stem%.ok}"
-marker_stem="${marker_stem%.carried}"
 marker_stem="${marker_stem%.refused}"
-marker_tree="${marker_stem%%.*}"
-marker_member_part="${marker_stem#"$marker_tree"}"
+marker_digest="${marker_stem%%.*}"
+marker_member_part="${marker_stem#"$marker_digest"}"
 if [ -z "$marker_member_part" ]; then
   marker_member="code-audit-frontend"
 else
   marker_member="${marker_member_part#.}"
 fi
-if ! clearance_acceptable "$marker" "$marker_member" "$marker_tree"; then
+if ! clearance_acceptable "$marker" "$marker_member" "$marker_digest"; then
   emit_decline "marker not a valid clearance"
   exit 0
 fi
@@ -156,6 +165,15 @@ version="${version#"${version%%[![:space:]]*}"}"
 version="${version%"${version##*[![:space:]]}"}"
 if [ -z "$version" ]; then
   emit_decline "version file empty"
+  exit 0
+fi
+
+# Frontend digest (C3 field 2). Fail closed: never post a status without a
+# real digest. Reused below by the member-aware gate for the frontend
+# member's own digest, avoiding a second tree walk.
+frontend_digest="$(audit_member_digest "$repo_root" code-audit-frontend 2>/dev/null || true)"
+if [ -z "$frontend_digest" ]; then
+  emit_decline "frontend digest unavailable"
   exit 0
 fi
 
@@ -194,26 +212,21 @@ fi
 # status green (and unlock the github.com merge button) while a co-dispatched
 # maintainer member still withholds over an unresolved finding. Resolver
 # absent/unusable falls back to today's single-marker POST unchanged, a
-# partial/early-resume tree is never bricked.
-# carried is set when ANY dispatched member's clearance is carried (not earned).
-# The producer decides the description shape from the state on disk; there is no
-# CLI flag, which is what makes it deterministic.
-carried=0
+# partial/early-resume tree is never bricked. Each member is keyed to its OWN
+# digest (owned files + machinery), not the frontend digest or the tree; there
+# is no carried provenance, so every dispatched member's clearance is earned.
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ -x "$resolver" ]; then
   members="$(bash "$resolver" 2>/dev/null || true)"
   pending=""
   while IFS= read -r m; do
     [ -n "$m" ] || continue
-    if clearance_member_cleared "$repo_root" "$tree_sha" "$m"; then
-      # Prefer the earned marker; a member cleared only by its carried marker
-      # makes the whole status carried.
-      ep="$(clearance_earned_path "$repo_root" "$tree_sha" "$m")"
-      if ! clearance_acceptable "$ep" "$m" "$tree_sha"; then
-        cp="$(clearance_carried_path "$repo_root" "$tree_sha" "$m")"
-        clearance_acceptable "$cp" "$m" "$tree_sha" && carried=1
-      fi
+    if [ "$m" = "code-audit-frontend" ]; then
+      member_digest="$frontend_digest"
     else
+      member_digest="$(audit_member_digest "$repo_root" "$m" 2>/dev/null || true)"
+    fi
+    if [ -z "$member_digest" ] || ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
       pending="${pending}${pending:+ }${m}"
     fi
   done <<< "$members"
@@ -224,13 +237,10 @@ if [ -x "$resolver" ]; then
   fi
 fi
 
-# Description: today's two-field "<version> <tree>" when every dispatched
-# member's clearance is earned; "<version> <tree> carried" when any is carried.
-# The third field is invisible to CI's base resolver's field-1-only parse (so a
-# carried clearance can never anchor the incremental review base) while a
-# substring reader still accepts it, and the merge gate tolerates it.
-desc="${version} ${tree_sha}"
-[ "$carried" -eq 1 ] && desc="${desc} carried"
+# Description (C3): three positional fields "<version> <frontend-digest>
+# <tree>". Every dispatched member's clearance is earned (there is no
+# carried provenance), so the shape is fixed: no branch, no CLI flag.
+desc="${version} ${frontend_digest} ${tree_sha}"
 
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
 if [ -z "$repo" ]; then

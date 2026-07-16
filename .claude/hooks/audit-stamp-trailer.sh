@@ -7,7 +7,8 @@
 #   code-audit-frontend agent (.claude/agents/code-audit-frontend.md) after the
 #   audit has decided that an "Audit marker" is warranted. The trailer travels
 #   with the commit through the network so CI can skip its own audit run when
-#   the trailer's <agent-version> + <tree-sha> match the PR head.
+#   the trailer's <agent-version> + <frontend-digest> match a CI-recomputed
+#   digest of the PR head.
 #
 # Invocation
 #   .claude/hooks/audit-stamp-trailer.sh
@@ -35,6 +36,7 @@
 #          tree changed since audit started
 #          not in a git repo
 #          already stamped
+#          frontend digest unavailable
 #          members pending <list>
 #          stamp lock contended
 #   2 , Usage / unexpected error. Stderr.
@@ -54,12 +56,17 @@
 
 set -euo pipefail
 
-# Load the shared clearance reader from this hook's OWN on-disk location
-# (never cwd, never $repo_root), per the frozen library-resolution basis.
+# Load the shared clearance reader + digest engine from this hook's OWN
+# on-disk location (never cwd, never $repo_root), per the frozen
+# library-resolution basis.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
   # shellcheck source=/dev/null
   . "$_lib_dir/audit-clearance.sh"
+fi
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-digest.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-digest.sh"
 fi
 
 # -----------------------------------------------------------------------------
@@ -176,6 +183,17 @@ if [ -n "$audit_tree" ] && [ "$audit_tree" != "$current_tree" ]; then
   exit 0
 fi
 
+# -----------------------------------------------------------------------------
+# Frontend digest (C3 field 2). Fail closed: never stamp a trailer without a
+# real digest. Reused below by the member-aware gate for the frontend member's
+# own digest, avoiding a second tree walk.
+# -----------------------------------------------------------------------------
+frontend_digest="$(audit_member_digest "$repo_root" code-audit-frontend 2>/dev/null || true)"
+if [ -z "$frontend_digest" ]; then
+  emit_decline "frontend digest unavailable"
+  exit 0
+fi
+
 # A multi-member diff has all three Code Audit Team members invoke this hook
 # after writing their markers, and the member-aware gate below only passes
 # once the last member clears. Two members can pass the already-stamped
@@ -207,8 +225,9 @@ fi
 
 # -----------------------------------------------------------------------------
 # Member-aware gate: the trailer certifies that EVERY dispatched Code Audit Team
-# member cleared this tree, not just the caller. Mirrors the member-aware gate
-# in .claude/hooks/post-audit-status.sh.
+# member cleared this CONTENT, not just the caller. Mirrors the member-aware
+# gate in .claude/hooks/post-audit-status.sh. Each member is keyed to its OWN
+# digest (owned files + machinery), not the frontend digest or the tree.
 # Resolver absent/non-executable, or the clearance lib unavailable, falls back
 # to the caller's own clean judgment (today's behavior) so a partial or
 # early-resume tree is never bricked (never a fail-closed deadlock).
@@ -219,8 +238,14 @@ if [ -x "$resolver" ] && command -v clearance_member_cleared >/dev/null 2>&1; th
   pending=""
   while IFS= read -r m; do
     [ -n "$m" ] || continue
-    clearance_member_cleared "$repo_root" "$current_tree" "$m" \
-      || pending="${pending}${pending:+ }${m}"
+    if [ "$m" = "code-audit-frontend" ]; then
+      member_digest="$frontend_digest"
+    else
+      member_digest="$(audit_member_digest "$repo_root" "$m" 2>/dev/null || true)"
+    fi
+    if [ -z "$member_digest" ] || ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
+      pending="${pending}${pending:+ }${m}"
+    fi
   done <<< "$members"
   if [ -n "$pending" ]; then
     emit_decline "members pending ${pending}"
@@ -255,7 +280,7 @@ elif upstream=$(git -C "$repo_root" rev-parse --abbrev-ref --symbolic-full-name 
   fi
 fi
 
-trailer="GAIA-Audit: ${agent_version} ${current_tree}"
+trailer="GAIA-Audit: ${agent_version} ${frontend_digest} ${current_tree}"
 
 # -----------------------------------------------------------------------------
 # Stamp

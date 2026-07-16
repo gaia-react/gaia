@@ -26,7 +26,8 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .claude/hooks/lib/audit-machinery.sh
 .claude/hooks/lib/audit-clearance.sh
 .gaia/scripts/audit-write-clearance.sh
-.claude/hooks/lib/audit-carry-forward.sh
+.gaia/scripts/audit-member-digest.sh
+.gaia/scripts/audit-machinery-complete.sh
 .claude/hooks/lib/audit-dispositions.sh
 .gaia/scripts/resolve-audit-members.sh
 .gaia/scripts/resolve-audit-spawn.sh
@@ -89,4 +90,53 @@ audit_delta_has_machinery() {
   done
 
   return 1
+}
+
+# audit_machinery_flags: BATCH classifier for a path list (directive PERF-002).
+# Reads newline-delimited paths on stdin; prints "<path>\t<0|1>" per NON-EMPTY
+# input line (1 = machinery). It parses the AUDIT_MACHINERY_PATHS heredoc into
+# shell arrays ONCE, then tests each path against those arrays, so a caller
+# classifying every tracked file does not re-read the heredoc once per path the
+# way audit_path_is_machinery does. The membership semantics are byte-identical
+# to audit_path_is_machinery (exact match, or a `/**` directory-prefix match);
+# empty input lines are skipped, symmetric with audit_owners_for_paths, so the
+# digest walk can align this output line-for-line with that classifier's.
+audit_machinery_flags() {
+  local entry path prefix hit i ne np
+  local exact=() prefixes=()
+
+  # Parse the heredoc ONCE into exact-path and directory-prefix arrays.
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    case "$entry" in
+      *"/**") prefixes[${#prefixes[@]}]="${entry%\*\*}" ;;
+      *)      exact[${#exact[@]}]="$entry" ;;
+    esac
+  done <<EOF
+$AUDIT_MACHINERY_PATHS
+EOF
+
+  ne=${#exact[@]}
+  np=${#prefixes[@]}
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    hit=0
+    i=0
+    while [ "$i" -lt "$ne" ]; do
+      if [ "$path" = "${exact[$i]}" ]; then hit=1; break; fi
+      i=$((i + 1))
+    done
+    if [ "$hit" -eq 0 ]; then
+      i=0
+      while [ "$i" -lt "$np" ]; do
+        prefix="${prefixes[$i]}"
+        case "$path" in
+          "$prefix"*) hit=1; break ;;
+        esac
+        i=$((i + 1))
+      done
+    fi
+    printf '%s\t%d\n' "$path" "$hit"
+  done
 }

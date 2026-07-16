@@ -32,16 +32,30 @@
 # Exit code
 #   0 always. Callers consume the single stdout line.
 #
-# Why version-match (not tree-match) gates a base
+# Why version-match (not digest-match) gates a base
 #   A commit is a usable base when its audit signal's <version> equals the
-#   current .gaia/VERSION. The signal's tree-sha always equals the commit's
-#   own tree by construction (an amend stamp carries the audited tree; an
-#   empty-commit stamp carries the parent's audited tree, which is the empty
-#   commit's own tree), so re-checking it adds nothing here. A version
-#   mismatch means the ruleset changed since that audit, so code cleared
-#   under the old version may now have findings; that commit is NOT a safe
-#   base, and the walk continues, ultimately falling back to a full
-#   re-audit under the new ruleset.
+#   current .gaia/VERSION. A version mismatch means the ruleset changed
+#   since that audit, so code cleared under the old version may now have
+#   findings; that commit is NOT a safe base, and the walk continues,
+#   ultimately falling back to a full re-audit under the new ruleset. The
+#   signal's frontend-digest and tree fields are not compared here; they
+#   describe content the audit already reviewed, not whether the ruleset
+#   that reviewed it is still current.
+#
+# Base reset on machinery change (RT-006)
+#   A version-matching candidate is not automatically safe: if any
+#   gate-machinery file (the ownership classifier, the machinery matcher,
+#   the digest recipe itself) changed between that candidate and HEAD, the
+#   candidate's audit ran under different membership/scoping rules than
+#   HEAD's, even though the version string didn't move. Reviewing only
+#   <candidate>..HEAD would then leave the candidate's own pre-base content
+#   unreviewed under the new rules. So once a version-matching candidate is
+#   found, this helper checks whether any machinery path changed between it
+#   and HEAD (via the batch machinery matcher, sourced from the checkout);
+#   if one did, it emits the full-scope main ref instead. When the
+#   classifier/machinery libs cannot be loaded, the check is skipped
+#   (fail-open toward reviewing LESS, logged so it is never silent); the
+#   version-only candidate is still returned.
 #
 # Why bound the walk to merge-base..HEAD
 #   The base must be one of THIS PR's commits (or the divergence point as
@@ -136,11 +150,13 @@ fi
 # Signal extractors (frozen regex + status shape mirror check-trailer.sh).
 # -----------------------------------------------------------------------------
 
-trailer_regex='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
+# C3: version, frontend-digest (64-hex), tree (40-hex).
+trailer_regex='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{64})[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
 
 # trailer_version_for <sha> → echoes the (last) GAIA-Audit trailer version on
 # that commit's message, or empty. Reads from a temp file (not a pipe) so the
-# matched value survives in this shell (Bash 3.2 has no lastpipe).
+# matched value survives in this shell (Bash 3.2 has no lastpipe). Only $1
+# (version) is read here; the base is gated by version match alone.
 trailer_version_for() {
   local sha="$1" line ver="" tmp
   tmp=$(mktemp -t gaia-audit-base.XXXXXX) || return 0
@@ -165,16 +181,8 @@ trailer_version_for() {
 # source, so such a commit is not a usable base from the status path. Needs
 # gh + GH_TOKEN + repo slug; a missing token / absent gh / API failure / no
 # success status all yield empty (the walk continues).
-#
-# Provenance reject: a carried clearance POSTs the description "<version> <tree>
-# carried" (a THIRD field). A carried clearance must satisfy the required
-# GAIA-Audit check, but must NEVER anchor CI's incremental review base, because
-# no agent read that tree. This resolver parses field 1 alone, so without an
-# explicit reject a carried status would be indistinguishable from an earned
-# one here; return empty on any description carrying a third field so a carried
-# clearance can never advance the base a future audit reviews FROM.
 status_version_for() {
-  local sha="$1" repo desc nf
+  local sha="$1" repo desc
   [ -n "${GH_TOKEN:-}" ] || return 0
   command -v gh >/dev/null 2>&1 || return 0
   repo="${GITHUB_REPOSITORY:-}"
@@ -185,9 +193,61 @@ status_version_for() {
   if [ -z "$desc" ] || [ "$desc" = "null" ]; then
     return 0
   fi
-  nf=$(printf '%s' "$desc" | awk '{print NF}')
-  [ -n "$nf" ] && [ "$nf" -gt 2 ] && return 0
   printf '%s' "$desc" | awk '{print $1}'
+}
+
+# -----------------------------------------------------------------------------
+# RT-006: base reset on machinery change. A version-matching candidate is
+# only safe when no gate-machinery file changed between it and HEAD; source
+# the classifier + machinery libs from the checkout so the check reuses the
+# same batch matcher the digest engine and merge gate use, never a private
+# copy. Loaded lazily, once, on first need.
+# -----------------------------------------------------------------------------
+
+_machinery_lib_loaded=""
+load_machinery_lib() {
+  [ -n "$_machinery_lib_loaded" ] && return 0
+  local lib_dir="${repo_root}/.claude/hooks/lib"
+  if [ -f "$lib_dir/audit-scope.sh" ] && [ -f "$lib_dir/audit-machinery.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$lib_dir/audit-scope.sh" 2>/dev/null || true
+    # shellcheck source=/dev/null
+    . "$lib_dir/audit-machinery.sh" 2>/dev/null || true
+  fi
+  if command -v audit_delta_has_machinery >/dev/null 2>&1; then
+    _machinery_lib_loaded="true"
+  else
+    _machinery_lib_loaded="false"
+  fi
+}
+
+# emit_base_or_reset <candidate-sha>: prints the candidate, or the full-scope
+# main_ref if a machinery file changed between the candidate and HEAD, and
+# always exits. When the machinery lib cannot be loaded, the check is
+# skipped (fail-open toward reviewing LESS) and the candidate is emitted, but
+# the skip is logged so it is never silent -- the safer direction is a full
+# reset, so this is a deliberate, visible exception, not a default.
+emit_base_or_reset() {
+  local candidate="$1"
+  load_machinery_lib
+  if [ "$_machinery_lib_loaded" = "true" ]; then
+    # Feed the delta via a here-string, not a pipe: audit_delta_has_machinery
+    # returns on the first match without draining stdin, so a piped git-diff
+    # writing past the ~64KB pipe buffer takes SIGPIPE (141), and under
+    # `set -o pipefail` the pipeline status collapses to false -- silently
+    # skipping the reset. The sibling scripts avoid this the same way.
+    local _delta
+    _delta="$(git -C "$repo_root" diff --name-only "$candidate" "$head_sha" 2>/dev/null || true)"
+    if [ -n "$_delta" ] && audit_delta_has_machinery >/dev/null <<<"$_delta"; then
+      echo "resolve-audit-base: machinery changed between ${candidate} and HEAD; resetting to full scope (${main_ref})." >&2
+      printf '%s\n' "$main_ref"
+      exit 0
+    fi
+  else
+    echo "resolve-audit-base: classifier/machinery libs unavailable; RT-006 base-reset check skipped (fail-open, version-only base selection)." >&2
+  fi
+  printf '%s\n' "$candidate"
+  exit 0
 }
 
 # -----------------------------------------------------------------------------
@@ -201,14 +261,12 @@ for sha in $candidates; do
 
   tv="$(trailer_version_for "$sha")"
   if [ -n "$tv" ] && [ "$tv" = "$cur_version" ]; then
-    printf '%s\n' "$sha"
-    exit 0
+    emit_base_or_reset "$sha"
   fi
 
   sv="$(status_version_for "$sha")"
   if [ -n "$sv" ] && [ "$sv" = "$cur_version" ]; then
-    printf '%s\n' "$sha"
-    exit 0
+    emit_base_or_reset "$sha"
   fi
 done
 

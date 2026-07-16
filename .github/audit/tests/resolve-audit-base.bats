@@ -1,4 +1,7 @@
 #!/usr/bin/env bats
+#
+# Requires Bats >= 1.5.0 (RT-006 coverage below uses `run --separate-stderr`).
+bats_require_minimum_version 1.5.0
 
 # Tests for .github/audit/resolve-audit-base.sh.
 #
@@ -8,10 +11,21 @@
 # current .gaia/VERSION (proven by a GAIA-Audit commit trailer or commit
 # status), or the main ref for a full-scope fallback.
 #
+# The base is gated by VERSION MATCH ALONE: the trailer/status shared with
+# check-trailer.sh is the three-field C3 form ("<version> <frontend-digest>
+# <tree>"); only the version (field 1) is read here. Once a version-matching
+# candidate is found, RT-006 additionally requires that no gate-machinery
+# file changed between that candidate and HEAD (via the classifier +
+# machinery libs, sourced from the checkout); if one did, the helper resets
+# to the full-scope main ref instead of the candidate.
+#
 # Each test runs the script in an isolated `git init`'d temp dir whose HEAD
 # sits on a FEATURE branch off `main`, so the merge-base bound leaves the
 # branch's own commits walkable (committing straight on main would make
-# merge-base == HEAD and the candidate list empty).
+# merge-base == HEAD and the candidate list empty). The classifier +
+# machinery libs are provisioned on disk (not committed -- RT-006 only
+# needs them loadable, never as digest input) so the RT-006 check actually
+# runs; a dedicated test removes them to exercise the fail-open fallback.
 #
 # The commit-status path is exercised by mocking `gh` on a prepended PATH
 # (see install_gh_mock), keyed by commit SHA so a multi-commit walk can
@@ -29,13 +43,17 @@
 #   9.  .gaia/VERSION empty                        → main ref
 #   10. HEAD's own trailer is never the base       → main ref
 #   11. Single-commit PR (only HEAD)               → main ref
-#   12. Malformed trailer (short sha) ignored      → main ref
+#   12. Malformed trailer (short digest) ignored   → main ref
 #   13. gh absent / no token (status unreachable)  → main ref
 #   14. Pending status on ancestor → not a usable base → main ref
 #   15. Success status on ancestor → usable base       → ancestor SHA
+#   16. RT-006: machinery change between base and HEAD → main ref (reset)
+#   17. RT-006: no machinery change → candidate still returned
+#   18. RT-006: libs unavailable → fail-open, version-only selection
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   SCRIPT="$THIS_DIR/../resolve-audit-base.sh"
   [ -x "$SCRIPT" ] || skip "resolve-audit-base.sh not executable"
 
@@ -54,6 +72,19 @@ setup() {
   git -C "$SANDBOX" commit --quiet -m "init"
 
   git -C "$SANDBOX" checkout --quiet -b feature
+
+  # Provision the classifier + machinery libs on disk (RT-006's
+  # emit_base_or_reset sources them from "$repo_root/.claude/hooks/lib/").
+  # NOT committed: RT-006 only needs them loadable for the diff-classify
+  # check, never as digest input (this script computes no digest).
+  mkdir -p "$SANDBOX/.claude/hooks/lib"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
+
+  # The trailer/status digest field (C3 field 2) is never compared by this
+  # script (only the version, field 1, gates the base), so every fixture
+  # uses this fixed 64-hex placeholder rather than a recomputed real digest.
+  DIGEST="$(printf '%064d' 0)"
 }
 
 # Run the script with cwd inside the sandbox so its
@@ -69,6 +100,16 @@ add_commit() {
   echo "$marker" > "$SANDBOX/${marker}.txt"
   git -C "$SANDBOX" add "${marker}.txt"
   git -C "$SANDBOX" commit --quiet -m "$marker"
+}
+
+# Add a commit touching a gate-machinery path (matches the `.claude/rules/**`
+# machinery prefix), for RT-006 coverage. Deliberately NOT a path any single
+# member owns exclusively, so the rotation is attributable to machinery.
+add_machinery_commit() {
+  mkdir -p "$SANDBOX/.claude/rules"
+  echo "rule" > "$SANDBOX/.claude/rules/new-rule.md"
+  git -C "$SANDBOX" add .claude/rules/new-rule.md
+  git -C "$SANDBOX" commit --quiet -m "machinery change"
 }
 
 # Amend the given commit-ish (default HEAD) with one GAIA-Audit trailer.
@@ -194,7 +235,7 @@ EOF
 
 @test "trailer on parent with matching version → parent SHA" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
   base="$(sha_of HEAD)"
   add_commit b
   run run_in_sandbox
@@ -208,7 +249,7 @@ EOF
 
 @test "trailer on parent with version mismatch → main ref" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 9.9.9 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  amend_head_with_trailer "GAIA-Audit: 9.9.9 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
   add_commit b
   run run_in_sandbox
   [ "$status" -eq 0 ]
@@ -221,10 +262,10 @@ EOF
 
 @test "newest audited commit wins over an older audited commit" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
   older="$(sha_of HEAD)"
   add_commit b
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
   newer="$(sha_of HEAD)"
   add_commit c
   run run_in_sandbox
@@ -241,7 +282,7 @@ EOF
   add_commit a
   base="$(sha_of HEAD)"
   add_commit b
-  install_gh_mock "${base}=1.2.3 $(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
+  install_gh_mock "${base}=1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
   run run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "$base" ]
@@ -255,7 +296,7 @@ EOF
   add_commit a
   base="$(sha_of HEAD)"
   add_commit b
-  install_gh_mock "${base}=9.9.9 $(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
+  install_gh_mock "${base}=9.9.9 ${DIGEST} $(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
   run run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
@@ -269,10 +310,10 @@ EOF
   add_commit a
   status_sha="$(sha_of HEAD)"
   add_commit b
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
   trailer_sha="$(sha_of HEAD)"
   add_commit c
-  install_gh_mock "${status_sha}=1.2.3 $(git -C "$SANDBOX" rev-parse "${status_sha}^{tree}")"
+  install_gh_mock "${status_sha}=1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse "${status_sha}^{tree}")"
   run run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "$trailer_sha" ]
@@ -284,7 +325,7 @@ EOF
 
 @test ".gaia/VERSION missing → main ref" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
   add_commit b
   rm "$SANDBOX/.gaia/VERSION"
   git -C "$SANDBOX" add -A
@@ -300,7 +341,7 @@ EOF
 
 @test ".gaia/VERSION empty → main ref" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
   add_commit b
   : > "$SANDBOX/.gaia/VERSION"
   git -C "$SANDBOX" add -A
@@ -316,7 +357,7 @@ EOF
 
 @test "matching trailer on HEAD is not used as its own base" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
   run run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
@@ -334,14 +375,14 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# 12. Malformed trailer (truncated tree-sha) is ignored as if absent
+# 12. Malformed trailer (truncated digest) is ignored as if absent
 # -----------------------------------------------------------------------------
 
-@test "malformed trailer (short sha) on parent is ignored → main ref" {
+@test "malformed trailer (short digest) on parent is ignored → main ref" {
   add_commit a
   amend_head_with_raw_message "a
 
-GAIA-Audit: 1.2.3 abc123
+GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
 "
   add_commit b
   run run_in_sandbox
@@ -375,10 +416,10 @@ GAIA-Audit: 1.2.3 abc123
   base="$(sha_of HEAD)"
   add_commit b
   base_tree="$(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
-  # The ancestor carries a pending status with the current version+tree. The
+  # The ancestor carries a pending status with the current version+digest. The
   # state filter rejects it, so it is not picked; the walk falls to main.
   install_gh_array_mock \
-    "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"pending\",\"description\":\"1.2.3 ${base_tree}\"}]"
+    "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"pending\",\"description\":\"1.2.3 ${DIGEST} ${base_tree}\"}]"
   run run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
@@ -394,43 +435,63 @@ GAIA-Audit: 1.2.3 abc123
   add_commit b
   base_tree="$(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
   install_gh_array_mock \
-    "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${base_tree}\"}]"
+    "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${DIGEST} ${base_tree}\"}]"
   run run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "$base" ]
 }
 
 # -----------------------------------------------------------------------------
-# UAT-009 provenance reject: a CARRIED clearance POSTs a THREE-field description
-# "<version> <tree> carried". status_version_for parses field 1 alone, so
-# without the reject a carried status would be indistinguishable from an earned
-# one here. The reject returns empty for any description with a third field, so
-# a carried clearance can NEVER anchor CI's incremental review base.
+# 16. RT-006: a machinery change between the version-matching base and HEAD
+# resets to full scope, so a pre-base machinery change (a different classifier
+# ruleset) is never left unreviewed by an incremental <base>..HEAD diff.
 # -----------------------------------------------------------------------------
 
-@test "status base: a CARRIED (three-field) success status is rejected as a base -> main ref" {
+@test "RT-006: a machinery change between the version-matching base and HEAD resets to full scope" {
   add_commit a
-  base="$(sha_of HEAD)"
-  add_commit b
-  base_tree="$(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
-  install_gh_array_mock \
-    "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${base_tree} carried\"}]"
-  run run_in_sandbox
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  add_machinery_commit
+
+  run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
+  grep -qF "machinery changed" <<<"$stderr"
 }
 
-# The trailer channel is structurally immune with NO change: the anchored,
-# strictly-two-field trailer regex rejects a provenance-bearing trailer, so no
-# GAIA-Audit trailer is ever honored for a carried clearance.
-@test "trailer channel: a three-field GAIA-Audit trailer is structurally rejected -> main ref" {
-  add_commit a
-  amend_head_with_raw_message "a
+# -----------------------------------------------------------------------------
+# 17. RT-006 regression: an ordinary (non-machinery) follow-up commit does NOT
+# trigger the reset; the version-matching candidate is still returned.
+# -----------------------------------------------------------------------------
 
-GAIA-Audit: 1.2.3 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}') carried
-"
+@test "RT-006: a non-machinery follow-up commit does not reset the base" {
+  add_commit a
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  base="$(sha_of HEAD)"
   add_commit b
-  run run_in_sandbox
+
+  run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$base" ]
+  grep -qF "machinery changed" <<<"$stderr" && return 1
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# 18. RT-006 fail-open: when the classifier/machinery libs cannot be loaded,
+# the base-reset check is skipped (logged, not silent) and the version-only
+# candidate is still returned -- reviewing less, never denying a legitimate
+# incremental base outright.
+# -----------------------------------------------------------------------------
+
+@test "RT-006: classifier/machinery libs unavailable falls back to version-only base selection" {
+  add_commit a
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  base="$(sha_of HEAD)"
+  add_machinery_commit
+  rm -f "$SANDBOX/.claude/hooks/lib/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
+
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "$base" ]
+  grep -qF "libs unavailable" <<<"$stderr"
 }

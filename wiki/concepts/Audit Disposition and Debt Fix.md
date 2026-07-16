@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-07-15
+updated: 2026-07-16
 tags: [concept, claude, review]
 ---
 
@@ -79,7 +79,7 @@ A security-class finding's detail never reaches a public or internal issue, the 
 
 The disposition gate is the **fourth marker precondition**, alongside the three existing ones (no in-scope Critical, every in-scope Important addressed, every in-scope Suggestion auto-fixed or escalated), which are now scoped to in-scope findings. Before writing the marker the audit re-queries open `tech-debt` issues for each out-of-scope key and confirms each `filed` entry still resolves to an open issue carrying the key.
 
-The audit records its decision in a gitignored **disposition-ledger sidecar** at `.gaia/local/audit/<HEAD-sha>.dispositions.json` (`findings: []` when none were identified, so a reader can tell "audit ran, none identified" from "no sidecar"). Each entry carries the dedup key's inner content (the `v1 class=… path=… line=…` text without the `<!-- gaia-debt-key: … -->` wrapper), its severity, `security_class`, and a `disposition`:
+The audit records its decision in a gitignored **disposition-ledger sidecar** at `.gaia/local/audit/<frontend-digest>.dispositions.json`, keyed to the frontend member's own content digest (`findings: []` when none were identified, so a reader can tell "audit ran, none identified" from "no sidecar"). Each entry carries the dedup key's inner content (the `v1 class=… path=… line=…` text without the `<!-- gaia-debt-key: … -->` wrapper), its severity, `security_class`, and a `disposition`:
 
 - `filed`: an open `tech-debt` issue carries the key (`issue_number` set).
 - `diverted`: security-class diverted; no public issue.
@@ -99,20 +99,23 @@ The audit probes the issue backend once at the start of the disposition flow:
 
 ### Deterministic backstop hook
 
-The audit's verify-after-file re-query is agent behavior, not code. `.claude/hooks/audit-disposition-check.sh` is the deterministic backstop: a PreToolUse hook that gates `gh pr merge` alongside `pr-merge-audit-check.sh` and `worthiness-presence-check.sh`, each denying independently. It re-reads the sidecar for the current HEAD and denies the merge on exactly two conditions:
+The audit's verify-after-file re-query is agent behavior, not code. `.claude/hooks/audit-disposition-check.sh` is the deterministic backstop: a PreToolUse hook that gates `gh pr merge` alongside `pr-merge-audit-check.sh` and `worthiness-presence-check.sh`, each denying independently. It re-reads the sidecar for the current frontend content digest and denies the merge on exactly three conditions:
 
-1. a `filed` entry whose key has **no** matching open `tech-debt` issue on a reachable backend, or
-2. a `pending(definitive)` entry.
+1. a `filed` entry whose key has **no** matching open `tech-debt` issue on a reachable backend,
+2. a `pending(definitive)` entry, or
+3. a valid frontend earned marker for the current digest whose sidecar is absent (every audit run writes a sidecar, even an empty one, so a missing sidecar alongside a valid marker means the sidecar was lost, not that nothing was ever filed).
 
-It fails open everywhere else: no sidecar, backend `absent`, every `filed` entry confirmed, all entries diverted/waived/pending(transient), or any `gh`/tooling failure. A match is an issue body that **contains** the sidecar key as a substring, never whole-line equality. The CI workflow grants the job `issues: write` and adds `Bash(gh:*)` to the agent's `--allowedTools` so the same filing path runs from CI.
+It fails open everywhere else: no sidecar with no valid marker either, backend `absent`, every `filed` entry confirmed, all entries diverted/waived/pending(transient), or any `gh`/tooling failure. It also fails closed when the frontend digest itself cannot be derived (a missing sha256 tool, an unloadable classifier/machinery library, or a failing `git ls-tree`), since a digest-keyed gate that cannot compute its own key has no sidecar to check. A match is an issue body that **contains** the sidecar key as a substring, never whole-line equality. The CI workflow grants the job `issues: write` and adds `Bash(gh:*)` to the agent's `--allowedTools` so the same filing path runs from CI.
 
-### A carried clearance also writes the sidecar
+### Seed-forward
 
-The audit agent is not the sidecar's only writer. When [[PR Merge Workflow#Carry-forward|carry-forward]] pre-clears a member from an earlier tree, the merge gate carries that anchor's disposition record into HEAD's sidecar in the same operation, merging rather than overwriting: HEAD's own fresh entry always wins a key collision, and a carried entry may only add keys it does not already have, so a carry can never downgrade or hide a live finding. This only happens when the anchor's recorded commit is an ancestor of HEAD; a non-ancestor anchor's disposition record is never imported. After the merge the gate re-runs the same `filed`-key verification this backstop hook performs, on HEAD's now carried-into sidecar, so a filed finding whose tech-debt issue no longer exists still blocks the merge even though nobody re-ran the audit agent for HEAD's exact tree.
+The audit agent is not the sidecar's only writer. When `code-audit-frontend` writes the sidecar for a new frontend digest, it seeds it from the immediately-prior frontend digest's sidecar (located deterministically by recomputing the frontend digest at the incremental base, no anchor selection) via `disposition_seed_forward`: every still-open entry (`filed`, or `pending` with `pending_reason: "definitive"`) in the predecessor sidecar unions into the new one, in place. HEAD's own fresh entry always wins a key collision; a seeded entry may only add keys it does not already have, so a fresh incremental audit that does not re-encounter a prior out-of-scope finding can never silently drop its still-open receipt across a digest rotation, and an already-satisfied disposition is never resurrected by a stale entry. Because each rotation seeds from its own immediate predecessor, a still-open receipt propagates across an arbitrary run of digest rotations that never re-encounter the finding.
+
+Seed-forward alone would not survive a long idle gap between audit rounds: the SessionStart janitor's ordinary retention window would age out and reap the predecessor sidecar (and its co-keyed frontend marker) once the marker ages past `GAIA_AUDIT_MARKER_RETENTION_HOURS`. The janitor closes that gap with a keep-arm: a `<digest>.dispositions.json` sidecar that still holds at least one still-open entry, and its co-keyed frontend `<digest>.ok` marker, are exempt from the retention reap regardless of age, so seed-forward always finds a live predecessor to read from. See [[Local Working State]] for the full janitor keep-arm contract.
 
 ### Sibling: the re-run carry-forward ledger
 
-The local re-run carry-forward ledger (`.gaia/local/audit/<base-sha>.rerun.json`) is a distinct artifact from this disposition-ledger sidecar, not an overlap. The sidecar holds **out-of-scope** findings keyed to HEAD and gates the merge through the backstop hook; the re-run ledger holds **in-scope** remaining work keyed to the incremental base and never gates anything. They do not overlap and do not read each other: `audit-disposition-check.sh` reads only the dispositions sidecar by exact path, so the re-run ledger is invisible to merge gating. See [[Code Review Audit Agent]] for the ledger's role in the local fix → re-audit loop.
+The local re-run carry-forward ledger (`.gaia/local/audit/<base-sha>.rerun.json`) is a distinct artifact from this disposition-ledger sidecar, not an overlap. The sidecar holds **out-of-scope** findings keyed to the frontend member's content digest and gates the merge through the backstop hook; the re-run ledger holds **in-scope** remaining work keyed to the incremental base and never gates anything. They do not overlap and do not read each other: `audit-disposition-check.sh` reads only the dispositions sidecar by exact path, so the re-run ledger is invisible to merge gating. See [[Code Review Audit Agent]] for the ledger's role in the local fix → re-audit loop.
 
 ## /gaia-debt: fixing the backlog
 

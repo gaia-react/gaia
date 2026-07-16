@@ -112,11 +112,11 @@ Same format. Advisory: never block the marker on their own, but note whether the
 
 ## Gate handshake (per-member marker)
 
-On a genuinely clean pass, no Critical finding, every Important finding either fixed in the working tree since the last invocation (verify by re-reading the file, never trust a prior chat claim) or explicitly acknowledged by the operator with a stated reason, and the shellcheck oracle clean or its findings resolved the same way, run the handshake below in order: mark, stamp, re-mark, status.
+On a genuinely clean pass, no Critical finding, every Important finding either fixed in the working tree since the last invocation (verify by re-reading the file, never trust a prior chat claim) or explicitly acknowledged by the operator with a stated reason, and the shellcheck oracle clean or its findings resolved the same way, run the handshake below in order: mark, stamp, status.
 
 **1. Mark (pre-stamp).** Write the per-member marker:
 
-The marker is keyed to HEAD's **tree**, not its commit sha. It attests that you audited CONTENT, and the tree is the content, so your marker survives the `GAIA-Audit` trailer stamp below (an empty commit: it advances HEAD while leaving the tree byte-identical). That is what lets the team's members run in any order. A commit that genuinely edits the tree still invalidates your marker, and you must re-audit. Writing the marker before the stamp also feeds the member-aware stamp gate in step 2: the trailer is never stamped while any dispatched member's own marker, this one included, is missing.
+The marker is keyed to your own content digest, not HEAD's commit sha or tree: a sha256 over exactly the files you own (see "Remit and self-skip") plus the shared gate machinery, computed by `.claude/hooks/lib/audit-digest.sh`. It attests that you audited that CONTENT: an out-of-glob change (one that touches neither your owned globs nor a machinery file) rotates nothing in your digest, so your marker keeps validating with zero re-review, including across the `GAIA-Audit` trailer stamp below (a content-preserving empty commit: it advances HEAD while leaving every blob, and therefore your digest, unchanged). That is what lets the team's members run in any order. A change to a file you own, or to any machinery file, rotates your digest and invalidates your marker, and you must re-audit. Writing the marker before the stamp also feeds the member-aware stamp gate in step 2: the trailer is never stamped while any dispatched member's own marker, this one included, is missing.
 
 ```bash
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
@@ -125,9 +125,9 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --provenance earned)"
 ```
 
-The shared writer resolves HEAD, the tree, and the filename from `--root`, writes atomically, and prints the marker path it wrote. An earned clearance strictly dominates: it replaces any prior marker for this tree rather than being suppressed by it.
+The shared writer derives your content digest internally from `--root`, resolves the filename from it, writes atomically, and prints the marker path it wrote. Every write lands unconditionally: it replaces whatever marker was already on disk for this digest, there is no carried provenance to out-rank, only earned or refused.
 
-Withhold the marker on any unresolved Critical or unaddressed/unacknowledged Important finding; withholding it holds the shared `GAIA-Audit` gate shut via the AND-aggregator, since this member is part of the dispatched set for the diff. When you withhold after genuinely auditing this exact tree, **record the refusal** with the same shared writer so carry-forward treats it as absolute, and stop here, the remaining handshake steps below apply only to a written marker:
+Withhold the marker on any unresolved Critical or unaddressed/unacknowledged Important finding; withholding it holds the shared `GAIA-Audit` gate shut via the AND-aggregator, since this member is part of the dispatched set for the diff. When you withhold after genuinely auditing this exact content, **record the refusal** with the same shared writer so the merge gate treats it as absolute, checking the refusal family before the earned family: a live refusal for the current digest denies the merge regardless of any same-digest earned marker. Stop here, the remaining handshake steps below apply only to a written marker:
 
 ```bash
 bash .gaia/scripts/audit-write-clearance.sh \
@@ -142,22 +142,11 @@ bash .gaia/scripts/audit-write-clearance.sh \
 stamp_line=$(.claude/hooks/audit-stamp-trailer.sh)
 ```
 
-Driving the stamp is no longer frontend-only. It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this tree, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. You never push, here or anywhere else: the trailer commit this call may create is a tree-preserving local commit the local merge gate does not need pushed (it reads tree-keyed markers), and the member-aware status call in step 4 clears independently via the remote head. **Accepted cost:** when you are the last member to clear on a mixed diff, your trailer stays local and never reaches the remote, so CI re-audits that diff rather than skipping it via the trailer; this is redundant work only, the merge still clears via the remote-head status, and preserving the maintainers-never-push boundary is worth it. Surface the returned `stamp_line` in your report.
+Driving the stamp is no longer frontend-only. It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this content, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. You never push, here or anywhere else: the trailer commit this call may create is a content-preserving local commit the local merge gate does not need pushed (it reads digest-keyed markers), and the member-aware status call in step 3 clears independently via the remote head. **Accepted cost:** when you are the last member to clear on a mixed diff, your trailer stays local and never reaches the remote, so CI re-audits that diff rather than skipping it via the trailer; this is redundant work only, the merge still clears via the remote-head status, and preserving the maintainers-never-push boundary is worth it. Surface the returned `stamp_line` in your report. Because the stamp is a content-preserving empty commit, it rotates no digest, so the marker you wrote in step 1 stays valid after it: there is nothing to re-write.
 
-**3. Re-mark (post-stamp).** Re-run the same earned write:
+You write **only** your own marker. Never write the frontend member's `.gaia/local/audit/<digest>.ok`, and never post a `GAIA-Audit` status directly, that belongs to the shared helper in step 3.
 
-```bash
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
-  --member code-audit-maintainer-shell \
-  --provenance earned)"
-```
-
-The stamp in step 2 can move HEAD (an empty commit) or amend it, while leaving the tree untouched, so this re-write is an atomic, idempotent overwrite of the same tree-keyed marker, a harmless refresh either way. It exists to keep the marker's `sha` field on the post-stamp HEAD rather than the pre-stamp one step 1 recorded: carry-forward locates a prior clearance's disposition sidecar via the marker's `sha` field, and a marker left pointing at the pre-stamp commit would send a future carry-forward looking under the wrong sha and silently miss it.
-
-You write **only** this marker. Never write the frontend member's `.gaia/local/audit/<tree-sha>.ok`, and never post a `GAIA-Audit` status directly, that belongs to the shared helper in step 4.
-
-**4. Status.** Immediately after the stamp and re-mark steps (never on a withheld marker), call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
+**3. Status.** Immediately after the stamp step (never on a withheld marker), call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
 
 ```bash
 .claude/hooks/post-audit-status.sh "$marker"
@@ -176,4 +165,4 @@ If the marker is withheld, surface:
 3. Run `shellcheck` on each in-remit script.
 4. Apply the hook-contract lens to any file under `.claude/hooks/**/*.sh`, and the bats-suite lens to any `.bats` file.
 5. Collect candidates from both the correctness-core review and the shellcheck oracle; run each through the Finding Proof Gate.
-6. Produce the report; decide the marker; write it (or withhold it) and, on a write, stamp the trailer, re-write the marker, and call `post-audit-status.sh`.
+6. Produce the report; decide the marker; write it (or withhold it) and, on a write, stamp the trailer and call `post-audit-status.sh`.

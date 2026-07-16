@@ -264,13 +264,13 @@ setup() {
 
 # A writer-produced EARNED clearance short-circuits to real regardless of the
 # --path content. Marker EXISTENCE alone no longer suffices: the body must be a
-# writer-shaped earned clearance whose `tree` equals the filename key (an empty
-# or legacy body falls through, covered below).
+# writer-shaped earned clearance whose `digest` equals the filename key (an
+# empty or legacy body falls through, covered below).
 @test "audit-team-member: writer-produced EARNED --marker is REAL regardless of --path content" {
   marker="$BATS_TEST_TMPDIR/marker.ok"
-  # Filename key is "marker" (stem up to the first dot), so the body tree must
-  # equal it for clearance_acceptable.
-  printf '{"version":"1.6.1","schema":2,"member":"code-audit-frontend","provenance":"earned","sha":"deadbeef","tree":"marker","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' > "$marker"
+  # Filename key is "marker" (stem up to the first dot), so the body digest
+  # must equal it for clearance_acceptable.
+  printf '{"version":"1.6.1","schema":3,"member":"code-audit-frontend","provenance":"earned","digest":"marker","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","sha":"deadbeef","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' > "$marker"
   run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$marker"
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]
@@ -302,51 +302,67 @@ setup() {
 
 # ---------------------------------------------------------------------------
 # audit-team-member: the marker short-circuit fires ONLY on a writer-produced
-# EARNED clearance whose body tree equals the filename key. A carried
-# clearance (distinct filename, never handed as the .ok marker), a
+# EARNED clearance whose body digest equals the filename key. A refused
+# artifact (distinct filename, never handed as the .ok marker), a
 # legacy/hand-written body, and no marker all fall through to the content
 # inspection, which on text carrying neither a backticked path:line token nor
 # "Remaining in-scope:" is noop.
 # ---------------------------------------------------------------------------
 
-# Write a writer-shaped schema-2 clearance for TREE at PATH with PROVENANCE
-# (earned|carried), member code-audit-frontend.
+# _noop_digest: a fixed, deterministic 64-hex string (the new-scheme filename
+# key shape), built with printf repetition rather than hand-counted so it can
+# never silently drift off 64 characters.
+_noop_digest() {
+  printf 'ab%.0s' $(seq 1 32)
+}
+
+# Write a writer-shaped schema-3 clearance for DIGEST at PATH with PROVENANCE
+# (earned|refused), member code-audit-frontend.
 _noop_write_clearance() {
-  local path="$1" tree="$2" prov="$3"
-  printf '{"version":"1.6.1","schema":2,"member":"code-audit-frontend","provenance":"%s","sha":"deadbeef","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
-    "$prov" "$tree" > "$path"
+  local path="$1" digest="$2" prov="$3"
+  printf '{"version":"1.6.1","schema":3,"member":"code-audit-frontend","provenance":"%s","digest":"%s","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","sha":"deadbeef","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
+    "$prov" "$digest" > "$path"
 }
 
 @test "audit-team-member: writer-produced EARNED marker + token-free text is REAL" {
-  tree="aabbccddeeff00112233445566778899aabbccdd"
-  marker="$BATS_TEST_TMPDIR/${tree}.ok"
-  _noop_write_clearance "$marker" "$tree" earned
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.ok"
+  _noop_write_clearance "$marker" "$digest" earned
   run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$marker"
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]
 }
 
-@test "audit-team-member: CARRIED clearance (no earned .ok) + token-free text is NO-OP" {
-  tree="aabbccddeeff00112233445566778899aabbccdd"
-  # Only the carried artifact exists; the agent's .ok marker path is absent, so
+@test "audit-team-member: writer-produced EARNED specialist marker (<digest>.<member>.ok) is REAL" {
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.code-audit-maintainer-shell.ok"
+  printf '{"version":"1.6.1","schema":3,"member":"code-audit-maintainer-shell","provenance":"earned","digest":"%s","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","sha":"deadbeef","audited_at":"2026-01-01T00:00:00Z","sidecar":false}\n' "$digest" > "$marker"
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member: a REFUSED marker (no earned .ok) + token-free text is NO-OP" {
+  digest="$(_noop_digest)"
+  # Only the refusal artifact exists; the agent's .ok marker path is absent, so
   # the short-circuit is never handed a writer-produced earned marker.
-  _noop_write_clearance "$BATS_TEST_TMPDIR/${tree}.carried" "$tree" carried
-  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${tree}.ok"
+  _noop_write_clearance "$BATS_TEST_TMPDIR/${digest}.refused" "$digest" refused
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${digest}.ok"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
 }
 
 @test "audit-team-member: no marker at all + token-free text is NO-OP (unregressed)" {
-  tree="aabbccddeeff00112233445566778899aabbccdd"
-  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${tree}.ok"
+  digest="$(_noop_digest)"
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${digest}.ok"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
 }
 
 @test "audit-team-member: legacy-bodied marker + token-free text is NO-OP (existence no longer authorizes real)" {
-  tree="aabbccddeeff00112233445566778899aabbccdd"
-  marker="$BATS_TEST_TMPDIR/${tree}.ok"
-  printf '{"sha":"deadbeef","tree":"%s","audited_at":"2026-01-01T00:00:00Z"}\n' "$tree" > "$marker"
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.ok"
+  printf '{"sha":"deadbeef","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","audited_at":"2026-01-01T00:00:00Z"}\n' > "$marker"
   run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$marker"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
