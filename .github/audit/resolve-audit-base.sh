@@ -231,8 +231,14 @@ emit_base_or_reset() {
   local candidate="$1"
   load_machinery_lib
   if [ "$_machinery_lib_loaded" = "true" ]; then
-    if git -C "$repo_root" diff --name-only "$candidate" "$head_sha" 2>/dev/null \
-        | audit_delta_has_machinery >/dev/null; then
+    # Feed the delta via a here-string, not a pipe: audit_delta_has_machinery
+    # returns on the first match without draining stdin, so a piped git-diff
+    # writing past the ~64KB pipe buffer takes SIGPIPE (141), and under
+    # `set -o pipefail` the pipeline status collapses to false -- silently
+    # skipping the reset. The sibling scripts avoid this the same way.
+    local _delta
+    _delta="$(git -C "$repo_root" diff --name-only "$candidate" "$head_sha" 2>/dev/null || true)"
+    if [ -n "$_delta" ] && audit_delta_has_machinery >/dev/null <<<"$_delta"; then
       echo "resolve-audit-base: machinery changed between ${candidate} and HEAD; resetting to full scope (${main_ref})." >&2
       printf '%s\n' "$main_ref"
       exit 0
