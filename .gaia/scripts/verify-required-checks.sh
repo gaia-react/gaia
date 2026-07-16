@@ -51,14 +51,19 @@ workflows_dir=".github/workflows"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --repo)
-      repo="${2:-}"; shift 2 ;;
-    --branch)
-      branch="${2:-}"; shift 2 ;;
-    --ruleset-contexts)
-      ruleset_contexts_src="${2:-}"; shift 2 ;;
-    --workflows-dir)
-      workflows_dir="${2:-}"; shift 2 ;;
+    --repo|--branch|--ruleset-contexts|--workflows-dir)
+      if [ $# -lt 2 ]; then
+        echo "verify-required-checks: $1 needs a value" >&2
+        exit 2
+      fi
+      case "$1" in
+        --repo)             repo="$2" ;;
+        --branch)           branch="$2" ;;
+        --ruleset-contexts) ruleset_contexts_src="$2" ;;
+        --workflows-dir)    workflows_dir="$2" ;;
+      esac
+      shift 2
+      ;;
     *)
       echo "verify-required-checks: unknown argument: $1" >&2
       exit 2
@@ -93,7 +98,7 @@ fi
 
 missing=()
 for ctx in "${REQUIRED_CONTEXTS[@]}"; do
-  if ! printf '%s\n' "$ruleset_contexts" | grep -qxF "$ctx"; then
+  if ! printf '%s\n' "$ruleset_contexts" | grep -qxF -- "$ctx"; then
     missing+=("$ctx")
   fi
 done

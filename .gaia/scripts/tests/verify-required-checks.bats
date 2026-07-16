@@ -39,6 +39,27 @@ Vitest and Playwright"
   [ "$status" -eq 2 ]
 }
 
+@test "usage error: a value-taking flag with no value exits 2, does not hang" {
+  # No `timeout(1)` on stock macOS, so bound it by hand: background the call,
+  # poll briefly for exit, and kill it if it is still alive (a hang, not a
+  # usage error).
+  "$SCRIPT" --repo >"$BATS_TEST_TMPDIR/out" 2>&1 &
+  local pid=$!
+  local waited=0
+  while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 5 ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+    return 1
+  fi
+  local exit_status=0
+  wait "$pid" || exit_status=$?
+  [ "$exit_status" -eq 2 ]
+}
+
 # ---------------------------------------------------------------------------
 # Clean pass: every declared-required context is in the live ruleset
 # ---------------------------------------------------------------------------
