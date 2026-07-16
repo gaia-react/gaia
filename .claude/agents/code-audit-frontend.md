@@ -19,7 +19,7 @@ if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ]; then
 fi
 ```
 
-**`--no-carry-forward` is load-bearing, not optional.** Your self-skip must key on **"the diff does not dispatch me"**, never on **"I was pre-cleared"**. The oracle's carry-forward filter removes members whose earned clearance carries forward to HEAD; without this flag, a member the resolver deliberately spawned because it was pre-cleared would read the filtered set, see itself absent, and stand down on "I was pre-cleared", disabling the one lever that can catch a bad carry, spawning the member to see what it actually says. With the unfiltered oracle you still audit whenever the diff dispatches you, and your **earned** clearance then replaces any carried one automatically (the writer's earned-dominates-carried rule).
+**`--no-carry-forward` is load-bearing, not optional.** The flag name is unchanged, but what it does today is skip the digest-marker-presence filter entirely and emit the unfiltered dispatch set, byte-for-byte. Your self-skip must key on **"the diff does not dispatch me"**, never on **"I was pre-cleared"**. Without this flag, a member the resolver deliberately spawned because its current-digest marker is already present would read the filtered set, see itself absent, and stand down on "I was pre-cleared", disabling the one lever that can catch a bad clearance: spawning the member to see what it actually says. With the unfiltered oracle you still audit whenever the diff dispatches you; the shared writer's earned-only model means your fresh **earned** write simply replaces whatever marker was on disk for this digest, there is no carried provenance for it to out-rank.
 
 **If the call succeeded and `code-audit-frontend` is absent from `spawn_set`, skip cleanly**: write no marker (there is nothing to gate), do not call `post-audit-status.sh`, do not spawn specialist subagents or oracles, and return a one-line note that no changed file fell in your remit. A mixed diff carrying changes a specialized member owns is not your concern outside your own remit.
 
@@ -242,7 +242,7 @@ Probe the issue backend once at the start of the disposition flow:
   - **CI run**: a private advisory needs a privileged credential the default `GITHUB_TOKEN` lacks (mechanism deferred). For now emit a redacted **count-only** signal to the public PR comment (`N security-class findings diverted; maintainer must review`), never the detail. The marker still writes. Record `diverted`.
 - security-class on **confirmed PRIVATE** → file as a normal private `tech-debt` issue through the non-security pipeline (section E), fully dedupable/fixable. Record `filed`.
 - A **divert failure** (missing advisory credential or API error) reverts the finding to a redacted operator/maintainer surface, never a public issue, and the marker still writes. Record `diverted`.
-- A security-class finding's **detail** is never written to: a public or internal issue, the PR comment, the Actions log, or the progress breadcrumb file (`.gaia/local/audit/<tree-sha>.progress.log`, see Progress breadcrumbs). A diverted security finding contributes only to counts on those surfaces.
+- A security-class finding's **detail** is never written to: a public or internal issue, the PR comment, the Actions log, or the progress breadcrumb file (`.gaia/local/audit/<tree-sha>.progress.log`, tree-keyed, see Progress breadcrumbs). A diverted security finding contributes only to counts on those surfaces.
 
 When a diverting finding maps to no seeded class, build its dedup key with `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (the dedup key format defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) so the redacted operator surface and any future dedup are well-formed. The fallback class is what the key is *built with*; it is never what makes the finding divert (section B).
 
@@ -256,7 +256,7 @@ Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`) �
 
 ### F. Disposition-ledger sidecar
 
-The disposition **entries** (the per-finding content) are decided at the marker-decision point, but the sidecar **file** `.gaia/local/audit/<HEAD-sha>.dispositions.json` (gitignored) is written keyed to the **same HEAD as the marker**: the **post-stamp** HEAD when the marker is warranted (the `GAIA-Audit` trailer stamp moves HEAD, see the marker-write sequence under "Audit marker"), or the current HEAD when the marker is not warranted. The marker-backstop hook resolves `git rev-parse HEAD` at merge time, so a sidecar keyed to the pre-stamp HEAD would be orphaned, the hook would find no sidecar for the post-stamp HEAD and silently fail open. Write `findings: []` when there are no out-of-scope findings, so the marker-backstop hook can distinguish "audit ran, none identified" from "no sidecar". Set `backend` to the probe outcome.
+The disposition **entries** (the per-finding content) are decided at the marker-decision point, but the sidecar **file** `.gaia/local/audit/<frontend-digest>.dispositions.json` (gitignored) is written keyed to **your own frontend content digest**, the same digest the marker in "Audit marker (gate handshake)" is keyed to. Because the trailer stamp is a content-preserving empty commit, it rotates no digest, so the sidecar written before the stamp needs no post-stamp re-key. The merge gate's disposition backstop looks the sidecar up at exactly this path once your marker is valid for the current digest, and **fails closed** (denies the merge) when a valid marker has no sidecar at that path. Write `findings: []` when there are no out-of-scope findings, so the backstop can distinguish "audit ran, none identified" from "no sidecar". Set `backend` to the probe outcome. Seed the sidecar forward from the immediately-prior frontend digest's sidecar (see "Seed-forward" under "Audit marker (gate handshake)") so a still-open receipt survives the digest rotation.
 
 ```json
 {
@@ -332,7 +332,7 @@ Include only when there are specific, concrete patterns worth reinforcing. Skip 
 
 The agent's **Task RETURN string** and its **PR comment + findings block** are two independent channels. This note governs only the LOCAL Task RETURN string; it does not touch the PR comment.
 
-**When the re-run ledger write succeeded** (LOCAL run, non-empty `BASE_SHA`, successful write, see "Re-run carry-forward ledger"), the full per-finding detail lives in the ledger's `remaining[]`, so the RETURN goes terse: lead with the carry-forward block below, then the existing marker surface line. The operator reads the ledger for full detail. This is what stops the main thread from absorbing ~10k-token reports across the loop.
+**When the re-run ledger write succeeded** (LOCAL run, non-empty `BASE_SHA`, successful write, see "Re-run carry-forward ledger"), the full per-finding detail lives in the ledger's `remaining[]`, so the RETURN goes terse: lead with the round-summary block below, then the existing marker surface line. The operator reads the ledger for full detail. This is what stops the main thread from absorbing ~10k-token reports across the loop.
 
 ```
 Audit round <N> for base <short-base> -> HEAD <short-head>.
@@ -372,7 +372,7 @@ The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/fi
 
 The agent runs in CI with `show_full_output: false` (a deliberate public-repo safety choice). To give the CI step summary a post-hoc phase timeline, write ONE curated line per review phase to a tree-keyed gitignored file using the `Write` or `Edit` tool (both are in the CI `allowedTools`).
 
-**File path (tree-keyed):** `.gaia/local/audit/${AUDIT_TREE_SHA}.progress.log`, keyed to the tree captured at review start (`AUDIT_TREE_SHA`, see "Audit-run env", captured once before the first breadcrumb). `.gaia/local/audit/` is symlinked back to the main checkout from every linked worktree (`.gaia/scripts/link-worktree.sh`), so it is shared state across every concurrent GAIA session on the machine; a fixed filename lets one session's breadcrumbs clobber or be mistaken for another's. Keying to the tree makes attribution structural instead of a matter of the reader's care, the same idea the `<tree-sha>.ok` marker uses, though the marker re-reads the tree after a self-heal while the breadcrumb key does not, so the two need not coincide on a self-heal run. The CI print step (see the `code-review-audit.yml` workflow) locates the same file from the pushed PR head sha (`github.event.pull_request.head.sha`), never `git rev-parse HEAD`: a self-heal commit happens during the agent's own turn, before the print step runs and before a later step pushes it, so the runner's local HEAD can already be one tree ahead of the pushed head the breadcrumb file was keyed to.
+**File path (tree-keyed):** `.gaia/local/audit/${AUDIT_TREE_SHA}.progress.log`, keyed to the tree captured at review start (`AUDIT_TREE_SHA`, see "Audit-run env", captured once before the first breadcrumb). `.gaia/local/audit/` is symlinked back to the main checkout from every linked worktree (`.gaia/scripts/link-worktree.sh`), so it is shared state across every concurrent GAIA session on the machine; a fixed filename lets one session's breadcrumbs clobber or be mistaken for another's. Keying to the tree makes attribution structural instead of a matter of the reader's care, the same idea the `<digest>.ok` marker uses (its own key, a content digest over owned-plus-machinery paths rather than the whole tree), though the marker's digest can rotate after a self-heal edits owned content while the breadcrumb's tree key does not, so the two need not coincide on a self-heal run. The CI print step (see the `code-review-audit.yml` workflow) locates the same file from the pushed PR head sha (`github.event.pull_request.head.sha`), never `git rev-parse HEAD`: a self-heal commit happens during the agent's own turn, before the print step runs and before a later step pushes it, so the runner's local HEAD can already be one tree ahead of the pushed head the breadcrumb file was keyed to.
 
 **Line format:** `<phase label>, <counts>` -- phase label and integer counts only. Never include file contents, code, raw tool output, file paths beyond coarse counts, or anything secret-shaped. This is the public-safety crux: the workflow print step exposes this file in the GitHub Actions step summary.
 
@@ -394,7 +394,7 @@ A specialist or refuter that no-op'd twice and fell back to inline review/refuta
 
 **Best-effort, never blocking:** wrap every breadcrumb write so that a `Write`/`Edit` failure is swallowed and never aborts or alters the audit result. A missing or partial progress file is harmless -- the workflow print step handles it gracefully. Do NOT harden a breadcrumb write into a blocking step.
 
-**Directory:** `.gaia/local/audit/` is already gitignored via `.gaia/local/` in `.gitignore`. The shared clearance writer creates the directory before writing the `<sha>.ok` file; your first breadcrumb write must also ensure the directory exists (run `mkdir -p .gaia/local/audit` before the `Write` call, wrapped in the same best-effort guard).
+**Directory:** `.gaia/local/audit/` is already gitignored via `.gaia/local/` in `.gitignore`. The shared clearance writer creates the directory before writing the `<digest>.ok` file; your first breadcrumb write must also ensure the directory exists (run `mkdir -p .gaia/local/audit` before the `Write` call, wrapped in the same best-effort guard).
 
 **Locally harmless:** when the agent runs locally the file is simply written to a gitignored path. No behavioral change, no secrets risk.
 
@@ -412,7 +412,7 @@ The ledger is **LOCAL-FLOW-ONLY and NON-GATING.** It never gates the merge, no h
 
 `<BASE_SHA>` is the incremental audit base resolved to a full 40-hex commit sha. `.gaia/local/audit/` is gitignored via `.gaia/local/` in `.gitignore`, so the ledger never reaches git.
 
-Key on the **base**, not HEAD. The marker (`<sha>.ok`) and the dispositions sidecar (`<sha>.dispositions.json`) key on HEAD because they certify the exact commit being merged, the endpoint, which moves on every fix commit. The ledger keys on the incremental **base**, the fixed anchor the review extends from, because it accumulates "what is still wrong relative to that cleared base" across the moving HEAD. The key is the **fork point** `git merge-base "$BASE_REF" HEAD`, stable across fix rounds in both base cases:
+Key on the **base**, not HEAD. The marker (`<digest>.ok`) and the dispositions sidecar (`<digest>.dispositions.json`) key on your own content digest because they certify the exact content being merged, the endpoint, which rotates on every fix that touches an owned or machinery path. The ledger keys on the incremental **base**, the fixed anchor the review extends from, because it accumulates "what is still wrong relative to that cleared base" across the moving HEAD. The key is the **fork point** `git merge-base "$BASE_REF" HEAD`, stable across fix rounds in both base cases:
 
 - **Audited-ancestor base** (the common re-run case): the resolved base is already an ancestor of HEAD, so `merge-base` returns that ancestor; no clean marker lands until the loop ends, so the ancestor does not advance mid-loop.
 - **`origin/main` fallback** (first loop, no audited ancestor): the ref tip moves if `origin/main` advances on a benign mid-loop `git fetch`, but the fork point does not move unless the branch is rebased, and it matches the real base of the audit's `BASE_REF...HEAD` three-dot diff.
@@ -476,7 +476,7 @@ Field semantics (frozen):
 - `round`: integer round counter. Round 1 is the first non-clean audit; each re-audit that writes the ledger increments it.
 - `head_sha`: the HEAD the most recent round audited (provenance / debugging).
 - `updated_at`: ISO-8601 UTC, `date -u +%Y-%m-%dT%H:%M:%SZ`.
-- `remaining[]`: **in-scope open findings only** (Critical + unaddressed Important + unresolved/escalated Suggestions). Out-of-scope findings are NOT here; they live in `<HEAD>.dispositions.json` plus filed `tech-debt` issues. Per-finding fields: `finding_class` (seeded class or `holistic/unclassified`), `severity` (`critical|important|suggestion`), `path` (repo-relative POSIX), `line` (integer), `title`, `failure_mode` (input + state + bad outcome), `suggested_fix`, `source` (`holistic|rule|oracle`), `first_seen_round` (integer), `escalated` (boolean; an in-scope Suggestion escalated for a human tradeoff, which blocks the marker).
+- `remaining[]`: **in-scope open findings only** (Critical + unaddressed Important + unresolved/escalated Suggestions). Out-of-scope findings are NOT here; they live in `<frontend-digest>.dispositions.json` plus filed `tech-debt` issues. Per-finding fields: `finding_class` (seeded class or `holistic/unclassified`), `severity` (`critical|important|suggestion`), `path` (repo-relative POSIX), `line` (integer), `title`, `failure_mode` (input + state + bad outcome), `suggested_fix`, `source` (`holistic|rule|oracle`), `first_seen_round` (integer), `escalated` (boolean; an in-scope Suggestion escalated for a human tradeoff, which blocks the marker).
 - `fixed_last_round[]`: in-scope findings self-healed / fixed in the most recent round. Lighter shape: `finding_class`, `path`, `line`, `title`, `fixed_in_sha` (the fix commit's sha, or empty if uncommitted).
 - `notes`: optional free text.
 
@@ -508,7 +508,7 @@ CI already carries cross-round state by git-native means that survive a fresh ch
 
 ### Non-interference invariant
 
-`.claude/hooks/pr-merge-audit-check.sh` reads only `.gaia/local/audit/<tree-sha>.ok` (exact path); `.claude/hooks/audit-disposition-check.sh` reads only `.gaia/local/audit/<HEAD-sha>.dispositions.json` (exact path). Neither globs the audit directory, so a new `<base>.rerun.json` is invisible to both gates and cannot perturb merge gating.
+`.claude/hooks/pr-merge-audit-check.sh` reads only `.gaia/local/audit/<frontend-digest>.ok` (exact path); `.claude/hooks/audit-disposition-check.sh` reads only `.gaia/local/audit/<frontend-digest>.dispositions.json` (exact path, the same digest). Neither globs the audit directory, so a new `<base>.rerun.json` is invisible to both gates and cannot perturb merge gating.
 
 ## Methodology
 
@@ -761,7 +761,7 @@ AUDIT_SELF_HEALED="true"
 
 ## Audit marker (gate handshake)
 
-`.claude/hooks/pr-merge-audit-check.sh` blocks `gh pr merge` until a marker file at `.gaia/local/audit/<tree-sha>.ok` exists. The marker proves the audit ran against the exact **content** being merged: it is keyed to HEAD's tree, so the trailer stamp below (an empty commit, which moves HEAD but not the tree) never invalidates it or any sibling member's marker, while a commit that genuinely edits the tree invalidates all of them. **You** are responsible for writing the marker, only when the audit is genuinely clean.
+`.claude/hooks/pr-merge-audit-check.sh` blocks `gh pr merge` until a marker file at `.gaia/local/audit/<digest>.ok` exists, where `<digest>` is your own current content digest: a sha256 over exactly the files you own, the shared gate machinery, and every in-scope-but-ownerless path (an in-scope file no specialized member claims, e.g. a root `Dockerfile` or a file under `public/**`), computed by `.claude/hooks/lib/audit-digest.sh`. The marker proves the audit ran against the exact **content** being merged: an out-of-glob change (a CHANGELOG line, a wiki edit) rotates none of that content, so your digest is unchanged and your marker keeps validating with zero re-review; a change to anything you own, to the shared machinery, or to an in-scope-but-ownerless path rotates your digest, so a stale marker no longer matches and you must re-audit. **You** are responsible for writing the marker, only when the audit is genuinely clean.
 
 After producing the report (which includes the adversarial verification of Critical/Important survivors), decide whether to write the marker. The preconditions are scoped to **in-scope** findings; out-of-scope findings gate through the disposition gate (precondition 4), not the Critical/Important/Suggestions sections.
 
@@ -772,26 +772,46 @@ After producing the report (which includes the adversarial verification of Criti
   4. **Every identified out-of-scope finding has a disposition** (the disposition gate, see Scope classification and out-of-scope disposition). Verify after filing: re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) immediately before writing the marker, then apply the sidecar marker-write rule, write on `filed` / `diverted` / `waived` / `pending(transient)`; withhold **only** on `pending(definitive)`.
 - **Do NOT write the marker** when any in-scope Critical Issue exists, any in-scope Important Issue remains unaddressed, any in-scope Suggestion is either unaddressed or escalated, or any out-of-scope finding's disposition is `pending(definitive)`. Escalated in-scope suggestions block unconditionally, the operator must fix or explicitly accept the escalation, commit, and re-invoke this agent on the new HEAD before the marker is written. A `pending(definitive)` out-of-scope disposition (a present, writable backend with a genuinely-missing filing) blocks the same way; backend-absent (`waived`), transient (`pending(transient)`), and diverted findings fail open and never withhold the marker.
 
-Decide the disposition entries (section F) at this marker-decision point regardless of the outcome, but write the sidecar **file** (`.gaia/local/audit/<HEAD-sha>.dispositions.json`) keyed to the **post-stamp HEAD commit**, folded into the handshake below as the dispositions-sidecar step (`$HEAD_SHA`) when the marker is warranted, or keyed to the current (unmoved) HEAD when it is not, so the marker-backstop hook (which resolves `git rev-parse HEAD` at merge time) finds it and can verify the marker's claimed dispositions. The sidecar is keyed to the **commit** while the marker is keyed to the **tree**: the backstop looks the sidecar up by `git rev-parse HEAD`, so it must be named for the commit that will be sitting at HEAD when the merge is attempted.
+Decide the disposition entries (section F) at this marker-decision point regardless of the outcome, then write the sidecar **file** (`.gaia/local/audit/<frontend-digest>.dispositions.json`), keyed to the same digest as the marker. Because the trailer stamp is a content-preserving empty commit, it changes no blob sha and therefore rotates no digest, so the sidecar written before the stamp is still the correct file after it, there is no post-stamp re-key to perform. The merge gate's disposition backstop looks the sidecar up at exactly this path once your marker is valid for the current digest, and **fails closed** (denies the merge) when a valid marker has no sidecar at that path, so writing the sidecar (even `findings: []`) is mandatory whenever the marker is written.
+
+**Seed-forward.** A fresh incremental audit reviews only the delta since the resolved base and does not re-encounter a prior out-of-scope finding, so re-keying the sidecar to a new digest would otherwise silently drop a still-open receipt across the rotation. Before finishing the sidecar write, compute the PRIOR frontend digest at the incremental base (the same `BASE_SHA` resolved for the re-run ledger, see "Re-run carry-forward ledger"):
+
+```bash
+prev_frontend_digest="$(.gaia/scripts/audit-member-digest.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-frontend \
+  --ref "$BASE_SHA" 2>/dev/null || true)"
+```
+
+then call the shared helper (`disposition_seed_forward`, sourced from `.claude/hooks/lib/audit-dispositions.sh`) to union every still-open entry (`filed`, or `pending` with `pending_reason` `"definitive"`) from the prior digest's sidecar into the new one, in place:
+
+```bash
+disposition_seed_forward \
+  ".gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
+  ".gaia/local/audit/${new_frontend_digest}.dispositions.json"
+```
+
+A fresh entry already present in the new sidecar always wins a key collision; a seeded entry only ever adds keys. This is a single deterministic hop, not a search: each digest rotation seeds from its immediate predecessor, so a still-open receipt propagates across an arbitrary run of rotations that never re-encounter the finding, because every hop already carries forward what the hop before it carried. An empty `prev_frontend_digest` (no resolvable base, or the digest engine failed) or an absent prior sidecar is a safe no-op, per the helper's own fail-safe contract.
 
 Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block the marker.
 
-When the marker is warranted, the write is a mark → stamp → re-mark → push → status sequence, run in that fixed order. The marker is written first, before the stamp, so it feeds the member-aware stamp gate immediately below and closes the crash window: a trailer is never believed while any dispatched member's own marker, this one included, is missing. The stamp runs next: the helper picks amend vs empty-commit per the placement rule and never pushes. Because the stamp can move HEAD (the empty-commit path) or amend it (the amend path), the marker is then re-written so its `sha` field lands on the post-stamp HEAD rather than the pre-stamp one the first write recorded; carry-forward locates a prior clearance's disposition sidecar via the marker's `sha` field, so a marker left pointing at the pre-stamp commit would send a future carry-forward looking under the wrong sha and silently miss it. The trailer commit is pushed next, before the status call, only on the empty-commit path and only on an attached tracking branch, since that push is what makes the remote PR head the trailer commit and lets the status POST (which targets the remote head) land on the sha branch protection checks; on the amend path there is nothing new to push, and the status helper declines `audited tree not on pushed head` until the operator pushes, which is the correct fail-safe. Finally, the `GAIA-Audit` success commit status is posted, gated on the marker file already existing; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The shared clearance writer (`.gaia/scripts/audit-write-clearance.sh`) records the marker atomically both times; an earned clearance strictly dominates, replacing any prior marker for this tree (a stale legacy body, or a carried clearance) rather than being suppressed by it:
+When the marker is warranted, the write is a mark → stamp → push → status sequence, run in that fixed order. The marker is written first, before the stamp, so it feeds the member-aware stamp gate immediately below and closes the crash window: a trailer is never believed while any dispatched member's own marker, this one included, is missing. The stamp runs next: the helper picks amend vs empty-commit per the placement rule and never pushes. Because the stamp is a content-preserving empty commit, it changes no blob sha, so it rotates no digest and the marker written in step 1 stays valid after it, there is no repair write. The trailer commit is pushed next, before the status call, only on the empty-commit path and only on an attached tracking branch, since that push is what makes the remote PR head the trailer commit and lets the status POST (which targets the remote head) land on the sha branch protection checks; on the amend path there is nothing new to push, and the status helper declines `audited tree not on pushed head` until the operator pushes, which is the correct fail-safe. Finally, the `GAIA-Audit` success commit status is posted, gated on the marker file already existing; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The shared clearance writer (`.gaia/scripts/audit-write-clearance.sh`) writes the marker unconditionally: every write lands, overwriting whatever was already on disk for this digest; provenance is `earned` or `refused` only, there is no carried family to out-rank:
 
 ```bash
 # 1. Write the earned clearance BEFORE the stamp runs. The shared writer
-#    resolves HEAD, HEAD's TREE, the version and the filename from --root
-#    (the working root), so the marker is keyed to the TREE the audit ENDS
-#    on -- after any self-heal edits, before the trailer stamp below. The
-#    marker is keyed to the TREE, not HEAD: it attests this member audited
-#    CONTENT, and the tree IS the content, so the empty-commit stamp below
-#    does not orphan a sibling member's marker, and the stamp never changes
-#    the tree, so this key is final. Writing the marker first feeds the
-#    member-aware stamp gate in step 2 and closes the crash window: a
-#    trailer is never believed while any dispatched member's own marker,
-#    this one included, is missing. An earned clearance strictly dominates:
-#    it replaces any prior marker for this tree rather than being
-#    suppressed by it. The writer prints the marker path it wrote.
+#    derives your own content digest internally (owned files + machinery +
+#    in-scope-but-ownerless) from --root (the working root) and resolves
+#    the filename, HEAD tree, and HEAD sha from there too, so the marker
+#    is keyed to the DIGEST of the content the audit ENDS on -- after any
+#    self-heal edits, before the trailer stamp below. The empty-commit
+#    stamp changes no blob sha, so it rotates no digest and never
+#    invalidates this marker or a sibling member's. Writing the marker
+#    first feeds the member-aware stamp gate in step 2 and closes the
+#    crash window: a trailer is never believed while any dispatched
+#    member's own marker, this one included, is missing. The write is
+#    unconditional: it replaces whatever marker was already on disk for
+#    this digest, there is no carried provenance to out-rank. The writer
+#    prints the marker path it wrote.
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-frontend \
@@ -800,36 +820,24 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
 # 2. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per the
 #    placement rule). Member-aware: it declines `members pending <list>`
 #    when a co-dispatched member has not yet written its own marker for
-#    this tree, expected on a multi-member diff and harmless, the last
+#    this content, expected on a multi-member diff and harmless, the last
 #    member to clear is the one whose call actually lands the trailer.
 #    The helper creates the commit locally only, push is deferred to
-#    step 4, after the marker is re-written below.
+#    step 3. HEAD_SHA is captured after the stamp: it travels into the
+#    sidecar's own "sha" JSON field below as plain data (never the
+#    sidecar's validity key, which is the digest).
 stamp_line=$(
   AUDIT_TREE_SHA="$AUDIT_TREE_SHA" AUDIT_SELF_HEALED="$AUDIT_SELF_HEALED" \
     .claude/hooks/audit-stamp-trailer.sh
 )
-
-# 3. Re-write the same earned clearance now that the stamp has run. The
-#    stamp can move HEAD (empty-commit path) or amend it (amend path)
-#    while leaving the tree untouched, so this re-write is an atomic,
-#    idempotent overwrite of the same tree-keyed marker: a harmless
-#    refresh on the empty-commit path, a repair of the `sha` field on the
-#    amend path. This keeps the marker's `sha` field on the post-stamp
-#    HEAD instead of the pre-stamp one step 1 recorded, which is what
-#    carry-forward's sidecar lookup (step 6) depends on. HEAD_SHA is
-#    captured here for the commit-keyed sidecar below.
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
-  --member code-audit-frontend \
-  --provenance earned)"
 HEAD_SHA="$(git rev-parse HEAD)"
 
-# 4. Push the stamp commit, BEFORE the status call, only when the helper
+# 3. Push the stamp commit, BEFORE the status call, only when the helper
 #    created an empty commit AND HEAD is on an attached tracking branch
 #    with an upstream. Amend paths add no new commit (the next operator
 #    push carries the trailer); detached HEAD has no upstream from the
 #    agent's vantage (CI's own commit-and-push step handles propagation).
-#    Pushing here, ahead of step 5, is what makes the remote PR head the
+#    Pushing here, ahead of step 4, is what makes the remote PR head the
 #    trailer commit, so the status POST lands on the sha branch
 #    protection checks instead of a local-only one.
 push_status="not_attempted"
@@ -850,7 +858,7 @@ if [ "$stamp_line" = "stamp: empty commit (created locally)" ]; then
   fi
 fi
 
-# 5. Post the GAIA-Audit success status on the remote PR head, gated on
+# 4. Post the GAIA-Audit success status on the remote PR head, gated on
 #    the marker existing first (the helper re-checks `[ -f "$marker" ]`).
 #    Best-effort: gh absent / unauthenticated skips the POST and the
 #    marker still clears the Claude merge path, while the github.com
@@ -858,18 +866,28 @@ fi
 #    never runs ahead of the marker.
 audit_status_line=$(.claude/hooks/post-audit-status.sh "$marker")
 
-# 6. Write the disposition-ledger sidecar (section F) keyed to the
-#    post-stamp HEAD COMMIT captured in step 3 -- not the tree the marker
-#    uses. The marker-backstop hook resolves `git rev-parse HEAD` at
-#    merge time to find this file, so it must be named for the commit
-#    that will be at HEAD then; a sidecar keyed to the pre-stamp HEAD
-#    would be orphaned and the backstop would fail open. The JSON "sha"
-#    field is set to $HEAD_SHA to match the filename.
-sidecar=".gaia/local/audit/${HEAD_SHA}.dispositions.json"
-# Write the section-F dispositions JSON (decided at the marker-decision point,
-# with "sha":"$HEAD_SHA") to "$sidecar".
+# 5. Write the disposition-ledger sidecar (section F), keyed to YOUR OWN
+#    frontend digest -- the same digest the marker in step 1 is keyed to,
+#    read back from the marker filename the writer printed. Seed it
+#    forward from the immediately-prior frontend digest's sidecar (see
+#    "Seed-forward" above) so a still-open receipt survives the rotation
+#    even when this fresh incremental audit does not re-encounter the
+#    finding.
+new_frontend_digest="$(basename "$marker" .ok)"
+sidecar=".gaia/local/audit/${new_frontend_digest}.dispositions.json"
+# Write the section-F dispositions JSON (decided at the marker-decision
+# point, with "sha":"$HEAD_SHA" as a plain data field) to "$sidecar".
+prev_frontend_digest="$(.gaia/scripts/audit-member-digest.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-frontend \
+  --ref "$BASE_SHA" 2>/dev/null || true)"
+if [ -n "$prev_frontend_digest" ]; then
+  disposition_seed_forward \
+    ".gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
+    "$sidecar"
+fi
 
-# 7. Clean-pass cleanup of the re-run ledger (LOCAL only): the marker is
+# 6. Clean-pass cleanup of the re-run ledger (LOCAL only): the marker is
 #    written, so the re-run loop ended clean for this base. Remove the
 #    base-keyed ledger best-effort. Skip in CI (the ledger is never written
 #    there). See "Re-run carry-forward ledger". This is an additional
@@ -888,11 +906,11 @@ Then surface, as the final line of your report, pick the line that matches the `
 
 > Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer amended (un-pushed); gh pr merge is unblocked.
 
-> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer carried on empty commit (pushed to upstream); gh pr merge is unblocked.
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer stamped via empty commit (pushed to upstream); gh pr merge is unblocked.
 
-> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer carried on empty commit (push to upstream FAILED, push manually before merging or CI's audit will rerun); gh pr merge is unblocked.
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer stamped via empty commit (push to upstream FAILED, push manually before merging or CI's audit will rerun); gh pr merge is unblocked.
 
-> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer carried on empty commit (HEAD detached; runner pushes separately); gh pr merge is unblocked.
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer stamped via empty commit (HEAD detached; runner pushes separately); gh pr merge is unblocked.
 
 > Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer amended onto audit-self-heal HEAD; gh pr merge is unblocked.
 
@@ -915,7 +933,7 @@ If you do not write the marker, surface this instead:
 
 > Audit marker NOT written. Address findings, commit, and re-invoke this agent on the new HEAD before merging.
 
-When you withhold the marker after genuinely auditing this exact tree (a real audit that refuses the content), **record the refusal** with the same shared writer. A refusal is a first-class, tree-keyed artifact: it is the only way this member says "I read this exact tree and I refuse", and carry-forward treats it as absolute.
+When you withhold the marker after genuinely auditing this exact content (a real audit that refuses it), **record the refusal** with the same shared writer. A refusal is a first-class, digest-keyed artifact: it is the only way this member says "I read this exact content and I refuse". The merge gate checks the refusal family before the earned family, so a live refusal for the current digest denies the merge regardless of any same-digest earned marker.
 
 ```bash
 bash .gaia/scripts/audit-write-clearance.sh \
@@ -924,26 +942,27 @@ bash .gaia/scripts/audit-write-clearance.sh \
   --provenance refused
 ```
 
-Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to the **current** HEAD, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(git rev-parse HEAD).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same HEAD remains backstop-checkable against a real sidecar.
+Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to your **current** frontend digest, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(.gaia/scripts/audit-member-digest.sh --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same content remains backstop-checkable against a real sidecar.
 
 Also on a non-clean pass (marker NOT written), **write/update the re-run ledger** (LOCAL only, best-effort), the deterministic carry-forward briefing the next re-audit and the fixer read. Skip in CI (`GITHUB_ACTIONS`/`CI` set) and skip when `BASE_SHA` is empty. Set `round` to the prior valid same-branch same-base ledger's `round` + 1 (else 1), carrying `first_seen_round` for findings that persist across rounds; populate `remaining` (in-scope open findings: Critical + unaddressed Important + unresolved/escalated Suggestions), `fixed_last_round` (in-scope findings self-healed this round), `head_sha` = current HEAD, `branch`, `base_sha` = `BASE_SHA`, and `updated_at`. Write atomically (temp file + `mv`); a write failure never aborts the audit. This is an additional best-effort file write alongside the disposition sidecar above; it must NOT alter, replace, or reorder the marker / trailer / status / dispositions-sidecar writes. See "Re-run carry-forward ledger".
 
-Never write a marker for a SHA other than current `HEAD`. The shared writer keys the marker to the working root's tree; the hook-side clearance check (`clearance_member_cleared`) is what unblocks `gh pr merge` once a writer-produced marker for that tree exists.
+Never write a marker for content other than current `HEAD`. The shared writer derives the marker's key from the working root's own content digest internally; the hook-side clearance check (`clearance_member_cleared`) is what unblocks `gh pr merge` once a writer-produced marker for that digest exists.
 
 ## GAIA-Audit trailer (CI handshake)
 
 The `GAIA-Audit:` commit trailer written by `.claude/hooks/audit-stamp-trailer.sh` is the cross-machine companion to the local marker file. The marker file gates `gh pr merge` locally; the trailer travels with the commit through the network so CI can recognize an already-audited tree and skip its own audit run.
 
-Trailer shape (frozen, see `.gaia/local/plans/code-review-audit-ci/trailer-format.md`):
+Trailer shape, three positional fields:
 
 ```
-GAIA-Audit: <agent-version> <tree-sha>
+GAIA-Audit: <agent-version> <frontend-digest> <tree>
 ```
 
 - `<agent-version>` is read from `.gaia/VERSION` at stamp time.
-- `<tree-sha>` is the full 40-char `git rev-parse HEAD^{tree}` of the audited tree.
+- `<frontend-digest>` is your own 64-hex content digest (owned files + machinery + in-scope-but-ownerless), the validity key CI recomputes and compares.
+- `<tree>` is the full 40-char `git rev-parse HEAD^{tree}` of the audited tree, a plain data field used only by the janitor's live-tree keep-arm, never for validity.
 
-The helper writes the trailer only when the working tree is clean, `.gaia/VERSION` exists and is non-empty, and the tree the audit reviewed (`AUDIT_TREE_SHA`) matches HEAD's current tree. Placement is automatic: amend on un-pushed HEADs, an empty commit on already-pushed HEADs (never silently rewriting published history), and amend on the audit's own self-heal commits regardless of push state. CI's "Check audit trailer" step parses the PR-HEAD commit message via `git interpret-trailers --parse` and skips the agent invocation when both the version and tree-sha match the PR head.
+The helper writes the trailer only when the working tree is clean, `.gaia/VERSION` exists and is non-empty, and the tree the audit reviewed (`AUDIT_TREE_SHA`) matches HEAD's current tree. Placement is automatic: amend on un-pushed HEADs, an empty commit on already-pushed HEADs (never silently rewriting published history), and amend on the audit's own self-heal commits regardless of push state. CI's "Check audit trailer" step parses the PR-HEAD commit message via `git interpret-trailers --parse`, recomputes the frontend digest through the classifier libs in its own checkout, and skips the agent invocation when both the version and the digest match the PR head's trailer.
 
 ## Durable knowledge
 
