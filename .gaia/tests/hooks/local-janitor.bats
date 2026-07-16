@@ -103,7 +103,7 @@ branch_exists() {
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  ! branch_exists "wiki-sync/2026-04-04-ddddddd"
+  branch_exists "wiki-sync/2026-04-04-ddddddd" && return 1
   branch_exists "wiki-sync/2026-05-05-eeeeeee"
   branch_exists "feature/keepme"
 }
