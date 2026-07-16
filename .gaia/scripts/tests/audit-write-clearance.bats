@@ -132,6 +132,7 @@ member_digest() {
 # -----------------------------------------------------------------------------
 
 @test "escaping: a version carrying a quote and a backslash still produces valid parseable JSON" {
+  # shellcheck disable=SC1003  # the backslash is a literal, which is the point
   printf '%s\n' '1.6.1"\' > "$ROOT/.gaia/VERSION"
   git -C "$ROOT" add .gaia/VERSION
   git -C "$ROOT" commit --quiet -m "version with quote and backslash"
@@ -145,6 +146,7 @@ member_digest() {
   jq -e . "$out" >/dev/null
 
   # The value round-trips byte-exact: escaped, not stripped or mangled.
+  # shellcheck disable=SC1003  # the backslash is a literal, which is the point
   [ "$(jq -r .version "$out")" = '1.6.1"\' ]
 
   # A marker with an awkward version is still acceptable to the gate's reader.
@@ -194,6 +196,12 @@ member_digest() {
 
   run env PATH="$shim:$PATH" bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned
   [ "$status" -ne 0 ]
+
+  # Pin WHICH guard fired: the body build, not the digest derive. The digest
+  # chain needs no jq today, so a bare status check passes for the right reason
+  # by luck; were digest derivation to grow a jq dependency it would fail first
+  # and this test would green while covering nothing.
+  grep -qF "cannot build the marker body" <<<"$output"
 
   # No marker published, and no half-written temp left staged in the audit dir.
   leftover="$(find "$AUDIT_DIR" -name '*.ok' 2>/dev/null || true)"
