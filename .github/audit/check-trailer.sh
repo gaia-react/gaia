@@ -2,17 +2,18 @@
 # check-trailer.sh: CI skip-logic for the GAIA-Audit commit trailer.
 #
 # Purpose
-#   Implements the "CI skip logic (frozen)" contract from
-#   .gaia/local/plans/code-review-audit-ci/trailer-format.md. Called by the
-#   `code-review-audit` GitHub Actions workflow as the gate that decides
-#   whether to invoke the audit agent or short-circuit to a clean check
-#   because the PR HEAD already carries a matching GAIA-Audit trailer.
+#   Decides whether the code-review-audit CI workflow can skip invoking the
+#   audit agent because the PR HEAD already carries a matching GAIA-Audit
+#   trailer or commit status. Called by the `code-review-audit` GitHub
+#   Actions workflow's "Check audit trailer" step.
 #
 # Invocation
 #   .github/audit/check-trailer.sh
 #
 #   Argument-less. Reads .gaia/VERSION and the current HEAD's commit
-#   message + tree from the working tree.
+#   message + tree from the working tree, and recomputes the frontend
+#   member's content digest (C1) through the classifier libs in the
+#   checkout.
 #
 # Output (stdout, GITHUB_OUTPUT-friendly key=value lines)
 #   skip=<true|false>
@@ -21,35 +22,42 @@
 #   reason=<short-string>
 #
 # Reasons
-#   trailer-matches: skip=true; matched both version and tree
+#   trailer-matches: skip=true; matched version and the frontend digest
 #   status-matches: skip=true; no trailer, but a GAIA-Audit commit
-#                             status on HEAD matched both version and tree
+#                             status on HEAD matched version and digest
 #   no-trailer: skip=false; HEAD has no GAIA-Audit trailer AND
 #                             no usable GAIA-Audit commit status (status
 #                             absent, malformed, or the API was unusable)
 #   version-mismatch: skip=false; trailer present but version drift
-#   tree-mismatch: skip=false; trailer present but tree drift
+#   digest-mismatch: skip=false; trailer present but the frontend digest
+#                             (owned-plus-machinery content) drifted
 #   status-version-mismatch: skip=false; GAIA-Audit status present but
 #                             version drift
-#   status-tree-mismatch: skip=false; GAIA-Audit status present but tree
-#                             drift
+#   status-digest-mismatch: skip=false; GAIA-Audit status present but the
+#                             frontend digest drifted
 #   version-file-missing: skip=false; .gaia/VERSION missing or empty
 #                             (defensive: matches the stamp helper's
 #                             "no stamp without VERSION" invariant)
+#   digest-recompute-failed: skip=false; the frontend content digest could
+#                             not be recomputed (missing sha256 tool,
+#                             unloadable classifier/machinery lib, or a
+#                             failing git ls-tree). Fail-open toward
+#                             re-audit: CI must never skip on an
+#                             unresolvable digest.
 #
 # Last-trailer-wins
 #   When HEAD's commit message carries multiple GAIA-Audit trailers (the
 #   parser tolerates them; the local stamp never writes more than one),
-#   only the LAST matching parsed line is considered. This mirrors the
-#   frozen skip-logic pseudocode in trailer-format.md.
+#   only the LAST matching parsed line is considered.
 #
 # Exit code
 #   0 always. The workflow consumes the four output lines.
 #
 # References
-#   Frozen contract:  .gaia/local/plans/code-review-audit-ci/trailer-format.md
-#   Stamp helper:     .claude/hooks/audit-stamp-trailer.sh
-#   Config reader:    .gaia/scripts/read-audit-ci-config.sh
+#   Digest engine:    .claude/hooks/lib/audit-digest.sh
+#   Digest CLI:        .gaia/scripts/audit-member-digest.sh
+#   Stamp helper:      .claude/hooks/audit-stamp-trailer.sh
+#   Config reader:      .gaia/scripts/read-audit-ci-config.sh
 #
 # Notes
 #   - Bash 3.2 compatible (macOS-default bash). Avoids associative arrays.
@@ -67,6 +75,13 @@
 #     `no-trailer`. A newer non-success status (e.g. a re-run's pending or
 #     failed state) shadows an older success: only the newest GAIA-Audit
 #     entry is ever considered, and it must itself be `state: success`.
+#   - The frontend digest recompute walks the full tracked tree and
+#     reclassifies it through the ownership + machinery libs (directive
+#     PERF-003): a bounded cost on the skip-check hot path, replacing the
+#     old O(1) `rev-parse HEAD^{tree}` comparison. This is accepted, not
+#     micro-optimized: the recompute is memoized per run (at most once)
+#     and only runs when a trailer or status signal actually needs a
+#     digest comparison.
 
 set -euo pipefail
 
@@ -113,27 +128,40 @@ if [ -z "$cur_version" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Compute current tree-sha
+# Recompute the frontend content digest (C1), memoized. Fail-closed: any
+# caller that needs it and finds it unrecomputable emits skip=false with
+# reason=digest-recompute-failed and exits -- CI must never skip the audit
+# on an unresolvable digest (RT-007/CPL-004). The classifier libs are
+# expected to be present in the checkout (.claude/hooks/lib/** ships and
+# the full repo is checked out); an absent/unloadable lib is exactly the
+# failure this recompute fails closed on.
 # -----------------------------------------------------------------------------
 
-cur_tree=$(git -C "$repo_root" rev-parse "HEAD^{tree}" 2>/dev/null || true)
-if [ -z "$cur_tree" ]; then
-  # No HEAD (empty repo); nothing to skip on.
-  emit "false" "" "" "no-trailer"
-  exit 0
-fi
+cur_digest=""
+_digest_attempted="false"
+recompute_frontend_digest() {
+  [ "$_digest_attempted" = "true" ] && return 0
+  _digest_attempted="true"
+  cur_digest="$(bash "${repo_root}/.gaia/scripts/audit-member-digest.sh" \
+    --root "$repo_root" --member code-audit-frontend 2>/dev/null)" || cur_digest=""
+  if [ -z "$cur_digest" ]; then
+    emit "false" "" "" "digest-recompute-failed"
+    exit 0
+  fi
+}
 
 # -----------------------------------------------------------------------------
 # Extract trailers from HEAD's commit message
 # -----------------------------------------------------------------------------
 
-# Frozen regex (POSIX ERE); see trailer-format.md.
-trailer_regex='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
+# Frozen regex (POSIX ERE; C3): version, frontend-digest (64-hex), tree (40-hex).
+trailer_regex='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{64})[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
 
 # Parse trailers; filter to GAIA-Audit lines that match the regex shape.
 # Bash 3.2 has no `mapfile`; use a while-read loop into a tracked
-# "last seen" pair of variables.
+# "last seen" set of variables.
 last_version=""
+last_digest=""
 last_tree=""
 saw_any_trailer="false"
 
@@ -156,7 +184,8 @@ while IFS= read -r line; do
   if [[ "$line" =~ $trailer_regex ]]; then
     saw_any_trailer="true"
     last_version="${BASH_REMATCH[1]}"
-    last_tree="${BASH_REMATCH[2]}"
+    last_digest="${BASH_REMATCH[2]}"
+    last_tree="${BASH_REMATCH[3]}"
   fi
   # Malformed GAIA-Audit lines are silently ignored (per the contract:
   # the helper "matches the regex on each trailer line"; non-matching
@@ -167,14 +196,15 @@ done < "$trailers_tmp"
 # GitHub Commit Status fallback
 # -----------------------------------------------------------------------------
 # CI-stamped PRs carry the audit signal as a GitHub Commit Status with
-# context "GAIA-Audit" (description "<version> <tree-sha>"), NOT as a commit
-# message trailer. (The workflow no longer pushes an empty marker commit -
-# pushing it would strand the PR on a check-less HEAD.) When HEAD has no
-# matching trailer, query the API for the NEWEST GAIA-Audit status on HEAD
-# and apply the same version + tree match logic, requiring that newest entry
-# to be state:success. A newer non-success status (e.g. a re-run's pending
-# state) shadows an older success on the same SHA, so a stale success earlier
-# in the history can never paper over a later pending/failed re-run.
+# context "GAIA-Audit" (description "<version> <frontend-digest> <tree>"),
+# NOT as a commit message trailer. (The workflow no longer pushes an empty
+# marker commit - pushing it would strand the PR on a check-less HEAD.) When
+# HEAD has no matching trailer, query the API for the NEWEST GAIA-Audit
+# status on HEAD and apply the same version + digest match logic, requiring
+# that newest entry to be state:success. A newer non-success status (e.g. a
+# re-run's pending state) shadows an older success on the same SHA, so a
+# stale success earlier in the history can never paper over a later
+# pending/failed re-run.
 #
 # Requires GH_TOKEN in the environment (the workflow exports it). A failed
 # or absent API call MUST NOT skip the audit: callers fall through to
@@ -213,18 +243,19 @@ check_status_fallback() {
     return 1
   fi
 
-  # Description shape: "<version> <40-hex-tree>".
+  # Description shape: "<version> <64-hex-digest> <40-hex-tree>".
   status_version=$(printf '%s' "$status_desc" | awk '{print $1}')
-  status_tree=$(printf '%s' "$status_desc" | awk '{print $2}')
+  status_digest=$(printf '%s' "$status_desc" | awk '{print $2}')
+  status_tree=$(printf '%s' "$status_desc" | awk '{print $3}')
 
   # Defensive: a malformed description is treated as no status.
-  if [ -z "$status_version" ] || [ -z "$status_tree" ]; then
+  if [ -z "$status_version" ] || [ -z "$status_digest" ] || [ -z "$status_tree" ]; then
     return 1
   fi
-  case "$status_tree" in
+  case "$status_digest" in
     *[!0-9a-f]* | "") return 1 ;;
   esac
-  if [ "${#status_tree}" -ne 40 ]; then
+  if [ "${#status_digest}" -ne 64 ]; then
     return 1
   fi
 
@@ -232,8 +263,9 @@ check_status_fallback() {
     emit "false" "$status_version" "$status_tree" "status-version-mismatch"
     exit 0
   fi
-  if [ "$status_tree" != "$cur_tree" ]; then
-    emit "false" "$status_version" "$status_tree" "status-tree-mismatch"
+  recompute_frontend_digest
+  if [ "$status_digest" != "$cur_digest" ]; then
+    emit "false" "$status_version" "$status_tree" "status-digest-mismatch"
     exit 0
   fi
   emit "true" "$status_version" "$status_tree" "status-matches"
@@ -257,8 +289,10 @@ if [ "$last_version" != "$cur_version" ]; then
   exit 0
 fi
 
-if [ "$last_tree" != "$cur_tree" ]; then
-  emit "false" "$last_version" "$last_tree" "tree-mismatch"
+recompute_frontend_digest
+
+if [ "$last_digest" != "$cur_digest" ]; then
+  emit "false" "$last_version" "$last_tree" "digest-mismatch"
   exit 0
 fi
 

@@ -20,6 +20,8 @@
 #                                               every dispatched member has cleared; a
 #                                               single-required-member diff still stamps (no
 #                                               deadlock); resolver absent falls back unchanged
+#   11. UAT-008: stamped trailer's field 2 is the frontend content digest
+#       (64-hex) and field 3 is the real HEAD tree (40-hex), distinctly
 #
 # The helper never pushes; the agent caller pushes after writing the
 # audit marker (see .claude/agents/code-review-audit.md "Audit marker
@@ -30,12 +32,15 @@
 #   - exit code (always 0 for stamp + decline cases)
 #   - stdout marker line (`stamp: ...` exact match)
 #   - presence/absence of the GAIA-Audit trailer on resulting HEAD
-#     (parsed via `git interpret-trailers --parse`)
+#     (parsed via `git interpret-trailers --parse`), three positional fields
+#     "<version> <frontend-digest> <tree>" (UAT-008: digest at field 2, tree
+#     at field 3, distinctly)
 #   - HEAD sha movement (amend or empty commit moves it; decline does not)
 #   - bare upstream is NOT advanced for empty-commit cases (helper never pushes)
 
 setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/audit-stamp-trailer.sh
+  DIGEST_LIB=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/audit-digest.sh
   REPO=$(mktemp -d -t audit-stamp-test-XXXXXX)
   REMOTE=$(mktemp -d -t audit-stamp-remote-XXXXXX)
 
@@ -65,6 +70,7 @@ teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO" || true
   [ -n "${REMOTE:-}" ] && rm -rf "$REMOTE" || true
   [ -n "${OUTSIDE:-}" ] && rm -rf "$OUTSIDE" || true
+  [ -n "${FAKEBIN:-}" ] && rm -rf "$FAKEBIN" || true
   return 0
 }
 
@@ -79,6 +85,14 @@ trailer_on_head() {
   git -C "$REPO" log -1 --format='%B' \
     | git -C "$REPO" interpret-trailers --parse \
     | grep '^GAIA-Audit:' || true
+}
+
+# Helper: the real audit_member_digest, sourced fresh in a subshell (mirrors
+# .gaia/tests/hooks/audit-digest-lib.bats's digest_of), so assertions compute
+# the SAME digest the hook itself derives rather than hardcoding one.
+digest_of() {
+  local root="$1" member="$2" ref="${3:-HEAD}"
+  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIB" "$root" "$member" "$ref"
 }
 
 # Helper: copy the real resolver and the shared libs it resolves relative to
@@ -104,23 +118,26 @@ install_resolver() {
   git -C "$REPO" commit --quiet -m "install resolver"
 }
 
-# Write a writer-shaped schema-2 EARNED clearance for MEMBER, keyed to $REPO's
-# HEAD tree. code-audit-frontend is infix-free (<tree>.ok); a specialized
-# member carries a ".<member>" infix (<tree>.<member>.ok).
+# Write a writer-shaped schema-3 EARNED clearance for MEMBER, keyed to MEMBER's
+# OWN content digest (owned files + machinery, computed via digest_of, NOT the
+# tree). code-audit-frontend is infix-free (<digest>.ok); a specialized member
+# carries a ".<member>" infix (<digest>.<member>.ok). `tree` stays in the body
+# as a plain data field (janitor liveness only), never the validity key.
 write_marker() {
-  local member="$1" tree sha path sidecar
+  local member="$1" digest tree sha path sidecar
+  digest=$(digest_of "$REPO" "$member")
   tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   sha=$(git -C "$REPO" rev-parse HEAD)
   if [ "$member" = "code-audit-frontend" ]; then
-    path="$REPO/.gaia/local/audit/${tree}.ok"
+    path="$REPO/.gaia/local/audit/${digest}.ok"
     sidecar="true"
   else
-    path="$REPO/.gaia/local/audit/${tree}.${member}.ok"
+    path="$REPO/.gaia/local/audit/${digest}.${member}.ok"
     sidecar="false"
   fi
   mkdir -p "$(dirname "$path")"
-  printf '{"version":"1.2.3","schema":2,"member":"%s","provenance":"earned","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
-    "$member" "$sha" "$tree" "$sidecar" > "$path"
+  printf '{"version":"1.2.3","schema":3,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$digest" "$tree" "$sha" "$sidecar" > "$path"
 }
 
 # Commit a mixed app/ + .gaia/**/*.sh change on a new `feature` branch off
@@ -143,6 +160,7 @@ commit_mixed_diff() {
 @test "clean tree + un-pushed HEAD: amends and writes trailer" {
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   cd "$REPO"
   AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
@@ -154,7 +172,7 @@ commit_mixed_diff() {
   [ "$before_sha" != "$after_sha" ]
 
   trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
 }
 
 @test "clean tree + pushed HEAD: writes empty commit locally (no auto-push)" {
@@ -164,6 +182,7 @@ commit_mixed_diff() {
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   before_count=$(git -C "$REPO" rev-list --count HEAD)
   before_remote_sha=$(git -C "$REMOTE" rev-parse main)
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   cd "$REPO"
   AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
@@ -184,7 +203,7 @@ commit_mixed_diff() {
   [ "$subject" = "chore: code review audit passed" ]
 
   trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
 
   # Helper never pushes; upstream must NOT have advanced. The caller
   # pushes after writing the audit marker.
@@ -195,6 +214,7 @@ commit_mixed_diff() {
 @test "AUDIT_SELF_HEALED=true on un-pushed HEAD: amends" {
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   cd "$REPO"
   AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="true" run "$HOOK_ABS"
@@ -206,7 +226,7 @@ commit_mixed_diff() {
   [ "$before_sha" != "$after_sha" ]
 
   trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
 }
 
 @test "detached HEAD: writes empty commit (treats as pushed; helper never pushes)" {
@@ -217,6 +237,7 @@ commit_mixed_diff() {
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   before_count=$(git -C "$REPO" rev-list --count HEAD)
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   # Detach HEAD onto the same commit (no branch, no upstream).
   git -C "$REPO" checkout --quiet --detach HEAD
@@ -237,7 +258,7 @@ commit_mixed_diff() {
   [ $((after_count - before_count)) -eq 1 ]
 
   trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
 }
 
 @test "AUDIT_SELF_HEALED=true on pushed HEAD: still amends (audit owns the commit)" {
@@ -246,6 +267,7 @@ commit_mixed_diff() {
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   before_count=$(git -C "$REPO" rev-list --count HEAD)
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   cd "$REPO"
   AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="true" run "$HOOK_ABS"
@@ -261,7 +283,35 @@ commit_mixed_diff() {
   [ "$before_count" = "$after_count" ]
 
   trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
+}
+
+@test "UAT-008: trailer records the frontend digest at field 2 and the tree at field 3, distinctly" {
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
+
+  # A digest-keyed fixture where the two fields genuinely differ: a 64-hex
+  # sha256 content digest vs. a 40-hex sha1 tree, so a reader keying on the
+  # wrong field is caught rather than accidentally matching.
+  [ "$expected_digest" != "$before_tree" ]
+  [ "${#expected_digest}" -eq 64 ]
+  [ "${#before_tree}" -eq 40 ]
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
+
+  trailer=$(trailer_on_head)
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
+
+  # Positional proof: field 2 (after the version) is the digest, field 3 is
+  # the tree. "GAIA-Audit:" is $1, version is $2 in an awk split.
+  field2=$(awk '{print $3}' <<<"$trailer")
+  field3=$(awk '{print $4}' <<<"$trailer")
+  [ "$field2" = "$expected_digest" ]
+  [ "$field3" = "$before_tree" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -291,6 +341,7 @@ commit_mixed_diff() {
   # block the stamp. Without the exclusion this declines "tree dirty".
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   mkdir -p "$REPO/.claude-pr/.claude/agents"
   echo "mirror" > "$REPO/.claude-pr/.claude/agents/code-review-audit.md"
@@ -306,7 +357,7 @@ commit_mixed_diff() {
   [ "$before_sha" != "$after_sha" ]
 
   trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
 }
 
 @test ".claude-pr/ artifacts PLUS a real dirty file: still declines" {
@@ -394,6 +445,32 @@ commit_mixed_diff() {
   [ "$output" = "stamp: declined: not in a git repo" ]
 }
 
+@test "frontend digest unavailable (sha256 tool masked): declines fail-closed and does not move HEAD" {
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  # Shadow sha256sum with a stub that always fails, on a prepended PATH: the
+  # digest engine's own fail-closed posture (never a partial/empty digest,
+  # per audit-digest-lib.bats UAT-013) must surface here as a clean decline,
+  # never a stamped trailer with a missing or empty digest field.
+  FAKEBIN=$(mktemp -d -t audit-stamp-fakebin-XXXXXX)
+  cat > "$FAKEBIN/sha256sum" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "$FAKEBIN/sha256sum"
+
+  cd "$REPO"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: frontend digest unavailable" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  [ "$before_sha" = "$after_sha" ]
+  [ -z "$(trailer_on_head)" ]
+}
+
 # -----------------------------------------------------------------------------
 # Member-aware gate: the trailer certifies that EVERY dispatched Code Audit
 # Team member cleared this tree, not just the caller. These tests run the
@@ -435,6 +512,7 @@ commit_mixed_diff() {
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   before_count=$(git -C "$REPO" rev-list --count HEAD)
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   write_marker code-audit-frontend
   write_marker code-audit-maintainer-shell
@@ -454,7 +532,7 @@ commit_mixed_diff() {
   [ $((after_count - before_count)) -eq 1 ]
 
   trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
 }
 
 @test "member-aware gate: single-required-member diff stamps (no deadlock)" {
@@ -468,6 +546,7 @@ commit_mixed_diff() {
 
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   write_marker code-audit-maintainer-node
 
@@ -481,7 +560,7 @@ commit_mixed_diff() {
   [ "$before_sha" != "$after_sha" ]
 
   trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
 }
 
 @test "member-aware gate: resolver absent falls back to caller's own judgment unchanged" {
@@ -489,6 +568,7 @@ commit_mixed_diff() {
 
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   write_marker code-audit-frontend
 
@@ -502,7 +582,7 @@ commit_mixed_diff() {
   [ "$before_sha" != "$after_sha" ]
 
   trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
 }
 
 # -----------------------------------------------------------------------------

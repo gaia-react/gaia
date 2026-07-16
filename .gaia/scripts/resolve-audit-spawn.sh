@@ -12,29 +12,25 @@
 #     --base <ref>  Diff base override. Forwarded to resolve-audit-members.sh
 #                   AND honored by this script's own ownerless probe below.
 #     --no-carry-forward
-#                   Skip the carry-forward filter entirely and emit the
-#                   pre-feature output byte-for-byte. The frontend member's
-#                   self-skip probe uses this: it must key on "the diff does not
-#                   dispatch me", never on "I was pre-cleared", so that a member
-#                   omitted for being pre-cleared can still be deliberately
-#                   spawned to catch a bad carry.
+#                   Skip the digest-marker-presence filter entirely and emit
+#                   the unfiltered dispatch set, byte-for-byte. The frontend
+#                   member's self-skip probe uses this: it must key on "the
+#                   diff does not dispatch me", never on "I was already
+#                   cleared", so that a member omitted for being pre-cleared
+#                   can still be deliberately spawned to re-review.
 #     --help | -h   Print this usage and exit 0. This is NOT a dispatch
 #                   query: its stdout is never a member list.
 #
-# Output contract (CHANGED by carry-forward, and stated honestly):
+# Output contract:
 #   One Code Audit Team member (agent) name per line, deduped and lexically
 #   sorted (LC_ALL=C, inherited verbatim from the dispatch resolver). Exit code
 #   is 0 on EVERY path, so callers parse stdout unconditionally.
 #
-#   EMPTY stdout now carries TWO meanings, told apart by stderr: EITHER nothing
-#   in this diff is auditable (no member is owed), OR every dispatched member's
-#   clearance carried forward (stderr: `carry-forward: spawn-list empty:
-#   all-members-carried`). The all-carried state was unreachable before this
-#   filter, because the script fails closed to a non-empty list; the filter adds
-#   it. The eight callers, the permission grant
-#   (.claude/settings.json, `Bash(bash .gaia/scripts/resolve-audit-spawn.sh:*)`,
-#   which already covers --no-carry-forward), and the mints-nothing nature are
-#   all unchanged: this script writes no clearance artifact on any path.
+#   EMPTY stdout carries TWO meanings: EITHER nothing in this diff is
+#   auditable (no member is owed), OR every dispatched member's own
+#   valid current-digest earned marker is already present (nothing left to
+#   spawn). The script writes no clearance artifact on any path (mints
+#   nothing).
 #
 # Branch table:
 #   --help / -h                     -> usage on stdout, exit 0.
@@ -57,12 +53,10 @@
 #                                      resolve a SHA, so there is nothing to
 #                                      mirror here.
 #   dispatch resolver is executable
-#     and names >=1 member          -> that output, VERBATIM. Never filtered,
-#                                      re-sorted, renamed, or special-cased.
-#                                      This is the roster-generic path: any
-#                                      member the roster defines, today's or
-#                                      an adopter's future one, flows through
-#                                      untouched.
+#     and names >=1 member          -> that output, filtered by the
+#                                      digest-marker-presence check below
+#                                      (unless --no-carry-forward), never
+#                                      re-sorted or renamed.
 #   resolver absent, OR present
 #     without the exec bit          -> fall to the ownerless probe below.
 #                                      Delegation is guarded on `[ -x ]`, not
@@ -132,9 +126,10 @@ Usage: resolve-audit-spawn.sh [--base <ref>] [--no-carry-forward]
   Emits the Code Audit Team SPAWN set (one member name per line, sorted) for
   the current branch's diff: the members to proactively spawn before
   `gh pr merge`. Empty output means EITHER nothing in this diff is auditable
-  (no member is owed) OR every dispatched member carried forward; stderr tells
-  them apart. --no-carry-forward skips the filter and emits the pre-feature
-  output byte-for-byte. Exit 0 always.
+  (no member is owed) OR every dispatched member's current-digest marker is
+  already present (nothing left to spawn). --no-carry-forward skips the
+  digest-marker-presence filter and emits the unfiltered dispatch set,
+  byte-for-byte. Exit 0 always.
 USAGE
 }
 
@@ -190,56 +185,93 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 resolver="$repo_root/.gaia/scripts/resolve-audit-members.sh"
 
-# --- Load the shared ownership classifier ------------------------------------
+# --- Load the shared ownership classifier + digest engine + clearance reader
 #
 # Resolved from this script's OWN on-disk location, never cwd, never
 # $repo_root. Absent or unreadable module: the ownerless probe below fails
-# closed to the default member, same as its other unusable-query branches.
+# closed to the default member (unaffected), and digest_marker_filter below
+# degrades to a pass-through, same as its other unusable-query branches.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
 if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-scope.sh" ]; then
   # shellcheck source=/dev/null
   . "$_lib_dir/audit-scope.sh"
 fi
-# The carry-forward predicate (also sources scope/machinery/clearance). Absent
-# or jq-disabled -> cf_filter passes the member list through unchanged: this
-# script is a query, not a gate, and MINTS NOTHING on any path.
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-carry-forward.sh" ]; then
+# The digest-marker-presence filter's own dependencies: the digest engine
+# (audit_digests_all) and the clearance reader (clearance_member_cleared).
+# Absent -> digest_marker_filter passes the member list through unchanged:
+# this script is a query, not a gate, and MINTS NOTHING on any path.
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-digest.sh" ]; then
   # shellcheck source=/dev/null
-  . "$_lib_dir/audit-carry-forward.sh"
+  . "$_lib_dir/audit-digest.sh"
+fi
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-clearance.sh"
 fi
 
-# --- The carry-forward filter (mints nothing) ------------------------------
-#
-# Reads a newline-separated member list on $1, prints the members that did NOT
-# carry forward. A member is dropped when it holds an earned anchor whose delta
-# to HEAD's tree touches nothing it owns and no audit machinery. Pure query: it
-# calls the shared predicate (cf_select_anchor / cf_may_carry), which reads and
-# never writes. Refusal reasons are on the predicate's stderr.
-#
-# jq absent (or the predicate lib missing) disables the whole feature and
-# passes the list through unchanged, degrading to today's spawn-everyone
-# behavior; the single `carry-forward: disabled: jq not found` note goes to
-# stderr only when jq itself is the missing piece.
-cf_filter() {
-  local members="$1" head_tree m out="" anchor
+# --- Digest batch (parallel arrays; bash 3.2 has no associative arrays) ----
 
-  command -v cf_select_anchor >/dev/null 2>&1 || { printf '%s' "$members"; return 0; }
-  if ! cf_enabled; then
-    echo "carry-forward: disabled: jq not found" >&2
-    printf '%s' "$members"
-    return 0
-  fi
+_DIGEST_MEMBER=()
+_DIGEST_VALUE=()
 
-  head_tree="$(git -C "$repo_root" rev-parse "HEAD^{tree}" 2>/dev/null || true)"
-  if [ -z "$head_tree" ]; then
+# _load_member_digests: populates the parallel arrays above from ONE
+# audit_digests_all walk (directive PERF-001), scoped to $repo_root. Returns
+# 1 (arrays left empty) when the digest engine is unavailable or the batch
+# fails/returns nothing (a missing sha256 tool, an unloadable classifier, a
+# git failure).
+_load_member_digests() {
+  command -v audit_digests_all >/dev/null 2>&1 || return 1
+  local batch line
+  batch="$(audit_digests_all "$repo_root" 2>/dev/null)" || return 1
+  [ -n "$batch" ] || return 1
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    _DIGEST_MEMBER[${#_DIGEST_MEMBER[@]}]="${line%%$'\t'*}"
+    _DIGEST_VALUE[${#_DIGEST_VALUE[@]}]="${line#*$'\t'}"
+  done <<EOF
+$batch
+EOF
+  return 0
+}
+
+# _member_digest <member> -> that member's digest on stdout, exit 0; exit 1
+# (empty stdout) when the member is absent from the loaded batch.
+_member_digest() {
+  local want="$1" i=0
+  while [ "$i" -lt "${#_DIGEST_MEMBER[@]}" ]; do
+    if [ "${_DIGEST_MEMBER[$i]}" = "$want" ]; then
+      printf '%s\n' "${_DIGEST_VALUE[$i]}"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# --- The digest-marker-presence filter (mints nothing) ---------------------
+#
+# Reads a newline-separated member list on $1, prints the members whose valid
+# CURRENT-digest earned marker is NOT already present. This is the digest
+# analog of the deleted carry-forward cf_filter: a simple presence check, no
+# anchor selection, no delta computation, no ancestry check. Pure query: the
+# digest batch and the clearance reader only read.
+#
+# The digest lib, the clearance lib, or the digest batch itself being
+# unavailable disables the whole feature and passes the list through
+# unchanged, degrading to today's spawn-everyone behavior; matches the old
+# jq-absent degrade the deleted carry-forward filter used.
+digest_marker_filter() {
+  local members="$1" m out="" digest
+
+  if ! command -v clearance_member_cleared >/dev/null 2>&1 || ! _load_member_digests; then
     printf '%s' "$members"
     return 0
   fi
 
   while IFS= read -r m; do
     [ -n "$m" ] || continue
-    anchor="$(cf_select_anchor "$repo_root" "$m" "$head_tree")"
-    if [ -n "$anchor" ] && cf_may_carry "$repo_root" "$m" "$anchor" "$head_tree"; then
+    digest="$(_member_digest "$m")" || digest=""
+    if [ -n "$digest" ] && clearance_member_cleared "$repo_root" "$digest" "$m"; then
       continue
     fi
     out="${out}${m}
@@ -309,20 +341,17 @@ if [ -x "$resolver" ]; then
   members="$(bash "$resolver" "$@" || true)"
 
   # Branch the three states on whether the RESOLVER named anyone, captured
-  # BEFORE the carry-forward filter, never on the post-filter list. The filter
-  # may legitimately empty a non-empty resolver set (every member carried), and
-  # the fail-closed answers (an unresolvable base, an unreadable roster) live in
-  # the ownerless probe, which must stay reachable ONLY when the resolver itself
-  # named nobody.
+  # BEFORE the digest-marker-presence filter, never on the post-filter list.
+  # The filter may legitimately empty a non-empty resolver set (every member
+  # already cleared), and the fail-closed answers (an unresolvable base, an
+  # unreadable roster) live in the ownerless probe, which must stay reachable
+  # ONLY when the resolver itself named nobody.
   resolver_named=0
   [ -n "$members" ] && resolver_named=1
 
   if [ "$resolver_named" -eq 1 ]; then
     if [ "$NO_CARRY_FORWARD" -eq 0 ]; then
-      members="$(cf_filter "$members")"
-      if [ -z "$members" ]; then
-        echo "carry-forward: spawn-list empty: all-members-carried" >&2
-      fi
+      members="$(digest_marker_filter "$members")"
     fi
     # The ownerless probe is now UNREACHABLE: once the resolver named anyone,
     # this exit fires regardless of whether the filter emptied the list.

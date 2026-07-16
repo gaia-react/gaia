@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# audit-success-present.sh, is a GAIA-Audit success already LIVE for this tree?
+# audit-success-present.sh, is a GAIA-Audit success already LIVE for this
+# frontend digest?
 #
 # Purpose
 #   The read side of the merge gate's non-clobber guard. A GitHub commit status
@@ -19,21 +20,25 @@
 #   exit. See "Exit codes" below for why the test is `-ne 1` and not `-eq 2`.
 #
 # Usage
-#   .github/audit/audit-success-present.sh <sha> <tree-sha>
+#   .github/audit/audit-success-present.sh <sha> <frontend-digest>
 #
-#     <sha>       The commit the status would be posted to.
-#     <tree-sha>  The tree whose clearance we are asking about. The local
-#                 producer's success description is "<version> <tree-sha>", so
-#                 the tree is the marker's identity: a success naming an OLDER
-#                 tree vouches for content that is no longer what would merge and
-#                 must NOT stand the gate down.
+#     <sha>              The commit the status would be posted to.
+#     <frontend-digest>  The frontend member's content digest (C1) whose
+#                 clearance we are asking about. The local producer's success
+#                 description is "<version> <frontend-digest> <tree>", so the
+#                 digest is the marker's identity: a success naming a
+#                 DIFFERENT digest vouches for content the frontend member
+#                 owns that is no longer what would merge and must NOT stand
+#                 the gate down. An out-of-glob change (a CHANGELOG line, a
+#                 wiki edit) leaves the digest unchanged, so a live success
+#                 still stands the gate down across it.
 #
 # Exit codes
 #   0  A GAIA-Audit `success` IS the live status on <sha>, and its description
-#      carries <tree-sha>. Every dispatched member has cleared this exact
-#      content; the caller must not overwrite it.
-#   1  Definitively NOT live (no GAIA-Audit success for this tree). The caller
-#      proceeds to post `pending` as normal.
+#      carries <frontend-digest>. Every dispatched member has cleared this
+#      exact content; the caller must not overwrite it.
+#   1  Definitively NOT live (no GAIA-Audit success for this digest). The
+#      caller proceeds to post `pending` as normal.
 #   2  Could NOT ask. Callers must NEVER collapse 2 into 1. Posting `pending`
 #      over a status we failed to read is precisely the clobber this guard exists
 #      to prevent, and it would reintroduce the bug on exactly the flaky runs
@@ -45,9 +50,9 @@
 #      next reader does not know to keep shut, and each has a regression lock in
 #      .github/audit/tests/ci-status-member-gate.bats pinning it to 2.
 #
-#        - A usage error (either argument missing). An empty tree would make the
-#          match below succeed against anything, standing the gate down on a
-#          status that vouches for nothing.
+#        - A usage error (either argument missing). An empty digest would make
+#          the match below succeed against anything, standing the gate down on
+#          a status that vouches for nothing.
 #        - `gh` is not installed, so the status cannot be read at all.
 #        - The repo slug does not resolve: $GITHUB_REPOSITORY is unset (i.e. we
 #          are outside Actions) AND the `gh repo view` fallback yields nothing, so
@@ -77,13 +82,13 @@
 set -euo pipefail
 
 sha="${1:-}"
-tree="${2:-}"
+digest="${2:-}"
 
-# Fail-closed on a malformed query. An empty tree would make the fixed-string
+# Fail-closed on a malformed query. An empty digest would make the fixed-string
 # match below succeed against anything, standing the gate down on a status that
 # vouches for nothing.
-if [ -z "$sha" ] || [ -z "$tree" ]; then
-  echo "audit-success-present: usage: audit-success-present.sh <sha> <tree-sha>" >&2
+if [ -z "$sha" ] || [ -z "$digest" ]; then
+  echo "audit-success-present: usage: audit-success-present.sh <sha> <frontend-digest>" >&2
   exit 2
 fi
 
@@ -110,7 +115,7 @@ if ! descriptions="$(gh api "repos/${repo}/commits/${sha}/status" \
   exit 2
 fi
 
-if grep -qF -- "$tree" <<<"$descriptions"; then
+if grep -qF -- "$digest" <<<"$descriptions"; then
   exit 0
 fi
 

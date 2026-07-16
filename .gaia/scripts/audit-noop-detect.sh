@@ -265,13 +265,12 @@ case "$SHAPE" in
     # it does not conclusively rule NO-OP on its own.
     #
     # Short-circuit to real ONLY when $MARKER_PATH is a writer-produced EARNED
-    # clearance: the body parses, provenance is "earned", and the body tree
-    # equals the filename key. A carried clearance lives at a distinct
-    # filename the detector is never handed, and a legacy or hand-written
-    # marker is not writer-shaped, so both fall through to the content
-    # inspection below (unchanged). Marker existence alone no longer
-    # authorizes real. With jq absent the body cannot be inspected, so
-    # existence degrades to real as before.
+    # clearance: the body parses, provenance is "earned", and the body digest
+    # equals the filename key. A legacy or hand-written marker is not
+    # writer-shaped, so it falls through to the content inspection below
+    # (unchanged). Marker existence alone no longer authorizes real. With jq
+    # absent the body cannot be inspected, so existence degrades to real as
+    # before.
     if [ -n "$MARKER_PATH" ] && [ -f "$MARKER_PATH" ]; then
       if ! command -v jq >/dev/null 2>&1; then
         real
@@ -282,16 +281,20 @@ case "$SHAPE" in
       if [ -n "$_acd_lib" ] && [ -f "$_acd_lib/audit-clearance.sh" ]; then
         # shellcheck source=/dev/null
         . "$_acd_lib/audit-clearance.sh"
+        # The detector is only ever handed the `.ok` earned marker path (a
+        # refusal or a member's non-blocking-dirty pass never reaches here),
+        # so stripping just `.ok` is the whole job: the remaining stem is
+        # `<digest>` (default member) or `<digest>.<member>` (a specialist).
         _acd_base="$(basename "$MARKER_PATH")"
         _acd_stem="${_acd_base%.ok}"
-        _acd_tree="${_acd_stem%%.*}"
-        _acd_member_part="${_acd_stem#"$_acd_tree"}"
+        _acd_digest="${_acd_stem%%.*}"
+        _acd_member_part="${_acd_stem#"$_acd_digest"}"
         if [ -z "$_acd_member_part" ]; then
           _acd_member="code-audit-frontend"
         else
           _acd_member="${_acd_member_part#.}"
         fi
-        if clearance_acceptable "$MARKER_PATH" "$_acd_member" "$_acd_tree" \
+        if clearance_acceptable "$MARKER_PATH" "$_acd_member" "$_acd_digest" \
            && [ "$(clearance_field "$MARKER_PATH" provenance)" = "earned" ]; then
           real
         fi

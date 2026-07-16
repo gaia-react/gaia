@@ -21,13 +21,21 @@
 # status is filtered out exactly as the hook filters it. The mock also answers
 # `gh pr view --json title` (empty, so the chore(deps) bypass never fires).
 #
+# The status description is three positional fields, "<version>
+# <frontend-digest> <tree>" (C3): field 2 is the frontend content digest, the
+# validity key the hook compares; field 3 (tree) is a plain data field, never
+# compared. current_frontend_digest() computes the SAME digest the hook itself
+# would, via the real digest engine, so fixtures never hand-derive a value
+# that could drift from the hook's own computation.
+#
 # Coverage:
-#   1. Pending GAIA-Audit status, matching version+tree → deny gh pr merge
-#   2. Success GAIA-Audit status, matching version+tree → allow (exit 0, no JSON)
+#   1. Pending GAIA-Audit status, matching version+digest → deny gh pr merge
+#   2. Success GAIA-Audit status, matching version+digest → allow (exit 0, no JSON)
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIR/../../../.claude/hooks/pr-merge-audit-check.sh"
+  LIB_DIR="$( cd "$THIS_DIR/../../../.claude/hooks/lib" && pwd )"
   [ -x "$SCRIPT" ] || skip "pr-merge-audit-check.sh not executable"
   command -v jq >/dev/null 2>&1 || skip "jq not available"
 
@@ -47,6 +55,9 @@ setup() {
 
   # Feature branch with an in-scope (app/) change, so the out-of-scope and
   # self-mod bypasses both fail-closed and the merge requires an audit signal.
+  # No .gaia/scripts/resolve-audit-members.sh is present in the sandbox, so
+  # the hook always takes its legacy zero-dispatch path, and the GitHub
+  # commit status fallback is the deciding signal.
   git -C "$SANDBOX" checkout --quiet -b feature
   echo "export const x = 1;" > "$SANDBOX/app/x.ts"
   git -C "$SANDBOX" add app/x.ts
@@ -63,6 +74,13 @@ run_hook() {
 
 current_tree() {
   git -C "$SANDBOX" rev-parse "HEAD^{tree}"
+}
+
+# The frontend member's content digest for the SANDBOX's current HEAD,
+# computed via the real digest engine (never hand-derived), so it is always
+# the SAME value pr-merge-audit-check.sh itself would compute.
+current_frontend_digest() {
+  bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$LIB_DIR/audit-digest.sh" "$SANDBOX"
 }
 
 # Install a fake `gh` on a prepended PATH. It dispatches on argv:
@@ -109,13 +127,14 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# 1. Pending GAIA-Audit status with matching version+tree denies gh pr merge
+# 1. Pending GAIA-Audit status with matching version+digest denies gh pr merge
 # -----------------------------------------------------------------------------
 
-@test "merge hook: pending GAIA-Audit status with matching version+tree denies gh pr merge" {
+@test "merge hook: pending GAIA-Audit status with matching version+digest denies gh pr merge" {
   tree=$(current_tree)
+  digest=$(current_frontend_digest)
   install_gh_array_mock \
-    "[{\"context\":\"GAIA-Audit\",\"state\":\"pending\",\"description\":\"1.2.3 ${tree}\"}]"
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"pending\",\"description\":\"1.2.3 ${digest} ${tree}\"}]"
 
   run run_hook
   [ "$status" -eq 0 ]
@@ -125,13 +144,14 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# 2. Success GAIA-Audit status with matching version+tree allows gh pr merge
+# 2. Success GAIA-Audit status with matching version+digest allows gh pr merge
 # -----------------------------------------------------------------------------
 
-@test "merge hook: success GAIA-Audit status with matching version+tree allows gh pr merge" {
+@test "merge hook: success GAIA-Audit status with matching version+digest allows gh pr merge" {
   tree=$(current_tree)
+  digest=$(current_frontend_digest)
   install_gh_array_mock \
-    "[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${tree}\"}]"
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${digest} ${tree}\"}]"
 
   run run_hook
   [ "$status" -eq 0 ]
@@ -166,8 +186,9 @@ EOF
   # clear; the latest-per-context fix takes the newest entry regardless of
   # state, so the failure shadows it and the gate denies.
   tree=$(current_tree)
+  digest=$(current_frontend_digest)
   install_gh_array_mock \
-    "[{\"context\":\"GAIA-Audit\",\"state\":\"failure\",\"description\":\"1.2.3 ${tree}\"},{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${tree}\"}]"
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"failure\",\"description\":\"1.2.3 ${digest} ${tree}\"},{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${digest} ${tree}\"}]"
 
   run run_hook
   [ "$status" -eq 0 ]
@@ -185,8 +206,9 @@ EOF
   # non-matching entry behind it. Confirms latest-per-context does not
   # regress the happy path when the statuses list has more than one entry.
   tree=$(current_tree)
+  digest=$(current_frontend_digest)
   install_gh_array_mock \
-    "[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${tree}\"},{\"context\":\"GAIA-Audit\",\"state\":\"failure\",\"description\":\"1.2.3 ${tree}\"}]"
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${digest} ${tree}\"},{\"context\":\"GAIA-Audit\",\"state\":\"failure\",\"description\":\"1.2.3 ${digest} ${tree}\"}]"
 
   run run_hook
   [ "$status" -eq 0 ]

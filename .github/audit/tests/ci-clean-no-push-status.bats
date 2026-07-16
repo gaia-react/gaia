@@ -13,8 +13,8 @@
 # The fix pins two independent properties, either of which keeps the check green:
 #   1. Target the PUSHED PR head from the event payload
 #      (github.event.pull_request.head.sha), the only commit GitHub is
-#      guaranteed to have, for the status sha, the marker lookup, AND the
-#      description tree-sha.
+#      guaranteed to have, for the status sha, the recomputed frontend
+#      digest (C1) that keys the marker lookup, AND the description.
 #   2. Make the status POST non-fatal so a failed side-effect never reds a
 #      clean audit.
 #
@@ -55,27 +55,33 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
-@test "clean-no-push step derives the marker and tree from the pushed head" {
-  # The marker is keyed to the pushed head's TREE, not its commit sha: the agent
-  # names its marker for the tree it audited, so a commit-keyed lookup here would
-  # never find it. The tree must therefore be resolved BEFORE the marker path is
-  # built.
-  run grep -F 'tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"' "$STEP"
+@test "clean-no-push step derives the marker from the recomputed frontend digest" {
+  # The marker is keyed to the frontend member's content digest (C1), not the
+  # pushed head's commit sha or tree: the agent names its marker for the
+  # digest it audited, so a commit- or tree-keyed lookup here would never
+  # find it. The digest must therefore be recomputed (--ref "${HEAD_SHA}",
+  # the pushed head's exact content) BEFORE the marker path is built.
+  run grep -F 'bash .gaia/scripts/audit-member-digest.sh' "$STEP"
   [ "$status" -eq 0 ]
-  run grep -F 'marker=".gaia/local/audit/${tree_sha}.ok"' "$STEP"
+  run grep -F -- '--ref "${HEAD_SHA}")"; then' "$STEP"
+  [ "$status" -eq 0 ]
+  run grep -F 'marker=".gaia/local/audit/${frontend_digest}.ok"' "$STEP"
   [ "$status" -eq 0 ]
 
-  # The commit-keyed marker path must not return.
+  # The tree- or commit-keyed marker paths must not return.
+  run grep -F 'marker=".gaia/local/audit/${tree_sha}.ok"' "$STEP"
+  [ "$status" -ne 0 ]
   run grep -F 'marker=".gaia/local/audit/${HEAD_SHA}.ok"' "$STEP"
   [ "$status" -ne 0 ]
 
-  # Ordering guard: the tree must be resolved above the marker lookup, or the
-  # guard tests an empty key and every clean audit silently stops stamping.
-  tree_line=$(grep -nF 'tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"' "$STEP" | head -1 | cut -d: -f1)
-  marker_line=$(grep -nF 'marker=".gaia/local/audit/${tree_sha}.ok"' "$STEP" | head -1 | cut -d: -f1)
-  [ -n "$tree_line" ]
+  # Ordering guard: the digest must be resolved above the marker lookup, or
+  # the guard tests an empty key and every clean audit silently stops
+  # stamping.
+  digest_line=$(grep -nF 'bash .gaia/scripts/audit-member-digest.sh' "$STEP" | head -1 | cut -d: -f1)
+  marker_line=$(grep -nF 'marker=".gaia/local/audit/${frontend_digest}.ok"' "$STEP" | head -1 | cut -d: -f1)
+  [ -n "$digest_line" ]
   [ -n "$marker_line" ]
-  [ "$tree_line" -lt "$marker_line" ]
+  [ "$digest_line" -lt "$marker_line" ]
 }
 
 @test "clean-no-push status POST is non-fatal (guarded, never reds a clean audit)" {

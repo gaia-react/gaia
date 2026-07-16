@@ -20,24 +20,32 @@
 # the real GitHub API.
 #
 # Coverage:
-#   1. Marker present  → posts state=success context=GAIA-Audit "<version> <tree>"
+#   1. Marker present  → posts state=success context=GAIA-Audit
+#      "<version> <frontend-digest> <tree>" (three positional fields; field 2
+#      is the digest, UAT-008 field-position proof)
 #      Marker absent   → no POST (declines)
 #   2. gh unauthenticated → marker untouched, no POST (fail-safe asymmetry)
 #   3. Member-aware gate (blocker COV-001): a mixed app/ + .gaia/**/*.sh diff
 #      declines ("members pending ...") while the maintainer-shell member's
-#      marker is absent, posts success once both markers are present, and
-#      (resolver absent) falls back to the single-marker POST unchanged.
+#      marker is absent, posts success once both markers are present (each
+#      member keyed to its OWN content digest, not the tree), and (resolver
+#      absent) falls back to the single-marker POST unchanged. There is no
+#      carried provenance, so the description never carries a trailing
+#      "carried" suffix.
 #   4. Status target: posts to the pushed PR head sha, not local HEAD, so an
 #      unpushed empty-commit trailer stamp never orphans the status POST
 #      (#726); declines "audited tree not on pushed head" when local HEAD's
 #      tree genuinely isn't on the pushed head. The surfaced "status: posted"
 #      line carries the short form of the POSTed sha, not local HEAD's short
 #      sha, on this same divergence (#794).
+#   5. Frontend digest unavailable (masked sha256 tool) → declines fail-closed,
+#      never posts a status with a missing or empty digest field.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIR/../../../.claude/hooks/post-audit-status.sh"
   [ -x "$SCRIPT" ] || skip "post-audit-status.sh not executable"
+  DIGEST_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-digest.sh"
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/.gaia"
@@ -133,17 +141,28 @@ current_tree() {
   git -C "$SANDBOX" rev-parse "HEAD^{tree}"
 }
 
-# Write a writer-shaped schema-2 EARNED clearance for MEMBER at PATH (an
-# absolute path under SANDBOX). The precondition now accepts only such bodies,
-# not a bare `{}`: `tree` equals the filename key and `member` matches.
+# The real audit_member_digest, sourced fresh in a subshell (mirrors
+# .gaia/tests/hooks/audit-digest-lib.bats's digest_of), so assertions compute
+# the SAME digest the script itself derives rather than hardcoding one.
+digest_of() {
+  local root="$1" member="$2" ref="${3:-HEAD}"
+  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIB" "$root" "$member" "$ref"
+}
+
+# Write a writer-shaped schema-3 EARNED clearance for MEMBER at PATH (an
+# absolute path under SANDBOX), keyed to MEMBER's OWN content digest (owned
+# files + machinery), NOT the tree. The precondition now accepts only such
+# bodies, not a bare `{}`: `digest` equals the filename key and `member`
+# matches. `tree` stays in the body as a plain data field.
 write_body() {
-  local path="$1" member="$2" tree sha sidecar
+  local path="$1" member="$2" digest tree sha sidecar
+  digest=$(digest_of "$SANDBOX" "$member")
   tree=$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")
   sha=$(git -C "$SANDBOX" rev-parse HEAD)
   if [ "$member" = "code-audit-frontend" ]; then sidecar="true"; else sidecar="false"; fi
   mkdir -p "$(dirname "$path")"
-  printf '{"version":"1.2.3","schema":2,"member":"%s","provenance":"earned","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
-    "$member" "$sha" "$tree" "$sidecar" > "$path"
+  printf '{"version":"1.2.3","schema":3,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$digest" "$tree" "$sha" "$sidecar" > "$path"
 }
 
 # Copy the real resolver script into SANDBOX so a test can exercise the
@@ -189,10 +208,11 @@ commit_mixed_diff() {
   install_gh_mock ok
   head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
   tree=$(current_tree)
+  digest=$(digest_of "$SANDBOX" code-audit-frontend)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  # The marker is keyed to the TREE; the status POST still targets the COMMIT
-  # (a GitHub commit status has nowhere else to land).
-  marker=".gaia/local/audit/${tree}.ok"
+  # The marker is keyed to the member's own content digest; the status POST
+  # still targets the COMMIT (a GitHub commit status has nowhere else to land).
+  marker=".gaia/local/audit/${digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
@@ -200,12 +220,13 @@ commit_mixed_diff() {
   [[ "$output" == "status: posted GAIA-Audit success "* ]]
 
   # The recorded POST carries state=success, the GAIA-Audit context, and the
-  # "<version> <tree>" description every state-aware reader accepts as cleared.
+  # three-field "<version> <frontend-digest> <tree>" description every
+  # state-aware reader accepts as cleared.
   [ -f "$POST_LOG" ]
   grep -q "statuses/${head_sha}" "$POST_LOG"
   grep -q "state=success" "$POST_LOG"
   grep -q "context=GAIA-Audit" "$POST_LOG"
-  grep -q "description=1.2.3 ${tree}" "$POST_LOG"
+  grep -q "description=1.2.3 ${digest} ${tree}" "$POST_LOG"
 
   # Marker absent → no POST, declines.
   rm -f "$POST_LOG"
@@ -222,9 +243,9 @@ commit_mixed_diff() {
 @test "local producer: gh unauthenticated → marker stays, no status post (fail-safe asymmetry)" {
   install_gh_mock fail
   head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
-  tree=$(current_tree)
+  digest=$(digest_of "$SANDBOX" code-audit-frontend)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${tree}.ok"
+  marker=".gaia/local/audit/${digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
@@ -246,9 +267,9 @@ commit_mixed_diff() {
   install_resolver
   commit_mixed_diff
 
-  tree=$(current_tree)
+  digest=$(digest_of "$SANDBOX" code-audit-frontend)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${tree}.ok"
+  marker=".gaia/local/audit/${digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
@@ -268,10 +289,12 @@ commit_mixed_diff() {
 
   head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
   tree=$(current_tree)
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  shell_digest=$(digest_of "$SANDBOX" code-audit-maintainer-shell)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${tree}.ok"
+  marker=".gaia/local/audit/${frontend_digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
-  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
+  write_body "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
@@ -280,37 +303,40 @@ commit_mixed_diff() {
   [ -f "$POST_LOG" ]
   grep -q "statuses/${head_sha}" "$POST_LOG"
   grep -q "state=success" "$POST_LOG"
-  grep -q "description=1.2.3 ${tree}" "$POST_LOG"
+  grep -q "description=1.2.3 ${frontend_digest} ${tree}" "$POST_LOG"
 }
 
 # The order-independence the helper's header promises, and that a commit key
-# cannot actually deliver. A specialized member clears the tree and writes its
-# marker; code-audit-frontend then stamps the GAIA-Audit trailer as an empty
-# commit and writes its own. Keyed to HEAD, the frontend's stamp orphans the
-# sibling's marker and the POST declines "members pending" even though both
-# members audited the identical tree. Keyed to the tree, the POST goes through.
+# cannot actually deliver. A specialized member clears the content and writes
+# its marker; code-audit-frontend then stamps the GAIA-Audit trailer as an
+# empty commit and writes its own. Keyed to HEAD, the frontend's stamp orphans
+# the sibling's marker and the POST declines "members pending" even though
+# both members audited identical content. Keyed to the content digest (blobs
+# unchanged by an empty commit), the POST goes through.
 @test "member-aware POST: a sibling's marker survives the trailer stamp's empty commit" {
   install_gh_mock ok
   install_resolver
   commit_mixed_diff
 
   tree=$(current_tree)
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  shell_digest=$(digest_of "$SANDBOX" code-audit-maintainer-shell)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  # The specialized member clears the tree first, before the frontend stamps.
-  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
+  # The specialized member clears the content first, before the frontend stamps.
+  write_body "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
 
   # Push before the stamp: pushed_head is the fetchable sha the retargeted POST
   # must land on.
   push_branch
   pushed_head="$PUSHED_HEAD"
 
-  # code-audit-frontend stamps the trailer: an empty commit, identical tree,
+  # code-audit-frontend stamps the trailer: an empty commit, identical blobs,
   # left UNPUSHED -- the sha the pre-fix code targeted, which 422s (#726).
   git -C "$SANDBOX" commit -q --allow-empty -m "chore: code review audit passed"
   [ "$(current_tree)" = "$tree" ]
   stamped_sha=$(git -C "$SANDBOX" rev-parse HEAD)
 
-  marker=".gaia/local/audit/${tree}.ok"
+  marker=".gaia/local/audit/${frontend_digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
@@ -318,21 +344,21 @@ commit_mixed_diff() {
   grep -qF -- "status: posted GAIA-Audit success " <<<"$output" || return 1
 
   # The status lands on the pushed (pre-stamp) head, not the unpushed stamp,
-  # carrying the unchanged tree.
+  # carrying the unchanged content.
   [ -f "$POST_LOG" ]
   grep -q "statuses/${pushed_head}" "$POST_LOG"
   grep -qF -- "statuses/${stamped_sha}" "$POST_LOG" && return 1
   grep -q "state=success" "$POST_LOG"
-  grep -q "description=1.2.3 ${tree}" "$POST_LOG"
+  grep -q "description=1.2.3 ${frontend_digest} ${tree}" "$POST_LOG"
 }
 
 @test "member-aware POST: resolver absent falls back to the single-marker POST on a mixed diff" {
   install_gh_mock ok
   commit_mixed_diff
 
-  tree=$(current_tree)
+  digest=$(digest_of "$SANDBOX" code-audit-frontend)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${tree}.ok"
+  marker=".gaia/local/audit/${digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
 
   # No resolver copied into SANDBOX: the member-aware gate is skipped and the
@@ -356,9 +382,9 @@ commit_mixed_diff() {
   git -C "$SANDBOX" add README.md
   git -C "$SANDBOX" commit --quiet -m "unpushed tree change"
 
-  tree=$(current_tree)
+  digest=$(digest_of "$SANDBOX" code-audit-frontend)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${tree}.ok"
+  marker=".gaia/local/audit/${digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
 
   run run_helper "$marker"
@@ -373,9 +399,11 @@ commit_mixed_diff() {
   commit_mixed_diff
 
   tree=$(current_tree)
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  shell_digest=$(digest_of "$SANDBOX" code-audit-maintainer-shell)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
-  marker=".gaia/local/audit/${tree}.ok"
+  write_body "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
+  marker=".gaia/local/audit/${frontend_digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
   pushed_head="$PUSHED_HEAD"
 
@@ -403,9 +431,11 @@ commit_mixed_diff() {
   commit_mixed_diff
 
   tree=$(current_tree)
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  shell_digest=$(digest_of "$SANDBOX" code-audit-maintainer-shell)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
-  marker=".gaia/local/audit/${tree}.ok"
+  write_body "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
+  marker=".gaia/local/audit/${frontend_digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
   pushed_head="$PUSHED_HEAD"
   pushed_head_short=$(git -C "$SANDBOX" rev-parse --short "$pushed_head")
@@ -424,80 +454,61 @@ commit_mixed_diff() {
 }
 
 # -----------------------------------------------------------------------------
-# UAT-009: provenance in the description. A mixed (one earned, one carried) set
-# posts "<version> <tree> carried"; an all-earned set posts the two-field shape.
+# Description shape: three-field "<version> <frontend-digest> <tree>", never a
+# trailing "carried" suffix. There is no carried provenance under digest
+# keying (every dispatched member's clearance is earned), so the shape is
+# fixed with no branch.
 # -----------------------------------------------------------------------------
 
-# Write a writer-shaped schema-2 CARRIED clearance for MEMBER at PATH.
-write_carried_body() {
-  local path="$1" member="$2" tree sha sidecar
-  tree=$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")
-  sha=$(git -C "$SANDBOX" rev-parse HEAD)
-  if [ "$member" = "code-audit-frontend" ]; then sidecar="true"; else sidecar="false"; fi
-  mkdir -p "$(dirname "$path")"
-  printf '{"version":"1.2.3","schema":2,"member":"%s","provenance":"carried","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s,"anchor_tree":"%s"}\n' \
-    "$member" "$sha" "$tree" "$sidecar" "$tree" > "$path"
-}
-
-@test "UAT-009: a carried member appends the carried token to the description" {
+@test "an all-earned mixed diff posts the three-field description with no carried suffix" {
   install_gh_mock ok
   install_resolver
   commit_mixed_diff
 
   tree=$(current_tree)
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  shell_digest=$(digest_of "$SANDBOX" code-audit-maintainer-shell)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${tree}.ok"
+  marker=".gaia/local/audit/${frontend_digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
-  # The shell member's clearance is CARRIED, not earned.
-  write_carried_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.carried" code-audit-maintainer-shell
-
-  run run_helper "$marker"
-  [ "$status" -eq 0 ]
-  [[ "$output" == "status: posted GAIA-Audit success "* ]]
-  [ -f "$POST_LOG" ]
-  grep -q "description=1.2.3 ${tree} carried" "$POST_LOG"
-}
-
-@test "UAT-009: an all-earned set posts the two-field description (no carried token)" {
-  install_gh_mock ok
-  install_resolver
-  commit_mixed_diff
-
-  tree=$(current_tree)
-  mkdir -p "$SANDBOX/.gaia/local/audit"
-  marker=".gaia/local/audit/${tree}.ok"
-  write_body "$SANDBOX/$marker" code-audit-frontend
-  write_body "$SANDBOX/.gaia/local/audit/${tree}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
+  write_body "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
   [ -f "$POST_LOG" ]
-  grep -q "description=1.2.3 ${tree}" "$POST_LOG"
-  # No carried token appended.
-  grep -q "description=1.2.3 ${tree} carried" "$POST_LOG" && return 1
+  grep -q "description=1.2.3 ${frontend_digest} ${tree}" "$POST_LOG"
+  # No carried token appended, and never can be (there is no carried family).
+  grep -qF -- "carried" "$POST_LOG" && return 1
   return 0
 }
 
-@test "UAT-009 third reader: audit-success-present.sh accepts a carried (three-field) description" {
-  SP="$THIS_DIR/../audit-success-present.sh"
-  [ -x "$SP" ] || skip "audit-success-present.sh not executable"
-  tree=$(current_tree)
-  sha=$(git -C "$SANDBOX" rev-parse HEAD)
-  # gh mock: a GET of commits/<sha>/status yields a carried description.
-  GH3="$BATS_TEST_TMPDIR/bin3"
-  mkdir -p "$GH3"
-  cat > "$GH3/gh" <<EOF
+# -----------------------------------------------------------------------------
+# Frontend digest unavailable (masked sha256 tool): declines fail-closed,
+# never posts a status with a missing or empty digest field.
+# -----------------------------------------------------------------------------
+
+@test "frontend digest unavailable (sha256 tool masked): declines fail-closed, no POST" {
+  install_gh_mock ok
+  digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  marker=".gaia/local/audit/${digest}.ok"
+  write_body "$SANDBOX/$marker" code-audit-frontend
+
+  # Shadow sha256sum with a stub that always fails, on a prepended PATH: the
+  # digest engine's own fail-closed posture (never a partial/empty digest, per
+  # audit-digest-lib.bats UAT-013) must surface here as a clean decline, never
+  # a posted status with a missing or empty digest field.
+  FAKEBIN="$BATS_TEST_TMPDIR/fakebin"
+  mkdir -p "$FAKEBIN"
+  cat > "$FAKEBIN/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-desc="1.2.3 ${tree} carried"
+exit 1
 EOF
-  cat >> "$GH3/gh" <<'EOF'
-case "$*" in
-  *"repo view"*) printf 'gaia-react/gaia\n' ;;
-  *"/status"*) printf '%s\n' "$desc" ;;
-  *) exit 0 ;;
-esac
-EOF
-  chmod +x "$GH3/gh"
-  run env PATH="$GH3:$PATH" GITHUB_REPOSITORY="gaia-react/gaia" "$SP" "$sha" "$tree"
+  chmod +x "$FAKEBIN/sha256sum"
+
+  PATH="$FAKEBIN:$PATH" run run_helper "$marker"
+
   [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: frontend digest unavailable" ]
+  [ ! -f "$POST_LOG" ]
 }

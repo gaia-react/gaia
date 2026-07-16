@@ -118,11 +118,21 @@ setup() {
 
   # The resolver copy resolves its libs relative to ITSELF
   # ($SANDBOX/.claude/hooks/lib/), so provision the shared ownership
-  # classifier alongside it.
+  # classifier alongside it. The extracted status steps recompute the
+  # frontend digest by calling `bash .gaia/scripts/audit-member-digest.sh`,
+  # which sources `.claude/hooks/lib/audit-digest.sh` (which in turn sources
+  # the classifier siblings from ITS own on-disk location) and needs the CLI
+  # script itself on disk at $SANDBOX/.gaia/scripts/. Without these the
+  # recompute fail-closes and no step ever posts a success, so every gate
+  # test expecting a cleared status would fail for a reason unrelated to the
+  # step logic under test.
   mkdir -p "$SANDBOX/.claude/hooks/lib"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" "$SANDBOX/.claude/hooks/lib/audit-digest.sh"
+  cp "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
+  chmod +x "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
 
   POST_LOG="$BATS_TEST_TMPDIR/gh-post.log"
   rm -f "$POST_LOG"
@@ -194,10 +204,12 @@ EOF
   export PATH="$GH_BIN:$PATH"
 }
 
-# Stand in for a `success` GAIA-Audit status the local producer already posted
-# for a given tree. post-audit-status.sh's description shape is "<version> <tree>".
-canned_success_for_tree() {
-  export GH_CANNED_SUCCESS_DESC="1.2.3 $1"
+# Stand in for a `success` GAIA-Audit status the local producer already
+# posted for a given frontend digest. post-audit-status.sh's description
+# shape is "<version> <frontend-digest> <tree>"; audit-success-present.sh
+# substring-matches the digest alone, so the trailing token is filler.
+canned_success_for_digest() {
+  export GH_CANNED_SUCCESS_DESC="1.2.3 $1 deadbeef"
 }
 
 # Make the combined-status READ fail, standing in for a transient API/auth error.
@@ -300,21 +312,33 @@ commit_docs_only_diff() {
   git -C "$SANDBOX" commit --quiet -m "docs only"
 }
 
-# The frontend's clean marker is keyed to the TREE it audited, not the commit,
-# so pass a tree sha. Keying it to the commit would leave the step's lookup
-# empty-handed.
+# The frontend's clean marker is keyed to the member's content digest (C1)
+# it audited, not the commit or the tree, so compute the sandbox's current
+# frontend digest via the real CLI entrypoint (the same one the extracted
+# status steps call) rather than take one as an argument. Keying it to the
+# tree or the commit would leave the digest-based lookup empty-handed.
 write_frontend_marker() {
-  local tree="$1" sha
+  local tree sha digest
   sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  tree=$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")
+  digest=$(sandbox_frontend_digest)
   mkdir -p "$SANDBOX/.gaia/local/audit"
-  # Writer-shaped schema-2 EARNED clearance (the shared reader rejects a bare
+  # Writer-shaped schema-3 EARNED clearance (the shared reader rejects a bare
   # `{}`). The CI status steps test only marker existence, but keep the fixture
   # honest so nothing here depends on a body the writer never produces.
-  printf '{"version":"1.2.3","schema":2,"member":"code-audit-frontend","provenance":"earned","sha":"%s","tree":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
-    "$sha" "$tree" > "$SANDBOX/.gaia/local/audit/$1.ok"
+  printf '{"version":"1.2.3","schema":3,"member":"code-audit-frontend","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
+    "$digest" "$tree" "$sha" > "$SANDBOX/.gaia/local/audit/${digest}.ok"
 }
 
 sandbox_tree() { git -C "$SANDBOX" rev-parse "HEAD^{tree}"; }
+
+# The frontend member's content digest (C1) at the sandbox's current HEAD,
+# via the exact CLI entrypoint the extracted status steps call internally,
+# so a fixture computed here matches what those steps will recompute.
+sandbox_frontend_digest() {
+  bash "$SANDBOX/.gaia/scripts/audit-member-digest.sh" \
+    --root "$SANDBOX" --member code-audit-frontend
+}
 
 run_gate() { ( cd "$SANDBOX" && bash .github/audit/gate-pending-members.sh "$@" ); }
 
@@ -500,7 +524,7 @@ run_comment_step() {
   body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
   commit_mixed_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  write_frontend_marker "$(sandbox_tree)"
+  write_frontend_marker
 
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
@@ -512,10 +536,11 @@ run_comment_step() {
 
   grep -qF "state=success" "$POST_LOG" && return 1
 
-  # The pending description must not carry the cleared "<version> <tree-sha>"
-  # shape, so a state-blind reader cannot mistake it for cleared.
-  tree="$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")"
-  grep -qF "description=1.2.3 ${tree}" "$POST_LOG" && return 1
+  # The pending description must not carry the cleared "<version>
+  # <frontend-digest> <tree>" shape, so a state-blind reader cannot mistake
+  # it for cleared.
+  digest="$(sandbox_frontend_digest)"
+  grep -qF "description=1.2.3 ${digest}" "$POST_LOG" && return 1
   return 0
 }
 
@@ -523,16 +548,17 @@ run_comment_step() {
   body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  write_frontend_marker "$(sandbox_tree)"
+  write_frontend_marker
 
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
 
   [ -f "$POST_LOG" ]
   tree="$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")"
+  digest="$(sandbox_frontend_digest)"
   grep -qF "statuses/${sha}" "$POST_LOG"
   grep -qF "state=success" "$POST_LOG"
-  grep -qF "description=1.2.3 ${tree}" "$POST_LOG"
+  grep -qF "description=1.2.3 ${digest} ${tree}" "$POST_LOG"
 }
 
 @test "clean-no-push: mixed diff without the frontend marker posts nothing at all" {
@@ -575,9 +601,10 @@ run_comment_step() {
 
   [ -f "$POST_LOG" ]
   tree="$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")"
+  digest="$(sandbox_frontend_digest)"
   grep -qF "statuses/${sha}" "$POST_LOG"
   grep -qF "state=success" "$POST_LOG"
-  grep -qF "description=1.2.3 ${tree}" "$POST_LOG"
+  grep -qF "description=1.2.3 ${digest} ${tree}" "$POST_LOG"
 }
 
 # -----------------------------------------------------------------------------
@@ -632,8 +659,9 @@ run_comment_step() {
 
   [ -f "$POST_LOG" ]
   tree="$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")"
+  digest="$(sandbox_frontend_digest)"
   grep -qF "state=success" "$POST_LOG"
-  grep -qF "description=1.2.3 ${tree}" "$POST_LOG"
+  grep -qF "description=1.2.3 ${digest} ${tree}" "$POST_LOG"
 
   # The stamp really happened, so the comment step is entitled to say the gate is
   # satisfied. This is the true half that the version-guard tests below pin false.
@@ -751,19 +779,19 @@ run_comment_step() {
 # framework-maintenance PRs -- that is the common path, not an edge case.
 #
 # The guard: skip the pending POST when a GAIA-Audit `success` is already the
-# LIVE status on the sha AND carries THIS EXACT TREE. It must still fail CLOSED
-# for a stale-tree success and for no success at all.
+# LIVE status on the sha AND carries THIS EXACT FRONTEND DIGEST. It must
+# still fail CLOSED for a stale-digest success and for no success at all.
 # -----------------------------------------------------------------------------
 
-@test "non-clobber: out-of-scope skip does NOT overwrite a live success for the current tree" {
+@test "non-clobber: out-of-scope skip does NOT overwrite a live success for the current digest" {
   # The #734 headline shape: dispatched set is maintainer-only, so has_source is
   # false and this is the step that fires. The local producer has already cleared
   # every member and posted success.
   commit_maintainer_only_diff
-  local sha tree body
+  local sha digest body
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  tree="$(sandbox_tree)"
-  canned_success_for_tree "$tree"
+  digest="$(sandbox_frontend_digest)"
+  canned_success_for_digest "$digest"
 
   body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
   run run_step "$body" "$sha"
@@ -777,10 +805,10 @@ run_comment_step() {
 @test "non-clobber: out-of-scope skip still publishes success_stamped=false when it stands down" {
   # This step stamped nothing on the stand-down path, so it must not claim it did.
   commit_maintainer_only_diff
-  local sha tree body
+  local sha digest body
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  tree="$(sandbox_tree)"
-  canned_success_for_tree "$tree"
+  digest="$(sandbox_frontend_digest)"
+  canned_success_for_digest "$digest"
 
   body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
   run run_step "$body" "$sha"
@@ -788,13 +816,13 @@ run_comment_step() {
   grep -qF "success_stamped=false" "$STEP_OUTPUT"
 }
 
-@test "non-clobber: a STALE success (different tree) does NOT suppress the pending POST" {
-  # Fail-closed. A success naming an older tree vouches for content that is no
-  # longer what would merge, so it must not stand the gate down.
+@test "non-clobber: a STALE success (different digest) does NOT suppress the pending POST" {
+  # Fail-closed. A success naming a different digest vouches for content that is
+  # no longer what would merge, so it must not stand the gate down.
   commit_maintainer_only_diff
   local sha body
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  canned_success_for_tree "0000000000000000000000000000000000000000"
+  canned_success_for_digest "$(printf '%064d' 0)"
 
   body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
   run run_step "$body" "$sha"
@@ -823,15 +851,15 @@ run_comment_step() {
   grep -qF "code-audit-maintainer-node" "$POST_LOG"
 }
 
-@test "non-clobber: the self-heal stamp step does NOT overwrite a live success for the current tree" {
+@test "non-clobber: the self-heal stamp step does NOT overwrite a live success for the current digest" {
   # Mixed diff: has_source is true, so CI runs the frontend member and this is
   # the step that fires, but a maintainer member is co-dispatched and still
   # pending from CI's point of view.
   commit_mixed_diff
-  local sha tree body
+  local sha digest body
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  tree="$(sandbox_tree)"
-  canned_success_for_tree "$tree"
+  digest="$(sandbox_frontend_digest)"
+  canned_success_for_digest "$digest"
 
   body="$(extract_step_body "Write GAIA-Audit commit status")"
   run run_step "$body" "$sha"
@@ -841,13 +869,13 @@ run_comment_step() {
   grep -qF "not clobbering" <<<"$output"
 }
 
-@test "non-clobber: the clean-no-push stamp step does NOT overwrite a live success for the current tree" {
+@test "non-clobber: the clean-no-push stamp step does NOT overwrite a live success for the current digest" {
   commit_mixed_diff
-  local sha tree body
+  local sha digest body
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  tree="$(sandbox_tree)"
-  write_frontend_marker "$tree"
-  canned_success_for_tree "$tree"
+  digest="$(sandbox_frontend_digest)"
+  write_frontend_marker
+  canned_success_for_digest "$digest"
 
   body="$(extract_step_body "Write GAIA-Audit commit status (clean, no push)")"
   run run_step "$body" "$sha"
@@ -861,10 +889,11 @@ run_comment_step() {
   # The guard lives only on the members-pending branch. An app-only diff has
   # nothing pending, so the step must still post success even with a live status.
   commit_app_only_diff
-  local sha tree body
+  local sha tree digest body
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
   tree="$(sandbox_tree)"
-  canned_success_for_tree "$tree"
+  digest="$(sandbox_frontend_digest)"
+  canned_success_for_digest "$digest"
 
   body="$(extract_step_body "Write GAIA-Audit commit status")"
   run run_step "$body" "$sha"
@@ -872,7 +901,7 @@ run_comment_step() {
 
   [ -f "$POST_LOG" ]
   grep -qF "state=success" "$POST_LOG"
-  grep -qF "description=1.2.3 ${tree}" "$POST_LOG"
+  grep -qF "description=1.2.3 ${digest} ${tree}" "$POST_LOG"
 }
 
 @test "non-clobber: an UNREADABLE status stands down instead of posting pending" {
@@ -916,10 +945,9 @@ run_comment_step() {
 
 @test "non-clobber: an unreadable status stands down on the clean-no-push stamp step too" {
   commit_mixed_diff
-  local sha tree body
+  local sha body
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  tree="$(sandbox_tree)"
-  write_frontend_marker "$tree"
+  write_frontend_marker
   status_read_fails
 
   body="$(extract_step_body "Write GAIA-Audit commit status (clean, no push)")"
@@ -932,10 +960,10 @@ run_comment_step() {
 
 @test "non-clobber: the out-of-scope skip publishes success_live=true when it stands down on a live success" {
   commit_maintainer_only_diff
-  local sha tree body
+  local sha digest body
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  tree="$(sandbox_tree)"
-  canned_success_for_tree "$tree"
+  digest="$(sandbox_frontend_digest)"
+  canned_success_for_digest "$digest"
 
   body="$(extract_step_body "Write GAIA-Audit commit status (out-of-scope skip)")"
   run run_step "$body" "$sha"
@@ -1033,7 +1061,7 @@ run_comment_step() {
 @test "local-mode stand-down: posts pending when no success is live (unchanged behavior)" {
   # Regression lock on the pre-existing behavior: with nothing to protect, the
   # guard is inert and the step blocks the merge exactly as it always has.
-  local sha tree body
+  local sha digest body
   body="$(extract_step_body 'Stand down (local-mode, no override)')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
@@ -1046,22 +1074,23 @@ run_comment_step() {
   grep -qF "state=pending" "$POST_LOG"
   grep -qF "context=GAIA-Audit" "$POST_LOG"
 
-  # The description must not carry the cleared "<version> <tree-sha>" shape, so a
-  # state-blind reader cannot mistake this pending for cleared.
-  tree="$(sandbox_tree)"
-  grep -qF "description=1.2.3 ${tree}" "$POST_LOG" && return 1
+  # The description must not carry the cleared "<version> <frontend-digest>
+  # <tree>" shape, so a state-blind reader cannot mistake this pending for
+  # cleared.
+  digest="$(sandbox_frontend_digest)"
+  grep -qF "description=1.2.3 ${digest}" "$POST_LOG" && return 1
   return 0
 }
 
-@test "local-mode stand-down: does NOT overwrite a live success for the current tree" {
+@test "local-mode stand-down: does NOT overwrite a live success for the current digest" {
   # The headline shape. The local producer has already cleared every dispatched
-  # member and posted success on this exact tree; a re-run of this step (a label
-  # touched, no new push) must not write over it.
+  # member and posted success on this exact digest; a re-run of this step (a
+  # label touched, no new push) must not write over it.
   local sha body
   body="$(extract_step_body 'Stand down (local-mode, no override)')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  canned_success_for_tree "$(sandbox_tree)"
+  canned_success_for_digest "$(sandbox_frontend_digest)"
 
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
@@ -1072,16 +1101,16 @@ run_comment_step() {
   grep -qF "not clobbering" <<<"$output"
 }
 
-@test "local-mode stand-down: a STALE success (different tree) still posts pending" {
-  # Fail-closed, and the reason the guard is keyed to the TREE and not the sha: a
-  # success naming an older tree vouches for content that is no longer what would
-  # merge, so it must NOT stand this step down. Without this the guard would wave
-  # through every push after the first cleared one.
+@test "local-mode stand-down: a STALE success (different digest) still posts pending" {
+  # Fail-closed, and the reason the guard is keyed to the DIGEST and not the
+  # sha: a success naming a different digest vouches for content that is no
+  # longer what would merge, so it must NOT stand this step down. Without this
+  # the guard would wave through every push after the first cleared one.
   local sha body
   body="$(extract_step_body 'Stand down (local-mode, no override)')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  canned_success_for_tree "0000000000000000000000000000000000000000"
+  canned_success_for_digest "$(printf '%064d' 0)"
 
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
@@ -1127,7 +1156,7 @@ run_comment_step() {
   body="$(extract_step_body 'Stand down (local-mode, no override)')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  canned_success_for_tree "$(sandbox_tree)"
+  canned_success_for_digest "$(sandbox_frontend_digest)"
   remove_guard_script
 
   run run_step "$body" "$sha"
@@ -1141,7 +1170,7 @@ run_comment_step() {
   local sha body
   commit_mixed_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  canned_success_for_tree "$(sandbox_tree)"
+  canned_success_for_digest "$(sandbox_frontend_digest)"
   remove_guard_script
 
   body="$(extract_step_body 'Write GAIA-Audit commit status')"
@@ -1153,12 +1182,12 @@ run_comment_step() {
 }
 
 @test "missing guard: the clean-no-push stamp step stands down rather than posting pending" {
-  local sha tree body
+  local sha digest body
   commit_mixed_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  tree="$(sandbox_tree)"
-  write_frontend_marker "$tree"
-  canned_success_for_tree "$tree"
+  digest="$(sandbox_frontend_digest)"
+  write_frontend_marker
+  canned_success_for_digest "$digest"
   remove_guard_script
 
   body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
@@ -1173,7 +1202,7 @@ run_comment_step() {
   local sha body
   commit_maintainer_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  canned_success_for_tree "$(sandbox_tree)"
+  canned_success_for_digest "$(sandbox_frontend_digest)"
   remove_guard_script
 
   body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
@@ -1208,9 +1237,10 @@ run_comment_step() {
   [ "$status" -eq 2 ]
 }
 
-@test "guard: a missing tree argument is unanswerable (exit 2), never 'no success live'" {
-  # An empty tree would make the guard's fixed-string match succeed against ANY
-  # description, standing the gate down on a success that vouches for nothing.
+@test "guard: a missing digest argument is unanswerable (exit 2), never 'no success live'" {
+  # An empty digest would make the guard's fixed-string match succeed against
+  # ANY description, standing the gate down on a success that vouches for
+  # nothing.
   run bash "$PRESENT" "deadbeef"
   [ "$status" -eq 2 ]
 }

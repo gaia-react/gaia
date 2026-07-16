@@ -382,33 +382,38 @@ days_ago() {
 
 # --- Sweep #2: orphaned audit markers --------------------------------------
 #
-# The drop-zone holds two key families, and the sweep keeps each alive by its
-# own rule:
+# A marker's filename key is a 64-hex CONTENT DIGEST over exactly the files
+# the audited member owns plus the shared gate machinery, not a git tree or
+# commit sha, so the key resolves to no git object and no reachability call
+# can ever answer "live" for one. Liveness is read off each marker's own JSON
+# body instead, through three key-shape-agnostic keep-arms:
 #
-#   TREE-keyed  <tree>.ok, <tree>.<member>.ok, and <tree>.progress.log -- the
-#     Code Audit Team's clearance markers and the same run's CI-observability
-#     breadcrumbs. A marker (or progress log) attests that a member audited a
-#     TREE, so it is live while that tree is the one about to merge: HEAD's
-#     tree, or the tree of a local branch tip / another worktree's HEAD.
+#   Keep-arm A (live-tree)         the marker's body `.tree` (plain data) is
+#     one of the once-computed live_trees (every local branch tip / linked
+#     worktree HEAD).
+#   Keep-arm B (retention window)  the marker is within
+#     GAIA_AUDIT_MARKER_RETENTION_HOURS (default 72) of its own recorded
+#     `audited_at`. Applies to both `.ok` and `.refused`.
+#   Keep-arm C (open-receipt)      the frontend `<digest>.ok` marker's
+#     co-keyed `<digest>.dispositions.json` sidecar still holds a still-open
+#     entry (COV-002, its own section below).
 #
-#   COMMIT-keyed  <sha>.dispositions.json -- the disposition sidecar, keyed to
-#     the commit the marker-backstop hook resolves at merge time. It is live
-#     while its commit is HEAD or reachable from a local branch.
-#
-# All three are swept by one glob, so the liveness test accepts either key.
-# The per-member markers matter here: the key-strip must peel the whole suffix,
-# or a live <tree>.<member>.ok resolves to no object, reads as dead, and gets
-# deleted out from under the merge gate.
+# A marker is NEW-SCHEME iff its filename stem-before-first-dot is 64-hex AND
+# its body's `.digest` equals that stem; only a new-scheme marker is
+# keep-eligible at all. Everything else -- an old-scheme (pre-digest) marker,
+# a body lacking `.digest`, the deleted `.carried` family, and the
+# CI-observability `.progress.log` breadcrumb (never re-keyed as a clearance)
+# -- is spent residue and is unconditionally reaped.
 
-# seed_audit_file <name>: drops one file into the audit drop-zone.
+# seed_audit_file <name>: drops one raw file into the audit drop-zone.
 seed_audit_file() {
   mkdir -p "$REPO/.gaia/local/audit"
   echo '{}' > "$REPO/.gaia/local/audit/$1"
 }
 
-# orphan_sha: a real commit whose branch is deleted, so it is neither HEAD nor
-# reachable from any local branch (reflog-only) -- exactly a squash-merged or
-# abandoned branch tip.
+# orphan_sha: a real commit whose branch is deleted, so its tree names no
+# local branch tip or worktree HEAD -- exactly a squash-merged or abandoned
+# branch tip, the NON-live-tree fixture every keep-arm-A-fails test needs.
 orphan_sha() {
   git -C "$REPO" checkout -q -b throwaway
   echo orphan > "$REPO/orphan"
@@ -419,75 +424,129 @@ orphan_sha() {
   git -C "$REPO" branch -q -D throwaway
 }
 
-# head_tree: the tree the Code Audit Team keys its markers to.
+# head_tree: the tree the Code Audit Team's clearance bodies record.
 head_tree() {
   git -C "$REPO" rev-parse "HEAD^{tree}"
 }
 
-@test "sweep 2: an orphaned tree marker is swept, HEAD's tree marker is kept" {
+# hours_ago <n>: portable ISO8601 timestamp n hours in the past, computed with
+# jq (never `date -d`/`date -j`), matching days_ago's cross-platform epoch
+# rule above.
+hours_ago() {
+  jq -rn --argjson n "$1" '(now - ($n * 3600)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
+}
+
+# gen_digest <seed>: a deterministic 64-hex sha256 of <seed>, the new-scheme
+# filename-key shape. Distinct seeds across a test's fixtures never collide.
+gen_digest() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | awk '{print $1}'
+  else
+    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+  fi
+}
+
+# seed_marker <digest> <infix> <ext> <tree> <audited_at_iso>: writes a
+# schema-3 clearance body at .gaia/local/audit/<digest>[.<infix>].<ext>.
+# <infix> "" is the default member (code-audit-frontend, infix-free
+# filename); a non-empty <infix> is a specialist member name. <ext> is
+# ok (provenance earned) or refused.
+seed_marker() {
+  local digest="$1" infix="$2" ext="$3" tree="$4" audited_at="$5"
+  local member prov name
+  mkdir -p "$REPO/.gaia/local/audit"
+  if [ -z "$infix" ]; then
+    member="code-audit-frontend"
+    name="${digest}.${ext}"
+  else
+    member="$infix"
+    name="${digest}.${infix}.${ext}"
+  fi
+  case "$ext" in
+    ok) prov=earned ;;
+    refused) prov=refused ;;
+  esac
+  jq -cn --arg member "$member" --arg prov "$prov" --arg digest "$digest" \
+    --arg tree "$tree" --arg audited_at "$audited_at" \
+    --argjson sidecar "$([ "$member" = code-audit-frontend ] && echo true || echo false)" '
+    {version: "1.6.1", schema: 3, member: $member, provenance: $prov,
+     digest: $digest, tree: $tree, sha: "deadbeef", audited_at: $audited_at,
+     sidecar: $sidecar}
+  ' > "$REPO/.gaia/local/audit/$name"
+}
+
+# seed_sidecar <digest> <findings-json-array>: writes a dispositions sidecar
+# at .gaia/local/audit/<digest>.dispositions.json.
+seed_sidecar() {
+  local digest="$1" findings="$2"
+  mkdir -p "$REPO/.gaia/local/audit"
+  jq -cn --argjson findings "$findings" '{backend: "github", findings: $findings}' \
+    > "$REPO/.gaia/local/audit/${digest}.dispositions.json"
+}
+
+@test "sweep 2: UAT-007 an old-scheme <tree>.ok marker is reaped even for HEAD's own tree" {
   make_repo
-  dead=$(orphan_sha)
-  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
   tree=$(head_tree)
-  seed_audit_file "$dead_tree.ok"
   seed_audit_file "$tree.ok"
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.ok" ]
-  [ -f "$REPO/.gaia/local/audit/$tree.ok" ]
+  [ ! -e "$REPO/.gaia/local/audit/$tree.ok" ]
 }
 
-# The regression this whole key change exists for: code-audit-frontend stamps
-# the GAIA-Audit trailer as an EMPTY commit, which advances HEAD while leaving
-# the tree byte-identical. A commit-keyed marker is orphaned the instant that
-# lands (and the janitor then reaps it); a tree-keyed one survives, because the
-# content it vouches for did not change.
-@test "sweep 2: a tree marker survives the trailer stamp's empty commit" {
+# The regression the digest key still must not reopen: code-audit-frontend
+# stamps the GAIA-Audit trailer as an EMPTY commit, which advances HEAD while
+# leaving the tree byte-identical. A new-scheme marker's body `.tree` is
+# unaffected by that commit, so keep-arm A (live-tree) still finds it live.
+@test "sweep 2: keep-arm A: a new-scheme marker survives the trailer stamp's empty commit" {
   make_repo
   tree=$(head_tree)
-  seed_audit_file "$tree.ok"
-  seed_audit_file "$tree.code-audit-maintainer-shell.ok"
+  digest=$(gen_digest "frontend-$tree")
+  seed_marker "$digest" "" ok "$tree" "2020-01-01T00:00:00Z"
   git -C "$REPO" commit -q --allow-empty -m "chore: code review audit passed"
   # The empty commit moved HEAD but not the tree.
   [ "$(head_tree)" = "$tree" ]
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$tree.ok" ]
-  [ -f "$REPO/.gaia/local/audit/$tree.code-audit-maintainer-shell.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
 }
 
-@test "sweep 2: a LIVE per-member <tree>.<member>.ok is never deleted" {
+@test "sweep 2: keep-arm A: LIVE per-member <digest>.<member>.ok markers are never deleted" {
   make_repo
   tree=$(head_tree)
-  seed_audit_file "$tree.ok"
-  seed_audit_file "$tree.code-audit-maintainer-shell.ok"
-  seed_audit_file "$tree.code-audit-maintainer-node.ok"
+  fdigest=$(gen_digest "frontend-$tree")
+  sdigest=$(gen_digest "shell-$tree")
+  ndigest=$(gen_digest "node-$tree")
+  seed_marker "$fdigest" "" ok "$tree" "2020-01-01T00:00:00Z"
+  seed_marker "$sdigest" "code-audit-maintainer-shell" ok "$tree" "2020-01-01T00:00:00Z"
+  seed_marker "$ndigest" "code-audit-maintainer-node" ok "$tree" "2020-01-01T00:00:00Z"
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$tree.ok" ]
-  [ -f "$REPO/.gaia/local/audit/$tree.code-audit-maintainer-shell.ok" ]
-  [ -f "$REPO/.gaia/local/audit/$tree.code-audit-maintainer-node.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$fdigest.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$sdigest.code-audit-maintainer-shell.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$ndigest.code-audit-maintainer-node.ok" ]
 }
 
-@test "sweep 2: an orphaned per-member <tree>.<member>.ok is swept" {
+@test "sweep 2: a per-member marker for a non-live tree past the retention window is reaped" {
   make_repo
   dead=$(orphan_sha)
   dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
-  seed_audit_file "$dead_tree.code-audit-maintainer-shell.ok"
+  digest=$(gen_digest "shell-$dead_tree")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_marker "$digest" "code-audit-maintainer-shell" ok "$dead_tree" "$(hours_ago 2)"
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.code-audit-maintainer-shell.ok" ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.code-audit-maintainer-shell.ok" ]
 }
 
 # The audit drop-zone is symlinked into every linked worktree, so one janitor
-# run sweeps the markers of every checkout. A sibling branch's tree marker must
+# run sweeps the markers of every checkout. A sibling branch's marker must
 # outlive a sweep launched from another branch, or the janitor deletes a live
 # marker out from under a parallel audit.
-@test "sweep 2: a tree marker for another local branch's tip is kept" {
+@test "sweep 2: UAT-010 keep-arm A: a marker for another local branch's tip is kept" {
   make_repo
   git -C "$REPO" checkout -q -b sibling
   echo sibling > "$REPO/sibling"
@@ -495,19 +554,18 @@ head_tree() {
   git -C "$REPO" commit -q -m sibling
   sibling_tree=$(head_tree)
   git -C "$REPO" checkout -q main
-  seed_audit_file "$sibling_tree.ok"
+  digest=$(gen_digest "frontend-$sibling_tree")
+  seed_marker "$digest" "" ok "$sibling_tree" "2020-01-01T00:00:00Z"
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$sibling_tree.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
 }
 
 # The other half of the live-tree set, and the one most likely to regress
 # silently: a linked worktree's HEAD. A detached worktree HEAD is named by no
-# branch, so the branch-tip scan alone cannot see its tree. The drop-zone is
-# shared across worktrees, so missing it means a sweep in one checkout deletes
-# the marker a parallel audit in another checkout is about to merge on.
-@test "sweep 2: a tree marker for a linked worktree's detached HEAD is kept" {
+# branch, so the branch-tip scan alone cannot see its tree.
+@test "sweep 2: UAT-010 keep-arm A: a marker for a linked worktree's detached HEAD is kept" {
   make_repo
   # A commit reachable from no branch, checked out detached in a linked worktree.
   git -C "$REPO" checkout -q -b throwaway
@@ -526,30 +584,45 @@ head_tree() {
   run bash -c "git -C '$REPO' for-each-ref --format='%(objectname)' refs/heads/ | while read -r c; do git -C '$REPO' rev-parse \"\${c}^{tree}\"; done"
   grep -qxF "$wt_tree" <<< "$output" && return 1
 
-  seed_audit_file "$wt_tree.ok"
+  digest=$(gen_digest "frontend-$wt_tree")
+  seed_marker "$digest" "" ok "$wt_tree" "2020-01-01T00:00:00Z"
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$wt_tree.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
 }
 
-# The disposition sidecar stays COMMIT-keyed: the marker-backstop hook resolves
-# `git rev-parse HEAD` at merge time to find it. It shares the sweep's glob, so
-# the liveness test must still accept a commit key.
-@test "sweep 2: a commit-keyed dispositions sidecar for HEAD is kept, an orphan swept" {
+@test "sweep 2: MIG-005 a sidecar co-keyed with a live marker is kept; an old sha-keyed sidecar is reaped" {
+  make_repo
+  tree=$(head_tree)
+  digest=$(gen_digest "frontend-$tree")
+  seed_marker "$digest" "" ok "$tree" "2020-01-01T00:00:00Z"
+  seed_sidecar "$digest" '[]'
+  old_sha=$(git -C "$REPO" rev-parse HEAD)
+  seed_audit_file "$old_sha.dispositions.json"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$digest.dispositions.json" ]
+  [ ! -e "$REPO/.gaia/local/audit/$old_sha.dispositions.json" ]
+}
+
+@test "sweep 2: MIG-005 a sidecar is co-reaped with its marker when neither arm A nor B keeps it (no open receipt)" {
   make_repo
   dead=$(orphan_sha)
-  head=$(git -C "$REPO" rev-parse HEAD)
-  seed_audit_file "$head.dispositions.json"
-  seed_audit_file "$dead.dispositions.json"
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  digest=$(gen_digest "frontend-$dead_tree")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_marker "$digest" "" ok "$dead_tree" "$(hours_ago 2)"
+  seed_sidecar "$digest" '[{"key":"k1","disposition":"waived"}]'
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$head.dispositions.json" ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead.dispositions.json" ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.ok" ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.dispositions.json" ]
 }
 
-@test "sweep 2: a bogus-key marker is swept (an unresolvable key is dead)" {
+@test "sweep 2: a bogus-key marker is swept (a non-64-hex key is never new-scheme)" {
   make_repo
   seed_audit_file "notasha.ok"
   cd "$REPO"
@@ -558,26 +631,20 @@ head_tree() {
   [ ! -e "$REPO/.gaia/local/audit/notasha.ok" ]
 }
 
-# The progress log shares the marker's TREE-keyed liveness rule, so it must be
-# swept and kept by the exact same signal an .ok marker is.
-@test "sweep 2: an orphaned tree progress log is swept, HEAD's tree progress log is kept" {
+# The progress log is never re-keyed to the digest scheme (SPEC `never`): it
+# is a CI-observability breadcrumb, not a validity artifact, so nothing keeps
+# it alive under the new janitor -- it is always spent residue.
+@test "sweep 2: UAT-007 a progress log is always reaped, even for HEAD's own tree" {
   make_repo
-  dead=$(orphan_sha)
-  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
   tree=$(head_tree)
-  seed_audit_file "$dead_tree.progress.log"
   seed_audit_file "$tree.progress.log"
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.progress.log" ]
-  [ -f "$REPO/.gaia/local/audit/$tree.progress.log" ]
+  [ ! -e "$REPO/.gaia/local/audit/$tree.progress.log" ]
 }
 
-# Same regression the marker test above guards: the GAIA-Audit trailer stamp is
-# an empty commit that moves HEAD but not the tree, so a tree-keyed progress
-# log must survive it exactly like the marker does.
-@test "sweep 2: a tree progress log survives the trailer stamp's empty commit" {
+@test "sweep 2: a progress log does not survive the trailer stamp's empty commit (never re-keyed as a clearance)" {
   make_repo
   tree=$(head_tree)
   seed_audit_file "$tree.progress.log"
@@ -586,7 +653,179 @@ head_tree() {
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$tree.progress.log" ]
+  [ ! -e "$REPO/.gaia/local/audit/$tree.progress.log" ]
+}
+
+@test "sweep 2: a .carried artifact (deleted carry-forward family) is always reaped, even for a live tree" {
+  make_repo
+  tree=$(head_tree)
+  digest=$(gen_digest "frontend-$tree")
+  seed_audit_file "${digest}.carried"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/${digest}.carried" ]
+}
+
+@test "sweep 2: keep-arm B applies to .refused too: a live-tree refusal is kept" {
+  make_repo
+  tree=$(head_tree)
+  digest=$(gen_digest "frontend-refused-$tree")
+  seed_marker "$digest" "" refused "$tree" "2020-01-01T00:00:00Z"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$digest.refused" ]
+}
+
+@test "sweep 2: a refusal for a non-live tree past the retention window is reaped" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  digest=$(gen_digest "frontend-refused-$dead_tree")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_marker "$digest" "" refused "$dead_tree" "$(hours_ago 2)"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.refused" ]
+}
+
+@test "UAT-018: a window-kept marker (arm B) keeps its co-keyed sidecar; a live-tree marker (arm A) survives regardless of age" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  tree=$(head_tree)
+
+  # A non-live-tree marker inside the 72h window: keep-arm B.
+  digest1=$(gen_digest "frontend-$dead_tree")
+  seed_marker "$digest1" "" ok "$dead_tree" "$(hours_ago 1)"
+  seed_sidecar "$digest1" '[]'
+
+  # A marker whose tree IS a live branch tip, well outside the window:
+  # keep-arm A keeps it regardless of age.
+  digest2=$(gen_digest "frontend-$tree")
+  seed_marker "$digest2" "" ok "$tree" "$(hours_ago 1000)"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+
+  [ -f "$REPO/.gaia/local/audit/$digest1.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$digest1.dispositions.json" ]
+  [ -f "$REPO/.gaia/local/audit/$digest2.ok" ]
+}
+
+@test "UAT-019: an out-of-window marker on a non-live tree, with no sidecar, is reaped" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  digest=$(gen_digest "frontend-$dead_tree")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_marker "$digest" "" ok "$dead_tree" "$(hours_ago 2)"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.ok" ]
+}
+
+# --- COV-002: the open-receipt keep-arm (decision 2) ------------------------
+#
+# A still-open out-of-scope disposition receipt must survive a digest
+# rotation even after its predecessor marker ages past the retention window,
+# so seed-forward always finds a live predecessor sidecar to read. Both
+# halves are pinned here: a still-open entry keeps the marker+sidecar pair
+# alive past every other arm (arms A and B both deliberately fail in each
+# fixture below: a non-live tree, and an out-of-window audited_at); a
+# fully-resolved sidecar gets no such exemption and is reaped normally. The
+# still-open predicate mirrors task-dispositions' disposition_seed_forward
+# byte-for-byte: `.disposition == "filed"` OR (`.disposition == "pending"`
+# AND `.pending_reason == "definitive"`).
+
+@test "COV-002: a still-open (filed) receipt keeps its marker+sidecar alive past the window on a non-live tree" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  digest=$(gen_digest "frontend-$dead_tree")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_marker "$digest" "" ok "$dead_tree" "$(hours_ago 2)"
+  seed_sidecar "$digest" '[{"key":"k1","disposition":"filed"}]'
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$digest.dispositions.json" ]
+}
+
+@test "COV-002: a pending(definitive) receipt also keeps its marker+sidecar alive (same predicate as seed-forward)" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  digest=$(gen_digest "frontend-$dead_tree")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_marker "$digest" "" ok "$dead_tree" "$(hours_ago 2)"
+  seed_sidecar "$digest" '[{"key":"k1","disposition":"pending","pending_reason":"definitive"}]'
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$digest.dispositions.json" ]
+}
+
+@test "COV-002: a fully-resolved sidecar (waived/diverted/pending-transient) gets no window exemption; both are reaped" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  digest=$(gen_digest "frontend-$dead_tree")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_marker "$digest" "" ok "$dead_tree" "$(hours_ago 2)"
+  seed_sidecar "$digest" '[
+    {"key":"k1","disposition":"waived"},
+    {"key":"k2","disposition":"diverted"},
+    {"key":"k3","disposition":"pending","pending_reason":"transient"}
+  ]'
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.ok" ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.dispositions.json" ]
+}
+
+@test "COV-002: an empty-findings sidecar gets no window exemption; both are reaped" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  digest=$(gen_digest "frontend-$dead_tree")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_marker "$digest" "" ok "$dead_tree" "$(hours_ago 2)"
+  seed_sidecar "$digest" '[]'
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.ok" ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.dispositions.json" ]
+}
+
+@test "COV-002: the marker exemption is frontend-only, but the sidecar exemption applies regardless of marker family" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  digest=$(gen_digest "shell-$dead_tree")
+  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
+  seed_marker "$digest" "code-audit-maintainer-shell" ok "$dead_tree" "$(hours_ago 2)"
+  seed_sidecar "$digest" '[{"key":"k1","disposition":"filed"}]'
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.code-audit-maintainer-shell.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$digest.dispositions.json" ]
+}
+
+# --- TST-006: the janitor never recomputes a per-member digest -------------
+
+@test "TST-006 tripwire: the janitor source never references audit_member_digest or the digest CLI" {
+  run grep -En "audit_member_digest|audit-member-digest\.sh|audit_digests_all" "$HOOK_ABS"
+  [ "$status" -ne 0 ]
 }
 
 # --- Sweep #2b: orphaned re-run carry-forward ledgers ----------------------
@@ -657,151 +896,16 @@ seed_rerun_ledger() {
   [ -f "$REPO/.gaia/local/audit/deadbeef.rerun.json" ]
 }
 
-# --- Retention window: earned anchor markers survive past reachability -----
+# --- Cost budget: fork counts, never wall clock (CG-005, PERF-004) ---------
 #
-# Carry-forward's anchor pool needs a marker to survive the operator's own
-# session boundary, not just the mid-session sweep. An earned marker's own
-# recorded audited_at buys it GAIA_AUDIT_MARKER_RETENTION_HOURS (default 72)
-# past whatever the reachability arms above would otherwise grant it; a
-# carried clearance or a refusal gets no such window, since neither can ever
-# anchor a later carry-forward.
-
-# hours_ago <n>: portable ISO8601 timestamp n hours in the past, computed with
-# jq (never `date -d`/`date -j`), matching days_ago's cross-platform epoch
-# rule above.
-hours_ago() {
-  jq -rn --argjson n "$1" '(now - ($n * 3600)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
-}
-
-# seed_earned_marker <tree> <audited_at_iso> <sha>: writes a schema-2 earned
-# clearance body (default member) at <tree>.ok.
-seed_earned_marker() {
-  local tree="$1" audited_at="$2" sha="$3"
-  mkdir -p "$REPO/.gaia/local/audit"
-  jq -cn --arg tree "$tree" --arg audited_at "$audited_at" --arg sha "$sha" '
-    {version: "1.6.1", schema: 2, member: "code-audit-frontend", provenance: "earned",
-     sha: $sha, tree: $tree, audited_at: $audited_at, sidecar: true}
-  ' > "$REPO/.gaia/local/audit/$tree.ok"
-}
-
-# seed_carried_marker <tree> <audited_at_iso> <sha> <anchor_tree>: writes a
-# schema-2 carried clearance body at <tree>.carried.
-seed_carried_marker() {
-  local tree="$1" audited_at="$2" sha="$3" anchor="$4"
-  mkdir -p "$REPO/.gaia/local/audit"
-  jq -cn --arg tree "$tree" --arg audited_at "$audited_at" --arg sha "$sha" --arg anchor "$anchor" '
-    {version: "1.6.1", schema: 2, member: "code-audit-frontend", provenance: "carried",
-     sha: $sha, tree: $tree, audited_at: $audited_at, sidecar: true, anchor_tree: $anchor}
-  ' > "$REPO/.gaia/local/audit/$tree.carried"
-}
-
-# orphan_sha2: a second, distinct orphan commit/tree from orphan_sha (a
-# different filename, so the two can never collide on an identical tree or
-# commit hash when both are created inside the same test).
-orphan_sha2() {
-  git -C "$REPO" checkout -q -b throwaway2
-  echo orphan2 > "$REPO/orphan2"
-  git -C "$REPO" add orphan2
-  git -C "$REPO" commit -q -m orphan2
-  git -C "$REPO" rev-parse HEAD
-  git -C "$REPO" checkout -q main
-  git -C "$REPO" branch -q -D throwaway2
-}
-
-@test "UAT-018: a window-retained anchor keeps its sidecar; a carried clearance gets no window; reachability-kept survives regardless of age" {
-  make_repo
-  dead=$(orphan_sha)
-  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
-  dead2=$(orphan_sha2)
-  dead2_tree=$(git -C "$REPO" rev-parse "${dead2}^{tree}")
-  tree=$(head_tree)
-
-  # Member M's earned clearance for an unreachable tree, inside the 72h window.
-  seed_earned_marker "$dead_tree" "$(hours_ago 1)" "$dead"
-  seed_audit_file "$dead.dispositions.json"
-
-  # A carried clearance for an equally unreachable tree: reachability only,
-  # never the window, even with an equally fresh audited_at.
-  seed_carried_marker "$dead2_tree" "$(hours_ago 1)" "$dead2" "$dead2_tree"
-
-  # A marker outside the window whose tree IS HEAD's tree: the existing
-  # reachability arm keeps it regardless of age.
-  seed_earned_marker "$tree" "$(hours_ago 1000)" "$(git -C "$REPO" rev-parse HEAD)"
-
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-
-  [ -f "$REPO/.gaia/local/audit/$dead_tree.ok" ]
-  [ -f "$REPO/.gaia/local/audit/$dead.dispositions.json" ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead2_tree.carried" ]
-  [ -f "$REPO/.gaia/local/audit/$tree.ok" ]
-}
-
-@test "UAT-019: an out-of-window earned marker on an unreachable tree is reaped" {
-  make_repo
-  dead=$(orphan_sha)
-  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
-  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
-  seed_earned_marker "$dead_tree" "$(hours_ago 2)" "$dead"
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.ok" ]
-}
-
-@test "retention: a sidecar whose marker is NOT retained (out of window, unreachable) is still reaped" {
-  make_repo
-  dead=$(orphan_sha)
-  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
-  export GAIA_AUDIT_MARKER_RETENTION_HOURS=1
-  seed_earned_marker "$dead_tree" "$(hours_ago 2)" "$dead"
-  seed_audit_file "$dead.dispositions.json"
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.ok" ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead.dispositions.json" ]
-}
-
-@test "sweep 2: an orphaned carried clearance is reaped, and a live one is kept (reachability only)" {
-  make_repo
-  dead=$(orphan_sha)
-  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
-  tree=$(head_tree)
-  seed_carried_marker "$dead_tree" "$(hours_ago 1)" "$dead" "$dead_tree"
-  seed_carried_marker "$tree" "$(hours_ago 1)" "$(git -C "$REPO" rev-parse HEAD)" "$tree"
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.carried" ]
-  [ -f "$REPO/.gaia/local/audit/$tree.carried" ]
-}
-
-@test "sweep 2: an orphaned refusal is reaped, and a live one is kept" {
-  make_repo
-  dead=$(orphan_sha)
-  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
-  tree=$(head_tree)
-  seed_audit_file "$dead_tree.refused"
-  seed_audit_file "$tree.refused"
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.refused" ]
-  [ -f "$REPO/.gaia/local/audit/$tree.refused" ]
-}
-
-# --- Cost budget: fork counts, never wall clock (CG-005) --------------------
-#
-# The retention arm must sit after every fork-free reachability arm and
-# before the fork-paying git arm, so it never makes the common case (a
-# reachability-kept marker) more expensive than it is today. Each test
-# measures a BASELINE run against an empty audit dir, then a second run with
-# exactly one marker added, and asserts the DELTA -- isolating that one
-# marker's own contribution from every other sweep's constant cost (the
-# branch scan, the live-tree computation, ...), which runs unconditionally
-# either way.
+# No keep-arm makes a per-marker git call (the digest key resolves to no git
+# object, so the old `cat-file -e` / `branch --contains` reachability calls
+# are gone entirely); the per-marker cost is at most ONE jq fork, to read a
+# new-scheme body once for arms A and B together. Each test measures a
+# BASELINE run against an empty audit dir, then a second run with exactly one
+# fixture added, and asserts the DELTA -- isolating that one fixture's own
+# contribution from every other sweep's constant cost (the branch scan, the
+# live-tree computation, ...), which runs unconditionally either way.
 
 # shim_git_and_jq_counters: puts wrapper `git` and `jq` binaries at the front
 # of PATH. Each wrapper appends one line to its own counter file, then execs
@@ -832,7 +936,7 @@ SHIM
 git_fork_count() { wc -l < "$GIT_COUNTER" | tr -d ' '; }
 jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
 
-@test "budget: a reachability-retained marker costs ZERO git and ZERO jq forks in the keep chain" {
+@test "budget: a live-tree-kept marker (keep-arm A) costs ZERO git forks and EXACTLY ONE jq fork" {
   make_repo
   shim_git_and_jq_counters
   tree=$(head_tree)
@@ -845,17 +949,18 @@ jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
   base_git=$(git_fork_count)
   base_jq=$(jq_fork_count)
 
-  seed_earned_marker "$tree" "$(hours_ago 1)" "$(git -C "$REPO" rev-parse HEAD)"
+  digest=$(gen_digest "frontend-$tree")
+  seed_marker "$digest" "" ok "$tree" "2020-01-01T00:00:00Z"
   : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
   PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$tree.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
 
   [ "$(git_fork_count)" -eq "$base_git" ]
-  [ "$(jq_fork_count)" -eq "$base_jq" ]
+  [ "$(jq_fork_count)" -eq "$((base_jq + 1))" ]
 }
 
-@test "budget: a window-retained marker costs ZERO git forks and EXACTLY ONE jq fork" {
+@test "budget: a window-kept marker (keep-arm B, non-live tree) costs ZERO git forks and EXACTLY ONE jq fork" {
   make_repo
   shim_git_and_jq_counters
   dead=$(orphan_sha)
@@ -869,17 +974,18 @@ jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
   base_git=$(git_fork_count)
   base_jq=$(jq_fork_count)
 
-  seed_earned_marker "$dead_tree" "$(hours_ago 1)" "$dead"
+  digest=$(gen_digest "frontend-$dead_tree")
+  seed_marker "$digest" "" ok "$dead_tree" "$(hours_ago 1)"
   : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
   PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$dead_tree.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
 
   [ "$(git_fork_count)" -eq "$base_git" ]
   [ "$(jq_fork_count)" -eq "$((base_jq + 1))" ]
 }
 
-@test "budget: a marker retained by neither costs the same git forks as today, plus at most one jq fork" {
+@test "budget: a reaped new-scheme marker (neither arm keeps it) costs ZERO git forks and EXACTLY ONE jq fork" {
   make_repo
   shim_git_and_jq_counters
   dead=$(orphan_sha)
@@ -894,20 +1000,65 @@ jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
   base_git=$(git_fork_count)
   base_jq=$(jq_fork_count)
 
-  seed_earned_marker "$dead_tree" "$(hours_ago 2)" "$dead"
+  digest=$(gen_digest "frontend-$dead_tree")
+  seed_marker "$digest" "" ok "$dead_tree" "$(hours_ago 2)"
   : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
   PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.ok" ]
+  [ ! -e "$REPO/.gaia/local/audit/$digest.ok" ]
 
-  # Same git fork count as an unreachable *.ok marker paid before this
-  # change: one cat-file -e that fails (a tree key never peels to ^{commit}),
-  # so branch --contains is never reached.
-  [ "$(git_fork_count)" -eq "$((base_git + 1))" ]
-  [ "$(jq_fork_count)" -le "$((base_jq + 1))" ]
+  # No reachability git call exists any more: the digest key resolves to no
+  # object, so the old cat-file/branch-contains pair is gone entirely.
+  [ "$(git_fork_count)" -eq "$base_git" ]
+  [ "$(jq_fork_count)" -eq "$((base_jq + 1))" ]
 }
 
-@test "budget: a non-*.ok artifact triggers ZERO jq forks; the filename short-circuit fires before the fork" {
+@test "budget: an old-scheme (non-64-hex) marker triggers ZERO jq forks; the key-shape check fires before the fork" {
+  make_repo
+  shim_git_and_jq_counters
+  tree=$(head_tree)
+  mkdir -p "$REPO/.gaia/local/audit"
+  cd "$REPO"
+
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  base_jq=$(jq_fork_count)
+
+  seed_audit_file "$tree.ok"
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$tree.ok" ]
+
+  [ "$(jq_fork_count)" -eq "$base_jq" ]
+}
+
+@test "budget: a .carried or .progress.log artifact triggers ZERO jq forks; unconditional reap, no read" {
+  make_repo
+  shim_git_and_jq_counters
+  tree=$(head_tree)
+  mkdir -p "$REPO/.gaia/local/audit"
+  cd "$REPO"
+
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  base_jq=$(jq_fork_count)
+
+  digest=$(gen_digest "frontend-$tree")
+  seed_audit_file "${digest}.carried"
+  seed_audit_file "${tree}.progress.log"
+  : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/${digest}.carried" ]
+  [ ! -e "$REPO/.gaia/local/audit/${tree}.progress.log" ]
+
+  [ "$(jq_fork_count)" -eq "$base_jq" ]
+}
+
+@test "budget: PERF-004 keep-arm C's open-receipt precompute costs exactly ONE jq fork per sidecar" {
   make_repo
   shim_git_and_jq_counters
   dead=$(orphan_sha)
@@ -920,13 +1071,14 @@ jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
   [ "$status" -eq 0 ]
   base_jq=$(jq_fork_count)
 
-  seed_audit_file "$dead_tree.progress.log"
+  digest=$(gen_digest "frontend-$dead_tree")
+  seed_sidecar "$digest" '[{"key":"k1","disposition":"filed"}]'
   : > "$GIT_COUNTER"; : > "$JQ_COUNTER"
   PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.progress.log" ]
+  [ -f "$REPO/.gaia/local/audit/$digest.dispositions.json" ]
 
-  [ "$(jq_fork_count)" -eq "$base_jq" ]
+  [ "$(jq_fork_count)" -eq "$((base_jq + 1))" ]
 }
 
 # --- Sweep #4: the telemetry drop-zone split --------------------------------
