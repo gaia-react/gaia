@@ -44,12 +44,11 @@ transforms:
     end: "# gaia:maintainer-only:end"
 
   # Code Audit Team maintainer-only blocks: the roster's maintainer-only
-  # entries in .gaia/audit-ci.yml, the resolver's built-in-default block in
-  # .gaia/scripts/resolve-audit-members.sh, and the ruleset-detection branch
-  # in .gaia/scripts/read-audit-ci-config.sh. Same #-comment markers as the
-  # .prettierignore transform above, kept as its own block (rather than
-  # folded into that transform's paths) so the .prettierignore-specific
-  # rationale above stays intact.
+  # entries in .gaia/audit-ci.yml and the resolver's built-in-default block
+  # (audit-scope.sh, sourced by resolve-audit-members.sh). Same #-comment
+  # markers as the .prettierignore transform above, kept as its own block
+  # (rather than folded into that transform's paths) so the
+  # .prettierignore-specific rationale above stays intact.
   # **/*.sh is broad by design: any maintainer-only block wrapped in shipped
   # shell is meant to be stripped, wherever it lands. Same for **/*.yml.tmpl
   # (workflow render templates).
