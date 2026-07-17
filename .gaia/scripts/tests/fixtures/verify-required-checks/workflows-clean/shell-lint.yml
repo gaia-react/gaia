@@ -1,0 +1,12 @@
+name: Shell Lint
+
+on:
+  pull_request:
+
+jobs:
+  shell-lint:
+    name: shellcheck (tracked *.sh)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run shellcheck gate
+        run: true

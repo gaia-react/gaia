@@ -1,0 +1,13 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: Vitest and Playwright
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Node
+        run: true

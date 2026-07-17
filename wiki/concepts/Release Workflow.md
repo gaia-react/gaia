@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-07-02
+updated: 2026-07-17
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -147,6 +147,7 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 - `.github/workflows/code-review-audit.yml`: runs the Code Audit Team gate in CI, posting the `GAIA-Audit` status a merge waits on. It installs on demand via `/setup-gaia` rather than shipping by default, so an adopter who has not enabled GAIA CI never carries a credential-less audit that would block every merge.
 - `.github/workflows/shell-lint.yml`: runs shellcheck over GAIA's framework bash via the `.gaia/tests/shell-lint.sh` harness. Adopters run that bash as GAIA-controlled code they never author, so the linter guarding it has no adopter surface.
 - `.github/workflows/distribution-audit-pr.yml`: the per-PR distribution gate (see below). Runs `gaia-maintainer release manifest --check`; the binary and the manifest are maintainer-only, so the gate has no adopter surface.
+- `.github/workflows/verify-required-checks.yml`: advisory drift check between the GAIA team's declared-required merge-blocking checks and the live branch ruleset's `required_status_checks`, via `.gaia/scripts/verify-required-checks.sh` (also excluded, category 1). Both the declared set and the ruleset it reads are the GAIA team's own, so the check has no adopter surface.
 
 `tests.yml` and `chromatic.yml` DO ship; both are adopter-relevant. Their `paths-filter` allowlists are written without reference to maintainer-only paths so the filter stays meaningful on an adopter clone.
 
