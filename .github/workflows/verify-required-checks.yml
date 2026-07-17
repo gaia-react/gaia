@@ -40,14 +40,32 @@ jobs:
     runs-on: ubuntu-latest
     # Read-only token: this job reads the ruleset and reports, it never
     # writes to the repo or the ruleset.
+    #
+    # `pull-requests: read` is load-bearing, not decoration (same reasoning
+    # spelled out in shell-lint.yml). Naming any scope here sets every unlisted
+    # one to `none`, and dorny/paths-filter resolves a PR's changed files
+    # through the API, which needs it. Omitting it works only while this repo is
+    # public (the token can still read public PR data); the day it went private,
+    # every run would 403 with "Resource not accessible by integration".
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       # PRs that touch neither the workflows directory nor the script itself
-      # report this check green without running anything: nothing about the
-      # declared-required set or the check-producing job list could have
+      # report this check green without running anything: neither in-repo input
+      # -- the declared-required set, the check-producing job list -- could have
       # drifted.
+      #
+      # This deliberately does NOT cover the third input. The live ruleset is
+      # GitHub-side and can change with no commit at all, so a context removed
+      # from it directly is caught opportunistically, on the next PR that touches
+      # a workflow (empirically every few days in this repo), not immediately.
+      # That latency is accepted: the check is advisory and never blocks a merge,
+      # so the cost is a delayed notification, never a missed enforcement. The
+      # drift class #807 targets -- a check that reports red but was never in the
+      # required set -- necessarily touches .github/workflows/** on the very PR
+      # that introduces it, so the filter always fires for it.
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
