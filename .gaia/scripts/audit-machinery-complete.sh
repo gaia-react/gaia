@@ -39,6 +39,7 @@ GATE_MACHINERY_FILES="$(cat <<'EOF'
 .claude/hooks/lib/audit-clearance.sh
 .claude/hooks/lib/audit-digest.sh
 .claude/hooks/lib/audit-dispositions.sh
+.claude/hooks/lib/audit-selfheal-paths.sh
 .gaia/scripts/audit-write-clearance.sh
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-machinery-complete.sh
@@ -50,6 +51,7 @@ GATE_MACHINERY_FILES="$(cat <<'EOF'
 .claude/hooks/post-audit-status.sh
 .claude/hooks/audit-stamp-trailer.sh
 .claude/hooks/local-janitor.sh
+.claude/hooks/block-selfheal-paths.sh
 .github/audit/check-trailer.sh
 .github/audit/resolve-audit-base.sh
 .github/audit/audit-success-present.sh

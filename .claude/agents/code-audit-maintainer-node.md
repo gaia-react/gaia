@@ -36,9 +36,23 @@ For every in-remit changed file:
 
 Lean on `pnpm typecheck` and `pnpm lint` as deterministic, advisory oracles where useful, run them and fold any relevant findings on the changed files into the report, but they never gate the marker on their own; they're a second opinion, not authoritative in the way a type error or lint failure already blocks the Quality Gate elsewhere in the workflow.
 
+## Findings grading
+
+<!-- gaia-audit:gradings: Critical, Important, Suggestion -->
+
+Grade every finding Critical / Important / Suggestion, matching the sibling Code Audit Team members: Critical is data loss, a merge-gate bypass, a command-injection path, or a silent success on a real failure; Important is a real bug or safety gap with a narrower blast radius; Suggestion is testability or style with no live failure mode.
+
 ## Advisory-only: no self-heal
 
-You report and gate; you never edit a framework file. State this explicitly in your report: self-heal is refused, the fix is left to the authoring engineer.
+You report and gate; you never edit a framework file. State this explicitly in your report: self-heal is refused, the fix is left to the authoring engineer. **The working tree you return is byte-identical to the tree you read.**
+
+## Cross-remit findings
+
+**Cross-remit findings.** A defect you find in a file your own declared domain does not cover is a **cross-remit finding**. Report it to the orchestrator, and apply **no** repair to it. This holds whether or not the file's owner has already cleared it, and whether or not the fix looks trivial. You are not the owner of that file and you do not know what its owner knows.
+
+The orchestrator owns the disposition. It applies the repair when the defect is in scope for the pull request, or files it as a tech-debt issue when it is not, either way the finding is **recorded rather than lost**. Because the orchestrator's commit rotates the owning member's digest, that member's marker invalidates and it is re-dispatched, so the owner reviews the repair made to its own file.
+
+Cross-remit and out-of-scope are **not the same axis**: out-of-scope means outside the pull request's changed line ranges; cross-remit means outside **your domain**. A finding can be in-scope for the PR and cross-remit for you. Give a cross-remit finding a named place in your return (see "Cross-remit Findings" under Output Format below) so the orchestrator can act on it.
 
 ## Finding Proof Gate
 
@@ -70,6 +84,14 @@ Same format.
 ### Suggestions
 
 Same format. Advisory, never block the marker.
+
+### Cross-remit Findings
+
+- **Location**: `path/to/file:42`
+- **Issue**: the concrete failure mode
+- **Owner**: the member whose declared domain covers this file, if known
+
+Never gates your own marker; the orchestrator decides the disposition (see "Cross-remit findings" above).
 
 ## Gate handshake (per-member marker)
 

@@ -75,9 +75,23 @@ When a changed file is a `.bats` suite, the shared correctness core above still 
 
 This lens activates only for `.bats` files.
 
+## Findings grading
+
+<!-- gaia-audit:gradings: Critical, Important, Suggestion -->
+
+Grade every finding Critical / Important / Suggestion, matching the sibling Code Audit Team members: Critical breaks the merge gate, bricks a session, or is exploitable with adversary-controlled input; Important is a real bug or portability failure with a narrower blast radius; Suggestion is style or robustness with no live failure mode.
+
 ## Advisory-only: no self-heal
 
-You report and gate; you never edit a framework file, including a fix you're fully confident in and including a shellcheck-flagged fix that would normally be trivial to apply. State this explicitly in your report: self-heal is refused, the fix is left to the authoring engineer. This is deliberate: rewriting the audit's own gate machinery risks introducing semantic drift on the highest-stakes surface in the repo, with no independent reviewer downstream to catch it.
+You report and gate; you never edit a framework file, including a fix you're fully confident in and including a shellcheck-flagged fix that would normally be trivial to apply. State this explicitly in your report: self-heal is refused, the fix is left to the authoring engineer. This is deliberate: rewriting the audit's own gate machinery risks introducing semantic drift on the highest-stakes surface in the repo, with no independent reviewer downstream to catch it. **The working tree you return is byte-identical to the tree you read.**
+
+## Cross-remit findings
+
+**Cross-remit findings.** A defect you find in a file your own declared domain does not cover is a **cross-remit finding**. Report it to the orchestrator, and apply **no** repair to it. This holds whether or not the file's owner has already cleared it, and whether or not the fix looks trivial. You are not the owner of that file and you do not know what its owner knows.
+
+The orchestrator owns the disposition. It applies the repair when the defect is in scope for the pull request, or files it as a tech-debt issue when it is not, either way the finding is **recorded rather than lost**. Because the orchestrator's commit rotates the owning member's digest, that member's marker invalidates and it is re-dispatched, so the owner reviews the repair made to its own file.
+
+Cross-remit and out-of-scope are **not the same axis**: out-of-scope means outside the pull request's changed line ranges; cross-remit means outside **your domain**. A finding can be in-scope for the PR and cross-remit for you. Give a cross-remit finding a named place in your return (see "Cross-remit Findings" under Output Format below) so the orchestrator can act on it.
 
 ## Finding Proof Gate
 
@@ -109,6 +123,14 @@ Same format.
 ### Suggestions
 
 Same format. Advisory: never block the marker on their own, but note whether the author addressed or acknowledged each.
+
+### Cross-remit Findings
+
+- **Location**: `path/to/file:42`
+- **Issue**: the concrete failure mode
+- **Owner**: the member whose declared domain covers this file, if known
+
+Never gates your own marker; the orchestrator decides the disposition (see "Cross-remit findings" above).
 
 ## Gate handshake (per-member marker)
 

@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+# PreToolUse Edit/Write/MultiEdit + Bash hook: deny a Code Audit Team
+# member's attempt to repair a path outside its self-heal boundary.
+#
+# This is the LOCAL producer's enforcement point. The CI producer's
+# equivalent is the "Commit and push self-heal" step's push gate in
+# .github/workflows/code-review-audit.yml, which reads the whole self-heal
+# diff at push time. Phase 1 of this SPEC makes `local` the default
+# resolved mode, and the CI push gate binds only forks and the override
+# label, so a local-mode member had no deterministic boundary at all until
+# this hook. Both enforcement points source the SAME refusal set from
+# .claude/hooks/lib/audit-selfheal-paths.sh; neither carries a second copy.
+#
+# THE GATE BINDS MEMBERS, NOT THE TREE. A PreToolUse payload carries
+# `agent_type` only when the hook fires inside a subagent call; it is
+# absent for the main session / orchestrator. This hook no-ops immediately
+# whenever `agent_type` is absent or does not carry the `code-audit-`
+# prefix, so the orchestrator (trusted by the SPEC's own design, and which
+# this very plan's execution requires to repair .gaia/**, test/**, and
+# .github/workflows/** on nearly every phase) is never touched. Only a
+# dispatched Code Audit Team member (`code-audit-frontend`,
+# `code-audit-github-workflows`, etc.) is bound, including advisory members:
+# an advisory member returns a byte-identical tree anyway, so refusing it
+# costs nothing, and a future self-healing member is bound the day it lands
+# rather than the day someone remembers to add it.
+#
+# Membership is a NAME-PREFIX match, not a roster lookup: the hook fires on
+# every edit in every session, so it stays off the classifier's parse path
+# and carries no dependency on the roster's record contract. A member named
+# off the `code-audit-` convention escapes this hook; that convention is
+# already load-bearing in the roster glob, the machinery lists, and the
+# release scrub's leak-check, so this adds no new coupling.
+#
+# HONEST ABOUT THE BASH VECTOR: this is a best-effort, defense-in-depth
+# guard, not an airtight one, mirroring block-manifest-write.sh's own stated
+# posture. Bash vectors are unbounded; this covers the well-known write
+# shapes (output redirect, tee, sed -i with or without a macOS '' backup
+# suffix, sponge, cp/mv as destination) and no more. CI's gate reads the
+# whole diff at push time and cannot be evaded by the shape of the write;
+# this hook reads one attempted edit at a time and can be. That asymmetry is
+# real and accepted: under local mode a human watches every turn.
+set -euo pipefail
+
+payload=$(cat)
+
+# Cheapest possible filter first: the common case is "no agent_type at all"
+# (the main session). Read it before anything else and exit before sourcing
+# the refusal-set lib or resolving the repo root.
+agent_type=$(jq -r '.agent_type // empty' <<<"$payload")
+case "$agent_type" in
+  code-audit-*) ;;
+  *) exit 0 ;;
+esac
+
+deny() {
+  jq -n --arg r "$1" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+  exit 0
+}
+
+# Source the refusal-set lib from THIS hook's own on-disk location, never
+# cwd, mirroring .gaia/scripts/audit-machinery-complete.sh. A missing lib
+# means the refusal set cannot be determined for a member that IS bound, so
+# fail loudly and deny rather than silently allowing the edit through.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB="$SELF_DIR/lib/audit-selfheal-paths.sh"
+if [ ! -f "$LIB" ]; then
+  printf 'block-selfheal-paths.sh: refusal-set library unavailable: %s\n' "$LIB" >&2
+  deny "BLOCKED: the self-heal repair-boundary library ($LIB) is unavailable, so this edit cannot be checked against it. Fail-loud, not fail-open -- restore the library before retrying."
+fi
+# shellcheck source=/dev/null
+. "$LIB"
+
+# Repo root, resolved the same way .claude/hooks/lib/repo-scope.sh resolves
+# the home repo (`git rev-parse --show-toplevel`), not a second way. The
+# refusal set is repo-relative; an absolute `tool_input.file_path` (or a
+# Bash-command absolute path) must be relativized against this before it is
+# tested, or every check silently misses.
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+MATCHED_PATH=""
+
+# Strip one matching pair of surrounding quotes from a token.
+strip_quotes() {
+  local s="$1"
+  case "$s" in
+    \"*\") s=${s#\"}; s=${s%\"} ;;
+    \'*\') s=${s#\'}; s=${s%\'} ;;
+  esac
+  printf '%s' "$s"
+}
+
+# is_refused_path <token>: strip quotes and a leading ./, relativize an
+# absolute token against REPO_ROOT when it resolves under it, then test the
+# result against AUDIT_SELFHEAL_REFUSE_ERE. On a match, sets MATCHED_PATH to
+# the relative path (so the caller can name it in the deny reason, per
+# UAT-026/UAT-027) and returns 0. An absolute token that does not resolve
+# under REPO_ROOT is ambiguous (out-of-repo, or the root could not be
+# resolved) and is left alone -- the safe direction is to allow.
+is_refused_path() {
+  local p rel
+  p=$(strip_quotes "$1")
+  p=${p#./}
+  [ -n "$p" ] || return 1
+  case "$p" in
+    /*)
+      if [ -n "$REPO_ROOT" ] && [ "${p#"$REPO_ROOT"/}" != "$p" ]; then
+        rel="${p#"$REPO_ROOT"/}"
+      else
+        return 1
+      fi
+      ;;
+    *) rel="$p" ;;
+  esac
+  [[ "$rel" =~ $AUDIT_SELFHEAL_REFUSE_ERE ]] || return 1
+  MATCHED_PATH="$rel"
+  return 0
+}
+
+deny_reason() {
+  printf 'BLOCKED: self-heal may not edit %s -- off-limits to the repair boundary (tests, the CI pipeline, .gaia/ gate & roster machinery, instruction/convention surfaces, or root build config). This is a defect to report as a finding, not to repair. See .claude/hooks/lib/audit-selfheal-paths.sh.' "$1"
+}
+
+tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
+
+case "$tool_name" in
+  Edit | Write | MultiEdit)
+    file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
+    [[ -n "$file_path" ]] || exit 0
+    is_refused_path "$file_path" && deny "$(deny_reason "$MATCHED_PATH")"
+    exit 0
+    ;;
+
+  Bash)
+    cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
+    [[ -n "$cmd" ]] || exit 0
+
+    read -r -a toks <<<"$cmd"
+    n=${#toks[@]}
+
+    i=0
+    while [ "$i" -lt "$n" ]; do
+      tok="${toks[$i]}"
+      case "$tok" in
+        '>' | '>>')
+          next="${toks[$((i + 1))]:-}"
+          is_refused_path "$next" && deny "$(deny_reason "$MATCHED_PATH")"
+          ;;
+        tee | sponge)
+          j=$((i + 1))
+          while [ "$j" -lt "$n" ]; do
+            t2="${toks[$j]}"
+            case "$t2" in
+              ';' | '&&' | '||' | '|') break ;;
+            esac
+            is_refused_path "$t2" && deny "$(deny_reason "$MATCHED_PATH")"
+            j=$((j + 1))
+          done
+          ;;
+        sed)
+          has_i=0
+          sed_match=""
+          j=$((i + 1))
+          while [ "$j" -lt "$n" ]; do
+            t2="${toks[$j]}"
+            case "$t2" in
+              ';' | '&&' | '||' | '|') break ;;
+            esac
+            [[ "$t2" == "-i" || "$t2" == -i* ]] && has_i=1
+            if is_refused_path "$t2"; then sed_match="$MATCHED_PATH"; fi
+            j=$((j + 1))
+          done
+          [ "$has_i" -eq 1 ] && [ -n "$sed_match" ] && deny "$(deny_reason "$sed_match")"
+          ;;
+        cp | mv)
+          dest=""
+          j=$((i + 1))
+          while [ "$j" -lt "$n" ]; do
+            t2="${toks[$j]}"
+            case "$t2" in
+              ';' | '&&' | '||' | '|') break ;;
+            esac
+            [[ "$t2" == -* ]] || dest="$t2"
+            j=$((j + 1))
+          done
+          is_refused_path "$dest" && deny "$(deny_reason "$MATCHED_PATH")"
+          ;;
+      esac
+      i=$((i + 1))
+    done
+
+    exit 0
+    ;;
+
+  *)
+    exit 0
+    ;;
+esac

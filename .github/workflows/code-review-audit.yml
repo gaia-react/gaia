@@ -522,16 +522,25 @@ jobs:
             git ls-files --others --exclude-standard | head -20 >&2
           fi
 
-          # Self-heal scope gate. Instruction / convention surfaces
-          # (.claude/**, .specify/**, wiki/**) are the rules this audit
-          # enforces and the agent's own definition -- never code defects
-          # it should auto-fix. A self-heal that edits them is almost
-          # always reverting an intentional convention change. Inspect
-          # both committed self-heal commits and uncommitted edits; if any
-          # touch those surfaces, refuse the whole self-heal and surface
-          # it for human review (mirrors the >10-file gate below). The
-          # early `exit 0` runs before the commit/push logic, so nothing
-          # the audit changed reaches origin.
+          # Self-heal scope gate. One refusal set
+          # (.claude/hooks/lib/audit-selfheal-paths.sh), sourced here and by the
+          # local producer's PreToolUse hook
+          # (.claude/hooks/block-selfheal-paths.sh), names every domain a
+          # self-healing member must never touch: the tests that would catch
+          # its own bad repair, the CI pipeline (.github/workflows/**), the
+          # gate machinery and roster under .gaia/, instruction/convention
+          # surfaces (.claude/**, .specify/**, wiki/**), which are the rules
+          # this audit enforces and the agent's own definition, and root-level
+          # build/lint/test/typecheck configuration. A self-heal that edits
+          # any of these is almost always reverting intentional PR work, or
+          # disabling the very check that would catch its own bad repair.
+          # Inspect both committed self-heal commits and uncommitted edits; if
+          # any touch the refused set, refuse the whole self-heal and surface
+          # it for human review (mirrors the >10-file gate below). The early
+          # `exit 0` runs before the commit/push logic, so nothing the audit
+          # changed reaches origin.
+          # shellcheck source=/dev/null
+          . .claude/hooks/lib/audit-selfheal-paths.sh
           self_heal_paths="$(
             {
               git diff --name-only
@@ -539,15 +548,15 @@ jobs:
             } | sort -u
           )"
           if printf '%s\n' "$self_heal_paths" \
-              | grep -qE '^(\.claude|\.specify|wiki)/'; then
-            echo "code-review-audit: self-heal touched instruction/convention surfaces -- refusing." >&2
+              | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then
+            echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline, .gaia/ gate machinery, instruction/convention surfaces, or root build config) -- refusing." >&2
             printf '%s\n' "$self_heal_paths" \
-              | grep -E '^(\.claude|\.specify|wiki)/' >&2 || true
+              | grep -E "$AUDIT_SELFHEAL_REFUSE_ERE" >&2 || true
             {
               echo "pushed=false"
               echo "marker_only=false"
               echo "refused=true"
-              echo "refused_reason=instruction-surface"
+              echo "refused_reason=governance-surface"
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -1542,8 +1551,8 @@ jobs:
           if [ "$PUSH_FIXES" = "false" ]; then
             mode="advisory (push_fixes=false)"
           elif [ "$REFUSED" = "true" ]; then
-            if [ "$REFUSED_REASON" = "instruction-surface" ]; then
-              mode="self-heal REFUSED: edited instruction/convention surfaces (.claude/**, .specify/**, or wiki/**), which are off-limits to self-heal; see workflow logs and review manually"
+            if [ "$REFUSED_REASON" = "governance-surface" ]; then
+              mode="self-heal REFUSED: edited a surface off-limits to self-heal (tests, the CI pipeline, .gaia/ gate & roster machinery, instruction/convention surfaces under .claude/**, .specify/**, wiki/**, or root build config); see workflow logs and review manually"
             else
               mode="self-heal REFUSED: diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
             fi
