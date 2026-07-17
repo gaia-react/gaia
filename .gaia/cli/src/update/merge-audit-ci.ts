@@ -6,11 +6,14 @@ import {load as parseYaml} from 'js-yaml';
  * Field-aware verdict oracle for `.gaia/audit-ci.yml`, the audit analog of the
  * `pnpm-workspace.yaml` step in `/update-gaia`. The file is mixed: GAIA-authored
  * scalar knobs (`gate_label`, `budget_seconds`, `max_turns`, `push_fixes`,
- * `default_mode`, `override_label`, the `retrigger_workflows` list) plus the
+ * `default_mode`, `override_label`, the `retrigger_workflows` list), the
  * adopter-extensible `audit_authors` string (per-developer `login=mode` entries
- * the adopter commits). A whole-file three-way merge produces a full-file
- * conflict patch the moment an adopter adds one `audit_authors` entry, so this
- * command merges at key / per-author-entry granularity instead.
+ * the adopter commits), and the `auditors` roster list, GAIA-authored **and**
+ * adopter-extensible at once (a member GAIA ships alongside any member an
+ * adopter has added of their own). A whole-file three-way merge produces a
+ * full-file conflict patch the moment an adopter adds one `audit_authors`
+ * entry or one roster member, so this command merges at key / per-entry
+ * granularity instead.
  *
  * It is READ-ONLY: it parses the three YAML files with js-yaml and emits a JSON
  * verdict report. It never writes the file; the `/update-gaia` skill applies
@@ -33,6 +36,12 @@ import {load as parseYaml} from 'js-yaml';
  * login (matching the resolver's case-fold), and iterated over keys(B) ∪ keys(L)
  * so an adopter-only login is never visited, never clobbered, never conflicted.
  *
+ * The `auditors` roster list is keyed on member `name` exactly (not
+ * case-folded: a member name is an agent filename, not a case-insensitive
+ * GitHub login) and iterated the same keys(B) ∪ keys(L) way. **One row is
+ * changed for this section only**: `in L, not in B` resolves to `apply`, not
+ * `suggestion (added)`. See the comment at the roster-merge call site for why.
+ *
  * Object-map dispatch and no-switch style per the project's typescript rules.
  */
 import {existsSync, readFileSync} from 'node:fs';
@@ -44,8 +53,9 @@ const HELP_TEXT = `Usage: gaia update merge-audit-ci --baseline <file> --latest 
 
   Field-aware three-way verdict for .gaia/audit-ci.yml. Reads three YAML files
   (baseline / latest tarball + working-tree current), classifies the GAIA-managed
-  scalar knobs and the adopter-shared audit_authors login=mode entries, and emits
-  a JSON report of {applied, conflicts, suggestions}.
+  scalar knobs, the adopter-shared audit_authors login=mode entries, and the
+  auditors roster members, and emits a JSON report of {applied, conflicts,
+  suggestions}.
 
   Read-only: never writes the file. The /update-gaia skill applies the 'applied'
   entries with the Edit tool to preserve comments and order.
@@ -74,6 +84,9 @@ const MANAGED_WHOLE_VALUE_KEYS: readonly string[] = [
 
 /** The adopter-shared section: a space-separated `login=mode` string. */
 const AUTHORS_SECTION = 'audit_authors';
+
+/** The GAIA-authored-and-adopter-extensible roster list. */
+const ROSTER_SECTION = 'auditors';
 
 export type AuditCiMergeReport = {
   applied: AuditCiVerdictItem[];
@@ -239,10 +252,68 @@ const parseAuthors = (value: unknown): Map<string, AuthorEntry> => {
   return entries;
 };
 
+/**
+ * Parse a YAML `auditors:` list into a name → member-config map. Each
+ * member's whole mapping (`globs`, `scope`, `push_fixes`, `default`) is
+ * compared and applied as a single unit, mirroring `parseAuthors`'s `mode`
+ * value: `name` is the map key (like `login`), the rest of the item is the
+ * value (like `mode`). A per-glob merge would let an adopter's roster end up
+ * with a glob set neither side ever authored. Malformed entries (no `name`,
+ * or a `name` that is not a string) are skipped, mirroring `parseAuthors`'s
+ * skip-malformed behavior; a malformed roster must not crash the update.
+ */
+type RosterMember = Record<string, unknown>;
+
+const omitName = (item: Record<string, unknown>): RosterMember => {
+  const config: RosterMember = {};
+
+  for (const key of Object.keys(item)) {
+    if (key !== 'name') config[key] = item[key];
+  }
+
+  return config;
+};
+
+const parseRoster = (value: unknown): Map<string, RosterMember> => {
+  const entries = new Map<string, RosterMember>();
+
+  if (!Array.isArray(value)) return entries;
+
+  for (const item of value) {
+    const name =
+      typeof item === 'object' && item !== null && !Array.isArray(item) ?
+        (item as Record<string, unknown>).name
+      : undefined;
+
+    // First occurrence wins, matching parseAuthors' first-match-wins scan.
+    if (typeof name === 'string' && !entries.has(name))
+      entries.set(name, omitName(item as Record<string, unknown>));
+  }
+
+  return entries;
+};
+
 type Verdict =
   'apply' | 'conflict' | 'noop' | 'suggest-add' | 'suggest-removed';
 
-const computeVerdict = (b: Presence, l: Presence, a: Presence): Verdict => {
+type VerdictInputs = {
+  a: Presence;
+  /**
+   * The verdict for the `in L, not in B` row: every section defaults to
+   * `suggest-add`, except the `auditors` roster (UAT-038, see the
+   * roster-merge call site), which passes `apply`.
+   */
+  addedVerdict?: 'apply' | 'suggest-add';
+  b: Presence;
+  l: Presence;
+};
+
+const computeVerdict = ({
+  a,
+  addedVerdict = 'suggest-add',
+  b,
+  l,
+}: VerdictInputs): Verdict => {
   if (b.has && l.has) {
     if (deepEqual(b.value, l.value)) return 'noop';
     if (!a.has) return 'suggest-removed';
@@ -251,13 +322,14 @@ const computeVerdict = (b: Presence, l: Presence, a: Presence): Verdict => {
     return 'conflict';
   }
 
-  if (l.has) return 'suggest-add';
+  if (l.has) return addedVerdict;
 
   return 'noop';
 };
 
 type Triple = {
   a: Presence;
+  addedVerdict?: 'apply' | 'suggest-add';
   b: Presence;
   key: string;
   kind: 'entry' | 'key';
@@ -291,6 +363,17 @@ const authorPresence = (
   return entry === undefined ?
       {has: false, value: undefined}
     : {has: true, value: entry.mode};
+};
+
+const rosterPresence = (
+  entries: Map<string, RosterMember>,
+  name: string
+): Presence => {
+  const entry = entries.get(name);
+
+  return entry === undefined ?
+      {has: false, value: undefined}
+    : {has: true, value: entry};
 };
 
 const computeReport = (
@@ -339,8 +422,46 @@ const computeReport = (
     });
   }
 
+  // auditors: the roster is a *third* kind of content, GAIA-authored and
+  // adopter-extensible at once. It reuses the same keys(B) ∪ keys(L) shape as
+  // audit_authors above, keyed on member `name` exactly, with exactly one
+  // changed row: `in L, not in B` (a GAIA-authored member the adopter's file
+  // has never seen) resolves to `apply`, not `suggest-add`. Every other
+  // section treats that row as an opt-in suggestion, surfaced but never
+  // written; a roster member is a capability the adopter cannot opt into if
+  // it never arrives, unlike a scalar knob they already have a value for, so
+  // leaving it a suggestion would mean a new GAIA-authored member (e.g.
+  // code-audit-github-workflows) reaches no existing adopter. This is a
+  // named, deliberate divergence from every other section's added-row
+  // semantics (UAT-038), not an inconsistency to "fix". Bounded precisely: an
+  // adopter's *edit* to a GAIA-authored member is still a conflict below, and
+  // an adopter's *own* member (present only in current) is never visited.
+  const baseRoster = parseRoster(baseline[ROSTER_SECTION]);
+  const latestRoster = parseRoster(latest[ROSTER_SECTION]);
+  const currentRoster = parseRoster(current[ROSTER_SECTION]);
+  const rosterNames = [
+    ...new Set([...baseRoster.keys(), ...latestRoster.keys()]),
+  ];
+
+  for (const name of rosterNames) {
+    triples.push({
+      a: rosterPresence(currentRoster, name),
+      addedVerdict: 'apply',
+      b: rosterPresence(baseRoster, name),
+      key: name,
+      kind: 'entry',
+      l: rosterPresence(latestRoster, name),
+      section: ROSTER_SECTION,
+    });
+  }
+
   for (const triple of triples) {
-    const verdict = computeVerdict(triple.b, triple.l, triple.a);
+    const verdict = computeVerdict({
+      a: triple.a,
+      addedVerdict: triple.addedVerdict,
+      b: triple.b,
+      l: triple.l,
+    });
 
     if (verdict !== 'noop') {
       const item = buildItem(triple);

@@ -263,6 +263,260 @@ describe('update merge-audit-ci', () => {
     expect(report.conflicts).toEqual([]);
   });
 
+  test('a new GAIA-authored roster member the adopter never saw lands in applied[], not suggestions[]', () => {
+    // The exact FC-2 scenario this task exists for: code-audit-github-workflows
+    // ships in latest and was never in the adopter's baseline or current file.
+    const frontendOnly = [
+      'auditors:',
+      '  - name: code-audit-frontend',
+      '    globs:',
+      '      - "app/**"',
+      '    scope: adopter',
+      '    push_fixes: true',
+      '    default: true',
+      '',
+    ].join('\n');
+    const withWorkflows = `${frontendOnly}  - name: code-audit-github-workflows
+    globs:
+      - ".github/workflows/*.yml"
+    scope: adopter
+    push_fixes: false
+`;
+
+    sandbox.write('baseline', frontendOnly);
+    sandbox.write('latest', withWorkflows);
+    sandbox.write('current', frontendOnly);
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.suggestions).toEqual([]);
+    expect(report.conflicts).toEqual([]);
+    expect(report.applied).toEqual([
+      {
+        key: 'code-audit-github-workflows',
+        kind: 'entry',
+        latest: {
+          globs: ['.github/workflows/*.yml'],
+          push_fixes: false,
+          scope: 'adopter',
+        },
+        section: 'auditors',
+      },
+    ]);
+  });
+
+  test('an adopter-added roster member is never visited by an unrelated release change', () => {
+    sandbox.write(
+      'baseline',
+      `auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    scope: adopter
+    push_fixes: true
+    default: true
+`
+    );
+    sandbox.write(
+      'latest',
+      `auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+      - "test/**"
+    scope: adopter
+    push_fixes: true
+    default: true
+`
+    );
+    sandbox.write(
+      'current',
+      `auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    scope: adopter
+    push_fixes: true
+    default: true
+  - name: my-custom-auditor
+    globs:
+      - "custom/**"
+    scope: adopter
+    push_fixes: false
+`
+    );
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    const touchedNames = [
+      ...report.applied,
+      ...report.conflicts,
+      ...report.suggestions,
+    ]
+      .filter((item) => item.section === 'auditors')
+      .map((item) => item.key);
+    // The adopter's own member is never visited: not in any bucket at all.
+    expect(touchedNames).not.toContain('my-custom-auditor');
+    // code-audit-frontend's globs changed upstream and the adopter kept the
+    // baseline value, so the clean delta applies.
+    expect(report.applied).toEqual([
+      {
+        adopter: {
+          default: true,
+          globs: ['app/**'],
+          push_fixes: true,
+          scope: 'adopter',
+        },
+        baseline: {
+          default: true,
+          globs: ['app/**'],
+          push_fixes: true,
+          scope: 'adopter',
+        },
+        key: 'code-audit-frontend',
+        kind: 'entry',
+        latest: {
+          default: true,
+          globs: ['app/**', 'test/**'],
+          push_fixes: true,
+          scope: 'adopter',
+        },
+        section: 'auditors',
+      },
+    ]);
+  });
+
+  test('an adopter-edited roster member globs upstream also changed lands in conflicts[]', () => {
+    sandbox.write(
+      'baseline',
+      `auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    scope: adopter
+    push_fixes: true
+`
+    );
+    sandbox.write(
+      'latest',
+      `auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+      - "test/**"
+    scope: adopter
+    push_fixes: true
+`
+    );
+    sandbox.write(
+      'current',
+      `auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+      - "app/routes/**"
+    scope: adopter
+    push_fixes: true
+`
+    );
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+    expect(report.conflicts).toHaveLength(1);
+    expect(report.conflicts[0]).toMatchObject({
+      key: 'code-audit-frontend',
+      kind: 'entry',
+      section: 'auditors',
+    });
+  });
+
+  test('a roster member removed upstream but still present in baseline is a no-op', () => {
+    sandbox.write(
+      'baseline',
+      `auditors:
+  - name: code-audit-legacy
+    globs:
+      - "legacy/**"
+    scope: adopter
+    push_fixes: false
+`
+    );
+    sandbox.write('latest', 'auditors: []\n');
+    sandbox.write(
+      'current',
+      `auditors:
+  - name: code-audit-legacy
+    globs:
+      - "legacy/**"
+    scope: adopter
+    push_fixes: false
+`
+    );
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toEqual([]);
+    expect(report.conflicts).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+  });
+
+  test('a malformed roster entry (missing or non-string name) is skipped without crashing', () => {
+    sandbox.write(
+      'baseline',
+      `auditors:
+  - globs:
+      - "app/**"
+    scope: adopter
+  - name: 42
+    globs:
+      - "other/**"
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    scope: adopter
+    push_fixes: true
+`
+    );
+    sandbox.write(
+      'latest',
+      `auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    scope: adopter
+    push_fixes: true
+`
+    );
+    sandbox.write(
+      'current',
+      `auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    scope: adopter
+    push_fixes: true
+`
+    );
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toEqual([]);
+    expect(report.conflicts).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+  });
+
   test('missing file exits non-zero with a structured error', () => {
     sandbox.write('baseline', 'default_mode: ci\n');
     sandbox.write('latest', 'default_mode: ci\n');
