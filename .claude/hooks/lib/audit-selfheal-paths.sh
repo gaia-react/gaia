@@ -11,6 +11,17 @@
 # of these is confined by a deterministic gate, not by an instruction alone,
 # whether or not the member was told not to.
 #
+# .gaia/local/ is deliberately NOT refused. It is the members' own gitignored
+# working and output directory -- clearance markers, findings sidecars,
+# disposition sidecars, the re-run ledger -- not gate-machinery source. A
+# member writing there is emitting its own audit record, not repairing a
+# tracked file, and being gitignored it never appears in the CI push gate's
+# diff, so the carve-out is a no-op on that consumer and only frees the local
+# hook's per-attempt check. Refusing it would block the very sidecars this
+# team writes and, via the disposition backstop, deadlock the merge gate.
+# Everything else under .gaia/ (including a sibling like .gaia/localfoo/)
+# stays refused.
+#
 # TWO consumers read this ERE. Neither writes a second copy of it, and a
 # reader who finds one must not assume it is the only one:
 #   - the CI producer's push gate, the "Commit and push self-heal" step of
@@ -27,4 +38,4 @@
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
 # shellcheck disable=SC2034 # consumed by both sourcing consumers named above
-AUDIT_SELFHEAL_REFUSE_ERE='^(\.claude|\.specify|wiki|test|\.gaia|\.github/workflows)/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'
+AUDIT_SELFHEAL_REFUSE_ERE='^(\.claude|\.specify|wiki|test|\.github/workflows)/|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'

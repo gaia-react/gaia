@@ -153,6 +153,37 @@ assert_allowed() {
   assert_denied
 }
 
+# --- .gaia/local/ is the members' own gitignored artifact dir, never refused ---
+# A member writes its clearance marker, findings sidecar, disposition sidecar,
+# and re-run ledger under .gaia/local/audit/. Refusing that directory blocks
+# the sidecars this team writes and deadlocks the merge gate via the
+# disposition backstop. Everything else under .gaia/ stays refused.
+
+@test "code-audit-frontend writing its findings sidecar under .gaia/local/audit/ is allowed" {
+  run_hook_edit "code-audit-frontend" "Write" ".gaia/local/audit/2cea369b.code-audit-frontend.findings.json"
+  assert_allowed
+}
+
+@test "code-audit-frontend writing its disposition sidecar under .gaia/local/audit/ is allowed" {
+  run_hook_edit "code-audit-frontend" "Write" ".gaia/local/audit/abc123.dispositions.json"
+  assert_allowed
+}
+
+@test "Bash: code-audit-frontend redirecting into a .gaia/local/audit/ sidecar is allowed" {
+  run_hook_bash "code-audit-frontend" "printf '%s' '{}' > .gaia/local/audit/abc123.dispositions.json"
+  assert_allowed
+}
+
+@test "code-audit-frontend editing .gaia/localfoo/x.sh (a sibling, not the carve-out) is denied" {
+  run_hook_edit "code-audit-frontend" "Edit" ".gaia/localfoo/x.sh"
+  assert_denied
+}
+
+@test "code-audit-frontend editing .gaia/scripts/x.sh (machinery, not .gaia/local) is denied" {
+  run_hook_edit "code-audit-frontend" "Edit" ".gaia/scripts/x.sh"
+  assert_denied
+}
+
 # --- root vs nested build config, criterion 4 ---
 
 @test "code-audit-frontend editing nested app/foo.config.ts is allowed (root-only arm)" {
