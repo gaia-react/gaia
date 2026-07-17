@@ -19,6 +19,13 @@ max_turns: 60
 # the audit advisory-only (it comments findings but does not push).
 push_fixes: true
 
+# Who audits: `local` (a session on the developer's machine) or `ci` (the
+# code-review-audit workflow). Both producers resolve this identically from this
+# file, the per-author map, the override label, and whether the PR comes from a
+# fork, so they never disagree about who audits. A fork PR always resolves to
+# `ci` regardless of this value.
+default_mode: local
+
 # Workflows the audit re-dispatches against the PR branch after a self-heal
 # push. GitHub does not fire push / pull_request events for commits made with
 # GITHUB_TOKEN (its recursion guard), so required check runs on the new HEAD
