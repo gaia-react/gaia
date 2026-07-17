@@ -207,9 +207,15 @@ jobs:
         # self-modifying. Delegates to the shared resolver
         # (.gaia/scripts/read-audit-ci-config.sh --resolve-author) so the CI
         # side and the local merge path read the SAME resolved_mode for an
-        # author and can never diverge. should_run == 'false' (local mode, no
-        # override, in scope) means CI stands down and the local path runs the
-        # audit instead.
+        # author and can never diverge. The resolver is a pure function of
+        # the config, the author, the override-label presence, and the fork
+        # flag (PR_IS_FORK, supplied below from the event payload); its
+        # answer never depends on GITHUB_ACTIONS or on any other signal that
+        # differs between callers. A fork PR always resolves to `ci`, ahead
+        # of every other rule (including an audit_authors pin and the
+        # override label). should_run == 'false' (local mode, no
+        # override, not a fork, in scope) means CI stands down and the local
+        # path runs the audit instead.
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.chore-deps.outputs.skip == 'false' &&
@@ -219,6 +225,7 @@ jobs:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           OVERRIDE_LABEL: ${{ steps.config.outputs.override_label }}
           PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
         run: |
           set -eu
           # Compute override-label presence from the PR's labels, then pass it
@@ -235,6 +242,7 @@ jobs:
             override_present=false
           fi
           OVERRIDE_LABEL_PRESENT="$override_present" \
+          PR_IS_FORK="$PR_IS_FORK" \
             bash .gaia/scripts/read-audit-ci-config.sh \
               --resolve-author "$PR_AUTHOR" >> "$GITHUB_OUTPUT"
 
@@ -514,16 +522,25 @@ jobs:
             git ls-files --others --exclude-standard | head -20 >&2
           fi
 
-          # Self-heal scope gate. Instruction / convention surfaces
-          # (.claude/**, .specify/**, wiki/**) are the rules this audit
-          # enforces and the agent's own definition -- never code defects
-          # it should auto-fix. A self-heal that edits them is almost
-          # always reverting an intentional convention change. Inspect
-          # both committed self-heal commits and uncommitted edits; if any
-          # touch those surfaces, refuse the whole self-heal and surface
-          # it for human review (mirrors the >10-file gate below). The
-          # early `exit 0` runs before the commit/push logic, so nothing
-          # the audit changed reaches origin.
+          # Self-heal scope gate. One refusal set
+          # (.claude/hooks/lib/audit-selfheal-paths.sh), sourced here and by the
+          # local producer's PreToolUse hook
+          # (.claude/hooks/block-selfheal-paths.sh), names every domain a
+          # self-healing member must never touch: the tests that would catch
+          # its own bad repair, the CI pipeline (.github/workflows/**), the
+          # gate machinery and roster under .gaia/, instruction/convention
+          # surfaces (.claude/**, .specify/**, wiki/**), which are the rules
+          # this audit enforces and the agent's own definition, and root-level
+          # build/lint/test/typecheck configuration. A self-heal that edits
+          # any of these is almost always reverting intentional PR work, or
+          # disabling the very check that would catch its own bad repair.
+          # Inspect both committed self-heal commits and uncommitted edits; if
+          # any touch the refused set, refuse the whole self-heal and surface
+          # it for human review (mirrors the >10-file gate below). The early
+          # `exit 0` runs before the commit/push logic, so nothing the audit
+          # changed reaches origin.
+          # shellcheck source=/dev/null
+          . .claude/hooks/lib/audit-selfheal-paths.sh
           self_heal_paths="$(
             {
               git diff --name-only
@@ -531,15 +548,15 @@ jobs:
             } | sort -u
           )"
           if printf '%s\n' "$self_heal_paths" \
-              | grep -qE '^(\.claude|\.specify|wiki)/'; then
-            echo "code-review-audit: self-heal touched instruction/convention surfaces -- refusing." >&2
+              | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then
+            echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline, .gaia/ gate machinery, instruction/convention surfaces, or root build config) -- refusing." >&2
             printf '%s\n' "$self_heal_paths" \
-              | grep -E '^(\.claude|\.specify|wiki)/' >&2 || true
+              | grep -E "$AUDIT_SELFHEAL_REFUSE_ERE" >&2 || true
             {
               echo "pushed=false"
               echo "marker_only=false"
               echo "refused=true"
-              echo "refused_reason=instruction-surface"
+              echo "refused_reason=governance-surface"
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -1011,7 +1028,7 @@ jobs:
             --method POST \
             --field state=pending \
             --field context=GAIA-Audit \
-            --field description="local-mode stand-down: audit pending" || true
+            --field description="local mode: local producer owns the whole audit; CI dispatched zero members" || true
 
       - name: Write GAIA-Audit commit status (out-of-scope skip)
         id: oos-status
@@ -1534,8 +1551,8 @@ jobs:
           if [ "$PUSH_FIXES" = "false" ]; then
             mode="advisory (push_fixes=false)"
           elif [ "$REFUSED" = "true" ]; then
-            if [ "$REFUSED_REASON" = "instruction-surface" ]; then
-              mode="self-heal REFUSED: edited instruction/convention surfaces (.claude/**, .specify/**, or wiki/**), which are off-limits to self-heal; see workflow logs and review manually"
+            if [ "$REFUSED_REASON" = "governance-surface" ]; then
+              mode="self-heal REFUSED: edited a surface off-limits to self-heal (tests, the CI pipeline, .gaia/ gate & roster machinery, instruction/convention surfaces under .claude/**, .specify/**, wiki/**, or root build config); see workflow logs and review manually"
             else
               mode="self-heal REFUSED: diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
             fi

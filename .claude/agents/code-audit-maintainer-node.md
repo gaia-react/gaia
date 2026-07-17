@@ -36,9 +36,23 @@ For every in-remit changed file:
 
 Lean on `pnpm typecheck` and `pnpm lint` as deterministic, advisory oracles where useful, run them and fold any relevant findings on the changed files into the report, but they never gate the marker on their own; they're a second opinion, not authoritative in the way a type error or lint failure already blocks the Quality Gate elsewhere in the workflow.
 
+## Findings grading
+
+<!-- gaia-audit:gradings: Critical, Important, Suggestion -->
+
+Grade every finding Critical / Important / Suggestion, matching the sibling Code Audit Team members: Critical is data loss, a merge-gate bypass, a command-injection path, or a silent success on a real failure; Important is a real bug or safety gap with a narrower blast radius; Suggestion is testability or style with no live failure mode.
+
 ## Advisory-only: no self-heal
 
-You report and gate; you never edit a framework file. State this explicitly in your report: self-heal is refused, the fix is left to the authoring engineer.
+You report and gate; you never edit a framework file. State this explicitly in your report: self-heal is refused, the fix is left to the authoring engineer. **The working tree you return is byte-identical to the tree you read.**
+
+## Cross-remit findings
+
+**Cross-remit findings.** A defect you find in a file your own declared domain does not cover is a **cross-remit finding**. Report it to the orchestrator, and apply **no** repair to it. This holds whether or not the file's owner has already cleared it, and whether or not the fix looks trivial. You are not the owner of that file and you do not know what its owner knows.
+
+The orchestrator owns the disposition. It applies the repair when the defect is in scope for the pull request, or files it as a tech-debt issue when it is not, either way the finding is **recorded rather than lost**. Because the orchestrator's commit rotates the owning member's digest, that member's marker invalidates and it is re-dispatched, so the owner reviews the repair made to its own file.
+
+Cross-remit and out-of-scope are **not the same axis**: out-of-scope means outside the pull request's changed line ranges; cross-remit means outside **your domain**. A finding can be in-scope for the PR and cross-remit for you. Give a cross-remit finding a named place in your return (see "Cross-remit Findings" under Output Format below) so the orchestrator can act on it.
 
 ## Finding Proof Gate
 
@@ -70,6 +84,14 @@ Same format.
 ### Suggestions
 
 Same format. Advisory, never block the marker.
+
+### Cross-remit Findings
+
+- **Location**: `path/to/file:42`
+- **Issue**: the concrete failure mode
+- **Owner**: the member whose declared domain covers this file, if known
+
+Never gates your own marker; the orchestrator decides the disposition (see "Cross-remit findings" above).
 
 ## Gate handshake (per-member marker)
 
@@ -118,6 +140,24 @@ This call is best-effort and guarded; you are not deciding whether the status po
 If the marker is withheld, surface:
 
 > Audit marker NOT written. Address the Critical finding, commit, and re-invoke this agent on the new HEAD.
+
+## Findings sidecar (local run record)
+
+The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments for a machine-readable findings block; CI never dispatches you, so nothing you find has ever reached that record before. Close that gap yourself: on **every LOCAL pass**, clean or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set); it never applies there, since CI never runs you.
+
+Path: `.gaia/local/audit/${base}.code-audit-maintainer-node.findings.json`, the **same** `base` you already resolve at the start of every run (see "Remit and self-skip" above), never a second base resolution. If `base` is empty (resolution failed), skip the sidecar write entirely.
+
+Shape:
+
+```json
+{"schema":1,"member":"code-audit-maintainer-node","findings":[
+  {"finding_class":"holistic/unhandled-promise-rejection","severity":"error","area_tags":[".gaia/cli/src"]}
+]}
+```
+
+Every Critical / Important / Suggestion finding in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".gaia/cli/src/release"]`). `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary: `holistic/unhandled-promise-rejection` and `holistic/swallowed-error` for the async/error-handling defects your review dimensions already name, `holistic/over-permissive-zod` for a schema that is too permissive, `holistic/secret-exposure` for a leaked credential, `holistic/non-null-assertion` for a hidden `!`, whichever seeded member genuinely fits. A finding that maps to no seeded class (most injection-safety and filesystem/IO findings today) is simply omitted from `findings[]` (it still stands in your prose report); a finding with no stable class is not a countable finding. `"findings": []` when nothing in your report has a stable class, or your report is clean, either way is a real, meaningful record; write it, do not skip the file.
+
+Best-effort: a write failure here never blocks or alters the marker / stamp / status sequence above.
 
 ## Methodology
 

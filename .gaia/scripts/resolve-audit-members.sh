@@ -22,27 +22,24 @@
 #   scope. Exit code is 0 on EVERY path (empty diff, unresolvable base, not in
 #   a git repo, unknown flag) so consumers can parse stdout unconditionally.
 #
-# Dispatch algorithm, per changed file:
-#   1. Every SPECIALIZED (non-default) member whose globs match the path is
-#      added.
-#   2. Else, if the path is in the AUDITABLE-BASE SET (below) and a default
-#      member exists, the default member is added.
-#   3. Else the file has no owner (out of scope).
-#
-# Auditable-base set (the default member's implicit domain; mirrors the CI
-# has_source gate exactly). A changed file not claimed by a specialized member
-# and not in this set is out of scope:
-#   - directory prefixes:  app/  test/  .storybook/  .github/workflows/
-#   - root files (no slash): package.json, pnpm-lock.yaml, pnpm-workspace.yaml,
-#     tsconfig*.json, *.config.{ts,mts,mjs,cjs,js}
+# Dispatch algorithm, per changed file, in two precedence tiers (owned by
+# audit-scope.sh, sourced below):
+#   1. Every CLAIMANT (non-default) member whose globs match the path wins,
+#      first-match-wins over roster order.
+#   2. Else, if the default member's own declared globs match the path, the
+#      default member is added.
+#   3. Else the file has no owner (out of scope). No routing decision
+#      consults a hardcoded auditable-base literal; every member, the default
+#      included, declares its domain in the roster.
 #
 # Roster-source precedence:
 #   1. The `auditors:` block in <repo-root>/.gaia/audit-ci.yml, when present
 #      and non-empty.
-#   2. Otherwise the BUILT-IN DEFAULT ROSTER hard-coded below. Its maintainer-
-#      only entries sit inside `# gaia:maintainer-only` markers so the release
-#      scrub strips them from the shipped script; an adopter's built-in
-#      fallback is therefore the default (frontend) member only.
+#   2. Otherwise the built-in fallback roster in audit-scope.sh. Its
+#      maintainer-only entries sit inside `# gaia:maintainer-only` markers so
+#      the release scrub strips them from the shipped script; an adopter's
+#      built-in fallback is therefore the default (frontend) member and the
+#      workflows member only.
 #   The resolver iterates the roster GENERICALLY: it emits whatever member
 #   names the roster defines and is not hard-coded to any specific member, so
 #   an adopter adds a member with a config entry plus an agent file, no script

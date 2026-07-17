@@ -192,7 +192,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       - **One or more names** → spawn each named member, in parallel from a single tool-call message. Do not wait for the merge deny-hook to name them; that round-trip is friction:
 
-        Immediately before this dispatch wave fires, capture the expected tree fresh: `git -C <RESOLVED_ROOT> rev-parse HEAD^{tree}`. Recapture it before every dispatch wave this bullet fires, the solo `code-audit-frontend` wave and the parallel specialist wave both (see `wiki/concepts/PR Merge Workflow.md`'s "Sequencing a self-healing member" section for why the two waves exist); HEAD can move between them, a self-heal is a real content edit, so reusing a stale value would fail a later wave's self-check against a tree it is correctly reviewing.
+        Immediately before this dispatch wave fires, capture the expected tree fresh: `git -C <RESOLVED_ROOT> rev-parse HEAD^{tree}`. Recapture it before every dispatch wave: a member re-spawned on a later round moves HEAD (a self-heal is a real content edit, and a repair round's own commit moves it too), so reusing a stale value would fail a later wave's self-check against a tree it is correctly reviewing.
 
             Task(
               subagent_type="<member-name>",

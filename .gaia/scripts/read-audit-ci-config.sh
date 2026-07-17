@@ -57,13 +57,28 @@
 #   on `local`) read the SAME `resolved_mode` and interpret it for their
 #   own side, so they never disagree about WHO runs.
 #
+#   `resolved_mode` is a pure function of four inputs, and every producer
+#   reads all four identically: this config file, the author login, the
+#   override label, and whether the PR comes from a fork. None of the four
+#   depends on who is asking, so CI and a local session can never disagree.
+#
 #   Override-label presence is a PR property this script cannot read on its
 #   own (no gh PR query here). The caller supplies it via the env var
 #   `OVERRIDE_LABEL_PRESENT=true` (any case; `1`/`yes` accepted). Absent or
 #   anything else → treated as not present.
 #
+#   Fork presence is likewise a PR property this script cannot read on its
+#   own. The caller supplies it via the env var `PR_IS_FORK=true` (any case;
+#   `1`/`yes` accepted). Absent or anything else → treated as not a fork.
+#   There is no `gh` query on this resolve path for the same reason
+#   OVERRIDE_LABEL_PRESENT has none: the resolved mode must never depend on
+#   API reachability or on the caller's authority.
+#
 # Resolution precedence (first-match-wins, single source of truth):
-#   1. override label present → resolved_mode=ci, should_run=true.
+#   0. fork PR (PR_IS_FORK present) → resolved_mode=ci, should_run=true.
+#      Ahead of everything, so an audit_authors pin can never route a fork
+#      PR to a local producer.
+#   1. else override label present → resolved_mode=ci, should_run=true.
 #   2. else first matching `audit_authors` login (case-insensitive) → that
 #      pair's mode.
 #   3. else `default_mode`.
@@ -78,26 +93,21 @@
 #     stderr warning; do not crash; continue scanning remaining pairs.
 #   - Duplicate logins: first match wins.
 #
-# Required-check verification + fail-closed:
+# Required-check confirmation, advisory only:
 #   When the resolved mode (after precedence + normalization) is `local`,
-#   confirm `GAIA-Audit` is a registered required status check on the
-#   default branch before honoring `local`. Confirmation honors EITHER
-#   protection model: classic branch protection (`required_status_checks`
-#   context) or a repository ruleset (`required_status_checks[].context`
-#   under `rules/branches/<branch>`) -- see `required_check_confirmed`. The
-#   ruleset read is maintainer-only (marker-wrapped, stripped at release);
-#   adopters confirm via classic protection only, per `setup-gaia.md`'s
-#   registration recipe. If it cannot be confirmed under either model (API
-#   error, branch unprotected, context absent, `gh` absent or
-#   unauthenticated, no repo slug) → fail closed: force resolved_mode=ci and
-#   warn on stderr. A `ci` resolution never pays this API cost.
-#
-#   Exception (GitHub Actions): the confirmation's branch-protection read
-#   needs admin the Actions GITHUB_TOKEN lacks (and 404s on ruleset repos),
-#   so it is un-runnable in CI. Under GITHUB_ACTIONS=true a `local` resolution
-#   is honored WITHOUT the re-check (unguarded it would force every local-mode
-#   author into a redundant CI audit that duplicates the local run). The guard
-#   stays authoritative on the local merge path, where the caller has admin.
+#   report whether `GAIA-Audit` is a registered required status check on the
+#   default branch. Confirmation honors EITHER protection model: classic
+#   branch protection (`required_status_checks` context) or a repository
+#   ruleset (`required_status_checks[].context` under
+#   `rules/branches/<branch>`) -- see `required_check_confirmed`. The
+#   ruleset read ships to adopters too; registering `GAIA-Audit` remains a
+#   one-time, human-run step regardless of which model confirms it. If
+#   neither model confirms (API error, branch unprotected, context absent,
+#   `gh` absent or unauthenticated, no repo slug), the resolver warns on
+#   stderr naming both models it tried. The warning never changes
+#   `resolved_mode` and never fails the run: a resolver whose answer depends
+#   on the caller's API authority cannot support an invariant that one
+#   producer runs the whole job, because producers do not share authority.
 #
 # Off-coercion (argument-less emit): an invalid/`off` `default_mode` coerces
 # to a valid non-off mode by workflow presence (`.github/workflows/
@@ -115,7 +125,7 @@
 #   - Scalar in place of `retrigger_workflows` list → single-item list.
 #
 # Defaults when a new key is absent / commented / null:
-#   - default_mode   → ci
+#   - default_mode   → local
 #   - override_label → run-audit
 #   - audit_authors  → empty string
 #
@@ -135,8 +145,10 @@ DEFAULT_MAX_TURNS="30"
 DEFAULT_PUSH_FIXES="true"
 # Built-in fallback for the `default_mode` knob when it is absent or empty. Named
 # for its role rather than the sibling `DEFAULT_<key>` pattern: the config key is
-# itself `default_mode`, so `DEFAULT_DEFAULT_MODE` would stutter.
-FALLBACK_MODE="ci"
+# itself `default_mode`, so `DEFAULT_DEFAULT_MODE` would stutter. Agrees with the
+# mode the product ships: a repository with no config file at all resolves the
+# same `local` as one that ships `default_mode: local` explicitly.
+FALLBACK_MODE="local"
 DEFAULT_OVERRIDE_LABEL="run-audit"
 # `audit_authors`'s default is the empty string; it passes through verbatim
 # so the resolver sees exactly what the adopter wrote (or nothing).
@@ -496,13 +508,14 @@ resolve_author_mode() {
 #   status check on the default branch, under EITHER protection model:
 #   classic branch protection or a repository ruleset. Returns 1 otherwise
 #   (API error, branch unprotected, context absent, `gh` absent or
-#   unauthenticated, no repo slug). Callers fail closed on non-zero.
+#   unauthenticated, no repo slug). Callers treat a non-zero return as
+#   advisory-only: they warn, and never change the resolved mode.
 #
 #   Classic protection is tried first -- this is the ONLY check an adopter
 #   repo (classic protection, per setup-gaia.md) ever needs. The ruleset
-#   read only runs when classic protection did not confirm; it is
-#   maintainer-only and marker-wrapped so the release scrub strips it,
-#   leaving the shipped adopter resolver with the classic check alone.
+#   read only runs when classic protection did not confirm, and it ships to
+#   adopters too, so a repository whose protection is a ruleset rather than
+#   classic branch protection still confirms correctly.
 #
 #   Default branch: resolved from `origin/HEAD`, falling back to `main`.
 #   Repo slug: `$GITHUB_REPOSITORY` if set, else `gh repo view`.
@@ -528,10 +541,9 @@ required_check_confirmed() {
     return 0
   fi
 
-  # gaia:maintainer-only:start
   #
-  # Classic protection did not confirm -- either it 404d (a ruleset-
-  # protected repo, e.g. this one) or the context is simply absent there.
+  # Classic protection did not confirm -- either it 404d (this happens on a
+  # ruleset-protected repository) or the context is simply absent there.
   # Fall back to reading the repo's active branch rulesets:
   # `GET repos/{owner}/{repo}/rules/branches/{branch}` returns the
   # effective rules for the branch, including any ruleset-sourced
@@ -540,9 +552,8 @@ required_check_confirmed() {
   #   .parameters.required_status_checks[].context`.
   #
   # This read only CONFIRMS the check is registered; it never registers it.
-  # Registering `GAIA-Audit` on the live ruleset is a one-time,
-  # maintainer-run production step (ask-first cutover command; see the
-  # SPEC-034 task-enforcement-resolver notes / PROGRESS.md).
+  # Registering `GAIA-Audit` on the live ruleset stays a one-time, human-run
+  # step, exactly as it does under classic branch protection.
   local ruleset_contexts
   ruleset_contexts=$(gh api "repos/${repo}/rules/branches/${default_branch}" \
     --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context' \
@@ -550,7 +561,6 @@ required_check_confirmed() {
   if printf '%s\n' "$ruleset_contexts" | grep -qx 'GAIA-Audit'; then
     return 0
   fi
-  # gaia:maintainer-only:end
 
   return 1
 }
@@ -603,38 +613,47 @@ emit_scalar_keys() {
 if [ "$RESOLVE_AUTHOR" -eq 1 ]; then
   # --- Per-author resolve -----------------------------------------------------
 
-  # Precedence rule 1: override label present → ci, run.
-  override_present=$(normalize_boolean "${OVERRIDE_LABEL_PRESENT:-}" "false" "OVERRIDE_LABEL_PRESENT")
-  if [ "$override_present" = "true" ]; then
+  # Precedence rule 0: a fork pull request resolves to ci, ahead of every
+  # other rule. A local audit of an untrusted branch would run that branch's
+  # own audit machinery under the maintainer's full credentials, where CI
+  # runs it on a sandboxed runner with a scoped token. An audit_authors pin
+  # must never override this, so this rule sits ahead of the author map.
+  #
+  # The flag is a PR property this script cannot read on its own (there is
+  # no gh query here, by design: the resolved mode must never depend on API
+  # reachability or on the caller's authority). The caller supplies it,
+  # exactly as it supplies OVERRIDE_LABEL_PRESENT.
+  is_fork=$(normalize_boolean "${PR_IS_FORK:-}" "false" "PR_IS_FORK")
+  if [ "$is_fork" = "true" ]; then
     resolved_mode="ci"
   else
-    # Rules 2 + 3: first matching author pair, else default_mode.
-    resolved_mode=$(resolve_author_mode "$RESOLVE_AUTHOR_LOGIN" "$audit_authors" "$default_mode")
+    # Precedence rule 1: override label present → ci, run.
+    override_present=$(normalize_boolean "${OVERRIDE_LABEL_PRESENT:-}" "false" "OVERRIDE_LABEL_PRESENT")
+    if [ "$override_present" = "true" ]; then
+      resolved_mode="ci"
+    else
+      # Rules 2 + 3: first matching author pair, else default_mode.
+      resolved_mode=$(resolve_author_mode "$RESOLVE_AUTHOR_LOGIN" "$audit_authors" "$default_mode")
+    fi
   fi
 
-  # Required-check verification: only a would-be `local` resolution pays the
-  # branch-protection API cost. Fail closed to `ci` when unconfirmable.
-  #
-  # Skipped under GitHub Actions: the confirmation reads branch protection,
-  # which needs admin the Actions GITHUB_TOKEN never carries (and
-  # 404s on ruleset-protected repos), so it can NEVER succeed in CI. Left
-  # unguarded it forces every local-mode author into a redundant full CI audit
-  # that duplicates the authoritative local run. In CI we trust the resolved
-  # mode and stand down; a registered GAIA-Audit still blocks a button-merge
-  # via the pending status the stand-down posts, and setup owns registering
-  # that gate. The guard stays authoritative on the local merge path (the
-  # other --resolve-author caller), where the invoking user has admin.
+  # Required-check confirmation, ADVISORY ONLY. It reports whether the merge
+  # gate is registered and names what it tried; it never changes
+  # resolved_mode and never fails the run. Mode resolution depends only on
+  # inputs every producer reads identically (the config, the author map, the
+  # override label, the fork flag), so CI and a local session can never
+  # disagree about who audits. A resolver whose answer depends on the
+  # authority of the caller cannot support an invariant that one producer
+  # runs the whole job, because the two producers do not have the same
+  # authority and never will.
   if [ "$resolved_mode" = "local" ]; then
-    if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-      echo "read-audit-ci-config: CI context; honoring resolved local mode without the branch-protection re-check" >&2
-    elif ! required_check_confirmed; then
+    if ! required_check_confirmed; then
       default_branch_for_warn=""
       if [ -n "${repo_root:-}" ]; then
         default_branch_for_warn=$(git -C "$repo_root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's#^refs/remotes/origin/##') || true
       fi
       [ -n "$default_branch_for_warn" ] || default_branch_for_warn="main"
-      echo "read-audit-ci-config: GAIA-Audit required check not confirmed on $default_branch_for_warn; forcing ci (fail-closed)" >&2
-      resolved_mode="ci"
+      echo "read-audit-ci-config: GAIA-Audit registration not confirmed on $default_branch_for_warn (tried classic branch protection and the repository ruleset); resolved_mode is unchanged" >&2
     fi
   fi
 

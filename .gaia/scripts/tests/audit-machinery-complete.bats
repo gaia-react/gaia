@@ -49,6 +49,30 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
+# Negative: remove the code-audit-github-workflows agent file's entry from
+# AUDIT_MACHINERY_PATHS in a sandbox copy and prove the check names it and
+# exits non-zero. Chosen because it is covered ONLY by its exact entry (no
+# `/**` prefix also covers .claude/agents/*.md), so removing that one line
+# makes it unmatched: exactly the fail-open a forgotten registration produces.
+# ---------------------------------------------------------------------------
+
+@test "negative: code-audit-github-workflows.md removed from AUDIT_MACHINERY_PATHS is named and exits non-zero" {
+  SB="$BATS_TEST_TMPDIR/sandbox-workflows"
+  mkdir -p "$SB/.gaia/scripts" "$SB/.claude/hooks/lib"
+  cp "$CHECK" "$SB/.gaia/scripts/audit-machinery-complete.sh"
+  chmod +x "$SB/.gaia/scripts/audit-machinery-complete.sh"
+  # A machinery lib with the code-audit-github-workflows.md exact entry stripped.
+  grep -v 'code-audit-github-workflows.md' "$MACHINERY_LIB" > "$SB/.claude/hooks/lib/audit-machinery.sh"
+
+  run bash "$SB/.gaia/scripts/audit-machinery-complete.sh"
+  [ "$status" -ne 0 ]
+
+  # The unmatched file is named on stderr (bats `run` captures stdout only).
+  err="$(bash "$SB/.gaia/scripts/audit-machinery-complete.sh" 2>&1 1>/dev/null || true)"
+  grep -qF "code-audit-github-workflows.md" <<<"$err"
+}
+
+# ---------------------------------------------------------------------------
 # Fail-closed on an unloadable machinery lib: a sandbox copy with no lib/ at all
 # cannot classify, so it must exit non-zero, never falsely pass.
 # ---------------------------------------------------------------------------

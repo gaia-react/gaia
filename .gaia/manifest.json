@@ -6,6 +6,7 @@
     ".claude/agents/code-audit-frontend/react-i18next.md": "owned",
     ".claude/agents/code-audit-frontend/README.md": "owned",
     ".claude/agents/code-audit-frontend/tailwind-merge.md": "owned",
+    ".claude/agents/code-audit-github-workflows.md": "owned",
     ".claude/agents/worthiness-evaluator.md": "owned",
     ".claude/commands/gaia-audit.md": "owned",
     ".claude/commands/gaia-debt.md": "owned",
@@ -29,6 +30,7 @@
     ".claude/hooks/block-no-verify.sh": "owned",
     ".claude/hooks/block-rm-rf.sh": "owned",
     ".claude/hooks/block-secrets-write.sh": "owned",
+    ".claude/hooks/block-selfheal-paths.sh": "owned",
     ".claude/hooks/block-spec-plan-chain.sh": "owned",
     ".claude/hooks/block-vitest-globals-tsconfig.sh": "owned",
     ".claude/hooks/capture-gh-artifact.sh": "owned",
@@ -42,6 +44,7 @@
     ".claude/hooks/lib/audit-dispositions.sh": "owned",
     ".claude/hooks/lib/audit-machinery.sh": "owned",
     ".claude/hooks/lib/audit-scope.sh": "owned",
+    ".claude/hooks/lib/audit-selfheal-paths.sh": "owned",
     ".claude/hooks/lib/gaia-active-plan.sh": "owned",
     ".claude/hooks/lib/gaia-ci-defer.sh": "owned",
     ".claude/hooks/lib/red-ledger.sh": "owned",
@@ -205,6 +208,7 @@
     ".gaia/scripts/mentorship-cleanup-sweep.sh": "owned",
     ".gaia/scripts/plan-archive.sh": "owned",
     ".gaia/scripts/plan-resume-point.sh": "owned",
+    ".gaia/scripts/post-findings-block.sh": "owned",
     ".gaia/scripts/read-audit-ci-config.sh": "owned",
     ".gaia/scripts/red-ledger/extract-test-signals.mjs": "owned",
     ".gaia/scripts/red-ledger/README.md": "owned",
@@ -215,6 +219,7 @@
     ".gaia/scripts/token-rates.json": "owned",
     ".gaia/scripts/token-rollup.sh": "owned",
     ".gaia/scripts/token-tally.sh": "owned",
+    ".gaia/scripts/verify-audit-roster.sh": "owned",
     ".gaia/statusline/gaia-statusline.sh": "owned",
     ".gaia/templates/ci-issues/priority-critical-revert-failed.md": "owned",
     ".gaia/templates/ci-issues/priority-high-revert-opened.md": "owned",
@@ -602,6 +607,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-16T14:52:09.100Z",
+  "generated": "2026-07-17T21:22:25.275Z",
   "version": "1.6.1"
 }

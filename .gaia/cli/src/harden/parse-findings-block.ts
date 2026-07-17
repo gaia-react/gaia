@@ -27,17 +27,53 @@ export type ParsedFinding = {
   severity: 'error' | 'suggestion' | 'warning';
 };
 
-const SEVERITIES = new Set(['error', 'suggestion', 'warning']);
+/**
+ * The one accepted severity set. `severity-map.ts`'s `SEVERITY_BY_GRADING`
+ * maps every agent grading onto it; it is the one source and no test may
+ * re-declare it (README FC-7).
+ */
+export const SEVERITIES = new Set(['error', 'suggestion', 'warning']);
 
-const parseFinding = (value: unknown): null | ParsedFinding => {
-  if (typeof value !== 'object' || value === null) return null;
+export type OnReject = (reason: RejectReason, detail: string) => void;
+
+export type RejectReason = 'area_tags' | 'finding_class' | 'severity' | 'shape';
+
+// Stringifies an offending value for the rejection message. Strings print
+// as-is; `undefined` (a missing property) prints literally; anything else
+// falls back to JSON.
+const describeToken = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (value === undefined) return 'undefined';
+
+  return JSON.stringify(value);
+};
+
+const defaultOnReject: OnReject = (reason, detail) => {
+  process.stderr.write(
+    `parse-findings-block: dropped a finding (${reason}): unaccepted token "${detail}"\n`
+  );
+};
+
+const parseFinding = (
+  value: unknown,
+  onReject: OnReject
+): null | ParsedFinding => {
+  if (typeof value !== 'object' || value === null) {
+    onReject('shape', describeToken(value));
+
+    return null;
+  }
   const v = value as Record<string, unknown>;
 
   if (typeof v.finding_class !== 'string' || v.finding_class.length === 0) {
+    onReject('finding_class', describeToken(v.finding_class));
+
     return null;
   }
 
   if (typeof v.severity !== 'string' || !SEVERITIES.has(v.severity)) {
+    onReject('severity', describeToken(v.severity));
+
     return null;
   }
 
@@ -45,6 +81,8 @@ const parseFinding = (value: unknown): null | ParsedFinding => {
     !Array.isArray(v.area_tags) ||
     !v.area_tags.every((tag): tag is string => typeof tag === 'string')
   ) {
+    onReject('area_tags', describeToken(v.area_tags));
+
     return null;
   }
 
@@ -57,9 +95,18 @@ const parseFinding = (value: unknown): null | ParsedFinding => {
 
 /**
  * Returns the well-formed findings in `body`, `[]` for an explicit empty block,
- * or `null` when no parseable block is present.
+ * or `null` when no parseable block is present. `onReject` (default: a stderr
+ * writer) fires once per dropped finding, bad severity, missing/empty
+ * finding_class, malformed area_tags, or a non-object entry, naming the
+ * offending token. It never fires on a `null` return: that means "no
+ * parseable block" (no sentinels, no inner comment, bad JSON, `findings` not
+ * an array), a different thing from a dropped finding, and the overwhelmingly
+ * common case of a comment carrying no block at all must stay silent.
  */
-export const parseFindingsBlock = (body: string): null | ParsedFinding[] => {
+export const parseFindingsBlock = (
+  body: string,
+  onReject: OnReject = defaultOnReject
+): null | ParsedFinding[] => {
   const startIndex = body.indexOf(START_SENTINEL);
 
   if (startIndex === -1) return null;
@@ -98,7 +145,7 @@ export const parseFindingsBlock = (body: string): null | ParsedFinding[] => {
   const result: ParsedFinding[] = [];
 
   for (const entry of findings) {
-    const finding = parseFinding(entry);
+    const finding = parseFinding(entry, onReject);
 
     if (finding !== null) result.push(finding);
   }

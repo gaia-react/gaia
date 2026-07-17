@@ -139,6 +139,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/block-manifest-write.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-selfheal-paths.sh"
           }
         ]
       },
@@ -198,6 +202,11 @@
             "type": "command",
             "command": ".claude/hooks/block-manifest-write.sh",
             "statusMessage": "Checking manifest-write guard…"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-selfheal-paths.sh",
+            "statusMessage": "Checking self-heal repair-boundary gate…"
           },
           {
             "type": "command",

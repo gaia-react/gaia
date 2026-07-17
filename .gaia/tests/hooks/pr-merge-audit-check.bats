@@ -709,10 +709,11 @@ assert_not_in_set() {
   assert_allowed
 }
 
-@test "FC-4 no-deadlock: a CI workflow spawns the default member alone, and its marker allows" {
+@test "FC-4 no-deadlock: a CI workflow spawns the workflows member only (not the default), and its marker allows" {
   commit_files ".github/workflows/ci.yml" "name: CI"
   set=$(spawn_set)
-  [ "$set" = "code-audit-frontend" ]
+  [ "$set" = "code-audit-github-workflows" ]
+  assert_not_in_set "code-audit-frontend" "$set"
   write_markers_for_spawn_set "$set"
   run_merge_hook
   assert_allowed

@@ -236,6 +236,24 @@ setup() {
   [ "$output" = "noop" ]
 }
 
+@test "cra-specialist: large (>64KB) finding block with an early Location token is still REAL, not a pipefail/SIGPIPE misclassification" {
+  large="$BATS_TEST_TMPDIR/large-specialist-finding.txt"
+  {
+    printf -- '- **Category**: correctness\n'
+    printf -- '- **Location**: `app/foo.ts:42`\n'
+    printf -- '- **Issue**: a real finding near the front of a large report.\n'
+    # Pad well past a pipe buffer (64KB) so a `printf | grep -q` pipe would
+    # SIGPIPE the writer under `pipefail` before the file is fully consumed.
+    for _ in $(seq 1 1000); do
+      printf '%s\n' "padding padding padding padding padding padding padding padding padding padding"
+    done
+  } > "$large"
+  [ "$(wc -c < "$large" | tr -d ' ')" -gt 65536 ]
+  run "$SCRIPT" --shape cra-specialist --path "$large"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
 # ---------------------------------------------------------------------------
 # cra-refuter (return-conformance)
 # ---------------------------------------------------------------------------
@@ -256,6 +274,23 @@ setup() {
   run "$SCRIPT" --shape cra-refuter --path "$FIX/shared/reminder-echo.txt"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
+}
+
+@test "cra-refuter: large (>64KB) content with an early verdict token is still REAL, not a pipefail/SIGPIPE misclassification" {
+  large="$BATS_TEST_TMPDIR/large-refuter-verdict.txt"
+  {
+    printf 'STANDS\n'
+    printf -- '- the finding stands on re-review; padding follows.\n'
+    # Pad well past a pipe buffer (64KB) so a `printf | grep -q` pipe would
+    # SIGPIPE the writer under `pipefail` before the file is fully consumed.
+    for _ in $(seq 1 1000); do
+      printf '%s\n' "padding padding padding padding padding padding padding padding padding padding"
+    done
+  } > "$large"
+  [ "$(wc -c < "$large" | tr -d ' ')" -gt 65536 ]
+  run "$SCRIPT" --shape cra-refuter --path "$large"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
 }
 
 # ---------------------------------------------------------------------------

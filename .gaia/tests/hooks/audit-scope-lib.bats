@@ -2,10 +2,11 @@
 # Structural, regression, and invariant tests for the shared ownership
 # classifier (UAT-015), covering the parts owned by the ownership-classifier
 # phase: exactly-one-classifier (part 1), every-consumer-sources-it
-# (part 2), the four in-scope sets staying separately named (part 3), the
-# golden behavior table (part 4), and
-# absent-module -> DENY (part 5). Plus two further invariants: SEC-007 (every
-# machinery path is roster-claimed) and the scrub-marker survival check.
+# (part 2), the remaining in-scope sets staying separately named plus the
+# retired auditable-base literal's pins (part 3), the golden behavior table
+# (part 4), and absent-module -> DENY (part 5). Plus two further invariants:
+# SEC-007 (every machinery path is roster-claimed) and the scrub-marker
+# survival check.
 #
 # Assertion style (`.claude/rules/bats-assertions.md`): macOS's system
 # `/bin/bash` (3.2) does not fail a bats @test on a false bare `[[ ... ]]`
@@ -95,36 +96,29 @@ extract_function() {
 }
 
 # ---------------------------------------------------------------------------
-# Part 3: the four in-scope sets stay separately named. Each of
-# audit_in_auditable_base, audit_out_of_scope_allowlisted, and
-# audit_self_mod_classify is a distinct symbol, and none is defined in terms
-# of another. CI's has_source stays a workflow-local grep pair, never
-# replaced by a call into the module.
+# Part 3: the remaining in-scope sets stay separately named. Each of
+# audit_out_of_scope_allowlisted and audit_self_mod_classify is a distinct
+# symbol, and neither is defined in terms of the other. CI's has_source stays
+# a workflow-local grep pair, never replaced by a call into the module. No
+# routing decision consults a hardcoded auditable-base literal: the function
+# that once held one, audit_in_auditable_base, is gone, and ownership is a
+# roster-declared two-tier precedence instead (claimant globs, then the
+# default member's own declared globs).
 # ---------------------------------------------------------------------------
 
-@test "the three path-classification functions are distinct symbols" {
-  grep -qF "audit_in_auditable_base() {" "$SCOPE_LIB" || return 1
+@test "the two path-classification functions are distinct symbols" {
   grep -qF "audit_out_of_scope_allowlisted() {" "$SCOPE_LIB" || return 1
   grep -qF "audit_self_mod_classify() {" "$SCOPE_LIB" || return 1
 }
 
-@test "audit_in_auditable_base is not defined in terms of the other two" {
-  body="$(extract_function "$SCOPE_LIB" audit_in_auditable_base)"
-  grep -qF "audit_out_of_scope_allowlisted" <<<"$body" && return 1
-  grep -qF "audit_self_mod_classify" <<<"$body" && return 1
-  true
-}
-
-@test "audit_out_of_scope_allowlisted is not defined in terms of the other two" {
+@test "audit_out_of_scope_allowlisted is not defined in terms of audit_self_mod_classify" {
   body="$(extract_function "$SCOPE_LIB" audit_out_of_scope_allowlisted)"
-  grep -qF "audit_in_auditable_base" <<<"$body" && return 1
   grep -qF "audit_self_mod_classify" <<<"$body" && return 1
   true
 }
 
-@test "audit_self_mod_classify is not defined in terms of the other two, and stays a three-way classification" {
+@test "audit_self_mod_classify is not defined in terms of audit_out_of_scope_allowlisted, and stays a three-way classification" {
   body="$(extract_function "$SCOPE_LIB" audit_self_mod_classify)"
-  grep -qF "audit_in_auditable_base" <<<"$body" && return 1
   grep -qF "audit_out_of_scope_allowlisted" <<<"$body" && return 1
   grep -qF "out-of-scope" <<<"$body" || return 1
   grep -qF "audit-workflow" <<<"$body" || return 1
@@ -138,6 +132,75 @@ extract_function() {
   grep -qF "audit-scope.sh" "$wf" && return 1
   grep -qF "audit_out_of_scope_allowlisted" "$wf" && return 1
   true
+}
+
+@test "no routing decision consults a hardcoded auditable-base literal, and the symbol is gone" {
+  body="$(extract_function "$SCOPE_LIB" _audit_scope_owner_of)"
+  [ -n "$body" ] || return 1
+  grep -qF "audit_in_auditable_base" <<<"$body" && return 1
+  grep -qF "audit_in_auditable_base" "$SCOPE_LIB" && return 1
+  true
+}
+
+# ---------------------------------------------------------------------------
+# UAT-015: a claimant beats an overlapping default glob regardless of roster
+# order. A fabricated two-member fixture declares a claimant glob
+# (app/special/**) that is a strict subset of the default's own declared glob
+# (app/**), so a path under app/special/ matches both. Written in both roster
+# orders (default first, default last) to prove the precedence is structural
+# (claimant tier is exhausted before the default tier is ever consulted),
+# never an accident of which entry the roster lists first.
+# ---------------------------------------------------------------------------
+
+@test "UAT-015: claimant wins over an overlapping default glob in either roster order" {
+  ROOT_DEFAULT_FIRST=$(mktemp -d -t audit-scope-order-a-XXXXXX)
+  mkdir -p "$ROOT_DEFAULT_FIRST/.gaia"
+  cat > "$ROOT_DEFAULT_FIRST/.gaia/audit-ci.yml" <<'YAML'
+auditors:
+  - name: code-audit-example
+    globs:
+      - "app/**"
+    scope: adopter
+    push_fixes: true
+    default: true
+  - name: code-audit-claimant
+    globs:
+      - "app/special/**"
+    scope: adopter
+    push_fixes: false
+YAML
+
+  ROOT_DEFAULT_LAST=$(mktemp -d -t audit-scope-order-b-XXXXXX)
+  mkdir -p "$ROOT_DEFAULT_LAST/.gaia"
+  cat > "$ROOT_DEFAULT_LAST/.gaia/audit-ci.yml" <<'YAML'
+auditors:
+  - name: code-audit-claimant
+    globs:
+      - "app/special/**"
+    scope: adopter
+    push_fixes: false
+  - name: code-audit-example
+    globs:
+      - "app/**"
+    scope: adopter
+    push_fixes: true
+    default: true
+YAML
+
+  run bash -c '
+    . "$1"
+    audit_scope_init "$2"
+    audit_owner_for_path "app/special/x.ts"
+    audit_scope_init "$3"
+    audit_owner_for_path "app/special/x.ts"
+  ' _ "$SCOPE_LIB" "$ROOT_DEFAULT_FIRST" "$ROOT_DEFAULT_LAST"
+
+  rm -rf "$ROOT_DEFAULT_FIRST" "$ROOT_DEFAULT_LAST"
+
+  [ "$status" -eq 0 ]
+  expected="code-audit-claimant
+code-audit-claimant"
+  [ "$output" = "$expected" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -260,7 +323,9 @@ golden_run_hook() {
   golden_setup
   # Only the installed workflow changes; the template is already on the base
   # (seeded in golden_setup) with identical bytes, so the blob-identity check
-  # passes and the frontend-only self-mod bypass clears the merge.
+  # passes and the self-mod-only bypass clears the merge. The workflow routes to
+  # code-audit-github-workflows, so the bypass clears a member that is not the
+  # default: it proves a property of the PR, not of one member.
   golden_commit ".github/workflows/code-review-audit.yml" "name: Code Review Audit"
   golden_run_hook
   golden_teardown
@@ -322,13 +387,22 @@ golden_run_hook() {
 # and the builtin fallback (_audit_scope_builtin_roster, consulted when that
 # config is absent or unparseable). Bats suites are release-excluded, so this
 # only ever runs where the maintainer members exist.
+#
+# One named exception: `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`
+# is machinery (its bytes must still rotate every member's digest) but
+# deliberately owns no reviewer. It is a pure byte-identical copy of its
+# source template; a reviewer reading it decides nothing the source review
+# did not already decide. The drift guard covering all twelve workflow
+# templates under `.gaia/cli/templates/workflows/` is the pin that keeps this
+# carve-out honest: it fails if any of the twelve drifts from its source.
 # ---------------------------------------------------------------------------
 
 # Assert audit_owner_for_path returns a non-empty owner for every machinery
 # path in $AUDIT_MACHINERY_PATHS, against whichever roster the caller already
-# init'd. Real files under a `/**` prefix are enumerated from $REPO_ROOT; only
-# the roster source (committed config vs builtin fallback) differs per caller.
-# Ends in the pass/fail check, so it is safe as a @test's final command.
+# init'd, except the one named ownerless-by-design artifact above. Real files
+# under a `/**` prefix are enumerated from $REPO_ROOT; only the roster source
+# (committed config vs builtin fallback) differs per caller. Ends in the
+# pass/fail check, so it is safe as a @test's final command.
 assert_every_machinery_path_owned() {
   local entry prefix rep owner tracked fail=0
   while IFS= read -r entry; do
@@ -351,6 +425,10 @@ assert_every_machinery_path_owned() {
           fi
         done < <(git -C "$REPO_ROOT" ls-files "$prefix")
         ;;
+      ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl")
+        # Named exactly, not a relaxed `*)` arm: every OTHER machinery path
+        # still fails closed on a gap. See the SEC-007 header above.
+        ;;
       *)
         owner="$(audit_owner_for_path "$entry")"
         if [ -z "$owner" ]; then
@@ -365,7 +443,7 @@ EOF
   [ "$fail" -eq 0 ]
 }
 
-@test "SEC-007: audit_owner_for_path returns a non-empty member for every machinery path" {
+@test "SEC-007: audit_owner_for_path returns a non-empty member for every machinery path (one named carve-out)" {
   # shellcheck source=/dev/null
   . "$SCOPE_LIB"
   # shellcheck source=/dev/null
@@ -375,7 +453,7 @@ EOF
   assert_every_machinery_path_owned
 }
 
-@test "SEC-007 (fallback): the builtin roster claims every machinery path too" {
+@test "SEC-007 (fallback): the builtin roster claims every machinery path too (one named carve-out)" {
   # shellcheck source=/dev/null
   . "$SCOPE_LIB"
   # shellcheck source=/dev/null
@@ -384,8 +462,10 @@ EOF
   # _audit_scope_builtin_roster: the roster under test is the builtin one. It
   # must grant code-audit-maintainer-shell the same declarative surfaces the
   # committed roster does (.gaia/audit-ci.yml, .gaia/VERSION, the agent defs,
-  # .claude/rules/**, the bundled workflow .tmpl), or a degraded merge gate
-  # dispatches nobody for a change to one of them and merges it unaudited.
+  # .claude/rules/**), or a degraded merge gate dispatches nobody for a
+  # change to one of them and merges it unaudited. The one named carve-out
+  # above still applies: the pinned workflow-template artifact owns no
+  # reviewer under either roster.
   EMPTY_ROOT=$(mktemp -d -t audit-scope-builtin-XXXXXX)
   audit_scope_init "$EMPTY_ROOT"
   rm -rf "$EMPTY_ROOT"
@@ -396,7 +476,9 @@ EOF
 # ---------------------------------------------------------------------------
 # The scrub markers survive. Balanced start/end markers, and a marker-
 # stripped copy of the module (simulating the release scrub) yields a
-# roster naming exactly one member, code-audit-frontend.
+# roster naming exactly two members, code-audit-frontend (the default) and
+# code-audit-github-workflows (a claimant, adopter-scope, unmarked): the
+# maintainer-only members are gone, and everything outside the markers stays.
 # ---------------------------------------------------------------------------
 
 @test "scrub markers are balanced in audit-scope.sh" {
@@ -409,7 +491,7 @@ EOF
   [ "$start_line" -lt "$end_line" ]
 }
 
-@test "a marker-stripped copy of audit-scope.sh yields a single-member (frontend-only) roster" {
+@test "a marker-stripped copy of audit-scope.sh yields exactly the frontend and workflows members" {
   SCRUBBED=$(mktemp -t audit-scope-scrubbed-XXXXXX)
   awk '
     /gaia:maintainer-only:start/ { skip = 1; next }
@@ -419,10 +501,14 @@ EOF
 
   EMPTY_ROOT=$(mktemp -d -t audit-scope-noroster-XXXXXX)
 
+  # Probe a path each of the two surviving members owns, plus a maintainer-
+  # only path that must now be ownerless: this exercises the new member
+  # rather than merely asserting its absence from a stripped maintainer glob.
   run bash -c '
     . "$1"
     audit_scope_init "$2"
     audit_owner_for_path "app/x.ts"
+    audit_owner_for_path ".github/workflows/foo.yml"
     audit_owner_for_path ".gaia/scripts/y.sh"
   ' _ "$SCRUBBED" "$EMPTY_ROOT"
 
@@ -430,5 +516,7 @@ EOF
   rm -rf "$EMPTY_ROOT"
 
   [ "$status" -eq 0 ]
-  [ "$output" = "code-audit-frontend" ]
+  expected="code-audit-frontend
+code-audit-github-workflows"
+  [ "$output" = "$expected" ]
 }

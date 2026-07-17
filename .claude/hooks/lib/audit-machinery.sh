@@ -36,6 +36,7 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .claude/hooks/post-audit-status.sh
 .claude/hooks/audit-stamp-trailer.sh
 .claude/hooks/local-janitor.sh
+.claude/hooks/block-selfheal-paths.sh
 .claude/hooks/lib/**
 .gaia/scripts/audit-noop-detect.sh
 .gaia/scripts/link-worktree.sh
@@ -47,6 +48,7 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .claude/agents/code-audit-frontend.md
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md
+.claude/agents/code-audit-github-workflows.md
 .claude/rules/**
 .gaia/VERSION
 EOF

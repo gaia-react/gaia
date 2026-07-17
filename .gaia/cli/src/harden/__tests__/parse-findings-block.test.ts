@@ -1,5 +1,6 @@
-import {describe, expect, test} from 'vitest';
+import {describe, expect, test, vi} from 'vitest';
 import {parseFindingsBlock} from '../parse-findings-block.js';
+import type {RejectReason} from '../parse-findings-block.js';
 
 const block = (payload: string): string =>
   [
@@ -88,5 +89,101 @@ describe('parseFindingsBlock', () => {
     expect(parseFindingsBlock(body)).toEqual([
       {area_tags: ['app'], finding_class: 'knip/exports', severity: 'warning'},
     ]);
+  });
+
+  test('fires onReject naming the unaccepted severity token, UAT-036', () => {
+    const body = block(
+      JSON.stringify({
+        findings: [
+          {
+            area_tags: ['app'],
+            finding_class: 'holistic/missing-auth-check',
+            severity: 'Critical',
+          },
+        ],
+        pr_number: 1,
+        schema: 1,
+      })
+    );
+    const onReject = vi.fn();
+
+    expect(parseFindingsBlock(body, onReject)).toEqual([]);
+    expect(onReject).toHaveBeenCalledExactlyOnceWith('severity', 'Critical');
+  });
+
+  test('fires onReject for a missing finding_class', () => {
+    const body = block(
+      JSON.stringify({
+        findings: [{area_tags: [], severity: 'warning'}],
+        pr_number: 1,
+        schema: 1,
+      })
+    );
+    const onReject = vi.fn();
+
+    expect(parseFindingsBlock(body, onReject)).toEqual([]);
+    expect(onReject).toHaveBeenCalledExactlyOnceWith(
+      'finding_class',
+      'undefined'
+    );
+  });
+
+  test('fires onReject for malformed area_tags', () => {
+    const body = block(
+      JSON.stringify({
+        findings: [
+          {
+            area_tags: [1, 2],
+            finding_class: 'knip/exports',
+            severity: 'warning',
+          },
+        ],
+        pr_number: 1,
+        schema: 1,
+      })
+    );
+    const onReject = vi.fn();
+
+    expect(parseFindingsBlock(body, onReject)).toEqual([]);
+    expect(onReject).toHaveBeenCalledExactlyOnceWith('area_tags', '[1,2]');
+  });
+
+  test('fires onReject for a non-object entry', () => {
+    const body = block(
+      JSON.stringify({findings: ['not-an-object'], pr_number: 1, schema: 1})
+    );
+    const onReject = vi.fn();
+
+    expect(parseFindingsBlock(body, onReject)).toEqual([]);
+    expect(onReject).toHaveBeenCalledExactlyOnceWith('shape', 'not-an-object');
+  });
+
+  test('never fires onReject on a null return (no parseable block)', () => {
+    const onReject = vi.fn();
+
+    expect(parseFindingsBlock('just a normal comment', onReject)).toBeNull();
+    expect(
+      parseFindingsBlock(
+        [
+          '<!-- gaia-harden:findings:start -->',
+          '<!-- { not json } -->',
+          '<!-- gaia-harden:findings:end -->',
+        ].join('\n'),
+        onReject
+      )
+    ).toBeNull();
+    expect(onReject).not.toHaveBeenCalled();
+  });
+
+  test('accepts every declared reject reason', () => {
+    // Type-level assertion: RejectReason is exactly the four drop paths.
+    const reasons: RejectReason[] = [
+      'area_tags',
+      'finding_class',
+      'severity',
+      'shape',
+    ];
+
+    expect(reasons).toHaveLength(4);
   });
 });

@@ -13,7 +13,10 @@
 # they may legitimately narrate the removal historically. This file itself is
 # excluded too: it is the absence assertion, so it names the retired symbol on
 # purpose (once committed it is tracked, and `git grep` would otherwise match
-# its own text).
+# its own text). The routing-parity fixture
+# (.gaia/tests/hooks/fixtures/audit-routing-before.tsv) is excluded on the same
+# grounds: it is a generated enumeration of every tracked path, so it carries
+# this test's own filename as a data row, never a call to the retired script.
 #
 # Parallel-authoring note: two live call sites (spec-archive-merged.sh via
 # spec-close.md, and plan-archive.sh) are removed by sibling tasks in the same
@@ -37,7 +40,8 @@ setup() {
   run git -C "$REPO_ROOT" grep -l cost-consolidate -- \
     .specify .gaia .claude wiki \
     ':!.gaia/local' ':!.gaia/manifest.json' ':!CHANGELOG.md' ':!wiki/log.md' \
-    ':!.gaia/scripts/tests/cost-consolidate-absence.bats'
+    ':!.gaia/scripts/tests/cost-consolidate-absence.bats' \
+    ':!.gaia/tests/hooks/fixtures/audit-routing-before.tsv'
   # git grep exits 1 (not 0) when it finds no match; the assertion that
   # matters is emptiness of $output, not the exit code.
   [ -z "$output" ]

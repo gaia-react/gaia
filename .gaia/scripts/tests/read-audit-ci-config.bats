@@ -22,11 +22,12 @@ setup() {
   mkdir -p "$SANDBOX/.gaia"
   ( cd "$SANDBOX" && git init --quiet )
 
-  # The resolver skips the required-check confirmation under GitHub Actions,
-  # so neutralize the ambient value: this suite runs IN CI, and every test
-  # below asserts the local merge-path behavior (confirmation active) unless it
-  # sets GITHUB_ACTIONS itself. The CI-context test sets it explicitly
-  # per-invocation.
+  # GITHUB_ACTIONS has no bearing on resolved_mode (UAT-003): confirmation is
+  # advisory-only and runs identically regardless of who is asking. Neutralize
+  # the ambient value anyway, since this suite runs IN CI, so a test that does
+  # not set GITHUB_ACTIONS itself is not accidentally influenced by running
+  # inside CI. The invariance test sets it explicitly in both arms to prove
+  # the claim rather than relying on this default.
   unset GITHUB_ACTIONS
 }
 
@@ -98,7 +99,7 @@ default_block() {
 # The per-author key defaults, in emit order. Kept in one place so every
 # exact-match assertion stays in sync with the script's contract.
 default_new_keys_block() {
-  printf 'default_mode=ci\noverride_label=run-audit\naudit_authors='
+  printf 'default_mode=local\noverride_label=run-audit\naudit_authors='
 }
 
 # The retrigger_workflows default uses GitHub Actions multiline-output
@@ -483,16 +484,18 @@ push_fixes: false"
 
 # ===========================================================================
 # Per-author audit-mode resolver: new keys, --resolve-author, precedence,
-# normalization, required-check verification (fail-closed).
+# normalization, required-check confirmation (advisory-only).
 # ===========================================================================
 
 # --- 24. New keys: absent → defaults in the emit-all path -------------------
 
-@test "new keys: absent default_mode/override_label/audit_authors emit ci/run-audit/empty" {
-  # No config file at all; the three new keys take their defaults.
+@test "new keys: absent default_mode/override_label/audit_authors emit local/run-audit/empty" {
+  # No config file at all; the three new keys take their defaults. UAT-002:
+  # the built-in fallback for default_mode is local, agreeing with the mode
+  # the product ships.
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [[ "$output" == *"default_mode=ci"$'\n'* ]]
+  [[ "$output" == *"default_mode=local"$'\n'* ]]
   [[ "$output" == *"override_label=run-audit"$'\n'* ]]
   [[ "$output" == *"audit_authors="$'\n'* ]]
 }
@@ -525,6 +528,56 @@ push_fixes: false"
   [[ "$output" == *"default_mode=local"$'\n'* ]]
   [[ "$output" == *"default_mode=off is not a valid audit mode"* ]]
   [[ "$output" == *"coercing to local"* ]]
+}
+
+# --- 25b. UAT-001 / UAT-002 on the resolve path: local is both the explicit
+#          and the built-in-fallback resolution ------------------------------
+
+@test "resolve-author: explicit default_mode: local resolves local for any author (UAT-001)" {
+  write_config "default_mode: local"
+  run resolve_in_sandbox --resolve-author anyone
+  [ "$status" -eq 0 ]
+  grep -qF -- "resolved_mode=local" <<<"$output"
+}
+
+@test "resolve-author: no default_mode key at all falls back to local, not ci (UAT-002)" {
+  # No config file / no default_mode key: the built-in FALLBACK_MODE is
+  # local, not ci. No audit_authors pin, no override label, no fork.
+  run resolve_in_sandbox --resolve-author anyone
+  [ "$status" -eq 0 ]
+  grep -qF -- "resolved_mode=local" <<<"$output" || return 1
+  grep -qF -- "should_run=false" <<<"$output"
+}
+
+# --- 25c. Precedence rule 0: fork PR resolves ci, ahead of everything (UAT-005) ---
+
+@test "resolve-author: PR_IS_FORK=true resolves ci regardless of default_mode" {
+  write_config "default_mode: local"
+  run env PR_IS_FORK=true bash -c '
+    cd "$1" && PATH="/usr/bin:/bin" "$2" --resolve-author anyone
+  ' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "resolved_mode=ci" <<<"$output" || return 1
+  grep -qF -- "should_run=true" <<<"$output"
+}
+
+@test "resolve-author: PR_IS_FORK=true overrides an audit_authors pin naming that author local" {
+  # Rule 0 sits ahead of the author map: a pinned local author on a fork PR
+  # must still resolve ci.
+  write_config "default_mode: ci
+audit_authors: \"alice=local\""
+  run env PR_IS_FORK=true bash -c '
+    cd "$1" && PATH="/usr/bin:/bin" "$2" --resolve-author alice
+  ' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "resolved_mode=ci" <<<"$output"
+}
+
+@test "resolve-author: PR_IS_FORK absent does not force ci" {
+  write_config "default_mode: local"
+  run resolve_in_sandbox --resolve-author anyone
+  [ "$status" -eq 0 ]
+  grep -qF -- "resolved_mode=local" <<<"$output"
 }
 
 # --- 26. Precedence rule 1: override label present --------------------------
@@ -627,53 +680,56 @@ audit_authors: \"stevensacks=local\""
   [[ "$output" == *"should_run=true"$'\n'* ]]
 }
 
-# --- 34. Required-check fail-closed (BLOCKER) ------------------------------
+# --- 34. Required-check confirmation is advisory only (UAT-004) -----------
 
-@test "resolve-author: local mode forces ci when GAIA-Audit required check unconfirmable (fail-closed)" {
+@test "resolve-author: local mode with GAIA-Audit unconfirmable stays local, warns advisory-only (UAT-004)" {
   # No gh on PATH (system bins only) → required_check_confirmed returns
-  # non-zero → a would-be local resolution is forced to ci.
+  # non-zero. Confirmation is advisory only: it warns naming both protection
+  # models it tried, and never changes resolved_mode or should_run.
   write_config "default_mode: local"
   run resolve_in_sandbox --resolve-author anyone
   [ "$status" -eq 0 ]
-  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
-  [[ "$output" == *"should_run=true"$'\n'* ]]
-  [[ "$output" == *"GAIA-Audit required check not confirmed"* ]]
-  [[ "$output" == *"forcing ci (fail-closed)"* ]]
+  grep -qF -- "resolved_mode=local" <<<"$output" || return 1
+  grep -qF -- "should_run=false" <<<"$output" || return 1
+  grep -qF -- "GAIA-Audit registration not confirmed" <<<"$output" || return 1
+  grep -qF -- "classic branch protection" <<<"$output" || return 1
+  grep -qF -- "repository ruleset" <<<"$output" || return 1
+  grep -qF -- "fail-closed" <<<"$output" && return 1
+  return 0
 }
 
-# --- 34b. CI context: local honored without the branch-protection re-check --
+# --- 34b. resolved_mode is invariant to GITHUB_ACTIONS (UAT-003) -----------
 
-@test "resolve-author: CI context honors local without the required-check re-check" {
-  # Under GitHub Actions the confirmation's branch-protection read is
-  # un-runnable (GITHUB_TOKEN lacks admin; ruleset repos 404), so it is
-  # skipped and the resolved local mode is honored -- otherwise every
-  # local-mode author eats a redundant CI audit that duplicates the local run.
-  # Mirrors convene's config (stevensacks pinned local). A recording stub
-  # proves the branch-protection API is never hit.
-  stub_gh_recording
-  GH_LOG="$SANDBOX/gh.log"
-  : > "$GH_LOG"
+@test "resolve-author: resolved_mode is the same whether GITHUB_ACTIONS is set or unset" {
+  # Same config, same author, same (unconfirmable) required-check state.
+  # setup() already unsets GITHUB_ACTIONS as a harness default; this test does
+  # not rely on that alone, it sets/unsets explicitly inside its own body per
+  # the task doc's note on the pre-existing setup() behavior.
   write_config "default_mode: local
 audit_authors: \"stevensacks=local\""
-  run env GITHUB_ACTIONS=true GH_LOG="$GH_LOG" bash -c '
-    cd "$1" && PATH="$1/bin:/usr/bin:/bin" "$2" --resolve-author stevensacks
+
+  run env GITHUB_ACTIONS=true bash -c '
+    cd "$1" && PATH="/usr/bin:/bin" "$2" --resolve-author stevensacks
   ' _ "$SANDBOX" "$SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"resolved_mode=local"$'\n'* ]]
-  [[ "$output" == *"should_run=false"$'\n'* ]]
-  [[ "$output" != *"fail-closed"* ]]
-  [[ "$output" == *"CI context"* ]]
-  # The branch-protection API was never called.
-  run grep -F 'api repos/' "$GH_LOG"
-  [ "$status" -ne 0 ]
+  mode_actions="$(printf '%s\n' "$output" | grep '^resolved_mode=')"
+
+  run env -u GITHUB_ACTIONS bash -c '
+    cd "$1" && PATH="/usr/bin:/bin" "$2" --resolve-author stevensacks
+  ' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  mode_no_actions="$(printf '%s\n' "$output" | grep '^resolved_mode=')"
+
+  [ "$mode_actions" = "$mode_no_actions" ]
+  [ "$mode_actions" = "resolved_mode=local" ]
 }
 
 # --- 35. ci resolution does not invoke branch-protection API ---------------
 
 @test "resolve-author: ci resolution does not invoke branch-protection API" {
   # A recording gh stub logs every call. A ci resolution must never reach
-  # the branch-protection API (no api call logged), and must not emit a
-  # fail-closed warning (that path is local-only).
+  # the branch-protection API (no api call logged): confirmation only runs
+  # when resolved_mode is local.
   stub_gh_recording
   GH_LOG="$SANDBOX/gh.log"
   : > "$GH_LOG"
@@ -761,20 +817,23 @@ STUB
   grep -qF -- "resolved_mode=local" <<<"$output"
 }
 
-# --- 45. Neither model confirms GAIA-Audit -> fail-closed to ci -------------
+# --- 45. Neither model confirms GAIA-Audit -> stays local, warns advisory --
 
-@test "resolve-author: neither classic nor ruleset confirms GAIA-Audit forces ci (fail-closed)" {
+@test "resolve-author: neither classic nor ruleset confirms GAIA-Audit still stays local, warns advisory-only" {
   stub_gh_neither_confirms
   write_config "default_mode: local"
   run resolve_in_sandbox STUB_PATH --resolve-author anyone
   [ "$status" -eq 0 ]
-  grep -qF -- "resolved_mode=ci" <<<"$output" || return 1
-  grep -qF -- "GAIA-Audit required check not confirmed" <<<"$output" || return 1
-  grep -qF -- "forcing ci (fail-closed)" <<<"$output"
+  grep -qF -- "resolved_mode=local" <<<"$output" || return 1
+  grep -qF -- "GAIA-Audit registration not confirmed" <<<"$output" || return 1
+  grep -qF -- "fail-closed" <<<"$output" && return 1
+  return 0
 }
 
-# --- 46. Team-wide mode invariance: resolved_mode ignores dispatch (UAT-003,
-#          AUDIT COV-005) -----------------------------------------------------
+# --- 46. Team-wide mode invariance: resolved_mode ignores dispatch ---------
+#          (pre-dates SPEC-045; its old "UAT-003"/"COV-005" tags belonged to
+#          an earlier plan's numbering and do not refer to SPEC-045's UAT-003
+#          or AUDIT.md's COV-005, both of which are unrelated claims)
 
 @test "resolve-author: resolved_mode is independent of which files changed / auditors dispatched (team-wide mode)" {
   # Two repo states with entirely different changed surfaces (a frontend file

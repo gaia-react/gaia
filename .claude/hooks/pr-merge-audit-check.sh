@@ -675,6 +675,17 @@ fi
 
 all_cleared=1
 report=""
+
+# The self-mod-only bypass proves a property of the PR, not of one member: the
+# only in-scope changed path is the audit workflow, and its committed bytes are
+# a verbatim copy of the bundled template. Any member dispatched under that
+# condition is therefore dispatched for that one pinned artifact alone, and a
+# reviewer reading it decides nothing a script has not already decided. Resolve
+# it once here rather than per member: the predicate is a repo-wide read, and
+# every member's answer to it is the same.
+self_mod_only=0
+check_self_mod_only_update_pr && self_mod_only=1
+
 while IFS= read -r m; do
   [ -n "$m" ] || continue
 
@@ -691,6 +702,11 @@ while IFS= read -r m; do
     fi
     if [ "$m_refused" -eq 0 ] && [ -n "$m_digest" ]; then
       clearance_member_cleared "$root" "$m_digest" "$m" && member_cleared=1
+    fi
+    # A live refusal stays absolute (C6): a member that refused this digest is
+    # never cleared by the bypass.
+    if [ "$m_refused" -eq 0 ] && [ "$member_cleared" -eq 0 ] && [ "$self_mod_only" -eq 1 ]; then
+      member_cleared=1
     fi
   fi
 
