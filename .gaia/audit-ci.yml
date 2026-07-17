@@ -48,21 +48,40 @@ retrigger_workflows:
 # Code Audit Team roster. Each entry maps file-globs to a specialized auditor
 # member; the dispatch resolver (.gaia/scripts/resolve-audit-members.sh) reads
 # this list, and the shared GAIA-Audit gate requires a per-member clearance for
-# every member a diff dispatches. `default: true` marks the catch-all member
-# that owns every in-scope-but-unclaimed file (the CI has_source surface: app/,
-# test/, .storybook/, .github/workflows/, and root build config). Exactly one
-# entry carries `default: true`. Entries with `scope: maintainer-only` are
-# wrapped in the marker comments below and stripped from the adopter bundle at
-# release time, so an adopter clone audits only adopter-scope surfaces.
+# every member a diff dispatches. Every member, the default included, declares
+# its own domain here: a claimant's globs are matched first, first-match-wins
+# over roster order; the default's globs are evaluated only after every
+# claimant has failed to match. Exactly one entry carries `default: true`.
+# Entries with `scope: maintainer-only` are wrapped in the marker comments
+# below and stripped from the adopter bundle at release time, so an adopter
+# clone audits only adopter-scope surfaces.
 auditors:
   - name: code-audit-frontend
     globs:
       - "app/**"
       - "test/**"
       - ".storybook/**"
+      - ".github/workflows/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig*.json"
+      - "*.config.ts"
+      - "*.config.mts"
+      - "*.config.mjs"
+      - "*.config.cjs"
+      - "*.config.js"
     scope: adopter
     push_fixes: true
     default: true
+  - name: code-audit-github-workflows
+    globs:
+      - ".github/workflows/*.yml"
+      - ".github/workflows/*.yaml"
+      - ".github/actions/**/*.yml"
+      - ".github/actions/**/*.yaml"
+    scope: adopter
+    push_fixes: false
   # gaia:maintainer-only:start
   - name: code-audit-maintainer-shell
     globs:
@@ -76,12 +95,14 @@ auditors:
       - ".gaia/VERSION"
       - ".claude/agents/code-audit-*.md"
       - ".claude/rules/**"
-      - ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
     scope: maintainer-only
     push_fixes: false
   - name: code-audit-maintainer-node
     globs:
-      - ".gaia/cli/src/**"
+      - ".gaia/cli/src/**/*.ts"
+      - ".gaia/cli/src/**/*.tmpl"
+      - ".gaia/cli/src/**/*.snap"
+      - ".gaia/cli/src/**/.gitkeep"
     scope: maintainer-only
     push_fixes: false
   # gaia:maintainer-only:end

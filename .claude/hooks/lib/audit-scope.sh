@@ -5,17 +5,19 @@
 # never once per path: this is a sourced library with batch predicates that
 # consume a path list, never a process spawned per path.
 #
-# Four different questions live here, and they are NOT the same question:
+# Three different questions live here, and they are NOT the same question:
 #
-#   audit_in_auditable_base        the default member's implicit domain
-#                                  (mirrors CI's own has_source gate)
 #   audit_out_of_scope_allowlisted the merge gate's out-of-scope allowlist,
 #                                  consulted only on its legacy branch
 #   audit_self_mod_classify        an ORDERED THREE-WAY classification
 #                                  (out-of-scope / the audit workflow itself /
 #                                  in-scope), never a boolean
 #   audit_owner_for_path           roster ownership: which member (if any)
-#                                  owns a path, by precedence
+#                                  owns a path, in two precedence tiers:
+#                                  every claimant's globs first, first-match-
+#                                  wins over roster order, then the default
+#                                  member's own declared globs; otherwise
+#                                  ownerless
 #
 # Conflating any two of these is a merge-gate bypass. In particular, the
 # out-of-scope allowlist is NOT an audit-skip predicate: a path can be both
@@ -31,24 +33,6 @@
 #
 # Bash 3.2 compatible (macOS default): no associative arrays, no `mapfile`,
 # no `${var^^}`. Never `cd`.
-
-# --- The default member's implicit domain ------------------------------------
-#
-# A changed file not claimed by a specialized member and not in this set is
-# out of scope for the default member. Directory prefixes: app/, test/,
-# .storybook/, .github/workflows/. Root files (no slash): package.json,
-# pnpm-lock.yaml, pnpm-workspace.yaml, tsconfig*.json, *.config.{ts,mts,mjs,cjs,js}.
-
-audit_in_auditable_base() {
-  case "$1" in
-    app/*|test/*|.storybook/*|.github/workflows/*) return 0 ;;
-    */*) return 1 ;;
-    package.json|pnpm-lock.yaml|pnpm-workspace.yaml) return 0 ;;
-    tsconfig*.json) return 0 ;;
-    *.config.ts|*.config.mts|*.config.mjs|*.config.cjs|*.config.js) return 0 ;;
-    *) return 1 ;;
-  esac
-}
 
 # --- The merge gate's out-of-scope allowlist ---------------------------------
 #
@@ -103,7 +87,8 @@ audit_self_mod_classify() {
 # for a change to it. The maintainer-only entries are wrapped in
 # `# gaia:maintainer-only` markers;
 # the release scrub strips marker-delimited blocks from shipped `.sh` files,
-# so a shipped script's fallback carries only the default (frontend) member.
+# so a shipped script's fallback carries only the default (frontend) member
+# and the workflows member, both adopter-scope.
 # These markers MUST survive verbatim: dropping, reflowing, or moving them
 # makes an adopter's merge gate demand clearances from members whose agent
 # definitions the adopter does not have, a permanent local merge deadlock.
@@ -116,9 +101,27 @@ auditors:
       - "app/**"
       - "test/**"
       - ".storybook/**"
+      - ".github/workflows/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig*.json"
+      - "*.config.ts"
+      - "*.config.mts"
+      - "*.config.mjs"
+      - "*.config.cjs"
+      - "*.config.js"
     scope: adopter
     push_fixes: true
     default: true
+  - name: code-audit-github-workflows
+    globs:
+      - ".github/workflows/*.yml"
+      - ".github/workflows/*.yaml"
+      - ".github/actions/**/*.yml"
+      - ".github/actions/**/*.yaml"
+    scope: adopter
+    push_fixes: false
   # gaia:maintainer-only:start
   - name: code-audit-maintainer-shell
     globs:
@@ -132,12 +135,14 @@ auditors:
       - ".gaia/VERSION"
       - ".claude/agents/code-audit-*.md"
       - ".claude/rules/**"
-      - ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
     scope: maintainer-only
     push_fixes: false
   - name: code-audit-maintainer-node
     globs:
-      - ".gaia/cli/src/**"
+      - ".gaia/cli/src/**/*.ts"
+      - ".gaia/cli/src/**/*.tmpl"
+      - ".gaia/cli/src/**/*.snap"
+      - ".gaia/cli/src/**/.gitkeep"
     scope: maintainer-only
     push_fixes: false
   # gaia:maintainer-only:end
@@ -145,10 +150,17 @@ YAML
 }
 
 # Reads a YAML `auditors:` list-of-maps on stdin and emits one record per line:
-#   DEFAULT <name>            the single default member's name
-#   GLOB <name> <regex>       one specialized-member glob, pre-compiled to an
-#                             anchored ERE (default-member globs are NOT emitted;
-#                             the default owns the auditable-base set instead)
+#   DEFAULT <name>              the single default member's name
+#   GLOB <name> <regex>         one CLAIMANT member's glob, pre-compiled to an
+#                               anchored ERE
+#   DEFAULTGLOB <name> <regex>  one DEFAULT member's glob, pre-compiled to an
+#                               anchored ERE; a distinct precedence tier, never
+#                               folded into GLOB (the default is the roster's
+#                               first entry and ownership resolution is
+#                               first-match-wins, so compiling its globs as
+#                               claimant globs would make it beat every
+#                               claimant and invert the precedence the whole
+#                               design depends on)
 # Member names and the compiled regexes contain no spaces, so downstream
 # `read -r kind a b` splits them cleanly.
 
@@ -188,6 +200,7 @@ _audit_scope_parse_auditors() {
       if (have_member) {
         if (is_default) {
           print "DEFAULT " member
+          for (i = 1; i <= nglobs; i++) print "DEFAULTGLOB " member " " glob_to_regex(globs[i])
         } else {
           for (i = 1; i <= nglobs; i++) print "GLOB " member " " glob_to_regex(globs[i])
         }
@@ -263,6 +276,8 @@ audit_scope_init() {
   _AUDIT_SCOPE_SPEC_COUNT=0
   _AUDIT_SCOPE_SPEC_MEMBER=()
   _AUDIT_SCOPE_SPEC_REGEX=()
+  _AUDIT_SCOPE_DEFAULT_GLOB_COUNT=0
+  _AUDIT_SCOPE_DEFAULT_REGEX=()
 
   records=""
   if [ -f "$config_file" ]; then
@@ -281,6 +296,10 @@ audit_scope_init() {
         _AUDIT_SCOPE_SPEC_MEMBER[_AUDIT_SCOPE_SPEC_COUNT]="$a"
         _AUDIT_SCOPE_SPEC_REGEX[_AUDIT_SCOPE_SPEC_COUNT]="$b"
         _AUDIT_SCOPE_SPEC_COUNT=$((_AUDIT_SCOPE_SPEC_COUNT + 1))
+        ;;
+      DEFAULTGLOB)
+        _AUDIT_SCOPE_DEFAULT_REGEX[_AUDIT_SCOPE_DEFAULT_GLOB_COUNT]="$b"
+        _AUDIT_SCOPE_DEFAULT_GLOB_COUNT=$((_AUDIT_SCOPE_DEFAULT_GLOB_COUNT + 1))
         ;;
     esac
   done <<EOF
@@ -306,8 +325,15 @@ _audit_scope_owner_of() {
     i=$((i + 1))
   done
 
-  if [ -n "$_AUDIT_SCOPE_DEFAULT_MEMBER" ] && audit_in_auditable_base "$path"; then
-    _AUDIT_SCOPE_OWNER_RESULT="$_AUDIT_SCOPE_DEFAULT_MEMBER"
+  if [ -n "$_AUDIT_SCOPE_DEFAULT_MEMBER" ]; then
+    i=0
+    while [ "$i" -lt "$_AUDIT_SCOPE_DEFAULT_GLOB_COUNT" ]; do
+      if [[ "$path" =~ ${_AUDIT_SCOPE_DEFAULT_REGEX[$i]} ]]; then
+        _AUDIT_SCOPE_OWNER_RESULT="$_AUDIT_SCOPE_DEFAULT_MEMBER"
+        return 0
+      fi
+      i=$((i + 1))
+    done
   fi
 
   return 0
@@ -316,11 +342,11 @@ _audit_scope_owner_of() {
 # --- audit_owner_for_path <path> ---------------------------------------------
 #
 # Ownership is a classification with precedence, not a per-member glob test:
-# every specialized member whose globs match the path wins; otherwise, if the
-# path is in the auditable base and a default member exists, the default
-# member; otherwise the path is ownerless. Prints the owning member name on
-# stdout, or nothing when ownerless. Requires audit_scope_init to have run
-# first; never spawns a process.
+# claimant globs are matched first, first-match-wins over roster order; the
+# default member's own declared globs form a second tier evaluated only after
+# every claimant has failed to match; otherwise the path is ownerless. Prints
+# the owning member name on stdout, or nothing when ownerless. Requires
+# audit_scope_init to have run first; never spawns a process.
 
 audit_owner_for_path() {
   _audit_scope_owner_of "$1"

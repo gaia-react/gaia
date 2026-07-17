@@ -64,6 +64,16 @@ auditors:
       - "app/**"
       - "test/**"
       - ".storybook/**"
+      - ".github/workflows/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig*.json"
+      - "*.config.ts"
+      - "*.config.mts"
+      - "*.config.mjs"
+      - "*.config.cjs"
+      - "*.config.js"
     scope: adopter
     push_fixes: true
     default: true
@@ -203,7 +213,7 @@ code-audit-maintainer-shell"
 # 8. Root build-config files (tsconfig*.json, *.config.ts) → frontend
 # ---------------------------------------------------------------------------
 
-@test "root tsconfig and *.config.ts dispatch frontend (auditable-base roots)" {
+@test "root tsconfig and *.config.ts dispatch frontend (default's own declared root globs)" {
   write_full_roster
   stage tsconfig.json vite.config.ts
   commit "chore"
