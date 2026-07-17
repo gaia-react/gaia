@@ -151,6 +151,24 @@ If the marker is withheld, surface:
 
 > Audit marker NOT written. Address findings (or explicitly acknowledge the tradeoff), commit, and re-invoke this agent on the new HEAD.
 
+## Findings sidecar (local run record)
+
+The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments for a machine-readable findings block; CI's own workflow prompt emits one only for `code-audit-frontend`, never for you. Close that gap yourself: on **every LOCAL pass**, clean or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set); it never applies there, since CI never runs you.
+
+Path: `.gaia/local/audit/${base}.code-audit-github-workflows.findings.json`, the **same** `base` you already resolve at the start of every run (see "Remit and self-skip" above), never a second base resolution. If `base` is empty (resolution failed), skip the sidecar write entirely.
+
+Shape:
+
+```json
+{"schema":1,"member":"code-audit-github-workflows","findings":[
+  {"finding_class":"holistic/secret-exposure","severity":"error","area_tags":[".github/workflows"]}
+]}
+```
+
+Every Critical / Important / Suggestion finding in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".github/actions/gaia-ci-merge-and-watch"]`). `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary: `holistic/secret-exposure` is the one seeded member that reliably fits a workflow-security finding today. A finding that maps to no seeded class (script injection, `pull_request_target` pwn-requests, unpinned actions, over-broad permissions, none of which has a seeded class yet) is simply omitted from `findings[]` (it still stands in your prose report); a finding with no stable class is not a countable finding. `"findings": []` when nothing in your report has a stable class, or your report is clean, either way is a real, meaningful record; write it, do not skip the file.
+
+Best-effort: a write failure here never blocks or alters the marker / stamp / status sequence above.
+
 ## Methodology
 
 1. Resolve the diff base and changed-file list; filter to your remit; self-skip cleanly if empty.

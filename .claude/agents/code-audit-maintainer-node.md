@@ -141,6 +141,24 @@ If the marker is withheld, surface:
 
 > Audit marker NOT written. Address the Critical finding, commit, and re-invoke this agent on the new HEAD.
 
+## Findings sidecar (local run record)
+
+The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments for a machine-readable findings block; CI never dispatches you, so nothing you find has ever reached that record before. Close that gap yourself: on **every LOCAL pass**, clean or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set); it never applies there, since CI never runs you.
+
+Path: `.gaia/local/audit/${base}.code-audit-maintainer-node.findings.json`, the **same** `base` you already resolve at the start of every run (see "Remit and self-skip" above), never a second base resolution. If `base` is empty (resolution failed), skip the sidecar write entirely.
+
+Shape:
+
+```json
+{"schema":1,"member":"code-audit-maintainer-node","findings":[
+  {"finding_class":"holistic/unhandled-promise-rejection","severity":"error","area_tags":[".gaia/cli/src"]}
+]}
+```
+
+Every Critical / Important / Suggestion finding in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".gaia/cli/src/release"]`). `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary: `holistic/unhandled-promise-rejection` and `holistic/swallowed-error` for the async/error-handling defects your review dimensions already name, `holistic/over-permissive-zod` for a schema that is too permissive, `holistic/secret-exposure` for a leaked credential, `holistic/non-null-assertion` for a hidden `!`, whichever seeded member genuinely fits. A finding that maps to no seeded class (most injection-safety and filesystem/IO findings today) is simply omitted from `findings[]` (it still stands in your prose report); a finding with no stable class is not a countable finding. `"findings": []` when nothing in your report has a stable class, or your report is clean, either way is a real, meaningful record; write it, do not skip the file.
+
+Best-effort: a write failure here never blocks or alters the marker / stamp / status sequence above.
+
 ## Methodology
 
 1. Resolve the diff base and changed-file list; filter to `.gaia/cli/src/**`; self-skip cleanly if empty.

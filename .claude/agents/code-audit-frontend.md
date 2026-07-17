@@ -1001,6 +1001,24 @@ Also on a non-clean pass (marker NOT written), **write/update the re-run ledger*
 
 Never write a marker for content other than current `HEAD`. The shared writer derives the marker's key from the working root's own content digest internally; the hook-side clearance check (`clearance_member_cleared`) is what unblocks `gh pr merge` once a writer-produced marker for that digest exists.
 
+## Findings sidecar (local run record)
+
+The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments for a machine-readable findings block; CI's own workflow prompt already emits one (`code-review-audit.yml:359-372`), but a PR audited by the local producer left the tally with nothing. Close that gap yourself: on **every LOCAL pass**, clean or not, marker written or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set): CI's own prompt already covers it, unrelated to this file.
+
+Path: `.gaia/local/audit/${BASE_SHA}.code-audit-frontend.findings.json`, the **same** `BASE_SHA` you already resolve for the re-run carry-forward ledger (see "Re-run carry-forward ledger" above), never a second base resolution. If `BASE_SHA` is empty (resolution failed), skip the sidecar write entirely, the same fail-open rule the ledger itself follows.
+
+Shape:
+
+```json
+{"schema":1,"member":"code-audit-frontend","findings":[
+  {"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}
+]}
+```
+
+Every Critical / Important / Suggestion finding in your report (in-scope or out-of-scope; not a cross-remit finding, which belongs to another member) that carries a `finding_class` from the closed holistic/rule vocabulary (see "Finding classification" above) goes into `findings[]`, with `severity` mapped from your grading: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `["app/routes"]`). A finding whose `finding_class` you omitted from the report for lack of a seeded class stays omitted here too, exactly as "Finding classification" already says: a finding with no stable class is not a countable finding. `"findings": []` when nothing in your report has a stable class, or your report is empty, either way is a real, meaningful "this run found nothing countable" record; write it, do not skip the file.
+
+Best-effort: a write failure here never blocks or alters the marker / stamp / status / dispositions-sidecar / ledger sequence above.
+
 ## GAIA-Audit trailer (CI handshake)
 
 The `GAIA-Audit:` commit trailer written by `.claude/hooks/audit-stamp-trailer.sh` is the cross-machine companion to the local marker file. The marker file gates `gh pr merge` locally; the trailer travels with the commit through the network so CI can recognize an already-audited tree and skip its own audit run.

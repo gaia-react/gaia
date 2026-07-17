@@ -240,7 +240,10 @@ case "$SHAPE" in
     # shellcheck disable=SC2016
     if [ "$trimmed" = "No violations found." ]; then
       real
-    elif printf '%s' "$content" | grep -Eq '`[^`]+:[0-9]+`'; then
+    # Here-string, not a `printf | grep -q` pipe: see the audit-team-member
+    # branch below for the full SIGPIPE/pipefail rationale -- the same
+    # large-content hazard applies to every shape in this file.
+    elif grep -Eq '`[^`]+:[0-9]+`' <<<"$content"; then
       real
     else
       noop
@@ -250,7 +253,10 @@ case "$SHAPE" in
   cra-refuter)
     [ -f "$TARGET_PATH" ] || noop
     content="$(cat "$TARGET_PATH" 2>/dev/null)"
-    if printf '%s' "$content" | grep -Eq '\b(REFUTED|DOWNGRADE|STANDS)\b'; then
+    # Here-string, not a `printf | grep -q` pipe: see the audit-team-member
+    # branch below for the full SIGPIPE/pipefail rationale -- the same
+    # large-content hazard applies to every shape in this file.
+    if grep -Eq '\b(REFUTED|DOWNGRADE|STANDS)\b' <<<"$content"; then
       real
     else
       noop
