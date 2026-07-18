@@ -81,9 +81,9 @@ seed_inrepo_residue() {
   echo '{"report":1}' > "$MAIN/.gaia/local/telemetry/analytics/report.json"
 }
 
-# seed_survivors: the load-bearing state that shares telemetry/ with the streams
-# above and must outlive the sweep byte-for-byte, plus the stale coaching marker
-# in the symlinked shared cache the sweep is forbidden to reach into.
+# seed_survivors: the load-bearing state that shares telemetry/ with the
+# streams above and must outlive the sweep byte-for-byte, plus the orphaned
+# coaching marker in the symlinked shared cache, which the sweep now reaps.
 seed_survivors() {
   mkdir -p "$MAIN/.gaia/local/telemetry" "$MAIN/.gaia/local/cache/shared"
   echo '{"kind":"execute","total":11110}' > "$MAIN/.gaia/local/telemetry/cost.jsonl"
@@ -136,16 +136,15 @@ tree_digest() {
 
 # --- 2. The survivors sharing telemetry/ are untouched -----------------------
 
-@test "cost.jsonl, spec-pacing.jsonl, telemetry/ and coaching-active.txt all survive intact" {
+@test "cost.jsonl, spec-pacing.jsonl and telemetry/ survive intact; coaching-active.txt is reaped" {
   make_main
   seed_offrepo_residue
   seed_inrepo_residue
   seed_survivors
 
-  local cost pacing marker
+  local cost pacing
   cost="$(cksum < "$MAIN/.gaia/local/telemetry/cost.jsonl")"
   pacing="$(cksum < "$MAIN/.gaia/local/telemetry/spec-pacing.jsonl")"
-  marker="$(cksum < "$MAIN/.gaia/local/cache/shared/coaching-active.txt")"
 
   run run_sweep
   [ "$status" -eq 0 ]
@@ -156,8 +155,10 @@ tree_digest() {
 
   [ "$(cksum < "$MAIN/.gaia/local/telemetry/cost.jsonl")" = "$cost" ]
   [ "$(cksum < "$MAIN/.gaia/local/telemetry/spec-pacing.jsonl")" = "$pacing" ]
-  # Outside the enumerated set, and behind the worktree-symlinked shared cache.
-  [ "$(cksum < "$MAIN/.gaia/local/cache/shared/coaching-active.txt")" = "$marker" ]
+  # Orphaned residue: reaped now, unlike the load-bearing streams above. Final
+  # line of the test, so its own exit status is the test result; the `[ ! -e ]`
+  # form (not the earlier `&& return 1` pattern) is what actually fails here.
+  [ ! -e "$MAIN/.gaia/local/cache/shared/coaching-active.txt" ]
 }
 
 # --- 3. MEMORY.md is unlinked when the pointer was its only line -------------
@@ -198,9 +199,11 @@ tree_digest() {
   tree_digest | diff "$snapshot" -
 }
 
-# --- 5. A never-enabled checkout's run touches nothing but the sentinel ------
+# --- 5. A never-enabled checkout's run adds only the sentinel; the orphaned --
+#        coaching marker is reaped regardless, since it is unconditional like
+#        every other entry in the closed deletion set.
 
-@test "no residue at all: nothing changes but the sentinel, exit 0, silent" {
+@test "no residue at all: only the sentinel is added and the coaching marker is reaped, exit 0, silent" {
   make_main
   seed_survivors
 
@@ -213,9 +216,13 @@ tree_digest() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ -f "$SENTINEL" ]
+  [ ! -e "$MAIN/.gaia/local/cache/shared/coaching-active.txt" ]
 
-  # The sentinel is the only path the sweep added, and it removed none.
-  printf '%s\n' "$SENTINEL" | cat "$before" - | sort > "$expected"
+  # The sentinel is the only path the sweep added; the orphaned coaching
+  # marker is the only one it removed, unconditionally like every other entry
+  # in the closed deletion set.
+  grep -vxF -- "$MAIN/.gaia/local/cache/shared/coaching-active.txt" "$before" \
+    | cat - <(printf '%s\n' "$SENTINEL") | sort > "$expected"
   file_list | diff "$expected" -
 }
 

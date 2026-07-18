@@ -21,6 +21,10 @@
 #                                 symlink to it)
 #     telemetry/cloud/            the cloud projection event stream
 #     telemetry/analytics/        the analytics reports
+#     cache/shared/coaching-active.txt
+#                                 orphaned coaching marker: its former writer
+#                                 (wiki-session-start.sh) and reader
+#                                 (gaia-statusline.sh) are both gone
 #
 # Two things make the sweep unconditional rather than opt-in-gated. The memory
 # file instructs Claude to protect a subtree that does not exist and to reach for
@@ -161,6 +165,14 @@ fi
 # holds cost.jsonl and spec-pacing.jsonl, and both outlive this sweep.
 rm -rf -- "${main_root:?}/.gaia/local/telemetry/cloud" 2>/dev/null || true
 rm -rf -- "${main_root:?}/.gaia/local/telemetry/analytics" 2>/dev/null || true
+
+# .gaia/local/cache/shared/coaching-active.txt: orphaned residue. Its former
+# writer (wiki-session-start.sh) and reader (gaia-statusline.sh) are both gone,
+# so nothing else ever reaps it. cache/shared/ is symlinked in a linked
+# worktree back to this same main-checkout path (link-worktree.sh), which is
+# exactly why this targets $main_root rather than $repo_root, matching every
+# other real-file deletion in this sweep.
+rm -f -- "$main_root/.gaia/local/cache/shared/coaching-active.txt" 2>/dev/null || true
 
 # --- Sentinel --------------------------------------------------------------
 # Written last, and written even when nothing above matched, so a checkout that
