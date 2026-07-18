@@ -20908,9 +20908,10 @@ var parseExcludeLines = (text) => text.split("\n").flatMap((line) => {
 });
 var validateExcludeText = (text) => {
   const offenders = text.split("\n").filter((line) => {
-    const trimmed = line.trim();
+    const normalized = line.replace(/\r$/, "");
+    const trimmed = normalized.trim();
     if (trimmed.length === 0 || trimmed.startsWith("#")) return false;
-    return line !== trimmed || hasRejectedExcludeMetacharacter(trimmed);
+    return normalized !== trimmed || hasRejectedExcludeMetacharacter(trimmed);
   });
   if (offenders.length > 0) {
     throw new Error(

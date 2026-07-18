@@ -175,11 +175,16 @@ export const parseExcludeLines = (text: string): string[] =>
  */
 export const validateExcludeText = (text: string): void => {
   const offenders = text.split('\n').filter((line) => {
-    const trimmed = line.trim();
+    // A CRLF checkout leaves a trailing `\r` on every line after the `\n`
+    // split; that is a line-ending artifact, not indentation, so it's
+    // stripped before the whitespace comparison. `parseExcludeLines`
+    // tolerates it via `trim()`; this raw-text validator must match.
+    const normalized = line.replace(/\r$/, '');
+    const trimmed = normalized.trim();
 
     if (trimmed.length === 0 || trimmed.startsWith('#')) return false;
 
-    return line !== trimmed || hasRejectedExcludeMetacharacter(trimmed);
+    return normalized !== trimmed || hasRejectedExcludeMetacharacter(trimmed);
   });
 
   if (offenders.length > 0) {

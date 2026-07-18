@@ -183,6 +183,12 @@ describe('validateExcludeText', () => {
     expect(() => validateExcludeText('  wiki/meta\n')).toThrow(/literal/);
   });
 
+  test('tolerates CRLF line endings on otherwise-valid literal paths', () => {
+    expect(() =>
+      validateExcludeText('.gaia/cli/src\r\nwiki/entities\r\n')
+    ).not.toThrow();
+  });
+
   test('ignores metacharacters inside a comment line', () => {
     expect(() =>
       validateExcludeText('# foo* [bar]\nwiki/entities\n')
