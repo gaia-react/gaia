@@ -79,6 +79,16 @@ const REJECTED_PATH_CHARACTERS = [
 
 const ASCII_WHITESPACE = /[\t\n\v\f\r ]/;
 
+/**
+ * True when `value` carries a character from `REJECTED_PATH_CHARACTERS`. The
+ * single source of truth for "unsafe exclude-line character", shared by the
+ * withhold-answer gate here and by `manifest.ts`'s raw-exclude-text validator
+ * (`validateExcludeText`), so a metacharacter is rejected identically whether
+ * it arrives via `--withhold` or already sits in the committed boundary file.
+ */
+export const hasRejectedExcludeMetacharacter = (value: string): boolean =>
+  REJECTED_PATH_CHARACTERS.some((character) => value.includes(character));
+
 const uniqueSorted = (paths: readonly string[]): string[] => {
   const unique: string[] = [...new Set(paths)];
 
@@ -112,9 +122,7 @@ const isRejectedWithholdPath = (withholdPath: string): boolean =>
   withholdPath.startsWith('/') ||
   withholdPath.endsWith('/') ||
   ASCII_WHITESPACE.test(withholdPath) ||
-  REJECTED_PATH_CHARACTERS.some((character) =>
-    withholdPath.includes(character)
-  );
+  hasRejectedExcludeMetacharacter(withholdPath);
 
 /**
  * The reason is untrusted input the CLI renders into the boundary file as a
