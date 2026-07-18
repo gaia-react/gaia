@@ -474,6 +474,7 @@ EOF
 }
 
 @test "UAT-002: skills-md is owned by the prose member; non-md under skills stays ownerless" {
+  # shellcheck source=/dev/null
   . "$SCOPE_LIB"
   audit_scope_init "$REPO_ROOT"
   [ "$(audit_owner_for_path '.claude/skills/gaia/references/debt.md')" = "code-audit-maintainer-prose" ]
