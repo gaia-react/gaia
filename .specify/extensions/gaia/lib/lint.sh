@@ -16,6 +16,8 @@
 #
 # Checks performed:
 #   - frontmatter present (--- ... ---)
+#   - frontmatter parses as valid YAML (best-effort: python3+pyyaml or yq;
+#     skipped silently when neither parser is available)
 #   - required frontmatter fields: spec_id, type, status, immutable, wiki_promote_default,
 #     chain_trigger, intent, success_criteria, uats, scope_boundaries, clarifications,
 #     research_summary, created, updated
@@ -91,6 +93,43 @@ done < "$spec_file"
 
 if [ "$state" != "post" ]; then
   add_finding "no_frontmatter" "SPEC has no closed YAML frontmatter (--- ... ---)." "head"
+fi
+
+# --- Frontmatter YAML parse validation ---
+# The checks below (has_fm_key, get_fm_field) are line-oriented greps: they
+# confirm required keys are present but never confirm the block is
+# well-formed YAML. A plain scalar that opens with a backtick, or contains
+# ": " or " #", reads fine to grep but breaks a real parser. Pipe $fm
+# through whichever real YAML parser is available and fail on a parse
+# error. Best-effort: with no parser present, skip silently rather than
+# regress every currently-clean SPEC on a parser-less machine.
+if [ -n "$fm" ]; then
+  yaml_err=""
+  yaml_parse_failed=0
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
+    if ! yaml_err=$(printf '%s' "$fm" | python3 -c '
+import sys
+import yaml
+try:
+    yaml.safe_load(sys.stdin.read())
+except Exception as e:
+    print(str(e).replace(chr(10), " "))
+    sys.exit(1)
+' 2>&1); then
+      yaml_parse_failed=1
+    fi
+  elif command -v yq >/dev/null 2>&1; then
+    if ! yaml_err_raw=$(printf '%s' "$fm" | yq -e '.' 2>&1 >/dev/null); then
+      yaml_parse_failed=1
+      yaml_err=$(printf '%s' "$yaml_err_raw" | tr '\n' ' ')
+    fi
+  else
+    echo "lint.sh: no YAML parser found (python3+pyyaml or yq); skipping frontmatter YAML parse check" >&2
+  fi
+
+  if [ "$yaml_parse_failed" -eq 1 ]; then
+    add_finding "yaml_parse_error" "Frontmatter is not valid YAML: $yaml_err" "frontmatter"
+  fi
 fi
 
 # --- Frontmatter field extraction (top-level keys only) ---
