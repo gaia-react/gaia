@@ -130,7 +130,7 @@ describe('setup-ci status', () => {
   test('exits non-zero when committed config is malformed', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
-      version: 99 as unknown as 1,
+      setup_complete: 'not-a-boolean' as unknown as boolean,
     });
 
     const exit = run(['--json'], {cwd: sandbox.root});

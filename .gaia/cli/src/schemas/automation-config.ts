@@ -29,9 +29,16 @@ export const ScheduleSchema = z.literal(['daily', 'monthly', 'weekly']);
 
 export type Schedule = z.infer<typeof ScheduleSchema>;
 
+/**
+ * `mode` and `schedule` are read permissively here, the same pattern as
+ * `isolation_policy` below: an unrecognized value degrades to a safe
+ * default (`mode` -> 'off', `schedule` -> undefined) instead of failing
+ * the whole config. `ToolModeSchema`/`ScheduleSchema` themselves stay
+ * strict and validate at the WRITE boundary (`setup-ci/write-tool-mode.ts`).
+ */
 export const ToolConfigSchema = z.object({
-  mode: ToolModeSchema,
-  schedule: ScheduleSchema.optional(),
+  mode: ToolModeSchema.catch('off'),
+  schedule: ScheduleSchema.optional().catch(undefined),
 });
 
 export type ToolConfig = z.infer<typeof ToolConfigSchema>;
@@ -75,7 +82,10 @@ export const AutomationConfigSchema = z.object({
   stale_branches: ToolConfigSchema,
   update_deps: ToolConfigSchema,
   update_gaia: UpdateGaiaConfigSchema,
-  version: z.literal(1),
+  // Same permissive-at-read pattern as isolation_policy above: an
+  // unrecognized or absent version degrades to 1 rather than malforming
+  // the config.
+  version: z.literal(1).catch(1),
   wiki: ToolConfigSchema,
 });
 

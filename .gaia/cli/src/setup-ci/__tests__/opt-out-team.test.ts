@@ -99,7 +99,7 @@ describe('setup-ci opt-out-team', () => {
   test('exits config_malformed when config fails schema validation', () => {
     writeFileSync(
       automationConfigPath(sandbox.root),
-      JSON.stringify({...VALID_BASE_CONFIG, version: 99}),
+      JSON.stringify({...VALID_BASE_CONFIG, setup_complete: 'not-a-boolean'}),
       'utf8'
     );
 

@@ -138,7 +138,7 @@ describe('setup-ci write-isolation-policy', () => {
   test('exits CONFIG_INVALID and writes nothing when config is malformed', () => {
     writeFileSync(
       automationConfigPath(sandbox.root),
-      JSON.stringify({...VALID_BASE_CONFIG, version: 99}),
+      JSON.stringify({...VALID_BASE_CONFIG, setup_complete: 'not-a-boolean'}),
       'utf8'
     );
 
@@ -147,7 +147,7 @@ describe('setup-ci write-isolation-policy', () => {
     expect(stdio.err.join('')).toContain('config_malformed');
 
     const written = readRaw(sandbox.root);
-    expect(written.version).toBe(99);
+    expect(written.setup_complete).toBe('not-a-boolean');
   });
 
   test('exits 1 on an unrecognized value and writes nothing', () => {

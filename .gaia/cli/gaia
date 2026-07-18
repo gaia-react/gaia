@@ -14575,8 +14575,8 @@ var TOOL_IDS = [
 var ToolModeSchema = external_exports.literal(["ci", "local", "off"]);
 var ScheduleSchema = external_exports.literal(["daily", "monthly", "weekly"]);
 var ToolConfigSchema = external_exports.object({
-  mode: ToolModeSchema,
-  schedule: ScheduleSchema.optional()
+  mode: ToolModeSchema.catch("off"),
+  schedule: ScheduleSchema.optional().catch(void 0)
 });
 var UpdateGaiaConfigSchema = external_exports.object({
   mode: external_exports.literal("local")
@@ -14602,7 +14602,10 @@ var AutomationConfigSchema = external_exports.object({
   stale_branches: ToolConfigSchema,
   update_deps: ToolConfigSchema,
   update_gaia: UpdateGaiaConfigSchema,
-  version: external_exports.literal(1),
+  // Same permissive-at-read pattern as isolation_policy above: an
+  // unrecognized or absent version degrades to 1 rather than malforming
+  // the config.
+  version: external_exports.literal(1).catch(1),
   wiki: ToolConfigSchema
 });
 var TOOL_ID_TO_CONFIG_KEY = {

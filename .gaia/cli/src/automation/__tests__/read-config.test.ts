@@ -78,7 +78,10 @@ describe('automation read-config', () => {
   });
 
   test('exits non-zero with config_malformed for malformed JSON', () => {
-    sandbox.writeConfig({...VALID_BASE_CONFIG, version: 2 as unknown as 1});
+    sandbox.writeConfig({
+      ...VALID_BASE_CONFIG,
+      setup_complete: 'not-a-boolean' as unknown as boolean,
+    });
     const exit = run([], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.errors.join('')).toContain('config_malformed');
