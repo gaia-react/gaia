@@ -265,8 +265,11 @@ assert_not_in_set() {
 }
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
+  # .claude/commands/*.md is ownerless docs. Skills prose (.claude/skills/**/*.md)
+  # is audited by the prose member, so it belongs to the owned-surface cases below,
+  # not here among the no-audit-needed docs.
   commit_files \
-    ".claude/skills/update-gaia/SKILL.md" "updated" \
+    ".claude/commands/gaia-spec.md" "updated" \
     "wiki/concepts/PR Merge Workflow.md" "updated" \
     ".gaia/manifest.json" "{}"
   run_merge_hook
