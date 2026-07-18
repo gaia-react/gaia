@@ -4,6 +4,8 @@ Artifacts here are markdown UAT runbooks: maintainer-reading walk-throughs that 
 
 Artifacts that should NOT be here are runnable harnesses with `pass()`/`fail()`/exit-code reporting, those are release-gate harnesses and live at `.gaia/tests/smoke/<feature>/` instead. The classifying axis is shape, not origin.
 
+A structural-invariant assertion such as `registry.bats` is a distinct third category: a bats suite that guards a manifest/filesystem invariant rather than walking a SPEC's UATs or gating a release.
+
 ## Inventory
 
 - `smoke.md`: `/gaia-spec` lifecycle smoke runbook.
