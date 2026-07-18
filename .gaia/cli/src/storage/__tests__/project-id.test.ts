@@ -15,20 +15,17 @@ const UUID_V4_RE =
 
 describe('readOrCreateProjectId', () => {
   let repoRoot: string;
-  let homeDirectory: string;
 
   beforeEach(() => {
     repoRoot = mkdtempSync(path.join(tmpdir(), 'gaia-pid-repo-'));
-    homeDirectory = mkdtempSync(path.join(tmpdir(), 'gaia-pid-home-'));
   });
 
   afterEach(() => {
     rmSync(repoRoot, {force: true, recursive: true});
-    rmSync(homeDirectory, {force: true, recursive: true});
   });
 
   test('writes a UUIDv4-shaped id with mode 644 on first call', () => {
-    const roots = resolveStorageRoots({homeDir: homeDirectory, repoRoot});
+    const roots = resolveStorageRoots({repoRoot});
 
     const id = readOrCreateProjectId(roots);
 
@@ -39,7 +36,7 @@ describe('readOrCreateProjectId', () => {
   });
 
   test('returns the same id on subsequent calls (idempotent)', () => {
-    const roots = resolveStorageRoots({homeDir: homeDirectory, repoRoot});
+    const roots = resolveStorageRoots({repoRoot});
 
     const first = readOrCreateProjectId(roots);
     const second = readOrCreateProjectId(roots);
@@ -52,7 +49,6 @@ describe('readOrCreateProjectId', () => {
 
     try {
       const rootsA1 = resolveStorageRoots({
-        homeDir: homeDirectory,
         repoRoot: repoA,
       });
       const idA1 = readOrCreateProjectId(rootsA1);
@@ -71,11 +67,9 @@ describe('readOrCreateProjectId', () => {
 
     try {
       const rootsA = resolveStorageRoots({
-        homeDir: homeDirectory,
         repoRoot: repoA,
       });
       const rootsB = resolveStorageRoots({
-        homeDir: homeDirectory,
         repoRoot: repoB,
       });
       const idA = readOrCreateProjectId(rootsA);
@@ -112,7 +106,7 @@ describe('readOrCreateProjectId', () => {
   );
 
   test('creates the parent .gaia/local/ directory if absent', () => {
-    const roots = resolveStorageRoots({homeDir: homeDirectory, repoRoot});
+    const roots = resolveStorageRoots({repoRoot});
 
     expect(existsSync(path.dirname(roots.projectIdPath))).toBe(false);
 

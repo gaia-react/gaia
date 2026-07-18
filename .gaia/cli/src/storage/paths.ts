@@ -6,7 +6,6 @@ export type StorageRoots = {
 };
 
 type ResolveArgs = {
-  homeDir?: string;
   repoRoot?: string;
 };
 
