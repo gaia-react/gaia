@@ -50,7 +50,7 @@ case "$common_dir" in
   /*) abs_common_dir="$common_dir" ;;
   *) abs_common_dir="$PWD/$common_dir" ;;
 esac
-main_root="$(cd "$(dirname "$abs_common_dir")" 2>/dev/null && pwd)" || exit 0
+main_root="$(cd "$(dirname "$abs_common_dir")" 2>/dev/null && pwd -P)" || exit 0
 current_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 [[ -n "$main_root" && -n "$current_root" ]] || exit 0
 

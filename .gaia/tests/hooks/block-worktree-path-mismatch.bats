@@ -24,6 +24,7 @@ setup() {
 teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
   [ -n "${NONREPO:-}" ] && rm -rf "$NONREPO"
+  [ -n "${SYMLINK_REPO:-}" ] && rm -f "$SYMLINK_REPO"
   return 0
 }
 
@@ -136,6 +137,22 @@ assert_allowed() {
   make_repo
   make_worktree "debt/7-foo" "debt/7-foo"
   cd "$REPO"
+  run_hook_edit "Edit" "$WT/f"
+  assert_allowed
+}
+
+# Regression: main_root is derived via `cd ... && pwd`, while current_root and
+# file_root come from `git rev-parse --show-toplevel`, which always resolves
+# symlinks. Reaching the main checkout through a symlinked path (an external
+# volume, a cloud-synced folder, or simply a macOS /tmp -> /private/tmp
+# style path) used to desync the two, so the guard wrongly believed itself
+# inside a linked worktree and denied a legitimate main-checkout edit.
+@test "a main checkout reached via a symlinked path allows editing a worktree file" {
+  make_repo
+  make_worktree "debt/11-foo" "debt/11-foo"
+  SYMLINK_REPO="${REPO}-symlink"
+  ln -s "$REPO" "$SYMLINK_REPO"
+  cd "$SYMLINK_REPO"
   run_hook_edit "Edit" "$WT/f"
   assert_allowed
 }
