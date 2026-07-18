@@ -37,6 +37,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {ADOPTER_OWNED_SENTINELS as GIT_TRACKED_SENTINELS} from './manifest.js';
+import {stripMarkerBlocks} from './marker-strip.js';
 import {SCAN_GLOBS} from './scan-globs.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
@@ -584,6 +585,12 @@ const tryWalkScriptsOrReport = (root: string): null | readonly string[] => {
   }
 };
 
+// Mirrors the scrub `**/*.sh` marker-strip transform in
+// `.gaia/release-scrub.yml` (the source of truth): maintainer-only blocks
+// wrapped in these markers never reach the release tarball.
+const MAINTAINER_ONLY_START = '# gaia:maintainer-only:start';
+const MAINTAINER_ONLY_END = '# gaia:maintainer-only:end';
+
 // Scans every script's extracted path refs for leaks: a reference that is
 // neither a self-reference nor a shipped/adopter-owned/runtime path.
 const collectLeaks = (
@@ -595,7 +602,17 @@ const collectLeaks = (
   const shippedDirs = computeShippedDirs(manifest);
 
   for (const scriptPath of scriptFiles) {
-    const source = readFileSync(path.join(root, scriptPath), 'utf8');
+    const rawSource = readFileSync(path.join(root, scriptPath), 'utf8');
+    // Strip maintainer-only blocks before extracting refs so a bare (no
+    // --staging) run agrees with the authoritative post-scrub staging run.
+    // A no-op on already-scrubbed staging files (no markers present); a
+    // reference inside a maintainer-only block never ships, so it can
+    // never be a real leak.
+    const source = stripMarkerBlocks(
+      rawSource,
+      MAINTAINER_ONLY_START,
+      MAINTAINER_ONLY_END
+    ).output;
     const refs = extractPathRefs(scriptPath, source);
 
     for (const ref of refs) {

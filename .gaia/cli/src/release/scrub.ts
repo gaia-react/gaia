@@ -37,6 +37,7 @@ import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {extractWikilinks} from '../wiki/util/wikilinks.js';
 import {parseExcludeLines} from './manifest.js';
+import {stripMarkerBlocks} from './marker-strip.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release scrub <staging-dir> [--config <path>] [--json]
 
@@ -187,57 +188,6 @@ export type MarkerStripResult = {
     line: number;
     reason: 'end_without_start' | 'start_without_end';
   }[];
-};
-
-const stripMarkerBlocks = (
-  source: string,
-  startMarker: string,
-  endMarker: string
-): {
-  blocks: number;
-  output: string;
-  unbalanced: {
-    line: number;
-    reason: 'end_without_start' | 'start_without_end';
-  }[];
-} => {
-  const lines = source.split('\n');
-  const out: string[] = [];
-  const unbalanced: {
-    line: number;
-    reason: 'end_without_start' | 'start_without_end';
-  }[] = [];
-  let inBlock = false;
-  let blockStartLine = 0;
-  let blocks = 0;
-
-  for (const [index, line] of lines.entries()) {
-    const lineNumber = index + 1;
-    const hasStart = line.includes(startMarker);
-    const hasEnd = line.includes(endMarker);
-
-    if (!inBlock && hasStart && hasEnd) {
-      // Single-line block: drop the entire line.
-      blocks += 1;
-    } else if (!inBlock && hasStart) {
-      inBlock = true;
-      blockStartLine = lineNumber;
-    } else if (inBlock && hasEnd) {
-      inBlock = false;
-      blocks += 1;
-    } else if (!inBlock && hasEnd) {
-      unbalanced.push({line: lineNumber, reason: 'end_without_start'});
-      out.push(line);
-    } else if (!inBlock) {
-      out.push(line);
-    }
-  }
-
-  if (inBlock) {
-    unbalanced.push({line: blockStartLine, reason: 'start_without_end'});
-  }
-
-  return {blocks, output: out.join('\n'), unbalanced};
 };
 
 const applyMarkerStrip = (

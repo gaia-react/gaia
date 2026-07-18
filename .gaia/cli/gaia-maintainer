@@ -21860,6 +21860,41 @@ var run24 = (argv, options = {}) => {
 // src/release/runtime-deps.ts
 import { readdirSync as readdirSync2, readFileSync as readFileSync17, statSync as statSync2 } from "node:fs";
 import path19 from "node:path";
+
+// src/release/marker-strip.ts
+var stripMarkerBlocks = (source, startMarker, endMarker) => {
+  const lines = source.split("\n");
+  const out = [];
+  const unbalanced = [];
+  let inBlock = false;
+  let blockStartLine = 0;
+  let blocks = 0;
+  for (const [index, line] of lines.entries()) {
+    const lineNumber = index + 1;
+    const hasStart = line.includes(startMarker);
+    const hasEnd = line.includes(endMarker);
+    if (!inBlock && hasStart && hasEnd) {
+      blocks += 1;
+    } else if (!inBlock && hasStart) {
+      inBlock = true;
+      blockStartLine = lineNumber;
+    } else if (inBlock && hasEnd) {
+      inBlock = false;
+      blocks += 1;
+    } else if (!inBlock && hasEnd) {
+      unbalanced.push({ line: lineNumber, reason: "end_without_start" });
+      out.push(line);
+    } else if (!inBlock) {
+      out.push(line);
+    }
+  }
+  if (inBlock) {
+    unbalanced.push({ line: blockStartLine, reason: "start_without_end" });
+  }
+  return { blocks, output: out.join("\n"), unbalanced };
+};
+
+// src/release/runtime-deps.ts
 var HELP_TEXT25 = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
 
   Scan shipped shell scripts for runtime path references that resolve to
@@ -22127,11 +22162,18 @@ var tryWalkScriptsOrReport = (root) => {
     return null;
   }
 };
+var MAINTAINER_ONLY_START = "# gaia:maintainer-only:start";
+var MAINTAINER_ONLY_END = "# gaia:maintainer-only:end";
 var collectLeaks = (root, scriptFiles, manifest) => {
   const leaks = [];
   const shippedDirs = computeShippedDirs(manifest);
   for (const scriptPath of scriptFiles) {
-    const source = readFileSync17(path19.join(root, scriptPath), "utf8");
+    const rawSource = readFileSync17(path19.join(root, scriptPath), "utf8");
+    const source = stripMarkerBlocks(
+      rawSource,
+      MAINTAINER_ONLY_START,
+      MAINTAINER_ONLY_END
+    ).output;
     const refs = extractPathRefs(scriptPath, source);
     for (const ref of refs) {
       const isLeak = ref.path !== scriptPath && !isShippedPath(ref.path, manifest, shippedDirs);
@@ -22430,37 +22472,6 @@ var walkFiles = (root, current = root) => {
     }
   }
   return out;
-};
-var stripMarkerBlocks = (source, startMarker, endMarker) => {
-  const lines = source.split("\n");
-  const out = [];
-  const unbalanced = [];
-  let inBlock = false;
-  let blockStartLine = 0;
-  let blocks = 0;
-  for (const [index, line] of lines.entries()) {
-    const lineNumber = index + 1;
-    const hasStart = line.includes(startMarker);
-    const hasEnd = line.includes(endMarker);
-    if (!inBlock && hasStart && hasEnd) {
-      blocks += 1;
-    } else if (!inBlock && hasStart) {
-      inBlock = true;
-      blockStartLine = lineNumber;
-    } else if (inBlock && hasEnd) {
-      inBlock = false;
-      blocks += 1;
-    } else if (!inBlock && hasEnd) {
-      unbalanced.push({ line: lineNumber, reason: "end_without_start" });
-      out.push(line);
-    } else if (!inBlock) {
-      out.push(line);
-    }
-  }
-  if (inBlock) {
-    unbalanced.push({ line: blockStartLine, reason: "start_without_end" });
-  }
-  return { blocks, output: out.join("\n"), unbalanced };
 };
 var applyMarkerStrip = (stagingRoot, files, transform2) => {
   const filesTouched = [];
