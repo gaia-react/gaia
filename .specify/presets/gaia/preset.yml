@@ -28,6 +28,13 @@ provides:
       replaces: "spec-template"
       strategy: "replace"
 
+    - type: "command"
+      name: "speckit.clarify"
+      file: "commands/speckit.clarify.md"
+      description: "Redirects bare /speckit-clarify to /gaia-spec; GAIA drives its own one-question-per-turn Socratic clarify loop."
+      replaces: "speckit.clarify"
+      strategy: "replace"
+
 tags:
   - "gaia"
   - "socratic"
