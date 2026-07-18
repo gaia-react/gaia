@@ -25,6 +25,7 @@ export const FINDING_CLASS_PREFIXES = [
   'holistic',
   'rule',
   'workflow',
+  'prose',
 ] as const;
 
 export type FindingClassPrefix = (typeof FINDING_CLASS_PREFIXES)[number];
@@ -110,10 +111,29 @@ export const WORKFLOW_FINDING_CLASSES = [
 
 export type WorkflowFindingClass = (typeof WORKFLOW_FINDING_CLASSES)[number];
 
+/**
+ * Closed-vocabulary members for the prose bucket. Seeded from the
+ * prose-complexity dimensions the `code-audit-maintainer-prose` member owns
+ * (excessive reducible length, deep nesting, high cross-reference indirection,
+ * redundant instruction duplicated across files). Each is a prose-level root
+ * cause, never a subsystem tag. Small and defensible by design: seed only
+ * classes the agent can reliably and repeatably assign. When in doubt, leave a
+ * class out.
+ */
+export const PROSE_FINDING_CLASSES = [
+  'prose/excessive-length',
+  'prose/deep-nesting',
+  'prose/high-indirection',
+  'prose/redundant-instruction',
+] as const;
+
+export type ProseFindingClass = (typeof PROSE_FINDING_CLASSES)[number];
+
 const CLOSED_VOCABULARY: ReadonlySet<string> = new Set([
   ...HOLISTIC_FINDING_CLASSES,
   ...RULE_FINDING_CLASSES,
   ...WORKFLOW_FINDING_CLASSES,
+  ...PROSE_FINDING_CLASSES,
 ]);
 
 const splitPrefix = (
