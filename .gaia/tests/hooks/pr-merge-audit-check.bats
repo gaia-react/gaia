@@ -742,6 +742,16 @@ assert_not_in_set() {
   assert_allowed
 }
 
+@test "FC-4 no-deadlock: skills prose spawns the prose member only (not the default), and its marker allows" {
+  commit_files ".claude/skills/foo/SKILL.md" "# Foo skill"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-maintainer-prose" ]
+  assert_not_in_set "code-audit-frontend" "$set"
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
 @test "FC-4 no-deadlock: mixed app/ + framework shell spawns both, sorted, and their markers allow" {
   commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
   set=$(spawn_set)

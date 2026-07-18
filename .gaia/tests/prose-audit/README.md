@@ -10,13 +10,13 @@ takes.
 
 ## Fixtures and expected outcomes
 
-- `fixtures/gratuitous.md` — the true-positive fixture. Its "Branch Naming
+- `fixtures/gratuitous.md`, the true-positive fixture. Its "Branch Naming
   Rules" section and "Picking a Good Name for Your Branch" section state the
   same rule twice in different words; nothing in the second section adds
   information the first didn't already carry. The expected outcome is at
   least one finding that names the concrete reduction (cut the second
   section, it repeats the first), mapped to `prose/redundant-instruction`.
-- `fixtures/intricate.md` — the false-positive-discipline fixture. Its
+- `fixtures/intricate.md`, the false-positive-discipline fixture. Its
   decision procedure for classifying a failed CI run branches five ways, and
   every branch carries a distinct, load-bearing action (retry once vs. pin a
   version vs. fix code vs. quarantine); no branch restates another, and none
@@ -70,13 +70,13 @@ and drives the member against them by path. Reasoning:
 A reviewer checking UAT-007 against the delivered tree should read it as two
 halves, each covered by a different mechanism:
 
-- **True-positive / false-positive discipline** — covered by this harness.
+- **True-positive / false-positive discipline**: covered by this harness.
   The fixtures under `.gaia/tests/prose-audit/` are not on a live
   `.claude/skills/**/*.md` path, so they are driven by-path rather than
   picked up by remit filtering, but they exercise exactly the judgment call
   UAT-007 is testing: does the lens name a concrete reduction on genuinely
   reducible prose, and does it stay silent on genuinely irreducible prose.
-- **`.claude/skills/**/*.md` remit pickup** — covered elsewhere, not by these
+- **`.claude/skills/**/*.md` remit pickup**: covered elsewhere, not by these
   fixtures. The delivering pull request's own `harden.md` edit is a real,
   live `.claude/skills/**` change, so it dispatches `code-audit-maintainer-prose`
   through the normal remit filter at merge, and the roster's `globs` entry for

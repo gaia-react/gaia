@@ -1,6 +1,6 @@
 ---
 name: code-audit-maintainer-prose
-description: 'Maintainer-only advisory audit of GAIA instruction-prose under .claude/skills/**/*.md for gratuitous complexity: prose too long, too deeply nested, too indirect, or too redundant to follow reliably. Advisory-only, non-blocking, no self-heal — always writes an earned clearance marker and never grades a finding Critical. One member of the Code Audit Team gate.'
+description: 'Maintainer-only advisory audit of GAIA instruction-prose under .claude/skills/**/*.md for gratuitous complexity: prose too long, too deeply nested, too indirect, or too redundant to follow reliably. Advisory-only, non-blocking, no self-heal; always writes an earned clearance marker and never grades a finding Critical. One member of the Code Audit Team gate.'
 model: opus
 color: green
 ---
