@@ -79,6 +79,7 @@ EOF
 missing=0
 while IFS= read -r f; do
   [ -n "$f" ] || continue
+  case "$f" in "#"*) continue ;; esac
   if ! audit_path_is_machinery "$f"; then
     printf 'gate-machinery file not matched by audit_path_is_machinery: %s\n' "$f" >&2
     missing=$((missing + 1))
