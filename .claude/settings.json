@@ -143,6 +143,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/block-selfheal-paths.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-worktree-path-mismatch.sh"
           }
         ]
       },

@@ -181,3 +181,16 @@ RESOLVED_ROOT="$(git rev-parse --show-toplevel)"
 Read it once, after the arm has switched cwd (worktree creation, or the feature-branch arm's in-place
 checkout), never before. Every later sub-agent dispatch this session makes, each task sub-agent and each
 pre-merge Code Audit Team member, interpolates this same value rather than re-deriving it ad hoc.
+
+This discipline governs the Edit, Write, and Read tools just as much as Bash and sub-agent dispatch, and it
+is easier to get wrong there: `file_path` is an absolute path with no cwd resolution, so a call issued with a
+path from before the switch (the caller's own prior turn, a copy-pasted path, a plan written before entry)
+targets whichever checkout that path happens to belong to. Under `worktree` mode a stale pre-switch path most
+often resolves to the main checkout, a real, tracked file that the edit tools apply with **no error**: both
+the pre-switch and post-switch paths are valid files on disk, so nothing distinguishes a correct write from a
+wrong one at the moment it happens. Prefix every `file_path` with `RESOLVED_ROOT` for the rest of the session,
+the same way Bash scopes every git command to it. Under `worktree` mode, `.claude/hooks/block-worktree-path-mismatch.sh`
+enforces this deterministically: it denies an Edit/Write/MultiEdit call whose `file_path` resolves (via its own
+`git rev-parse --show-toplevel`) to a different git worktree than `RESOLVED_ROOT`. The guard is defense in
+depth, not a substitute for reading `RESOLVED_ROOT` fresh, it fails open on anything it cannot resolve (a
+target directory that does not exist yet, a path outside any git repository).
