@@ -13,7 +13,7 @@ import {structuredError} from '../stderr.js';
 import {run as runBump} from './bump.js';
 import {run as runChangelog} from './changelog.js';
 import {run as runCommitAndTag} from './commit-and-tag.js';
-import {run as runManifest} from './manifest.js';
+import {run as runManifest} from './manifest-cli.js';
 import {run as runPreflight} from './preflight.js';
 import {run as runRuntimeDeps} from './runtime-deps.js';
 import {run as runScrubWiki} from './scrub-wiki.js';
