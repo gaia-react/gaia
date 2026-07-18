@@ -167,7 +167,7 @@ describe('setup-ci write-tool-mode', () => {
   test('exits config_malformed when config fails schema', () => {
     writeFileSync(
       automationConfigPath(sandbox.root),
-      JSON.stringify({...VALID_BASE_CONFIG, version: 99}),
+      JSON.stringify({...VALID_BASE_CONFIG, setup_complete: 'not-a-boolean'}),
       'utf8'
     );
 

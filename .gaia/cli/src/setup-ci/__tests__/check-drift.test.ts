@@ -192,7 +192,7 @@ describe('setup-ci check-drift', () => {
   test('exits non-zero with config_malformed for an invalid config', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
-      version: 99 as unknown as 1,
+      setup_complete: 'not-a-boolean' as unknown as boolean,
     });
 
     const exit = run(['--json'], {cwd: sandbox.root});

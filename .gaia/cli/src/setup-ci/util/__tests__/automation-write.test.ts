@@ -49,7 +49,7 @@ describe('writeAutomationConfig', () => {
     expect(() =>
       writeAutomationConfig(sandbox.root, {
         ...VALID_BASE_CONFIG,
-        version: 99 as unknown as 1,
+        setup_complete: 'not-a-boolean' as unknown as boolean,
       })
     ).toThrow(z.ZodError);
   });

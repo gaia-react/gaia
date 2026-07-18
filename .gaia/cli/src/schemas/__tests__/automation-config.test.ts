@@ -10,8 +10,10 @@ import {
   ISOLATION_POLICIES,
   parseAutomationConfig,
   readAutomationConfig,
+  ScheduleSchema,
   TOOL_ID_TO_CONFIG_KEY,
   TOOL_IDS,
+  ToolModeSchema,
 } from '../automation-config.js';
 
 type Sandbox = {
@@ -53,19 +55,36 @@ describe('schemas/automation-config', () => {
       expect(() => parseAutomationConfig(VALID_CONFIG)).not.toThrow();
     });
 
-    test('rejects version != 1', () => {
-      expect(() =>
-        AutomationConfigSchema.parse({...VALID_CONFIG, version: 2})
-      ).toThrow(z.ZodError);
+    test('tolerates an unrecognized version, defaulting to 1', () => {
+      const parsed = AutomationConfigSchema.parse({
+        ...VALID_CONFIG,
+        version: 2,
+      });
+      expect(parsed.version).toBe(1);
     });
 
-    test('rejects unknown tool mode', () => {
-      expect(() =>
-        AutomationConfigSchema.parse({
-          ...VALID_CONFIG,
-          wiki: {mode: 'ci2'},
-        })
-      ).toThrow(z.ZodError);
+    test('tolerates an unrecognized tool mode, defaulting to "off"', () => {
+      const parsed = AutomationConfigSchema.parse({
+        ...VALID_CONFIG,
+        wiki: {mode: 'ci2'},
+      });
+      expect(parsed.wiki.mode).toBe('off');
+    });
+
+    test('tolerates an unrecognized schedule, defaulting to undefined', () => {
+      const parsed = AutomationConfigSchema.parse({
+        ...VALID_CONFIG,
+        wiki: {mode: 'ci', schedule: 'hourly'},
+      });
+      expect(parsed.wiki.schedule).toBeUndefined();
+    });
+
+    test('ToolModeSchema still rejects an unrecognized mode (write boundary stays strict)', () => {
+      expect(ToolModeSchema.safeParse('banana').success).toBe(false);
+    });
+
+    test('ScheduleSchema still rejects an unrecognized schedule (write boundary stays strict)', () => {
+      expect(ScheduleSchema.safeParse('hourly').success).toBe(false);
     });
 
     test('rejects missing wiki section', () => {
@@ -153,22 +172,6 @@ describe('schemas/automation-config', () => {
         })
       ).not.toThrow();
     });
-
-    test('version is still 1', () => {
-      expect(() =>
-        AutomationConfigSchema.parse({
-          ...VALID_CONFIG,
-          isolation_policy: 'prefer-branch',
-          version: 2,
-        })
-      ).toThrow(z.ZodError);
-
-      const parsed = AutomationConfigSchema.parse({
-        ...VALID_CONFIG,
-        isolation_policy: 'prefer-branch',
-      });
-      expect(parsed.version).toBe(1);
-    });
   });
 
   describe('TOOL_ID_TO_CONFIG_KEY <-> CONFIG_KEY_TO_TOOL_ID round-trip', () => {
@@ -204,6 +207,60 @@ describe('schemas/automation-config', () => {
       expect(result.config.wiki.mode).toBe('ci');
     });
 
+    test('round-trips a fully-valid config unchanged (no regression)', () => {
+      writeFileSync(sandbox.configPath, JSON.stringify(VALID_CONFIG), 'utf8');
+      const result = readAutomationConfig(sandbox.root);
+      expect(result.status).toBe('ok');
+      assert.ok(result.status === 'ok');
+      expect(result.config).toEqual(VALID_CONFIG);
+    });
+
+    test('returns {status: "ok"} for an unrecognized mode on one tool, defaulting that tool to "off" and leaving every other field intact', () => {
+      writeFileSync(
+        sandbox.configPath,
+        JSON.stringify({...VALID_CONFIG, wiki: {mode: 'banana'}}),
+        'utf8'
+      );
+      const result = readAutomationConfig(sandbox.root);
+      expect(result.status).toBe('ok');
+      assert.ok(result.status === 'ok');
+      expect(result.config.wiki.mode).toBe('off');
+      expect(result.config.pnpm_audit).toEqual(VALID_CONFIG.pnpm_audit);
+      expect(result.config.stale_branches).toEqual(VALID_CONFIG.stale_branches);
+      expect(result.config.update_deps).toEqual(VALID_CONFIG.update_deps);
+      expect(result.config.setup_complete).toBe(true);
+      expect(result.config.setup_opted_out).toBe(false);
+      expect(result.config.version).toBe(1);
+    });
+
+    test('returns {status: "ok"} for an unrecognized schedule on one tool, defaulting that tool\'s schedule to undefined', () => {
+      writeFileSync(
+        sandbox.configPath,
+        JSON.stringify({
+          ...VALID_CONFIG,
+          wiki: {mode: 'ci', schedule: 'hourly'},
+        }),
+        'utf8'
+      );
+      const result = readAutomationConfig(sandbox.root);
+      expect(result.status).toBe('ok');
+      assert.ok(result.status === 'ok');
+      expect(result.config.wiki.schedule).toBeUndefined();
+      expect(result.config.wiki.mode).toBe('ci');
+    });
+
+    test('returns {status: "ok"} for version: 2, defaulting version to 1', () => {
+      writeFileSync(
+        sandbox.configPath,
+        JSON.stringify({...VALID_CONFIG, version: 2}),
+        'utf8'
+      );
+      const result = readAutomationConfig(sandbox.root);
+      expect(result.status).toBe('ok');
+      assert.ok(result.status === 'ok');
+      expect(result.config.version).toBe(1);
+    });
+
     test('returns {status: "malformed"} for invalid JSON', () => {
       writeFileSync(sandbox.configPath, '{not json', 'utf8');
       const result = readAutomationConfig(sandbox.root);
@@ -216,21 +273,31 @@ describe('schemas/automation-config', () => {
     test('returns {status: "malformed"} for schema-violating JSON', () => {
       writeFileSync(
         sandbox.configPath,
-        JSON.stringify({...VALID_CONFIG, wiki: {mode: 'wat'}}),
+        JSON.stringify({...VALID_CONFIG, setup_complete: 'yes'}),
         'utf8'
       );
       const result = readAutomationConfig(sandbox.root);
       expect(result.status).toBe('malformed');
       assert.ok(result.status === 'malformed');
-      expect(result.error).toContain('wiki.mode');
+      expect(result.error).toContain('setup_complete');
     });
 
-    test('returns {status: "malformed"} when version is missing', () => {
+    test('returns {status: "malformed"} when the wiki section is entirely missing', () => {
+      const rest: Record<string, unknown> = {...VALID_CONFIG};
+      delete rest.wiki;
+      writeFileSync(sandbox.configPath, JSON.stringify(rest), 'utf8');
+      const result = readAutomationConfig(sandbox.root);
+      expect(result.status).toBe('malformed');
+    });
+
+    test('returns {status: "ok"} with version defaulted to 1 when version is missing', () => {
       const rest: Record<string, unknown> = {...VALID_CONFIG};
       delete rest.version;
       writeFileSync(sandbox.configPath, JSON.stringify(rest), 'utf8');
       const result = readAutomationConfig(sandbox.root);
-      expect(result.status).toBe('malformed');
+      expect(result.status).toBe('ok');
+      assert.ok(result.status === 'ok');
+      expect(result.config.version).toBe(1);
     });
 
     test('returns {status: "ok"} for an unrecognized isolation_policy value', () => {
