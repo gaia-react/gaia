@@ -14,7 +14,7 @@
 # best-effort runs two one-time, guarded cleanups: ledger-status-migrate.sh, so
 # every sweep that reads a ledger row's status sees the unified vocabulary, and
 # the residue sweep its own block further down documents. It then sweeps
-# exactly seven things:
+# exactly eight things:
 #
 #   1. local wiki-sync/<date>-<sha> branches whose upstream is [gone]. The wiki
 #      landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway
@@ -85,6 +85,15 @@
 #      the same retention window AND whose cost is fully represented. A thin
 #      delegation to plan-archive-merged.sh, which owns both gates,
 #      symmetric with sweep #6's spec-folder delegation.
+#   8. orphaned GAIA worktrees under .claude/worktrees/ whose branch upstream
+#      is [gone] (the same provable-death signal sweep #1 uses for
+#      wiki-sync/* branches) and whose working tree is clean. A crashed or
+#      abandoned session leaves the worktree dir behind after its PR
+#      squash-merges, and nothing else reclaims it. Never age-reap: there is
+#      no session-liveness signal, so an old worktree may still be a live
+#      long-running session. Teardown delegates to the WorktreeRemove hook's
+#      own remove-worktree.sh so remove + branch-delete + parent-prune stays
+#      defined in one place.
 #
 # Fail-safe by construction: any inability to PROVE death (no git, unreadable
 # HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
@@ -502,6 +511,69 @@ fi
 archive_plan="$root/.specify/extensions/gaia/lib/plan-archive-merged.sh"
 if [ -x "$archive_plan" ] || [ -f "$archive_plan" ]; then
   bash "$archive_plan" "$root" >/dev/null 2>&1 || true
+fi
+
+# --- 8. Orphaned merged worktrees under .claude/worktrees/ -----------------
+# A GAIA plan/debt worktree whose PR squash-merged and whose remote head was
+# pruned leaves its local branch marked [gone] -- the same provable-death signal
+# sweep #1 uses for wiki-sync/* branches. A session that crashed or was
+# abandoned after the merge but before ExitWorktree leaves the worktree dir
+# behind, and nothing else reclaims it. Reap only such provably-dead worktrees:
+# never age-reap (an old worktree may be a live long-running session, and there
+# is no session-liveness signal to tell them apart). Teardown is delegated to
+# the WorktreeRemove hook's own script so remove + branch-delete + parent-prune
+# stays defined in one place.
+#
+# Resolve the MAIN checkout: worktrees register there and physically live under
+# <main>/.claude/worktrees/, and this janitor may itself run from inside a
+# worktree, so `root` is not necessarily main.
+wt_common="$(git -C "$root" rev-parse --git-common-dir 2>/dev/null || true)"
+if [ -n "$wt_common" ]; then
+  case "$wt_common" in
+    /*) wt_main_git="$wt_common" ;;
+    *)  wt_main_git="$root/$wt_common" ;;
+  esac
+  wt_main="$(cd "$(dirname "$wt_main_git")" 2>/dev/null && pwd -P || true)"
+  wt_reaper="$wt_main/.gaia/scripts/remove-worktree.sh"
+  wt_current="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+  wt_current="$(cd "$wt_current" 2>/dev/null && pwd -P || printf '%s' "$wt_current")"
+  wt_base="$wt_main/.claude/worktrees"
+  if [ -n "$wt_main" ] && [ -f "$wt_reaper" ] && [ -d "$wt_base" ]; then
+    # Enumerate worktrees from the main checkout: porcelain emits `worktree
+    # <path>` then (for an attached checkout) `branch refs/heads/<name>`, or
+    # `detached`. Emit `<path>\t<branch>` per worktree; a detached worktree
+    # yields an empty branch and is skipped (no branch to test for [gone]).
+    while IFS="$(printf '\t')" read -r wt_path wt_branch; do
+      [ -n "$wt_path" ] || continue
+      # Only GAIA worktrees under the main checkout's .claude/worktrees/.
+      case "$wt_path" in "$wt_base"/*) ;; *) continue ;; esac
+      # Never the current checkout (also protects a janitor run from inside one).
+      [ "$wt_path" != "$wt_current" ] || continue
+      # Detached HEAD has no branch to prove [gone] on: leave it.
+      [ -n "$wt_branch" ] || continue
+      # Provable death: upstream-track is exactly [gone].
+      wt_track="$(git -C "$wt_main" for-each-ref \
+        --format='%(upstream:track)' "refs/heads/$wt_branch" 2>/dev/null || true)"
+      [ "$wt_track" = "[gone]" ] || continue
+      # Never discard uncommitted working-tree changes.
+      [ -z "$(git -C "$wt_path" status --porcelain 2>/dev/null)" ] || continue
+      # Reap via the WorktreeRemove hook's own teardown script (remove + branch
+      # -D [never main/master] + empty parent-dir prune, all in one place).
+      # jq-built, not printf-interpolated: a path containing `"` or `\` could
+      # otherwise produce malformed or injected JSON.
+      jq -nc --arg p "$wt_path" '{worktree_path:$p}' \
+        | bash "$wt_reaper" >/dev/null 2>&1 || true
+    done < <(
+      # `worktree` line: substr, not $2 -- porcelain does not quote the path,
+      # so a $2 split would truncate at the first space in the path.
+      git -C "$wt_main" worktree list --porcelain 2>/dev/null | awk '
+        $1=="worktree"{ p=substr($0,10); b="" }
+        $1=="branch"{b=$2; sub(/^refs\/heads\//,"",b)}
+        $1==""{ if(p!="") print p "\t" b; p=""; b="" }
+        END{ if(p!="") print p "\t" b }
+      '
+    )
+  fi
 fi
 
 exit 0
