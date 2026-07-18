@@ -530,6 +530,7 @@
     "wiki/concepts/PR Merge Workflow.md": "wiki-owned",
     "wiki/concepts/Pre-commit Hooks.md": "wiki-owned",
     "wiki/concepts/React Perf Diagnostic.md": "wiki-owned",
+    "wiki/concepts/Registering a Code Audit Team Member.md": "wiki-owned",
     "wiki/concepts/Serena Integration.md": "wiki-owned",
     "wiki/concepts/Task Orchestration.md": "wiki-owned",
     "wiki/concepts/Test Runner.md": "wiki-owned",
@@ -607,6 +608,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-17T21:22:25.275Z",
+  "generated": "2026-07-18T14:08:44.731Z",
   "version": "1.6.1"
 }
