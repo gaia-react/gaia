@@ -74,6 +74,10 @@ Spawning the local agent when CI has already stamped the marker is redundant; sk
 
 ### 1. Spawn the dispatched Code Audit Team members
 
+<!-- gaia:maintainer-only:start -->
+When this PR newly ships files, run `/distribution-audit` and land its manifest-answer commit first, before this step. The manifest answer commits `.gaia/manifest.json` and any `.gaia/release-exclude` change; neither path is an audit-machinery digest input nor a reviewed member surface, so the commit rotates no member's content digest and invalidates no marker already earned. It does move HEAD, and the `GAIA-Audit` commit status is keyed to HEAD's sha, so a manifest commit that lands after the handshake strands the just-posted status on the old HEAD and forces an extra status re-post on the new one. Landing the distribution-audit answer first keeps HEAD stable through the handshake, so the status posts once and stays put.
+<!-- gaia:maintainer-only:end -->
+
 **Roster-first: resolve the members, then spawn exactly those.** Before any `gh pr merge`, resolve which Code Audit Team members this branch's diff dispatches:
 
 ```bash

@@ -11,10 +11,10 @@ import {z} from 'zod';
  *   after the prefix; the tool owns that id space, so any well-formed slug is
  *   accepted: `react-doctor/<rule-id>`, `axe/<rule-id>`, `knip/<issue-type>`,
  *   `cve/<advisory-id>`.
- * - Holistic / rule-subagent buckets carry a CLOSED controlled vocabulary
- *   (the `as const` unions below). A holistic or rule finding only becomes a
- *   countable class once it has a seeded member; an unseeded member is
- *   rejected so free-text drift never reaches the tally.
+ * - Holistic / rule / workflow subagent buckets carry a CLOSED controlled
+ *   vocabulary (the `as const` unions below). A holistic, rule, or workflow
+ *   finding only becomes a countable class once it has a seeded member; an
+ *   unseeded member is rejected so free-text drift never reaches the tally.
  */
 
 export const FINDING_CLASS_PREFIXES = [
@@ -24,6 +24,7 @@ export const FINDING_CLASS_PREFIXES = [
   'cve',
   'holistic',
   'rule',
+  'workflow',
 ] as const;
 
 export type FindingClassPrefix = (typeof FINDING_CLASS_PREFIXES)[number];
@@ -93,9 +94,26 @@ export const RULE_FINDING_CLASSES = [
 
 export type RuleFindingClass = (typeof RULE_FINDING_CLASSES)[number];
 
+/**
+ * Closed-vocabulary members for the workflow bucket. Seeded from the
+ * workflow-security surface the `code-audit-github-workflows` member owns
+ * (GitHub-Actions supply-chain, injection, and permission defects). Small and
+ * defensible by design: seed only classes the agent can reliably and repeatably
+ * assign. When in doubt, leave a class out.
+ */
+export const WORKFLOW_FINDING_CLASSES = [
+  'workflow/script-injection',
+  'workflow/unsafe-pull-request-target',
+  'workflow/unpinned-action',
+  'workflow/broad-permissions',
+] as const;
+
+export type WorkflowFindingClass = (typeof WORKFLOW_FINDING_CLASSES)[number];
+
 const CLOSED_VOCABULARY: ReadonlySet<string> = new Set([
   ...HOLISTIC_FINDING_CLASSES,
   ...RULE_FINDING_CLASSES,
+  ...WORKFLOW_FINDING_CLASSES,
 ]);
 
 const splitPrefix = (
@@ -116,9 +134,9 @@ const isOraclePrefix = (prefix: string): prefix is FindingClassPrefix =>
 
 /**
  * True when `value` matches the per-bucket convention: a well-formed oracle id
- * (open id space after a known oracle prefix) or a seeded holistic/rule member
- * (closed controlled vocabulary). Everything else (free text, unknown prefix,
- * empty slug, unseeded holistic/rule member) is invalid.
+ * (open id space after a known oracle prefix) or a seeded holistic/rule/workflow
+ * member (closed controlled vocabulary). Everything else (free text, unknown
+ * prefix, empty slug, unseeded holistic/rule/workflow member) is invalid.
  */
 export const isValidFindingClass = (value: string): boolean => {
   const parts = splitPrefix(value);

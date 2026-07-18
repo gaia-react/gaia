@@ -53,3 +53,24 @@ jobs:
       - if: steps.filter.outputs.code == 'true'
         name: Run Vitest tests
         run: pnpm -C .gaia/cli test --run
+      # PR-time mirror of release.yml's "Verify committed CLI binaries are
+      # rebuilt from src" gate. The committed .gaia/cli/gaia{,-maintainer}
+      # bundles are what the runtime and the release tarball actually execute,
+      # so a PR that edits .gaia/cli/src/** without rebuilding them would merge
+      # a stale binary that only the release cut later catches. Rebuilding is
+      # deterministic (esbuild), so a fresh bundle that differs from the
+      # committed one means the commit is stale; bundle is idempotent and fast.
+      - if: steps.filter.outputs.code == 'true'
+        name: Verify committed CLI binaries are rebuilt from src
+        run: |
+          cp .gaia/cli/gaia /tmp/gaia-committed
+          cp .gaia/cli/gaia-maintainer /tmp/gaia-maintainer-committed
+          pnpm -C .gaia/cli bundle
+          if ! cmp -s /tmp/gaia-committed .gaia/cli/gaia; then
+            echo "::error::.gaia/cli/gaia is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
+            exit 1
+          fi
+          if ! cmp -s /tmp/gaia-maintainer-committed .gaia/cli/gaia-maintainer; then
+            echo "::error::.gaia/cli/gaia-maintainer is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
+            exit 1
+          fi

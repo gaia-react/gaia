@@ -26111,8 +26111,9 @@ var HELP_TEXT41 = `Usage: gaia update merge-audit-ci --baseline <file> --latest 
 
   Field-aware three-way verdict for .gaia/audit-ci.yml. Reads three YAML files
   (baseline / latest tarball + working-tree current), classifies the GAIA-managed
-  scalar knobs and the adopter-shared audit_authors login=mode entries, and emits
-  a JSON report of {applied, conflicts, suggestions}.
+  scalar knobs, the adopter-shared audit_authors login=mode entries, and the
+  auditors roster members, and emits a JSON report of {applied, conflicts,
+  suggestions}.
 
   Read-only: never writes the file. The /update-gaia skill applies the 'applied'
   entries with the Edit tool to preserve comments and order.
@@ -26132,6 +26133,7 @@ var MANAGED_WHOLE_VALUE_KEYS = [
   "retrigger_workflows"
 ];
 var AUTHORS_SECTION = "audit_authors";
+var ROSTER_SECTION = "auditors";
 var takeValue14 = (argv, index, flag) => {
   const value = argv.at(index);
   if (value === void 0)
@@ -26210,14 +26212,36 @@ var parseAuthors = (value) => {
   }
   return entries;
 };
-var computeVerdict = (b, l, a) => {
+var omitName = (item) => {
+  const config2 = {};
+  for (const key of Object.keys(item)) {
+    if (key !== "name") config2[key] = item[key];
+  }
+  return config2;
+};
+var parseRoster = (value) => {
+  const entries = /* @__PURE__ */ new Map();
+  if (!Array.isArray(value)) return entries;
+  for (const item of value) {
+    const name = typeof item === "object" && item !== null && !Array.isArray(item) ? item.name : void 0;
+    if (typeof name === "string" && !entries.has(name))
+      entries.set(name, omitName(item));
+  }
+  return entries;
+};
+var computeVerdict = ({
+  a,
+  addedVerdict = "suggest-add",
+  b,
+  l
+}) => {
   if (b.has && l.has) {
     if (deepEqual(b.value, l.value)) return "noop";
     if (!a.has) return "suggest-removed";
     if (deepEqual(a.value, b.value)) return "apply";
     return "conflict";
   }
-  if (l.has) return "suggest-add";
+  if (l.has) return addedVerdict;
   return "noop";
 };
 var buildItem = (triple) => {
@@ -26233,6 +26257,10 @@ var bySortKey = (a, b) => sortKey(a).localeCompare(sortKey(b));
 var authorPresence = (entries, login) => {
   const entry = entries.get(login);
   return entry === void 0 ? { has: false, value: void 0 } : { has: true, value: entry.mode };
+};
+var rosterPresence = (entries, name) => {
+  const entry = entries.get(name);
+  return entry === void 0 ? { has: false, value: void 0 } : { has: true, value: entry };
 };
 var computeReport = (baseline, latest, current) => {
   const applied = [];
@@ -26265,8 +26293,30 @@ var computeReport = (baseline, latest, current) => {
       section: AUTHORS_SECTION
     });
   }
+  const baseRoster = parseRoster(baseline[ROSTER_SECTION]);
+  const latestRoster = parseRoster(latest[ROSTER_SECTION]);
+  const currentRoster = parseRoster(current[ROSTER_SECTION]);
+  const rosterNames = [
+    .../* @__PURE__ */ new Set([...baseRoster.keys(), ...latestRoster.keys()])
+  ];
+  for (const name of rosterNames) {
+    triples.push({
+      a: rosterPresence(currentRoster, name),
+      addedVerdict: "apply",
+      b: rosterPresence(baseRoster, name),
+      key: name,
+      kind: "entry",
+      l: rosterPresence(latestRoster, name),
+      section: ROSTER_SECTION
+    });
+  }
   for (const triple of triples) {
-    const verdict = computeVerdict(triple.b, triple.l, triple.a);
+    const verdict = computeVerdict({
+      a: triple.a,
+      addedVerdict: triple.addedVerdict,
+      b: triple.b,
+      l: triple.l
+    });
     if (verdict !== "noop") {
       const item = buildItem(triple);
       if (verdict === "apply") {

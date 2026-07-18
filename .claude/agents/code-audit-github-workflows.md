@@ -165,7 +165,15 @@ Shape:
 ]}
 ```
 
-Every Critical / Important / Suggestion finding in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".github/actions/gaia-ci-merge-and-watch"]`). `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary: `holistic/secret-exposure` is the one seeded member that reliably fits a workflow-security finding today. A finding that maps to no seeded class (script injection, `pull_request_target` pwn-requests, unpinned actions, over-broad permissions, none of which has a seeded class yet) is simply omitted from `findings[]` (it still stands in your prose report); a finding with no stable class is not a countable finding. `"findings": []` when nothing in your report has a stable class, or your report is clean, either way is a real, meaningful record; write it, do not skip the file.
+Every Critical / Important / Suggestion finding in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".github/actions/gaia-ci-merge-and-watch"]`). `finding_class` draws from two closed vocabularies in `.gaia/cli/src/schemas/finding-class.ts`, reused verbatim, never a second vocabulary: `WORKFLOW_FINDING_CLASSES` owns your GitHub-Actions supply-chain surface, and `HOLISTIC_FINDING_CLASSES` (shared with `code-audit-frontend`) carries a leaked credential. Map each finding to its seeded class:
+
+- script injection → `workflow/script-injection`
+- `pull_request_target` pwn-request → `workflow/unsafe-pull-request-target`
+- unpinned action → `workflow/unpinned-action`
+- over-broad permissions → `workflow/broad-permissions`
+- leaked credential → `holistic/secret-exposure`
+
+A finding that maps to no seeded class in either vocabulary is simply omitted from `findings[]` (it still stands in your prose report); a finding with no stable class is not a countable finding. `"findings": []` when nothing in your report has a stable class, or your report is clean, either way is a real, meaningful record; write it, do not skip the file.
 
 Best-effort: a write failure here never blocks or alters the marker / stamp / status sequence above.
 

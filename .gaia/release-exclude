@@ -178,6 +178,12 @@ wiki/decisions/Forensics Triage Workflow.md
 .github/workflows/shell-lint.yml
 .github/workflows/distribution-audit-pr.yml
 .github/workflows/verify-required-checks.yml
+# `audit-roster.yml` runs the maintainer-only .gaia/scripts/verify-audit-roster.sh
+# advisory drift check against the GAIA team's own Code Audit Team roster
+# (.gaia/audit-ci.yml) and machinery lists; an adopter clone's own roster is
+# adopter-owned and this script's invariants are a maintainer-repo concern,
+# so the check would be a silent passenger on adopter clones.
+.github/workflows/audit-roster.yml
 .github/forensics
 
 # --- 10. Maintainer-only health-audit infrastructure ---

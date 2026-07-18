@@ -6,6 +6,7 @@ import {
   isValidFindingClass,
   OUT_OF_SCOPE_FALLBACK_FINDING_CLASS,
   RULE_FINDING_CLASSES,
+  WORKFLOW_FINDING_CLASSES,
 } from '../finding-class.js';
 
 describe('schemas/finding-class', () => {
@@ -43,6 +44,13 @@ describe('schemas/finding-class', () => {
       }
     );
 
+    test.each(WORKFLOW_FINDING_CLASSES)(
+      'accepts seeded workflow member: %s',
+      (value) => {
+        expect(FindingClassSchema.safeParse(value).success).toBe(true);
+      }
+    );
+
     test('rejects an unseeded holistic member (closed bucket)', () => {
       expect(
         FindingClassSchema.safeParse('holistic/something-made-up').success
@@ -54,6 +62,13 @@ describe('schemas/finding-class', () => {
       expect(
         FindingClassSchema.safeParse('rule/totally-invented').success
       ).toBe(false);
+    });
+
+    test('rejects an unseeded workflow member (closed bucket)', () => {
+      expect(FindingClassSchema.safeParse('workflow/made-up').success).toBe(
+        false
+      );
+      expect(isValidFindingClass('workflow/made-up')).toBe(false);
     });
   });
 
@@ -68,9 +83,17 @@ describe('schemas/finding-class', () => {
   });
 
   describe('exported vocabulary', () => {
-    test('exposes the six known prefixes', () => {
+    test('exposes the seven known prefixes', () => {
       expect(new Set(FINDING_CLASS_PREFIXES)).toEqual(
-        new Set(['axe', 'cve', 'holistic', 'knip', 'react-doctor', 'rule'])
+        new Set([
+          'axe',
+          'cve',
+          'holistic',
+          'knip',
+          'react-doctor',
+          'rule',
+          'workflow',
+        ])
       );
     });
   });

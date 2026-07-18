@@ -17,7 +17,7 @@
 # Reads live state, never writes: no API write, no file write, no git mutation.
 # One finding block per violation on stdout; exit 1 if any fired.
 #
-# The four invariants:
+# The five invariants:
 #
 #   1. Pairwise claimant disjointness, as GLOB LANGUAGES, whether or not any
 #      such file is tracked. An overlap names the pair and cites a witness path
@@ -33,6 +33,12 @@
 #      exists to make.
 #   4. Every roster member has an agent file on disk, registered in BOTH
 #      machinery lists; exactly one member carries `default: true`.
+#   5. Every roster member's name carries the `code-audit-` prefix. The local
+#      self-heal hook (block-selfheal-paths.sh) binds a dispatched member to its
+#      repair boundary by that prefix, not a roster lookup, so a member named
+#      off-convention escapes the boundary silently. The prefix is already
+#      load-bearing in the roster glob, the machinery lists, and the release
+#      scrub's leak-check; this asserts it rather than assuming it.
 #
 # THE BOUNDED DIALECT, and why intersection is decidable over it at all. The
 # classifier compiles three constructs (glob_to_regex, in the roster module
@@ -289,6 +295,22 @@ _report_unregistered() {
 while IFS=$'\t' read -r kind name; do
   [ "$kind" = "MEMBER" ] || continue
   [ -n "$name" ] || continue
+  case "$name" in
+    code-audit-*) ;;
+    *)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL member-name-convention\n'
+      printf '  member:   %s\n' "$name"
+      printf '  expected: a name beginning `code-audit-`\n'
+      printf '  The local self-heal hook (.claude/hooks/block-selfheal-paths.sh)\n'
+      printf '  binds a dispatched member to its repair boundary by the\n'
+      printf '  `code-audit-` name prefix, not a roster lookup, so a member named\n'
+      printf '  off-convention escapes the boundary silently. The prefix is\n'
+      printf '  load-bearing here and in the machinery lists and the release\n'
+      printf '  scrub; this makes it checked rather than assumed.\n'
+      printf '\n'
+      ;;
+  esac
   agent_rel=".claude/agents/${name}.md"
   if [ ! -f "${root}/${agent_rel}" ]; then
     findings=$((findings + 1))
