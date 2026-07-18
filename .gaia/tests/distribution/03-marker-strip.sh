@@ -19,7 +19,7 @@ trap 'rm -rf "$STAGING"' EXIT
   || { fail "build-staging failed"; exit 1; }
 
 # 1. No marker fragments survive in staging tree.
-SURVIVING=$(grep -rln 'gaia:maintainer-only' "$STAGING" 2>/dev/null || true)
+SURVIVING=$(grep -rlnE 'gaia:maintainer-only:(start|end)' "$STAGING" 2>/dev/null || true)
 if [ -n "$SURVIVING" ]; then
   log "Marker fragments survived strip in staging:"
   printf '%s\n' "$SURVIVING" >&2

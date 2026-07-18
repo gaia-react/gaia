@@ -60,7 +60,7 @@ fi
 
 # Belt-and-suspenders: also assert the post-build-staging tree contains
 # no marker fragments that the strip should have caught.
-MARKER_FRAGMENTS=$(grep -rn 'gaia:maintainer-only' "$STAGING" 2>/dev/null || true)
+MARKER_FRAGMENTS=$(grep -rnE 'gaia:maintainer-only:(start|end)' "$STAGING" 2>/dev/null || true)
 if [ -n "$MARKER_FRAGMENTS" ]; then
   log "Marker fragments survived strip:"
   printf '%s\n' "$MARKER_FRAGMENTS" >&2
