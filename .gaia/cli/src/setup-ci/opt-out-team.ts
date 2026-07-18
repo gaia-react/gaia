@@ -10,7 +10,8 @@
  * fail-closed, no destructive write on a broken state.
  */
 import {EXIT_CODES} from '../exit.js';
-import {readAutomationConfig} from '../schemas/automation-config.js';
+import {readAutomationConfigRaw} from '../schemas/automation-config.js';
+import type {AutomationConfig} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
 import {writeAutomationConfig} from './util/automation-write.js';
@@ -65,7 +66,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const result = readAutomationConfig(repoRoot);
+  const result = readAutomationConfigRaw(repoRoot);
 
   if (result.status === 'missing') {
     structuredError({
@@ -88,9 +89,9 @@ export const run = (
   }
 
   writeAutomationConfig(repoRoot, {
-    ...result.config,
+    ...result.raw,
     setup_opted_out: true,
-  });
+  } as AutomationConfig);
 
   process.stdout.write(`${JSON.stringify({opted_out: true})}\n`);
 

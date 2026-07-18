@@ -22163,7 +22163,7 @@ var run37 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const result = readAutomationConfig(repoRoot);
+  const result = readAutomationConfigRaw(repoRoot);
   if (result.status === "missing") {
     structuredError({
       code: "config_missing",
@@ -22182,7 +22182,7 @@ var run37 = (argv, options = {}) => {
   }
   const alreadyFinalized = result.config.setup_complete;
   writeAutomationConfig(repoRoot, {
-    ...result.config,
+    ...result.raw,
     setup_complete: true
   });
   process.stdout.write(
@@ -22224,7 +22224,7 @@ var run38 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const result = readAutomationConfig(repoRoot);
+  const result = readAutomationConfigRaw(repoRoot);
   if (result.status === "missing") {
     structuredError({
       code: "config_missing",
@@ -22242,7 +22242,7 @@ var run38 = (argv, options = {}) => {
     return EXIT_CODES.CONFIG_INVALID;
   }
   writeAutomationConfig(repoRoot, {
-    ...result.config,
+    ...result.raw,
     setup_opted_out: true
   });
   process.stdout.write(`${JSON.stringify({ opted_out: true })}
@@ -22860,7 +22860,7 @@ var run43 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const result = readAutomationConfig(repoRoot);
+  const result = readAutomationConfigRaw(repoRoot);
   if (result.status === "missing") {
     structuredError({
       code: "config_missing",
@@ -22878,11 +22878,10 @@ var run43 = (argv, options = {}) => {
     return EXIT_CODES.CONFIG_INVALID;
   }
   const key = TOOL_ID_TO_CONFIG_KEY[tool];
-  const existing = result.config[key];
-  const nextSlot = existing.schedule === void 0 ? { mode } : { mode, schedule: existing.schedule };
+  const existingSlot = result.raw[key] ?? {};
   writeAutomationConfig(repoRoot, {
-    ...result.config,
-    [key]: nextSlot
+    ...result.raw,
+    [key]: { ...existingSlot, mode }
   });
   process.stdout.write(`${JSON.stringify({ mode, tool })}
 `);

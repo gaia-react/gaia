@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {writeFileSync} from 'node:fs';
+import {readFileSync, writeFileSync} from 'node:fs';
 import {automationConfigPath} from '../../automation/paths.js';
 import {readAutomationConfig} from '../../schemas/automation-config.js';
 import {run} from '../write-tool-mode.js';
@@ -51,6 +51,49 @@ describe('setup-ci write-tool-mode', () => {
     stdio.restore();
     sandbox.cleanup();
     vi.restoreAllMocks();
+  });
+
+  test('read-merge preservation: an unknown key a newer binary wrote survives (#753)', () => {
+    writeFileSync(
+      automationConfigPath(sandbox.root),
+      JSON.stringify({
+        ...VALID_BASE_CONFIG,
+        future_slice_key: {foo: 'bar'},
+      }),
+      'utf8'
+    );
+
+    const exit = run(['wiki', 'off'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const written = JSON.parse(
+      readFileSync(automationConfigPath(sandbox.root), 'utf8')
+    ) as Record<string, unknown>;
+    expect(written.future_slice_key).toEqual({foo: 'bar'});
+
+    const result = readAutomationConfig(sandbox.root);
+    expect(result.status).toBe('ok');
+    assertStatusOk(result);
+    expect(result.config.wiki.mode).toBe('off');
+  });
+
+  test('read-merge preservation: an unknown sub-field inside the modified slot survives (#753)', () => {
+    writeFileSync(
+      automationConfigPath(sandbox.root),
+      JSON.stringify({
+        ...VALID_BASE_CONFIG,
+        wiki: {future_subfield: 'keep-me', mode: 'off'},
+      }),
+      'utf8'
+    );
+
+    const exit = run(['wiki', 'ci'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const written = JSON.parse(
+      readFileSync(automationConfigPath(sandbox.root), 'utf8')
+    ) as Record<string, unknown>;
+    expect(written.wiki).toEqual({future_subfield: 'keep-me', mode: 'ci'});
   });
 
   test('flips a tool mode to off and preserves schedule', () => {
