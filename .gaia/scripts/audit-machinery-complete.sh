@@ -44,7 +44,9 @@ GATE_MACHINERY_FILES="$(cat <<'EOF'
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-machinery-complete.sh
 .gaia/scripts/resolve-audit-members.sh
+# gaia:maintainer-only:start
 .gaia/scripts/resolve-audit-spawn.sh
+# gaia:maintainer-only:end
 .gaia/scripts/audit-noop-detect.sh
 .claude/hooks/pr-merge-audit-check.sh
 .claude/hooks/audit-disposition-check.sh
@@ -58,12 +60,18 @@ GATE_MACHINERY_FILES="$(cat <<'EOF'
 .github/audit/gate-pending-members.sh
 .github/workflows/code-review-audit.yml
 .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
+# gaia:maintainer-only:start
 .gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl
+# gaia:maintainer-only:end
 .claude/agents/code-audit-frontend.md
+# gaia:maintainer-only:start
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md
+# gaia:maintainer-only:end
 .claude/agents/code-audit-github-workflows.md
+# gaia:maintainer-only:start
 .claude/agents/code-audit-maintainer-prose.md
+# gaia:maintainer-only:end
 .gaia/VERSION
 EOF
 )"

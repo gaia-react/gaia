@@ -98,8 +98,8 @@ strip_quotes() {
 # is_refused_path <token>: strip quotes and a leading ./, relativize an
 # absolute token against REPO_ROOT when it resolves under it, then test the
 # result against AUDIT_SELFHEAL_REFUSE_ERE. On a match, sets MATCHED_PATH to
-# the relative path (so the caller can name it in the deny reason, per
-# UAT-026/UAT-027) and returns 0. An absolute token that does not resolve
+# the relative path (so the caller can name it in the deny reason) and
+# returns 0. An absolute token that does not resolve
 # under REPO_ROOT is ambiguous (out-of-repo, or the root could not be
 # resolved) and is left alone -- the safe direction is to allow.
 is_refused_path() {

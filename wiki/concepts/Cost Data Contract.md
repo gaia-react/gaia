@@ -74,7 +74,9 @@ Two preconditions are **limits on this, not guarantees**:
 
 Rows written before the pull request existed carry no `github` field and are never back-filled.
 
+<!-- gaia:maintainer-only:start -->
 `.gaia/scripts/tests/token-command.bats` is the executable producer oracle whose assertions pin the `command`, `run_id`, and `github` shapes above; a consumer author should read it alongside this page.
+<!-- gaia:maintainer-only:end -->
 
 ## schema_version evolution rule
 

@@ -1035,7 +1035,7 @@ Never write a marker for content other than current `HEAD`. The shared writer de
 
 ## Findings sidecar (local run record)
 
-The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments for a machine-readable findings block; CI's own workflow prompt already emits one (`code-review-audit.yml:359-372`), but a PR audited by the local producer left the tally with nothing. Close that gap yourself: on **every LOCAL pass**, clean or not, marker written or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set): CI's own prompt already covers it, unrelated to this file.
+The finding-recurrence tally reads PR comments for a machine-readable findings block; CI's own workflow prompt already emits one (`code-review-audit.yml:359-372`), but a PR audited by the local producer left the tally with nothing. Close that gap yourself: on **every LOCAL pass**, clean or not, marker written or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set): CI's own prompt already covers it, unrelated to this file.
 
 Path: `.gaia/local/audit/${BASE_SHA}.code-audit-frontend.findings.json`, the **same** `BASE_SHA` you already resolve for the re-run carry-forward ledger (see "Re-run carry-forward ledger" above), never a second base resolution. If `BASE_SHA` is empty (resolution failed), skip the sidecar write entirely, the same fail-open rule the ledger itself follows.
 

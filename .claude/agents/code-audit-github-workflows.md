@@ -153,7 +153,7 @@ If the marker is withheld, surface:
 
 ## Findings sidecar (local run record)
 
-The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments for a machine-readable findings block; CI's own workflow prompt emits one only for `code-audit-frontend`, never for you. Close that gap yourself: on **every LOCAL pass**, clean or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set); it never applies there, since CI never runs you.
+The finding-recurrence tally reads PR comments for a machine-readable findings block; CI's own workflow prompt emits one only for `code-audit-frontend`, never for you. Close that gap yourself: on **every LOCAL pass**, clean or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set); it never applies there, since CI never runs you.
 
 Path: `.gaia/local/audit/${base}.code-audit-github-workflows.findings.json`, the **same** `base` you already resolve at the start of every run (see "Remit and self-skip" above), never a second base resolution. If `base` is empty (resolution failed), skip the sidecar write entirely.
 
@@ -165,7 +165,7 @@ Shape:
 ]}
 ```
 
-Every Critical / Important / Suggestion finding in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".github/actions/gaia-ci-merge-and-watch"]`). `finding_class` draws from two closed vocabularies in `.gaia/cli/src/schemas/finding-class.ts`, reused verbatim, never a second vocabulary: `WORKFLOW_FINDING_CLASSES` owns your GitHub-Actions supply-chain surface, and `HOLISTIC_FINDING_CLASSES` (shared with `code-audit-frontend`) carries a leaked credential. Map each finding to its seeded class:
+Every Critical / Important / Suggestion finding in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".github/actions/gaia-ci-merge-and-watch"]`). `finding_class` draws from two closed vocabularies, reused verbatim, never a second vocabulary: `WORKFLOW_FINDING_CLASSES` owns your GitHub-Actions supply-chain surface, and `HOLISTIC_FINDING_CLASSES` (shared with `code-audit-frontend`) carries a leaked credential. Map each finding to its seeded class:
 
 - script injection → `workflow/script-injection`
 - `pull_request_target` pwn-request → `workflow/unsafe-pull-request-target`

@@ -47,8 +47,8 @@
 #
 #      There are exactly FOUR ways to be unable to ask, and all four exit 2. This
 #      list is exhaustive by design: a door that is not named here is a door the
-#      next reader does not know to keep shut, and each has a regression lock in
-#      .github/audit/tests/ci-status-member-gate.bats pinning it to 2.
+#      next reader does not know to keep shut, and each has a regression lock
+#      pinning it to 2.
 #
 #        - A usage error (either argument missing). An empty digest would make
 #          the match below succeed against anything, standing the gate down on
