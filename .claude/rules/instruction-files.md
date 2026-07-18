@@ -41,7 +41,9 @@ PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 Before merging changes to any file under `.claude/`:
 
 ```bash
-grep -rn "/Users/\|/home/" .claude/
+git grep -nIE "/Users/|/home/" -- .claude/
 ```
+
+`git grep` searches tracked files only, so gitignored surfaces (live worktrees under `.claude/worktrees/`, `.claude/settings.local.json`) are skipped automatically.
 
 Any match outside this rule's prose (where `/Users/<name>/...` is shown as a counter-example) is a bug.
