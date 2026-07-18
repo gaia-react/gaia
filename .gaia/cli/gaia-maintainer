@@ -6,6 +6,10 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/index.maintainer.ts
+import { realpathSync as realpathSync2 } from "node:fs";
+import { pathToFileURL } from "node:url";
+
 // src/exit.ts
 var EXIT_CODES = {
   CONFIG_INVALID: 30,
@@ -29156,14 +29160,14 @@ var SUBCOMMAND_HANDLERS10 = {
   "update-deps": run41,
   wiki: run58
 };
-var main = async () => {
-  const subcommand = process.argv[2];
-  const rest = process.argv.slice(3);
+var run59 = async (argv) => {
+  const subcommand = argv[0];
+  const rest = argv.slice(1);
   if (subcommand === void 0 || HELP_TOKENS56.has(subcommand)) {
     printHelp2();
     return EXIT_CODES.OK;
   }
-  const handler = SUBCOMMAND_HANDLERS10[subcommand];
+  const handler = Object.hasOwn(SUBCOMMAND_HANDLERS10, subcommand) ? SUBCOMMAND_HANDLERS10[subcommand] : void 0;
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -29171,16 +29175,23 @@ var main = async () => {
   structuredError({ code: "unknown_subcommand", subcommand });
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
-try {
-  const exitCode = await main();
-  process.exit(exitCode);
-} catch (error51) {
-  structuredError({
-    code: "cli_internal_error",
-    message: error51 instanceof Error ? error51.message : String(error51)
-  });
-  process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+var invokedPath = process.argv[1];
+var isDirectRun = invokedPath !== void 0 && import.meta.url === pathToFileURL(realpathSync2(invokedPath)).href;
+if (isDirectRun) {
+  try {
+    const exitCode = await run59(process.argv.slice(2));
+    process.exit(exitCode);
+  } catch (error51) {
+    structuredError({
+      code: "cli_internal_error",
+      message: error51 instanceof Error ? error51.message : String(error51)
+    });
+    process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+  }
 }
+export {
+  run59 as run
+};
 /*! Bundled license information:
 
 js-yaml/dist/js-yaml.mjs:

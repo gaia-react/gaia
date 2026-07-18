@@ -13,6 +13,8 @@
  * added here too unless it is intentionally adopter-only.
  */
 /* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
+import {realpathSync} from 'node:fs';
+import {pathToFileURL} from 'node:url';
 import {run as runAutomation} from './automation/index.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runFitness} from './fitness/index.js';
@@ -67,9 +69,9 @@ const SUBCOMMAND_HANDLERS: Readonly<
   wiki: runWiki,
 };
 
-const main = async (): Promise<number> => {
-  const subcommand = process.argv[2] as string | undefined;
-  const rest = process.argv.slice(3);
+export const run = async (argv: readonly string[]): Promise<number> => {
+  const subcommand = argv[0] as string | undefined;
+  const rest = argv.slice(1);
 
   if (subcommand === undefined || HELP_TOKENS.has(subcommand)) {
     printHelp();
@@ -77,7 +79,13 @@ const main = async (): Promise<number> => {
     return EXIT_CODES.OK;
   }
 
-  const handler = SUBCOMMAND_HANDLERS[subcommand];
+  // Own-property lookup. A bare `Record` index resolves every `Object.prototype`
+  // member, so `gaia-maintainer toString` would otherwise be accepted as a
+  // valid subcommand and exit 0 without running anything.
+  const handler =
+    Object.hasOwn(SUBCOMMAND_HANDLERS, subcommand) ?
+      SUBCOMMAND_HANDLERS[subcommand]
+    : undefined;
 
   if (handler !== undefined) {
     const result = await handler(rest);
@@ -90,14 +98,25 @@ const main = async (): Promise<number> => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-try {
-  const exitCode = await main();
+// Auto-execute only when invoked directly as the bundled binary, not when a
+// test imports this module. Both binaries are invoked by explicit path
+// (`node .gaia/cli/gaia ...`), so argv[1] is this file; a test runner's
+// argv[1] is vitest, so the guard is false and no process.exit fires.
+const invokedPath = process.argv[1] as string | undefined;
+const isDirectRun =
+  invokedPath !== undefined &&
+  import.meta.url === pathToFileURL(realpathSync(invokedPath)).href;
 
-  process.exit(exitCode);
-} catch (error: unknown) {
-  structuredError({
-    code: 'cli_internal_error',
-    message: error instanceof Error ? error.message : String(error),
-  });
-  process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+if (isDirectRun) {
+  try {
+    const exitCode = await run(process.argv.slice(2));
+
+    process.exit(exitCode);
+  } catch (error: unknown) {
+    structuredError({
+      code: 'cli_internal_error',
+      message: error instanceof Error ? error.message : String(error),
+    });
+    process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+  }
 }
