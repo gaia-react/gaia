@@ -30,6 +30,20 @@ assert_all_required_keys_present() {
   done
 }
 
+# Skip a parse-fail test when no YAML parser is available. lint.sh's parse
+# check is best-effort: with neither python3+pyyaml nor yq present it skips
+# the check silently, so the hazard fixtures below lint clean and would fail
+# these tests spuriously. Detection mirrors lint.sh (python3+pyyaml, then yq).
+require_yaml_parser() {
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v yq >/dev/null 2>&1; then
+    return 0
+  fi
+  skip "no YAML parser available (python3+pyyaml or yq); lint.sh skips the parse check"
+}
+
 @test "valid GAIA frontmatter lints clean, no yaml_parse_error" {
   spec="$BATS_TMPDIR/lint-yaml-valid.spec.md"
   cat > "$spec" <<'SPEC'
@@ -84,6 +98,7 @@ SPEC
 }
 
 @test "backtick-leading plain scalar fails yaml_parse_error even though all required keys are present" {
+  require_yaml_parser
   spec="$BATS_TMPDIR/lint-yaml-backtick.spec.md"
   cat > "$spec" <<'SPEC'
 ---
@@ -135,6 +150,7 @@ SPEC
 }
 
 @test "colon-space inside a plain scalar fails yaml_parse_error even though all required keys are present" {
+  require_yaml_parser
   spec="$BATS_TMPDIR/lint-yaml-colonspace.spec.md"
   cat > "$spec" <<'SPEC'
 ---
@@ -186,6 +202,7 @@ SPEC
 }
 
 @test "space-hash inside a plain scalar fails yaml_parse_error even though all required keys are present" {
+  require_yaml_parser
   spec="$BATS_TMPDIR/lint-yaml-hash.spec.md"
   cat > "$spec" <<'SPEC'
 ---
