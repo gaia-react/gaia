@@ -149,3 +149,28 @@ open_count() { jq -r '.openCount' "$CACHE"; }
   [ "$status" -eq 0 ]
   [ "$(open_count)" = "2" ]
 }
+
+# --- 6. Excludes debt:spec-pending from the open count ------------------------
+# A handed-off (design-first) issue carries debt:spec-pending and is parked out of
+# the backlog until its SPEC and implementation land, so it must not inflate the
+# nudge. Three issues, one spec-pending, must count 2.
+@test "excludes debt:spec-pending from the open count" {
+  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"},{"name":"severity:important"}]},{"number":2,"labels":[{"name":"tech-debt"},{"name":"severity:suggestion"},{"name":"debt:spec-pending"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"severity:critical"}]}]'
+  : > "$SENTINEL"
+  touch -t "$(past_ts 300)" "$SENTINEL"   # aged past the 120s grace: count trusted & written
+  run run_refresh
+  [ "$status" -eq 0 ]
+  [ "$(open_count)" = "2" ]
+}
+
+# --- 7. Excludes both claim labels together -----------------------------------
+# debt:in-progress and debt:spec-pending are distinct exclusions; both must drop.
+# Four issues: plain, in-progress, spec-pending, and one carrying both -> counts 1.
+@test "excludes both debt:in-progress and debt:spec-pending" {
+  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"}]},{"number":2,"labels":[{"name":"tech-debt"},{"name":"debt:in-progress"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"}]},{"number":4,"labels":[{"name":"tech-debt"},{"name":"debt:in-progress"},{"name":"debt:spec-pending"}]}]'
+  : > "$SENTINEL"
+  touch -t "$(past_ts 300)" "$SENTINEL"
+  run run_refresh
+  [ "$status" -eq 0 ]
+  [ "$(open_count)" = "1" ]
+}

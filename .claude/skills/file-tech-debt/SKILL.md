@@ -70,7 +70,9 @@ Build a self-contained issue body with these parts, in order:
 - A handler-class line, exactly one of:
   - `Handler: prompt`, the fix is a single logical unit confined to one file, with no public-contract change and no cross-module ripple.
   - `Handler: plan`, anything larger or more structural.
-  - Never `Handler: gaia-spec`, that classification does not exist here. This line is advisory, whatever later drains the issue may override it after reading the actual code.
+  - `Handler: spec`, the fix must begin with a design SPEC, a new subsystem, a schema or contract decision, or a cross-cutting redesign. `/gaia-debt` resolves a spec-class issue by printing a `/gaia-spec` handoff and stopping, not by opening a fix PR.
+
+  This line is advisory, whatever later drains the issue may override it after reading the actual code.
 
 ## 6. Labels
 
@@ -114,6 +116,6 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 - Tests: `.gaia/tests/hooks/debt-sentinel-touch.bats`, `.gaia/tests/hooks/debt-session-reconcile.bats`, `.gaia/scripts/tests/debt-count-refresh.bats`
 <!-- gaia:maintainer-only:end -->
 
-The governed set also includes the `debt:in-progress` claim label: `.claude/skills/gaia/references/debt.md` creates and applies it as the `/gaia-debt` in-progress claim, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count. This recipe never creates or applies `debt:in-progress` itself.
+The governed set also includes the `debt:in-progress` claim label: `.claude/skills/gaia/references/debt.md` creates and applies it as the `/gaia-debt` in-progress claim, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count. This recipe never creates or applies `debt:in-progress` itself. The same holds for `debt:spec-pending`: `debt.md` creates and applies it as the `/gaia-debt` design-first handoff park label, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count too. This recipe never creates or applies `debt:spec-pending` itself.
 
 If you're only filing an issue, none of the above needs touching, this note exists so a future edit to the key/label shapes doesn't silently break them.
