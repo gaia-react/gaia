@@ -95,29 +95,37 @@ const parseGhPr = (value: unknown): GhPr | null => {
   return {comments, number: v.number};
 };
 
-// Builds a tally record from a parsed gh PR, taking the LATEST comment that
-// carries a parseable findings block (a re-run audit supersedes an earlier
-// one on the same PR). Returns null when no comment carries a block.
+// Builds a tally record from a parsed gh PR, merging findings PER AUDITOR: for
+// each parseable block, the block's `auditor` field (normalized to `''` for a
+// missing/empty/non-string auditor by the parser) keys a Map, so a later
+// block from the SAME auditor supersedes its own earlier one (a re-run audit
+// supersedes an earlier run), while blocks from DIFFERENT auditors on the
+// same PR both survive. The merged record flattens every auditor's surviving
+// findings in Map insertion order (gh's chronological comment order).
+// Returns null when no comment carries a parseable block.
 const recordFromGhPr = (pr: GhPr): null | TallyPrRecord => {
-  let findings: TallyPrRecord['findings'] | undefined;
+  const byAuditor = new Map<string, TallyPrRecord['findings']>();
 
   for (const comment of pr.comments) {
     const block = parseFindingsBlock(comment.body);
 
-    if (block !== null) findings = block;
+    if (block !== null) byAuditor.set(block.auditor, block.findings);
   }
 
-  return findings === undefined ? null : {findings, pr_number: pr.number};
+  if (byAuditor.size === 0) return null;
+
+  return {findings: [...byAuditor.values()].flat(), pr_number: pr.number};
 };
 
 /**
  * Reads the merged-PR window via gh. Returns one record per PR that carries a
- * parseable findings block (the latest such comment wins so a re-run audit
- * supersedes an earlier one), alongside `ghOk`. `ghOk` is `false` on any gh
- * failure (non-zero exit, unparseable JSON, or a well-formed-but-non-array
- * response, all read failures rather than empty windows) and `true` otherwise,
- * including a genuinely empty window. The refresher never blocks: an empty `prs`
- * list is returned in every failure case.
+ * parseable findings block, merging every auditor's findings on that PR
+ * (latest block wins per auditor; see `recordFromGhPr`), alongside `ghOk`.
+ * `ghOk` is `false` on any gh failure (non-zero exit, unparseable JSON, or a
+ * well-formed-but-non-array response, all read failures rather than empty
+ * windows) and `true` otherwise, including a genuinely empty window. The
+ * refresher never blocks: an empty `prs` list is returned in every failure
+ * case.
  */
 const fetchWindowPrs = (cwd: string, now: Date): WindowPrs => {
   const search = `merged:>=${windowStartDate(now)}`;

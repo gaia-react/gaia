@@ -52,7 +52,7 @@ type BlockFinding = {
 
 const findingsComment = (
   prNumber: number,
-  auditor: 'ci' | 'local',
+  auditor: string,
   findings: BlockFinding[]
 ): {body: string} => ({
   body: [
@@ -60,6 +60,22 @@ const findingsComment = (
     '<!-- gaia-harden:findings:start -->',
     '<!--',
     JSON.stringify({auditor, findings, pr_number: prNumber, schema: 1}),
+    '-->',
+    '<!-- gaia-harden:findings:end -->',
+  ].join('\n'),
+});
+
+// Same shape as `findingsComment` but omits the `auditor` key entirely, for
+// exercising the parser's missing-auditor normalization to the `''` bucket.
+const anonymousFindingsComment = (
+  prNumber: number,
+  findings: BlockFinding[]
+): {body: string} => ({
+  body: [
+    'Audit summary.',
+    '<!-- gaia-harden:findings:start -->',
+    '<!--',
+    JSON.stringify({findings, pr_number: prNumber, schema: 1}),
     '-->',
     '<!-- gaia-harden:findings:end -->',
   ].join('\n'),
@@ -185,6 +201,196 @@ describe('harden-tally run', () => {
     expect(printed.candidate_count).toBe(1);
     const candidates = printed.candidates as Record<string, unknown>[];
     expect(candidates[0]?.severity_max).toBe('error');
+  });
+
+  test('two different auditors posting on the same PR both count (#731 regression)', () => {
+    // PR 1201 carries a 'ci' block for classA and a 'local' block for classB
+    // in the SAME comment list. Under the old last-block-on-the-PR-wins bug,
+    // only the local/classB block would survive, so classA would be short one
+    // PR and fall below the recurrence threshold.
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(
+      stubGh([
+        ghPr(1201, [
+          findingsComment(1201, 'ci', [
+            {
+              area_tags: ['app'],
+              finding_class: 'rule/switch-statement',
+              severity: 'warning',
+            },
+          ]),
+          findingsComment(1201, 'local', [
+            {
+              area_tags: ['app'],
+              finding_class: 'axe/color-contrast',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+        ghPr(1188, [
+          findingsComment(1188, 'ci', [
+            {
+              area_tags: ['app'],
+              finding_class: 'rule/switch-statement',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+        ghPr(1175, [
+          findingsComment(1175, 'ci', [
+            {
+              area_tags: ['app'],
+              finding_class: 'rule/switch-statement',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+      ])
+    );
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    const printed = parseStdout(stdout.out);
+    const candidates = printed.candidates as Record<string, unknown>[];
+    const switchCandidate = candidates.find(
+      (c) => c.finding_class === 'rule/switch-statement'
+    );
+    expect(switchCandidate?.distinct_pr_count).toBe(3);
+    expect(switchCandidate?.pr_numbers).toContain(1201);
+  });
+
+  test('same auditor re-running on a PR supersedes its own earlier block, not merges', () => {
+    // PR 1 carries two 'ci' blocks: the second (classB) must fully replace
+    // the first (classA) for that auditor, so classA gets no credit from PR 1.
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(
+      stubGh([
+        ghPr(1, [
+          findingsComment(1, 'ci', [
+            {
+              area_tags: [],
+              finding_class: 'rule/switch-statement',
+              severity: 'warning',
+            },
+          ]),
+          findingsComment(1, 'ci', [
+            {
+              area_tags: [],
+              finding_class: 'axe/color-contrast',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+        ghPr(2, [
+          findingsComment(2, 'ci', [
+            {
+              area_tags: [],
+              finding_class: 'rule/switch-statement',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+        ghPr(3, [
+          findingsComment(3, 'ci', [
+            {
+              area_tags: [],
+              finding_class: 'rule/switch-statement',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+        ghPr(4, [
+          findingsComment(4, 'ci', [
+            {
+              area_tags: [],
+              finding_class: 'axe/color-contrast',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+        ghPr(5, [
+          findingsComment(5, 'ci', [
+            {
+              area_tags: [],
+              finding_class: 'axe/color-contrast',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+      ])
+    );
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    const printed = parseStdout(stdout.out);
+    // classA (rule/switch-statement) only reaches PRs 2 and 3 (2 distinct):
+    // PR 1's ci/classA block was superseded by ci/classB on the same PR, so
+    // it must not qualify. classB (axe/color-contrast) reaches PRs 1, 4, 5.
+    expect(printed.candidate_count).toBe(1);
+    const candidates = printed.candidates as Record<string, unknown>[];
+    expect(candidates[0]?.finding_class).toBe('axe/color-contrast');
+    expect(candidates[0]?.pr_numbers).toEqual(
+      expect.arrayContaining([1, 4, 5])
+    );
+  });
+
+  test('two anonymous (missing-auditor) blocks on the same PR collapse, latest wins', () => {
+    // Both blocks omit `auditor`, so the parser normalizes each to the same
+    // '' bucket: the second (classB) must supersede the first (classA), the
+    // same as a same-auditor re-run, not merge as if from different auditors.
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(
+      stubGh([
+        ghPr(1, [
+          anonymousFindingsComment(1, [
+            {
+              area_tags: [],
+              finding_class: 'rule/switch-statement',
+              severity: 'warning',
+            },
+          ]),
+          anonymousFindingsComment(1, [
+            {
+              area_tags: [],
+              finding_class: 'axe/color-contrast',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+        ghPr(2, [
+          anonymousFindingsComment(2, [
+            {
+              area_tags: [],
+              finding_class: 'axe/color-contrast',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+        ghPr(3, [
+          anonymousFindingsComment(3, [
+            {
+              area_tags: [],
+              finding_class: 'axe/color-contrast',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+      ])
+    );
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    const printed = parseStdout(stdout.out);
+    expect(printed.candidate_count).toBe(1);
+    const candidates = printed.candidates as Record<string, unknown>[];
+    expect(candidates[0]?.finding_class).toBe('axe/color-contrast');
+    expect(candidates[0]?.distinct_pr_count).toBe(3);
   });
 
   test('does not surface a class on only 2 distinct PRs', () => {

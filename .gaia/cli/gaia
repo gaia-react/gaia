@@ -17213,14 +17213,15 @@ var parseFindingsBlock = (body, onReject = defaultOnReject) => {
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
-  const { findings } = parsed;
+  const { auditor: rawAuditor, findings } = parsed;
   if (!Array.isArray(findings)) return null;
+  const auditor = typeof rawAuditor === "string" && rawAuditor.length > 0 ? rawAuditor : "";
   const result = [];
   for (const entry of findings) {
     const finding = parseFinding(entry, onReject);
     if (finding !== null) result.push(finding);
   }
-  return result;
+  return { auditor, findings: result };
 };
 
 // src/harden/tally.ts
@@ -17255,12 +17256,13 @@ var parseGhPr = (value) => {
   return { comments, number: v.number };
 };
 var recordFromGhPr = (pr) => {
-  let findings;
+  const byAuditor = /* @__PURE__ */ new Map();
   for (const comment of pr.comments) {
     const block = parseFindingsBlock(comment.body);
-    if (block !== null) findings = block;
+    if (block !== null) byAuditor.set(block.auditor, block.findings);
   }
-  return findings === void 0 ? null : { findings, pr_number: pr.number };
+  if (byAuditor.size === 0) return null;
+  return { findings: [...byAuditor.values()].flat(), pr_number: pr.number };
 };
 var fetchWindowPrs = (cwd, now) => {
   const search = `merged:>=${windowStartDate(now)}`;
