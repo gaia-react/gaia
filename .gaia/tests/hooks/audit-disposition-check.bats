@@ -97,6 +97,22 @@ write_sidecar() { printf '%s\n' "$1" > "$SIDECAR"; }
   [ -z "$output" ]
 }
 
+@test "offenders: a filed line=4 key is NOT satisfied by a sibling line=42 issue (the -->boundary guard)" {
+  install_gh_mock ok '[{"number":9,"body":"title\n\n<!-- gaia-debt-key: v1 class=y path=b line=42 -->"}]'
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=y path=b line=4","disposition":"filed"}]}'
+  run disposition_offenders "$SIDECAR"
+  [ "$status" -eq 0 ]
+  grep -q "filed-but-missing: v1 class=y path=b line=4" <<<"$output" || return 1
+}
+
+@test "offenders: a filed line=4 key IS satisfied by an exact line=4 issue" {
+  install_gh_mock ok '[{"number":9,"body":"title\n\n<!-- gaia-debt-key: v1 class=y path=b line=4 -->"}]'
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=y path=b line=4","disposition":"filed"}]}'
+  run disposition_offenders "$SIDECAR"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
 # ---------------------------------------------------------------------------
 # disposition_offenders: fail-open everywhere else
 # ---------------------------------------------------------------------------
