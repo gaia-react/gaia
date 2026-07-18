@@ -73,12 +73,15 @@ wt_entry_is_locked_initializing() {
   ' <<<"$list"
 }
 
-# The create-and-cleanup critical section. Runs under the per-name lock below
-# (or unlocked as a fallback), and returns rather than exits so the lock helper
-# can capture its status. Holding the lock means no peer can be mid-`worktree
-# add` here: every leftover at the path is settled, which is what lets the
-# cleanup classify it safely.
+# The create-and-cleanup critical section. Runs under the per-name lock below,
+# or unlocked as a fallback, and returns rather than exits so the lock helper can
+# capture its status. $1 records which: `1` when we hold the lock, `0` when we do
+# not. Holding the lock means no peer can be mid-`worktree add` here, so a leftover
+# is settled and safe to reclaim; unlocked, a `locked initializing` entry may be a
+# live peer still checking out, so the reclaim below stays gated on $1.
 create_worktree_unit() {
+  local locked="${1:-0}"
+
   # Sample whether the target path already exists before we touch it, now that
   # the lock makes the sample stable. The failure cleanup below force-removes
   # $worktree_path, and on a name collision (a peer session already holding a
@@ -108,11 +111,14 @@ create_worktree_unit() {
       fi
 
       # A session killed mid-`worktree add` leaves a `locked initializing` entry
-      # a single --force cannot remove, wedging the name for every later run. We
-      # hold the lock, so that entry is dead, not in flight: reclaim it with a
-      # double --force + prune so the next invocation can reuse the name (the
-      # same self-heal the prunable-registration branch below performs).
-      if wt_entry_is_locked_initializing "$worktree_path" "$wt_list"; then
+      # a single --force cannot remove, wedging the name for every later run.
+      # Reclaim it with a double --force + prune so the next invocation can reuse
+      # the name (the same self-heal the prunable-registration branch below
+      # performs). Gated on holding the lock: only then is that entry provably
+      # dead. Unlocked (a lock-timeout or no-lock fallback), the same entry might
+      # be a live peer mid-add, so we skip the reclaim and fall through to the
+      # conservative leave-intact branch, never force-removing a live checkout.
+      if [ "$locked" = 1 ] && wt_entry_is_locked_initializing "$worktree_path" "$wt_list"; then
         printf 'create-worktree: reclaiming a crashed worktree registration at %s\n' "$worktree_path" >&2
         git -C "$project_root" worktree remove --force --force "$worktree_path" >/dev/null 2>&1 || true
         git -C "$project_root" worktree prune >/dev/null 2>&1 || true
@@ -169,16 +175,16 @@ if [ -n "$lock_dir" ] && declare -f with_ledger_lock >/dev/null 2>&1; then
   # the hook outright, which is no worse than the pre-lock behavior.
   GAIA_LEDGER_LOCK_TIMEOUT_SECS="${GAIA_WORKTREE_LOCK_TIMEOUT_SECS:-30}" \
   GAIA_LEDGER_LOCK_STALE_SECS="${GAIA_WORKTREE_LOCK_STALE_SECS:-300}" \
-    with_ledger_lock "$lock_dir" create_worktree_unit || rc=$?
+    with_ledger_lock "$lock_dir" create_worktree_unit 1 || rc=$?
   if [ "$rc" -eq 75 ]; then
     printf 'create-worktree: worktree lock busy; proceeding without it\n' >&2
     rc=0
-    create_worktree_unit || rc=$?
+    create_worktree_unit 0 || rc=$?
   fi
 else
   # No lock available (helper unsourceable or lock dir uncreatable): best-effort
   # unlocked create, preserving the pre-lock behavior.
-  create_worktree_unit || rc=$?
+  create_worktree_unit 0 || rc=$?
 fi
 
 exit "$rc"

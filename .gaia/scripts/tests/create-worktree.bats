@@ -322,3 +322,35 @@ SHIM
   [ "$status" -eq 0 ]
   [ -d "$wt" ]
 }
+
+# ---------- 17. Unlocked fallback: never reclaim a possibly-live locked-initializing peer ----------
+@test "unlocked fallback: a locked-initializing entry is left intact, not force-removed" {
+  # Force the no-lock path by making the lock root un-creatable (a plain file
+  # where the per-name lock directory would go), so create_worktree_unit runs
+  # with locked=0. On that path a `locked initializing` entry can be a LIVE peer
+  # still mid-`worktree add` (a slow checkout that outran the lock timeout), so
+  # the crash-reclaim must NOT fire; the run must fall through to the
+  # conservative leave-intact guard, never force-removing a live checkout.
+  mkdir -p "$MAIN/.gaia/local"
+  : > "$MAIN/.gaia/local/worktree-locks"
+
+  run_hook_stdout '{"name":"eta"}'
+  [ "$status" -eq 0 ]
+  wt="$MAIN/.claude/worktrees/eta"
+
+  admin="$MAIN/.git/worktrees/eta"
+  [ -d "$admin" ]
+  printf 'initializing\n' > "$admin/locked"
+  git -C "$MAIN" worktree list --porcelain | grep -qF "locked initializing"
+
+  # Unlocked collision: it must not reclaim (the peer could be live) and must
+  # leave the entry intact instead.
+  run_hook '{"name":"eta"}'
+  [ "$status" -ne 0 ]
+  grep -qF "reclaiming a crashed worktree registration" <<<"$output" && return 1
+  grep -qF "was not created by this run" <<<"$output"
+
+  # The (possibly live) peer's registration and directory survive untouched.
+  git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $wt"
+  [ -d "$wt" ]
+}
