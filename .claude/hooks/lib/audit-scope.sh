@@ -143,6 +143,9 @@ auditors:
       - ".gaia/cli/src/**/*.tmpl"
       - ".gaia/cli/src/**/*.snap"
       - ".gaia/cli/src/**/.gitkeep"
+      - ".gaia/cli/package.json"
+      - ".gaia/cli/pnpm-lock.yaml"
+      - ".gaia/cli/tsconfig*.json"
     scope: maintainer-only
     push_fixes: false
   # gaia:maintainer-only:end

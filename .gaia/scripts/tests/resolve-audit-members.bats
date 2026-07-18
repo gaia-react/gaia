@@ -309,6 +309,43 @@ code-audit-maintainer-shell"
 }
 
 # ---------------------------------------------------------------------------
+# 14b. Built-in roster: the CLI build/config surface dispatches maintainer-node.
+#      package.json carries the bundle build scripts + runtime deps,
+#      pnpm-lock.yaml the resolved dependency tree, tsconfig*.json the build
+#      config. Each sits beside src/ but outside .gaia/cli/src/**, so before
+#      maintainer-node claims it a change to any merges with no code-audit
+#      review. One file per test on purpose: a combined stage would still emit
+#      maintainer-node if only one of the three were owned.
+# ---------------------------------------------------------------------------
+
+@test "built-in roster dispatches maintainer-node for .gaia/cli/package.json" {
+  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  stage .gaia/cli/package.json
+  commit "chore: cli deps"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-node" ]
+}
+
+@test "built-in roster dispatches maintainer-node for .gaia/cli/pnpm-lock.yaml" {
+  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  stage .gaia/cli/pnpm-lock.yaml
+  commit "chore: cli lockfile"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-node" ]
+}
+
+@test "built-in roster dispatches maintainer-node for .gaia/cli/tsconfig.json (tsconfig*.json)" {
+  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  stage .gaia/cli/tsconfig.json
+  commit "chore: cli tsconfig"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-node" ]
+}
+
+# ---------------------------------------------------------------------------
 # 15. Novel member (extensibility): a fabricated roster member is dispatched
 #     purely from its config entry, proving generic roster iteration.
 # ---------------------------------------------------------------------------
