@@ -31,6 +31,7 @@ import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {
   applyWithholds,
+  hasRejectedExcludeMetacharacter,
   parseExcludeCategories,
   validateAnswers,
 } from './manifest-answers.js';
@@ -136,12 +137,15 @@ const WIKI_OWNED_EXACT = new Set(['wiki/overview.md', 'wiki/README.md']);
 
 export type ManifestClass = 'owned' | 'shared' | 'wiki-owned';
 
+// Escapes every regex metacharacter, including `*`. `.gaia/release-exclude`
+// entries are literal paths, matched the same way by the shell staging
+// pipeline (`release.yml`) and the distribution bats suite; a compiler that
+// rewrote `*` into a glob, or left `[](){}^$|` unescaped, would silently
+// disagree with both of them (or crash on a bracketed path). See
+// `validateExcludeText` below, which is the loud-rejection half of the same
+// fix: this escaping is defense-in-depth for any direct caller.
 const escapeRegExp = (pattern: string): string =>
-  pattern
-    .replaceAll('.', String.raw`\.`)
-    .replaceAll('+', String.raw`\+`)
-    .replaceAll('?', String.raw`\?`)
-    .replaceAll('*', '[^/]*');
+  pattern.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
 /**
  * Trimmed, non-blank, non-comment lines from a `.gaia/release-exclude` body.
@@ -157,6 +161,35 @@ export const parseExcludeLines = (text: string): string[] =>
 
     return [trimmed];
   });
+
+/**
+ * Validate the RAW `.gaia/release-exclude` text, before `parseExcludeLines`
+ * trims it. Every non-comment line must be a bare literal path: no glob or
+ * regex metacharacter (the same set `manifest-answers.ts` rejects for a
+ * `--withhold` path, via `hasRejectedExcludeMetacharacter`) and no leading or
+ * trailing whitespace. The shell staging pipeline and the distribution bats
+ * suite both treat every line as a literal path; a glob-shaped or indented
+ * entry would make this TS parser silently omit a still-shipping file from
+ * the manifest, so this throws loudly instead of building a manifest the
+ * other parsers disagree with.
+ */
+export const validateExcludeText = (text: string): void => {
+  const offenders = text.split('\n').filter((line) => {
+    const trimmed = line.trim();
+
+    if (trimmed.length === 0 || trimmed.startsWith('#')) return false;
+
+    return line !== trimmed || hasRejectedExcludeMetacharacter(trimmed);
+  });
+
+  if (offenders.length > 0) {
+    throw new Error(
+      `.gaia/release-exclude entries must be literal paths (no glob/regex metacharacters, no indentation); offending line(s): ${offenders
+        .map((line) => JSON.stringify(line))
+        .join(', ')}`
+    );
+  }
+};
 
 export const parseExcludePatterns = (text: string): RegExp[] =>
   parseExcludeLines(text).map(
@@ -239,6 +272,7 @@ export const buildManifest = (
   const version = readFileSync(versionPath, 'utf8').trim();
   const excludeText =
     options.excludeText ?? readFileSync(resolveExcludePath(repoRoot), 'utf8');
+  validateExcludeText(excludeText);
   const excludePatterns = parseExcludePatterns(excludeText);
   const isExcluded = (candidate: string): boolean =>
     excludePatterns.some((pattern) => pattern.test(candidate));
@@ -554,15 +588,22 @@ const renderVersionDriftLines = (result: ManifestDrift): string[] =>
       `  .gaia/VERSION:    ${result.versionDrift.expected}`,
     ];
 
+// Mirrors `manifest-answers.ts`'s own `unanswered_paths` language ("would
+// newly ship with no explicit answer") so the CLI never describes the same
+// fact two different ways depending on which code path notices it.
 const renderMissingLines = (result: ManifestDrift): string[] =>
   result.missing.length === 0 ?
     []
   : [
       '',
-      `missing from manifest (${result.missing.length}):`,
+      `will newly ship to adopters with no explicit answer (${result.missing.length}):`,
       ...result.missing.map(
         (entry) => `  + ${entry.file}  [${entry.expected}]`
       ),
+      '',
+      'Regenerating the manifest does not withhold these files; each one needs an explicit decision:',
+      '  release manifest --ship <path>       accept that it ships',
+      '  release manifest --withhold <path> --category <N> --reason <text>   keep it maintainer-only',
     ];
 
 const renderExtraLines = (result: ManifestDrift): string[] =>
@@ -623,7 +664,7 @@ const renderCheckReport = (
     (result.versionDrift === undefined ? 0 : 1);
 
   if (total === 0) {
-    return 'release manifest --check: clean (manifest fresh, classifier sets coherent)\n';
+    return 'release manifest --check: clean (manifest matches classifier + .gaia/VERSION; this checks bookkeeping, not the distribution boundary)\n';
   }
 
   const out = [

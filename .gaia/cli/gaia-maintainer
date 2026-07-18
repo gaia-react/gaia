@@ -20689,6 +20689,7 @@ var REJECTED_PATH_CHARACTERS = [
   "$"
 ];
 var ASCII_WHITESPACE = /[\t\n\v\f\r ]/;
+var hasRejectedExcludeMetacharacter = (value) => REJECTED_PATH_CHARACTERS.some((character) => value.includes(character));
 var uniqueSorted = (paths) => {
   const unique = [...new Set(paths)];
   return unique.toSorted((a, b) => a.localeCompare(b));
@@ -20702,9 +20703,7 @@ var findDuplicates = (paths) => {
   }
   return uniqueSorted([...duplicates]);
 };
-var isRejectedWithholdPath = (withholdPath) => withholdPath.length === 0 || withholdPath.startsWith("#") || withholdPath.startsWith("/") || withholdPath.endsWith("/") || ASCII_WHITESPACE.test(withholdPath) || REJECTED_PATH_CHARACTERS.some(
-  (character) => withholdPath.includes(character)
-);
+var isRejectedWithholdPath = (withholdPath) => withholdPath.length === 0 || withholdPath.startsWith("#") || withholdPath.startsWith("/") || withholdPath.endsWith("/") || ASCII_WHITESPACE.test(withholdPath) || hasRejectedExcludeMetacharacter(withholdPath);
 var isRejectedReason = (reason) => reason.trim().length === 0 || reason.includes("\n") || reason.includes("\r");
 var parseCategoryLines = (lines) => lines.flatMap((line, headerLineIndex) => {
   const match = CATEGORY_HEADER.exec(line);
@@ -20901,12 +20900,24 @@ var WIKI_OWNED_PREFIXES = [
   "wiki/sources/"
 ];
 var WIKI_OWNED_EXACT = /* @__PURE__ */ new Set(["wiki/overview.md", "wiki/README.md"]);
-var escapeRegExp = (pattern) => pattern.replaceAll(".", String.raw`\.`).replaceAll("+", String.raw`\+`).replaceAll("?", String.raw`\?`).replaceAll("*", "[^/]*");
+var escapeRegExp = (pattern) => pattern.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 var parseExcludeLines = (text) => text.split("\n").flatMap((line) => {
   const trimmed = line.trim();
   if (trimmed.length === 0 || trimmed.startsWith("#")) return [];
   return [trimmed];
 });
+var validateExcludeText = (text) => {
+  const offenders = text.split("\n").filter((line) => {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith("#")) return false;
+    return line !== trimmed || hasRejectedExcludeMetacharacter(trimmed);
+  });
+  if (offenders.length > 0) {
+    throw new Error(
+      `.gaia/release-exclude entries must be literal paths (no glob/regex metacharacters, no indentation); offending line(s): ${offenders.map((line) => JSON.stringify(line)).join(", ")}`
+    );
+  }
+};
 var parseExcludePatterns = (text) => parseExcludeLines(text).map(
   (line) => new RegExp(`^${escapeRegExp(line)}(/|$)`)
 );
@@ -20947,6 +20958,7 @@ var buildManifest = (cwd, options = {}) => {
   const versionPath = path16.resolve(repoRoot, ".gaia/VERSION");
   const version2 = readFileSync14(versionPath, "utf8").trim();
   const excludeText = options.excludeText ?? readFileSync14(resolveExcludePath(repoRoot), "utf8");
+  validateExcludeText(excludeText);
   const excludePatterns = parseExcludePatterns(excludeText);
   const isExcluded = (candidate) => excludePatterns.some((pattern) => pattern.test(candidate));
   const tracked = listGitFiles(repoRoot);
@@ -21071,10 +21083,14 @@ var renderVersionDriftLines = (result) => result.versionDrift === void 0 ? [] : 
 ];
 var renderMissingLines = (result) => result.missing.length === 0 ? [] : [
   "",
-  `missing from manifest (${result.missing.length}):`,
+  `will newly ship to adopters with no explicit answer (${result.missing.length}):`,
   ...result.missing.map(
     (entry) => `  + ${entry.file}  [${entry.expected}]`
-  )
+  ),
+  "",
+  "Regenerating the manifest does not withhold these files; each one needs an explicit decision:",
+  "  release manifest --ship <path>       accept that it ships",
+  "  release manifest --withhold <path> --category <N> --reason <text>   keep it maintainer-only"
 ];
 var renderExtraLines = (result) => result.extra.length === 0 ? [] : [
   "",
@@ -21107,7 +21123,7 @@ var renderCheckReport = (result, jsonMode) => {
 `;
   const total = result.missing.length + result.extra.length + result.drift.length + result.classifierOverlaps.length + result.scanScopeGaps.length + (result.versionDrift === void 0 ? 0 : 1);
   if (total === 0) {
-    return "release manifest --check: clean (manifest fresh, classifier sets coherent)\n";
+    return "release manifest --check: clean (manifest matches classifier + .gaia/VERSION; this checks bookkeeping, not the distribution boundary)\n";
   }
   const out = [
     `release manifest --check: ${total} issue(s)`,

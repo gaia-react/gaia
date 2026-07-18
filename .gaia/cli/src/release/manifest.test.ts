@@ -24,6 +24,7 @@ import {
   lintScanScopes,
   parseExcludePatterns,
   run,
+  validateExcludeText,
 } from './manifest.js';
 
 type Sandbox = {
@@ -150,10 +151,42 @@ describe('parseExcludePatterns', () => {
     expect(patterns[1]?.test('wiki/entities/Foo.md')).toBe(true);
   });
 
-  test('handles wildcard star segments', () => {
+  test('matches the literal path and its directory-prefix form, not a glob', () => {
     const patterns = parseExcludePatterns('.claude/commands/gaia-release.md\n');
     expect(patterns[0]?.test('.claude/commands/gaia-release.md')).toBe(true);
     expect(patterns[0]?.test('.claude/commands/other.md')).toBe(false);
+  });
+
+  test('treats a literal * as a literal character, never a glob wildcard', () => {
+    const patterns = parseExcludePatterns('foo*bar\n');
+    expect(patterns[0]?.test('foo*bar')).toBe(true);
+    expect(patterns[0]?.test('fooXbar')).toBe(false);
+  });
+});
+
+describe('validateExcludeText', () => {
+  test('accepts an all-literal, unindented exclude body', () => {
+    expect(() =>
+      validateExcludeText('# comment\n\n.gaia/scripts\nwiki/entities\n')
+    ).not.toThrow();
+  });
+
+  test('rejects a line containing a glob metacharacter', () => {
+    expect(() => validateExcludeText('wiki/meta*\n')).toThrow(/literal/);
+  });
+
+  test('rejects a line containing a regex character-class bracket', () => {
+    expect(() => validateExcludeText('docs/notes[1]\n')).toThrow(/literal/);
+  });
+
+  test('rejects an indented line', () => {
+    expect(() => validateExcludeText('  wiki/meta\n')).toThrow(/literal/);
+  });
+
+  test('ignores metacharacters inside a comment line', () => {
+    expect(() =>
+      validateExcludeText('# foo* [bar]\nwiki/entities\n')
+    ).not.toThrow();
   });
 });
 
@@ -213,6 +246,18 @@ describe('buildManifest', () => {
 
     expect(manifest.files['.gaia/scripts/keep-me.mjs']).toBeUndefined();
     expect(manifest.files['app/keep.ts']).toBe('owned');
+  });
+
+  test('rejects a glob-shaped exclude line loudly instead of silently mis-excluding', () => {
+    sandbox.commit('seed', {
+      '.gaia/release-exclude': 'wiki/meta*\n',
+      '.gaia/VERSION': '0.1.0\n',
+      'app/keep.ts': 'export {};\n',
+    });
+
+    expect(() =>
+      buildManifest(sandbox.root, {generatedAt: '2026-05-07T00:00:00.000Z'})
+    ).toThrow(/literal/);
   });
 });
 
@@ -485,8 +530,11 @@ describe('run --check', () => {
 
     expect(exit).toBe(1);
     const out = stdio.outputs.join('');
-    expect(out).toContain('missing from manifest');
+    expect(out).toContain('newly ship');
     expect(out).toContain('app/foo.ts');
+    expect(out).toContain('--ship');
+    expect(out).toContain('--withhold');
+    expect(out).toContain('does not withhold');
   });
 
   test('extra entry: exits non-zero and names the extra file', () => {
@@ -604,6 +652,43 @@ describe('run --check', () => {
 
     expect(exit).toBe(2);
     expect(stdio.errors.join('')).toContain('manifest_parse_failed');
+  });
+
+  test('glob-shaped release-exclude line: exits 2 loudly instead of silently mis-excluding', () => {
+    seedAndGenerate();
+
+    writeFileSync(
+      path.join(sandbox.root, '.gaia/release-exclude'),
+      'app/foo*\n',
+      'utf8'
+    );
+
+    const exit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(exit).toBe(2);
+    expect(stdio.errors.join('')).toContain('manifest_build_failed');
+    expect(stdio.errors.join('')).toContain('literal');
+  });
+
+  test('indented release-exclude line: exits 2 loudly', () => {
+    seedAndGenerate();
+
+    writeFileSync(
+      path.join(sandbox.root, '.gaia/release-exclude'),
+      '  app/foo\n',
+      'utf8'
+    );
+
+    const exit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(exit).toBe(2);
+    expect(stdio.errors.join('')).toContain('manifest_build_failed');
   });
 
   test('missing manifest file: exits non-zero with manifest_missing error', () => {

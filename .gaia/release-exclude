@@ -1,7 +1,7 @@
 # Paths excluded from the distribution tarball produced by release.yml.
 # These exist in the template repo for the GAIA team's own workflow but have
 # no business on an adopter's machine. Format is tar --exclude-from: one
-# path or glob per line, comments with `#` are honored.
+# literal path per line, comments with `#` are honored.
 #
 # Anything excluded here is ALSO skipped by `gaia-maintainer release manifest`, so the
 # adopter-facing manifest never references files an adopter cannot have.
