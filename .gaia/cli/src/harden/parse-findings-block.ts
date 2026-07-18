@@ -28,6 +28,18 @@ export type ParsedFinding = {
 };
 
 /**
+ * A parsed block: the findings plus the producer that posted them. `auditor`
+ * is read verbatim from the payload's `auditor` field when it is a non-empty
+ * string; a missing, empty, or non-string `auditor` normalizes to `''`, the
+ * shared "anonymous producer" bucket (see `recordFromGhPr` in `tally.ts`,
+ * which keys its per-auditor merge on this field).
+ */
+export type ParsedFindingsBlock = {
+  auditor: string;
+  findings: ParsedFinding[];
+};
+
+/**
  * The one accepted severity set. `severity-map.ts`'s `SEVERITY_BY_GRADING`
  * maps every agent grading onto it; it is the one source and no test may
  * re-declare it (README FC-7).
@@ -94,19 +106,22 @@ const parseFinding = (
 };
 
 /**
- * Returns the well-formed findings in `body`, `[]` for an explicit empty block,
- * or `null` when no parseable block is present. `onReject` (default: a stderr
- * writer) fires once per dropped finding, bad severity, missing/empty
- * finding_class, malformed area_tags, or a non-object entry, naming the
- * offending token. It never fires on a `null` return: that means "no
- * parseable block" (no sentinels, no inner comment, bad JSON, `findings` not
- * an array), a different thing from a dropped finding, and the overwhelmingly
- * common case of a comment carrying no block at all must stay silent.
+ * Returns `{auditor, findings}` for a parseable block, or `null` when no
+ * parseable block is present. `findings` is `[]` for an explicit empty block.
+ * `auditor` is the payload's `auditor` field verbatim when it is a non-empty
+ * string; a missing, empty, or non-string `auditor` normalizes to `''` (see
+ * `ParsedFindingsBlock`). `onReject` (default: a stderr writer) fires once per
+ * dropped finding, bad severity, missing/empty finding_class, malformed
+ * area_tags, or a non-object entry, naming the offending token. It never
+ * fires on a `null` return: that means "no parseable block" (no sentinels, no
+ * inner comment, bad JSON, `findings` not an array), a different thing from a
+ * dropped finding, and the overwhelmingly common case of a comment carrying
+ * no block at all must stay silent.
  */
 export const parseFindingsBlock = (
   body: string,
   onReject: OnReject = defaultOnReject
-): null | ParsedFinding[] => {
+): null | ParsedFindingsBlock => {
   const startIndex = body.indexOf(START_SENTINEL);
 
   if (startIndex === -1) return null;
@@ -138,9 +153,12 @@ export const parseFindingsBlock = (
 
   if (typeof parsed !== 'object' || parsed === null) return null;
 
-  const {findings} = parsed as Record<string, unknown>;
+  const {auditor: rawAuditor, findings} = parsed as Record<string, unknown>;
 
   if (!Array.isArray(findings)) return null;
+
+  const auditor =
+    typeof rawAuditor === 'string' && rawAuditor.length > 0 ? rawAuditor : '';
 
   const result: ParsedFinding[] = [];
 
@@ -150,5 +168,5 @@ export const parseFindingsBlock = (
     if (finding !== null) result.push(finding);
   }
 
-  return result;
+  return {auditor, findings: result};
 };

@@ -34,26 +34,29 @@ describe('parseFindingsBlock', () => {
       })
     );
 
-    const findings = parseFindingsBlock(body);
-    expect(findings).toEqual([
-      {
-        area_tags: ['app/components'],
-        finding_class: 'react-doctor/no-generic-handler-names',
-        severity: 'warning',
-      },
-      {
-        area_tags: ['app/routes'],
-        finding_class: 'holistic/missing-auth-check',
-        severity: 'error',
-      },
-    ]);
+    const parsedBlock = parseFindingsBlock(body);
+    expect(parsedBlock).toEqual({
+      auditor: 'ci',
+      findings: [
+        {
+          area_tags: ['app/components'],
+          finding_class: 'react-doctor/no-generic-handler-names',
+          severity: 'warning',
+        },
+        {
+          area_tags: ['app/routes'],
+          finding_class: 'holistic/missing-auth-check',
+          severity: 'error',
+        },
+      ],
+    });
   });
 
-  test('returns [] for an explicit empty findings block', () => {
+  test('returns the auditor verbatim alongside [] for an explicit empty findings block', () => {
     const body = block(
       JSON.stringify({auditor: 'ci', findings: [], pr_number: 7, schema: 1})
     );
-    expect(parseFindingsBlock(body)).toEqual([]);
+    expect(parseFindingsBlock(body)).toEqual({auditor: 'ci', findings: []});
   });
 
   test('returns null when no sentinels are present', () => {
@@ -86,9 +89,16 @@ describe('parseFindingsBlock', () => {
       })
     );
 
-    expect(parseFindingsBlock(body)).toEqual([
-      {area_tags: ['app'], finding_class: 'knip/exports', severity: 'warning'},
-    ]);
+    expect(parseFindingsBlock(body)).toEqual({
+      auditor: 'local',
+      findings: [
+        {
+          area_tags: ['app'],
+          finding_class: 'knip/exports',
+          severity: 'warning',
+        },
+      ],
+    });
   });
 
   test('fires onReject naming the unaccepted severity token, UAT-036', () => {
@@ -107,7 +117,10 @@ describe('parseFindingsBlock', () => {
     );
     const onReject = vi.fn();
 
-    expect(parseFindingsBlock(body, onReject)).toEqual([]);
+    expect(parseFindingsBlock(body, onReject)).toEqual({
+      auditor: '',
+      findings: [],
+    });
     expect(onReject).toHaveBeenCalledExactlyOnceWith('severity', 'Critical');
   });
 
@@ -121,7 +134,10 @@ describe('parseFindingsBlock', () => {
     );
     const onReject = vi.fn();
 
-    expect(parseFindingsBlock(body, onReject)).toEqual([]);
+    expect(parseFindingsBlock(body, onReject)).toEqual({
+      auditor: '',
+      findings: [],
+    });
     expect(onReject).toHaveBeenCalledExactlyOnceWith(
       'finding_class',
       'undefined'
@@ -144,7 +160,10 @@ describe('parseFindingsBlock', () => {
     );
     const onReject = vi.fn();
 
-    expect(parseFindingsBlock(body, onReject)).toEqual([]);
+    expect(parseFindingsBlock(body, onReject)).toEqual({
+      auditor: '',
+      findings: [],
+    });
     expect(onReject).toHaveBeenCalledExactlyOnceWith('area_tags', '[1,2]');
   });
 
@@ -154,7 +173,10 @@ describe('parseFindingsBlock', () => {
     );
     const onReject = vi.fn();
 
-    expect(parseFindingsBlock(body, onReject)).toEqual([]);
+    expect(parseFindingsBlock(body, onReject)).toEqual({
+      auditor: '',
+      findings: [],
+    });
     expect(onReject).toHaveBeenCalledExactlyOnceWith('shape', 'not-an-object');
   });
 
@@ -173,6 +195,25 @@ describe('parseFindingsBlock', () => {
       )
     ).toBeNull();
     expect(onReject).not.toHaveBeenCalled();
+  });
+
+  test('normalizes a missing auditor field to the "" bucket', () => {
+    const body = block(JSON.stringify({findings: [], pr_number: 1, schema: 1}));
+    expect(parseFindingsBlock(body)).toEqual({auditor: '', findings: []});
+  });
+
+  test('normalizes an empty-string auditor to the "" bucket', () => {
+    const body = block(
+      JSON.stringify({auditor: '', findings: [], pr_number: 1, schema: 1})
+    );
+    expect(parseFindingsBlock(body)).toEqual({auditor: '', findings: []});
+  });
+
+  test('normalizes a non-string auditor to the "" bucket', () => {
+    const body = block(
+      JSON.stringify({auditor: 7, findings: [], pr_number: 1, schema: 1})
+    );
+    expect(parseFindingsBlock(body)).toEqual({auditor: '', findings: []});
   });
 
   test('accepts every declared reject reason', () => {
