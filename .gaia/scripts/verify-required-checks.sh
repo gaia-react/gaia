@@ -26,7 +26,7 @@
 #   0  every declared-required context is confirmed in the live ruleset.
 #   1  at least one declared-required context is missing from the live
 #      ruleset, the exact drift class #807 exists to catch.
-#   2  usage error.
+#   2  usage error, or the live ruleset could not be read (gh api failed).
 #
 # DO NOT add `set -e` (matches audit-noop-detect.sh): the missing/advisory
 # loops below rely on grep/comparison exit status without aborting the script.
@@ -91,9 +91,12 @@ if [ -n "$ruleset_contexts_src" ]; then
     ruleset_contexts=$(cat "$ruleset_contexts_src")
   fi
 else
-  ruleset_contexts=$(gh api "repos/${repo}/rules/branches/${branch}" \
+  if ! ruleset_contexts=$(gh api "repos/${repo}/rules/branches/${branch}" \
     --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context' \
-    2>/dev/null || true)
+    2>/dev/null); then
+    echo "verify-required-checks: could not read the live ruleset for ${repo} branch ${branch} (gh api failed: auth, token, rate limit, network, or outage). Refusing to report drift from data gh could not supply." >&2
+    exit 2
+  fi
 fi
 
 missing=()
