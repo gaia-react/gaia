@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "js-yaml": "4.2.0",
-    "ulid": "3.0.2",
     "zod": "4.4.3"
   },
   "devDependencies": {
