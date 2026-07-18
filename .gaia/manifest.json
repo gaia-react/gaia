@@ -292,6 +292,7 @@
     ".specify/extensions/gaia/templates/system-prompt.md": "owned",
     ".specify/extensions/gaia/templates/uat-fixme.ts.tmpl": "owned",
     ".specify/extensions/gaia/templates/uat-spec.ts.tmpl": "owned",
+    ".specify/presets/gaia/commands/speckit.clarify.md": "owned",
     ".specify/presets/gaia/commands/speckit.specify.md": "owned",
     ".specify/presets/gaia/preset.yml": "owned",
     ".specify/presets/gaia/templates/spec-template.md": "owned",
@@ -608,6 +609,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-18T14:08:44.731Z",
+  "generated": "2026-07-18T21:26:33.821Z",
   "version": "1.6.1"
 }
