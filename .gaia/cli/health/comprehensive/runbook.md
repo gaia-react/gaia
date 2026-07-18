@@ -14,8 +14,10 @@ excluded).
 ## Framing
 
 - **Report-only.** The phase applies no automatic edit and files no
-  tech-debt issue. It evaluates and recommends; a human dispositions every
-  confirmed finding by hand.
+  tech-debt issue automatically. It evaluates and recommends; a human
+  dispositions every confirmed finding by hand, and at hand-back the
+  Orchestrator offers a human-gated path to file confirmed, unmatched
+  findings through `/file-tech-debt` (see Step 6).
 - **Runs exactly once** per `/health-audit` invocation, after the N=3
   integrity loop terminates and before the final verdict is emitted. Never
   inside the loop.
@@ -29,20 +31,53 @@ Depth-1: the Orchestrator (main thread) is the only spawner. Every lens,
 every refuter, and the report writer is a leaf `general-purpose` subagent
 the Orchestrator dispatches directly; no leaf spawns another leaf.
 
+## Model selection
+
+| Role                  | Model                        |
+| ---------------------- | ----------------------------- |
+| Orchestrator            | main thread (session model)  |
+| Lens: FEAT              | Sonnet                        |
+| Lens: DIST              | Sonnet                        |
+| Lens: TIDY              | Sonnet                        |
+| Lens: SELF              | Sonnet                        |
+| Refuter (per finding)   | Sonnet                        |
+| Report writer           | Sonnet                        |
+
+The four lenses, the per-finding refuters, and the report writer are
+judgment-bearing adversarial passes, so they pin to Sonnet, mirroring the
+judgment-bearing buckets and the Adjudicator (`.gaia/cli/health/runbook.md`
+§Model selection). The Orchestrator stays on the main thread (session
+model), consistent with the parent.
+
 ## Step 0: Phase-start reset
 
-Clear and recreate the two working subdirs so a scoped run never inherits a
-prior run's stale `<LENS>.json`:
+Archive this phase's prior outputs, prune old archives, then recreate the
+two working subdirs, so a scoped run never inherits a prior run's stale
+`<LENS>.json` and the prior report is preserved rather than destroyed:
 
 ```bash
-rm -rf .gaia/local/audit/comprehensive/findings .gaia/local/audit/comprehensive/verdicts
+RUN_STAMP=$(date +%Y-%m-%d-%H-%M)
+ARCHIVE_DIR=".gaia/local/audit/comprehensive/archived/$RUN_STAMP"
+mkdir -p "$ARCHIVE_DIR"
+[ -e .gaia/local/audit/comprehensive/findings ] && mv .gaia/local/audit/comprehensive/findings "$ARCHIVE_DIR"/
+[ -e .gaia/local/audit/comprehensive/verdicts ] && mv .gaia/local/audit/comprehensive/verdicts "$ARCHIVE_DIR"/
+[ -e .gaia/local/audit/comprehensive/gauge.json ] && mv .gaia/local/audit/comprehensive/gauge.json "$ARCHIVE_DIR"/
+[ -e .gaia/local/audit/comprehensive/REPORT.md ] && mv .gaia/local/audit/comprehensive/REPORT.md "$ARCHIVE_DIR"/
+[ -e .gaia/local/audit/comprehensive/CONTINUATION.md ] && mv .gaia/local/audit/comprehensive/CONTINUATION.md "$ARCHIVE_DIR"/
+find .gaia/local/audit/comprehensive/archived -mindepth 1 -maxdepth 1 -type d 2>/dev/null \
+  | sort -r | tail -n +4 | while IFS= read -r d; do rm -rf "$d"; done
 mkdir -p .gaia/local/audit/comprehensive/findings .gaia/local/audit/comprehensive/verdicts
 ```
 
-Both paths match `.gaia/local/audit/*`, whitelisted by `block-rm-rf.sh`. The
-tree is gitignored (release-exclude category 7) and swept by the existing
-janitor and health-audit cleanup, so it does not grow unbounded. A stale
-`gauge.json` or `REPORT.md` at the top level is simply overwritten this run.
+The prune loop's `rm -rf "$d"` target, and every path this step moves or
+creates, matches `.gaia/local/audit/*`, whitelisted by `block-rm-rf.sh`.
+The tree is gitignored (release-exclude category 7). This step's own
+archive-and-prune is what bounds its growth: the prior `findings/`,
+`verdicts/`, `gauge.json`, `REPORT.md`, and `CONTINUATION.md` move into
+`archived/<stamp>/`, and `archived/` is pruned to the 3 most recent runs.
+This lifecycle is scoped to `.gaia/local/audit/comprehensive/`, its own
+tree separate from the integrity loop's `.gaia/local/audit/archived/` (see
+`.gaia/cli/health/runbook.md` §Audit artifacts lifecycle).
 
 Then capture two pre-phase baselines the Step 6 integrity check diffs
 against. They cover disjoint surfaces: `git status` sees tracked files but
@@ -121,8 +156,10 @@ writes full findings to `.gaia/local/audit/comprehensive/findings/<L>.json`
 (**written even when the findings array is empty**), and returns **only
 the thin digest**.
 
-Pin each lens dispatch to its brief. The verbatim lens dispatch template
-(the Orchestrator fills `<L>`):
+Pin each lens dispatch to its brief, and dispatch each lens leaf with
+`model: sonnet` (see §Model selection); the model pin is an
+Orchestrator-side dispatch parameter, not part of the prompt text below.
+The verbatim lens dispatch template (the Orchestrator fills `<L>`):
 
 > You are the GAIA Comprehensive Audit **<L>** lens. Read
 > `.gaia/cli/health/comprehensive/lenses/<L>.md` end-to-end and execute it
@@ -219,6 +256,10 @@ Rules:
   state-mutating script or command, even to probe what it does. The
   prohibition is stated verbatim in the dispatch template below.
 
+The Orchestrator dispatches each refuter leaf with `model: sonnet` (see
+§Model selection), an Orchestrator-side dispatch parameter, not part of
+the prompt text below.
+
 Verbatim refuter dispatch template:
 
 > You are an ADVERSARIAL refuter of a single GAIA Comprehensive Audit
@@ -257,35 +298,56 @@ the composition. After writing the file verbatim from the returned text,
 the Orchestrator discards the text from its own working context and
 retains only the report path and top-line counts.
 
+The writer is the only phase leaf that is stateful across runs: it also
+reads the open `tech-debt` issue tracker to annotate findings already
+under a tracking issue (see the dispatch template below). It still reads
+only from disk and the issue tracker, never the code under audit, which is
+what makes it the safe place to be stateful. The lens auditors and
+refuters stay completely ignorant of prior runs, no issue-querying is
+added to their dispatch templates, preserving the fresh-context
+anti-anchoring property those leaves depend on.
+
 A denied tool call is surfaced, never routed around. If the writer's
 dispatch, or any leaf's dispatch, hits a denied write (or any other denied
 tool call), it stops and reports the denial in its response; it does not
 retry the same operation through a different tool to work around a guard
 it cannot use directly.
 
+The Orchestrator dispatches the writer leaf with `model: sonnet` (see
+§Model selection), an Orchestrator-side dispatch parameter, not part of
+the prompt text below.
+
 Verbatim writer dispatch template:
 
 > You are the GAIA Comprehensive Audit **report writer**. Read
 > `.gaia/local/audit/comprehensive/gauge.json`, every
 > `.gaia/local/audit/comprehensive/findings/*.json`, and every
-> `.gaia/local/audit/comprehensive/verdicts/*.json`. Compose the single
-> report with the FROZEN greppable anchors below and return it **as text in
-> your response, in full**; do not write it to disk yourself. You do not
-> have write access to report files, and that restriction is not a bug to
-> route around: if a tool call you need is denied, stop and report the
-> denial in your response rather than retrying with a different tool.
-> **Actionable-list gate (hard rule):** a material finding enters the `##
-> Priority index` **only if it carries a verdict file** whose verdict is
-> `confirmed` or `severity-corrected`; `refuted` findings and any material
-> finding **missing a verdict file** are excluded from the actionable list.
-> A material finding present on disk but lacking a verdict must NOT
-> silently vanish: list it under a `## Unverified` note so the gap is
-> visible. Low findings and each lens's `clean_surfaces` entries are listed
-> informationally under `## Findings by lens` and are never gated. Give
-> every confirmed finding a recommended `Disposition:` line. Return the
-> full composed report text, followed on a separate line by the top-line
-> counts (total actionable, per-severity, refuted count, unverified count,
-> suspect-flag).
+> `.gaia/local/audit/comprehensive/verdicts/*.json`. Also run `gh issue
+> list --label tech-debt --state open --json number,title,body` and, for
+> each returned issue, parse its `gaia-debt-key` comment's `path=` and
+> `line=` fields. For each finding that carries a `confirmed` or
+> `severity-corrected` verdict, parse its `location` field into
+> `file:line` (a `location` with no line cannot match; leave it
+> unannotated) and compare it against those keys on **both path and
+> line**; where a match exists, annotate that finding's `## Priority
+> index` entry with the tracking issue number (`Tracked: #<n>`). Compose
+> the single report with the FROZEN greppable anchors below and return it
+> **as text in your response, in full**; do not write it to disk yourself.
+> You do not have write access to report files, and that restriction is
+> not a bug to route around: if a tool call you need is denied, stop and
+> report the denial in your response rather than retrying with a different
+> tool. **Actionable-list gate (hard rule):** a material finding enters the
+> `## Priority index` **only if it carries a verdict file** whose verdict
+> is `confirmed` or `severity-corrected`; `refuted` findings and any
+> material finding **missing a verdict file** are excluded from the
+> actionable list. A material finding present on disk but lacking a
+> verdict must NOT silently vanish: list it under a `## Unverified` note so
+> the gap is visible. Low findings and each lens's `clean_surfaces` entries
+> are listed informationally under `## Findings by lens` and are never
+> gated. Give every confirmed finding a recommended `Disposition:` line.
+> Return the full composed report text, followed on a separate line by the
+> top-line counts (total actionable, per-severity, refuted count,
+> unverified count, matched-to-existing-issue count, suspect-flag).
 
 **REPORT.md anchors (FROZEN):**
 - `## Depth` — the depth token, `source`, and `rationale` (must equal
@@ -293,7 +355,10 @@ Verbatim writer dispatch template:
 - `## Priority index` — the actionable list, ranked by severity **across
   all lenses**. Membership is verdict-gated: a material finding appears
   here only if it carries a `confirmed` or `severity-corrected` verdict
-  file (refuted and verdict-missing findings excluded).
+  file (refuted and verdict-missing findings excluded). Each entry whose
+  `location` matches an open `tech-debt` issue's `gaia-debt-key` (on both
+  path and line) carries a `Tracked: #<n>` annotation; an entry with no
+  match carries none.
 - `## Findings by lens` — one `### Lens: <LENS>` subsection per dispatched
   lens; each subsection lists the lens's findings and its `clean_surfaces`
   entries (informational).
@@ -310,11 +375,12 @@ Verbatim writer dispatch template:
 
 ## Step 6: Report-only disposition + hand-back
 
-The phase files nothing and edits nothing outside
-`.gaia/local/audit/comprehensive/`. The Orchestrator surfaces, in the
-final health-audit output: the REPORT.md path, its top-line counts, and
-any **confirmed blocker** as a prominent release-gate flag. It does not
-recompute the integrity verdict math.
+The audit leaves, the lenses, the refuters, and the writer, touch nothing
+outside `.gaia/local/audit/comprehensive/`; the phase files no tech-debt
+issue automatically. The Orchestrator surfaces, in the final health-audit
+output: the REPORT.md path, its top-line counts, and any **confirmed
+blocker** as a prominent release-gate flag. It does not recompute the
+integrity verdict math.
 
 **Verify the report-only invariant against both Step 0 baselines.**
 Neither alone is sufficient: `git status` sees tracked files but is
@@ -349,6 +415,21 @@ check is an integrity violation, not a report finding: stop before
 hand-back and surface exactly which paths were added, removed, or
 changed, so the maintainer investigates before trusting this run's
 report.
+
+**Human-gated filing offer.** After the integrity checks above pass and
+the report is surfaced, the Orchestrator reads the written REPORT.md's
+`## Priority index` and separates its confirmed findings into matched
+(carry a `Tracked: #<n>` annotation) and unmatched. If any unmatched
+confirmed finding exists, the Orchestrator makes **one** offer: file the
+unmatched confirmed findings as tech-debt issues through the existing
+`.claude/skills/file-tech-debt/SKILL.md` recipe, which owns the dedup key,
+the label set, and the debt-count sentinel, invoked once per unmatched
+finding. The operator answers yes or no; filing never happens without
+that answer. This offer is a separate, post-integrity-check,
+human-approved Orchestrator action, distinct from and after the leaves'
+own work; the lenses, refuters, and writer still touch nothing outside
+`.gaia/local/audit/comprehensive/`, and the only write this offer can
+produce, a new GitHub issue, happens only on an explicit yes.
 
 ## Pointers
 
