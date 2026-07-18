@@ -478,6 +478,48 @@ describe('release runtime-deps CLI', () => {
     expect(stdio.errors.join('')).toContain('unknown flag');
   });
 
+  test('agrees with staging mode: a reference inside a maintainer-only block is not a leak', () => {
+    // Regression for #661: bare mode (no --staging) used to be marker-unaware,
+    // so a .gaia/cli/src reference wrapped in a
+    // `# gaia:maintainer-only:start` / `:end` block (which the scrub's
+    // `**/*.sh` marker-strip transform removes before --staging ever scans
+    // it) false-positived as a leak. Bare mode must now strip the same
+    // blocks in-memory so it agrees with the authoritative staging run.
+    sandbox.writeManifest({
+      '.gaia/cli/gaia': 'owned',
+    });
+    sandbox.writeFile(
+      '.gaia/scripts/resolve-audit-members.sh',
+      [
+        '#!/usr/bin/env bash',
+        '# gaia:maintainer-only:start',
+        'echo .gaia/cli/src',
+        '# gaia:maintainer-only:end',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain('runtime-dependency leaks: none');
+  });
+
+  test('still flags the same kind of reference outside a maintainer-only block', () => {
+    // Control for the regression above: the marker strip must not disable
+    // leak detection wholesale, only the wrapped block.
+    sandbox.writeManifest({
+      '.gaia/cli/gaia': 'owned',
+    });
+    sandbox.writeFile(
+      '.gaia/scripts/resolve-audit-members.sh',
+      ['#!/usr/bin/env bash', 'echo .gaia/cli/src', ''].join('\n')
+    );
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('.gaia/cli/src');
+  });
+
   test('skips self-references', () => {
     sandbox.writeManifest({});
     sandbox.writeFile(
