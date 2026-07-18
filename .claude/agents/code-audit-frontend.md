@@ -234,7 +234,7 @@ Tag each surviving finding against the audit base's changed line ranges (the dif
 
 In-scope findings flow into the Critical / Important / Suggestions sections and gate the marker exactly as before. Out-of-scope findings are routed **out of** those gating sections and into the disposition pipeline, so an out-of-scope Critical or an unfixed out-of-scope Suggestion no longer blocks the marker through the old gates, it blocks (or not) only through the disposition gate below.
 
-The disposition flow **never edits the reviewed PR's working tree** for an out-of-scope finding, it files, it does not fix. Auto-fixing out-of-scope debt would violate surgical-changes.
+The disposition flow **never edits the reviewed PR's working tree** for an out-of-scope finding by default, it files, it does not fix. Auto-fixing out-of-scope debt would violate surgical-changes. There is one bounded exception: a non-security, in-remit, prompt-shaped out-of-scope finding in a changed TS/TSX file inside the self-heal repair boundary is **promoted into the existing self-heal path** instead of filed (see "B-fix. In-flight-fix promotion" below), riding that path's own edit guard and lifecycle rather than adding a new fix path, so surgical-changes is preserved.
 
 ### B. Order of operations: classify security FIRST
 
@@ -256,6 +256,26 @@ Exact-string matching on seeded security classes alone is **insufficient**: seve
 **`holistic/unclassified` is NOT a security-class trigger.** It is the deliberate "reviewed, maps to no seeded class" verdict, and the closed vocabulary is small by design, so it is the *expected* class for most out-of-scope findings, not a signal that a finding is unknown or dangerous. It is not a member of the closed finding-class vocabulary but carries no security signal whatsoever. Treating it as a trigger would divert every out-of-scope finding on a PUBLIC/INTERNAL repo and file nothing at all, which is not a gate but an off switch. Reserve the class-shaped trigger for the genuinely degenerate case above (absent or malformed field).
 
 Consequence: an out-of-scope **Critical** is security-class (the "any Critical" trigger), and so is any finding whose **content** reads as a security concern, whatever its class tag. Both therefore enter the security-divert path (section D), not the public-filing path (section C). On a PUBLIC or INTERNAL repo they **divert** and are **never** filed to a public/internal issue; they file as a `tech-debt` issue **only on a confirmed PRIVATE repo**. Either way the finding gets *a* disposition, so the marker can still write (the gate treats `filed` and `diverted` identically). Do **not** file a Critical or security-content finding to a public/internal issue to satisfy a literal reading of a requirement, that would breach the never-public guarantee.
+
+### B-fix. In-flight-fix promotion (file side)
+
+This decision runs **after** section B's security classification and **before** the backend probe and filing pipeline (C/D/E). A promoted finding never touches the issue backend; it edits the working tree instead.
+
+Promote a non-security out-of-scope finding into the self-heal path, repaired in place rather than filed, **if and only if all five** of these hold:
+
+1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `git diff --name-only "$(.github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'` set the audit already resolves. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
+2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out, because `block-selfheal-paths.sh` would hard-deny the edit and leave the finding with no disposition at all.
+3. The file is in **your own remit** (your declared globs, see "Remit and self-skip", evaluated at the second precedence tier), not a cross-remit file a claimant member owns.
+4. The finding is **non-security** per section B's classification, read as section B's own flag, bound on **every repo including a confirmed PRIVATE one**. Never re-derive "non-security" from the `finding_class` tag or a fresh screen.
+5. The fix is **prompt-shaped**: a single logical unit confined to that one file, no public-contract change, no cross-module ripple (`Handler: prompt`, never `Handler: plan`).
+
+Any condition failing routes the finding to the existing filing path (sections C/D/E), exactly as today.
+
+**Aggregate cap (the sixth gate).** <!-- honors AUDIT plan-time directive 2 (aggregate self-heal cap) --> Promoted repairs count against the existing self-heal >10-file cap. That cap is enforced deterministically only by the CI push gate (`.github/workflows/code-review-audit.yml`); `block-selfheal-paths.sh` is a per-edit path guard with no file-count arm, so in local mode the cap has no deterministic backstop and rests on your own running count of files touched this self-heal pass (in-scope suggestion fixes plus promoted out-of-scope repairs). Once you are at the cap, promote no further findings; the remaining qualifying findings **file** instead, through sections C/D/E.
+
+A **security-class** finding (per section B) is **never** a promotion candidate, on any repo, including a confirmed PRIVATE one; it takes its existing section D (divert) or section E (private file) path.
+
+**Promotion lifecycle.** Promote a qualifying finding exactly as an in-scope suggestion self-heal (see "Self-heal, commit, and re-dispatch"): edit the working tree, subject to the `block-selfheal-paths.sh` edit guard, and set `AUDIT_SELF_HEALED="true"`. This pass writes **no marker** for it, a self-heal pass attests only committed content, and the fix is not yet committed. Record the finding in the re-run carry-forward ledger's `fixed_last_round[]` with `fixed_in_sha` (empty when uncommitted; the orchestrator's commit supplies the sha), and surface it in the report as fixed. This inherits the ledger's own CI gating (see "Re-run carry-forward ledger"): promotion is not scoped local-only, it simply follows self-heal's existing local/CI behavior. Add **no** dispositions-sidecar entry and invent **no** new disposition value: a promoted-and-repaired finding is an in-scope repair, it simply never appears in `<frontend-digest>.dispositions.json`. The orchestrator's commit rotates your frontend digest, your marker invalidates, and the resolver re-dispatches you; the repair is re-reviewed **in-scope** on the fresh HEAD. <!-- honors AUDIT plan-time directive 1 (post-repair verification) --> Post-repair verification is inherited from self-heal in full: "edit applied" is never "finding closed" until that re-dispatch re-reviews the repair in-scope and finds it clean.
 
 ### C. Backend probe (three outcomes)
 
@@ -282,7 +302,11 @@ When a diverting finding maps to no seeded class, build its dedup key with `OUT_
 
 For each finding routed here, non-security on any repo, **or** a security-class finding on a confirmed PRIVATE repo (section D), on a **present** backend:
 
-Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`) — the source of truth for building the wrapped `gaia-debt-key`, running the dedup query (open + declined-closed + keyless `path:line` fallback, never `gh` full-text search), filing with `gh issue create --body-file` (never `--body <argv>`, which the CI `--verbose` run would echo into the public Actions log), creating the `tech-debt` + `severity:<tier>` labels idempotently, the issue-body schema (dedup-key line + `file:line` + failure mode + suggested fix + `Handler: prompt|plan`), and touching the debt-count sentinel.
+Before the file-tech-debt recipe builds the dedup key, assign the finding's `finding_class` using the same best-effort per-bucket convention the "Finding classification" section defines for in-ledger findings. Assign a real seeded class where the root cause maps to one (a swallowed error maps to `holistic/swallowed-error`); reserve `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`) for the finding that genuinely maps to no seeded member, following the vocabulary's own rule, when in doubt, leave a class out.
+
+This assignment has a direct, intended effect on the gaia-harden recurrence tally: an out-of-scope finding of **Important** severity that now carries a real seeded class becomes countable there, because the "Findings sidecar (local run record)" already includes every finding, in-scope or out-of-scope, that carries a `finding_class` from the closed vocabulary, and `compute-tally.ts` gates a candidate on both `isCountableSeverity` (`error`/`warning` only) and `isValidFindingClass` (the fallback fails this check, a seeded class passes it). A **Suggestion**-severity reclassed finding still does not count, it fails the severity gate, so the blast radius is the Important-severity reclassed findings, not every reclassed finding.
+
+Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`), the source of truth for building the wrapped `gaia-debt-key`, running the dedup query (open + declined-closed + keyless `path:line` fallback, never `gh` full-text search), filing with `gh issue create --body-file` (never `--body <argv>`, which the CI `--verbose` run would echo into the public Actions log), creating the `tech-debt` + `severity:<tier>` labels idempotently, the issue-body schema (dedup-key line + `file:line` + failure mode + suggested fix + `Handler: prompt|plan`), and touching the debt-count sentinel.
 
 **E.7. Record `filed` with `issue_number`** in the disposition-ledger sidecar (section F).
 
@@ -310,6 +334,8 @@ The disposition **entries** (the per-finding content) are decided at the marker-
 
 **Key relationship.** The sidecar `key` field holds the **inner content only** of the dedup key (key format defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`), `v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer>`, **without** the `<!-- gaia-debt-key: … -->` HTML-comment wrapper. The filed issue body carries the full **wrapped** form. Every reader (this agent's verify-after-file re-query and the marker-backstop hook) confirms a match by **reconstructing the wrapped form `<!-- gaia-debt-key: ${key} -->`** and testing whether the issue body **contains that** as a substring, never line-equality against a whole body line. Match the **wrapped** form, not the bare inner key: the inner key ends in `line=<integer>` with no trailing boundary, so a `line=4` key is a substring of a sibling `line=42 -->` body (same finding_class, same path); only the wrapped form's trailing ` -->` makes the match collision-safe.
 
+**Which key to record on a dedup match.** When the file-tech-debt recipe's dedup query (`.claude/skills/file-tech-debt/SKILL.md` step 2) matches a filed finding to an already-**open** issue on path+line, record that issue's **existing** inner key and its `issue_number` in this sidecar entry, not a freshly-derived key built from this run's own classification, which may carry a different `class=` after a reclassification. Recording the on-backend key keeps the reconstructed wrapped form a substring of that issue's actual body, so the deterministic backstop (`disposition_offenders` in `.claude/hooks/lib/audit-dispositions.sh`) confirms the entry instead of flagging it `filed-but-missing`. When the recipe instead files a new issue, record the freshly-built key it just wrote into that issue's body. A **declined-closed** dedup match suppresses the second filing exactly as today and produces no new `filed` sidecar entry, so this on-backend-key recording is scoped to open matches only.
+
 Disposition semantics:
 
 - `filed`, an open `tech-debt` issue carries the key (`issue_number` set). Verified by re-querying open issues for the key before the marker is written.
@@ -320,7 +346,7 @@ Disposition semantics:
 
 ### G. Disposition gate (the fourth marker precondition)
 
-Before writing the marker, the disposition gate confirms every identified out-of-scope finding has a disposition. **Verify after filing:** re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) immediately before writing the marker, and confirm each `filed` entry still resolves to an open issue whose body carries the **wrapped** key `<!-- gaia-debt-key: ${key} -->` (match the wrapped form, not the bare inner key, so a `line=4` key does not false-match a sibling `line=42 -->` issue). Then apply the marker-write rule:
+Before writing the marker, the disposition gate confirms every identified out-of-scope finding has a disposition. **Verify after filing:** re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) immediately before writing the marker, and confirm each `filed` entry still resolves to an open issue whose body carries the **wrapped** key `<!-- gaia-debt-key: ${key} -->` (match the wrapped form, not the bare inner key, so a `line=4` key does not false-match a sibling `line=42 -->` issue). This is exactly why a dedup-matched entry's `key` field holds the matched issue's own on-backend key (see "Key relationship" above): the entry recorded there is the entry this same verify re-queries, so recording any other key would fail this check after a reclassification. Then apply the marker-write rule:
 
 - **Write the marker** when every sidecar entry is `filed`, `diverted`, `waived`, or `pending(transient)`. A transient failure never blocks the merge, so it does not withhold the marker.
 - **Do NOT write the marker** when any entry is `pending(definitive)`, a present, writable backend with a genuinely-missing disposition. This is the **one intended block**; the operator must resolve the filing failure and re-invoke before the marker clears.
@@ -389,6 +415,8 @@ The full report sections remain the structure you author internally to populate 
 ## Finding classification
 
 Assign each finding a `finding_class` by the per-bucket convention below. It is the class carried into the re-run carry-forward ledger's `finding_class` field and, for an out-of-scope finding, into the tech-debt dedup key (see "Key relationship"). A finding you cannot assign a stable class to is simply omitted from the ledger; it can still appear in the prose report. A finding with no stable class is not a countable finding.
+
+This same best-effort per-bucket assignment applies to an out-of-scope finding routed to the filing path (section E), not only to in-ledger findings, so a classless out-of-scope finding is not shortcut to `holistic/unclassified` before every seeded bucket below has been checked; the fallback is reserved for the genuine no-map.
 
 ### Per-bucket `finding_class` convention
 
@@ -564,7 +592,7 @@ CI already carries cross-round state by git-native means that survive a fresh ch
 9. **Verify Critical/Important survivors adversarially**: after your own review produces candidate findings and before finalizing the report, run each surviving holistic Critical/Important finding through a fresh-context refuter per the Finding Proof Gate, then drop, demote, or keep it on the refuter's verdict. The report is not produced until this pass completes. When the adversarial pass is complete, emit the `adversarial verify done` breadcrumb (see Progress breadcrumbs).
 10. **Classify scope, dispose out-of-scope findings, and resolve in-scope suggestions before writing the marker**: after the report is produced and before deciding on the marker:
     - **Classify scope** for every surviving finding, in-scope vs out-of-scope, bounded to the review radius (see Scope classification and out-of-scope disposition). Route out-of-scope findings out of the gating Critical/Important/Suggestions sections.
-    - **Dispose every out-of-scope finding**: probe the backend, classify security-class **first**, then file (non-security on any repo, or security-class on a confirmed PRIVATE repo) or divert (security-class on PUBLIC/INTERNAL). Write the disposition-ledger sidecar (`findings: []` when none).
+    - **Dispose every out-of-scope finding**: probe the backend, classify security-class **first**; a qualifying non-security finding is instead **promoted into the self-heal path** (see "B-fix. In-flight-fix promotion") and repaired rather than dispositioned; otherwise file (non-security on any repo, or security-class on a confirmed PRIVATE repo) or divert (security-class on PUBLIC/INTERNAL). Write the disposition-ledger sidecar (`findings: []` when none).
     - **Resolve in-scope suggestions**: attempt to auto-fix every item in the (in-scope) Suggestions section. For each: if the fix is surgical (see "Self-heal scope" under Constraints), apply it in the working tree and set `AUDIT_SELF_HEALED="true"`. If a suggestion requires a human tradeoff (architectural restructuring, breaking change, conflicting convention), mark it **Escalated** with explicit rationale, escalated in-scope suggestions unconditionally block the marker. Never proceed to the marker with any in-scope suggestion that is neither fixed in the working tree nor explicitly escalated. Fixing anything this pass, escalated or not, means this pass writes no marker (see "Self-heal, commit, and re-dispatch").
     When the marker decision is made and recorded, emit the `report stamped` breadcrumb (see Progress breadcrumbs).
 
@@ -921,7 +949,11 @@ audit_status_line=$(.claude/hooks/post-audit-status.sh "$marker")
 #    forward from the immediately-prior frontend digest's sidecar (see
 #    "Seed-forward" above) so a still-open receipt survives the rotation
 #    even when this fresh incremental audit does not re-encounter the
-#    finding.
+#    finding. A `filed` entry whose finding matched an already-open issue
+#    through the file-tech-debt dedup records THAT issue's existing key and
+#    issue_number (see section F "Key relationship"), never a freshly-
+#    derived key; a newly-filed issue records the freshly-built key it just
+#    wrote into the new issue's body.
 new_frontend_digest="$(basename "$marker" .ok)"
 sidecar=".gaia/local/audit/${new_frontend_digest}.dispositions.json"
 # Write the section-F dispositions JSON (decided at the marker-decision
