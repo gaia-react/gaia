@@ -20,9 +20,15 @@ setup() {
 # Write-surface allowlist: shell harness that re-implements the runbook's
 # write-surface constraint.
 #
+# Each test snapshots the set of files outside the two allowed write roots
+# (via list_write_surface) before the surrogate runs, runs the surrogate,
+# then diffs the after-set against the before-snapshot with comm to find
+# writes outside the allowlist. Detection is by set difference, independent
+# of mtime.
+#
 # The runbook_surrogate function:
-#   1. Snapshots mtimes of all files via a marker file
-#   2. Writes a fake report to the allowed path
+#   1. Creates the two allowed directories
+#   2. Writes a fake report to .gaia/local/forensics/
 #   3. Optionally writes to .gaia/local/telemetry/ (allowed)
 #   4. Returns; does NOT write to any other path
 # ---------------------------------------------------------------------------
@@ -56,18 +62,33 @@ illegal_write_surrogate() {
 }
 
 # ---------------------------------------------------------------------------
-# Helper: find files newer than a marker, excluding the two allowed roots.
-# Returns the list of violating paths (empty = no violations).
+# Helper: list regular files under $workdir that are NOT in the two allowed
+# write roots, sorted for a stable set comparison. Snapshot this before and
+# after a surrogate run to detect writes by set difference.
+# ---------------------------------------------------------------------------
+
+list_write_surface() {
+  local workdir="$1"
+
+  find "$workdir" -type f \
+    ! -path "$workdir/.gaia/local/forensics/*" \
+    ! -path "$workdir/.gaia/local/telemetry/*" \
+    2>/dev/null | LC_ALL=C sort
+}
+
+# ---------------------------------------------------------------------------
+# Helper: given a before-snapshot ($before, a file holding list_write_surface
+# output) and the workdir, return files created outside the allowlist since the
+# snapshot. Detection is by set difference (comm -13), independent of mtime
+# granularity: a write landing in the same clock second as the snapshot is
+# still caught.
 # ---------------------------------------------------------------------------
 
 find_write_violations() {
   local workdir="$1"
-  local marker="$2"
+  local before="$2"
 
-  find "$workdir" -type f -newer "$marker" \
-    ! -path "$workdir/.gaia/local/forensics/*" \
-    ! -path "$workdir/.gaia/local/telemetry/*" \
-    2>/dev/null || true
+  list_write_surface "$workdir" | LC_ALL=C comm -13 "$before" -
 }
 
 # ---------------------------------------------------------------------------
@@ -86,17 +107,19 @@ find_write_violations() {
   git -C "$workdir" add .
   git -C "$workdir" commit -q -m "initial"
 
-  # Snapshot marker
-  local marker
-  marker="$(mktemp "$workdir/.gaia-marker-XXXXXX")"
+  # Snapshot the write surface before the surrogate runs
+  local before
+  before="$(mktemp)"
+  list_write_surface "$workdir" > "$before"
 
   # Run the allowed surrogate
   runbook_surrogate "$workdir" "init"
 
-  # Find any writes outside the allowlist (exclude the marker file itself)
+  # Find any writes outside the allowlist
   local violations
-  violations="$(find_write_violations "$workdir" "$marker" | grep -v '.gaia-marker-' || true)"
+  violations="$(find_write_violations "$workdir" "$before")"
 
+  rm -f "$before"
   rm -rf "$workdir"
 
   [[ -z "$violations" ]]
@@ -108,8 +131,9 @@ find_write_violations() {
   git -C "$workdir" init -q
   mkdir -p "$workdir/.claude"
 
-  local marker
-  marker="$(mktemp "$workdir/.gaia-marker-XXXXXX")"
+  local before
+  before="$(mktemp)"
+  list_write_surface "$workdir" > "$before"
 
   # Write to the allowed path
   mkdir -p "$workdir/.gaia/local/forensics"
@@ -117,8 +141,9 @@ find_write_violations() {
 
   # Find violations; should be empty because the write is in the allowlist
   local violations
-  violations="$(find_write_violations "$workdir" "$marker" | grep -v '.gaia-marker-' || true)"
+  violations="$(find_write_violations "$workdir" "$before")"
 
+  rm -f "$before"
   rm -rf "$workdir"
 
   [[ -z "$violations" ]]
@@ -130,15 +155,17 @@ find_write_violations() {
   git -C "$workdir" init -q
   mkdir -p "$workdir/.claude"
 
-  local marker
-  marker="$(mktemp "$workdir/.gaia-marker-XXXXXX")"
+  local before
+  before="$(mktemp)"
+  list_write_surface "$workdir" > "$before"
 
   # Simulate an illegal write (outside the allowlist)
   illegal_write_surrogate "$workdir"
 
   local violations
-  violations="$(find_write_violations "$workdir" "$marker" | grep -v '.gaia-marker-' || true)"
+  violations="$(find_write_violations "$workdir" "$before")"
 
+  rm -f "$before"
   rm -rf "$workdir"
 
   # Violations must be non-empty (the test validates the detection logic)
@@ -150,15 +177,17 @@ find_write_violations() {
   workdir="$(mktemp -d)"
   git -C "$workdir" init -q
 
-  local marker
-  marker="$(mktemp "$workdir/.gaia-marker-XXXXXX")"
+  local before
+  before="$(mktemp)"
+  list_write_surface "$workdir" > "$before"
 
   mkdir -p "$workdir/.gaia/local/telemetry"
   printf 'telemetry\n' > "$workdir/.gaia/local/telemetry/emit.log"
 
   local violations
-  violations="$(find_write_violations "$workdir" "$marker" | grep -v '.gaia-marker-' || true)"
+  violations="$(find_write_violations "$workdir" "$before")"
 
+  rm -f "$before"
   rm -rf "$workdir"
 
   [[ -z "$violations" ]]
@@ -175,15 +204,17 @@ find_write_violations() {
   git -C "$workdir" add .
   git -C "$workdir" commit -q -m "initial"
 
-  local marker
-  marker="$(mktemp "$workdir/.gaia-marker-XXXXXX")"
+  local before
+  before="$(mktemp)"
+  list_write_surface "$workdir" > "$before"
 
   # Run the allowed surrogate (should not touch app/, wiki/, .claude/)
   runbook_surrogate "$workdir" "init"
 
   local violations
-  violations="$(find_write_violations "$workdir" "$marker" | grep -v '.gaia-marker-' || true)"
+  violations="$(find_write_violations "$workdir" "$before")"
 
+  rm -f "$before"
   rm -rf "$workdir"
 
   [[ -z "$violations" ]]
