@@ -8,7 +8,8 @@
  * file's content (the write itself runs and is a no-op shape-wise).
  */
 import {EXIT_CODES} from '../exit.js';
-import {readAutomationConfig} from '../schemas/automation-config.js';
+import {readAutomationConfigRaw} from '../schemas/automation-config.js';
+import type {AutomationConfig} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
 import {writeAutomationConfig} from './util/automation-write.js';
@@ -62,7 +63,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const result = readAutomationConfig(repoRoot);
+  const result = readAutomationConfigRaw(repoRoot);
 
   if (result.status === 'missing') {
     structuredError({
@@ -87,9 +88,9 @@ export const run = (
   const alreadyFinalized = result.config.setup_complete;
 
   writeAutomationConfig(repoRoot, {
-    ...result.config,
+    ...result.raw,
     setup_complete: true,
-  });
+  } as AutomationConfig);
 
   process.stdout.write(
     `${JSON.stringify({already_finalized: alreadyFinalized, finalized: true})}\n`

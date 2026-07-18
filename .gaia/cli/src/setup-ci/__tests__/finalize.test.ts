@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {writeFileSync} from 'node:fs';
+import {readFileSync, writeFileSync} from 'node:fs';
 import {automationConfigPath} from '../../automation/paths.js';
 import {readAutomationConfig} from '../../schemas/automation-config.js';
 import {run} from '../finalize.js';
@@ -51,6 +51,31 @@ describe('setup-ci finalize', () => {
     stdio.restore();
     sandbox.cleanup();
     vi.restoreAllMocks();
+  });
+
+  test('read-merge preservation: an unknown key a newer binary wrote survives (#753)', () => {
+    writeFileSync(
+      automationConfigPath(sandbox.root),
+      JSON.stringify({
+        ...VALID_BASE_CONFIG,
+        future_slice_key: 'x',
+        setup_complete: false,
+      }),
+      'utf8'
+    );
+
+    const exit = run([], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const written = JSON.parse(
+      readFileSync(automationConfigPath(sandbox.root), 'utf8')
+    ) as Record<string, unknown>;
+    expect(written.future_slice_key).toBe('x');
+
+    const result = readAutomationConfig(sandbox.root);
+    expect(result.status).toBe('ok');
+    assertStatusOk(result);
+    expect(result.config.setup_complete).toBe(true);
   });
 
   test('flips setup_complete=true on a pending config', () => {

@@ -14,12 +14,13 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {
-  readAutomationConfig,
+  readAutomationConfigRaw,
   TOOL_ID_TO_CONFIG_KEY,
   TOOL_IDS,
   ToolModeSchema,
 } from '../schemas/automation-config.js';
 import type {
+  AutomationConfig,
   ToolConfig,
   ToolId,
   ToolMode,
@@ -114,7 +115,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const result = readAutomationConfig(repoRoot);
+  const result = readAutomationConfigRaw(repoRoot);
 
   if (result.status === 'missing') {
     structuredError({
@@ -146,9 +147,9 @@ export const run = (
     : {mode, schedule: existing.schedule};
 
   writeAutomationConfig(repoRoot, {
-    ...result.config,
+    ...result.raw,
     [key]: nextSlot,
-  });
+  } as AutomationConfig);
 
   process.stdout.write(`${JSON.stringify({mode, tool})}\n`);
 
