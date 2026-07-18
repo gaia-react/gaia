@@ -130,6 +130,9 @@ Vitest and Playwright"
 }
 
 @test "drift: an empty live ruleset reports every declared-required context missing" {
+  # Injected-empty path (--ruleset-contexts <(printf '')): a real, legitimate
+  # empty answer. Distinct from the gh-api-failure path below, which must NOT
+  # be treated as a legitimate empty answer.
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
     --ruleset-contexts <(printf '') \
     --workflows-dir "$FIX/workflows-clean"
@@ -139,6 +142,22 @@ Vitest and Playwright"
   assert_contains "Run Chromatic"
   assert_contains "Unanswered newly-shipping files"
   assert_contains "Vitest and Playwright"
+}
+
+# ---------------------------------------------------------------------------
+# gh api failure on the live ruleset read (exit 2, not a drift verdict) (#809)
+# ---------------------------------------------------------------------------
+
+@test "gh api failure reading the live ruleset exits 2 with a loud diagnostic, not a false drift verdict" {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  cat > "$BATS_TEST_TMPDIR/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/bin/gh"
+  run env PATH="$BATS_TEST_TMPDIR/bin:$PATH" "$SCRIPT" --repo gaia-react/gaia --branch main
+  [ "$status" -eq 2 ]
+  assert_contains "could not read the live ruleset"
 }
 
 # ---------------------------------------------------------------------------
