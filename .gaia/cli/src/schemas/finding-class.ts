@@ -134,9 +134,9 @@ const isOraclePrefix = (prefix: string): prefix is FindingClassPrefix =>
 
 /**
  * True when `value` matches the per-bucket convention: a well-formed oracle id
- * (open id space after a known oracle prefix) or a seeded holistic/rule member
- * (closed controlled vocabulary). Everything else (free text, unknown prefix,
- * empty slug, unseeded holistic/rule member) is invalid.
+ * (open id space after a known oracle prefix) or a seeded holistic/rule/workflow
+ * member (closed controlled vocabulary). Everything else (free text, unknown
+ * prefix, empty slug, unseeded holistic/rule/workflow member) is invalid.
  */
 export const isValidFindingClass = (value: string): boolean => {
   const parts = splitPrefix(value);
