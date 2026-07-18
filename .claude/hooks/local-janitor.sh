@@ -559,11 +559,15 @@ if [ -n "$wt_common" ]; then
       [ -z "$(git -C "$wt_path" status --porcelain 2>/dev/null)" ] || continue
       # Reap via the WorktreeRemove hook's own teardown script (remove + branch
       # -D [never main/master] + empty parent-dir prune, all in one place).
-      printf '{"worktree_path":"%s"}\n' "$wt_path" \
+      # jq-built, not printf-interpolated: a path containing `"` or `\` could
+      # otherwise produce malformed or injected JSON.
+      jq -nc --arg p "$wt_path" '{worktree_path:$p}' \
         | bash "$wt_reaper" >/dev/null 2>&1 || true
     done < <(
+      # `worktree` line: substr, not $2 -- porcelain does not quote the path,
+      # so a $2 split would truncate at the first space in the path.
       git -C "$wt_main" worktree list --porcelain 2>/dev/null | awk '
-        $1=="worktree"{p=$2; b=""}
+        $1=="worktree"{ p=substr($0,10); b="" }
         $1=="branch"{b=$2; sub(/^refs\/heads\//,"",b)}
         $1==""{ if(p!="") print p "\t" b; p=""; b="" }
         END{ if(p!="") print p "\t" b }

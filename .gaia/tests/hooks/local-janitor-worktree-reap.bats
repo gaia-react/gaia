@@ -43,6 +43,25 @@ make_repo() {
   mkdir -p "$REPO/.gaia/local"
 }
 
+# make_repo_spaced: identical to make_repo, but REPO's absolute path contains
+# a space (e.g. an adopter under ~/My Projects/...). Regression fixture for
+# the porcelain path-truncation defect: `git worktree list --porcelain` does
+# not quote the path, so a naive awk $2 split truncates at the first space.
+make_repo_spaced() {
+  ORIGIN=$(mktemp -d -t gaia-janitor-wt-origin-XXXXXX)
+  git init -q --bare "$ORIGIN"
+  REPO=$(mktemp -d -t 'gaia janitor wt repo XXXXXX')
+  git -C "$REPO" init -q --initial-branch=main
+  git -C "$REPO" config user.email test@example.com
+  git -C "$REPO" config user.name Test
+  git -C "$REPO" config commit.gpgsign false
+  git -C "$REPO" remote add origin "$ORIGIN"
+  echo init > "$REPO/f"
+  git -C "$REPO" add f
+  git -C "$REPO" commit -q -m init
+  mkdir -p "$REPO/.gaia/local"
+}
+
 # copy_worktree_reaper_deps: mirrors remove-worktree.sh's own repo-relative
 # location inside the fixture repo (<main>/.gaia/scripts/remove-worktree.sh)
 # so sweep #8's `bash "$wt_main/.gaia/scripts/remove-worktree.sh"` call
@@ -164,4 +183,23 @@ branch_exists() {
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -d "$wt" ]
+}
+
+# Regression: `git worktree list --porcelain` does not quote the `worktree
+# <path>` line, so reading the path as awk's $2 (whitespace-split) truncates
+# it at the first space. On a spaced repo path the case guard against
+# $wt_base then never matches and the reap silently no-ops -- fail-safe (no
+# wrong deletion), but the feature is inoperative for any adopter whose
+# checkout lives under a spaced directory.
+@test "reaps a [gone]-branch worktree even when the repo's absolute path contains a space" {
+  make_repo_spaced
+  copy_worktree_reaper_deps
+  make_gone_worktree "debt/105-spaced" "debt/105-spaced"
+  wt="$REPO/.claude/worktrees/debt/105-spaced"
+  [ -d "$wt" ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "debt/105-spaced" && return 1
+  [ ! -e "$wt" ]
 }

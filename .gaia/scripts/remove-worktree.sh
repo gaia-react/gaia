@@ -31,9 +31,11 @@ base="$main_root/.claude/worktrees"
 
 # Read the branch checked out in that worktree straight from git (robust to
 # naming) before removing it. Detached-HEAD worktrees yield no branch.
+# `worktree` line: substr, not $2 -- porcelain does not quote the path, so a
+# $2 split would truncate at the first space in the path.
 branch="$(git -C "$main_root" worktree list --porcelain 2>/dev/null \
   | awk -v p="$worktree_path" '
-      $1 == "worktree" { cur = $2 }
+      $1 == "worktree" { cur = substr($0, 10) }
       $1 == "branch" && cur == p { sub("refs/heads/", "", $2); print $2 }')"
 
 # Remove the worktree from the main checkout. --force discards the (already
