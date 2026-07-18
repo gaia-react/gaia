@@ -58,6 +58,8 @@ This query is self-contained: it runs before the backlog read below, so it does 
 
 The age grace exists because the claim lands *first*, before any branch is cut (`## Claim the fix unit` below): a just-locked issue has no branch yet, so "no branch ⇒ dead" alone would false-strip a fresh lock. A recent `updatedAt` protects that fresh lock; the branch check protects every active fix once past branch-cut, regardless of age.
 
+This reconcile queries and strips only `debt:in-progress`. `debt:spec-pending` is a distinct, durable label parking a handed-off spec-class issue (see `## Fix-time spec screen`); this reconcile never iterates it and never strips it, spared by construction.
+
 ```bash
 gh issue list --label tech-debt --state open \
   --json number,title,labels,createdAt,body \
@@ -91,7 +93,7 @@ Two issues belong to the same cluster when either holds, strongest signal first:
 
 A shared directory alone is too weak to cluster on (a whole `app/services/` directory is not one fix); only same-`path` or same-seeded-`class`-plus-same-dirname cluster. A **cluster is a batch candidate only when it has 2 or more members**; a singleton fixes the normal one-issue way. Clustering is security-blind: it never looks at severity, security-classification, or repo visibility, those are handled where the batch is offered (below).
 
-**In-progress exclusion (fix only).** `fix` derives an `inProgress` flag per issue from the `labels` field the ordering query above already fetches (true when the issue carries `debt:in-progress`) and excludes every in-progress issue from both the candidate pool and the clustering pass above: an in-progress issue neither offers itself as a candidate nor drags a sibling into a batch. `list` still shows in-progress issues and `why` still reports them (see below); only `fix`'s candidate set narrows.
+**In-progress exclusion (fix only).** `fix` derives an `inProgress` flag per issue from the `labels` field the ordering query above already fetches (true when the issue carries `debt:in-progress`) and excludes every in-progress issue from both the candidate pool and the clustering pass above: an in-progress issue neither offers itself as a candidate nor drags a sibling into a batch. `fix` derives a `specPending` flag the same way (true when the issue carries `debt:spec-pending`) and excludes every handed-off issue from the candidate pool and the clustering pass exactly as `debt:in-progress` issues are excluded: this is the "leaves the re-offer pool" half of the parked-state contract (the debt-count half lives in `.gaia/scripts/debt-count-refresh.sh`). `list` still shows in-progress and spec-pending issues and `why` still reports them, annotated `[spec pending]` (see below); only `fix`'s candidate set narrows.
 
 ## Fix a specific issue (direct-number path)
 
@@ -110,17 +112,18 @@ a single targeted call, `gh issue view <issue-number> --json state,labels,title`
 apart: the issue doesn't exist, it's CLOSED, or it's open but not
 `tech-debt`-labeled.
 
-**Ineligible** (doesn't exist, closed, not `tech-debt`-labeled, or already
-carries `debt:in-progress`) → state the specific reason in one line (e.g.
-`"#<N> is already closed"`, `"#<N> doesn't carry the tech-debt label"`,
-`"#<N> is already being fixed by another session"`), then fall through to
+**Ineligible** (doesn't exist, closed, not `tech-debt`-labeled, already
+carries `debt:in-progress`, or already carries `debt:spec-pending`) → state
+the specific reason in one line (e.g. `"#<N> is already closed"`, `"#<N>
+doesn't carry the tech-debt label"`, `"#<N> is already being fixed by another
+session"`, `"#<N> is parked pending a SPEC handoff"`), then fall through to
 "## Recommend and present (fix)" below exactly as if no argument had been
 passed.
 
-**Eligible** (open, `tech-debt`-labeled, not in-progress) → resolve which
-cluster, if any, anchors it, reusing the same clustering pass and the same
-offer-time security read (`gh repo view --json visibility`) "## Recommend and
-present (fix)" defines below (one read, never a second prompt):
+**Eligible** (open, `tech-debt`-labeled, not in-progress, not parked) →
+resolve which cluster, if any, anchors it, reusing the same clustering pass
+and the same offer-time security read (`gh repo view --json visibility`) "##
+Recommend and present (fix)" defines below (one read, never a second prompt):
 
 - **Heads a public-batch-eligible cluster of 2 or more** → one `AskUserQuestion`
   prompt (header `Debt item`, single-select), same shape as the batch offer
@@ -133,12 +136,16 @@ present (fix)" defines below (one read, never a second prompt):
      backlog, exactly as if no argument had been passed.
   - The built-in **Other** entry still lets the human type any open
     `tech-debt` issue number to fix that one alone.
-- **Singleton (no cluster), or security-class on a non-PRIVATE repo** → no
-  prompt: proceed straight to fixing `#<N>` alone, the same
-  nothing-to-decide rule "## Recommend and present (fix)" applies to a lone
-  remaining candidate. The Fix-time security screen below still screens and,
-  if needed, diverts a security-class `#<N>` exactly as it would for any
-  other selected issue.
+- **Singleton (no cluster), security-class on a non-PRIVATE repo, or
+  spec-class (any repo)** → no prompt: proceed straight to fixing `#<N>`
+  alone, the same nothing-to-decide rule "## Recommend and present (fix)"
+  applies to a lone remaining candidate. A spec-class `#<N>` (from its body
+  `Handler: spec` line) is never anchored or batched, mirroring the
+  security-class singleton rule. The Fix-time security screen below still
+  screens and, if needed, diverts a security-class `#<N>` exactly as it would
+  for any other selected issue, and it still proceeds to "## Claim the fix
+  unit" so the Fix-time spec screen catches a spec-class `#<N>` and hands it
+  off.
 
 Whatever this section resolves to, hand off to "## Claim the fix unit" below
 the same way "## Recommend and present (fix)" does.
@@ -149,11 +156,13 @@ Skipped when "## Fix a specific issue (direct-number path)" above already resolv
 
 **Offer-time security read.** Clustering itself is security-blind, but a security-class issue can never share a public `Closes #N` PR, so the offer is not. Before presenting, read repo visibility once: `gh repo view --json visibility`. On a **confirmed-PRIVATE** repo every cluster is public-batch-eligible as-is. On any **non-PRIVATE** repo, apply the same fail-safe security classification the Fix-time security screen (below) defines to every candidate issue in the backlog, and treat any security-class issue as not public-batch-eligible: it never appears inside a batch option, only as its own single candidate. Reuse this one read for the Fix-time security screen after selection; it never becomes a second prompt.
 
-The **recommended batch**, when one exists, is the top cluster all of whose members are public-batch-eligible: normally the cluster containing the top-ranked candidate, but a security-class top candidate is never public-batch-eligible on a non-PRIVATE repo, so it anchors no batch and is offered only as its own single candidate. An eligible batch may span severities, a `severity:suggestion` in the same file as a `severity:important` is a cheap add-on.
+**Offer-time spec read.** Detect each remaining candidate's `Handler: spec` line from its `body` (already fetched). Unlike the security read, this check is **unconditional**: no `gh repo view --json visibility` gate, because repo visibility has no bearing on whether a fix needs a SPEC. A spec-class issue is withheld from every batch option, on every repo, and offered only as its own single candidate. A single spec-class member never forces its batch to a SPEC handoff; its `prompt`/`plan` siblings still batch normally by the max-over-members rule.
+
+The **recommended batch**, when one exists, is the top cluster all of whose members are public-batch-eligible: normally the cluster containing the top-ranked candidate, but a security-class top candidate is never public-batch-eligible on a non-PRIVATE repo, and a spec-class top candidate is never batch-eligible on any repo, so either anchors no batch and is offered only as its own single candidate. An eligible batch may span severities, a `severity:suggestion` in the same file as a `severity:important` is a cheap add-on.
 
 How you present the choice depends on backlog size and cluster shape, counted over the **remaining candidates** (open issues after the in-progress exclusion above), not the raw open-issue count:
 
-- **Zero remaining candidates** (every open `tech-debt` issue already carries `debt:in-progress`) → do not prompt. State that all open debt is already in progress and stop. (Run ends here; see `## Cost record (run end)`.)
+- **Zero remaining candidates** (every open `tech-debt` issue already carries `debt:in-progress` or `debt:spec-pending`) → do not prompt. State that every open `tech-debt` issue is already in progress or parked pending a SPEC, and stop. (Run ends here; see `## Cost record (run end)`.)
 - **Exactly one remaining candidate** → do not prompt. State the issue (number, title, severity band, age derived from `createdAt`) and fix it directly. This is also the peer-session case: two open issues, one already claimed, fixes the single remaining candidate with no prompt.
 - **Top candidate heads a public-batch-eligible cluster of 2 or more** → a batch is recommended. Offer it with a single `AskUserQuestion` prompt (header `Debt item`, single-select), phrased around the batch, for example: `"Top item #<A> is related to <N> other issue(s) (<shared signal>). Fix them together, or one at a time?"`. Options, top option carrying `(Recommended)`:
   1. `Batch #<A> #<B> #<C> (Recommended)`, description: the shared signal (e.g. "all in app/foo/index.ts"), the member count, the severity span, and "one branch, one PR, all close on merge."
@@ -168,7 +177,9 @@ Cap the option set at **4** (plus the built-in Other), the `AskUserQuestion` max
 
 **Security-class members never appear inside a public batch option.** On a non-PRIVATE repo the offer-time read above already withholds them, they surface only as single candidates. On a confirmed-PRIVATE repo they may appear as batch members.
 
-Honor whatever the human picks or types into **Other**. If a typed value is not an open `tech-debt` issue number in the backlog, say so and re-prompt; do not fix an off-list issue. The skill never auto-advances past the human's choice.
+**Spec-class members never appear inside a batch option, on any repo.** The offer-time spec read above withholds them unconditionally; unlike the security peel, this hold never relaxes on a confirmed-PRIVATE repo.
+
+Honor whatever the human picks or types into **Other**. If a typed value is not an open `tech-debt` issue number in the backlog, say so and re-prompt; do not fix an off-list issue. A typed value that **is** open and `tech-debt`-labeled but carries `debt:spec-pending` is parked: say so (e.g. "#<N> is parked pending a SPEC handoff; remove the `debt:spec-pending` label to re-surface it") and re-prompt; do not fix it. The skill never auto-advances past the human's choice.
 
 ## Claim the fix unit
 
@@ -187,6 +198,12 @@ Then, for a single issue or **every member of a confirmed batch**:
 1. **Re-read each member's labels** (`gh issue view <n> --json labels`) before claiming. If `debt:in-progress` is already present, a peer session won the race:
    - **single issue** → report "issue #N was just claimed by another session" and re-present the refreshed backlog; do not fix it. (Run ends here; see `## Cost record (run end)`.)
    - **batch** → drop that member and proceed with the surviving members if 1 or more remain; if none remain, report the whole batch was claimed and re-present the refreshed backlog. (The none-remain case ends the run here; see `## Cost record (run end)`.)
+
+   If `debt:spec-pending` is present instead, the member is parked pending a SPEC handoff, mirroring the `debt:in-progress` branch above exactly:
+   - **single issue** → report "#<N> is parked pending a SPEC handoff" and re-present the refreshed backlog; do not fix it. (Run ends here; see `## Cost record (run end)`.)
+   - **batch** → drop that member and proceed with the surviving members if 1 or more remain; if none remain, report and re-present the refreshed backlog. (The none-remain case ends the run here; see `## Cost record (run end)`.)
+
+   This re-read is the universal choke point every selection path (recommend, direct-number, Other) reaches after the pick, so it backstops the offer-time spec read and the direct-number ineligible list the same way it backstops the offer-time security read and the in-progress exclusion: a parked issue is caught no matter how it was selected.
 2. **Claim every surviving member**: `gh issue edit <n> --add-label debt:in-progress`. A confirmed batch claims all of its members, not just the top one.
 3. **Touch the sentinel** (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`) so a peer session's next statusline tick recomputes the open count and drops it. This in-flow touch is best-effort; the `gh issue edit` PostToolUse hook is the deterministic backstop.
 
@@ -211,9 +228,39 @@ This member-level screen is the **backstop** to the offer-time exclusion in "Rec
 
 A security-class issue's detail never reaches a public PR, the PR comment, or the Actions log.
 
+## Fix-time spec screen
+
+Runs after the pick, the claim, and the Fix-time security screen above, and before "## Pre-flight isolation (branch vs worktree)" below. It screens **every member of the selected fix unit** (a single issue, or every surviving member of a confirmed batch) by reading each member's **cited code**. Reading cited code needs no branch, which is why this screen runs before isolation: a wholly spec-class unit hands off before any branch or worktree exists.
+
+**This screen owns the spec-versus-implement determination**, resolving the advisory `Handler` line **symmetrically**, exactly as the Handler line is advisory for `prompt`/`plan`:
+
+- A `Handler: spec` member the drainer judges to need **no** SPEC after reading the code → **downgrade** to `plan`/`prompt` and keep it in the unit to implement.
+- A `prompt`/`plan` member the drainer judges to **need** a SPEC → **upgrade**, **peel** it from the unit, and hand it off, mirroring the way the Fix-time security screen peels a security member reached via Other. The surviving members proceed as the smaller fix unit.
+
+**For each confirmed spec-class member, do not implement.** Instead:
+
+1. **No-orphan claim swap (MIG-002).** Ensure the label exists idempotently (`gh label create debt:spec-pending --color <hex> 2>/dev/null || true`), then **add `debt:spec-pending` before removing `debt:in-progress`** (`gh issue edit <n> --add-label debt:spec-pending` then `gh issue edit <n> --remove-label debt:in-progress`), so a mid-swap failure never strands the issue label-less. The `debt:` namespace makes the label gaia-owned by convention, the same way `debt:in-progress` is, so the reconcile above never strips it.
+2. **Touch the debt-count sentinel** (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`) so the count refreshes; the parked issue leaves `openCount`.
+3. **Print a single copy-pasteable `/gaia-spec` handoff block**, carrying the originating issue number `#<N>` so the eventual implementation PR can `Closes #<N>`:
+
+   ```
+   /gaia-spec Design-first tech debt from issue #<N>: <one-line problem>. Author a
+   SPEC for this fix; the implementation PR the resulting plan produces should carry
+   `Closes #<N>` so the tech-debt issue closes on merge.
+   ```
+
+**Stop conditions:**
+
+- **Whole selected unit is spec-class** → the run **stops here**: no fix PR, no branch, no worktree. (Run ends here; see `## Cost record (run end)`.)
+- **A member peeled out of a batch** → the surviving non-spec members proceed to "## Pre-flight isolation (branch vs worktree)" and a fix PR as the smaller unit.
+
+**Hard constraints.** `/gaia-debt` never invokes `/gaia-spec`, never dispatches a spec author, and never reads the SPEC template or `plan.md`. Authoring or saving the SPEC does not close the issue, and this handoff issues **no** close call; the issue closes only when the implementation the SPEC's plan produces merges (via `Closes #<N>` on that PR).
+
+This screen mirrors the Fix-time security screen's mechanism but is **unconditional** (visibility-independent): repo visibility has no bearing on whether a fix needs a SPEC. Like the security screen, it sits before isolation for the same reason, a divert or handoff happens before any branch exists.
+
 ## Pre-flight isolation (branch vs worktree)
 
-This section runs once per fix, single issue or batch, after the security screen above and before the fix unit's branch or worktree exists. Ordering rationale: the security screen can divert and stop a security-class fix before any branch exists, so isolation runs after it and a diverted fix never creates a worktree.
+This section runs once per fix, single issue or batch, after the security screen and the spec screen above and before the fix unit's branch or worktree exists. Ordering rationale: the security screen can divert and stop a security-class fix, and the spec screen can hand off and stop a spec-class fix, before any branch exists, so isolation runs after both and a diverted or handed-off fix never creates a worktree.
 
 **Branch naming.** Single-issue fix: `debt/<issue-number>-<slug>` (`<slug>` a 2-4 word kebab-case reduction of the issue title). Batch fix: `debt/<members-joined-by-dash>-batch`, members ascending, e.g. `debt/42-45-47-batch`: naming every member lets `git branch --list` (in the reconcile above) protect non-lowest batch members past branch-cut without leaning on the age grace. Whichever isolation mode runs, including the forced worktree, the branch carries this name.
 
@@ -227,7 +274,7 @@ The reference owns the decision order, the prompt, and the worktree-creation cal
 
 The **fix unit** is the selected (non-diverted) member set: a single issue, or every surviving member of a confirmed batch after the security screen above peels any security-class member. It is still **one fix unit per invocation**.
 
-1. **Confirm the handler class for the unit.** Each member issue carries an advisory `Handler: prompt` or `Handler: plan`, or, for a fieldless human-filed issue, no line at all; classify it on selection the same way as today: `prompt` when confined to one file with no public-contract change and no cross-module ripple, `plan` otherwise. The unit's effective class is the **maximum** over members: `plan` if any member is `plan` (or any fix is cross-module / contract-changing), else `prompt`. A multi-issue batch is usually `plan`. State the honest class before implementing so the human knows the scope, exactly as today's single-issue rule does.
+1. **Confirm the handler class for the unit.** Each member issue carries an advisory `Handler: prompt`, `Handler: plan`, or `Handler: spec`, or, for a fieldless human-filed issue, no line at all; the full vocabulary is three-valued (`prompt` | `plan` | `spec`). The **spec-versus-implement** determination is owned by the Fix-time spec screen above, before isolation: by the time this step runs, every surviving member is `prompt`/`plan` (a spec-class member was either downgraded and kept, or peeled and handed off there). This step grades **prompt-versus-plan** the same way as today: `prompt` when confined to one file with no public-contract change and no cross-module ripple, `plan` otherwise. The unit's effective class is the **maximum** over members: `plan` if any member is `plan` (or any fix is cross-module / contract-changing), else `prompt`. A multi-issue batch is usually `plan`. State the honest class before implementing so the human knows the scope, exactly as today's single-issue rule does.
 2. **The unit is already isolated.** `## Pre-flight isolation (branch vs worktree)` above already cut the branch or created the worktree before this step, on the frozen name (`debt/<issue-number>-<slug>` single, `debt/<members-joined-by-dash>-batch` batch). This step does no branch creation of its own.
 3. **Implement all fixes in the unit** on the one branch, following the project's normal conventions (TDD, surgical changes).
 4. **Run the Quality Gate** (`.claude/rules/quality-gate.md`) once for the combined diff, then commit and push.
@@ -299,11 +346,11 @@ Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWork
 
 ## list subcommand
 
-Run the ordering command above, then the clustering pass, and print the backlog in sorted order: per issue, the number, title, severity band, age, cluster membership when it has any (e.g. `[batches with #B #C: same file app/foo/index.ts]`), and `[in progress]` when the issue carries `debt:in-progress`. `list` shows every open issue, including in-progress ones: it does not exclude them and it does not reconcile stale claims. Author nothing and prompt for nothing.
+Run the ordering command above, then the clustering pass, and print the backlog in sorted order: per issue, the number, title, severity band, age, cluster membership when it has any (e.g. `[batches with #B #C: same file app/foo/index.ts]`), `[in progress]` when the issue carries `debt:in-progress`, `[needs spec]` when its body carries a `Handler: spec` line and it does not carry `debt:spec-pending`, and `[spec pending]` when it carries `debt:spec-pending`. The two spec annotations key on distinct signals, the body line versus the label, so an un-drained spec-class issue is never conflated with a handed-off one. `list` shows every open issue, including in-progress and spec-pending ones: it does not exclude them and it does not reconcile stale claims. Author nothing and prompt for nothing.
 
 ## why subcommand
 
-Run the ordering command and the clustering pass, find the issue whose number matches the argument. Explain it: where it sits in the ordering (its severity band and its position among equal-severity issues by age), its recommended handler class (the issue's advisory `Handler:` line, or your on-the-fly classification for a fieldless issue), and the rationale. Also report whether it is part of a related cluster, which issue(s) it would batch with, and the shared signal (same `path`, or same `class` and dirname). Also report the issue's claim status: whether it currently carries `debt:in-progress` (in progress) or not; `why` does not reconcile stale claims. If no open `tech-debt` issue matches the number, say so and print the ordered backlog. Author nothing and prompt for nothing.
+Run the ordering command and the clustering pass, find the issue whose number matches the argument. Explain it: where it sits in the ordering (its severity band and its position among equal-severity issues by age), its recommended handler class (the issue's advisory `Handler:` line, or your on-the-fly classification for a fieldless issue), and the rationale. Also report whether it is part of a related cluster, which issue(s) it would batch with, and the shared signal (same `path`, or same `class` and dirname). Also report the issue's claim status: whether it currently carries `debt:in-progress` (in progress) or not; `why` does not reconcile stale claims. For a spec-class issue (body `Handler: spec`), also report its spec routing ("routes through /gaia-spec") and, symmetrically, whether it carries `debt:spec-pending` (already handed off) or not. If no open `tech-debt` issue matches the number, say so and print the ordered backlog. Author nothing and prompt for nothing.
 
 ## Cost record (run end)
 
@@ -314,6 +361,7 @@ Every path that ends a `/gaia-debt` run appends exactly one cost record, the run
 - Zero remaining candidates.
 - Claiming the fix unit losing the race to a peer session (single issue, or every batch member).
 - The security screen diverting every member.
+- The spec screen handing off: the whole-unit-spec-class case stops the run here (a per-member handoff within a surviving batch also records via this same run-end tally). This path opened no PR, so it passes no `--github-*` flags; the record correctly carries no artifact.
 - Driving the PR to merge: `MERGED` cleanup, a still-queued `--auto` merge, or a controlled stop before merge.
 - Worktree mode's isolation-context continuation prompt.
 
@@ -344,5 +392,6 @@ The tally never blocks, never fails, and never turns a failed run into a success
 - **Within-band FIFO, severity-first.** Highest severity first, oldest first within a band. Cross-band fairness / anti-starvation is out of scope.
 - **The skill drives the merge, never the gate.** The happy path runs start to finish with no merge-time confirmation: it resolves the fix PR to completion through the standard PR Merge Workflow's marker handshake, running `gh pr merge` only once a real marker exists for HEAD. Never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's gate.
 - **Security screen before any public PR.** A security-class selected issue diverts via the visibility gate on PUBLIC/INTERNAL; only a confirmed-PRIVATE repo fixes it as a normal fix PR.
+- **Spec screen before any implementation.** A confirmed spec-class member never joins a fix PR: it hands off to `/gaia-spec` and parks with `debt:spec-pending`; the peel is unconditional, on every repo.
 - **Claim before contest.** `/gaia-debt fix` claims each selected member with the gaia-owned `debt:in-progress` label the instant a unit is picked, before the security screen and isolation, which excludes it from the open count and a peer session's offer. The claim releases on a controlled stop or a security divert, is best-effort cleared on merge, and is recovered by the fix-start reconcile after an ungraceful session death. The `debt:`-namespaced label is gaia-owned, so reconcile only ever strips `debt:in-progress`, never a human-set label.
 - Use repo-relative paths only.
