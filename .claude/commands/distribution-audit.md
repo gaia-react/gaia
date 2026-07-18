@@ -66,6 +66,8 @@ The CLI snapshots the unanswered set once, validates the whole answer set agains
 
 The CLI is the sole writer of `.gaia/release-exclude`. This command never edits that file itself: no direct file write, no in-place edit, no shell redirect into it. Every withheld entry is written by the CLI's own answer machinery, which is the only place the literal-path rule is enforced and under test. If this command hand-edited the boundary instead, that rule would be enforced by nothing at all, no code would own the write, and it would be exactly the kind of unenforced promise this feature exists to eliminate.
 
+Land the manifest-answer commit before starting a PR's Code Audit Team pre-merge audit handshake, not after; see `wiki/concepts/PR Merge Workflow.md` for why the ordering matters.
+
 ## What this command never does
 
 - **Never take the CLI's undecided escape hatch.** That flag waives the answer requirement entirely and exists for the release path, where relitigating what a file is for is out of scope on release day. This command exists precisely to not take it.

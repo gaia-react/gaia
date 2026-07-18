@@ -81,6 +81,8 @@ Inspect the `finding_class` prefix and the pattern's nature:
 
 - **Judgment-based pattern** (a human-judgment anti-pattern with no reliable mechanization, e.g. a holistic/rule class about a design call). Recommend a PROSE RULE. v1 OWNS this end to end: it drafts the path-scoped rule with the provenance marker into the working tree.
 
+A `workflow/*` class (GitHub Actions supply-chain: script injection, unsafe `pull_request_target`, unpinned actions, over-broad permissions) is a closed holistic-style bucket, not an oracle id, so a workflow candidate routes through the mechanizable or judgment branches above. GitHub Actions patterns are usually mechanizable by a workflow linter (actionlint, zizmor), so the deterministic-check sketch is the default form; the member's `.github/workflows` and `.github/actions` area tags give a valid path scope when a prose rule fits better.
+
 When a pattern is mechanizable, the recommendation is the deterministic check, not a skill and not a prose rule.
 
 ### Axis 3, will it earn its weight (efficacy lens)

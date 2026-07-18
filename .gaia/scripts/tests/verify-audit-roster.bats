@@ -57,18 +57,18 @@ pair_root() {
   local r="$BATS_TEST_TMPDIR/pair"
   scaffold_root "$r" <<YAML
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "zzz-default-only/**"
     scope: adopter
     push_fixes: true
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "$1"
     scope: adopter
     push_fixes: false
-  - name: member-b
+  - name: code-audit-b
     globs:
       - "$2"
     scope: adopter
@@ -138,8 +138,8 @@ YAML
   pair_root 'zz-no-such-tree/**' 'zz-no-such-tree/deep/*.zz'
   [ "$status" -eq 1 ]
   assert_contains "claimant-glob-overlap"
-  assert_contains "member-a"
-  assert_contains "member-b"
+  assert_contains "code-audit-a"
+  assert_contains "code-audit-b"
   assert_contains "witness: zz-no-such-tree/deep/"
 }
 
@@ -182,14 +182,14 @@ YAML
   local r="$BATS_TEST_TMPDIR/default-overlap"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - ".github/workflows/**"
       - "app/**"
     scope: adopter
     push_fixes: true
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - ".github/workflows/*.yml"
     scope: adopter
@@ -203,18 +203,18 @@ YAML
   local r="$BATS_TEST_TMPDIR/default-overlap-many"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "**"
     scope: adopter
     push_fixes: true
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**/*.ts"
     scope: adopter
     push_fixes: false
-  - name: member-b
+  - name: code-audit-b
     globs:
       - "b/**/*.sh"
     scope: adopter
@@ -234,20 +234,20 @@ YAML
   local r="$BATS_TEST_TMPDIR/unreg-machinery"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "app/**"
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
 YAML
-  grep -v 'member-a.md' "$r/.claude/hooks/lib/audit-machinery.sh" > "$r/tmp-list"
+  grep -v 'code-audit-a.md' "$r/.claude/hooks/lib/audit-machinery.sh" > "$r/tmp-list"
   mv "$r/tmp-list" "$r/.claude/hooks/lib/audit-machinery.sh"
   run_root "$r"
   [ "$status" -eq 1 ]
   assert_contains "unregistered-agent-file"
-  assert_contains ".claude/agents/member-a.md"
+  assert_contains ".claude/agents/code-audit-a.md"
   assert_contains "AUDIT_MACHINERY_PATHS"
 }
 
@@ -255,20 +255,20 @@ YAML
   local r="$BATS_TEST_TMPDIR/unreg-gate"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "app/**"
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
 YAML
-  grep -v 'member-a.md' "$r/.gaia/scripts/audit-machinery-complete.sh" > "$r/tmp-list"
+  grep -v 'code-audit-a.md' "$r/.gaia/scripts/audit-machinery-complete.sh" > "$r/tmp-list"
   mv "$r/tmp-list" "$r/.gaia/scripts/audit-machinery-complete.sh"
   run_root "$r"
   [ "$status" -eq 1 ]
   assert_contains "unregistered-agent-file"
-  assert_contains ".claude/agents/member-a.md"
+  assert_contains ".claude/agents/code-audit-a.md"
   assert_contains "GATE_MACHINERY_FILES"
 }
 
@@ -276,15 +276,15 @@ YAML
   local r="$BATS_TEST_TMPDIR/unreg-machinery-only"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "app/**"
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
 YAML
-  grep -v 'member-a.md' "$r/.claude/hooks/lib/audit-machinery.sh" > "$r/tmp-list"
+  grep -v 'code-audit-a.md' "$r/.claude/hooks/lib/audit-machinery.sh" > "$r/tmp-list"
   mv "$r/tmp-list" "$r/.claude/hooks/lib/audit-machinery.sh"
   run_root "$r"
   # The finding must be attributable to ONE list, or it cannot be acted on.
@@ -299,13 +299,13 @@ YAML
   local r="$BATS_TEST_TMPDIR/extra-entries"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "app/**"
     default: true
 YAML
-  printf '.claude/agents/member-not-in-this-roster.md\n' >> "$r/.claude/hooks/lib/audit-machinery.sh"
-  printf '.claude/agents/member-not-in-this-roster.md\n' >> "$r/.gaia/scripts/audit-machinery-complete.sh"
+  printf '.claude/agents/code-audit-not-in-this-roster.md\n' >> "$r/.claude/hooks/lib/audit-machinery.sh"
+  printf '.claude/agents/code-audit-not-in-this-roster.md\n' >> "$r/.gaia/scripts/audit-machinery-complete.sh"
   run_root "$r"
   [ "$status" -eq 0 ]
 }
@@ -314,7 +314,7 @@ YAML
   local r="$BATS_TEST_TMPDIR/no-list"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "app/**"
     default: true
@@ -330,19 +330,65 @@ YAML
   local r="$BATS_TEST_TMPDIR/no-agent"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "app/**"
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
 YAML
-  rm "$r/.claude/agents/member-a.md"
+  rm "$r/.claude/agents/code-audit-a.md"
   run_root "$r"
   [ "$status" -eq 1 ]
   assert_contains "missing-agent-file"
-  assert_contains ".claude/agents/member-a.md"
+  assert_contains ".claude/agents/code-audit-a.md"
+}
+
+# ---------------------------------------------------------------------------
+# Member name convention: every member's name carries the `code-audit-` prefix.
+# The local self-heal hook (block-selfheal-paths.sh) binds a dispatched member
+# to its repair boundary by that prefix, so a member named off-convention
+# escapes the boundary silently. scaffold_root registers every member and gives
+# it an agent file, so an off-convention member fails for the name reason alone.
+# ---------------------------------------------------------------------------
+
+@test "member name convention: an off-convention member fails, naming it" {
+  local r="$BATS_TEST_TMPDIR/off-convention"
+  scaffold_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+  - name: workflow-auditor
+    globs:
+      - "a/**"
+YAML
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "member-name-convention"
+  assert_contains "workflow-auditor"
+}
+
+@test "member name convention: an all-compliant roster emits no name finding" {
+  # The negative control: a member-name-convention finding must fire only on an
+  # off-convention name, never on a compliant one, or the renamed fixtures above
+  # would all fail it. Both members carry the prefix, so no name finding fires.
+  local r="$BATS_TEST_TMPDIR/all-convention"
+  scaffold_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+  - name: code-audit-a
+    globs:
+      - "a/**"
+YAML
+  run_root "$r"
+  grep -qF "member-name-convention" <<<"$output" && return 1
+  [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -353,10 +399,10 @@ YAML
   local r="$BATS_TEST_TMPDIR/no-default"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
-  - name: member-b
+  - name: code-audit-b
     globs:
       - "b/**"
 YAML
@@ -370,11 +416,11 @@ YAML
   local r="$BATS_TEST_TMPDIR/two-defaults"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
     default: true
-  - name: member-b
+  - name: code-audit-b
     globs:
       - "b/**"
     default: true
@@ -404,8 +450,8 @@ YAML
   pair_root 'a/?.ts' 'a/*.ts'
   [ "$status" -eq 1 ]
   assert_contains "undecidable-glob-pair"
-  assert_contains "member-a"
-  assert_contains "member-b"
+  assert_contains "code-audit-a"
+  assert_contains "code-audit-b"
   assert_contains "a/?.ts"
 }
 
@@ -547,11 +593,11 @@ YAML
   local r="$BATS_TEST_TMPDIR/same-member"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "zzz-default-only/**"
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
       - "a/b/*.ts"
@@ -587,11 +633,11 @@ drifted_reader_sandbox() {
   local r="$BATS_TEST_TMPDIR/drift-fixture"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "zzz-default-only/**"
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
       - "a/b/*.ts"
@@ -599,7 +645,7 @@ YAML
   run bash "$sb/.gaia/scripts/verify-audit-roster.sh" --root "$r" --config "$r/.gaia/audit-ci.yml"
   [ "$status" -eq 1 ]
   assert_contains "roster-reader-drift"
-  assert_contains "member-a"
+  assert_contains "code-audit-a"
 }
 
 @test "reader drift: no disjointness verdict is produced while the readers disagree" {
@@ -611,14 +657,14 @@ YAML
   local r="$BATS_TEST_TMPDIR/drift-fixture-2"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "zzz-default-only/**"
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
-  - name: member-b
+  - name: code-audit-b
     globs:
       - "a/b/*.ts"
 YAML
@@ -647,7 +693,7 @@ YAML
   local r="$BATS_TEST_TMPDIR/root-only"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "app/**"
     default: true
@@ -708,14 +754,14 @@ YAML
   local r="$BATS_TEST_TMPDIR/stripped-fixture"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "zzz-default-only/**"
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
-  - name: member-b
+  - name: code-audit-b
     globs:
       - "a/b/*.ts"
 YAML
@@ -732,14 +778,14 @@ YAML
   local r="$BATS_TEST_TMPDIR/readonly"
   scaffold_root "$r" <<'YAML'
 auditors:
-  - name: member-default
+  - name: code-audit-default
     globs:
       - "zzz-default-only/**"
     default: true
-  - name: member-a
+  - name: code-audit-a
     globs:
       - "a/**"
-  - name: member-b
+  - name: code-audit-b
     globs:
       - "a/b/*.ts"
 YAML

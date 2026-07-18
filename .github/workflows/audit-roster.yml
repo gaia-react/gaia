@@ -1,0 +1,81 @@
+name: Audit Roster Drift
+
+# Advisory-only drift detector for the Code Audit Team roster (SPEC-045):
+# runs .gaia/scripts/verify-audit-roster.sh's five deterministic invariants
+# against the live .gaia/audit-ci.yml -- pairwise claimant glob disjointness,
+# the default-member's exclusion from that comparison, a hard fail on any
+# glob pair the bounded dialect cannot decide, that every roster member has
+# an agent file on disk registered in both machinery lists, and that every
+# member's name carries the `code-audit-` prefix the self-heal repair
+# boundary keys off of. The roster is meant to grow as a project adds
+# languages and surfaces, and these failure modes are otherwise silent: an
+# unregistered agent file rotates no member's content digest and merges
+# unaudited, a glob overlap between two claimant members hands a path to
+# whichever member the roster happens to list first, and an off-convention
+# member name escapes the self-heal repair boundary silently.
+#
+# Deliberately NOT added to the required set: registering this (or any
+# check) as a required status check is a maintainer-run, ask-first cutover
+# (SPEC-045 deferred that call explicitly), not something this drift
+# detector should do to itself. This job surfaces drift for a human to act
+# on; it never mutates the roster or the machinery lists.
+#
+# Maintainer-only: the roster, the machinery lists, and the script that
+# checks them all describe the GAIA team's own Code Audit Team. Shipping
+# this check to adopters (so their own CI runs it as their roster grows) is
+# a separate, larger call needing template + render wiring; not built here.
+# Release-excluded alongside the other maintainer-only workflows (category
+# 9 in .gaia/release-exclude); on an adopter clone this would be a silent
+# passenger at best and a confusing red check at worst.
+#
+# Pinned action SHAs match the sibling maintainer workflows:
+#   actions/checkout   @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
+#   dorny/paths-filter @ fbd0ab8f3e69293af611ebaee6363fc25e6d187d (v4.0.1)
+
+# No `push:` trigger, matching verify-required-checks.yml and shell-lint.yml:
+# the job only ever has something to say about a proposed change to the
+# roster or its machinery, and a push-to-main run would be a skipped no-op
+# cluttering the dashboard. Merges all land via PR, so the PR run is the gate.
+on:
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-audit-roster:
+    name: Audit roster drift (advisory)
+    runs-on: ubuntu-latest
+    # Read-only token: this job reads the roster and its machinery lists and
+    # reports, it never writes to the repo.
+    #
+    # `pull-requests: read` is load-bearing, not decoration (same reasoning
+    # spelled out in shell-lint.yml). Naming any scope here sets every unlisted
+    # one to `none`, and dorny/paths-filter resolves a PR's changed files
+    # through the API, which needs it. Omitting it works only while this repo is
+    # public (the token can still read public PR data); the day it went private,
+    # every run would 403 with "Resource not accessible by integration".
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      # PRs that touch none of the roster's inputs report this check green
+      # without running anything.
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            roster:
+              - '.gaia/audit-ci.yml'
+              - '.claude/agents/code-audit-*.md'
+              - '.claude/hooks/lib/audit-scope.sh'
+              - '.claude/hooks/lib/audit-machinery.sh'
+              - '.gaia/scripts/audit-machinery-complete.sh'
+              - '.gaia/scripts/verify-audit-roster.sh'
+              - '.github/workflows/audit-roster.yml'
+      - if: steps.filter.outputs.roster == 'true'
+        name: Verify roster invariants
+        run: bash .gaia/scripts/verify-audit-roster.sh
