@@ -174,11 +174,11 @@ run_hook_stdout() {
 }
 
 # ---------- 11. Collision cleanup: the loser of a race must not clean up the winner ----------
-@test "concurrent runs on the same name: the winner's worktree survives" {
-  # Two sessions launching on the same name at once. Only one `worktree add` can
-  # win; the loser's cleanup must not remove what the winner just created. The
-  # pre-add existence sample cannot see this: the winner registers the path
-  # inside the loser's check-to-add window.
+@test "concurrent runs on the same name: the winner's worktree survives, registration included" {
+  # Two sessions launching on the same name at once. The per-name lock around
+  # create-and-cleanup serializes them: the loser only ever inspects a fully
+  # settled peer worktree (directory present AND listed) and leaves it alone, so
+  # the winner survives both on disk and in git's registration.
   for i in 1 2 3 4 5; do
     name="race$i"
     wt="$MAIN/.claude/worktrees/$name"
@@ -191,20 +191,13 @@ run_hook_stdout() {
     status_a=0; wait "$pid_a" || status_a=$?
     status_b=0; wait "$pid_b" || status_b=$?
 
-    # Whichever run won, its worktree must still be on disk: the loser must not
-    # have deleted it. (If both failed, nothing was created and there is nothing
-    # to protect, so the iteration has nothing to assert.)
-    #
-    # Deliberately not asserted here: that the survivor is still *registered*.
-    # The guard decides from a snapshot (the list read, the `-e` test) while the
-    # peer keeps moving, so no inspection-only check closes the window. `add`
-    # creates the directory before the entry becomes listable, so a loser can
-    # catch a winner mid-add with the directory present but not yet listed, take
-    # the destructive branch, and delete the in-flight checkout. It destroys no
-    # uncommitted work (nobody has written to it yet), and closing it needs a
-    # lock around create-and-cleanup, not a sharper check. Tracked in #762.
+    # Exactly one run wins the lock and creates the worktree; the other fails.
+    # The winner's worktree must survive on disk and stay registered: the loser,
+    # seeing a settled peer, must not remove the directory or prune the entry.
+    # (If both somehow failed there is nothing created to protect.)
     if [ "$status_a" -eq 0 ] || [ "$status_b" -eq 0 ]; then
       [ -d "$wt" ]
+      git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $wt"
     fi
   done
 }
@@ -300,4 +293,64 @@ SHIM
   [ "$status" -eq 0 ]
   # The new branch is based on origin/main, not the ahead local HEAD.
   [ "$(git -C "$MAIN" rev-parse refs/heads/fresh)" = "$origin_tip" ]
+}
+
+# ---------- 16. Crashed mid-add leftover: the failing run reclaims the locked registration ----------
+@test "locked-initializing leftover: the failing run reclaims it and frees the name" {
+  run_hook_stdout '{"name":"zeta"}'
+  [ "$status" -eq 0 ]
+  wt="$MAIN/.claude/worktrees/zeta"
+
+  # Reproduce a session SIGKILLed mid-`worktree add`: git's own `initializing`
+  # lock file persists, so the entry lists as `locked initializing` and a single
+  # `worktree remove --force` refuses it (`cannot remove a locked working tree`),
+  # wedging the name. The unlocked prunable leftover (test 12) is the sibling case.
+  admin="$MAIN/.git/worktrees/zeta"
+  [ -d "$admin" ]
+  printf 'initializing\n' > "$admin/locked"
+  git -C "$MAIN" worktree list --porcelain | grep -qF "locked initializing"
+
+  # This run still fails (the wedge holds the name), but it must reclaim the dead
+  # locked registration on the way out rather than leave it intact.
+  run_hook '{"name":"zeta"}'
+  [ "$status" -ne 0 ]
+  grep -qF "reclaiming a crashed worktree registration" <<<"$output"
+  git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $wt" && return 1
+
+  # The name is usable again.
+  run_hook_stdout '{"name":"zeta"}'
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+}
+
+# ---------- 17. Unlocked fallback: never reclaim a possibly-live locked-initializing peer ----------
+@test "unlocked fallback: a locked-initializing entry is left intact, not force-removed" {
+  # Force the no-lock path by making the lock root un-creatable (a plain file
+  # where the per-name lock directory would go), so create_worktree_unit runs
+  # with locked=0. On that path a `locked initializing` entry can be a LIVE peer
+  # still mid-`worktree add` (a slow checkout that outran the lock timeout), so
+  # the crash-reclaim must NOT fire; the run must fall through to the
+  # conservative leave-intact guard, never force-removing a live checkout.
+  mkdir -p "$MAIN/.gaia/local"
+  : > "$MAIN/.gaia/local/worktree-locks"
+
+  run_hook_stdout '{"name":"eta"}'
+  [ "$status" -eq 0 ]
+  wt="$MAIN/.claude/worktrees/eta"
+
+  admin="$MAIN/.git/worktrees/eta"
+  [ -d "$admin" ]
+  printf 'initializing\n' > "$admin/locked"
+  git -C "$MAIN" worktree list --porcelain | grep -qF "locked initializing"
+
+  # Unlocked collision: it must not reclaim (the peer could be live) and must
+  # leave the entry intact instead.
+  run_hook '{"name":"eta"}'
+  [ "$status" -ne 0 ]
+  grep -qF "reclaiming a crashed worktree registration" <<<"$output" && return 1
+  grep -qF "was not created by this run" <<<"$output"
+
+  # The (possibly live) peer's registration and directory survive untouched.
+  git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $wt"
+  [ -d "$wt" ]
 }
