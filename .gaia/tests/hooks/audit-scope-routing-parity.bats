@@ -8,11 +8,12 @@
 # It is never regenerated: the whole point is that it records the prior
 # state. This suite classifies every fixture path with the CURRENT
 # classifier and asserts each row resolves to the same owner as before,
-# except three named sets that this change deliberately moves:
+# except four named sets that deliberate roster changes move:
 #
 #   .github/workflows/<single-segment>.yml|.yaml -> code-audit-github-workflows
 #   .github/actions/**/*.yml|*.yaml               -> code-audit-github-workflows
 #   .gaia/cli/templates/workflows/code-review-audit.yml.tmpl -> ownerless
+#   .gaia/cli/{package.json,pnpm-lock.yaml,tsconfig*.json}   -> code-audit-maintainer-node
 #
 # This is stable and does not rot: the test iterates FIXTURE ROWS, so a file
 # added to the repo later neither breaks it nor silently escapes it. It is a
@@ -32,7 +33,7 @@ setup() {
   FIXTURE="$THIS_DIR/fixtures/audit-routing-before.tsv"
 }
 
-@test "routing parity: every fixture row resolves to the same owner, except the three named sets" {
+@test "routing parity: every fixture row resolves to the same owner, except the four named sets" {
   [ -f "$FIXTURE" ]
 
   # shellcheck source=/dev/null
@@ -57,6 +58,8 @@ setup() {
       expected="code-audit-github-workflows"
     elif [ "$path" = ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" ]; then
       expected="-"
+    elif [[ "$path" =~ ^\.gaia/cli/(package\.json|pnpm-lock\.yaml|tsconfig[^/]*\.json)$ ]]; then
+      expected="code-audit-maintainer-node"
     else
       expected="$before"
     fi
