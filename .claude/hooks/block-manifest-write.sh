@@ -12,13 +12,18 @@
 # legitimate writer uses an edit tool on the manifest.
 #
 # Bash: inspect .tool_input.command.
-#   - Exemption: a command containing the substring GAIA_MANIFEST_WRITE=
-#     (any value) is allowed unconditionally. The two legitimate Bash writers
-#     (the release CLI, remove-i18n) prepend it.
-#   - Otherwise denied when the command writes the guarded path via an output
-#     redirect (>, >>), tee, sed -i (with or without a macOS '' backup
-#     suffix), sponge, or cp/mv with the guarded path as destination. Reading
-#     the manifest as a cp/mv source, or any other command, is allowed.
+#   - The command is split into segments on ;, &&, ||, and |. A segment is
+#     exempt from write-vector inspection only when GAIA_MANIFEST_WRITE=
+#     (any value) is one of its leading NAME=value environment-assignment
+#     tokens, the shape the two legitimate Bash writers (the release CLI,
+#     remove-i18n) use. The marker does not carry across a separator into a
+#     later segment, and a marker appearing anywhere else in a segment (a
+#     bare argument, a quoted string, a sed script) does not exempt it.
+#   - A non-exempt segment is denied when it writes the guarded path via an
+#     output redirect (>, >>), tee, sed -i (with or without a macOS ''
+#     backup suffix), sponge, or cp/mv with the guarded path as destination.
+#     Reading the manifest as a cp/mv source, or any other command, is
+#     allowed.
 set -euo pipefail
 
 payload=$(cat)
@@ -69,60 +74,88 @@ case "$tool_name" in
     cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
     [[ -n "$cmd" ]] || exit 0
 
-    # Exemption marker: allow unconditionally, before any vector inspection.
-    [[ "$cmd" == *"GAIA_MANIFEST_WRITE="* ]] && exit 0
-
     read -r -a toks <<<"$cmd"
     n=${#toks[@]}
 
+    # seg_start: 1 at the first token of a segment (command start, or right
+    # after a ;/&&/||/| separator). seg_exempt is computed once per segment,
+    # from its leading NAME=value environment-assignment tokens only.
+    seg_start=1
+    seg_exempt=0
     i=0
     while [ "$i" -lt "$n" ]; do
       tok="${toks[$i]}"
+
       case "$tok" in
-        '>' | '>>')
-          next="${toks[$((i + 1))]:-}"
-          is_guarded_path "$next" && deny "$DENY_MSG"
-          ;;
-        tee | sponge)
-          j=$((i + 1))
-          while [ "$j" -lt "$n" ]; do
-            t2="${toks[$j]}"
-            case "$t2" in
-              ';' | '&&' | '||' | '|') break ;;
-            esac
-            is_guarded_path "$t2" && deny "$DENY_MSG"
-            j=$((j + 1))
-          done
-          ;;
-        sed)
-          has_i=0
-          found=0
-          j=$((i + 1))
-          while [ "$j" -lt "$n" ]; do
-            t2="${toks[$j]}"
-            case "$t2" in
-              ';' | '&&' | '||' | '|') break ;;
-            esac
-            [[ "$t2" == "-i" || "$t2" == -i* ]] && has_i=1
-            is_guarded_path "$t2" && found=1
-            j=$((j + 1))
-          done
-          [ "$has_i" -eq 1 ] && [ "$found" -eq 1 ] && deny "$DENY_MSG"
-          ;;
-        cp | mv)
-          dest=""
-          j=$((i + 1))
-          while [ "$j" -lt "$n" ]; do
-            t2="${toks[$j]}"
-            case "$t2" in
-              ';' | '&&' | '||' | '|') break ;;
-            esac
-            [[ "$t2" == -* ]] || dest="$t2"
-            j=$((j + 1))
-          done
-          is_guarded_path "$dest" && deny "$DENY_MSG"
+        ';' | '&&' | '||' | '|')
+          seg_start=1
+          i=$((i + 1))
+          continue
           ;;
       esac
+
+      if [ "$seg_start" -eq 1 ]; then
+        seg_exempt=0
+        j=$i
+        while [ "$j" -lt "$n" ]; do
+          t2="${toks[$j]}"
+          [[ "$t2" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || break
+          case "$t2" in
+            GAIA_MANIFEST_WRITE=*) seg_exempt=1 ;;
+          esac
+          j=$((j + 1))
+        done
+        seg_start=0
+      fi
+
+      if [ "$seg_exempt" -eq 0 ]; then
+        case "$tok" in
+          '>' | '>>')
+            next="${toks[$((i + 1))]:-}"
+            is_guarded_path "$next" && deny "$DENY_MSG"
+            ;;
+          tee | sponge)
+            j=$((i + 1))
+            while [ "$j" -lt "$n" ]; do
+              t2="${toks[$j]}"
+              case "$t2" in
+                ';' | '&&' | '||' | '|') break ;;
+              esac
+              is_guarded_path "$t2" && deny "$DENY_MSG"
+              j=$((j + 1))
+            done
+            ;;
+          sed)
+            has_i=0
+            found=0
+            j=$((i + 1))
+            while [ "$j" -lt "$n" ]; do
+              t2="${toks[$j]}"
+              case "$t2" in
+                ';' | '&&' | '||' | '|') break ;;
+              esac
+              [[ "$t2" == "-i" || "$t2" == -i* ]] && has_i=1
+              is_guarded_path "$t2" && found=1
+              j=$((j + 1))
+            done
+            [ "$has_i" -eq 1 ] && [ "$found" -eq 1 ] && deny "$DENY_MSG"
+            ;;
+          cp | mv)
+            dest=""
+            j=$((i + 1))
+            while [ "$j" -lt "$n" ]; do
+              t2="${toks[$j]}"
+              case "$t2" in
+                ';' | '&&' | '||' | '|') break ;;
+              esac
+              [[ "$t2" == -* ]] || dest="$t2"
+              j=$((j + 1))
+            done
+            is_guarded_path "$dest" && deny "$DENY_MSG"
+            ;;
+        esac
+      fi
+
       i=$((i + 1))
     done
 

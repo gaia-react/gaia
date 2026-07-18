@@ -145,6 +145,28 @@ assert_allowed() {
   assert_denied
 }
 
+@test "marker as an echo argument does not exempt the redirect it precedes" {
+  run_hook_bash 'echo GAIA_MANIFEST_WRITE=hi > .gaia/manifest.json'
+  assert_denied
+}
+
+@test "marker inside a quoted string does not exempt the redirect it precedes" {
+  # Quote-safe delivery (mandatory): the command text carries its own double
+  # quotes around the marker.
+  run_hook_bash 'echo "GAIA_MANIFEST_WRITE=x" > .gaia/manifest.json'
+  assert_denied
+}
+
+@test "a marked segment does not exempt a later unmarked segment after &&" {
+  run_hook_bash "GAIA_MANIFEST_WRITE=1 echo ok && sed -i '' 's/a/b/' .gaia/manifest.json"
+  assert_denied
+}
+
+@test "marker inside a sed script does not exempt the in-place edit" {
+  run_hook_bash "sed -i '' 's/GAIA_MANIFEST_WRITE=//' .gaia/manifest.json"
+  assert_denied
+}
+
 # --- allowed: Bash with the GAIA_MANIFEST_WRITE= exemption marker ---
 
 @test "marked release cp is allowed" {
@@ -159,6 +181,11 @@ assert_allowed() {
 
 @test "marked remove-i18n mv step is allowed" {
   run_hook_bash 'GAIA_MANIFEST_WRITE=remove-i18n mv .gaia/manifest.json.tmp .gaia/manifest.json'
+  assert_allowed
+}
+
+@test "marker among multiple leading env assignments is still exempt" {
+  run_hook_bash 'FOO=1 GAIA_MANIFEST_WRITE=release cp x .gaia/manifest.json'
   assert_allowed
 }
 
