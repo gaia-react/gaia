@@ -20,9 +20,15 @@ setup() {
 # Write-surface allowlist: shell harness that re-implements the runbook's
 # write-surface constraint.
 #
+# Each test snapshots the set of files outside the two allowed write roots
+# (via list_write_surface) before the surrogate runs, runs the surrogate,
+# then diffs the after-set against the before-snapshot with comm to find
+# writes outside the allowlist. Detection is by set difference, independent
+# of mtime.
+#
 # The runbook_surrogate function:
-#   1. Snapshots mtimes of all files via a marker file
-#   2. Writes a fake report to the allowed path
+#   1. Creates the two allowed directories
+#   2. Writes a fake report to .gaia/local/forensics/
 #   3. Optionally writes to .gaia/local/telemetry/ (allowed)
 #   4. Returns; does NOT write to any other path
 # ---------------------------------------------------------------------------
@@ -82,7 +88,7 @@ find_write_violations() {
   local workdir="$1"
   local before="$2"
 
-  list_write_surface "$workdir" | comm -13 "$before" -
+  list_write_surface "$workdir" | LC_ALL=C comm -13 "$before" -
 }
 
 # ---------------------------------------------------------------------------
