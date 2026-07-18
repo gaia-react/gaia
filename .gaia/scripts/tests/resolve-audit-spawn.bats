@@ -127,6 +127,8 @@ YAML
 tree_sha() { git -C "$SANDBOX" rev-parse "HEAD^{tree}"; }
 commit_sha() { git -C "$SANDBOX" rev-parse HEAD; }
 resolve_members() { ( cd "$SANDBOX" && bash .gaia/scripts/resolve-audit-members.sh 2>/dev/null ); }
+# SC2069: deliberate capture-stderr / discard-stdout order (2>&1 then 1>/dev/null); sibling oracle_stdout on the next line is the mirror image.
+# shellcheck disable=SC2069
 oracle_stderr() { ( cd "$SANDBOX" && "$SCRIPT" "$@" 2>&1 1>/dev/null ); }
 oracle_stdout() { ( cd "$SANDBOX" && "$SCRIPT" "$@" 2>/dev/null ); }
 
@@ -357,6 +359,8 @@ code-audit-maintainer-shell"
 }
 
 @test "unknown flag prints a warning to stderr" {
+  # SC2069: deliberate; capture stderr, discard stdout (2>&1 then 1>/dev/null).
+  # shellcheck disable=SC2069
   stderr_out="$( ( cd "$SANDBOX" && "$SCRIPT" --bogus ) 2>&1 1>/dev/null )"
   grep -qF -- "resolve-audit-spawn" <<<"$stderr_out" || return 1
 }
