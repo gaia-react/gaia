@@ -20,13 +20,17 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
 # Match `git commit` or `git push` as a real shell invocation, at command
 # start or right after a shell separator (&&, ;, ||, |, newline), not when
-# mentioned mid-line in prose or a quoted string (e.g. a commit message).
-# Bash `=~` gives whole-string semantics; `grep` is line-oriented and would
-# match every heredoc body line. The newline separator here still matches a
-# heredoc body line that begins with the command; that edge is benign (one
-# extra tally row the per-session dedup collapses) and accepted.
-start_re='^[[:space:]]*git[[:space:]]+(commit|push)([[:space:]]|$)'
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*git[[:space:]]+(commit|push)([[:space:]]|$)'
+# mentioned mid-line in prose or a quoted string (e.g. a commit message). The
+# mandated `git -C <path> commit|push` form (.claude/rules/shell-cwd.md) also
+# matches, via an optional `-C <path>` group between `git` and the
+# subcommand; <path> may be quoted as long as it holds no spaces. Bash `=~`
+# gives whole-string semantics; `grep` is line-oriented and would match every
+# heredoc body line. The newline separator here still matches a heredoc body
+# line that begins with the command; that edge is benign (one extra tally row
+# the per-session dedup collapses) and accepted.
+git_op='git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(commit|push)([[:space:]]|$)'
+start_re="^[[:space:]]*$git_op"
+sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*'"$git_op"
 if [[ "$cmd" =~ $start_re ]]; then
   :
 elif [[ "$cmd" =~ $sep_re ]]; then

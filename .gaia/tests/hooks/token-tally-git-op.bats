@@ -124,6 +124,69 @@ run_hook() {
   [ "$(jq -r '.kind' "$LEDGER")" = "execute" ]
 }
 
+# ---------- 2a. git -C <path> form (shell-cwd.md mandated form, issue #770) ----------
+@test "git -C <path> commit records an execute record (shell-cwd.md mandated form)" {
+  build_repo
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+
+  run_hook "git -C /abs/worktree commit -m x"
+  [ "$status" -eq 0 ]
+
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
+  [ -f "$LEDGER" ]
+  [ "$(jq -r '.kind' "$LEDGER")" = "execute" ]
+  [ "$(jq -r '.spec_id' "$LEDGER")" = "SPEC-013" ]
+}
+
+@test "git -C <path> push also records" {
+  build_repo
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+
+  run_hook "git -C /abs/worktree push"
+  [ "$status" -eq 0 ]
+
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
+  [ -f "$LEDGER" ]
+  [ "$(jq -r '.kind' "$LEDGER")" = "execute" ]
+}
+
+@test "git -C <path> status: no record (commit/push-only matching preserved)" {
+  build_repo
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+
+  run_hook "git -C /abs/worktree status"
+  [ "$status" -eq 0 ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+@test "git -C \"<path>\" commit (quoted path) records an execute record" {
+  build_repo
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+
+  run_hook 'git -C "/abs/worktree" commit -m x'
+  [ "$status" -eq 0 ]
+
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
+  [ -f "$LEDGER" ]
+  [ "$(jq -r '.kind' "$LEDGER")" = "execute" ]
+}
+
 # ---------- 2b. Colocated spec-plan layout: specs/<SPEC-ID>/plan[-N] ----------
 # Spec-derived plans no longer live under plans/<slug>; they colocate inside
 # their SPEC folder at specs/<SPEC-ID>/plan[-N]. The hook's cheap has_plan gate
