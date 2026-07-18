@@ -19,6 +19,17 @@ If the hook blocks, the agent halts here and surfaces the block message. Do not 
 
 {CORE_TEMPLATE}
 
+## Step 1b: GAIA clarification contract (overrides the inlined core caps)
+
+The core body inlined above (Step 1) carries its own clarification rules: a cap of "Maximum 3 [NEEDS CLARIFICATION] markers," a "max 3 total" limit on numbered questions, and an instruction to "present all questions together before waiting for responses." None of those apply in a GAIA project. Wherever the text above states any of them, this section supersedes it.
+
+GAIA's clarification contract replaces all three:
+
+- **One question per turn.** Ask exactly one question, then wait for the response. No multi-question forms, no "and also" clauses, never present a batch of questions together.
+- **No fixed question cap.** The clarification budget and stop condition are GAIA's, governed by a coverage-based Socratic loop, not core's fixed limit of 3.
+
+The authoritative sources for this contract are `.specify/extensions/gaia/templates/clarify-prompts.md` (Rule 1: one question at a time; Rule 8: the coverage-scan termination that decides when clarification stops) and `.claude/skills/gaia/references/spec.md` (the question ceiling and the one-question-per-turn hard constraint). The full GAIA Socratic clarify loop lives in `/gaia-spec`; a bare `/speckit-specify` run through this preset inherits this same one-question-per-turn contract, so the two never disagree in the agent's context.
+
 ## Step 2: relocate to .gaia/local/specs/SPEC-NNN/SPEC.md
 
 After core has written its artifact (typically at `specs/<NNN>-<slug>/spec.md`):
