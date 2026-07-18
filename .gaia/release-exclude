@@ -21,9 +21,9 @@
 # must NOT be added here. preferred-base.sh is the maintainer's personal
 # statusline left-side renderer; adopters get the right-side-only
 # gaia-statusline.sh wrapper which delegates left-side rendering to the
-# user's own global statusline. The two code-audit-maintainer-* agents are
+# user's own global statusline. The three code-audit-maintainer-* agents are
 # the Code Audit Team's maintainer-only members (framework shell + framework
-# TypeScript lenses); adopters audit only their own app via
+# TypeScript + skills-prose lenses); adopters audit only their own app via
 # code-audit-frontend. /distribution-audit is the maintainer's
 # ship-or-withhold audit over newly-shipping files; it drives the
 # maintainer-only release CLI and has no meaning on an adopter clone.
@@ -33,6 +33,7 @@
 .gaia/statusline/preferred-base.sh
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md
+.claude/agents/code-audit-maintainer-prose.md
 .claude/commands/distribution-audit.md
 # Maintainer-only Code Audit Team spawn-list optimization; adopters resolve required members via resolve-audit-members.sh and the frontend self-skip is fail-closed on its absence.
 .gaia/scripts/resolve-audit-spawn.sh

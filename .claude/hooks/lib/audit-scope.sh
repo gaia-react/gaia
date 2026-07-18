@@ -148,6 +148,11 @@ auditors:
       - ".gaia/cli/tsconfig*.json"
     scope: maintainer-only
     push_fixes: false
+  - name: code-audit-maintainer-prose
+    globs:
+      - ".claude/skills/**/*.md"
+    scope: maintainer-only
+    push_fixes: false
   # gaia:maintainer-only:end
 YAML
 }

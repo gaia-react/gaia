@@ -63,6 +63,7 @@ GATE_MACHINERY_FILES="$(cat <<'EOF'
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md
 .claude/agents/code-audit-github-workflows.md
+.claude/agents/code-audit-maintainer-prose.md
 .gaia/VERSION
 EOF
 )"

@@ -473,6 +473,15 @@ EOF
   assert_every_machinery_path_owned
 }
 
+@test "UAT-002: skills-md is owned by the prose member; non-md under skills stays ownerless" {
+  . "$SCOPE_LIB"
+  audit_scope_init "$REPO_ROOT"
+  [ "$(audit_owner_for_path '.claude/skills/gaia/references/debt.md')" = "code-audit-maintainer-prose" ]
+  # A non-.md helper under skills is ownerless (empty), not owned by the prose
+  # member and not the default frontend member.
+  [ -z "$(audit_owner_for_path '.claude/skills/release-notes/eval/probe.py')" ]
+}
+
 # ---------------------------------------------------------------------------
 # The scrub markers survive. Balanced start/end markers, and a marker-
 # stripped copy of the module (simulating the release scrub) yields a
