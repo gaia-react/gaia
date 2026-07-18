@@ -265,8 +265,11 @@ assert_not_in_set() {
 }
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
+  # .claude/commands/*.md is ownerless docs. Skills prose (.claude/skills/**/*.md)
+  # is audited by the prose member, so it belongs to the owned-surface cases below,
+  # not here among the no-audit-needed docs.
   commit_files \
-    ".claude/skills/update-gaia/SKILL.md" "updated" \
+    ".claude/commands/gaia-spec.md" "updated" \
     "wiki/concepts/PR Merge Workflow.md" "updated" \
     ".gaia/manifest.json" "{}"
   run_merge_hook
@@ -733,6 +736,16 @@ assert_not_in_set() {
   commit_files ".gaia/cli/src/foo.ts" "export const foo = 1"
   set=$(spawn_set)
   [ "$set" = "code-audit-maintainer-node" ]
+  assert_not_in_set "code-audit-frontend" "$set"
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed
+}
+
+@test "FC-4 no-deadlock: skills prose spawns the prose member only (not the default), and its marker allows" {
+  commit_files ".claude/skills/foo/SKILL.md" "# Foo skill"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-maintainer-prose" ]
   assert_not_in_set "code-audit-frontend" "$set"
   write_markers_for_spawn_set "$set"
   run_merge_hook

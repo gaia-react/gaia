@@ -16940,10 +16940,17 @@ var WORKFLOW_FINDING_CLASSES = [
   "workflow/unpinned-action",
   "workflow/broad-permissions"
 ];
+var PROSE_FINDING_CLASSES = [
+  "prose/excessive-length",
+  "prose/deep-nesting",
+  "prose/high-indirection",
+  "prose/redundant-instruction"
+];
 var CLOSED_VOCABULARY = /* @__PURE__ */ new Set([
   ...HOLISTIC_FINDING_CLASSES,
   ...RULE_FINDING_CLASSES,
-  ...WORKFLOW_FINDING_CLASSES
+  ...WORKFLOW_FINDING_CLASSES,
+  ...PROSE_FINDING_CLASSES
 ]);
 var splitPrefix = (value) => {
   const separatorIndex = value.indexOf("/");

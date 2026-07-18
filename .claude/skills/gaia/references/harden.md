@@ -83,6 +83,8 @@ Inspect the `finding_class` prefix and the pattern's nature:
 
 A `workflow/*` class (GitHub Actions supply-chain: script injection, unsafe `pull_request_target`, unpinned actions, over-broad permissions) is a closed holistic-style bucket, not an oracle id, so a workflow candidate routes through the mechanizable or judgment branches above. GitHub Actions patterns are usually mechanizable by a workflow linter (actionlint, zizmor), so the deterministic-check sketch is the default form; the member's `.github/workflows` and `.github/actions` area tags give a valid path scope when a prose rule fits better.
 
+A `prose/*` class (instruction-prose legibility: excessive reducible length, deep nesting, high cross-reference indirection, redundant instruction) is likewise a closed holistic-style bucket, not an oracle id, so a prose candidate routes through the mechanizable or judgment branches above. Prose complexity is usually a judgment call with no reliable mechanization, so a **prose rule** or a **skill** (the correct procedure form) is the typical recommendation, not a deterministic check; the finding's `area_tags` give a valid `.claude/skills/**` path scope when a prose rule fits.
+
 When a pattern is mechanizable, the recommendation is the deterministic check, not a skill and not a prose rule.
 
 ### Axis 3, will it earn its weight (efficacy lens)

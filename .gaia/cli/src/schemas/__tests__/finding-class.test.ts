@@ -5,6 +5,7 @@ import {
   HOLISTIC_FINDING_CLASSES,
   isValidFindingClass,
   OUT_OF_SCOPE_FALLBACK_FINDING_CLASS,
+  PROSE_FINDING_CLASSES,
   RULE_FINDING_CLASSES,
   WORKFLOW_FINDING_CLASSES,
 } from '../finding-class.js';
@@ -51,6 +52,17 @@ describe('schemas/finding-class', () => {
       }
     );
 
+    test.each(PROSE_FINDING_CLASSES)(
+      'accepts seeded prose member: %s',
+      (value) => {
+        expect(FindingClassSchema.safeParse(value).success).toBe(true);
+      }
+    );
+
+    test('PROSE_FINDING_CLASSES is non-empty (a closed bucket with members)', () => {
+      expect(PROSE_FINDING_CLASSES.length).toBeGreaterThan(0);
+    });
+
     test('rejects an unseeded holistic member (closed bucket)', () => {
       expect(
         FindingClassSchema.safeParse('holistic/something-made-up').success
@@ -70,6 +82,11 @@ describe('schemas/finding-class', () => {
       );
       expect(isValidFindingClass('workflow/made-up')).toBe(false);
     });
+
+    test('rejects an unseeded prose member (closed bucket)', () => {
+      expect(FindingClassSchema.safeParse('prose/made-up').success).toBe(false);
+      expect(isValidFindingClass('prose/made-up')).toBe(false);
+    });
   });
 
   describe('free-text drift', () => {
@@ -83,13 +100,14 @@ describe('schemas/finding-class', () => {
   });
 
   describe('exported vocabulary', () => {
-    test('exposes the seven known prefixes', () => {
+    test('exposes the eight known prefixes', () => {
       expect(new Set(FINDING_CLASS_PREFIXES)).toEqual(
         new Set([
           'axe',
           'cve',
           'holistic',
           'knip',
+          'prose',
           'react-doctor',
           'rule',
           'workflow',
