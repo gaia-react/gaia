@@ -21,7 +21,6 @@ import {
 } from '../schemas/automation-config.js';
 import type {
   AutomationConfig,
-  ToolConfig,
   ToolId,
   ToolMode,
 } from '../schemas/automation-config.js';
@@ -138,17 +137,15 @@ export const run = (
   }
 
   const key = TOOL_ID_TO_CONFIG_KEY[tool];
-  // The config slot is `ToolConfig` (mode + optional schedule) for the
-  // four tool keys. Preserve `schedule` when present.
-  const existing = result.config[key] as ToolConfig;
-  const nextSlot: ToolConfig =
-    existing.schedule === undefined ?
-      {mode}
-    : {mode, schedule: existing.schedule};
+  // Spread the RAW slot (not the Zod-stripped `result.config[key]`) so an
+  // unknown sub-field a newer binary wrote inside this slot survives the
+  // round-trip; only `mode` is overridden. A raw slot with no `schedule`
+  // spreads to no `schedule`; one with a `schedule` keeps it.
+  const existingSlot = (result.raw[key] ?? {}) as Record<string, unknown>;
 
   writeAutomationConfig(repoRoot, {
     ...result.raw,
-    [key]: nextSlot,
+    [key]: {...existingSlot, mode},
   } as AutomationConfig);
 
   process.stdout.write(`${JSON.stringify({mode, tool})}\n`);

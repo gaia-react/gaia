@@ -22878,11 +22878,10 @@ var run43 = (argv, options = {}) => {
     return EXIT_CODES.CONFIG_INVALID;
   }
   const key = TOOL_ID_TO_CONFIG_KEY[tool];
-  const existing = result.config[key];
-  const nextSlot = existing.schedule === void 0 ? { mode } : { mode, schedule: existing.schedule };
+  const existingSlot = result.raw[key] ?? {};
   writeAutomationConfig(repoRoot, {
     ...result.raw,
-    [key]: nextSlot
+    [key]: { ...existingSlot, mode }
   });
   process.stdout.write(`${JSON.stringify({ mode, tool })}
 `);

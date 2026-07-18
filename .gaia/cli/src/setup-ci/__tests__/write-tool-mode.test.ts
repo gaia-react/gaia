@@ -77,6 +77,25 @@ describe('setup-ci write-tool-mode', () => {
     expect(result.config.wiki.mode).toBe('off');
   });
 
+  test('read-merge preservation: an unknown sub-field inside the modified slot survives (#753)', () => {
+    writeFileSync(
+      automationConfigPath(sandbox.root),
+      JSON.stringify({
+        ...VALID_BASE_CONFIG,
+        wiki: {future_subfield: 'keep-me', mode: 'off'},
+      }),
+      'utf8'
+    );
+
+    const exit = run(['wiki', 'ci'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const written = JSON.parse(
+      readFileSync(automationConfigPath(sandbox.root), 'utf8')
+    ) as Record<string, unknown>;
+    expect(written.wiki).toEqual({future_subfield: 'keep-me', mode: 'ci'});
+  });
+
   test('flips a tool mode to off and preserves schedule', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
 
