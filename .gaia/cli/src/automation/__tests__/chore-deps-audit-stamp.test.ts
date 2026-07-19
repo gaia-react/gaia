@@ -1,12 +1,3 @@
-import yaml from 'js-yaml';
-import {describe, expect, test} from 'vitest';
-import {readFileSync} from 'node:fs';
-import {workflowAuditTemplatePath} from '../paths.js';
-
-type AuditWorkflow = {
-  jobs: {'code-review-audit': {steps: WorkflowStep[]}};
-};
-
 /**
  * Regression guard for the chore(deps) merge-gate gap.
  *
@@ -22,6 +13,15 @@ type AuditWorkflow = {
  * the whole file is release-excluded on an adopter clone), matching the
  * findings-block contract guard in audit-template-dogfood.test.ts.
  */
+import yaml from 'js-yaml';
+import {describe, expect, test} from 'vitest';
+import {readFileSync} from 'node:fs';
+import {workflowAuditTemplatePath} from '../paths.js';
+
+type AuditWorkflow = {
+  jobs: {'code-review-audit': {steps: WorkflowStep[]}};
+};
+
 type WorkflowStep = {
   env?: Record<string, string>;
   id?: string;
