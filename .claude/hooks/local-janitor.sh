@@ -95,7 +95,13 @@
 #      sweep #3's plan-archive.sh delegation) whose merged_at has aged past
 #      the same retention window AND whose cost is fully represented. A thin
 #      delegation to plan-archive-merged.sh, which owns both gates,
-#      symmetric with sweep #6's spec-folder delegation.
+#      symmetric with sweep #6's spec-folder delegation. The same knob and
+#      cost gate, on the same folder-delete shape, also reap ABANDONED
+#      spec-less plan folders whose abandoned_at has aged past the window: a
+#      thin delegation to the sibling plan-archive-abandoned.sh, symmetric
+#      with sweep #6's spec-side abandoned delegation. No plan row is stamped
+#      `abandoned` today (the status is reserved but no shipped path sets
+#      it), so this delegation currently has no candidates to act on.
 #   8. orphaned GAIA worktrees under .claude/worktrees/ whose branch upstream
 #      is [gone] (the same provable-death signal sweep #1 uses for
 #      wiki-sync/* branches) and whose working tree is clean. A crashed or
@@ -715,6 +721,10 @@ fi
 archive_plan="$root/.specify/extensions/gaia/lib/plan-archive-merged.sh"
 if [ -x "$archive_plan" ] || [ -f "$archive_plan" ]; then
   bash "$archive_plan" "$root" >/dev/null 2>&1 || true
+fi
+archive_plan_abandoned="$root/.specify/extensions/gaia/lib/plan-archive-abandoned.sh"
+if [ -x "$archive_plan_abandoned" ] || [ -f "$archive_plan_abandoned" ]; then
+  bash "$archive_plan_abandoned" "$root" >/dev/null 2>&1 || true
 fi
 
 # --- 8. Orphaned merged worktrees under .claude/worktrees/ -----------------
