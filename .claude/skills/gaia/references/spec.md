@@ -413,7 +413,7 @@ Acquire the session lock, right alongside the cache-init block above:
 bash .specify/extensions/gaia/lib/spec-session-lock.sh acquire "$PWD" "$SPEC_ID" || true
 ```
 
-This site has no auto-mode exception, it runs identically in interactive and auto mode. Both interactive and auto mode acquire at fresh allocation, satisfying auto-mode acquire.
+Both interactive and auto mode acquire at fresh allocation, satisfying auto-mode acquire.
 
 ### 4. Gate 1, shape confirmation
 
