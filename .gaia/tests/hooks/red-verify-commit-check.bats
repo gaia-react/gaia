@@ -118,6 +118,13 @@ run_commit_hook() {
 
 denied() { [[ "$output" == *'"permissionDecision": "deny"'* ]]; }
 
+# Absence assertion: fail the test when the hook denied. A bare `! denied` only
+# works as a test's final line -- `set -e` exempts a `!`-negated command from
+# aborting, so the moment a later line is appended it silently goes inert. This
+# form fails in any position (returns 1 when denied) and stays green as a final
+# line when allowed (the completed `if` exits 0). See .claude/rules/bats-assertions.md.
+refute_denied() { if denied; then return 1; fi; }
+
 PASSING_TEST='import {expect, test} from "vitest";
 test("adds two numbers", () => {
   expect(1 + 1).toBe(2);
@@ -150,7 +157,7 @@ test("adds two numbers", () => {
   seed_matching_red "app/utils/x/index.test.ts" "adds two numbers"
   run_commit_hook
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 # --- prose-only claim does not satisfy the gate ---
@@ -191,7 +198,7 @@ test("adds two numbers", () => {
 '
   run_commit_hook
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 @test "denies a brand-new test added to a file that already exists at HEAD" {
@@ -222,7 +229,7 @@ test("brand new test", () => {
   stage_file "app/x/index.ts" 'export const x = 1;'
   run_commit_hook
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 @test "allows when 'git commit' appears only inside a quoted message string" {
@@ -230,14 +237,14 @@ test("brand new test", () => {
   # No real git commit invocation: the words are inside an echo string.
   run_commit_hook 'echo "remember to git commit later"'
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 @test "ignores commands that are not git commit" {
   stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   run_commit_hook "git status"
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 # --- Foreign-repo commit -> out of scope ---
@@ -267,7 +274,7 @@ test("never closes", () => {
 '
   run_commit_hook
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 # --- Dynamic-title test -> exempt (no computable signal, never in scope) ---
@@ -285,7 +292,7 @@ test(`dynamic ${n}`, () => {
 '
   run_commit_hook
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 # --- Type-only tests -> exempt (no runtime assertion; tsc is the enforcer) ---
@@ -310,14 +317,14 @@ test("rejects a bad arg", () => {
   stage_file "app/utils/x/index.test.ts" "$TYPE_ONLY_EXPECTTYPEOF"
   run_commit_hook
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 @test "allows a new type-only test (@ts-expect-error proof, no runtime assertion)" {
   stage_file "app/utils/x/index.test.ts" "$TYPE_ONLY_TS_EXPECT_ERROR"
   run_commit_hook
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 @test "exempts the type-only sibling but still denies the runtime sibling" {
@@ -414,7 +421,7 @@ test("renders something", () => { expect(true).toBe(true); });
 '
   run_commit_hook
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 @test "carve-out: a new a11y-helper test (.ts) commits without a RED" {
@@ -431,7 +438,7 @@ test("has no a11y violations", async () => {
 '
   run_commit_hook
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 @test "carve-out: a new test whose own body reads the clock commits without a RED" {
@@ -445,7 +452,7 @@ test("uses wall-clock time", () => {
 '
   run_commit_hook
   [ "$status" -eq 0 ]
-  ! denied
+  refute_denied
 }
 
 @test "carve-out: the deterministic surface STILL demands a RED" {
