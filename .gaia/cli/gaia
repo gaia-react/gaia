@@ -16994,11 +16994,10 @@ var maxSeverity = (a, b) => SEVERITY_RANK[a] >= SEVERITY_RANK[b] ? a : b;
 var collapsePr = (pr) => {
   const severity = /* @__PURE__ */ new Map();
   const areaTags = /* @__PURE__ */ new Map();
-  for (const finding of pr.findings) {
-    const isUnclassified = finding.finding_class === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS;
-    if (!isUnclassified && !isValidFindingClass(finding.finding_class)) {
-      continue;
-    }
+  const aggregated = pr.findings.filter(
+    (finding) => finding.finding_class === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS || isValidFindingClass(finding.finding_class)
+  );
+  for (const finding of aggregated) {
     const key = finding.finding_class;
     const existing = severity.get(key);
     severity.set(
@@ -17073,18 +17072,18 @@ var computeTally = ({
           severity_max: aggregate.severityMax
         };
       }
-      continue;
-    }
-    const qualifies = distinctPrCount >= RECURRENCE_THRESHOLD && !coveredClass(findingClass) && !suppressedClass(findingClass, distinctPrCount);
-    if (qualifies) {
-      candidates.push({
-        area_tags: aggregate.areaTags,
-        distinct_pr_count: distinctPrCount,
-        finding_class: findingClass,
-        is_oracle: isOracleFindingClass(findingClass),
-        pr_numbers: aggregate.prNumbers,
-        severity_max: aggregate.severityMax
-      });
+    } else {
+      const qualifies = distinctPrCount >= RECURRENCE_THRESHOLD && !coveredClass(findingClass) && !suppressedClass(findingClass, distinctPrCount);
+      if (qualifies) {
+        candidates.push({
+          area_tags: aggregate.areaTags,
+          distinct_pr_count: distinctPrCount,
+          finding_class: findingClass,
+          is_oracle: isOracleFindingClass(findingClass),
+          pr_numbers: aggregate.prNumbers,
+          severity_max: aggregate.severityMax
+        });
+      }
     }
   }
   return {

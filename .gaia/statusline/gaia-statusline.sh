@@ -132,6 +132,7 @@ if [ "$is_worktree" -eq 0 ]; then
         gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
         gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
         harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+        harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
         audit_nudge=$(jq -r '.auditNudge // false' "$CACHE_FILE" 2>/dev/null)
         audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
         serena_drift=$(jq -r '(.serenaLangDrift // []) | join(", ")' "$CACHE_FILE" 2>/dev/null)
@@ -146,6 +147,9 @@ if [ "$is_worktree" -eq 0 ]; then
           harden_noun="recurring patterns"
           [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
           segments+=("$(printf '\033[01;35mRun /gaia-harden (%d %s)\033[00m' "$harden_count" "$harden_noun")")
+        fi
+        if [ -n "$harden_unclassified" ] && [ "$harden_unclassified" -gt 0 ] 2>/dev/null; then
+          segments+=("$(printf '\033[01;35mRun /gaia-harden (%d unclassified recurring)\033[00m' "$harden_unclassified")")
         fi
         if [ "$audit_nudge" = "true" ]; then
           if [ -n "$audit_reason" ]; then

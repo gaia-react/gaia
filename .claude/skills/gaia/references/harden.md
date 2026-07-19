@@ -44,11 +44,19 @@ It prints JSON to stdout:
       "severity_max": "warning",
       "is_oracle": false
     }
-  ]
+  ],
+  "unclassified": {
+    "distinct_pr_count": 3,
+    "pr_numbers": [401, 405, 409],
+    "area_tags": ["app/routes"],
+    "severity_max": "suggestion"
+  }
 }
 ```
 
-Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_numbers`, `area_tags`, `severity_max`, `is_oracle`. The tally already drops classes a promoted rule covers and classes the decline ledger suppresses, so every entry it returns is an open candidate. Coverage detection is class-level and scope-blind in v1: a promoted rule suppresses its `finding_class` regardless of the rule's `paths:` glob, because coverage keys only on the provenance marker's `finding_class`, not on scope. `harden-tally` is network-dependent and non-fatal: a `gh` failure yields an empty candidate list rather than an error, and it always exits 0. The emitted JSON carries a `gh_ok` boolean that separates a real all-clear from a failed window read. When `gh_ok` is `false`, the merged-PR window could not be read (a `gh`/network outage), which is NOT an all-clear: report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claim no findings. (Run ends here; see `## Cost record (run end)`.) When `gh_ok` is `true` and `candidate_count` is `0`, report "no recurring findings crossed the threshold in the last 90 days" and stop. (Run ends here; see `## Cost record (run end)`.)
+`unclassified` is `null` when no classless cluster has crossed the recurrence threshold; otherwise it carries `distinct_pr_count`, `pr_numbers`, `area_tags`, and `severity_max` for that one cluster.
+
+Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_numbers`, `area_tags`, `severity_max`, `is_oracle`. Also bind the top-level `unclassified` field (an object or `null`, see below). The tally already drops classes a promoted rule covers and classes the decline ledger suppresses, so every entry it returns is an open candidate. Coverage detection is class-level and scope-blind in v1: a promoted rule suppresses its `finding_class` regardless of the rule's `paths:` glob, because coverage keys only on the provenance marker's `finding_class`, not on scope. `harden-tally` is network-dependent and non-fatal: a `gh` failure yields an empty candidate list rather than an error, and it always exits 0. The emitted JSON carries a `gh_ok` boolean that separates a real all-clear from a failed window read. When `gh_ok` is `false`, the merged-PR window could not be read (a `gh`/network outage), which is NOT an all-clear: report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claim no findings. (Run ends here; see `## Cost record (run end)`.) When `gh_ok` is `true` and `candidate_count` is `0` and `unclassified` is `null`, report "no recurring findings crossed the threshold in the last 90 days" and stop. (Run ends here; see `## Cost record (run end)`.) When `gh_ok` is `true` and `candidate_count` is `0` but `unclassified` is non-null, do NOT stop: skip the per-candidate loop (there is nothing to judge) and go straight to `## Unclassified recurrence signal (seed-a-class-or-investigate)` below.
 
 ## Judge-the-form logic (the heart of the command)
 
@@ -189,6 +197,20 @@ The marker is this exact line, with `<class>` substituted:
 The `marker.test.ts` guard asserts every doc copy reproduces `markerComment(...)` from `.gaia/cli/src/harden/marker.ts` byte for byte. A wording change that misses any copy silently breaks one binder or the other, so the marker text lives once in `marker.ts` and every copy tracks it.
 <!-- gaia:maintainer-only:end -->
 
+## Unclassified recurrence signal (seed-a-class-or-investigate)
+
+Runs once in `review` mode, after the last candidate is dispositioned (or immediately, skipping straight here, when `candidate_count` was `0`). Clearly outside the per-candidate approve/decline/defer/redirect loop above: `holistic/unclassified` is never a draftable candidate, so this section never enters that loop.
+
+When `unclassified` is `null`, skip this section silently and proceed to `## Publish approved changes (end of run)`.
+
+When `unclassified` is non-null, present it to the engineer as a distinct signal, separate from any candidate: the closed finding_class vocabulary may be missing something, or the cluster warrants investigation on its own. Show its `distinct_pr_count`, `pr_numbers`, and `severity_max`. State explicitly:
+
+- It is NEVER placed in the draftable candidate set. `/gaia-harden` NEVER drafts a path-scoped rule, a deterministic-check sketch, a skill scaffold, or any other artifact for it.
+- It carries no approve / decline / defer / redirect action; there is nothing to ask the engineer to disposition here.
+- It has no decline: it re-surfaces on every tally until the maintainer seeds a `finding_class` that reclassifies the cluster's findings, or the underlying findings age out of the rolling 90-day window.
+
+Then proceed to `## Publish approved changes (end of run)`, which publishes only what the candidate loop approved (this section authors nothing, so it never triggers a publish on its own).
+
 ## Publish approved changes (end of run)
 
 Runs once, in `review` mode only, after the last candidate is dispositioned. `list` and `why` never reach it (they author nothing). It exists so an engineer who approved at least one change does not then have to ask for a branch and PR by hand.
@@ -252,11 +274,11 @@ If any `git` or `gh` command above exits non-zero, print the error and STOP. Do 
 
 ## list subcommand
 
-Run `harden-tally`, then for each candidate print one line: `finding_class`, distinct-PR count, the PRs, and the recommended form (from judge-the-form, edit-vs-new + which-form). Author nothing and prompt for nothing. (Run ends here; see `## Cost record (run end)`.)
+Run `harden-tally`, then for each candidate print one line: `finding_class`, distinct-PR count, the PRs, and the recommended form (from judge-the-form, edit-vs-new + which-form). When `unclassified` is non-null, also print it as a distinct line, clearly not a candidate: its `distinct_pr_count`, `pr_numbers`, and `severity_max`, noting it awaits a seeded class or investigation. Author nothing and prompt for nothing. (Run ends here; see `## Cost record (run end)`.)
 
 ## why subcommand
 
-Run `harden-tally`, find the candidate whose `finding_class` matches the argument. Explain it: what the finding is, the distinct PRs it recurred on (`pr_numbers`), its max severity, the recommended form, and the rationale (including whether an existing artifact should be edited instead). If no candidate matches, say so and list the open candidates. Author nothing and prompt for nothing. (Run ends here; see `## Cost record (run end)`.)
+Run `harden-tally`, find the candidate whose `finding_class` matches the argument. Explain it: what the finding is, the distinct PRs it recurred on (`pr_numbers`), its max severity, the recommended form, and the rationale (including whether an existing artifact should be edited instead). If no candidate matches, say so and list the open candidates. `unclassified` is never `why`-addressable: it carries no `finding_class`, so treat a `why` argument of `unclassified` (or similar) the same as no match, say so, and point at `list` to see it. Author nothing and prompt for nothing. (Run ends here; see `## Cost record (run end)`.)
 
 ## Cost record (run end)
 
@@ -282,3 +304,4 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - Recommend exactly one form per candidate, with rationale; check edit-vs-new first; bias to the lowest-context-weight form. Never reflexively author a prose rule.
 - Factor the efficacy lens (Axis 3) into the recommendation and rationale: a recurring finding proves the problem, not the fix. When the recommended form is prose and no cheap evidence shows it would change behavior, surface that as a defer/decline signal for the human, never as an auto-decline.
 - This loop keys only on `finding_class` recurrence from the PR window.
+- `holistic/unclassified` is never a draftable candidate and is never auto-drafted: it carries no approve/decline/defer/redirect action and authors no artifact. It re-surfaces every tally until a class is seeded or its findings age out of the 90-day window.

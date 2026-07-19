@@ -56,6 +56,13 @@ export type TallyPrRecord = {
   pr_number: number;
 };
 
+export type TallyResult = {
+  candidate_count: number;
+  candidates: TallyCandidate[];
+  unclassified: null | UnclassifiedSignal;
+  window_days: number;
+};
+
 // The single classless recurrence signal (one stable key, cardinality one):
 // every `holistic/unclassified` finding in a PR collapses under this one
 // bucket regardless of how many there are.
@@ -64,13 +71,6 @@ export type UnclassifiedSignal = {
   distinct_pr_count: number;
   pr_numbers: number[];
   severity_max: Severity;
-};
-
-export type TallyResult = {
-  candidate_count: number;
-  candidates: TallyCandidate[];
-  unclassified: UnclassifiedSignal | null;
-  window_days: number;
 };
 
 const SEVERITY_RANK: Record<Severity, number> = {
@@ -104,14 +104,15 @@ const collapsePr = (pr: TallyPrRecord): PerPrCollapse => {
   const severity = new Map<string, Severity>();
   const areaTags = new Map<string, Set<string>>();
 
-  for (const finding of pr.findings) {
-    const isUnclassified =
-      finding.finding_class === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS;
+  // Free-text / unseeded finding_class values are skipped; only the classless
+  // bucket key and valid seeded/oracle classes are aggregated.
+  const aggregated = pr.findings.filter(
+    (finding) =>
+      finding.finding_class === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS ||
+      isValidFindingClass(finding.finding_class)
+  );
 
-    if (!isUnclassified && !isValidFindingClass(finding.finding_class)) {
-      continue;
-    }
-
+  for (const finding of aggregated) {
     const key = finding.finding_class;
     const existing = severity.get(key);
 
@@ -213,7 +214,7 @@ export const computeTally = ({
   const byClass = aggregateByClass(prs);
 
   const candidates: TallyCandidate[] = [];
-  let unclassified: UnclassifiedSignal | null = null;
+  let unclassified: null | UnclassifiedSignal = null;
 
   for (const [findingClass, aggregate] of byClass) {
     const distinctPrCount = aggregate.prNumbers.length;
@@ -229,24 +230,22 @@ export const computeTally = ({
           severity_max: aggregate.severityMax,
         };
       }
+    } else {
+      const qualifies =
+        distinctPrCount >= RECURRENCE_THRESHOLD &&
+        !coveredClass(findingClass) &&
+        !suppressedClass(findingClass, distinctPrCount);
 
-      continue;
-    }
-
-    const qualifies =
-      distinctPrCount >= RECURRENCE_THRESHOLD &&
-      !coveredClass(findingClass) &&
-      !suppressedClass(findingClass, distinctPrCount);
-
-    if (qualifies) {
-      candidates.push({
-        area_tags: aggregate.areaTags,
-        distinct_pr_count: distinctPrCount,
-        finding_class: findingClass,
-        is_oracle: isOracleFindingClass(findingClass),
-        pr_numbers: aggregate.prNumbers,
-        severity_max: aggregate.severityMax,
-      });
+      if (qualifies) {
+        candidates.push({
+          area_tags: aggregate.areaTags,
+          distinct_pr_count: distinctPrCount,
+          finding_class: findingClass,
+          is_oracle: isOracleFindingClass(findingClass),
+          pr_numbers: aggregate.prNumbers,
+          severity_max: aggregate.severityMax,
+        });
+      }
     }
   }
 
