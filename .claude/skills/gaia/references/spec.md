@@ -41,7 +41,7 @@ The rest of the skill, write-surface allowlist, no-machine-local-memory rule, wo
    - `.specify/**`
    - `.gaia/local/cache/**`
    - `.gaia/local/telemetry/**`
-     Never edit source files (`app/**`, `src/**`, repo root configs, etc.). The `after_specify` lint command audits this; you enforce it at the agent-instruction level.
+     Never edit source files (`app/**`, `src/**`, repo root configs, etc.). No automated backstop enforces this allowlist today: the `after_specify` lint checks only the saved SPEC artifact's immutability, not which paths a session wrote. You self-police it at the agent-instruction level.
 3. **One question at a time.** No multi-question forms. Closed-set questions go through `AskUserQuestion` with options ordered: recommended FIRST, then alternatives, then `Other` (free text), then `Discuss this` (escape to plain Q&A). Open-ended questions use a plain prompt with no enumerated options.
 4. **Two-gate ceremony.** Confirm intent + UATs in plain English BEFORE authoring the artifact. Confirm the rendered artifact BEFORE saving to disk. No silent advances between gates.
 5. **Coach tone, not interrogator.** Mirror back, name trade-offs, propose candidates when the human is stuck. Never punt research to the human.
