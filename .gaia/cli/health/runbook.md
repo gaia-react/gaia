@@ -174,10 +174,14 @@ INCLUDE="/tmp/gaia-audit-include.$$"
 trap 'rm -rf "$STAGING" "$ALL_TRACKED" "$EXCLUDE_REGEX" "$INCLUDE"' EXIT
 mkdir -p "$STAGING"
 git ls-files > "$ALL_TRACKED"
-awk '/^[[:space:]]*#/ {next} NF==0 {next} {print}' .gaia/release-exclude \
-  | sed 's|[][\\.*^$()+?{}|]|\\&|g' \
-  | awk '{print "^"$0"(/|$)"}' \
-  > "$EXCLUDE_REGEX"
+# The maintainer CLI is the single compiler of .gaia/release-exclude; the audit
+# staging build invokes it rather than re-deriving the pattern set inline.
+# Fail-closed: a nonzero exit aborts instead of copying every tracked file.
+if ! ./.gaia/cli/gaia-maintainer release exclude-regex \
+    --exclude-file .gaia/release-exclude > "$EXCLUDE_REGEX"; then
+  printf 'release exclude-regex compile failed\n' >&2
+  exit 1
+fi
 grep -vE -f "$EXCLUDE_REGEX" "$ALL_TRACKED" > "$INCLUDE"
 rsync -a --files-from="$INCLUDE" . "$STAGING"/
 ./.gaia/cli/gaia-maintainer release scrub "$STAGING"
