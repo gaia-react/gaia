@@ -34,10 +34,10 @@ if [ "${#MISSING[@]}" -gt 0 ]; then
 fi
 
 # 2. Every release-exclude path is ABSENT from staging.
-# Read literal patterns; skip comments and blanks. For directory entries
-# (no trailing wildcard), assert the directory does not exist. For file
-# entries, assert the file does not exist. Glob-shaped entries (`**`,
-# trailing `*`) are checked via `find … -path` once.
+# Every entry is a literal path, file or directory; skip comments and
+# blanks, then assert the literal path does not exist in staging via
+# `[ -e ]`, which covers both file and directory entries without needing
+# to distinguish them.
 LEAKED=()
 while IFS= read -r raw; do
   # Skip blanks and comments
