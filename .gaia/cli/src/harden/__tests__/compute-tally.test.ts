@@ -52,6 +52,26 @@ describe('computeTally', () => {
     expect(candidate.severity_max).toBe('warning');
     expect(candidate.pr_numbers).toEqual([1201, 1188, 1175]);
     expect(candidate.area_tags).toEqual(['app/components', 'app/hooks']);
+    expect(candidate.is_oracle).toBe(true);
+  });
+
+  test('sets is_oracle false for a closed-vocabulary (non-oracle) class', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [3, 2, 1].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'rule/switch-statement',
+            severity: 'warning',
+          },
+        ])
+      ),
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidates[0]?.is_oracle).toBe(false);
   });
 
   test('does not surface a class on only 2 distinct PRs', () => {

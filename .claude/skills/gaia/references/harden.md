@@ -41,13 +41,14 @@ It prints JSON to stdout:
       "distinct_pr_count": 4,
       "pr_numbers": [311, 314, 318, 320],
       "area_tags": ["app/components"],
-      "severity_max": "warning"
+      "severity_max": "warning",
+      "is_oracle": false
     }
   ]
 }
 ```
 
-Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_numbers`, `area_tags`, `severity_max`. The tally already drops classes a promoted rule covers and classes the decline ledger suppresses, so every entry it returns is an open candidate. Coverage detection is class-level and scope-blind in v1: a promoted rule suppresses its `finding_class` regardless of the rule's `paths:` glob, because coverage keys only on the provenance marker's `finding_class`, not on scope. `harden-tally` is network-dependent and non-fatal: a `gh` failure yields an empty candidate list rather than an error, and it always exits 0. The emitted JSON carries a `gh_ok` boolean that separates a real all-clear from a failed window read. When `gh_ok` is `false`, the merged-PR window could not be read (a `gh`/network outage), which is NOT an all-clear: report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claim no findings. (Run ends here; see `## Cost record (run end)`.) When `gh_ok` is `true` and `candidate_count` is `0`, report "no recurring findings crossed the threshold in the last 90 days" and stop. (Run ends here; see `## Cost record (run end)`.)
+Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_numbers`, `area_tags`, `severity_max`, `is_oracle`. The tally already drops classes a promoted rule covers and classes the decline ledger suppresses, so every entry it returns is an open candidate. Coverage detection is class-level and scope-blind in v1: a promoted rule suppresses its `finding_class` regardless of the rule's `paths:` glob, because coverage keys only on the provenance marker's `finding_class`, not on scope. `harden-tally` is network-dependent and non-fatal: a `gh` failure yields an empty candidate list rather than an error, and it always exits 0. The emitted JSON carries a `gh_ok` boolean that separates a real all-clear from a failed window read. When `gh_ok` is `false`, the merged-PR window could not be read (a `gh`/network outage), which is NOT an all-clear: report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claim no findings. (Run ends here; see `## Cost record (run end)`.) When `gh_ok` is `true` and `candidate_count` is `0`, report "no recurring findings crossed the threshold in the last 90 days" and stop. (Run ends here; see `## Cost record (run end)`.)
 
 ## Judge-the-form logic (the heart of the command)
 
@@ -65,13 +66,9 @@ Also check whether the quality gate (`wiki/decisions/Quality Gate.md`) already l
 
 ### Axis 2, which form (lowest context weight that fits)
 
-Inspect the `finding_class` prefix and the pattern's nature:
+Inspect the candidate's `is_oracle` flag and the pattern's nature:
 
-- **Oracle-class finding** (the `finding_class` is a tool id: it starts with `react-doctor/`, `axe/`, `knip/`, or `cve/`).
-
-  <!-- gaia:maintainer-only:start -->
-  This prefix list mirrors `ORACLE_PREFIXES` in `.gaia/cli/src/schemas/finding-class.ts`; keep the two in sync, a prefix added to the code but not here is misclassified as holistic/rule and mis-routed.
-  <!-- gaia:maintainer-only:end -->
+- **Oracle-class finding** (if `harden-tally` flags the candidate's `is_oracle` true, its `finding_class` is a tool id owned by a deterministic tool).
 
   A deterministic check already exists for it. Recommend making that check BLOCKING or adding it to the quality gate, an enforcement edit, NOT a new prose rule. Point at `wiki/decisions/Quality Gate.md` and the tool's wiring (`.claude/rules/knip.md`, `.claude/rules/dep-audit.md`, the `code-audit-frontend` agent, or the relevant CI workflow). A `knip/*` class is the exception to the quality-gate route: the developer Quality Gate intentionally omits knip (see `.claude/rules/knip.md`), so route knip enforcement to the `code-audit-frontend` agent or CI, never the dev gate. Never draft prose for an oracle class.
 
