@@ -6,7 +6,9 @@
  * to `wc -l` or similar. With `--json`, each orphan is enriched with its
  * `title` and `domain` (both already derived by the page-index walk).
  *
- * Replaces the prose subject-orphan pass in `wiki/consolidate.md` Step 2d.
+ * Backs the enumeration half of `wiki/consolidate.md` Step 2d's subject-orphan
+ * pass: it lists zero-inbound-link pages. The step's title-substring and
+ * 90-day-staleness refine over that list stays in the prose.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
