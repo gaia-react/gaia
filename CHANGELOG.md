@@ -16,6 +16,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Added
 
+- a `PreToolUse` guard (`.claude/hooks/block-invalid-yaml-write.sh`) that denies an Edit/Write/MultiEdit call that newly breaks a YAML region, a `.yml`/`.yaml` file or a Markdown `---` frontmatter block, closing the recurring footgun where a mid-sentence `: ` or a stray ` #` in an unquoted scalar reads as structural YAML instead of prose and is only caught later by a downstream parser or lint, sometimes on an already-saved artifact. The check is regression-only, so a file whose frontmatter was already broken before the edit never gets locked out (#867)
 - a `PreToolUse` guard (`.claude/hooks/block-worktree-path-mismatch.sh`) that denies an Edit/Write/MultiEdit call whose target resolves to a different git worktree than the session's current one, closing a silent-wrong-write footgun where a stale pre-switch absolute path applied to the wrong checkout with no error signal. `isolation.md`'s `RESOLVED_ROOT` guidance now explicitly covers Edit/Write/Read alongside Bash and sub-agent dispatch (#842)
 
 - New wiki concept page, Registering a Code Audit Team Member, documenting how to add a roster member (agent def, roster and builtin-fallback lockstep, machinery wiring, `finding_class` bucket, and recurrence-tally integration) and the required local-gate checklist a member add must run locally. (#817)
