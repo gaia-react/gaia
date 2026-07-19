@@ -139,9 +139,15 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     directory, `$HOME/.claude/projects`, referenced by
  *     `token-tally-review.sh`. It lives outside the repo on every machine and
  *     structurally can never have a manifest entry.
+ *   - `.claude/shell-snapshots`: Claude Code's own per-Bash-call snapshot
+ *     wrapper directory, referenced inside `SNAPSHOT_WRAPPER_PATTERN`, a
+ *     regex literal in `spec-session-lock.sh` that MATCHES/REJECTS the
+ *     wrapper's command line. It is never sourced or executed, just compared
+ *     against, so it cannot be a runtime dependency.
  */
 const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
   '.claude/projects',
+  '.claude/shell-snapshots',
   '.github/workflows',
   '.github/workflows/code-review-audit.yml',
 ]);
