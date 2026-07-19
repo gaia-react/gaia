@@ -39,8 +39,8 @@
 # An abandoned row with no active folder is skipped.
 #
 # Best-effort and fail-open, exactly like spec-archive-merged.sh: a missing
-# jq / ledger, an unrepresented cost, or a telemetry-append failure never
-# blocks a caller. One stdout line summarizes what was deleted; diagnostics
+# jq / ledger or an unrepresented cost never blocks a caller. One stdout line
+# summarizes what was deleted; diagnostics
 # go to stderr.
 #
 # Usage:
