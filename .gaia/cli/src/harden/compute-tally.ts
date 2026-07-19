@@ -13,7 +13,10 @@
  * decline ledger. Suggestion-severity findings and findings repeated within a
  * single PR never qualify.
  */
-import {isValidFindingClass} from '../schemas/finding-class.js';
+import {
+  isOracleFindingClass,
+  isValidFindingClass,
+} from '../schemas/finding-class.js';
 
 export const RECURRENCE_THRESHOLD = 3;
 
@@ -32,6 +35,7 @@ export type TallyCandidate = {
   area_tags: string[];
   distinct_pr_count: number;
   finding_class: string;
+  is_oracle: boolean;
   pr_numbers: number[];
   severity_max: CountableSeverity;
 };
@@ -189,6 +193,7 @@ export const computeTally = ({
         area_tags: aggregate.areaTags,
         distinct_pr_count: distinctPrCount,
         finding_class: findingClass,
+        is_oracle: isOracleFindingClass(findingClass),
         pr_numbers: aggregate.prNumbers,
         severity_max: aggregate.severityMax,
       });

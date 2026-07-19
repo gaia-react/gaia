@@ -157,6 +157,7 @@ describe('harden-tally run', () => {
       'react-doctor/no-generic-handler-names'
     );
     expect(candidates[0]?.distinct_pr_count).toBe(3);
+    expect(candidates[0]?.is_oracle).toBe(true);
   });
 
   test('CI+local findings for the same class across distinct PRs combine into one candidate', () => {
@@ -201,6 +202,7 @@ describe('harden-tally run', () => {
     expect(printed.candidate_count).toBe(1);
     const candidates = printed.candidates as Record<string, unknown>[];
     expect(candidates[0]?.severity_max).toBe('error');
+    expect(candidates[0]?.is_oracle).toBe(false);
   });
 
   test('two different auditors posting on the same PR both count (#731 regression)', () => {

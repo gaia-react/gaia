@@ -153,6 +153,19 @@ const isOraclePrefix = (prefix: string): prefix is FindingClassPrefix =>
   (ORACLE_PREFIXES as readonly string[]).includes(prefix);
 
 /**
+ * True when `findingClass` carries a known oracle prefix (`react-doctor/`,
+ * `axe/`, `knip/`, `cve/`), the deterministic-tool buckets. Reuses the same
+ * `ORACLE_PREFIXES` membership check as `isValidFindingClass` so callers never
+ * need to re-list the prefixes; `harden-tally` uses this to emit `is_oracle`
+ * per candidate.
+ */
+export const isOracleFindingClass = (findingClass: string): boolean => {
+  const parts = splitPrefix(findingClass);
+
+  return parts !== undefined && isOraclePrefix(parts.prefix);
+};
+
+/**
  * True when `value` matches the per-bucket convention: a well-formed oracle id
  * (open id space after a known oracle prefix) or a seeded closed-vocabulary
  * member (holistic, rule, workflow, or prose). Everything else (free text,

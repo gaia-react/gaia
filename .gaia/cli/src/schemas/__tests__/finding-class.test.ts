@@ -3,6 +3,7 @@ import {
   FINDING_CLASS_PREFIXES,
   FindingClassSchema,
   HOLISTIC_FINDING_CLASSES,
+  isOracleFindingClass,
   isValidFindingClass,
   OUT_OF_SCOPE_FALLBACK_FINDING_CLASS,
   PROSE_FINDING_CLASSES,
@@ -113,6 +114,28 @@ describe('schemas/finding-class', () => {
           'workflow',
         ])
       );
+    });
+  });
+
+  describe('isOracleFindingClass (harden-tally is_oracle source)', () => {
+    test.each([
+      'react-doctor/no-generic-handler-names',
+      'axe/color-contrast',
+      'knip/exports',
+      'cve/1098765',
+    ])('true for an oracle-prefixed class: %s', (value) => {
+      expect(isOracleFindingClass(value)).toBe(true);
+    });
+
+    test.each([
+      'holistic/hardcoded-string',
+      'rule/switch-statement',
+      'workflow/unpinned-action',
+      'prose/excessive-length',
+      'not-a-real-prefix/x',
+      '',
+    ])('false for a non-oracle class: %j', (value) => {
+      expect(isOracleFindingClass(value)).toBe(false);
     });
   });
 
