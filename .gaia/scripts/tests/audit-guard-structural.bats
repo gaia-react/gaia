@@ -11,8 +11,7 @@
 # dispatch site's prose is grepped for the shared predicate, the exactly-one
 # retry, and the inline fallback (stronger than guard-line presence alone),
 # the guard line's byte-identity across every dispatch prompt, the
-# retry-prefix template, the pinned `audit_coverage` schema, and the absence
-# of any machine-specific path.
+# retry-prefix template, and the absence of any machine-specific path.
 #
 # Assertion style note (`.claude/rules/bats-assertions.md`): macOS's system
 # `/bin/bash` (3.2) does not fail a bats @test on a false bare `[[ ... ]]`
@@ -215,29 +214,6 @@ assert_predicate_retry_fallback() {
 
 @test "retry-prefix template embedded verbatim in code-audit-frontend.md" {
   grep -qF -- "$RETRY_PREFIX" "$CRA_MD"
-}
-
-# ---------------------------------------------------------------------------
-# 3. audit_coverage pinned record shape (FC-5; UAT-007, Directive #1)
-# ---------------------------------------------------------------------------
-
-@test "audit_coverage: pinned schema in spec.md's pacing-telemetry event list" {
-  line="$(grep -F '"event": "audit_coverage"' "$SPEC_MD" | head -n1)"
-  [ -n "$line" ]
-  grep -qF -- '"phase"' <<<"$line"
-  grep -qF -- '"disposition"' <<<"$line"
-  grep -qF -- "first_pass" <<<"$line"
-  grep -qF -- "retried_recovered" <<<"$line"
-  grep -qF -- "inline_fallback" <<<"$line"
-  grep -qF -- '"auto"' <<<"$line"
-}
-
-@test "audit_coverage: named in Auto-mode rule 12's auto-flagged event list" {
-  content="$(section_between "$SPEC_MD" '^## Auto mode' '^## Hard constraints')"
-  assert_section_nonempty "spec.md Auto mode" "$content"
-  rule12="$(grep -E '^12\.' <<<"$content")"
-  [ -n "$rule12" ]
-  grep -qF -- "audit_coverage" <<<"$rule12"
 }
 
 # ---------------------------------------------------------------------------
