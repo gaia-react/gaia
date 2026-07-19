@@ -196,6 +196,7 @@
     ".gaia/scripts/audit-noop-detect.sh": "owned",
     ".gaia/scripts/audit-window-lib.sh": "owned",
     ".gaia/scripts/audit-write-clearance.sh": "owned",
+    ".gaia/scripts/bats5.sh": "owned",
     ".gaia/scripts/check-updates.sh": "owned",
     ".gaia/scripts/classifier/classify-determinism.mjs": "owned",
     ".gaia/scripts/cost-backfill.sh": "owned",
@@ -612,6 +613,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-19T10:44:01.524Z",
+  "generated": "2026-07-19T11:28:29.943Z",
   "version": "1.6.1"
 }

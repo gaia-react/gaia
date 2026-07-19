@@ -13,33 +13,7 @@ Repro (bats runs each `@test` body under `set -e`, so mirror it with a plainly-c
 
 A bash-3.2 local `bats` run is a **weaker signal than CI** (ubuntu bash 5), and the gap is not limited to the `[[ ]]` skip documented below. A second, independent gap is BSD-vs-GNU CLI divergence: a macOS-only green misses commands that only exist in one flavor. The concrete case is `date -v` (BSD) versus `date -d` (GNU): the losing form exits non-zero on Linux, and under bats' `set -e` that aborts the test before any fallback runs.
 
-Run bats through this guard instead of calling `bats` directly. It prefers a Homebrew bash 5 when one is installed (Apple Silicon: `/opt/homebrew/bin/bash`, Intel: `/usr/local/bin/bash`) and warns loudly on stderr when the bash bats will actually use resolves to major version < 4, so the warning fires only where the gap is real (silent on any bash 5 host, macOS or Linux):
-
-```bash
-bats5() {
-  for d in /opt/homebrew/bin /usr/local/bin; do
-    if [ -x "$d/bash" ]; then
-      PATH="$d:$PATH"
-      export PATH
-      break
-    fi
-  done
-  resolved_bash=$(command -v bash)
-  major=$("$resolved_bash" -c 'echo "${BASH_VERSINFO[0]}"')
-  if [ "$major" -lt 4 ]; then
-    echo "############################################################" >&2
-    echo "# WARNING: bats will run under bash $major ($resolved_bash)." >&2
-    echo "# This local green is a WEAKER signal than CI (ubuntu bash 5):" >&2
-    echo "# a false bare [[ ]] can pass silently, and BSD-only commands" >&2
-    echo "# (e.g. 'date -v') that fail on Linux won't be caught here." >&2
-    echo "# brew install bash, then re-run before trusting this pass count." >&2
-    echo "############################################################" >&2
-  fi
-  bats "$@"
-}
-```
-
-Source it (or paste it into the shell), then call `bats5` wherever the rest of this page says `bats`.
+Run bats through the guard in `.gaia/scripts/bats5.sh` instead of calling `bats` directly: `source .gaia/scripts/bats5.sh`, then call `bats5` wherever the rest of this page says `bats` (or run `.gaia/scripts/bats5.sh <args>` directly). It prefers a Homebrew bash 5 when one is installed (Apple Silicon: `/opt/homebrew/bin/bash`, Intel: `/usr/local/bin/bash`) and warns loudly on stderr when the bash bats will actually use resolves to major version < 4, so the warning fires only where the gap is real (silent on any bash 5 host, macOS or Linux).
 
 <!-- gaia:maintainer-only:start -->
 A deterministic lint over `.bats` files and shipped `*.sh` for `date -v` / `date -d` usage would catch the BSD/GNU class statically; that belongs in the shell-lint gate (`.gaia/tests/shell-lint.sh`), outside this rule's scope.
