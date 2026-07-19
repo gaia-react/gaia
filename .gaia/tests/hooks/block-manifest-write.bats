@@ -167,10 +167,49 @@ assert_allowed() {
   assert_denied
 }
 
+# --- denied: multi-line commands ---
+
+@test "a redirect write on line 2 of a multi-line command is denied" {
+  run_hook_bash $'echo ok\nprintf x > .gaia/manifest.json'
+  assert_denied
+}
+
+@test "a marker on line 1 does not exempt an unmarked write on line 2" {
+  run_hook_bash $'GAIA_MANIFEST_WRITE=1 echo ok\nsed -i \'\' \'s/a/b/\' .gaia/manifest.json'
+  assert_denied
+}
+
+# --- denied: no-space redirect shapes ---
+
+@test "a no-space redirect (>path, no space after >) onto the manifest is denied" {
+  run_hook_bash 'echo x >.gaia/manifest.json'
+  assert_denied
+}
+
+@test "a no-space append redirect (>>path, no space after >>) onto the manifest is denied" {
+  run_hook_bash 'echo x >>.gaia/manifest.json'
+  assert_denied
+}
+
+@test "a no-space redirect with a \$(...) prefix in the target is denied" {
+  run_hook_bash 'echo x >"$(pwd)/.gaia/manifest.json"'
+  assert_denied
+}
+
+@test "a no-space redirect to a manifest-adjacent path is still allowed" {
+  run_hook_bash 'echo x >.gaia/manifest.json.bak'
+  assert_allowed
+}
+
 # --- allowed: Bash with the GAIA_MANIFEST_WRITE= exemption marker ---
 
 @test "marked release cp is allowed" {
   run_hook_bash 'GAIA_MANIFEST_WRITE=release cp "$LATEST_DIR/.gaia/manifest.json" .gaia/manifest.json'
+  assert_allowed
+}
+
+@test "a marked write on line 2 of a multi-line command is allowed" {
+  run_hook_bash $'echo prep\nGAIA_MANIFEST_WRITE=release cp x .gaia/manifest.json'
   assert_allowed
 }
 
