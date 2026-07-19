@@ -4,22 +4,23 @@
 # .github/workflows/code-review-audit.yml, and the shared gate script
 # .github/audit/gate-pending-members.sh that all three consult.
 #
-# THREE steps can POST `state=success`, and each is a way to clear the required
+# FOUR steps can POST `state=success`, and each is a way to clear the required
 # GAIA-Audit check and open the github.com merge button:
 #
 #   1. "Write GAIA-Audit commit status"                  (self-heal push path)
 #   2. "Write GAIA-Audit commit status (clean, no push)" (clean-no-commit path)
 #   3. "Write GAIA-Audit commit status (out-of-scope skip)" (has_source == false)
+#   4. "Write GAIA-Audit commit status (chore-deps skip)" (chore-deps.skip == true)
 #
-# FOUR steps can POST `state=pending`, which is the other half of the gate and a
-# different set: the three above, PLUS
+# FIVE steps can POST `state=pending`, which is the other half of the gate and a
+# different set: the four above, PLUS
 #
-#   4. "Stand down (local-mode, no override)"            (should_run == false)
+#   5. "Stand down (local-mode, no override)"            (should_run == false)
 #
 # The pending writers are tested as their own group at the bottom of this file,
 # because a `pending` POST clobbers a live `success` (a commit status has no
-# compare-and-set) and every one of the four must consult the non-clobber guard
-# before writing. Naming all four here is load-bearing: the local-mode stand-down
+# compare-and-set) and every one of the five must consult the non-clobber guard
+# before writing. Naming all five here is load-bearing: the local-mode stand-down
 # shipped unguarded precisely because this suite tested only the steps it names,
 # and a suite that never names a step cannot notice it is broken.
 #
@@ -477,7 +478,8 @@ run_comment_step() {
   for step in \
     "Write GAIA-Audit commit status" \
     "Write GAIA-Audit commit status (clean, no push)" \
-    "Write GAIA-Audit commit status (out-of-scope skip)"
+    "Write GAIA-Audit commit status (out-of-scope skip)" \
+    "Write GAIA-Audit commit status (chore-deps skip)"
   do
     body="$(extract_step_body "$step")"
     grep -qF 'gate-pending-members.sh --base "${PR_BASE_SHA}"' "$body" || return 1
@@ -485,35 +487,36 @@ run_comment_step() {
     grep -qF 'gate-pending-members.sh --base "${AUDIT_BASE}"' "$body" && return 1
   done
 
-  # PR_BASE_SHA is the PR's base sha from the event payload, for all three steps.
+  # PR_BASE_SHA is the PR's base sha from the event payload, for all four steps.
   run grep -cF 'PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}' "$WORKFLOW"
-  [ "$output" -eq 3 ]
+  [ "$output" -eq 4 ]
 }
 
-@test "the local-mode stand-down and the out-of-scope skip take their sha from the event payload, not git rev-parse HEAD" {
+@test "the local-mode stand-down and the two skip-path stamps take their sha from the event payload, not git rev-parse HEAD" {
   # A bare `git rev-parse HEAD` in the runner can point at a local,
   # never-pushed commit (an empty trailer marker, a refused self-heal), and
   # POSTing a status to a sha GitHub does not have returns HTTP 422. The
   # clean-no-push stamp step already reads HEAD_SHA from the event payload
   # directly, and the self-heal push stamp reads AUDIT_SHA from push-fixes'
-  # own event-anchored resolution; these two steps are the last of the four
-  # writers to anchor the same way.
+  # own event-anchored resolution; every skip-path writer anchors the same way.
   for step in \
     "Stand down (local-mode, no override)" \
-    "Write GAIA-Audit commit status (out-of-scope skip)"
+    "Write GAIA-Audit commit status (out-of-scope skip)" \
+    "Write GAIA-Audit commit status (chore-deps skip)"
   do
     body="$(extract_step_body "$step")"
     grep -qF 'head_sha="${HEAD_SHA}"' "$body" || return 1
     grep -qF 'git rev-parse HEAD)"' "$body" && return 1
   done
 
-  # One HEAD_SHA event-payload binding for each of these two steps, the
-  # unrelated source-changes step, the pre-existing clean-no-push stamp, and
-  # the progress-breadcrumb print step (resolves the tree the agent keyed its
-  # breadcrumb file to, for the same reason: a self-heal commit can move the
-  # runner's local HEAD before this step runs).
+  # One HEAD_SHA event-payload binding for each of the three steps in the loop
+  # above (the local-mode stand-down and the two skip-path stamps, out-of-scope
+  # and chore-deps), plus the workflow-self-modification check, the pre-existing
+  # clean-no-push stamp, and the progress-breadcrumb print step (resolves the
+  # tree the agent keyed its breadcrumb file to, for the same reason: a
+  # self-heal commit can move the runner's local HEAD before this step runs).
   run grep -cF 'HEAD_SHA: ${{ github.event.pull_request.head.sha }}' "$WORKFLOW"
-  [ "$output" -eq 5 ]
+  [ "$output" -eq 6 ]
 }
 
 # -----------------------------------------------------------------------------
@@ -1290,6 +1293,7 @@ run_comment_step() {
     "Write GAIA-Audit commit status" \
     "Write GAIA-Audit commit status (clean, no push)" \
     "Write GAIA-Audit commit status (out-of-scope skip)" \
+    "Write GAIA-Audit commit status (chore-deps skip)" \
     "Stand down (local-mode, no override)"
   do
     body="$(extract_step_body "$step")"
@@ -1301,8 +1305,8 @@ run_comment_step() {
     grep -qF -- '"$_live" -ne 1' "$body" || return 1
   done
 
-  # ...and these four are the WHOLE set, so the loop above covers every pending
-  # writer there is. A fifth added without a guard trips this count.
+  # ...and these five are the WHOLE set, so the loop above covers every pending
+  # writer there is. A sixth added without a guard trips this count.
   run count_pending_writers
-  [ "$output" -eq 4 ]
+  [ "$output" -eq 5 ]
 }

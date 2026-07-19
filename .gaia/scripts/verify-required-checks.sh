@@ -100,7 +100,7 @@ else
 fi
 
 missing=()
-for ctx in "${REQUIRED_CONTEXTS[@]}"; do
+for ctx in ${REQUIRED_CONTEXTS[@]+"${REQUIRED_CONTEXTS[@]}"}; do
   if ! printf '%s\n' "$ruleset_contexts" | grep -qxF -- "$ctx"; then
     missing+=("$ctx")
   fi
@@ -117,7 +117,7 @@ if [ -d "$workflows_dir" ]; then
   while IFS= read -r job_name; do
     [ -n "$job_name" ] || continue
     is_required=0
-    for ctx in "${REQUIRED_CONTEXTS[@]}"; do
+    for ctx in ${REQUIRED_CONTEXTS[@]+"${REQUIRED_CONTEXTS[@]}"}; do
       if [ "$job_name" = "$ctx" ]; then
         is_required=1
         break
@@ -138,12 +138,12 @@ fi
 
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "MISSING from the live ruleset's required_status_checks (declared required in-repo, not enforced live):"
-  printf '  - %s\n' "${missing[@]}"
+  printf '  - %s\n' ${missing[@]+"${missing[@]}"}
 fi
 
 if [ "${#advisory[@]}" -gt 0 ]; then
   echo "Advisory (check-producing job names found in $workflows_dir, not in the declared-required list; review before promoting):"
-  printf '  - %s\n' "${advisory[@]}"
+  printf '  - %s\n' ${advisory[@]+"${advisory[@]}"}
 fi
 
 if [ "${#missing[@]}" -gt 0 ]; then

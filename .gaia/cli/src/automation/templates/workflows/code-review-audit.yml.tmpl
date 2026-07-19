@@ -1176,6 +1176,132 @@ jobs:
           # later reshape that tolerated the failure.
           echo "success_stamped=true" >> "$GITHUB_OUTPUT"
 
+      - name: Write GAIA-Audit commit status (chore-deps skip)
+        id: chore-deps-status
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.chore-deps.outputs.skip == 'true'
+        env:
+          # The PUSHED PR head sha, straight from the event payload, exactly as
+          # the stamp steps above take it: `git rev-parse HEAD` in the runner
+          # can point at a local, never-pushed commit and POSTing a status to a
+          # sha GitHub does not have returns HTTP 422.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # The FULL-PR base, not steps.base.outputs.base (the incremental audit
+          # base). Membership is a function of the whole PR diff; see
+          # .github/audit/gate-pending-members.sh "Full-PR scope".
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -eu
+          # chore(deps) fast-path stamp. A `chore(deps):` / `chore(deps-dev):`
+          # PR skips the expensive frontend audit: the /update-deps wrapper runs
+          # the full quality gate locally before pushing, so the bump is
+          # pre-verified and the frontend member's clearance is implicit for this
+          # PR class (the same bypass the local merge gate applies, and the same
+          # narrowing tests.yml and chromatic.yml apply). But skipping the audit
+          # must NOT also skip the STAMP: the required GAIA-Audit check is a
+          # POSTed commit status, not a job conclusion, so unlike the other
+          # required checks it is not satisfied by a job-level skip conclusion.
+          # With no stamp the required context is unsatisfiable and the merge
+          # button never opens. Stamp it here.
+          #
+          # Member-aware, exactly as the out-of-scope stamp above: the chore(deps)
+          # bypass clears ONLY the frontend member. gate-pending-members.sh
+          # filters the frontend member out and names every co-dispatched
+          # SPECIALIZED member CI cannot run; the pre-verified rationale does not
+          # cover those, so any of them means this is NOT a free clear -- post
+          # `pending` and let the local member-aware producer clear it once every
+          # marker exists. Only when no specialized member is dispatched (the
+          # common case, and every adopter case, where a dep bump touches just the
+          # frontend member's surface) does frontend's implicit clearance suffice,
+          # so stamp `success`.
+          #
+          # Target the pushed head from the event ($HEAD_SHA), NOT `git rev-parse
+          # HEAD` (a 422 on a sha GitHub does not have). Nothing is pushed on this
+          # path, so the pushed head's tree is the tree that will merge and its
+          # frontend digest is what the success description vouches for. Fail
+          # closed on an unrecomputable digest or a missing .gaia/VERSION.
+          head_sha="${HEAD_SHA}"
+          pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
+          # Publish the gate result so the terminal comment step reports the
+          # truth: a bare "skipped" line would read as green even on the pending
+          # / not-stamped paths.
+          echo "members_pending=${pending}" >> "$GITHUB_OUTPUT"
+
+          # Recompute the frontend digest for HEAD's tree (C1); the non-clobber
+          # read and the success description are both keyed to it. Fail closed:
+          # never post a status (pending or success) on an unrecomputable digest.
+          tree_sha="$(git rev-parse "${head_sha}^{tree}")"
+          if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
+              --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
+              --ref "${head_sha}")"; then
+            echo "code-review-audit: could not recompute the frontend digest for ${head_sha}; skipping status." >&2
+            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -n "$pending" ]; then
+            # Non-clobbering pending POST. Same rationale as the stamp steps
+            # above: a commit status has no compare-and-set, and this workflow
+            # re-fires on labeled/unlabeled against the same head sha with no new
+            # push, so an unconditional `pending` would overwrite the `success`
+            # the local member-aware producer posts once every dispatched member
+            # has cleared, and the merge gate would never re-open on its own.
+            # Post `pending` ONLY on a definitive 1 ("no success live"); stand
+            # down on 0 (already live), on 2 ("could not ask"), and on every other
+            # exit, because collapsing an unanswerable read into "no success live"
+            # is the clobber this guard exists to prevent. Standing down still
+            # fails CLOSED: an absent required check blocks the merge just as a
+            # `pending` one does. The first stamp step carries the full rationale.
+            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
+            _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${frontend_digest}" || _live=$?
+            if [ "$_live" -eq 0 ]; then
+              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
+              echo "success_live=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$_live" -ne 1 ]; then
+              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
+              echo "read_failed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "code-review-audit: chore(deps) skip, but members pending ${pending}; posting pending, not success." >&2
+            # GitHub caps a status description at 140 chars; truncate so a large
+            # roster cannot 422 the POST. Non-fatal either way: if this POST fails
+            # no status lands, the required check stays unfulfilled, and the button
+            # stays shut. Fail-safe in every direction.
+            desc="$(printf 'members pending: %s' "$pending" | cut -c1-140)"
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+              --method POST \
+              --field state=pending \
+              --field context=GAIA-Audit \
+              --field description="${desc}" || true
+            exit 0
+          fi
+
+          # A missing .gaia/VERSION reaches here identically to an empty one: the
+          # read is a PIPELINE, so a failed redirect still leaves awk exiting 0 on
+          # no input and the substitution yields "". Neither shape trips `set -e`,
+          # so both land on the exit below having posted NOTHING.
+          version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
+          version="${version#"${version%%[![:space:]]*}"}"
+          version="${version%"${version##*[![:space:]]}"}"
+          if [ -z "$version" ]; then
+            echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
+            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+            --method POST \
+            --field state=success \
+            --field context=GAIA-Audit \
+            --field description="${version} ${frontend_digest} ${tree_sha}"
+          # Last, so it records a POST that returned non-zero as no-stamp: the
+          # unguarded `gh api` above fails the step under `set -e`, which skips the
+          # comment step outright, but an output written first would outlive a
+          # later reshape that tolerated the failure.
+          echo "success_stamped=true" >> "$GITHUB_OUTPUT"
+
       - name: Re-trigger and stamp required checks on new HEAD
         if: |
           steps.gate.outputs.gated == 'false' &&
@@ -1390,10 +1516,58 @@ jobs:
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.chore-deps.outputs.skip == 'true'
+        env:
+          MEMBERS_PENDING: ${{ steps.chore-deps-status.outputs.members_pending }}
+          SUCCESS_STAMPED: ${{ steps.chore-deps-status.outputs.success_stamped }}
+          SUCCESS_LIVE: ${{ steps.chore-deps-status.outputs.success_live }}
+          READ_FAILED: ${{ steps.chore-deps-status.outputs.read_failed }}
         run: |
           set -eu
+          # chore(deps) / chore(deps-dev) PRs skip the expensive frontend audit
+          # (pre-verified by the /update-deps wrapper's local quality gate), but
+          # the "Write GAIA-Audit commit status (chore-deps skip)" step still
+          # stamps the required GAIA-Audit status so the merge gate is
+          # satisfiable. This comment reports WHICH outcome that step reached,
+          # mirroring the "no source changes" comment: a bare "skipped" line would
+          # read as green even on the pending / not-stamped paths.
+
+          # A GAIA-Audit success for this commit's tree is already live (every
+          # dispatched member cleared locally); CI declined to clobber it. Checked
+          # first: members_pending stays non-empty here because CI cannot see a
+          # local marker, so the pending branch below would otherwise tell the
+          # author to clear an already-green gate.
+          if [ "${SUCCESS_LIVE:-}" = "true" ]; then
+            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+              "code-review-audit skipped: chore(deps) PRs are pre-verified by the /update-deps local quality gate. GAIA-Audit is already green for this commit's tree, every dispatched member has cleared. No action needed"
+            exit 0
+          fi
+          # The non-clobber guard could not read the current GAIA-Audit status, so
+          # the stamp step stood down having posted nothing; the gate's true state
+          # is unknown.
+          if [ "${READ_FAILED:-}" = "true" ]; then
+            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+              "code-review-audit skipped: chore(deps) PR, but this diff dispatches ${MEMBERS_PENDING}, and the current GAIA-Audit status could not be read, so its state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
+            exit 0
+          fi
+          # A co-dispatched specialized member CI cannot run is present; the
+          # pre-verified rationale covers only the frontend member, so the stamp
+          # step posted `pending`, not `success`, and a local audit of that member
+          # is required.
+          if [ -n "${MEMBERS_PENDING:-}" ]; then
+            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+              "code-review-audit skipped: chore(deps) PR, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
+            exit 0
+          fi
+          # The stamp step bowed out having posted NOTHING (unrecomputable frontend
+          # digest, or .gaia/VERSION missing/empty). The gate fails closed, so a
+          # bare "skipped" line would claim the opposite of what happened.
+          if [ "${SUCCESS_STAMPED:-}" != "true" ]; then
+            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+              "code-review-audit skipped: chore(deps) PR, but NO GAIA-Audit commit status was stamped on HEAD, so the merge gate is NOT satisfied. Most likely .gaia/VERSION is missing/empty or the frontend digest could not be recomputed; see the 'Write GAIA-Audit commit status (chore-deps skip)' step log. Restore .gaia/VERSION, or run a local audit, to clear the gate"
+            exit 0
+          fi
           bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
-            "code-review-audit skipped: chore(deps) / chore(deps-dev) PRs are pre-verified by the /update-deps wrapper's local quality gate"
+            "code-review-audit skipped: chore(deps) / chore(deps-dev) PRs are pre-verified by the /update-deps local quality gate; GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied"
 
       - name: Status - skipped (no source changes)
         if: |
