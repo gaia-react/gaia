@@ -26,7 +26,6 @@ setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   ARCHIVE=".specify/extensions/gaia/lib/spec-archive-abandoned.sh"
   SPECS=".gaia/local/specs"
-  TELEMETRY=".gaia/local/telemetry/spec-pacing.jsonl"
   LEDGER=".gaia/local/telemetry/cost.jsonl"
   # --seed-abandoned-folder stamps a fixed abandoned_at
   # ("2026-01-02T00:00:00Z") rather than "just abandoned", so every delete
@@ -362,21 +361,6 @@ _clear_abandoned_at() {
   [ "$status" -eq 0 ]
   assert_contains "Deleted 1 abandoned SPEC folder(s): SPEC-002"
   rm -rf "$REPO2"
-}
-
-# --- 18: telemetry event on reap -------------------------------------------------
-
-@test "18: deleting appends a spec_abandoned_reaped telemetry event" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
-
-  run _archive "$REPO"
-  [ "$status" -eq 0 ]
-
-  [ -f "$REPO/$TELEMETRY" ]
-  last="$(tail -n 1 "$REPO/$TELEMETRY")"
-  [ "$(printf '%s' "$last" | jq -r '.event')" = "spec_abandoned_reaped" ]
-  [ "$(printf '%s' "$last" | jq -r '.spec_id')" = "SPEC-001" ]
-  [ -n "$(printf '%s' "$last" | jq -r '.ts')" ]
 }
 
 # --- 19: no consolidation gate -- a bare AUDIT.md folder still reaps -----------

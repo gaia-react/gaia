@@ -39,8 +39,8 @@
 # An abandoned row with no active folder is skipped.
 #
 # Best-effort and fail-open, exactly like spec-archive-merged.sh: a missing
-# jq / ledger, an unrepresented cost, or a telemetry-append failure never
-# blocks a caller. One stdout line summarizes what was deleted; diagnostics
+# jq / ledger or an unrepresented cost never blocks a caller. One stdout line
+# summarizes what was deleted; diagnostics
 # go to stderr.
 #
 # Usage:
@@ -60,7 +60,6 @@ repo_root="${1%/}"
 filter_id="${2:-}"
 ledger_path="${repo_root}/.gaia/local/specs/ledger.json"
 specs_dir="${repo_root}/.gaia/local/specs"
-telemetry_path="${repo_root}/.gaia/local/telemetry/spec-pacing.jsonl"
 
 # Retention knob, shared with spec-archive-merged.sh: a non-numeric override
 # falls back to the default.
@@ -106,7 +105,6 @@ else
 fi
 [ -n "$abandoned_ids" ] || exit 0
 
-now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 deleted_list=""
 
 while IFS= read -r spec_id; do
@@ -160,15 +158,6 @@ while IFS= read -r spec_id; do
   if ! rm -rf "$folder" 2>/dev/null; then
     echo "spec-archive-abandoned: $spec_id folder delete failed; left active folder in place" >&2
     continue
-  fi
-
-  # Telemetry: a distinct event from spec_closed (this folder was never
-  # closed; it was abandoned then reaped). Failure to append never blocks
-  # the sweep.
-  if ev="$(jq -nc --arg id "$spec_id" --arg ts "$now" \
-      '{event: "spec_abandoned_reaped", spec_id: $id, ts: $ts}' 2>/dev/null)"; then
-    mkdir -p "$(dirname "$telemetry_path")" 2>/dev/null || true
-    printf '%s\n' "$ev" >> "$telemetry_path" 2>/dev/null || true
   fi
 
   deleted_list="${deleted_list:+$deleted_list, }${spec_id}"
