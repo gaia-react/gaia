@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# SC2016 is intentional file-wide: single-quoted sed regex ($ is a regex anchor)
-# and printf text with literal backticks, neither a shell expansion.
+# SC2016 is intentional file-wide: printf text with literal backticks, not a
+# shell expansion.
 # shellcheck disable=SC2016
 # Build a release-staging tree from the source repo into <output-dir>.
 # Pure replication of `.github/workflows/release.yml` Stage + Scrub +
@@ -51,10 +51,15 @@ INCLUDE="$SCRATCH/include.txt"
 
 git -C "$PROJECT_ROOT" ls-files > "$ALL_TRACKED"
 
-awk '/^[[:space:]]*#/ {next} NF==0 {next} {print}' "$PROJECT_ROOT/.gaia/release-exclude" \
-  | sed 's|[][\\.*^$()+?{}|]|\\&|g' \
-  | awk '{print "^"$0"(/|$)"}' \
-  > "$EXCLUDE_REGEX"
+# The maintainer CLI is the single compiler of .gaia/release-exclude into
+# anchored regexes; this harness invokes it rather than re-deriving the pattern
+# set inline. Fail-closed: a nonzero exit aborts staging instead of degrading to
+# an empty exclude that copies (leaks) every tracked file.
+if ! "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release exclude-regex \
+    --exclude-file "$PROJECT_ROOT/.gaia/release-exclude" > "$EXCLUDE_REGEX"; then
+  printf 'release exclude-regex compile failed\n' >&2
+  exit 1
+fi
 
 if [ -s "$EXCLUDE_REGEX" ]; then
   grep -vE -f "$EXCLUDE_REGEX" "$ALL_TRACKED" > "$INCLUDE"

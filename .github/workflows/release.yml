@@ -86,15 +86,15 @@ jobs:
           # artifacts, etc.), then filter out paths matched by
           # .gaia/release-exclude.
           git ls-files > /tmp/all-tracked.txt
-          # The sed expression escapes regex metacharacters literally; its
-          # single quotes are intentional (double quotes would make the shell
-          # expand the `$()` inside the character class and corrupt the
-          # pattern). SC2016 is a false positive here.
-          # shellcheck disable=SC2016
-          awk '/^[[:space:]]*#/ {next} NF==0 {next} {print}' .gaia/release-exclude \
-            | sed 's|[][\\.*^$()+?{}|]|\\&|g' \
-            | awk '{print "^"$0"(/|$)"}' \
-            > /tmp/exclude-regex.txt
+          # The maintainer CLI is the single compiler of .gaia/release-exclude
+          # into anchored regexes; every release surface invokes it rather than
+          # re-deriving the pattern set inline. Fail-closed: a nonzero exit
+          # aborts the release loudly instead of copying every tracked file.
+          if ! ./.gaia/cli/gaia-maintainer release exclude-regex \
+              --exclude-file .gaia/release-exclude > /tmp/exclude-regex.txt; then
+            echo "::error::release exclude-regex compile failed; aborting stage" >&2
+            exit 1
+          fi
           if [ -s /tmp/exclude-regex.txt ]; then
             grep -vE -f /tmp/exclude-regex.txt /tmp/all-tracked.txt > /tmp/include.txt
           else
@@ -105,6 +105,20 @@ jobs:
           mkdir -p "$STAGING"
           rsync -a --files-from=/tmp/include.txt . "$STAGING"/
           echo "Staged $(find "$STAGING" -type f | wc -l) files into $STAGING"
+          # Shipped-tree leak assertion (AUDIT directive 4): verify no
+          # release-excluded path survived into the very tree that becomes the
+          # tarball — not only the independently re-staged distribution-gate
+          # tree. Reuses the exclude regex compiled above. A legitimately empty
+          # exclude list (no /tmp/exclude-regex.txt content) has nothing to leak.
+          if [ -s /tmp/exclude-regex.txt ]; then
+            leaked="$( (cd "$STAGING" && find . -type f | sed 's|^\./||') \
+              | grep -E -f /tmp/exclude-regex.txt || true )"
+            if [ -n "$leaked" ]; then
+              echo "::error::release-excluded path(s) leaked into $STAGING:" >&2
+              printf '%s\n' "$leaked" >&2
+              exit 1
+            fi
+          fi
 
       - name: Bundle-time scrub (marker-strip + leak-check)
         run: |

@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# SC2016 is intentional file-wide: single-quoted sed program where $ is a regex
-# anchor, not a shell variable.
-# shellcheck disable=SC2016
 # 03-marker-strip.sh
 #
 # Asserts the marker-strip transform fired correctly:
@@ -43,10 +40,13 @@ INCLUDE="$(mktemp)"
 trap 'rm -rf "$STAGING" "$ALL_TRACKED" "$EXCLUDE_REGEX" "$INCLUDE"' EXIT
 
 git -C "$PROJECT_ROOT" ls-files > "$ALL_TRACKED"
-awk '/^[[:space:]]*#/ {next} NF==0 {next} {print}' "$PROJECT_ROOT/.gaia/release-exclude" \
-  | sed 's|[][\\.*^$()+?{}|]|\\&|g' \
-  | awk '{print "^"$0"(/|$)"}' \
-  > "$EXCLUDE_REGEX"
+# Same single-compiler invocation build-staging.sh uses, so this second walk
+# filters source files through the identical exclude set. Fail-closed.
+if ! "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release exclude-regex \
+    --exclude-file "$PROJECT_ROOT/.gaia/release-exclude" > "$EXCLUDE_REGEX"; then
+  fail "release exclude-regex compile failed"
+  exit 1
+fi
 if [ -s "$EXCLUDE_REGEX" ]; then
   grep -vE -f "$EXCLUDE_REGEX" "$ALL_TRACKED" > "$INCLUDE"
 else
