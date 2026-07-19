@@ -159,20 +159,7 @@ playwright-cli delete-data
 
 ## Snapshots
 
-After each command, playwright-cli provides a snapshot of the current browser state.
-
-```bash
-> playwright-cli goto https://example.com
-### Page
-- Page URL: https://example.com/
-- Page Title: Example Domain
-### Snapshot
-[Snapshot](.playwright-cli/page-2026-02-14T19-22-42-679Z.yml)
-```
-
-You can also take a snapshot on demand using `playwright-cli snapshot` command.
-
-If `--filename` is not provided, a new snapshot file is created with a timestamp. Default to automatic file naming, use `--filename=` when artifact is a part of the workflow result.
+See **How interaction refs work** in `playwright-cli/SKILL.md` for the snapshot format and the `--filename` naming rule. Take one on demand with `playwright-cli snapshot`.
 
 ## Browser Sessions
 
@@ -194,12 +181,7 @@ playwright-cli kill-all
 
 ## Local installation
 
-In some cases user might want to install playwright-cli locally. If running globally available `playwright-cli` binary fails, use `npx playwright-cli` to run the commands. For example:
-
-```bash
-npx playwright-cli open https://example.com
-npx playwright-cli click e1
-```
+If the global `playwright-cli` binary fails, prefix commands with `npx` (see **Local installation fallback** in `playwright-cli/SKILL.md`).
 
 ## Example: Form submission
 
@@ -233,14 +215,5 @@ playwright-cli click e4
 playwright-cli fill e7 "test"
 playwright-cli console
 playwright-cli network
-playwright-cli close
-```
-
-```bash
-playwright-cli open https://example.com
-playwright-cli tracing-start
-playwright-cli click e4
-playwright-cli fill e7 "test"
-playwright-cli tracing-stop
 playwright-cli close
 ```

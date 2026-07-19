@@ -105,5 +105,3 @@ Report in one line: saved path + count of accomplishments / decisions / gaps / n
 - Every "Gap" must name a file and a diagnostic, not just "look into X".
 - Skip empty sections entirely rather than writing "N/A".
 - Never fabricate commit hashes, file paths, or device IDs, if unsure, omit.
-- Only one handoff exists at a time. Step 0 deletes any prior handoff before writing. No archive, no second file.
-- The handoff owns its own cleanup. Its Teardown section tells the picking-up session to delete the file once the work is verified complete.

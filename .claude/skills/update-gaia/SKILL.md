@@ -453,15 +453,7 @@ The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 
 
 Let `A` = working-tree `.gaia/audit-ci.yml`, `B` = `$BASELINE_DIR/.gaia/audit-ci.yml`, `L` = `$LATEST_DIR/.gaia/audit-ci.yml`.
 
-**Presence triage first** (older baselines predate this file). Match the first row that applies; only the last row runs the field-aware merge:
-
-| Condition                       | Action                                                                                                  |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `L` missing                     | Upstream dropped the file; fold into the Step 7 deletion sweep (`delete[]`). Skip 7c.                    |
-| `A` missing and `B` missing     | Genuinely new; copy `L` → `.gaia/audit-ci.yml`. Record in `add[]`. Skip 7c.                              |
-| `A` missing and `B` exists      | Adopter deleted it; respect the deletion, leave absent. Record in `removed[]`. Skip 7c.                  |
-| `A` exists and `B` missing      | No baseline to field-merge against; `diff -u A L > .gaia-merge/audit-ci.yml.patch`. Surface as a conflict. Skip 7c. |
-| `A`, `B`, `L` all exist         | Run the field-aware merge below.                                                                        |
+**Presence triage first** (older baselines predate this file): identical to Step 7b's triage table, substituting `.gaia/audit-ci.yml` for `pnpm-workspace.yaml` (its fallback patch is `.gaia-merge/audit-ci.yml.patch`, and each "Skip 7b" reads "Skip 7c"). Only the last row (`A`, `B`, `L` all exist) runs the field-aware merge below.
 
 **Compute the per-key / per-entry verdicts** with the bundled CLI (it parses all three files with `js-yaml` and never writes the YAML):
 
@@ -570,20 +562,7 @@ If `INVALIDATED_COUNT` is greater than 0, also print after the table:
 
 **Documented adopter actions (opt-in).** Two merge outcomes leave the adopter with a follow-up the three-way merge deliberately will **not** perform: a dependency GAIA dropped this release that the adopter still has (the Step 7a "GAIA removed it; adopter still has it" no-op, left in place by design) and files removed upstream still in the working tree (`delete[]`). Both are silent or bare, the agent knows _what_ changed but surfaces no _why_. Recover the intent from the release CHANGELOG and offer an opt-in suggestion.
 
-Read `$LATEST_DIR/CHANGELOG.md` (already on disk from Step 5, no extra fetch) and extract the `## [x.y.z]` sections strictly newer than `$BASELINE` through `$LATEST` with the same range walk Step 4 uses:
-
-```bash
-awk -v baseline="$BASELINE" -v latest="$LATEST" '
-  function vcmp(a,b,   x,y,i){split(a,x,".");split(b,y,".");for(i=1;i<=3;i++){if((x[i]+0)>(y[i]+0))return 1;if((x[i]+0)<(y[i]+0))return -1}return 0}
-  /^## \[Unreleased\]/           {printing=0; next}
-  /^\[[^][]+\]:[[:space:]]*http/ {printing=0; next}
-  /^## \[[0-9]+\.[0-9]+\.[0-9]+\]/ {
-    v=$0; sub(/^## \[/,"",v); sub(/\].*/,"",v)
-    printing=(vcmp(v,baseline)>0 && vcmp(v,latest)<=0)
-  }
-  printing {print}
-' "$LATEST_DIR/CHANGELOG.md"
-```
+Read `$LATEST_DIR/CHANGELOG.md` (already on disk from Step 5, no extra fetch) and extract the `## [x.y.z]` sections strictly newer than `$BASELINE` through `$LATEST` with the **same range-walk awk as Step 4** (see that block), with one difference: here the awk reads the file as a positional argument (`awk -v baseline="$BASELINE" -v latest="$LATEST" '…' "$LATEST_DIR/CHANGELOG.md"`) rather than from piped stdin.
 
 Within that range, match **only** convention-anchored entries: bullets under a `### Removed` or `### Changed` heading that carry an explicit `**Action required:**` line and/or a literal `pnpm` command in backticks. **Key on the heading plus that anchored phrasing; do not free-parse arbitrary prose** (the convention is documented in `CHANGELOG.md`). For each match, take the literal command (the backtick-quoted `pnpm …`) and the subject it names, then gate it on whether the action still applies to _this_ adopter and record the survivors in `adopterActions[]`:
 

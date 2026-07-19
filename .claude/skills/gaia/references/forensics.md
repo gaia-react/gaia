@@ -81,36 +81,7 @@ Emit the strict-schema body. The frontmatter heads the body, and the same body i
 
 Set `created` from `date +%F` (shell), never guess the current date.
 
-Body layout (frontmatter + sections):
-
-```markdown
----
-class: <init|update|wiki-sync|quality-gate|hook|scaffold|dev-server|other>
-gaia_version: <semver>
-created: <YYYY-MM-DD>
-gh_issue_url?: <url>
----
-
-## Symptom
-<one-paragraph user description, redacted>
-
-## Classification
-class: <tag>
-evidence: <verbatim user phrase> + <named state file>
-
-## Capture
-gaia_version: <semver>
-node: <version>
-pnpm: <version>
-claude_code: <version>
-branch: <name>
-dirty: <true|false>
-class_state_files:
-  - <repo-relative path>: <one-line summary>
-
-## Reproduction context
-<plain prose: what the user was doing, what they expected, what happened>
-```
+Emit the strict-schema body exactly as shown in the **Output schema (load-bearing)** section below, frontmatter plus the four sections; that block is the single canonical parse contract.
 
 The body posted to the GH issue is the full body, frontmatter and all sections, byte-identical to the local file body. The `gh_issue_url` frontmatter key is set after the issue is created (step 8) so the initial GH-issue render omits it; the local file is rewritten with the URL once known.
 

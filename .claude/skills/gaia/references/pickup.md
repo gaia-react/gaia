@@ -58,5 +58,3 @@ Be aggressive: a handoff is one-and-done. Only one ever exists, and a finished o
 - Hot cache (`wiki/hot.md`) auto-loads, don't re-read it unless the handoff is missing.
 - If git state has diverged significantly from the handoff, say so explicitly before suggesting next actions.
 - One handoff at a time. A new `/gaia-handoff` deletes the prior one; pickup's step 0 keeps at most one.
-- Never archive. Deletion is the only terminal state. The handoff owns its happy-path teardown; pickup deletes only a fully-landed stale handoff.
-- Leave an in-progress handoff in place so an interruption is recoverable. Do not move it.

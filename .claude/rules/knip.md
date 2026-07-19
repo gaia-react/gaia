@@ -8,4 +8,4 @@ Auto-runs pre-merge inside the `code-audit-frontend` agent (parallel with `react
 
 Bucket recipe + acting-on-output (optional deep-dive): `.claude/agents/code-audit-frontend.md` (Knip findings). Docs: https://knip.dev.
 
-See also `.claude/rules/dep-audit.md`: the sibling advisory-tool pointer rule for the `pnpm audit` dependency-CVE oracle.
+Sibling advisory rule: `.claude/rules/dep-audit.md`
