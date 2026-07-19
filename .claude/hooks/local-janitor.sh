@@ -260,13 +260,13 @@ janitor_sweep_outliers() {
       candidate=1
       case "$zone" in
         toplevel)
-          janitor_outlier_kept "$base" "$etype" "${JANITOR_OUTLIER_ALLOW_TOPLEVEL[@]}" && candidate=0
+          janitor_outlier_kept "$base" "$etype" ${JANITOR_OUTLIER_ALLOW_TOPLEVEL[@]+"${JANITOR_OUTLIER_ALLOW_TOPLEVEL[@]}"} && candidate=0
           ;;
         audit)
-          janitor_outlier_kept "$base" "$etype" "${JANITOR_OUTLIER_ALLOW_AUDIT[@]}" && candidate=0
+          janitor_outlier_kept "$base" "$etype" ${JANITOR_OUTLIER_ALLOW_AUDIT[@]+"${JANITOR_OUTLIER_ALLOW_AUDIT[@]}"} && candidate=0
           ;;
         cache)
-          janitor_outlier_kept "$base" "$etype" "${JANITOR_OUTLIER_ALLOW_CACHE[@]}" && candidate=0
+          janitor_outlier_kept "$base" "$etype" ${JANITOR_OUTLIER_ALLOW_CACHE[@]+"${JANITOR_OUTLIER_ALLOW_CACHE[@]}"} && candidate=0
           # Bounded one-level renders.json protection: a not-otherwise-
           # allowlisted cache/ child directory still keeps if it
           # directly holds a renders.json file (a react-perf run dir, whose
