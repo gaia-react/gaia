@@ -28,6 +28,9 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 ├── 06-claude-runs-staged.sh     # Claude-in-Docker auth + cwd smoke (Layer 2)
 ├── 07-gaia-init-strip-branding.sh  # Adopter-flow regression: gaia init strip-branding
 ├── 08-gaia-init-cli-sequence.sh    # Adopter-flow regression: full gaia init CLI sequence
+├── 09-exclude-parser-parity.sh     # release-exclude parser parity with the CI filter
+├── 10-gaia-scaffold-templates.sh   # Adopter-flow regression: gaia scaffold component/hook/route/service
+├── 11-gaia-setup-cli-flow.sh       # Adopter-flow regression: gaia setup mark-step/status/finalize/link-worktree
 └── diagnostic/
     └── claude-auth-in-docker.md
 ```
@@ -79,7 +82,11 @@ Skips automatically if Docker is unavailable OR `CLAUDE_CODE_OAUTH_TOKEN` is uns
 
 `08-gaia-init-cli-sequence.sh` runs the full deterministic sequence behind `/gaia-init` Step 3; `strip-branding` → `configure-i18n --strip false` → `rename` → `wire-statusline --mode project` → `finalize`; and asserts each step's post-conditions on the staged tree. Catches release-exclude drift on every CLI surface the slash command dispatches to: the `existsSync` guards in `configure-i18n`/`rename`/`finalize` mean a missing target file silently no-ops rather than erroring, so this scenario is the gate that turns a no-op into a failure. `--mode project` for `wire-statusline` keeps the merge inside the scaffold's `.claude/settings.json` and never writes to the host's `~/.claude`. The `configure-i18n --strip true` path (full i18n removal via the prose `remove-i18n.md` instruction) is out of scope here; that path is orchestrated by the slash command, not the CLI alone.
 
-Future adopter-flow scenarios cover the `--strip true` removal path and the `gaia setup` subcommands.
+`10-gaia-scaffold-templates.sh` runs all four `gaia scaffold <kind>` subcommands (`component`/`hook`/`route`/`service`) and asserts each writes its real output files with the expected rendered content. Catches release-exclude drift on `.gaia/cli/templates/` (the tracked source `pnpm bundle` copies alongside the bundled binary): a stripped template makes `loadTemplate`/`renderTemplate` throw at runtime, which Layers 0+1+2 never exercise since none of them invoke `gaia scaffold`.
+
+`11-gaia-setup-cli-flow.sh` runs the `gaia setup` subcommand family (`mark-step` → `status` → `finalize` → `link-worktree`), the CLI primitives behind `/setup-gaia`, and asserts the JSON contract at each stage (pending step counts, `complete`/`completed_at`, and the main-checkout `link-worktree` no-op shape). `gaia setup` has no shipped-template dependency, so its risk class differs from the other adopter-flow scenarios: it proves the real bundled binary's logic still behaves correctly against a scrubbed, staged tree, not just against source (already covered by `setup.test.ts`). `gaia setup-ci` is out of scope: its subcommands shell out to `gh` and the network, which this self-contained harness does not exercise.
+
+Future adopter-flow scenarios cover the `--strip true` removal path, `gaia setup-ci`, `gaia sandbox`, `gaia ping`, `gaia wiki`, and `gaia update` / `gaia update-deps`.
 
 #### Local setup for maintainers
 
