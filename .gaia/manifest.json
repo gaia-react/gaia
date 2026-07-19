@@ -285,6 +285,7 @@
     ".specify/extensions/gaia/lib/spec-folderize.sh": "owned",
     ".specify/extensions/gaia/lib/spec-reconcile.sh": "owned",
     ".specify/extensions/gaia/lib/spec-renumber.sh": "owned",
+    ".specify/extensions/gaia/lib/spec-session-lock.sh": "owned",
     ".specify/extensions/gaia/lib/title-normalize.sh": "owned",
     ".specify/extensions/gaia/lib/uat-write.sh": "owned",
     ".specify/extensions/gaia/lib/version-check.sh": "owned",
@@ -614,6 +615,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-19T13:20:36.195Z",
+  "generated": "2026-07-19T14:44:28.472Z",
   "version": "1.6.1"
 }
