@@ -60,6 +60,35 @@ const extractStageCommand = (text: string, marker: string): string => {
 };
 
 /**
+ * `grep -vE` exits 1 (not 0) when every candidate line matches the filter
+ * (i.e. zero survivors), which `execFileSync` treats as a thrown error even
+ * though it's a normal "no matches" outcome, not a failure. The fixture
+ * below always leaves a survivor so this can't fire today, but a future
+ * all-excluded fixture would otherwise surface an opaque "Command failed"
+ * instead of a clean empty `kept` set. Only a real error (exit >= 2, e.g. a
+ * malformed regex file) should propagate.
+ */
+const grepKeptLines = (regexPath: string, candidateText: string): string[] => {
+  try {
+    return execFileSync('grep', ['-vE', '-f', regexPath], {
+      encoding: 'utf8',
+      input: candidateText,
+    })
+      .split('\n')
+      .filter((line) => line.length > 0);
+  } catch (error) {
+    const status =
+      error instanceof Error && 'status' in error ?
+        (error as Error & {status?: number}).status
+      : undefined;
+
+    if (status === 1) return [];
+
+    throw error;
+  }
+};
+
+/**
  * Stage 1 (comment/blank strip) also carries a trailing file-path argument
  * that differs between the two callers (`.gaia/release-exclude` vs
  * `"$PROJECT_ROOT/.gaia/release-exclude"`); dropping it makes the awk
@@ -159,12 +188,7 @@ describe('exclude-parser parity (#839)', () => {
       writeFileSync(compiledRegexPath, compiledRegex);
 
       const candidateText = `${candidatePaths.join('\n')}\n`;
-      kept = execFileSync('grep', ['-vE', '-f', compiledRegexPath], {
-        encoding: 'utf8',
-        input: candidateText,
-      })
-        .split('\n')
-        .filter((line) => line.length > 0);
+      kept = grepKeptLines(compiledRegexPath, candidateText);
     } finally {
       rmSync(scratchDir, {force: true, recursive: true});
     }

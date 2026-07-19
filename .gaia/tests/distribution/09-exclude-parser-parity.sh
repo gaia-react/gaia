@@ -5,11 +5,11 @@
 # independently parse `.gaia/release-exclude` and, as of #679, all agree
 # (literal paths only, no glob rewriting). Nothing previously proved
 # they'd stay in sync. This proves two of the three agree on a small
-# fixture: the sed|awk|grep compile-and-filter pipeline that
-# release.yml and build-staging.sh both carry, and the literal `[ -e ]`
-# presence check in 01-files-present.sh. (The third leg, CLI compiler vs
-# the same shell pipeline, is proven in the CLI's own vitest suite:
-# .gaia/cli/src/release/exclude-parser-parity.test.ts.)
+# fixture: the awk|sed|awk compile stage followed by a `grep -vE` filter
+# that release.yml and build-staging.sh both carry, and the literal
+# `[ -e ]` presence check in 01-files-present.sh. (The third leg, CLI
+# compiler vs the same shell pipeline, is proven in the CLI's own vitest
+# suite: .gaia/cli/src/release/exclude-parser-parity.test.ts.)
 #
 # The pipeline below is a literal copy of build-staging.sh's compile
 # stage (lines ~51-53), byte-identity of which against release.yml is
@@ -60,7 +60,7 @@ FIXTURE_EOF
 
 # Build ALL_TRACKED the same way build-staging.sh does (git ls-files),
 # scoped to the fixture tree.
-git -C "$SRC" init -q -b main
+git -C "$SRC" init -q
 git -C "$SRC" add -A
 ALL_TRACKED="$FIXTURE/all-tracked.txt"
 git -C "$SRC" ls-files > "$ALL_TRACKED"
