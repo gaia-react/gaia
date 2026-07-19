@@ -1,12 +1,14 @@
 #!/usr/bin/env bats
 #
-# Sweep #6 of local-janitor.sh: age-reap merged SPEC folders once merged_at
-# has aged past the retention window (GAIA_SPEC_RETENTION_DAYS, default 30)
-# AND cost is fully represented. The janitor delegates both gates to
-# spec-archive-merged.sh, so these tests copy the real script plus its
-# transitive deps (cost-represented.sh, ledger-path-lib.sh) into the fixture
-# repo at their real repo-relative paths, exactly as a real checkout would
-# have them, rather than re-deriving delete behavior here.
+# Sweep #6 of local-janitor.sh: age-reap merged AND abandoned SPEC folders
+# once their timestamp (merged_at / abandoned_at) has aged past the
+# retention window (GAIA_SPEC_RETENTION_DAYS, default 30) AND cost is fully
+# represented. The janitor delegates both gates to two sibling scripts,
+# spec-archive-merged.sh and spec-archive-abandoned.sh, so these tests copy
+# the real scripts plus their transitive deps (cost-represented.sh,
+# ledger-path-lib.sh) into the fixture repo at their real repo-relative
+# paths, exactly as a real checkout would have them, rather than
+# re-deriving delete behavior here.
 #
 # Representation is driven with no-cost folders (auto-represented, nothing to
 # lose) and a plain cost.md fixture (the markdown fallback path), so these
@@ -44,9 +46,12 @@ copy_archive_deps() {
   mkdir -p "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib"
   cp "$REPO_ROOT_REAL/.specify/extensions/gaia/lib/spec-archive-merged.sh" \
     "$REPO/.specify/extensions/gaia/lib/spec-archive-merged.sh"
+  cp "$REPO_ROOT_REAL/.specify/extensions/gaia/lib/spec-archive-abandoned.sh" \
+    "$REPO/.specify/extensions/gaia/lib/spec-archive-abandoned.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/cost-represented.sh" "$REPO/.gaia/scripts/cost-represented.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
-  chmod +x "$REPO/.specify/extensions/gaia/lib/spec-archive-merged.sh"
+  chmod +x "$REPO/.specify/extensions/gaia/lib/spec-archive-merged.sh" \
+    "$REPO/.specify/extensions/gaia/lib/spec-archive-abandoned.sh"
 }
 
 # seed_specs_ledger <spec-row-json>: writes a one-row specs ledger.
@@ -67,6 +72,14 @@ seed_merged_folder() {
   mkdir -p "$REPO/.gaia/local/specs/$1"
   echo "# $1" > "$REPO/.gaia/local/specs/$1/SPEC.md"
   echo "# $1 summary" > "$REPO/.gaia/local/specs/$1/SUMMARY.md"
+}
+
+# seed_abandoned_folder <spec_id>: the foldered AUDIT.md shape under an
+# active specs/<id>/ dir, no cost.md (automatically represented). No
+# SUMMARY.md: spec-archive-abandoned.sh has no consolidation gate.
+seed_abandoned_folder() {
+  mkdir -p "$REPO/.gaia/local/specs/$1"
+  echo "# $1 Adversarial Audit" > "$REPO/.gaia/local/specs/$1/AUDIT.md"
 }
 
 # write_cost_md <dir> <heading> <fresh> <cwrite> <cread> <output>: one real,
@@ -141,4 +154,40 @@ days_ago() {
   [ ! -e "$REPO/.gaia/local/specs/SPEC-063" ]
   # Sweep #4's structural drop-zones are untouched by the sweep-#6 delegation.
   [ -d "$REPO/.gaia/local/specs" ]
+}
+
+@test "sweep 6: abandoned folder past the retention window with represented cost is reaped" {
+  make_repo
+  copy_archive_deps
+  seed_abandoned_folder SPEC-064
+  seed_specs_ledger "{\"id\":\"SPEC-064\",\"allocated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"allocated\",\"status\":\"abandoned\",\"abandoned_at\":\"$(days_ago 45)\"}"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/specs/SPEC-064" ]
+}
+
+@test "sweep 6: abandoned folder within the retention window is kept" {
+  make_repo
+  copy_archive_deps
+  seed_abandoned_folder SPEC-065
+  seed_specs_ledger "{\"id\":\"SPEC-065\",\"allocated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"allocated\",\"status\":\"abandoned\",\"abandoned_at\":\"$(days_ago 2)\"}"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/specs/SPEC-065" ]
+}
+
+@test "sweep 6: an abandoned folder past the window but unrepresented is kept; janitor still exits 0" {
+  make_repo
+  copy_archive_deps
+  seed_abandoned_folder SPEC-066
+  write_cost_md "$REPO/.gaia/local/specs/SPEC-066" SPEC 10 1 1 2
+  mkdir -p "$REPO/.gaia/local/telemetry"
+  : > "$REPO/.gaia/local/telemetry/cost.jsonl" # no matching row: unrepresented
+  seed_specs_ledger "{\"id\":\"SPEC-066\",\"allocated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"allocated\",\"status\":\"abandoned\",\"abandoned_at\":\"$(days_ago 45)\"}"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/specs/SPEC-066" ]
 }

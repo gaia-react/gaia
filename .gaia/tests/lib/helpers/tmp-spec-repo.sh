@@ -53,6 +53,14 @@
 #                               status:"draft", reservation:"provisional",
 #                               subject:<subject|id> (the offline-allocated row
 #                               an online reconnect/reserve_pending resolves)
+#   --seed-abandoned SPEC-NNN   append a ledger row status:"abandoned" and NO
+#                               folder (the archive-sweep skip-no-folder case)
+#   --seed-abandoned-folder SPEC-NNN  append a ledger row status:"abandoned"
+#                               AND write the foldered shape
+#                               .gaia/local/specs/SPEC-NNN/AUDIT.md (the
+#                               archive-sweep happy-path fixture: an abandoned
+#                               row with an active folder still to be swept;
+#                               no SUMMARY.md/consolidation is ever expected)
 #
 # Remote flags (order-DEPENDENT: --with-origin must precede
 # --seed-remote-tag / --origin-reject-spec-tags in the argument list; they
@@ -110,7 +118,7 @@ printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/local/specs/ledger.json
 # with-ledger-lock.sh resolves to this tmp lib dir.
 for s in spec-allocator.sh plan-allocator.sh ledger-update.sh with-ledger-lock.sh \
          spec-folderize.sh spec-renumber.sh spec-reconcile.sh \
-         spec-archive-merged.sh title-normalize.sh; do
+         spec-archive-merged.sh spec-archive-abandoned.sh title-normalize.sh; do
   cp "${real_lib}/${s}" ".specify/extensions/gaia/lib/${s}"
   chmod +x ".specify/extensions/gaia/lib/${s}"
 done
@@ -243,6 +251,28 @@ wiki_promote_targets: []
 # ${id}
 
 Consolidated summary body.
+EOF
+      ;;
+    --seed-abandoned)
+      id="$2"; shift 2
+      tmp="$(mktemp)"
+      jq --arg id "$id" \
+        '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "abandoned", abandoned_at: "2026-01-02T00:00:00Z"}]' \
+        .gaia/local/specs/ledger.json > "$tmp"
+      mv "$tmp" .gaia/local/specs/ledger.json
+      ;;
+    --seed-abandoned-folder)
+      id="$2"; shift 2
+      tmp="$(mktemp)"
+      jq --arg id "$id" \
+        '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "abandoned", abandoned_at: "2026-01-02T00:00:00Z"}]' \
+        .gaia/local/specs/ledger.json > "$tmp"
+      mv "$tmp" .gaia/local/specs/ledger.json
+      mkdir -p ".gaia/local/specs/${id}"
+      cat > ".gaia/local/specs/${id}/AUDIT.md" <<EOF
+# ${id} Adversarial Audit
+
+Verdict body.
 EOF
       ;;
     --seed-provisional)
