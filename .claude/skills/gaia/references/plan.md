@@ -350,29 +350,19 @@ test -f "$PLAN_DIR/README.md" \
 
 If any required file is missing, surface the failure to the user with the planner's return payload. Do not retry silently, the user decides whether to re-spawn or investigate. Never proceed to step 4.6 with an incomplete plan folder.
 
-### 4.6. Adversarial decomposition audit (recommended)
+### 4.6. Adversarial decomposition audit
 
 A lightweight multi-agent audit of the **decomposition itself**: the one artifact neither the upstream SPEC audit (which ran before the plan existed) nor the downstream pre-merge Code Audit Team audit (which sees the executed diff) can inspect. It verifies that the task graph is a sound factoring of the work, that the frozen interface contracts resolve against the real repo, and that the SPEC's binding criteria are all covered, BEFORE a cold orchestrator burns execution cycles building against a flawed plan.
 
 This is deliberately not a clone of the SPEC audit. The plan is editable and double-netted (sub-agents report `### Deviations from plan` during execution; the Code Audit Team audit gates the merge), so re-running the SPEC audit's claim-grounding, testability, and security lenses here would mostly re-verify what is already verified upstream and downstream. The audit stays narrow: three checks that exist only at plan stage, no refutation pass (these findings are checkable and binary, not severity-debatable like SPEC claims). It dispatches the same parallel `general-purpose` Agent primitive step 4 uses, so it works headless and in auto mode.
 
-**The audit is a choice, presented once.** After step 4.5 confirms the artifacts exist, gauge the plan, then ask via `AskUserQuestion` whether to run the audit. Auditing a non-trivial plan is almost always worth it, so the recommended option is the audit, never "skip".
+**The audit runs automatically on a non-trivial plan; the gauge decides.** After step 4.5 confirms the artifacts exist, gauge the plan (below) and act on the gauge with no prompt: run the audit when the plan is non-trivial, skip it when the plan is trivial. There is no user choice; the gauge is the whole decision.
 
-**Gauge the plan (this sets the recommendation).** Read `README.md` and the `task-*.md` files once. A trivial plan (one or two tasks, a single phase, no cross-task interface contract) → recommend **Skip**. Anything with parallel tasks in a phase, multiple phases, or a shared frozen contract → recommend **Run the audit**.
+**Gauge the plan (this is the decision).** Read `README.md` and the `task-*.md` files once. A trivial plan (one or two tasks, a single phase, no cross-task interface contract) → **skip the audit** and proceed to step 4.7. Anything with parallel tasks in a phase, multiple phases, or a shared frozen contract → **run the audit**. A skipped trivial plan writes no audit-window breadcrumb; its absence is the correct signal to the step-4.7 tally that no decomposition audit ran.
 
-Present (recommended option FIRST, carrying the `(Recommended)` tag):
+**Auto-mode.** Identical to interactive: gauge the plan, run the audit if it is non-trivial, apply its dispositions non-interactively. Interactive and auto now differ only in how 4.6b surfaces findings, not in whether the audit runs.
 
-- question: `"Run the decomposition audit before handing off the plan? It checks the task graph for hidden dependencies, verifies the interface contracts resolve against the repo, and confirms the SPEC's criteria are all covered."`
-- header: `"Audit"`
-- options:
-  - `{ label: "Run the audit (Recommended)", description: "Three parallel auditors verify decomposition soundness, contract grounding, and SPEC coverage against the real repo. A few agents, a couple of minutes." }`
-  - `{ label: "Skip the audit", description: "Hand off the plan as written. Best reserved for trivial single-phase plans." }`
-
-`Skip` is never the recommended option for a non-trivial plan. On **Skip**, proceed to step 4.7. Skip does not run the audit, so no audit-window breadcrumb is written; its absence is the correct signal to the step-4.7 tally that no decomposition audit ran.
-
-**Auto-mode.** No prompt fires. When `/gaia-plan` runs non-interactively (a headless or automation context with no interactive user), gauge the plan, run the audit if it is non-trivial, and apply its dispositions non-interactively.
-
-**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block the handoff: note the skip (`decomposition audit unavailable`) and proceed to step 4.7. The orchestrator's per-phase quality gates and the non-skippable pre-merge Code Audit Team audit remain the safety net. Like Skip, this path writes no audit-window breadcrumb.
+**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block the handoff: note the skip (`decomposition audit unavailable`) and proceed to step 4.7. The orchestrator's per-phase quality gates and the non-skippable pre-merge Code Audit Team audit remain the safety net. This path, like a trivial-plan skip, writes no audit-window breadcrumb.
 
 #### 4.6a. Dispatch the lens auditors (parallel fan-out)
 
