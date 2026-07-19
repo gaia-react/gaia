@@ -16929,6 +16929,7 @@ var HOLISTIC_FINDING_CLASSES = [
   "holistic/hardcoded-string",
   "holistic/non-null-assertion"
 ];
+var OUT_OF_SCOPE_FALLBACK_FINDING_CLASS = "holistic/unclassified";
 var RULE_FINDING_CLASSES = [
   "rule/use-effect-derived-state",
   "rule/use-effect-state-reset",
@@ -16984,20 +16985,28 @@ var FindingClassSchema = external_exports.string().refine(isValidFindingClass, {
 
 // src/harden/compute-tally.ts
 var RECURRENCE_THRESHOLD = 3;
-var isCountableSeverity = (severity) => severity === "error" || severity === "warning";
+var SEVERITY_RANK = {
+  error: 3,
+  suggestion: 1,
+  warning: 2
+};
+var maxSeverity = (a, b) => SEVERITY_RANK[a] >= SEVERITY_RANK[b] ? a : b;
 var collapsePr = (pr) => {
   const severity = /* @__PURE__ */ new Map();
   const areaTags = /* @__PURE__ */ new Map();
-  for (const finding of pr.findings) {
-    if (isCountableSeverity(finding.severity) && isValidFindingClass(finding.finding_class)) {
-      const existing = severity.get(finding.finding_class);
-      if (existing !== "error") {
-        severity.set(finding.finding_class, finding.severity);
-      }
-      const tags = areaTags.get(finding.finding_class) ?? /* @__PURE__ */ new Set();
-      for (const tag of finding.area_tags) tags.add(tag);
-      areaTags.set(finding.finding_class, tags);
-    }
+  const aggregated = pr.findings.filter(
+    (finding) => finding.finding_class === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS || isValidFindingClass(finding.finding_class)
+  );
+  for (const finding of aggregated) {
+    const key = finding.finding_class;
+    const existing = severity.get(key);
+    severity.set(
+      key,
+      existing === void 0 ? finding.severity : maxSeverity(existing, finding.severity)
+    );
+    const tags = areaTags.get(key) ?? /* @__PURE__ */ new Set();
+    for (const tag of finding.area_tags) tags.add(tag);
+    areaTags.set(key, tags);
   }
   return { areaTags, severity };
 };
@@ -17008,13 +17017,16 @@ var mergeAggregate = ({
   severity,
   tags
 }) => {
-  const aggregate = byClass.get(findingClass) ?? {
+  const existing = byClass.get(findingClass);
+  const aggregate = existing ?? {
     areaTags: [],
     prNumbers: [],
-    severityMax: "warning"
+    severityMax: severity
   };
+  if (existing !== void 0) {
+    aggregate.severityMax = maxSeverity(aggregate.severityMax, severity);
+  }
   aggregate.prNumbers.push(prNumber);
-  if (severity === "error") aggregate.severityMax = "error";
   const seenTags = new Set(aggregate.areaTags);
   for (const tag of tags) {
     if (!seenTags.has(tag)) {
@@ -17048,23 +17060,36 @@ var computeTally = ({
 }) => {
   const byClass = aggregateByClass(prs);
   const candidates = [];
+  let unclassified = null;
   for (const [findingClass, aggregate] of byClass) {
     const distinctPrCount = aggregate.prNumbers.length;
-    const qualifies = distinctPrCount >= RECURRENCE_THRESHOLD && !coveredClass(findingClass) && !suppressedClass(findingClass, distinctPrCount);
-    if (qualifies) {
-      candidates.push({
-        area_tags: aggregate.areaTags,
-        distinct_pr_count: distinctPrCount,
-        finding_class: findingClass,
-        is_oracle: isOracleFindingClass(findingClass),
-        pr_numbers: aggregate.prNumbers,
-        severity_max: aggregate.severityMax
-      });
+    if (findingClass === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS) {
+      if (distinctPrCount >= RECURRENCE_THRESHOLD) {
+        unclassified = {
+          area_tags: aggregate.areaTags,
+          distinct_pr_count: distinctPrCount,
+          pr_numbers: aggregate.prNumbers,
+          severity_max: aggregate.severityMax
+        };
+      }
+    } else {
+      const qualifies = distinctPrCount >= RECURRENCE_THRESHOLD && !coveredClass(findingClass) && !suppressedClass(findingClass, distinctPrCount);
+      if (qualifies) {
+        candidates.push({
+          area_tags: aggregate.areaTags,
+          distinct_pr_count: distinctPrCount,
+          finding_class: findingClass,
+          is_oracle: isOracleFindingClass(findingClass),
+          pr_numbers: aggregate.prNumbers,
+          severity_max: aggregate.severityMax
+        });
+      }
     }
   }
   return {
     candidate_count: candidates.length,
     candidates,
+    unclassified,
     window_days: windowDays
   };
 };
@@ -17072,7 +17097,7 @@ var windowClasses = (prs) => {
   const byClass = aggregateByClass(prs);
   const classes = [];
   for (const [findingClass, aggregate] of byClass) {
-    if (aggregate.prNumbers.length >= RECURRENCE_THRESHOLD) {
+    if (findingClass !== OUT_OF_SCOPE_FALLBACK_FINDING_CLASS && aggregate.prNumbers.length >= RECURRENCE_THRESHOLD) {
       classes.push(findingClass);
     }
   }
@@ -17237,8 +17262,10 @@ var HELP_TEXT11 = `Usage: gaia harden-tally
 
   Tallies recurring code-review-audit findings across the rolling 90-day
   merged-PR window and prints the candidate list as JSON. A class is a
-  candidate when it recurs across >= 3 distinct PRs at error/warning severity,
-  no promoted rule covers it, and the decline ledger does not suppress it.
+  candidate when it recurs across >= 3 distinct PRs at any severity, no
+  promoted rule covers it, and the decline ledger does not suppress it. A
+  classless (unclassified) finding recurring the same way surfaces separately
+  as the \`unclassified\` field instead of a candidate.
 
   Network failures are non-fatal: gh errors yield an empty candidate list.
 `;

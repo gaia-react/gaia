@@ -230,19 +230,17 @@ The ledger is local-flow-only. In CI each audit runs in a fresh ephemeral job, s
 
 #### Findings block
 
-Once every dispatched member has written its own marker or sidecar for this run, and only when `resolved_mode=local`, the orchestrator posts one consolidated findings block to the PR:
+The PreToolUse hook `post-findings-block-on-merge.sh` posts one consolidated findings block to the PR on every `gh pr merge` invocation whose resolved audit mode is `local`, deterministically, no hand-run step required. It resolves the incremental audit base the same way the audited member(s) do and calls the existing producer:
 
 ```bash
-if [ "$resolved_mode" = "local" ]; then
-  BASE_REF="$(.github/audit/resolve-audit-base.sh)"
-  BASE_SHA="$(git merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
-  if [ -n "$BASE_SHA" ]; then
-    bash .gaia/scripts/post-findings-block.sh --base "$BASE_SHA" --pr <N>
-  fi
+BASE_REF="$(.github/audit/resolve-audit-base.sh)"
+BASE_SHA="$(git merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
+if [ -n "$BASE_SHA" ]; then
+  bash .gaia/scripts/post-findings-block.sh --base "$BASE_SHA" --pr <N>
 fi
 ```
 
-`post-findings-block.sh` reads every dispatched member's own findings sidecar under the resolved base, merges every member's `findings[]` into one array, and posts-or-updates exactly one PR comment carrying the merged block: it locates an existing comment by its sentinel and edits it, creating one only when none exists. The `resolved_mode=local` guard is load-bearing, not defensive dressing: CI's own workflow prompt already emits its own findings block, and an unconditional local call would overwrite it with one carrying only the locally-dispatched members' findings, losing CI's. The one-producer invariant makes that overwrite unreachable under `local`, the default; it does not make it unreachable under `ci`, which a fork PR still resolves to, so the condition, not the invariant alone, is what keeps the two producers' blocks from colliding on that path.
+`post-findings-block.sh` reads every dispatched member's own findings sidecar under the resolved base, merges every member's `findings[]` into one array, and posts-or-updates exactly one PR comment carrying the merged block: it locates an existing comment by its sentinel and edits it, creating one only when none exists. The hook's `resolved_mode=local` guard is load-bearing, not defensive dressing: CI's own workflow prompt already emits its own findings block, and posting unconditionally would overwrite it with one carrying only the locally-dispatched members' findings, losing CI's. The one-producer invariant makes that overwrite unreachable under `local`, the default; it does not make it unreachable under `ci`, which a fork PR still resolves to, so the condition, not the invariant alone, is what keeps the two producers' blocks from colliding on that path. Running the snippet above by hand stays harmless (`post-findings-block.sh` is idempotent), but the hook makes it unnecessary.
 
 ### 4. Merge
 

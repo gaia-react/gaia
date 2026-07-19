@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # spec-renumber.sh: Renumber a SPEC. Renames the local SPEC folder, updates the
 # inner SPEC.md frontmatter, rewrites the .gaia/local/specs/ledger.json ledger
-# row, and best-effort re-keys the gate1/draft/session/audit caches under
+# row, and best-effort re-keys the gate1/draft/session/lock/audit caches under
 # .gaia/local/cache/. The inner SPEC.md keeps its name; any sibling artifacts in
 # the folder move with it.
 # Does NOT touch external state (branch names, GH issue titles, commit-message
@@ -135,10 +135,11 @@ if [ -f "$ledger_path" ]; then
 fi
 
 # 4. Best-effort re-key of the id-bearing per-spec caches under
-#    .gaia/local/cache/ (draft checkpoint, session-shape cache, audit-findings
-#    directory). A missing cache is a normal no-op. A cache-move failure is
-#    logged to stderr and does not revert the folder/ledger move above; that
-#    move already succeeded and remains the source of truth.
+#    .gaia/local/cache/ (draft checkpoint, session-shape cache, liveness lock,
+#    audit-findings directory). A missing cache is a normal no-op. A
+#    cache-move failure is logged to stderr and does not revert the
+#    folder/ledger move above; that move already succeeded and remains the
+#    source of truth.
 cache_dir="${repo_root%/}/.gaia/local/cache"
 
 old_gate1="${cache_dir}/gate1-${old_id}.json"
@@ -170,6 +171,22 @@ if [ -e "$old_session" ]; then
     fi
   else
     echo "spec-renumber: failed to re-key session cache $old_session" >&2
+  fi
+fi
+
+old_lock="${cache_dir}/spec-session-${old_id}.lock"
+new_lock="${cache_dir}/spec-session-${new_id}.lock"
+if [ -e "$old_lock" ]; then
+  if mv "$old_lock" "$new_lock" 2>/dev/null; then
+    tmp_lock="$(mktemp)"
+    if jq --arg id "$new_id" '.spec_id = $id' "$new_lock" > "$tmp_lock" 2>/dev/null; then
+      mv "$tmp_lock" "$new_lock"
+    else
+      rm -f "$tmp_lock"
+      echo "spec-renumber: failed to rewrite spec_id in $new_lock" >&2
+    fi
+  else
+    echo "spec-renumber: failed to re-key session lock $old_lock" >&2
   fi
 fi
 

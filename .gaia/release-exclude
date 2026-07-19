@@ -38,7 +38,7 @@
 # Maintainer-only Code Audit Team spawn-list optimization; adopters resolve required members via resolve-audit-members.sh and the frontend self-skip is fail-closed on its absence.
 .gaia/scripts/resolve-audit-spawn.sh
 # verify-required-checks.sh declares the required_status_checks the GAIA team's own
-# branch ruleset must enforce (job names like "bats (.github/audit)" that only exist
+# branch ruleset must enforce (job names like "Audit CI Tests" that only exist
 # on maintainer-only, release-excluded workflows); an adopter clone has no such
 # ruleset and none of those jobs, so the script has no adopter surface.
 .gaia/scripts/verify-required-checks.sh
