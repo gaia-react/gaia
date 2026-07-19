@@ -147,6 +147,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/block-worktree-path-mismatch.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-invalid-yaml-write.sh"
           }
         ]
       },

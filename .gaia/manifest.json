@@ -24,6 +24,7 @@
     ".claude/hooks/block-env-read.sh": "owned",
     ".claude/hooks/block-env-write.sh": "owned",
     ".claude/hooks/block-eslint-config-edit.sh": "owned",
+    ".claude/hooks/block-invalid-yaml-write.sh": "owned",
     ".claude/hooks/block-lockfile-edit.sh": "owned",
     ".claude/hooks/block-main-destructive-git.sh": "owned",
     ".claude/hooks/block-manifest-write.sh": "owned",
@@ -611,6 +612,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-19T09:40:38.984Z",
+  "generated": "2026-07-19T10:44:01.524Z",
   "version": "1.6.1"
 }
