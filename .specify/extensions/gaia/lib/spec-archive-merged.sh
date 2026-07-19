@@ -54,7 +54,7 @@
 # is the identity record that survives once the folder is gone.
 #
 # On a successful delete this reaps the SPEC's cache keyset (gate1/draft/
-# session/audit), best-effort.
+# session/lock/audit), best-effort.
 #
 # Best-effort and fail-open by contract, exactly like spec-reconcile.sh: a
 # missing jq / ledger or an unrepresented cost never blocks a caller. One
@@ -194,13 +194,15 @@ while IFS= read -r spec_id; do
     continue
   fi
 
-  # Reap the merged SPEC's cache keyset (gate1/draft/session/audit). Best-effort
-  # and fail-open, matching the rest of this script's contract; never purges
-  # wiki-promote/<id>.json (guarded above).
+  # Reap the merged SPEC's cache keyset (gate1/draft/session/lock/audit).
+  # Best-effort and fail-open, matching the rest of this script's contract;
+  # never purges wiki-promote/<id>.json (guarded above). A merged SPEC's
+  # authoring session is long over, so its lock is stale by definition.
   local_cache="${repo_root}/.gaia/local/cache"
   rm -f "${local_cache}/gate1-${spec_id}.json" \
         "${local_cache}/draft-${spec_id}.md" \
-        "${local_cache}/spec-session-${spec_id}.json" 2>/dev/null
+        "${local_cache}/spec-session-${spec_id}.json" \
+        "${local_cache}/spec-session-${spec_id}.lock" 2>/dev/null
   rm -rf "${local_cache}/audit-${spec_id}" 2>/dev/null
 
   if ! rm -rf "$folder" 2>/dev/null; then

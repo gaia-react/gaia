@@ -186,3 +186,27 @@ status_of() {
   [ "$status" -eq 0 ]
   [ "$(status_of SPEC-014)" = "abandoned" ]
 }
+
+# --- 14. Orphan lock is removed when a ghost row is abandoned ---------------
+
+@test "removes the orphan .lock file when a ghost draft is abandoned" {
+  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-015", allocated_at: $ts, status: "draft"}]')"
+  echo '{"spec_id":"SPEC-015"}' > "$SANDBOX/.gaia/local/cache/spec-session-SPEC-015.lock"
+  run bash "$SCRIPT" "$SANDBOX"
+  [ "$status" -eq 0 ]
+  [ "$(status_of SPEC-015)" = "abandoned" ]
+  [ ! -e "$SANDBOX/.gaia/local/cache/spec-session-SPEC-015.lock" ]
+}
+
+# --- 15. A lone lock never rescues a ghost (negative guard) -----------------
+
+@test "a lone .lock file does not rescue an otherwise-empty ghost draft from abandonment" {
+  # A dead session's lock is precisely the ghost shape; the emptiness guard
+  # never grows a fourth (`.lock`) check, so this row is abandoned exactly
+  # like a lock-free ghost would be.
+  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-016", allocated_at: $ts, status: "draft"}]')"
+  echo '{"spec_id":"SPEC-016"}' > "$SANDBOX/.gaia/local/cache/spec-session-SPEC-016.lock"
+  run bash "$SCRIPT" "$SANDBOX"
+  [ "$status" -eq 0 ]
+  [ "$(status_of SPEC-016)" = "abandoned" ]
+}

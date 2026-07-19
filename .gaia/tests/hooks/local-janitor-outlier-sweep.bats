@@ -396,6 +396,33 @@ past_ts() {
   [ -f "$cache_dir/gh-artifact-pr.json" ]
 }
 
+# --- CG-001: sweep 5's own age arm reaps the spec-session-*.lock glob -------
+
+@test "CG-001: the sweep 5 age arm reaps an aged spec-session-<id>.lock" {
+  make_repo
+  cache_dir="$REPO/.gaia/local/cache"
+  mkdir -p "$cache_dir"
+  echo '{}' > "$cache_dir/spec-session-SPEC-999.lock"
+  touch -t 202001010000 "$cache_dir/spec-session-SPEC-999.lock"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$cache_dir/spec-session-SPEC-999.lock" ]
+}
+
+@test "CG-001b: the sweep 5 age arm keeps a fresh spec-session-<id>.lock" {
+  make_repo
+  cache_dir="$REPO/.gaia/local/cache"
+  mkdir -p "$cache_dir"
+  echo '{}' > "$cache_dir/spec-session-SPEC-999.lock"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$cache_dir/spec-session-SPEC-999.lock" ]
+}
+
 # --- UAT-010: floor-clamp / non-numeric fallback on every new knob ---------
 
 @test "UAT-010: a non-numeric GAIA_OUTLIER_RETENTION_DAYS falls back to the default 7 (not the floor 2)" {

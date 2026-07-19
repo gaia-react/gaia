@@ -304,4 +304,4 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - Recommend exactly one form per candidate, with rationale; check edit-vs-new first; bias to the lowest-context-weight form. Never reflexively author a prose rule.
 - Factor the efficacy lens (Axis 3) into the recommendation and rationale: a recurring finding proves the problem, not the fix. When the recommended form is prose and no cheap evidence shows it would change behavior, surface that as a defer/decline signal for the human, never as an auto-decline.
 - This loop keys only on `finding_class` recurrence from the PR window.
-- `holistic/unclassified` is never a draftable candidate and is never auto-drafted: it carries no approve/decline/defer/redirect action and authors no artifact. It re-surfaces every tally until a class is seeded or its findings age out of the 90-day window.
+- The `unclassified` signal is never a draftable candidate and is never auto-drafted: it carries no approve/decline/defer/redirect action and authors no artifact. It re-surfaces every tally until a class is seeded or its findings age out of the 90-day window.

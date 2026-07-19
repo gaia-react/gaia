@@ -544,3 +544,17 @@ _clear_merged_at() {
   refute_contains "Deleted"
   assert_contains "consolidation never ran; kept SPEC-001"
 }
+
+# --- 27: the liveness lock is reaped with the rest of the merged keyset -----
+
+@test "27: a .lock file is reaped alongside the deleted merged folder" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  echo '{"spec_id":"SPEC-001"}' > "$REPO/.gaia/local/cache/spec-session-SPEC-001.lock"
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 merged SPEC folder(s): SPEC-001"
+
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
+  [ ! -e "$REPO/.gaia/local/cache/spec-session-SPEC-001.lock" ]
+}
