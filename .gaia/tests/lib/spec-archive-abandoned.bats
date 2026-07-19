@@ -409,3 +409,21 @@ _clear_abandoned_at() {
   # The wiki-promote/ drop zone itself survives; only its stale entry is purged.
   [ -d "$REPO/.gaia/local/cache/wiki-promote" ]
 }
+
+# --- 21: a wiki-promote defer flag survives when a gate keeps the folder -----
+
+@test "21: a wiki-promote defer flag survives when the age gate keeps the folder" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
+  _set_abandoned_at "$REPO" SPEC-001 "$(_days_ago 2)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+  mkdir -p "$REPO/.gaia/local/cache/wiki-promote"
+  printf '{"branch":"spec-1-x","deferred_at":"2026-01-02T00:00:00Z"}\n' \
+    > "$REPO/.gaia/local/cache/wiki-promote/SPEC-001.json"
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+
+  [ -d "$REPO/$SPECS/SPEC-001" ]
+  [ -f "$REPO/.gaia/local/cache/wiki-promote/SPEC-001.json" ]
+}
