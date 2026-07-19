@@ -79,6 +79,9 @@ while IFS= read -r id; do
 
   patch="$(jq -nc --arg ts "$now_ts" '{status: "abandoned", abandoned_at: $ts}')"
   if bash "${_lib_dir}/ledger-update.sh" "$repo_root" "$id" "$patch" >/dev/null 2>&1; then
+    # Third-party cleanup of a dormant-or-ghost lock this sweep does not own;
+    # it only ever runs on a genuine ghost, so it never acts on a live lock.
+    rm -f "${cache_dir}/spec-session-${id}.lock" 2>/dev/null || true
     abandoned_list="${abandoned_list:+$abandoned_list, }${id}"
   fi
 done <<EOF

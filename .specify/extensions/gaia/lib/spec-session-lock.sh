@@ -7,10 +7,9 @@
 # cache out from under the live session). Advisory and fail-open: no lock path
 # ever blocks authoring.
 #
-# This phase ships ONLY `resolve-host` + `match-host` + the shared preamble.
-# `acquire` / `status` / `release` land in a later phase; their full frozen
-# contract is documented below so that phase builds against it without
-# re-deriving it.
+# This file implements the full subcommand set: `resolve-host` + `match-host`
+# (the ancestor-walk primitive) plus `acquire` / `status` / `release` (the
+# liveness-lock helper built on top of it).
 #
 # --- The one load-bearing fact (AUDIT RT-001, maintainer guidance item 1) ---
 #
@@ -79,7 +78,7 @@
 # with no snapshot wrapper (Linux CI, SSH without the wrapper), the exclusion
 # simply never fires.
 #
-# --- Frozen subcommand contract (later phase builds acquire/status/release) ---
+# --- Subcommand contract ---
 #
 # Executable script, sibling of spec-allocator.sh / spec-abandon-empty.sh.
 # Best-effort / fail-open by contract: except for acquire's one meaningful
@@ -122,17 +121,17 @@
 #                     machine reads dormant (a copied checkout never reads live).
 #
 # Subcommands (all take <repo_root> <spec_id> unless noted):
-#   resolve-host [start_pid]   [THIS PHASE]
+#   resolve-host [start_pid]
 #       Walk ancestry from start_pid (default $PPID) up to the Claude-CLI host.
 #       On match: print host_pid then host_lstart (two lines; the lstart from a
 #       DEDICATED `ps -o lstart= -p <host_pid>` call -- DP-003), exit 0. No host
 #       found (reached pid <= 1) or ps error: print nothing, exit 1. The walk is
 #       bounded (<= 30 hops) so a cycle or pathological tree can never spin.
-#   match-host <command_line>  [THIS PHASE, test/diagnostic seam]
+#   match-host <command_line>  (test/diagnostic seam)
 #       Exit 0 if <command_line> matches the effective host pattern, else exit 1.
 #       Exercises the exact matcher resolve-host climbs with, against a literal
 #       string, so the pinned ERE can be proven in isolation.
-#   acquire [--override]       [LATER PHASE]
+#   acquire [--override]
 #       Resolve host; classify any existing lock by the `status` logic below
 #       (liveness = hostname + kill -0 + host_lstart, NEVER the nonce). No
 #       existing lock -> atomically create-exclusive, exit 0. Live and ours ->
@@ -144,11 +143,41 @@
 #       reclaim: force-remove + create, exit 0). Dormant / stale / error ->
 #       reclaim (remove + create), exit 0. Host unresolvable -> warn to stderr,
 #       write NO lock, exit 0 (accepted fail-open-to-"always dormant" degrade).
-#   status                     [LATER PHASE]
+#   status
 #       Print exactly one verdict word -- live | dormant | error -- exit 0
 #       always, empty stderr on normal paths. Does NOT mutate the lock.
-#   release                    [LATER PHASE]
+#   release
 #       rm -f the lock path. Best-effort, exit 0.
+#
+# --- Implementation notes (acquire / status / release) ---
+#
+# Shared classify helper: `_classify_lock` implements the seven-step verdict
+# logic below ONCE; both the `status` subcommand and `acquire`'s pre-write
+# existing-lock check call it, so the two paths can never drift apart.
+#
+# Atomic create-exclusive: `( set -o noclobber; printf '%s\n' "$body" >
+# "$lockfile" ) 2>/dev/null`. Bash opens a noclobber redirection target with
+# O_EXCL, so this is a real kernel-level single-winner race (RT-004), not a
+# check-then-write TOCTOU. Chosen over an `ln`-of-a-tempfile dance because the
+# target IS the lock file itself here -- no separate link-target file is
+# needed, and the subshell parens scope `set -o noclobber` so it never leaks
+# into the rest of the script.
+#
+# `kill -0` ESRCH vs EPERM: on this same-machine same-user design, a `kill -0`
+# failure normally means the pid is dead (ESRCH -- "No such process"). If the
+# pid is alive but owned by another user, `kill -0` ALSO fails, but with a
+# distinct message ("Operation not permitted" / EPERM) -- that process is
+# alive, not dead. `_classify_lock` greps the captured stderr for "permitted"
+# to tell the two apart; a same-user host_pid never hits this branch in
+# practice, but the check keeps a foreign-owned live process from reading
+# dormant.
+#
+# No extra env seam: `status` bats cases stamp a lock file directly with
+# `jq -n` and drive liveness with a plain backgrounded `sleep` (real pid, real
+# `ps -o lstart=`) -- no walk involved, so no injection seam is needed there.
+# `acquire` cases reuse Phase 1's `_spawn_fake_host` fixture (GAIA_SPEC_LOCK_
+# HOST_PATTERN + GAIA_SPEC_LOCK_START_PID) so the walk resolves to a
+# controllable process without a real `claude` ancestor.
 #
 # `status` verdict logic (fail-open):
 #   1. lock file absent                                      -> dormant
@@ -163,7 +192,7 @@
 #   GAIA_SPEC_LOCK_START_PID     -- override the walk's starting pid.
 #   GAIA_SPEC_LOCK_HOST_PATTERN  -- override the host-match ERE (default = the
 #                                   pinned Claude-CLI pattern above).
-#   CLAUDE_CODE_SESSION_ID       -- read for host_nonce (later phase).
+#   CLAUDE_CODE_SESSION_ID       -- read for host_nonce.
 #
 # --- Manual-verification checklist (maintainer runs by hand) ---
 #
@@ -181,13 +210,18 @@
 # Usage:
 #   spec-session-lock.sh resolve-host [start_pid]
 #   spec-session-lock.sh match-host <command_line>
+#   spec-session-lock.sh acquire [--override] <repo_root> <spec_id>
+#   spec-session-lock.sh status <repo_root> <spec_id>
+#   spec-session-lock.sh release <repo_root> <spec_id>
 #
 # Exit: resolve-host/match-host return non-zero ONLY to signal "no match / no
-# host found", never to crash a caller.
+# host found". status/release always exit 0. acquire exits 0 on every path
+# except a live-foreign lock without --override, which exits 3. No path here
+# crashes a caller.
 set -uo pipefail
 
-# Resolve own dir (consumed by acquire/status/release in a later phase for
-# sibling-script calls; the sibling-lib preamble convention keeps it here).
+# Resolve own dir (the sibling-lib preamble convention keeps it here; reserved
+# for a future sibling-script call, unused by acquire/status/release below).
 # shellcheck disable=SC2034
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -250,6 +284,265 @@ _resolve_host() {
   return 1
 }
 
+# _lock_path <repo_root> <spec_id>: the frozen lock-file location. The `.lock`
+# extension is load-bearing -- see the header note on never false-matching the
+# existing spec-session-<spec_id>.json session-shape cache.
+_lock_path() {
+  printf '%s/.gaia/local/cache/spec-session-%s.lock' "${1%/}" "$2"
+}
+
+# _generate_nonce: a per-call fallback host_nonce when no stable
+# CLAUDE_CODE_SESSION_ID is set. Never compared against in `status` (DP-002);
+# `acquire`'s own-lock ownership check falls back to host_pid + host_lstart in
+# this case (DP-005), so the token's exact form only needs to be non-empty.
+_generate_nonce() {
+  printf '%s-%s-%s' "$$" "$RANDOM" "$(date -u +%s)"
+}
+
+# _compose_lock_body <spec_id> <hostname> <host_pid> <host_lstart> <host_nonce>:
+# echoes the single JSON lock object, built entirely with jq -n so no field
+# is ever string-interpolated into the JSON literal (injection-safe).
+_compose_lock_body() {
+  local spec_id="$1" this_hostname="$2" host_pid="$3" host_lstart="$4" host_nonce="$5"
+  local acquired_at
+  acquired_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  jq -n \
+    --arg spec_id "$spec_id" \
+    --arg hostname "$this_hostname" \
+    --argjson host_pid "$host_pid" \
+    --arg host_lstart "$host_lstart" \
+    --arg host_nonce "$host_nonce" \
+    --arg acquired_at "$acquired_at" \
+    '{spec_id: $spec_id, hostname: $hostname, host_pid: $host_pid, host_lstart: $host_lstart, host_nonce: $host_nonce, acquired_at: $acquired_at}'
+}
+
+# _classify_lock <lockfile>: the shared status-classify helper. This IS the
+# `status` verdict logic (steps 1-7 in the header); sets LOCK_VERDICT to
+# exactly one word (live|dormant|error). On a `live` verdict also populates
+# LOCK_HOST_PID / LOCK_HOST_LSTART / LOCK_HOST_NONCE so `acquire`'s ownership
+# check can compare them without re-reading the file. Reports through globals,
+# not stdout+`echo`: callers MUST invoke this directly (never via `$(...)`),
+# since a command-substitution subshell would silently drop every assignment
+# made inside it.
+_classify_lock() {
+  local lockfile="$1"
+  LOCK_VERDICT=""
+  LOCK_HOST_PID=""
+  LOCK_HOST_LSTART=""
+  LOCK_HOST_NONCE=""
+
+  # 1. lock file absent -> dormant.
+  if [ ! -f "$lockfile" ]; then
+    LOCK_VERDICT=dormant
+    return 0
+  fi
+
+  # jq missing with a lock file present is an unreadable-lock situation, same
+  # bucket as invalid JSON below.
+  if ! command -v jq >/dev/null 2>&1; then
+    LOCK_VERDICT=error
+    return 0
+  fi
+
+  local raw
+  raw="$(cat "$lockfile" 2>/dev/null)"
+  if [ -z "$raw" ]; then
+    LOCK_VERDICT=error
+    return 0
+  fi
+
+  # 2. present but not valid JSON, or missing a required field -> error. One
+  # jq pass validates and extracts in the same step.
+  local fields
+  fields="$(printf '%s' "$raw" | jq -r '
+    if (.hostname // "") == "" or (.host_pid // "") == "" or (.host_lstart // "") == ""
+    then empty
+    else [.hostname, (.host_pid | tostring), .host_lstart, (.host_nonce // "")] | @tsv
+    end
+  ' 2>/dev/null)"
+  if [ -z "$fields" ]; then
+    LOCK_VERDICT=error
+    return 0
+  fi
+
+  local lock_hostname lock_pid lock_lstart lock_nonce
+  IFS=$'\t' read -r lock_hostname lock_pid lock_lstart lock_nonce <<<"$fields"
+
+  # 3. hostname mismatch -> dormant (a copied checkout never reads live here).
+  if [ "$lock_hostname" != "$(uname -n)" ]; then
+    LOCK_VERDICT=dormant
+    return 0
+  fi
+
+  # 4. host_pid not alive -> dormant. `kill -0` fails identically for a dead
+  # pid (ESRCH) and a live pid owned by another user (EPERM); the same-machine
+  # same-user design treats ESRCH as dead and EPERM as alive, distinguished
+  # here by grepping the captured stderr text (see the header's implementation
+  # note).
+  local kill_err kill_status
+  kill_err="$(kill -0 "$lock_pid" 2>&1)"
+  kill_status=$?
+  if [ "$kill_status" -ne 0 ] && ! printf '%s' "$kill_err" | grep -qi 'permitted'; then
+    LOCK_VERDICT=dormant
+    return 0
+  fi
+
+  # 5. host_pid alive but host_lstart mismatch -> dormant (pid reuse; RT-008).
+  # Compared against a standalone `ps -o lstart= -p` call, byte-identical to
+  # the one resolve-host used to produce the recorded value (DP-003). DP-002:
+  # host_nonce is NEVER consulted here.
+  local live_lstart
+  live_lstart="$(ps -o lstart= -p "$lock_pid" 2>/dev/null)"
+  if [ -z "$live_lstart" ]; then
+    # 7. kill -0 said alive/permitted but ps could not read it: an unexpected
+    # probe error, not a normal absent-process case.
+    LOCK_VERDICT=error
+    return 0
+  fi
+  if [ "$live_lstart" != "$lock_lstart" ]; then
+    LOCK_VERDICT=dormant
+    return 0
+  fi
+
+  # 6. alive + host_lstart matches -> live.
+  LOCK_HOST_PID="$lock_pid"
+  LOCK_HOST_LSTART="$lock_lstart"
+  LOCK_HOST_NONCE="$lock_nonce"
+  LOCK_VERDICT=live
+  return 0
+}
+
+# _acquire [--override] <repo_root> <spec_id>: see the header's frozen acquire
+# contract. Returns 0 on every path except a live-foreign lock without
+# --override (3).
+_acquire() {
+  local override=0
+  if [ "${1:-}" = "--override" ]; then
+    override=1
+    shift
+  fi
+  if [ "$#" -lt 2 ]; then
+    echo "usage: spec-session-lock.sh acquire [--override] <repo_root> <spec_id>" >&2
+    return 0
+  fi
+  local repo_root="$1" spec_id="$2"
+  local lockfile
+  lockfile="$(_lock_path "$repo_root" "$spec_id")"
+
+  command -v jq >/dev/null 2>&1 || {
+    echo "spec-session-lock: jq not found; skipping acquire (fail-open)" >&2
+    return 0
+  }
+
+  # Resolve host FIRST: no host means no lock is ever written, by contract.
+  local resolved host_pid host_lstart
+  if ! resolved="$(_resolve_host)"; then
+    echo "spec-session-lock: no session host resolved; skipping acquire (fail-open)" >&2
+    return 0
+  fi
+  host_pid="$(printf '%s\n' "$resolved" | sed -n '1p')"
+  host_lstart="$(printf '%s\n' "$resolved" | sed -n '2p')"
+
+  mkdir -p "$(dirname "$lockfile")" 2>/dev/null || true
+
+  local this_hostname nonce have_stable_nonce body
+  this_hostname="$(uname -n)"
+  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+    nonce="$CLAUDE_CODE_SESSION_ID"
+    have_stable_nonce=1
+  else
+    nonce="$(_generate_nonce)"
+    have_stable_nonce=0
+  fi
+  body="$(_compose_lock_body "$spec_id" "$this_hostname" "$host_pid" "$host_lstart" "$nonce")"
+
+  if [ "$override" -eq 1 ]; then
+    # COV-001 / DP-001: the ONLY path that reclaims a LIVE foreign lock,
+    # firing only from the human-consented "Override: resume ... anyway"
+    # branch (Phase 3).
+    rm -f "$lockfile" 2>/dev/null || true
+    (
+      set -o noclobber
+      printf '%s\n' "$body" > "$lockfile"
+    ) 2>/dev/null
+    return 0
+  fi
+
+  # Atomic create-exclusive: bash opens a noclobber redirection target with
+  # O_EXCL, so this is a real single-winner race (RT-004), not a
+  # check-then-write TOCTOU. See the header's implementation note for why this
+  # idiom was chosen over an `ln`-of-a-tempfile dance.
+  if (
+    set -o noclobber
+    printf '%s\n' "$body" > "$lockfile"
+  ) 2>/dev/null; then
+    return 0
+  fi
+
+  # Create failed: a lock already exists. Classify it with the SAME logic
+  # `status` uses (DP-002: never the nonce for liveness). Called directly
+  # (not via `$(...)`) so LOCK_HOST_PID/LOCK_HOST_LSTART/LOCK_HOST_NONCE reach
+  # this shell rather than dying in a substitution subshell.
+  _classify_lock "$lockfile"
+
+  case "$LOCK_VERDICT" in
+    live)
+      # Ownership: same host_pid AND host_nonce; when no stable
+      # CLAUDE_CODE_SESSION_ID exists, fall back to host_pid + host_lstart so
+      # a per-call generated nonce never mis-reads our own lock as foreign
+      # (DP-005).
+      if [ "$LOCK_HOST_PID" = "$host_pid" ]; then
+        if [ "$have_stable_nonce" -eq 1 ] && [ "$LOCK_HOST_NONCE" = "$nonce" ]; then
+          return 0
+        fi
+        if [ "$have_stable_nonce" -eq 0 ] && [ "$LOCK_HOST_LSTART" = "$host_lstart" ]; then
+          return 0
+        fi
+      fi
+      echo "spec-session-lock: live foreign lock exists for $spec_id" >&2
+      return 3
+      ;;
+    dormant | error)
+      # Reclaim: rm + re-create exclusively. COV-005 -- a crash never blocks a
+      # draft.
+      rm -f "$lockfile" 2>/dev/null || true
+      (
+        set -o noclobber
+        printf '%s\n' "$body" > "$lockfile"
+      ) 2>/dev/null
+      return 0
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+# _status <repo_root> <spec_id>: print exactly one verdict word, exit 0
+# always. Never mutates the lock file.
+_status() {
+  if [ "$#" -lt 2 ]; then
+    echo "usage: spec-session-lock.sh status <repo_root> <spec_id>" >&2
+    echo error
+    return 0
+  fi
+  _classify_lock "$(_lock_path "$1" "$2")"
+  echo "$LOCK_VERDICT"
+  return 0
+}
+
+# _release <repo_root> <spec_id>: rm -f the lock path. Best-effort, exit 0.
+# Verdict-blind by design -- whether a caller should reach it is the call
+# site's responsibility, not this helper's.
+_release() {
+  if [ "$#" -lt 2 ]; then
+    echo "usage: spec-session-lock.sh release <repo_root> <spec_id>" >&2
+    return 0
+  fi
+  rm -f "$(_lock_path "$1" "$2")" 2>/dev/null || true
+  return 0
+}
+
 case "${1:-}" in
   resolve-host)
     shift
@@ -260,8 +553,23 @@ case "${1:-}" in
     shift
     if _match_command "${1:-}"; then exit 0; else exit 1; fi
     ;;
+  acquire)
+    shift
+    _acquire "$@"
+    exit $?
+    ;;
+  status)
+    shift
+    _status "$@"
+    exit $?
+    ;;
+  release)
+    shift
+    _release "$@"
+    exit $?
+    ;;
   *)
-    printf 'usage: spec-session-lock.sh <resolve-host [start_pid]|match-host <command_line>>\n' >&2
+    printf 'usage: spec-session-lock.sh <resolve-host [start_pid]|match-host <command_line>|acquire [--override] <repo_root> <spec_id>|status <repo_root> <spec_id>|release <repo_root> <spec_id>>\n' >&2
     exit 1
     ;;
 esac
