@@ -717,6 +717,99 @@ run_comment_step() {
   grep -qF "success_stamped=false" "$STEP_OUTPUT"
 }
 
+# -----------------------------------------------------------------------------
+# chore-deps skip path: /update-deps pre-verifies the frontend member locally
+# before pushing, so this step's free-skip rationale differs from out-of-scope's
+# (an owned diff with implicit clearance, not an unowned one), but it is
+# member-aware in exactly the same way: a co-dispatched specialized member CI
+# cannot run still blocks the free success.
+# -----------------------------------------------------------------------------
+
+@test "chore-deps skip: mixed diff never posts success while a co-dispatched member is pending" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
+  commit_mixed_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  grep -qF "state=pending" "$POST_LOG"
+  grep -qF "code-audit-maintainer-node" "$POST_LOG"
+
+  grep -qF "state=success" "$POST_LOG" && return 1
+  return 0
+}
+
+@test "chore-deps skip: frontend-only diff posts success (pre-verified clearance)" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  tree="$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")"
+  digest="$(sandbox_frontend_digest)"
+  grep -qF "statuses/${sha}" "$POST_LOG"
+  grep -qF "state=success" "$POST_LOG"
+  grep -qF "description=1.2.3 ${digest} ${tree}" "$POST_LOG"
+  grep -qF "success_stamped=true" "$STEP_OUTPUT"
+}
+
+@test "chore-deps skip: publishes members_pending so the PR comment can tell the truth" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
+  commit_mixed_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  grep -qF "members_pending=code-audit-maintainer-node" "$STEP_OUTPUT"
+}
+
+@test "chore-deps skip: an empty .gaia/VERSION posts no status and publishes success_stamped=false" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  : > "$SANDBOX/.gaia/VERSION"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
+@test "chore-deps skip: a missing .gaia/VERSION posts no status and publishes success_stamped=false" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  rm -f "$SANDBOX/.gaia/VERSION"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
+@test "chore-deps skip: an unrecomputable frontend digest posts no status and publishes success_stamped=false" {
+  # Fail-closed the same way the sibling stamp steps do: never post a status,
+  # pending or success, on a digest this step could not recompute for itself.
+  body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  rm -f "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
 @test "comment: no status stamped means the comment never claims the merge gate is satisfied" {
   body="$(extract_step_body 'Status - skipped (no source changes)')"
 
@@ -888,6 +981,37 @@ run_comment_step() {
   grep -qF "not clobbering" <<<"$output"
 }
 
+@test "non-clobber: chore-deps skip does NOT overwrite a live success for the current digest" {
+  # Mixed diff: a maintainer member is co-dispatched and still pending from CI's
+  # point of view, but the local producer has already cleared every member.
+  commit_mixed_diff
+  local sha digest body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  digest="$(sandbox_frontend_digest)"
+  canned_success_for_digest "$digest"
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (chore-deps skip)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  grep -qF "not clobbering" <<<"$output"
+  grep -qF "success_live=true" "$STEP_OUTPUT"
+}
+
+@test "non-clobber: chore-deps skip still publishes success_stamped=false when it stands down" {
+  commit_mixed_diff
+  local sha digest body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  digest="$(sandbox_frontend_digest)"
+  canned_success_for_digest "$digest"
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (chore-deps skip)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
 @test "non-clobber: the guard never suppresses a legitimate SUCCESS post" {
   # The guard lives only on the members-pending branch. An app-only diff has
   # nothing pending, so the step must still post success even with a live status.
@@ -954,6 +1078,20 @@ run_comment_step() {
   status_read_fails
 
   body="$(extract_step_body "Write GAIA-Audit commit status (clean, no push)")"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  grep -qF "could not be read" <<<"$output"
+}
+
+@test "non-clobber: an unreadable status stands down on the chore-deps skip step too" {
+  commit_mixed_diff
+  local sha body
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_read_fails
+
+  body="$(extract_step_body "Write GAIA-Audit commit status (chore-deps skip)")"
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
 
@@ -1209,6 +1347,21 @@ run_comment_step() {
   remove_guard_script
 
   body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ] && grep -qF "state=pending" "$POST_LOG" && return 1
+  return 0
+}
+
+@test "missing guard: the chore-deps skip stands down rather than posting pending" {
+  local sha body
+  commit_mixed_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  canned_success_for_digest "$(sandbox_frontend_digest)"
+  remove_guard_script
+
+  body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
 
