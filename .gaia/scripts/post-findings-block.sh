@@ -170,7 +170,7 @@ for f in "${audit_dir}"/"${BASE}".*.findings.json; do
 done
 
 if [ "${#sidecars[@]}" -gt 0 ]; then
-  sorted_list="$(printf '%s\n' "${sidecars[@]}" | LC_ALL=C sort)"
+  sorted_list="$(printf '%s\n' ${sidecars[@]+"${sidecars[@]}"} | LC_ALL=C sort)"
   sidecars=()
   while IFS= read -r line; do
     [ -n "$line" ] && sidecars+=("$line")
@@ -188,7 +188,7 @@ fi
 # -----------------------------------------------------------------------------
 
 valid_files=()
-for f in "${sidecars[@]}"; do
+for f in ${sidecars[@]+"${sidecars[@]}"}; do
   if ! jq -e . "$f" >/dev/null 2>&1; then
     emit_error "malformed sidecar (invalid JSON), skipping: $f"
     continue
@@ -238,7 +238,7 @@ fi
 #    so it never renders (matches parse-findings-block.ts:5-20).
 # -----------------------------------------------------------------------------
 
-merged_findings="$(jq -s '[.[] | .findings[]?]' "${valid_files[@]}" 2>/dev/null || true)"
+merged_findings="$(jq -s '[.[] | .findings[]?]' ${valid_files[@]+"${valid_files[@]}"} 2>/dev/null || true)"
 if [ -z "$merged_findings" ]; then
   merged_findings="[]"
 fi
