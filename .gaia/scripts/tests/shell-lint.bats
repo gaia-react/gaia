@@ -19,7 +19,10 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   GATE="$REPO_ROOT/.gaia/tests/shell-lint.sh"
   # A clean, pinned-version shellcheck stub lets the gate clear both shellcheck
-  # passes and reach the array-guard pass without a real shellcheck binary.
+  # passes and reach the array-guard pass without a real shellcheck binary. Its
+  # `version:` tracks SHELLCHECK_PIN in shell-lint.sh; a stale stub after a pin
+  # bump only makes the gate emit a non-fatal version-drift WARN (stderr, no
+  # exit-status change), so this suite still passes -- keep them in sync anyway.
   STUB_DIR="$(mktemp -d -t shell-lint-stub-XXXXXX)"
   cat > "$STUB_DIR/shellcheck" <<'STUB'
 #!/usr/bin/env bash
