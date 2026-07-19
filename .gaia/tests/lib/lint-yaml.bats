@@ -15,8 +15,7 @@
 # so a broken assertion fails correctly even under macOS's bash 3.2.
 
 setup() {
-  EXT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  LINT="$EXT_DIR/lib/lint.sh"
+  LINT=".specify/extensions/gaia/lib/lint.sh"
 }
 
 required_keys="spec_id type status immutable wiki_promote_default chain_trigger intent success_criteria uats scope_boundaries clarifications research_summary created updated"

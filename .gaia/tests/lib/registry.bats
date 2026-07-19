@@ -13,7 +13,7 @@
 # so a broken assertion fails correctly even under macOS's bash 3.2.
 
 setup() {
-  EXT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  EXT_DIR=".specify/extensions/gaia"
   MANIFEST="$EXT_DIR/extension.yml"
 }
 

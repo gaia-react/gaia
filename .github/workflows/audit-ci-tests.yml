@@ -87,6 +87,13 @@ jobs:
               # filters above already use (.gaia/tests/hooks/** + .claude/hooks/**;
               # .gaia/tests/forensics/** + .github/forensics/**).
               - '.specify/extensions/gaia/lib/**'
+              # registry.bats (.gaia/tests/lib/) asserts every commands/*.md
+              # file is registered in extension.yml's provides.commands and
+              # every registered file: resolves on disk; trigger on both
+              # guarded surfaces so an unregistered command file (the #651
+              # drift the suite exists to catch) re-runs the suite.
+              - '.specify/extensions/gaia/commands/**'
+              - '.specify/extensions/gaia/extension.yml'
               - '.claude/skills/gaia/references/forensics*'
               - '.github/forensics/**'
               # The statusline suite (.gaia/tests/statusline/) exercises the
