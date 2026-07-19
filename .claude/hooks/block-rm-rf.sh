@@ -104,7 +104,7 @@
 # deny rather than a bypass, but the gate's justification is an equivalence proof
 # and a deletion falsifies it. Do not switch this to a deletion without re-deriving
 # that proof, or dropping the gate with it. The proof is asserted directly, on this
-# function, by the position-preserving cases in .gaia/tests/hooks/block-rm-rf.bats:
+# function, by the position-preserving test cases covering it:
 # a deletion fails them even though it changes no end-to-end verdict.
 #
 # This only ever WIDENS what gets inspected, so it can add denials and never

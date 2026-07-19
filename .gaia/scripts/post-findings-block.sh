@@ -5,15 +5,14 @@
 # CI's own workflow prompt already emits (code-review-audit.yml:359-372).
 #
 # Purpose
-#   The finding-recurrence tally (.gaia/cli/src/harden/tally.ts) reads PR
-#   comments for a parseable findings block and counts distinct PRs per
+#   The finding-recurrence tally reads PR comments for a parseable findings
+#   block and counts distinct PRs per
 #   finding_class. Only CI ever emitted that block, so a PR audited entirely
 #   by the local producer contributed nothing. Each dispatched member writes
 #   a deterministic sidecar (see the "Findings sidecar" section of its own
 #   agent definition); this script merges every sidecar for one run into a
-#   single block, matching the frozen comment-block contract
-#   (.gaia/cli/src/harden/parse-findings-block.ts:5-20), and posts or updates
-#   exactly one PR comment carrying it.
+#   single block, matching the frozen comment-block contract, and posts or
+#   updates exactly one PR comment carrying it.
 #
 # Usage
 #   post-findings-block.sh --base <sha> [--pr <N>]

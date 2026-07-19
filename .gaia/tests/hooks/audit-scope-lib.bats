@@ -408,6 +408,7 @@ assert_every_machinery_path_owned() {
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
     case "$entry" in
+      "#"*) continue ;;
       *"/**")
         prefix="${entry%\*\*}"
         rep="${prefix}__representative__.sh"

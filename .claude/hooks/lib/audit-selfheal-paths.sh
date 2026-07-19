@@ -25,9 +25,13 @@
 # TWO consumers read this ERE. Neither writes a second copy of it, and a
 # reader who finds one must not assume it is the only one:
 #   - the CI producer's push gate, the "Commit and push self-heal" step of
-#     .github/workflows/code-review-audit.yml (and its two template mirrors,
+#     .github/workflows/code-review-audit.yml (and its rendered template
+#     mirror, .gaia/cli/templates/workflows/code-review-audit.yml.tmpl)
+# gaia:maintainer-only:start
+#     -- the maintainer source repo also carries the build source this
+#     template is generated from,
 #     .gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl
-#     and .gaia/cli/templates/workflows/code-review-audit.yml.tmpl)
+# gaia:maintainer-only:end
 #   - the local producer's PreToolUse hook,
 #     .claude/hooks/block-selfheal-paths.sh
 #

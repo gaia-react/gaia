@@ -41,7 +41,9 @@ bats5() {
 
 Source it (or paste it into the shell), then call `bats5` wherever the rest of this page says `bats`.
 
+<!-- gaia:maintainer-only:start -->
 A deterministic lint over `.bats` files and shipped `*.sh` for `date -v` / `date -d` usage would catch the BSD/GNU class statically; that belongs in the shell-lint gate (`.gaia/tests/shell-lint.sh`), outside this rule's scope.
+<!-- gaia:maintainer-only:end -->
 
 ## Write assertions that fail correctly on bash 3.2
 
