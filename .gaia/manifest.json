@@ -101,6 +101,7 @@
     ".claude/skills/gaia-react-perf/SKILL.md": "owned",
     ".claude/skills/gaia-wiki/SKILL.md": "owned",
     ".claude/skills/gaia/references/audit.md": "owned",
+    ".claude/skills/gaia/references/cost-record.md": "owned",
     ".claude/skills/gaia/references/debt.md": "owned",
     ".claude/skills/gaia/references/fitness.md": "owned",
     ".claude/skills/gaia/references/forensics.md": "owned",
@@ -610,6 +611,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-18T21:49:01.977Z",
+  "generated": "2026-07-19T09:40:38.984Z",
   "version": "1.6.1"
 }
