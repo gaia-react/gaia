@@ -74,7 +74,16 @@ case "$tool_name" in
     cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
     [[ -n "$cmd" ]] || exit 0
 
-    read -r -a toks <<<"$cmd"
+    # Tokenize every line of $cmd, not just the first: a write vector on
+    # line 2+ of a multi-line command (heredoc body, &&-joined block, plain
+    # newline-separated statements) must still be inspected. A bare newline
+    # ends a statement the same way ; does, so each line's tokens are
+    # followed by a synthetic ; to reset segment state at the line boundary.
+    toks=()
+    while IFS= read -r line || [ -n "$line" ]; do
+      read -r -a linetoks <<<"$line"
+      toks+=(${linetoks[@]+"${linetoks[@]}"} ';')
+    done <<<"$cmd"
     n=${#toks[@]}
 
     # seg_start: 1 at the first token of a segment (command start, or right
@@ -113,6 +122,14 @@ case "$tool_name" in
           '>' | '>>')
             next="${toks[$((i + 1))]:-}"
             is_guarded_path "$next" && deny "$DENY_MSG"
+            ;;
+          '>'*)
+            # No space after > or >>: operator and target land in one token
+            # (>.gaia/manifest.json, >>.gaia/manifest.json). Strip either
+            # prefix and inspect what's left as the target.
+            target="${tok#>>}"
+            target="${target#>}"
+            is_guarded_path "$target" && deny "$DENY_MSG"
             ;;
           tee | sponge)
             j=$((i + 1))
