@@ -440,7 +440,7 @@ describe('harden-tally run', () => {
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
   });
 
-  test('does not surface a suggestion-only class', () => {
+  test('surfaces a suggestion-only recurring class as a candidate (severity-independent)', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue(
       stubGh(
         [3, 2, 1].map((n) =>
@@ -462,7 +462,67 @@ describe('harden-tally run', () => {
       runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
     });
 
-    expect(parseStdout(stdout.out).candidate_count).toBe(0);
+    const printed = parseStdout(stdout.out);
+    expect(printed.candidate_count).toBe(1);
+    const candidates = printed.candidates as Record<string, unknown>[];
+    expect(candidates[0]?.severity_max).toBe('suggestion');
+  });
+
+  test('emits a populated unclassified field for a classless recurring finding, excluded from candidates', () => {
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(
+      stubGh(
+        [3, 2, 1].map((n) =>
+          ghPr(n, [
+            findingsComment(n, 'ci', [
+              {
+                area_tags: ['app/routes'],
+                finding_class: 'holistic/unclassified',
+                severity: 'warning',
+              },
+            ]),
+          ])
+        )
+      )
+    );
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    const printed = parseStdout(stdout.out);
+    expect(printed.candidate_count).toBe(0);
+    const unclassified = printed.unclassified as Record<string, unknown>;
+    expect(unclassified).not.toBeNull();
+    expect(unclassified.distinct_pr_count).toBe(3);
+    expect(unclassified.severity_max).toBe('warning');
+    const candidates = printed.candidates as Record<string, unknown>[];
+    expect(
+      candidates.every((c) => c.finding_class !== 'holistic/unclassified')
+    ).toBe(true);
+  });
+
+  test('emits a null unclassified field when the classless bucket is below threshold', () => {
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(
+      stubGh([
+        ghPr(1, [
+          findingsComment(1, 'ci', [
+            {
+              area_tags: [],
+              finding_class: 'holistic/unclassified',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+      ])
+    );
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    expect(parseStdout(stdout.out).unclassified).toBeNull();
   });
 
   test('drops a class a promoted rule already covers', () => {

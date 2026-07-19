@@ -4,9 +4,10 @@
  *
  * Resolves the rolling 90-day merged-PR window via `gh`, extracts each PR's
  * machine-readable findings block, counts distinct PRs per `finding_class` at
- * error/warning severity, drops classes a promoted rule already covers or the
- * decline ledger suppresses, self-cleans the ledger, and prints the candidate
- * list as JSON to stdout. The statusline refresher mirrors `candidate_count`
+ * any severity, drops classes a promoted rule already covers or the decline
+ * ledger suppresses, self-cleans the ledger, and prints the candidate list
+ * plus the classless `unclassified` recurrence signal as JSON to stdout. The
+ * statusline refresher mirrors `candidate_count` and the unclassified count
  * into the cache; `/gaia-harden review` re-runs this to get the live list.
  *
  * No LLM, no drafting, no writes other than (indirectly) the ledger prune. The
@@ -32,8 +33,10 @@ const HELP_TEXT = `Usage: gaia harden-tally
 
   Tallies recurring code-review-audit findings across the rolling 90-day
   merged-PR window and prints the candidate list as JSON. A class is a
-  candidate when it recurs across >= 3 distinct PRs at error/warning severity,
-  no promoted rule covers it, and the decline ledger does not suppress it.
+  candidate when it recurs across >= 3 distinct PRs at any severity, no
+  promoted rule covers it, and the decline ledger does not suppress it. A
+  classless (unclassified) finding recurring the same way surfaces separately
+  as the \`unclassified\` field instead of a candidate.
 
   Network failures are non-fatal: gh errors yield an empty candidate list.
 `;

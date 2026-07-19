@@ -190,11 +190,12 @@ Shape:
 
 ```json
 {"schema":1,"member":"code-audit-maintainer-shell","findings":[
-  {"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":[".gaia/scripts"]}
+  {"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":[".gaia/scripts"]},
+  {"finding_class":"holistic/unclassified","severity":"suggestion","area_tags":[".gaia/scripts"]}
 ]}
 ```
 
-Every Critical / Important Issue in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".claude/hooks"]`). `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary: `holistic/swallowed-error` for a script that fails silently, `holistic/secret-exposure` for a leaked credential, and so on, whichever seeded member genuinely fits. A finding that maps to no seeded class is simply omitted from `findings[]` (it still stands in your prose report); a finding with no stable class is not a countable finding. `"findings": []` when nothing in your report has a stable class, or your report is clean, either way is a real, meaningful record; write it, do not skip the file.
+Every Critical / Important Issue in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".claude/hooks"]`). `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary: `holistic/swallowed-error` for a script that fails silently, `holistic/secret-exposure` for a leaked credential, and so on, whichever seeded member genuinely fits, and counts at any severity. A finding that maps to no seeded class is stamped `holistic/unclassified` and **included** in `findings[]` (never omitted), surfacing as the distinct unclassified recurrence signal. `"findings": []` when your report is clean is still a real, meaningful record; write it, do not skip the file.
 
 Best-effort: a write failure here never blocks or alters the marker / stamp / status sequence above.
 

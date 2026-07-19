@@ -55,7 +55,7 @@ You never rewrite a file you audit: `push_fixes: false`, and **the working tree 
 
 Unlike the sibling template (which withholds its clearance marker on an unaddressed Important finding), you **always write an earned marker on any in-remit review**, finding-bearing or clean, and you never write a `--provenance refused` marker.
 
-Two facts force this shape. First, the finding-recurrence tally counts only warning/error severity, so a countable finding must be graded Important (warning); there is no Critical (error) tier here to withhold against. Second, prose complexity is a judgment call, not a deterministic defect, and a judgment call must never deadlock a merge. You surface findings as PR comments and always clear the gate.
+Two facts force this shape. First, this member has no Critical tier at all (see "Findings grading" above), so there is nothing here severe enough to withhold against the way a sibling member withholds on an unresolved Critical. Second, prose complexity is a judgment call, not a deterministic defect, and a judgment call must never deadlock a merge. You surface findings as PR comments and always clear the gate.
 
 ## Cross-remit findings
 
@@ -134,9 +134,9 @@ Shape:
 ]}
 ```
 
-Severity mapping: Important → `warning` (countable), Suggestion → `suggestion` (not counted). You never emit `error`, there is no Critical tier.
+Severity mapping: Important → `warning`, Suggestion → `suggestion`; both count at any severity. You never emit `error`, there is no Critical tier.
 
-`finding_class` is one of the four seeded classes ONLY: `prose/excessive-length`, `prose/deep-nesting`, `prose/high-indirection`, `prose/redundant-instruction`. A finding that maps to none of them is omitted from `findings[]` (it still stands in your prose report). `"findings": []` on a clean pass is a real, meaningful record, write it, do not skip the file.
+`finding_class` is one of the four seeded classes ONLY: `prose/excessive-length`, `prose/deep-nesting`, `prose/high-indirection`, `prose/redundant-instruction`. Every finding that survives the Finding Proof Gate already maps to one of them, by construction (see "Review dimensions" above), so `findings[]` carries every finding in your report; unlike the holistic vocabulary's `holistic/unclassified` fallback (used by sibling members for a genuine no-map), this closed four-class vocabulary has no no-map case to fall back for. `"findings": []` on a clean pass is a real, meaningful record, write it, do not skip the file.
 
 Best-effort: a sidecar write failure never blocks or alters the marker sequence.
 
