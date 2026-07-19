@@ -82,7 +82,7 @@ case "$tool_name" in
     toks=()
     while IFS= read -r line || [ -n "$line" ]; do
       read -r -a linetoks <<<"$line"
-      toks+=("${linetoks[@]}" ';')
+      toks+=(${linetoks[@]+"${linetoks[@]}"} ';')
     done <<<"$cmd"
     n=${#toks[@]}
 

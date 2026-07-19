@@ -179,6 +179,11 @@ assert_allowed() {
   assert_denied
 }
 
+@test "a blank line between statements does not break detection of a later write" {
+  run_hook_bash $'echo prep\n\nprintf x > .gaia/manifest.json'
+  assert_denied
+}
+
 # --- denied: no-space redirect shapes ---
 
 @test "a no-space redirect (>path, no space after >) onto the manifest is denied" {
