@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# shell-lint.sh: run shellcheck over every tracked shell script and bats suite.
+# shell-lint.sh: run shellcheck over every tracked shell script and bats suite,
+# then the hook array-guard (.gaia/scripts/lint-hook-array-guard.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
 #
@@ -113,8 +114,8 @@ if [ "${#sh_scripts[@]}" -eq 0 ]; then
   exit 1
 fi
 
-# Run both passes before failing, so one invocation reports every finding across
-# both file types rather than hiding the bats findings behind an *.sh failure.
+# Run every pass before failing, so one invocation reports every finding across
+# all passes rather than hiding a later pass's findings behind an earlier one.
 status=0
 
 echo "--> shellcheck *.sh (severity=$SH_SEVERITY): ${#sh_scripts[@]} tracked scripts"
@@ -128,6 +129,18 @@ if [ "${#bats_scripts[@]}" -gt 0 ]; then
   if ! (cd "$REPO_ROOT" && shellcheck --severity="$BATS_SEVERITY" --exclude="$TOOLING_EXCLUDE" "${bats_scripts[@]}"); then
     status=1
   fi
+fi
+
+# Fold in the hook array-guard: shellcheck cannot model the bash-3.2.57
+# empty-array abort -- a bare "${arr[@]}" over an EMPTY array aborts under
+# `set -u`, exiting a hook before it can emit its deny JSON. Running it here
+# means every shell-lint caller -- plan per-phase gates, the
+# code-audit-maintainer-shell oracle, CI shell-lint.yml, and manual runs --
+# enforces the class locally, not only the bats (.github/audit) job. Run from
+# the repo root so its cwd-relative .claude/hooks/*.sh scan resolves.
+echo "--> lint-hook-array-guard (bash-3.2 empty-array class under set -u)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-array-guard.sh"); then
+  status=1
 fi
 
 if [ "$status" -ne 0 ]; then
