@@ -24,6 +24,7 @@
     ".claude/hooks/block-env-read.sh": "owned",
     ".claude/hooks/block-env-write.sh": "owned",
     ".claude/hooks/block-eslint-config-edit.sh": "owned",
+    ".claude/hooks/block-invalid-yaml-write.sh": "owned",
     ".claude/hooks/block-lockfile-edit.sh": "owned",
     ".claude/hooks/block-main-destructive-git.sh": "owned",
     ".claude/hooks/block-manifest-write.sh": "owned",
@@ -101,6 +102,7 @@
     ".claude/skills/gaia-react-perf/SKILL.md": "owned",
     ".claude/skills/gaia-wiki/SKILL.md": "owned",
     ".claude/skills/gaia/references/audit.md": "owned",
+    ".claude/skills/gaia/references/cost-record.md": "owned",
     ".claude/skills/gaia/references/debt.md": "owned",
     ".claude/skills/gaia/references/fitness.md": "owned",
     ".claude/skills/gaia/references/forensics.md": "owned",
@@ -610,6 +612,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-18T21:49:01.977Z",
+  "generated": "2026-07-19T10:44:01.524Z",
   "version": "1.6.1"
 }

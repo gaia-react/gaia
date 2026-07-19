@@ -31,7 +31,7 @@ That page defines:
 - The bucket-and-model spec for triage Auditors (Haiku for mechanical checks, Sonnet for judgment-bearing checks and grade synthesis).
 - The Fixer lanes for the heal phase (`claude-surface`, `settings`, `gitignore`, `manifest`).
 - The bounded loop (default 3 cycles) and oscillation detection (fingerprint format: `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`).
-- The F-to-A+ grading rubric (A+ = zero findings; A = one or two info; A− = three or more info; B+ = one warning; B = two warnings; B− = three or more warnings; C+ = one error; C = two errors; C− = three errors; D+ = four errors; D = five errors; D− = six or more errors; F = structurally broken category, grade keys off the worst severity present, then the count at that severity).
+- The F-to-A+ grading rubric (grade keys off the worst severity present, then the count at that severity).
 - The findings schema (`{severity, file, remediation, fingerprint}`) and chat report format.
 - The Decided / not findings section (skip the round-trips listed there).
 

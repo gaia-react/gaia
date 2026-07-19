@@ -217,7 +217,7 @@ Before opening any fix PR, screen **every member of the selected fix unit** (a s
 
 **The screen reads content, never the dedup key's `class=` field.** `holistic/unclassified` is the expected class for most out-of-scope findings, not a security signal, so it is not a trigger; the agent definition's section B is the single source for that rule and this screen never restates a stricter one. A screen keyed on `class=holistic/unclassified` would peel the entire backlog on a public repo and leave `/gaia-debt` permanently unable to fix anything.
 
-Because the audit's own filing screen already ran, the set of issues this screen can actually peel is small and well-defined: on a PUBLIC or INTERNAL repo the audit **never files a security-class finding as an issue** in the first place, so every machine-filed issue in a public backlog is non-security by construction. This screen is therefore a backstop for exactly two cases: a **human-filed** issue that is security-sensitive, and a repo that **flipped PRIVATE → PUBLIC** while previously-filed security issues sat in its backlog. It is not a re-judgment of the machine-filed backlog.
+This screen is a backstop for exactly two cases: a **human-filed** issue that is security-sensitive, and a repo that **flipped PRIVATE → PUBLIC** while previously-filed security issues sat in its backlog. It is not a re-judgment of the machine-filed backlog: on a PUBLIC or INTERNAL repo the audit **never files a security-class finding as an issue** in the first place.
 
 Re-read `gh repo view --json visibility` immediately before acting (a repo can flip from PRIVATE to PUBLIC), reusing the offer-time read above when it already ran; do not add a second prompt:
 
@@ -365,25 +365,7 @@ Every path that ends a `/gaia-debt` run appends exactly one cost record, the run
 - Driving the PR to merge: `MERGED` cleanup, a still-queued `--auto` merge, or a controlled stop before merge.
 - Worktree mode's isolation-context continuation prompt.
 
-Standalone final step, one call:
-
-```bash
-bash .gaia/scripts/token-tally.sh --action command --command gaia-debt
-```
-
-**Artifact pass-through.** When this run opened a pull request and the URL `gh pr create` printed appeared in this run's own Bash tool result, append:
-
-```bash
-  --github-type pr --github-number <N> --github-repo '<owner>/<name>'
-```
-
-Pass-through is mode-agnostic: worktree mode reads the same URL from the same tool result, nothing about the worktree changes the call.
-
-Never look the number up (`gh pr list`, `gh pr view`), never reuse a number from an earlier run, a different branch, or a `gh` command run outside this workflow, and never guess. If this run did not itself print a creation URL, pass no `--github-*` flags at all; the record correctly carries no artifact, and that is not an error.
-
-**Report the line verbatim.** The tally prints exactly one line on stdout, e.g. `Cost: ~5.2M tokens, $4.12, 6m39s`. Relay it as the last line of the run's report; do not reassemble, reformat, or re-derive it.
-
-The tally never blocks, never fails, and never turns a failed run into a successful one: it runs as a bare call with no exit-status ceremony around it. On a path that ends in an error (a rejected push, a blocked merge), record the cost, then report the failure exactly as before; recording the cost never implies success.
+Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-debt`. Pass-through is mode-agnostic: worktree mode reads the same URL from the same tool result, nothing about the worktree changes the call.
 
 ## Guardrails
 

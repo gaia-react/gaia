@@ -120,15 +120,17 @@ Use this handler, not the new-file path above, when Axis 1 recommended EDITING a
 
 ### approve, deterministic check
 
-Produce ONLY a hook+script SKETCH (a proposed hook entry and a script outline the engineer can finish). Activate nothing: do not wire it into `.claude/settings.json`, do not make any file executable, and write no `.claude/rules/` file for it. Make clear the loop claims no prune lifecycle over it. Hand the sketch to the engineer to finish and wire up themselves. Because this form writes no provenance marker, the statusline nudge persists until the pattern stops recurring and ages out of the window (or a promoted rule later covers the class); it is not silenced immediately the way a prose approval is.
+Produce ONLY a hook+script SKETCH (a proposed hook entry and a script outline the engineer can finish). Activate nothing: do not wire it into `.claude/settings.json`, do not make any file executable, and write no `.claude/rules/` file for it. Make clear the loop claims no prune lifecycle over it. Hand the sketch to the engineer to finish and wire up themselves.
 
 ### approve, skill
 
-Produce ONLY a skill scaffold; activate nothing and write no `.claude/rules/` file for it. LEAD with the plugin-free path: hand-write a `SKILL.md` scaffold, its name, description, trigger conditions, and the ordered steps, for the engineer to drop under `.claude/skills/<name>/`. The `skill-creator` skill is a convenience path only: it is plugin-provided and may be absent on an adopter machine (it is not bundled under `.claude/skills/` and neither `setup-gaia` nor `gaia-init` provisions it). When it IS present, invoke it with the captured intent (what the skill should enable, when it should trigger, the expected output) or print a ready-to-run scaffold invocation in place of hand-writing the file. Because this form writes no provenance marker, the statusline nudge persists until the pattern stops recurring and ages out of the window (or a promoted rule later covers the class); it is not silenced immediately the way a prose approval is.
+Produce ONLY a skill scaffold; activate nothing and write no `.claude/rules/` file for it. LEAD with the plugin-free path: hand-write a `SKILL.md` scaffold, its name, description, trigger conditions, and the ordered steps, for the engineer to drop under `.claude/skills/<name>/`. The `skill-creator` skill is a convenience path only: it is plugin-provided and may be absent on an adopter machine (it is not bundled under `.claude/skills/` and neither `setup-gaia` nor `gaia-init` provisions it). When it IS present, invoke it with the captured intent (what the skill should enable, when it should trigger, the expected output) or print a ready-to-run scaffold invocation in place of hand-writing the file.
 
 ### approve, enforcement edit (oracle class)
 
-Make the existing deterministic check blocking or add it to the quality gate. This is an edit to existing enforcement wiring (the tool's rule file, the `code-audit-frontend` agent, the quality gate doc, or the CI workflow), not a new prose rule. Land the edit in the working tree; the end-of-run publish step commits and PRs it (`## Publish approved changes (end of run)`). Because this form writes no provenance marker, the statusline nudge persists until the pattern stops recurring and ages out of the window (or a promoted rule later covers the class); it is not silenced immediately the way a prose approval is.
+Make the existing deterministic check blocking or add it to the quality gate. This is an edit to existing enforcement wiring (the tool's rule file, the `code-audit-frontend` agent, the quality gate doc, or the CI workflow), not a new prose rule. Land the edit in the working tree; the end-of-run publish step commits and PRs it (`## Publish approved changes (end of run)`).
+
+**No provenance marker (deterministic-check / skill / enforcement-edit forms).** These three approve handlers author no `.claude/rules/` marker, so the statusline nudge persists until the pattern stops recurring and ages out of the window (or a promoted rule later covers the class); it is not silenced immediately the way a prose approval is.
 
 ### decline
 
@@ -270,23 +272,7 @@ Every path that ends a `/gaia-harden` run appends exactly one cost record, the r
 - Publish's merge outcomes: `MERGED`, still queued, "Leave open", `all-approved` false, or any other-branch no-op.
 - Publish's non-zero-exit STOP on a `git` or `gh` command.
 
-Standalone final step, one call:
-
-```bash
-bash .gaia/scripts/token-tally.sh --action command --command gaia-harden
-```
-
-**Artifact pass-through.** When this run opened a pull request and the URL `gh pr create` printed appeared in this run's own Bash tool result, append:
-
-```bash
-  --github-type pr --github-number <N> --github-repo '<owner>/<name>'
-```
-
-Never look the number up (`gh pr list`, `gh pr view`), never reuse a number from an earlier run, a different branch, or a `gh` command run outside this workflow, and never guess. If this run did not itself print a creation URL, pass no `--github-*` flags at all; the record correctly carries no artifact, and that is not an error.
-
-**Report the line verbatim.** The tally prints exactly one line on stdout, e.g. `Cost: ~5.2M tokens, $4.12, 6m39s`. Relay it as the last line of the run's report; do not reassemble, reformat, or re-derive it.
-
-The tally never blocks, never fails, and never turns a failed run into a successful one: it runs as a bare call with no exit-status ceremony around it. On a path that ends in an error (a rejected push, a blocked merge), record the cost, then report the failure exactly as before; recording the cost never implies success.
+Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-harden`.
 
 ## Guardrails
 

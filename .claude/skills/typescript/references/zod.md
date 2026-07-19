@@ -17,7 +17,7 @@ Version caveat: these hosted docs track the latest published Zod, not the instal
 
 ## Migration map
 
-This project uses Zod 4. Several Zod 3 forms still type-check and lint clean, so nothing flags them until runtime or a `react-doctor` scan. Default to the Zod 4 form in every schema.
+This project uses Zod 4; default to the Zod 4 form in every schema.
 
 | Zod 3, avoid                             | Zod 4, use                            |
 | ---------------------------------------- | ------------------------------------- |
@@ -28,7 +28,7 @@ This project uses Zod 4. Several Zod 3 forms still type-check and lint clean, so
 | `z.string().url()`                       | `z.url()`                             |
 | `z.string().uuid()`                      | `z.uuid()`                            |
 | `z.string().datetime()`                  | `z.iso.datetime()`                    |
-| `z.enum(['metric', 'imperial'])`         | `z.literal(['imperial', 'metric'])`   |
+| `z.enum(['metric', 'imperial'])`         | `z.literal(['imperial', 'metric'])`, values sorted alphanumerically (`z.enum()` is valid Zod 4, but the project standardizes on the literal-array form) |
 | `z.function().args(a).returns(b)`        | `z.function({input: [a], output: b})` |
 | `z.string({required_error: 'Required'})` | `z.string({error: 'Required'})`       |
 
@@ -92,16 +92,4 @@ z.string().min(5, {message: 'Too short'});
 // GOOD
 z.string({error: 'Required'});
 z.string().min(5, {error: 'Too short'});
-```
-
-## String unions, project convention
-
-Prefer `z.literal([...])` over `z.enum()` for string unions, and sort the values alphanumerically. (`z.enum()` is valid Zod 4, but the project standardizes on the literal-array form.)
-
-```ts
-// BAD
-z.enum(['metric', 'imperial']);
-
-// GOOD
-z.literal(['imperial', 'metric']);
 ```

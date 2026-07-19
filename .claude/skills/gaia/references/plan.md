@@ -45,7 +45,7 @@ Once `SPEC_ID` resolves:
 
 If no SPEC reference is detected, `SPEC_SLUG_SEED`, `SPEC_PATH`, and `AUDIT_PATH` are unset; step 3 allocates a `PLAN-NNN` id from the local ledger for the spec-less plan.
 
-Colocated plans no longer use `SPEC_SLUG_SEED` to prefix a `plans/` slug, the plan lives inside the SPEC folder, so plan→SPEC discovery is structural. It is retained for the branch-name marker (step 4's branch policy) and human-facing labels. `SPEC_PATH` additionally seeds `SPEC_DIR` (its parent directory) for plan-directory resolution in step 3.
+Colocated plans live inside the SPEC folder, so plan→SPEC discovery is structural and needs no `SPEC_SLUG_SEED` prefix on a `plans/` slug. `SPEC_SLUG_SEED` is retained for the branch-name marker (step 4's branch policy) and human-facing labels. `SPEC_PATH` additionally seeds `SPEC_DIR` (its parent directory) for plan-directory resolution in step 3.
 
 ### 2. Check model
 
@@ -68,7 +68,7 @@ This decision governs the **planner** only. The plan's **execution** sub-agents 
 
 ### 3. Resolve plan directory
 
-**Spec-derived plans colocate inside their SPEC folder**, at `<SPEC_DIR>/plan[-N]` where `SPEC_DIR` is the SPEC's parent directory (`.gaia/local/specs/<SPEC-ID>`); the plan basename is `plan`, not a slug. Plan→SPEC discovery is structural, the plan IS inside `specs/<SPEC-ID>/`, no slug prefix needed. **Spec-less plans live under `plans/PLAN-NNN`, where `PLAN-NNN` is a monotonic id allocated from the local `plans/ledger.json` ledger** (the same treatment SPECs get). The description lives in the ledger `subject`, not the folder name.
+**Spec-derived plans colocate inside their SPEC folder**, at `<SPEC_DIR>/plan[-N]` where `SPEC_DIR` is the SPEC's parent directory (`.gaia/local/specs/<SPEC-ID>`); the plan basename is `plan`, not a slug. **Spec-less plans live under `plans/PLAN-NNN`, where `PLAN-NNN` is a monotonic id allocated from the local `plans/ledger.json` ledger** (the same treatment SPECs get). The description lives in the ledger `subject`, not the folder name.
 
 Resolve the absolute plan directory, then create it. The spec-derived arm suffixes `-2`, `-3`, … if a colocated plan folder already exists; the spec-less arm allocates a fresh `PLAN-NNN`, so it never collides:
 
@@ -94,7 +94,7 @@ else
 fi
 ```
 
-Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia-plan` invocations coexist on the spec-derived arm without overwriting each other; the spec-less arm no longer collides, the allocator serializes concurrent callers under a mutex.
+Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia-plan` invocations coexist on the spec-derived arm without overwriting each other; the spec-less arm does not collide, the allocator serializes concurrent callers under a mutex.
 
 ### 4. Spawn planning agent
 
@@ -166,7 +166,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       The generated file carries the pointer, never an inlined snapshot of what the reference says. Inlining would mint a third copy of the prompt, outside every `.claude/` grep and frozen at plan time, so a later change to the reference would never reach an already-generated plan. The reference owns the decision order (already inside a worktree, forced worktree off `main`, the on-`main` question), the prompt literals, and the worktree-creation call, and it exports two values: the resolved isolation mode as `RESOLVED_MODE`, one of `feature-branch` or `worktree`, and the resolved working copy's absolute path as `RESOLVED_ROOT`. The orchestrator derives `RESOLVED_ROOT` once, immediately after the reference returns, and interpolates that same value into every later sub-agent dispatch, each task sub-agent below and each pre-merge Code Audit Team member (see that bullet below). On a cold resume, the orchestrator re-derives `RESOLVED_ROOT` once cwd has settled back into the reconnected worktree or checkout (see Resume detection above), before either dispatch site fires.
 
-      **Branch naming (FC-5).** Whichever isolation mode the reference resolves, including the forced worktree on the not-on-main path, when this plan is spec-derived (`SPEC_PATH` was set in step 1a) the branch name MUST begin with `${SPEC_SLUG_SEED}-` (e.g. `spec-005-cards-layout`), so `spec-reconcile.sh` flips the SPEC's ledger row to `merged` after the PR merges. A colocated plan's folder basename (`plan`) no longer carries that marker, so the branch name is now the only place it survives. For a spec-less plan, name the branch from the plan slug as today. The reference takes this name from the orchestrator; it never derives one of its own.
+      **Branch naming (FC-5).** Whichever isolation mode the reference resolves, including the forced worktree on the not-on-main path, when this plan is spec-derived (`SPEC_PATH` was set in step 1a) the branch name MUST begin with `${SPEC_SLUG_SEED}-` (e.g. `spec-005-cards-layout`), so `spec-reconcile.sh` flips the SPEC's ledger row to `merged` after the PR merges. A colocated plan's folder basename (`plan`) does not carry that marker, so the branch name is the only place it survives. For a spec-less plan, name the branch from the plan slug. The reference takes this name from the orchestrator; it never derives one of its own.
 
       When `RESOLVED_MODE` is `worktree`, every later step, task sub-agent edits, per-phase commits, `gh pr create`, and the pre-merge Code Audit Team audit, runs from inside the worktree.
 

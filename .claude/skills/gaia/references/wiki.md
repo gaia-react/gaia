@@ -79,7 +79,7 @@ If `STATUS != "ci"`, behave as before (no defer, no force).
 
 ## Sync
 
-Dispatch a Sonnet subagent via `Agent`. Sync generates judgment and prose (deep-reading WORTHY diffs, locating the right page, writing accurate edits and ADRs), which is beyond Haiku's reliability on a long multi-step run; a fresh context also keeps git diffs and log content out of the parent. The playbook's Step 5b fabrication guard backstops any model that narrates edits without writing them.
+Dispatch a Sonnet subagent via `Agent`. Sync generates judgment and prose (deep-reading WORTHY diffs, locating the right page, writing accurate edits and ADRs), which is beyond Haiku's reliability on a long multi-step run; a fresh context also keeps git diffs and log content out of the parent.
 
 Spawn:
 

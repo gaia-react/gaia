@@ -41,4 +41,4 @@ If design decisions are being implemented without Claude's involvement (a design
 
 ## Why this rule exists
 
-A coherent token set, even a deliberately neutral one, can be read by a code assistant as a signal that the palette and type stack are decided. They are not. The zero-chroma primary scale, system font stacks, and neutral radius values are starting-point blanks, not brand choices. Extending them without adopter direction would silently lock in an unintended aesthetic.
+A coherent token set, even a deliberately neutral one, can be read by a code assistant as a signal that the palette and type stack are decided. They are not. Extending them without adopter direction would silently lock in an unintended aesthetic.

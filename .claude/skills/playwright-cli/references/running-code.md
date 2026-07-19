@@ -20,12 +20,6 @@ playwright-cli run-code "async page => {
   await page.context().setGeolocation({ latitude: 37.7749, longitude: -122.4194 });
 }"
 
-# Set location to London
-playwright-cli run-code "async page => {
-  await page.context().grantPermissions(['geolocation']);
-  await page.context().setGeolocation({ latitude: 51.5074, longitude: -0.1278 });
-}"
-
 # Clear geolocation override
 playwright-cli run-code "async page => {
   await page.context().clearPermissions();
@@ -59,11 +53,6 @@ playwright-cli run-code "async page => {
 # Emulate dark color scheme
 playwright-cli run-code "async page => {
   await page.emulateMedia({ colorScheme: 'dark' });
-}"
-
-# Emulate light color scheme
-playwright-cli run-code "async page => {
-  await page.emulateMedia({ colorScheme: 'light' });
 }"
 
 # Emulate reduced motion
