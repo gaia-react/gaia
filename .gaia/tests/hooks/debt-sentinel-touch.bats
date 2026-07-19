@@ -26,7 +26,7 @@ teardown() {
 # hook, from inside a fresh tmp repo. Leaves $REPO set for assertions.
 run_hook() {
   REPO=$("$HELPERS/tmp-git-repo.sh")
-  cd "$REPO"
+  cd "$REPO" || return 1
   local input
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$1")
   run bash -c "printf '%s' '$input' | '$HOOK_ABS'"
@@ -73,7 +73,7 @@ assert_not_armed() { [ ! -f "$REPO/$SENTINEL_REL" ]; }
 
 @test "non-Bash tool: no-op, not armed" {
   REPO=$("$HELPERS/tmp-git-repo.sh")
-  cd "$REPO"
+  cd "$REPO" || return 1
   input=$(jq -n '{tool_name:"Edit",tool_input:{file_path:"x"}}')
   run bash -c "printf '%s' '$input' | '$HOOK_ABS'"
   [ "$status" -eq 0 ]

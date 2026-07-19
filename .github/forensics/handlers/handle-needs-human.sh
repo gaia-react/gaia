@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: single-quoted printf formats whose backticks
+# are literal markdown in the emitted text, not command substitution.
+# shellcheck disable=SC2016
 # handle-needs-human.sh: needs-human triage handler.
 #
 # Labels a forensics-triaged issue as `needs-human` and posts a comment

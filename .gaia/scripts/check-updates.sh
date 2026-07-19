@@ -177,7 +177,7 @@ audit_nudge_reason=""
 
 # (a) Memory entry count proxy: number of *.md files under the machine-local
 # memory dir (same derivation /gaia-audit uses).
-MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
+MEMORY_DIR="$HOME/.claude/projects/${PROJECT_ROOT//\//-}/memory"
 if [ -d "$MEMORY_DIR" ]; then
   mem_count=$(find "$MEMORY_DIR" -type f -name '*.md' 2>/dev/null | wc -l | tr -d '[:space:]')
   case "$mem_count" in

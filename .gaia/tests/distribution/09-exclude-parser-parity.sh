@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: single-quoted sed program where $ is a regex
+# anchor, not a shell variable.
+# shellcheck disable=SC2016
 # 09-exclude-parser-parity.sh
 #
 # Regression test for #839 (the #679 remainder): three surfaces

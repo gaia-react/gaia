@@ -1,5 +1,10 @@
 #!/usr/bin/env bats
 #
+# SC2010 is intentional file-wide: the *.bak.<timestamp> backup filenames the
+# assertions below match are test-created with no special characters, so
+# `ls | grep` cannot hit its unsafe-filename failure mode here.
+# shellcheck disable=SC2010
+#
 # Bats suite for .gaia/scripts/link-worktree.sh (SPEC-005 task-link-script).
 #
 # Each test gets a fresh tmp directory containing a main checkout + a linked

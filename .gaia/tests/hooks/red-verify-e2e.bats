@@ -35,6 +35,7 @@ setup() {
   CAPTURE_HOOK="$HOME_ROOT/.claude/hooks/capture-red-observations.sh"
   CHECK_HOOK="$HOME_ROOT/.claude/hooks/red-verify-commit-check.sh"
   BARE_TEST_HOOK="$HOME_ROOT/.claude/hooks/block-bare-test.sh"
+  # shellcheck disable=SC2034  # unused helper-path var; pre-existing dead code, kept (not deleted) per surgical-changes policy
   HELPER="$HOME_ROOT/.gaia/scripts/red-ledger/extract-test-signals.mjs"
   LEDGER_REL=".gaia/local/red-ledger/observations.jsonl"
 

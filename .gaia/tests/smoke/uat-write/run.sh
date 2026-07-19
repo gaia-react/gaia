@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: single-quoted grep regex matching the literal
+# token $ARGUMENTS, not a shell variable.
+# shellcheck disable=SC2016
 # Smoke: structural check for the before_implement UAT-write hook.
 #
 # Drives the renderer (.specify/extensions/gaia/lib/uat-write.sh) against a
@@ -60,6 +63,7 @@ PREEXISTING_SPEC_DIR=0
 PREEXISTING_CACHE=0
 [ -f "$CACHE_FILE" ] && PREEXISTING_CACHE=1
 
+# shellcheck disable=SC2329  # invoked via `trap cleanup EXIT` below
 cleanup() {
     # Only remove what we created. Restore SPEC-099.md if it pre-existed.
     if [ "$PREEXISTING_SPEC_DIR" -eq 0 ]; then

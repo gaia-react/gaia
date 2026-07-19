@@ -61,7 +61,7 @@ setup() {
 
 @test "UAT-003: gho_ GitHub OAuth token is redacted" {
   # Construct a synthetic token-shaped string at runtime
-  local fake_token="gho_$(python3 -c 'print("A"*20)' 2>/dev/null || printf 'AAAAAAAAAAAAAAAAAAAA')"
+  local fake_token; fake_token="gho_$(python3 -c 'print("A"*20)' 2>/dev/null || printf 'AAAAAAAAAAAAAAAAAAAA')"
   local input="Token: $fake_token in the env"
   local result
   result="$(redact_body "$FAKE_ROOT" "$input")"
@@ -70,7 +70,7 @@ setup() {
 }
 
 @test "UAT-003: ghp_ GitHub PAT is redacted" {
-  local fake_token="ghp_$(python3 -c 'print("B"*20)' 2>/dev/null || printf 'BBBBBBBBBBBBBBBBBBBB')"
+  local fake_token; fake_token="ghp_$(python3 -c 'print("B"*20)' 2>/dev/null || printf 'BBBBBBBBBBBBBBBBBBBB')"
   local input="GITHUB_TOKEN=$fake_token"
   local result
   result="$(redact_body "$FAKE_ROOT" "$input")"
@@ -78,7 +78,7 @@ setup() {
 }
 
 @test "UAT-003: sk-ant- Anthropic API key is redacted" {
-  local fake_key="sk-ant-api03-$(python3 -c 'print("C"*20)' 2>/dev/null || printf 'CCCCCCCCCCCCCCCCCCCC')"
+  local fake_key; fake_key="sk-ant-api03-$(python3 -c 'print("C"*20)' 2>/dev/null || printf 'CCCCCCCCCCCCCCCCCCCC')"
   local input="ANTHROPIC_API_KEY=$fake_key"
   local result
   result="$(redact_body "$FAKE_ROOT" "$input")"
@@ -86,8 +86,8 @@ setup() {
 }
 
 @test "UAT-003: sk- OpenAI key is redacted (and sk-ant- takes priority)" {
-  local fake_openai="sk-$(python3 -c 'print("D"*20)' 2>/dev/null || printf 'DDDDDDDDDDDDDDDDDDDD')"
-  local fake_anthropic="sk-ant-$(python3 -c 'print("E"*20)' 2>/dev/null || printf 'EEEEEEEEEEEEEEEEEEEE')"
+  local fake_openai; fake_openai="sk-$(python3 -c 'print("D"*20)' 2>/dev/null || printf 'DDDDDDDDDDDDDDDDDDDD')"
+  local fake_anthropic; fake_anthropic="sk-ant-$(python3 -c 'print("E"*20)' 2>/dev/null || printf 'EEEEEEEEEEEEEEEEEEEE')"
   local result_openai
   result_openai="$(redact_body "$FAKE_ROOT" "key=$fake_openai")"
   [[ "$result_openai" != *"$fake_openai"* ]]
@@ -98,7 +98,7 @@ setup() {
 }
 
 @test "UAT-003: glpat- GitLab PAT is redacted" {
-  local fake_token="glpat-$(python3 -c 'print("F"*20)' 2>/dev/null || printf 'FFFFFFFFFFFFFFFFFFFF')"
+  local fake_token; fake_token="glpat-$(python3 -c 'print("F"*20)' 2>/dev/null || printf 'FFFFFFFFFFFFFFFFFFFF')"
   local input="GITLAB_TOKEN=$fake_token"
   local result
   result="$(redact_body "$FAKE_ROOT" "$input")"
@@ -106,7 +106,7 @@ setup() {
 }
 
 @test "UAT-003: xoxb- Slack token is redacted" {
-  local fake_token="xoxb-$(python3 -c 'print("G"*10)' 2>/dev/null || printf 'GGGGGGGGGG')"
+  local fake_token; fake_token="xoxb-$(python3 -c 'print("G"*10)' 2>/dev/null || printf 'GGGGGGGGGG')"
   local input="SLACK_TOKEN=$fake_token"
   local result
   result="$(redact_body "$FAKE_ROOT" "$input")"
@@ -120,7 +120,7 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "SEC-1: github_pat_ fine-grained PAT is redacted" {
-  local fake_token="github_pat_$(python3 -c 'print("a"*30)' 2>/dev/null || printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"
+  local fake_token; fake_token="github_pat_$(python3 -c 'print("a"*30)' 2>/dev/null || printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"
   local input="Found in shell environment: $fake_token was present"
   local result
   result="$(redact_body "$FAKE_ROOT" "$input")"
@@ -154,7 +154,7 @@ setup() {
 }
 
 @test "SEC-3: xapp- Slack app-level token is redacted" {
-  local fake_token="xapp-$(python3 -c 'print("1-" + "G"*12)' 2>/dev/null || printf '1-GGGGGGGGGGGG')"
+  local fake_token; fake_token="xapp-$(python3 -c 'print("1-" + "G"*12)' 2>/dev/null || printf '1-GGGGGGGGGGGG')"
   local input="Slack app credential $fake_token present"
   local result
   result="$(redact_body "$FAKE_ROOT" "$input")"
@@ -216,7 +216,7 @@ setup() {
 
 @test "TST-03: recheck halts with no partial body when a token survives the forward passes" {
   sed() { cat; }
-  local fake_token="gho_$(python3 -c 'print("Z"*24)' 2>/dev/null || printf 'ZZZZZZZZZZZZZZZZZZZZZZZZ')"
+  local fake_token; fake_token="gho_$(python3 -c 'print("Z"*24)' 2>/dev/null || printf 'ZZZZZZZZZZZZZZZZZZZZZZZZ')"
   run --separate-stderr redact_body "$FAKE_ROOT" "leaked credential: $fake_token"
   [ "$status" -ne 0 ]
   [ -z "$output" ]

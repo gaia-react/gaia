@@ -25,7 +25,8 @@ fi
 common="$(git rev-parse --git-common-dir 2>/dev/null || echo .git)"
 case "$common" in
   /*) main_root="$(dirname "$common")" ;;
-  *)  main_root="$(cd "$(dirname "$common")" 2>/dev/null && pwd || pwd)" ;;
+  *)  main_root="$(cd "$(dirname "$common")" 2>/dev/null && pwd)"
+      [ -n "$main_root" ] || main_root="$(pwd)" ;;
 esac
 base="$main_root/.claude/worktrees"
 

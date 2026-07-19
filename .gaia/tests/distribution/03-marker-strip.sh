@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: single-quoted sed program where $ is a regex
+# anchor, not a shell variable.
+# shellcheck disable=SC2016
 # 03-marker-strip.sh
 #
 # Asserts the marker-strip transform fired correctly:

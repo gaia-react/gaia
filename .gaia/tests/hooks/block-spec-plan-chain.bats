@@ -22,7 +22,7 @@ setup() {
   # A real git repo: the hook resolves its sentinel against the main checkout
   # (git rev-parse --git-common-dir), so it is a no-op outside one.
   REPO=$(bash "$HELPERS/tmp-git-repo.sh")
-  cd "$REPO"
+  cd "$REPO" || return 1
 
   SESSION="sess-abc123"
   SENTINEL="$REPO/.gaia/local/cache/spec-chain-${SESSION}.json"

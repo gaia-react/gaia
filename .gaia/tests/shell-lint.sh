@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shell-lint.sh: run shellcheck over every tracked shell script in the repo.
+# shell-lint.sh: run shellcheck over every tracked shell script and bats suite.
 # Exit 0 when clean, 1 on any finding at or above the severity floor.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
 #
@@ -14,12 +14,26 @@
 # the lenses shellcheck cannot model (hook fail-open, stdin-JSON shape,
 # `jq -n` injection safety).
 #
-# Severity floor: `warning`. Errors and warnings are the tiers with live failure
-# modes (unquoted expansions that word-split, BSD-vs-GNU portability breaks,
-# subshell scoping bugs). The `info`/`style` tiers are dominated here by
-# SC2016 (single-quoted jq/awk programs, intentional) and SC1091 (shellcheck
-# cannot resolve a dynamically sourced path), which would gate on noise. Run
-# `shellcheck -S style <file>` by hand to see those tiers.
+# Two severity floors, one per file type, because the two file types carry
+# different noise profiles:
+#
+#   *.sh   -> `style`, the strictest floor. The genuine style/info-tier codes are
+#            curated: SC1091/SC1090 (shellcheck cannot follow a dynamically
+#            sourced path) are excluded below as pure tooling artifacts, and the
+#            intentional single-quoted jq/awk programs (SC2016) carry file-level
+#            `# shellcheck disable=SC2016` directives, so the gate stays live to a
+#            genuine SC2016 bug in any file that does not opt out.
+#
+#   *.bats -> `warning`. Errors and warnings are the tiers with live failure
+#            modes (a masked `!` assertion that never fails a test [SC2314], a
+#            `local x=$(...)` that swallows the command's exit [SC2155], a `cd`
+#            with no `|| exit` guard [SC2164]). The `info`/`style` tiers on bats
+#            are dominated by structural false positives from the bats execution
+#            model (SC2317 unreachable `@test`/`setup`/`teardown` bodies,
+#            SC2030/SC2031 subshell state from `run`, SC2016 assertion strings);
+#            those sit below the `warning` floor and never fire, so bats needs no
+#            blunt per-code exclude list. Run `shellcheck -S style <file>` by hand
+#            to see the sub-floor tiers.
 #
 # Never begin a comment line with the bare word `shellcheck`: a comment of that
 # shape is parsed as a directive, and a malformed one (SC1072/SC1073) aborts the
@@ -35,7 +49,19 @@
 # CI: .github/workflows/shell-lint.yml
 set -euo pipefail
 
-SEVERITY=warning
+# Per-file-type severity floors (see the block above). *.sh is held to the
+# strictest `style` tier; *.bats joins at `warning`, where the structural bats
+# false positives sit below the floor.
+SH_SEVERITY=style
+BATS_SEVERITY=warning
+
+# Tooling-artifact codes disabled for every pass: SC1091/SC1090 are "shellcheck
+# cannot resolve a sourced path computed at runtime", which carries no failure
+# mode and fires across the tree wherever a script sources a sibling by a derived
+# path. Passed on the command line rather than a repo-root .shellcheckrc, so this
+# config stays inside the maintainer-only gate and never ships to adopters as a
+# newly-distributed file.
+TOOLING_EXCLUDE=SC1091,SC1090
 
 # Pin the linter version so the gate's verdict cannot depend on which machine ran
 # it. Ubuntu's apt ships 0.9.0 while Homebrew ships newer, and their directive
@@ -67,24 +93,44 @@ fi
 #
 # Collected with a read loop rather than `mapfile`: mapfile is bash 4+, and these
 # scripts are authored and run on stock macOS /bin/bash (3.2.57).
-scripts=()
+sh_scripts=()
 while IFS= read -r f; do
-  scripts+=("$f")
+  sh_scripts+=("$f")
 done < <(git -C "$REPO_ROOT" ls-files '*.sh')
 
-# Guard the expansion below: on bash 3.2 a bare "${scripts[@]}" over an EMPTY
-# array aborts with `unbound variable` under `set -u`. An empty result also means
-# the glob or the repo root resolved wrong, which should fail loudly, not lint
-# nothing and report success.
-if [ "${#scripts[@]}" -eq 0 ]; then
+bats_scripts=()
+while IFS= read -r f; do
+  bats_scripts+=("$f")
+done < <(git -C "$REPO_ROOT" ls-files '*.bats')
+
+# Guard the expansion below: on bash 3.2 a bare "${sh_scripts[@]}" over an EMPTY
+# array aborts with `unbound variable` under `set -u`. An empty *.sh result also
+# means the glob or the repo root resolved wrong, which should fail loudly, not
+# lint nothing and report success. The *.bats set is allowed to be empty and is
+# simply skipped; only the always-present *.sh set is a hard precondition.
+if [ "${#sh_scripts[@]}" -eq 0 ]; then
   echo "ERROR: no tracked *.sh files found under $REPO_ROOT" >&2
   exit 1
 fi
 
-echo "--> shellcheck (severity=$SEVERITY): ${#scripts[@]} tracked scripts"
+# Run both passes before failing, so one invocation reports every finding across
+# both file types rather than hiding the bats findings behind an *.sh failure.
+status=0
 
+echo "--> shellcheck *.sh (severity=$SH_SEVERITY): ${#sh_scripts[@]} tracked scripts"
 # Run from the repo root so the paths the linter prints are repo-relative.
-if ! (cd "$REPO_ROOT" && shellcheck --severity="$SEVERITY" "${scripts[@]}"); then
+if ! (cd "$REPO_ROOT" && shellcheck --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" "${sh_scripts[@]}"); then
+  status=1
+fi
+
+if [ "${#bats_scripts[@]}" -gt 0 ]; then
+  echo "--> shellcheck *.bats (severity=$BATS_SEVERITY): ${#bats_scripts[@]} tracked suites"
+  if ! (cd "$REPO_ROOT" && shellcheck --severity="$BATS_SEVERITY" --exclude="$TOOLING_EXCLUDE" "${bats_scripts[@]}"); then
+    status=1
+  fi
+fi
+
+if [ "$status" -ne 0 ]; then
   echo "==> shell-lint FAILED" >&2
   exit 1
 fi

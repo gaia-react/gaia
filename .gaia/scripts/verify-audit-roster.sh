@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: single-quoted printf format strings where any
+# $ or backtick is literal output text, not a shell expansion.
+# shellcheck disable=SC2016
 # verify-audit-roster.sh: the Code Audit Team roster's deterministic check.
 #
 # The roster is meant to grow, by adopters and by the maintainer, as a project
