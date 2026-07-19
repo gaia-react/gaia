@@ -106,6 +106,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Code Audit Team]]: config-driven auditor roster + dispatch resolver; AND-aggregation across dispatched members at the merge gate; maintainer-only shell/node members.
 <!-- gaia:maintainer-only:start -->
 - [[CLI-Binary-Split]]
+- [[Folding Shell Scripts into the CLI Binary]]: considered and declined; the manifest is a never-merged sentinel and the fold is a delete, so it cannot deliver simpler diffs.
 - [[Forensics Triage Workflow]]
 <!-- gaia:maintainer-only:end -->
 - [[Quality Gate]]
