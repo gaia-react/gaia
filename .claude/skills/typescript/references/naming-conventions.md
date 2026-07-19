@@ -16,7 +16,7 @@ const processUserOnboardingProfile = (user: User) => { ... }
 const calculateProgressPercentageFromCompletedSets = (completedSets: number, totalSets: number) => { ... }
 ```
 
-> React event handlers are the exception, they follow `handle{Action}{Element}` (e.g. `handleClickSave`, `handleChangeInput`); the `{Element}` is required, since a bare `handleClick` or `handleChange` trips `react-doctor/no-generic-handler-names`. The descriptive guidelines above apply to utilities, hooks, callbacks, and non-event-handler functions.
+> React event handlers are the exception (`handle{Action}{Element}`); see the event-handler note in `typescript/SKILL.md`. The descriptive guidelines above apply to utilities, hooks, callbacks, and non-event-handler functions.
 
 ## Parameters and Arguments
 

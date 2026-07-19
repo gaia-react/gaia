@@ -115,7 +115,7 @@ Determinism roll-up:
   • app/components/Cart/index.tsx  emergent (path not a .ts under app/components)
 ```
 
-This roll-up shares the end-of-task summary with any worthiness findings: render the classifier verdicts and the worthiness lines in ONE summary, not two.
+This roll-up renders into the single end-of-task summary (see "Surfacing the advisory findings").
 
 ### 6. Worthiness Audit (emergent surface)
 
@@ -137,7 +137,7 @@ node .gaia/scripts/audit-ledger/append-worthiness.mjs <repo-rel-test-path> <full
 
 `<verdict>` is `keep` | `fix` | `delete`; `[artifact]` is REQUIRED for a non-keep verdict (the cited machine-verified sibling for a redundancy delete, the unreachable/missing assertion for a fix) and omitted for `keep`. The writer recomputes the test-identity signal from the file via the RED-ledger signal helper, so it byte-matches what the presence gate later recomputes; the ledger at `.gaia/local/audit/worthiness.jsonl` is append-only and gitignored.
 
-Surface the evaluator's verdicts in the **same end-of-task summary** as the determinism roll-up above: one summary, not a parallel one. Deletes are proposals: present them for human confirmation, never act on them.
+Surface the evaluator's verdicts in the same end-of-task summary (see "Surfacing the advisory findings"). Deletes are proposals: present them for human confirmation, never act on them.
 
 #### Path-scoped guarantees
 

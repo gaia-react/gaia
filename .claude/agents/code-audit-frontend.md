@@ -39,7 +39,7 @@ fi
 
 **In CI, do not skip.** `GITHUB_ACTIONS`/`CI` being set means the block above never runs: the CI tool policy grants no `Bash(bash:*)`, so the oracle call cannot execute there, and it does not need to, CI only invokes you when the changed delta touches your declared domain, which always dispatches you, so the check would be a no-op anyway. Run the full review unconditionally.
 
-A glob-only skip, filtering `changed` against your own globs the way a specialized member does, would be wrong here: `.github/workflows/**` is one of your own declared globs, but a `.yml`/`.yaml` file there belongs to `code-audit-github-workflows` by claimant precedence, a distinction a bare self-match against your own glob list cannot see. Asking the oracle instead of matching globs yourself is what keeps you from self-dispatching on a file a claimant actually owns.
+A glob-only self-skip would be wrong here: a bare self-match against your own glob list cannot see the `.github/workflows/**` claimant-precedence carve-out (see Remit above, where a `.yml`/`.yaml` file there belongs to `code-audit-github-workflows`). Ask the oracle instead of matching globs yourself, so you never self-dispatch on a file a claimant owns.
 
 ## Extension Loading
 
@@ -151,9 +151,9 @@ Cross-remit and out-of-scope are **not the same axis**: out-of-scope means outsi
 
 ### What the orchestrator is, and is not
 
-The orchestrator is **trusted**, not bounded. The advisory rule above is a member-error guard, not a security boundary. This removes members' write access to the pipeline, the gate, and the roster because a bad repair there can disable what would catch it, then hands that same access to the orchestrator. What makes that reasonable is stated rather than assumed: under local mode a human watches every turn the orchestrator takes, which is not true of a member dispatched inside a CI job. A bad orchestrator repair to the gate is caught by human review of the pull request and by nothing else.
+The orchestrator is **trusted**, not bounded. The advisory rule above is a member-error guard, not a security boundary: it removes members' write access to the pipeline, the gate, and the roster (a bad repair there can disable what would catch it) and hands that access to the orchestrator. That is reasonable only because under local mode a human watches every orchestrator turn, which is not true of a member dispatched inside a CI job; a bad orchestrator repair to the gate is caught by human PR review and nothing else.
 
-Bounding it was rejected, on the same grounds that reject an unenforced self-heal prose: the orchestrator is an LLM session, so any rule about tracing a repair to a named member finding would be prose with no enforcement point and no observable signal. Writing an unenforceable rule and calling it a boundary is worse than naming the trust, because a reader would believe it. Do not invent one.
+Bounding it was rejected: the orchestrator is an LLM session, so any rule tracing a repair to a named member finding is prose with no enforcement point. An unenforceable rule called a boundary is worse than naming the trust, because a reader would believe it. Do not invent one.
 
 ## Finding Proof Gate (holistic reviewer)
 
@@ -346,7 +346,7 @@ Disposition semantics:
 
 ### G. Disposition gate (the fourth marker precondition)
 
-Before writing the marker, the disposition gate confirms every identified out-of-scope finding has a disposition. **Verify after filing:** re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) immediately before writing the marker, and confirm each `filed` entry still resolves to an open issue whose body carries the **wrapped** key `<!-- gaia-debt-key: ${key} -->` (match the wrapped form, not the bare inner key, so a `line=4` key does not false-match a sibling `line=42 -->` issue). This is exactly why a dedup-matched entry's `key` field holds the matched issue's own on-backend key (see "Key relationship" above): the entry recorded there is the entry this same verify re-queries, so recording any other key would fail this check after a reclassification. Then apply the marker-write rule:
+Before writing the marker, the disposition gate confirms every identified out-of-scope finding has a disposition. **Verify after filing:** re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) immediately before writing the marker, and confirm each `filed` entry still resolves to an open issue whose body carries the **wrapped** key `<!-- gaia-debt-key: ${key} -->` (match the wrapped form, not the bare inner key; see "Key relationship" for the `line=4`/`line=42` collision this prevents). This is exactly why a dedup-matched entry's `key` field holds the matched issue's own on-backend key (see "Key relationship" above): the entry recorded there is the entry this same verify re-queries, so recording any other key would fail this check after a reclassification. Then apply the marker-write rule:
 
 - **Write the marker** when every sidecar entry is `filed`, `diverted`, `waived`, or `pending(transient)`. A transient failure never blocks the merge, so it does not withhold the marker.
 - **Do NOT write the marker** when any entry is `pending(definitive)`, a present, writable backend with a genuinely-missing disposition. This is the **one intended block**; the operator must resolve the filing failure and re-invoke before the marker clears.
@@ -434,17 +434,17 @@ The schema enforces this convention: an entry whose `finding_class` is free text
 <!-- gaia:maintainer-only:start -->
 The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`, `RULE_FINDING_CLASSES`, and the oracle prefixes); the lists above mirror it. That schema also defines `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`), the dedup-key fallback for a classless out-of-scope finding (see Scope classification and out-of-scope disposition).
 <!-- gaia:maintainer-only:end -->
-`holistic/unclassified` is the out-of-scope fallback for a finding that maps to no seeded class (see Scope classification and out-of-scope disposition). It is **not** a member of the closed finding-class vocabulary, it builds a `tech-debt` dedup key. Being outside the closed vocabulary is the *only* thing it means: it is not a security signal, and it never drives the security screen (section B).
+`holistic/unclassified` is the out-of-scope fallback for a finding that maps to no seeded class (see Scope classification and out-of-scope disposition): outside the closed finding-class vocabulary, it builds a `tech-debt` dedup key. It carries no security signal (see section B).
 
 ## Progress breadcrumbs (CI observability)
 
 The agent runs in CI with `show_full_output: false` (a deliberate public-repo safety choice). To give the CI step summary a post-hoc phase timeline, write ONE curated line per review phase to a tree-keyed gitignored file using the `Write` or `Edit` tool (both are in the CI `allowedTools`).
 
-**File path (tree-keyed):** `.gaia/local/audit/${AUDIT_TREE_SHA}.progress.log`, keyed to the tree captured at review start (`AUDIT_TREE_SHA`, see "Audit-run env", captured once before the first breadcrumb). `.gaia/local/audit/` is symlinked back to the main checkout from every linked worktree (`.gaia/scripts/link-worktree.sh`), so it is shared state across every concurrent GAIA session on the machine; a fixed filename lets one session's breadcrumbs clobber or be mistaken for another's. Keying to the tree makes attribution structural instead of a matter of the reader's care, the same idea the `<digest>.ok` marker uses (its own key, a content digest over owned-plus-machinery paths rather than the whole tree), though the marker's digest can rotate after a self-heal edits owned content while the breadcrumb's tree key does not, so the two need not coincide on a self-heal run. The CI print step (see the `code-review-audit.yml` workflow) locates the same file from the pushed PR head sha (`github.event.pull_request.head.sha`), never `git rev-parse HEAD`: a self-heal commit happens during the agent's own turn, before the print step runs and before a later step pushes it, so the runner's local HEAD can already be one tree ahead of the pushed head the breadcrumb file was keyed to.
+**File path (tree-keyed):** `.gaia/local/audit/${AUDIT_TREE_SHA}.progress.log`, keyed to the tree captured at review start (`AUDIT_TREE_SHA`, see "Audit-run env", captured once before the first breadcrumb). `.gaia/local/audit/` is symlinked back to the main checkout from every linked worktree (`.gaia/scripts/link-worktree.sh`), so it is shared state across every concurrent GAIA session on the machine; a fixed filename lets one session's breadcrumbs clobber or be mistaken for another's. Keying to the tree makes attribution structural instead of a matter of the reader's care. The CI print step (see the `code-review-audit.yml` workflow) locates the same file from the pushed PR head sha (`github.event.pull_request.head.sha`), never `git rev-parse HEAD`: a self-heal commit happens during the agent's own turn, before the print step runs and before a later step pushes it, so the runner's local HEAD can already be one tree ahead of the pushed head the breadcrumb file was keyed to.
 
 **Line format:** `<phase label>, <counts>` -- phase label and integer counts only. Never include file contents, code, raw tool output, file paths beyond coarse counts, or anything secret-shaped. This is the public-safety crux: the workflow print step exposes this file in the GitHub Actions step summary.
 
-A **diverted security-class finding** (see Scope classification and out-of-scope disposition) contributes **only to counts** here, never its detail, location, or the nature of the exposure. The progress log is exposed in the public Actions step summary, so a security finding's detail must never reach it, exactly as it must never reach a public/internal issue, the PR comment, or the Actions log.
+A **diverted security-class finding** (see Scope classification and out-of-scope disposition) contributes **only to counts** here, never its detail; redact per section D.
 
 **Five phases, in run order:**
 
@@ -586,7 +586,7 @@ CI already carries cross-round state by git-native means that survive a fresh ch
 3. **Think adversarially**: for each input and endpoint, consider what a malicious user could do
 4. **Consider the blast radius**: prioritize issues by their potential impact
 5. **Be specific**: never say "this could be improved" without saying exactly how and why
-6. **Be proportionate in the report, not in the search**: surface every candidate during review (coverage), then rank ruthlessly in the written report so security holes lead and minor items don't bury them. Proportionality governs ordering and emphasis in the output, never whether a real candidate gets investigated or surfaced.
+6. **Be proportionate in the report, not in the search**: surface every candidate during review (coverage), then rank ruthlessly in the written report so security holes lead and minor items don't bury them.
 7. **Respect existing patterns**: if the codebase has an established way of doing something, don't suggest alternatives unless there's a concrete benefit
 8. **Dispatch in parallel**: once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json` from a single tool-call message so they run concurrently with your own review. When the parallel dispatch returns: (a) emit the `oracles done` breadcrumb with per-oracle finding counts; (b) after you have produced your own holistic candidate findings from the cross-cutting review dimensions, emit the `holistic review done` breadcrumb with the count of candidate Critical/Important holistic findings. Both breadcrumbs are emitted before the adversarial pass (see Progress breadcrumbs).
 9. **Verify Critical/Important survivors adversarially**: after your own review produces candidate findings and before finalizing the report, run each surviving holistic Critical/Important finding through a fresh-context refuter per the Finding Proof Gate, then drop, demote, or keep it on the refuter's verdict. The report is not produced until this pass completes. When the adversarial pass is complete, emit the `adversarial verify done` breadcrumb (see Progress breadcrumbs).
@@ -875,34 +875,28 @@ Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory
 When the marker is warranted, the write is a mark → stamp → push → status sequence, run in that fixed order. The marker is written first, before the stamp, so it feeds the member-aware stamp gate immediately below and closes the crash window: a trailer is never believed while any dispatched member's own marker, this one included, is missing. The stamp runs next: the helper picks amend vs empty-commit per the placement rule and never pushes. Because the stamp is a content-preserving empty commit, it changes no blob sha, so it rotates no digest and the marker written in step 1 stays valid after it, there is no repair write. The trailer commit is pushed next, before the status call, only on the empty-commit path and only on an attached tracking branch, since that push is what makes the remote PR head the trailer commit and lets the status POST (which targets the remote head) land on the sha branch protection checks; on the amend path there is nothing new to push, and the status helper declines `audited tree not on pushed head` until the operator pushes, which is the correct fail-safe. Finally, the `GAIA-Audit` success commit status is posted, gated on the marker file already existing; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The shared clearance writer (`.gaia/scripts/audit-write-clearance.sh`) writes the marker unconditionally: every write lands, overwriting whatever was already on disk for this digest; provenance is `earned` or `refused` only, there is no carried family to out-rank:
 
 ```bash
-# 1. Write the earned clearance BEFORE the stamp runs. The shared writer
-#    derives your own content digest internally (owned files + machinery +
-#    in-scope-but-ownerless) from --root (the working root) and resolves
-#    the filename, HEAD tree, and HEAD sha from there too, so the marker
-#    is keyed to the DIGEST of the content the audit ENDS on -- after any
-#    self-heal edits, before the trailer stamp below. The empty-commit
-#    stamp changes no blob sha, so it rotates no digest and never
-#    invalidates this marker or a sibling member's. Writing the marker
-#    first feeds the member-aware stamp gate in step 2 and closes the
-#    crash window: a trailer is never believed while any dispatched
-#    member's own marker, this one included, is missing. The write is
-#    unconditional: it replaces whatever marker was already on disk for
-#    this digest, there is no carried provenance to out-rank. The writer
-#    prints the marker path it wrote.
+# 1. Write the earned clearance BEFORE the stamp (mark-before-stamp): this
+#    feeds the member-aware stamp gate in step 2 and closes the crash window
+#    -- a trailer is never believed while any dispatched member's marker is
+#    missing. The writer derives your content digest from --root, keys the
+#    marker to the content the audit ENDS on (after self-heal, before the
+#    stamp), and prints the marker path. The write is unconditional: it
+#    replaces any marker already on disk for this digest.
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-frontend \
   --provenance earned)"
 
 # 2. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per the
-#    placement rule). Member-aware: it declines `members pending <list>`
-#    when a co-dispatched member has not yet written its own marker for
-#    this content, expected on a multi-member diff and harmless, the last
-#    member to clear is the one whose call actually lands the trailer.
-#    The helper creates the commit locally only, push is deferred to
-#    step 3. HEAD_SHA is captured after the stamp: it travels into the
-#    sidecar's own "sha" JSON field below as plain data (never the
-#    sidecar's validity key, which is the digest).
+#    placement rule). The empty commit changes no blob sha, so it rotates no
+#    digest and the step-1 marker stays valid. Member-aware: it declines
+#    `members pending <list>` when a co-dispatched member has not yet written
+#    its own marker for this content, expected on a multi-member diff and
+#    harmless, the last member to clear is the one whose call actually lands
+#    the trailer. The helper creates the commit locally only, push is deferred
+#    to step 3. HEAD_SHA is captured after the stamp: it travels into the
+#    sidecar's own "sha" JSON field below as plain data (never the sidecar's
+#    validity key, which is the digest).
 stamp_line=$(
   AUDIT_TREE_SHA="$AUDIT_TREE_SHA" AUDIT_SELF_HEALED="$AUDIT_SELF_HEALED" \
     .claude/hooks/audit-stamp-trailer.sh
