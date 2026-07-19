@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   audit-ci-tests:
-    name: bats (.github/audit)
+    name: Audit CI Tests
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:

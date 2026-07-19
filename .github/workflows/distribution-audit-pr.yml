@@ -42,7 +42,7 @@ permissions:
 
 jobs:
   distribution-audit-pr:
-    name: Unanswered newly-shipping files
+    name: Distribution Audit
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 so both the base and head commits are present for the
@@ -99,7 +99,7 @@ jobs:
           if [ -n "${offenders}" ]; then
             count="$(printf '%s\n' "${offenders}" | grep -c '.')"
             echo "::error::${count} newly-shipping file(s) in this PR are unanswered in .gaia/manifest.json. Run /distribution-audit, answer ship-or-withhold for each, and commit the regenerated .gaia/manifest.json (and .gaia/release-exclude for any withheld file) to this branch."
-            echo "Unanswered newly-shipping files:"
+            echo "Distribution Audit:"
             printf '%s\n' "${offenders}" | sed 's/^/  - /'
             exit 1
           fi

@@ -161,7 +161,8 @@ Shape:
 
 ```json
 {"schema":1,"member":"code-audit-github-workflows","findings":[
-  {"finding_class":"holistic/secret-exposure","severity":"error","area_tags":[".github/workflows"]}
+  {"finding_class":"holistic/secret-exposure","severity":"error","area_tags":[".github/workflows"]},
+  {"finding_class":"holistic/unclassified","severity":"suggestion","area_tags":[".github/workflows"]}
 ]}
 ```
 
@@ -173,7 +174,7 @@ Every Critical / Important / Suggestion finding in your report maps to `severity
 - over-broad permissions → `workflow/broad-permissions`
 - leaked credential → `holistic/secret-exposure`
 
-A finding that maps to no seeded class in either vocabulary is simply omitted from `findings[]` (it still stands in your prose report); a finding with no stable class is not a countable finding. `"findings": []` when nothing in your report has a stable class, or your report is clean, either way is a real, meaningful record; write it, do not skip the file.
+A finding carrying a class from either vocabulary counts at any severity. A finding that genuinely maps to no seeded class in either vocabulary is stamped `holistic/unclassified` and **included** in `findings[]` (never omitted), surfacing as the distinct unclassified recurrence signal. `"findings": []` when your report is clean is still a real, meaningful record; write it, do not skip the file.
 
 Best-effort: a write failure here never blocks or alters the marker / stamp / status sequence above.
 
