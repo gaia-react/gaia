@@ -14,7 +14,7 @@
 # best-effort runs two one-time, guarded cleanups: ledger-status-migrate.sh, so
 # every sweep that reads a ledger row's status sees the unified vocabulary, and
 # the residue sweep its own block further down documents. It then sweeps
-# exactly eight things:
+# exactly nine things:
 #
 #   1. local wiki-sync/<date>-<sha> branches whose upstream is [gone]. The wiki
 #      landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway
@@ -94,6 +94,21 @@
 #      long-running session. Teardown delegates to the WorktreeRemove hook's
 #      own remove-worktree.sh so remove + branch-delete + parent-prune stays
 #      defined in one place.
+#   9. off-pattern outlier residue: anything NOT on an explicit per-root
+#      allowlist, at the top level of .gaia/local plus the direct children
+#      (maxdepth-1, mindepth-1, no deeper) of audit/ and cache/, once its
+#      mtime clears GAIA_OUTLIER_RETENTION_DAYS (default 7, floor 2); OS junk
+#      (.DS_Store, Thumbs.db, ._*) is reaped at any age. It never recurses
+#      below maxdepth-1 to delete and never enters the ledger / self-managing
+#      zones (telemetry/, red-ledger/, handoff/, plans/, specs/, debt/,
+#      forensics/, and the audit/archived, audit/security, and
+#      audit/comprehensive subtrees), nor follows a symlinked scope root from
+#      a linked worktree. Two off-pattern writers get their own dedicated arms
+#      instead of the blanket allowlist reap, each on its own floored knob:
+#      audit/*.findings.json attached to sweep #2
+#      (GAIA_AUDIT_FINDINGS_RETENTION_HOURS, default 72, floor 24) and
+#      cache/gh-artifact-pr.json attached to sweep #5
+#      (GAIA_CACHE_ARTIFACT_RETENTION_DAYS, default 2, floor 1).
 #
 # Fail-safe by construction: any inability to PROVE death (no git, unreadable
 # HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
@@ -132,6 +147,158 @@ fi
 
 local_dir="$root/.gaia/local"
 [ -d "$local_dir" ] || exit 0
+
+# --- Sweep #9 allowlists (single source of truth) ---------------------------
+#
+# The completed per-writer census: every subsystem known to write to these
+# three roots. Each array holds the exact names / globs a root's children
+# must NOT be reaped for; a directory-typed entry carries a trailing "/"
+# (matched only against a directory child, slash stripped before the glob
+# compare) so one shared matcher (janitor_outlier_kept below) can read
+# straight off these arrays with no parallel type list to drift out of sync.
+# The disjoint-owner guard test reads these same arrays from source, so they
+# are the single frozen source of truth for both what sweep #9 keeps and what
+# the guard checks -- never re-derive them here.
+JANITOR_OUTLIER_ALLOW_TOPLEVEL=(
+  maintainer-statusline.sh .patched-statusline.sh .project-id
+  .mentorship-swept setup-state.json declined-updates.json
+  automation.json sandbox.json dep-audit-baseline.json setup-in-progress
+  audit/ cache/ debt/ forensics/ handoff/ plans/ red-ledger/ specs/ telemetry/
+  worktree-locks/ harden/
+)
+JANITOR_OUTLIER_ALLOW_AUDIT=(
+  '*.ok' '*.refused' '*.carried' '*.dispositions.json' '*.progress.log'
+  '*.rerun.json' '*.findings.json' worthiness.jsonl 'KNOWLEDGE-*.md'
+  archived/ security/ comprehensive/
+)
+JANITOR_OUTLIER_ALLOW_CACHE=(
+  'gate1-*.json' 'draft-*.md' draft.md 'spec-session-*.json' 'spec-chain-*.json'
+  gh-artifact-pr.json version-check.lock v2-update-notes.md
+  'audit-*/' wiki-promote/ uat-write/ shared/
+)
+
+# janitor_outlier_kept <name> <type: f|d> <allow-entries...>: exit 0 iff
+# <name> (a file/dotfile when <type> is f, a directory when <type> is d)
+# matches one of the given allowlist entries for its own type. See the array
+# comment above for the trailing-"/" directory-entry convention.
+janitor_outlier_kept() {
+  local name="$1" etype="$2"
+  shift 2
+  local entry pattern
+  for entry in "$@"; do
+    case "$entry" in
+      */)
+        [ "$etype" = d ] || continue
+        pattern="${entry%/}"
+        ;;
+      *)
+        [ "$etype" = f ] || continue
+        pattern="$entry"
+        ;;
+    esac
+    # Deliberate glob match: $pattern holds an allowlist entry (e.g.
+    # 'KNOWLEDGE-*.md'), never a literal to compare byte-for-byte.
+    # shellcheck disable=SC2254
+    case "$name" in
+      $pattern) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# janitor_outlier_is_old <path> <days>: exit 0 iff <path>'s own mtime is older
+# than <days>. `-maxdepth 0` bounds `find` to the path itself, so a
+# directory's age is judged as one unit, never by its contents.
+janitor_outlier_is_old() {
+  [ -n "$(find "$1" -maxdepth 0 -mtime "+$2" 2>/dev/null)" ]
+}
+
+# janitor_sweep_outliers <local_dir>: the allowlist-based ninth sweep. Walks
+# exactly three scope roots (top level of <local_dir>, its audit/, its
+# cache/), each at maxdepth-1/mindepth-1, and reaps any child not on that
+# root's allowlist once older than GAIA_OUTLIER_RETENTION_DAYS (OS junk at any
+# age). Self-contained: reads its own knob, computes its own cutoff, resolves
+# real directories only (never follows a symlinked scope root, so a run from
+# a linked worktree never deletes another checkout's state, and never reaps a
+# symlinked entry), and never recurses below maxdepth-1 to
+# delete -- the one exception, a bounded one-level peek for a `renders.json`
+# child, only ever KEEPS. No stdout; deletes in place; always returns 0.
+janitor_sweep_outliers() {
+  local scope_root="$1"
+  [ -n "$scope_root" ] && [ -d "$scope_root" ] || return 0
+
+  local outlier_days
+  outlier_days="${GAIA_OUTLIER_RETENTION_DAYS:-7}"
+  case "$outlier_days" in '' | *[!0-9]*) outlier_days=7 ;; esac
+  [ "$outlier_days" -lt 2 ] && outlier_days=2
+
+  local zone sroot child base etype candidate
+  for zone in toplevel audit cache; do
+    case "$zone" in
+      toplevel) sroot="$scope_root" ;;
+      audit)    sroot="$scope_root/audit" ;;
+      cache)    sroot="$scope_root/cache" ;;
+    esac
+    [ -e "$sroot" ] || continue
+    [ -L "$sroot" ] && continue   # never walk through a symlinked scope root
+    [ -d "$sroot" ] || continue
+
+    for child in "$sroot"/* "$sroot"/.[!.]*; do
+      [ -e "$child" ] || [ -L "$child" ] || continue
+      [ -L "$child" ] && continue   # never reap a symlinked entry
+      base=${child##*/}
+      if [ -d "$child" ]; then etype=d; else etype=f; fi
+
+      # OS junk: reaped at any age, the only age-independent case.
+      case "$base" in
+        .DS_Store | Thumbs.db | ._*)
+          rm -rf -- "$child"
+          continue
+          ;;
+      esac
+
+      candidate=1
+      case "$zone" in
+        toplevel)
+          janitor_outlier_kept "$base" "$etype" "${JANITOR_OUTLIER_ALLOW_TOPLEVEL[@]}" && candidate=0
+          ;;
+        audit)
+          janitor_outlier_kept "$base" "$etype" "${JANITOR_OUTLIER_ALLOW_AUDIT[@]}" && candidate=0
+          ;;
+        cache)
+          janitor_outlier_kept "$base" "$etype" "${JANITOR_OUTLIER_ALLOW_CACHE[@]}" && candidate=0
+          # Bounded one-level renders.json protection: a not-otherwise-
+          # allowlisted cache/ child directory still keeps if it
+          # directly holds a renders.json file (a react-perf run dir, whose
+          # own name is arbitrary). Only ever KEEPS, never reaps.
+          if [ "$candidate" -eq 1 ] && [ "$etype" = d ] && [ -f "$child/renders.json" ]; then
+            candidate=0
+          fi
+          ;;
+      esac
+      [ "$candidate" -eq 1 ] || continue
+
+      janitor_outlier_is_old "$child" "$outlier_days" || continue
+      if [ "$etype" = d ]; then
+        rm -rf -- "$child"
+      else
+        rm -f -- "$child"
+      fi
+    done
+  done
+  return 0
+}
+
+# --- Isolation entrypoint (bats-only) ---------------------------------------
+# GAIA_JANITOR_SWEEP_ONLY=outliers runs ONLY sweep #9 against $local_dir, then
+# exits, skipping sweeps 2-8 and the one-time ledger-migrate / mentorship-
+# cleanup blocks below so the bats suite can exercise sweep #9 with zero
+# interference. Sweep #1 (git-branch-scoped, above the $local_dir guard) has
+# already run by this point; it is a no-op on file-only isolation fixtures.
+if [ "${GAIA_JANITOR_SWEEP_ONLY:-}" = outliers ]; then
+  janitor_sweep_outliers "$local_dir"
+  exit 0
+fi
 
 # --- One-time ledger status vocabulary migration ---------------------------
 # Runs before the reap sweeps below so they read rows already on the unified
@@ -386,6 +553,17 @@ if [ -d "$audit_dir" ]; then
       >/dev/null 2>&1 && continue
     rm -f -- "$ledger"
   done
+
+  # Findings-arm retention: floor-clamped like every other new knob (default
+  # 72h, floor 24h). Distinct from GAIA_AUDIT_MARKER_RETENTION_HOURS above --
+  # that knob keys off a marker body's own recorded audited_at field; this one
+  # keys off plain file mtime, since a findings.json body carries only
+  # schema/member/findings and no branch/tree to test liveness against.
+  findings_hours="${GAIA_AUDIT_FINDINGS_RETENTION_HOURS:-72}"
+  case "$findings_hours" in '' | *[!0-9]*) findings_hours=72 ;; esac
+  [ "$findings_hours" -lt 24 ] && findings_hours=24
+  find "$audit_dir" -maxdepth 1 -type f -name '*.findings.json' \
+    -mmin +"$((findings_hours * 60))" -delete 2>/dev/null
 fi
 
 # --- 3. Completed-but-unswept plan dirs ------------------------------------
@@ -494,6 +672,16 @@ if [ -d "$cache_dir" ]; then
     while IFS= read -r hit; do
       rm -rf -- "$(dirname "$hit")"
     done
+
+  # cache/gh-artifact-pr.json: mtime-only, on its own floor-clamped knob
+  # (default 2d, floor 1d). It records a branch and session_id, but a
+  # gh-artifact PR cache this old is stale regardless of which branch or
+  # session produced it, so staleness alone is the reap signal.
+  cache_artifact_days="${GAIA_CACHE_ARTIFACT_RETENTION_DAYS:-2}"
+  case "$cache_artifact_days" in '' | *[!0-9]*) cache_artifact_days=2 ;; esac
+  [ "$cache_artifact_days" -lt 1 ] && cache_artifact_days=1
+  find "$cache_dir" -maxdepth 1 -type f -name 'gh-artifact-pr.json' \
+    -mtime +"$cache_artifact_days" -delete 2>/dev/null
 fi
 
 # --- 6. Age-reap merged SPEC folders past the retention window -------------
@@ -575,5 +763,8 @@ if [ -n "$wt_common" ]; then
     )
   fi
 fi
+
+# --- 9. Off-pattern outlier residue ----------------------------------------
+janitor_sweep_outliers "$local_dir"
 
 exit 0
