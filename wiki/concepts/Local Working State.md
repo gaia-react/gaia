@@ -34,7 +34,7 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `plans/PLAN-NNN/` | [[GAIA Plan]] | live | a merged folder is kept at merge (reduced to `SUMMARY.md` + `cost.json`, `RUNNING` cleared); age-reaped after the retention window |
 | `plans/ledger.json` | [[GAIA Plan]] | live | per-machine number cache |
 | `handoff/`, `forensics/` | [[GAIA Handoff]] / [[Forensics]] | live | drop zones |
-| `telemetry/` | [[Cost Data Contract]] | live | the cost ledger (`cost.jsonl`) and the `/gaia-spec` pacing log (`spec-pacing.jsonl`), both append-only |
+| `telemetry/` | [[Cost Data Contract]] | live | an append-only cost ledger (`cost.jsonl`) |
 
 Worktree creation symlinks a second, disjoint set alongside the six `.gaia/local/` paths above: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't rows in the table above.
 

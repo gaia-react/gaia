@@ -5,7 +5,7 @@
 # folder still sits in the active specs dir (PR merged out-of-band, or a stale
 # session that never ran close) gets deleted on the next /gaia-spec run. The
 # SPEC close command's own single-id delete delegates to the same script, so
-# both entry points share one gate + pacing-append chain.
+# both entry points share one gate.
 #
 # Deletion is gated on cost representation (cost_folder_represented, sourced
 # from .gaia/scripts/cost-represented.sh): a folder is only deleted once every
@@ -36,7 +36,6 @@ setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   ARCHIVE=".specify/extensions/gaia/lib/spec-archive-merged.sh"
   SPECS=".gaia/local/specs"
-  TELEMETRY=".gaia/local/telemetry/spec-pacing.jsonl"
   LEDGER=".gaia/local/telemetry/cost.jsonl"
   # --seed-merged-folder stamps a fixed merged_at ("2026-01-02T00:00:00Z")
   # rather than "just merged", so every delete test below needs the age gate
@@ -202,23 +201,6 @@ _clear_merged_at() {
   sweep_call="$(grep -n 'spec-archive-merged.sh' "$SPEC_CLOSE" | tail -1)"
   grep -qF '"$PWD"' <<<"$sweep_call"
   grep -qF '"$SPEC_ID"' <<<"$sweep_call"
-}
-
-# --- 4: spec_closed telemetry disposition is delete --------------------------
-
-@test "4: deleting appends a spec_closed telemetry event with disposition delete" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
-
-  run _archive "$REPO"
-  [ "$status" -eq 0 ]
-
-  [ -f "$REPO/$TELEMETRY" ]
-  last="$(tail -n 1 "$REPO/$TELEMETRY")"
-  [ "$(printf '%s' "$last" | jq -r '.event')" = "spec_closed" ]
-  [ "$(printf '%s' "$last" | jq -r '.spec_id')" = "SPEC-001" ]
-  [ "$(printf '%s' "$last" | jq -r '.disposition')" = "delete" ]
-  [ "$(printf '%s' "$last" | jq -r '.drained')" = "false" ]
-  [ -n "$(printf '%s' "$last" | jq -r '.ts')" ]
 }
 
 # --- 5: representation gate blocks an unrepresented cost.md ------------------

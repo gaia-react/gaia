@@ -52,8 +52,8 @@
 # The deletion set is closed. Every path below is a literal, fully derived
 # string: no glob, no `find`, no recursion into anything the list does not name.
 # .gaia/local/telemetry/ survives as a directory: it also holds the token/cost
-# ledger (cost.jsonl) and the /gaia-spec pacing log (spec-pacing.jsonl), neither
-# of which this sweep touches. Only its cloud/ and analytics/ children die.
+# ledger (cost.jsonl), which this sweep does not touch. Only its cloud/ and
+# analytics/ children die.
 #
 # Best-effort / advisory: exits 0 always, on every path, so it can never block a
 # session start. Each deletion stands alone; a failure of one does not abort the
@@ -162,7 +162,7 @@ if [ "$repo_root" != "$main_root" ] \
 fi
 
 # Both children of telemetry/, named literally. telemetry/ itself survives: it
-# holds cost.jsonl and spec-pacing.jsonl, and both outlive this sweep.
+# holds cost.jsonl, which outlives this sweep.
 rm -rf -- "${main_root:?}/.gaia/local/telemetry/cloud" 2>/dev/null || true
 rm -rf -- "${main_root:?}/.gaia/local/telemetry/analytics" 2>/dev/null || true
 
