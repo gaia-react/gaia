@@ -193,6 +193,11 @@
           },
           {
             "type": "command",
+            "command": ".claude/hooks/post-findings-block-on-merge.sh",
+            "statusMessage": "Posting local audit findings block…"
+          },
+          {
+            "type": "command",
             "command": ".claude/hooks/worthiness-presence-check.sh",
             "statusMessage": "Checking worthiness presence gate…"
           },

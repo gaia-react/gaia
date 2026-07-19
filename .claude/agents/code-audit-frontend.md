@@ -304,7 +304,7 @@ For each finding routed here, non-security on any repo, **or** a security-class 
 
 Before the file-tech-debt recipe builds the dedup key, assign the finding's `finding_class` using the same best-effort per-bucket convention the "Finding classification" section defines for in-ledger findings. Assign a real seeded class where the root cause maps to one (a swallowed error maps to `holistic/swallowed-error`); reserve `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`) for the finding that genuinely maps to no seeded member, following the vocabulary's own rule, when in doubt, leave a class out.
 
-This assignment has a direct, intended effect on the gaia-harden recurrence tally: an out-of-scope finding of **Important** severity that now carries a real seeded class becomes countable there, because the "Findings sidecar (local run record)" already includes every finding, in-scope or out-of-scope, that carries a `finding_class` from the closed vocabulary, and `compute-tally.ts` gates a candidate on both `isCountableSeverity` (`error`/`warning` only) and `isValidFindingClass` (the fallback fails this check, a seeded class passes it). A **Suggestion**-severity reclassed finding still does not count, it fails the severity gate, so the blast radius is the Important-severity reclassed findings, not every reclassed finding.
+This assignment has a direct, intended effect on the gaia-harden recurrence tally: an out-of-scope finding that now carries a real seeded class becomes countable there at any severity, because the "Findings sidecar (local run record)" already includes every finding, in-scope or out-of-scope, that carries a `finding_class`, and `compute-tally.ts` routes a valid `finding_class` to the candidate bucket regardless of severity (severity is a ranking signal, not an eligibility gate). A finding that genuinely maps to no seeded member is stamped `holistic/unclassified` instead, and surfaces as the distinct unclassified recurrence signal, never a draftable candidate.
 
 Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`), the source of truth for building the wrapped `gaia-debt-key`, running the dedup query (open + declined-closed + keyless `path:line` fallback, never `gh` full-text search), filing with `gh issue create --body-file` (never `--body <argv>`, which the CI `--verbose` run would echo into the public Actions log), creating the `tech-debt` + `severity:<tier>` labels idempotently, the issue-body schema (dedup-key line + `file:line` + failure mode + suggested fix + `Handler: prompt|plan|spec`, emitting `spec` when the out-of-scope fix must begin with a design SPEC, a new subsystem, a schema or contract decision, or a cross-cutting redesign), and touching the debt-count sentinel.
 
@@ -414,7 +414,7 @@ The full report sections remain the structure you author internally to populate 
 
 ## Finding classification
 
-Assign each finding a `finding_class` by the per-bucket convention below. It is the class carried into the re-run carry-forward ledger's `finding_class` field and, for an out-of-scope finding, into the tech-debt dedup key (see "Key relationship"). A finding you cannot assign a stable class to is simply omitted from the ledger; it can still appear in the prose report. A finding with no stable class is not a countable finding.
+Assign each finding a `finding_class` by the per-bucket convention below. It is the class carried into the re-run carry-forward ledger's `finding_class` field, the findings sidecar (see "Findings sidecar" below), and, for an out-of-scope finding, into the tech-debt dedup key (see "Key relationship"). A finding that maps to no seeded oracle/holistic/rule bucket below, after every one of them has been checked, is stamped `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`) rather than omitted, and counts at any severity as the distinct unclassified recurrence signal, never a draftable candidate. Free-text or invented classes are never assigned; the schema rejects them downstream.
 
 This same best-effort per-bucket assignment applies to an out-of-scope finding routed to the filing path (section E), not only to in-ledger findings, so a classless out-of-scope finding is not shortcut to `holistic/unclassified` before every seeded bucket below has been checked; the fallback is reserved for the genuine no-map.
 
@@ -425,16 +425,16 @@ This same best-effort per-bucket assignment applies to an out-of-scope finding r
   - axe (accessibility): the axe rule id, prefixed `axe/` (e.g. `axe/color-contrast`).
   - knip: the issue type, prefixed `knip/` (e.g. `knip/exports`, `knip/types`, `knip/dependencies`).
   - dependency-CVE (`pnpm audit`): the advisory id, prefixed `cve/` (e.g. `cve/1098765`).
-- **Holistic / rule-subagent buckets: a controlled vocabulary.** Use one of the seeded members below verbatim; do not invent new members. If a holistic or rule finding does not map to a seeded member, omit it.
+- **Holistic / rule-subagent buckets: a controlled vocabulary.** Use one of the seeded members below verbatim; do not invent new members. If a holistic or rule finding does not map to a seeded member, stamp it `holistic/unclassified` instead.
   - Holistic (your own cross-cutting findings): `holistic/missing-auth-check`, `holistic/secret-exposure`, `holistic/n-plus-one`, `holistic/unnecessary-rerender`, `holistic/unhandled-promise-rejection`, `holistic/swallowed-error`, `holistic/over-permissive-zod`, `holistic/business-logic-in-component`, `holistic/hardcoded-string`, `holistic/non-null-assertion`.
   - Rule (line-level subagent findings): `rule/use-effect-derived-state`, `rule/use-effect-state-reset`, `rule/unnecessary-use-callback`, `rule/missing-effect-cleanup`, `rule/generic-handler-name`, `rule/switch-statement`, `rule/interface-declaration`, `rule/z-enum`, `rule/array-generic-syntax`, `rule/thin-route-violation`.
 
-The schema enforces this convention: an entry whose `finding_class` is free text or an unseeded holistic/rule member is dropped before it reaches the tally, so a misclassified entry is silently lost rather than miscounted. When in doubt, omit the entry.
+The schema enforces this convention: an entry whose `finding_class` is free text or an invented holistic/rule member is rejected outright, never emitted; a genuine holistic/rule finding that maps to no seeded member above is stamped `holistic/unclassified` and still reaches the tally as the unclassified signal, so it is never silently lost.
 
 <!-- gaia:maintainer-only:start -->
-The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`, `RULE_FINDING_CLASSES`, and the oracle prefixes); the lists above mirror it. That schema also defines `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`), the dedup-key fallback for a classless out-of-scope finding (see Scope classification and out-of-scope disposition).
+The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`, `RULE_FINDING_CLASSES`, and the oracle prefixes); the lists above mirror it. That schema also defines `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`), the routing key for a classless finding, both for the out-of-scope tech-debt dedup key (see Scope classification and out-of-scope disposition) and for the tally's unclassified bucket.
 <!-- gaia:maintainer-only:end -->
-`holistic/unclassified` is the out-of-scope fallback for a finding that maps to no seeded class (see Scope classification and out-of-scope disposition): outside the closed finding-class vocabulary, it builds a `tech-debt` dedup key. It carries no security signal (see section B).
+`holistic/unclassified` is the fallback for a finding that maps to no seeded class (see Scope classification and out-of-scope disposition): outside the closed finding-class vocabulary, it builds a `tech-debt` dedup key for an out-of-scope finding and routes any finding to the tally's distinct unclassified recurrence signal. It carries no security signal (see section B).
 
 ## Progress breadcrumbs (CI observability)
 
@@ -1037,11 +1037,12 @@ Shape:
 
 ```json
 {"schema":1,"member":"code-audit-frontend","findings":[
-  {"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}
+  {"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]},
+  {"finding_class":"holistic/unclassified","severity":"suggestion","area_tags":["app/routes"]}
 ]}
 ```
 
-Every Critical / Important / Suggestion finding in your report (in-scope or out-of-scope; not a cross-remit finding, which belongs to another member) that carries a `finding_class` from the closed holistic/rule vocabulary (see "Finding classification" above) goes into `findings[]`, with `severity` mapped from your grading: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `["app/routes"]`). A finding whose `finding_class` you omitted from the report for lack of a seeded class stays omitted here too, exactly as "Finding classification" already says: a finding with no stable class is not a countable finding. `"findings": []` when nothing in your report has a stable class, or your report is empty, either way is a real, meaningful "this run found nothing countable" record; write it, do not skip the file.
+Every Critical / Important / Suggestion finding in your report (in-scope or out-of-scope; not a cross-remit finding, which belongs to another member) goes into `findings[]`, with `severity` mapped from your grading: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `["app/routes"]`). A finding carrying a valid `finding_class` from the closed holistic/rule vocabulary (see "Finding classification" above) counts at any severity; a finding that genuinely maps to no seeded class is stamped `holistic/unclassified` and **included**, never omitted, surfacing as the distinct unclassified recurrence signal. `"findings": []` when your report is empty is still a real, meaningful "this run found nothing" record; write it, do not skip the file.
 
 Best-effort: a write failure here never blocks or alters the marker / stamp / status / dispositions-sidecar / ledger sequence above.
 

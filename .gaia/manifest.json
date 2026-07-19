@@ -53,6 +53,7 @@
     ".claude/hooks/lib/repo-scope.sh": "owned",
     ".claude/hooks/local-janitor.sh": "owned",
     ".claude/hooks/post-audit-status.sh": "owned",
+    ".claude/hooks/post-findings-block-on-merge.sh": "owned",
     ".claude/hooks/pr-merge-audit-check.sh": "owned",
     ".claude/hooks/red-verify-commit-check.sh": "owned",
     ".claude/hooks/serena-code-search-guard.sh": "owned",
@@ -614,6 +615,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-19T14:33:16.319Z",
+  "generated": "2026-07-19T14:44:28.472Z",
   "version": "1.6.1"
 }

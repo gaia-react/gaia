@@ -157,11 +157,12 @@ Shape:
 
 ```json
 {"schema":1,"member":"code-audit-maintainer-node","findings":[
-  {"finding_class":"holistic/unhandled-promise-rejection","severity":"error","area_tags":[".gaia/cli/src"]}
+  {"finding_class":"holistic/unhandled-promise-rejection","severity":"error","area_tags":[".gaia/cli/src"]},
+  {"finding_class":"holistic/unclassified","severity":"suggestion","area_tags":[".gaia/cli/src"]}
 ]}
 ```
 
-Every Critical / Important / Suggestion finding in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".gaia/cli/src/release"]`). `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary: `holistic/unhandled-promise-rejection` and `holistic/swallowed-error` for the async/error-handling defects your review dimensions already name, `holistic/over-permissive-zod` for a schema that is too permissive, `holistic/secret-exposure` for a leaked credential, `holistic/non-null-assertion` for a hidden `!`, whichever seeded member genuinely fits. A finding that maps to no seeded class (most injection-safety and filesystem/IO findings today) is simply omitted from `findings[]` (it still stands in your prose report); a finding with no stable class is not a countable finding. `"findings": []` when nothing in your report has a stable class, or your report is clean, either way is a real, meaningful record; write it, do not skip the file.
+Every Critical / Important / Suggestion finding in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".gaia/cli/src/release"]`). `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary: `holistic/unhandled-promise-rejection` and `holistic/swallowed-error` for the async/error-handling defects your review dimensions already name, `holistic/over-permissive-zod` for a schema that is too permissive, `holistic/secret-exposure` for a leaked credential, `holistic/non-null-assertion` for a hidden `!`, whichever seeded member genuinely fits, and counts at any severity. A finding that maps to no seeded class (most injection-safety and filesystem/IO findings today) is stamped `holistic/unclassified` and **included** in `findings[]` (never omitted), surfacing as the distinct unclassified recurrence signal. `"findings": []` when your report is clean is still a real, meaningful record; write it, do not skip the file.
 
 Best-effort: a write failure here never blocks or alters the marker / stamp / status sequence above.
 

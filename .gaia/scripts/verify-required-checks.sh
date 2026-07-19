@@ -38,9 +38,9 @@ set -uo pipefail
 # guard, not to make on its own.
 REQUIRED_CONTEXTS=(
   "GAIA-Audit"                        # custom status posted by the code-audit gate itself
-  "bats (.github/audit)"              # .github/workflows/audit-ci-tests.yml
+  "Audit CI Tests"                    # .github/workflows/audit-ci-tests.yml
   "Run Chromatic"                     # .github/workflows/chromatic.yml
-  "Unanswered newly-shipping files"   # .github/workflows/distribution-audit-pr.yml (SPEC-044)
+  "Distribution Audit"                # .github/workflows/distribution-audit-pr.yml (SPEC-044)
   "Vitest and Playwright"             # .github/workflows/tests.yml
 )
 

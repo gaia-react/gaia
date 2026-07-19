@@ -24,9 +24,9 @@ setup() {
   [ -x "$SCRIPT" ] || skip "verify-required-checks.sh not executable"
   FIX="$THIS_DIR/fixtures/verify-required-checks"
   FULL_RULESET="GAIA-Audit
-bats (.github/audit)
+Audit CI Tests
 Run Chromatic
-Unanswered newly-shipping files
+Distribution Audit
 Vitest and Playwright"
 }
 
@@ -107,9 +107,9 @@ Vitest and Playwright"
 # ---------------------------------------------------------------------------
 
 @test "drift: exits 1 when a required context is missing live" {
-  local partial="bats (.github/audit)
+  local partial="Audit CI Tests
 Run Chromatic
-Unanswered newly-shipping files
+Distribution Audit
 Vitest and Playwright"
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
     --ruleset-contexts <(printf '%s\n' "$partial") \
@@ -118,9 +118,9 @@ Vitest and Playwright"
 }
 
 @test "drift: reports exactly the missing context by name" {
-  local partial="bats (.github/audit)
+  local partial="Audit CI Tests
 Run Chromatic
-Unanswered newly-shipping files
+Distribution Audit
 Vitest and Playwright"
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
     --ruleset-contexts <(printf '%s\n' "$partial") \
@@ -138,9 +138,9 @@ Vitest and Playwright"
     --workflows-dir "$FIX/workflows-clean"
   [ "$status" -eq 1 ]
   assert_contains "GAIA-Audit"
-  assert_contains "bats (.github/audit)"
+  assert_contains "Audit CI Tests"
   assert_contains "Run Chromatic"
-  assert_contains "Unanswered newly-shipping files"
+  assert_contains "Distribution Audit"
   assert_contains "Vitest and Playwright"
 }
 

@@ -1,4 +1,5 @@
 import {describe, expect, test} from 'vitest';
+import {isValidFindingClass} from '../../schemas/finding-class.js';
 import {computeTally, windowClasses} from '../compute-tally.js';
 import type {TallyPrRecord} from '../compute-tally.js';
 
@@ -109,7 +110,7 @@ describe('computeTally', () => {
     expect(result.candidate_count).toBe(0);
   });
 
-  test('ignores suggestion-only findings but counts the same class at warning', () => {
+  test('UAT-001: a suggestion-only recurring class is a candidate with severity_max suggestion', () => {
     const suggestionOnly = computeTally({
       coveredClass: noCover,
       prs: [3, 2, 1].map((n) =>
@@ -124,7 +125,10 @@ describe('computeTally', () => {
       suppressedClass: noSuppress,
       windowDays: 90,
     });
-    expect(suggestionOnly.candidate_count).toBe(0);
+    expect(suggestionOnly.candidate_count).toBe(1);
+    expect(suggestionOnly.candidates[0]?.distinct_pr_count).toBe(3);
+    expect(suggestionOnly.candidates[0]?.severity_max).toBe('suggestion');
+    expect(suggestionOnly.unclassified).toBeNull();
 
     const atWarning = computeTally({
       coveredClass: noCover,
@@ -141,6 +145,7 @@ describe('computeTally', () => {
       windowDays: 90,
     });
     expect(atWarning.candidate_count).toBe(1);
+    expect(atWarning.candidates[0]?.severity_max).toBe('warning');
   });
 
   test('combines CI-run and local-run findings for the same class across distinct PRs', () => {
@@ -231,6 +236,225 @@ describe('computeTally', () => {
     });
 
     expect(result.candidate_count).toBe(0);
+  });
+
+  test('UAT-002: an unseeded holistic slug is dropped, not a candidate nor unclassified', () => {
+    expect(isValidFindingClass('holistic/arbitrary-slug')).toBe(false);
+
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [3, 2, 1].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'holistic/arbitrary-slug',
+            severity: 'error',
+          },
+        ])
+      ),
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidate_count).toBe(0);
+    expect(result.unclassified).toBeNull();
+  });
+
+  test('UAT-003: a classless recurring finding surfaces as the distinct unclassified signal, not a candidate', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [
+        pr(1, [
+          {
+            area_tags: ['app/routes'],
+            finding_class: 'holistic/unclassified',
+            severity: 'warning',
+          },
+          // A second, distinct classless finding in the SAME PR must still
+          // collapse to a single distinct-PR increment (cardinality one).
+          {
+            area_tags: ['app/services'],
+            finding_class: 'holistic/unclassified',
+            severity: 'error',
+          },
+        ]),
+        pr(2, [
+          {
+            area_tags: [],
+            finding_class: 'holistic/unclassified',
+            severity: 'suggestion',
+          },
+        ]),
+        pr(3, [
+          {
+            area_tags: [],
+            finding_class: 'holistic/unclassified',
+            severity: 'warning',
+          },
+        ]),
+      ],
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidate_count).toBe(0);
+    expect(
+      result.candidates.every(
+        (c) => c.finding_class !== 'holistic/unclassified'
+      )
+    ).toBe(true);
+    expect(result.unclassified).not.toBeNull();
+    expect(result.unclassified?.distinct_pr_count).toBe(3);
+    expect(result.unclassified?.severity_max).toBe('error');
+    expect(result.unclassified?.area_tags).toEqual([
+      'app/routes',
+      'app/services',
+    ]);
+  });
+
+  test('UAT-007: a classless finding on only 2 distinct PRs leaves unclassified null', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [2, 1].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'holistic/unclassified',
+            severity: 'warning',
+          },
+        ])
+      ),
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.unclassified).toBeNull();
+  });
+
+  test('windowClasses never includes the classless unclassified bucket (Directive #2)', () => {
+    const prs = [3, 2, 1].map((n) =>
+      pr(n, [
+        {
+          area_tags: [],
+          finding_class: 'holistic/unclassified',
+          severity: 'warning',
+        },
+      ])
+    );
+
+    expect(windowClasses(prs)).toEqual([]);
+  });
+
+  test('Directive #1: severity_max is a running max across PRs (suggestion then error -> error)', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [
+        pr(1, [
+          {
+            area_tags: [],
+            finding_class: 'rule/switch-statement',
+            severity: 'suggestion',
+          },
+        ]),
+        pr(2, [
+          {
+            area_tags: [],
+            finding_class: 'rule/switch-statement',
+            severity: 'error',
+          },
+        ]),
+        pr(3, [
+          {
+            area_tags: [],
+            finding_class: 'rule/switch-statement',
+            severity: 'suggestion',
+          },
+        ]),
+      ],
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidates[0]?.severity_max).toBe('error');
+  });
+
+  test('Directive #1: severity_max is never downgraded (warning then suggestion -> warning)', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [
+        pr(1, [
+          {
+            area_tags: [],
+            finding_class: 'rule/switch-statement',
+            severity: 'warning',
+          },
+        ]),
+        pr(2, [
+          {
+            area_tags: [],
+            finding_class: 'rule/switch-statement',
+            severity: 'suggestion',
+          },
+        ]),
+        pr(3, [
+          {
+            area_tags: [],
+            finding_class: 'rule/switch-statement',
+            severity: 'suggestion',
+          },
+        ]),
+      ],
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidates[0]?.severity_max).toBe('warning');
+  });
+
+  test('Directive #5: an oracle-prefixed class at suggestion severity is still a candidate', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [3, 2, 1].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'knip/exports',
+            severity: 'suggestion',
+          },
+        ])
+      ),
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidates[0]?.is_oracle).toBe(true);
+    expect(result.candidates[0]?.severity_max).toBe('suggestion');
+  });
+
+  test('Directive #4: a recorded recurring class counts regardless of self-heal (the tally has no self-heal notion)', () => {
+    // The tally only sees whatever findings were recorded in the block for
+    // each PR; it has no concept of "found-and-healed". A class recorded as
+    // recurring produces a candidate even though the tally cannot know (and
+    // does not care) whether a later PR fixed the underlying issue.
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [3, 2, 1].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'holistic/swallowed-error',
+            severity: 'warning',
+          },
+        ])
+      ),
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidate_count).toBe(1);
+    expect(result.candidates[0]?.finding_class).toBe(
+      'holistic/swallowed-error'
+    );
   });
 
   test('drops a class a promoted rule already covers', () => {

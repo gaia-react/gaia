@@ -21,7 +21,7 @@
 # The workflow YAML is not directly unit-testable, so this suite inspects the
 # in-tree step block (the same approach required-check-registration.bats uses).
 # It lives under .github/audit/tests/ so the CI bats runner (audit-ci-tests.yml,
-# check name "bats (.github/audit)") executes it.
+# check name "Audit CI Tests") executes it.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

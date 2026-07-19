@@ -9,6 +9,8 @@
 #   - gaiaLatest     (from `gh release list` or curl GitHub API)
 #   - gaiaHasUpdate  (semver comparison)
 #   - hardenCandidateCount (recurring code-review findings ready to harden)
+#   - hardenUnclassifiedCount (classless recurring findings over threshold;
+#                     a seed-a-class-or-investigate signal, never a candidate)
 #   - auditNudge / auditNudgeReason / auditLastAppliedAt / auditMemoryCount /
 #                  auditMemoryBaseline (knowledge-audit drift signals)
 #   - checkedAt      (Unix epoch seconds)
@@ -56,6 +58,7 @@ prev_checked_at=0
 prev_outdated_count=0
 prev_gaia_latest=""
 prev_harden_count=0
+prev_harden_unclassified=0
 prev_audit_last_applied_at=0
 prev_audit_memory_count=0
 prev_audit_memory_baseline=0
@@ -68,6 +71,7 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   # gaia_current + gaia_latest, both of which already carry their own fallbacks.
   prev_gaia_latest=$(jq -r '.gaiaLatest // ""' "$CACHE_FILE" 2>/dev/null)
   prev_harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+  prev_harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_last_applied_at=$(jq -r '.auditLastAppliedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_count=$(jq -r '.auditMemoryCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_baseline=$(jq -r '.auditMemoryBaseline // 0' "$CACHE_FILE" 2>/dev/null)
@@ -131,32 +135,43 @@ case "$outdated_count" in
   ''|*[!0-9]*) outdated_count=0 ;;
 esac
 
-# ---------- hardenCandidateCount ----------
+# ---------- hardenCandidateCount / hardenUnclassifiedCount ----------
 # Recurring-finding tally for the policy-memory loop. `harden-tally` reads the
 # rolling 90-day merged-PR window via gh, counts distinct PRs per finding_class
-# at error/warning severity, drops promoted/suppressed classes, and emits the
-# candidate_count plus a gh_ok flag. Runs in this same TTL pass; network is
-# non-fatal: on a gh/network failure harden-tally exits 0 emitting
-# candidate_count 0 with gh_ok false, so this consumer honors gh_ok and keeps
-# the previous cached count rather than resetting the nudge to 0. Falls back to
-# the previous cached count on any failure: missing binary, gh/network error
-# (gh_ok false), parse error.
+# at any severity (severity_max is a running-max ranking signal, not an
+# eligibility gate), drops promoted/suppressed classes, and emits
+# candidate_count plus a separate `unclassified` recurrence signal (non-null
+# only at/above the recurrence threshold) and a gh_ok flag. Runs in this same
+# TTL pass; network is non-fatal: on a gh/network failure harden-tally exits 0
+# emitting candidate_count 0, unclassified null, and gh_ok false, so this
+# consumer honors gh_ok and keeps the previous cached counts rather than
+# resetting the nudges to 0. Falls back to the previous cached counts on any
+# failure: missing binary, gh/network error (gh_ok false), parse error.
 harden_count="$prev_harden_count"
+unclassified_count="$prev_harden_unclassified"
 if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
   tally_json="$(cd "$PROJECT_ROOT" && "$GAIA_BIN" harden-tally 2>/dev/null)"
   if [ -n "$tally_json" ]; then
     parsed=$(printf '%s' "$tally_json" | jq -r '.candidate_count // empty' 2>/dev/null)
+    unclassified_parsed=$(printf '%s' "$tally_json" | jq -r '.unclassified.distinct_pr_count // 0' 2>/dev/null)
     gh_ok=$(printf '%s' "$tally_json" | jq -r '.gh_ok // false' 2>/dev/null)
     if [ "$gh_ok" = "true" ]; then
       case "$parsed" in
         ''|*[!0-9]*) ;;
         *) harden_count="$parsed" ;;
       esac
+      case "$unclassified_parsed" in
+        ''|*[!0-9]*) ;;
+        *) unclassified_count="$unclassified_parsed" ;;
+      esac
     fi
   fi
 fi
 case "$harden_count" in
   ''|*[!0-9]*) harden_count=0 ;;
+esac
+case "$unclassified_count" in
+  ''|*[!0-9]*) unclassified_count=0 ;;
 esac
 
 # ---------- auditNudge ----------
@@ -358,18 +373,19 @@ if command -v jq >/dev/null 2>&1; then
     --arg gaiaLatest "$gaia_latest" \
     --argjson gaiaHasUpdate "$gaia_has_update" \
     --argjson hardenCandidateCount "$harden_count" \
+    --argjson hardenUnclassifiedCount "$unclassified_count" \
     --argjson auditNudge "$audit_nudge" \
     --arg auditNudgeReason "$audit_nudge_reason" \
     --argjson auditLastAppliedAt "$audit_last_applied_at" \
     --argjson auditMemoryCount "$audit_memory_count" \
     --argjson auditMemoryBaseline "$audit_memory_baseline" \
     --argjson serenaLangDrift "$serena_lang_drift_json" \
-    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift}' \
+    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift}' \
     > "$tmp_file" 2>/dev/null
 else
   # jq not available; emit valid JSON via printf.
-  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[]}\n' \
-    "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
+  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[]}\n' \
+    "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
     > "$tmp_file" 2>/dev/null
 fi
 

@@ -7,7 +7,7 @@
 #
 # gaia:maintainer-only:start
 # Enforced by the sibling bats suite
-# .gaia/scripts/tests/lint-hook-array-guard.bats, which the `bats (.github/audit)`
+# .gaia/scripts/tests/lint-hook-array-guard.bats, which the `Audit CI Tests`
 # CI job runs on every push touching .claude/hooks/** or .gaia/scripts/**. The
 # suite fails when this scan finds a hit and self-tests the detector against a
 # known-bad fixture. Also runnable directly:

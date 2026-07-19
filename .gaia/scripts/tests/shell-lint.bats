@@ -2,7 +2,7 @@
 # Tests for .gaia/tests/shell-lint.sh: assert the deterministic local shell gate
 # folds the hook array-guard (.gaia/scripts/lint-hook-array-guard.sh) into its
 # run, so every shell-lint caller enforces the bash-3.2 empty-array-abort class
-# locally, not only the bats (.github/audit) CI job. The detector's own
+# locally, not only the Audit CI Tests job. The detector's own
 # correctness is covered by lint-hook-array-guard.bats; this suite covers the
 # wiring.
 #
