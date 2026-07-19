@@ -427,3 +427,17 @@ _clear_abandoned_at() {
   [ -d "$REPO/$SPECS/SPEC-001" ]
   [ -f "$REPO/.gaia/local/cache/wiki-promote/SPEC-001.json" ]
 }
+
+# --- 22: the liveness lock is reaped with the rest of the abandoned keyset ---
+
+@test "22: a .lock file is reaped alongside the deleted abandoned folder" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
+  echo '{"spec_id":"SPEC-001"}' > "$REPO/.gaia/local/cache/spec-session-SPEC-001.lock"
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 abandoned SPEC folder(s): SPEC-001"
+
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
+  [ ! -e "$REPO/.gaia/local/cache/spec-session-SPEC-001.lock" ]
+}

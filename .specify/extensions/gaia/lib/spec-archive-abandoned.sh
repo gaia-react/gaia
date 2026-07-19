@@ -138,20 +138,22 @@ while IFS= read -r spec_id; do
     continue
   fi
 
-  # Reap the abandoned SPEC's cache keyset (gate1/draft/session/audit), plus
-  # any wiki-promote defer flag. A defer flag means /speckit-implement ran
-  # before the row was abandoned (a finalized SPEC's PR was open, then
-  # dropped for cause) and left .gaia/local/cache/wiki-promote/<id>.json
-  # awaiting a merge that will now never happen: unlike the merged path,
-  # which GUARDS on this flag (skip-and-let-close-drain), there is no close
-  # to drain it here, so it is purged rather than left to orphan (nothing
-  # else ever reaps wiki-promote/, see local-janitor.sh sweep #9's
-  # allowlist). Best-effort and fail-open, matching the rest of this
-  # script's contract.
+  # Reap the abandoned SPEC's cache keyset (gate1/draft/session/lock/audit),
+  # plus any wiki-promote defer flag. An abandoned SPEC's authoring session
+  # is over, so its lock is stale by definition, same as the merged path. A
+  # defer flag means /speckit-implement ran before the row was abandoned (a
+  # finalized SPEC's PR was open, then dropped for cause) and left
+  # .gaia/local/cache/wiki-promote/<id>.json awaiting a merge that will now
+  # never happen: unlike the merged path, which GUARDS on this flag
+  # (skip-and-let-close-drain), there is no close to drain it here, so it is
+  # purged rather than left to orphan (nothing else ever reaps
+  # wiki-promote/, see local-janitor.sh sweep #9's allowlist). Best-effort
+  # and fail-open, matching the rest of this script's contract.
   local_cache="${repo_root}/.gaia/local/cache"
   rm -f "${local_cache}/gate1-${spec_id}.json" \
         "${local_cache}/draft-${spec_id}.md" \
         "${local_cache}/spec-session-${spec_id}.json" \
+        "${local_cache}/spec-session-${spec_id}.lock" \
         "${local_cache}/wiki-promote/${spec_id}.json" 2>/dev/null
   rm -rf "${local_cache}/audit-${spec_id}" 2>/dev/null
 
