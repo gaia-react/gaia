@@ -49,7 +49,6 @@ setup() {
   PLANS="$SANDBOX/.gaia/local/plans"
   LEDGER="$SANDBOX/.gaia/local/plans/ledger.json"
   COST_LEDGER="$SANDBOX/.gaia/local/telemetry/cost.jsonl"
-  TELEMETRY="$SANDBOX/.gaia/local/telemetry/spec-pacing.jsonl"
 
   # A fixed merged_at ("2026-01-02T00:00:00Z"), so every reap test below needs
   # the age gate collapsed to stay deterministic regardless of wall-clock
@@ -211,23 +210,6 @@ _seed_cost_row() {
   assert_contains "Deleted 1 merged plan folder(s): PLAN-001"
   [ ! -e "$PLANS/PLAN-001" ]
   [ -d "$PLANS/PLAN-002" ]
-}
-
-# --- 3: plan_closed telemetry disposition is delete --------------------------
-
-@test "3: deleting appends a plan_closed telemetry event with disposition delete" {
-  _seed_merged_plan PLAN-001
-
-  run _archive "$SANDBOX"
-  [ "$status" -eq 0 ]
-
-  [ -f "$TELEMETRY" ]
-  last="$(tail -n 1 "$TELEMETRY")"
-  [ "$(printf '%s' "$last" | jq -r '.event')" = "plan_closed" ]
-  [ "$(printf '%s' "$last" | jq -r '.plan_id')" = "PLAN-001" ]
-  [ "$(printf '%s' "$last" | jq -r '.disposition')" = "delete" ]
-  [ "$(printf '%s' "$last" | jq -r '.drained')" = "false" ]
-  [ -n "$(printf '%s' "$last" | jq -r '.ts')" ]
 }
 
 # --- 4: representation gate blocks an unrepresented cost.md ------------------

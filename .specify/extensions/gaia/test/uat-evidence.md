@@ -181,7 +181,7 @@ Evidence:
 
 - `references/spec.md` Step 6, wrapper dispatches the self-review directly as a `general-purpose` Agent, applies fixes for any drift/ambiguity/inconsistency findings before Gate 2 (Step 8) presents.
 - `.specify/extensions/gaia/commands/self-review.md`: checklist covers all five categories (placeholders, scope drift, inconsistency, ambiguity, pending). Reads gate-1 snapshot at `.gaia/local/cache/gate1-<spec_id>.json` for drift comparison.
-- Observable artifacts: `.gaia/local/cache/audit-SPEC-NNN/findings/self-review.json` and a `self_review_findings` row in `.gaia/local/telemetry/spec-pacing.jsonl`.
+- Observable artifact: `.gaia/local/cache/audit-SPEC-NNN/findings/self-review.json`.
 
 ## UAT-017: pending clarifications block-or-defer
 

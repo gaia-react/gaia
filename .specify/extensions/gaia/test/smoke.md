@@ -139,7 +139,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 - The self-review checks the draft against the gate-1 snapshot for placeholders, scope drift, internal inconsistency, and ambiguous UAT phrasing.
 - Issues are surfaced via `{"action": "prompt", ...}` and resolved before gate 2 presents.
 - The self-review is recorded in `clarifications.answered[]` as a confirmation step.
-- The session leaves behind `.gaia/local/cache/audit-SPEC-NNN/findings/self-review.json` and a `self_review_findings` row in `.gaia/local/telemetry/spec-pacing.jsonl`.
+- The session leaves behind `.gaia/local/cache/audit-SPEC-NNN/findings/self-review.json`.
 
 **UATs covered.** UAT-016.
 

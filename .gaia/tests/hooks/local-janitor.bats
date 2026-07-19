@@ -1086,11 +1086,10 @@ jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
 # The highest-consequence line in is_drop_zone. `telemetry` is a drop-zone and
 # `telemetry/cloud` is not, and the two halves pull in opposite directions:
 #
-#   telemetry/       holds the token/cost ledger (cost.jsonl) and the /gaia-spec
-#                    pacing log (spec-pacing.jsonl). Sweep #4 rmdirs any empty
-#                    dir under .gaia/local that is not a drop-zone, so dropping
-#                    `telemetry` from the arm would delete the directory those
-#                    two ledgers live in the moment it is momentarily empty.
+#   telemetry/       holds the token/cost ledger (cost.jsonl). Sweep #4 rmdirs
+#                    any empty dir under .gaia/local that is not a drop-zone, so
+#                    dropping `telemetry` from the arm would delete the directory
+#                    that ledger lives in the moment it is momentarily empty.
 #   telemetry/cloud  is dead. Nothing writes it and nothing reads it, so an empty
 #                    one left on disk is exactly what sweep #4 exists to prune.
 #

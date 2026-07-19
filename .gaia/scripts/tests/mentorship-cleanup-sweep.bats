@@ -87,7 +87,6 @@ seed_inrepo_residue() {
 seed_survivors() {
   mkdir -p "$MAIN/.gaia/local/telemetry" "$MAIN/.gaia/local/cache/shared"
   echo '{"kind":"execute","total":11110}' > "$MAIN/.gaia/local/telemetry/cost.jsonl"
-  echo '{"event":"spec_closed"}' > "$MAIN/.gaia/local/telemetry/spec-pacing.jsonl"
   echo 'active' > "$MAIN/.gaia/local/cache/shared/coaching-active.txt"
 }
 
@@ -136,15 +135,14 @@ tree_digest() {
 
 # --- 2. The survivors sharing telemetry/ are untouched -----------------------
 
-@test "cost.jsonl, spec-pacing.jsonl and telemetry/ survive intact; coaching-active.txt is reaped" {
+@test "cost.jsonl and telemetry/ survive intact; coaching-active.txt is reaped" {
   make_main
   seed_offrepo_residue
   seed_inrepo_residue
   seed_survivors
 
-  local cost pacing
+  local cost
   cost="$(cksum < "$MAIN/.gaia/local/telemetry/cost.jsonl")"
-  pacing="$(cksum < "$MAIN/.gaia/local/telemetry/spec-pacing.jsonl")"
 
   run run_sweep
   [ "$status" -eq 0 ]
@@ -154,7 +152,6 @@ tree_digest() {
   [ -e "$MAIN/.gaia/local/telemetry/cloud" ] && return 1
 
   [ "$(cksum < "$MAIN/.gaia/local/telemetry/cost.jsonl")" = "$cost" ]
-  [ "$(cksum < "$MAIN/.gaia/local/telemetry/spec-pacing.jsonl")" = "$pacing" ]
   # Orphaned residue: reaped now, unlike the load-bearing streams above. Final
   # line of the test, so its own exit status is the test result; the `[ ! -e ]`
   # form (not the earlier `&& return 1` pattern) is what actually fails here.
@@ -358,7 +355,6 @@ tree_digest() {
   [ -e "$MAIN/.gaia/local/telemetry/cloud" ] && return 1
   [ -e "$MAIN/.gaia/local/telemetry/analytics" ] && return 1
   [ -f "$SENTINEL" ]
-  # Neither the sweep nor the janitor's empty-dir prune reaches the ledgers.
+  # Neither the sweep nor the janitor's empty-dir prune reaches the cost ledger.
   [ -f "$MAIN/.gaia/local/telemetry/cost.jsonl" ]
-  [ -f "$MAIN/.gaia/local/telemetry/spec-pacing.jsonl" ]
 }

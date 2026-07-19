@@ -8,7 +8,7 @@
 # out-of-band (the github.com button, another session), so the SPEC folder
 # lingers in the active specs dir with nothing to sweep it. This pass is that
 # sweep, and the close command's own single-id delete reuses it too, so the
-# gate, cache purge, and pacing append live in one place.
+# gate and cache purge live in one place.
 #
 # Sweep criteria, per row: a .gaia/local/specs/ledger.json row is a delete
 # candidate when ALL hold:
@@ -54,13 +54,11 @@
 # is the identity record that survives once the folder is gone.
 #
 # On a successful delete this reaps the SPEC's cache keyset (gate1/draft/
-# session/audit) and appends a spec_closed telemetry event (disposition:
-# delete), best-effort.
+# session/audit), best-effort.
 #
 # Best-effort and fail-open by contract, exactly like spec-reconcile.sh: a
-# missing jq / ledger, an unrepresented cost, or a telemetry-append failure
-# never blocks a caller. One stdout line summarizes what was deleted;
-# diagnostics go to stderr.
+# missing jq / ledger or an unrepresented cost never blocks a caller. One
+# stdout line summarizes what was deleted; diagnostics go to stderr.
 #
 # Usage:
 #   spec-archive-merged.sh <repo_root> [<spec_id>] [--close]
@@ -91,7 +89,6 @@ filter_id="${args[1]:-}"
 ledger_path="${repo_root}/.gaia/local/specs/ledger.json"
 specs_dir="${repo_root}/.gaia/local/specs"
 cache_dir="${repo_root}/.gaia/local/cache/wiki-promote"
-telemetry_path="${repo_root}/.gaia/local/telemetry/spec-pacing.jsonl"
 
 # Retention knob, read once: a non-numeric override falls back to the default.
 retention_days="${GAIA_SPEC_RETENTION_DAYS:-30}"
@@ -153,7 +150,6 @@ else
 fi
 [ -n "$merged_ids" ] || exit 0
 
-now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 deleted_list=""
 
 while IFS= read -r spec_id; do
@@ -210,15 +206,6 @@ while IFS= read -r spec_id; do
   if ! rm -rf "$folder" 2>/dev/null; then
     echo "spec-archive-merged: $spec_id folder delete failed; left active folder in place" >&2
     continue
-  fi
-
-  # Telemetry: a spec_closed event, mirroring the close command's own. drained
-  # is always false here (specs with a pending drain cache are skipped above).
-  # Failure to append never blocks the sweep.
-  if ev="$(jq -nc --arg id "$spec_id" --arg ts "$now" \
-      '{event: "spec_closed", spec_id: $id, disposition: "delete", drained: false, ts: $ts}' 2>/dev/null)"; then
-    mkdir -p "$(dirname "$telemetry_path")" 2>/dev/null || true
-    printf '%s\n' "$ev" >> "$telemetry_path" 2>/dev/null || true
   fi
 
   deleted_list="${deleted_list:+$deleted_list, }${spec_id}"

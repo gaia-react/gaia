@@ -71,7 +71,7 @@ classes above are a floor, not a checklist to copy verbatim.
 ## Reads first
 
 - `.gaia/` top-level layout (`ls .gaia/`) for the overall shape.
-- `.gaia/local/telemetry/` (`cost.jsonl`, `spec-pacing.jsonl`) for the
+- `.gaia/local/telemetry/` (`cost.jsonl`) for the
   retention question.
 - `.gaia/local/specs/` and `.gaia/local/plans/` including their `archived/`
   subtrees, for growth and layout-consistency questions.

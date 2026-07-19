@@ -9,7 +9,7 @@
 # PR can merge out-of-band (the github.com button, another session), so the
 # PLAN-NNN folder lingers in the active plans dir with nothing to sweep it.
 # This pass is that sweep, and the close command's own single-id delete
-# reuses it too, so the gate and pacing append live in one place.
+# reuses it too, so the gate lives in one place.
 #
 # Sweep criteria, per row: a .gaia/local/plans/ledger.json row is a delete
 # candidate when ALL hold:
@@ -60,15 +60,13 @@
 # untouched; it is the identity record that survives once the folder is
 # gone.
 #
-# On a successful delete this appends a plan_closed telemetry event
-# (disposition: delete), best-effort. There is no plan-scoped gate1-/draft-
-# cache namespace to purge today; only the wiki-promote drain cache exists,
-# and it is never purged here (guarded above).
+# There is no plan-scoped gate1-/draft- cache namespace to purge today; only
+# the wiki-promote drain cache exists, and it is never purged here (guarded
+# above).
 #
 # Best-effort and fail-open by contract, exactly like spec-archive-merged.sh:
-# a missing jq / ledger, an unrepresented cost, or a telemetry-append failure
-# never blocks a caller. One stdout line summarizes what was deleted;
-# diagnostics go to stderr.
+# a missing jq / ledger or an unrepresented cost never blocks a caller. One
+# stdout line summarizes what was deleted; diagnostics go to stderr.
 #
 # Usage:
 #   plan-archive-merged.sh <repo_root> [<plan_id>] [--close]
@@ -99,7 +97,6 @@ filter_id="${args[1]:-}"
 ledger_path="${repo_root}/.gaia/local/plans/ledger.json"
 plans_dir="${repo_root}/.gaia/local/plans"
 cache_dir="${repo_root}/.gaia/local/cache/wiki-promote"
-telemetry_path="${repo_root}/.gaia/local/telemetry/spec-pacing.jsonl"
 
 # Retention knob, read once: a non-numeric override falls back to the default.
 # The same GAIA_SPEC_RETENTION_DAYS knob spec-archive-merged.sh reads.
@@ -162,7 +159,6 @@ else
 fi
 [ -n "$merged_ids" ] || exit 0
 
-now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 deleted_list=""
 
 while IFS= read -r plan_id; do
@@ -210,15 +206,6 @@ while IFS= read -r plan_id; do
   if ! rm -rf "$folder" 2>/dev/null; then
     echo "plan-archive-merged: $plan_id folder delete failed; left active folder in place" >&2
     continue
-  fi
-
-  # Telemetry: a plan_closed event, mirroring spec-archive-merged.sh's own.
-  # drained is always false here (plans with a pending drain cache are
-  # skipped above). Failure to append never blocks the sweep.
-  if ev="$(jq -nc --arg id "$plan_id" --arg ts "$now" \
-      '{event: "plan_closed", plan_id: $id, disposition: "delete", drained: false, ts: $ts}' 2>/dev/null)"; then
-    mkdir -p "$(dirname "$telemetry_path")" 2>/dev/null || true
-    printf '%s\n' "$ev" >> "$telemetry_path" 2>/dev/null || true
   fi
 
   deleted_list="${deleted_list:+$deleted_list, }${plan_id}"

@@ -20,7 +20,7 @@ Hard rules in auto mode:
 1. **Description is required.** If the remainder of `$ARGUMENTS` after stripping `auto` is empty, abort with: `"/gaia-spec auto requires a description. Re-invoke as: /gaia-spec auto <description>"`. Do not prompt for one, the user opted out of interactivity.
 2. **Resume vs start-new is automatic.** If the allocator reports an unfinalized draft SPEC, **start new** without prompting. The user's `auto` invocation is itself the signal that they want a fresh artifact.
 3. **Both gates auto-confirm.** Gate 1 and gate 2 do not present plain prompts to the user. The agent renders the draft to its own reasoning context, performs a self-check (is intent coherent? are UATs Given/When/Then? do UATs cover the intent?), and proceeds. If the self-check finds an issue, the agent revises in-place and re-checks once before proceeding, never blocks for human input.
-4. **Closed-set Socratic questions pick the Recommended option.** For every step-5 `AskUserQuestion` that would normally fire, the agent selects the option that step 5a's spec marks "Recommended FIRST", the PO's best-judgment candidate. No `AskUserQuestion` tool call is made. The selected answer is folded into `clarifications.answered[]` exactly as if the user had picked it. Telemetry: append a `clarify_question` event with `kind: "auto"` (replacing the usual `closed`/`open`/`discuss`).
+4. **Closed-set Socratic questions pick the Recommended option.** For every step-5 `AskUserQuestion` that would normally fire, the agent selects the option that step 5a's spec marks "Recommended FIRST", the PO's best-judgment candidate. No `AskUserQuestion` tool call is made. The selected answer is folded into `clarifications.answered[]` exactly as if the user had picked it.
 5. **Open-ended Socratic questions are answered by the agent.** Apply the same coach-tone judgment the human would receive, then commit the answer. Fold into `clarifications.answered[]`.
 6. **Per-topic exhaustion + revisit checkpoints auto-advance.** Step 5d always picks "Move to <next topic>". The per-topic revisit counter still increments but the 3-revisit prompt auto-picks "Settle on the recommended option".
 7. **Research subagents still dispatch.** Auto mode does not skip research, it skips human prompting. When step 5e would dispatch a `general-purpose` Agent, dispatch it normally. On `inconclusive`/`error`/`contradictory` outcomes that would normally re-prompt the user, the agent picks the most plausible candidate and folds it with a note in `research_summary` flagging the uncertainty.
@@ -28,8 +28,7 @@ Hard rules in auto mode:
 9. **Pending clarifications auto-defer.** Step 6c's per-item prompt always picks "Defer with rationale". The rationale is: `"Auto-mode session, defer for human review."` This unblocks save without forcing the agent to fabricate answers it does not have evidence for.
 10. **Lint thrash escalates to defer, not step-back.** Step 10's cycle-3 prompt auto-picks "Defer remaining findings" so the SPEC saves with the deferred-clarifications block populated. Step-back-to-gate-2 in auto mode would loop indefinitely.
 11. **`Save partial and resume later` escapes are unreachable.** No prompt fires that would offer them. The session always proceeds to step 9 unless the agent itself decides to abort (e.g. missing description, hard tool failure).
-12. **Telemetry distinguishes auto runs.** Every `clarify_question`, `gate1_confirmed`, `gate2_confirmed`, `spec_saved`, and (when the audit runs) `audit_dispatched`/`audit_findings`/`audit_disposition`/`audit_coverage` event in an auto session includes `"auto": true` in its JSON record. Telemetry-derived metrics are partitioned by `auto` so auto-mode runs do not pollute the human pacing baseline.
-13. **Adversarial audit runs at the gauged intensity, non-interactively.** Step 7 no longer prompts anyone for an audit decision (interactive and auto both gauge and run); auto mode gauges the draft and runs the audit at the gauged tier, never skipping. Gauge the draft's complexity, run the audit at that tier (Standard or Deep), and apply its dispositions without prompting: auto-apply plan-time directives into `AUDIT.md`, auto-apply unambiguous SPEC-contract-defect fixes into the draft pre-save (no reopen ceremony, the draft is unsaved), and for any contract defect with more than one defensible repair, record it in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` rather than guessing. Never block save; never revert intentional clarify-loop evolution. Throughout the audit and fold phase auto mode reads **no finding body** (a finding's `issue`/`evidence`/`recommendation`, or a self-review finding's `suggested_fix`/`excerpt`); the transcript carries only ids, severities, titles, verdicts, and dispositions. The two bounded exceptions where a finding body reaches main (6b high self-review findings, 7c material spec-defect survivors) are interactive-only; auto mode surfaces neither. If the Agent fan-out is unavailable, take step 7's fallback (note the skip, rely on the step-6 self-review) and continue.
+12. **Adversarial audit runs at the gauged intensity, non-interactively.** Step 7 no longer prompts anyone for an audit decision (interactive and auto both gauge and run); auto mode gauges the draft and runs the audit at the gauged tier, never skipping. Gauge the draft's complexity, run the audit at that tier (Standard or Deep), and apply its dispositions without prompting: auto-apply plan-time directives into `AUDIT.md`, auto-apply unambiguous SPEC-contract-defect fixes into the draft pre-save (no reopen ceremony, the draft is unsaved), and for any contract defect with more than one defensible repair, record it in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` rather than guessing. Never block save; never revert intentional clarify-loop evolution. Throughout the audit and fold phase auto mode reads **no finding body** (a finding's `issue`/`evidence`/`recommendation`, or a self-review finding's `suggested_fix`/`excerpt`); the transcript carries only ids, severities, titles, verdicts, and dispositions. The two bounded exceptions where a finding body reaches main (6b high self-review findings, 7c material spec-defect survivors) are interactive-only; auto mode surfaces neither. If the Agent fan-out is unavailable, take step 7's fallback (note the skip, rely on the step-6 self-review) and continue.
 
 The rest of the skill, write-surface allowlist, no-machine-local-memory rule, working-draft cache primitives, hooks firing, immutable SPEC shape, applies identically in auto mode.
 
@@ -69,12 +68,6 @@ There is no `on_save` event. The `/gaia-plan` handoff lives inline at the end of
 
 Used by multiple steps below. Defined once here to keep step-level prose tight.
 
-### Pacing telemetry (`spec-pacing.jsonl`)
-
-Append a JSON Lines record to `.gaia/local/telemetry/spec-pacing.jsonl` at each named event. Append-only; never read during the live session. The maintainer queries the log later to tune prompts and spot pacing problems.
-
-Append via `printf '%s\n' '<json>' >> .gaia/local/telemetry/spec-pacing.jsonl`. Failure to append never blocks the flow.
-
 ### Session-shape cache (`spec-session-<spec_id>.json`)
 
 Tracks `start_at` and `question_count` across the multi-step flow. `question_count` enforces the Socratic question ceiling across a pause and resume, the sole counter for that ceiling. The file lives at `.gaia/local/cache/spec-session-<spec_id>.json`. Schema:
@@ -87,8 +80,8 @@ Tracks `start_at` and `question_count` across the multi-step flow. `question_cou
 
 Three operations:
 
-- **Init.** At step 2 (`spec_started` telemetry append, both fresh and resumed paths), write the file if it does not exist with `start_at` = current ISO-8601 UTC ms, `question_count` = 0. On resume, leave any existing file untouched: its `start_at` is the original session start, preserved across resumes so a resumed session does not get a fresh question budget.
-- **Increment.** At every site that appends a `clarify_question` telemetry event (steps 5a, 5b, and 5c), bump `question_count` by 1. These are the substantive questions, and they are the only things that count against the ceiling. The loop's meta-prompts, 5d's exhaustion checkpoint, the 3-revisit settle prompt, and the research-outcome prompts, append their own telemetry events and never increment `question_count`. Inline shell:
+- **Init.** At step 2 (both fresh and resumed paths), write the file if it does not exist with `start_at` = current ISO-8601 UTC ms, `question_count` = 0. On resume, leave any existing file untouched: its `start_at` is the original session start, preserved across resumes so a resumed session does not get a fresh question budget.
+- **Increment.** At the substantive-question sites (steps 5a, 5b, and 5c), bump `question_count` by 1. These are the substantive questions, and they are the only things that count against the ceiling. The loop's meta-prompts, 5d's exhaustion checkpoint, the 3-revisit settle prompt, and the research-outcome prompts never increment `question_count`. Inline shell:
 
       jq '.question_count += 1' .gaia/local/cache/spec-session-<spec_id>.json \
         > .gaia/local/cache/spec-session-<spec_id>.json.tmp \
@@ -99,33 +92,13 @@ Three operations:
 
 Failure of any cache read/write must never block the flow.
 
-Schema (one record per line, ISO-8601 UTC timestamps):
-
-    { "event": "spec_started", "spec_id": "SPEC-NNN", "resumed": <bool>, "ts": "..." }
-    { "event": "gate1_confirmed", "spec_id": "SPEC-NNN", "intent_words": <int>, "uat_count": <int>, "ts": "..." }
-    { "event": "clarify_question", "spec_id": "SPEC-NNN", "topic": "<topic>", "kind": "closed|open|discuss", "ts": "..." }
-    { "event": "topic_revisit", "spec_id": "SPEC-NNN", "topic": "<topic>", "revisit_count": <int>, "ts": "..." }
-    { "event": "research_dispatched", "spec_id": "SPEC-NNN", "question": "<short>", "ts": "..." }
-    { "event": "research_returned", "spec_id": "SPEC-NNN", "outcome": "found|inconclusive|error|contradictory", "ts": "..." }
-    { "event": "self_review_findings", "spec_id": "SPEC-NNN", "low": <int>, "medium": <int>, "high": <int>, "ts": "..." }
-    { "event": "audit_dispatched", "spec_id": "SPEC-NNN", "intensity": "standard|deep", "lenses": ["FG", "TST", "COV", "RT", "<0+ specialist ids: SEC|MIG|A11Y|DOC|PERF>"], "skipped": <bool>, "ts": "..." }
-    { "event": "audit_findings", "spec_id": "SPEC-NNN", "raised": <int>, "confirmed": <int>, "refuted": <int>, "blocker": <int>, "high": <int>, "medium": <int>, "low": <int>, "ts": "..." }
-    { "event": "audit_disposition", "spec_id": "SPEC-NNN", "finding_id": "<id>", "disposition": "plan_directive|spec_defect", "severity": "<sev>", "ts": "..." }
-    { "event": "audit_coverage", "spec_id": "SPEC-NNN", "phase": "self_review"|"lens"|"refuter"|"completeness"|"applier", "lens": "<id or name>", "disposition": "first_pass"|"retried_recovered"|"inline_fallback", "auto": <bool>, "ts": "..." }
-    { "event": "gate2_confirmed", "spec_id": "SPEC-NNN", "revisions": <int>, "ts": "..." }
-    { "event": "spec_saved", "spec_id": "SPEC-NNN", "ts": "..." }
-    { "event": "lint_attempt", "spec_id": "SPEC-NNN", "outcome": "pass|fail", "cycle": <int>, "ts": "..." }
-    { "event": "session_paused", "spec_id": "SPEC-NNN", "step": "<step-id>", "ts": "..." }
-
-Maintainer telemetry queries must filter spec-pacing by `event` so `audit_coverage` rows do not skew existing metrics (they carry a different field set than the other events); no data migration is needed for the older rows already on disk.
-
 ### Working-draft checkpoint (`draft-<spec_id>.md`)
 
 After each clarify fold (step 5), each gate confirmation (steps 4 + 8), each research-result fold (step 5e), each self-review apply (step 6), and each audit-finding apply (step 7), persist the current in-flight draft to `.gaia/local/cache/draft-<spec_id>.md`. Step 9's canonical save deletes this cache as its final action.
 
 **Single-`Write` rule.** Compose the full updated draft in working memory, then emit ONE `Write` tool call that overwrites the cache file. Never use a sequence of `Edit` calls for a single fold. The Q&A loop runs many turns per session and each `Edit` renders a full diff in the user's chat, multiple per-turn diffs are visual noise the user has flagged as unwanted.
 
-The single-Write-per-fold discipline holds, but the writer depends on the checkpoint. For a **clarify-loop fold** (a step-5 Q&A turn, a gate confirmation), the per-turn budget is exactly: one `Write` for the fold from the main thread, one `Bash` for telemetry, nothing else. For a **delegated fold checkpoint** (an approved self-review high at 6b, the audit spec-defect fold at 7c, a gate-2 revision), the single Write is **owned by the applier subagent** (see "Audit cache + delegated fold" below), and the main thread's per-turn action at that checkpoint is the **applier dispatch** (an Agent call), not a `Write`. Do not emit a main-thread draft `Write` at a delegated fold checkpoint.
+The single-Write-per-fold discipline holds, but the writer depends on the checkpoint. For a **clarify-loop fold** (a step-5 Q&A turn, a gate confirmation), the per-turn budget is exactly: one `Write` for the fold from the main thread, one `Bash` for the `question_count` increment, nothing else. For a **delegated fold checkpoint** (an approved self-review high at 6b, the audit spec-defect fold at 7c, a gate-2 revision), the single Write is **owned by the applier subagent** (see "Audit cache + delegated fold" below), and the main thread's per-turn action at that checkpoint is the **applier dispatch** (an Agent call), not a `Write`. Do not emit a main-thread draft `Write` at a delegated fold checkpoint.
 
 **Per-turn fold contents.** When folding a Q&A turn (closed-set selection, `Other` text, open-ended answer, or Discuss-this settlement): add to `clarifications.answered[]` as `{ q, a }`, remove the topic from `clarifications.pending[]`, and update any statusline fields the answer touches, all in the same `Write`.
 
@@ -155,7 +128,7 @@ The applier **reads every findings and verdict file in the cache** (not just the
 
     { "folded": [<ids>], "directives": [<ids>]?, "revised": [<ids>]?, "counts": { "folded": <int>, "directives": <int>, "revised": <int> } }
 
-`directives` is optional (absent for pure draft folds); it lists finding ids routed to `AUDIT.md` as plan-time directives. The `counts` object is the pinned **fold-outcome** schema that the applier's own reporting and the per-finding `audit_disposition` join read; it is **not** the source for `audit_findings` (whose `raised`/per-severity/`confirmed`/`refuted` come from the 7a thin digests plus the thin verdict lines, see 7b/7c).
+`directives` is optional (absent for pure draft folds); it lists finding ids routed to `AUDIT.md` as plan-time directives. The `counts` object is the pinned **fold-outcome** schema that the applier's own reporting reads.
 
 Reading the full cache (rather than only the listed ids) is what lets the applier both author `AUDIT.md` from the complete on-disk record (see 7d) and fold the **low-severity spec-defect fixes main never surfaced** — the decision list carries only the interactively-gated material survivors, and low spec-defects are folded silently by the applier from the on-disk findings files, preserving the current flow. When the fold routes any finding to a plan-time directive, the applier also writes `AUDIT.md`.
 
@@ -173,7 +146,7 @@ Every in-scope self-review/audit dispatch below (6a self-review, 7a lens fan-out
    Never a third dispatch.
 3. **Inline fallback (guaranteed).** If the retry also no-ops, do not re-dispatch again: run the unit inline instead (main performs the task itself), record its disposition as `inline_fallback`, and route any recovered findings into the same on-disk path a dispatched agent would have used, so they re-enter the normal pipeline rather than vanishing. A dispatch that was scope-gated and never issued (e.g. a specialist lens the gauge did not select) is recorded `not_applicable` and is never treated as a no-op.
 
-Each in-scope dispatch appends one `audit_coverage` telemetry event (schema in "Pacing telemetry" above) and one thin coverage record `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }` to `.gaia/local/cache/audit-<spec_id>/coverage.jsonl` as main resolves it (7d renders `## Coverage` in `AUDIT.md` from this file; distinct from the `audit_coverage` telemetry event above, which is append-only and never read during the live session).
+Each in-scope dispatch appends one thin coverage record `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }` to `.gaia/local/cache/audit-<spec_id>/coverage.jsonl` as main resolves it (7d renders `## Coverage` in `AUDIT.md` from this file).
 
 **Mutating units** (6a self-review, 7c applier) detect on their **output artifact**, not on their return alone, so a unit that actually wrote is a real result even if its return was malformed. Because `.gaia/local/cache/draft-<spec_id>.md` is the single live working draft these units mutate in place (it is NOT itself a checkpoint), main **snapshots** it before dispatch to `.gaia/local/cache/draft-<spec_id>.pre-<site>.md` (`.pre-6a.md` / `.pre-7c.md`); a retry **restores the live draft from that snapshot first**, then re-dispatches, so the retry is a clean redo against pristine pre-dispatch state and can never double-apply. The snapshot is deleted once the unit resolves.
 
@@ -183,7 +156,7 @@ Closed-set `AskUserQuestion` calls during the clarify loop append a fifth option
 
     { label: "Save partial and resume later", description: "Write the draft to cache and stop; re-invoke /gaia-spec to continue." }
 
-Selection triggers: write draft cache (above), append `session_paused` telemetry, print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia-spec to resume.`), and exit gracefully.
+Selection triggers: write draft cache (above), print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia-spec to resume.`), and exit gracefully.
 
 The session-shape cache is NOT deleted on the `Save partial and resume later` path, a future resume reads it and continues counting questions against the same `start_at`. (Cache deletion happens only on canonical save at step 9, or on the `Discard SPEC-NNN draft cache` branch in step 2, see step 2 for the discard handler, or on an abandoned-exit branch other than this one, see below.)
 
@@ -205,8 +178,6 @@ Track `push_deeper[<topic>] = <count>` in working memory. Increment on every "Pu
   - `{ label: "Defer <topic> with rationale", description: "Mark unresolved with a note for the planner." }`
   - `{ label: "Push deeper anyway", description: "Mine the topic further despite repeated revisits." }`
   - `{ label: "Save partial and resume later", description: "Write the draft to cache and stop." }`
-
-Append a `topic_revisit` telemetry event with the count.
 
 ### The question ceiling
 
@@ -293,7 +264,7 @@ Then run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"
 
 The id may name a **draft-phase** session, a SPEC allocated in another terminal whose interactive loop has not yet reached the canonical save (step 9), so `.gaia/local/specs/SPEC-NNN/SPEC.md` may not exist yet and the live draft is at `.gaia/local/cache/draft-SPEC-NNN.md`. The `WORKING`-selection below resolves this correctly, preferring the draft cache when the canonical file is absent or older.
 
-**Auto-mode exception:** skip the resume prompt entirely. Always start new, append `spec_started` telemetry with `resumed: false, auto: true` and proceed to step 3 with a fresh allocation. The draft SPEC (if any) remains untouched. Per Auto-mode rule 2 the user's `auto` invocation is the signal that they want a fresh artifact; resuming an existing draft into a non-interactive context risks silently overwriting work in progress.
+**Auto-mode exception:** skip the resume prompt entirely. Always start new and proceed to step 3 with a fresh allocation. The draft SPEC (if any) remains untouched. Per Auto-mode rule 2 the user's `auto` invocation is the signal that they want a fresh artifact; resuming an existing draft into a non-interactive context risks silently overwriting work in progress.
 
 Before prompting, gather context for an informed choice. The newer of the canonical artifact and the working-draft cache is the actual resume point:
 
@@ -319,13 +290,13 @@ Read `$WORKING` and extract: intent first line, UAT count, frontmatter `updated`
 
 Honor the user's choice. Never silently overwrite, never silently start new.
 
-- **Resume:** load `$WORKING` into the working draft, append `spec_started` telemetry with `resumed: true`, initialize the session-shape cache per the operational primitive (write only if absent, the original `start_at` survives across resumes), and pick up at the right step (skip earlier steps that are already done):
+- **Resume:** load `$WORKING` into the working draft, initialize the session-shape cache per the operational primitive (write only if absent, the original `start_at` survives across resumes), and pick up at the right step (skip earlier steps that are already done):
   - If `.gaia/local/cache/gate1-<spec_id>.json` does NOT exist → resume at step 4 (gate 1).
   - If gate-1 cache exists AND the draft has any `clarifications.pending[]` entries → resume at step 6.
   - If gate-1 cache exists AND no pending clarifications → resume at step 8 (gate 2).
   - Step 3 (initial draft) is always skipped on resume.
   - Never re-snapshot the gate-1 cache; its purpose is immutable drift detection.
-- **Start new:** continue with a fresh allocation (Step 3 onward). The draft SPEC remains untouched. Append `spec_started` telemetry with `resumed: false`, then initialize the session-shape cache per the operational primitive once the new `spec_id` is known (step 3).
+- **Start new:** continue with a fresh allocation (Step 3 onward). The draft SPEC remains untouched. Initialize the session-shape cache per the operational primitive once the new `spec_id` is known (step 3).
 - **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (The canonical artifact remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH" .gaia/local/cache/spec-session-${SPEC_ID}.json .gaia/local/cache/gate1-${SPEC_ID}.json` and, separately (an `rm -f` cannot delete a directory), `rm -rf .gaia/local/cache/audit-${SPEC_ID}/`, then continue with a fresh allocation. Note: this deletes only the draft cache; the SPEC's ledger row stays `status: draft`, so the allocator keeps flagging SPEC-NNN for resume until that row reaches a finalized status (out of scope for this step).
 
 ### 3. /speckit-specify (initial draft)
@@ -334,7 +305,7 @@ Invoke `/speckit-specify` with the description from step 1. The GAIA preset (reg
 
 Spec-kit fires the `before_specify` hook (constitution + version-pin check) automatically before this step runs. If the hook blocks, surface its message and halt.
 
-When core completes, `/speckit-gaia-spec`'s preset relocates the artifact to `.gaia/local/specs/SPEC-NNN/SPEC.md`. Cache the working draft path; you will read and re-render it across the rest of these steps. (Step 2 already appended `spec_started` telemetry for both fresh and resumed flows.)
+When core completes, `/speckit-gaia-spec`'s preset relocates the artifact to `.gaia/local/specs/SPEC-NNN/SPEC.md`. Cache the working draft path; you will read and re-render it across the rest of these steps.
 
 Initialize the session-shape cache for the just-allocated SPEC id (no-op if it already exists from a resume):
 
@@ -350,7 +321,7 @@ fi
 
 Before any Socratic clarify loop runs, present the draft's `intent` paragraph and the proposed UATs in plain English to the user. This is gate 1.
 
-**Auto-mode exception:** skip the user-facing prompt. Read the draft's intent + UATs into the agent's reasoning context and self-check: (a) intent paragraph is coherent and matches the description; (b) every UAT follows Given/When/Then shape; (c) UATs collectively cover the intent. If any check fails, revise the draft once and re-check. Then jump to the "On confirmation" actions below (snapshot cache, draft cache, telemetry, telemetry includes `"auto": true`). Per Auto-mode rule 3, never block for human input.
+**Auto-mode exception:** skip the user-facing prompt. Read the draft's intent + UATs into the agent's reasoning context and self-check: (a) intent paragraph is coherent and matches the description; (b) every UAT follows Given/When/Then shape; (c) UATs collectively cover the intent. If any check fails, revise the draft once and re-check. Then jump to the "On confirmation" actions below (snapshot cache, draft cache). Per Auto-mode rule 3, never block for human input.
 
 Use a plain prompt, not `AskUserQuestion`. The user reads, confirms, or revises. Suggested phrasing:
 
@@ -371,7 +342,6 @@ On confirmation:
 
 1. **Cache the gate-1 snapshot** to `.gaia/local/cache/gate1-<spec_id>.json`. The snapshot must include: the confirmed `intent`, the confirmed UAT list (with stable `UAT-NNN` IDs), and a timestamp. The step-6 self-review reads this cache to detect scope drift between gate 1 and gate 2. **Skip this write if the snapshot already exists for this `spec_id` (resumed session); its purpose is immutable drift detection.**
 2. **Write the working-draft cache** per the operational primitive (`.gaia/local/cache/draft-<spec_id>.md`).
-3. **Append telemetry**: `gate1_confirmed` event with `intent_words` + `uat_count`.
 
 Only after gate-1 confirmation may you proceed to step 5.
 
@@ -385,9 +355,9 @@ Run sequential, coverage-based questioning over the draft. One question per turn
 
 **The ceiling bounds the loop:** at most 10 substantive questions (see "The question ceiling" in operational primitives, which also defines what happens if the loop reaches it with topics still uncovered).
 
-**Auto-mode exception:** the ceiling in auto mode is **5 substantive questions**, and the agent answers each question itself rather than mediating to the user, per Auto-mode rules 5 to 8. No `AskUserQuestion` calls fire in this step. Each agent-chosen answer is folded into `clarifications.answered[]` exactly as a human selection would be, and a `clarify_question` telemetry event is appended with `kind: "auto"`. Skip sub-steps 5a to 5d's `AskUserQuestion` mechanics and 5b's Discuss-this branch entirely; sub-step 5e (research dispatch) runs unmodified except for the uncertain-outcome fallback. The coverage scan still governs the stop.
+**Auto-mode exception:** the ceiling in auto mode is **5 substantive questions**, and the agent answers each question itself rather than mediating to the user, per Auto-mode rules 5 to 8. No `AskUserQuestion` calls fire in this step. Each agent-chosen answer is folded into `clarifications.answered[]` exactly as a human selection would be. Skip sub-steps 5a to 5d's `AskUserQuestion` mechanics and 5b's Discuss-this branch entirely; sub-step 5e (research dispatch) runs unmodified except for the uncertain-outcome fallback. The coverage scan still governs the stop.
 
-For every **substantive** question asked (5a, 5b, 5c), append a `clarify_question` telemetry event with `topic` and `kind` (`closed`, `open`, `discuss`, or `auto`), and increment `question_count` in the session-shape cache per the operational primitive (`spec-session-<spec_id>.json`). That counter is the ceiling counter. The loop's meta-prompts, 5d's exhaustion checkpoint, the 3-revisit settle prompt, and the research-outcome prompts, append their own telemetry and do not increment it.
+For every **substantive** question asked (5a, 5b, 5c), increment `question_count` in the session-shape cache per the operational primitive (`spec-session-<spec_id>.json`). That counter is the ceiling counter. The loop's meta-prompts, 5d's exhaustion checkpoint, the 3-revisit settle prompt, and the research-outcome prompts do not increment it.
 
 #### 5a. AskUserQuestion mediation (closed-set questions)
 
@@ -438,12 +408,12 @@ For any question that requires prior-art lookup, repo-convention investigation, 
 
 > Dispatching research agent for `<question>`
 
-Append a `research_dispatched` telemetry event. Spawn a `general-purpose` Agent with a focused research prompt. Handle the return based on outcome:
+Spawn a `general-purpose` Agent with a focused research prompt. Handle the return based on outcome:
 
-- **Found (useful findings).** Fold into `research_summary` of the draft. Cite sources. Append `research_returned` telemetry with `outcome: "found"`. Write draft cache. Continue the loop.
-- **Inconclusive (agent searched but found nothing definitive).** Fold the inconclusive note into `research_summary` as a known gap. Append `research_returned` telemetry with `outcome: "inconclusive"`. Re-prompt the original closed-set question with the research context attached as a footnote so the user can decide informed.
-- **Error (agent did not return findings or returned an error).** Append `research_returned` telemetry with `outcome: "error"`. Surface to the user via plain prompt: `"Research agent did not return findings on \"<question>\". Answer manually, defer with rationale, or skip this question?"`. Wait for direction. Do not silently continue.
-- **Contradictory (agent returned multiple plausible answers).** Append `research_returned` telemetry with `outcome: "contradictory"`. Surface both candidates via `AskUserQuestion` with each candidate as an option (plus `Other` and `Save partial and resume later`). Let the user pick.
+- **Found (useful findings).** Fold into `research_summary` of the draft. Cite sources. Write draft cache. Continue the loop.
+- **Inconclusive (agent searched but found nothing definitive).** Fold the inconclusive note into `research_summary` as a known gap. Re-prompt the original closed-set question with the research context attached as a footnote so the user can decide informed.
+- **Error (agent did not return findings or returned an error).** Surface to the user via plain prompt: `"Research agent did not return findings on \"<question>\". Answer manually, defer with rationale, or skip this question?"`. Wait for direction. Do not silently continue.
+- **Contradictory (agent returned multiple plausible answers).** Surface both candidates via `AskUserQuestion` with each candidate as an option (plus `Other` and `Save partial and resume later`). Let the user pick.
 
 If the user has selected `Discuss this` on a question that turns out to need research, dispatch the research subagent and surface findings in the discussion before requesting settlement.
 
@@ -501,11 +471,9 @@ Spawn a `general-purpose` Agent with this prompt (interpolate `<DRAFT_PATH>` and
 > - **medium**, internal inconsistency, ambiguous UAT phrasing
 > - **high**, drift from gate-1 snapshot, scope change, removed UAT, added UAT not present at gate 1
 
-The digest is thin: `counts` gives the `self_review_findings` split, `applied` lists the folded ids, and each `high_findings` entry carries `kind`, `excerpt`, and `suggested_fix` (aligned with the 6a schema) so 6b's auto-branch and auto-mode rule 8 can gate and render the prompt without re-reading the draft.
+The digest is thin: `counts` gives the low/medium/high split, `applied` lists the folded ids, and each `high_findings` entry carries `kind`, `excerpt`, and `suggested_fix` (aligned with the 6a schema) so 6b's auto-branch and auto-mode rule 8 can gate and render the prompt without re-reading the draft.
 
-Append a `self_review_findings` telemetry event, sourced from the digest's `counts` (`low`, `medium`, `high`), once the agent returns.
-
-**No-op guard (site #1).** Classify the return with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-selfreview-file --path .gaia/local/cache/audit-<spec_id>/findings/self-review.json` (exit 0 = real, exit 1 = no-op; see "No-op guard" in Operational primitives). On a no-op: restore the live draft from `.gaia/local/cache/draft-<spec_id>.pre-6a.md` first, re-clear the findings path, then re-dispatch the same unit **exactly one** time, prepending the hardened retry prefix with `<target>` = `<DRAFT_PATH>`. A second consecutive no-op does not re-dispatch a third time; instead run the self-review inline as the **inline fallback** below (the same terminal action the fan-out-unavailable case takes), and record the unit as degraded rather than clean or empty. Delete `draft-<spec_id>.pre-6a.md` once the unit resolves (recovered, retried, or fallen back). Append one `audit_coverage` event (`phase: "self_review"`, `disposition: "first_pass"|"retried_recovered"|"inline_fallback"`) and one `coverage.jsonl` record to `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`.
+**No-op guard (site #1).** Classify the return with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-selfreview-file --path .gaia/local/cache/audit-<spec_id>/findings/self-review.json` (exit 0 = real, exit 1 = no-op; see "No-op guard" in Operational primitives). On a no-op: restore the live draft from `.gaia/local/cache/draft-<spec_id>.pre-6a.md` first, re-clear the findings path, then re-dispatch the same unit **exactly one** time, prepending the hardened retry prefix with `<target>` = `<DRAFT_PATH>`. A second consecutive no-op does not re-dispatch a third time; instead run the self-review inline as the **inline fallback** below (the same terminal action the fan-out-unavailable case takes), and record the unit as degraded rather than clean or empty. Delete `draft-<spec_id>.pre-6a.md` once the unit resolves (recovered, retried, or fallen back). Append one `coverage.jsonl` record (`phase: "self_review"`, `disposition: "first_pass"|"retried_recovered"|"inline_fallback"`) to `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`.
 
 **Fallback.** When subagent dispatch is unavailable, the main thread runs the self-review inline (parity with the step-7 audit fallback): it reads the draft, records the same findings, applies every `low` and `medium` `suggested_fix` itself in a single Write, and gates the highs at 6b. This is also the terminal **inline fallback** action for a double no-op above.
 
@@ -555,11 +523,11 @@ This phase complements, never replaces, step 6: the single-agent self-review is 
 - **Rigor tier**, by stakes: weigh reversibility cost (an immutable artifact bound for autonomous downstream implementation is higher), blast radius (files and consumers the change touches), ground-truth claim density, and whether any risk surface is present. Low stakes with narrow scope and few claims → **Standard**; high stakes, or any security or migration surface → **Deep**.
 - **Specialist lens set**, by content: scan `intent`, `scope_boundaries`, `success_criteria`, the required-reading list, and the touched paths against the specialist trigger column in 7a, and select every specialist whose trigger fires. The four core lenses always run; specialists are additive.
 
-Record the gauged tier as `audit_intensity` (`standard` | `deep`) and the selected lens set; 7a records both in the `audit_dispatched` telemetry event and the cost-ledger breadcrumb. **Standard** verifies every checkable claim against ground truth with one refuter per material finding (7b-i); **Deep** adds perspective-diverse refuters (correctness, security, reproducibility) per material finding plus a completeness critic (7b-ii).
+Record the gauged tier as `audit_intensity` (`standard` | `deep`) and the selected lens set; 7a records both in the cost-ledger breadcrumb. **Standard** verifies every checkable claim against ground truth with one refuter per material finding (7b-i); **Deep** adds perspective-diverse refuters (correctness, security, reproducibility) per material finding plus a completeness critic (7b-ii).
 
-**Auto-mode.** Auto mode gauges and runs the audit exactly as interactive does; the prompt is gone from both. The two auto-specific differences (Auto-mode rule 13) are in the fold, not the run: auto mode reads **no finding body** during the audit and fold phase (the transcript carries only ids, severities, titles, verdicts, and dispositions), and it applies every disposition non-interactively at 7c. It never skips the audit.
+**Auto-mode.** Auto mode gauges and runs the audit exactly as interactive does; the prompt is gone from both. The two auto-specific differences (Auto-mode rule 12) are in the fold, not the run: auto mode reads **no finding body** during the audit and fold phase (the transcript carries only ids, severities, titles, verdicts, and dispositions), and it applies every disposition non-interactively at 7c. It never skips the audit.
 
-**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block save: note the skip (`adversarial audit unavailable, relying on step-6 self-review`), append an `audit_dispatched` event with `skipped: true`, remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/` (so the step-6 `self-review.json` is not orphaned), and proceed to gate 2. The step-6 self-review already ran and is the safety net. This path writes no `audit-window-<spec_id>.json` breadcrumb; its absence is the step-9 tally's signal that no adversarial audit ran.
+**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block save: note the skip (`adversarial audit unavailable, relying on step-6 self-review`), remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/` (so the step-6 `self-review.json` is not orphaned), and proceed to gate 2. The step-6 self-review already ran and is the safety net. This path writes no `audit-window-<spec_id>.json` breadcrumb; its absence is the step-9 tally's signal that no adversarial audit ran.
 
 #### 7a. Dispatch the lens auditors (parallel fan-out)
 
@@ -567,7 +535,7 @@ Announce once, verbatim, naming each lens in full with its id code in parenthese
 
 > Dispatching adversarial SPEC-audit (<audit_intensity>): lenses <selected lens names, each with its id in parentheses>, then refutation (typically a dozen-plus agents, several minutes).
 
-Append an `audit_dispatched` telemetry event with `intensity: <audit_intensity>` and `lenses` set to the dispatched lens-id list. Capture the audit window start for the cost-ledger breadcrumb, a separate concern from the telemetry event above: `AUDIT_WINDOW_START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`. Then spawn **one `general-purpose` Agent per selected lens, all in parallel** (one message, one Agent tool call per lens): the four core lenses always, plus each specialist the gauge selected. Each agent audits the working-draft cache (`.gaia/local/cache/draft-<spec_id>.md`, the post-self-review draft, NOT the step-3 canonical file), **writes its findings JSON to `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json`** (writing the file even when its findings array is empty), then returns only the thin digest below, no finding bodies.
+Capture the audit window start for the cost-ledger breadcrumb: `AUDIT_WINDOW_START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`. Then spawn **one `general-purpose` Agent per selected lens, all in parallel** (one message, one Agent tool call per lens): the four core lenses always, plus each specialist the gauge selected. Each agent audits the working-draft cache (`.gaia/local/cache/draft-<spec_id>.md`, the post-self-review draft, NOT the step-3 canonical file), **writes its findings JSON to `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json`** (writing the file even when its findings array is empty), then returns only the thin digest below, no finding bodies.
 
 Shared preamble (interpolate `<DRAFT_PATH>` = the working-draft cache, `<spec_id>`, `<repo_root>` = `$PWD`, and `<LENS>` = the agent's lens id prefix):
 
@@ -620,7 +588,7 @@ Findings **file** schema (what each agent writes to `findings/<LENS>.json`; NOT 
       ]
     }
 
-**No-op guard (site #2).** Before dispatching the fan-out, pre-clear each `findings/<LENS>.json` (`rm -f`) for every lens about to be dispatched, and re-clear before any retry, so presence afterward is a fresh-write signal. After the fan-out returns, classify each lens with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-findings-file --path .gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` (an empty `findings: []` is still real). On a no-op, re-dispatch that one lens **exactly one** time with the hardened retry prefix (`<target>` = `<DRAFT_PATH>`); a second no-op runs the **inline fallback**: main runs that lens's audit inline and writes to the SAME `findings/<LENS>.json` so the recovered findings re-enter 7b/7c exactly like a dispatched lens's, recorded degraded rather than clean or empty. A specialist lens the gauge did not select for this dispatch is never issued and is recorded `not_applicable`, never treated as a no-op. Append one `audit_coverage` event (`phase: "lens"`, `lens: "<LENS>"`, `disposition: "..."`) and one `coverage.jsonl` record per in-scope lens.
+**No-op guard (site #2).** Before dispatching the fan-out, pre-clear each `findings/<LENS>.json` (`rm -f`) for every lens about to be dispatched, and re-clear before any retry, so presence afterward is a fresh-write signal. After the fan-out returns, classify each lens with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-findings-file --path .gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` (an empty `findings: []` is still real). On a no-op, re-dispatch that one lens **exactly one** time with the hardened retry prefix (`<target>` = `<DRAFT_PATH>`); a second no-op runs the **inline fallback**: main runs that lens's audit inline and writes to the SAME `findings/<LENS>.json` so the recovered findings re-enter 7b/7c exactly like a dispatched lens's, recorded degraded rather than clean or empty. A specialist lens the gauge did not select for this dispatch is never issued and is recorded `not_applicable`, never treated as a no-op. Append one `coverage.jsonl` record (`phase: "lens"`, `lens: "<LENS>"`, `disposition: "..."`) per in-scope lens.
 
 #### 7b. Refutation pass (severity discipline)
 
@@ -657,7 +625,7 @@ Verdict schema — the **file** the refuter writes to `verdicts/<finding-id>.jso
 
 Main computes the Deep ≥2/3 majority and the median severity **from the returned thin verdict lines only** and **never opens the per-refuter verdict files**, so verdict reasoning bodies never reach main. Surviving findings = the low-severity findings (carried forward) plus every material finding not refuted (Standard: a single `refuted` verdict kills it; Deep: a ≥2-of-3 majority kills it), each stamped with its `corrected_severity` and `disposition`.
 
-**No-op guard (site #3).** This shape is file-backed (not a captured return): after each refuter returns, classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-verdict-file --path <verdict_file>` (it re-reads the same `<verdict_file>` the refuter wrote; exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch that one refuter **exactly one** time with the hardened retry prefix (`<target>` = `<findings_file>`); a second no-op runs the **inline fallback**: main refutes that one finding inline (reads `<findings_file>` and `<DRAFT_PATH>` itself, writes `<verdict_file>` with its own verdict), recorded degraded. Append one `audit_coverage` event (`phase: "refuter"`, `disposition: "..."`) and one `coverage.jsonl` record per material finding refuted.
+**No-op guard (site #3).** This shape is file-backed (not a captured return): after each refuter returns, classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-verdict-file --path <verdict_file>` (it re-reads the same `<verdict_file>` the refuter wrote; exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch that one refuter **exactly one** time with the hardened retry prefix (`<target>` = `<findings_file>`); a second no-op runs the **inline fallback**: main refutes that one finding inline (reads `<findings_file>` and `<DRAFT_PATH>` itself, writes `<verdict_file>` with its own verdict), recorded degraded. Append one `coverage.jsonl` record (`phase: "refuter"`, `disposition: "..."`) per material finding refuted.
 
 ##### 7b-ii. Completeness critic
 
@@ -675,17 +643,15 @@ Dispatch prompt (interpolate `<DRAFT_PATH>`, `<spec_id>`, `<surviving_findings>`
 
 It **writes its fresh findings to `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`** (7a findings schema) and returns the thin digest above; its bodies never flow into main.
 
-**No-op guard (site #4).** After the agent returns, classify with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-findings-file --path .gaia/local/cache/audit-<spec_id>/findings/completeness.json` (exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch **exactly one** time with the hardened retry prefix (`<target>` = `<DRAFT_PATH>`); a second no-op runs the **inline fallback**: main runs the completeness critic inline (reads the draft and surviving findings itself, writes `findings/completeness.json`), recorded degraded. Append one `audit_coverage` event (`phase: "completeness"`, `disposition: "..."`) and one `coverage.jsonl` record.
+**No-op guard (site #4).** After the agent returns, classify with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-findings-file --path .gaia/local/cache/audit-<spec_id>/findings/completeness.json` (exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch **exactly one** time with the hardened retry prefix (`<target>` = `<DRAFT_PATH>`); a second no-op runs the **inline fallback**: main runs the completeness critic inline (reads the draft and surviving findings itself, writes `findings/completeness.json`), recorded degraded. Append one `coverage.jsonl` record (`phase: "completeness"`, `disposition: "..."`).
 
 ##### 7b-iii. Completeness-critic refuter
 
 Any fresh findings from 7b-ii run through a single-refuter round under the **same** refuter prompt, verdict schema, and naming contracts as 7b-i (its verdicts write to `verdicts/<finding-id>.json`); merge the survivors. This refuter is **file-backed** like 7b-i, not a distinct return-conformance shape: pre-clear `verdicts/<finding-id>.json` before dispatch and before any retry.
 
-**No-op guard (site #5).** Classify with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-verdict-file --path .gaia/local/cache/audit-<spec_id>/verdicts/<finding-id>.json` (exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch that one refuter **exactly one** time with the hardened retry prefix (`<target>` = `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`); a second no-op runs the **inline fallback**: main refutes that fresh finding inline and writes its verdict file itself, recorded degraded. Append one `audit_coverage` event (`phase: "refuter"`, `disposition: "..."`) and one `coverage.jsonl` record.
+**No-op guard (site #5).** Classify with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-verdict-file --path .gaia/local/cache/audit-<spec_id>/verdicts/<finding-id>.json` (exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch that one refuter **exactly one** time with the hardened retry prefix (`<target>` = `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`); a second no-op runs the **inline fallback**: main refutes that fresh finding inline and writes its verdict file itself, recorded degraded. Append one `coverage.jsonl` record (`phase: "refuter"`, `disposition: "..."`).
 
 Its bodies never flow into main.
-
-Append an `audit_findings` telemetry event with the counts `raised`, `confirmed`, `refuted`, and per-severity `blocker`/`high`/`medium`/`low`. Source it from the **7a thin digests** (`raised` = total findings across all digests including lows; the per-severity `blocker`/`high`/`medium`/`low` from the digests' `counts`) plus the **thin verdict lines** (`confirmed`/`refuted`). Do NOT source it from the applier summary's `{ folded, directives, revised }` counts — those are fold-outcome counts (a disjoint set) and cannot produce `raised` or the per-severity split.
 
 #### 7c. Disposition routing + apply
 
@@ -696,13 +662,11 @@ Route each surviving finding by its `disposition`, read from the **thin verdict 
 
 **Interactive.** Main reads only the handful of **material** (severity ≠ `low`) spec-defect survivors from the findings files to surface them to the user, mirroring step 6b's high-finding prompt (issue, evidence, recommendation; apply / keep / revise). No numeric cap or paging. This is the second bounded interactive carve-out where a finding body legitimately reaches main. Collect the user's apply/keep/revise decisions into the delegated-fold decision list. **Low** spec-defect fixes are never read into main; the applier folds them directly from the on-disk findings files (it reads the full cache), and refuter verdict text is never read into main. (Low findings skip refutation and carry no verdict line, so the sourcing of a low finding's `disposition` is a pre-existing question the audit's logic leaves unchanged here; the applier only folds the low spec-defects the current flow would have folded.)
 
-**Auto-mode per rule 13.** No reads; **no finding body reaches main**. The transcript carries ids, severities, titles, verdicts, and dispositions only. Unambiguous spec-defect ids apply (added to the decision list as `apply`); a defect with more than one defensible repair becomes a deferred-clarification note in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` and is not applied. Never revert intentional clarify-loop evolution.
+**Auto-mode per rule 12.** No reads; **no finding body reaches main**. The transcript carries ids, severities, titles, verdicts, and dispositions only. Unambiguous spec-defect ids apply (added to the decision list as `apply`); a defect with more than one defensible repair becomes a deferred-clarification note in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` and is not applied. Never revert intentional clarify-loop evolution.
 
 **Fold through the delegated applier.** Dispatch the applier (see "Audit cache + delegated fold") with the draft path, the audit-cache directory, and the decision list. It reads the draft plus every findings and verdict file plus the decision list, folds every spec-defect fix in **one Write**, and **writes `AUDIT.md` itself** (7d) from the on-disk findings and verdicts — main never loads a finding body to produce `AUDIT.md`. **Fallback:** if subagent dispatch is unavailable, main folds inline as today.
 
-**No-op guard (site #6).** This is a **mutating unit**: the applier's draft-cache write pre-exists, so a no-op is judged on its returned summary's shape, not on file-absence. Before dispatching, snapshot the live draft to `.gaia/local/cache/draft-<spec_id>.pre-7c.md`, and finalize `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`, one thin JSON-Lines record per in-scope dispatch resolved so far, `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }`, carrying no finding body (this is the applier's data source for `## Coverage` in 7d; the `audit_coverage` telemetry event is append-only and never read live, and the findings/verdict files cannot encode a disposition). Capture the applier's returned summary to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape applier-summary --path <summary_file>` (add `--audit-md .gaia/local/specs/<spec_id>/AUDIT.md` at the 7c-with-directives dispatch, when the fold routes any finding to a plan-time directive, so AUDIT.md presence is also required; exit 0 = real, exit 1 = no-op). On a no-op: restore the live draft from `draft-<spec_id>.pre-7c.md` first, then re-dispatch the applier **exactly one** time with the hardened retry prefix (`<target>` = the audit-cache directory). A second no-op runs the **inline fallback**, which reuses the pre-existing applier inline-fold above (main folds inline as today), recorded degraded. Delete `draft-<spec_id>.pre-7c.md` once the unit resolves. Append one `audit_coverage` event (`phase: "applier"`, `disposition: "..."`).
-
-Emit **one `audit_disposition` per surviving finding** (`finding_id`, `disposition`, `severity`) by joining the applier summary's `folded`/`directives` ids with the thin verdict lines' `{ id, verdict, corrected_severity, disposition }`. Low survivors keep per-finding disposition parity because the 7a digest carries every finding's `{ id, severity, title }` (severity from the digest; the low-finding `disposition` sourcing is the same pre-existing question noted above, preserved not resolved). The two events draw from different sources: `audit_findings` from the 7a thin digests plus the thin verdict lines (per 7b), the applier summary contributing only the `audit_disposition` join.
+**No-op guard (site #6).** This is a **mutating unit**: the applier's draft-cache write pre-exists, so a no-op is judged on its returned summary's shape, not on file-absence. Before dispatching, snapshot the live draft to `.gaia/local/cache/draft-<spec_id>.pre-7c.md`, and finalize `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`, one thin JSON-Lines record per in-scope dispatch resolved so far, `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }`, carrying no finding body (this is the applier's data source for `## Coverage` in 7d; the findings/verdict files cannot encode a disposition). Capture the applier's returned summary to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape applier-summary --path <summary_file>` (add `--audit-md .gaia/local/specs/<spec_id>/AUDIT.md` at the 7c-with-directives dispatch, when the fold routes any finding to a plan-time directive, so AUDIT.md presence is also required; exit 0 = real, exit 1 = no-op). On a no-op: restore the live draft from `draft-<spec_id>.pre-7c.md` first, then re-dispatch the applier **exactly one** time with the hardened retry prefix (`<target>` = the audit-cache directory). A second no-op runs the **inline fallback**, which reuses the pre-existing applier inline-fold above (main folds inline as today), recorded degraded. Delete `draft-<spec_id>.pre-7c.md` once the unit resolves.
 
 #### 7d. Persist AUDIT.md
 
@@ -738,7 +702,7 @@ These satisfy the SPEC's binding contracts; the plan and implementation must hon
 - **<phase>** (`<lens>`): `<disposition>`
 ```
 
-The `## Coverage` section is sourced from `.gaia/local/cache/audit-<spec_id>/coverage.jsonl` (the thin phase/lens/disposition record main appends per dispatch, see "No-op guard" in Operational primitives), not from the `audit_coverage` telemetry event (append-only, never read live) or the findings/verdict files (which cannot encode a disposition). Each line's `<disposition>` is one of `first_pass` / `retried_recovered` / `inline_fallback` / `not_applicable`, so a reader can distinguish a clean unit from a degraded one at a glance.
+The `## Coverage` section is sourced from `.gaia/local/cache/audit-<spec_id>/coverage.jsonl` (the thin phase/lens/disposition record main appends per dispatch, see "No-op guard" in Operational primitives), not from the findings/verdict files (which cannot encode a disposition). Each line's `<disposition>` is one of `first_pass` / `retried_recovered` / `inline_fallback` / `not_applicable`, so a reader can distinguish a clean unit from a degraded one at a glance.
 
 When a sibling `AUDIT.md` exists, the step-11 `/gaia-plan` handoff names it so its plan-time directives are discoverable.
 
@@ -758,7 +722,7 @@ gaia_audit_window_write \
   "<audit_intensity>" || true
 ```
 
-`<lenses-json-array>` is a JSON array of the dispatched lens-id set (the same list recorded in the `audit_dispatched` event at 7a), e.g. built with `jq -cn '$ARGS.positional' --args FG TST COV RT`. `<audit_intensity>` is the tier recorded at the top of step 7 (`standard` | `deep`); passing it as the 6th argument makes the writer include the `intensity` key. `$AUDIT_CACHE_DIR` resolves to the main checkout's cache root the same way `token-tally.sh` derives it, so the breadcrumb lands there even when authoring runs inside a linked worktree; it never sits inside `.gaia/local/cache/audit-<spec_id>/`, so the step-9.1 teardown does not remove it. The call is best-effort (`|| true`) and never blocks the handoff to gate 2.
+`<lenses-json-array>` is a JSON array of the dispatched lens-id set, e.g. built with `jq -cn '$ARGS.positional' --args FG TST COV RT`. `<audit_intensity>` is the tier recorded at the top of step 7 (`standard` | `deep`); passing it as the 6th argument makes the writer include the `intensity` key. `$AUDIT_CACHE_DIR` resolves to the main checkout's cache root the same way `token-tally.sh` derives it, so the breadcrumb lands there even when authoring runs inside a linked worktree; it never sits inside `.gaia/local/cache/audit-<spec_id>/`, so the step-9.1 teardown does not remove it. The call is best-effort (`|| true`) and never blocks the handoff to gate 2.
 
 After the report is written, any folds are cached, and the breadcrumb is written, proceed to gate 2 (step 8), which renders the hardened draft.
 
@@ -766,7 +730,7 @@ After the report is written, any folds are cached, and the breadcrumb is written
 
 Render the full draft artifact in markdown form (frontmatter plus body) and present it to the user. This is gate 2. Track `gate2_revisions = 0` in working memory.
 
-**Auto-mode exception per rule 3:** skip the user prompt. Render the draft into the agent's reasoning context, run a self-check (frontmatter populated, every UAT has Given/When/Then, intent matches gate-1 snapshot modulo intentional clarify evolution, deferred clarifications block well-formed). Apply at most one revision pass if the self-check finds an issue, then jump to the "On confirmation" actions below. Telemetry records `gate2_confirmed` with `revisions: <gate2_revisions>, auto: true`.
+**Auto-mode exception per rule 3:** skip the user prompt. Render the draft into the agent's reasoning context, run a self-check (frontmatter populated, every UAT has Given/When/Then, intent matches gate-1 snapshot modulo intentional clarify evolution, deferred clarifications block well-formed). Apply at most one revision pass if the self-check finds an issue, then jump to the "On confirmation" actions below.
 
 Use a plain prompt, not `AskUserQuestion`. Suggested phrasing:
 
@@ -785,7 +749,6 @@ If the user revises:
 On confirmation:
 
 1. Write the final draft cache.
-2. Append `gate2_confirmed` telemetry with `revisions: <gate2_revisions>`.
 
 Only after gate-2 confirmation may you proceed to step 9.
 
@@ -826,9 +789,8 @@ bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
   || echo "ledger-update skipped (row missing or jq failure), non-blocking" >&2
 ```
 
-3. **Append telemetry:** `spec_saved` event.
-4. **Delete the session-shape cache:** `rm -f .gaia/local/cache/spec-session-${SPEC_ID}.json`. The cache's job, tracking `question_count` against the ceiling across a pause and resume, ends once the SPEC is saved.
-5. **Token tally (never blocks):** tally the session's ground-truth token cost and record it. `${SPEC_ID}`'s folder already exists from the canonical save, so the `cost.json` sidecar (the `spec` record) lands beside `SPEC.md`. This call never blocks or fails the save; on unreadable input it degrades to a partial figure with a marker, never a fabricated number.
+3. **Delete the session-shape cache:** `rm -f .gaia/local/cache/spec-session-${SPEC_ID}.json`. The cache's job, tracking `question_count` against the ceiling across a pause and resume, ends once the SPEC is saved.
+4. **Token tally (never blocks):** tally the session's ground-truth token cost and record it. `${SPEC_ID}`'s folder already exists from the canonical save, so the `cost.json` sidecar (the `spec` record) lands beside `SPEC.md`. This call never blocks or fails the save; on unreadable input it degrades to a partial figure with a marker, never a fabricated number.
 
 ```bash
 bash .gaia/scripts/token-tally.sh \
@@ -845,7 +807,7 @@ The helper reads `CLAUDE_CODE_SESSION_ID` from the environment, sums `message.us
 
 Spec-kit fires this hook automatically after the spec is written. The agent receives an `EXECUTE_COMMAND: speckit.gaia.lint` directive and invokes `/speckit-gaia-lint`, which runs `bash .specify/extensions/gaia/lib/lint.sh <spec-path>` and surfaces findings.
 
-Track `lint_cycle = <count>` in working memory (initialize to 1 on the first attempt). Append a `lint_attempt` telemetry event per cycle with `outcome` and `cycle`.
+Track `lint_cycle = <count>` in working memory (initialize to 1 on the first attempt).
 
 On lint pass: continue to step 11.
 
@@ -884,4 +846,4 @@ Print the handoff to the user as one cohesive block and stop: the status line, a
 > /gaia-plan SPEC-NNN
 > ```
 
-The handoff emits no telemetry event. This is the end of the `/gaia-spec` flow.
+This is the end of the `/gaia-spec` flow.
