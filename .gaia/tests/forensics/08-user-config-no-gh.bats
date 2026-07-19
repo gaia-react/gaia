@@ -17,6 +17,7 @@ LIB="$HERE/lib"
 # ---------------------------------------------------------------------------
 
 diagnose_branch() {
+  # shellcheck disable=SC2034  # positional arg documented but intentionally unused in this helper
   local description="$1"
   local node_version="${2:-}"
   local dirty="${3:-false}"

@@ -253,7 +253,7 @@ test("brand new test", () => {
   stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   run_commit_hook "git -C '$OTHER' commit -m change"
   [ "$status" -eq 0 ]
-  ! denied
+  denied && return 1
   rm -rf "$OTHER"
 }
 

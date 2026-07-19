@@ -71,7 +71,8 @@ ledger_path() {
 
 # write_record <action> <spec_id> <session_id> <total> <ts> [<ended_at>]
 write_record() {
-  local action="$1" spec_id="$2" sid="$3" total="$4" ts="$5" ended="${6:-$ts}"
+  local action="$1" spec_id="$2" sid="$3" total="$4" ts="$5"
+  local ended="${6:-$ts}"
   mkdir -p "$(dirname "$(ledger_path)")"
   jq -nc --arg kind "$action" --arg spec_id "$spec_id" --arg sid "$sid" \
     --argjson total "$total" --arg ts "$ts" --arg ended "$ended" \

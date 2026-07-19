@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: single-quoted printf formats whose backticks
+# are literal markdown in the emitted text, not command substitution.
+# shellcheck disable=SC2016
 # handle-malformed-body.sh: short-circuit handler for issues whose
 # body cannot be parsed deterministically.
 #

@@ -78,7 +78,7 @@ decide() {
   [ "$use_stub" = "STUB" ] && path="$SANDBOX/bin:/usr/bin:/bin"
 
   (
-    cd "$SANDBOX"
+    cd "$SANDBOX" || exit 1
     export PATH="$path"
     OVERRIDE_LABEL="$override_label"
     PR_LABELS_JSON="$pr_labels_json"

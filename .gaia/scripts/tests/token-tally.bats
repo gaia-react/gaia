@@ -126,6 +126,7 @@ setup() {
 
 # Run the helper against the anchor fixture with an ISOLATED ledger (never the
 # machine's real .gaia/local/telemetry/cost.jsonl).
+# shellcheck disable=SC2120  # "$@" forwards optional extra args; most call sites pass none by design
 run_anchor() {
   run bash "$SCRIPT" \
     --action execute --spec-id SPEC-013 --plan-slug spec-013-token-accounting \
@@ -274,7 +275,7 @@ led() { jq -r "$1" "$LEDGER"; }
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
-  for n in 1 2 3; do
+  for _ in 1 2 3; do
     run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug my-plan \
       --out-dir "$OUTDIR" --session-id "$SESSION" \
       --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/le.jsonl"
@@ -749,7 +750,7 @@ led() { jq -r "$1" "$LEDGER"; }
 # ---------- 20. seq/final over repeated execute writes (AC7) ----------
 @test "three execute writes: seq 0,1,2, only the last final:true, final row is cumulative" {
   L="$BATS_TEST_TMPDIR/seq.jsonl"
-  for n in 1 2 3; do
+  for _ in 1 2 3; do
     run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug s \
       --out-dir "$OUTDIR" --session-id "$SESSION" \
       --projects-root "$ANCHOR" --ledger "$L"

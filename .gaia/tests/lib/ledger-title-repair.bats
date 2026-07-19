@@ -133,7 +133,7 @@ EOF
   [ "$status" -eq 0 ]
 
   new_subject="$(_plans_field PLAN-001 subject)"
-  ! grep -qF "plain-la" <<<"$new_subject"
+  grep -qF "plain-la" <<<"$new_subject" && return 1
   [ "$new_subject" != "Reframe /gaia-plan worktree isolation prompt: drop the experimental disclaimer, add a brief plain-la" ]
 }
 
@@ -182,7 +182,7 @@ EOF
   subj_anchor="$(_plans_field PLAN-100 subject)"
   [ "$subj_anchor" = "Real prose line describing the phase." ]
   [ "$subj_anchor" != "Commit: abc1234" ]
-  ! grep -qF "abc1234" <<<"$subj_anchor"
+  grep -qF "abc1234" <<<"$subj_anchor" && return 1
 
   subj_guard="$(_plans_field PLAN-101 subject)"
   [ "$subj_guard" = "Committed the parser cleanly." ]

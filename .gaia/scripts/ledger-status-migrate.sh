@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: single-quoted jq filters where $s and friends
+# are jq bindings, not shell variables.
+# shellcheck disable=SC2016
 # ledger-status-migrate.sh: one-time, idempotent, best-effort migration of
 # .gaia/local/specs/ledger.json and .gaia/local/plans/ledger.json rows onto the
 # unified status vocabulary (draft|ready|merged|abandoned).
@@ -57,6 +60,7 @@ retired_status_pred='.status as $s | (["specified","in-progress","allocated","co
 
 # migrate_specs: jq-to-tmp-then-mv rewrite of specs_ledger's .status through the
 # unified map. No field rename here (specs already key on merged_at).
+# shellcheck disable=SC2329  # invoked indirectly via `with_ledger_lock ... migrate_specs`
 migrate_specs() {
   local tmp
   tmp="$(mktemp)"
@@ -75,6 +79,7 @@ migrate_specs() {
 # migrate_plans: jq-to-tmp-then-mv rewrite of plans_ledger's .status through the
 # same map, plus completed_at -> merged_at on any row that still carries it.
 # source is never named in the jq, so it passes through byte-unchanged.
+# shellcheck disable=SC2329  # invoked indirectly via `with_ledger_lock ... migrate_plans`
 migrate_plans() {
   local tmp
   tmp="$(mktemp)"

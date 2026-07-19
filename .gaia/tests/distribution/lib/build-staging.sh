@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: single-quoted sed regex ($ is a regex anchor)
+# and printf text with literal backticks, neither a shell expansion.
+# shellcheck disable=SC2016
 # Build a release-staging tree from the source repo into <output-dir>.
 # Pure replication of `.github/workflows/release.yml` Stage + Scrub +
 # Runtime-deps phases. Read-only on the source repo.

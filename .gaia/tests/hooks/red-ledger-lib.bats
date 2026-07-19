@@ -18,6 +18,7 @@ setup() {
   [ -d "$REPO_ROOT/node_modules/typescript" ] || skip "typescript not installed (node-dependent RED suite)"
   HELPER="$REPO_ROOT/.gaia/scripts/red-ledger/extract-test-signals.mjs"
   LIB="$REPO_ROOT/.claude/hooks/lib/red-ledger.sh"
+  # shellcheck disable=SC2034  # unused fixture-path var; pre-existing dead code, kept (not deleted) per surgical-changes policy
   FIX="$BATS_TEST_DIRNAME/fixtures/red-ledger"
 
   # Repo-relative fixture paths (helper + lib expect repo-relative input run

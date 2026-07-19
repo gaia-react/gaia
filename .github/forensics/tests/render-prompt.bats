@@ -278,8 +278,8 @@ Capture: x" ]
   # No triple-backtick fence run survives.
   [[ "$output" != *'```'* ]]
   # Neither marker is greppable in its parser-recognized form.
-  ! printf '%s\n' "$output" | grep -qE '^[[:space:]]*GAIA-VERDICT:'
-  ! printf '%s\n' "$output" | grep -qE '^[[:space:]]*GAIA-FIX-ABORT:'
+  printf '%s\n' "$output" | grep -qE '^[[:space:]]*GAIA-VERDICT:' && return 1
+  printf '%s\n' "$output" | grep -qE '^[[:space:]]*GAIA-FIX-ABORT:' && return 1
   # The defanged forms are present (readable, but inert).
   [[ "$output" == *'GAIA-VERDICT_NEUTRALIZED:'* ]]
   [[ "$output" == *'GAIA-FIX-ABORT_NEUTRALIZED:'* ]]
@@ -313,8 +313,8 @@ Capture: x" ]
   block="$(printf '%s\n' "$output" | awk -v s="$sentinel" '$0==s{c++; next} c==1{print}')"
 
   # Inside the data block: no live markers, no fence run.
-  ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*GAIA-VERDICT:'
-  ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*GAIA-FIX-ABORT:'
+  printf '%s\n' "$block" | grep -qE '^[[:space:]]*GAIA-VERDICT:' && return 1
+  printf '%s\n' "$block" | grep -qE '^[[:space:]]*GAIA-FIX-ABORT:' && return 1
   [[ "$block" != *'```'* ]]
   # The hostile bytes are still present, but in their inert, confined form.
   [[ "$block" == *'GAIA-VERDICT_NEUTRALIZED:'* ]]

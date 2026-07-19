@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: single-quoted case patterns match the literal
+# text $HOME/$PWD/${PWD}, so shell expansion is deliberately suppressed.
+# shellcheck disable=SC2016
 # PreToolUse Bash hook: deny dangerous `rm -rf` invocations.
 #
 # The `rm` command word is matched case-insensitively and through quote/backslash

@@ -74,6 +74,7 @@ json_escape() {
   local i ch code
   for (( i = 0; i < ${#in}; i++ )); do
     ch="${in:i:1}"
+    # shellcheck disable=SC1003  # single-quoted backslash literals in the escape map are intentional, not mis-escaped quotes
     case "$ch" in
       '\') out+='\\' ;;
       '"') out+='\"' ;;

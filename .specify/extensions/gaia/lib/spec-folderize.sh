@@ -115,7 +115,7 @@ folderize_dir() {
       target_name="SPEC.md"
     else
       # Sibling: SPEC-NNN-<rest>.md → SPEC-NNN/<REST>.md
-      rest="${filename#${id}-}"
+      rest="${filename#"${id}"-}"
       [ -n "$rest" ] || continue
       target_name="$(printf '%s' "$rest" | tr '[:lower:]' '[:upper:]').md"
     fi
