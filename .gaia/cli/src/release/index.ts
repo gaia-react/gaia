@@ -13,6 +13,7 @@ import {structuredError} from '../stderr.js';
 import {run as runBump} from './bump.js';
 import {run as runChangelog} from './changelog.js';
 import {run as runCommitAndTag} from './commit-and-tag.js';
+import {run as runExcludeRegex} from './exclude-regex.js';
 import {run as runManifest} from './manifest-cli.js';
 import {run as runPreflight} from './preflight.js';
 import {run as runRuntimeDeps} from './runtime-deps.js';
@@ -29,6 +30,7 @@ const HELP_TEXT = `Usage: gaia-maintainer release <subcommand> [args]
                                               Regenerate .gaia/manifest.json. Refuses while any
                                               newly-shipping file is unanswered; see manifest --help.
   manifest --check [--json]                   Verify committed manifest is fresh + lint classifier sets.
+  exclude-regex [--exclude-file <path>]        Compile .gaia/release-exclude to anchored regexes (stdout).
   scrub <staging-dir> [--config <path>] [--json]
                                               Apply bundle-time marker-strip + leak-check.
   runtime-deps [--staging <dir>] [--manifest <path>] [--json]
@@ -47,6 +49,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   bump: runBump,
   changelog: runChangelog,
   'commit-and-tag': runCommitAndTag,
+  'exclude-regex': runExcludeRegex,
   manifest: runManifest,
   preflight: runPreflight,
   'runtime-deps': runRuntimeDeps,

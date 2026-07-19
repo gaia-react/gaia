@@ -39,7 +39,7 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
   automation read-config|cron-decide
   update merge-workspace --baseline <file> --latest <file> --current <file>
   update-deps run --emit-updates <path>
-  release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag
+  release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag|exclude-regex
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
   setup status|mark-step|finalize|link-worktree
 `;

@@ -136,10 +136,33 @@ export const validateExcludeText = (text: string): void => {
   }
 };
 
+/**
+ * The compiled anchored-regex STRINGS for a `.gaia/release-exclude` body, one
+ * per non-comment/non-blank line: `^<escaped>(/|$)`. This is the single source
+ * of the escape + anchor transform; both the `RegExp[]` form below and the
+ * subcommand's stdout derive from it, so the CLI never carries a second compiler.
+ *
+ * Emitted from the string form, NOT `RegExp.prototype.source`: `.source` escapes
+ * `/` to `\/` and renders the empty pattern as `(?:)`, which would diverge from
+ * the shell `awk | sed | awk` text on every slash-bearing line.
+ */
+export const compileExcludeRegexStrings = (text: string): string[] =>
+  parseExcludeLines(text).map((line) => `^${escapeRegExp(line)}(/|$)`);
+
+/**
+ * The exact bytes `release exclude-regex` writes to stdout: each compiled
+ * pattern on its own line with a trailing newline, byte-identical to the
+ * retired `awk | sed | awk` pipeline. The empty exclude list yields the EMPTY
+ * string (zero bytes), never a lone newline, so a shell `[ -s ]` check stays a
+ * faithful "exclude nothing" signal.
+ */
+export const renderExcludeRegex = (text: string): string =>
+  compileExcludeRegexStrings(text)
+    .map((pattern) => `${pattern}\n`)
+    .join('');
+
 export const parseExcludePatterns = (text: string): RegExp[] =>
-  parseExcludeLines(text).map(
-    (line) => new RegExp(`^${escapeRegExp(line)}(/|$)`)
-  );
+  compileExcludeRegexStrings(text).map((source) => new RegExp(source));
 
 export const classifyPath = (relativePath: string): ManifestClass | null => {
   if (ADOPTER_OWNED_SENTINELS.has(relativePath)) return null;
