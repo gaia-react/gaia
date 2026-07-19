@@ -12,13 +12,16 @@
 # revisiting one past the retention window is vanishingly unlikely. The same
 # GAIA_SPEC_RETENTION_DAYS clock that reaps merged folders applies here too.
 #
-# Unlike the merged path, there is no consolidation gate, no wiki-promote
-# drain check, and no --close early-reap: nothing ever promotes an abandoned
-# SPEC's content into the wiki or a PR, so the whole folder reaps as one unit
-# once it clears the age and cost gates. The cost gate stays, unchanged,
-# because an abandoned draft can still have burned real tokens (e.g. an
-# adversarial audit that ran before the premise was falsified) and that
-# accounting must not be lost silently.
+# Unlike the merged path, there is no consolidation gate and no --close
+# early-reap: nothing ever promotes an abandoned SPEC's content into the
+# wiki, so the whole folder reaps as one unit once it clears the age and
+# cost gates. A dangling wiki-promote defer flag (implement ran before the
+# row was abandoned, so a PR-merge drain was left pending) is purged rather
+# than guarded on, since there is no close flow left to drain it and no
+# merge left to wait for; see the cache-purge step below. The cost gate
+# stays, unchanged, because an abandoned draft can still have burned real
+# tokens (e.g. an adversarial audit that ran before the premise was falsified)
+# and that accounting must not be lost silently.
 #
 # Sweep criteria, per row: a .gaia/local/specs/ledger.json row is a delete
 # candidate when ALL hold:
@@ -135,12 +138,21 @@ while IFS= read -r spec_id; do
     continue
   fi
 
-  # Reap the abandoned SPEC's cache keyset (gate1/draft/session/audit).
-  # Best-effort and fail-open, matching the rest of this script's contract.
+  # Reap the abandoned SPEC's cache keyset (gate1/draft/session/audit), plus
+  # any wiki-promote defer flag. A defer flag means /speckit-implement ran
+  # before the row was abandoned (a finalized SPEC's PR was open, then
+  # dropped for cause) and left .gaia/local/cache/wiki-promote/<id>.json
+  # awaiting a merge that will now never happen: unlike the merged path,
+  # which GUARDS on this flag (skip-and-let-close-drain), there is no close
+  # to drain it here, so it is purged rather than left to orphan (nothing
+  # else ever reaps wiki-promote/, see local-janitor.sh sweep #9's
+  # allowlist). Best-effort and fail-open, matching the rest of this
+  # script's contract.
   local_cache="${repo_root}/.gaia/local/cache"
   rm -f "${local_cache}/gate1-${spec_id}.json" \
         "${local_cache}/draft-${spec_id}.md" \
-        "${local_cache}/spec-session-${spec_id}.json" 2>/dev/null
+        "${local_cache}/spec-session-${spec_id}.json" \
+        "${local_cache}/wiki-promote/${spec_id}.json" 2>/dev/null
   rm -rf "${local_cache}/audit-${spec_id}" 2>/dev/null
 
   if ! rm -rf "$folder" 2>/dev/null; then

@@ -86,8 +86,10 @@
 #      SPEC has no implementing PR to fall back on as its durable record, but
 #      it is abandoned for a definitive reason and revisiting one past the
 #      window is vanishingly unlikely, so the same clock applies; unlike the
-#      merged path there is no consolidation gate and no wiki-promote drain
-#      check, so the whole folder reaps as one unit.
+#      merged path there is no consolidation gate, so the whole folder reaps
+#      as one unit; a dangling wiki-promote defer flag (implement ran before
+#      abandonment) is purged rather than guarded on, since no close flow is
+#      ever coming to drain it.
 #   7. merged spec-less plan folders (reduced to SUMMARY.md + cost.json by
 #      sweep #3's plan-archive.sh delegation) whose merged_at has aged past
 #      the same retention window AND whose cost is fully represented. A thin

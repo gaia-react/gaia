@@ -391,3 +391,21 @@ _clear_abandoned_at() {
   assert_contains "Deleted 1 abandoned SPEC folder(s): SPEC-001"
   [ ! -e "$REPO/$SPECS/SPEC-001" ]
 }
+
+# --- 20: a dangling wiki-promote defer flag is purged, not orphaned -----------
+
+@test "20: reaping an abandoned row purges its wiki-promote defer flag too" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
+  mkdir -p "$REPO/.gaia/local/cache/wiki-promote"
+  printf '{"branch":"spec-1-x","deferred_at":"2026-01-02T00:00:00Z"}\n' \
+    > "$REPO/.gaia/local/cache/wiki-promote/SPEC-001.json"
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 abandoned SPEC folder(s): SPEC-001"
+
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
+  [ ! -e "$REPO/.gaia/local/cache/wiki-promote/SPEC-001.json" ]
+  # The wiki-promote/ drop zone itself survives; only its stale entry is purged.
+  [ -d "$REPO/.gaia/local/cache/wiki-promote" ]
+}
