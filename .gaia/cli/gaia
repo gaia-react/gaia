@@ -16968,6 +16968,10 @@ var splitPrefix = (value) => {
   };
 };
 var isOraclePrefix = (prefix) => ORACLE_PREFIXES.includes(prefix);
+var isOracleFindingClass = (findingClass) => {
+  const parts = splitPrefix(findingClass);
+  return parts !== void 0 && isOraclePrefix(parts.prefix);
+};
 var isValidFindingClass = (value) => {
   const parts = splitPrefix(value);
   if (parts === void 0) return false;
@@ -17052,6 +17056,7 @@ var computeTally = ({
         area_tags: aggregate.areaTags,
         distinct_pr_count: distinctPrCount,
         finding_class: findingClass,
+        is_oracle: isOracleFindingClass(findingClass),
         pr_numbers: aggregate.prNumbers,
         severity_max: aggregate.severityMax
       });
