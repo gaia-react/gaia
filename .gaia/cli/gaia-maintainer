@@ -18459,6 +18459,173 @@ var applyWithholds = (excludeText, withholds) => {
   return lines.join("\n");
 };
 
+// src/release/manifest-cli-args.ts
+var HELP_TEXT22 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
+                                       [--ship <path>]...
+                                       [--withhold <path> --category <N> --reason <text>]...
+                                       [--allow-undecided]
+       gaia-maintainer release manifest --check [--json]
+
+  Regenerate .gaia/manifest.json. Walks git ls-files, subtracts
+  release-exclude patterns and adopter-owned sentinels, classifies the
+  remainder, and writes a sorted JSON manifest.
+
+  Refuses, in every output mode, to produce a manifest while any file that
+  would newly ship lacks an explicit answer. Answer each one with --ship or
+  --withhold, or waive the accounting with --allow-undecided.
+
+  Flags:
+    --ship <path>      Answer <path> as shipping. Repeatable.
+    --withhold <path>  Answer <path> as withheld: appends it to
+                       .gaia/release-exclude. Repeatable. Each --withhold
+                       must be closed by exactly one --category and exactly
+                       one --reason before the next one.
+    --category <N>     Numbered release-exclude category the open --withhold
+                       is filed under.
+    --reason <text>    One-line rationale, written as the comment directly
+                       above the withheld path.
+    --allow-undecided  Waive the answer requirement; every unanswered file
+                       ships. The escape hatch for bootstrapping a manifest
+                       and for unattended regeneration.
+    --out <path>       Override output path (default: .gaia/manifest.json).
+    --stdout           Print manifest JSON to stdout instead of writing the file.
+    --check            Verify the committed manifest matches what the
+                       classifier would produce against the current source,
+                       lint classifier sets against release-exclude for
+                       dead-code overlap, and lint every owned .sh-bearing
+                       directory against the scrub maintainer-paths scope and
+                       runtime-deps's SCAN_GLOBS. Exits non-zero on drift,
+                       overlap, or a scan-scope gap. Read-only: incompatible
+                       with every flag above.
+    --json             (with --check) Emit a structured JSON drift report.
+
+  Exit codes:
+    0  success / check clean
+    1  unanswered or invalid answers / user-correctable error / check found
+       drift or overlap
+    2  unexpected (filesystem / git failure)
+`;
+var HELP_TOKENS22 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var takeValue8 = (argv, index, flag) => {
+  const value = argv.at(index);
+  if (value === void 0)
+    return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+var closeWithhold = (pending, withholds) => {
+  if (pending === void 0) return void 0;
+  if (pending.category === void 0)
+    return `--withhold ${pending.path} requires a --category`;
+  if (pending.reason === void 0)
+    return `--withhold ${pending.path} requires a --reason`;
+  withholds.push({
+    category: pending.category,
+    path: pending.path,
+    reason: pending.reason
+  });
+  return void 0;
+};
+var applyCategory = (state, value) => {
+  if (state.pending === void 0)
+    return "--category requires a preceding --withhold";
+  if (state.pending.category !== void 0)
+    return `--withhold ${state.pending.path} carries more than one --category`;
+  if (!/^\d+$/.test(value) || Number(value) === 0)
+    return `--category must be a positive integer, got: ${value}`;
+  state.pending.category = Number(value);
+  return void 0;
+};
+var applyReason = (state, value) => {
+  if (state.pending === void 0)
+    return "--reason requires a preceding --withhold";
+  if (state.pending.reason !== void 0)
+    return `--withhold ${state.pending.path} carries more than one --reason`;
+  state.pending.reason = value;
+  return void 0;
+};
+var openPendingWithhold = (state, value) => {
+  const closeError = closeWithhold(state.pending, state.withholds);
+  if (closeError !== void 0) return closeError;
+  state.pending = { category: void 0, path: value, reason: void 0 };
+  return void 0;
+};
+var VALUE_FLAGS = {
+  "--category": applyCategory,
+  "--out": (state, value) => {
+    state.outPath = value;
+    return void 0;
+  },
+  "--reason": applyReason,
+  "--ship": (state, value) => {
+    state.ships.push(value);
+    return void 0;
+  },
+  "--withhold": openPendingWithhold
+};
+var BARE_FLAGS = {
+  "--allow-undecided": (state) => {
+    state.allowUndecided = true;
+  },
+  "--check": (state) => {
+    state.check = true;
+  },
+  "--json": (state) => {
+    state.json = true;
+  },
+  "--stdout": (state) => {
+    state.stdout = true;
+  }
+};
+var lookUpFlagHandler = (table, token) => Object.hasOwn(table, token) ? table[token] : void 0;
+var validateFlagCombination = (state) => {
+  const { allowUndecided, check: check2, json: json2, outPath, ships, stdout, withholds } = state;
+  const hasAnswers = allowUndecided || ships.length > 0 || withholds.length > 0;
+  if (check2 && (outPath !== void 0 || stdout || hasAnswers)) {
+    return {
+      message: "--check is incompatible with --out / --stdout / --ship / --withhold / --allow-undecided",
+      ok: false
+    };
+  }
+  if (!check2 && json2) {
+    return { message: "--json requires --check", ok: false };
+  }
+  return {
+    flags: { allowUndecided, check: check2, json: json2, outPath, ships, stdout, withholds },
+    ok: true
+  };
+};
+var parseFlags10 = (argv) => {
+  const state = {
+    allowUndecided: false,
+    check: false,
+    json: false,
+    outPath: void 0,
+    pending: void 0,
+    ships: [],
+    stdout: false,
+    withholds: []
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    const bare = lookUpFlagHandler(BARE_FLAGS, token);
+    const valued = lookUpFlagHandler(VALUE_FLAGS, token);
+    if (bare !== void 0) {
+      bare(state);
+    } else if (valued === void 0) {
+      return { message: `unknown flag: ${token}`, ok: false };
+    } else {
+      const taken = takeValue8(argv, index + 1, token);
+      if (!taken.ok) return taken;
+      const error51 = valued(state, taken.value);
+      if (error51 !== void 0) return { message: error51, ok: false };
+      index += 1;
+    }
+  }
+  const closeError = closeWithhold(state.pending, state.withholds);
+  if (closeError !== void 0) return { message: closeError, ok: false };
+  return validateFlagCombination(state);
+};
+
 // node_modules/.pnpm/js-yaml@4.2.0/node_modules/js-yaml/dist/js-yaml.mjs
 var __create = Object.create;
 var __defProp2 = Object.defineProperty;
@@ -21042,52 +21209,6 @@ var computeDrift = (expected, actual, lints) => {
 };
 
 // src/release/manifest-cli.ts
-var HELP_TEXT22 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
-                                       [--ship <path>]...
-                                       [--withhold <path> --category <N> --reason <text>]...
-                                       [--allow-undecided]
-       gaia-maintainer release manifest --check [--json]
-
-  Regenerate .gaia/manifest.json. Walks git ls-files, subtracts
-  release-exclude patterns and adopter-owned sentinels, classifies the
-  remainder, and writes a sorted JSON manifest.
-
-  Refuses, in every output mode, to produce a manifest while any file that
-  would newly ship lacks an explicit answer. Answer each one with --ship or
-  --withhold, or waive the accounting with --allow-undecided.
-
-  Flags:
-    --ship <path>      Answer <path> as shipping. Repeatable.
-    --withhold <path>  Answer <path> as withheld: appends it to
-                       .gaia/release-exclude. Repeatable. Each --withhold
-                       must be closed by exactly one --category and exactly
-                       one --reason before the next one.
-    --category <N>     Numbered release-exclude category the open --withhold
-                       is filed under.
-    --reason <text>    One-line rationale, written as the comment directly
-                       above the withheld path.
-    --allow-undecided  Waive the answer requirement; every unanswered file
-                       ships. The escape hatch for bootstrapping a manifest
-                       and for unattended regeneration.
-    --out <path>       Override output path (default: .gaia/manifest.json).
-    --stdout           Print manifest JSON to stdout instead of writing the file.
-    --check            Verify the committed manifest matches what the
-                       classifier would produce against the current source,
-                       lint classifier sets against release-exclude for
-                       dead-code overlap, and lint every owned .sh-bearing
-                       directory against the scrub maintainer-paths scope and
-                       runtime-deps's SCAN_GLOBS. Exits non-zero on drift,
-                       overlap, or a scan-scope gap. Read-only: incompatible
-                       with every flag above.
-    --json             (with --check) Emit a structured JSON drift report.
-
-  Exit codes:
-    0  success / check clean
-    1  unanswered or invalid answers / user-correctable error / check found
-       drift or overlap
-    2  unexpected (filesystem / git failure)
-`;
-var HELP_TOKENS22 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT12 = 2;
 var renderVersionDriftLines = (result) => result.versionDrift === void 0 ? [] : [
   "",
@@ -21211,125 +21332,6 @@ var runCheck = (cwd, generatedAt, jsonMode) => {
   process.stdout.write(renderCheckReport(result, jsonMode));
   const hasIssue = result.missing.length > 0 || result.extra.length > 0 || result.drift.length > 0 || result.classifierOverlaps.length > 0 || result.scanScopeGaps.length > 0 || result.versionDrift !== void 0;
   return hasIssue ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
-};
-var takeValue8 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
-var closeWithhold = (pending, withholds) => {
-  if (pending === void 0) return void 0;
-  if (pending.category === void 0)
-    return `--withhold ${pending.path} requires a --category`;
-  if (pending.reason === void 0)
-    return `--withhold ${pending.path} requires a --reason`;
-  withholds.push({
-    category: pending.category,
-    path: pending.path,
-    reason: pending.reason
-  });
-  return void 0;
-};
-var applyCategory = (state, value) => {
-  if (state.pending === void 0)
-    return "--category requires a preceding --withhold";
-  if (state.pending.category !== void 0)
-    return `--withhold ${state.pending.path} carries more than one --category`;
-  if (!/^\d+$/.test(value) || Number(value) === 0)
-    return `--category must be a positive integer, got: ${value}`;
-  state.pending.category = Number(value);
-  return void 0;
-};
-var applyReason = (state, value) => {
-  if (state.pending === void 0)
-    return "--reason requires a preceding --withhold";
-  if (state.pending.reason !== void 0)
-    return `--withhold ${state.pending.path} carries more than one --reason`;
-  state.pending.reason = value;
-  return void 0;
-};
-var openPendingWithhold = (state, value) => {
-  const closeError = closeWithhold(state.pending, state.withholds);
-  if (closeError !== void 0) return closeError;
-  state.pending = { category: void 0, path: value, reason: void 0 };
-  return void 0;
-};
-var VALUE_FLAGS = {
-  "--category": applyCategory,
-  "--out": (state, value) => {
-    state.outPath = value;
-    return void 0;
-  },
-  "--reason": applyReason,
-  "--ship": (state, value) => {
-    state.ships.push(value);
-    return void 0;
-  },
-  "--withhold": openPendingWithhold
-};
-var BARE_FLAGS = {
-  "--allow-undecided": (state) => {
-    state.allowUndecided = true;
-  },
-  "--check": (state) => {
-    state.check = true;
-  },
-  "--json": (state) => {
-    state.json = true;
-  },
-  "--stdout": (state) => {
-    state.stdout = true;
-  }
-};
-var lookUpFlagHandler = (table, token) => Object.hasOwn(table, token) ? table[token] : void 0;
-var validateFlagCombination = (state) => {
-  const { allowUndecided, check: check2, json: json2, outPath, ships, stdout, withholds } = state;
-  const hasAnswers = allowUndecided || ships.length > 0 || withholds.length > 0;
-  if (check2 && (outPath !== void 0 || stdout || hasAnswers)) {
-    return {
-      message: "--check is incompatible with --out / --stdout / --ship / --withhold / --allow-undecided",
-      ok: false
-    };
-  }
-  if (!check2 && json2) {
-    return { message: "--json requires --check", ok: false };
-  }
-  return {
-    flags: { allowUndecided, check: check2, json: json2, outPath, ships, stdout, withholds },
-    ok: true
-  };
-};
-var parseFlags10 = (argv) => {
-  const state = {
-    allowUndecided: false,
-    check: false,
-    json: false,
-    outPath: void 0,
-    pending: void 0,
-    ships: [],
-    stdout: false,
-    withholds: []
-  };
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    const bare = lookUpFlagHandler(BARE_FLAGS, token);
-    const valued = lookUpFlagHandler(VALUE_FLAGS, token);
-    if (bare !== void 0) {
-      bare(state);
-    } else if (valued === void 0) {
-      return { message: `unknown flag: ${token}`, ok: false };
-    } else {
-      const taken = takeValue8(argv, index + 1, token);
-      if (!taken.ok) return taken;
-      const error51 = valued(state, taken.value);
-      if (error51 !== void 0) return { message: error51, ok: false };
-      index += 1;
-    }
-  }
-  const closeError = closeWithhold(state.pending, state.withholds);
-  if (closeError !== void 0) return { message: closeError, ok: false };
-  return validateFlagCombination(state);
 };
 var tryBuildManifestOrReport = (cwd, options) => {
   try {

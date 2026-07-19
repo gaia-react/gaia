@@ -1,10 +1,12 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
- * Tests for the `gaia-maintainer release manifest` CLI: `run(...)`
- * (`--check` reporting, the refusal/answer gate, flag parsing, emit,
+ * Tests for the `gaia-maintainer release manifest` CLI's check/emit
+ * execution: `run(...)` (`--check` reporting, the refusal/answer gate, emit,
  * `--out`/`--stdout`, `--allow-undecided`).
  *
- * The classifier / build / lint tests live in `manifest.test.ts`.
+ * The flag-grammar tests (argv parsing, flag-combination validation, unknown
+ * flags) live in `manifest-cli-args.test.ts`. The classifier / build / lint
+ * tests live in `manifest.test.ts`.
  */
 import {execFileSync} from 'node:child_process';
 import {
@@ -152,34 +154,6 @@ describe('run (CLI)', () => {
 
     const manifestPath = path.join(sandbox.root, '.gaia', 'manifest.json');
     expect(existsSync(manifestPath)).toBe(false);
-  });
-
-  test('rejects unknown flags', () => {
-    sandbox.commit('seed', {
-      '.gaia/release-exclude': '# none\n',
-      '.gaia/VERSION': '0.0.1\n',
-    });
-
-    const exit = run(['--bogus'], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('unknown flag');
-  });
-
-  test.each([
-    'toString',
-    'valueOf',
-    'constructor',
-    'hasOwnProperty',
-    '__proto__',
-  ])('rejects the prototype-member token %s as an unknown flag', (token) => {
-    sandbox.commit('seed', {
-      '.gaia/release-exclude': '# none\n',
-      '.gaia/VERSION': '0.0.1\n',
-    });
-
-    const exit = run([token], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('unknown flag');
   });
 
   test('fails gracefully when VERSION is missing', () => {
@@ -441,28 +415,6 @@ describe('run --check', () => {
     expect(stdio.errors.join('')).toContain(
       'gaia-maintainer release manifest --allow-undecided'
     );
-  });
-
-  test('--check is incompatible with --out', () => {
-    sandbox.commit('seed', {
-      '.gaia/release-exclude': '# none\n',
-      '.gaia/VERSION': '1.0.0\n',
-    });
-
-    const exit = run(['--check', '--out', 'foo.json'], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('incompatible');
-  });
-
-  test('--json requires --check', () => {
-    sandbox.commit('seed', {
-      '.gaia/release-exclude': '# none\n',
-      '.gaia/VERSION': '1.0.0\n',
-    });
-
-    const exit = run(['--json'], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--json requires --check');
   });
 
   test('--check --json emits structured report', () => {
@@ -887,51 +839,4 @@ describe('run (answer gate)', () => {
       expect(stdio.errors.join('')).toContain('withhold_reason_invalid');
     }
   );
-
-  test.each([
-    ['--check with --ship', ['--check', '--ship', 'app/new.ts']],
-    ['--check with --allow-undecided', ['--check', '--allow-undecided']],
-    [
-      '--check with --withhold',
-      [
-        '--check',
-        '--withhold',
-        'app/new.ts',
-        '--category',
-        '1',
-        '--reason',
-        'r',
-      ],
-    ],
-    ['--category with no open --withhold', ['--category', '1']],
-    ['--reason with no open --withhold', ['--reason', 'r']],
-    [
-      'a --withhold with no --category',
-      ['--withhold', 'app/new.ts', '--reason', 'r'],
-    ],
-    [
-      'a --withhold with no --reason',
-      ['--withhold', 'app/new.ts', '--category', '1'],
-    ],
-    [
-      'two --category on one --withhold',
-      [
-        '--withhold',
-        'app/new.ts',
-        '--category',
-        '1',
-        '--category',
-        '2',
-        '--reason',
-        'r',
-      ],
-    ],
-    [
-      'a non-numeric --category',
-      ['--withhold', 'app/new.ts', '--category', 'one', '--reason', 'r'],
-    ],
-  ])('rejects %s', (_label, argv) => {
-    expect(runGate(argv)).toBe(1);
-    expect(stdio.errors.join('')).toContain('invalid_arguments');
-  });
 });
