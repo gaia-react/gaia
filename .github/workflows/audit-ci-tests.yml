@@ -23,6 +23,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The job checks out, resolves changed files via dorny/paths-filter, and runs
+# bats; it needs no write scopes, so pin GITHUB_TOKEN to least privilege instead
+# of inheriting the repo-default scope. `pull-requests: read` is load-bearing,
+# not decoration: naming any scope here sets every unlisted one to `none`, and
+# dorny/paths-filter resolves a PR's changed files through the API, which needs
+# it. Omitting it works only while this repo is public; the day it went private,
+# every run would 403 with "Resource not accessible by integration". Mirrors
+# shell-lint.yml, which runs the same action on the same trigger.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   audit-ci-tests:
     name: bats (.github/audit)
@@ -101,9 +113,12 @@ jobs:
               # trigger on both the test dir and the script it guards.
               - '.gaia/statusline/**'
               - '.gaia/tests/statusline/**'
+      # python3-yaml pins the parser lint-yaml.bats' require_yaml_parser needs
+      # (python3+pyyaml), so its parser-backed negative tests run explicitly
+      # rather than resting on whatever the runner image happens to preinstall.
       - if: steps.filter.outputs.code == 'true'
-        name: Install bats
-        run: sudo apt-get update && sudo apt-get install -y bats
+        name: Install bats and YAML parser
+        run: sudo apt-get update && sudo apt-get install -y bats python3-yaml
       - if: steps.filter.outputs.code == 'true'
         name: Run .github/audit bats suites
         run: bats .github/audit/tests/
