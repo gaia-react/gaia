@@ -23,10 +23,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# The job only checks out and runs bats; it needs no write scopes, so pin
-# GITHUB_TOKEN to least privilege instead of inheriting the repo-default scope.
+# The job checks out, resolves changed files via dorny/paths-filter, and runs
+# bats; it needs no write scopes, so pin GITHUB_TOKEN to least privilege instead
+# of inheriting the repo-default scope. `pull-requests: read` is load-bearing,
+# not decoration: naming any scope here sets every unlisted one to `none`, and
+# dorny/paths-filter resolves a PR's changed files through the API, which needs
+# it. Omitting it works only while this repo is public; the day it went private,
+# every run would 403 with "Resource not accessible by integration". Mirrors
+# shell-lint.yml, which runs the same action on the same trigger.
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   audit-ci-tests:
