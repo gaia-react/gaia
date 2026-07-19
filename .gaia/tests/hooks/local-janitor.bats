@@ -349,6 +349,18 @@ copy_plan_archive_merged_deps() {
   cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
 }
 
+# copy_plan_archive_abandoned_deps: mirrors plan-archive-abandoned.sh's own
+# repo-relative call target inside the fixture repo so the janitor's
+# `bash "$root/.specify/extensions/gaia/lib/plan-archive-abandoned.sh" ...`
+# call resolves for real instead of silently failing.
+copy_plan_archive_abandoned_deps() {
+  mkdir -p "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib"
+  cp "$REPO_ROOT_REAL/.specify/extensions/gaia/lib/plan-archive-abandoned.sh" \
+    "$REPO/.specify/extensions/gaia/lib/plan-archive-abandoned.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/cost-represented.sh" "$REPO/.gaia/scripts/cost-represented.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+}
+
 # days_ago <n>: portable ISO8601 timestamp n days in the past, computed with
 # jq (never `date -d`/`date -j`, matching the project's cross-platform epoch
 # rule).
@@ -378,6 +390,30 @@ days_ago() {
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -d "$REPO/.gaia/local/plans/PLAN-071" ]
+}
+
+@test "sweep 7: abandoned spec-less plan folder past the retention window with represented cost is reaped" {
+  make_repo
+  copy_plan_archive_abandoned_deps
+  mkdir -p "$REPO/.gaia/local/plans/PLAN-072"
+  echo "draft" > "$REPO/.gaia/local/plans/PLAN-072/PLAN.md"
+  seed_plans_ledger "{\"id\":\"PLAN-072\",\"allocated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"allocated\",\"status\":\"abandoned\",\"abandoned_at\":\"$(days_ago 45)\"}"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/plans/PLAN-072" ]
+}
+
+@test "sweep 7: abandoned spec-less plan folder within the retention window is kept" {
+  make_repo
+  copy_plan_archive_abandoned_deps
+  mkdir -p "$REPO/.gaia/local/plans/PLAN-073"
+  echo "draft" > "$REPO/.gaia/local/plans/PLAN-073/PLAN.md"
+  seed_plans_ledger "{\"id\":\"PLAN-073\",\"allocated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"allocated\",\"status\":\"abandoned\",\"abandoned_at\":\"$(days_ago 2)\"}"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/plans/PLAN-073" ]
 }
 
 # --- Sweep #2: orphaned audit markers --------------------------------------
