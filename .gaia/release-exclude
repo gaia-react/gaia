@@ -53,6 +53,7 @@ wiki/concepts/Release Workflow.md
 wiki/concepts/Release-Notes.md
 wiki/decisions/Bundle-time Scrub.md
 wiki/decisions/CLI-Binary-Split.md
+wiki/decisions/Folding Shell Scripts into the CLI Binary.md
 wiki/decisions/Forensics Triage Workflow.md
 
 # --- 3. Test harnesses and audit reports ---
