@@ -44,6 +44,10 @@ teardown() {
 @test "shell-lint folds in the hook array-guard pass and stays green on a clean tree" {
   run env PATH="$STUB_DIR:$PATH" bash "$GATE"
   [ "$status" -eq 0 ]
-  grep -qF -- "lint-hook-array-guard" <<<"$output"
+  # Grep the guard's OWN stderr proof line, not shell-lint's header echo: this
+  # string is printed by lint-hook-array-guard.sh itself, so it appears only if
+  # the guard actually ran, catching a future edit that drops the invocation but
+  # leaves the header.
+  grep -qF -- "lint-hook-array-guard: clean" <<<"$output"
   grep -qF -- "shell-lint passed" <<<"$output"
 }
