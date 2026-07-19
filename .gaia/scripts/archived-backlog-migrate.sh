@@ -235,7 +235,7 @@ done
 # ---------- delete pass (only under --confirm) ----------
 if [ "$confirm" -eq 1 ]; then
   if [ "${#delete_folders[@]}" -gt 0 ]; then
-    for folder in "${delete_folders[@]}"; do
+    for folder in ${delete_folders[@]+"${delete_folders[@]}"}; do
       if rm -rf "$folder" 2>/dev/null; then
         printf 'deleted\t%s\n' "${folder#"$repo_root"/}"
       else
