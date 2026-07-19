@@ -111,6 +111,15 @@ assert_allowed() {
   assert_allowed
 }
 
+# --- fail-open: an internal error never turns into a surprise deny ---
+
+@test "Write overwriting a file containing non-UTF-8 bytes is allowed, not a crash-to-deny" {
+  make_workdir
+  printf 'title: caf\xe9 time\n' >"$WORKDIR/foo.yaml"
+  run_hook_write "$WORKDIR/foo.yaml" $'title: valid\n'
+  assert_allowed
+}
+
 # --- regression-only: pre-existing brokenness never locks out a file ---
 
 @test "Write that overwrites an already-broken file with still-broken frontmatter is allowed" {

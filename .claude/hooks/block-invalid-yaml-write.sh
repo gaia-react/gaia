@@ -144,56 +144,73 @@ def check_region(region):
     return parse_ok, parse_err, set(find_space_hash_truncations(region))
 
 
-payload = json.load(sys.stdin)
-tool_name = payload.get("tool_name", "")
-tool_input = payload.get("tool_input", {})
-file_path = tool_input.get("file_path", "")
+# Returns a deny message on a genuine, newly-introduced regression, or None
+# to allow. Any exception escaping here (not just a missing file: a
+# non-UTF-8 read is UnicodeDecodeError, a ValueError subclass, not OSError)
+# is caught by the top-level call below and treated as None, matching the
+# hook's own fail-open contract: an internal bug must never turn into a
+# surprise deny.
+def main():
+    payload = json.load(sys.stdin)
+    tool_name = payload.get("tool_name", "")
+    tool_input = payload.get("tool_input", {})
+    file_path = tool_input.get("file_path", "")
 
-if tool_name == "Write":
-    after_text = tool_input.get("content", "")
-    try:
-        with open(file_path, "r", encoding="utf-8") as fh:
-            before_text = fh.read()
-    except OSError:
-        before_text = None
-elif tool_name in ("Edit", "MultiEdit"):
-    try:
-        with open(file_path, "r", encoding="utf-8") as fh:
-            before_text = fh.read()
-    except OSError:
-        sys.exit(0)
-    after_text = before_text
-    edits = [tool_input] if tool_name == "Edit" else tool_input.get("edits", [])
-    for edit in edits:
-        nxt = apply_edit(
-            after_text,
-            edit.get("old_string", ""),
-            edit.get("new_string", ""),
-            bool(edit.get("replace_all", False)),
-        )
-        if nxt is None:
-            sys.exit(0)
-        after_text = nxt
-else:
-    sys.exit(0)
+    if tool_name == "Write":
+        after_text = tool_input.get("content", "")
+        try:
+            with open(file_path, "r", encoding="utf-8") as fh:
+                before_text = fh.read()
+        except OSError:
+            before_text = None
+    elif tool_name in ("Edit", "MultiEdit"):
+        try:
+            with open(file_path, "r", encoding="utf-8") as fh:
+                before_text = fh.read()
+        except OSError:
+            return None
+        after_text = before_text
+        edits = [tool_input] if tool_name == "Edit" else tool_input.get("edits", [])
+        for edit in edits:
+            nxt = apply_edit(
+                after_text,
+                edit.get("old_string", ""),
+                edit.get("new_string", ""),
+                bool(edit.get("replace_all", False)),
+            )
+            if nxt is None:
+                return None
+            after_text = nxt
+    else:
+        return None
 
-after_region = yaml_region(file_path, after_text)
-if after_region is None:
-    sys.exit(0)
+    after_region = yaml_region(file_path, after_text)
+    if after_region is None:
+        return None
 
-before_region = yaml_region(file_path, before_text) if before_text is not None else None
+    before_region = yaml_region(file_path, before_text) if before_text is not None else None
 
-before_ok, _before_err, before_trunc = check_region(before_region)
-after_ok, after_err, after_trunc = check_region(after_region)
+    before_ok, _before_err, before_trunc = check_region(before_region)
+    after_ok, after_err, after_trunc = check_region(after_region)
 
-if before_ok and not after_ok:
-    print(after_err)
-    sys.exit(1)
+    if before_ok and not after_ok:
+        return after_err
 
-new_trunc = after_trunc - before_trunc
-if new_trunc:
-    example = sorted(new_trunc)[0]
-    print(f"unquoted ' #' in a plain scalar silently truncates the value as a comment: \"{example}\"")
+    new_trunc = after_trunc - before_trunc
+    if new_trunc:
+        example = sorted(new_trunc)[0]
+        return f"unquoted ' #' in a plain scalar silently truncates the value as a comment: \"{example}\""
+
+    return None
+
+
+try:
+    deny_reason = main()
+except Exception:
+    deny_reason = None
+
+if deny_reason is not None:
+    print(deny_reason)
     sys.exit(1)
 PYEOF
 )
