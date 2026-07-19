@@ -80,7 +80,17 @@
 #      represented. A merged SPEC folder is kept at merge and reaped only once
 #      it clears both gates; this sweep is a thin delegation to
 #      spec-archive-merged.sh, which owns both gates, symmetric with how
-#      sweep #3 delegates plan-folder deletes to plan-archive.sh.
+#      sweep #3 delegates plan-folder deletes to plan-archive.sh. The same
+#      knob and cost gate, on the same folder-delete shape, also reap
+#      ABANDONED SPEC folders whose abandoned_at has aged past the window: a
+#      thin delegation to the sibling spec-archive-abandoned.sh. An abandoned
+#      SPEC has no implementing PR to fall back on as its durable record, but
+#      it is abandoned for a definitive reason and revisiting one past the
+#      window is vanishingly unlikely, so the same clock applies; unlike the
+#      merged path there is no consolidation gate, so the whole folder reaps
+#      as one unit; a dangling wiki-promote defer flag (implement ran before
+#      abandonment) is purged rather than guarded on, since no close flow is
+#      ever coming to drain it.
 #   7. merged spec-less plan folders (reduced to SUMMARY.md + cost.json by
 #      sweep #3's plan-archive.sh delegation) whose merged_at has aged past
 #      the same retention window AND whose cost is fully represented. A thin
@@ -695,6 +705,10 @@ fi
 archive_merged="$root/.specify/extensions/gaia/lib/spec-archive-merged.sh"
 if [ -x "$archive_merged" ] || [ -f "$archive_merged" ]; then
   bash "$archive_merged" "$root" >/dev/null 2>&1 || true
+fi
+archive_abandoned="$root/.specify/extensions/gaia/lib/spec-archive-abandoned.sh"
+if [ -x "$archive_abandoned" ] || [ -f "$archive_abandoned" ]; then
+  bash "$archive_abandoned" "$root" >/dev/null 2>&1 || true
 fi
 
 # --- 7. Age-reap merged spec-less plan folders past the retention window ---

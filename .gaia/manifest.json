@@ -281,6 +281,7 @@
     ".specify/extensions/gaia/lib/plan-reconcile.sh": "owned",
     ".specify/extensions/gaia/lib/spec-abandon-empty.sh": "owned",
     ".specify/extensions/gaia/lib/spec-allocator.sh": "owned",
+    ".specify/extensions/gaia/lib/spec-archive-abandoned.sh": "owned",
     ".specify/extensions/gaia/lib/spec-archive-merged.sh": "owned",
     ".specify/extensions/gaia/lib/spec-folderize.sh": "owned",
     ".specify/extensions/gaia/lib/spec-reconcile.sh": "owned",
@@ -615,6 +616,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-19T14:44:28.472Z",
+  "generated": "2026-07-19T15:08:43.901Z",
   "version": "1.6.1"
 }
