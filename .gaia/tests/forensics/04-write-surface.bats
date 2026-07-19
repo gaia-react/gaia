@@ -5,9 +5,6 @@
 # of the runbook branch and, where used, the `lib/*.sh` mirrors, never the shipped
 # skill body. Real end-to-end guard: integration.md "Local skill end-to-end" diff.
 
-# shellcheck disable=SC2034  # unused test-dir anchor; pre-existing dead code, kept (not deleted) per surgical-changes policy
-HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
-
 setup() {
   # The temp repos below run `git commit`. CI runners have no ambient git
   # identity (`user.name`/`user.email`) and cannot derive one, so the commit
