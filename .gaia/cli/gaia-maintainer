@@ -18313,7 +18313,7 @@ var run21 = (argv, options = {}) => {
 };
 
 // src/release/manifest-cli.ts
-import { existsSync as existsSync13, readFileSync as readFileSync15 } from "node:fs";
+import { existsSync as existsSync14, readFileSync as readFileSync16 } from "node:fs";
 import path17 from "node:path";
 
 // src/release/manifest-answers.ts
@@ -18625,6 +18625,9 @@ var parseFlags10 = (argv) => {
   if (closeError !== void 0) return { message: closeError, ok: false };
   return validateFlagCombination(state);
 };
+
+// src/release/manifest-cli-check.ts
+import { existsSync as existsSync13, readFileSync as readFileSync15 } from "node:fs";
 
 // node_modules/.pnpm/js-yaml@4.2.0/node_modules/js-yaml/dist/js-yaml.mjs
 var __create = Object.create;
@@ -21208,7 +21211,7 @@ var computeDrift = (expected, actual, lints) => {
   };
 };
 
-// src/release/manifest-cli.ts
+// src/release/manifest-cli-check.ts
 var UNEXPECTED_EXIT12 = 2;
 var renderVersionDriftLines = (result) => result.versionDrift === void 0 ? [] : [
   "",
@@ -21333,6 +21336,8 @@ var runCheck = (cwd, generatedAt, jsonMode) => {
   const hasIssue = result.missing.length > 0 || result.extra.length > 0 || result.drift.length > 0 || result.classifierOverlaps.length > 0 || result.scanScopeGaps.length > 0 || result.versionDrift !== void 0;
   return hasIssue ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };
+
+// src/release/manifest-cli.ts
 var tryBuildManifestOrReport = (cwd, options) => {
   try {
     return buildManifest(cwd, options);
@@ -21349,7 +21354,7 @@ var trySnapshotOrReport = (cwd, generatedAt) => {
   try {
     const repoRoot = resolveRepoRoot2(cwd);
     const manifestPath = resolveManifestPath(repoRoot);
-    const excludeText = readFileSync15(resolveExcludePath(repoRoot), "utf8");
+    const excludeText = readFileSync16(resolveExcludePath(repoRoot), "utf8");
     const expected = buildManifest(cwd, { excludeText, generatedAt, repoRoot });
     const committed = readCommittedManifest(manifestPath);
     if (committed.kind === "invalid") {
@@ -21486,7 +21491,7 @@ var run22 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const target = stdout ? void 0 : resolveOutputTarget(cwd, snapshot.repoRoot, outPath);
-  if (target !== void 0 && !existsSync13(path17.dirname(target))) {
+  if (target !== void 0 && !existsSync14(path17.dirname(target))) {
     structuredError({
       code: "output_dir_missing",
       message: `output directory does not exist: ${path17.dirname(target)}`,
@@ -21507,7 +21512,7 @@ var run22 = (argv, options = {}) => {
 import { spawnSync as spawnSync4 } from "node:child_process";
 
 // src/wiki/state.ts
-import { existsSync as existsSync14, readdirSync, readFileSync as readFileSync16, statSync } from "node:fs";
+import { existsSync as existsSync15, readdirSync, readFileSync as readFileSync17, statSync } from "node:fs";
 import path18 from "node:path";
 var HELP_TEXT23 = `Usage: gaia wiki state [--json]
 `;
@@ -21532,7 +21537,7 @@ var countDomainPages = (wikiRoot) => {
   const counts = {};
   for (const domain2 of DOMAIN_DIRS) {
     const domainDir = path18.join(wikiRoot, domain2);
-    if (!existsSync14(domainDir) || !statSync(domainDir).isDirectory()) {
+    if (!existsSync15(domainDir) || !statSync(domainDir).isDirectory()) {
       counts[domain2] = 0;
     } else {
       const entries = readdirSync(domainDir, { withFileTypes: true });
@@ -21548,8 +21553,8 @@ var countDomainPages = (wikiRoot) => {
   return counts;
 };
 var readStateFile = (statePath) => {
-  if (!existsSync14(statePath)) return null;
-  const raw = readFileSync16(statePath, "utf8");
+  if (!existsSync15(statePath)) return null;
+  const raw = readFileSync17(statePath, "utf8");
   try {
     return JSON.parse(raw);
   } catch {
@@ -21867,7 +21872,7 @@ var run24 = (argv, options = {}) => {
 };
 
 // src/release/runtime-deps.ts
-import { readdirSync as readdirSync2, readFileSync as readFileSync17, statSync as statSync2 } from "node:fs";
+import { readdirSync as readdirSync2, readFileSync as readFileSync18, statSync as statSync2 } from "node:fs";
 import path19 from "node:path";
 
 // src/release/marker-strip.ts
@@ -22080,7 +22085,7 @@ var walkScripts = (root) => {
   return out;
 };
 var loadManifest = (manifestPath) => {
-  const raw = readFileSync17(manifestPath, "utf8");
+  const raw = readFileSync18(manifestPath, "utf8");
   const parsed = JSON.parse(raw);
   if (parsed.files === void 0) {
     throw new Error(`manifest at ${manifestPath} has no "files" field`);
@@ -22177,7 +22182,7 @@ var collectLeaks = (root, scriptFiles, manifest) => {
   const leaks = [];
   const shippedDirs = computeShippedDirs(manifest);
   for (const scriptPath of scriptFiles) {
-    const rawSource = readFileSync17(path19.join(root, scriptPath), "utf8");
+    const rawSource = readFileSync18(path19.join(root, scriptPath), "utf8");
     const source = stripMarkerBlocks(
       rawSource,
       MAINTAINER_ONLY_START,
@@ -22233,7 +22238,7 @@ var run25 = (argv, options = {}) => {
 };
 
 // src/release/scrub-wiki.ts
-import { existsSync as existsSync15, mkdirSync as mkdirSync6, readFileSync as readFileSync18 } from "node:fs";
+import { existsSync as existsSync16, mkdirSync as mkdirSync6, readFileSync as readFileSync19 } from "node:fs";
 import path20 from "node:path";
 var HELP_TEXT26 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>]
 
@@ -22287,10 +22292,10 @@ var todayUtc2 = (now = /* @__PURE__ */ new Date()) => {
 var readVersion3 = (cwd, override) => {
   if (override !== void 0 && override.length > 0) return override;
   const target = path20.join(cwd, "package.json");
-  if (!existsSync15(target)) {
+  if (!existsSync16(target)) {
     throw new Error("package.json not found at repo root");
   }
-  const parsed = JSON.parse(readFileSync18(target, "utf8"));
+  const parsed = JSON.parse(readFileSync19(target, "utf8"));
   if (typeof parsed.version !== "string") {
     throw new TypeError('package.json has no string "version"');
   }
@@ -22358,7 +22363,7 @@ var run26 = (argv, options = {}) => {
   }
   const date5 = parsed.flags.date ?? options.today ?? todayUtc2();
   const wikiDir = path20.join(cwd, "wiki");
-  if (!existsSync15(wikiDir)) {
+  if (!existsSync16(wikiDir)) {
     structuredError({
       code: "wiki_dir_missing",
       message: `wiki/ directory not found at ${wikiDir}`,
@@ -22384,7 +22389,7 @@ var run26 = (argv, options = {}) => {
 };
 
 // src/release/scrub.ts
-import { existsSync as existsSync16, readdirSync as readdirSync3, readFileSync as readFileSync19, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync17, readdirSync as readdirSync3, readFileSync as readFileSync20, statSync as statSync3 } from "node:fs";
 import path21 from "node:path";
 
 // src/wiki/util/wikilinks.ts
@@ -22489,7 +22494,7 @@ var applyMarkerStrip = (stagingRoot, files, transform2) => {
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
       const absolutePath = path21.join(stagingRoot, relativePath);
-      const source = readFileSync19(absolutePath, "utf8");
+      const source = readFileSync20(absolutePath, "utf8");
       const hasAnyMarker = source.includes(transform2.start) || source.includes(transform2.end);
       if (hasAnyMarker) {
         const result = stripMarkerBlocks(
@@ -22554,7 +22559,7 @@ var deleteKeyPath = (obj, segments) => {
 var stripJsonKeysFromFile = (absolutePath, relativePath, keySegments) => {
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync19(absolutePath, "utf8"));
+    parsed = JSON.parse(readFileSync20(absolutePath, "utf8"));
   } catch (error51) {
     throw new Error(
       `Failed to parse JSON at ${relativePath}: ${error51 instanceof Error ? error51.message : String(error51)}`
@@ -22602,7 +22607,7 @@ var scanForLeaks = ({ check: check2, files, stagingRoot }, findLeaksInLine) => {
   for (const relativePath of files) {
     const inScope = matchesAnyGlob(relativePath, check2.scope) && !matchesAnyGlob(relativePath, pathAllowlist);
     if (inScope) {
-      const source = readFileSync19(path21.join(stagingRoot, relativePath), "utf8");
+      const source = readFileSync20(path21.join(stagingRoot, relativePath), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
         if (!lineAllowlist.some((rx) => rx.test(line))) {
           leaks.push(...findLeaksInLine(line, index + 1, relativePath));
@@ -22653,7 +22658,7 @@ var addSlugsForExcludeLine = (line, cwd, addSlug) => {
 };
 var buildExcludedSlugSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync19(path21.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync20(path21.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const slugs = /* @__PURE__ */ new Set();
   const addSlug = (value) => {
@@ -22683,7 +22688,7 @@ var runDerivedWikilinkCheck = ({
 };
 var buildNeverPresentWorkflowSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync19(path21.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync20(path21.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const paths = /* @__PURE__ */ new Set();
   for (const line of lines) {
@@ -22693,7 +22698,7 @@ var buildNeverPresentWorkflowSet = (cwd) => {
         SHIPPED_WORKFLOW_TEMPLATES_DIR,
         `${path21.basename(line)}.tmpl`
       );
-      if (!existsSync16(templatePath)) {
+      if (!existsSync17(templatePath)) {
         paths.add(line);
       }
     }
@@ -22719,7 +22724,7 @@ var runDerivedWorkflowCheck = ({
   );
 };
 var loadConfig = (configPath) => {
-  const raw = readFileSync19(configPath, "utf8");
+  const raw = readFileSync20(configPath, "utf8");
   const parsed = load(raw);
   return ConfigSchema.parse(parsed);
 };
@@ -22982,19 +22987,19 @@ var run28 = async (argv) => {
 };
 
 // src/scaffold/component.ts
-import { existsSync as existsSync18, statSync as statSync4 } from "node:fs";
+import { existsSync as existsSync19, statSync as statSync4 } from "node:fs";
 import path23 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/scaffold/fs.ts
-import { existsSync as existsSync17, mkdirSync as mkdirSync7, readFileSync as readFileSync20 } from "node:fs";
+import { existsSync as existsSync18, mkdirSync as mkdirSync7, readFileSync as readFileSync21 } from "node:fs";
 import path22 from "node:path";
 var ensureDir = (absPath) => {
   mkdirSync7(absPath, { recursive: true });
 };
 var writeFileIfAbsent = (absPath, contents, options = {}) => {
-  if (existsSync17(absPath)) {
-    const existing = readFileSync20(absPath, "utf8");
+  if (existsSync18(absPath)) {
+    const existing = readFileSync21(absPath, "utf8");
     if (existing === contents) return { written: false };
     throw new Error(`refusing to overwrite ${absPath}`);
   }
@@ -23236,7 +23241,7 @@ var buildStoryTitle = (parent, componentName) => {
   if (stripped === "") return `Components/${componentName}`;
   return `Components/${stripped}/${componentName}`;
 };
-var defaultIsDirectory = (absPath) => existsSync18(absPath) && statSync4(absPath).isDirectory();
+var defaultIsDirectory = (absPath) => existsSync19(absPath) && statSync4(absPath).isDirectory();
 var renderComponentFile = (options) => {
   const { componentName, props, templatesRoot } = options;
   const templatePath = path23.join(
@@ -23550,7 +23555,7 @@ var run30 = (argv, options = {}) => {
 };
 
 // src/scaffold/route.ts
-import { existsSync as existsSync19, readFileSync as readFileSync21 } from "node:fs";
+import { existsSync as existsSync20, readFileSync as readFileSync22 } from "node:fs";
 import path25 from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 var VALID_GROUPS = /* @__PURE__ */ new Set(["_public+", "_session+"]);
@@ -23678,8 +23683,8 @@ var insertExportEntry = (lines, args) => {
 };
 var insertIntoLocaleBarrel = (args) => {
   const { barrelPath, dryRun, importName, moduleName } = args;
-  if (!existsSync19(barrelPath)) return "missing";
-  const original = readFileSync21(barrelPath, "utf8");
+  if (!existsSync20(barrelPath)) return "missing";
+  const original = readFileSync22(barrelPath, "utf8");
   const importLine = `import ${importName} from './${moduleName}';`;
   if (original.includes(importLine)) return "present";
   const lines = original.split("\n");
@@ -23902,7 +23907,7 @@ var run31 = (rest, options = {}) => {
 };
 
 // src/scaffold/service.ts
-import { existsSync as existsSync20, readFileSync as readFileSync22 } from "node:fs";
+import { existsSync as existsSync21, readFileSync as readFileSync23 } from "node:fs";
 import path26 from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 var KEBAB_PATTERN2 = /^[a-z][a-z\d]*(?:-[a-z\d]+)*$/u;
@@ -24206,7 +24211,7 @@ var applyDatabaseEdits = (args) => {
   return next;
 };
 var updateDatabaseBarrel = (databasePath, derived) => {
-  const raw = readFileSync22(databasePath, "utf8");
+  const raw = readFileSync23(databasePath, "utf8");
   const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
   const resetCall = `reset${derived.Plural}()`;
   if (raw.includes(importLine)) return { written: false };
@@ -24322,7 +24327,7 @@ var emitMockFiles = (context, result) => {
   });
   writeRendered(path26.join(mockDir, "index.ts"), barrelBody, result);
   const databasePath = path26.join(repoRoot, "test", "mocks", "database.ts");
-  if (existsSync20(databasePath)) {
+  if (existsSync21(databasePath)) {
     const { written } = updateDatabaseBarrel(databasePath, derived);
     if (written) result.edited.push(databasePath);
     else result.skipped.push(databasePath);
@@ -24414,9 +24419,9 @@ var run33 = (argv) => {
 // src/setup/util/state-file.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
 import {
-  existsSync as existsSync21,
+  existsSync as existsSync22,
   mkdirSync as mkdirSync8,
-  readFileSync as readFileSync23,
+  readFileSync as readFileSync24,
   renameSync as renameSync4,
   writeFileSync as writeFileSync6
 } from "node:fs";
@@ -24446,8 +24451,8 @@ var isRetiredSetupStep = (value) => RETIRED_SETUP_STEPS.includes(value);
 var resolveStateFilePath = (repoRoot) => path27.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
 var readStateFile2 = (repoRoot) => {
   const filePath = resolveStateFilePath(repoRoot);
-  if (!existsSync21(filePath)) return null;
-  const raw = readFileSync23(filePath, "utf8");
+  if (!existsSync22(filePath)) return null;
+  const raw = readFileSync24(filePath, "utf8");
   const parsed = JSON.parse(raw);
   if (parsed.version !== 1) {
     throw new Error(
@@ -24478,7 +24483,7 @@ var readStateFile2 = (repoRoot) => {
 var writeStateFile = (repoRoot, state) => {
   const filePath = resolveStateFilePath(repoRoot);
   const parent = path27.dirname(filePath);
-  if (!existsSync21(parent)) {
+  if (!existsSync22(parent)) {
     mkdirSync8(parent, { mode: 493, recursive: true });
   }
   const serialized = `${JSON.stringify(state, null, 2)}
@@ -24574,7 +24579,7 @@ var run34 = (argv, options = {}) => {
 // src/setup/link-worktree.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
 import {
-  existsSync as existsSync22,
+  existsSync as existsSync23,
   lstatSync,
   mkdirSync as mkdirSync9,
   readdirSync as readdirSync4,
@@ -24618,7 +24623,7 @@ var formatTimestamp = (date5) => {
 };
 var ensureParentDir = (filePath) => {
   const parent = path28.dirname(filePath);
-  if (!existsSync22(parent)) {
+  if (!existsSync23(parent)) {
     mkdirSync9(parent, { mode: 493, recursive: true });
   }
 };
@@ -24628,7 +24633,7 @@ var linkOne = (inputs) => {
   const targetPath = path28.join(mainRoot, spec.relativePath);
   try {
     ensureParentDir(sourcePath);
-    if (spec.ensureTargetDir && !existsSync22(targetPath)) {
+    if (spec.ensureTargetDir && !existsSync23(targetPath)) {
       mkdirSync9(targetPath, { mode: 493, recursive: true });
     }
     let sourceStat;
@@ -25042,11 +25047,11 @@ var run38 = async (argv) => {
 };
 
 // src/update-deps/decline.ts
-import { readFileSync as readFileSync25 } from "node:fs";
+import { readFileSync as readFileSync26 } from "node:fs";
 import path30 from "node:path";
 
 // src/update-deps/declines.ts
-import { mkdirSync as mkdirSync10, readFileSync as readFileSync24, writeFileSync as writeFileSync7 } from "node:fs";
+import { mkdirSync as mkdirSync10, readFileSync as readFileSync25, writeFileSync as writeFileSync7 } from "node:fs";
 import path29 from "node:path";
 var MAX_SNOOZE_MS = 14 * 24 * 60 * 60 * 1e3;
 var LEDGER_RELATIVE_PATH = path29.join(
@@ -25074,7 +25079,7 @@ var parseDeclinedRecord = (entry) => {
 var loadDeclines = (cwd) => {
   let raw;
   try {
-    raw = readFileSync24(declinedLedgerPath(cwd), "utf8");
+    raw = readFileSync25(declinedLedgerPath(cwd), "utf8");
   } catch {
     return [];
   }
@@ -25407,7 +25412,7 @@ var readPayload = (cwd, source) => {
   const sourcePath = path30.isAbsolute(source) ? source : path30.join(cwd, source);
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync25(sourcePath, "utf8"));
+    parsed = JSON.parse(readFileSync26(sourcePath, "utf8"));
   } catch {
     return void 0;
   }
@@ -25482,7 +25487,7 @@ var run39 = (argv, options = {}) => {
 
 // src/update-deps/run.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { mkdirSync as mkdirSync11, readFileSync as readFileSync26, writeFileSync as writeFileSync8 } from "node:fs";
+import { mkdirSync as mkdirSync11, readFileSync as readFileSync27, writeFileSync as writeFileSync8 } from "node:fs";
 import path31 from "node:path";
 var HELP_TEXT39 = `Usage: gaia update-deps run --emit-updates <path>
 
@@ -25558,7 +25563,7 @@ var compareStrings2 = (a, b) => {
   return a > b ? 1 : 0;
 };
 var readPackageJson2 = (cwd) => {
-  const raw = readFileSync26(path31.join(cwd, "package.json"), "utf8");
+  const raw = readFileSync27(path31.join(cwd, "package.json"), "utf8");
   return JSON.parse(raw);
 };
 var readUpdateDepsHolds = (pkg) => {
@@ -25576,7 +25581,7 @@ var readUpdateDepsHolds = (pkg) => {
 };
 var readInstalledVersion = (cwd, name) => {
   try {
-    const raw = readFileSync26(
+    const raw = readFileSync27(
       path31.join(cwd, "node_modules", name, "package.json"),
       "utf8"
     );
@@ -25707,7 +25712,7 @@ var fetchLatestVersion = (name, cwd, pnpmRunner) => {
 var readMinimumReleaseAge = (cwd) => {
   let raw;
   try {
-    raw = readFileSync26(path31.join(cwd, "pnpm-workspace.yaml"), "utf8");
+    raw = readFileSync27(path31.join(cwd, "pnpm-workspace.yaml"), "utf8");
   } catch {
     return 0;
   }
@@ -26148,7 +26153,7 @@ var run41 = async (argv) => {
 };
 
 // src/update/merge-audit-ci.ts
-import { existsSync as existsSync23, readFileSync as readFileSync27 } from "node:fs";
+import { existsSync as existsSync24, readFileSync as readFileSync28 } from "node:fs";
 import path32 from "node:path";
 var HELP_TEXT41 = `Usage: gaia update merge-audit-ci --baseline <file> --latest <file> --current <file> [--json]
 
@@ -26401,7 +26406,7 @@ var printHuman4 = (report) => {
 `);
 };
 var loadAuditCi = (absPath, role) => {
-  if (!existsSync23(absPath)) {
+  if (!existsSync24(absPath)) {
     return {
       code: "audit_ci_file_missing",
       message: `${role} audit-ci file not found: ${absPath}`,
@@ -26410,7 +26415,7 @@ var loadAuditCi = (absPath, role) => {
   }
   let parsed;
   try {
-    parsed = load(readFileSync27(absPath, "utf8"));
+    parsed = load(readFileSync28(absPath, "utf8"));
   } catch (error51) {
     return {
       code: "audit_ci_parse_failed",
@@ -26466,7 +26471,7 @@ var run42 = (argv, options = {}) => {
 };
 
 // src/update/merge-workspace.ts
-import { existsSync as existsSync24, readFileSync as readFileSync28 } from "node:fs";
+import { existsSync as existsSync25, readFileSync as readFileSync29 } from "node:fs";
 import path33 from "node:path";
 var HELP_TEXT42 = `Usage: gaia update merge-workspace --baseline <file> --latest <file> --current <file> [--json]
 
@@ -26659,7 +26664,7 @@ var printHuman5 = (report) => {
 `);
 };
 var loadWorkspace = (absPath, role) => {
-  if (!existsSync24(absPath)) {
+  if (!existsSync25(absPath)) {
     return {
       code: "workspace_file_missing",
       message: `${role} workspace file not found: ${absPath}`,
@@ -26668,7 +26673,7 @@ var loadWorkspace = (absPath, role) => {
   }
   let parsed;
   try {
-    parsed = load(readFileSync28(absPath, "utf8"));
+    parsed = load(readFileSync29(absPath, "utf8"));
   } catch (error51) {
     return {
       code: "workspace_parse_failed",
@@ -27459,7 +27464,7 @@ var run46 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readdirSync as readdirSync5, readFileSync as readFileSync29, statSync as statSync5 } from "node:fs";
+import { readdirSync as readdirSync5, readFileSync as readFileSync30, statSync as statSync5 } from "node:fs";
 import path34 from "node:path";
 var HELP_TEXT46 = `Usage: gaia wiki dead-paths [--json]
 
@@ -27531,7 +27536,7 @@ var collectDeadPathsInLine = (ctx, lineNumber, line) => {
   return refs;
 };
 var collectDeadPathsInFile = (ctx) => {
-  const content = readFileSync29(path34.join(ctx.cwd, ctx.filePath), "utf8");
+  const content = readFileSync30(path34.join(ctx.cwd, ctx.filePath), "utf8");
   const lines = content.split("\n");
   return lines.flatMap(
     (line, index) => collectDeadPathsInLine(ctx, index + 1, line)
@@ -27802,7 +27807,7 @@ var run48 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readdirSync as readdirSync6, readFileSync as readFileSync30, statSync as statSync6 } from "node:fs";
+import { readdirSync as readdirSync6, readFileSync as readFileSync31, statSync as statSync6 } from "node:fs";
 import path35 from "node:path";
 
 // src/wiki/util/frontmatter.ts
@@ -27947,7 +27952,7 @@ var findEmptySections = (cwd) => {
     (a, b) => a.localeCompare(b)
   );
   return files.filter((filePath) => !shouldSkipFile2(filePath)).flatMap((filePath) => {
-    const content = readFileSync30(path35.join(cwd, filePath), "utf8");
+    const content = readFileSync31(path35.join(cwd, filePath), "utf8");
     const { body } = parseFrontmatter(content);
     const offset = content.split("\n").length - body.split("\n").length;
     return findInBody(body, offset, filePath);
@@ -28000,7 +28005,7 @@ var run49 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync31, statSync as statSync7 } from "node:fs";
+import { readdirSync as readdirSync7, readFileSync as readFileSync32, statSync as statSync7 } from "node:fs";
 import path36 from "node:path";
 var HELP_TEXT49 = `Usage: gaia wiki frontmatter [--json]
 
@@ -28040,7 +28045,7 @@ var findFrontmatterGaps = (cwd) => {
   );
   for (const filePath of files) {
     if (!shouldSkipFile3(filePath)) {
-      const content = readFileSync31(path36.join(cwd, filePath), "utf8");
+      const content = readFileSync32(path36.join(cwd, filePath), "utf8");
       const { frontmatter } = parseFrontmatter(content);
       const missing = REQUIRED_FIELDS.filter(
         (field) => !hasField(frontmatter, field)
@@ -28099,7 +28104,7 @@ var run50 = (argv, options = {}) => {
 };
 
 // src/wiki/log-prepend.ts
-import { existsSync as existsSync25, readFileSync as readFileSync32, renameSync as renameSync6, writeFileSync as writeFileSync9 } from "node:fs";
+import { existsSync as existsSync26, readFileSync as readFileSync33, renameSync as renameSync6, writeFileSync as writeFileSync9 } from "node:fs";
 import path37 from "node:path";
 var HELP_TEXT50 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
 
@@ -28206,7 +28211,7 @@ var run51 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const logPath = path37.join(repoRoot, "wiki", "log.md");
-  if (!existsSync25(logPath)) {
+  if (!existsSync26(logPath)) {
     structuredError({
       code: "log_missing",
       message: "wiki/log.md does not exist",
@@ -28214,7 +28219,7 @@ var run51 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync32(logPath, "utf8");
+  const raw = readFileSync33(logPath, "utf8");
   const lines = raw.split("\n");
   const scan = scanFrontmatter(lines);
   if (scan.kind === "missing" || scan.kind === "malformed") {
@@ -28240,7 +28245,7 @@ var run51 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync26, readdirSync as readdirSync8, statSync as statSync8 } from "node:fs";
+import { existsSync as existsSync27, readdirSync as readdirSync8, statSync as statSync8 } from "node:fs";
 import path38 from "node:path";
 var HELP_TEXT51 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
@@ -28288,7 +28293,7 @@ var levenshtein = (a, b) => {
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => {
   const domainDir = path38.join(wikiRoot, domain2);
-  if (!existsSync26(domainDir) || !statSync8(domainDir).isDirectory()) {
+  if (!existsSync27(domainDir) || !statSync8(domainDir).isDirectory()) {
     return [];
   }
   const entries = readdirSync8(domainDir, { withFileTypes: true });
@@ -28390,7 +28395,7 @@ var run52 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync27, readdirSync as readdirSync9, readFileSync as readFileSync33, statSync as statSync9 } from "node:fs";
+import { existsSync as existsSync28, readdirSync as readdirSync9, readFileSync as readFileSync34, statSync as statSync9 } from "node:fs";
 import path39 from "node:path";
 var HELP_TEXT52 = `Usage: gaia wiki page-index [--json]
 
@@ -28436,7 +28441,7 @@ var arrayOfStrings = (value) => {
 var isIndexablePage = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES2.has(entry.name) && !entry.name.startsWith("_");
 var readPageRecord = (domainDir, domain2, entry) => {
   const absPath = path39.join(domainDir, entry.name);
-  const raw = readFileSync33(absPath, "utf8");
+  const raw = readFileSync34(absPath, "utf8");
   const { body, frontmatter } = parseFrontmatter(raw);
   const slug = slugFromPath2(entry.name);
   const title = extractTitle(body, slug);
@@ -28455,15 +28460,15 @@ var readPageRecord = (domainDir, domain2, entry) => {
 };
 var collectDomainPages = (wikiRoot, domain2) => {
   const domainDir = path39.join(wikiRoot, domain2);
-  if (!existsSync27(domainDir) || !statSync9(domainDir).isDirectory()) return [];
+  if (!existsSync28(domainDir) || !statSync9(domainDir).isDirectory()) return [];
   const entries = readdirSync9(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
 var collectPages = (wikiRoot) => DOMAIN_DIRS3.flatMap((domain2) => collectDomainPages(wikiRoot, domain2));
 var collectRootLinkSources = (wikiRoot) => ROOT_LINK_SOURCES.filter(
-  (filename) => existsSync27(path39.join(wikiRoot, filename))
+  (filename) => existsSync28(path39.join(wikiRoot, filename))
 ).map((filename) => {
-  const raw = readFileSync33(path39.join(wikiRoot, filename), "utf8");
+  const raw = readFileSync34(path39.join(wikiRoot, filename), "utf8");
   const { body } = parseFrontmatter(raw);
   return extractWikilinks(body);
 });
@@ -28625,7 +28630,7 @@ var run54 = (argv, options = {}) => {
 };
 
 // src/wiki/state-bump.ts
-import { existsSync as existsSync28, readFileSync as readFileSync34 } from "node:fs";
+import { existsSync as existsSync29, readFileSync as readFileSync35 } from "node:fs";
 import path40 from "node:path";
 var HELP_TEXT54 = `Usage: gaia wiki state-bump <field> <value>
 
@@ -28697,7 +28702,7 @@ var run55 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const statePath = path40.join(repoRoot, "wiki", ".state.json");
-  if (!existsSync28(statePath)) {
+  if (!existsSync29(statePath)) {
     structuredError({
       code: "state_missing",
       message: "wiki/.state.json does not exist",
@@ -28705,7 +28710,7 @@ var run55 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync34(statePath, "utf8");
+  const raw = readFileSync35(statePath, "utf8");
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -28735,7 +28740,7 @@ var run55 = (argv, options = {}) => {
 
 // src/wiki/state-init.ts
 import { execFileSync as execFileSync6 } from "node:child_process";
-import { existsSync as existsSync29, mkdirSync as mkdirSync12 } from "node:fs";
+import { existsSync as existsSync30, mkdirSync as mkdirSync12 } from "node:fs";
 import path41 from "node:path";
 var HELP_TEXT55 = `Usage: gaia wiki state-init <sha>
 
@@ -28814,7 +28819,7 @@ var run56 = (argv, options = {}) => {
   }
   const wikiDir = path41.join(repoRoot, "wiki");
   const statePath = path41.join(wikiDir, ".state.json");
-  if (existsSync29(statePath)) {
+  if (existsSync30(statePath)) {
     structuredError({
       code: "state_already_exists",
       message: "wiki/.state.json already exists; use `gaia wiki state-bump` to update fields",
