@@ -22,7 +22,7 @@
 # strings (setup-gaia) and the delegation references (gaia-init).
 #
 # This suite lives under .github/audit/tests/ because that is the directory
-# the CI bats runner (audit-ci-tests.yml, check name "bats (.github/audit)")
+# the CI bats runner (audit-ci-tests.yml, check name "Audit CI Tests")
 # executes.
 
 setup() {

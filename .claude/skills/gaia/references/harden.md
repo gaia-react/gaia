@@ -199,7 +199,7 @@ The `marker.test.ts` guard asserts every doc copy reproduces `markerComment(...)
 
 ## Unclassified recurrence signal (seed-a-class-or-investigate)
 
-Runs once in `review` mode, after the last candidate is dispositioned (or immediately, skipping straight here, when `candidate_count` was `0`). Clearly outside the per-candidate approve/decline/defer/redirect loop above: `holistic/unclassified` is never a draftable candidate, so this section never enters that loop.
+Runs once in `review` mode, after the last candidate is dispositioned (or immediately, skipping straight here, when `candidate_count` was `0`). This section sits outside the per-candidate approve/decline/defer/redirect loop above.
 
 When `unclassified` is `null`, skip this section silently and proceed to `## Publish approved changes (end of run)`.
 

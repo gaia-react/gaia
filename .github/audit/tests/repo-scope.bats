@@ -9,7 +9,7 @@
 #
 # This suite lives under .github/audit/tests/ because that is the only
 # directory the CI bats runner (audit-ci-tests.yml, check name
-# "bats (.github/audit)") executes, co-locating it keeps the helper under
+# "Audit CI Tests") executes, co-locating it keeps the helper under
 # regression coverage.
 #
 # Each test sources the helper, then calls it from inside a `git init`'d HOME

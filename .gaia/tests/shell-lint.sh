@@ -136,7 +136,7 @@ fi
 # `set -u`, exiting a hook before it can emit its deny JSON. Running it here
 # means every shell-lint caller -- plan per-phase gates, the
 # code-audit-maintainer-shell oracle, CI shell-lint.yml, and manual runs --
-# enforces the class locally, not only the bats (.github/audit) job. Run from
+# enforces the class locally, not only the Audit CI Tests job. Run from
 # the repo root so its cwd-relative .claude/hooks/*.sh scan resolves.
 echo "--> lint-hook-array-guard (bash-3.2 empty-array class under set -u)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-array-guard.sh"); then
