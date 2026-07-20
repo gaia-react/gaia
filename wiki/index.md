@@ -104,6 +104,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Content Security Policy]]: per-request nonce CSP; Report-Only pending an upstream React Router fix; documents the `unsafe-inline` and no-`report-uri` trade-offs.
 - [[Dispatched-Check Rollup via Polling]]: in-loop pollers stamp dispatched-workflow jobs via the Checks API so they land in `statusCheckRollup`; documents why a `workflow_run` listener is not viable under `GITHUB_TOKEN`.
 - [[Code Audit Team]]: config-driven auditor roster + dispatch resolver; AND-aggregation across dispatched members at the merge gate; maintainer-only shell/node members.
+- [[Deliberate Configuration Asymmetries]]: config that differs from its siblings on purpose; the `.claude/hooks/` Edit carve-out, the skill `model:` pinning criterion, and the non-opt-outable update check.
 <!-- gaia:maintainer-only:start -->
 - [[CLI-Binary-Split]]
 - [[Folding Shell Scripts into the CLI Binary]]: considered and declined; the manifest is a never-merged sentinel and the fold is a delete, so it cannot deliver simpler diffs.
