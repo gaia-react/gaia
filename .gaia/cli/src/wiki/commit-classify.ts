@@ -370,6 +370,12 @@ const classifyCatchAll = (
       : {reason: 'chore: generic chore', suggestion: 'SKIP'};
   }
 
+  // Deliberately unconditional, unlike the `chore` arm above and rule 5: a
+  // docs commit that genuinely records a decision is `docs(decision[s]):` and
+  // rule 2 already claimed it. Extending the architecture-body escape here
+  // would mostly re-promote changelog and prose cleanups that happen to quote
+  // a keyword, which is the expensive false positive this pass exists to
+  // avoid rather than a decision worth deep-reading.
   if (matchesPrefix(prefix, 'docs')) {
     return {reason: 'docs: prose-only', suggestion: 'SKIP'};
   }
