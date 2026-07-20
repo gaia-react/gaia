@@ -90,10 +90,13 @@ It prints one member (agent) name per line, deduped and sorted, and always exits
 
   Immediately before this dispatch wave fires, capture the expected tree fresh: `git -C <RESOLVED_ROOT> rev-parse HEAD^{tree}`. Recapture it before every dispatch wave: HEAD can move between rounds (a member re-spawned after a repair commits runs against a new HEAD), so reusing a stale value would fail a later wave's self-check against a tree it is correctly reviewing. `RESOLVED_ROOT` is the working root `.claude/skills/gaia/references/isolation.md` exports; a caller that never ran that reference, a plain feature-branch session, still resolves it trivially as its own current checkout's absolute path, so the self-check costs nothing there and is not worktree-only machinery.
 
+  Dispatch every member with `run_in_background: false`. The `Agent` tool runs a subagent in the background by default, and a background subagent's final text does not route back to the orchestrator, so a defaulted dispatch loses the member's entire report: every Critical finding it raised, and every tree-mismatch abort the template below asks it to return. The marker gate stays fail-closed, so nothing unsafe merges, but the operator is left with a stuck gate and no diagnosis, and the no-op classifier below has no returned text to classify. A synchronous dispatch is what makes the returned-text contract hold, here and in [[#No-op detection and retry for each dispatched member]]. Synchronous does not mean sequential: issue every member's `Agent` call from one tool-call message, each carrying `run_in_background: false`, and they still run concurrently.
+
   ```
-  Task(
-    subagent_type="<member-name>",
-    prompt="Working root: <RESOLVED_ROOT>, the absolute path of the checkout under review; the orchestrator substitutes the value it resolved from the isolation reference at dispatch time. Expected HEAD tree: <EXPECTED_TREE>, the tree captured immediately before this dispatch wave.
+  Agent(
+    subagent_type: "<member-name>",
+    run_in_background: false,
+    prompt: "Working root: <RESOLVED_ROOT>, the absolute path of the checkout under review; the orchestrator substitutes the value it resolved from the isolation reference at dispatch time. Expected HEAD tree: <EXPECTED_TREE>, the tree captured immediately before this dispatch wave.
     MANDATORY FIRST ACTION, before any review: run `git -C <RESOLVED_ROOT> rev-parse HEAD^{tree}` and compare it to <EXPECTED_TREE>. If that command errors (missing path, git unavailable) OR the value does not match exactly, STOP, do not review, do not write a marker, and return only the mismatch or error as your entire output.
     Only on an exact match, review all changes in <RESOLVED_ROOT>'s current branch compared to main, scoping every git command to `git -C <RESOLVED_ROOT>`. Identify security vulnerabilities, performance issues, code smells, anti-patterns, and refactoring opportunities."
   )
@@ -126,7 +129,7 @@ Be accurate about two honest limits rather than assuming parity between the two 
 
 A dispatched member can silently no-op: zero tool uses, a return that is just a harness-reminder-echo or output-style fragment instead of a real review. Nothing about the marker gate catches this on its own, fail-closed means no marker and no merge, but with no diagnosis of *why* the gate is stuck, just a stuck gate a human has to notice and investigate by hand. This mirrors, one layer up, the same deterministic classifier `code-audit-frontend` already runs on its own internal specialist and refuter fan-outs (`.claude/agents/code-audit-frontend.md`, "No-op detection and retry for each refuter").
 
-After each dispatched member's `Agent` call returns, write its returned text to a temp file and classify it:
+This classifier reads the member's returned text, which reaches the orchestrator only because the dispatch above is synchronous (`run_in_background: false`). A backgrounded member routes no text back, so there is nothing to classify and this whole guard is inert. After each dispatched member's `Agent` call returns, write its returned text to a temp file and classify it:
 
 ```bash
 bash .gaia/scripts/audit-noop-detect.sh --shape audit-team-member --path <tempfile> --marker <expected-marker-path>
