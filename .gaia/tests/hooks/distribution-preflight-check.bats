@@ -308,7 +308,7 @@ assert_allow() {
 
 @test "KNOWN RESIDUAL: a --base inside this invocation's own --body is parsed" {
   # Documented in the hook header. Within the tail this is a regex, not an
-  # argument parse, so body prose that reads like a flag is taken as one. The
+  # argument parse, so body prose that reads like a flag is taken as one.
   # An accepted trade, pinned like its siblings so it cannot drift into looking
   # like a bug.
   install_maintainer_mock
