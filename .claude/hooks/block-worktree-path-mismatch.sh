@@ -85,7 +85,7 @@ if [[ -n "$payload_cwd" ]]; then
     *) abs_payload_common_dir="$payload_cwd/$payload_common_dir" ;;
   esac
   if [[ -n "$abs_payload_common_dir" ]]; then
-    payload_main_root="$(cd "$(dirname "$abs_payload_common_dir")" 2>/dev/null && pwd -P)" || payload_main_root=""
+    payload_main_root="$(CDPATH='' cd "$(dirname -- "$abs_payload_common_dir")" 2>/dev/null && pwd -P)" || payload_main_root=""
     if [[ -n "$payload_main_root" && "$payload_main_root" == "$main_root" ]]; then
       current_root="$(git -C "$payload_cwd" rev-parse --show-toplevel 2>/dev/null)" || current_root=""
     fi
