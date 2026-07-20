@@ -59,13 +59,13 @@ gh issue create --label tech-debt --label severity:<tier> --label difficulty:<gr
 gh issue create --label tech-debt --label severity:<tier> --body-file "$body_file"
 ```
 
+**Never** pass `--body <argv>` here. CI runs this command with `--verbose`, and `--verbose` echoes argv into the public Actions log, so an inline `--body` string leaks the finding (and anything sensitive quoted inside it) into a public log. Always route the body through `--body-file` (or stdin); the body must never reach argv.
+
 Then, as its own tool call, spelling the path literally and relatively:
 
 ```bash
 rm -f .gaia/local/audit/issue-body-<something-unique>.md
 ```
-
-**Never** pass `--body <argv>` here. CI runs this command with `--verbose`, and `--verbose` echoes argv into the public Actions log, so an inline `--body` string leaks the finding (and anything sensitive quoted inside it) into a public log. Always route the body through `--body-file` (or stdin); the body must never reach argv.
 
 The body-file is scratch, and this recipe is its only owner: nothing else reaps it, so a file left behind is permanent litter in the adopter's working tree. **Delete it unconditionally**, whether the create succeeded or failed. The body is fully reconstructible from step 5, so there is nothing worth keeping on a failed create, and the cleanup cannot mask that failure: `gh`'s own output and exit status are what you report.
 
