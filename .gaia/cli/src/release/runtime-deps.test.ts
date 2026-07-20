@@ -622,6 +622,55 @@ describe('release runtime-deps CLI', () => {
     expect(parsed.scanned_files).toEqual(['.claude/hooks/ships.sh']);
   });
 
+  test('bare mode names its narrowed scope in the report header', () => {
+    // A clean bare result covers only what the manifest already answers for,
+    // so a shipped script added before its `/distribution-audit` answer lands
+    // is skipped rather than cleared. The header has to say so; an unqualified
+    // "scanned N script(s)" reads as "all of them" and turns a partial pass
+    // into a false all-clear.
+    sandbox.writeManifest({
+      '.claude/hooks/ships.sh': 'owned',
+    });
+    sandbox.writeFile('.claude/hooks/ships.sh', 'echo hi\n');
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain('1 manifest-backed script(s)');
+  });
+
+  test('--staging does not claim the narrowed scope', () => {
+    // Control: staging scans the tarball unfiltered, so its header must stay
+    // the unqualified count rather than inherit bare mode's caveat.
+    const stagingDir = path.join(sandbox.rootDir, 'staging');
+    mkdirSync(path.join(stagingDir, '.gaia'), {recursive: true});
+    writeFileSync(
+      path.join(stagingDir, '.gaia/manifest.json'),
+      `${JSON.stringify(
+        {
+          files: {'.gaia/cli/gaia': 'owned'},
+          generated: '2026-05-08T00:00:00Z',
+          version: '1.0.0',
+        },
+        null,
+        2
+      )}\n`,
+      'utf8'
+    );
+    mkdirSync(path.join(stagingDir, '.gaia/statusline'), {recursive: true});
+    writeFileSync(
+      path.join(stagingDir, '.gaia/statusline/foo.sh'),
+      'bash .gaia/cli/gaia\n',
+      'utf8'
+    );
+
+    const exit = run(['--staging', stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('scanned 1 script(s)');
+    expect(out).not.toContain('manifest-backed');
+  });
+
   test('bare mode still flags a leak in a manifest-backed script', () => {
     // Control for the two tests above: narrowing the scan surface must not
     // disable leak detection for the files that DO ship.

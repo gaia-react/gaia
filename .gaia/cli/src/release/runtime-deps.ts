@@ -525,11 +525,23 @@ type RunOptions = {
   cwd?: string;
 };
 
-const renderReport = (report: Report, jsonMode: boolean): string => {
+const renderReport = (
+  report: Report,
+  jsonMode: boolean,
+  isBareMode: boolean
+): string => {
   if (jsonMode) return `${JSON.stringify(report, null, 2)}\n`;
 
+  // Name the scope in bare mode. A clean bare result covers only the scripts
+  // the manifest already answers for, so a shipped script added before its
+  // `/distribution-audit` answer lands is skipped rather than cleared. Saying
+  // "scanned N script(s)" there would read as "all of them".
+  const scope =
+    isBareMode ?
+      'manifest-backed script(s) (bare mode; --staging is the authoritative scan)'
+    : 'script(s)';
   const out: string[] = [
-    `release runtime-deps: scanned ${report.scanned_files.length} script(s)`,
+    `release runtime-deps: scanned ${report.scanned_files.length} ${scope}`,
   ];
 
   if (report.leaks.length > 0) {
@@ -703,7 +715,7 @@ export const run = (
 
   const leaks = collectLeaks(root, scannedFiles, manifest);
   const report: Report = {leaks, scanned_files: scannedFiles};
-  process.stdout.write(renderReport(report, parsed.flags.json));
+  process.stdout.write(renderReport(report, parsed.flags.json, isBareMode));
 
   return leaks.length > 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };
