@@ -122,6 +122,36 @@ extract_section() {
   ' "$1"
 }
 
+# extract_section_or_fail <file> <start_ERE> <terminator_ERE>
+# extract_section, plus the guard every section-scoped ABSENCE assertion needs.
+# Returns non-zero, with a diagnostic, when the region comes back empty.
+#
+# Why this exists: an absence check reads `<extract> | grep -q needle && return 1`.
+# If the start anchor stops matching, because a heading is renamed, reworded, or
+# deleted, extract_section prints nothing, grep finds nothing, the `&&` short
+# circuits, and the test passes having examined no text at all. The assertion
+# that a requirement did NOT attach somewhere is exactly the kind that must fail
+# loudly when it loses its subject, since a vacuous pass is indistinguishable
+# from a real one in the TAP output.
+#
+# Callers MUST capture into a variable and check the status:
+#
+#   section="$(extract_section_or_fail "$F" '^## Heading' '^## ')" || return 1
+#   printf '%s\n' "$section" | grep -qi needle && return 1
+#
+# Never pipe this helper directly into grep. A pipeline's exit status is the
+# LAST command's, so the guard's non-zero return is discarded and the vacuous
+# pass returns.
+extract_section_or_fail() {
+  local out
+  out="$(extract_section "$1" "$2" "$3")"
+  [ -n "$out" ] || {
+    echo "section anchor '${2}' matched nothing in ${1}; a scoped assertion here would pass vacuously" >&2
+    return 1
+  }
+  printf '%s\n' "$out"
+}
+
 # section_line_range <file> <start_ERE> <terminator_ERE>
 # Echoes "<start_line> <end_line>" for the same region extract_section above
 # would print, for callers that need line numbers rather than content (the
@@ -170,7 +200,7 @@ setup() {
 
 @test "the section helper terminates ### E. at the next same-or-shallower heading, not a bare ^## " {
   local out
-  out="$(extract_section "$FRONTEND" '^### E\. Non-security disposition pipeline' '^#{2,3} ')"
+  out="$(extract_section_or_fail "$FRONTEND" '^### E\. Non-security disposition pipeline' '^#{2,3} ')" || return 1
   printf '%s\n' "$out" | grep -qF -- "### F." && return 1
   printf '%s\n' "$out" | grep -qF -- "### G." && return 1
   printf '%s\n' "$out" | tail -n1 | grep -qF -- "### F." && return 1
@@ -231,7 +261,9 @@ setup() {
 }
 
 @test "UAT-004: the issue-body schema section carries no difficulty line, and no capital-D Difficulty: line exists anywhere" {
-  extract_section "$VOCAB" '^## 5\. Issue body schema' '^## ' | grep -qi 'difficulty' && return 1
+  local section
+  section="$(extract_section_or_fail "$VOCAB" '^## 5\. Issue body schema' '^## ')" || return 1
+  printf '%s\n' "$section" | grep -qi 'difficulty' && return 1
   assert_absent_fixed_cs_across "Difficulty:" "$VOCAB"
 }
 
@@ -255,7 +287,9 @@ setup() {
 }
 
 @test "the rubric section in SKILL.md (## 7. Difficulty grade) names no model" {
-  extract_section "$VOCAB" '^## 7\. Difficulty grade' '^## ' | grep -qiE 'opus|sonnet|haiku|claude-' && return 1
+  local section
+  section="$(extract_section_or_fail "$VOCAB" '^## 7\. Difficulty grade' '^## ')" || return 1
+  printf '%s\n' "$section" | grep -qiE 'opus|sonnet|haiku|claude-' && return 1
   true
 }
 
@@ -301,7 +335,9 @@ setup() {
 }
 
 @test "difficulty never appears in code-audit-frontend.md's Cross-remit findings section" {
-  extract_section "$FRONTEND" '^## Cross-remit findings' '^## ' | grep -qi 'difficulty' && return 1
+  local section
+  section="$(extract_section_or_fail "$FRONTEND" '^## Cross-remit findings' '^## ')" || return 1
+  printf '%s\n' "$section" | grep -qi 'difficulty' && return 1
   true
 }
 
