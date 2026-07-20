@@ -73,14 +73,14 @@ correctness for tokens.
 ## The GAIA update check has no opt-out
 
 The statusline's background refresher queries the GitHub releases API for the
-latest published GAIA version. It has no opt-out switch and is deliberately
-not covered by `GAIA_TELEMETRY_PING_DISABLE`.
+latest published GAIA version. It has no opt-out switch, and it deliberately
+sits outside the telemetry opt-out.
 
 It is a version lookup, not telemetry. It transmits nothing about the project,
 the machine, or the user; it reads a public endpoint and compares the result
 against the local version. The adoption ping, which does report installation
-data, is a separate mechanism and is the only thing
-`GAIA_TELEMETRY_PING_DISABLE` governs.
+data, is a separate mechanism, and it is the only thing the telemetry opt-out
+governs.
 
 Update detection is load-bearing for keeping an installation current, so it
 stays on. Folding it under the telemetry switch would mean that disabling
