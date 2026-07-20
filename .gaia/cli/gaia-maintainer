@@ -22590,8 +22590,27 @@ var JsonStripSchema = external_exports.object({
   paths: external_exports.array(external_exports.string().min(1)).min(1),
   type: external_exports.literal("json-strip")
 });
+var JsonStripArrayElementSchema = external_exports.object({
+  paths: external_exports.array(external_exports.string().min(1)).min(1),
+  selectors: external_exports.array(
+    external_exports.object({
+      match: external_exports.record(external_exports.string(), external_exports.string()).refine((entries) => Object.keys(entries).length > 0, {
+        message: "match requires at least one key"
+      }),
+      path: external_exports.string().min(1)
+    })
+  ).min(1),
+  type: external_exports.literal("json-strip-array-element")
+});
 var ConfigSchema = external_exports.object({
-  transforms: external_exports.array(external_exports.union([MarkerStripSchema, JsonStripSchema, LeakCheckSchema])).min(1)
+  transforms: external_exports.array(
+    external_exports.union([
+      MarkerStripSchema,
+      JsonStripSchema,
+      JsonStripArrayElementSchema,
+      LeakCheckSchema
+    ])
+  ).min(1)
 });
 var REGEX_SPECIAL = /[.+^$()[\]{}|\\]/g;
 var SENTINEL_DIRSTAR = " DIRSTAR ";
@@ -22724,6 +22743,92 @@ var applyJsonStrip = (stagingRoot, files, transform2) => {
     }
   }
   return { filesTouched, keysRemoved };
+};
+var parseSelectorPath = (selectorPath) => selectorPath.split(".").map((raw) => {
+  const isArray = raw.endsWith("[]");
+  return { isArray, key: isArray ? raw.slice(0, -2) : raw };
+});
+var elementMatchesSelector = (element, match) => {
+  if (typeof element !== "object" || element === null || Array.isArray(element)) {
+    return false;
+  }
+  const record2 = element;
+  return Object.entries(match).every(([key, value]) => record2[key] === value);
+};
+var removeMatchingArrayElements = (node, segments, match) => {
+  if (segments.length === 0) return 0;
+  if (typeof node !== "object" || node === null || Array.isArray(node)) {
+    return 0;
+  }
+  const [segment, ...rest] = segments;
+  const child = node[segment.key];
+  if (!segment.isArray) {
+    return removeMatchingArrayElements(child, rest, match);
+  }
+  if (!Array.isArray(child)) return 0;
+  if (rest.length > 0) {
+    let removed2 = 0;
+    for (const element of child) {
+      removed2 += removeMatchingArrayElements(element, rest, match);
+    }
+    return removed2;
+  }
+  let removed = 0;
+  for (let index = child.length - 1; index >= 0; index -= 1) {
+    if (elementMatchesSelector(child[index], match)) {
+      child.splice(index, 1);
+      removed += 1;
+    }
+  }
+  return removed;
+};
+var stripArrayElementsFromFile = (absolutePath, relativePath, selectors) => {
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync21(absolutePath, "utf8"));
+  } catch (error51) {
+    throw new Error(
+      `Failed to parse JSON at ${relativePath}: ${error51 instanceof Error ? error51.message : String(error51)}`
+    );
+  }
+  const isPlainObject2 = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+  if (!isPlainObject2) return 0;
+  let removed = 0;
+  for (const selector of selectors) {
+    removed += removeMatchingArrayElements(
+      parsed,
+      selector.segments,
+      selector.match
+    );
+  }
+  if (removed > 0) {
+    atomicWriteFileSync(absolutePath, `${JSON.stringify(parsed, null, 2)}
+`);
+  }
+  return removed;
+};
+var applyJsonStripArrayElement = (stagingRoot, files, transform2) => {
+  const filesTouched = [];
+  let elementsRemoved = 0;
+  const selectors = transform2.selectors.map((selector) => ({
+    match: selector.match,
+    segments: parseSelectorPath(selector.path)
+  }));
+  for (const relativePath of files) {
+    if (matchesAnyGlob(relativePath, transform2.paths)) {
+      const absolutePath = path22.join(stagingRoot, relativePath);
+      const removed = stripArrayElementsFromFile(
+        absolutePath,
+        relativePath,
+        selectors
+      );
+      if (removed > 0) {
+        filesTouched.push(relativePath);
+        elementsRemoved += removed;
+      }
+    }
+  }
+  return { elementsRemoved, filesTouched };
 };
 var scanForLeaks = ({ check: check2, files, stagingRoot }, findLeaksInLine) => {
   const lineAllowlist = (check2["line-allowlist"] ?? []).map(
@@ -22889,7 +22994,8 @@ var renderHumanReport = (report, jsonMode) => {
 `;
   const out = [
     `release scrub: stripped ${report.marker_strip.blocks_stripped} marker block(s) across ${report.marker_strip.files_touched.length} file(s)`,
-    `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`
+    `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`,
+    `release scrub: removed ${report.json_strip_array_element.elements_removed} json array element(s) from ${report.json_strip_array_element.files_touched.length} file(s)`
   ];
   if (report.unbalanced_markers.length > 0) {
     out.push("", `unbalanced markers (${report.unbalanced_markers.length}):`);
@@ -22963,6 +23069,8 @@ var runLeakChecksForTransform = (checks, ctx) => {
 };
 var runTransforms = (config2, ctx) => {
   const results = {
+    jsonStripArrayElementFiles: [],
+    jsonStripArrayElementsRemoved: 0,
     jsonStripFiles: [],
     jsonStripKeysRemoved: 0,
     leaks: [],
@@ -22984,6 +23092,14 @@ var runTransforms = (config2, ctx) => {
       const result = applyJsonStrip(ctx.stagingDir, ctx.stagedFiles, transform2);
       results.jsonStripKeysRemoved += result.keysRemoved;
       results.jsonStripFiles.push(...result.filesTouched);
+    } else if (transform2.type === "json-strip-array-element") {
+      const result = applyJsonStripArrayElement(
+        ctx.stagingDir,
+        ctx.stagedFiles,
+        transform2
+      );
+      results.jsonStripArrayElementsRemoved += result.elementsRemoved;
+      results.jsonStripArrayElementFiles.push(...result.filesTouched);
     } else {
       results.leaks.push(...runLeakChecksForTransform(transform2.checks, ctx));
     }
@@ -23049,6 +23165,10 @@ var run28 = (argv, options = {}) => {
     json_strip: {
       files_touched: results.jsonStripFiles,
       keys_removed: results.jsonStripKeysRemoved
+    },
+    json_strip_array_element: {
+      elements_removed: results.jsonStripArrayElementsRemoved,
+      files_touched: results.jsonStripArrayElementFiles
     },
     leaks: results.leaks,
     marker_strip: {
