@@ -28137,25 +28137,36 @@ var APP_INVENTORY_PREFIXES = [
 var touchesAny = (files, prefixes) => files.some((file2) => prefixes.some((prefix) => file2.startsWith(prefix)));
 var touchesAppNonTest = (files) => files.some((file2) => file2.startsWith("app/") && !file2.includes(".test."));
 var touchesOnlyTests = (files) => files.length > 0 && files.every((file2) => file2.includes(".test."));
-var classifyHardSkip = (commit2) => {
-  const { subject } = commit2;
-  if (subject.startsWith("Merge pull request")) {
+var SUBJECT_PREFIX_PATTERN = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<breaking>!?):/u;
+var parseSubjectPrefix = (subject) => {
+  const groups = SUBJECT_PREFIX_PATTERN.exec(subject)?.groups;
+  if (!groups) return void 0;
+  return {
+    breaking: groups.breaking === "!",
+    scope: groups.scope,
+    type: groups.type
+  };
+};
+var matchesPrefix = (prefix, type, scope) => prefix?.type === type && (scope === void 0 || prefix.scope === scope);
+var FEATURE_TYPES = ["debt", "feat", "fix", "refactor"];
+var classifyHardSkip = (commit2, prefix) => {
+  if (commit2.subject.startsWith("Merge pull request")) {
     return { reason: "merge commit", suggestion: "SKIP" };
   }
-  if (subject.startsWith("chore(release):")) {
+  if (matchesPrefix(prefix, "chore", "release")) {
     return { reason: "chore(release): release plumbing", suggestion: "SKIP" };
   }
-  if (subject.startsWith("style:")) {
+  if (matchesPrefix(prefix, "style")) {
     return { reason: "style: formatting only", suggestion: "SKIP" };
   }
   return void 0;
 };
-var classifyStrongWorthy = (commit2) => {
-  const { body, subject } = commit2;
-  if (subject.startsWith("feat!:") || body.includes("BREAKING CHANGE")) {
+var classifyStrongWorthy = (commit2, prefix) => {
+  const { body } = commit2;
+  if (prefix?.breaking || body.includes("BREAKING CHANGE")) {
     return { reason: "breaking change signal", suggestion: "WORTHY" };
   }
-  if (subject.startsWith("docs(decision):") || subject.startsWith("chore(adr):")) {
+  if (matchesPrefix(prefix, "docs", "decision") || matchesPrefix(prefix, "docs", "decisions") || matchesPrefix(prefix, "chore", "adr")) {
     return { reason: "explicit ADR signal", suggestion: "WORTHY" };
   }
   return void 0;
@@ -28170,61 +28181,66 @@ var classifyTouchedDomains = (commit2) => {
   }
   return void 0;
 };
-var classifyArchSuppressibleChore = (commit2) => {
-  const { body, subject } = commit2;
-  if (subject.startsWith("chore(deps):")) {
-    return ARCH_BODY_PATTERN.test(body) ? {
-      reason: "chore(deps): body mentions architecture / decision",
-      suggestion: "WORTHY"
-    } : { reason: "chore(deps): version bump only", suggestion: "SKIP" };
+var classifyArchSuppressibleChore = (commit2, prefix) => {
+  const { body } = commit2;
+  const suppressible = (label, skipReason) => ARCH_BODY_PATTERN.test(body) ? {
+    reason: `${label}: body mentions architecture / decision`,
+    suggestion: "WORTHY"
+  } : { reason: skipReason, suggestion: "SKIP" };
+  if (matchesPrefix(prefix, "chore", "deps")) {
+    return suppressible("chore(deps)", "chore(deps): version bump only");
   }
-  if (subject.startsWith("chore(cli):")) {
-    return ARCH_BODY_PATTERN.test(body) ? {
-      reason: "chore(cli): body mentions architecture / decision",
-      suggestion: "WORTHY"
-    } : { reason: "chore(cli): tooling-internal", suggestion: "SKIP" };
+  if (matchesPrefix(prefix, "chore", "cli")) {
+    return suppressible("chore(cli)", "chore(cli): tooling-internal");
   }
-  if (subject.startsWith("wiki:")) {
-    return ARCH_BODY_PATTERN.test(body) ? { reason: "wiki: body mentions architecture", suggestion: "WORTHY" } : { reason: "wiki: self-referential", suggestion: "SKIP" };
+  if (matchesPrefix(prefix, "wiki")) {
+    return suppressible("wiki", "wiki: self-referential");
+  }
+  if (matchesPrefix(prefix, "ci")) {
+    return suppressible("ci", "ci: CI plumbing");
+  }
+  if (matchesPrefix(prefix, "build")) {
+    return suppressible("build", "build: bundling / build plumbing");
   }
   return void 0;
 };
-var classifyFeatureCommit = (commit2) => {
-  const { body, files, subject } = commit2;
-  const isFeatureCommit = subject.startsWith("feat:") || subject.startsWith("fix:") || subject.startsWith("refactor:");
-  if (!isFeatureCommit) return void 0;
+var classifyFeatureCommit = (commit2, prefix) => {
+  const { body, files } = commit2;
+  if (!prefix || !FEATURE_TYPES.includes(prefix.type)) return void 0;
   if (touchesOnlyTests(files)) {
-    return { reason: "feat/fix/refactor: tests-only", suggestion: "SKIP" };
+    return { reason: "feat/fix/refactor/debt: tests-only", suggestion: "SKIP" };
   }
   const onlyInventory = files.length > 0 && files.every(
-    (file2) => APP_INVENTORY_PREFIXES.some((prefix) => file2.startsWith(prefix))
+    (file2) => APP_INVENTORY_PREFIXES.some(
+      (inventoryPrefix) => file2.startsWith(inventoryPrefix)
+    )
   );
   if (onlyInventory && !ARCH_BODY_PATTERN.test(body)) {
     return {
-      reason: "feat/fix/refactor: only inventory paths (Serena handles inventory)",
+      reason: "feat/fix/refactor/debt: only inventory paths (Serena handles inventory)",
       suggestion: "SKIP"
     };
   }
   if (touchesAppNonTest(files)) {
     return {
-      reason: "feat/fix/refactor: app/** non-test",
+      reason: "feat/fix/refactor/debt: app/** non-test",
       suggestion: "WORTHY"
     };
   }
   return {
-    reason: "feat/fix/refactor: defer to human review",
+    reason: "feat/fix/refactor/debt: defer to human review",
     suggestion: "WORTHY"
   };
 };
-var classifyCatchAll = (commit2) => {
-  const { body, subject } = commit2;
-  if (subject.startsWith("chore:")) {
+var classifyCatchAll = (commit2, prefix) => {
+  const { body } = commit2;
+  if (matchesPrefix(prefix, "chore")) {
     return ARCH_BODY_PATTERN.test(body) ? { reason: "chore: body mentions architecture", suggestion: "WORTHY" } : { reason: "chore: generic chore", suggestion: "SKIP" };
   }
-  if (subject.startsWith("docs:")) {
+  if (matchesPrefix(prefix, "docs")) {
     return { reason: "docs: prose-only", suggestion: "SKIP" };
   }
-  if (subject.startsWith("test:")) {
+  if (matchesPrefix(prefix, "test")) {
     return { reason: "test: test-only change", suggestion: "SKIP" };
   }
   return {
@@ -28232,7 +28248,10 @@ var classifyCatchAll = (commit2) => {
     suggestion: "WORTHY"
   };
 };
-var classify = (commit2) => classifyHardSkip(commit2) ?? classifyStrongWorthy(commit2) ?? classifyTouchedDomains(commit2) ?? classifyArchSuppressibleChore(commit2) ?? classifyFeatureCommit(commit2) ?? classifyCatchAll(commit2);
+var classify = (commit2) => {
+  const prefix = parseSubjectPrefix(commit2.subject);
+  return classifyHardSkip(commit2, prefix) ?? classifyStrongWorthy(commit2, prefix) ?? classifyTouchedDomains(commit2) ?? classifyArchSuppressibleChore(commit2, prefix) ?? classifyFeatureCommit(commit2, prefix) ?? classifyCatchAll(commit2, prefix);
+};
 var printHuman11 = (classification) => {
   if (classification.commits.length === 0) {
     process.stdout.write("No commits to classify.\n");

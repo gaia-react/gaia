@@ -216,6 +216,162 @@ describe('wiki commit-classify', () => {
     expect(json.commits[0]?.suggestion_reason).toContain('wiki-heavy');
   });
 
+  // This repo writes scoped subjects (`fix(hooks):`) essentially exclusively.
+  // A rule table that only matches the unscoped form is unreachable in
+  // practice: every commit falls through to the fail-open default and the
+  // first-pass filter stops filtering. Parity is the property that catches it.
+  describe('scoped subjects reach the same decision as unscoped', () => {
+    const parityCases = [
+      {path: 'app/foo.ts', type: 'feat'},
+      {path: 'app/foo.ts', type: 'fix'},
+      {path: 'app/foo.ts', type: 'refactor'},
+      {path: 'app/foo.ts', type: 'debt'},
+      {path: 'app/foo.ts', type: 'style'},
+      {path: 'app/foo.test.ts', type: 'test'},
+      {path: 'docs/guide.md', type: 'docs'},
+      {path: 'tooling/thing.cfg', type: 'chore'},
+    ];
+
+    test.each(parityCases)(
+      '$type: and $type(scope): agree',
+      ({path: filePath, type}) => {
+        sandbox.commit(`${type}: unscoped subject`, {[filePath]: 'unscoped\n'});
+        sandbox.commit(`${type}(scope): scoped subject`, {
+          [filePath]: 'scoped\n',
+        });
+
+        const {commits} = classify(sandbox);
+        expect(commits).toHaveLength(2);
+        expect(commits[1]?.suggestion).toBe(commits[0]?.suggestion);
+        expect(commits[1]?.suggestion_reason).toBe(
+          commits[0]?.suggestion_reason
+        );
+      }
+    );
+  });
+
+  test('feat(scope)!: → WORTHY (breaking)', () => {
+    sandbox.commit('feat(api)!: drop the legacy endpoint', {
+      'app/api.ts': 'export const api = null;\n',
+    });
+
+    const json = classify(sandbox);
+    expect(json.commits[0]?.suggestion).toBe('WORTHY');
+    expect(json.commits[0]?.suggestion_reason).toContain('breaking');
+  });
+
+  // Once every rule matches breaking-agnostically, the `!` no longer breaks a
+  // prefix match by accident, so a breaking subject on a SKIP-rule type would
+  // be silently skipped unless rule 2 claims it first.
+  test.each([
+    'chore(cli)!: drop the legacy flag',
+    'refactor(components)!: rename the exported prop',
+    'fix(hooks)!: change the return shape',
+  ])('%s → WORTHY (breaking beats every SKIP rule)', (subject) => {
+    sandbox.commit(subject, {'app/components/Thing/index.tsx': 'export {};\n'});
+
+    const json = classify(sandbox);
+    expect(json.commits[0]?.suggestion).toBe('WORTHY');
+    expect(json.commits[0]?.suggestion_reason).toContain('breaking');
+  });
+
+  // Rule 1 is deliberately "SKIP regardless", ahead of the breaking signal:
+  // both its categories are mechanical, so a `!` on them is either
+  // meaningless (formatting cannot break a contract) or still just plumbing.
+  test.each(['style!: reformat everything', 'chore(release)!: 2.0.0'])(
+    '%s → SKIP (rule 1 outranks the breaking marker)',
+    (subject) => {
+      sandbox.commit(subject, {'app/foo.ts': 'export const x = 1;\n'});
+
+      const json = classify(sandbox);
+      expect(json.commits[0]?.suggestion).toBe('SKIP');
+    }
+  );
+
+  test.each(['docs(decision): adopt zod', 'docs(decisions): adopt zod'])(
+    '%s → WORTHY (ADR signal outside a wiki-heavy path)',
+    (subject) => {
+      // Deliberately outside wiki/{decisions,concepts,...}, so rule 3 cannot
+      // rescue it and the ADR rule is the only thing standing between this
+      // commit and rule 8's `docs: prose-only` SKIP.
+      sandbox.commit(subject, {'.claude/rules/zod.md': '# zod\n'});
+
+      const json = classify(sandbox);
+      expect(json.commits[0]?.suggestion).toBe('WORTHY');
+      expect(json.commits[0]?.suggestion_reason).toContain('ADR');
+    }
+  );
+
+  test('scoped chore(deps): still beats the generic chore rule', () => {
+    sandbox.commit('chore(deps): bump foo from 1.0.0 to 1.0.1', {
+      'package.json': '{"version": "1.0.1"}\n',
+    });
+
+    const json = classify(sandbox);
+    expect(json.commits[0]?.suggestion).toBe('SKIP');
+    expect(json.commits[0]?.suggestion_reason).toContain('chore(deps)');
+  });
+
+  test('debt: touching app/** non-test → WORTHY', () => {
+    sandbox.commit('debt(cli): remove the dead telemetry write', {
+      'app/foo.ts': 'export const x = 1;\n',
+    });
+
+    const json = classify(sandbox);
+    expect(json.commits[0]?.suggestion).toBe('WORTHY');
+    expect(json.commits[0]?.suggestion_reason).toContain('app/**');
+  });
+
+  test('debt: tests-only → SKIP', () => {
+    sandbox.commit('debt(shell-lint): drop the redundant case', {
+      'app/foo.test.ts': 'test ...\n',
+    });
+
+    const json = classify(sandbox);
+    expect(json.commits[0]?.suggestion).toBe('SKIP');
+    expect(json.commits[0]?.suggestion_reason).toContain('tests-only');
+  });
+
+  test('ci: without an architecture body → SKIP', () => {
+    sandbox.commit('ci(release): add the distribution gate', {
+      '.github/workflows/release.yml': 'on: push\n',
+    });
+
+    const json = classify(sandbox);
+    expect(json.commits[0]?.suggestion).toBe('SKIP');
+    expect(json.commits[0]?.suggestion_reason).toContain('ci');
+  });
+
+  test('ci: with an architecture body → WORTHY', () => {
+    sandbox.commit(
+      'ci(gaia): run the bats gate under bash 5\n\nRecords the decision to pin the CI shell.',
+      {'.github/workflows/tests.yml': 'on: push\n'}
+    );
+
+    const json = classify(sandbox);
+    expect(json.commits[0]?.suggestion).toBe('WORTHY');
+  });
+
+  test('build: without an architecture body → SKIP', () => {
+    sandbox.commit('build(cli): rebundle the gaia binary', {
+      'dist/gaia': 'binary\n',
+    });
+
+    const json = classify(sandbox);
+    expect(json.commits[0]?.suggestion).toBe('SKIP');
+    expect(json.commits[0]?.suggestion_reason).toContain('build');
+  });
+
+  test('a non-conforming subject still defers to human review', () => {
+    sandbox.commit('Harden the Code Audit Team merge gate (#793)', {
+      'app/gate.ts': 'export const gate = null;\n',
+    });
+
+    const json = classify(sandbox);
+    expect(json.commits[0]?.suggestion).toBe('WORTHY');
+    expect(json.commits[0]?.suggestion_reason).toContain('no matching prefix');
+  });
+
   test('exits 1 when --since missing', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(1);
