@@ -78,14 +78,8 @@ sits outside the telemetry opt-out.
 
 It is a version lookup, not telemetry. It transmits nothing about the project,
 the machine, or the user; it reads a public endpoint and compares the result
-against the local version. The adoption ping, which does report installation
-data, is a separate mechanism, and it is the only thing the telemetry opt-out
-governs.
-
-Update detection is load-bearing for keeping an installation current, so it
-stays on. Folding it under the telemetry switch would mean that disabling
-telemetry silently disables update notifications, coupling two unrelated
-concerns and leaving the adopter unaware that a newer release exists.
+against the local version. Update detection is load-bearing for keeping an
+installation current, so it stays on.
 
 ## Related
 
