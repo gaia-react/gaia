@@ -10,6 +10,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {COMMIT_TYPES} from '../util/conventional-commit.js';
 import {run} from './commit-classify.js';
 import type {CommitClassification} from './commit-classify.js';
 
@@ -107,6 +108,20 @@ const classify = (sandbox: Sandbox): CommitClassification => {
   return JSON.parse(out.trim()) as CommitClassification;
 };
 
+const withConfig = (wikiClassify: unknown): string =>
+  `${JSON.stringify({gaia: {wikiClassify}, name: 'sandbox'}, null, 2)}\n`;
+
+const commitManyTo = (
+  sandbox: Sandbox,
+  count: number,
+  subject: string,
+  file: string
+): void => {
+  for (let index = 0; index < count; index += 1) {
+    sandbox.commit(`${subject} ${index}`, {[file]: `body ${index}\n`});
+  }
+};
+
 describe('wiki commit-classify', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -150,7 +165,7 @@ describe('wiki commit-classify', () => {
 
     const json = classify(sandbox);
     expect(json.commits[0]?.suggestion).toBe('WORTHY');
-    expect(json.commits[0]?.suggestion_reason).toContain('app/**');
+    expect(json.commits[0]?.suggestion_reason).toContain('source-bearing');
   });
 
   test('feat: only inventory paths without decision keywords → SKIP', () => {
@@ -319,7 +334,7 @@ describe('wiki commit-classify', () => {
 
     const json = classify(sandbox);
     expect(json.commits[0]?.suggestion).toBe('WORTHY');
-    expect(json.commits[0]?.suggestion_reason).toContain('app/**');
+    expect(json.commits[0]?.suggestion_reason).toContain('source-bearing');
   });
 
   test('debt: tests-only → SKIP', () => {
@@ -389,5 +404,207 @@ describe('wiki commit-classify', () => {
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('Classified');
     expect(stdio.outputs.join('')).toContain('WORTHY');
+  });
+
+  // Every declared type must reach a DISCRIMINATING rule. A type in steady
+  // use with no rule written for it (`debt` was exactly this) is invisible:
+  // it lands on a fail-open default, gets promoted to WORTHY, and nothing
+  // reports the gap.
+  //
+  // Asserted via `health.deferred` rather than by substring-matching a reason
+  // string, so rewording a reason cannot silently disarm the guard. The
+  // fixture sits under a source-bearing path on purpose: with a neutral path
+  // the five path-discriminated types pass by landing on rule 7's deferred
+  // tail, which is the very outcome this is supposed to reject.
+  describe('declared commit-type vocabulary', () => {
+    test.each([...COMMIT_TYPES])(
+      '%s: reaches a discriminating rule',
+      (type) => {
+        sandbox.commit(`${type}(scope): a subject`, {
+          'app/thing.ts': `export const x = '${type}';\n`,
+        });
+
+        const {health} = classify(sandbox);
+        expect(health.evaluated).toBe(1);
+        expect(health.deferred).toBe(0);
+      }
+    );
+
+    test('an undeclared type still falls open to rule 9', () => {
+      sandbox.commit('spike(scope): try a thing', {
+        'app/thing.ts': 'export const x = 1;\n',
+      });
+
+      const {commits, health} = classify(sandbox);
+      expect(commits[0]?.suggestion).toBe('WORTHY');
+      expect(commits[0]?.suggestion_reason).toContain('no matching prefix');
+      expect(health.deferred).toBe(1);
+    });
+  });
+
+  // Rules 6/7 used to hardcode `app/**`. A repo whose source lives elsewhere
+  // matched none of the three discriminating branches, so every source commit
+  // fell to rule 7's tail with a plausible-looking reason.
+  describe('configurable path vocabulary', () => {
+    test('a configured source path is recognized outside app/**', () => {
+      sandbox.commit('chore: configure', {
+        'package.json': withConfig({sourcePaths: ['cli/src/']}),
+      });
+      sandbox.commit('fix(cli): repair the parser', {
+        'cli/src/parse.ts': 'export const x = 1;\n',
+      });
+
+      const {commits} = classify(sandbox);
+      expect(commits[1]?.suggestion).toBe('WORTHY');
+      expect(commits[1]?.suggestion_reason).toContain('source-bearing');
+    });
+
+    test('a configured test path counts as tests-only', () => {
+      sandbox.commit('chore: configure', {
+        'package.json': withConfig({testPaths: ['suite/']}),
+      });
+      sandbox.commit('fix(hooks): tighten the guard case', {
+        'suite/guard.bats': '@test "guard" { true; }\n',
+      });
+
+      const {commits} = classify(sandbox);
+      expect(commits[1]?.suggestion).toBe('SKIP');
+      expect(commits[1]?.suggestion_reason).toContain('tests-only');
+    });
+
+    test('a configured inventory path skips without decision keywords', () => {
+      sandbox.commit('chore: configure', {
+        'package.json': withConfig({inventoryPaths: ['lib/widgets/']}),
+      });
+      sandbox.commit('feat(widgets): add a variant', {
+        'lib/widgets/Thing.ts': 'export const Thing = null;\n',
+      });
+
+      const {commits} = classify(sandbox);
+      expect(commits[1]?.suggestion).toBe('SKIP');
+      expect(commits[1]?.suggestion_reason).toContain('inventory');
+    });
+
+    // Adopters get today's behavior with no config, and a malformed config
+    // must degrade to it rather than fail a sync: this is a cheap pre-filter
+    // ahead of an expensive read, not a correctness gate.
+    test.each([
+      ['absent gaia key', '{"name": "sandbox"}\n'],
+      ['malformed JSON', '{not json\n'],
+      ['wrong value type', '{"gaia": {"wikiClassify": {"sourcePaths": 7}}}\n'],
+    ])('%s falls back to the app/** defaults', (_label, contents) => {
+      sandbox.commit('chore: configure', {'package.json': contents});
+      sandbox.commit('feat: add a module', {
+        'app/foo.ts': 'export const x = 1;\n',
+      });
+
+      const {commits} = classify(sandbox);
+      expect(commits[1]?.suggestion).toBe('WORTHY');
+      expect(commits[1]?.suggestion_reason).toContain('source-bearing');
+    });
+  });
+
+  // The health signal, not any individual commit, is what reports that the
+  // rule table has gone inert. Both fail-open defaults count: rule 9, and
+  // rule 7's tail, which emits a specific-sounding reason and would otherwise
+  // hide a path vocabulary that matches nothing.
+  describe('health signal', () => {
+    test('counts rule-9 fallthrough as deferred, without calling it inert', () => {
+      commitManyTo(
+        sandbox,
+        4,
+        'Not a conventional subject',
+        'tooling/thing.cfg'
+      );
+
+      const {health} = classify(sandbox);
+      expect(health.evaluated).toBe(4);
+      expect(health.deferred).toBe(4);
+      expect(health.deferral_rate).toBe(1);
+      // Below HEALTH_MIN_SAMPLE, so a bad rate alone never fires.
+      expect(health.inert).toBe(false);
+    });
+
+    test("counts rule 7's tail as deferred despite its specific reason", () => {
+      commitManyTo(
+        sandbox,
+        4,
+        'fix(cli): repair the thing',
+        'tooling/thing.cfg'
+      );
+
+      const {commits, health} = classify(sandbox);
+      expect(commits[0]?.suggestion_reason).toContain('defer to human review');
+      expect(health.deferred).toBe(4);
+    });
+
+    test('a discriminating rule is not deferral', () => {
+      commitManyTo(sandbox, 4, 'docs: prose', 'notes/thing.md');
+
+      const {health} = classify(sandbox);
+      expect(health.deferred).toBe(0);
+      expect(health.deferral_rate).toBe(0);
+    });
+
+    test('a large sample over the threshold reports inert and warns', () => {
+      commitManyTo(
+        sandbox,
+        25,
+        'Not a conventional subject',
+        'tooling/thing.cfg'
+      );
+
+      const {health} = classify(sandbox);
+      expect(health.evaluated).toBe(25);
+      expect(health.inert).toBe(true);
+      expect(stdio.errors.join('')).toContain('fail-open default');
+    });
+
+    test('a large healthy sample reports neither inert nor a warning', () => {
+      commitManyTo(sandbox, 25, 'docs: prose', 'notes/thing.md');
+
+      const {health} = classify(sandbox);
+      expect(health.evaluated).toBe(25);
+      expect(health.inert).toBe(false);
+      expect(stdio.errors.join('')).toBe('');
+    });
+
+    // WORTHY rate is reported alongside deferral so configuring the path
+    // vocabulary cannot quietly turn "I could not tell" into "definitely
+    // read this" while the deep-read cost stays exactly the same.
+    test('worthy_rate stays visible when deferral is zero', () => {
+      commitManyTo(sandbox, 4, 'feat: add a module', 'app/foo.ts');
+
+      const {health} = classify(sandbox);
+      expect(health.deferred).toBe(0);
+      expect(health.worthy_rate).toBe(1);
+    });
+
+    // The threshold is calibrated against both observed inert cases, not
+    // picked round. The path-vocabulary failure sat at 55% deferral, so a
+    // threshold above that would have missed the case #945 describes while
+    // still catching the 68% type-vocabulary one.
+    test('a ~50% deferral rate fires, the rate the path failure produced', () => {
+      commitManyTo(
+        sandbox,
+        11,
+        'fix(cli): repair the thing',
+        'tooling/thing.cfg'
+      );
+      commitManyTo(sandbox, 11, 'docs: prose', 'notes/thing.md');
+
+      const {health} = classify(sandbox);
+      expect(health.evaluated).toBe(22);
+      expect(health.deferred).toBe(11);
+      expect(health.inert).toBe(true);
+    });
+
+    test('an empty range reports zeroed rates rather than NaN', () => {
+      const {health} = classify(sandbox);
+      expect(health.evaluated).toBe(0);
+      expect(health.deferral_rate).toBe(0);
+      expect(health.worthy_rate).toBe(0);
+      expect(health.inert).toBe(false);
+    });
   });
 });
