@@ -26,7 +26,12 @@
 # nothing about per-agent versus shared scoping. It is preferred because it is a
 # declared input describing this call, where the process cwd is ambient state
 # inferred to stand in for one. Reading only the process cwd would let the guard
-# go silently inert if a harness version ever stopped aligning the two.
+# go silently inert if a harness version ever stopped aligning the two. The
+# payload cwd is honored only when it is absolute and resolves to a checkout of
+# this repo; anything else routes to the process cwd. The absolute requirement
+# is load-bearing, because the value reaches a bare `cd` that would otherwise
+# option-parse a leading dash and silently succeed into $HOME. The full case
+# analysis sits with the `case` below that enforces it.
 #
 # Scope, and why it stops there: the guard adjudicates "does this target resolve
 # to the main checkout", which is #841's own case. `main_root` derives from
@@ -70,13 +75,36 @@ esac
 main_root="$(cd "$(dirname "$abs_common_dir")" 2>/dev/null && pwd -P)" || exit 0
 # The calling agent's working directory comes from the payload's `cwd`, the
 # value Claude Code reports for the agent that issued this call. It is honored
-# only when it resolves to a checkout of THIS repo (same common git dir as
-# main_root); a cwd naming an unrelated repository would arm the gate on a
-# comparison between two different repositories and deny a legitimate edit. The
-# hook's own process cwd is the fallback for an absent, unresolvable, or
-# foreign-repo payload cwd.
+# only when it is absolute AND resolves to a checkout of THIS repo (same common
+# git dir as main_root); a cwd naming an unrelated repository would arm the gate
+# on a comparison between two different repositories and deny a legitimate edit.
+# The hook's own process cwd is the fallback for an absent, relative,
+# unresolvable, or foreign-repo payload cwd.
 current_root=""
 payload_cwd=$(jq -r '.cwd // empty' <<<"$payload")
+# Absolute-cwd invariant, established once so every consumer below inherits it:
+# payload_cwd flows into `git -C`, into string-concatenation, and into `cd`, and
+# each option-parses its own operand. `cd` is the sharp edge: `cd -P`, `cd -L`,
+# and `cd -e` parse as an option with NO operand, so cd lands in $HOME and
+# succeeds rather than failing into the `|| payload_main_root=""` fallback, and
+# `cd -` moves to $OLDPWD and prints it. Requiring a leading slash makes every
+# downstream operand provably absolute, which is the same property main_root's
+# own two-branch derivation above guarantees, and unlike a `--` terminator it
+# behaves identically on bash 3.2 and bash 5. An empty value falls through to
+# the `-n` guard below and routes to the process cwd, same as an absent field.
+# `dirname --` and `CDPATH=''` on the payload_main_root line below are
+# belt-and-braces once this holds: with an absolute payload_cwd neither a
+# dash-leading operand nor a CDPATH lookup is reachable there, so they stay only
+# as defense in depth. That covers those two, and nothing else. The
+# identically-shaped guards further down operate on file_path, which no
+# invariant constrains, and they are load-bearing: dropping the CDPATH guard
+# there turns a deny into an allow, because cd resolves a relative file_path
+# through CDPATH into the exempt shared-state tree while git still resolves the
+# write to the main checkout.
+case "$payload_cwd" in
+  /*) ;;
+  *) payload_cwd="" ;;
+esac
 if [[ -n "$payload_cwd" ]]; then
   payload_common_dir="$(git -C "$payload_cwd" rev-parse --git-common-dir 2>/dev/null)" || payload_common_dir=""
   case "$payload_common_dir" in
