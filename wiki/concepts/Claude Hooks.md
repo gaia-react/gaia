@@ -29,6 +29,18 @@ Hooks are grouped by the safeguard they enforce, not by event type.
 - **`block-worktree-path-mismatch.sh`**: inside a linked worktree, denies an `Edit`/`Write`/`MultiEdit` call whose `file_path` resolves to the main checkout instead of the current worktree, the silent-wrong-write footgun where a stale pre-switch absolute path is a real, valid file in another checkout so the edit tools apply it with no error. Compares the toplevel that owns the common git dir (the main checkout) against the current toplevel; a target resolving to the main checkout is denied unless it falls under one of the shared, symlinked `.gaia/local/` subdirectories (see [[Local Working State]]). A no-op outside a linked worktree. Fails open on any ambiguity (not a git repo, an unresolvable target directory).
 - **`block-invalid-yaml-write.sh`**: reconstructs the post-edit content and denies an `Edit`/`Write`/`MultiEdit` call that turns a valid YAML region invalid, either a whole `.yml`/`.yaml` file or a Markdown frontmatter block, catching a mid-sentence `": "` or a stray `" #"` that would otherwise silently corrupt the parsed value. Pre-existing broken frontmatter elsewhere in the tree never blocks an unrelated edit; fails open on any internal error.
 
+**Payload `cwd` is per-agent, measured not documented.** `block-worktree-path-mismatch.sh` derives `current_root` from the PreToolUse payload's `cwd` field when present and usable, falling back to the hook process's own working directory otherwise. Measured on Claude Code 2.1.215 by instrumenting the guard to record its process cwd, `git rev-parse --show-toplevel`, and the full PreToolUse payload across three configurations:
+
+| Configuration | hook process cwd | hook toplevel | payload `cwd` | `agent_id` |
+|---|---|---|---|---|
+| Main session, alone | main checkout | main checkout | main checkout | absent |
+| Subagent with `isolation: "worktree"` | its own worktree | its own worktree | its own worktree | present |
+| Main session write while a worktree subagent is concurrently alive | main checkout | main checkout | main checkout | absent |
+
+The third row is the contested case: the working directory is per-agent, not shared. The subagent's hook observes its own worktree while the parent's hook simultaneously observes the main checkout. Two facts close off the obvious alternatives: `session_id` is shared between a parent and its subagents (both report the same identifier, so nothing keyed on `session_id` can distinguish them), and `WorktreeCreate` fires under the dispatching session's `session_id` with no agent discriminator (its key set is `session_id, transcript_path, cwd, prompt_id, hook_event_name, name`, no `agent_id`, no `agent_type`).
+
+The hooks reference documents payload `cwd` only as "current working directory when the hook is invoked" and says nothing about per-agent versus shared scoping, so this is measured behavior, not a guaranteed contract, and it is not assumed stable across harness versions. That is exactly why the guard reads the payload value with a process-cwd fallback rather than depending on either source alone.
+
 ### Secrets safeguards (Edit|Write|MultiEdit)
 
 - **`block-env-write.sh`**: refuses writes targeting any `.env` / `.env.*` file (allows `.env.example`). Closes the gap left by the Read-only `.env` deny rule in `settings.json`; `.env` files must remain gitignored and edited manually.

@@ -25,6 +25,7 @@ teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
   [ -n "${NONREPO:-}" ] && rm -rf "$NONREPO"
   [ -n "${SYMLINK_REPO:-}" ] && rm -f "$SYMLINK_REPO"
+  [ -n "${OTHER_REPO:-}" ] && rm -rf "$OTHER_REPO"
   return 0
 }
 
@@ -65,6 +66,28 @@ run_hook_edit() {
   local json
   json=$(jq -n --arg t "$tool" --arg p "$path" '{tool_name: $t, tool_input: {file_path: $p}}')
   run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+}
+
+# Same delivery contract as run_hook_edit, plus the payload's `cwd` field: the
+# working directory Claude Code reports for the agent that issued the call. The
+# process cwd stays whatever the test `cd`s to, so the two can be set
+# independently and the hook's choice between them is observable.
+run_hook_edit_cwd() {
+  local tool="$1" path="$2" cwd="$3"
+  local json
+  json=$(jq -n --arg t "$tool" --arg p "$path" --arg c "$cwd" \
+    '{tool_name: $t, cwd: $c, tool_input: {file_path: $p}}')
+  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+}
+
+# An unrelated git repository, used to check that a payload cwd naming some
+# other repo is not honored. No commit is needed: `rev-parse` answers
+# --show-toplevel and --git-common-dir on an empty repo.
+make_other_repo() {
+  local raw
+  raw=$(mktemp -d -t gaia-wt-mismatch-other-XXXXXX)
+  OTHER_REPO="$(cd "$raw" && pwd -P)"
+  git -C "$OTHER_REPO" init -q --initial-branch=main
 }
 
 assert_denied() {
@@ -277,14 +300,13 @@ assert_allowed() {
 
 # --- allowed: a sibling worktree, which the guard can no longer adjudicate ---
 
-# The hook infers "this session's worktree" from its own process cwd, and that
-# cwd is shared across concurrently active agents: when one teammate calls
-# EnterWorktree, every other agent's cwd moves with it. Judging agent A's write
-# against agent B's worktree denied correct writes. main_root comes from
-# --git-common-dir, which is identical from every worktree of the repo, so
-# "does the target resolve to the main checkout" stays correct no matter which
-# worktree the shared cwd currently sits in. "Is the target MY worktree" does
-# not, so it is no longer adjudicated.
+# The guard adjudicates one question: does the target resolve to the main
+# checkout. main_root comes from --git-common-dir, which is identical from every
+# worktree of the repo, so that answer holds no matter which worktree the
+# calling agent sits in. A sibling worktree is a different, equally valid
+# checkout, and judging one agent's write against another agent's worktree would
+# deny correct writes, so the guard leaves that to the caller's own
+# RESOLVED_ROOT discipline.
 @test "an edit to a sibling worktree is allowed while cwd sits in another worktree" {
   make_repo
   make_worktree "debt/14-a" "debt/14-a"
@@ -329,6 +351,78 @@ assert_allowed() {
   NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
   cd "$NONREPO"
   run_hook_edit "Edit" "$REPO/f"
+  assert_allowed
+}
+
+# --- the calling agent's cwd comes from the payload ---
+
+# The payload names the working directory of the agent that issued the call,
+# which is the only value that answers "which checkout is this agent in". The
+# hook's own process cwd answers "which checkout is this hook process in", a
+# different question that coincides only as long as the harness keeps the two
+# aligned. Pin the payload as the authority: when it says the agent is in the
+# worktree, a target in the main checkout is the wrong-checkout write, no matter
+# where the hook process itself sits.
+@test "a payload cwd inside the worktree denies a main-checkout target from a main-checkout process cwd" {
+  make_repo
+  make_worktree "debt/22-foo" "debt/22-foo"
+  cd "$REPO"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$WT"
+  assert_denied
+}
+
+# The mirror of the case above: the same payload cwd, targeting that agent's own
+# worktree, is the correct write and stays allowed.
+@test "a payload cwd inside the worktree allows a worktree target from a main-checkout process cwd" {
+  make_repo
+  make_worktree "debt/23-foo" "debt/23-foo"
+  cd "$REPO"
+  run_hook_edit_cwd "Edit" "$WT/f" "$WT"
+  assert_allowed
+}
+
+# A payload without `cwd` still adjudicates off the process cwd. The rest of
+# this suite exercises that path implicitly; this pins it by name so a future
+# change cannot drop the fallback silently.
+@test "a payload with no cwd field falls back to the process cwd" {
+  make_repo
+  make_worktree "debt/24-foo" "debt/24-foo"
+  cd "$WT"
+  run_hook_edit "Edit" "$REPO/f"
+  assert_denied
+}
+
+# A payload cwd the hook cannot resolve is not a reason to stop guarding. Both
+# unusable shapes, a path that does not exist and a real directory outside any
+# git repository, fall back to the process cwd rather than going inert.
+@test "a payload cwd naming a nonexistent path falls back to the process cwd" {
+  make_repo
+  make_worktree "debt/25-foo" "debt/25-foo"
+  cd "$WT"
+  run_hook_edit_cwd "Edit" "$REPO/f" "/no-such-agent-cwd-xyz"
+  assert_denied
+}
+
+@test "a payload cwd naming a directory outside any git repository falls back to the process cwd" {
+  make_repo
+  make_worktree "debt/26-foo" "debt/26-foo"
+  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
+  cd "$WT"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$NONREPO"
+  assert_denied
+}
+
+# A payload cwd inside a different repository is not a worktree of this one, so
+# honoring it would arm the gate on a comparison between two unrelated
+# repositories and deny a legitimate main-checkout edit. The hook checks that
+# the payload cwd shares this repo's common git dir and falls back to the
+# process cwd when it does not.
+@test "a payload cwd inside an unrelated repository falls back to the process cwd" {
+  make_repo
+  make_worktree "debt/27-foo" "debt/27-foo"
+  make_other_repo
+  cd "$REPO"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
   assert_allowed
 }
 
