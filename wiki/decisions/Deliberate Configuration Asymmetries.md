@@ -73,11 +73,9 @@ correctness for tokens.
 ## The GAIA update check has no opt-out
 
 The statusline's background refresher queries the GitHub releases API for the
-latest published GAIA version. It has no opt-out switch, and it deliberately
-sits outside the telemetry opt-out.
+latest published GAIA version. It deliberately has no opt-out switch.
 
-It is a version lookup, not telemetry. It transmits nothing about the project,
-the machine, or the user; it reads a public endpoint and compares the result
+It is a version lookup. It reads a public endpoint and compares the result
 against the local version. Update detection is load-bearing for keeping an
 installation current, so it stays on.
 
