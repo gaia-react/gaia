@@ -246,7 +246,10 @@ count_pending_writers() {
 
 # Stub the PR-comment upsert the terminal status steps shell out to, recording
 # the comment text ($2) so a test asserts what the AUTHOR is actually told
-# rather than grepping the step's YAML for a phrase.
+# rather than grepping the step's YAML for a phrase. This stub's `$2`-is-body
+# assumption is pinned against the real script's own `Usage:` contract by the
+# cra-status-upsert materializing tests below, which invoke the shipped
+# script directly rather than this fixture.
 install_upsert_stub() {
   cat > "$RUNNER_TEMP_DIR/cra-status-upsert.sh" <<EOF
 #!/usr/bin/env bash
@@ -1524,4 +1527,31 @@ EOF
   run env GITHUB_REPOSITORY="gaia-react/gaia" bash "$RUNNER_TEMP_DIR/cra-status-upsert.sh" "1" "some status text"
   [ "$status" -eq 0 ]
   grep -qF "non-fatal" <<<"$output"
+}
+
+@test "cra-status-upsert: a failing comment lookup skips the upsert instead of risking a duplicate" {
+  # The lookup pipes through `| head -n1`, which always exits 0 regardless of
+  # whether the `gh api --paginate` on its left side failed, so a transient
+  # failure here reads as "no existing comment" and falls through to posting
+  # a brand-new one blind -- a duplicate `<!-- gaia:cra-status -->` comment
+  # can sit on the PR indefinitely once that happens. The script must skip
+  # the upsert entirely rather than guess.
+  materialize_upsert_script
+  cat > "$GH_BIN/gh" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+  *--paginate*)
+    echo "gh: No server is currently available to service your request. (HTTP 503)" >&2
+    exit 1
+    ;;
+esac
+echo "unexpected gh call: \$*" >> "$RUNNER_TEMP_DIR/unexpected-gh-calls.log"
+exit 0
+EOF
+  chmod +x "$GH_BIN/gh"
+
+  run env GITHUB_REPOSITORY="gaia-react/gaia" bash "$RUNNER_TEMP_DIR/cra-status-upsert.sh" "1" "some status text"
+  [ "$status" -eq 0 ]
+  grep -qF "non-fatal" <<<"$output"
+  [ ! -f "$RUNNER_TEMP_DIR/unexpected-gh-calls.log" ]
 }

@@ -1481,9 +1481,13 @@ jobs:
           pr="$1"
           body="$2"
           full_body="$(printf '%s\n%s' "$MARKER" "$body")"
-          existing_id="$(MARKER="$MARKER" gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/issues/${pr}/comments" \
-            --jq '.[] | select(.body | contains(env.MARKER)) | .id' | head -n1)"
+          if ! comments="$(MARKER="$MARKER" gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues/${pr}/comments" \
+              --jq '.[] | select(.body | contains(env.MARKER)) | .id')"; then
+            echo "cra-status-upsert: comment lookup failed (non-fatal); skipping upsert to avoid posting a duplicate comment." >&2
+            exit 0
+          fi
+          existing_id="$(printf '%s\n' "$comments" | head -n1)"
           if [ -n "$existing_id" ]; then
             if ! gh api --method PATCH \
                 "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_id}" \
