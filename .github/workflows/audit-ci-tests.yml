@@ -84,9 +84,17 @@ jobs:
               # The doc-difficulty-prose suite (.gaia/tests/lib/) greps the
               # difficulty-grading rubric and both machine filing routes;
               # code-audit-frontend.md and debt.md are already listed above,
-              # add the other two sources it guards.
+              # add the other two. The suite also asserts that `difficulty`
+              # appears in NONE of the sibling audit members, so those four are
+              # sources it guards too: without the glob, a PR adding grading
+              # prose to one of them matches no pattern here, every bats step
+              # skips, and the job greens having run the very assertion written
+              # to catch that edit zero times. The glob is a superset of the
+              # code-audit-frontend.md entry above (patterns OR together) and
+              # self-maintains when a new member joins the roster.
               - '.claude/skills/file-tech-debt/SKILL.md'
               - '.claude/skills/gaia/references/audit.md'
+              - '.claude/agents/code-audit-*.md'
               # The doc-setup-gaia-isolation and doc-gaia-init-isolation suites
               # (.gaia/tests/lib/) grep the /setup-gaia Phase 3.5 clause and the
               # /gaia-init Step 9 question block; trigger on the two command
