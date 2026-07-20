@@ -1463,3 +1463,65 @@ run_comment_step() {
   run count_pending_writers
   [ "$output" -eq 5 ]
 }
+
+# -----------------------------------------------------------------------------
+# cra-status-upsert.sh: posting/updating the advisory status comment is purely
+# informational (the load-bearing gate is the GAIA-Audit commit status, POSTed
+# and non-clobber-guarded elsewhere in this file). A transient GitHub API
+# failure on this path must log to stderr and exit 0, never fail the job that
+# calls it.
+# -----------------------------------------------------------------------------
+
+# Materialize the real cra-status-upsert.sh from its own workflow step (not
+# the install_upsert_stub() fake every other test in this file uses), so
+# these tests exercise the shipped script rather than a fixture of it.
+materialize_upsert_script() {
+  local body
+  body="$(extract_step_body 'Prepare status-comment upserter')"
+  RUNNER_TEMP="$RUNNER_TEMP_DIR" bash "$body"
+}
+
+@test "cra-status-upsert: a failing PATCH on an existing comment does not fail the script" {
+  materialize_upsert_script
+  cat > "$GH_BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *--paginate*)
+    echo "42"
+    exit 0
+    ;;
+  *--method PATCH*)
+    echo "gh: No server is currently available to service your request. (HTTP 503)" >&2
+    exit 1
+    ;;
+esac
+exit 0
+EOF
+  chmod +x "$GH_BIN/gh"
+
+  run env GITHUB_REPOSITORY="gaia-react/gaia" bash "$RUNNER_TEMP_DIR/cra-status-upsert.sh" "1" "some status text"
+  [ "$status" -eq 0 ]
+  grep -qF "non-fatal" <<<"$output"
+}
+
+@test "cra-status-upsert: a failing new-comment post does not fail the script" {
+  materialize_upsert_script
+  cat > "$GH_BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *--paginate*)
+    exit 0
+    ;;
+esac
+if [ "$1" = "pr" ] && [ "$2" = "comment" ]; then
+  echo "gh: No server is currently available to service your request. (HTTP 503)" >&2
+  exit 1
+fi
+exit 0
+EOF
+  chmod +x "$GH_BIN/gh"
+
+  run env GITHUB_REPOSITORY="gaia-react/gaia" bash "$RUNNER_TEMP_DIR/cra-status-upsert.sh" "1" "some status text"
+  [ "$status" -eq 0 ]
+  grep -qF "non-fatal" <<<"$output"
+}
