@@ -272,7 +272,7 @@ When worthy:
 
 `gh pr merge` can fail without aborting the rest of a script: branch protection ("base branch policy prohibits the merge"), pending CI checks, missing `--auto` for queued merges, or auth issues. Proceeding to local cleanup (`git checkout main`, `git branch -D <pr-branch>`, `git fetch --prune`) before confirming the merge actually succeeded leaves the local branch deleted while the PR is still OPEN. Recoverable via `git checkout -b <branch> origin/<branch>` while the remote ref still exists, but it's avoidable churn.
 
-The safe pattern after any `gh pr merge`:
+Verification is identical under both isolation modes: poll the PR's state until it reports `MERGED`.
 
 ```bash
 gh pr merge <N> --squash --delete-branch [--auto]
@@ -282,22 +282,48 @@ for i in 1 2 3 4 5; do
   sleep 30
 done
 [ "$state" = "MERGED" ] || { echo "merge did not complete"; exit 1; }
+```
+
+That poll is the whole verification. A local error printed by `gh pr merge` after the state reads `MERGED` does not revise the answer; see [[#Local-sync failure mode]] below.
+
+**`--auto` vs `--admin`:** when `gh pr merge` rejects with "base branch policy prohibits the merge", the right escape is `--auto`; it queues the merge and GitHub completes it once checks pass. Never reach for `--admin` to bypass branch protection without explicit permission; it removes the safety the policy exists to provide.
+
+Cleanup is what differs, because the two isolation modes hold the branch differently. Take the arm matching how the work is isolated; [[Task Orchestration]] covers how that choice is made.
+
+### Cleanup under feature-branch isolation
+
+The session sits in the main checkout and holds the branch directly:
+
+```bash
 git checkout main && git pull origin main
 git branch -D <pr-branch>  # force needed for squash (orphaned commits)
 git fetch --prune origin
 ```
 
-**`--auto` vs `--admin`:** when `gh pr merge` rejects with "base branch policy prohibits the merge", the right escape is `--auto`; it queues the merge and GitHub completes it once checks pass. Never reach for `--admin` to bypass branch protection without explicit permission; it removes the safety the policy exists to provide.
+### Cleanup under worktree isolation
+
+The main checkout already holds `main`, so `git checkout main` from inside a linked worktree fails with `fatal: 'main' is already used by worktree at <path>`. That is a property of linked worktrees, not a merge failure, and it makes the feature-branch sequence above unusable from a worktree. Reap the worktree centrally instead:
+
+```bash
+# from a shell in the main checkout, never from the worktree being removed
+git worktree remove --force .claude/worktrees/<branch-name>
+git branch -D <pr-branch>  # force needed for squash (orphaned commits)
+git fetch --prune origin
+```
+
+`--force` is required because the worktree holds a branch whose commits the squash merge absorbed without making them ancestors of `main`, so git otherwise refuses to remove it. The `git branch -D` step is what actually drops the local branch on this path: `--delete-branch` deletes the remote branch server-side, but its local half checks out the default branch first, which is precisely the step that fails here. If the branch is already gone, the command reports `branch not found` and nothing is wrong.
+
+An agent driving the merge in-session removes its own worktree with the runtime's `ExitWorktree({action: "remove", discard_changes: true})`, gated on the confirmed `MERGED` state; `discard_changes` is safe there for the same reason `--force` is here. From a context that cannot call it, a fresh session or a sub-agent with a pinned working directory, the shell sequence above is the session-independent equivalent. See [[Audit Disposition and Debt Fix]].
 
 ## Local-sync failure mode
 
-When `gh pr merge` exits with `fatal: 'main' is already used by worktree at <path>`, **the GitHub-side merge has already succeeded**. The local checkout step is what failed, not the merge itself. Confirm with:
+When `gh pr merge` exits with `fatal: 'main' is already used by worktree at <path>`, **the GitHub-side merge has already succeeded**. The local checkout step is what failed, not the merge itself. Under worktree isolation this is the expected outcome rather than an anomaly, and it appears even in runs that perform no manual cleanup at all: `--delete-branch` runs its own local branch delete, which begins by checking out the default branch that the main checkout already holds. Confirm with:
 
 ```
 gh pr view <N> --json state
 ```
 
-If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post-merge steps (wiki-sync, spec-close, etc.), and resolve the local worktree conflict separately. Retrying compounds the problem and can produce a duplicate squash on a non-existent branch.
+If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post-merge steps (wiki-sync, spec-close, etc.), and clean up through [[#Cleanup under worktree isolation]] above rather than the feature-branch sequence. Retrying compounds the problem and can produce a duplicate squash on a non-existent branch.
 
 ## Second merge gate: the worthiness presence gate
 
