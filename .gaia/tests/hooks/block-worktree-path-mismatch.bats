@@ -226,6 +226,17 @@ assert_allowed() {
   assert_allowed
 }
 
+@test "a write under the worktree's symlinked .gaia/local/telemetry is allowed" {
+  make_repo
+  make_worktree "debt/20-foo" "debt/20-foo"
+  mkdir -p "$REPO/.gaia/local/telemetry"
+  mkdir -p "$WT/.gaia/local"
+  ln -s "$REPO/.gaia/local/telemetry" "$WT/.gaia/local/telemetry"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/telemetry/tally.jsonl"
+  assert_allowed
+}
+
 @test "a write under the worktree's symlinked .gaia/local/cache/shared is allowed" {
   make_repo
   make_worktree "debt/18-foo" "debt/18-foo"
@@ -235,6 +246,18 @@ assert_allowed() {
   cd "$WT"
   run_hook_edit "Write" "$WT/.gaia/local/cache/shared/blob.json"
   assert_allowed
+}
+
+# Only cache/shared is symlinked. The rest of .gaia/local/cache/ is per-worktree
+# and holds draft SPEC content, so widening the arm to cache/* would silently
+# allow a stale main-checkout write to a draft.
+@test "a stale main-checkout write under non-shared .gaia/local/cache is still denied" {
+  make_repo
+  make_worktree "debt/21-foo" "debt/21-foo"
+  mkdir -p "$REPO/.gaia/local/cache"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/cache/draft-SPEC-001.md"
+  assert_denied
 }
 
 # setup-state.json is a symlinked FILE, so its target_dir is the worktree's own

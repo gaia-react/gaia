@@ -69,7 +69,7 @@ current_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 [[ "$main_root" != "$current_root" ]] || exit 0
 
 target_dir=$(dirname -- "$file_path")
-resolved_target_dir="$(cd "$target_dir" 2>/dev/null && pwd -P)" || exit 0
+resolved_target_dir="$(CDPATH='' cd "$target_dir" 2>/dev/null && pwd -P)" || exit 0
 [[ -n "$resolved_target_dir" ]] || exit 0
 
 # The symlinked shared-state dirs are exempt. link-worktree.sh symlinks exactly
