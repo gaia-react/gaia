@@ -28,6 +28,11 @@
 #   - dist/*
 #   - build/*
 #
+# Each is whitelisted in both its relative and its absolute spelling, so
+# `rm -rf /path/to/repo/dist` is allowed exactly as `rm -rf dist` is. The absolute
+# form is what .claude/rules/shell-cwd.md requires of every Bash call, and a guard
+# that took only the relative one denied the form the rule mandates.
+#
 # Anything that does not match a denied pattern AND is not on the whitelist
 # falls through (exit 0), this hook intentionally only blocks the well-known
 # footguns; broader policy lives in settings.json permissions.
@@ -40,10 +45,20 @@
 # arbitrary variable holding a dangerous path, a relative escape
 # (`rm -rf ../..`), and targets arriving via `xargs` all pass.
 #
-# Some *literally spelled* targets also pass. These are known holes, not design,
-# and the list is NOT exhaustive, assume more exist. Each new literal shape this
-# guard learns to catch reveals another it does not: treat the deny list as a
-# floor, never a ceiling. Known holes are tracked as tech debt.
+# Some *literally spelled* targets also pass. Treat the deny list as a floor,
+# never a ceiling: it is not exhaustive, and for a heuristic text matcher
+# completeness was never on offer.
+#
+# That incompleteness is the design, not a standing defect backlog. Do NOT file a
+# porosity finding on the strength of a hypothesis, a hole reasoned to from the
+# source, or an audit that enumerates shapes this guard does not catch. The supply
+# of those is unbounded, each one costs real review, and this guard is explicitly
+# the second layer behind settings.json permissions rather than the thing standing
+# between anyone and disaster. A porosity finding requires an OBSERVED incident: a
+# command that actually ran and should not have, or was actually denied and should
+# not have been, with the transcript that shows it. Bring one and it is worth
+# fixing. Without one, the correct response to "this guard could be evaded" is yes,
+# it could.
 #
 # One such hole sits at the seam between the two halves. When the command word is
 # not literally spelled (`$RMBIN`, an alias), no anchor matches, so the guard never
@@ -55,13 +70,19 @@
 # carried `/`, `$HOME`, `.git`, `.claude`, and `node_modules` straight through.
 #
 # One direction is deliberately NOT repaired, and it looks like a bug. The guard
-# denies commands that merely *mention* a target in a quoted string, so
+# denies commands that merely *mention* a flagged target in a quoted string, so
 # `git commit -m "fix: rm -rf $HOME bypass"` is a false deny. Making a quoted
 # `rm` not-a-command would fix that, and would also allow `bash -c "rm -rf /"`,
 # `ssh host "rm -rf /"`, and `eval "rm -rf /"`. A text matcher cannot tell a
 # quoted command from a quoted string; of the two failure directions the false
 # deny is the safe one, so it stays. Deliver such text via `--body-file` / `-F`,
 # or through a variable.
+#
+# The word FLAGGED is load-bearing there. Each segment is judged only when it
+# carries its own `-r`/`-f`, so quoting a non-recursive `rm` is not a false deny
+# even beside a real removal. That narrowing is exact rather than a partial repair
+# of the above: it turns on the destructive flag, which the guard already required,
+# and never on whether a token sits in command position, which it cannot know.
 #
 # `jq` is a hard dependency: without it the hook exits non-zero, which Claude
 # Code treats as a non-blocking error, so the command proceeds unguarded
@@ -171,6 +192,14 @@ neutralize_quoted_separators() {
 rm_word="[Rr][\\\"']*[Mm][\\\"']*"
 rm_anchor="(^|[^[:alnum:]_-])${rm_word}[[:space:]]+"
 
+# The destructive flag, shared by the short-circuit probe and the segment
+# extraction below so the two cannot drift. They have to agree: the probe decides
+# whether to look at the command at all, and the extraction decides which segments
+# get judged. When only the probe carried this clause, a flag anywhere in the
+# command licensed judging every `rm` segment in it, including segments that were
+# not removals at all.
+rm_flag="(-[a-zA-Z]*[rRfF]|--recursive|--force|--no-preserve-root)"
+
 deny() {
   jq -n --arg r "$1" '{
     hookSpecificOutput: {
@@ -247,7 +276,7 @@ main() {
   # false-deny surface: `git rm --cached -r .` now denies (the canonical
   # `git rm -r --cached .` already did), which is annoying but safe. Widen this
   # regex only with that asymmetry in mind.
-  if ! grep -Eq "${rm_anchor}[^;&|]*(-[a-zA-Z]*[rRfF]|--recursive|--force|--no-preserve-root)" <<<"$cmd"; then
+  if ! grep -Eq "${rm_anchor}[^;&|]*${rm_flag}" <<<"$cmd"; then
     exit 0
   fi
 
@@ -264,7 +293,24 @@ main() {
   # command whose leading `rm` is benign is an ordinary cleanup shape
   # (`rm -rf node_modules && rm -rf dist`), so stopping at the first match let a
   # dangerous target ride along behind a harmless one.
-  rm_segments=$(grep -oE "${rm_anchor}[^;&|]*" <<<"$cmd" || true)
+  #
+  # Each segment must carry its OWN destructive flag. The short-circuit above is a
+  # whole-command probe, so without this clause one real `rm -rf dist` licensed
+  # judging every other `rm` in the same invocation, and `rm -rf dist && rm /abs/x`
+  # denied on a target the guard allows when it stands alone.
+  #
+  # This is the rare narrowing that costs no coverage. The guard's entire advertised
+  # scope is `rm -rf`; a segment with no `-r`/`-f` cannot recurse into a directory,
+  # and its targets were already allowed in every spelling when no flagged sibling
+  # shared the command. So the removed denials were reachable only by deleting the
+  # harmless sibling, which is to say they stopped nobody. What they did cost was
+  # every Bash call quoting a non-recursive `rm` as prose, including this repo's own
+  # always-loaded shell-cwd rule and its worked example.
+  #
+  # A flagged segment is unaffected: `rm -rf dist && rm -rf /` is still denied, and
+  # so is a flagged `rm` sitting inside a quoted string. That false deny is the
+  # deliberate one documented in the header, and narrowing by flag does not touch it.
+  rm_segments=$(grep -oE "${rm_anchor}[^;&|]*${rm_flag}[^;&|]*" <<<"$cmd" || true)
   [[ -n "$rm_segments" ]] || exit 0
 
   # A here-string keeps the loop in the current shell, so deny()'s exit is the
@@ -405,8 +451,44 @@ main() {
       # The directive has to sit in front of the `case` itself, not the branch (SC1124).
       # shellcheck disable=SC2088
       case "$tok" in
+        # An absolute path carrying a `..` segment resolves somewhere its spelling
+        # does not name, so it can never reach the whitelist below: the escape
+        # `/repo/.gaia/local/audit/../../../.git` spells a whitelisted scratch
+        # directory and lands on `.git`. Ordering this ahead of the whitelist is what
+        # keeps the suffix match from becoming a bypass. (Relative `..` escapes stay
+        # out of reach, as the SCOPE note above says; this arm is not that claim.)
+        /*/../*|/*/..)
+          deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
+          ;;
+        # The whitelisted scratch paths, in their ABSOLUTE spelling.
+        #
+        # `.claude/rules/shell-cwd.md` mandates an absolute path on every Bash call,
+        # repo-wide, because a single `cd` persists for the rest of the session and
+        # breaks every relative-path hook. Whitelisting these directories relatively
+        # only put that rule in direct conflict with this guard: the form the rule
+        # requires is the form the arm below denies, and an agent could satisfy one
+        # or the other but never both. Both spellings are accepted now, and absolute
+        # is the authoritative one to write.
+        #
+        # Matched as a SUFFIX on the scratch segment, deliberately. Recognizing the
+        # absolute spelling of a repo-relative target otherwise means resolving the
+        # repo root, and both routes there are closed: a live `git rev-parse` is the
+        # computed state this guard is designed to do without, and a literal absolute
+        # prefix baked into a `.claude/`-distributed file would violate
+        # .claude/rules/instruction-files.md. A suffix needs neither.
+        #
+        # The widening is honest and small: it permits these scratch directories
+        # under ANY parent, not just the current repo. The relative arms already did
+        # that, since they resolve against whatever the cwd happens to be.
+        #
+        # `/?*/` requires a non-empty parent segment, so `/dist` and
+        # `/.gaia/local/audit/x` stay denied. Those are filesystem-root removals that
+        # merely share a name with project scratch, and the whitelist is about scratch
+        # inside a project.
+        /?*/.gaia/local/plans/*|/?*/.gaia/local/specs/*|/?*/.gaia/local/audit/*|/?*/.gaia/local/handoff/*|/?*/.gaia/local/cache/*|/?*/dist|/?*/dist/*|/?*/build|/?*/build/*)
+          : # whitelisted
+          ;;
         /|/*)
-          # Allow specific safe absolute prefixes, currently none whitelisted absolutely.
           deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
           ;;
         # The brace form is matched alongside the bare one. `${HOME}` is if anything

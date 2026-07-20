@@ -813,6 +813,114 @@ t'
   assert_allowed
 }
 
+# --- allowed: the ABSOLUTE spelling of a whitelisted scratch path ---
+#
+# `.claude/rules/shell-cwd.md` mandates an absolute path on every Bash call,
+# repo-wide, because a single `cd` persists for the rest of the session and breaks
+# every relative-path hook. A guard that whitelists a scratch directory in its
+# relative spelling only denies the exact form that rule requires, so an agent
+# cannot satisfy both at once. The absolute spelling is authoritative; both are
+# accepted, and these arms are what make the rule and the guard agree.
+#
+# The match is a SUFFIX on the scratch segment, never a resolved root. Computing
+# the repo root would need a live `git rev-parse`, which this guard deliberately
+# does without, and baking a literal absolute prefix into a `.claude/`-distributed
+# file would violate .claude/rules/instruction-files.md. A suffix match needs
+# neither.
+
+@test "rm -f of an absolute .gaia/local/audit path is allowed" {
+  run_hook_bash 'rm -f /Users/you/projects/my-app/.gaia/local/audit/issue-body-x.md'
+  assert_allowed
+}
+
+@test "rm -rf of an absolute .gaia/local/plans path is allowed" {
+  run_hook_bash 'rm -rf /Users/you/projects/my-app/.gaia/local/plans/x'
+  assert_allowed
+}
+
+@test "rm -rf of an absolute dist path is allowed" {
+  run_hook_bash 'rm -rf /Users/you/projects/my-app/dist'
+  assert_allowed
+}
+
+@test "rm -rf of an absolute build path is allowed" {
+  run_hook_bash 'rm -rf /Users/you/projects/my-app/build/output'
+  assert_allowed
+}
+
+# The suffix match must not reach up to a filesystem-root directory. `/dist` is a
+# top-level removal that happens to share a name with a build output, and the
+# whitelist is about scratch INSIDE a project, so a non-empty parent segment is
+# required.
+
+@test "rm -rf /dist (whitelist name at the filesystem root) is denied" {
+  run_hook_bash 'rm -rf /dist'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "rm -rf /.gaia/local/audit/x (scratch at the filesystem root) is denied" {
+  run_hook_bash 'rm -rf /.gaia/local/audit/x'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+# A `..` segment makes an absolute path resolve somewhere the spelling does not
+# name, so it can never reach the whitelist: this one spells the audit directory
+# and resolves to `.git`. Relative `..` escapes stay out of reach by design (see
+# the hook header), but an absolute one is denied today and must stay denied.
+
+@test "an absolute whitelisted path with a .. escape is denied" {
+  run_hook_bash 'rm -rf /Users/you/projects/my-app/.gaia/local/audit/../../../.git'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "rm -rf of an absolute node_modules path is denied" {
+  run_hook_bash 'rm -rf /Users/you/projects/my-app/node_modules'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+# --- a segment is judged only when IT carries a destructive flag ---
+#
+# The flag test and the target test have to apply to the same segment. The guard
+# short-circuits on a flag found anywhere in the command, then extracts and judges
+# every `rm` segment; a segment carrying no `-r`/`-f` at all therefore got judged
+# on the strength of a flag belonging to a different command entirely.
+#
+# That was never a security property. `rm /abs/path/file` on its own is allowed
+# (the guard's whole advertised scope is `rm -rf`), and it stayed allowed however
+# it was spelled, so the denial only ever fired when a harmless sibling like
+# `rm -rf dist` happened to share the invocation. Nothing was prevented that
+# dropping the sibling would not have carried straight through; the cost was
+# denying prose that quotes a non-recursive `rm`, including this repo's own
+# always-loaded shell-cwd rule.
+
+@test "an unflagged rm segment is not judged on a sibling's flag" {
+  run_hook_bash 'rm -rf dist && rm /abs/path/file'
+  assert_allowed
+}
+
+@test "a heredoc quoting shell-cwd.md's own example beside a real rm -rf is allowed" {
+  run_hook_bash 'rm -rf dist
+cat > /tmp/body.md <<EOF
+- `rm /abs/path/file`, not `cd /abs/path && rm file`
+EOF'
+  assert_allowed
+}
+
+@test "a FLAGGED sibling segment is still judged" {
+  # The narrowing is per-segment, not per-command: a second segment that carries
+  # its own -rf is a real removal and stays fully inspected.
+  run_hook_bash 'rm -rf dist && rm -rf /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "a flagged rm inside a quoted string is still denied" {
+  # The documented false-deny direction is deliberate and unchanged: a text matcher
+  # cannot tell `bash -c "rm -rf /"` from prose quoting it, and of the two failure
+  # directions the false deny is the safe one.
+  run_hook_bash 'git commit -m "fix: stop rm -rf $HOME from bypassing the guard"'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
 # --- allowed: everything the guard deliberately does not gate ---
 
 @test "rm -rf on an unknown relative path is allowed" {
