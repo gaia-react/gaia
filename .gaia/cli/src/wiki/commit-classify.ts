@@ -9,9 +9,12 @@
  * `wiki/sync.md` Step 3 and the README "Wiki primitives JSON schemas"
  * contract:
  *
- *   1. `Merge pull request`, `chore(release):`, `style:` : SKIP regardless.
- *   2. Body contains `BREAKING CHANGE` OR subject is `feat!:` (scoped or
- *      not) OR `docs(decision):` OR `chore(adr):` : WORTHY.
+ *   1. `Merge pull request`, `chore(release):`, `style:` : SKIP regardless,
+ *      ahead of rule 2's breaking marker. Both categories are mechanical, so
+ *      a `!` on them is meaningless or still plumbing.
+ *   2. Body contains `BREAKING CHANGE` OR subject carries a `!` breaking
+ *      marker on any type OR is `docs(decision[s]):` OR `chore(adr):`:
+ *      WORTHY.
  *   3. Touches `wiki/decisions/`, `wiki/concepts/`, `wiki/flows/`,
  *      `wiki/dependencies/`, or `wiki/entities/` : WORTHY.
  *   4. Touches `app/middleware/**`, `app/routes.ts`, `app/i18n.ts`, or
@@ -169,10 +172,10 @@ type SubjectPrefix = {
  * keyed that way is unreachable and the whole table silently falls through to
  * the rule 9 default. Parse the prefix once and match on its parts instead.
  */
-// `breaking` is `(?<bang>!?)` rather than an optional group so it always
-// participates and captures `''` or `'!'`, matching the release modules'
-// reading of the same grammar. `noUncheckedIndexedAccess` is off, so an
-// optional group's `undefined` is invisible to the type checker and a
+// `breaking` is written `(?<breaking>!?)` rather than as an optional group so
+// it always participates and captures `''` or `'!'`, matching the release
+// modules' reading of the same grammar. `noUncheckedIndexedAccess` is off, so
+// an optional group's `undefined` is invisible to the type checker and a
 // `!== undefined` test would be statically meaningless.
 const SUBJECT_PREFIX_PATTERN =
   /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<breaking>!?):/u;
@@ -231,15 +234,21 @@ const classifyStrongWorthy = (
 ): ClassifyDecision | undefined => {
   const {body} = commit;
 
-  if (
-    (matchesPrefix(prefix, 'feat') && prefix?.breaking) ||
-    body.includes('BREAKING CHANGE')
-  ) {
+  // `!` is a breaking marker on ANY type, matching Conventional Commits and
+  // the release bump's reading of the same grammar. Scoping this to `feat`
+  // would let `chore(cli)!:` reach rule 5 and SKIP a breaking change: the
+  // bare-prefix rules used to fail open on the `!`, and once every rule
+  // matches breaking-agnostically that accident is no longer there to help.
+  if (prefix?.breaking || body.includes('BREAKING CHANGE')) {
     return {reason: 'breaking change signal', suggestion: 'WORTHY'};
   }
 
+  // Both spellings: this repo writes `docs(decisions):`, and the singular is
+  // the older convention. Matching only one lets the generic `docs:` rule in
+  // rule 8 swallow a real ADR as prose-only.
   if (
     matchesPrefix(prefix, 'docs', 'decision') ||
+    matchesPrefix(prefix, 'docs', 'decisions') ||
     matchesPrefix(prefix, 'chore', 'adr')
   ) {
     return {reason: 'explicit ADR signal', suggestion: 'WORTHY'};

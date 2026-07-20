@@ -260,6 +260,48 @@ describe('wiki commit-classify', () => {
     expect(json.commits[0]?.suggestion_reason).toContain('breaking');
   });
 
+  // Once every rule matches breaking-agnostically, the `!` no longer breaks a
+  // prefix match by accident, so a breaking subject on a SKIP-rule type would
+  // be silently skipped unless rule 2 claims it first.
+  test.each([
+    'chore(cli)!: drop the legacy flag',
+    'refactor(components)!: rename the exported prop',
+    'fix(hooks)!: change the return shape',
+  ])('%s → WORTHY (breaking beats every SKIP rule)', (subject) => {
+    sandbox.commit(subject, {'app/components/Thing/index.tsx': 'export {};\n'});
+
+    const json = classify(sandbox);
+    expect(json.commits[0]?.suggestion).toBe('WORTHY');
+    expect(json.commits[0]?.suggestion_reason).toContain('breaking');
+  });
+
+  // Rule 1 is deliberately "SKIP regardless", ahead of the breaking signal:
+  // both its categories are mechanical, so a `!` on them is either
+  // meaningless (formatting cannot break a contract) or still just plumbing.
+  test.each(['style!: reformat everything', 'chore(release)!: 2.0.0'])(
+    '%s → SKIP (rule 1 outranks the breaking marker)',
+    (subject) => {
+      sandbox.commit(subject, {'app/foo.ts': 'export const x = 1;\n'});
+
+      const json = classify(sandbox);
+      expect(json.commits[0]?.suggestion).toBe('SKIP');
+    }
+  );
+
+  test.each(['docs(decision): adopt zod', 'docs(decisions): adopt zod'])(
+    '%s → WORTHY (ADR signal outside a wiki-heavy path)',
+    (subject) => {
+      // Deliberately outside wiki/{decisions,concepts,...}, so rule 3 cannot
+      // rescue it and the ADR rule is the only thing standing between this
+      // commit and rule 8's `docs: prose-only` SKIP.
+      sandbox.commit(subject, {'.claude/rules/zod.md': '# zod\n'});
+
+      const json = classify(sandbox);
+      expect(json.commits[0]?.suggestion).toBe('WORTHY');
+      expect(json.commits[0]?.suggestion_reason).toContain('ADR');
+    }
+  );
+
   test('scoped chore(deps): still beats the generic chore rule', () => {
     sandbox.commit('chore(deps): bump foo from 1.0.0 to 1.0.1', {
       'package.json': '{"version": "1.0.1"}\n',

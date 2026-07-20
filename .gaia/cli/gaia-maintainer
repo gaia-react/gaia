@@ -27406,10 +27406,10 @@ var classifyHardSkip = (commit2, prefix) => {
 };
 var classifyStrongWorthy = (commit2, prefix) => {
   const { body } = commit2;
-  if (matchesPrefix(prefix, "feat") && prefix?.breaking || body.includes("BREAKING CHANGE")) {
+  if (prefix?.breaking || body.includes("BREAKING CHANGE")) {
     return { reason: "breaking change signal", suggestion: "WORTHY" };
   }
-  if (matchesPrefix(prefix, "docs", "decision") || matchesPrefix(prefix, "chore", "adr")) {
+  if (matchesPrefix(prefix, "docs", "decision") || matchesPrefix(prefix, "docs", "decisions") || matchesPrefix(prefix, "chore", "adr")) {
     return { reason: "explicit ADR signal", suggestion: "WORTHY" };
   }
   return void 0;
