@@ -22311,8 +22311,10 @@ var run26 = (argv, options = {}) => {
   if (manifest === null) return UNEXPECTED_EXIT15;
   const scriptFiles = tryWalkScriptsOrReport(root);
   if (scriptFiles === null) return UNEXPECTED_EXIT15;
-  const leaks = collectLeaks(root, scriptFiles, manifest);
-  const report = { leaks, scanned_files: scriptFiles };
+  const isBareMode = parsed.flags.stagingDir === void 0;
+  const scannedFiles = isBareMode ? scriptFiles.filter((scriptPath) => manifest.has(scriptPath)) : scriptFiles;
+  const leaks = collectLeaks(root, scannedFiles, manifest);
+  const report = { leaks, scanned_files: scannedFiles };
   process.stdout.write(renderReport(report, parsed.flags.json));
   return leaks.length > 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };

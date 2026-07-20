@@ -11,9 +11,16 @@
  * Walks shipped shell scripts under `.gaia/statusline/`,
  * `.gaia/cli/templates/`, `.gaia/scripts/`, `.claude/hooks/`,
  * `.github/actions/`, `.github/audit/`, and
- * `.specify/extensions/gaia/lib/` (recursing into nested directories),
- * extracts repo-relative path
- * constants, and verifies each is either:
+ * `.specify/extensions/gaia/lib/` (recursing into nested directories) and
+ * extracts their repo-relative path constants.
+ *
+ * The scan surface depends on the mode. A bare run walks the repo root, which
+ * also holds release-excluded scripts, so it scans only the files carrying a
+ * manifest entry; that is what makes it agree with the authoritative
+ * `--staging` run. A `--staging` run scans every script in the extracted
+ * tarball unfiltered, because the tarball is the ground truth for what shipped.
+ *
+ * Each extracted path constant is verified to be either:
  *
  *   - present in `.gaia/manifest.json` (a shipped file), or
  *   - an adopter-owned sentinel (`wiki/hot.md`, `wiki/log.md`,
@@ -684,8 +691,18 @@ export const run = (
 
   if (scriptFiles === null) return UNEXPECTED_EXIT;
 
-  const leaks = collectLeaks(root, scriptFiles, manifest);
-  const report: Report = {leaks, scanned_files: scriptFiles};
+  // Bare mode's scan surface is the manifest; --staging's is the tarball it
+  // was handed. See the module docblock for why the two differ. Filtering the
+  // walk result here, rather than inside `walkScripts`, keeps the walk itself
+  // mode-agnostic and shared.
+  const isBareMode = parsed.flags.stagingDir === undefined;
+  const scannedFiles =
+    isBareMode ?
+      scriptFiles.filter((scriptPath) => manifest.has(scriptPath))
+    : scriptFiles;
+
+  const leaks = collectLeaks(root, scannedFiles, manifest);
+  const report: Report = {leaks, scanned_files: scannedFiles};
   process.stdout.write(renderReport(report, parsed.flags.json));
 
   return leaks.length > 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
