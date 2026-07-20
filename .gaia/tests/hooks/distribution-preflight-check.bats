@@ -217,6 +217,16 @@ assert_allow() {
   done
 }
 
+@test "resolves the base through a separator branch too" {
+  # The separator branch reads different capture groups than the command-start
+  # branch, and every other separator test asserts DENY, which is also what a
+  # junk tail produces. Only a positive ALLOW through a separator can tell a
+  # correct capture from an off-by-one one.
+  install_maintainer_mock
+  run_hook "echo hi && gh pr create --base develop --title x"
+  assert_allow
+}
+
 @test "accepts a quoted base ref" {
   install_maintainer_mock
   run_hook 'gh pr create --base "develop" --title x'
