@@ -202,13 +202,14 @@ assert_allow() {
   assert_deny
 }
 
-@test "resolves --base, -B, --base= and -B= identically" {
+@test "resolves every pflag base form identically" {
   # Each form must resolve develop, whose changed set excludes shipped.txt and
   # therefore ALLOWS. A hook that fails to parse the form falls back to main
-  # and denies, so this fails against the space-only pattern.
+  # and denies, so this fails against the space-only pattern. `-Bdevelop` is
+  # pflag's no-separator shorthand and is only legal on the single-letter alias.
   install_maintainer_mock
   local form
-  for form in '--base develop' '-B develop' '--base=develop' '-B=develop'; do
+  for form in '--base develop' '-B develop' '--base=develop' '-B=develop' '-Bdevelop'; do
     run_hook "gh pr create ${form} --title x"
     [ "$status" -eq 0 ]
     grep -qF -- 'deny' <<<"$output" && return 1

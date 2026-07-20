@@ -130,23 +130,32 @@ deny() {
 # Resolve the base ref the PR would target: an explicit --base/-B on the command
 # line wins, otherwise the repo's default branch, otherwise main. Prefer the
 # remote-tracking ref so the comparison matches what CI will see.
-# The flag must sit at a word boundary, and `gh` is a cobra CLI so `--base=X` is
-# as valid as `--base X`. A space-only pattern misses `--base=X` entirely and
-# resolves the base to the default branch instead, which yields the wrong
-# changed set at the diff below.
+# The flag must sit at a word boundary, and `gh` is a pflag CLI, so all three
+# shorthand forms are valid: `--base X`, `--base=X`, and for the single-letter
+# alias also `-BX` with no separator at all. Two patterns rather than one,
+# because the empty separator is only safe on the `-B` branch: allowing it on
+# `--base` would make `--base-ref` match with `-ref` as the captured value.
 #
 # KNOWN RESIDUAL, accepted: this is a regex over the whole command string, not
 # an argument parse, so a literal `--base <ref>` written inside `--body` prose
 # still matches. Word-boundary anchoring does not help there, the body text has
 # a space in front of the flag like a real argument does. Accepted because the
-# gate is fail-open and advisory: the worst case is a spurious deny whose
-# message names the exact remedy, never a wrong answer written anywhere. A real
-# fix needs argument parsing, which is disproportionate here. CI does not share
-# the problem; it reads the base from the pull_request event payload.
-base_re='(^|[[:space:]])(--base|-B)([[:space:]]+|=)([^[:space:]]+)'
+# gate is fail-open and advisory, and CI is the authority that catches what this
+# misses. Be precise about the direction of that failure: a wrong base can
+# under-report as easily as over-report. Resolving a narrower base than the real
+# one shrinks the three-dot changed set and can miss a genuine offender, so the
+# realistic worst case is a spurious allow, not only a spurious deny. What the
+# residual cannot do is write a wrong answer anywhere; the hook never records a
+# decision, it only declines to raise one.
+base_long_re='(^|[[:space:]])--base([[:space:]]+|=)([^[:space:]]+)'
+base_short_re='(^|[[:space:]])-B[[:space:]]*=?[[:space:]]*([^[:space:]]+)'
 base_ref=""
-if [[ "$cmd" =~ $base_re ]]; then
-  base_ref="${BASH_REMATCH[4]}"
+if [[ "$cmd" =~ $base_long_re ]]; then
+  base_ref="${BASH_REMATCH[3]}"
+elif [[ "$cmd" =~ $base_short_re ]]; then
+  base_ref="${BASH_REMATCH[2]}"
+fi
+if [ -n "$base_ref" ]; then
   # `--base "release/2.0"` captures the quotes literally; git would not resolve
   # them. Strip one balanced surrounding pair of either kind.
   base_ref="${base_ref%\"}"
