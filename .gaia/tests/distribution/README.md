@@ -31,6 +31,10 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 ├── 09-exclude-parser-parity.sh     # release-exclude parser parity with the CI filter
 ├── 10-gaia-scaffold-templates.sh   # Adopter-flow regression: gaia scaffold component/hook/route/service
 ├── 11-gaia-setup-cli-flow.sh       # Adopter-flow regression: gaia setup mark-step/status/finalize/link-worktree
+├── 12-gaia-ping-events.sh          # Adopter-flow regression: gaia ping init/setup/update (suppressed; no network)
+├── 13-gaia-update-merge-workspace.sh  # Adopter-flow regression: gaia update merge-workspace verdict oracle
+├── 14-gaia-update-deps.sh          # Adopter-flow regression: gaia update-deps decline (deterministic) + run/dispatch
+├── 15-file-tech-debt-scrubbed.sh   # Marker-strip SEMANTIC: file-tech-debt survives the scrub (Layer 2, advisory probe)
 └── diagnostic/
     └── claude-auth-in-docker.md
 ```
@@ -74,6 +78,14 @@ What it covers: image build, claude binary on PATH inside the container, OAuth a
 
 Skips automatically if Docker is unavailable OR `CLAUDE_CODE_OAUTH_TOKEN` is unset, so contributors without auth can still run Layers 0 + 1 via `run-all.sh`. Both skips report as soft PASS.
 
+### Marker-strip semantic coverage (`15-file-tech-debt-scrubbed.sh`)
+
+`03-marker-strip.sh` proves the `gaia:maintainer-only` blocks are gone **structurally** (no fragments survive, every marker-bearing file shrank, none to zero bytes). It does not prove a load-bearing *step* did not sit inside a stripped block. `15-file-tech-debt-scrubbed.sh` closes that **semantic** gap for the sharpest case: `file-tech-debt` is an adopter-facing recipe an agent follows literally and it carries a marker block. (`/gaia-wiki lint` is not a candidate: its staged skill files carry zero markers, so scrubbed == unscrubbed there.)
+
+It has two parts. Part 1 is deterministic, side-effect-free, and **gating**, and runs in every lane including the PR gate: on the scrubbed skill it asserts the maintainer-only block is gone AND that the load-bearing adopter steps (dedup-key format, the dedup check, the skip-if-match decision, the file path) survived. A future scrub that over-strips fails here at PR time. Part 2 is an **advisory** model probe gated behind the same Docker + `CLAUDE_CODE_OAUTH_TOKEN` guards as `06`: it drives `claude --print` against the scrubbed tree to reproduce the dedup key from the scrubbed prose and logs whether it succeeded. Like the `wiki-sync` scenarios it depends on free-form model output, so it never sets the exit code; only part 1 gates.
+
+No external side effects are possible: the probe prompt answers from the skill text and stops before any `gh` call, the Layer-2 image has no `gh` binary and no GitHub auth, and the staged tree is bind-mounted read-only.
+
 ### Adopter-flow regressions (`07-`+)
 
 `06-claude-runs-staged.sh` proves the harness wiring (Docker, OAuth auth, claude binary on PATH), but does NOT prove any GAIA-specific flow works in the shipped tarball. Adopter-flow scenarios fill that gap by running the bundled `.gaia/cli/gaia` binary directly against a writable copy of the staged tree.
@@ -86,7 +98,15 @@ Skips automatically if Docker is unavailable OR `CLAUDE_CODE_OAUTH_TOKEN` is uns
 
 `11-gaia-setup-cli-flow.sh` runs the `gaia setup` subcommand family (`mark-step` → `status` → `finalize` → `link-worktree`), the CLI primitives behind `/setup-gaia`, and asserts the JSON contract at each stage (pending step counts, `complete`/`completed_at`, and the main-checkout `link-worktree` no-op shape). `gaia setup` has no shipped-template dependency, so its risk class differs from the other adopter-flow scenarios: it proves the real bundled binary's logic still behaves correctly against a scrubbed, staged tree, not just against source (already covered by `setup.test.ts`). `gaia setup-ci` is out of scope: its subcommands shell out to `gh` and the network, which this self-contained harness does not exercise.
 
-Future adopter-flow scenarios cover the `--strip true` removal path, `gaia setup-ci`, `gaia sandbox`, `gaia ping`, `gaia wiki`, and `gaia update` / `gaia update-deps`.
+`12-gaia-ping-events.sh` runs `gaia ping` for all three events (`init` / `setup` / `update`) plus the arg-parse-error and help paths against the bundled binary. `gaia ping` is the shared adoption-ping entry the `/gaia-init`, `/setup-gaia`, and `/update-gaia` skills fire and had zero bundled-binary coverage before. Every call sets `GAIA_TELEMETRY_PING_DISABLE=1` (the documented suppression switch), so `postPing` returns before any read or socket open: no network, self-contained.
+
+`13-gaia-update-merge-workspace.sh` runs `gaia update merge-workspace`, the field-aware `pnpm-workspace.yaml` verdict oracle `/update-gaia` invokes, against a deterministic three-file fixture and asserts the JSON verdict (`applied`/`conflicts`/`suggestions`). `update` is on every adopter's upgrade path, so a bundling defect there (e.g. a tree-shaken `js-yaml`) is maximally load-bearing; the oracle is read-only, so no scaffold copy is needed.
+
+`14-gaia-update-deps.sh` covers `gaia update-deps`. The deterministic post-condition is `decline` (reads a synthetic emitted-updates payload, writes only the gitignored `.gaia/local/declined-updates.json` in a throwaway scaffold, no network); `run --emit-updates` is exercised only at the arg-parse/dispatch level, because its success path shells out to `pnpm outdated` / `pnpm view` against the registry and is network-dependent.
+
+`15-file-tech-debt-scrubbed.sh` is the marker-strip **semantic** scenario (see Layer 2 below).
+
+Future adopter-flow scenarios cover the `--strip true` removal path, `gaia setup-ci`, `gaia sandbox`, and `gaia wiki`.
 
 #### Local setup for maintainers
 
@@ -118,10 +138,11 @@ CI runners are ephemeral, so no cleanup is required there.
 
 #### CI
 
-Two entry points, both consuming `CLAUDE_CODE_OAUTH_TOKEN` from GAIA's GitHub organization secrets:
+Three entry points:
 
-- **Pre-publish gate inside `release.yml`.** The tag-triggered release workflow runs `bash .gaia/tests/distribution/run-all.sh` after the staging + scrub + runtime-deps phases and before the tarball is built. If any scenario fails the release halts; the tarball never builds and `gh release create` never runs, so a broken release cannot publish. This is the production gate.
-- **Manual `distribution.yml`.** `workflow_dispatch` only; used to run the harness on a feature branch (no tag) for ad-hoc verification of harness changes themselves. Never `pull_request_target` (that trigger would expose the secret to fork PRs).
+- **PR gate inside `cli-tests.yml` (`Distribution harness (no-Docker)` job).** Runs `bash .gaia/tests/distribution/run-all.sh` on every `pull_request`, path-filtered to `.gaia/cli/**`, `.gaia/release-exclude`, `.gaia/release-scrub.yml`, and the harness itself. It passes NO `CLAUDE_CODE_OAUTH_TOKEN`, so the Docker/secret-dependent scenarios (`06` and `15`'s advisory probe) soft-pass-skip: the required lane is Layers 0+1 plus the adopter-flow regressions (`07`+) and the deterministic marker-strip survival check. This catches a bundle-breaking change (a leak, a marker-strip regression, manifest drift) at PR review instead of only at release. The job always runs and reports green when the filter does not match, so it is branch-protection-safe; it is deliberately NOT a declared-required context (see `.gaia/scripts/verify-required-checks.sh`), matching the sibling `cli-tests` Vitest job.
+- **Pre-publish gate inside `release.yml`.** The tag-triggered release workflow runs `bash .gaia/tests/distribution/run-all.sh` after the staging + scrub + runtime-deps phases and before the tarball is built, with the org `CLAUDE_CODE_OAUTH_TOKEN` so the Layer-2 scenarios run for real. If any scenario fails the release halts; the tarball never builds and `gh release create` never runs, so a broken release cannot publish. This is the production gate.
+- **Manual `distribution.yml`.** `workflow_dispatch` only, with the org secret; used to run the full Layers 0+1+2 harness on a feature branch (no tag) for ad-hoc verification of harness changes themselves. Never `pull_request_target` (that trigger would expose the secret to fork PRs).
 
 ## Claude auth status
 

@@ -69,16 +69,28 @@ fi
 
 rsync -a --files-from="$INCLUDE" "$PROJECT_ROOT/" "$OUTPUT_DIR/"
 
-# Phase 2; Scrub. Same invocation as release.yml line 82.
-"$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub "$OUTPUT_DIR"
-
-# Phase 2.5; Scrub-wiki. Resets wiki/hot.md and wiki/log.md to release-
+# Phase 2; Scrub-wiki. Resets wiki/hot.md and wiki/log.md to release-
 # baseline state. release.yml does NOT do this; it runs in the local
 # `/gaia-release` runbook BEFORE the release PR is merged. We replicate
 # it against the staging tree so the harness mirrors what an adopter
 # receives in a published tarball, regardless of which source-commit
 # state we built from.
+#
+# This MUST precede the scrub leak-check below. The scrub's
+# `maintainer-audit-members` / `monorepo-prefix` leak checks scan
+# `wiki/**`, and a mid-development `wiki/log.md` carries sync-log entries
+# that name maintainer-only surfaces (`code-audit-maintainer-*`, sibling
+# `studio/` / `website/` paths). At a release tag those sentinels are
+# already baseline (the runbook reset them pre-tag), so release.yml's
+# leak-check never sees them; on an arbitrary branch they are still live.
+# Resetting first lets the leak-check see the same adopter-shaped tree the
+# tarball ships, so the harness is green on any branch instead of tripping
+# on log content the adopter never receives.
 ( cd "$OUTPUT_DIR" && "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub-wiki )
 
-# Phase 3; Runtime-deps. Same invocation as release.yml line 87.
+# Phase 3; Scrub. Same invocation as release.yml line 82. Runs after
+# scrub-wiki so the leak-check scans the reset log.md/hot.md (see above).
+"$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub "$OUTPUT_DIR"
+
+# Phase 4; Runtime-deps. Same invocation as release.yml line 87.
 "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release runtime-deps --staging "$OUTPUT_DIR"

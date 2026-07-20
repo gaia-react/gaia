@@ -74,3 +74,70 @@ jobs:
             echo "::error::.gaia/cli/gaia-maintainer is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
             exit 1
           fi
+
+  # PR-gated distribution harness. Before this job, the harness (run-all.sh,
+  # its scenarios, lib/) ran only at tag-push (release.yml) and manual
+  # workflow_dispatch (distribution.yml), so a change to the CLI bundle, the
+  # release-exclude set, or the scrub config that breaks the adopter tarball (a
+  # leak, a marker-strip regression, manifest drift) shipped through PR review
+  # and was caught only at release, when the fix is far more expensive.
+  #
+  # This runs Layers 0+1 plus the adopter-flow regressions (07+) and the
+  # deterministic marker-strip survival check. It passes NO
+  # CLAUDE_CODE_OAUTH_TOKEN, so the Docker/secret-dependent scenarios (06, and
+  # 15's advisory model probe) soft-pass-skip via their own guards; the full
+  # Layers 0+1+2 run stays with release.yml and distribution.yml, which have the
+  # org secret. Not a declared-required context (see verify-required-checks.sh);
+  # like the sibling cli-tests job it always runs and reports green when the
+  # filter does not match, so it is branch-protection-safe without ever
+  # forcing a merge block from a maintainer-only surface adopters cannot see.
+  distribution-harness:
+    name: Distribution harness (no-Docker)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      # PRs that touch neither the bundle inputs nor the harness report this
+      # check green without installing or running anything.
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            code:
+              - '.gaia/cli/**'
+              - '.gaia/release-exclude'
+              - '.gaia/release-scrub.yml'
+              # The harness itself: a scenario, lib, or runner edit must re-run.
+              - '.gaia/tests/distribution/**'
+              - '.github/workflows/cli-tests.yml'
+      - if: steps.filter.outputs.code == 'true'
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+      - if: steps.filter.outputs.code == 'true'
+        name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+          # Scenarios 04/05 run `pnpm install` against the extracted staging
+          # tree, which resolves the root lockfile; warm the pnpm store on it.
+          cache-dependency-path: 'pnpm-lock.yaml'
+      # The harness shells out to the COMMITTED bundled binaries directly
+      # (build-staging.sh needs gaia-maintainer; the scenarios need gaia); it
+      # does not `pnpm -C .gaia/cli install`. Freshness of those binaries vs.
+      # src is the sibling cli-tests job's concern; here we test the committed
+      # bundle as-is, which is what the release tarball ships.
+      - if: steps.filter.outputs.code == 'true'
+        name: Verify committed CLI binaries are present
+        run: |
+          for bin in .gaia/cli/gaia .gaia/cli/gaia-maintainer; do
+            if [ ! -x "$bin" ]; then
+              echo "::error::$bin missing or not executable. Maintainer must commit the bundled binary." >&2
+              exit 1
+            fi
+          done
+      - if: steps.filter.outputs.code == 'true'
+        name: Run distribution scenarios (Layers 0+1 + adopter-flow; no token)
+        # Intentionally no CLAUDE_CODE_OAUTH_TOKEN: keeps the Docker/secret
+        # scenarios out of the required PR lane (they self-skip as soft PASS).
+        run: bash .gaia/tests/distribution/run-all.sh
