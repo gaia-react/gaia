@@ -485,6 +485,40 @@ describe('wiki commit-classify', () => {
       expect(commits[1]?.suggestion_reason).toContain('inventory');
     });
 
+    // An empty `sourcePaths` matches no file at all, so every source commit
+    // would land on rule 7's fail-open tail: the exact inertness this module
+    // exists to prevent, reachable through the config surface and invisible
+    // below the health signal's minimum sample. It must be rejected loudly
+    // rather than accepted as "match nothing".
+    test('an empty sourcePaths is rejected, not honored as match-nothing', () => {
+      sandbox.commit('chore: configure', {
+        'package.json': withConfig({sourcePaths: []}),
+      });
+      sandbox.commit('fix(cli): repair the parser', {
+        'app/foo.ts': 'export const x = 1;\n',
+      });
+
+      const {commits, health} = classify(sandbox);
+      expect(commits[1]?.suggestion_reason).toContain('source-bearing');
+      expect(health.deferred).toBe(0);
+      expect(stdio.errors.join('')).toContain('malformed gaia.wikiClassify');
+    });
+
+    // The other two lists have legitimate empty forms: `testPaths: []` is the
+    // shipped default, and `inventoryPaths: []` turns the inventory skip off.
+    test('an empty inventoryPaths is honored, disabling the inventory skip', () => {
+      sandbox.commit('chore: configure', {
+        'package.json': withConfig({inventoryPaths: []}),
+      });
+      sandbox.commit('feat: add Button variant', {
+        'app/components/Button/index.tsx': 'export const Button = null;\n',
+      });
+
+      const {commits} = classify(sandbox);
+      expect(commits[1]?.suggestion_reason).toContain('source-bearing');
+      expect(stdio.errors.join('')).toBe('');
+    });
+
     // Adopters get today's behavior with no config, and a malformed config
     // must degrade to it rather than fail a sync: this is a cheap pre-filter
     // ahead of an expensive read, not a correctness gate.

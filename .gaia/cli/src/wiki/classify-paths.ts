@@ -57,9 +57,21 @@ const DEFAULT_CLASSIFY_PATHS: ClassifyPaths = {
 
 const PathListSchema = z.array(z.string().min(1));
 
+// `sourcePaths` alone must be non-empty. Omitting the key falls back to the
+// default, but setting it to `[]` would match no file at all, so every source
+// commit would land on rule 7's fail-open tail: the exact inertness this
+// module exists to prevent, reachable through the config surface and silent
+// below the health signal's minimum sample. Rejecting it here falls back to
+// the defaults and says so on stderr.
+//
+// Deliberately not applied to the other two: `testPaths: []` is the shipped
+// default, and `inventoryPaths: []` is a legitimate way to turn the inventory
+// skip off.
+const SourcePathListSchema = PathListSchema.min(1);
+
 const WikiClassifySchema = z.object({
   inventoryPaths: PathListSchema.optional(),
-  sourcePaths: PathListSchema.optional(),
+  sourcePaths: SourcePathListSchema.optional(),
   testPaths: PathListSchema.optional(),
 });
 

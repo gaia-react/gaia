@@ -21,7 +21,7 @@
         ".gaia/statusline/",
         "app/"
       ],
-      "testPaths": [".gaia/tests/"]
+      "testPaths": [".gaia/tests/", ".gaia/scripts/tests/"]
     }
   },
   "bin": {
