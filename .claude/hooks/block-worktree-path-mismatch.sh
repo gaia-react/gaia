@@ -73,9 +73,11 @@ resolved_target_dir="$(CDPATH='' cd "$target_dir" 2>/dev/null && pwd -P)" || exi
 [[ -n "$resolved_target_dir" ]] || exit 0
 
 # The symlinked shared-state dirs are exempt. link-worktree.sh symlinks exactly
-# five paths out of every linked worktree and into the main checkout so that
-# state is shared rather than forked: setup-state.json, cache/shared, audit,
-# telemetry, and debt. `git -C` resolves a symlink before computing
+# five paths under .gaia/local/ out of every linked worktree and into the main
+# checkout so that state is shared rather than forked: setup-state.json,
+# cache/shared, audit, telemetry, and debt. (It also symlinks gitignored
+# checkout-root .env files, which need no arm here: their target_dir is the
+# worktree root, so the main-checkout test below allows them.) `git -C` resolves a symlink before computing
 # --show-toplevel, so a write to the worktree's own .gaia/local/audit/ reports
 # the MAIN checkout as its toplevel and reads as a wrong-checkout write. That is
 # the intended write, so the four symlinked DIRS are exempt.
