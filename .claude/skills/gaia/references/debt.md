@@ -51,7 +51,7 @@ This reconcile runs only in `fix`, never in `list`/`why`: it writes (it can stri
 Read the current claims with a self-contained pre-pass query:
 
 ```bash
-gh issue list --label tech-debt --state open --json number,labels,updatedAt
+gh issue list --label tech-debt --state open --limit 1000 --json number,labels,updatedAt
 ```
 
 This query is self-contained: it runs before the backlog read below, so it does not consume that read's data, and it fetches `updatedAt`, which the backlog read's own `--json` set does not. For each returned issue carrying `debt:in-progress`, apply this liveness rule: the claim is **live** if (a) a `debt/…` branch names it (`git branch --list 'debt/*'`; the segment before a `-batch` suffix is dash-joined integers → those are all its members, else the leading integer after `debt/` is the member, so a batch branch names every member), OR (b) an open PR body contains `Closes #<n>` (`gh pr list`), OR (c) the issue's `updatedAt` is within roughly the last 30 minutes. Otherwise the claim is stale: strip it (`gh issue edit <n> --remove-label debt:in-progress`, best-effort) and touch the sentinel (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`).
@@ -61,15 +61,19 @@ The age grace exists because the claim lands *first*, before any branch is cut (
 This reconcile queries and strips only `debt:in-progress`. `debt:spec-pending` is a distinct, durable label parking a handed-off spec-class issue (see `## Fix-time spec screen`); this reconcile never iterates it and never strips it, spared by construction.
 
 ```bash
-gh issue list --label tech-debt --state open \
+gh issue list --label tech-debt --state open --limit 1000 \
   --json number,title,labels,createdAt,body \
   --jq '
     map({
-      number, title, createdAt,
+      number, title, createdAt, body,
+      labels: [.labels[].name],
       sev: ([.labels[].name]
             | if   index("severity:critical")  then 3
               elif index("severity:important") then 2
-              else 1 end)
+              else 1 end),
+      key: (((.body | capture("<!-- gaia-debt-key: v1 class=(?<class>[^ ]+) path=(?<path>[^ ]+) line=(?<line>[0-9]+) -->")) // null)
+            | if . then (.line |= tonumber) else . end),
+      handler: ((.body | capture("(?m)^Handler:[ ]+(?<h>[a-z]+)") | .h) // null)
     })
     | sort_by([(-.sev), .createdAt])
   '
@@ -79,12 +83,13 @@ How the sort works, and why it is deterministic:
 
 - **Severity descending.** Each issue's one severity label maps to a rank: `severity:critical → 3`, `severity:important → 2`, `severity:suggestion → 1`. An issue with **no** severity label falls through the `else` branch to rank `1`, the **suggestion** band, so a human-filed fieldless issue is a valid candidate and sorts with the suggestions.
 - **`createdAt` ascending within a band.** `sort_by([(-.sev), .createdAt])` sorts by negated rank first (highest severity first) then by `createdAt`. `gh` returns `createdAt` as a `Z`-normalized RFC 3339 string, so a lexicographic ascending sort is chronological ascending: of two equal-severity issues, the **older** one sorts first (FIFO within the band).
+- **Every issue also carries `body`, `labels`, `key`, and `handler`.** `labels` is the label name list; `body` is the raw issue body, populated unconditionally; `key` is the parsed dedup key (`class`, `path`, an integer `line`) or `null` when absent or malformed; `handler` is the parsed `Handler:` value (`prompt` | `plan` | `spec`) or `null` when the issue carries no `Handler:` line. These four ride the sort but play no part in it; the passes below read them.
 
 The entire ordering is this one `--jq` expression over fields GitHub returns. There is no judgment step, so `list`, `why`, and `fix` all agree on the order and anyone can reproduce it by re-running the command.
 
 After the sort, run a second deterministic pass that clusters the ordered backlog into related groups. No model call ranks or clusters the backlog: clustering is a pure function of parsed fields, exactly like the sort. It never changes the sort order, it only groups issues within it, so `list`, `why`, and `fix` all agree on the clusters too. The clustering **function** is identical across all three; only `fix`'s **input** differs, because it filters in-progress issues out of the backlog before clustering (below), so its offered clusters can legitimately differ from what `list`/`why` display over the unfiltered backlog.
 
-Parse each issue's dedup key from its `body`, the `<!-- gaia-debt-key: v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer> -->` comment defined by `.claude/skills/file-tech-debt/SKILL.md` step 1, into `class` and `path`. A keyless human-filed issue falls back to the same `<path>:<line>` body scan `file-tech-debt/SKILL.md` step 2.3 uses to recover a `path`; if no path is parseable at all, the issue does not cluster and stands alone.
+Each issue's dedup key, the `<!-- gaia-debt-key: v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer> -->` comment defined by `.claude/skills/file-tech-debt/SKILL.md` step 1, arrives pre-parsed as the emitted `key` object; read its `class` and `path` directly. `key` is `null` both when the issue carries no key comment and when the comment is malformed, and in either case the fallback is the same: scan the emitted `body` for the bare `<path>:<line>` pattern `file-tech-debt/SKILL.md` step 2.3 uses to recover a `path` (a keyless human-filed issue takes this path too, since `body` is always populated). If no path is parseable at all, the issue does not cluster and stands alone.
 
 Two issues belong to the same cluster when either holds, strongest signal first:
 
@@ -139,8 +144,8 @@ Recommend and present (fix)" defines below (one read, never a second prompt):
 - **Singleton (no cluster), security-class on a non-PRIVATE repo, or
   spec-class (any repo)** → no prompt: proceed straight to fixing `#<N>`
   alone, the same nothing-to-decide rule "## Recommend and present (fix)"
-  applies to a lone remaining candidate. A spec-class `#<N>` (from its body
-  `Handler: spec` line) is never anchored or batched, mirroring the
+  applies to a lone remaining candidate. A spec-class `#<N>` (emitted `handler`
+  equal to `"spec"`) is never anchored or batched, mirroring the
   security-class singleton rule. The Fix-time security screen below still
   screens and, if needed, diverts a security-class `#<N>` exactly as it would
   for any other selected issue, and it still proceeds to "## Claim the fix
@@ -154,9 +159,9 @@ the same way "## Recommend and present (fix)" does.
 
 Skipped when "## Fix a specific issue (direct-number path)" above already resolved the pick; runs otherwise. The top candidate is the first in the sorted list. Before building the prompt, resolve which cluster, if any, anchors the recommendation.
 
-**Offer-time security read.** Clustering itself is security-blind, but a security-class issue can never share a public `Closes #N` PR, so the offer is not. Before presenting, read repo visibility once: `gh repo view --json visibility`. On a **confirmed-PRIVATE** repo every cluster is public-batch-eligible as-is. On any **non-PRIVATE** repo, apply the same fail-safe security classification the Fix-time security screen (below) defines to every candidate issue in the backlog, and treat any security-class issue as not public-batch-eligible: it never appears inside a batch option, only as its own single candidate. Reuse this one read for the Fix-time security screen after selection; it never becomes a second prompt.
+**Offer-time security read.** Clustering itself is security-blind, but a security-class issue can never share a public `Closes #N` PR, so the offer is not. Before presenting, read repo visibility once: `gh repo view --json visibility`. On a **confirmed-PRIVATE** repo every cluster is public-batch-eligible as-is. On any **non-PRIVATE** repo, apply the same fail-safe security classification the Fix-time security screen (below) defines, reading each candidate's content from the emitted `body`, to every candidate issue in the backlog, and treat any security-class issue as not public-batch-eligible: it never appears inside a batch option, only as its own single candidate. Reuse this one read for the Fix-time security screen after selection; it never becomes a second prompt.
 
-**Offer-time spec read.** Detect each remaining candidate's `Handler: spec` line from its `body` (already fetched). Unlike the security read, this check is **unconditional**: no `gh repo view --json visibility` gate, because repo visibility has no bearing on whether a fix needs a SPEC. A spec-class issue is withheld from every batch option, on every repo, and offered only as its own single candidate. A single spec-class member never forces its batch to a SPEC handoff; its `prompt`/`plan` siblings still batch normally by the max-over-members rule.
+**Offer-time spec read.** Detect each remaining candidate's spec routing from the emitted `handler` field, spec-class when it equals `"spec"`. A keyless or handler-less issue emits `handler: null`, which is not spec-class, the same treatment a fieldless human-filed issue gets today. Unlike the security read, this check is **unconditional**: no `gh repo view --json visibility` gate, because repo visibility has no bearing on whether a fix needs a SPEC. A spec-class issue is withheld from every batch option, on every repo, and offered only as its own single candidate. A single spec-class member never forces its batch to a SPEC handoff; its `prompt`/`plan` siblings still batch normally by the max-over-members rule.
 
 The **recommended batch**, when one exists, is the top cluster all of whose members are public-batch-eligible: normally the cluster containing the top-ranked candidate, but a security-class top candidate is never public-batch-eligible on a non-PRIVATE repo, and a spec-class top candidate is never batch-eligible on any repo, so either anchors no batch and is offered only as its own single candidate. An eligible batch may span severities, a `severity:suggestion` in the same file as a `severity:important` is a cheap add-on.
 
@@ -213,7 +218,7 @@ Because the claim happens here, before the security screen below, any member tha
 
 ## Fix-time security screen
 
-Before opening any fix PR, screen **every member of the selected fix unit** (a single issue, or every issue in a confirmed batch). Apply the fail-safe security classification `.claude/agents/code-audit-frontend.md` (section B) defines, screening each member's **content**, machine-filed or human-filed: an issue is security-class if its content reads as a security concern (an exploitable weakness), it was a Critical, or it is secret-shaped. When in doubt, treat it as security-class.
+Before opening any fix PR, screen **every member of the selected fix unit** (a single issue, or every issue in a confirmed batch). Apply the fail-safe security classification `.claude/agents/code-audit-frontend.md` (section B) defines, screening each member's **content**, read from the emitted `body`, machine-filed or human-filed: an issue is security-class if its content reads as a security concern (an exploitable weakness), it was a Critical, or it is secret-shaped. When in doubt, treat it as security-class.
 
 **The screen reads content, never the dedup key's `class=` field.** `holistic/unclassified` is the expected class for most out-of-scope findings, not a security signal, so it is not a trigger; the agent definition's section B is the single source for that rule and this screen never restates a stricter one. A screen keyed on `class=holistic/unclassified` would peel the entire backlog on a public repo and leave `/gaia-debt` permanently unable to fix anything.
 
@@ -222,7 +227,7 @@ This screen is a backstop for exactly two cases: a **human-filed** issue that is
 Re-read `gh repo view --json visibility` immediately before acting (a repo can flip from PRIVATE to PUBLIC), reusing the offer-time read above when it already ran; do not add a second prompt:
 
 - **confirmed PRIVATE** → no member peels. The whole unit, single or batch, fixes as one private PR; fixing proceeds normally.
-- **PUBLIC or INTERNAL** → any member that screens security-class is **peeled** from the unit and **diverted individually**: surface a count-only pointer to the operator and wait; never auto-disclose, never auto-draft an advisory, never open a public fix PR for it. Strip its claim (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel so it re-enters the open count and a peer session's offer. The remaining non-security members proceed as the (possibly smaller) unit, keeping their claims. If every member peels, there is nothing left to open a public PR for: strip every member's claim the same way, report the diverts, and stop. (Run ends here; see `## Cost record (run end)`.) The label name is generic and non-disclosing, and security-class issues only exist in the backlog on confirmed-PRIVATE repos, so a brief label is not a disclosure concern. On a public repo, opening a `Closes #N` PR for a security issue completes a coordinated-disclosure failure, which this screen exists to prevent.
+- **PUBLIC or INTERNAL** → any member that screens security-class is **peeled** from the unit and **diverted individually**: surface a count-only pointer to the operator and wait; never auto-disclose, never auto-draft an advisory, never open a public fix PR for it. Strip its claim (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel so it re-enters the open count and a peer session's offer. The remaining non-security members proceed as the (possibly smaller) unit, keeping their claims. If every member peels, there is nothing left to open a public PR for: strip every member's claim the same way, report the diverts, and stop. (Run ends here; see `## Cost record (run end)`.) The label name is generic and non-disclosing, and machine-filed security-class issues only exist in the backlog on confirmed-PRIVATE repos, so a brief label is not a disclosure concern. On a public repo, opening a `Closes #N` PR for a security issue completes a coordinated-disclosure failure, which this screen exists to prevent.
 
 This member-level screen is the **backstop** to the offer-time exclusion in "Recommend and present" above: on a non-PRIVATE repo a security-class issue is already withheld from the offered batch, so this screen mainly guarantees the invariant for a member reached via **Other**.
 
@@ -274,7 +279,7 @@ The reference owns the decision order, the prompt, and the worktree-creation cal
 
 The **fix unit** is the selected (non-diverted) member set: a single issue, or every surviving member of a confirmed batch after the security screen above peels any security-class member. It is still **one fix unit per invocation**.
 
-1. **Confirm the handler class for the unit.** Each member issue carries an advisory `Handler: prompt`, `Handler: plan`, or `Handler: spec`, or, for a fieldless human-filed issue, no line at all; the full vocabulary is three-valued (`prompt` | `plan` | `spec`). The **spec-versus-implement** determination is owned by the Fix-time spec screen above, before isolation: by the time this step runs, every surviving member is `prompt`/`plan` (a spec-class member was either downgraded and kept, or peeled and handed off there). This step grades **prompt-versus-plan** the same way as today: `prompt` when confined to one file with no public-contract change and no cross-module ripple, `plan` otherwise. The unit's effective class is the **maximum** over members: `plan` if any member is `plan` (or any fix is cross-module / contract-changing), else `prompt`. A multi-issue batch is usually `plan`. State the honest class before implementing so the human knows the scope, exactly as today's single-issue rule does.
+1. **Confirm the handler class for the unit.** Each member issue's emitted `handler` field carries an advisory `prompt`, `plan`, or `spec`, or, for a fieldless human-filed issue, `null`; the full vocabulary is three-valued (`prompt` | `plan` | `spec`). The **spec-versus-implement** determination is owned by the Fix-time spec screen above, before isolation: by the time this step runs, every surviving member is `prompt`/`plan` (a spec-class member was either downgraded and kept, or peeled and handed off there). This step grades **prompt-versus-plan** the same way as today: `prompt` when confined to one file with no public-contract change and no cross-module ripple, `plan` otherwise. The unit's effective class is the **maximum** over members: `plan` if any member is `plan` (or any fix is cross-module / contract-changing), else `prompt`. A multi-issue batch is usually `plan`. State the honest class before implementing so the human knows the scope, exactly as today's single-issue rule does.
 2. **The unit is already isolated.** `## Pre-flight isolation (branch vs worktree)` above already cut the branch or created the worktree before this step, on the frozen name (`debt/<issue-number>-<slug>` single, `debt/<members-joined-by-dash>-batch` batch). This step does no branch creation of its own.
 3. **Implement all fixes in the unit** on the one branch, following the project's normal conventions (TDD, surgical changes).
 4. **Run the Quality Gate** (`.claude/rules/quality-gate.md`) once for the combined diff, then commit and push.
@@ -346,11 +351,11 @@ Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWork
 
 ## list subcommand
 
-Run the ordering command above, then the clustering pass, and print the backlog in sorted order: per issue, the number, title, severity band, age, cluster membership when it has any (e.g. `[batches with #B #C: same file app/foo/index.ts]`), `[in progress]` when the issue carries `debt:in-progress`, `[needs spec]` when its body carries a `Handler: spec` line and it does not carry `debt:spec-pending`, and `[spec pending]` when it carries `debt:spec-pending`. The two spec annotations key on distinct signals, the body line versus the label, so an un-drained spec-class issue is never conflated with a handed-off one. `list` shows every open issue, including in-progress and spec-pending ones: it does not exclude them and it does not reconcile stale claims. Author nothing and prompt for nothing.
+Run the ordering command above, then the clustering pass, and print the backlog in sorted order: per issue, the number, title, severity band, age, cluster membership when it has any (e.g. `[batches with #B #C: same file app/foo/index.ts]`), `[in progress]` when the issue carries `debt:in-progress`, `[needs spec]` when its emitted `handler` field is `"spec"` and it does not carry `debt:spec-pending`, and `[spec pending]` when it carries `debt:spec-pending`. The two spec annotations key on distinct signals, the emitted `handler` field versus the label, so an un-drained spec-class issue is never conflated with a handed-off one. `list` shows every open issue, including in-progress and spec-pending ones: it does not exclude them and it does not reconcile stale claims. Author nothing and prompt for nothing.
 
 ## why subcommand
 
-Run the ordering command and the clustering pass, find the issue whose number matches the argument. Explain it: where it sits in the ordering (its severity band and its position among equal-severity issues by age), its recommended handler class (the issue's advisory `Handler:` line, or your on-the-fly classification for a fieldless issue), and the rationale. Also report whether it is part of a related cluster, which issue(s) it would batch with, and the shared signal (same `path`, or same `class` and dirname). Also report the issue's claim status: whether it currently carries `debt:in-progress` (in progress) or not; `why` does not reconcile stale claims. For a spec-class issue (body `Handler: spec`), also report its spec routing ("routes through /gaia-spec") and, symmetrically, whether it carries `debt:spec-pending` (already handed off) or not. If no open `tech-debt` issue matches the number, say so and print the ordered backlog. Author nothing and prompt for nothing.
+Run the ordering command and the clustering pass, find the issue whose number matches the argument. Explain it: where it sits in the ordering (its severity band and its position among equal-severity issues by age), its recommended handler class (the issue's emitted `handler` field, or your on-the-fly classification for a fieldless issue where `handler` is `null`), and the rationale. Also report whether it is part of a related cluster, which issue(s) it would batch with, and the shared signal (same `path`, or same `class` and dirname). Also report the issue's claim status: whether it currently carries `debt:in-progress` (in progress) or not; `why` does not reconcile stale claims. For a spec-class issue (`handler` equal to `"spec"`), also report its spec routing ("routes through /gaia-spec") and, symmetrically, whether it carries `debt:spec-pending` (already handed off) or not. If no open `tech-debt` issue matches the number, say so and print the ordered backlog. Author nothing and prompt for nothing.
 
 ## Cost record (run end)
 
