@@ -265,13 +265,31 @@ assert_allow() {
   # The character after `create` is a separator, so it is neither whitespace
   # nor end-of-string. Without the separator in the boundary group these match
   # nothing and skip the gate entirely.
+  #
+  # The last three forms carry a resolvable base ref in the swept-up text, so
+  # they exercise the other half of the fix: the boundary group widening lets
+  # them match, and the null-out is what keeps the following command's `--base`
+  # out of the tail. Forms whose tails hold no resolvable ref (the first four)
+  # deny either way and cannot tell the two halves apart.
   install_maintainer_mock
   local form
-  for form in 'gh pr create;' 'gh pr create; echo done' 'gh pr create&&echo hi' 'gh pr create|cat'; do
+  for form in 'gh pr create;' 'gh pr create; echo done' 'gh pr create&&echo hi' 'gh pr create|cat' \
+              'gh pr create; echo --base develop' 'gh pr create& echo --base develop' \
+              'gh pr create|grep --base develop'; do
     run_hook "$form"
     [ "$status" -eq 0 ]
     grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
   done
+}
+
+@test "KNOWN RESIDUAL: a --base inside this invocation's own --body is parsed" {
+  # Documented in the hook header. Within the tail this is a regex, not an
+  # argument parse, so body prose that reads like a flag is taken as one. The
+  # third of the three accepted trades, pinned like the other two so it cannot
+  # drift into looking like a bug.
+  install_maintainer_mock
+  run_hook 'gh pr create --body "use --base develop next time"'
+  assert_allow
 }
 
 @test "KNOWN RESIDUAL: a quoted separator can rebind the match to a mention" {
