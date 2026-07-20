@@ -47,7 +47,7 @@ If no match exists:
 1. Create the labels idempotently first (step 6), a pre-existing label is not an error.
 2. Build the full issue body (step 5) in a gitignored body-file, not inline. Give the file a per-run-unique name under `.gaia/local/audit/` (for example `.gaia/local/audit/issue-body-<something-unique>.md`). The name must be unique because step 4 deletes it: two runs sharing one fixed name (CI plus a local run, the same pair step 3 guards against) would race, and one run's cleanup would delete the other's in-flight body out from under it.
 3. Re-check the dedup query from step 2 immediately before creating, this shrinks the race window where a concurrent run (CI plus a local run, for instance) files the same finding twice. It is the same path+line matching basis as step 2, so a reclassification that lands between your first check and now still resolves to the already-open issue. Prefer a search-or-update path over a blind create when your environment supports it.
-4. Create the issue with the form that matches whether a grade is available, then delete the body file. A filing through one of the two grading routes (step 7) uses the graded form; every other filing drops the `--label difficulty:<grade>` flag entirely rather than passing it empty or with a placeholder:
+4. Create the issue with the form that matches whether a grade is available, then delete the body file **in a second, separate Bash tool call**. A filing through one of the two grading routes (step 7) uses the graded form; every other filing drops the `--label difficulty:<grade>` flag entirely rather than passing it empty or with a placeholder:
 
 ```bash
 body_file=.gaia/local/audit/issue-body-<something-unique>.md
@@ -57,13 +57,19 @@ gh issue create --label tech-debt --label severity:<tier> --label difficulty:<gr
 
 # Ungraded filing, when no grade is available:
 gh issue create --label tech-debt --label severity:<tier> --body-file "$body_file"
+```
 
-rm -f "$body_file"
+Then, as its own tool call, spelling the path literally and relatively:
+
+```bash
+rm -f .gaia/local/audit/issue-body-<something-unique>.md
 ```
 
 **Never** pass `--body <argv>` here. CI runs this command with `--verbose`, and `--verbose` echoes argv into the public Actions log, so an inline `--body` string leaks the finding (and anything sensitive quoted inside it) into a public log. Always route the body through `--body-file` (or stdin); the body must never reach argv.
 
-The body-file is scratch, and this recipe is its only owner: nothing else reaps it, so a file left behind is permanent litter in the adopter's working tree. **Delete it unconditionally**, whether the create succeeded or failed, which is why the `rm -f` above is its own statement and not `&&`-chained onto the create. The body is fully reconstructible from step 5, so there is nothing worth keeping on a failed create, and `rm -f` cannot mask that failure: `gh`'s own output and exit status are what you report.
+The body-file is scratch, and this recipe is its only owner: nothing else reaps it, so a file left behind is permanent litter in the adopter's working tree. **Delete it unconditionally**, whether the create succeeded or failed. The body is fully reconstructible from step 5, so there is nothing worth keeping on a failed create, and the cleanup cannot mask that failure: `gh`'s own output and exit status are what you report.
+
+**Two tool calls, not one.** A `PreToolUse` hook returns a single allow/deny decision for an entire Bash invocation before any of it reaches the shell, so a hook that denies the cleanup drops the create standing beside it too: no issue filed, and no output naming the cause. Splitting them keeps a denied cleanup from costing you the filing. Two consequences for how the second call is written: shell variables do not survive between tool calls, so spell the path literally rather than reusing `$body_file`; and keep that path repo-relative, because the destructive-command guard whitelists this directory in its relative spelling only.
 
 ## 5. Issue body schema
 
