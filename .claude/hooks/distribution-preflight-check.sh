@@ -91,12 +91,20 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # see. Telling the two apart needs shell parsing, and the failure it would
 # prevent is a spurious deny on a fail-open advisory gate whose message names
 # the remedy, so the cheap anchoring is the proportionate answer.
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
-start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
+#
+# Each pattern also captures everything after the matched invocation, so
+# `cmd_tail` below is that invocation's own argument text. Deriving it from the
+# same regex that decided the match is what keeps one parser governing both: a
+# separate glob strip (`${cmd#*gh pr create}`) matches only single ASCII spaces,
+# so `gh<TAB>pr<TAB>create` would find nothing, silently return the whole
+# command, and reopen the cross-command capture the tail exists to prevent.
+sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)(.*)'
+start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)(.*)'
+cmd_tail=""
 if [[ "$cmd" =~ $start_re ]]; then
-  : # match at command start
+  cmd_tail="${BASH_REMATCH[2]}" # match at command start
 elif [[ "$cmd" =~ $sep_re ]]; then
-  : # match after a shell separator (incl. newline)
+  cmd_tail="${BASH_REMATCH[3]}" # match after a shell separator (incl. newline)
 else
   exit 0
 fi
@@ -136,12 +144,12 @@ deny() {
 # because the empty separator is only safe on the `-B` branch: allowing it on
 # `--base` would make `--base-ref` match with `-ref` as the captured value.
 #
-# Parse only the text AFTER the matched `gh pr create`. A base flag belongs to
-# that invocation, so an earlier command in the same chain must not donate one.
-# This matters most for the no-separator shorthand: without the narrowing,
-# `grep -B2 foo file && gh pr create --fill` captures `2` as the base ref.
-# Narrowing is also why the `-B` empty separator is safe to allow at all.
-cmd_tail="${cmd#*gh pr create}"
+# Parsed against `cmd_tail`, the matched invocation's own argument text, never
+# the whole command string. A base flag belongs to that invocation, so an
+# earlier command in the same chain cannot donate one: without the narrowing
+# `grep -B2 foo file && gh pr create --fill` captures `2` as the base ref, and a
+# `--base` inside an earlier `git commit -m "..."` message captures too. The
+# narrowing is also what makes the `-B` empty separator safe to accept at all.
 #
 # KNOWN RESIDUAL, accepted: within that tail this is still a regex, not an
 # argument parse, so a literal `--base <ref>` written inside this invocation's

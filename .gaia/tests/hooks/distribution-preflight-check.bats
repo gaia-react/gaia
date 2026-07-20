@@ -241,6 +241,23 @@ assert_allow() {
   assert_deny
 }
 
+@test "an earlier command's -B survives a tab-spelled invocation" {
+  # The tail is captured by the same regex that matched the invocation, which
+  # accepts any whitespace run. A glob strip would match only single ASCII
+  # spaces, find nothing here, return the whole command, and capture `2`.
+  install_maintainer_mock
+  run_hook "$(printf 'grep -B2 foo base.txt && gh\tpr\tcreate --fill')"
+  assert_deny
+}
+
+@test "a --base inside an earlier command's quoted text is not donated" {
+  # The tail begins at the matched invocation, so the base flag buried in the
+  # preceding commit message never reaches the base parser.
+  install_maintainer_mock
+  run_hook 'git commit -m "gh pr create --base develop" && gh pr create --fill'
+  assert_deny
+}
+
 @test "an unresolvable base ref fails open" {
   install_maintainer_mock
   run_hook "gh pr create --base no-such-branch --title x"
