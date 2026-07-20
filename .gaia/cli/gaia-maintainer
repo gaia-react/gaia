@@ -22205,8 +22205,9 @@ var parseFlags12 = (argv) => {
 var renderReport = (report, jsonMode) => {
   if (jsonMode) return `${JSON.stringify(report, null, 2)}
 `;
+  const scope = report.scan_scope === "manifest-backed" ? "manifest-backed script(s) (bare mode; --staging is the authoritative scan)" : "script(s)";
   const out = [
-    `release runtime-deps: scanned ${report.scanned_files.length} script(s)`
+    `release runtime-deps: scanned ${report.scanned_files.length} ${scope}`
   ];
   if (report.leaks.length > 0) {
     out.push("", `runtime-dependency leaks (${report.leaks.length}):`);
@@ -22311,8 +22312,14 @@ var run26 = (argv, options = {}) => {
   if (manifest === null) return UNEXPECTED_EXIT15;
   const scriptFiles = tryWalkScriptsOrReport(root);
   if (scriptFiles === null) return UNEXPECTED_EXIT15;
-  const leaks = collectLeaks(root, scriptFiles, manifest);
-  const report = { leaks, scanned_files: scriptFiles };
+  const isBareMode = parsed.flags.stagingDir === void 0;
+  const scannedFiles = isBareMode ? scriptFiles.filter((scriptPath) => manifest.has(scriptPath)) : scriptFiles;
+  const leaks = collectLeaks(root, scannedFiles, manifest);
+  const report = {
+    leaks,
+    scan_scope: isBareMode ? "manifest-backed" : "tarball",
+    scanned_files: scannedFiles
+  };
   process.stdout.write(renderReport(report, parsed.flags.json));
   return leaks.length > 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };
