@@ -157,6 +157,144 @@ assert_allowed() {
   assert_allowed
 }
 
+# --- allowed: the shared .gaia/local tree ---
+
+# create-worktree.sh / link-worktree.sh deliberately symlink the per-machine
+# working state (.gaia/local/audit, debt, telemetry, setup-state.json) out of a
+# linked worktree and into the main checkout, so audit markers and debt state
+# are shared rather than forked. `git -C` resolves a symlink before computing
+# --show-toplevel, so a write to the worktree's own .gaia/local/audit/ reports
+# file_root as the MAIN checkout and looks like a wrong-checkout write. It is
+# the intended write: that tree is shared by construction, and nothing under it
+# is a reviewed source surface, so the guard skips it.
+@test "a write under the worktree's symlinked .gaia/local tree is allowed" {
+  make_repo
+  make_worktree "debt/12-foo" "debt/12-foo"
+  mkdir -p "$REPO/.gaia/local/audit"
+  mkdir -p "$WT/.gaia/local"
+  ln -s "$REPO/.gaia/local/audit" "$WT/.gaia/local/audit"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/audit/issue-body-abc123.md"
+  assert_allowed
+}
+
+# The exemption is a path-prefix test, so it must not leak to a sibling whose
+# name merely starts with the same characters.
+@test "a main-checkout write to a .gaia/local lookalike sibling is still denied" {
+  make_repo
+  make_worktree "debt/13-foo" "debt/13-foo"
+  mkdir -p "$REPO/.gaia/localish"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/localish/notes.md"
+  assert_denied
+}
+
+# link-worktree.sh symlinks only setup-state.json, cache/shared, audit,
+# telemetry, and debt. The rest of .gaia/local/ is per-worktree, so a stale
+# pre-switch path into the main checkout's copy is the #841 silent-wrong-write,
+# not a shared-state write, and must stay denied. Exempting the whole
+# .gaia/local/ tree would re-open exactly the subtree that receives /gaia-plan,
+# /gaia-spec, and /gaia-handoff output.
+@test "a stale main-checkout write under non-symlinked .gaia/local is still denied" {
+  make_repo
+  make_worktree "debt/15-foo" "debt/15-foo"
+  mkdir -p "$REPO/.gaia/local/plans"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/plans/PLAN-001.md"
+  assert_denied
+}
+
+@test "a stale main-checkout write under .gaia/local/specs is still denied" {
+  make_repo
+  make_worktree "debt/16-foo" "debt/16-foo"
+  mkdir -p "$REPO/.gaia/local/specs"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/specs/SPEC-009.md"
+  assert_denied
+}
+
+# The remaining symlinked dirs get the same coverage as audit/, so a future
+# narrowing of the exemption cannot silently drop one.
+@test "a write under the worktree's symlinked .gaia/local/debt is allowed" {
+  make_repo
+  make_worktree "debt/17-foo" "debt/17-foo"
+  mkdir -p "$REPO/.gaia/local/debt"
+  mkdir -p "$WT/.gaia/local"
+  ln -s "$REPO/.gaia/local/debt" "$WT/.gaia/local/debt"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/debt/refresh-requested"
+  assert_allowed
+}
+
+@test "a write under the worktree's symlinked .gaia/local/telemetry is allowed" {
+  make_repo
+  make_worktree "debt/20-foo" "debt/20-foo"
+  mkdir -p "$REPO/.gaia/local/telemetry"
+  mkdir -p "$WT/.gaia/local"
+  ln -s "$REPO/.gaia/local/telemetry" "$WT/.gaia/local/telemetry"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/telemetry/tally.jsonl"
+  assert_allowed
+}
+
+@test "a write under the worktree's symlinked .gaia/local/cache/shared is allowed" {
+  make_repo
+  make_worktree "debt/18-foo" "debt/18-foo"
+  mkdir -p "$REPO/.gaia/local/cache/shared"
+  mkdir -p "$WT/.gaia/local/cache"
+  ln -s "$REPO/.gaia/local/cache/shared" "$WT/.gaia/local/cache/shared"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/cache/shared/blob.json"
+  assert_allowed
+}
+
+# Only cache/shared is symlinked. The rest of .gaia/local/cache/ is per-worktree
+# and holds draft SPEC content, so widening the arm to cache/* would silently
+# allow a stale main-checkout write to a draft.
+@test "a stale main-checkout write under non-shared .gaia/local/cache is still denied" {
+  make_repo
+  make_worktree "debt/21-foo" "debt/21-foo"
+  mkdir -p "$REPO/.gaia/local/cache"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/cache/draft-SPEC-001.md"
+  assert_denied
+}
+
+# setup-state.json is a symlinked FILE, so its target_dir is the worktree's own
+# real .gaia/local and it never reaches the exemption; the main-checkout test is
+# what allows it. Pinned so that path stays covered.
+@test "a write to the worktree's symlinked .gaia/local/setup-state.json is allowed" {
+  make_repo
+  make_worktree "debt/19-foo" "debt/19-foo"
+  mkdir -p "$REPO/.gaia/local"
+  echo '{}' >"$REPO/.gaia/local/setup-state.json"
+  mkdir -p "$WT/.gaia/local"
+  ln -s "$REPO/.gaia/local/setup-state.json" "$WT/.gaia/local/setup-state.json"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/setup-state.json"
+  assert_allowed
+}
+
+# --- allowed: a sibling worktree, which the guard can no longer adjudicate ---
+
+# The hook infers "this session's worktree" from its own process cwd, and that
+# cwd is shared across concurrently active agents: when one teammate calls
+# EnterWorktree, every other agent's cwd moves with it. Judging agent A's write
+# against agent B's worktree denied correct writes. main_root comes from
+# --git-common-dir, which is identical from every worktree of the repo, so
+# "does the target resolve to the main checkout" stays correct no matter which
+# worktree the shared cwd currently sits in. "Is the target MY worktree" does
+# not, so it is no longer adjudicated.
+@test "an edit to a sibling worktree is allowed while cwd sits in another worktree" {
+  make_repo
+  make_worktree "debt/14-a" "debt/14-a"
+  WT_A="$WT"
+  make_worktree "debt/14-b" "debt/14-b"
+  cd "$WT"
+  run_hook_edit "Edit" "$WT_A/f"
+  assert_allowed
+}
+
 # --- ignored: not our matcher ---
 
 @test "a Read tool call is ignored" {
