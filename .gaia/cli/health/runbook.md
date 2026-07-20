@@ -186,7 +186,12 @@ grep -vE -f "$EXCLUDE_REGEX" "$ALL_TRACKED" > "$INCLUDE"
 rsync -a --files-from="$INCLUDE" . "$STAGING"/
 ./.gaia/cli/gaia-maintainer release scrub "$STAGING"
 ./.gaia/cli/gaia-maintainer release runtime-deps --staging "$STAGING"
-find "$STAGING" -name "*.md" -exec grep -l "gaia:maintainer-only" {} \;
+# Anchored to the two real marker fragments, not the bare convention name: a
+# page that merely *documents* the marker convention in prose (e.g.
+# `wiki/decisions/Code Audit Team.md`) is not a leaked fragment, and matching
+# the bare string reports it as one on every cycle while the authoritative
+# `release scrub` above stays clean.
+find "$STAGING" -name "*.md" -exec grep -lE "gaia:maintainer-only:(start|end)" {} \;
 # wikilink-to-excluded is enforced by `release scrub` above: it derives the
 # excluded-slug set from `.gaia/release-exclude` at scan time, so it needs no
 # separate grep here (a hardcoded slug alternation would only reintroduce the
