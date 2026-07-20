@@ -157,6 +157,58 @@ assert_allowed() {
   assert_allowed
 }
 
+# --- allowed: the shared .gaia/local tree ---
+
+# create-worktree.sh / link-worktree.sh deliberately symlink the per-machine
+# working state (.gaia/local/audit, debt, telemetry, setup-state.json) out of a
+# linked worktree and into the main checkout, so audit markers and debt state
+# are shared rather than forked. `git -C` resolves a symlink before computing
+# --show-toplevel, so a write to the worktree's own .gaia/local/audit/ reports
+# file_root as the MAIN checkout and looks like a wrong-checkout write. It is
+# the intended write: that tree is shared by construction, and nothing under it
+# is a reviewed source surface, so the guard skips it.
+@test "a write under the worktree's symlinked .gaia/local tree is allowed" {
+  make_repo
+  make_worktree "debt/12-foo" "debt/12-foo"
+  mkdir -p "$REPO/.gaia/local/audit"
+  mkdir -p "$WT/.gaia/local"
+  ln -s "$REPO/.gaia/local/audit" "$WT/.gaia/local/audit"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/audit/issue-body-abc123.md"
+  assert_allowed
+}
+
+# The exemption is a path-prefix test, so it must not leak to a sibling whose
+# name merely starts with the same characters.
+@test "a main-checkout write to a .gaia/local lookalike sibling is still denied" {
+  make_repo
+  make_worktree "debt/13-foo" "debt/13-foo"
+  mkdir -p "$REPO/.gaia/localish"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/localish/notes.md"
+  assert_denied
+}
+
+# --- allowed: a sibling worktree, which the guard can no longer adjudicate ---
+
+# The hook infers "this session's worktree" from its own process cwd, and that
+# cwd is shared across concurrently active agents: when one teammate calls
+# EnterWorktree, every other agent's cwd moves with it. Judging agent A's write
+# against agent B's worktree denied correct writes. main_root comes from
+# --git-common-dir, which is identical from every worktree of the repo, so
+# "does the target resolve to the main checkout" stays correct no matter which
+# worktree the shared cwd currently sits in. "Is the target MY worktree" does
+# not, so it is no longer adjudicated.
+@test "an edit to a sibling worktree is allowed while cwd sits in another worktree" {
+  make_repo
+  make_worktree "debt/14-a" "debt/14-a"
+  WT_A="$WT"
+  make_worktree "debt/14-b" "debt/14-b"
+  cd "$WT"
+  run_hook_edit "Edit" "$WT_A/f"
+  assert_allowed
+}
+
 # --- ignored: not our matcher ---
 
 @test "a Read tool call is ignored" {
