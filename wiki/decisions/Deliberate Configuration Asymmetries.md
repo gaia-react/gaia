@@ -79,6 +79,39 @@ It is a version lookup. It reads a public endpoint and compares the result
 against the local version. Update detection is load-bearing for keeping an
 installation current, so it stays on.
 
+## The agent-teams flag is seeded, not machine-local
+
+`.claude/settings.json` sets `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` to
+`1`. The release manifest classes that file `shared`, so GAIA seeds the flag
+into every clone instead of leaving it as one machine's local preference. It
+is the only experimental harness flag the file carries.
+
+The flag is deliberate and it stays. GAIA's architecture is multi-agent
+throughout: the [[Code Audit Team]] resolves a roster of auditor members and
+spawns them in parallel from a single dispatch, and [[Task Orchestration]]
+runs each plan phase in its own fresh-context sub-agent. A framework whose
+core workflows are fan-outs seeds the capability that fan-out belongs to.
+Adopters inheriting it is the intended posture, not spillover from one
+maintainer's setup.
+
+**It is retained as capability, not as a current dependency.** No shipped
+surface calls an agent-teams-specific API. Every dispatch GAIA performs goes
+through the Agent (Task) tool with a `subagent_type`, which needs no flag, and
+nothing in the tree uses inter-agent messaging or named-agent addressing.
+Clearing the flag breaks no documented workflow.
+
+That is the honest state of it, and it is not an argument for removing it.
+The flag costs nothing to carry, and the multi-agent posture it enables is the
+one every roster, orchestrator, and fan-out in GAIA is designed around. An
+audit reading only the commit that introduced it cannot separate intent from
+accident, which is what this entry exists to settle.
+
+**Open question, unconfirmed.** Whether an agent's message back to the main
+conversation depends on the flag is untested. Confirming it either way needs a
+session running with the flag off. Until someone runs that, treat the question
+as open rather than settled in either direction, and do not cite it as a
+reason the flag is load-bearing.
+
 ## Related
 
 - [[Claude Hooks]]
