@@ -334,6 +334,16 @@
             "statusMessage": "Checking Serena code-search routing…"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/distribution-preflight-check.sh",
+            "statusMessage": "Checking distribution manifest pre-flight…"
+          }
+        ]
       }
     ],
     "PostToolUse": [

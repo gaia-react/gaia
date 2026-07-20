@@ -23,6 +23,16 @@ transforms:
       - "scripts.test:forensics"
 `;
 
+const ARRAY_ELEMENT_CONFIG = `
+transforms:
+  - type: json-strip-array-element
+    paths:
+      - ".claude/settings.json"
+    selectors:
+      - path: "hooks.PreToolUse[].hooks[]"
+        match: {command: ".claude/hooks/distribution-preflight-check.sh"}
+`;
+
 type Sandbox = {
   cleanup: () => void;
   configPath: string;
@@ -689,6 +699,304 @@ transforms:
     );
     expect(after.exports).not.toHaveProperty('./secret');
     expect(after.exports).toHaveProperty('./public');
+  });
+});
+
+type HookEntry = {hooks?: {command: string}[]; matcher: string};
+type Settings = {
+  env?: Record<string, string>;
+  hooks?: {PreToolUse?: HookEntry[]; Stop?: HookEntry[]};
+};
+
+describe('json-strip-array-element transform', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  const PREFLIGHT = '.claude/hooks/distribution-preflight-check.sh';
+
+  const writeSettings = (value: unknown): void => {
+    sandbox.writeStaged(
+      '.claude/settings.json',
+      JSON.stringify(value, null, 2)
+    );
+  };
+
+  const readRaw = (): string =>
+    readFileSync(
+      path.join(sandbox.stagingDir, '.claude/settings.json'),
+      'utf8'
+    );
+
+  const readSettings = (): Settings => JSON.parse(readRaw()) as Settings;
+
+  const commandsIn = (entryIndex: number): string[] =>
+    (readSettings().hooks?.PreToolUse?.[entryIndex]?.hooks ?? []).map(
+      (hook) => hook.command
+    );
+
+  beforeEach(() => {
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('removes the matching element and leaves a well-formed array', () => {
+    sandbox = setupSandbox({config: ARRAY_ELEMENT_CONFIG});
+    writeSettings({
+      hooks: {
+        PreToolUse: [
+          {
+            hooks: [
+              {command: '.claude/hooks/block-bare-test.sh', type: 'command'},
+              {
+                command: PREFLIGHT,
+                statusMessage: 'Checking distribution manifest pre-flight…',
+                type: 'command',
+              },
+            ],
+            matcher: 'Bash',
+          },
+        ],
+      },
+    });
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    // Array stays well-formed: the surviving sibling remains, preflight is gone.
+    expect(commandsIn(0)).toEqual(['.claude/hooks/block-bare-test.sh']);
+  });
+
+  test('no-ops when the predicate matches nothing (stale selector safety)', () => {
+    sandbox = setupSandbox({config: ARRAY_ELEMENT_CONFIG});
+    const original = JSON.stringify(
+      {
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [
+                {command: '.claude/hooks/block-bare-test.sh', type: 'command'},
+                {command: '.claude/hooks/block-rm-rf.sh', type: 'command'},
+              ],
+              matcher: 'Bash',
+            },
+          ],
+        },
+      },
+      null,
+      2
+    );
+    sandbox.writeStaged('.claude/settings.json', original);
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    // A no-op must leave the shipped settings byte-for-byte untouched.
+    expect(readRaw()).toBe(original);
+  });
+
+  test('leaves an emptied hooks[] as [] and keeps its matcher entry', () => {
+    sandbox = setupSandbox({config: ARRAY_ELEMENT_CONFIG});
+    writeSettings({
+      hooks: {
+        PreToolUse: [
+          {
+            hooks: [
+              {
+                command: '.claude/hooks/block-spec-plan-chain.sh',
+                type: 'command',
+              },
+            ],
+            matcher: 'Skill',
+          },
+          {
+            hooks: [
+              {
+                command: PREFLIGHT,
+                statusMessage: 'Checking distribution manifest pre-flight…',
+                type: 'command',
+              },
+            ],
+            matcher: 'Bash',
+          },
+        ],
+      },
+    });
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const preToolUse = readSettings().hooks?.PreToolUse ?? [];
+    // The emptied matcher entry survives with a well-formed empty hooks array;
+    // it is neither collapsed nor removed.
+    expect(preToolUse).toHaveLength(2);
+    expect(preToolUse[1]?.matcher).toBe('Bash');
+    expect(preToolUse[1]?.hooks).toEqual([]);
+    // Sibling matcher entry is untouched.
+    expect(commandsIn(0)).toEqual(['.claude/hooks/block-spec-plan-chain.sh']);
+  });
+
+  test('removes only the targeted element across multiple matcher entries', () => {
+    sandbox = setupSandbox({config: ARRAY_ELEMENT_CONFIG});
+    writeSettings({
+      env: {CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1'},
+      hooks: {
+        PreToolUse: [
+          {
+            hooks: [
+              {command: '.claude/hooks/block-env-write.sh', type: 'command'},
+              {command: '.claude/hooks/check-i18n-strings.sh', type: 'command'},
+            ],
+            matcher: 'Edit|Write',
+          },
+          {
+            hooks: [
+              {command: '.claude/hooks/block-bare-test.sh', type: 'command'},
+              {
+                command: PREFLIGHT,
+                statusMessage: 'Checking distribution manifest pre-flight…',
+                type: 'command',
+              },
+              {command: '.claude/hooks/block-rm-rf.sh', type: 'command'},
+            ],
+            matcher: 'Bash',
+          },
+        ],
+        Stop: [
+          {
+            hooks: [
+              {command: '.claude/hooks/wiki-session-stop.sh', type: 'command'},
+            ],
+            matcher: '',
+          },
+        ],
+      },
+    });
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const after = readSettings();
+    // Non-targeted entry is untouched; only the preflight element is removed
+    // from the Bash entry; unrelated sections survive.
+    expect(commandsIn(0)).toEqual([
+      '.claude/hooks/block-env-write.sh',
+      '.claude/hooks/check-i18n-strings.sh',
+    ]);
+    expect(commandsIn(1)).toEqual([
+      '.claude/hooks/block-bare-test.sh',
+      '.claude/hooks/block-rm-rf.sh',
+    ]);
+    expect(after.env).toEqual({CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1'});
+    expect(after.hooks?.Stop?.[0]?.hooks?.[0]?.command).toBe(
+      '.claude/hooks/wiki-session-stop.sh'
+    );
+  });
+
+  test('no-ops without throwing when the selector path is missing', () => {
+    sandbox = setupSandbox({config: ARRAY_ELEMENT_CONFIG});
+    const original = JSON.stringify(
+      {permissions: {allow: ['Bash(pnpm test:*)']}},
+      null,
+      2
+    );
+    sandbox.writeStaged('.claude/settings.json', original);
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    expect(readRaw()).toBe(original);
+  });
+
+  test('no-ops without throwing when a path segment has the wrong shape', () => {
+    sandbox = setupSandbox({config: ARRAY_ELEMENT_CONFIG});
+    // PreToolUse is an object, not the array the selector expects.
+    const original = JSON.stringify(
+      {hooks: {PreToolUse: {matcher: 'Bash'}}},
+      null,
+      2
+    );
+    sandbox.writeStaged('.claude/settings.json', original);
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    expect(readRaw()).toBe(original);
+  });
+
+  test('exits 2 on invalid JSON', () => {
+    sandbox = setupSandbox({config: ARRAY_ELEMENT_CONFIG});
+    sandbox.writeStaged('.claude/settings.json', 'not { valid json');
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(2);
+    expect(stdio.errors.join('')).toContain('transform_failed');
+  });
+
+  test('--json report includes the json_strip_array_element section', () => {
+    sandbox = setupSandbox({config: ARRAY_ELEMENT_CONFIG});
+    writeSettings({
+      hooks: {
+        PreToolUse: [
+          {
+            hooks: [
+              {
+                command: PREFLIGHT,
+                statusMessage: 'Checking distribution manifest pre-flight…',
+                type: 'command',
+              },
+            ],
+            matcher: 'Bash',
+          },
+        ],
+      },
+    });
+
+    const exit = run([sandbox.stagingDir, '--json'], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const report = JSON.parse(stdio.outputs.join('')) as {
+      json_strip_array_element: {
+        elements_removed: number;
+        files_touched: string[];
+      };
+    };
+    expect(report.json_strip_array_element.elements_removed).toBe(1);
+    expect(report.json_strip_array_element.files_touched).toContain(
+      '.claude/settings.json'
+    );
+  });
+
+  test('--json report reports zero when no element matches', () => {
+    sandbox = setupSandbox({config: ARRAY_ELEMENT_CONFIG});
+    writeSettings({
+      hooks: {
+        PreToolUse: [
+          {
+            hooks: [
+              {command: '.claude/hooks/block-bare-test.sh', type: 'command'},
+            ],
+            matcher: 'Bash',
+          },
+        ],
+      },
+    });
+
+    const exit = run([sandbox.stagingDir, '--json'], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const report = JSON.parse(stdio.outputs.join('')) as {
+      json_strip_array_element: {
+        elements_removed: number;
+        files_touched: string[];
+      };
+    };
+    expect(report.json_strip_array_element.elements_removed).toBe(0);
+    expect(report.json_strip_array_element.files_touched).toHaveLength(0);
   });
 });
 

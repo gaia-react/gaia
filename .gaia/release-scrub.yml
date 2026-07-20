@@ -1,7 +1,7 @@
 # Bundle-time scrub config. Consumed by `gaia-maintainer release scrub <staging-dir>`
 # from inside `release.yml` between staging and tarball creation.
 #
-# Three transforms run in order against the staging tree:
+# Four transforms run in order against the staging tree:
 #
 #   1. marker-strip: remove maintainer-only blocks delimited by HTML
 #      comment markers from in-scope markdown files.
@@ -13,7 +13,15 @@
 #      (no error). Runs after marker-strip so leak-check sees the already-
 #      clean JSON.
 #
-#   3. leak-check: run codified audit patterns against the post-strip
+#   3. json-strip-array-element: remove a single array element by predicate
+#      from a structured JSON file, the shape json-strip cannot express. A
+#      selector's `path` walks the JSON by dot-notation with a `[]` suffix
+#      marking an array to iterate; `match` is a key→value map, and an element
+#      is removed only when every entry equals the element's own value. A
+#      selector that matches nothing is a silent no-op. Runs before leak-check
+#      so it sees the already-clean JSON.
+#
+#   4. leak-check: run codified audit patterns against the post-strip
 #      staging tree. Non-empty match = build failure with a leak report.
 #      Mirrors the patterns in `.claude/rules/wiki-style.md` Audit section
 #      and `.gaia/cli/health/taxonomy.md` Distribution boundary classes.
@@ -73,6 +81,22 @@ transforms:
     keys:
       - "bin"
       - "scripts.test:forensics"
+
+  # Maintainer-only hook registrations inside a shipped settings file.
+  # distribution-preflight-check.sh is release-excluded (it names
+  # .gaia/cli/gaia-maintainer and .github/workflows/distribution-audit-pr.yml,
+  # both release-excluded), so its committed registration in .claude/settings.json
+  # (manifest class `shared`, reaches adopters) would leave every adopter's
+  # PreToolUse/Bash chain pointing at a file absent from their clone. The
+  # selector empties the matching element from each PreToolUse entry's hooks
+  # array; a stale selector that matches nothing is a no-op. An emptied hooks[]
+  # stays as [] (its matcher entry is not collapsed): well-formed and harmless.
+  - type: json-strip-array-element
+    paths:
+      - ".claude/settings.json"
+    selectors:
+      - path: "hooks.PreToolUse[].hooks[]"
+        match: {command: ".claude/hooks/distribution-preflight-check.sh"}
 
   - type: leak-check
     checks:
