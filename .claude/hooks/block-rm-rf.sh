@@ -54,11 +54,18 @@
 # source, or an audit that enumerates shapes this guard does not catch. The supply
 # of those is unbounded, each one costs real review, and this guard is explicitly
 # the second layer behind settings.json permissions rather than the thing standing
-# between anyone and disaster. A porosity finding requires an OBSERVED incident: a
-# command that actually ran and should not have, or was actually denied and should
-# not have been, with the transcript that shows it. Bring one and it is worth
-# fixing. Without one, the correct response to "this guard could be evaded" is yes,
-# it could.
+# between anyone and disaster.
+#
+# A porosity finding requires a CONCRETE, RUNNABLE ARTIFACT, in one of two forms.
+# Either an observed incident, a command that actually ran and should not have, or
+# was actually denied and should not have been, with the transcript that shows it;
+# or an executable reproduction, a failing test case against this hook that anyone
+# can re-run. The second is if anything the stronger evidence, being deterministic
+# and re-runnable rather than a one-time observation, and constructing commands
+# against the hook is how these bugs actually get found; it is not the speculation
+# this policy bars. What the bar excludes is the ARGUMENT with no artifact behind
+# it. Bring either and it is worth fixing. Bring neither, and the correct response
+# to "this guard could be evaded" is yes, it could.
 #
 # One such hole sits at the seam between the two halves. When the command word is
 # not literally spelled (`$RMBIN`, an alias), no anchor matches, so the guard never
@@ -425,8 +432,24 @@ main() {
       #
       # `./` alone is left intact (the strip requires something after the slash),
       # so the cwd arm still owns it rather than reducing it to an empty token.
-      while [[ "$tok" == *//* ]]; do
+      #
+      # An INTERIOR `/./` collapses for the same reason a doubled slash does: it is
+      # a cosmetic, repeatable spelling of the same path. Leaving it in place let a
+      # single dot stand in as a path segment, which is enough to satisfy any arm
+      # below that requires a non-empty parent: `/./dist` and `/../dist` both
+      # resolve to `/dist`, the filesystem-root removal the absolute arms refuse.
+      # Normalizing here rather than growing dot-segment arms is what keeps the
+      # arms reading one spelling of a target, which is this block's whole purpose.
+      #
+      # Both substitutions run in ONE loop, to a fixed point. They feed each other
+      # (`/.//x` needs the slash collapse before the dot collapse can see `/./`, and
+      # `/././x` needs a second pass because the replacements do not overlap), so
+      # two sequential loops would each terminate on a token the other still
+      # reduces. `..` is deliberately NOT collapsed: it depends on the tree, and the
+      # traversal arm below denies it rather than guessing where it lands.
+      while [[ "$tok" == *//* || "$tok" == */./* ]]; do
         tok=${tok//\/\//\/}
+        tok=${tok//\/.\//\/}
       done
       while [[ "$tok" == ./?* ]]; do
         tok=${tok#./}
@@ -476,7 +499,12 @@ main() {
         # directory and lands on `.git`. Ordering this ahead of the whitelist is what
         # keeps the suffix match from becoming a bypass. (Relative `..` escapes stay
         # out of reach, as the SCOPE note above says; this arm is not that claim.)
-        /*/../*|/*/..)
+        #
+        # The leading spellings are listed separately because the interior patterns
+        # cannot reach them: `/../x` has nothing between the root slash and the `..`
+        # for the `/*/` prefix to match, so it would otherwise fall through to the
+        # whitelist with `..` serving as its non-empty parent segment.
+        /../*|/..|/*/../*|/*/..)
           deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
           ;;
         # The whitelisted scratch paths, in their ABSOLUTE spelling.

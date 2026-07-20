@@ -61,7 +61,7 @@ gh issue create --label tech-debt --label severity:<tier> --body-file "$body_fil
 
 **Never** pass `--body <argv>` here. CI runs this command with `--verbose`, and `--verbose` echoes argv into the public Actions log, so an inline `--body` string leaks the finding (and anything sensitive quoted inside it) into a public log. Always route the body through `--body-file` (or stdin); the body must never reach argv.
 
-Then, as its own tool call, spelling the path literally and relatively:
+Then, as its own tool call, spelling the path literally:
 
 ```bash
 rm -f .gaia/local/audit/issue-body-<something-unique>.md

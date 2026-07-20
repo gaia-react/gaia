@@ -863,6 +863,56 @@ t'
   assert_denied_because 'rm -rf of absolute path'
 }
 
+# A `.` or `..` parent segment must not satisfy the non-empty-parent guard. Both
+# `/./dist` and `/../dist` resolve to `/dist`, the filesystem-root removal the
+# arm above exists to refuse, so pinning the intent in the bare spelling alone
+# leaves the whole family of dot-segment spellings open. This is the same class
+# the `//` collapse already handles, and it is normalized the same way rather
+# than being given arms of its own.
+
+@test "rm -rf /./dist (dot parent segment) is denied" {
+  run_hook_bash 'rm -rf /./dist'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "rm -rf /../dist (dotdot parent segment) is denied" {
+  run_hook_bash 'rm -rf /../dist'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "rm -rf /.//dist (dot segment plus doubled slash) is denied" {
+  run_hook_bash 'rm -rf /.//dist'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "rm -rf /././dist (repeated dot segments) is denied" {
+  # The collapse has to run to a fixed point, not once.
+  run_hook_bash 'rm -rf /././dist'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "rm -rf /./build (dot parent segment, build) is denied" {
+  run_hook_bash 'rm -rf /./build'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "rm -rf /./.gaia/local/audit/x (dot parent segment, scratch) is denied" {
+  run_hook_bash 'rm -rf /./.gaia/local/audit/x'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "rm -rf /.. (bare dotdot at the root) is denied" {
+  run_hook_bash 'rm -rf /..'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "an interior ./ inside a genuinely whitelisted absolute path is allowed" {
+  # Collapsing the dot segment must land the token ON the whitelist, not merely
+  # off the deny arm: this is the same directory as the plain spelling.
+  run_hook_bash 'rm -rf /Users/you/projects/my-app/./dist'
+  assert_allowed
+}
+
 # A `..` segment makes an absolute path resolve somewhere the spelling does not
 # name, so it can never reach the whitelist: this one spells the audit directory
 # and resolves to `.git`. Relative `..` escapes stay out of reach by design (see
