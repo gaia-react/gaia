@@ -20,10 +20,13 @@
 #
 # Whose working directory: the hook reads the calling agent's own cwd from the
 # PreToolUse payload's `cwd` field, falling back to its own process cwd when the
-# payload omits it or names a directory outside this repo. The payload value is
-# the authoritative per-agent answer; the process cwd is a coincidence of how
-# the harness happens to launch the hook, and depending on it would let the
-# guard go silently inert if that ever changed.
+# payload omits it or names a directory outside this repo. Neither source is
+# contracted, and the payload is not the better-evidenced one: the hooks
+# reference defines `cwd` only as the working directory at invocation and says
+# nothing about per-agent versus shared scoping. It is preferred because it is a
+# declared input describing this call, where the process cwd is ambient state
+# inferred to stand in for one. Reading only the process cwd would let the guard
+# go silently inert if a harness version ever stopped aligning the two.
 #
 # Scope, and why it stops there: the guard adjudicates "does this target resolve
 # to the main checkout", which is #841's own case. `main_root` derives from
