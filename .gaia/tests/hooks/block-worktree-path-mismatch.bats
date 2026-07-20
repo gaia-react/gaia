@@ -182,10 +182,9 @@ assert_allowed() {
 
 # --- allowed: the shared .gaia/local tree ---
 
-# create-worktree.sh / link-worktree.sh deliberately symlink the per-machine
-# working state (.gaia/local/audit, debt, telemetry, setup-state.json) out of a
-# linked worktree and into the main checkout, so audit markers and debt state
-# are shared rather than forked. `git -C` resolves a symlink before computing
+# create-worktree.sh / link-worktree.sh deliberately symlink a fixed set of
+# per-machine working state out of a linked worktree and into the main
+# checkout, so audit markers and debt state are shared rather than forked. `git -C` resolves a symlink before computing
 # --show-toplevel, so a write to the worktree's own .gaia/local/audit/ reports
 # file_root as the MAIN checkout and looks like a wrong-checkout write. It is
 # the intended write: that tree is shared by construction, and nothing under it
@@ -212,8 +211,8 @@ assert_allowed() {
   assert_denied
 }
 
-# link-worktree.sh symlinks only setup-state.json, cache/shared, audit,
-# telemetry, and debt. Most of the rest of .gaia/local/ is per-worktree, so a
+# link-worktree.sh symlinks a fixed, closed set of shared-state paths, and
+# handoff/ is not in it. Most of the rest of .gaia/local/ is per-worktree, so a
 # stale pre-switch path into the main checkout's copy is the #841
 # silent-wrong-write, not a shared-state write, and must stay denied. Exempting
 # the whole .gaia/local/ tree would re-open exactly that. handoff/ stands in for
@@ -377,6 +376,10 @@ assert_allowed() {
   assert_allowed
 }
 
+# A process cwd outside every git repository leaves the hook with no checkout to
+# adjudicate in, and this payload names none either, so there is nothing to fall
+# back to and the call fails open. The companion case below, where the payload
+# DOES name a checkout, is the one that must keep guarding.
 @test "a session whose cwd is not inside any git repository fails open (allowed)" {
   make_repo
   NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
@@ -457,6 +460,23 @@ assert_allowed() {
   assert_allowed
 }
 
+# The killer for that same-repo check, and the reason the case above cannot
+# stand alone: it allows whether the check fires or not, since honoring the
+# foreign cwd there yields two equal roots and reads as no worktree session.
+# Move the process cwd into the worktree and the two verdicts separate. An
+# honored foreign cwd makes BOTH roots the foreign repo's, they compare equal,
+# the guard concludes no worktree session is active, and the stale
+# main-checkout target sails through: the guard disarmed by a cwd belonging to
+# a repository it is not adjudicating.
+@test "a payload cwd inside an unrelated repository does not disarm a worktree session" {
+  make_repo
+  make_worktree "debt/39-foo" "debt/39-foo"
+  make_other_repo
+  cd "$WT"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
+  assert_denied
+}
+
 # The payload cwd is honored only when absolute. Every consumer downstream of it
 # option-parses its own operand: `dirname --` stops dirname there, but the value
 # dirname returns still reaches a bare `cd`, which reads a leading dash as its
@@ -509,6 +529,48 @@ assert_allowed() {
   mkdir -p "$REPO/sub"
   cd "$WT"
   run_hook_edit_cwd "Edit" "$REPO/f" "$REPO/sub"
+  assert_allowed
+}
+
+# tech-debt #940. main_root used to derive from the hook's own process cwd even
+# after the rest of the adjudication had migrated to the payload cwd, so a hook
+# process sitting outside every git repository failed the --git-common-dir call
+# and exited before any payload-aware logic ran. The guard went inert for that
+# call, and inertness here is an ALLOW: it fails silently rather than loudly.
+# Both roots now come from whichever source wins, so a payload cwd naming the
+# worktree still adjudicates with no usable process cwd at all.
+@test "a payload cwd inside the worktree guards even when the process cwd is outside any git repository" {
+  make_repo
+  make_worktree "debt/36-foo" "debt/36-foo"
+  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
+  cd "$NONREPO"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$WT"
+  assert_denied
+}
+
+# The mirror of the case above: the same payload cwd, targeting that agent's own
+# worktree, is the correct write and stays allowed.
+@test "a payload cwd inside the worktree allows its own target when the process cwd is outside any git repository" {
+  make_repo
+  make_worktree "debt/37-foo" "debt/37-foo"
+  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
+  cd "$NONREPO"
+  run_hook_edit_cwd "Edit" "$WT/f" "$WT"
+  assert_allowed
+}
+
+# The foreign-repo cross-check needs a process-cwd repo to check against, and
+# here there is none, so the payload is taken at its word and BOTH roots come
+# from it. That can never produce a false deny, which is what the cross-check
+# exists to prevent: main_root and current_root are then two values read from
+# the same repo, and a target in a different repo cannot equal main_root.
+@test "a payload cwd in an unrelated repository cannot deny a target in this repo" {
+  make_repo
+  make_worktree "debt/38-foo" "debt/38-foo"
+  make_other_repo
+  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
+  cd "$NONREPO"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
   assert_allowed
 }
 
