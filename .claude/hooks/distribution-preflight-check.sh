@@ -92,14 +92,28 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # prevent is a spurious deny on a fail-open advisory gate whose message names
 # the remedy, so the cheap anchoring is the proportionate answer.
 #
-# Each pattern also captures everything after the matched invocation, so
-# `cmd_tail` below is that invocation's own argument text. Deriving it from the
-# same regex that decided the match is what keeps one parser governing both: a
-# separate glob strip (`${cmd#*gh pr create}`) matches only single ASCII spaces,
-# so `gh<TAB>pr<TAB>create` would find nothing, silently return the whole
-# command, and reopen the cross-command capture the tail exists to prevent.
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)(.*)'
-start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)(.*)'
+# Each pattern also captures the matched invocation's own argument text into
+# `cmd_tail`. Deriving it from the same regex that decided the match keeps one
+# parser governing both: a separate glob strip (`${cmd#*gh pr create}`) matches
+# only single ASCII spaces, so `gh<TAB>pr<TAB>create` would find nothing,
+# silently return the whole command, and reopen the cross-command capture the
+# tail exists to prevent.
+#
+# The tail stops at the next separator rather than running to end of string, so
+# a command CHAINED AFTER this one cannot donate a flag either. Unbounded,
+# `gh pr create --fill && grep -B2 foo file` reads `2` as the base ref. The
+# bound is the same separator set the matcher anchors on, minus the `&&`/`||`
+# doubling, since stopping at the first `&` or `|` is what a bound wants.
+#
+# The bound is textual, so a separator inside a quoted argument truncates the
+# tail early (`--body "a && b" --base x` loses the `--base`). That direction is
+# the safe one: a short tail falls back to the default branch, which is the
+# right base for almost every PR, while a long tail adopts a ref from an
+# unrelated command. Both are approximations of shell parsing; this one errs
+# toward the answer that is usually correct.
+tail_re=$'([^&;|\n]*)'
+sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'"$tail_re"
+start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'"$tail_re"
 cmd_tail=""
 if [[ "$cmd" =~ $start_re ]]; then
   cmd_tail="${BASH_REMATCH[2]}" # match at command start

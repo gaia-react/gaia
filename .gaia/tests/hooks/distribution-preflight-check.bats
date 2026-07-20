@@ -258,6 +258,34 @@ assert_allow() {
   assert_deny
 }
 
+@test "a trailing command's -B flag is not read as this invocation's base" {
+  # The tail stops at the separator, so the chained grep's context-lines flag
+  # stays out of it. Unbounded, this captures `2`, which resolves to nothing
+  # and silently no-ops the gate instead of denying.
+  install_maintainer_mock
+  run_hook "gh pr create --fill && grep -B2 foo base.txt"
+  assert_deny
+}
+
+@test "a trailing command cannot donate a resolvable base ref" {
+  # The dangerous direction: an unbounded tail would capture `develop` here,
+  # which DOES resolve, silently narrowing the changed set and allowing a real
+  # offender through rather than failing open.
+  install_maintainer_mock
+  run_hook "gh pr create --fill; echo --base develop"
+  assert_deny
+}
+
+@test "a bare gh pr create with no arguments still gates" {
+  # Pins the empty-tail path. The match decision keys on the regex matching,
+  # never on the tail being non-empty, so a bare invocation must still resolve
+  # the default base and deny. A future `[ -n "$cmd_tail" ] || exit 0` would
+  # exempt it from the gate entirely and pass every other test in this file.
+  install_maintainer_mock
+  run_hook "gh pr create"
+  assert_deny
+}
+
 @test "an unresolvable base ref fails open" {
   install_maintainer_mock
   run_hook "gh pr create --base no-such-branch --title x"
