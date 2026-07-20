@@ -426,6 +426,61 @@ assert_allowed() {
   assert_allowed
 }
 
+# The payload cwd is honored only when absolute. Every consumer downstream of it
+# option-parses its own operand: `dirname --` stops dirname there, but the value
+# dirname returns still reaches a bare `cd`, which reads a leading dash as its
+# own options. `cd -P`, `cd -L`, and `cd -e` all parse as an option with no
+# operand, so cd succeeds into $HOME instead of firing the `|| payload_main_root=""`
+# fallback, and `cd -` moves to $OLDPWD and prints it. A payload cwd of exactly
+# `-P` naming a real directory would therefore set payload_main_root to $HOME;
+# were that to equal main_root, the same-repo check would pass spuriously and a
+# legitimate main-checkout edit would be denied off a foreign cwd. Requiring an
+# absolute path shuts every one of those doors at the source, and is the same
+# property the neighbouring main_root derivation already relies on.
+#
+# A relative cwd resolving to the main checkout is the observable case: honored,
+# it would read the agent as sitting in the main checkout and allow the target;
+# ignored, the worktree process cwd stays in charge and denies.
+@test "a relative payload cwd is ignored in favour of the process cwd" {
+  make_repo
+  make_worktree "debt/28-foo" "debt/28-foo"
+  ln -s "$REPO" "$WT/linkdir"
+  cd "$WT"
+  run_hook_edit_cwd "Edit" "$REPO/f" "linkdir"
+  assert_denied
+}
+
+# The mirror of the load-bearing deny case above, and the one case reading the
+# cwd from the payload deliberately loosens: when the payload says the agent is
+# in the MAIN checkout, a main-checkout target is that agent's own correct
+# write, even though the hook's process cwd sits in a worktree. Adjudicating off
+# the process cwd alone denies it.
+@test "a payload cwd in the main checkout allows a main-checkout target from a worktree process cwd" {
+  make_repo
+  make_worktree "debt/29-foo" "debt/29-foo"
+  cd "$WT"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$REPO"
+  assert_allowed
+}
+
+# --git-common-dir answers relative to the directory it is asked about: `.git`
+# from a checkout root, `../.git` from a subdirectory. A payload cwd below the
+# main checkout's root therefore takes the `*)` branch, which resolves that
+# `..` against payload_cwd for `cd` + `pwd -P` to collapse. (A linked worktree
+# reports an absolute common dir from root and subdirectories alike, so the main
+# checkout is the only source of the relative form.) This pins the collapse:
+# string-stripping the trailing /.git instead of resolving it leaves
+# `$REPO/sub/..`, which fails the same-repo check and falls back to the process
+# cwd, denying a correct write.
+@test "a payload cwd in a main-checkout subdirectory resolves its relative common dir" {
+  make_repo
+  make_worktree "debt/30-foo" "debt/30-foo"
+  mkdir -p "$REPO/sub"
+  cd "$WT"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$REPO/sub"
+  assert_allowed
+}
+
 # --- structural ---
 
 @test "block-worktree-path-mismatch.sh is executable" {
