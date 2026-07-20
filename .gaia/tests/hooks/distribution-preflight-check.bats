@@ -50,6 +50,13 @@ setup() {
   git -C "$FIXTURE" config user.email "test@example.com"
   git -C "$FIXTURE" config user.name "Test"
 
+  # The hook sources the repo-scope helper relative to cwd; give the fixture a
+  # real copy so the foreign-repo exemption resolves. Without it that exemption
+  # is unreachable and no test in this file can observe it.
+  mkdir -p "$FIXTURE/.claude/hooks/lib"
+  cp "$REPO_ROOT/.claude/hooks/lib/repo-scope.sh" \
+    "$FIXTURE/.claude/hooks/lib/repo-scope.sh"
+
   printf 'base\n' > "$FIXTURE/base.txt"
   git -C "$FIXTURE" add base.txt
   git -C "$FIXTURE" commit --quiet -m "base"
@@ -206,6 +213,23 @@ assert_allow() {
   assert_deny
 }
 
+# ---- repo scope --------------------------------------------------------
+
+@test "allows a gh pr create aimed at a different repo" {
+  # A PR against another repo has no bearing on this repo's distribution
+  # boundary, so the repo-scope exemption allows it before any manifest work.
+  # `--repo other/elsewhere` is the helper's authoritative form: gh ignores cwd
+  # when it is given, and the repo basename differs from the fixture's, so the
+  # helper resolves it as foreign.
+  #
+  # The mock is installed deliberately. Without it the hook would allow via the
+  # adopter-inertness guard instead, and this test would still pass with the
+  # exemption deleted. With it, the only path to ALLOW is the exemption itself.
+  install_maintainer_mock
+  run_hook "gh pr create --repo other/elsewhere --title x"
+  assert_allow
+}
+
 # ---- base-ref resolution -----------------------------------------------
 
 @test "with no base flag, falls back to the default branch and denies" {
@@ -301,6 +325,19 @@ assert_allow() {
   install_maintainer_mock
   run_hook 'echo "x; gh pr create --base develop" && gh pr create --fill'
   assert_allow
+}
+
+@test "KNOWN RESIDUAL: a quoted separator truncates this invocation's tail" {
+  # Documented in the hook header. The tail bound is textual, so the `;` inside
+  # --body ends the tail there and this invocation's own `--base develop` never
+  # reaches the base parser; the base falls back to main and shipped.txt is
+  # caught. The fourth accepted trade, pinned like the other three.
+  #
+  # Asserting DENY is what gives it teeth. A quote-aware or unbounded tail would
+  # resolve develop, whose changed set excludes shipped.txt, and ALLOW.
+  install_maintainer_mock
+  run_hook 'gh pr create --title x --body "fix; then ship" --base develop'
+  assert_deny
 }
 
 @test "does not treat --base-ref as the base flag" {
