@@ -231,6 +231,16 @@ assert_allow() {
   assert_deny
 }
 
+@test "an earlier command's -B flag is not read as this invocation's base" {
+  # `grep -B2` is context-lines, not a base ref. Parsing the whole command
+  # string would capture `2`, which resolves to nothing and silently no-ops the
+  # gate; scoping to the text after `gh pr create` keeps the real default base,
+  # so shipped.txt is still caught.
+  install_maintainer_mock
+  run_hook "grep -B2 foo base.txt && gh pr create --fill"
+  assert_deny
+}
+
 @test "an unresolvable base ref fails open" {
   install_maintainer_mock
   run_hook "gh pr create --base no-such-branch --title x"

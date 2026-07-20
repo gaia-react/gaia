@@ -136,23 +136,30 @@ deny() {
 # because the empty separator is only safe on the `-B` branch: allowing it on
 # `--base` would make `--base-ref` match with `-ref` as the captured value.
 #
-# KNOWN RESIDUAL, accepted: this is a regex over the whole command string, not
-# an argument parse, so a literal `--base <ref>` written inside `--body` prose
-# still matches. Word-boundary anchoring does not help there, the body text has
-# a space in front of the flag like a real argument does. Accepted because the
-# gate is fail-open and advisory, and CI is the authority that catches what this
-# misses. Be precise about the direction of that failure: a wrong base can
-# under-report as easily as over-report. Resolving a narrower base than the real
-# one shrinks the three-dot changed set and can miss a genuine offender, so the
-# realistic worst case is a spurious allow, not only a spurious deny. What the
-# residual cannot do is write a wrong answer anywhere; the hook never records a
-# decision, it only declines to raise one.
+# Parse only the text AFTER the matched `gh pr create`. A base flag belongs to
+# that invocation, so an earlier command in the same chain must not donate one.
+# This matters most for the no-separator shorthand: without the narrowing,
+# `grep -B2 foo file && gh pr create --fill` captures `2` as the base ref.
+# Narrowing is also why the `-B` empty separator is safe to allow at all.
+cmd_tail="${cmd#*gh pr create}"
+#
+# KNOWN RESIDUAL, accepted: within that tail this is still a regex, not an
+# argument parse, so a literal `--base <ref>` written inside this invocation's
+# own `--body` prose still matches. Word-boundary anchoring does not help there,
+# the body text has a space in front of the flag like a real argument does.
+# Accepted because the gate is fail-open and advisory, and CI is the authority
+# that catches what this misses. Be precise about the direction of that failure:
+# a wrong base can under-report as easily as over-report. Resolving a narrower
+# base than the real one shrinks the three-dot changed set and can miss a
+# genuine offender, so the realistic worst case is a spurious allow, not only a
+# spurious deny. What the residual cannot do is write a wrong answer anywhere;
+# the hook never records a decision, it only declines to raise one.
 base_long_re='(^|[[:space:]])--base([[:space:]]+|=)([^[:space:]]+)'
 base_short_re='(^|[[:space:]])-B[[:space:]]*=?[[:space:]]*([^[:space:]]+)'
 base_ref=""
-if [[ "$cmd" =~ $base_long_re ]]; then
+if [[ "$cmd_tail" =~ $base_long_re ]]; then
   base_ref="${BASH_REMATCH[3]}"
-elif [[ "$cmd" =~ $base_short_re ]]; then
+elif [[ "$cmd_tail" =~ $base_short_re ]]; then
   base_ref="${BASH_REMATCH[2]}"
 fi
 if [ -n "$base_ref" ]; then
