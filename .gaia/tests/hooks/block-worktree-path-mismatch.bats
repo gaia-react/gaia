@@ -189,6 +189,69 @@ assert_allowed() {
   assert_denied
 }
 
+# link-worktree.sh symlinks only setup-state.json, cache/shared, audit,
+# telemetry, and debt. The rest of .gaia/local/ is per-worktree, so a stale
+# pre-switch path into the main checkout's copy is the #841 silent-wrong-write,
+# not a shared-state write, and must stay denied. Exempting the whole
+# .gaia/local/ tree would re-open exactly the subtree that receives /gaia-plan,
+# /gaia-spec, and /gaia-handoff output.
+@test "a stale main-checkout write under non-symlinked .gaia/local is still denied" {
+  make_repo
+  make_worktree "debt/15-foo" "debt/15-foo"
+  mkdir -p "$REPO/.gaia/local/plans"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/plans/PLAN-001.md"
+  assert_denied
+}
+
+@test "a stale main-checkout write under .gaia/local/specs is still denied" {
+  make_repo
+  make_worktree "debt/16-foo" "debt/16-foo"
+  mkdir -p "$REPO/.gaia/local/specs"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/specs/SPEC-009.md"
+  assert_denied
+}
+
+# The remaining symlinked dirs get the same coverage as audit/, so a future
+# narrowing of the exemption cannot silently drop one.
+@test "a write under the worktree's symlinked .gaia/local/debt is allowed" {
+  make_repo
+  make_worktree "debt/17-foo" "debt/17-foo"
+  mkdir -p "$REPO/.gaia/local/debt"
+  mkdir -p "$WT/.gaia/local"
+  ln -s "$REPO/.gaia/local/debt" "$WT/.gaia/local/debt"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/debt/refresh-requested"
+  assert_allowed
+}
+
+@test "a write under the worktree's symlinked .gaia/local/cache/shared is allowed" {
+  make_repo
+  make_worktree "debt/18-foo" "debt/18-foo"
+  mkdir -p "$REPO/.gaia/local/cache/shared"
+  mkdir -p "$WT/.gaia/local/cache"
+  ln -s "$REPO/.gaia/local/cache/shared" "$WT/.gaia/local/cache/shared"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/cache/shared/blob.json"
+  assert_allowed
+}
+
+# setup-state.json is a symlinked FILE, so its target_dir is the worktree's own
+# real .gaia/local and it never reaches the exemption; the main-checkout test is
+# what allows it. Pinned so that path stays covered.
+@test "a write to the worktree's symlinked .gaia/local/setup-state.json is allowed" {
+  make_repo
+  make_worktree "debt/19-foo" "debt/19-foo"
+  mkdir -p "$REPO/.gaia/local"
+  echo '{}' >"$REPO/.gaia/local/setup-state.json"
+  mkdir -p "$WT/.gaia/local"
+  ln -s "$REPO/.gaia/local/setup-state.json" "$WT/.gaia/local/setup-state.json"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/setup-state.json"
+  assert_allowed
+}
+
 # --- allowed: a sibling worktree, which the guard can no longer adjudicate ---
 
 # The hook infers "this session's worktree" from its own process cwd, and that

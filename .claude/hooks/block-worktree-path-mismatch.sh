@@ -72,17 +72,29 @@ target_dir=$(dirname -- "$file_path")
 resolved_target_dir="$(cd "$target_dir" 2>/dev/null && pwd -P)" || exit 0
 [[ -n "$resolved_target_dir" ]] || exit 0
 
-# The shared .gaia/local/ tree is exempt. create-worktree.sh / link-worktree.sh
-# symlink the per-machine working state (audit markers, debt state, telemetry,
-# setup-state.json) out of every linked worktree and into the main checkout, so
-# that state is shared rather than forked. `git -C` resolves a symlink before
-# computing --show-toplevel, so a write to the worktree's own .gaia/local/audit/
-# reports the MAIN checkout as its toplevel and reads as a wrong-checkout write.
-# It is the intended write, and nothing under that tree is a reviewed source
-# surface. The trailing slash on both sides keeps this a path-segment match, so
-# a sibling such as .gaia/localish/ stays guarded.
+# The symlinked shared-state dirs are exempt. link-worktree.sh symlinks exactly
+# five paths out of every linked worktree and into the main checkout so that
+# state is shared rather than forked: setup-state.json, cache/shared, audit,
+# telemetry, and debt. `git -C` resolves a symlink before computing
+# --show-toplevel, so a write to the worktree's own .gaia/local/audit/ reports
+# the MAIN checkout as its toplevel and reads as a wrong-checkout write. That is
+# the intended write, so the four symlinked DIRS are exempt.
+#
+# The exemption stops there deliberately. The rest of .gaia/local/ (plans/,
+# specs/, handoff/, red-ledger/, forensics/, worktree-locks/, the non-shared
+# cache/ subdirs) is not symlinked, so each worktree owns its own copy and a
+# stale pre-switch path there is exactly the #841 silent-wrong-write this guard
+# exists to catch. setup-state.json needs no arm of its own: it is a symlinked
+# FILE, so its target_dir is the worktree's own real .gaia/local, which never
+# reaches this case and is allowed by the main-checkout test below.
+#
+# The trailing slash on both sides keeps each arm a path-segment match, so a
+# sibling such as .gaia/localish/ stays guarded.
 case "$resolved_target_dir/" in
-  "$main_root"/.gaia/local/*) exit 0 ;;
+  "$main_root"/.gaia/local/audit/* | \
+    "$main_root"/.gaia/local/debt/* | \
+    "$main_root"/.gaia/local/telemetry/* | \
+    "$main_root"/.gaia/local/cache/shared/*) exit 0 ;;
 esac
 
 file_root="$(git -C "$target_dir" rev-parse --show-toplevel 2>/dev/null)" || exit 0
