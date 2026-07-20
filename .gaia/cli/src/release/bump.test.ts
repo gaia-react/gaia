@@ -13,8 +13,16 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {COMMIT_TYPES} from '../util/conventional-commit.js';
 import {aggregateBump, applyBump, classifyCommit, run} from './bump.js';
 import type {CommandRunner} from './bump.js';
+
+const expectedBump = (type: string): null | string => {
+  if (type === 'feat') return 'minor';
+  if (type === 'wiki') return null;
+
+  return 'patch';
+};
 
 describe('classifyCommit', () => {
   test('feat: → minor', () => {
@@ -62,6 +70,44 @@ describe('classifyCommit', () => {
   test('non-conventional → null', () => {
     expect(classifyCommit({body: '', subject: 'random commit'})).toBeNull();
     expect(classifyCommit({body: '', subject: 'merged something'})).toBeNull();
+  });
+
+  // `/gaia-debt` emits `debt(...)` and a rebundle emits `build(cli):`, so a
+  // maintenance release window can consist entirely of these. They used to
+  // classify as null, and a window of only such commits aggregated to no bump
+  // at all while every subject in it was correctly formatted.
+  test.each([
+    'debt(cli): drain the backlog',
+    'build(cli): rebundle the binary',
+  ])('%s → patch', (subject) => {
+    expect(classifyCommit({body: '', subject})).toBe('patch');
+  });
+
+  // `wiki:` is the sync tool's own bookkeeping. It stays release-neutral on
+  // purpose: a wiki sync should never be the reason a version ships.
+  test('wiki: → null (declared, but deliberately release-neutral)', () => {
+    expect(
+      classifyCommit({body: '', subject: 'wiki: maintenance chain'})
+    ).toBeNull();
+  });
+
+  // Falsifiable, unlike asserting the return is `BumpKind | null` (which the
+  // signature already guarantees): `feat` is the only minor, `wiki` the only
+  // declared type that contributes nothing, and every other declared type has
+  // to move the version.
+  test.each([...COMMIT_TYPES])(
+    '%s: has the intended bump disposition',
+    (type) => {
+      expect(classifyCommit({body: '', subject: `${type}: thing`})).toBe(
+        expectedBump(type)
+      );
+    }
+  );
+
+  test('a well-formed but undeclared type contributes nothing', () => {
+    expect(
+      classifyCommit({body: '', subject: 'spike: try a thing'})
+    ).toBeNull();
   });
 });
 

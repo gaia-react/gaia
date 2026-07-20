@@ -25,6 +25,11 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {
+  isCommitType,
+  parseConventionalCommitHeader,
+} from '../util/conventional-commit.js';
+import type {CommitType} from '../util/conventional-commit.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release changelog [--draft] [--version <X.Y.Z>]
 
@@ -114,9 +119,20 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 
 type Section = 'Added' | 'Changed' | 'Fixed';
 
-const TYPE_TO_SECTION: Record<string, null | Section> = {
+/**
+ * Which CHANGELOG section each declared commit type lands in, or `null` for
+ * types the changelog does not narrate.
+ *
+ * Keyed by `CommitType`, so a type added to the vocabulary in
+ * `util/conventional-commit.ts` fails to compile here until it gets a section.
+ * The scope segment is discarded: the message text is entirely carried by the
+ * parsed header's `rest`.
+ */
+const TYPE_TO_SECTION: Record<CommitType, null | Section> = {
+  build: null,
   chore: null,
   ci: null,
+  debt: 'Fixed',
   docs: 'Changed',
   feat: 'Added',
   fix: 'Fixed',
@@ -124,15 +140,8 @@ const TYPE_TO_SECTION: Record<string, null | Section> = {
   refactor: 'Changed',
   style: null,
   test: null,
+  wiki: null,
 };
-
-// The optional `(scope)` is matched but deliberately not captured: the
-// message text is entirely carried by `rest`, so a scope segment is just
-// stripped from the subject. No leading `\s*` before `rest`: the caller
-// trims the captured message, so matching the whitespace here too would
-// only invite ambiguous backtracking against the trailing `.*`.
-const CONVENTIONAL_HEADER_REGEX =
-  /^(?<type>[a-z]+)(?:\([^)]*\))?!?:(?<rest>.*)$/u;
 
 export type Commit = {
   body: string;
@@ -145,16 +154,13 @@ export const groupCommits = (commits: readonly Commit[]): RenderedSections => {
   const sections: RenderedSections = {Added: [], Changed: [], Fixed: []};
 
   for (const commit of commits) {
-    const subject = commit.subject.trim();
-    const match = CONVENTIONAL_HEADER_REGEX.exec(subject);
+    const header = parseConventionalCommitHeader(commit.subject);
 
-    if (match !== null) {
-      const type = (match.groups?.type ?? '').toLowerCase();
-      const target = TYPE_TO_SECTION[type];
-      const message = (match.groups?.rest ?? '').trim();
+    if (header !== undefined && isCommitType(header.type)) {
+      const target = TYPE_TO_SECTION[header.type];
 
-      if (target && message.length > 0) {
-        sections[target].push(message);
+      if (target && header.rest.length > 0) {
+        sections[target].push(header.rest);
       }
     }
   }
