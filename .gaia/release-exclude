@@ -188,6 +188,11 @@ wiki/decisions/Forensics Triage Workflow.md
 # adopter-owned and this script's invariants are a maintainer-repo concern,
 # so the check would be a silent passenger on adopter clones.
 .github/workflows/audit-roster.yml
+# `pr-title.yml` enforces THIS repo's declared commit-type vocabulary on PR
+# titles. An adopter's vocabulary is their own, and the check would fail their
+# PRs against a list they never agreed to; the `gaia ci-check-subject`
+# subcommand it calls does ship, so an adopter who wants the gate can wire it.
+.github/workflows/pr-title.yml
 .github/forensics
 
 # --- 10. Maintainer-only health-audit infrastructure ---
