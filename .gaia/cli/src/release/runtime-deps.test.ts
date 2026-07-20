@@ -7,13 +7,32 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {extractPathRefs, run} from './runtime-deps.js';
 
+type ManifestFiles = Record<string, 'owned' | 'shared' | 'wiki-owned'>;
+
 type Sandbox = {
   cleanup: () => void;
   rootDir: string;
   writeFile: (relativePath: string, contents: string) => void;
-  writeManifest: (
-    files: Record<string, 'owned' | 'shared' | 'wiki-owned'>
-  ) => void;
+  writeManifest: (files: ManifestFiles) => void;
+  writeStagingManifest: (stagingDir: string, files: ManifestFiles) => void;
+};
+
+const writeManifestAt = (root: string, files: ManifestFiles): void => {
+  const absolute = path.join(root, '.gaia', 'manifest.json');
+  mkdirSync(path.dirname(absolute), {recursive: true});
+  writeFileSync(
+    absolute,
+    `${JSON.stringify(
+      {
+        files,
+        generated: '2026-05-08T00:00:00Z',
+        version: '1.0.0',
+      },
+      null,
+      2
+    )}\n`,
+    'utf8'
+  );
 };
 
 const setupSandbox = (): Sandbox => {
@@ -30,21 +49,12 @@ const setupSandbox = (): Sandbox => {
       writeFileSync(absolute, contents, 'utf8');
     },
     writeManifest: (files) => {
-      const absolute = path.join(rootDir, '.gaia', 'manifest.json');
-      mkdirSync(path.dirname(absolute), {recursive: true});
-      writeFileSync(
-        absolute,
-        `${JSON.stringify(
-          {
-            files,
-            generated: '2026-05-08T00:00:00Z',
-            version: '1.0.0',
-          },
-          null,
-          2
-        )}\n`,
-        'utf8'
-      );
+      writeManifestAt(rootDir, files);
+    },
+    // A `--staging` run reads the manifest from inside the staging tree, not
+    // the repo root, so a staging test needs its own manifest at that root.
+    writeStagingManifest: (stagingDir, files) => {
+      writeManifestAt(stagingDir, files);
     },
   };
 };
@@ -482,21 +492,7 @@ describe('release runtime-deps CLI', () => {
 
   test('--staging scans inside the staging dir', () => {
     const stagingDir = path.join(sandbox.rootDir, 'staging');
-    mkdirSync(stagingDir, {recursive: true});
-    mkdirSync(path.join(stagingDir, '.gaia'), {recursive: true});
-    writeFileSync(
-      path.join(stagingDir, '.gaia/manifest.json'),
-      `${JSON.stringify(
-        {
-          files: {'.gaia/cli/gaia': 'owned'},
-          generated: '2026-05-08T00:00:00Z',
-          version: '1.0.0',
-        },
-        null,
-        2
-      )}\n`,
-      'utf8'
-    );
+    sandbox.writeStagingManifest(stagingDir, {'.gaia/cli/gaia': 'owned'});
     mkdirSync(path.join(stagingDir, '.gaia/statusline'), {recursive: true});
     writeFileSync(
       path.join(stagingDir, '.gaia/statusline/foo.sh'),
@@ -642,20 +638,7 @@ describe('release runtime-deps CLI', () => {
     // Control: staging scans the tarball unfiltered, so its header must stay
     // the unqualified count rather than inherit bare mode's caveat.
     const stagingDir = path.join(sandbox.rootDir, 'staging');
-    mkdirSync(path.join(stagingDir, '.gaia'), {recursive: true});
-    writeFileSync(
-      path.join(stagingDir, '.gaia/manifest.json'),
-      `${JSON.stringify(
-        {
-          files: {'.gaia/cli/gaia': 'owned'},
-          generated: '2026-05-08T00:00:00Z',
-          version: '1.0.0',
-        },
-        null,
-        2
-      )}\n`,
-      'utf8'
-    );
+    sandbox.writeStagingManifest(stagingDir, {'.gaia/cli/gaia': 'owned'});
     mkdirSync(path.join(stagingDir, '.gaia/statusline'), {recursive: true});
     writeFileSync(
       path.join(stagingDir, '.gaia/statusline/foo.sh'),
@@ -687,20 +670,7 @@ describe('release runtime-deps CLI', () => {
     stdio.outputs.length = 0;
 
     const stagingDir = path.join(sandbox.rootDir, 'staging');
-    mkdirSync(path.join(stagingDir, '.gaia'), {recursive: true});
-    writeFileSync(
-      path.join(stagingDir, '.gaia/manifest.json'),
-      `${JSON.stringify(
-        {
-          files: {'.gaia/cli/gaia': 'owned'},
-          generated: '2026-05-08T00:00:00Z',
-          version: '1.0.0',
-        },
-        null,
-        2
-      )}\n`,
-      'utf8'
-    );
+    sandbox.writeStagingManifest(stagingDir, {'.gaia/cli/gaia': 'owned'});
 
     expect(
       run(['--json', '--staging', stagingDir], {cwd: sandbox.rootDir})
@@ -730,20 +700,7 @@ describe('release runtime-deps CLI', () => {
     // tarball unfiltered, so a shipped-but-unmanifested script still gets
     // scanned there and a packaging bug stays visible to the release gate.
     const stagingDir = path.join(sandbox.rootDir, 'staging');
-    mkdirSync(path.join(stagingDir, '.gaia'), {recursive: true});
-    writeFileSync(
-      path.join(stagingDir, '.gaia/manifest.json'),
-      `${JSON.stringify(
-        {
-          files: {'.gaia/cli/gaia': 'owned'},
-          generated: '2026-05-08T00:00:00Z',
-          version: '1.0.0',
-        },
-        null,
-        2
-      )}\n`,
-      'utf8'
-    );
+    sandbox.writeStagingManifest(stagingDir, {'.gaia/cli/gaia': 'owned'});
     mkdirSync(path.join(stagingDir, '.gaia/statusline'), {recursive: true});
     writeFileSync(
       path.join(stagingDir, '.gaia/statusline/unmanifested.sh'),

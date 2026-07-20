@@ -532,19 +532,19 @@ type RunOptions = {
   cwd?: string;
 };
 
-const renderReport = (
-  report: Report,
-  jsonMode: boolean,
-  isBareMode: boolean
-): string => {
+const renderReport = (report: Report, jsonMode: boolean): string => {
   if (jsonMode) return `${JSON.stringify(report, null, 2)}\n`;
 
   // Name the scope in bare mode. A clean bare result covers only the scripts
   // the manifest already answers for, so a shipped script added before its
   // `/distribution-audit` answer lands is skipped rather than cleared. Saying
   // "scanned N script(s)" there would read as "all of them".
+  //
+  // Read off the report rather than taking the mode as a second boolean
+  // parameter: the field already carries it, so there is one source of truth
+  // and no pair of same-typed positional arguments to transpose.
   const scope =
-    isBareMode ?
+    report.scan_scope === 'manifest-backed' ?
       'manifest-backed script(s) (bare mode; --staging is the authoritative scan)'
     : 'script(s)';
   const out: string[] = [
@@ -726,7 +726,7 @@ export const run = (
     scan_scope: isBareMode ? 'manifest-backed' : 'tarball',
     scanned_files: scannedFiles,
   };
-  process.stdout.write(renderReport(report, parsed.flags.json, isBareMode));
+  process.stdout.write(renderReport(report, parsed.flags.json));
 
   return leaks.length > 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };
