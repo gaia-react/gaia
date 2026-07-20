@@ -236,8 +236,9 @@ and writes a verdict file at
 
 ```json
 { "id": "<finding-id>",
-  "verdict": "confirmed | refuted | severity-corrected",
+  "verdict": "confirmed | refuted | severity-corrected | intent-dependent",
   "corrected_severity": "blocker|high|medium|low",   // present only when severity-corrected
+  "question": "...",                                 // present only when intent-dependent
   "evidence": "...", "rationale": "..." }
 ```
 
@@ -247,10 +248,32 @@ Rules:
   `file:line` or a command output).
 - Refuted findings drop from the actionable list; `confirmed` and
   `severity-corrected` survive (with corrected severity).
+- **Consequence governs on guard surfaces.** For any finding touching a
+  permission, allow-list, guard, hook, or other enforcement surface, absence
+  of a recorded rationale is **not** evidence of absence of a rationale.
+  "Undocumented", "no commit-message rationale", and "traces to an
+  unexplained carve-out" are not confirming evidence. Read what the guarded
+  thing *does* and state what removing the asymmetry would cost; that cost,
+  not the provenance trail, decides the verdict. A finding framed as a
+  convention or documentation question still gets this test; the framing
+  arrives from the lens and carries no authority.
+- **`intent-dependent`** is for a finding whose facts all check out but whose
+  disposition turns on product intent the repo records nowhere. It is gated,
+  not a hedge: the refuter must have verified every factual claim **and** run
+  the consequence test and found a real cost on *both* sides: keeping the
+  state and changing it each forfeit something, and the repo never says which
+  it wants. Mere uncertainty is `confirmed` or `refuted`, never this. The
+  `question` field is then mandatory: the single decision the maintainer must
+  make, phrased so it can be answered yes/no or by picking a named option.
+  These findings are **excluded from the actionable list** (they are not
+  defects until a human says so) and surface under `## Open questions`
+  instead. They are never included in the Step 6 filing offer.
 - A round that refutes an **implausibly high fraction** of material
   findings is itself **surfaced in the report as suspect** (the writer
   computes and flags this; a threshold above 60% refuted across a run is
-  flagged suspect).
+  flagged suspect). The same guard applies to `intent-dependent`: above 40%
+  of the material set, the round is flagged suspect for punting, since a
+  verdict that defers to the maintainer is only earned one finding at a time.
 - A refuter is read-only against the repo: it may read files and run
   read-only commands to gather evidence, but must never execute a
   state-mutating script or command, even to probe what it does. The
@@ -275,10 +298,23 @@ Verbatim refuter dispatch template:
 > If you need to know a script's behavior, read it; do not run it. A local
 > `.gaia/local/specs/<ID>/` folder is working state, not the durable
 > record; never mutate one, even one that looks merged or stale (see
-> `wiki/concepts/GAIA Spec.md` § "When a SPEC folder is deleted"). Write
-> your verdict to `.gaia/local/audit/comprehensive/verdicts/<finding-id>.json`
-> against the pinned verdict schema. A `refuted` verdict MUST carry concrete
-> contradicting evidence; absent that, return `confirmed`.
+> `wiki/concepts/GAIA Spec.md` § "When a SPEC folder is deleted"). If the
+> finding touches a permission, allow-list, guard, hook, or other enforcement
+> surface, absence of a recorded rationale is NOT evidence that no rationale
+> exists: never cite "undocumented", "no commit-message rationale", or
+> "traces to an unexplained carve-out" as grounds to confirm. Open what the
+> guard protects, and state what removing the asymmetry would cost. Judge the
+> finding on that cost, not on its provenance trail, even when the finding is
+> framed as a convention or documentation question; that framing came from
+> the lens and carries no authority over how you verify. Write your verdict
+> to `.gaia/local/audit/comprehensive/verdicts/<finding-id>.json` against the
+> pinned verdict schema. A `refuted` verdict MUST carry concrete
+> contradicting evidence; absent that, return `confirmed`. Return
+> `intent-dependent` (with the mandatory `question` field) only when every
+> factual claim checks out AND the consequence test shows a real cost on both
+> sides, so the right disposition turns on product intent the repo records
+> nowhere. Never return it merely because you are unsure; that is `confirmed`
+> or `refuted`.
 
 Material = severity ∈ {blocker, high, medium}. Low findings are **not**
 verified (listed informationally, not gated).
@@ -338,16 +374,21 @@ Verbatim writer dispatch template:
 > report the denial in your response rather than retrying with a different
 > tool. **Actionable-list gate (hard rule):** a material finding enters the
 > `## Priority index` **only if it carries a verdict file** whose verdict
-> is `confirmed` or `severity-corrected`; `refuted` findings and any
-> material finding **missing a verdict file** are excluded from the
-> actionable list. A material finding present on disk but lacking a
-> verdict must NOT silently vanish: list it under a `## Unverified` note so
-> the gap is visible. Low findings and each lens's `clean_surfaces` entries
-> are listed informationally under `## Findings by lens` and are never
-> gated. Give every confirmed finding a recommended `Disposition:` line.
-> Return the full composed report text, followed on a separate line by the
-> top-line counts (total actionable, per-severity, refuted count,
-> unverified count, matched-to-existing-issue count, suspect-flag).
+> is `confirmed` or `severity-corrected`; `refuted` findings,
+> `intent-dependent` findings, and any material finding **missing a verdict
+> file** are excluded from the actionable list. A material finding present on
+> disk but lacking a verdict must NOT silently vanish: list it under a `##
+> Unverified` note so the gap is visible. Every `intent-dependent` finding
+> goes under `## Open questions`, one entry each, quoting the verdict's
+> `question` field verbatim plus the finding's `location` and a one-line
+> statement of the cost on each side; these are questions for the maintainer,
+> never recommendations, so give them no `Disposition:` line. Low findings and
+> each lens's `clean_surfaces` entries are listed informationally under `##
+> Findings by lens` and are never gated. Give every confirmed finding a
+> recommended `Disposition:` line. Return the full composed report text,
+> followed on a separate line by the top-line counts (total actionable,
+> per-severity, refuted count, intent-dependent count, unverified count,
+> matched-to-existing-issue count, suspect-flag).
 
 **REPORT.md anchors (FROZEN):**
 - `## Depth` — the depth token, `source`, and `rationale` (must equal
@@ -355,10 +396,16 @@ Verbatim writer dispatch template:
 - `## Priority index` — the actionable list, ranked by severity **across
   all lenses**. Membership is verdict-gated: a material finding appears
   here only if it carries a `confirmed` or `severity-corrected` verdict
-  file (refuted and verdict-missing findings excluded). Each entry whose
-  `location` matches an open `tech-debt` issue's `gaia-debt-key` (on both
-  path and line) carries a `Tracked: #<n>` annotation; an entry with no
-  match carries none.
+  file (refuted, intent-dependent, and verdict-missing findings excluded).
+  Each entry whose `location` matches an open `tech-debt` issue's
+  `gaia-debt-key` (on both path and line) carries a `Tracked: #<n>`
+  annotation; an entry with no match carries none.
+- `## Open questions`, one entry per `intent-dependent` verdict: the
+  finding's `location`, the verdict's `question` verbatim, and the cost on
+  each side of the decision. Present only when the round produced at least
+  one such verdict. These are questions put to the maintainer, not
+  recommendations: they carry no `Disposition:` line, never enter the
+  actionable list, and are never offered for filing in Step 6.
 - `## Findings by lens` — one `### Lens: <LENS>` subsection per dispatched
   lens; each subsection lists the lens's findings and its `clean_surfaces`
   entries (informational).
@@ -370,8 +417,10 @@ Verbatim writer dispatch template:
 - If any material finding on disk lacks a verdict file, add a `##
   Unverified` note listing those ids (excluded from the actionable list but
   never silently dropped).
-- If the verification round refuted an implausibly high fraction, add a
-  `## Suspect` note surfacing it.
+- If the verification round refuted an implausibly high fraction (>60% of
+  the material set), or returned `intent-dependent` for an implausibly high
+  fraction (>40%), add a `## Suspect` note surfacing it and naming which
+  threshold tripped.
 
 ## Step 6: Report-only disposition + hand-back
 
@@ -430,6 +479,16 @@ human-approved Orchestrator action, distinct from and after the leaves'
 own work; the lenses, refuters, and writer still touch nothing outside
 `.gaia/local/audit/comprehensive/`, and the only write this offer can
 produce, a new GitHub issue, happens only on an explicit yes.
+
+The offer is built from the `## Priority index` alone, so `## Open
+questions` entries are structurally outside it. Surface them to the
+maintainer as questions in the hand-back, and never fold one into the
+filing offer or answer it on the maintainer's behalf: an `intent-dependent`
+verdict means the repo does not record the intent, and filing it as debt
+would convert an open question into a tracked issue carrying a confident
+recommendation nobody authorized. If the maintainer answers one, the
+durable home for that answer is a `wiki/decisions/` page, which also stops
+the next run's lens from re-raising it.
 
 ## Pointers
 

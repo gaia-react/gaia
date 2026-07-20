@@ -53,7 +53,26 @@ when the surface is genuinely clean):
 - **Convention inconsistency with no stated rule.** Sibling files that
   disagree on a convention (frontmatter fields, `model:` pinning across
   skills/agents, filename shape) where no `.claude/rules/` file says which
-  shape is correct. Confirm no governing rule exists before filing.
+  shape is correct. **Two gates, both required before filing:**
+  1. *No governing rule.* Confirm no `.claude/rules/` file, wiki page, or
+     inline comment already settles which shape is correct.
+  2. *Consequence.* State what the odd one out protects and what removing it
+     would cost, established by reading what the differing thing **does**,
+     not by reading history for evidence of intent. Open the files on the
+     permissive side of the asymmetry and name the capability the
+     inconsistency withholds. A finding that cannot answer gate 2 does not
+     get filed, however clean its provenance trail looks.
+
+  Gate 2 exists because absence of a recorded rationale is not evidence of
+  absence of a rationale, and symmetry-seeking on a permission, guard, or
+  enforcement surface always resolves toward the *more permissive* option.
+  By provenance alone, an undocumented allow-list that omits one directory
+  is indistinguishable from a deliberate boundary. Worked example:
+  `.claude/hooks/` holds the merge gate, the secret-write block, the env-read
+  block, and the hook-bypass block, so the real question about an allow-list
+  that omits it is "what does granting unprompted edit access to the scripts
+  enforcing the repo's guardrails cost?" The provenance trail never raises
+  that question; a directory listing answers it.
 - **Registration fragility.** Hook commands wired with bare relative paths
   that break under a persisted `cd`, or path-resolution strategies that
   differ between the create/remove (or start/stop) halves of one feature.

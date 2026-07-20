@@ -75,6 +75,8 @@ Comprehensive: .gaia/local/audit/comprehensive/REPORT.md
   (<actionable> actionable across <lenses>; <refuted> refuted; depth <depth>)
 ```
 
+If the round returned any `intent-dependent` verdict, add its count to that same parenthetical (`; <n> open question(s)`). Those findings are factually accurate but their disposition turns on product intent the repo records nowhere, so they are deliberately excluded from the actionable list and from the Step 6 filing offer. Point the maintainer at `REPORT.md ## Open questions` and let them answer; never answer on their behalf or fold one into the filing offer.
+
 If the verification round confirmed a blocker, add a release-gate flag on its own line:
 
 ```
