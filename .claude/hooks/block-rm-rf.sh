@@ -198,6 +198,25 @@ rm_anchor="(^|[^[:alnum:]_-])${rm_word}[[:space:]]+"
 # get judged. When only the probe carried this clause, a flag anywhere in the
 # command licensed judging every `rm` segment in it, including segments that were
 # not removals at all.
+#
+# A flag is its own shell WORD, and requiring that is what separates `-rf` from a
+# hyphenated path component. `-[a-zA-Z]*[rRfF]` alone matches the `-matcher` inside
+# `c-text-matcher-guards`, so a flagless `rm /path/to/c-text-matcher-guards/x`
+# read as a destructive `rm -r` on the strength of a directory NAME. That is not a
+# hypothetical shape: `-matcher`, `-perf`, `-refactor`, and `-user` are all
+# ordinary branch and directory names, and an agent that cannot delete its own
+# scratch routes around the guard entirely.
+#
+# The boundary is a separate piece from the flag because it has to sit INSIDE the
+# segment's own `[^;&|]*` run rather than in front of it. The anchor above already
+# consumes the whitespace after the command word, so a boundary byte demanded
+# ahead of the flag would have nothing left to match in `rm -rf /`.
+#
+# Quote and backslash bytes count as boundaries alongside whitespace. Bash drops
+# them during quote removal, so `rm "-rf" /` is a genuine flag and has to stay
+# denied; this is the same three-byte class the command word above matches through,
+# and it is a boundary here for the same reason.
+rm_flag_boundary="([^;&|]*[\\\"'[:space:]])?"
 rm_flag="(-[a-zA-Z]*[rRfF]|--recursive|--force|--no-preserve-root)"
 
 deny() {
@@ -276,7 +295,7 @@ main() {
   # false-deny surface: `git rm --cached -r .` now denies (the canonical
   # `git rm -r --cached .` already did), which is annoying but safe. Widen this
   # regex only with that asymmetry in mind.
-  if ! grep -Eq "${rm_anchor}[^;&|]*${rm_flag}" <<<"$cmd"; then
+  if ! grep -Eq "${rm_anchor}${rm_flag_boundary}${rm_flag}" <<<"$cmd"; then
     exit 0
   fi
 
@@ -310,7 +329,7 @@ main() {
   # A flagged segment is unaffected: `rm -rf dist && rm -rf /` is still denied, and
   # so is a flagged `rm` sitting inside a quoted string. That false deny is the
   # deliberate one documented in the header, and narrowing by flag does not touch it.
-  rm_segments=$(grep -oE "${rm_anchor}[^;&|]*${rm_flag}[^;&|]*" <<<"$cmd" || true)
+  rm_segments=$(grep -oE "${rm_anchor}${rm_flag_boundary}${rm_flag}[^;&|]*" <<<"$cmd" || true)
   [[ -n "$rm_segments" ]] || exit 0
 
   # A here-string keeps the loop in the current shell, so deny()'s exit is the

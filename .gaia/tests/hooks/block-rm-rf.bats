@@ -878,6 +878,82 @@ t'
   assert_denied_because 'rm -rf of absolute path'
 }
 
+# --- the observed worktree-cleanup incident ---
+#
+# An agent working inside a linked worktree could not delete its own scratch
+# files. `rm`, `rm -f`, and `rm -rf` on the absolute path were ALL denied, and it
+# completed the deletion with `find -delete` instead. That is the motivating
+# repro for this whole arm: the guard did not prevent a removal, it redirected a
+# competent agent to a tool the deny list does not inspect at all.
+#
+# The path below is the real shape: a worktree checkout under `.claude/worktrees/`
+# whose branch directory carries a hyphenated name, reaching the `.gaia/local/`
+# scratch that is symlinked back to the main checkout. It exercises both defects
+# at once, which is why all three shapes denied rather than just the flagged one.
+
+@test "rm -rf of worktree scratch under .gaia/local is allowed" {
+  run_hook_bash 'rm -rf /Users/you/projects/my-app/.claude/worktrees/c-text-matcher-guards/.gaia/local/audit/issue-body.md'
+  assert_allowed
+}
+
+@test "rm -f of worktree scratch under .gaia/local is allowed" {
+  run_hook_bash 'rm -f /Users/you/projects/my-app/.claude/worktrees/c-text-matcher-guards/.gaia/local/audit/issue-body.md'
+  assert_allowed
+}
+
+@test "flagless rm of worktree scratch under .gaia/local is allowed" {
+  run_hook_bash 'rm /Users/you/projects/my-app/.claude/worktrees/c-text-matcher-guards/.gaia/local/audit/issue-body.md'
+  assert_allowed
+}
+
+@test "the same scratch path resolved to the main checkout is allowed" {
+  # `.gaia/local/audit` is a symlink out of the worktree, so an agent may spell
+  # either end of it. Both are the same directory and both must be allowed.
+  run_hook_bash 'rm -f /Users/you/projects/my-app/.gaia/local/audit/issue-body.md'
+  assert_allowed
+}
+
+# --- a hyphenated PATH COMPONENT is not a destructive flag ---
+#
+# The flag probe matches `-[a-zA-Z]*[rRfF]`, which a hyphenated path component
+# ending in `r` or `f` satisfies: `my-matcher`, `my-perf`, and the incident's own
+# `c-text-matcher-guards` all contain one. So a flagless `rm <abs path>` was read
+# as a destructive `rm -r` purely because of a directory name, which is the half
+# of the incident neither issue explains.
+#
+# A genuine flag is always its own shell word, so the probe now requires a token
+# boundary in front of the dash. Quote and backslash bytes count as boundaries,
+# because bash drops them during quote removal and `rm "-rf" /` is a real flag.
+
+@test "a hyphenated path component ending in r is not read as a flag" {
+  run_hook_bash 'rm /Users/you/projects/my-matcher/notes.md'
+  assert_allowed
+}
+
+@test "a hyphenated path component ending in f is not read as a flag" {
+  run_hook_bash 'rm /Users/you/projects/my-perf/notes.md'
+  assert_allowed
+}
+
+@test "rm \"-rf\" / (quoted flag) is still denied" {
+  # The boundary set includes the quote bytes precisely so this stays denied.
+  run_hook_bash 'rm "-rf" /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "rm -rf / with a hyphenated path component is still denied" {
+  # A real flag beside a flag-shaped directory name must not be masked by the fix.
+  run_hook_bash 'rm -rf /Users/you/projects/my-matcher'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "a genuine flag after an operand is still found" {
+  # GNU getopt permutes argv, so the flag may follow the target. The boundary
+  # requirement must not cost the operand-first shape.
+  run_hook_bash 'rm /Users/you/projects/my-matcher -rf'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
 # --- a segment is judged only when IT carries a destructive flag ---
 #
 # The flag test and the target test have to apply to the same segment. The guard
