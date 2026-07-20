@@ -28,8 +28,10 @@
 # inferred to stand in for one. Reading only the process cwd would let the guard
 # go silently inert if a harness version ever stopped aligning the two. The
 # payload cwd is honored only when it is absolute and resolves to a checkout of
-# this repo; anything else routes to the process cwd. That absolute-path
-# requirement is load-bearing, not cosmetic, and is argued where it is enforced.
+# this repo; anything else routes to the process cwd. The absolute requirement
+# is load-bearing, because the value reaches a bare `cd` that would otherwise
+# option-parse a leading dash and silently succeed into $HOME. The full case
+# analysis sits with the `case` below that enforces it.
 #
 # Scope, and why it stops there: the guard adjudicates "does this target resolve
 # to the main checkout", which is #841's own case. `main_root` derives from
