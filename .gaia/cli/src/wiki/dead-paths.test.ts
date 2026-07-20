@@ -3,7 +3,9 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {findDeadPaths, run} from './dead-paths.js';
+import {ADOPTER_OWNED_SENTINELS as GIT_TRACKED_SENTINELS} from '../release/manifest.js';
+import {ADOPTER_OWNED_SENTINELS as RELEASE_SENTINELS} from '../release/runtime-deps.js';
+import {ADOPTER_OWNED_SENTINELS, findDeadPaths, run} from './dead-paths.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -60,6 +62,25 @@ const captureStdio = (): {
     },
   };
 };
+
+describe('adopter-owned sentinel drift', () => {
+  test('exempts exactly the runtime-only sentinels the release scan knows', () => {
+    // The two ADOPTER_OWNED_SENTINELS sets are deliberately not shared: this
+    // module ships in the adopter `gaia` bundle and `release/runtime-deps.ts`
+    // is maintainer-only, so importing across would pull release tooling into
+    // the adopter binary (see the constant's comment). That leaves the "a new
+    // runtime-created sentinel belongs in both" invariant enforced by prose
+    // alone, and a release-side addition that forgets this side silently
+    // reintroduces the dead-path false positive. This pins it. Test files are
+    // never bundled, so importing the maintainer-only module here costs the
+    // adopter binary nothing.
+    const runtimeOnly = [...RELEASE_SENTINELS].filter(
+      (sentinel) => !GIT_TRACKED_SENTINELS.has(sentinel)
+    );
+
+    expect(ADOPTER_OWNED_SENTINELS).toEqual(new Set(runtimeOnly));
+  });
+});
 
 describe('wiki dead-paths', () => {
   let sandbox: Sandbox;
@@ -136,6 +157,29 @@ describe('wiki dead-paths', () => {
     );
 
     expect(findDeadPaths(sandbox.root)).toEqual([]);
+  });
+
+  test('ignores adopter-owned sentinels absent from the GAIA source repo', () => {
+    sandbox.writeFile(
+      'wiki/concepts/Automation.md',
+      '# Automation\n\nThe policy lives in `.gaia/automation.json`.\n'
+    );
+
+    expect(findDeadPaths(sandbox.root)).toEqual([]);
+  });
+
+  test('exempts the sentinel by exact token, not by prefix', () => {
+    // A path that merely extends the sentinel is a distinct, longer token and
+    // must still flag. Loosening the `.has()` membership check to a prefix
+    // match would suppress it, so this pins the exemption's exactness.
+    sandbox.writeFile(
+      'wiki/concepts/Automation.md',
+      '# Automation\n\nSee `.gaia/automation.json` and `.gaia/automation.json.bak`.\n'
+    );
+
+    expect(findDeadPaths(sandbox.root).map((d) => d.path)).toEqual([
+      '.gaia/automation.json.bak',
+    ]);
   });
 
   test('ignores explicit historical-record bullets in decision pages', () => {

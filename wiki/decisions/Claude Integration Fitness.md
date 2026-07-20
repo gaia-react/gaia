@@ -86,7 +86,7 @@ Checks the GAIA installation:
 
 Checks wiki health by invoking the existing `gaia wiki` primitives; this category does not reimplement them:
 
-- `wiki/.state.json` staleness vs. `app/**` HEAD: if `commits_ahead` is non-zero, one `info` finding recommending `/gaia-wiki sync`.
+- `wiki/.state.json` staleness vs. `app/**` HEAD: if `commits_ahead` is non-zero, or `reachable` is false (the recorded `last_evaluated_sha` is unreachable from HEAD, e.g. after a rebase, which pins `commits_ahead` to zero), one `info` finding recommending `/gaia-wiki sync`.
 - `gaia wiki dead-paths`: any dead backticked path reference in wiki body prose is one `warning` finding per occurrence.
 - `gaia wiki orphans`: any orphan page (zero inbound links) is one `info` finding per page, recommending `/gaia-wiki sync` to cross-link or archive.
 

@@ -206,4 +206,6 @@ A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, an
 - [[Code Audit Team]]: the config-driven roster this workflow's `code-audit-frontend` job is one member of; the dispatch resolver and AND-aggregator that require every dispatched member's clearance at the local merge gate.
 - [[PR Merge Workflow]]: the local-side gate handshake (`.gaia/local/audit/<tree-sha>.ok` marker file).
 - [[Quality Gate]]: the lint/typecheck/test/knip gate that still runs alongside this audit.
-- Forensics Triage Workflow: sibling autonomous CI workflow built on the same `claude-code-action` setup.
+<!-- gaia:maintainer-only:start -->
+- [[Forensics Triage Workflow]]: sibling autonomous CI workflow built on the same `claude-code-action` setup.
+<!-- gaia:maintainer-only:end -->

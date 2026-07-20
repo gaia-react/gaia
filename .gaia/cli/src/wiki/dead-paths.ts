@@ -57,6 +57,26 @@ const SKIP_PATH_FRAGMENTS = [
  */
 const RUNTIME_PREFIXES = ['.gaia/local/'] as const;
 
+/**
+ * Exact repo-relative paths that are adopter-owned and legitimately absent
+ * on a checkout that hasn't opted in: `.gaia/automation.json` is written by
+ * `/setup-gaia`, not shipped by GAIA itself, so it is correctly missing here
+ * on the GAIA source repo.
+ *
+ * `release/runtime-deps.ts` keeps its own `ADOPTER_OWNED_SENTINELS` naming the
+ * same file. The two sets intersect on the runtime-created entries only: that
+ * one also spreads `manifest.ts`'s git-tracked sentinels, which are present on
+ * disk here and so must NOT be exempted from this scan. Kept separate rather
+ * than shared because this module ships in the adopter `gaia` bundle and that
+ * one is maintainer-only, so importing across would pull release tooling into
+ * the adopter binary and reverse the established `release/` → `wiki/` import
+ * direction. A new runtime-created sentinel belongs in both; a git-tracked one
+ * belongs only in the release-side set.
+ */
+export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
+  '.gaia/automation.json',
+]);
+
 const PATH_TOKEN_PATTERN = /`([^`\n]+?)`/g;
 
 /**
@@ -92,6 +112,7 @@ const isTrackedPath = (token: string): boolean => {
   if (PLACEHOLDER_PATTERN.test(token)) return false;
   if (!token.includes('/')) return false;
   if (!/\.[a-z0-9]{1,8}$/i.test(token)) return false;
+  if (ADOPTER_OWNED_SENTINELS.has(token)) return false;
   if (RUNTIME_PREFIXES.some((prefix) => token.startsWith(prefix))) return false;
   if (SIBLING_REPO_PATTERN.test(token)) return true;
 

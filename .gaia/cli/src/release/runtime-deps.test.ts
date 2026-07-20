@@ -172,6 +172,29 @@ describe('extractPathRefs', () => {
       '.github/workflows/code-review-audit.yml'
     );
   });
+
+  test('skips the allowlisted shell-snapshots regex-literal token', () => {
+    // spec-session-lock.sh assigns Claude Code's snapshot-wrapper directory to
+    // a regex literal that a `ps` command line is matched against; it is never
+    // sourced or executed, so the exact token is allowlisted.
+    const refs = extractPathRefs(
+      '.specify/extensions/gaia/lib/spec-session-lock.sh',
+      "SNAPSHOT_WRAPPER_PATTERN='\\.claude/shell-snapshots/'\n"
+    );
+    expect(refs.map((r) => r.path)).not.toContain('.claude/shell-snapshots');
+  });
+
+  test('still flags a genuine file leak under the shell-snapshots directory', () => {
+    // Exact-token allowlisting again: a real invocation of a file beneath the
+    // allowlisted directory is a longer token and must still flag.
+    const refs = extractPathRefs(
+      '.gaia/statusline/foo.sh',
+      'bash .claude/shell-snapshots/snapshot-zsh.sh\n'
+    );
+    expect(refs.map((r) => r.path)).toContain(
+      '.claude/shell-snapshots/snapshot-zsh.sh'
+    );
+  });
 });
 
 describe('release runtime-deps CLI', () => {
