@@ -518,6 +518,13 @@ type Leak = {
 
 type Report = {
   leaks: readonly Leak[];
+  /**
+   * What `scanned_files` covers, so a machine consumer can tell the two modes
+   * apart. `manifest-backed` is bare mode's manifest-filtered subset;
+   * `tarball` is every script in the `--staging` tree. The human-readable
+   * header states the same thing in prose, which JSON consumers cannot read.
+   */
+  scan_scope: 'manifest-backed' | 'tarball';
   scanned_files: readonly string[];
 };
 
@@ -714,7 +721,11 @@ export const run = (
     : scriptFiles;
 
   const leaks = collectLeaks(root, scannedFiles, manifest);
-  const report: Report = {leaks, scanned_files: scannedFiles};
+  const report: Report = {
+    leaks,
+    scan_scope: isBareMode ? 'manifest-backed' : 'tarball',
+    scanned_files: scannedFiles,
+  };
   process.stdout.write(renderReport(report, parsed.flags.json, isBareMode));
 
   return leaks.length > 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;

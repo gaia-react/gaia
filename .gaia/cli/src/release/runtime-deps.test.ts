@@ -671,6 +671,44 @@ describe('release runtime-deps CLI', () => {
     expect(out).not.toContain('manifest-backed');
   });
 
+  test('--json discriminates the scan scope in both modes', () => {
+    // `scanned_files` means two different things per mode, and a JSON consumer
+    // cannot read the prose caveat the human header carries, so the payload
+    // has to say which one it is.
+    sandbox.writeManifest({
+      '.claude/hooks/ships.sh': 'owned',
+    });
+    sandbox.writeFile('.claude/hooks/ships.sh', 'echo hi\n');
+
+    expect(run(['--json'], {cwd: sandbox.rootDir})).toBe(0);
+    const bare = JSON.parse(stdio.outputs.join('')) as {scan_scope: string};
+    expect(bare.scan_scope).toBe('manifest-backed');
+
+    stdio.outputs.length = 0;
+
+    const stagingDir = path.join(sandbox.rootDir, 'staging');
+    mkdirSync(path.join(stagingDir, '.gaia'), {recursive: true});
+    writeFileSync(
+      path.join(stagingDir, '.gaia/manifest.json'),
+      `${JSON.stringify(
+        {
+          files: {'.gaia/cli/gaia': 'owned'},
+          generated: '2026-05-08T00:00:00Z',
+          version: '1.0.0',
+        },
+        null,
+        2
+      )}\n`,
+      'utf8'
+    );
+
+    expect(
+      run(['--json', '--staging', stagingDir], {cwd: sandbox.rootDir})
+    ).toBe(0);
+    const staging = JSON.parse(stdio.outputs.join('')) as {scan_scope: string};
+    expect(staging.scan_scope).toBe('tarball');
+  });
+
   test('bare mode still flags a leak in a manifest-backed script', () => {
     // Control for the two tests above: narrowing the scan surface must not
     // disable leak detection for the files that DO ship.

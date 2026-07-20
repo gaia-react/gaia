@@ -22315,7 +22315,11 @@ var run26 = (argv, options = {}) => {
   const isBareMode = parsed.flags.stagingDir === void 0;
   const scannedFiles = isBareMode ? scriptFiles.filter((scriptPath) => manifest.has(scriptPath)) : scriptFiles;
   const leaks = collectLeaks(root, scannedFiles, manifest);
-  const report = { leaks, scanned_files: scannedFiles };
+  const report = {
+    leaks,
+    scan_scope: isBareMode ? "manifest-backed" : "tarball",
+    scanned_files: scannedFiles
+  };
   process.stdout.write(renderReport(report, parsed.flags.json, isBareMode));
   return leaks.length > 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };
