@@ -2,7 +2,7 @@
 # GAIA worktree shared-state symlink hook (SPEC-005).
 #
 # Creates symlinks from the current linked worktree into the main checkout:
-# the five fixed .gaia/local/ shared-state paths (setup-state.json, cache/,
+# the five fixed .gaia/local/ shared-state paths (setup-state.json, cache/shared/,
 # audit/, telemetry/, debt/) plus any gitignored checkout-root .env / .env.*
 # files (excluding the committed .env.example), so neither diverges
 # per-worktree:

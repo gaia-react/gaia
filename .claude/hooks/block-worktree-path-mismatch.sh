@@ -26,12 +26,15 @@
 # nothing about per-agent versus shared scoping. It is preferred because it is a
 # declared input describing this call, where the process cwd is ambient state
 # inferred to stand in for one. Reading only the process cwd would let the guard
-# go silently inert if a harness version ever stopped aligning the two. The
-# payload cwd is honored only when it is absolute and resolves to a checkout of
-# this repo; anything else routes to the process cwd. The absolute requirement
-# is load-bearing, because the value reaches a bare `cd` that would otherwise
-# option-parse a leading dash and silently succeed into $HOME. The full case
-# analysis sits with the `case` below that enforces it.
+# go silently inert if a harness version ever stopped aligning the two, and
+# inertness here is an ALLOW. Both roots the guard compares, main_root and
+# current_root, come from whichever source wins, so neither depends on the hook
+# process happening to sit inside the repo. The payload cwd is honored only when
+# it is absolute and resolves to a checkout that a resolvable process cwd does
+# not contradict; anything else routes to the process cwd. The absolute
+# requirement is load-bearing, because the value reaches a bare `cd` that would
+# otherwise option-parse a leading dash and silently succeed into $HOME. The
+# full case analysis sits with the `case` below that enforces it.
 #
 # Scope, and why it stops there: the guard adjudicates "does this target resolve
 # to the main checkout", which is #841's own case. `main_root` derives from
@@ -40,9 +43,10 @@
 # into another is left to the caller's own RESOLVED_ROOT discipline, per this
 # guard's defense-in-depth role in isolation.md.
 #
-# Fail-open, matching the other block-*.sh guards: any ambiguity (not a git
-# repo, a target directory that does not exist yet, `git` unavailable) allows
-# the call rather than blocking a legitimate edit on a heuristic miss.
+# Fail-open, matching the other block-*.sh guards: any ambiguity (neither cwd
+# resolves to a git repo, a target directory that does not exist yet, `git`
+# unavailable) allows the call rather than blocking a legitimate edit on a
+# heuristic miss.
 set -euo pipefail
 
 payload=$(cat)
@@ -67,20 +71,10 @@ esac
 file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
 [[ -n "$file_path" ]] || exit 0
 
-common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || exit 0
-case "$common_dir" in
-  /*) abs_common_dir="$common_dir" ;;
-  *) abs_common_dir="$PWD/$common_dir" ;;
-esac
-main_root="$(cd "$(dirname "$abs_common_dir")" 2>/dev/null && pwd -P)" || exit 0
 # The calling agent's working directory comes from the payload's `cwd`, the
-# value Claude Code reports for the agent that issued this call. It is honored
-# only when it is absolute AND resolves to a checkout of THIS repo (same common
-# git dir as main_root); a cwd naming an unrelated repository would arm the gate
-# on a comparison between two different repositories and deny a legitimate edit.
-# The hook's own process cwd is the fallback for an absent, relative,
-# unresolvable, or foreign-repo payload cwd.
-current_root=""
+# value Claude Code reports for the agent that issued this call. The hook's own
+# process cwd is the fallback for an absent, relative, unresolvable, or
+# contradicted payload cwd.
 payload_cwd=$(jq -r '.cwd // empty' <<<"$payload")
 # Absolute-cwd invariant, established once so every consumer below inherits it:
 # payload_cwd flows into `git -C`, into string-concatenation, and into `cd`, and
@@ -88,10 +82,11 @@ payload_cwd=$(jq -r '.cwd // empty' <<<"$payload")
 # and `cd -e` parse as an option with NO operand, so cd lands in $HOME and
 # succeeds rather than failing into the `|| payload_main_root=""` fallback, and
 # `cd -` moves to $OLDPWD and prints it. Requiring a leading slash makes every
-# downstream operand provably absolute, which is the same property main_root's
-# own two-branch derivation above guarantees, and unlike a `--` terminator it
-# behaves identically on bash 3.2 and bash 5. An empty value falls through to
-# the `-n` guard below and routes to the process cwd, same as an absent field.
+# downstream operand provably absolute, which is the same property the
+# process-cwd derivation below guarantees for itself, and unlike a `--`
+# terminator it behaves identically on bash 3.2 and bash 5. An empty value
+# falls through to the `-n` guard below and routes to the process cwd, same as
+# an absent field.
 # `dirname --` and `CDPATH=''` on the payload_main_root line below are
 # belt-and-braces once this holds: with an absolute payload_cwd neither a
 # dash-leading operand nor a CDPATH lookup is reachable there, so they stay only
@@ -105,6 +100,24 @@ case "$payload_cwd" in
   /*) ;;
   *) payload_cwd="" ;;
 esac
+
+# main_root is the toplevel that owns the common git dir,
+# dirname(absolute(--git-common-dir)), derived once per candidate source. The
+# process cwd gets no privileged position in that derivation: asking only it
+# left the guard inert whenever the hook process sat outside the repo, since
+# --git-common-dir failed there and the adjudication ended before any
+# payload-aware logic ran (tech-debt #940).
+process_main_root=""
+common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || common_dir=""
+if [[ -n "$common_dir" ]]; then
+  case "$common_dir" in
+    /*) abs_common_dir="$common_dir" ;;
+    *) abs_common_dir="$PWD/$common_dir" ;;
+  esac
+  process_main_root="$(cd "$(dirname "$abs_common_dir")" 2>/dev/null && pwd -P)" || process_main_root=""
+fi
+
+payload_main_root=""
 if [[ -n "$payload_cwd" ]]; then
   payload_common_dir="$(git -C "$payload_cwd" rev-parse --git-common-dir 2>/dev/null)" || payload_common_dir=""
   case "$payload_common_dir" in
@@ -114,12 +127,31 @@ if [[ -n "$payload_cwd" ]]; then
   esac
   if [[ -n "$abs_payload_common_dir" ]]; then
     payload_main_root="$(CDPATH='' cd "$(dirname -- "$abs_payload_common_dir")" 2>/dev/null && pwd -P)" || payload_main_root=""
-    if [[ -n "$payload_main_root" && "$payload_main_root" == "$main_root" ]]; then
-      current_root="$(git -C "$payload_cwd" rev-parse --show-toplevel 2>/dev/null)" || current_root=""
-    fi
   fi
 fi
-[[ -n "$current_root" ]] || current_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+
+# Which source adjudicates. The payload wins when it resolves to a checkout at
+# all AND does not contradict a process cwd that resolved to one: a payload cwd
+# naming an unrelated repository while the process sits in this one would arm
+# the gate on a comparison between two different repositories and deny a
+# legitimate edit. A process cwd that resolves to nothing contradicts nothing,
+# and taking the payload at its word there cannot produce that false deny
+# anyway, because main_root and current_root then both come from the payload's
+# own repo and a target in a different repo can never equal main_root.
+#
+# Everything else routes to the process cwd, including a payload cwd that
+# answers --git-common-dir but not --show-toplevel (a bare repo, or a .git
+# directory): the pair is always read from one source, never mixed.
+main_root=""
+current_root=""
+if [[ -n "$payload_main_root" && (-z "$process_main_root" || "$payload_main_root" == "$process_main_root") ]]; then
+  main_root="$payload_main_root"
+  current_root="$(git -C "$payload_cwd" rev-parse --show-toplevel 2>/dev/null)" || current_root=""
+fi
+if [[ -z "$current_root" ]]; then
+  main_root="$process_main_root"
+  current_root="$(git rev-parse --show-toplevel 2>/dev/null)" || current_root=""
+fi
 [[ -n "$main_root" && -n "$current_root" ]] || exit 0
 
 # Not inside a linked worktree: nothing to guard.
