@@ -28,8 +28,8 @@ This line is what every later step (dedup, re-filing checks, any caller-side led
 
 **Never rely on `gh`'s full-text search.** GitHub's search tokenizes on `/ : @`, so it cannot reliably match a key containing those characters. Query and match locally instead, and match on **the parsed `path=` and `line=` fields alone, ignoring `class=`**: a finding reclassified from `holistic/unclassified` to a seeded class (or the reverse) still carries the same `path=`+`line=` and must resolve to the same issue, not a new one.
 
-1. `gh issue list --label tech-debt --state open --json number,title,body`. For each issue's `gaia-debt-key` comment, parse out its `path=` and `line=` fields and compare them against the finding's own path and line: `path=` as a string, `line=` as a parsed integer, so `line=4` never matches `line=42`. Two keys equal on both fields are the same finding regardless of what `class=` either one carries.
-2. Also check `--state closed`: the same path+line comparison on a closed issue that carries the `wontfix` label (or was closed as not-planned) means the finding was **declined**, not merely resolved. Do not re-file it.
+1. `gh issue list --label tech-debt --state open --limit 1000 --json number,title,body`. For each issue's `gaia-debt-key` comment, parse out its `path=` and `line=` fields and compare them against the finding's own path and line: `path=` as a string, `line=` as a parsed integer, so `line=4` never matches `line=42`. Two keys equal on both fields are the same finding regardless of what `class=` either one carries.
+2. Also check `--state closed` with the same `--limit 1000`: the same path+line comparison on a closed issue that carries the `wontfix` label (or was closed as not-planned) means the finding was **declined**, not merely resolved. Do not re-file it.
 3. Keyless fallback for issues a human filed by hand (no machine key present): scan open `tech-debt` issue bodies for the bare `<path>:<line>` substring. Anchor the match so the line number is followed by a non-digit or end-of-string, otherwise `foo.ts:4` false-matches a sibling `foo.ts:42`. This is the same path+line identity as 1 and 2, sourced from a bare-text scan instead of a parsed key; a hit here suppresses re-filing even with no key line at all.
 
 On any match (1, 2, or 3), hand back to the caller the **matched issue's number**, its **open/closed state**, and, when the match came from a parsed key (1 or 2), that key's **existing verbatim inner key** (`v1 class=… path=… line=…`). This recipe records nothing itself; callers own their bookkeeping (see above).
@@ -47,11 +47,17 @@ If no match exists:
 1. Create the labels idempotently first (step 6), a pre-existing label is not an error.
 2. Build the full issue body (step 5) in a gitignored body-file, not inline. Give the file a per-run-unique name under `.gaia/local/audit/` (for example `.gaia/local/audit/issue-body-<something-unique>.md`). The name must be unique because step 4 deletes it: two runs sharing one fixed name (CI plus a local run, the same pair step 3 guards against) would race, and one run's cleanup would delete the other's in-flight body out from under it.
 3. Re-check the dedup query from step 2 immediately before creating, this shrinks the race window where a concurrent run (CI plus a local run, for instance) files the same finding twice. It is the same path+line matching basis as step 2, so a reclassification that lands between your first check and now still resolves to the already-open issue. Prefer a search-or-update path over a blind create when your environment supports it.
-4. Create the issue, then delete the body file:
+4. Create the issue with the form that matches whether a grade is available, then delete the body file. A filing through one of the two grading routes (step 7) uses the graded form; every other filing drops the `--label difficulty:<grade>` flag entirely rather than passing it empty or with a placeholder:
 
 ```bash
 body_file=.gaia/local/audit/issue-body-<something-unique>.md
+
+# Graded filing, the machine grading routes:
+gh issue create --label tech-debt --label severity:<tier> --label difficulty:<grade> --body-file "$body_file"
+
+# Ungraded filing, when no grade is available:
 gh issue create --label tech-debt --label severity:<tier> --body-file "$body_file"
+
 rm -f "$body_file"
 ```
 
@@ -76,7 +82,7 @@ Build a self-contained issue body with these parts, in order:
 
 ## 6. Labels
 
-Every out-of-scope non-security issue this recipe files carries `tech-debt` plus **exactly one** severity label. Map the finding's report tier to the label like this:
+Every out-of-scope non-security issue this recipe files carries `tech-debt` plus **exactly one** severity label; a filing through one of the two grading routes (see step 7) carries exactly one severity label and exactly one difficulty label. Map the finding's report tier to the label like this:
 
 | Report tier | Label |
 |---|---|
@@ -84,17 +90,43 @@ Every out-of-scope non-security issue this recipe files carries `tech-debt` plus
 | Important | `severity:important` |
 | Suggestion | `severity:suggestion` |
 
+See step 7 for the difficulty label's three permitted values and the rubric for choosing between them.
+
 A finding that gets deliberately declined (closed without fixing) carries GitHub's `wontfix` label, that's what step 2 checks for to avoid re-filing it.
 
-Create all five labels idempotently before the first filing in a run, a label that already exists is not an error:
+Create all eight labels idempotently before the first filing in a run, a label that already exists is not an error:
 
 ```bash
-for label in tech-debt severity:critical severity:important severity:suggestion wontfix; do
+for label in tech-debt severity:critical severity:important severity:suggestion \
+             difficulty:easy difficulty:medium difficulty:hard wontfix; do
   gh label create "$label" --color <hex> 2>/dev/null || true
 done
 ```
 
-## 7. Touch the debt-count staleness sentinel
+## 7. Difficulty grade
+
+Every issue a machine files through this recipe's grading routes carries exactly one `difficulty:` label. This section is the single source of truth for the permitted values and for choosing between them; the filing routes that grade against this rubric never grade against a private reading of a grade's name.
+
+Grade the difficulty of **the fix**, never the model, agent, or tooling that would perform it.
+
+| Grade | The fix carries |
+|---|---|
+| `difficulty:easy` | no design decision left to make: the issue text and the cited code together determine the change, and two competent engineers would write the same fix. |
+| `difficulty:medium` | a design decision the surrounding code settles: more than one implementation is reasonable in the abstract, and reading the adjacent code, its conventions, and its call sites picks one. |
+| `difficulty:hard` | a design decision the surrounding code does not settle: two competent engineers who have both read all the cited code could still reasonably choose differently, or the fix must first settle what the correct behavior is. |
+
+Read the three rows top to bottom and take the first whose properties all hold. The rows are exclusive by construction: they ask how many design decisions the fix carries and whether the code answers them, and exactly one answer holds for any one fix.
+
+Difficulty adds the dimension the `Handler:` line does not capture. `Handler:` grades how far the change reaches; difficulty grades how much design the fix needs. The two often move together, and they are not meant to: a one-file fix whose correct behavior is genuinely in question is `Handler: prompt` and `difficulty:hard`, and a mechanical rename across twenty files is `Handler: plan` and `difficulty:easy`.
+
+Worked boundary, easy versus medium. A swallowed error the issue text says to rethrow is `difficulty:easy`: the issue determines the change. The same swallowed error, where the issue says only that it must not be swallowed and leaves the choice between rethrowing, logging and continuing, and surfacing to the caller, is `difficulty:medium`: the choice is real, and the sibling call sites settle it.
+
+- **Ungraded filings.** Not every filing that reaches this recipe carries a grade: a direct human invocation of this skill ("file a tech-debt issue", "record this as tech-debt") has none to give, and two machine routes are exempt for the same reason, the orchestrator's cross-remit disposition, which has not classified the finding out-of-scope against this rubric, and the `/health-audit` comprehensive runbook's human-gated filing offer, which files from an operator's yes on a written report rather than from freshly-read code. A filing on any of these three paths omits the label rather than guessing a grade, and an issue carrying no grade is normal: it orders, clusters, and drains exactly as a graded one does. That guarantee is what keeps a mixed adopter state safe, since every file this feature touches resolves independently on update: a new copy of this recipe running against an old `debt.md` files grades that nothing yet reads, and a new `debt.md` running against old agents reads a backlog where nothing is graded. Both states are reachable and both benign.
+- **Argv constraint.** The value written to the `difficulty:<grade>` label must be one of the three literals above, byte-for-byte, before it reaches any `gh` argv. Argv exposure is minimal here, the token is fixed-vocabulary, which is why the `--body-file` mandate in step 4 is not implicated, but a model-produced string interpolated into a command CI runs with `--verbose` argv echoing earns the one-clause constraint anyway.
+- **Disclosure.** The three grade values are fixed and carry no information about the finding: they do not discriminate a security-class finding from any other. Machine filing never reaches a public repo for a security-class finding, the agent's security-class divert path intercepts it first, and a human-filed issue carries no grade at all.
+- **Where the grade comes from.** This file defines the rubric; it does not apply it. The grade's two producers read it and write the label: `.claude/agents/code-audit-frontend.md`'s non-security disposition pipeline, and the tech-debt filing block in `.claude/skills/gaia/references/audit.md`. An edit to the value set or the rubric must reach both.
+
+## 8. Touch the debt-count staleness sentinel
 
 As the last step of this recipe, touch the sentinel so the statusline's debt count recomputes on its next tick:
 
@@ -117,5 +149,7 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 <!-- gaia:maintainer-only:end -->
 
 The governed set also includes the `debt:in-progress` claim label: `.claude/skills/gaia/references/debt.md` creates and applies it as the `/gaia-debt` in-progress claim, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count. This recipe never creates or applies `debt:in-progress` itself. The same holds for `debt:spec-pending`: `debt.md` creates and applies it as the `/gaia-debt` design-first handoff park label, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count too. This recipe never creates or applies `debt:spec-pending` itself.
+
+The `difficulty:` namespace (step 7) is not part of this lockstep contract. No deterministic non-LLM consumer reads it, verified against all four named above: `.gaia/scripts/debt-count-refresh.sh` filters by excluding two specific label names (`debt:in-progress` and `debt:spec-pending`) and ignores anything else, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the issue body and parses no labels, `.gaia/statusline/gaia-statusline.sh` parses no labels, and `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward. Adding this namespace therefore requires zero changes to any of the four, which is exactly why the grade could be a label at all.
 
 If you're only filing an issue, none of the above needs touching, this note exists so a future edit to the key/label shapes doesn't silently break them.
