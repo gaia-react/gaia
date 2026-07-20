@@ -92,9 +92,15 @@ payload_cwd=$(jq -r '.cwd // empty' <<<"$payload")
 # own two-branch derivation above guarantees, and unlike a `--` terminator it
 # behaves identically on bash 3.2 and bash 5. An empty value falls through to
 # the `-n` guard below and routes to the process cwd, same as an absent field.
-# `dirname --` and `CDPATH=''` below are belt-and-braces once this holds: with
-# an absolute payload_cwd neither a dash-leading operand nor a CDPATH lookup is
-# reachable, and they stay as defense in depth.
+# `dirname --` and `CDPATH=''` on the payload_main_root line below are
+# belt-and-braces once this holds: with an absolute payload_cwd neither a
+# dash-leading operand nor a CDPATH lookup is reachable there, so they stay only
+# as defense in depth. That covers those two, and nothing else. The
+# identically-shaped guards further down operate on file_path, which no
+# invariant constrains, and they are load-bearing: dropping the CDPATH guard
+# there turns a deny into an allow, because cd resolves a relative file_path
+# through CDPATH into the exempt shared-state tree while git still resolves the
+# write to the main checkout.
 case "$payload_cwd" in
   /*) ;;
   *) payload_cwd="" ;;
