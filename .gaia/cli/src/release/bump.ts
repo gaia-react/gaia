@@ -8,10 +8,14 @@
  *
  * Bump rules; highest severity wins:
  *
- *   - `BREAKING CHANGE` in body, or `!` suffix on type → major
- *   - `feat:` / `feat(...):`                            → minor
- *   - `fix:` / `docs:` / `chore:` / `refactor:` /
- *     `perf:` / `ci:` / `test:` / `style:`              → patch
+ *   - `BREAKING CHANGE` in body, or `!` suffix on any type → major
+ *   - `feat:` / `feat(...):`                               → minor
+ *   - every other declared type except `wiki:`             → patch
+ *   - `wiki:` and any undeclared type                      → no contribution
+ *
+ * The grammar and the type vocabulary come from
+ * `util/conventional-commit.ts`; `TYPE_TO_BUMP` below is this module's own
+ * disposition over that vocabulary.
  *
  * Without `--auto` the command prints `vCURRENT -> vNEXT (bump)` and
  * exits 0 without writing. With `--auto` it writes the new version to
@@ -29,6 +33,11 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {
+  isCommitType,
+  parseConventionalCommitHeader,
+} from '../util/conventional-commit.js';
+import type {CommitType} from '../util/conventional-commit.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release bump [--auto]
 
@@ -90,19 +99,38 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   return {flags: {auto}, ok: true};
 };
 
-const PATCH_TYPES = new Set([
-  'chore',
-  'ci',
-  'docs',
-  'fix',
-  'perf',
-  'refactor',
-  'style',
-  'test',
-]);
-
-/** `feat`, `feat(scope)`, `fix!`, `feat(scope)!:`, `BREAKING CHANGE: …`. */
-const CONVENTIONAL_HEADER_REGEX = /^(?<type>[a-z]+)(?:\([^)]*\))?(?<bang>!?):/u;
+/**
+ * What each declared commit type contributes to the aggregate bump, before the
+ * breaking marker (which outranks the type and always means major).
+ *
+ * Keyed by `CommitType`, so a type added to the vocabulary fails to compile
+ * here until it gets a disposition. That is deliberate: `debt` and `build`
+ * were in steady use with no entry, so a maintenance window of debt drains
+ * plus a rebundle aggregated to no bump while every subject in it was
+ * correctly formatted.
+ *
+ * `wiki` is the one deliberate `null`: sync commits are the tool's own
+ * bookkeeping and should never force a release.
+ */
+const TYPE_TO_BUMP: Record<CommitType, BumpKind | null> = {
+  build: 'patch',
+  chore: 'patch',
+  ci: 'patch',
+  debt: 'patch',
+  docs: 'patch',
+  feat: 'minor',
+  fix: 'patch',
+  perf: 'patch',
+  refactor: 'patch',
+  // A revert changes released behavior, so it has to ship. Kept at `patch`
+  // rather than inferred from what it undoes: reverting a `feat` arguably
+  // warrants more, and a revert that genuinely removes a shipped capability
+  // carries the `!` marker, which already outranks this table.
+  revert: 'patch',
+  style: 'patch',
+  test: 'patch',
+  wiki: null,
+};
 
 export type Commit = {
   body: string;
@@ -110,20 +138,23 @@ export type Commit = {
 };
 
 export const classifyCommit = (commit: Commit): BumpKind | null => {
-  const subject = commit.subject.trim();
-  const {body} = commit;
+  const {body, subject} = commit;
 
   // Breaking change: major.
   if (/(^|\n)BREAKING CHANGE: /u.test(body)) return 'major';
 
-  const match = CONVENTIONAL_HEADER_REGEX.exec(subject);
+  const header = parseConventionalCommitHeader(subject);
 
-  if (match === null) return null;
-  if (match.groups?.bang === '!') return 'major';
-  if (match.groups?.type === 'feat') return 'minor';
-  if (PATCH_TYPES.has(match.groups?.type ?? '')) return 'patch';
+  if (header === undefined) return null;
 
-  return null;
+  const {breaking, type} = header;
+
+  // The `!` marker is read on any type, matching Conventional Commits and the
+  // wiki classifier's reading of the same grammar.
+  if (breaking) return 'major';
+  if (!isCommitType(type)) return null;
+
+  return TYPE_TO_BUMP[type];
 };
 
 const RANK: Record<BumpKind, number> = {major: 3, minor: 2, patch: 1};

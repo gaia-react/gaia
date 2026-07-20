@@ -8,10 +8,11 @@
  * maintainer-only handler, so esbuild tree-shakes their code out of this
  * bundle by construction.
  */
-/* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
+
 import {realpathSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 import {run as runAutomation} from './automation/index.js';
+import {run as runCiCheckSubject} from './ci/check-subject.js';
 import {run as runCiRevert} from './ci/revert.js';
 import {run as runCiStaleCheck} from './ci/stale-check.js';
 import {EXIT_CODES} from './exit.js';
@@ -39,6 +40,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   harden-ledger list|record|is-suppressed|prune
   harden-tally
   automation read-config|cron-decide
+  ci-check-subject --subject "<text>"
   ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
   ci-revert open|mark-failed|is-cap-reached
   update merge-workspace --baseline <file> --latest <file> --current <file>
@@ -64,6 +66,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   automation: runAutomation,
+  'ci-check-subject': runCiCheckSubject,
   'ci-revert': runCiRevert,
   'ci-stale-check': runCiStaleCheck,
   fitness: runFitness,
@@ -123,15 +126,20 @@ const isDirectRun =
   import.meta.url === pathToFileURL(realpathSync(invokedPath)).href;
 
 if (isDirectRun) {
+  // Set `process.exitCode` and let the event loop drain rather than calling
+  // `process.exit()`. `process.stdout` is asynchronous when it is a pipe, so
+  // an immediate `process.exit()` discards whatever is still buffered: a
+  // `wiki commit-classify --json` over a non-trivial range truncated at
+  // exactly 65536 bytes (the pipe capacity) and handed its caller unparseable
+  // JSON, while the same command redirected to a file wrote all of it. The
+  // sync playbook reads that command through a pipe.
   try {
-    const exitCode = await run(process.argv.slice(2));
-
-    process.exit(exitCode);
+    process.exitCode = await run(process.argv.slice(2));
   } catch (error: unknown) {
     structuredError({
       code: 'cli_internal_error',
       message: error instanceof Error ? error.message : String(error),
     });
-    process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+    process.exitCode = EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 }

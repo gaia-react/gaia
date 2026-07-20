@@ -791,10 +791,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path43) {
-  if (!path43)
+function getElementAtPath(obj, path44) {
+  if (!path44)
     return obj;
-  return path43.reduce((acc, key) => acc?.[key], obj);
+  return path44.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -1203,11 +1203,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path43, issues) {
+function prefixIssues(path44, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path43);
+    iss.path.unshift(path44);
     return iss;
   });
 }
@@ -1354,16 +1354,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path43 = []) => {
+  const processError = (error52, path44 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path43, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path44, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path43, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path44, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path43, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path44, ...issue2.path]);
       } else {
-        const fullpath = [...path43, ...issue2.path];
+        const fullpath = [...path44, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -1390,17 +1390,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path43 = []) => {
+  const processError = (error52, path44 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path43, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path44, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path43, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path44, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path43, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path44, ...issue2.path]);
       } else {
-        const fullpath = [...path43, ...issue2.path];
+        const fullpath = [...path44, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -1432,8 +1432,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path43 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path43) {
+  const path44 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path44) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -14125,13 +14125,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path43 = ref.slice(1).split("/").filter(Boolean);
-  if (path43.length === 0) {
+  const path44 = ref.slice(1).split("/").filter(Boolean);
+  if (path44.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path43[0] === defsKey) {
-    const key = path43[1];
+  if (path44[0] === defsKey) {
+    const key = path44[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -17498,6 +17498,39 @@ var run18 = async (argv) => {
 import { spawnSync } from "node:child_process";
 import { existsSync as existsSync9, readFileSync as readFileSync11 } from "node:fs";
 import path13 from "node:path";
+
+// src/util/conventional-commit.ts
+var COMMIT_TYPES = [
+  "build",
+  "chore",
+  "ci",
+  "debt",
+  "docs",
+  "feat",
+  "fix",
+  "perf",
+  "refactor",
+  "revert",
+  "style",
+  "test",
+  "wiki"
+];
+var HEADER_PATTERN = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<breaking>!?):/u;
+var parseConventionalCommitHeader = (subject) => {
+  const trimmed = subject.trim();
+  const match = HEADER_PATTERN.exec(trimmed);
+  if (match?.groups === void 0) return void 0;
+  const { breaking, scope, type } = match.groups;
+  return {
+    breaking: breaking === "!",
+    rest: trimmed.slice(match[0].length).trim(),
+    scope,
+    type
+  };
+};
+var isCommitType = (type) => COMMIT_TYPES.includes(type);
+
+// src/release/bump.ts
 var HELP_TEXT19 = `Usage: gaia-maintainer release bump [--auto]
 
   Compute the next semver bump from conventional-commit subjects since
@@ -17527,27 +17560,34 @@ var parseFlags7 = (argv) => {
   }
   return { flags: { auto }, ok: true };
 };
-var PATCH_TYPES = /* @__PURE__ */ new Set([
-  "chore",
-  "ci",
-  "docs",
-  "fix",
-  "perf",
-  "refactor",
-  "style",
-  "test"
-]);
-var CONVENTIONAL_HEADER_REGEX = /^(?<type>[a-z]+)(?:\([^)]*\))?(?<bang>!?):/u;
+var TYPE_TO_BUMP = {
+  build: "patch",
+  chore: "patch",
+  ci: "patch",
+  debt: "patch",
+  docs: "patch",
+  feat: "minor",
+  fix: "patch",
+  perf: "patch",
+  refactor: "patch",
+  // A revert changes released behavior, so it has to ship. Kept at `patch`
+  // rather than inferred from what it undoes: reverting a `feat` arguably
+  // warrants more, and a revert that genuinely removes a shipped capability
+  // carries the `!` marker, which already outranks this table.
+  revert: "patch",
+  style: "patch",
+  test: "patch",
+  wiki: null
+};
 var classifyCommit = (commit2) => {
-  const subject = commit2.subject.trim();
-  const { body } = commit2;
+  const { body, subject } = commit2;
   if (/(^|\n)BREAKING CHANGE: /u.test(body)) return "major";
-  const match = CONVENTIONAL_HEADER_REGEX.exec(subject);
-  if (match === null) return null;
-  if (match.groups?.bang === "!") return "major";
-  if (match.groups?.type === "feat") return "minor";
-  if (PATCH_TYPES.has(match.groups?.type ?? "")) return "patch";
-  return null;
+  const header = parseConventionalCommitHeader(subject);
+  if (header === void 0) return null;
+  const { breaking, type } = header;
+  if (breaking) return "major";
+  if (!isCommitType(type)) return null;
+  return TYPE_TO_BUMP[type];
 };
 var RANK = { major: 3, minor: 2, patch: 1 };
 var aggregateBump = (commits) => {
@@ -17805,28 +17845,28 @@ var parseFlags8 = (argv) => {
   return { flags: { draft, version: version2 }, ok: true };
 };
 var TYPE_TO_SECTION = {
+  build: null,
   chore: null,
   ci: null,
+  debt: "Fixed",
   docs: "Changed",
   feat: "Added",
   fix: "Fixed",
   perf: "Changed",
   refactor: "Changed",
+  revert: "Fixed",
   style: null,
-  test: null
+  test: null,
+  wiki: null
 };
-var CONVENTIONAL_HEADER_REGEX2 = /^(?<type>[a-z]+)(?:\([^)]*\))?!?:(?<rest>.*)$/u;
 var groupCommits = (commits) => {
   const sections = { Added: [], Changed: [], Fixed: [] };
   for (const commit2 of commits) {
-    const subject = commit2.subject.trim();
-    const match = CONVENTIONAL_HEADER_REGEX2.exec(subject);
-    if (match !== null) {
-      const type = (match.groups?.type ?? "").toLowerCase();
-      const target = TYPE_TO_SECTION[type];
-      const message = (match.groups?.rest ?? "").trim();
-      if (target && message.length > 0) {
-        sections[target].push(message);
+    const header = parseConventionalCommitHeader(commit2.subject);
+    if (header !== void 0 && isCommitType(header.type)) {
+      const target = TYPE_TO_SECTION[header.type];
+      if (target && header.rest.length > 0) {
+        sections[target].push(header.rest);
       }
     }
   }
@@ -27323,6 +27363,55 @@ var run46 = (argv, options = {}) => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
+// src/wiki/classify-paths.ts
+import { existsSync as existsSync26, readFileSync as readFileSync31 } from "node:fs";
+import path35 from "node:path";
+var DEFAULT_CLASSIFY_PATHS = {
+  inventoryPaths: [
+    "app/components/",
+    "app/hooks/",
+    "app/pages/",
+    "app/services/"
+  ],
+  sourcePaths: ["app/"],
+  testPaths: []
+};
+var PathListSchema = external_exports.array(external_exports.string().min(1));
+var SourcePathListSchema = PathListSchema.min(1);
+var WikiClassifySchema = external_exports.object({
+  inventoryPaths: PathListSchema.optional(),
+  sourcePaths: SourcePathListSchema.optional(),
+  testPaths: PathListSchema.optional()
+});
+var PackageJsonSchema = external_exports.object({
+  gaia: external_exports.object({ wikiClassify: WikiClassifySchema.optional() }).optional()
+});
+var readClassifyPaths = (repoRoot) => {
+  const target = path35.join(repoRoot, "package.json");
+  if (!existsSync26(target)) return DEFAULT_CLASSIFY_PATHS;
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync31(target, "utf8"));
+  } catch {
+    return DEFAULT_CLASSIFY_PATHS;
+  }
+  const result = PackageJsonSchema.safeParse(parsed);
+  if (!result.success) {
+    process.stderr.write(
+      `commit-classify: ignoring malformed gaia.wikiClassify config. ${summarizeZodError(target, result.error)}
+`
+    );
+    return DEFAULT_CLASSIFY_PATHS;
+  }
+  const configured = result.data.gaia?.wikiClassify;
+  if (configured === void 0) return DEFAULT_CLASSIFY_PATHS;
+  return {
+    inventoryPaths: configured.inventoryPaths ?? DEFAULT_CLASSIFY_PATHS.inventoryPaths,
+    sourcePaths: configured.sourcePaths ?? DEFAULT_CLASSIFY_PATHS.sourcePaths,
+    testPaths: configured.testPaths ?? DEFAULT_CLASSIFY_PATHS.testPaths
+  };
+};
+
 // src/wiki/commit-classify.ts
 var HELP_TEXT46 = `Usage: gaia wiki commit-classify --since <sha> [--json]
 
@@ -27371,45 +27460,46 @@ var FLOWS_RELEVANT_PATHS = [
   "app/i18n.ts",
   "app/sessions.server/"
 ];
-var APP_INVENTORY_PREFIXES = [
-  "app/components/",
-  "app/hooks/",
-  "app/services/",
-  "app/pages/"
-];
 var touchesAny = (files, prefixes) => files.some((file2) => prefixes.some((prefix) => file2.startsWith(prefix)));
-var touchesAppNonTest = (files) => files.some((file2) => file2.startsWith("app/") && !file2.includes(".test."));
-var touchesOnlyTests = (files) => files.length > 0 && files.every((file2) => file2.includes(".test."));
-var SUBJECT_PREFIX_PATTERN = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<breaking>!?):/u;
-var parseSubjectPrefix = (subject) => {
-  const groups = SUBJECT_PREFIX_PATTERN.exec(subject)?.groups;
-  if (!groups) return void 0;
-  return {
-    breaking: groups.breaking === "!",
-    scope: groups.scope,
-    type: groups.type
-  };
+var isTestFile = (file2, paths) => file2.includes(".test.") || paths.testPaths.some((prefix) => file2.startsWith(prefix));
+var touchesSourceNonTest = (files, paths) => files.some(
+  (file2) => paths.sourcePaths.some((prefix) => file2.startsWith(prefix)) && !isTestFile(file2, paths)
+);
+var touchesOnlyTests = (files, paths) => files.length > 0 && files.every((file2) => isTestFile(file2, paths));
+var matchesPrefix = (header, type, scope) => header?.type === type && (scope === void 0 || header.scope === scope);
+var PATH_DISCRIMINATED_TYPES = {
+  build: false,
+  chore: false,
+  ci: false,
+  debt: true,
+  docs: false,
+  feat: true,
+  fix: true,
+  perf: true,
+  refactor: true,
+  revert: true,
+  style: false,
+  test: false,
+  wiki: false
 };
-var matchesPrefix = (prefix, type, scope) => prefix?.type === type && (scope === void 0 || prefix.scope === scope);
-var FEATURE_TYPES = ["debt", "feat", "fix", "refactor"];
-var classifyHardSkip = (commit2, prefix) => {
+var classifyHardSkip = (commit2, header) => {
   if (commit2.subject.startsWith("Merge pull request")) {
     return { reason: "merge commit", suggestion: "SKIP" };
   }
-  if (matchesPrefix(prefix, "chore", "release")) {
+  if (matchesPrefix(header, "chore", "release")) {
     return { reason: "chore(release): release plumbing", suggestion: "SKIP" };
   }
-  if (matchesPrefix(prefix, "style")) {
+  if (matchesPrefix(header, "style")) {
     return { reason: "style: formatting only", suggestion: "SKIP" };
   }
   return void 0;
 };
-var classifyStrongWorthy = (commit2, prefix) => {
+var classifyStrongWorthy = (commit2, header) => {
   const { body } = commit2;
-  if (prefix?.breaking || body.includes("BREAKING CHANGE")) {
+  if (header?.breaking || body.includes("BREAKING CHANGE")) {
     return { reason: "breaking change signal", suggestion: "WORTHY" };
   }
-  if (matchesPrefix(prefix, "docs", "decision") || matchesPrefix(prefix, "docs", "decisions") || matchesPrefix(prefix, "chore", "adr")) {
+  if (matchesPrefix(header, "docs", "decision") || matchesPrefix(header, "docs", "decisions") || matchesPrefix(header, "chore", "adr")) {
     return { reason: "explicit ADR signal", suggestion: "WORTHY" };
   }
   return void 0;
@@ -27424,76 +27514,109 @@ var classifyTouchedDomains = (commit2) => {
   }
   return void 0;
 };
-var classifyArchSuppressibleChore = (commit2, prefix) => {
+var classifyArchSuppressibleChore = (commit2, header) => {
   const { body } = commit2;
   const suppressible = (label, skipReason) => ARCH_BODY_PATTERN.test(body) ? {
     reason: `${label}: body mentions architecture / decision`,
     suggestion: "WORTHY"
   } : { reason: skipReason, suggestion: "SKIP" };
-  if (matchesPrefix(prefix, "chore", "deps")) {
+  if (matchesPrefix(header, "chore", "deps")) {
     return suppressible("chore(deps)", "chore(deps): version bump only");
   }
-  if (matchesPrefix(prefix, "chore", "cli")) {
+  if (matchesPrefix(header, "chore", "cli")) {
     return suppressible("chore(cli)", "chore(cli): tooling-internal");
   }
-  if (matchesPrefix(prefix, "wiki")) {
+  if (matchesPrefix(header, "wiki")) {
     return suppressible("wiki", "wiki: self-referential");
   }
-  if (matchesPrefix(prefix, "ci")) {
+  if (matchesPrefix(header, "ci")) {
     return suppressible("ci", "ci: CI plumbing");
   }
-  if (matchesPrefix(prefix, "build")) {
+  if (matchesPrefix(header, "build")) {
     return suppressible("build", "build: bundling / build plumbing");
   }
   return void 0;
 };
-var classifyFeatureCommit = (commit2, prefix) => {
+var classifyFeatureCommit = (commit2, header, paths) => {
   const { body, files } = commit2;
-  if (!prefix || !FEATURE_TYPES.includes(prefix.type)) return void 0;
-  if (touchesOnlyTests(files)) {
-    return { reason: "feat/fix/refactor/debt: tests-only", suggestion: "SKIP" };
+  if (header === void 0 || !isCommitType(header.type) || !PATH_DISCRIMINATED_TYPES[header.type]) {
+    return void 0;
+  }
+  if (touchesOnlyTests(files, paths)) {
+    return {
+      reason: "feat/fix/perf/refactor/debt: tests-only",
+      suggestion: "SKIP"
+    };
   }
   const onlyInventory = files.length > 0 && files.every(
-    (file2) => APP_INVENTORY_PREFIXES.some(
+    (file2) => paths.inventoryPaths.some(
       (inventoryPrefix) => file2.startsWith(inventoryPrefix)
     )
   );
   if (onlyInventory && !ARCH_BODY_PATTERN.test(body)) {
     return {
-      reason: "feat/fix/refactor/debt: only inventory paths (Serena handles inventory)",
+      reason: "feat/fix/perf/refactor/debt: only inventory paths (Serena handles inventory)",
       suggestion: "SKIP"
     };
   }
-  if (touchesAppNonTest(files)) {
+  if (touchesSourceNonTest(files, paths)) {
     return {
-      reason: "feat/fix/refactor/debt: app/** non-test",
+      reason: "feat/fix/perf/refactor/debt: source-bearing path (non-test)",
       suggestion: "WORTHY"
     };
   }
   return {
-    reason: "feat/fix/refactor/debt: defer to human review",
+    deferred: true,
+    reason: "feat/fix/perf/refactor/debt: defer to human review",
     suggestion: "WORTHY"
   };
 };
-var classifyCatchAll = (commit2, prefix) => {
+var classifyCatchAll = (commit2, header) => {
   const { body } = commit2;
-  if (matchesPrefix(prefix, "chore")) {
+  if (matchesPrefix(header, "chore")) {
     return ARCH_BODY_PATTERN.test(body) ? { reason: "chore: body mentions architecture", suggestion: "WORTHY" } : { reason: "chore: generic chore", suggestion: "SKIP" };
   }
-  if (matchesPrefix(prefix, "docs")) {
+  if (matchesPrefix(header, "docs")) {
     return { reason: "docs: prose-only", suggestion: "SKIP" };
   }
-  if (matchesPrefix(prefix, "test")) {
+  if (matchesPrefix(header, "test")) {
     return { reason: "test: test-only change", suggestion: "SKIP" };
   }
   return {
+    deferred: true,
     reason: "no matching prefix, defer to human review",
     suggestion: "WORTHY"
   };
 };
-var classify = (commit2) => {
-  const prefix = parseSubjectPrefix(commit2.subject);
-  return classifyHardSkip(commit2, prefix) ?? classifyStrongWorthy(commit2, prefix) ?? classifyTouchedDomains(commit2) ?? classifyArchSuppressibleChore(commit2, prefix) ?? classifyFeatureCommit(commit2, prefix) ?? classifyCatchAll(commit2, prefix);
+var classify = (commit2, paths) => {
+  const header = parseConventionalCommitHeader(commit2.subject);
+  return classifyHardSkip(commit2, header) ?? classifyStrongWorthy(commit2, header) ?? classifyTouchedDomains(commit2) ?? classifyArchSuppressibleChore(commit2, header) ?? classifyFeatureCommit(commit2, header, paths) ?? classifyCatchAll(commit2, header);
+};
+var HEALTH_MIN_SAMPLE = 20;
+var HEALTH_DEFERRAL_THRESHOLD = 0.4;
+var computeHealth = (decisions) => {
+  const evaluated = decisions.length;
+  const deferred = decisions.filter((decision) => decision.deferred).length;
+  const worthy = decisions.filter(
+    (decision) => decision.suggestion === "WORTHY"
+  ).length;
+  const deferralRate = evaluated === 0 ? 0 : deferred / evaluated;
+  return {
+    deferral_rate: deferralRate,
+    deferred,
+    evaluated,
+    inert: evaluated >= HEALTH_MIN_SAMPLE && deferralRate > HEALTH_DEFERRAL_THRESHOLD,
+    threshold: HEALTH_DEFERRAL_THRESHOLD,
+    worthy_rate: evaluated === 0 ? 0 : worthy / evaluated
+  };
+};
+var asPercent = (rate) => `${Math.round(rate * 100)}%`;
+var warnIfInert = (health) => {
+  if (!health.inert) return;
+  process.stderr.write(
+    `commit-classify: ${health.deferred} of ${health.evaluated} commits (${asPercent(health.deferral_rate)}) reached a fail-open default, above the ${asPercent(health.threshold)} threshold. The rule table has likely stopped matching the subjects this repo writes; the first pass is not filtering and Step 4 will deep-read nearly the whole range.
+`
+  );
 };
 var printHuman6 = (classification) => {
   if (classification.commits.length === 0) {
@@ -27508,6 +27631,11 @@ var printHuman6 = (classification) => {
       `            ${commit2.files_changed} files, +${commit2.insertions} -${commit2.deletions}`
     );
   }
+  const { health } = classification;
+  lines.push(
+    "",
+    `WORTHY ${asPercent(health.worthy_rate)}, fail-open defaults ${health.deferred}/${health.evaluated} (${asPercent(health.deferral_rate)})`
+  );
   process.stdout.write(`${lines.join("\n")}
 `);
 };
@@ -27547,21 +27675,25 @@ var run47 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
+  const paths = readClassifyPaths(repoRoot);
+  const classified = details.map((detail) => ({
+    decision: classify(detail, paths),
+    detail
+  }));
   const classification = {
-    commits: details.map((detail) => {
-      const decision = classify(detail);
-      return {
-        body: detail.body,
-        deletions: detail.deletions,
-        files_changed: detail.files_changed,
-        insertions: detail.insertions,
-        sha: detail.sha,
-        subject: detail.subject,
-        suggestion: decision.suggestion,
-        suggestion_reason: decision.reason
-      };
-    })
+    commits: classified.map(({ decision, detail }) => ({
+      body: detail.body,
+      deletions: detail.deletions,
+      files_changed: detail.files_changed,
+      insertions: detail.insertions,
+      sha: detail.sha,
+      subject: detail.subject,
+      suggestion: decision.suggestion,
+      suggestion_reason: decision.reason
+    })),
+    health: computeHealth(classified.map(({ decision }) => decision))
   };
+  warnIfInert(classification.health);
   if (parsed.flags.json) {
     process.stdout.write(`${JSON.stringify(classification)}
 `);
@@ -27572,8 +27704,8 @@ var run47 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readdirSync as readdirSync5, readFileSync as readFileSync31, statSync as statSync5 } from "node:fs";
-import path35 from "node:path";
+import { readdirSync as readdirSync5, readFileSync as readFileSync32, statSync as statSync5 } from "node:fs";
+import path36 from "node:path";
 var HELP_TEXT47 = `Usage: gaia wiki dead-paths [--json]
 
   Scan wiki/**/*.md for backticked repo-relative paths under .claude/, .gaia/,
@@ -27618,18 +27750,18 @@ var walkMarkdown = (root, dir) => {
   const entries = readdirSync5(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
-    const full = path35.join(dir, entry.name);
+    const full = path36.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkMarkdown(root, full));
     } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(path35.relative(root, full));
+      out.push(path36.relative(root, full));
     }
   }
   return out;
 };
 var pathExists = (root, candidate) => {
   try {
-    statSync5(path35.join(root, candidate));
+    statSync5(path36.join(root, candidate));
     return true;
   } catch {
     return false;
@@ -27648,14 +27780,14 @@ var collectDeadPathsInLine = (ctx, lineNumber, line) => {
   return refs;
 };
 var collectDeadPathsInFile = (ctx) => {
-  const content = readFileSync31(path35.join(ctx.cwd, ctx.filePath), "utf8");
+  const content = readFileSync32(path36.join(ctx.cwd, ctx.filePath), "utf8");
   const lines = content.split("\n");
   return lines.flatMap(
     (line, index) => collectDeadPathsInLine(ctx, index + 1, line)
   );
 };
 var findDeadPaths = (cwd) => {
-  const wikiDir = path35.join(cwd, "wiki");
+  const wikiDir = path36.join(cwd, "wiki");
   try {
     statSync5(wikiDir);
   } catch {
@@ -27919,8 +28051,8 @@ var run49 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readdirSync as readdirSync6, readFileSync as readFileSync32, statSync as statSync6 } from "node:fs";
-import path36 from "node:path";
+import { readdirSync as readdirSync6, readFileSync as readFileSync33, statSync as statSync6 } from "node:fs";
+import path37 from "node:path";
 
 // src/wiki/util/frontmatter.ts
 var FRONTMATTER_FENCE = "---";
@@ -28004,11 +28136,11 @@ var walkMarkdown2 = (root, dir) => {
   const entries = readdirSync6(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
-    const full = path36.join(dir, entry.name);
+    const full = path37.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkMarkdown2(root, full));
     } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(path36.relative(root, full));
+      out.push(path37.relative(root, full));
     }
   }
   return out;
@@ -28054,7 +28186,7 @@ var findInBody = (body, bodyLineOffset, relPath) => {
   });
 };
 var findEmptySections = (cwd) => {
-  const wikiDir = path36.join(cwd, "wiki");
+  const wikiDir = path37.join(cwd, "wiki");
   try {
     statSync6(wikiDir);
   } catch {
@@ -28064,7 +28196,7 @@ var findEmptySections = (cwd) => {
     (a, b) => a.localeCompare(b)
   );
   return files.filter((filePath) => !shouldSkipFile2(filePath)).flatMap((filePath) => {
-    const content = readFileSync32(path36.join(cwd, filePath), "utf8");
+    const content = readFileSync33(path37.join(cwd, filePath), "utf8");
     const { body } = parseFrontmatter(content);
     const offset = content.split("\n").length - body.split("\n").length;
     return findInBody(body, offset, filePath);
@@ -28117,8 +28249,8 @@ var run50 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync33, statSync as statSync7 } from "node:fs";
-import path37 from "node:path";
+import { readdirSync as readdirSync7, readFileSync as readFileSync34, statSync as statSync7 } from "node:fs";
+import path38 from "node:path";
 var HELP_TEXT50 = `Usage: gaia wiki frontmatter [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**) for pages missing required
@@ -28134,18 +28266,18 @@ var walkMarkdown3 = (root, dir) => {
   const entries = readdirSync7(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
-    const full = path37.join(dir, entry.name);
+    const full = path38.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkMarkdown3(root, full));
     } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(path37.relative(root, full));
+      out.push(path38.relative(root, full));
     }
   }
   return out;
 };
 var hasField = (frontmatter, field) => Object.hasOwn(frontmatter, field) && frontmatter[field] !== null;
 var findFrontmatterGaps = (cwd) => {
-  const wikiDir = path37.join(cwd, "wiki");
+  const wikiDir = path38.join(cwd, "wiki");
   try {
     statSync7(wikiDir);
   } catch {
@@ -28157,7 +28289,7 @@ var findFrontmatterGaps = (cwd) => {
   );
   for (const filePath of files) {
     if (!shouldSkipFile3(filePath)) {
-      const content = readFileSync33(path37.join(cwd, filePath), "utf8");
+      const content = readFileSync34(path38.join(cwd, filePath), "utf8");
       const { frontmatter } = parseFrontmatter(content);
       const missing = REQUIRED_FIELDS.filter(
         (field) => !hasField(frontmatter, field)
@@ -28216,8 +28348,8 @@ var run51 = (argv, options = {}) => {
 };
 
 // src/wiki/log-prepend.ts
-import { existsSync as existsSync26, readFileSync as readFileSync34, renameSync as renameSync6, writeFileSync as writeFileSync9 } from "node:fs";
-import path38 from "node:path";
+import { existsSync as existsSync27, readFileSync as readFileSync35, renameSync as renameSync6, writeFileSync as writeFileSync9 } from "node:fs";
+import path39 from "node:path";
 var HELP_TEXT51 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
 
   Prepends one canonical line to wiki/log.md after the frontmatter.
@@ -28322,8 +28454,8 @@ var run52 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const logPath = path38.join(repoRoot, "wiki", "log.md");
-  if (!existsSync26(logPath)) {
+  const logPath = path39.join(repoRoot, "wiki", "log.md");
+  if (!existsSync27(logPath)) {
     structuredError({
       code: "log_missing",
       message: "wiki/log.md does not exist",
@@ -28331,7 +28463,7 @@ var run52 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync34(logPath, "utf8");
+  const raw = readFileSync35(logPath, "utf8");
   const lines = raw.split("\n");
   const scan = scanFrontmatter(lines);
   if (scan.kind === "missing" || scan.kind === "malformed") {
@@ -28357,8 +28489,8 @@ var run52 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync27, readdirSync as readdirSync8, statSync as statSync8 } from "node:fs";
-import path39 from "node:path";
+import { existsSync as existsSync28, readdirSync as readdirSync8, statSync as statSync8 } from "node:fs";
+import path40 from "node:path";
 var HELP_TEXT52 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
   Per-domain Levenshtein over slugs. Emits tab-separated rows:
@@ -28404,8 +28536,8 @@ var levenshtein = (a, b) => {
 };
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => {
-  const domainDir = path39.join(wikiRoot, domain2);
-  if (!existsSync27(domainDir) || !statSync8(domainDir).isDirectory()) {
+  const domainDir = path40.join(wikiRoot, domain2);
+  if (!existsSync28(domainDir) || !statSync8(domainDir).isDirectory()) {
     return [];
   }
   const entries = readdirSync8(domainDir, { withFileTypes: true });
@@ -28494,7 +28626,7 @@ var run53 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path39.join(repoRoot, "wiki");
+  const wikiRoot = path40.join(repoRoot, "wiki");
   const domainGroups = collectDomainSlugs(wikiRoot);
   const collisions = findCollisions(domainGroups, parsed.flags.maxDistance);
   if (collisions.length === 0) return EXIT_CODES.OK;
@@ -28507,8 +28639,8 @@ var run53 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync28, readdirSync as readdirSync9, readFileSync as readFileSync35, statSync as statSync9 } from "node:fs";
-import path40 from "node:path";
+import { existsSync as existsSync29, readdirSync as readdirSync9, readFileSync as readFileSync36, statSync as statSync9 } from "node:fs";
+import path41 from "node:path";
 var HELP_TEXT53 = `Usage: gaia wiki page-index [--json]
 
   Walk wiki/<domain>/*.md, parse frontmatter, and count inbound/outbound
@@ -28527,7 +28659,7 @@ var DOMAIN_DIRS3 = [
 ];
 var SKIPPED_FILES2 = /* @__PURE__ */ new Set(["_index.md", "README.md"]);
 var ROOT_LINK_SOURCES = ["index.md", "overview.md", "hot.md"];
-var slugFromPath2 = (filePath) => path40.basename(filePath, ".md");
+var slugFromPath2 = (filePath) => path41.basename(filePath, ".md");
 var extractTitle = (body, fallback) => {
   const lines = body.split("\n");
   for (const line of lines) {
@@ -28552,8 +28684,8 @@ var arrayOfStrings = (value) => {
 };
 var isIndexablePage = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES2.has(entry.name) && !entry.name.startsWith("_");
 var readPageRecord = (domainDir, domain2, entry) => {
-  const absPath = path40.join(domainDir, entry.name);
-  const raw = readFileSync35(absPath, "utf8");
+  const absPath = path41.join(domainDir, entry.name);
+  const raw = readFileSync36(absPath, "utf8");
   const { body, frontmatter } = parseFrontmatter(raw);
   const slug = slugFromPath2(entry.name);
   const title = extractTitle(body, slug);
@@ -28562,7 +28694,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
     body,
     domain: domain2,
     outboundTargets: targets,
-    relativePath: path40.posix.join("wiki", domain2, entry.name),
+    relativePath: path41.posix.join("wiki", domain2, entry.name),
     slug,
     status: stringValue(frontmatter.status),
     tags: arrayOfStrings(frontmatter.tags),
@@ -28571,16 +28703,16 @@ var readPageRecord = (domainDir, domain2, entry) => {
   };
 };
 var collectDomainPages = (wikiRoot, domain2) => {
-  const domainDir = path40.join(wikiRoot, domain2);
-  if (!existsSync28(domainDir) || !statSync9(domainDir).isDirectory()) return [];
+  const domainDir = path41.join(wikiRoot, domain2);
+  if (!existsSync29(domainDir) || !statSync9(domainDir).isDirectory()) return [];
   const entries = readdirSync9(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
 var collectPages = (wikiRoot) => DOMAIN_DIRS3.flatMap((domain2) => collectDomainPages(wikiRoot, domain2));
 var collectRootLinkSources = (wikiRoot) => ROOT_LINK_SOURCES.filter(
-  (filename) => existsSync28(path40.join(wikiRoot, filename))
+  (filename) => existsSync29(path41.join(wikiRoot, filename))
 ).map((filename) => {
-  const raw = readFileSync35(path40.join(wikiRoot, filename), "utf8");
+  const raw = readFileSync36(path41.join(wikiRoot, filename), "utf8");
   const { body } = parseFrontmatter(raw);
   return extractWikilinks(body);
 });
@@ -28631,7 +28763,7 @@ var printHuman7 = (index) => {
 };
 var computePageIndex = (cwd) => {
   const repoRoot = resolveRepoRoot(cwd);
-  const wikiRoot = path40.join(repoRoot, "wiki");
+  const wikiRoot = path41.join(repoRoot, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   return buildIndex(pages, rootSources);
@@ -28665,7 +28797,7 @@ var run54 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path40.join(repoRoot, "wiki");
+  const wikiRoot = path41.join(repoRoot, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   const index = buildIndex(pages, rootSources);
@@ -28686,7 +28818,7 @@ var HELP_TEXT54 = `Usage: gaia wiki orphans [--json]
   title, domain } ] }.
 `;
 var HELP_TOKENS52 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var isMaintainerOnly = (path43) => path43.startsWith("wiki/meta/") || path43.startsWith("wiki/entities/");
+var isMaintainerOnly = (path44) => path44.startsWith("wiki/meta/") || path44.startsWith("wiki/entities/");
 var run55 = (argv, options = {}) => {
   let json2 = false;
   for (const token of argv) {
@@ -28742,8 +28874,8 @@ var run55 = (argv, options = {}) => {
 };
 
 // src/wiki/state-bump.ts
-import { existsSync as existsSync29, readFileSync as readFileSync36 } from "node:fs";
-import path41 from "node:path";
+import { existsSync as existsSync30, readFileSync as readFileSync37 } from "node:fs";
+import path42 from "node:path";
 var HELP_TEXT55 = `Usage: gaia wiki state-bump <field> <value>
 
   Updates a single field in wiki/.state.json. Sibling fields and key order
@@ -28813,8 +28945,8 @@ var run56 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const statePath = path41.join(repoRoot, "wiki", ".state.json");
-  if (!existsSync29(statePath)) {
+  const statePath = path42.join(repoRoot, "wiki", ".state.json");
+  if (!existsSync30(statePath)) {
     structuredError({
       code: "state_missing",
       message: "wiki/.state.json does not exist",
@@ -28822,7 +28954,7 @@ var run56 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync36(statePath, "utf8");
+  const raw = readFileSync37(statePath, "utf8");
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -28852,8 +28984,8 @@ var run56 = (argv, options = {}) => {
 
 // src/wiki/state-init.ts
 import { execFileSync as execFileSync6 } from "node:child_process";
-import { existsSync as existsSync30, mkdirSync as mkdirSync12 } from "node:fs";
-import path42 from "node:path";
+import { existsSync as existsSync31, mkdirSync as mkdirSync12 } from "node:fs";
+import path43 from "node:path";
 var HELP_TEXT56 = `Usage: gaia wiki state-init <sha>
 
   Create wiki/.state.json with {version: 1, last_evaluated_sha,
@@ -28929,9 +29061,9 @@ var run57 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiDir = path42.join(repoRoot, "wiki");
-  const statePath = path42.join(wikiDir, ".state.json");
-  if (existsSync30(statePath)) {
+  const wikiDir = path43.join(repoRoot, "wiki");
+  const statePath = path43.join(wikiDir, ".state.json");
+  if (existsSync31(statePath)) {
     structuredError({
       code: "state_already_exists",
       message: "wiki/.state.json already exists; use `gaia wiki state-bump` to update fields",
@@ -29301,14 +29433,13 @@ var invokedPath = process.argv[1];
 var isDirectRun = invokedPath !== void 0 && import.meta.url === pathToFileURL(realpathSync2(invokedPath)).href;
 if (isDirectRun) {
   try {
-    const exitCode = await run60(process.argv.slice(2));
-    process.exit(exitCode);
+    process.exitCode = await run60(process.argv.slice(2));
   } catch (error51) {
     structuredError({
       code: "cli_internal_error",
       message: error51 instanceof Error ? error51.message : String(error51)
     });
-    process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+    process.exitCode = EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 }
 export {

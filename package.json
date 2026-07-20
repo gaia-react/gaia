@@ -8,6 +8,20 @@
   "gaia": {
     "updateDepsHold": {
       "vite": "8.0"
+    },
+    "wikiClassify": {
+      "sourcePaths": [
+        ".claude/agents/",
+        ".claude/commands/",
+        ".claude/hooks/",
+        ".claude/rules/",
+        ".claude/skills/",
+        ".gaia/cli/src/",
+        ".gaia/scripts/",
+        ".gaia/statusline/",
+        "app/"
+      ],
+      "testPaths": [".gaia/tests/", ".gaia/scripts/tests/"]
     }
   },
   "bin": {

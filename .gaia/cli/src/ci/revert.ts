@@ -397,7 +397,12 @@ const openRevertPr = (
       '--head',
       revertBranch,
       '--title',
-      `Revert: ${title}`,
+      // `revert: <original subject>`, not `Revert: ...`. The conventional-commit
+      // grammar anchors on a lowercase type, so the capitalized form is not a
+      // valid subject: it reds the PR-title check on the automation that runs
+      // exactly when main is broken, and lands on main as a subject the release
+      // bump and the wiki classifier cannot read.
+      `revert: ${title}`,
       '--body',
       body,
       '--label',

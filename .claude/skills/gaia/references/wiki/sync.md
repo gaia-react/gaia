@@ -49,6 +49,18 @@ On the recovery path, classify from `suggested_base`, NOT the orphaned `last_eva
 
 The CLI emits a deterministic `suggestion` field per commit (`WORTHY` or `SKIP`) along with `subject`, `body`, file stats, and `suggestion_reason`. Treat the `WORTHY` subset as candidates for deep-read. Trust the CLI's classification, do not re-derive WORTHY/SKIP rules in prose. Log the `suggestion_reason` verbatim alongside the decision in Step 5.
 
+### Step 3b: Check the classifier health block
+
+The same JSON carries a `health` object: `evaluated`, `deferred` (commits that reached a fail-open default rather than a discriminating rule), `deferral_rate`, `worthy_rate`, and `inert`.
+
+When `health.inert` is `true`, the rule table has stopped matching the subjects this repo writes. Every commit still gets a plausible per-commit reason, so nothing else in this playbook will notice; the failure mode is that the first pass silently stops filtering and Step 4 deep-reads the whole range at full cost. The CLI also writes a warning to stderr.
+
+**`inert` is not sufficient on its own.** It only trips once the sample is large enough for a rate to mean anything, and a routine sync evaluates far fewer commits than that, so on most runs it is structurally `false` and reading it tells you nothing. Read `deferral_rate` directly whenever `inert` is `false`: a high share on a small window is the same defect caught earlier, and it is worth investigating rather than waiting for a backlog big enough to trip the flag. (Do not restate the CLI's threshold or sample floor here. They live in the classifier, and a copy in prose is the drift this check exists to catch.)
+
+Do not treat either signal as a reason to skip the sync. Keep going, and **print the CLI's stderr warning verbatim on its own line immediately above the Step 8 summary block** (or, when the rate is high but `inert` is `false`, a one-line note naming `deferred`/`evaluated` and the rate). Step 8's summary is a fixed template with no slot for this, so it is printed adjacent to the block rather than inside it. That printed line is the whole delivery: this playbook runs in a dispatched subagent whose output goes to the router, so anything not printed here reaches nobody. The fix itself is in the classifier's rule table or its `gaia.wikiClassify` path vocabulary (`package.json`), never in this playbook.
+
+A high `worthy_rate` with a low `deferral_rate` is not a fault. It means the rules are discriminating and this repo's commits genuinely are wiki-relevant, which is the expected shape for a repo whose own source is the thing the wiki documents.
+
 ## Step 4: Second-pass, read diffs for WORTHY commits only
 
 For each WORTHY commit:

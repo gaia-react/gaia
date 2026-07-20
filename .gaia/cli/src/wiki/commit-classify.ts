@@ -5,9 +5,13 @@
  * WORTHY/SKIP suggestion plus the rule that fired. Replaces the
  * subject-only first pass in `wiki/sync.md` Step 3.
  *
- * Rule precedence (first match wins). Mirrors the rules in
- * `wiki/sync.md` Step 3 and the README "Wiki primitives JSON schemas"
- * contract:
+ * This module is the WORTHY/SKIP contract. The sync playbook at
+ * `.claude/skills/gaia/references/wiki/sync.md` defers to it ("Trust the CLI's
+ * classification, do not re-derive WORTHY/SKIP rules in prose"), so the rule
+ * precedence below is the source of truth and the playbook mirrors it, not the
+ * other way round.
+ *
+ * Rule precedence (first match wins):
  *
  *   1. `Merge pull request`, `chore(release):`, `style:` : SKIP regardless,
  *      ahead of rule 2's breaking marker. Both categories are mechanical, so
@@ -22,22 +26,50 @@
  *   5. `chore(deps):`, `chore(cli):`, `wiki:`, `ci:`, `build:` : SKIP unless
  *      body mentions `architecture` or trade-off / invariant / gotcha
  *      keywords.
- *   6. `feat:` / `fix:` / `refactor:` / `debt:` touching `app/**` non-test
- *      files: WORTHY.
- *   7. Those same types touching only test files OR
- *      pages/components/hooks/services without body decision keywords:
- *      SKIP (Serena handles inventory).
+ *   6. `feat:` / `fix:` / `perf:` / `refactor:` / `debt:` touching a
+ *      configured source-bearing non-test path: WORTHY.
+ *   7. Those same types touching only test files OR only configured inventory
+ *      paths without body decision keywords: SKIP (Serena handles inventory).
  *   8. `chore:`, `docs:`, `test:` (without earlier override): SKIP.
  *   9. Anything else: WORTHY (false positive better than false negative).
  *
- * Every type match reads a parsed conventional-commit prefix, so a scoped or
- * breaking-marked subject reaches the same rule as its bare equivalent:
- * `fix:`, `fix(hooks):`, `fix!:`, and `fix(hooks)!:` are all rule 6. Rules
- * keyed on a specific scope (`chore(deps):`, `docs(decision):`) live in
- * earlier groups than their generic counterparts, so they still win.
+ * Every type match reads a parsed conventional-commit header from
+ * `util/conventional-commit.ts`, so a scoped or breaking-marked subject
+ * reaches the same rule as its bare equivalent: `fix:`, `fix(hooks):`,
+ * `fix!:`, and `fix(hooks)!:` are all rule 6. Rules keyed on a specific scope
+ * (`chore(deps):`, `docs(decision):`) live in earlier groups than their
+ * generic counterparts, so they still win.
+ *
+ * Rules 6/7's path vocabulary is configurable per repo
+ * (`util/../wiki/classify-paths.ts`); hardcoded `app/**` literals were
+ * unreachable in any repo whose source lives elsewhere.
+ *
+ * The emitted `health` block reports what share of commits reached a fail-open
+ * default rather than a discriminating rule. That is the signal for the rule
+ * table having gone inert: individual fail-open commits are fine and expected,
+ * but a run where most commits land there looks healthy per-commit while the
+ * deterministic first pass has silently stopped filtering.
+ *
+ * Known edge of that metric: it only sees a rule dying INTO a fail-open
+ * default. A rule that dies into another discriminating rule is invisible to
+ * it, e.g. renaming the `chore(deps):` convention would strand rule 5 while
+ * those commits landed on rule 8's `chore` arm, keeping the deferral rate at
+ * zero. Catching that needs a per-rule histogram against a persisted
+ * cross-sync baseline, which is more machinery than the observed failures
+ * justify.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {
+  isCommitType,
+  parseConventionalCommitHeader,
+} from '../util/conventional-commit.js';
+import type {
+  CommitType,
+  ConventionalCommitHeader,
+} from '../util/conventional-commit.js';
+import {readClassifyPaths} from './classify-paths.js';
+import type {ClassifyPaths} from './classify-paths.js';
 import {commitDetails, resolveRepoRoot} from './util/git.js';
 import type {CommitDetail} from './util/git.js';
 
@@ -48,6 +80,20 @@ const HELP_TEXT = `Usage: gaia wiki commit-classify --since <sha> [--json]
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+
+export type ClassificationHealth = {
+  /** `deferred / evaluated`, or 0 when nothing was evaluated. */
+  deferral_rate: number;
+  /** Commits whose decision came from a fail-open default. */
+  deferred: number;
+  /** Commits classified. */
+  evaluated: number;
+  /** True when the sample is large enough AND the deferral rate exceeds the threshold. */
+  inert: boolean;
+  threshold: number;
+  /** Reported alongside the deferral rate so a high WORTHY share stays visible even when the rules are discriminating. */
+  worthy_rate: number;
+};
 
 export type ClassifiedCommit = {
   body: string;
@@ -62,6 +108,7 @@ export type ClassifiedCommit = {
 
 export type CommitClassification = {
   commits: ClassifiedCommit[];
+  health: ClassificationHealth;
 };
 
 export type CommitSuggestion = 'SKIP' | 'WORTHY';
@@ -138,89 +185,95 @@ const FLOWS_RELEVANT_PATHS = [
   'app/sessions.server/',
 ];
 
-const APP_INVENTORY_PREFIXES = [
-  'app/components/',
-  'app/hooks/',
-  'app/services/',
-  'app/pages/',
-];
-
 const touchesAny = (
   files: readonly string[],
   prefixes: readonly string[]
 ): boolean =>
   files.some((file) => prefixes.some((prefix) => file.startsWith(prefix)));
 
-const touchesAppNonTest = (files: readonly string[]): boolean =>
-  files.some((file) => file.startsWith('app/') && !file.includes('.test.'));
+const isTestFile = (file: string, paths: ClassifyPaths): boolean =>
+  file.includes('.test.') ||
+  paths.testPaths.some((prefix) => file.startsWith(prefix));
 
-const touchesOnlyTests = (files: readonly string[]): boolean =>
-  files.length > 0 && files.every((file) => file.includes('.test.'));
+const touchesSourceNonTest = (
+  files: readonly string[],
+  paths: ClassifyPaths
+): boolean =>
+  files.some(
+    (file) =>
+      paths.sourcePaths.some((prefix) => file.startsWith(prefix)) &&
+      !isTestFile(file, paths)
+  );
 
-type ClassifyDecision = {reason: string; suggestion: CommitSuggestion};
+const touchesOnlyTests = (
+  files: readonly string[],
+  paths: ClassifyPaths
+): boolean =>
+  files.length > 0 && files.every((file) => isTestFile(file, paths));
 
-type SubjectPrefix = {
-  breaking: boolean;
-  scope: string | undefined;
-  type: string;
+type ClassifyDecision = {
+  /**
+   * Set only on the fail-open defaults: the rule table could not discriminate
+   * this commit. Feeds the health signal; every rule that actually matched
+   * leaves it unset.
+   */
+  deferred?: boolean;
+  reason: string;
+  suggestion: CommitSuggestion;
 };
 
-/**
- * Conventional-commit subject prefix: a type, an optional `(scope)`, and an
- * optional `!` breaking marker. Testing `subject.startsWith('fix:')` matches
- * only the bare form, so on a repo that writes scoped subjects every rule
- * keyed that way is unreachable and the whole table silently falls through to
- * the rule 9 default. Parse the prefix once and match on its parts instead.
- */
-// `breaking` is written `(?<breaking>!?)` rather than as an optional group so
-// it always participates and captures `''` or `'!'`, matching the release
-// modules' reading of the same grammar. `noUncheckedIndexedAccess` is off, so
-// an optional group's `undefined` is invisible to the type checker and a
-// `!== undefined` test would be statically meaningless.
-const SUBJECT_PREFIX_PATTERN =
-  /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<breaking>!?):/u;
-
-const parseSubjectPrefix = (subject: string): SubjectPrefix | undefined => {
-  const groups = SUBJECT_PREFIX_PATTERN.exec(subject)?.groups;
-
-  if (!groups) return undefined;
-
-  return {
-    breaking: groups.breaking === '!',
-    scope: groups.scope,
-    type: groups.type,
-  };
-};
-
-// Matches a prefix by type, and by scope when one is named. Every rule below
-// goes through this rather than reaching into `prefix` directly, so a new
-// rule cannot reintroduce a bare-prefix test that silently never fires.
+// Matches a header by type, and by scope when one is named. Every rule below
+// goes through this rather than reaching into `header` directly, so a new
+// rule cannot reintroduce a bare-prefix test that silently never fires:
+// testing `subject.startsWith('fix:')` matches only the unscoped form, and on
+// a repo that writes scoped subjects that rule is unreachable.
 const matchesPrefix = (
-  prefix: SubjectPrefix | undefined,
+  header: ConventionalCommitHeader | undefined,
   type: string,
   scope?: string
 ): boolean =>
-  prefix?.type === type && (scope === undefined || prefix.scope === scope);
+  header?.type === type && (scope === undefined || header.scope === scope);
 
-// Rules 6/7 treat these as source-bearing work. `debt:` belongs here: a
-// tech-debt fix is an ordinary source change and gets the same path-based
-// discrimination as `fix:`, not a blanket skip.
-const FEATURE_TYPES = ['debt', 'feat', 'fix', 'refactor'];
+/**
+ * Which types rules 6/7 discriminate by path. `debt` and `perf` are `true`:
+ * both are ordinary source changes and earn the same path-based treatment as
+ * `fix`, not a blanket skip.
+ *
+ * A `Record<CommitType, boolean>` rather than a `string[]` for the same reason
+ * the release and changelog tables are keyed that way: adding a type to the
+ * vocabulary must not be able to slip past this table and land on the rule-9
+ * fail-open, which is precisely how `debt` went years without a rule.
+ */
+const PATH_DISCRIMINATED_TYPES: Record<CommitType, boolean> = {
+  build: false,
+  chore: false,
+  ci: false,
+  debt: true,
+  docs: false,
+  feat: true,
+  fix: true,
+  perf: true,
+  refactor: true,
+  revert: true,
+  style: false,
+  test: false,
+  wiki: false,
+};
 
 // Rule 1: hard-skip prefixes, regardless of anything else.
 const classifyHardSkip = (
   commit: CommitDetail,
-  prefix: SubjectPrefix | undefined
+  header: ConventionalCommitHeader | undefined
 ): ClassifyDecision | undefined => {
   if (commit.subject.startsWith('Merge pull request')) {
     return {reason: 'merge commit', suggestion: 'SKIP'};
   }
 
-  if (matchesPrefix(prefix, 'chore', 'release')) {
+  if (matchesPrefix(header, 'chore', 'release')) {
     return {reason: 'chore(release): release plumbing', suggestion: 'SKIP'};
   }
 
-  if (matchesPrefix(prefix, 'style')) {
+  if (matchesPrefix(header, 'style')) {
     return {reason: 'style: formatting only', suggestion: 'SKIP'};
   }
 
@@ -230,7 +283,7 @@ const classifyHardSkip = (
 // Rule 2: strong WORTHY signals.
 const classifyStrongWorthy = (
   commit: CommitDetail,
-  prefix: SubjectPrefix | undefined
+  header: ConventionalCommitHeader | undefined
 ): ClassifyDecision | undefined => {
   const {body} = commit;
 
@@ -239,7 +292,7 @@ const classifyStrongWorthy = (
   // would let `chore(cli)!:` reach rule 5 and SKIP a breaking change: the
   // bare-prefix rules used to fail open on the `!`, and once every rule
   // matches breaking-agnostically that accident is no longer there to help.
-  if (prefix?.breaking || body.includes('BREAKING CHANGE')) {
+  if (header?.breaking || body.includes('BREAKING CHANGE')) {
     return {reason: 'breaking change signal', suggestion: 'WORTHY'};
   }
 
@@ -247,9 +300,9 @@ const classifyStrongWorthy = (
   // the older convention. Matching only one lets the generic `docs:` rule in
   // rule 8 swallow a real ADR as prose-only.
   if (
-    matchesPrefix(prefix, 'docs', 'decision') ||
-    matchesPrefix(prefix, 'docs', 'decisions') ||
-    matchesPrefix(prefix, 'chore', 'adr')
+    matchesPrefix(header, 'docs', 'decision') ||
+    matchesPrefix(header, 'docs', 'decisions') ||
+    matchesPrefix(header, 'chore', 'adr')
   ) {
     return {reason: 'explicit ADR signal', suggestion: 'WORTHY'};
   }
@@ -279,7 +332,7 @@ const classifyTouchedDomains = (
 // runs and keep the ones whose body records a decision.
 const classifyArchSuppressibleChore = (
   commit: CommitDetail,
-  prefix: SubjectPrefix | undefined
+  header: ConventionalCommitHeader | undefined
 ): ClassifyDecision | undefined => {
   const {body} = commit;
   const suppressible = (label: string, skipReason: string): ClassifyDecision =>
@@ -290,47 +343,59 @@ const classifyArchSuppressibleChore = (
       }
     : {reason: skipReason, suggestion: 'SKIP'};
 
-  if (matchesPrefix(prefix, 'chore', 'deps')) {
+  if (matchesPrefix(header, 'chore', 'deps')) {
     return suppressible('chore(deps)', 'chore(deps): version bump only');
   }
 
-  if (matchesPrefix(prefix, 'chore', 'cli')) {
+  if (matchesPrefix(header, 'chore', 'cli')) {
     return suppressible('chore(cli)', 'chore(cli): tooling-internal');
   }
 
-  if (matchesPrefix(prefix, 'wiki')) {
+  if (matchesPrefix(header, 'wiki')) {
     return suppressible('wiki', 'wiki: self-referential');
   }
 
-  if (matchesPrefix(prefix, 'ci')) {
+  if (matchesPrefix(header, 'ci')) {
     return suppressible('ci', 'ci: CI plumbing');
   }
 
-  if (matchesPrefix(prefix, 'build')) {
+  if (matchesPrefix(header, 'build')) {
     return suppressible('build', 'build: bundling / build plumbing');
   }
 
   return undefined;
 };
 
-// Rules 6/7: feat/fix/refactor/debt touching app/** non-test → WORTHY;
-// tests-only or app inventory paths without decision keywords → SKIP.
+// Rules 6/7: feat/fix/perf/refactor/debt touching a source-bearing non-test path →
+// WORTHY; tests-only or inventory-only without decision keywords → SKIP.
+// Every predicate reads the repo's configured path vocabulary rather than
+// `app/**` literals, which no repo outside the React template ever matches.
 const classifyFeatureCommit = (
   commit: CommitDetail,
-  prefix: SubjectPrefix | undefined
+  header: ConventionalCommitHeader | undefined,
+  paths: ClassifyPaths
 ): ClassifyDecision | undefined => {
   const {body, files} = commit;
 
-  if (!prefix || !FEATURE_TYPES.includes(prefix.type)) return undefined;
+  if (
+    header === undefined ||
+    !isCommitType(header.type) ||
+    !PATH_DISCRIMINATED_TYPES[header.type]
+  ) {
+    return undefined;
+  }
 
-  if (touchesOnlyTests(files)) {
-    return {reason: 'feat/fix/refactor/debt: tests-only', suggestion: 'SKIP'};
+  if (touchesOnlyTests(files, paths)) {
+    return {
+      reason: 'feat/fix/perf/refactor/debt: tests-only',
+      suggestion: 'SKIP',
+    };
   }
 
   const onlyInventory =
     files.length > 0 &&
     files.every((file) =>
-      APP_INVENTORY_PREFIXES.some((inventoryPrefix) =>
+      paths.inventoryPaths.some((inventoryPrefix) =>
         file.startsWith(inventoryPrefix)
       )
     );
@@ -338,20 +403,25 @@ const classifyFeatureCommit = (
   if (onlyInventory && !ARCH_BODY_PATTERN.test(body)) {
     return {
       reason:
-        'feat/fix/refactor/debt: only inventory paths (Serena handles inventory)',
+        'feat/fix/perf/refactor/debt: only inventory paths (Serena handles inventory)',
       suggestion: 'SKIP',
     };
   }
 
-  if (touchesAppNonTest(files)) {
+  if (touchesSourceNonTest(files, paths)) {
     return {
-      reason: 'feat/fix/refactor/debt: app/** non-test',
+      reason: 'feat/fix/perf/refactor/debt: source-bearing path (non-test)',
       suggestion: 'WORTHY',
     };
   }
 
+  // Rule 7's fail-open tail. Unlike rule 9 this carries a specific-sounding
+  // reason, which is exactly why it has to count toward the health signal:
+  // when the path vocabulary does not match the repo, every source commit
+  // lands here and each one looks individually plausible.
   return {
-    reason: 'feat/fix/refactor/debt: defer to human review',
+    deferred: true,
+    reason: 'feat/fix/perf/refactor/debt: defer to human review',
     suggestion: 'WORTHY',
   };
 };
@@ -360,11 +430,11 @@ const classifyFeatureCommit = (
 // (a false positive is cheaper than a false negative here).
 const classifyCatchAll = (
   commit: CommitDetail,
-  prefix: SubjectPrefix | undefined
+  header: ConventionalCommitHeader | undefined
 ): ClassifyDecision => {
   const {body} = commit;
 
-  if (matchesPrefix(prefix, 'chore')) {
+  if (matchesPrefix(header, 'chore')) {
     return ARCH_BODY_PATTERN.test(body) ?
         {reason: 'chore: body mentions architecture', suggestion: 'WORTHY'}
       : {reason: 'chore: generic chore', suggestion: 'SKIP'};
@@ -376,30 +446,87 @@ const classifyCatchAll = (
   // would mostly re-promote changelog and prose cleanups that happen to quote
   // a keyword, which is the expensive false positive this pass exists to
   // avoid rather than a decision worth deep-reading.
-  if (matchesPrefix(prefix, 'docs')) {
+  if (matchesPrefix(header, 'docs')) {
     return {reason: 'docs: prose-only', suggestion: 'SKIP'};
   }
 
-  if (matchesPrefix(prefix, 'test')) {
+  if (matchesPrefix(header, 'test')) {
     return {reason: 'test: test-only change', suggestion: 'SKIP'};
   }
 
+  // Rule 9, the fail-open default. Failing open on one unrecognized commit is
+  // right; every commit landing here means the table has stopped matching, and
+  // that is what the health signal counts.
   return {
+    deferred: true,
     reason: 'no matching prefix, defer to human review',
     suggestion: 'WORTHY',
   };
 };
 
-const classify = (commit: CommitDetail): ClassifyDecision => {
-  const prefix = parseSubjectPrefix(commit.subject);
+const classify = (
+  commit: CommitDetail,
+  paths: ClassifyPaths
+): ClassifyDecision => {
+  const header = parseConventionalCommitHeader(commit.subject);
 
   return (
-    classifyHardSkip(commit, prefix) ??
-    classifyStrongWorthy(commit, prefix) ??
+    classifyHardSkip(commit, header) ??
+    classifyStrongWorthy(commit, header) ??
     classifyTouchedDomains(commit) ??
-    classifyArchSuppressibleChore(commit, prefix) ??
-    classifyFeatureCommit(commit, prefix) ??
-    classifyCatchAll(commit, prefix)
+    classifyArchSuppressibleChore(commit, header) ??
+    classifyFeatureCommit(commit, header, paths) ??
+    classifyCatchAll(commit, header)
+  );
+};
+
+// Below this many commits a single unusual batch dominates the rate, so the
+// detector stays silent rather than crying wolf over a legitimately odd window.
+const HEALTH_MIN_SAMPLE = 20;
+
+// Above this share of fail-open defaults the table has stopped discriminating.
+//
+// Calibrated against both observed inert cases and the healthy state, not
+// picked round: the type rules matching only unscoped subjects put 68% of
+// commits on rule 9, and the path vocabulary matching nothing in this repo put
+// 55% on rule 7's tail. A threshold of 0.6 would have caught the first and
+// missed the second. Against a measured healthy rate of 12% on the same
+// history, 0.4 separates cleanly from normal while catching both.
+const HEALTH_DEFERRAL_THRESHOLD = 0.4;
+
+const computeHealth = (
+  decisions: readonly ClassifyDecision[]
+): ClassificationHealth => {
+  const evaluated = decisions.length;
+  const deferred = decisions.filter((decision) => decision.deferred).length;
+  const worthy = decisions.filter(
+    (decision) => decision.suggestion === 'WORTHY'
+  ).length;
+  const deferralRate = evaluated === 0 ? 0 : deferred / evaluated;
+
+  return {
+    deferral_rate: deferralRate,
+    deferred,
+    evaluated,
+    inert:
+      evaluated >= HEALTH_MIN_SAMPLE &&
+      deferralRate > HEALTH_DEFERRAL_THRESHOLD,
+    threshold: HEALTH_DEFERRAL_THRESHOLD,
+    worthy_rate: evaluated === 0 ? 0 : worthy / evaluated,
+  };
+};
+
+const asPercent = (rate: number): string => `${Math.round(rate * 100)}%`;
+
+// Written to stderr in both output modes: `--json` callers keep a clean stdout
+// payload, and the warning still reaches whoever is running the sync.
+const warnIfInert = (health: ClassificationHealth): void => {
+  if (!health.inert) return;
+
+  process.stderr.write(
+    `commit-classify: ${health.deferred} of ${health.evaluated} commits (${asPercent(health.deferral_rate)}) reached a fail-open default, ` +
+      `above the ${asPercent(health.threshold)} threshold. The rule table has likely stopped matching the subjects this repo writes; ` +
+      'the first pass is not filtering and Step 4 will deep-read nearly the whole range.\n'
   );
 };
 
@@ -419,6 +546,12 @@ const printHuman = (classification: CommitClassification): void => {
       `            ${commit.files_changed} files, +${commit.insertions} -${commit.deletions}`
     );
   }
+
+  const {health} = classification;
+  lines.push(
+    '',
+    `WORTHY ${asPercent(health.worthy_rate)}, fail-open defaults ${health.deferred}/${health.evaluated} (${asPercent(health.deferral_rate)})`
+  );
   process.stdout.write(`${lines.join('\n')}\n`);
 };
 
@@ -476,22 +609,29 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const classification: CommitClassification = {
-    commits: details.map((detail) => {
-      const decision = classify(detail);
+  const paths = readClassifyPaths(repoRoot);
+  // Paired rather than two index-correlated arrays. `deferred` is an internal
+  // health input, so it stays off the published `ClassifiedCommit` shape.
+  const classified = details.map((detail) => ({
+    decision: classify(detail, paths),
+    detail,
+  }));
 
-      return {
-        body: detail.body,
-        deletions: detail.deletions,
-        files_changed: detail.files_changed,
-        insertions: detail.insertions,
-        sha: detail.sha,
-        subject: detail.subject,
-        suggestion: decision.suggestion,
-        suggestion_reason: decision.reason,
-      };
-    }),
+  const classification: CommitClassification = {
+    commits: classified.map(({decision, detail}) => ({
+      body: detail.body,
+      deletions: detail.deletions,
+      files_changed: detail.files_changed,
+      insertions: detail.insertions,
+      sha: detail.sha,
+      subject: detail.subject,
+      suggestion: decision.suggestion,
+      suggestion_reason: decision.reason,
+    })),
+    health: computeHealth(classified.map(({decision}) => decision)),
   };
+
+  warnIfInert(classification.health);
 
   if (parsed.flags.json) {
     process.stdout.write(`${JSON.stringify(classification)}\n`);

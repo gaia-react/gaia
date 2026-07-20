@@ -1,0 +1,55 @@
+name: PR Title
+
+# Merges here are squash-merges, so the PR title becomes the commit subject on
+# `main` and the branch commits are discarded. That subject is what the release
+# bump, the CHANGELOG draft, and the wiki classifier all read, which makes the
+# title the one place where validating the conventional-commit grammar is both
+# load-bearing and cheap.
+#
+# Deliberately NOT a per-commit lint. Branch commits are overwhelmingly
+# conforming already; a per-commit gate would add friction defending something
+# that is not breaking. The two non-conforming subjects observed on `main` were
+# both PR titles.
+#
+# Not in the branch ruleset's required_status_checks: adding a check there is a
+# maintainer-run, ask-first cutover (the same rule verify-required-checks.yml
+# documents for itself). The job reports red on a bad title for a human to act
+# on.
+#
+# Maintainer-only, release-excluded alongside the other maintainer-only
+# workflows (category 9 in .gaia/release-exclude): the vocabulary it enforces
+# is this repo's, and an adopter who wants the same gate can wire
+# `gaia ci-check-subject` themselves.
+
+# `edited` matters as much as `opened`: a title fixed after a red run has to
+# re-report green, and a title broken after a green run has to go red. No
+# `synchronize`: a push to the branch cannot change the title, so re-running
+# there would burn a runner boot to re-validate an unchanged string. (If this
+# check is ever promoted into the ruleset, `synchronize` has to come back, so
+# that a required check reports against every head SHA.)
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, edited, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: Conventional-commit PR title
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # actions/checkout v5.0.1, SHA-pinned to match the sibling maintainer
+      # workflows.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      # The title goes in through the environment, never interpolated into the
+      # run script: an inline `${{ github.event.pull_request.title }}` would
+      # let a crafted title close the quoting and run as shell.
+      - name: Check the title against the declared commit vocabulary
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: .gaia/cli/gaia ci-check-subject --subject "$PR_TITLE"
