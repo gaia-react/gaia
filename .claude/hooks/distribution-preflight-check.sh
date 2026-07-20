@@ -101,9 +101,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 #
 # The tail stops at the next separator rather than running to end of string, so
 # a command CHAINED AFTER this one cannot donate a flag either. Unbounded,
-# `gh pr create --fill && grep -B2 foo file` reads `2` as the base ref. The
-# bound is the same separator set the matcher anchors on, minus the `&&`/`||`
-# doubling, since stopping at the first `&` or `|` is what a bound wants.
+# `gh pr create --fill && grep -B2 foo file` reads `2` as the base ref.
 #
 # The bound is textual, so a separator inside a quoted argument truncates the
 # tail early (`--body "a && b" --base x` loses the `--base`). That direction is
@@ -111,16 +109,41 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # right base for almost every PR, while a long tail adopts a ref from an
 # unrelated command. Both are approximations of shell parsing; this one errs
 # toward the answer that is usually correct.
+#
+# Newline gets handled twice below, because it is the one separator that is also
+# whitespace, and each half of that is a different hazard.
+#
+#   Joining first: the shell removes a backslash-newline pair before parsing, so
+#   remove it here too. Without this the bound truncates the standard multi-line
+#   form (`gh pr create \` + newline + `--base develop`) at the backslash and
+#   loses every flag on the continued lines. That is one of the commonest ways
+#   this command is written, not an edge case.
+#
+#   Nulling after: `[[:space:]]` includes newline, so the boundary group can
+#   consume the newline that ENDS this invocation, letting the next line's text
+#   land in the tail and donate its flags. A newline boundary means the
+#   invocation carried no arguments at all, so the tail is empty by definition.
+#   Excluding newline from the boundary group instead would be wrong: a bare
+#   `gh pr create` on its own line in a script would then fail to match at all,
+#   silently skipping the gate rather than tightening it.
+cmd_joined="${cmd//\\$'\n'/}"
+
 tail_re=$'([^&;|\n]*)'
 sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'"$tail_re"
 start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'"$tail_re"
+boundary=""
 cmd_tail=""
-if [[ "$cmd" =~ $start_re ]]; then
-  cmd_tail="${BASH_REMATCH[2]}" # match at command start
-elif [[ "$cmd" =~ $sep_re ]]; then
-  cmd_tail="${BASH_REMATCH[3]}" # match after a shell separator (incl. newline)
+if [[ "$cmd_joined" =~ $start_re ]]; then
+  boundary="${BASH_REMATCH[1]}" # match at command start
+  cmd_tail="${BASH_REMATCH[2]}"
+elif [[ "$cmd_joined" =~ $sep_re ]]; then
+  boundary="${BASH_REMATCH[2]}" # match after a shell separator (incl. newline)
+  cmd_tail="${BASH_REMATCH[3]}"
 else
   exit 0
+fi
+if [ "$boundary" = $'\n' ]; then
+  cmd_tail=""
 fi
 
 # Repo-scope: a `gh pr create` aimed at a different repo has no bearing on this
@@ -159,11 +182,12 @@ deny() {
 # `--base` would make `--base-ref` match with `-ref` as the captured value.
 #
 # Parsed against `cmd_tail`, the matched invocation's own argument text, never
-# the whole command string. A base flag belongs to that invocation, so an
-# earlier command in the same chain cannot donate one: without the narrowing
-# `grep -B2 foo file && gh pr create --fill` captures `2` as the base ref, and a
-# `--base` inside an earlier `git commit -m "..."` message captures too. The
-# narrowing is also what makes the `-B` empty separator safe to accept at all.
+# the whole command string. A base flag belongs to that invocation, so no other
+# command in the chain can donate one, in either direction: an earlier
+# `grep -B2 foo file && gh pr create --fill` would otherwise contribute `2`, an
+# earlier `git commit -m "... --base x"` its quoted text, and a trailing
+# `gh pr create --fill; echo --base develop` its own. The narrowing is also what
+# makes the `-B` empty separator safe to accept at all.
 #
 # KNOWN RESIDUAL, accepted: within that tail this is still a regex, not an
 # argument parse, so a literal `--base <ref>` written inside this invocation's

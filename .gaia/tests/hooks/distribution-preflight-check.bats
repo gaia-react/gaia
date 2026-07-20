@@ -276,6 +276,26 @@ assert_allow() {
   assert_deny
 }
 
+@test "a trailing command on the next line cannot donate a base ref" {
+  # Newline is both a separator and whitespace, so the boundary group can eat
+  # the newline that ends the invocation and let the next line into the tail.
+  # Unbounded that captures `develop`, which resolves and narrows the changed
+  # set, letting shipped.txt through.
+  install_maintainer_mock
+  run_hook "$(printf 'gh pr create\necho --base develop')"
+  assert_deny
+}
+
+@test "backslash continuation keeps the base flag on the next line" {
+  # The standard multi-line invocation. The shell strips backslash-newline
+  # before parsing and so must this hook, otherwise the tail truncates at the
+  # backslash, the base falls back to main, and the gate denies over a file
+  # develop already ships.
+  install_maintainer_mock
+  run_hook "$(printf 'gh pr create \\\n  --base develop \\\n  --title x')"
+  assert_allow
+}
+
 @test "a bare gh pr create with no arguments still gates" {
   # Pins the empty-tail path. The match decision keys on the regex matching,
   # never on the tail being non-empty, so a bare invocation must still resolve
