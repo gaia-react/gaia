@@ -18,16 +18,22 @@
 # session is inside a linked worktree, and a target that resolves to the main
 # checkout is denied.
 #
-# Scope, and why it stops there: the hook reads its own process cwd, and that
-# cwd is shared across concurrently active agents, so when one teammate enters
-# a worktree every other agent's cwd moves with it. "Is this target MY
-# worktree" is therefore unanswerable here, and adjudicating it would deny a
-# teammate's correct write. `main_root` derives from --git-common-dir, which is
-# identical from every worktree of the repo, so "does this target resolve to
-# the main checkout" stays correct no matter which worktree the shared cwd sits
-# in. The guard adjudicates only that, which is #841's own case. A write from
-# one linked worktree into another is left to the caller's own RESOLVED_ROOT
-# discipline, per this guard's defense-in-depth role in isolation.md.
+# Whose working directory: the hook reads the calling agent's own cwd from the
+# PreToolUse payload's `cwd` field, falling back to its own process cwd when the
+# payload omits it or names a directory outside this repo. Neither source is
+# contracted, and the payload is not the better-evidenced one: the hooks
+# reference defines `cwd` only as the working directory at invocation and says
+# nothing about per-agent versus shared scoping. It is preferred because it is a
+# declared input describing this call, where the process cwd is ambient state
+# inferred to stand in for one. Reading only the process cwd would let the guard
+# go silently inert if a harness version ever stopped aligning the two.
+#
+# Scope, and why it stops there: the guard adjudicates "does this target resolve
+# to the main checkout", which is #841's own case. `main_root` derives from
+# --git-common-dir, which is identical from every worktree of the repo, so that
+# question is cwd-independent by construction. A write from one linked worktree
+# into another is left to the caller's own RESOLVED_ROOT discipline, per this
+# guard's defense-in-depth role in isolation.md.
 #
 # Fail-open, matching the other block-*.sh guards: any ambiguity (not a git
 # repo, a target directory that does not exist yet, `git` unavailable) allows
@@ -62,7 +68,30 @@ case "$common_dir" in
   *) abs_common_dir="$PWD/$common_dir" ;;
 esac
 main_root="$(cd "$(dirname "$abs_common_dir")" 2>/dev/null && pwd -P)" || exit 0
-current_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+# The calling agent's working directory comes from the payload's `cwd`, the
+# value Claude Code reports for the agent that issued this call. It is honored
+# only when it resolves to a checkout of THIS repo (same common git dir as
+# main_root); a cwd naming an unrelated repository would arm the gate on a
+# comparison between two different repositories and deny a legitimate edit. The
+# hook's own process cwd is the fallback for an absent, unresolvable, or
+# foreign-repo payload cwd.
+current_root=""
+payload_cwd=$(jq -r '.cwd // empty' <<<"$payload")
+if [[ -n "$payload_cwd" ]]; then
+  payload_common_dir="$(git -C "$payload_cwd" rev-parse --git-common-dir 2>/dev/null)" || payload_common_dir=""
+  case "$payload_common_dir" in
+    '') abs_payload_common_dir='' ;;
+    /*) abs_payload_common_dir="$payload_common_dir" ;;
+    *) abs_payload_common_dir="$payload_cwd/$payload_common_dir" ;;
+  esac
+  if [[ -n "$abs_payload_common_dir" ]]; then
+    payload_main_root="$(CDPATH='' cd "$(dirname -- "$abs_payload_common_dir")" 2>/dev/null && pwd -P)" || payload_main_root=""
+    if [[ -n "$payload_main_root" && "$payload_main_root" == "$main_root" ]]; then
+      current_root="$(git -C "$payload_cwd" rev-parse --show-toplevel 2>/dev/null)" || current_root=""
+    fi
+  fi
+fi
+[[ -n "$current_root" ]] || current_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 [[ -n "$main_root" && -n "$current_root" ]] || exit 0
 
 # Not inside a linked worktree: nothing to guard.
