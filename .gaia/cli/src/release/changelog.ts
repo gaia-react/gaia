@@ -138,6 +138,7 @@ const TYPE_TO_SECTION: Record<CommitType, null | Section> = {
   fix: 'Fixed',
   perf: 'Changed',
   refactor: 'Changed',
+  revert: 'Fixed',
   style: null,
   test: null,
   wiki: null,

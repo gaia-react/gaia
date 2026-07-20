@@ -32,6 +32,7 @@ export const COMMIT_TYPES = [
   'fix',
   'perf',
   'refactor',
+  'revert',
   'style',
   'test',
   'wiki',

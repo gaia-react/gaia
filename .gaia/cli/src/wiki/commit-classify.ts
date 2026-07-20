@@ -254,6 +254,7 @@ const PATH_DISCRIMINATED_TYPES: Record<CommitType, boolean> = {
   fix: true,
   perf: true,
   refactor: true,
+  revert: true,
   style: false,
   test: false,
   wiki: false,

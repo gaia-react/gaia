@@ -122,6 +122,11 @@ const TYPE_TO_BUMP: Record<CommitType, BumpKind | null> = {
   fix: 'patch',
   perf: 'patch',
   refactor: 'patch',
+  // A revert changes released behavior, so it has to ship. Kept at `patch`
+  // rather than inferred from what it undoes: reverting a `feat` arguably
+  // warrants more, and a revert that genuinely removes a shipped capability
+  // carries the `!` marker, which already outranks this table.
+  revert: 'patch',
   style: 'patch',
   test: 'patch',
   wiki: null,

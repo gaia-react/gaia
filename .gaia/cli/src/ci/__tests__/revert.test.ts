@@ -15,6 +15,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {RevertLedger} from '../../schemas/revert-ledger.js';
 import {withRevertLedgerLock} from '../../schemas/revert-ledger.js';
+import {checkSubject} from '../check-subject.js';
 import {run} from '../revert.js';
 import * as runProcess from '../util/run-process.js';
 import type {ProcessResult} from '../util/run-process.js';
@@ -190,6 +191,27 @@ describe('ci-revert', () => {
   });
 
   describe('open', () => {
+    // The revert PR's title becomes the subject on main after a squash, so it
+    // has to satisfy the same grammar everything else reads. `Revert: ...`
+    // does not: the type is anchored lowercase, so the capitalized form
+    // reds the PR-title check on the automation that runs precisely when main
+    // is already broken.
+    test('emits a conventional-commit PR title', () => {
+      const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
+        cwd: sandbox.root,
+      });
+      expect(exit).toBe(0);
+
+      const createCall = ghSpy.mock.calls.find(
+        ([args]) => args[0] === 'pr' && args[1] === 'create'
+      );
+      const createArgs = createCall?.[0] ?? [];
+      const title = createArgs[createArgs.indexOf('--title') + 1] ?? '';
+
+      expect(title).toBe('revert: wiki: nightly run');
+      expect(checkSubject(title).ok).toBe(true);
+    });
+
     test('opens the revert PR and writes the ledger', () => {
       const fixedNow = new Date('2026-05-09T05:00:00.000Z');
       const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
