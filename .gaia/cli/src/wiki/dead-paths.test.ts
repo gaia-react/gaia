@@ -138,6 +138,28 @@ describe('wiki dead-paths', () => {
     expect(findDeadPaths(sandbox.root)).toEqual([]);
   });
 
+  test('ignores adopter-owned sentinels absent from the GAIA source repo', () => {
+    sandbox.writeFile(
+      'wiki/concepts/Automation.md',
+      '# Automation\n\nThe policy lives in `.gaia/automation.json`.\n'
+    );
+
+    expect(findDeadPaths(sandbox.root)).toEqual([]);
+  });
+
+  test('still flags a genuine dead path beside an adopter-owned sentinel', () => {
+    // The exemption is exact-token: a sibling path under `.gaia/` that GAIA
+    // does ship must still flag, so the sentinel cannot over-suppress.
+    sandbox.writeFile(
+      'wiki/concepts/Automation.md',
+      '# Automation\n\nSee `.gaia/automation.json` and `.gaia/nonexistent.json`.\n'
+    );
+
+    expect(findDeadPaths(sandbox.root).map((d) => d.path)).toEqual([
+      '.gaia/nonexistent.json',
+    ]);
+  });
+
   test('ignores explicit historical-record bullets in decision pages', () => {
     sandbox.writeFile(
       'wiki/decisions/Some Refactor.md',

@@ -64,11 +64,14 @@ const RUNTIME_PREFIXES = ['.gaia/local/'] as const;
  * on the GAIA source repo.
  *
  * `release/runtime-deps.ts` keeps its own `ADOPTER_OWNED_SENTINELS` naming the
- * same file. Deliberately duplicated, not shared: this module ships in the
- * adopter `gaia` bundle and that one is maintainer-only, so importing across
- * would pull release tooling into the adopter binary and reverse the
- * established `release/` → `wiki/` import direction. Keep the two in sync by
- * hand; a new runtime-created sentinel belongs in both.
+ * same file. The two sets intersect on the runtime-created entries only: that
+ * one also spreads `manifest.ts`'s git-tracked sentinels, which are present on
+ * disk here and so must NOT be exempted from this scan. Kept separate rather
+ * than shared because this module ships in the adopter `gaia` bundle and that
+ * one is maintainer-only, so importing across would pull release tooling into
+ * the adopter binary and reverse the established `release/` → `wiki/` import
+ * direction. A new runtime-created sentinel belongs in both; a git-tracked one
+ * belongs only in the release-side set.
  */
 const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
   '.gaia/automation.json',
