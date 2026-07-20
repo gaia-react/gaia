@@ -139,13 +139,14 @@ resolved_target_dir="$(CDPATH='' cd "$target_dir" 2>/dev/null && pwd -P)" || exi
 # the MAIN checkout as its toplevel and reads as a wrong-checkout write. That is
 # the intended write, so the four symlinked DIRS are exempt.
 #
-# The exemption stops there deliberately. The rest of .gaia/local/ (plans/,
-# specs/, handoff/, red-ledger/, forensics/, worktree-locks/, the non-shared
-# cache/ subdirs) is not symlinked, so each worktree owns its own copy and a
-# stale pre-switch path there is exactly the #841 silent-wrong-write this guard
-# exists to catch. setup-state.json needs no arm of its own: it is a symlinked
-# FILE, so its target_dir is the worktree's own real .gaia/local, which never
-# reaches this case and is allowed by the main-checkout test below.
+# The exemption stops there deliberately. The rest of .gaia/local/ (handoff/,
+# red-ledger/, forensics/, worktree-locks/, the non-shared cache/ subdirs) is
+# not symlinked, so each worktree owns its own copy and a stale pre-switch path
+# there is exactly the #841 silent-wrong-write this guard exists to catch.
+# plans/ and specs/ are the two exceptions, exempted by the separate case below
+# on a different rationale. setup-state.json needs no arm of its own: it is a
+# symlinked FILE, so its target_dir is the worktree's own real .gaia/local,
+# which never reaches this case and is allowed by the main-checkout test below.
 #
 # The trailing slash on both sides keeps each arm a path-segment match, so a
 # sibling such as .gaia/localish/ stays guarded.
@@ -154,6 +155,36 @@ case "$resolved_target_dir/" in
     "$main_root"/.gaia/local/debt/* | \
     "$main_root"/.gaia/local/telemetry/* | \
     "$main_root"/.gaia/local/cache/shared/*) exit 0 ;;
+esac
+
+# The main-checkout plan and SPEC ledgers are exempt too, on a different
+# rationale than the symlinked trees above: these are not symlinked at all, they
+# simply have no worktree-side copy. .claude/skills/gaia/references/plan.md puts
+# the plan folder in the main checkout by contract ("The plan folder stays in
+# the main checkout") and has the worktree-mode orchestrator write PROGRESS.md
+# back to it after every phase, plus the consolidated SUMMARY.md one directory
+# up. A linked worktree's own .gaia/local/plans/ and .gaia/local/specs/ are
+# empty, which the same reference states directly when it warns that "$PWD"
+# there "resolves a nonexistent ledger".
+#
+# That absence is what makes this the intended write rather than the #841
+# footgun. #841 is a SILENT wrong write: it needs a valid twin in both
+# checkouts, so that the stale path and the correct path are both real files and
+# nothing distinguishes them at the moment of the write. These two trees have no
+# twin by construction, so the main-checkout path is the only path that resolves
+# to a real ledger. Denying it does not catch a wrong write, it blocks the only
+# correct one, costing every worktree-mode /gaia-plan run its phase-findings
+# ledger and the resume point .gaia/scripts/plan-resume-point.sh reads from it
+# (tech-debt #934).
+#
+# The exemption stops at these two, and is deliberately NOT the whole
+# non-symlinked remainder: handoff/, red-ledger/, forensics/, worktree-locks/,
+# and the non-shared cache/ subdirs do each have a real worktree-side copy, so a
+# stale pre-switch path into the main checkout's copy is a genuine #841 write
+# and stays denied.
+case "$resolved_target_dir/" in
+  "$main_root"/.gaia/local/plans/* | \
+    "$main_root"/.gaia/local/specs/*) exit 0 ;;
 esac
 
 file_root="$(git -C "$target_dir" rev-parse --show-toplevel 2>/dev/null)" || exit 0

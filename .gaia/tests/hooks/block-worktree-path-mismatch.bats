@@ -213,26 +213,57 @@ assert_allowed() {
 }
 
 # link-worktree.sh symlinks only setup-state.json, cache/shared, audit,
-# telemetry, and debt. The rest of .gaia/local/ is per-worktree, so a stale
-# pre-switch path into the main checkout's copy is the #841 silent-wrong-write,
-# not a shared-state write, and must stay denied. Exempting the whole
-# .gaia/local/ tree would re-open exactly the subtree that receives /gaia-plan,
-# /gaia-spec, and /gaia-handoff output.
+# telemetry, and debt. Most of the rest of .gaia/local/ is per-worktree, so a
+# stale pre-switch path into the main checkout's copy is the #841
+# silent-wrong-write, not a shared-state write, and must stay denied. Exempting
+# the whole .gaia/local/ tree would re-open exactly that. handoff/ stands in for
+# the per-worktree remainder here; plans/ and specs/ are the two carve-outs, and
+# they get their own cases below.
 @test "a stale main-checkout write under non-symlinked .gaia/local is still denied" {
   make_repo
   make_worktree "debt/15-foo" "debt/15-foo"
-  mkdir -p "$REPO/.gaia/local/plans"
+  mkdir -p "$REPO/.gaia/local/handoff"
   cd "$WT"
-  run_hook_edit "Write" "$REPO/.gaia/local/plans/PLAN-001.md"
+  run_hook_edit "Write" "$REPO/.gaia/local/handoff/2026-01-01.md"
   assert_denied
 }
 
-@test "a stale main-checkout write under .gaia/local/specs is still denied" {
+# tech-debt #934. plan.md puts the plan folder in the main checkout by contract
+# and has the worktree-mode orchestrator write PROGRESS.md back to it after
+# every phase. A linked worktree's own .gaia/local/plans/ is empty, so the
+# main-checkout path is the ONLY path that resolves to a real ledger: there is
+# no valid twin, which is what the #841 silent-wrong-write requires. Denying
+# these blocks the sole correct write, costing every worktree-mode plan run its
+# phase-findings ledger and its resume point.
+@test "a worktree-mode write to the main checkout's .gaia/local/plans ledger is allowed" {
   make_repo
-  make_worktree "debt/16-foo" "debt/16-foo"
-  mkdir -p "$REPO/.gaia/local/specs"
+  make_worktree "debt/31-foo" "debt/31-foo"
+  mkdir -p "$REPO/.gaia/local/plans/PLAN-001"
   cd "$WT"
-  run_hook_edit "Write" "$REPO/.gaia/local/specs/SPEC-009.md"
+  run_hook_edit "Write" "$REPO/.gaia/local/plans/PLAN-001/PROGRESS.md"
+  assert_allowed
+}
+
+# The spec-colocated arm of the same contract: a plan under
+# .gaia/local/specs/<SPEC-ID>/plan/ writes its PROGRESS.md there, and the
+# consolidated SUMMARY.md one directory up, both in the main checkout.
+@test "a worktree-mode write to the main checkout's .gaia/local/specs ledger is allowed" {
+  make_repo
+  make_worktree "debt/32-foo" "debt/32-foo"
+  mkdir -p "$REPO/.gaia/local/specs/SPEC-009/plan"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/specs/SPEC-009/plan/PROGRESS.md"
+  assert_allowed
+}
+
+# The plans/specs carve-out is a path-segment match like the shared-state arm
+# above, so it must not leak to a sibling that merely shares a prefix.
+@test "a main-checkout write to a .gaia/local/plans lookalike sibling is still denied" {
+  make_repo
+  make_worktree "debt/33-foo" "debt/33-foo"
+  mkdir -p "$REPO/.gaia/local/plansible"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/plansible/notes.md"
   assert_denied
 }
 
@@ -478,6 +509,53 @@ assert_allowed() {
   mkdir -p "$REPO/sub"
   cd "$WT"
   run_hook_edit_cwd "Edit" "$REPO/f" "$REPO/sub"
+  assert_allowed
+}
+
+# --- defense in depth: the file_path chain's own two guards ---
+
+# tech-debt #944. `dirname --` and `CDPATH=''` on the target_dir/
+# resolved_target_dir pair are unreachable in practice, because
+# .claude/skills/gaia/references/isolation.md contracts file_path as an absolute
+# path with no cwd resolution, and an absolute path defeats both. The two tests
+# below cover them anyway, for a reason specific to this pair: unlike the
+# identically-shaped guards on the payload_cwd chain, whose unreachability rests
+# on an absolute-cwd invariant THIS script enforces itself, these rest on an
+# external convention the script cannot enforce. If the harness ever emits a
+# relative file_path, they are the only thing standing there, and without
+# coverage a future edit dropping either one regresses in silence. Both cases
+# are mutation-verified: each fails against a hook with its guard removed.
+
+# CDPATH killer. With CDPATH honored, `cd inner` resolves through CDPATH into
+# the exempt audit tree instead of through the worktree's own `inner` symlink,
+# so the write is waved through as shared state while git still resolves it to
+# the main checkout: a deny becomes an allow. The CDPATH hit lands on a
+# SUBdirectory of the exempt tree deliberately. bash echoes the resolved path to
+# stdout whenever cd consults CDPATH, so the mutant's capture is two lines; only
+# a match one level below the arm's own directory leaves the trailing `*` free
+# to absorb the second line, which is what makes the mutant reach the exemption.
+@test "a relative file_path is resolved without CDPATH, so an exempt-tree decoy cannot mask it" {
+  make_repo
+  make_worktree "debt/34-foo" "debt/34-foo"
+  mkdir -p "$REPO/.gaia/local/audit/inner"
+  ln -s "$REPO" "$WT/inner"
+  cd "$WT"
+  export CDPATH="$REPO/.gaia/local/audit"
+  run_hook_edit "Write" "inner/f"
+  assert_denied
+}
+
+# `dirname --` killer. A file_path whose leading component reads as an option
+# stops at the `--` terminator and yields `-x`, which the following bare `cd`
+# rejects, so the hook fails open the way it does for any unresolvable target.
+# Drop the terminator and `dirname` itself option-parses, exiting non-zero under
+# `set -e` and aborting the hook mid-adjudication: the status assertion, not the
+# verdict, is what separates a clean fail-open from that crash.
+@test "a file_path whose dirname component leads with a dash fails open cleanly" {
+  make_repo
+  make_worktree "debt/35-foo" "debt/35-foo"
+  cd "$WT"
+  run_hook_edit "Write" "-x/f"
   assert_allowed
 }
 
