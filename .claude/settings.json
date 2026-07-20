@@ -230,11 +230,6 @@
             "type": "command",
             "command": ".claude/hooks/block-spec-plan-chain.sh",
             "statusMessage": "Checking spec→plan chain guard…"
-          },
-          {
-            "type": "command",
-            "command": ".claude/hooks/distribution-preflight-check.sh",
-            "statusMessage": "Checking distribution manifest pre-flight…"
           }
         ]
       },

@@ -31,12 +31,31 @@
 # surface is actually being proposed, so it is the first moment the question is
 # real.
 #
-# ADOPTER POSTURE: this script ships (its registration lives in
-# .claude/settings.json, a `shared` manifest class that reaches adopter clones,
-# so a release-excluded script would leave a dangling registration). The
-# maintainer binary it drives does NOT ship, so on an adopter clone the guard
-# below exits 0 and the hook is completely inert. Adopters have no release
-# manifest to answer.
+# ADOPTER POSTURE: neither this script nor its registration reaches an adopter
+# clone. The script is release-excluded, and it is registered only in
+# .claude/settings.local.json, which is gitignored. Both halves are required and
+# neither is sufficient alone:
+#
+#   - The script cannot ship. It names `.gaia/cli/gaia-maintainer` and
+#     `.github/workflows/distribution-audit-pr.yml`, both release-excluded, and
+#     `.claude/**` is in scope for the `maintainer-paths` and
+#     `excluded-workflow-ref` leak-checks, so a shipped copy fails the release
+#     build outright. Independently of that, an adopter-side agent reading it
+#     would infer a release manifest, a distribution boundary, and a
+#     /distribution-audit command that do not exist on their clone, and act on
+#     that inference.
+#
+#   - The registration cannot live in .claude/settings.json. That file is
+#     manifest class `shared` and reaches adopter clones, so a registration
+#     there would point every adopter's PreToolUse/Bash chain at a file they do
+#     not have. `json-strip` addresses object keys by dot-notation and cannot
+#     remove one element from the hooks[] array, so there is no scrub path that
+#     would let the registration ship and be stripped.
+#
+# The cost of that pairing is that the gate is maintainer-machine-local: it does
+# not travel to another maintainer clone until the scrub engine can strip a
+# single array element. The inertness guard below stays regardless, so a
+# maintainer checkout with no built binary is also a clean no-op.
 #
 # FAIL-OPEN on every uncertainty: no maintainer binary (adopter clone), no jq,
 # no git, an unresolvable base ref, a non-JSON report, or any exit >= 2 from the
@@ -51,17 +70,27 @@ input=$(cat)
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
+tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 [ "$tool_name" = "Bash" ] || exit 0
 
 # Avoid the name `command`: it would shadow bash's `command` builtin and break
 # later `command -v ...` guards.
-cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# Match `gh pr create` only when it appears as an actual shell invocation, at
-# the very start of the command or immediately after a shell separator, so
-# heredoc body text and quoted strings never trip it. Mirrors the command-
-# position anchoring in pr-merge-audit-check.sh and audit-disposition-check.sh.
+# Match `gh pr create` only when it appears in command position: at the very
+# start, or immediately after a shell separator. Mirrors the anchoring in
+# pr-merge-audit-check.sh and audit-disposition-check.sh. This keeps mid-line
+# mentions (`git commit -m "gh pr create"`, `echo "run gh pr create later"`)
+# from tripping the gate.
+#
+# It does NOT exempt a heredoc body: newline is in the separator set, so a
+# heredoc line that begins with `gh pr create` matches like a real invocation.
+# That is a deliberate trade, not an oversight. Dropping newline would exempt
+# heredocs but also stop matching the common multi-line shape
+# (`git add -A\ngh pr create --fill`), which is a real invocation the gate must
+# see. Telling the two apart needs shell parsing, and the failure it would
+# prevent is a spurious deny on a fail-open advisory gate whose message names
+# the remedy, so the cheap anchoring is the proportionate answer.
 sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
 start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
 if [[ "$cmd" =~ $start_re ]]; then
@@ -101,9 +130,29 @@ deny() {
 # Resolve the base ref the PR would target: an explicit --base/-B on the command
 # line wins, otherwise the repo's default branch, otherwise main. Prefer the
 # remote-tracking ref so the comparison matches what CI will see.
+# The flag must sit at a word boundary, and `gh` is a cobra CLI so `--base=X` is
+# as valid as `--base X`. A space-only pattern misses `--base=X` entirely and
+# resolves the base to the default branch instead, which yields the wrong
+# changed set at the diff below.
+#
+# KNOWN RESIDUAL, accepted: this is a regex over the whole command string, not
+# an argument parse, so a literal `--base <ref>` written inside `--body` prose
+# still matches. Word-boundary anchoring does not help there, the body text has
+# a space in front of the flag like a real argument does. Accepted because the
+# gate is fail-open and advisory: the worst case is a spurious deny whose
+# message names the exact remedy, never a wrong answer written anywhere. A real
+# fix needs argument parsing, which is disproportionate here. CI does not share
+# the problem; it reads the base from the pull_request event payload.
+base_re='(^|[[:space:]])(--base|-B)([[:space:]]+|=)([^[:space:]]+)'
 base_ref=""
-if [[ "$cmd" =~ (--base|-B)[[:space:]]+([^[:space:]]+) ]]; then
-  base_ref="${BASH_REMATCH[2]}"
+if [[ "$cmd" =~ $base_re ]]; then
+  base_ref="${BASH_REMATCH[4]}"
+  # `--base "release/2.0"` captures the quotes literally; git would not resolve
+  # them. Strip one balanced surrounding pair of either kind.
+  base_ref="${base_ref%\"}"
+  base_ref="${base_ref#\"}"
+  base_ref="${base_ref%\'}"
+  base_ref="${base_ref#\'}"
 fi
 if [ -z "$base_ref" ]; then
   base_ref=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null \
