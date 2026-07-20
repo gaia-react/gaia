@@ -65,6 +65,20 @@ setup() {
   printf 'feat\n' > "$FIXTURE/feature.txt"
   git -C "$FIXTURE" add feature.txt
   git -C "$FIXTURE" commit --quiet -m "add feature.txt"
+
+  # Advance main past the branch point with a MODIFICATION to a file the branch
+  # does not touch. Without this the fixture is a linear chain, where two-dot
+  # and three-dot diffs are identical by construction and the hook's three-dot
+  # comparison, which its own comments call load-bearing for parity with
+  # distribution-audit-pr.yml, cannot be observed by any test. A modification
+  # rather than an addition is what makes it visible: under two-dot it reports
+  # as `M` and passes the ACMR filter, whereas a main-only addition would report
+  # as `D` and be filtered out.
+  git -C "$FIXTURE" checkout --quiet main
+  printf 'base changed on main\n' > "$FIXTURE/base.txt"
+  git -C "$FIXTURE" add base.txt
+  git -C "$FIXTURE" commit --quiet -m "main-side change to base.txt"
+  git -C "$FIXTURE" checkout --quiet feature
 }
 
 # install_maintainer_mock [MISSING_JSON]:
@@ -233,6 +247,44 @@ assert_allow() {
   assert_allow
 }
 
+@test "strips quotes from a base ref, both quote styles" {
+  # Deliberately picks a base whose CORRECT resolution denies. Asserting ALLOW
+  # on a quoted ref proves nothing: a broken strip leaves `main"`, which
+  # resolves to nothing and fails open to ALLOW, so the passing and failing
+  # paths are indistinguishable. Asserting DENY is what makes the strip
+  # observable, because only a correctly stripped ref resolves far enough to
+  # produce a denial.
+  install_maintainer_mock
+  run_hook 'gh pr create --base "main" --title x'
+  assert_deny
+  run_hook "gh pr create --base 'main' --title x"
+  assert_deny
+}
+
+@test "a separator directly abutting the command still gates" {
+  # The character after `create` is a separator, so it is neither whitespace
+  # nor end-of-string. Without the separator in the boundary group these match
+  # nothing and skip the gate entirely.
+  install_maintainer_mock
+  local form
+  for form in 'gh pr create;' 'gh pr create; echo done' 'gh pr create&&echo hi' 'gh pr create|cat'; do
+    run_hook "$form"
+    [ "$status" -eq 0 ]
+    grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
+  done
+}
+
+@test "KNOWN RESIDUAL: a quoted separator can rebind the match to a mention" {
+  # Documented in the hook header. The `;` inside the quoted string is the
+  # leftmost separator, so sep_re binds to the quoted mention instead of the
+  # real invocation and adopts its --base, narrowing the changed set enough to
+  # allow. Pinned so the accepted trade cannot drift into looking like a bug,
+  # the same way the heredoc trade is pinned above.
+  install_maintainer_mock
+  run_hook 'echo "x; gh pr create --base develop" && gh pr create --fill'
+  assert_allow
+}
+
 @test "does not treat --base-ref as the base flag" {
   # --base-ref must not resolve as --base: the value never reaches git, so the
   # hook falls back to main and denies on shipped.txt.
@@ -325,8 +377,14 @@ assert_allow() {
 # ---- intersection logic ------------------------------------------------
 
 @test "allows when the unanswered file is not this branch's own change" {
-  # base.txt exists on main, so it is not in the three-dot changed set; an
-  # inherited manifest backlog must never block this branch's PR.
+  # base.txt is modified on main AFTER the branch point and untouched by the
+  # branch, so it is not in the three-dot changed set; an inherited manifest
+  # backlog must never block this branch's PR.
+  #
+  # This also pins the three-dot comparison itself. Under a two-dot diff the
+  # main-side modification reports as `M`, passes the ACMR filter, lands in the
+  # changed set, intersects, and denies, silently breaking the parity with
+  # distribution-audit-pr.yml the hook's comments call load-bearing.
   install_maintainer_mock '[{"file":"base.txt"}]'
   run_hook "gh pr create --title x"
   assert_allow

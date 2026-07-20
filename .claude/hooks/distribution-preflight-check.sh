@@ -110,6 +110,16 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # unrelated command. Both are approximations of shell parsing; this one errs
 # toward the answer that is usually correct.
 #
+# A quoted separator cuts the other way too, and that direction is NOT safe. It
+# can rebind the MATCH, not just truncate the tail: in
+# `echo "x; gh pr create --base develop" && gh pr create --fill` the `;` inside
+# the quoted string is the leftmost separator, so `sep_re` binds to the quoted
+# mention rather than the real invocation, and that mention's `--base` narrows
+# the changed set. Accepted for the same reason as the heredoc trade: separating
+# a quoted mention from a real invocation needs shell parsing, the gate is
+# fail-open with CI authoritative, and both accepted trades are pinned by tests
+# below so neither can drift silently into looking like a bug.
+#
 # Newline gets handled twice below, because it is the one separator that is also
 # whitespace, and each half of that is a different hazard.
 #
@@ -128,9 +138,15 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 #   silently skipping the gate rather than tightening it.
 cmd_joined="${cmd//\\$'\n'/}"
 
+# The boundary group accepts a separator directly abutting the command as well
+# as whitespace or end-of-string. Without that, `gh pr create;`,
+# `gh pr create&&echo hi`, and `gh pr create|cat` match neither pattern and skip
+# the gate entirely, since the character after `create` is a separator and so
+# neither `[[:space:]]` nor `$`. The leading side already worked, because
+# `[[:space:]]*` before `gh` is zero-or-more.
 tail_re=$'([^&;|\n]*)'
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'"$tail_re"
-start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'"$tail_re"
+sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]&;|]|$)'"$tail_re"
+start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]&;|]|$)'"$tail_re"
 boundary=""
 cmd_tail=""
 if [[ "$cmd_joined" =~ $start_re ]]; then
@@ -142,9 +158,12 @@ elif [[ "$cmd_joined" =~ $sep_re ]]; then
 else
   exit 0
 fi
-if [ "$boundary" = $'\n' ]; then
-  cmd_tail=""
-fi
+# A separator boundary, newline included, means the invocation ended right there
+# and carried no arguments, so anything the tail group swept up belongs to the
+# next command. Same reasoning for every member of the set.
+case "$boundary" in
+  $'\n' | ';' | '&' | '|') cmd_tail="" ;;
+esac
 
 # Repo-scope: a `gh pr create` aimed at a different repo has no bearing on this
 # repo's distribution boundary, so allow it. Mirrors the sibling merge gates.
