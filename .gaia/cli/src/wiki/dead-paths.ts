@@ -73,7 +73,7 @@ const RUNTIME_PREFIXES = ['.gaia/local/'] as const;
  * direction. A new runtime-created sentinel belongs in both; a git-tracked one
  * belongs only in the release-side set.
  */
-const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
+export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
   '.gaia/automation.json',
 ]);
 

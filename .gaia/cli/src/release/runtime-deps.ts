@@ -71,7 +71,7 @@ const UNEXPECTED_EXIT = 2;
  * never git-tracked, so it cannot live in the manifest's set; to cover
  * references found in the extracted staging tree.
  */
-const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
+export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
   ...GIT_TRACKED_SENTINELS,
   '.gaia/automation.json',
 ]);
