@@ -309,8 +309,8 @@ assert_allow() {
 @test "KNOWN RESIDUAL: a --base inside this invocation's own --body is parsed" {
   # Documented in the hook header. Within the tail this is a regex, not an
   # argument parse, so body prose that reads like a flag is taken as one. The
-  # third of the three accepted trades, pinned like the other two so it cannot
-  # drift into looking like a bug.
+  # An accepted trade, pinned like its siblings so it cannot drift into looking
+  # like a bug.
   install_maintainer_mock
   run_hook 'gh pr create --body "use --base develop next time"'
   assert_allow
@@ -331,7 +331,7 @@ assert_allow() {
   # Documented in the hook header. The tail bound is textual, so the `;` inside
   # --body ends the tail there and this invocation's own `--base develop` never
   # reaches the base parser; the base falls back to main and shipped.txt is
-  # caught. The fourth accepted trade, pinned like the other three.
+  # caught. An accepted trade, pinned like its siblings.
   #
   # Asserting DENY is what gives it teeth. A quote-aware or unbounded tail would
   # resolve develop, whose changed set excludes shipped.txt, and ALLOW.
