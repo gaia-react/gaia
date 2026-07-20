@@ -25,7 +25,9 @@ const HELP_TEXT = `Usage: gaia-maintainer release <subcommand> [args]
   preflight [--branch <name>]                 Branch + working-tree + wiki state checks.
   bump [--auto]                               Conventional-commit semver bump.
   changelog [--draft] [--version <X.Y.Z>]     Render / graduate the CHANGELOG block.
-  scrub-wiki [--version <X.Y.Z>] [--date <D>] Reset wiki/hot.md and wiki/log.md.
+  scrub-wiki [--version <X.Y.Z>] [--date <D>] [--check]
+                                              Reset wiki/hot.md and wiki/log.md
+                                              (--check: verify they are fresh, write nothing).
   manifest [--ship <path>]... [--withhold <path> --category <N> --reason <text>]...
                                               Regenerate .gaia/manifest.json. Refuses while any
                                               newly-shipping file is unanswered; see manifest --help.

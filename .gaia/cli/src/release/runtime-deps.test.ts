@@ -2,7 +2,13 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release runtime-deps`.
  */
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {extractPathRefs, run} from './runtime-deps.js';
@@ -488,6 +494,32 @@ describe('release runtime-deps CLI', () => {
     const exit = run([], {cwd: sandbox.rootDir});
     expect(exit).toBe(2);
     expect(stdio.errors.join('')).toContain('manifest_load_failed');
+  });
+
+  test('exits 2 when a scanned script cannot be read (IO error)', () => {
+    // #925: the `readFileSync` inside `collectLeaks` was the only IO in `run()`
+    // not wrapped in a `try*OrReport` helper. When a script is unreadable
+    // (EACCES) or vanishes between the walk and the read, the throw escaped
+    // `run()` and the top-level handler reported it as exit 1, the code the
+    // contract reserves for "leaks detected". A genuine IO failure must surface
+    // as UNEXPECTED_EXIT (2), matching the two sibling helpers.
+    sandbox.writeManifest({
+      '.claude/hooks/ships.sh': 'owned',
+    });
+    // Leak-free body: a successful read would exit 0, so a 2 can only come from
+    // the read failing, not from a leak finding.
+    sandbox.writeFile('.claude/hooks/ships.sh', 'echo hi\n');
+    const scriptPath = path.join(sandbox.rootDir, '.claude/hooks/ships.sh');
+    chmodSync(scriptPath, 0o000);
+
+    try {
+      const exit = run([], {cwd: sandbox.rootDir});
+      expect(exit).toBe(2);
+      expect(stdio.errors.join('')).toContain('script_read_failed');
+    } finally {
+      // Restore readability so the sandbox cleanup can remove it.
+      chmodSync(scriptPath, 0o644);
+    }
   });
 
   test('--staging scans inside the staging dir', () => {

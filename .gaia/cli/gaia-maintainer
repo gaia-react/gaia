@@ -22319,6 +22319,18 @@ var collectLeaks = (root, scriptFiles, manifest) => {
   }
   return leaks;
 };
+var tryCollectLeaksOrReport = (root, scriptFiles, manifest) => {
+  try {
+    return collectLeaks(root, scriptFiles, manifest);
+  } catch (error51) {
+    structuredError({
+      code: "script_read_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release runtime-deps"
+    });
+    return null;
+  }
+};
 var run26 = (argv, options = {}) => {
   if (argv.length > 0 && HELP_TOKENS26.has(argv[0])) {
     process.stdout.write(HELP_TEXT26);
@@ -22354,7 +22366,8 @@ var run26 = (argv, options = {}) => {
   if (scriptFiles === null) return UNEXPECTED_EXIT15;
   const isBareMode = parsed.flags.stagingDir === void 0;
   const scannedFiles = isBareMode ? scriptFiles.filter((scriptPath) => manifest.has(scriptPath)) : scriptFiles;
-  const leaks = collectLeaks(root, scannedFiles, manifest);
+  const leaks = tryCollectLeaksOrReport(root, scannedFiles, manifest);
+  if (leaks === null) return UNEXPECTED_EXIT15;
   const report = {
     leaks,
     scan_scope: isBareMode ? "manifest-backed" : "tarball",
@@ -22367,7 +22380,7 @@ var run26 = (argv, options = {}) => {
 // src/release/scrub-wiki.ts
 import { existsSync as existsSync16, mkdirSync as mkdirSync6, readFileSync as readFileSync20 } from "node:fs";
 import path21 from "node:path";
-var HELP_TEXT27 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>]
+var HELP_TEXT27 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>] [--check]
 
   Overwrite wiki/hot.md and wiki/log.md with release-clean content
   (Step 8 + Step 9 of the runbook).
@@ -22375,10 +22388,15 @@ var HELP_TEXT27 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>]
   Flags:
     --version <X.Y.Z>     Override the new version (default: package.json).
     --date <YYYY-MM-DD>   Override the release date (default: today UTC).
+    --check               Verify the committed wiki/hot.md and wiki/log.md
+                          match freshly-rendered release-clean output and exit
+                          non-zero on drift. Writes nothing. Dates are
+                          normalized out of the comparison; the release gate
+                          uses this to catch a wiki that was never scrubbed.
 
   Exit codes:
-    0  success (no stdout)
-    1  user-correctable error
+    0  success (no stdout); --check: no drift
+    1  user-correctable error; --check: committed wiki file is stale or missing
     2  unexpected (filesystem failure)
 `;
 var HELP_TOKENS27 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -22390,6 +22408,7 @@ var takeValue11 = (argv, index, flag) => {
   return { ok: true, value };
 };
 var parseFlags13 = (argv) => {
+  let check2 = false;
   let date5;
   let version2;
   for (let index = 0; index < argv.length; index += 1) {
@@ -22404,11 +22423,13 @@ var parseFlags13 = (argv) => {
       if (!taken.ok) return taken;
       date5 = taken.value;
       index += 1;
+    } else if (token === "--check") {
+      check2 = true;
     } else {
       return { message: `unknown flag: ${token}`, ok: false };
     }
   }
-  return { flags: { date: date5, version: version2 }, ok: true };
+  return { flags: { check: check2, date: date5, version: version2 }, ok: true };
 };
 var todayUtc2 = (now = /* @__PURE__ */ new Date()) => {
   const year = now.getUTCFullYear();
@@ -22462,6 +22483,40 @@ tags: [meta, log]
 
 See CHANGELOG.md for details.
 `;
+var normalizeDates = (content) => content.replaceAll(/\d{4}-\d{2}-\d{2}/g, "YYYY-MM-DD");
+var runCheck2 = (args) => {
+  const { date: date5, hotPath, logPath, version: version2 } = args;
+  const targets = [
+    { label: "wiki/hot.md", path: hotPath, rendered: renderHotMd(version2, date5) },
+    { label: "wiki/log.md", path: logPath, rendered: renderLogMd(version2, date5) }
+  ];
+  const drifted = [];
+  try {
+    for (const target of targets) {
+      const missing = !existsSync16(target.path);
+      const stale = !missing && normalizeDates(readFileSync20(target.path, "utf8")) !== normalizeDates(target.rendered);
+      if (missing || stale) {
+        drifted.push(target.label);
+      }
+    }
+  } catch (error51) {
+    structuredError({
+      code: "scrub_check_read_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release scrub-wiki"
+    });
+    return UNEXPECTED_EXIT16;
+  }
+  if (drifted.length > 0) {
+    structuredError({
+      code: "scrub_check_drift",
+      message: `stale wiki file(s); release scrub-wiki was not run before the release: ${drifted.join(", ")}`,
+      subcommand: "release scrub-wiki"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  return EXIT_CODES.OK;
+};
 var run27 = (argv, options = {}) => {
   if (argv.length > 0 && HELP_TOKENS27.has(argv[0])) {
     process.stdout.write(HELP_TEXT27);
@@ -22500,6 +22555,9 @@ var run27 = (argv, options = {}) => {
   }
   const hotPath = path21.join(wikiDir, "hot.md");
   const logPath = path21.join(wikiDir, "log.md");
+  if (parsed.flags.check) {
+    return runCheck2({ date: date5, hotPath, logPath, version: version2 });
+  }
   try {
     mkdirSync6(wikiDir, { recursive: true });
     atomicWriteFileSync(hotPath, renderHotMd(version2, date5));
@@ -23190,7 +23248,9 @@ var HELP_TEXT29 = `Usage: gaia-maintainer release <subcommand> [args]
   preflight [--branch <name>]                 Branch + working-tree + wiki state checks.
   bump [--auto]                               Conventional-commit semver bump.
   changelog [--draft] [--version <X.Y.Z>]     Render / graduate the CHANGELOG block.
-  scrub-wiki [--version <X.Y.Z>] [--date <D>] Reset wiki/hot.md and wiki/log.md.
+  scrub-wiki [--version <X.Y.Z>] [--date <D>] [--check]
+                                              Reset wiki/hot.md and wiki/log.md
+                                              (--check: verify they are fresh, write nothing).
   manifest [--ship <path>]... [--withhold <path> --category <N> --reason <text>]...
                                               Regenerate .gaia/manifest.json. Refuses while any
                                               newly-shipping file is unanswered; see manifest --help.
