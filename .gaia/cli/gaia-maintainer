@@ -17510,6 +17510,7 @@ var COMMIT_TYPES = [
   "fix",
   "perf",
   "refactor",
+  "revert",
   "style",
   "test",
   "wiki"
@@ -17569,6 +17570,11 @@ var TYPE_TO_BUMP = {
   fix: "patch",
   perf: "patch",
   refactor: "patch",
+  // A revert changes released behavior, so it has to ship. Kept at `patch`
+  // rather than inferred from what it undoes: reverting a `feat` arguably
+  // warrants more, and a revert that genuinely removes a shipped capability
+  // carries the `!` marker, which already outranks this table.
+  revert: "patch",
   style: "patch",
   test: "patch",
   wiki: null
@@ -17848,6 +17854,7 @@ var TYPE_TO_SECTION = {
   fix: "Fixed",
   perf: "Changed",
   refactor: "Changed",
+  revert: "Fixed",
   style: null,
   test: null,
   wiki: null
@@ -27370,9 +27377,10 @@ var DEFAULT_CLASSIFY_PATHS = {
   testPaths: []
 };
 var PathListSchema = external_exports.array(external_exports.string().min(1));
+var SourcePathListSchema = PathListSchema.min(1);
 var WikiClassifySchema = external_exports.object({
   inventoryPaths: PathListSchema.optional(),
-  sourcePaths: PathListSchema.optional(),
+  sourcePaths: SourcePathListSchema.optional(),
   testPaths: PathListSchema.optional()
 });
 var PackageJsonSchema = external_exports.object({
@@ -27469,6 +27477,7 @@ var PATH_DISCRIMINATED_TYPES = {
   fix: true,
   perf: true,
   refactor: true,
+  revert: true,
   style: false,
   test: false,
   wiki: false
@@ -29424,14 +29433,13 @@ var invokedPath = process.argv[1];
 var isDirectRun = invokedPath !== void 0 && import.meta.url === pathToFileURL(realpathSync2(invokedPath)).href;
 if (isDirectRun) {
   try {
-    const exitCode = await run60(process.argv.slice(2));
-    process.exit(exitCode);
+    process.exitCode = await run60(process.argv.slice(2));
   } catch (error51) {
     structuredError({
       code: "cli_internal_error",
       message: error51 instanceof Error ? error51.message : String(error51)
     });
-    process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+    process.exitCode = EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 }
 export {

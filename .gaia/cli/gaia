@@ -15488,6 +15488,7 @@ var COMMIT_TYPES = [
   "fix",
   "perf",
   "refactor",
+  "revert",
   "style",
   "test",
   "wiki"
@@ -15946,7 +15947,12 @@ var openRevertPr = (args) => {
       "--head",
       revertBranch,
       "--title",
-      `Revert: ${title}`,
+      // `revert: <original subject>`, not `Revert: ...`. The conventional-commit
+      // grammar anchors on a lowercase type, so the capitalized form is not a
+      // valid subject: it reds the PR-title check on the automation that runs
+      // exactly when main is broken, and lands on main as a subject the release
+      // bump and the wiki classifier cannot read.
+      `revert: ${title}`,
       "--body",
       body,
       "--label",
@@ -28204,9 +28210,10 @@ var DEFAULT_CLASSIFY_PATHS = {
   testPaths: []
 };
 var PathListSchema = external_exports.array(external_exports.string().min(1));
+var SourcePathListSchema = PathListSchema.min(1);
 var WikiClassifySchema = external_exports.object({
   inventoryPaths: PathListSchema.optional(),
-  sourcePaths: PathListSchema.optional(),
+  sourcePaths: SourcePathListSchema.optional(),
   testPaths: PathListSchema.optional()
 });
 var PackageJsonSchema = external_exports.object({
@@ -28303,6 +28310,7 @@ var PATH_DISCRIMINATED_TYPES = {
   fix: true,
   perf: true,
   refactor: true,
+  revert: true,
   style: false,
   test: false,
   wiki: false
@@ -30437,14 +30445,13 @@ var invokedPath = process.argv[1];
 var isDirectRun = invokedPath !== void 0 && import.meta.url === pathToFileURL(realpathSync2(invokedPath)).href;
 if (isDirectRun) {
   try {
-    const exitCode = await run72(process.argv.slice(2));
-    process.exit(exitCode);
+    process.exitCode = await run72(process.argv.slice(2));
   } catch (error51) {
     structuredError({
       code: "cli_internal_error",
       message: error51 instanceof Error ? error51.message : String(error51)
     });
-    process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+    process.exitCode = EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 }
 export {
