@@ -53,6 +53,13 @@ jobs:
       - name: Verify manifest is fresh
         run: ./.gaia/cli/gaia-maintainer release manifest --check
 
+      - name: Verify wiki was scrubbed for release
+        # Fail the release if wiki/hot.md or wiki/log.md was never re-rendered
+        # by `release scrub-wiki` (a skipped scrub would ship a stale wiki). The
+        # check compares the committed files against fresh-rendered output,
+        # normalizes dates out, and writes nothing.
+        run: ./.gaia/cli/gaia-maintainer release scrub-wiki --check
+
       - uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
 
       - name: Setup Node
@@ -64,10 +71,16 @@ jobs:
       - name: Install CLI dependencies
         run: pnpm -C .gaia/cli install --frozen-lockfile
 
-      - name: Verify committed CLI binaries are rebuilt from src
+      - name: Verify committed CLI binaries and templates are rebuilt from src
         run: |
           cp .gaia/cli/gaia /tmp/gaia-committed
           cp .gaia/cli/gaia-maintainer /tmp/gaia-maintainer-committed
+          # bundle:adopter regenerates .gaia/cli/templates/ from src as a side
+          # effect (rm -rf templates && cp -r src/scaffold/templates ...),
+          # decoupled from the bundled binary bytes. Snapshot the committed copy
+          # before the bundle overwrites it so the diff below can see drift.
+          rm -rf /tmp/templates-committed
+          cp -r .gaia/cli/templates /tmp/templates-committed
           pnpm -C .gaia/cli bundle
           if ! cmp -s /tmp/gaia-committed .gaia/cli/gaia; then
             echo "::error::.gaia/cli/gaia is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
@@ -75,6 +88,14 @@ jobs:
           fi
           if ! cmp -s /tmp/gaia-maintainer-committed .gaia/cli/gaia-maintainer; then
             echo "::error::.gaia/cli/gaia-maintainer is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
+            exit 1
+          fi
+          # Template content resolves at runtime via import.meta.url and never
+          # enters the bundled binary, so the byte-cmp above cannot catch a
+          # stale committed template. Diff the regenerated tree against the
+          # snapshot taken before the bundle.
+          if ! diff -rq /tmp/templates-committed .gaia/cli/templates; then
+            echo "::error::.gaia/cli/templates is stale: regenerating from src (pnpm -C .gaia/cli bundle) produces different template files. Run the bundle and commit the result." >&2
             exit 1
           fi
 

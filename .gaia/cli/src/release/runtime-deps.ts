@@ -662,6 +662,24 @@ const collectLeaks = (
   return leaks;
 };
 
+const tryCollectLeaksOrReport = (
+  root: string,
+  scriptFiles: readonly string[],
+  manifest: ReadonlySet<string>
+): null | readonly Leak[] => {
+  try {
+    return collectLeaks(root, scriptFiles, manifest);
+  } catch (error) {
+    structuredError({
+      code: 'script_read_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release runtime-deps',
+    });
+
+    return null;
+  }
+};
+
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -720,7 +738,10 @@ export const run = (
       scriptFiles.filter((scriptPath) => manifest.has(scriptPath))
     : scriptFiles;
 
-  const leaks = collectLeaks(root, scannedFiles, manifest);
+  const leaks = tryCollectLeaksOrReport(root, scannedFiles, manifest);
+
+  if (leaks === null) return UNEXPECTED_EXIT;
+
   const report: Report = {
     leaks,
     scan_scope: isBareMode ? 'manifest-backed' : 'tarball',

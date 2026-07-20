@@ -14,7 +14,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 
-const HELP_TEXT = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>]
+const HELP_TEXT = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>] [--check]
 
   Overwrite wiki/hot.md and wiki/log.md with release-clean content
   (Step 8 + Step 9 of the runbook).
@@ -22,10 +22,15 @@ const HELP_TEXT = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>]
   Flags:
     --version <X.Y.Z>     Override the new version (default: package.json).
     --date <YYYY-MM-DD>   Override the release date (default: today UTC).
+    --check               Verify the committed wiki/hot.md and wiki/log.md
+                          match freshly-rendered release-clean output and exit
+                          non-zero on drift. Writes nothing. Dates are
+                          normalized out of the comparison; the release gate
+                          uses this to catch a wiki that was never scrubbed.
 
   Exit codes:
-    0  success (no stdout)
-    1  user-correctable error
+    0  success (no stdout); --check: no drift
+    1  user-correctable error; --check: committed wiki file is stale or missing
     2  unexpected (filesystem failure)
 `;
 
@@ -45,6 +50,7 @@ type FlagParseSuccess = {
 };
 
 type Flags = {
+  check: boolean;
   date: string | undefined;
   version: string | undefined;
 };
@@ -65,6 +71,7 @@ const takeValue = (
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
+  let check = false;
   let date: string | undefined;
   let version: string | undefined;
 
@@ -83,12 +90,14 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       if (!taken.ok) return taken;
       date = taken.value;
       index += 1;
+    } else if (token === '--check') {
+      check = true;
     } else {
       return {message: `unknown flag: ${token}`, ok: false};
     }
   }
 
-  return {flags: {date, version}, ok: true};
+  return {flags: {check, date, version}, ok: true};
 };
 
 const todayUtc = (now: Date = new Date()): string => {
@@ -161,6 +170,69 @@ type RunOptions = {
   today?: string;
 };
 
+// The rendered templates embed the day the scrub ran, which is
+// non-deterministic relative to when the release CI later verifies them (the
+// tag can be pushed a day after the scrub commit). `--check` normalizes ISO
+// dates out before comparing, so a correctly-scrubbed file for a different day
+// still matches; the structural content and the version are what the check
+// actually gates on.
+const normalizeDates = (content: string): string =>
+  content.replaceAll(/\d{4}-\d{2}-\d{2}/g, 'YYYY-MM-DD');
+
+type CheckArgs = {
+  date: string;
+  hotPath: string;
+  logPath: string;
+  version: string;
+};
+
+// `--check`: compare the committed wiki/hot.md and wiki/log.md against
+// freshly-rendered release-clean output and exit non-zero on drift, writing
+// nothing. Guards a release from shipping a stale (unrendered) wiki because
+// `release scrub-wiki` was skipped before the tag.
+const runCheck = (args: CheckArgs): number => {
+  const {date, hotPath, logPath, version} = args;
+  const targets = [
+    {label: 'wiki/hot.md', path: hotPath, rendered: renderHotMd(version, date)},
+    {label: 'wiki/log.md', path: logPath, rendered: renderLogMd(version, date)},
+  ];
+  const drifted: string[] = [];
+
+  try {
+    for (const target of targets) {
+      const missing = !existsSync(target.path);
+      const stale =
+        !missing &&
+        normalizeDates(readFileSync(target.path, 'utf8')) !==
+          normalizeDates(target.rendered);
+
+      if (missing || stale) {
+        drifted.push(target.label);
+      }
+    }
+  } catch (error) {
+    structuredError({
+      code: 'scrub_check_read_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release scrub-wiki',
+    });
+
+    return UNEXPECTED_EXIT;
+  }
+
+  if (drifted.length > 0) {
+    structuredError({
+      code: 'scrub_check_drift',
+      message: `stale wiki file(s); release scrub-wiki was not run before the release: ${drifted.join(', ')}`,
+      subcommand: 'release scrub-wiki',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  return EXIT_CODES.OK;
+};
+
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -213,6 +285,10 @@ export const run = (
 
   const hotPath = path.join(wikiDir, 'hot.md');
   const logPath = path.join(wikiDir, 'log.md');
+
+  if (parsed.flags.check) {
+    return runCheck({date, hotPath, logPath, version});
+  }
 
   try {
     mkdirSync(wikiDir, {recursive: true});

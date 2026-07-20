@@ -70,6 +70,19 @@ const captureStdio = (): {
   };
 };
 
+const writeScrubbed = (root: string, version: string, date: string): void => {
+  writeFileSync(
+    path.join(root, 'wiki', 'hot.md'),
+    renderHotMd(version, date),
+    'utf8'
+  );
+  writeFileSync(
+    path.join(root, 'wiki', 'log.md'),
+    renderLogMd(version, date),
+    'utf8'
+  );
+};
+
 describe('renderHotMd / renderLogMd', () => {
   test('frontmatter contains required keys', () => {
     const hot = renderHotMd('2.0.0', '2026-05-07');
@@ -149,5 +162,131 @@ describe('release scrub-wiki CLI', () => {
     const exit = run(['--bogus'], {cwd: sandbox.root});
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('unknown flag');
+  });
+});
+
+describe('release scrub-wiki --check', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('passes on freshly-scrubbed files and writes nothing', () => {
+    sandbox = setupSandbox('1.5.0');
+    writeScrubbed(sandbox.root, '1.5.0', '2026-05-07');
+    const hotBefore = readFileSync(
+      path.join(sandbox.root, 'wiki', 'hot.md'),
+      'utf8'
+    );
+    const logBefore = readFileSync(
+      path.join(sandbox.root, 'wiki', 'log.md'),
+      'utf8'
+    );
+
+    const exit = run(['--check'], {cwd: sandbox.root, today: '2026-07-21'});
+    expect(exit).toBe(0);
+    expect(stdio.errors.join('')).toBe('');
+    // Rendered nothing: the committed files are byte-identical to before.
+    expect(
+      readFileSync(path.join(sandbox.root, 'wiki', 'hot.md'), 'utf8')
+    ).toBe(hotBefore);
+    expect(
+      readFileSync(path.join(sandbox.root, 'wiki', 'log.md'), 'utf8')
+    ).toBe(logBefore);
+  });
+
+  test('passes even when the committed scrub date differs from today', () => {
+    // The scrub date is non-deterministic relative to the CI run date (the tag
+    // can be pushed a day after the scrub commit), so the check normalizes
+    // dates out. A same-structure file for a different day still passes.
+    sandbox = setupSandbox('1.5.0');
+    writeScrubbed(sandbox.root, '1.5.0', '2026-05-07');
+
+    const exit = run(['--check'], {cwd: sandbox.root, today: '2027-01-01'});
+    expect(exit).toBe(0);
+  });
+
+  test('detects a stale (unscrubbed) hot.md', () => {
+    sandbox = setupSandbox('1.5.0');
+    // log.md scrubbed; hot.md left as the pre-existing dev content.
+    writeFileSync(
+      path.join(sandbox.root, 'wiki', 'log.md'),
+      renderLogMd('1.5.0', '2026-05-07'),
+      'utf8'
+    );
+
+    const exit = run(['--check'], {cwd: sandbox.root, today: '2026-05-07'});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('scrub_check_drift');
+    expect(stdio.errors.join('')).toContain('wiki/hot.md');
+  });
+
+  test('detects a stale (unscrubbed) log.md', () => {
+    sandbox = setupSandbox('1.5.0');
+    writeFileSync(
+      path.join(sandbox.root, 'wiki', 'hot.md'),
+      renderHotMd('1.5.0', '2026-05-07'),
+      'utf8'
+    );
+
+    const exit = run(['--check'], {cwd: sandbox.root, today: '2026-05-07'});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('wiki/log.md');
+  });
+
+  test('detects drift when committed files were scrubbed for another version', () => {
+    // package.json says 1.5.0 but the committed wiki files claim v1.4.0: a
+    // version bump landed without a re-scrub. Structure matches, version does
+    // not, so it must still flag.
+    sandbox = setupSandbox('1.5.0');
+    writeScrubbed(sandbox.root, '1.4.0', '2026-05-07');
+
+    const exit = run(['--check'], {cwd: sandbox.root, today: '2026-05-07'});
+    expect(exit).toBe(1);
+  });
+
+  test('writes nothing even when drift is detected', () => {
+    sandbox = setupSandbox('1.5.0');
+    // Both files are the pre-existing stale dev content from setupSandbox.
+    const hotBefore = readFileSync(
+      path.join(sandbox.root, 'wiki', 'hot.md'),
+      'utf8'
+    );
+    const logBefore = readFileSync(
+      path.join(sandbox.root, 'wiki', 'log.md'),
+      'utf8'
+    );
+
+    const exit = run(['--check'], {cwd: sandbox.root, today: '2026-05-07'});
+    expect(exit).toBe(1);
+    expect(
+      readFileSync(path.join(sandbox.root, 'wiki', 'hot.md'), 'utf8')
+    ).toBe(hotBefore);
+    expect(
+      readFileSync(path.join(sandbox.root, 'wiki', 'log.md'), 'utf8')
+    ).toBe(logBefore);
+  });
+
+  test('exits 1 when a committed wiki file is missing entirely', () => {
+    sandbox = setupSandbox('1.5.0');
+    // log.md scrubbed; hot.md removed (scrub never produced it).
+    writeFileSync(
+      path.join(sandbox.root, 'wiki', 'log.md'),
+      renderLogMd('1.5.0', '2026-05-07'),
+      'utf8'
+    );
+    rmSync(path.join(sandbox.root, 'wiki', 'hot.md'), {force: true});
+
+    const exit = run(['--check'], {cwd: sandbox.root, today: '2026-05-07'});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('wiki/hot.md');
   });
 });
