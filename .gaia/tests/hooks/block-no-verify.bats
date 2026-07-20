@@ -192,3 +192,26 @@ assert_allowed() {
   run_hook 'git commit -m "a|b" --no-verify'
   assert_denied
 }
+
+# --- deny message names the documented over-block case ---
+
+@test "deny message names the commit-message over-block workaround" {
+  # A bypass token merely mentioned inside a commit message (never a real
+  # bypass attempt) still denies, by design (see the hook's header comment).
+  # Drive the actual over-block case (--no-verify inside the -m text, not in
+  # flag position) so this test pins the message that case actually gets,
+  # not the message a real bypass gets from an identical-looking command.
+  run_hook 'git commit -m "use --no-verify next time"'
+  assert_denied
+  grep -qF -- "documented over-block" <<<"$output" || return 1
+}
+
+@test "deny message on push omits the commit-message workaround (push has no -m)" {
+  # floor_msg is shared by commit and push; the over-block note only applies
+  # to commit, since push carries no message text a token could be mentioned
+  # inside.
+  run_hook 'git push --no-verify'
+  assert_denied
+  grep -qF -- "documented over-block" <<<"$output" && return 1
+  return 0
+}

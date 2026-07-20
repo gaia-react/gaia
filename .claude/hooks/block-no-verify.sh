@@ -66,7 +66,13 @@ deny() {
 }
 
 floor_msg() {
-  echo "Hook bypass on 'git $sub' is forbidden ($1). The Quality Gate floor (typecheck/lint/test) runs via the Husky pre-commit hook, fix the failures, don't skip the gate. See wiki/decisions/Quality Gate.md."
+  local msg="Hook bypass on 'git $sub' is forbidden ($1). The Quality Gate floor (typecheck/lint/test) runs via the Husky pre-commit hook, fix the failures, don't skip the gate. See wiki/decisions/Quality Gate.md."
+  # The over-block workaround applies to commit only: push carries no -m text
+  # a bypass token could be merely mentioned inside.
+  if [ "$sub" = "commit" ]; then
+    msg="$msg If this token appears only inside your commit message text, not as a real flag, that is this hook's documented over-block: rephrase the message, the gate was not bypassed."
+  fi
+  echo "$msg"
 }
 
 # Walk each command-position segment. Separators (`| & ; ( )`, newlines) become

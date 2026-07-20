@@ -1481,15 +1481,23 @@ jobs:
           pr="$1"
           body="$2"
           full_body="$(printf '%s\n%s' "$MARKER" "$body")"
-          existing_id="$(MARKER="$MARKER" gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/issues/${pr}/comments" \
-            --jq '.[] | select(.body | contains(env.MARKER)) | .id' | head -n1)"
+          if ! comments="$(MARKER="$MARKER" gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues/${pr}/comments" \
+              --jq '.[] | select(.body | contains(env.MARKER)) | .id')"; then
+            echo "cra-status-upsert: comment lookup failed (non-fatal); skipping upsert to avoid posting a duplicate comment." >&2
+            exit 0
+          fi
+          existing_id="$(printf '%s\n' "$comments" | head -n1)"
           if [ -n "$existing_id" ]; then
-            gh api --method PATCH \
-              "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_id}" \
-              -f body="$full_body" >/dev/null
+            if ! gh api --method PATCH \
+                "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_id}" \
+                -f body="$full_body" >/dev/null; then
+              echo "cra-status-upsert: PATCH of comment ${existing_id} failed (non-fatal); this comment is advisory only." >&2
+            fi
           else
-            gh pr comment "$pr" --body "$full_body"
+            if ! gh pr comment "$pr" --body "$full_body"; then
+              echo "cra-status-upsert: posting the status comment failed (non-fatal); this comment is advisory only." >&2
+            fi
           fi
           UPSERT_EOF
           chmod +x "$RUNNER_TEMP/cra-status-upsert.sh"

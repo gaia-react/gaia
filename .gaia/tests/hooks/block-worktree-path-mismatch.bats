@@ -182,10 +182,9 @@ assert_allowed() {
 
 # --- allowed: the shared .gaia/local tree ---
 
-# create-worktree.sh / link-worktree.sh deliberately symlink the per-machine
-# working state (.gaia/local/audit, debt, telemetry, setup-state.json) out of a
-# linked worktree and into the main checkout, so audit markers and debt state
-# are shared rather than forked. `git -C` resolves a symlink before computing
+# create-worktree.sh / link-worktree.sh deliberately symlink a fixed set of
+# per-machine working state out of a linked worktree and into the main
+# checkout, so audit markers and debt state are shared rather than forked. `git -C` resolves a symlink before computing
 # --show-toplevel, so a write to the worktree's own .gaia/local/audit/ reports
 # file_root as the MAIN checkout and looks like a wrong-checkout write. It is
 # the intended write: that tree is shared by construction, and nothing under it
@@ -212,27 +211,58 @@ assert_allowed() {
   assert_denied
 }
 
-# link-worktree.sh symlinks only setup-state.json, cache/shared, audit,
-# telemetry, and debt. The rest of .gaia/local/ is per-worktree, so a stale
-# pre-switch path into the main checkout's copy is the #841 silent-wrong-write,
-# not a shared-state write, and must stay denied. Exempting the whole
-# .gaia/local/ tree would re-open exactly the subtree that receives /gaia-plan,
-# /gaia-spec, and /gaia-handoff output.
+# link-worktree.sh symlinks a fixed, closed set of shared-state paths, and
+# handoff/ is not in it. Most of the rest of .gaia/local/ is per-worktree, so a
+# stale pre-switch path into the main checkout's copy is the #841
+# silent-wrong-write, not a shared-state write, and must stay denied. Exempting
+# the whole .gaia/local/ tree would re-open exactly that. handoff/ stands in for
+# the per-worktree remainder here; plans/ and specs/ are the two carve-outs, and
+# they get their own cases below.
 @test "a stale main-checkout write under non-symlinked .gaia/local is still denied" {
   make_repo
   make_worktree "debt/15-foo" "debt/15-foo"
-  mkdir -p "$REPO/.gaia/local/plans"
+  mkdir -p "$REPO/.gaia/local/handoff"
   cd "$WT"
-  run_hook_edit "Write" "$REPO/.gaia/local/plans/PLAN-001.md"
+  run_hook_edit "Write" "$REPO/.gaia/local/handoff/2026-01-01.md"
   assert_denied
 }
 
-@test "a stale main-checkout write under .gaia/local/specs is still denied" {
+# tech-debt #934. plan.md puts the plan folder in the main checkout by contract
+# and has the worktree-mode orchestrator write PROGRESS.md back to it after
+# every phase. A linked worktree's own .gaia/local/plans/ is empty, so the
+# main-checkout path is the ONLY path that resolves to a real ledger: there is
+# no valid twin, which is what the #841 silent-wrong-write requires. Denying
+# these blocks the sole correct write, costing every worktree-mode plan run its
+# phase-findings ledger and its resume point.
+@test "a worktree-mode write to the main checkout's .gaia/local/plans ledger is allowed" {
   make_repo
-  make_worktree "debt/16-foo" "debt/16-foo"
-  mkdir -p "$REPO/.gaia/local/specs"
+  make_worktree "debt/31-foo" "debt/31-foo"
+  mkdir -p "$REPO/.gaia/local/plans/PLAN-001"
   cd "$WT"
-  run_hook_edit "Write" "$REPO/.gaia/local/specs/SPEC-009.md"
+  run_hook_edit "Write" "$REPO/.gaia/local/plans/PLAN-001/PROGRESS.md"
+  assert_allowed
+}
+
+# The spec-colocated arm of the same contract: a plan under
+# .gaia/local/specs/<SPEC-ID>/plan/ writes its PROGRESS.md there, and the
+# consolidated SUMMARY.md one directory up, both in the main checkout.
+@test "a worktree-mode write to the main checkout's .gaia/local/specs ledger is allowed" {
+  make_repo
+  make_worktree "debt/32-foo" "debt/32-foo"
+  mkdir -p "$REPO/.gaia/local/specs/SPEC-009/plan"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/specs/SPEC-009/plan/PROGRESS.md"
+  assert_allowed
+}
+
+# The plans/specs carve-out is a path-segment match like the shared-state arm
+# above, so it must not leak to a sibling that merely shares a prefix.
+@test "a main-checkout write to a .gaia/local/plans lookalike sibling is still denied" {
+  make_repo
+  make_worktree "debt/33-foo" "debt/33-foo"
+  mkdir -p "$REPO/.gaia/local/plansible"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/plansible/notes.md"
   assert_denied
 }
 
@@ -346,6 +376,10 @@ assert_allowed() {
   assert_allowed
 }
 
+# A process cwd outside every git repository leaves the hook with no checkout to
+# adjudicate in, and this payload names none either, so there is nothing to fall
+# back to and the call fails open. The companion case below, where the payload
+# DOES name a checkout, is the one that must keep guarding.
 @test "a session whose cwd is not inside any git repository fails open (allowed)" {
   make_repo
   NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
@@ -426,6 +460,23 @@ assert_allowed() {
   assert_allowed
 }
 
+# The killer for that same-repo check, and the reason the case above cannot
+# stand alone: it allows whether the check fires or not, since honoring the
+# foreign cwd there yields two equal roots and reads as no worktree session.
+# Move the process cwd into the worktree and the two verdicts separate. An
+# honored foreign cwd makes BOTH roots the foreign repo's, they compare equal,
+# the guard concludes no worktree session is active, and the stale
+# main-checkout target sails through: the guard disarmed by a cwd belonging to
+# a repository it is not adjudicating.
+@test "a payload cwd inside an unrelated repository does not disarm a worktree session" {
+  make_repo
+  make_worktree "debt/39-foo" "debt/39-foo"
+  make_other_repo
+  cd "$WT"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
+  assert_denied
+}
+
 # The payload cwd is honored only when absolute. Every consumer downstream of it
 # option-parses its own operand: `dirname --` stops dirname there, but the value
 # dirname returns still reaches a bare `cd`, which reads a leading dash as its
@@ -478,6 +529,95 @@ assert_allowed() {
   mkdir -p "$REPO/sub"
   cd "$WT"
   run_hook_edit_cwd "Edit" "$REPO/f" "$REPO/sub"
+  assert_allowed
+}
+
+# tech-debt #940. main_root used to derive from the hook's own process cwd even
+# after the rest of the adjudication had migrated to the payload cwd, so a hook
+# process sitting outside every git repository failed the --git-common-dir call
+# and exited before any payload-aware logic ran. The guard went inert for that
+# call, and inertness here is an ALLOW: it fails silently rather than loudly.
+# Both roots now come from whichever source wins, so a payload cwd naming the
+# worktree still adjudicates with no usable process cwd at all.
+@test "a payload cwd inside the worktree guards even when the process cwd is outside any git repository" {
+  make_repo
+  make_worktree "debt/36-foo" "debt/36-foo"
+  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
+  cd "$NONREPO"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$WT"
+  assert_denied
+}
+
+# The mirror of the case above: the same payload cwd, targeting that agent's own
+# worktree, is the correct write and stays allowed.
+@test "a payload cwd inside the worktree allows its own target when the process cwd is outside any git repository" {
+  make_repo
+  make_worktree "debt/37-foo" "debt/37-foo"
+  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
+  cd "$NONREPO"
+  run_hook_edit_cwd "Edit" "$WT/f" "$WT"
+  assert_allowed
+}
+
+# The foreign-repo cross-check needs a process-cwd repo to check against, and
+# here there is none, so the payload is taken at its word and BOTH roots come
+# from it. That can never produce a false deny, which is what the cross-check
+# exists to prevent: main_root and current_root are then two values read from
+# the same repo, and a target in a different repo cannot equal main_root.
+@test "a payload cwd in an unrelated repository cannot deny a target in this repo" {
+  make_repo
+  make_worktree "debt/38-foo" "debt/38-foo"
+  make_other_repo
+  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
+  cd "$NONREPO"
+  run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
+  assert_allowed
+}
+
+# --- defense in depth: the file_path chain's own two guards ---
+
+# tech-debt #944. `dirname --` and `CDPATH=''` on the target_dir/
+# resolved_target_dir pair are unreachable in practice, because
+# .claude/skills/gaia/references/isolation.md contracts file_path as an absolute
+# path with no cwd resolution, and an absolute path defeats both. The two tests
+# below cover them anyway, for a reason specific to this pair: unlike the
+# identically-shaped guards on the payload_cwd chain, whose unreachability rests
+# on an absolute-cwd invariant THIS script enforces itself, these rest on an
+# external convention the script cannot enforce. If the harness ever emits a
+# relative file_path, they are the only thing standing there, and without
+# coverage a future edit dropping either one regresses in silence. Both cases
+# are mutation-verified: each fails against a hook with its guard removed.
+
+# CDPATH killer. With CDPATH honored, `cd inner` resolves through CDPATH into
+# the exempt audit tree instead of through the worktree's own `inner` symlink,
+# so the write is waved through as shared state while git still resolves it to
+# the main checkout: a deny becomes an allow. The CDPATH hit lands on a
+# SUBdirectory of the exempt tree deliberately. bash echoes the resolved path to
+# stdout whenever cd consults CDPATH, so the mutant's capture is two lines; only
+# a match one level below the arm's own directory leaves the trailing `*` free
+# to absorb the second line, which is what makes the mutant reach the exemption.
+@test "a relative file_path is resolved without CDPATH, so an exempt-tree decoy cannot mask it" {
+  make_repo
+  make_worktree "debt/34-foo" "debt/34-foo"
+  mkdir -p "$REPO/.gaia/local/audit/inner"
+  ln -s "$REPO" "$WT/inner"
+  cd "$WT"
+  export CDPATH="$REPO/.gaia/local/audit"
+  run_hook_edit "Write" "inner/f"
+  assert_denied
+}
+
+# `dirname --` killer. A file_path whose leading component reads as an option
+# stops at the `--` terminator and yields `-x`, which the following bare `cd`
+# rejects, so the hook fails open the way it does for any unresolvable target.
+# Drop the terminator and `dirname` itself option-parses, exiting non-zero under
+# `set -e` and aborting the hook mid-adjudication: the status assertion, not the
+# verdict, is what separates a clean fail-open from that crash.
+@test "a file_path whose dirname component leads with a dash fails open cleanly" {
+  make_repo
+  make_worktree "debt/35-foo" "debt/35-foo"
+  cd "$WT"
+  run_hook_edit "Write" "-x/f"
   assert_allowed
 }
 

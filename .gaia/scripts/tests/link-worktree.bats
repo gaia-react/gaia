@@ -364,3 +364,51 @@ FAKE
   # links the raw glob match.
   [ ! -L "$LINKED/.env.local~" ]
 }
+
+# ---------- 16. The shared-path set has copies; keep the checkable ones in sync ----------
+
+# The set of symlinked shared-state paths is restated across several surfaces:
+# this script's own header, the CLI's SHARED_PATHS, the worktree write-guard's
+# exemption arms, wiki/concepts/Local Working State.md. Hand-syncing them has
+# drifted more than once (tech-debt #953). These two tests pin the two copies a
+# machine can compare exactly, and their failure doubles as the checklist:
+# when this set changes, the prose surfaces named above need the same edit.
+#
+# link_one's first argument is the authoritative set, it is what the script
+# actually symlinks. The .env arm passes a bare basename, so anchoring on
+# .gaia/local/ selects the fixed shared-state set and nothing else.
+authority_paths() {
+  grep -oE 'link_one "\.gaia/local/[^"]+"' "$SCRIPT" | sed -E 's/^link_one "//; s/"$//' | sort
+}
+
+@test "shared paths: the CLI's SHARED_PATHS matches what this script symlinks" {
+  local cli from_sh from_ts
+  cli="$SCRIPT_DIR/../cli/src/setup/link-worktree.ts"
+  [ -f "$cli" ]
+  from_sh="$(authority_paths)"
+  from_ts="$(grep -oE "relativePath: '[^']+'" "$cli" | sed -E "s/^relativePath: '//; s/'$//" | sort)"
+  [ -n "$from_sh" ]
+  [ "$from_sh" = "$from_ts" ]
+}
+
+# The guard denies a write from a linked worktree into the main checkout, and
+# `git -C` resolves a symlink before reporting a toplevel, so every symlinked
+# shared-state DIRECTORY reads as such a write and needs its own exemption arm.
+# Add a sixth shared directory without one and the guard denies the very writes
+# the symlink exists to make shared. A symlinked FILE needs no arm (its parent
+# directory is the worktree's own), and the set's only file is a .json.
+#
+# Subset, not equality: the guard carries further exemption arms on unrelated
+# rationale (the main-checkout plan and SPEC ledgers, which are not symlinked
+# at all), and those are none of this script's business.
+@test "shared paths: the worktree write-guard exempts every symlinked directory" {
+  local guard p
+  guard="$SCRIPT_DIR/../../.claude/hooks/block-worktree-path-mismatch.sh"
+  [ -f "$guard" ]
+  while IFS= read -r p; do
+    case "$p" in
+      *.json) continue ;;
+    esac
+    grep -qF -- '"$main_root"/'"$p"'/*' "$guard" || return 1
+  done <<< "$(authority_paths)"
+}
