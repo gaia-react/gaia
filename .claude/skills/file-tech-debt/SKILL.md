@@ -45,7 +45,7 @@ If step 2 found a matching open issue, or a declined-closed one, stop, do not fi
 If no match exists:
 
 1. Create the labels idempotently first (step 6), a pre-existing label is not an error.
-2. Build the full issue body (step 5) in a gitignored body-file, not inline. Give the file a per-run-unique name under `.gaia/local/audit/` (for example `.gaia/local/audit/issue-body-<something-unique>.md`). The name must be unique because step 4 deletes it: two runs sharing one fixed name (CI plus a local run, the same pair step 3 guards against) would race, and one run's cleanup would delete the other's in-flight body out from under it.
+2. Build the full issue body (step 5) in a gitignored body-file, not inline. Give the file a per-run-unique name under `.gaia/local/audit/` (for example `.gaia/local/audit/issue-body-<something-unique>.md`). The name must be unique because sub-step 4 below deletes it: two runs sharing one fixed name (CI plus a local run, the same pair step 3 guards against) would race, and one run's cleanup would delete the other's in-flight body out from under it.
 3. Re-check the dedup query from step 2 immediately before creating, this shrinks the race window where a concurrent run (CI plus a local run, for instance) files the same finding twice. It is the same path+line matching basis as step 2, so a reclassification that lands between your first check and now still resolves to the already-open issue. Prefer a search-or-update path over a blind create when your environment supports it.
 4. Create the issue with the form that matches whether a grade is available, then delete the body file **in a second, separate Bash tool call**. A filing through one of the two grading routes (step 7) uses the graded form; every other filing drops the `--label difficulty:<grade>` flag entirely rather than passing it empty or with a placeholder:
 
@@ -61,7 +61,7 @@ gh issue create --label tech-debt --label severity:<tier> --body-file "$body_fil
 
 **Never** pass `--body <argv>` here. CI runs this command with `--verbose`, and `--verbose` echoes argv into the public Actions log, so an inline `--body` string leaks the finding (and anything sensitive quoted inside it) into a public log. Always route the body through `--body-file` (or stdin); the body must never reach argv.
 
-Then, as its own tool call, spelling the path literally and relatively:
+Then, as its own tool call, spelling the path literally:
 
 ```bash
 rm -f .gaia/local/audit/issue-body-<something-unique>.md
@@ -69,7 +69,7 @@ rm -f .gaia/local/audit/issue-body-<something-unique>.md
 
 The body-file is scratch, and this recipe is its only owner: nothing else reaps it, so a file left behind is permanent litter in the adopter's working tree. **Delete it unconditionally**, whether the create succeeded or failed. The body is fully reconstructible from step 5, so there is nothing worth keeping on a failed create, and the cleanup cannot mask that failure: `gh`'s own output and exit status are what you report.
 
-**Two tool calls, not one.** A `PreToolUse` hook returns a single allow/deny decision for an entire Bash invocation before any of it reaches the shell, so a hook that denies the cleanup drops the create standing beside it too: no issue filed, and no output naming the cause. Splitting them keeps a denied cleanup from costing you the filing. Two consequences for how the second call is written: shell variables do not survive between tool calls, so spell the path literally rather than reusing `$body_file`; and keep that path repo-relative, because the destructive-command guard whitelists this directory in its relative spelling only.
+**Two tool calls, not one.** A `PreToolUse` hook returns a single allow/deny decision for an entire Bash invocation before any of it reaches the shell, so a hook that denies the cleanup drops the create standing beside it too: no issue filed, and no output naming the cause. Splitting them keeps a denied cleanup from costing you the filing. One consequence for how the second call is written: shell variables do not survive between tool calls, so spell the path literally rather than reusing `$body_file`. Either spelling of it works, relative or absolute, and the destructive-command guard whitelists this directory both ways.
 
 ## 5. Issue body schema
 
@@ -111,7 +111,7 @@ done
 
 ## 7. Difficulty grade
 
-Every issue a machine files through this recipe's grading routes carries exactly one `difficulty:` label. This section is the single source of truth for the permitted values and for choosing between them; the filing routes that grade against this rubric never grade against a private reading of a grade's name.
+Every issue a machine files through one of this recipe's two grading routes carries exactly one `difficulty:` label; those two routes are `.claude/agents/code-audit-frontend.md`'s non-security disposition pipeline and the tech-debt filing block in `.claude/skills/gaia/references/audit.md`, and every other path into this recipe files ungraded. This section is the single source of truth for the permitted values and for choosing between them; the grading routes never grade against a private reading of a grade's name.
 
 Grade the difficulty of **the fix**, never the model, agent, or tooling that would perform it.
 
@@ -127,10 +127,10 @@ Difficulty adds the dimension the `Handler:` line does not capture. `Handler:` g
 
 Worked boundary, easy versus medium. A swallowed error the issue text says to rethrow is `difficulty:easy`: the issue determines the change. The same swallowed error, where the issue says only that it must not be swallowed and leaves the choice between rethrowing, logging and continuing, and surfacing to the caller, is `difficulty:medium`: the choice is real, and the sibling call sites settle it.
 
-- **Ungraded filings.** Not every filing that reaches this recipe carries a grade: a direct human invocation of this skill ("file a tech-debt issue", "record this as tech-debt") has none to give, and two machine routes are exempt for the same reason, the orchestrator's cross-remit disposition, which has not classified the finding out-of-scope against this rubric, and the `/health-audit` comprehensive runbook's human-gated filing offer, which files from an operator's yes on a written report rather than from freshly-read code. A filing on any of these three paths omits the label rather than guessing a grade, and an issue carrying no grade is normal: it orders, clusters, and drains exactly as a graded one does. That guarantee is what keeps a mixed adopter state safe, since every file this feature touches resolves independently on update: a new copy of this recipe running against an old `debt.md` files grades that nothing yet reads, and a new `debt.md` running against old agents reads a backlog where nothing is graded. Both states are reachable and both benign.
+- **Ungraded filings.** The ungraded paths omit a grade for path-specific reasons: a direct human invocation of this skill ("file a tech-debt issue", "record this as tech-debt") has none to give; the orchestrator's cross-remit disposition has not classified the finding out-of-scope against this rubric; and the `/health-audit` comprehensive runbook's human-gated filing offer files from an operator's yes on a written report rather than from freshly-read code. A filing on any of these paths omits the label rather than guessing a grade, and an issue carrying no grade is normal: it orders, clusters, and drains exactly as a graded one does. That guarantee is what keeps a mixed adopter state safe, since every file this feature touches resolves independently on update: a new copy of this recipe running against an old `debt.md` files grades that nothing yet reads, and a new `debt.md` running against old agents reads a backlog where nothing is graded. Both states are reachable and both benign.
 - **Argv constraint.** The value written to the `difficulty:<grade>` label must be one of the three literals above, byte-for-byte, before it reaches any `gh` argv. Argv exposure is minimal here, the token is fixed-vocabulary, which is why the `--body-file` mandate in step 4 is not implicated, but a model-produced string interpolated into a command CI runs with `--verbose` argv echoing earns the one-clause constraint anyway.
 - **Disclosure.** The three grade values are fixed and carry no information about the finding: they do not discriminate a security-class finding from any other. Machine filing never reaches a public repo for a security-class finding, the agent's security-class divert path intercepts it first, and a human-filed issue carries no grade at all.
-- **Where the grade comes from.** This file defines the rubric; it does not apply it. The grade's two producers read it and write the label: `.claude/agents/code-audit-frontend.md`'s non-security disposition pipeline, and the tech-debt filing block in `.claude/skills/gaia/references/audit.md`. An edit to the value set or the rubric must reach both.
+- **Where the grade comes from.** This file defines the rubric; it does not apply it. The two grading routes named at the top of this section read it and write the label; an edit to the value set or the rubric must reach both.
 
 ## 8. Touch the debt-count staleness sentinel
 
