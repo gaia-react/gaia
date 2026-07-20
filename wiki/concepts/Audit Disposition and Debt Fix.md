@@ -2,13 +2,13 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-07-16
+updated: 2026-07-20
 tags: [concept, claude, review]
 ---
 
 # Audit Disposition and Debt Fix
 
-Every finding the [[Code Review Audit Agent]] surfaces carries a **forced disposition** before its marker clears. In-scope findings keep their existing handling (a self-heal commit or an escalation that blocks the marker). Out-of-scope findings, debt in code the PR did not change but the audit opened anyway within its review radius, route out of the gating Critical/Important/Suggestions sections into a separate disposition: a deduped, severity-labeled `tech-debt` GitHub issue, a diverted security surface, or a backend-absent waive. The `/gaia-debt` skill then fixes that backlog one fix unit at a time, a unit being a single issue or a user-approved related batch, and a statusline segment surfaces the open count.
+Every finding the [[Code Review Audit Agent]] surfaces carries a **forced disposition** before its marker clears. In-scope findings keep their existing handling (a self-heal commit or an escalation that blocks the marker). Out-of-scope findings, debt in code the PR did not change but the audit opened anyway within its review radius, route out of the gating Critical/Important/Suggestions sections into a separate disposition: a same-run repair through the self-heal path when the finding qualifies for in-flight-fix promotion (below), a deduped, severity-labeled `tech-debt` GitHub issue, a diverted security surface, or a backend-absent waive. The `/gaia-debt` skill then fixes the filed backlog one fix unit at a time, a unit being a single issue or a user-approved related batch, and a statusline segment surfaces the open count.
 
 The system **fails open**. A definitively-absent issue backend makes the whole feature inert. A transient backend failure never silently drops a finding and never blocks the merge. The single intended block is a genuinely-missing disposition on a present, writable backend.
 
@@ -19,9 +19,13 @@ A finding sorts on two axes: **scope** (in-scope vs out-of-scope) and **resoluti
 | | auto-safe | needs-human |
 |---|---|---|
 | **in-scope** | self-heal commit in the working tree | escalation; blocks the marker until the operator resolves it |
-| **out-of-scope** | filed `tech-debt` issue (non-security), or backend-absent waive | diverted security surface (never a public channel); `/gaia-debt` fixes the filed backlog |
+| **out-of-scope** | repaired in-flight when it qualifies for promotion (below), otherwise filed as a `tech-debt` issue (non-security), or backend-absent waive | diverted security surface (never a public channel); `/gaia-debt` fixes the filed backlog |
 
-The audit never edits the reviewed PR's working tree for an out-of-scope finding: it files, it does not fix. Auto-fixing debt the PR did not touch would breach surgical-changes.
+For most out-of-scope findings the audit never edits the reviewed PR's working tree: it files, it does not fix, since auto-fixing debt the PR did not touch would breach surgical-changes. The one exception is in-flight-fix promotion.
+
+### In-flight-fix promotion
+
+A non-security, in-remit, prompt-shaped out-of-scope finding in a changed TS/TSX file, inside the self-heal repair boundary, is repaired through the existing self-heal path in the same run instead of filed: it rides that path's edit guard, marker-withhold, digest-rotation re-dispatch, and fixed-round recording, with no separate disposition machinery. A finding outside that boundary, security-class, or not prompt-shaped, still files normally, and a filed finding runs a best-effort per-bucket classification, seeding a `finding_class` the debt-drain clustering rule groups on.
 
 ## Scope classification
 
@@ -44,7 +48,7 @@ A non-security out-of-scope finding on a present backend files as a `tech-debt` 
 <!-- gaia-debt-key: v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer> -->
 ```
 
-The body is self-contained: the dedup-key line, the `file:line`, a concrete failure mode, a suggested fix, and a handler-class line (`prompt` or `plan`, advisory only). The issue carries exactly one `severity:*` label (mapped from the finding's report tier) plus `tech-debt`; a machine-graded filing also carries exactly one `difficulty:*` label, and an issue carrying none is ungraded, a normal case; a deliberately-closed finding carries the GitHub `wontfix` label instead so it is not re-filed.
+The body is self-contained: the dedup-key line, the `file:line`, a concrete failure mode, a suggested fix, and a handler-class line (`prompt`, `plan`, or `spec`, advisory only). The issue carries exactly one `severity:*` label (mapped from the finding's report tier) plus `tech-debt`; a machine-graded filing also carries exactly one `difficulty:*` label, and an issue carrying none is ungraded, a normal case; a deliberately-closed finding carries the GitHub `wontfix` label instead so it is not re-filed.
 
 The `file-tech-debt` skill (`.claude/skills/file-tech-debt/SKILL.md`) is the source of truth for the filing mechanics: key construction, the `--body-file` invocation, idempotent labels, the body schema, and the sentinel touch.
 
@@ -124,6 +128,8 @@ The local re-run carry-forward ledger (`.gaia/local/audit/<base-sha>.rerun.json`
 Before reading the backlog, `fix` reconciles stale claims left by an ungraceful session death: a claim is live if a `debt/…` branch names the issue, an open PR closes it, or it was updated within a ~30-minute grace; otherwise the label is stripped and the issue re-enters the backlog. The age grace makes claim-first safe, a just-locked issue has no branch yet. Only `fix` reconciles or strips a claim; `list` and `why` are read-only. `fix` excludes in-progress issues from both the candidate pool and the clustering pass; `list` still shows them annotated `[in progress]`, and `why <issue-number>` reports an issue's claim status alongside its severity band and cluster.
 
 The ordering is a pure, source-checkable sort, never an LLM evaluator: severity descending (`severity:critical → 3`, `severity:important → 2`, `severity:suggestion → 1`, a label-less issue falls to the suggestion band), then `createdAt` ascending within a band (oldest first, FIFO). `list` prints the ordered backlog, annotated with each issue's difficulty grade; `why <issue-number>` explains where one issue sits, its recommended handler class, its difficulty grade, and any related cluster it belongs to; an ungraded issue shows no difficulty annotation in either case; bare or `fix` runs the fix flow, which pauses only for the up-front candidate/batch pick and, depending on the team's isolation policy, the isolation pick, then runs start to finish to merge. A bare issue number (`999` or `#999`, equivalently `fix 999`) fixes that specific issue directly, bypassing the top-of-backlog recommendation.
+
+The handler class is advisory over two of its three values (`prompt`, `plan`) and load-bearing over the third: a `Handler: spec` issue keeps its place in the backlog (label, ordering, clustering, count) but resolves differently at fix time. Instead of opening a fix PR, `/gaia-debt` prints a copy-pasteable `/gaia-spec` handoff and stops, then applies a durable `debt:spec-pending` label that excludes the issue from the open count and the offer pool until the SPEC and its implementation land, or a human removes the label. This is the design-first path for a finding whose fix needs a SPEC before code, not a fix PR skipping design.
 
 After the sort, a second deterministic pass clusters the ordered backlog into related groups: no model call ranks or clusters the backlog, clustering is a pure function of parsed fields, exactly like the sort. Two issues cluster when they share the dedup-key `path` (primary signal, byte-identical `path=`), or share the same `class` and the same directory (secondary signal; a shared directory alone is too weak). A cluster of two or more members is a batch candidate; a singleton fixes the normal one-issue way. Clustering itself is security-blind, but the **offer** is not: before presenting the choice, `/gaia-debt` reads repo visibility once. On a confirmed-PRIVATE repo every cluster is batch-eligible; on any non-PRIVATE repo a security-class issue is never public-batch-eligible, so a security-class top candidate never anchors a public batch and surfaces only as its own single candidate. The recommended batch, when one exists, is the top cluster all of whose members are public-batch-eligible.
 

@@ -5,7 +5,7 @@ status: active
 priority: 1
 date: 2026-05-06
 created: 2026-05-06
-updated: 2026-07-13
+updated: 2026-07-20
 tags: [decision, claude, spec-kit, architecture]
 ---
 
@@ -61,8 +61,7 @@ Each SPEC lives in its own `.gaia/local/specs/SPEC-NNN/` folder containing `SPEC
 - `/gaia-spec` does not invoke `/speckit-clarify`. It runs GAIA's own Socratic loop, whose mechanics live in `.claude/skills/gaia/references/spec.md` (step 5) and `.specify/extensions/gaia/templates/clarify-prompts.md`, whose stop condition is a coverage scan over the topic bank, and whose question ceiling is GAIA's own.
 - The self-review is dispatched by the wrapper as a `general-purpose` Agent (step 6), not through the `after_clarify` hook, so it runs identically on a project with spec-kit core installed and on one without.
 - The `after_clarify` hook declaration remains in `extension.yml`: a bare `/speckit-clarify` invocation still fires it.
-- Why not a preset override of the core clarify body: hook emission in spec-kit is prose-driven, the core clarify body itself carries the hook blocks, and only `strategy: replace` produces a body free of the core cap text. A `replace` that does not re-implement those hook blocks silently stops firing them, so an override buys a permanent upstream-drift maintenance burden to reimplement a loop GAIA already reimplements in full. Decoupling makes the de-facto behavior official at zero cost.
-- Accepted consequence: a bare `/speckit-clarify` on an adopter machine keeps core's question cap and keeps writing core's off-shape `## Clarifications` bullets. That is true today and is tracked separately.
+- A preset-replace stub at `.specify/presets/gaia/commands/speckit.clarify.md` redirects a bare `/speckit-clarify` invocation to `/gaia-spec` instead of running core's clarify loop, so an adopter typing the core command still lands in GAIA's coverage-based Socratic loop rather than writing core's off-shape `## Clarifications` bullets under core's question cap.
 
 ## How the install lands
 

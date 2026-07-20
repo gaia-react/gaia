@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-07-09
 created: 2026-07-09
-updated: 2026-07-18
+updated: 2026-07-20
 tags: [decision, claude, audit, ci]
 ---
 
@@ -65,8 +65,9 @@ A zero-match dispatch (the resolver finds nothing, or is absent/unusable) falls 
 | --- | --- | --- | --- |
 | `code-audit-maintainer-shell` | `.gaia/**/*.sh`, `.gaia/**/*.bats`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh`, `.github/**/*.bats`, `.gaia/audit-ci.yml`, `.gaia/VERSION`, `.claude/agents/code-audit-*.md`, `.claude/rules/**` | maintainer-only | `false` |
 | `code-audit-maintainer-node` | `.gaia/cli/src/**/*.ts`, `.gaia/cli/src/**/*.tmpl`, `.gaia/cli/src/**/*.snap`, `.gaia/cli/src/**/.gitkeep` | maintainer-only | `false` |
+| `code-audit-maintainer-prose` | `.claude/skills/**/*.md` | maintainer-only | `false` |
 
-`code-audit-maintainer-shell` and `code-audit-maintainer-node` review framework source the frontend and workflows auditors never scope: `code-audit-maintainer-shell` covers the framework bash GAIA ships and runs (`.gaia/**/*.sh`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh`) plus the bats suites guarding it (`.gaia/**/*.bats`, `.github/**/*.bats`, see below), with a hook-contract lens, a bats-suite lens, `shellcheck` as a deterministic oracle, and bash 3.2 / BSD-vs-GNU portability review; `code-audit-maintainer-node` covers `.gaia/cli/src/**`'s TypeScript sources, render templates, snapshots, and `.gitkeep` placeholders by extension, with correctness, error handling, filesystem/IO safety, Zod schema fitness, and shell/`gh` injection-safety review. The four-extension enumeration is narrower than a bare `.gaia/cli/src/**` glob would be, deliberately: a future file under an extension not in that list (e.g. a `.json`) reaches no member, a named, accepted cost. Both maintainer members are advisory-only, no self-heal: a maintainer member never pushes a fix commit, it reviews and reports. Both are release-excluded (their agent files, roster entries, and glob references are marker-wrapped and stripped from the adopter bundle), so an adopter clone's Code Audit Team never dispatches them.
+`code-audit-maintainer-shell` and `code-audit-maintainer-node` review framework source the frontend and workflows auditors never scope: `code-audit-maintainer-shell` covers the framework bash GAIA ships and runs (`.gaia/**/*.sh`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh`) plus the bats suites guarding it (`.gaia/**/*.bats`, `.github/**/*.bats`, see below), with a hook-contract lens, a bats-suite lens, `shellcheck` as a deterministic oracle, and bash 3.2 / BSD-vs-GNU portability review; `code-audit-maintainer-node` covers `.gaia/cli/src/**`'s TypeScript sources, render templates, snapshots, and `.gitkeep` placeholders by extension, with correctness, error handling, filesystem/IO safety, Zod schema fitness, and shell/`gh` injection-safety review. The four-extension enumeration is narrower than a bare `.gaia/cli/src/**` glob would be, deliberately: a future file under an extension not in that list (e.g. a `.json`) reaches no member, a named, accepted cost. `code-audit-maintainer-prose` reviews changed instruction prose under `.claude/skills/**/*.md` for gratuitous complexity (reducible length, deep nesting, high indirection, redundant instruction) and feeds a countable `prose/*` recurrence signal into the [[Policy-Memory Loop]]; it grades only Important/Suggestion, never Critical, so a prose judgment call never deadlocks a merge. All three maintainer members are advisory-only, no self-heal: a maintainer member never pushes a fix commit, it reviews and reports. All three are release-excluded (their agent files, roster entries, and glob references are marker-wrapped and stripped from the adopter bundle), so an adopter clone's Code Audit Team never dispatches them.
 
 ### The bats suites are owned, deliberately
 
