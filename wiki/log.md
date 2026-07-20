@@ -11,6 +11,144 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-20 b2ed25c7 WORTHY - difficulty grading for tech-debt issues; wiki/concepts/Audit Disposition and Debt Fix.md updated in-commit
+- 2026-07-20 bed790c7 WORTHY - give the post-merge runbook a worktree cleanup arm; wiki/concepts/PR Merge Workflow.md updated in-commit
+- 2026-07-20 c4b7a3b1 WORTHY - narrows the worktree guard's shared-dir exemption to the four symlinked .gaia/local dirs; corrected the stale six-vs-five symlinked-paths count in wiki/concepts/Local Working State.md this sync
+- 2026-07-20 9f56be83 SKIP - scope runtime-deps bare mode to the manifest; internal hardening, no documented contract change
+- 2026-07-20 8b5d3f2c SKIP - cover the foreign-repo exemption and the tail-truncation trade; test/refactor only, no wiki-tracked fact
+- 2026-07-20 769b1a14 WORTHY - record the seeded agent-teams flag as deliberate; wiki/decisions/Deliberate Configuration Asymmetries.md, wiki/index.md updated in-commit
+- 2026-07-20 e34821ac WORTHY - mandate synchronous audit dispatch in the PR-merge runbook; wiki/concepts/PR Merge Workflow.md updated in-commit
+- 2026-07-20 ef977d34 SKIP - add local distribution pre-flight on gh pr create; internal hardening, no documented contract change
+- 2026-07-20 95519034 SKIP - verify convention findings by consequence, not provenance; internal hardening, no documented contract change
+- 2026-07-20 36cac175 WORTHY - record three deliberate configuration asymmetries; wiki/decisions/Deliberate Configuration Asymmetries.md, wiki/index.md updated in-commit
+- 2026-07-20 cff36b81 SKIP - anchor the runbook marker-fragment scan to real fragments; internal hardening, no documented contract change
+- 2026-07-20 20c3ed7b WORTHY - clear checker false positives, a leak, and a fitness blind spot; wiki/concepts/Code Review Audit CI.md, wiki/decisions/Claude Integration Fitness.md, wiki/decisions/Quality Gate.md updated in-commit
+- 2026-07-20 2ccc409a WORTHY - remove dead spec-pacing.jsonl write from spec-archive-abandoned.sh; wiki/concepts/GAIA Spec.md updated in-commit
+- 2026-07-20 1dac5815 WORTHY - record declined "fold shell scripts into CLI binary" ADR (maintainer-only); wiki/decisions/Folding Shell Scripts into the CLI Binary.md, wiki/index.md updated in-commit
+- 2026-07-20 2db00315 WORTHY - reap abandoned PLAN folders after the retention window; wiki/concepts/Local Working State.md updated in-commit
+- 2026-07-20 73cce7e3 WORTHY - reap abandoned SPEC folders after the retention window; wiki/concepts/GAIA Spec.md, wiki/concepts/Local Working State.md updated in-commit
+- 2026-07-20 3bd230b2 WORTHY - remove dead spec-pacing.jsonl (write-only, no consumer); wiki/concepts/Forensics.md, wiki/concepts/GAIA Spec.md, wiki/concepts/Local Working State.md, wiki/concepts/Release Workflow.md updated in-commit
+- 2026-07-20 7c5fe624 SKIP - collapse redundant auto-mode-acquire sentence; internal hardening, no documented contract change
+- 2026-07-20 2cdb2aab WORTHY - live-session lock for concurrent /gaia-spec draft authoring (SPEC-052); wiki/concepts/Local Working State.md updated in-commit
+- 2026-07-20 114cf691 SKIP - use aggregate term for the unclassified signal in Guardrails; prose/doc fix, no wiki fact affected
+- 2026-07-20 26260b84 WORTHY - make recurring audit findings countable in the policy-memory loop; wiki/concepts/PR Merge Workflow.md, wiki/concepts/Policy-Memory Loop.md updated in-commit
+- 2026-07-20 b3857eb4 SKIP - add behavioral coverage for the chore-deps GAIA-Audit stamp step; test/refactor only, no wiki-tracked fact
+- 2026-07-20 83d97d42 SKIP - move module JSDoc above imports; internal hardening, no documented contract change
+- 2026-07-20 b0a5d241 SKIP - stamp GAIA-Audit status on the chore(deps) skip path; internal hardening, no documented contract change
+- 2026-07-20 61fef56c SKIP - bump @gaia-react/lint to 1.10.0 (bare @conform-to/zod ban); chore, no wiki-tracked fact
+- 2026-07-20 be9f407c WORTHY - widen the empty-array scan to shipped .gaia/scripts; wiki/concepts/Claude Hooks.md updated in-commit
+- 2026-07-20 6e609d7a SKIP - fold hook array-guard into the shell-lint gate; internal hardening, no documented contract change
+- 2026-07-20 c5d727df WORTHY - auto-run /gaia-spec and /gaia-plan adversarial audits, drop the prompt; wiki/concepts/GAIA Plan.md, wiki/concepts/GAIA Spec.md updated in-commit
+- 2026-07-20 3a89de7b SKIP - rebundle the gaia binary after the is_oracle tally change; internal hardening, no documented contract change
+- 2026-07-20 e1bca3be SKIP - emit is_oracle from harden-tally instead of hand-synced prose list; test/refactor only, no wiki-tracked fact
+- 2026-07-20 7905391e SKIP - extract the bash-5 pre-flight guard to a script; test/refactor only, no wiki-tracked fact
+- 2026-07-20 8e49ca13 WORTHY - allowlist-based outlier sweep (#9) for .gaia/local residue; wiki/concepts/Local Working State.md updated in-commit
+- 2026-07-20 4d9549f4 SKIP - fix two false doc-correctness claims; prose/doc fix, no wiki fact affected
+- 2026-07-20 66234bb5 SKIP - deny writes that newly break YAML plain scalars in frontmatter and .yaml files; internal hardening, no documented contract change
+- 2026-07-20 cecb6b4c SKIP - trim redundant instruction-prose across rules, skills, and agents; prose/doc fix, no wiki fact affected
+- 2026-07-20 375c463d WORTHY - unify .gaia/release-exclude compilers into one maintainer-CLI subcommand; wiki/concepts/Release Workflow.md updated in-commit
+- 2026-07-20 6c8eb47f SKIP - remove 4 dead SC2034-annotated vars across bats suites; test/refactor only, no wiki-tracked fact
+- 2026-07-20 50b149bb SKIP - make `! denied` absence assertions position-safe; test/refactor only, no wiki-tracked fact
+- 2026-07-20 32399f99 SKIP - harden audit-ci-tests.yml token scope and pin YAML parser; internal hardening, no documented contract change
+- 2026-07-20 a7e19a0e SKIP - tighten .sh to style floor and bring .bats under the gate (#690, #771); test/refactor only, no wiki-tracked fact
+- 2026-07-20 944d60d6 SKIP - add adopter-flow coverage for gaia scaffold and gaia setup; internal hardening, no documented contract change
+- 2026-07-20 152b5226 SKIP - relocate spec-kit bats guards into .gaia/tests/lib for audit + CI coverage; test/refactor only, no wiki-tracked fact
+- 2026-07-20 99c25259 SKIP - prove exclude-parser parity across CLI, staging, and distribution suite; test/refactor only, no wiki-tracked fact
+- 2026-07-20 f265ae8d SKIP - split manifest-cli into args + check seams; test/refactor only, no wiki-tracked fact
+- 2026-07-20 d934e1f9 SKIP - inspect every line of multi-line commands in block-manifest-write; internal hardening, no documented contract change
+- 2026-07-20 c427fb8c WORTHY - scrub 20 distribution-boundary leaks in audit machinery; wiki/concepts/Cost Data Contract.md, wiki/decisions/Code Audit Team.md updated in-commit
+- 2026-07-20 b955fbe7 SKIP - tolerate unknown mode/schedule/version at read; drop dead barrel (#755 #777); internal hardening, no documented contract change
+- 2026-07-20 82141224 SKIP - preserve unknown automation.json keys on write; internal hardening, no documented contract change
+- 2026-07-20 1351d239 SKIP - merge findings-block per auditor, not last-block-wins; internal hardening, no documented contract change
+- 2026-07-20 6a8df34a SKIP - remove inert ResolveArgs.homeDir from storage paths; internal hardening, no documented contract change
+- 2026-07-20 0719c9f1 SKIP - anchor distribution marker-fragment greps on live delimiters (#688 #719); internal hardening, no documented contract change
+- 2026-07-20 900944ed SKIP - guard top-level router dispatch against Object.prototype members; internal hardening, no documented contract change
+- 2026-07-20 83bb942b SKIP - archive comprehensive report, pin lens/refuter/writer models, add disposition path (#642 #653 #654); internal hardening, no documented contract change
+- 2026-07-20 54496c82 WORTHY - adds block-worktree-path-mismatch.sh (PreToolUse worktree-write guard); wiki/concepts/Claude Hooks.md updated this sync
+- 2026-07-20 3b13a7eb SKIP - detect write violations by set-diff, not mtime; internal hardening, no documented contract change
+- 2026-07-20 c797cf3d WORTHY - ships a preset-replace stub redirecting bare /speckit-clarify to /gaia-spec; corrected the stale accepted-consequence claim in wiki/decisions/spec-kit Extension Strategy.md this sync
+- 2026-07-20 98d42250 SKIP - reap orphaned merged worktrees left by crashed sessions; internal hardening, no documented contract change
+- 2026-07-20 52d57661 SKIP - make runtime-deps bare mode marker-aware; internal hardening, no documented contract change
+- 2026-07-20 ae620494 SKIP - split manifest.ts CLI layer into manifest-cli.ts; test/refactor only, no wiki-tracked fact
+- 2026-07-20 a20c1d20 SKIP - use git grep in the instruction-files audit to skip gitignored worktrees; internal hardening, no documented contract change
+- 2026-07-20 21cc58f1 SKIP - override core's multi-question clarify caps in the specify wrap; internal hardening, no documented contract change
+- 2026-07-20 b237373b SKIP - prescribe bash-5 bats pre-flight and surface the 3.2 gap; prose/doc fix, no wiki fact affected
+- 2026-07-20 93154487 SKIP - scope-disable the deliberate SC2069 redirections in resolve-audit-spawn.bats; internal hardening, no documented contract change
+- 2026-07-20 e0e7ccf5 SKIP - validate SPEC frontmatter parses as YAML in lint; internal hardening, no documented contract change
+- 2026-07-20 1fca54ab SKIP - fire the execute-stage tally for the git -C <path> form; internal hardening, no documented contract change
+- 2026-07-20 b907fe23 SKIP - unify release-exclude on literal-path semantics; make manifest --check reporting honest (#679, #680); internal hardening, no documented contract change
+- 2026-07-20 38b5d704 SKIP - fail loud when the required-checks ruleset read errors; internal hardening, no documented contract change
+- 2026-07-20 9daac211 SKIP - scope GAIA_MANIFEST_WRITE exemption to the actual write segment; internal hardening, no documented contract change
+- 2026-07-20 21b25e44 SKIP - reap orphaned coaching-active.txt in the mentorship sweep; internal hardening, no documented contract change
+- 2026-07-20 854952db SKIP - assert every command file is registered in extension.yml; test/refactor only, no wiki-tracked fact
+- 2026-07-20 bfaad169 SKIP - pin the line=4 vs line=42 debt-key prefix-collision guard; test/refactor only, no wiki-tracked fact
+- 2026-07-20 8acb0d31 SKIP - serialize create-and-cleanup per name to close the collision TOCTOU; internal hardening, no documented contract change
+- 2026-07-20 2d4bf74b WORTHY - add Registering a Code Audit Team Member how-to; wiki/concepts/Registering a Code Audit Team Member.md, wiki/index.md updated in-commit
+- 2026-07-20 86507761 WORTHY - adds code-audit-maintainer-prose advisory Code Audit Team member (SPEC-048); wiki/decisions/Code Audit Team.md updated this sync
+- 2026-07-20 b2d9b9da WORTHY - adds Handler: spec design-first class to /gaia-debt (SPEC-047); wiki/concepts/Audit Disposition and Debt Fix.md updated this sync
+- 2026-07-20 7254c608 WORTHY - promotes qualifying out-of-scope findings to in-flight self-heal repair + seeds filed finding_class; wiki/concepts/Audit Disposition and Debt Fix.md updated this sync
+- 2026-07-20 9e236cb2 SKIP - cover the CLI build/config surface + drain orphaned ulid; internal hardening, no documented contract change
+- 2026-07-20 d6c6dd27 WORTHY - count workflow-security findings, roster CI + name check, binary freshness gate (SPEC-045 follow-ups); wiki/concepts/PR Merge Workflow.md updated in-commit
+- 2026-07-20 88241f95 WORTHY - Code Audit Team v2 — local-by-default, one producer, workflows member (SPEC-045); wiki/concepts/Code Review Audit CI.md, wiki/concepts/PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in-commit
+- 2026-07-20 2cea369b WORTHY - codify deliberately-required merge checks + detect ruleset drift; wiki/concepts/Release Workflow.md updated in-commit
+- 2026-07-20 881631dc SKIP - answer the SPEC-044 shipping files, drain #801 + #803, backfill the #800 changelog; chore, no wiki-tracked fact
+- 2026-07-20 ba97c8b2 WORTHY - per-member content-digest keying for the Code Audit Team gate (SPEC-044); wiki/concepts/Audit Disposition and Debt Fix.md, Code Review Audit Agent.md, Local Working State.md, PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in-commit
+- 2026-07-20 542223b1 SKIP - add fail-loud tree self-check to task sub-agent dispatch; internal hardening, no documented contract change
+- 2026-07-20 52daa1df WORTHY - harden the Code Audit Team merge gate (#765, #792, #794, #795, #796); wiki/concepts/PR Merge Workflow.md updated in-commit
+- 2026-07-20 0af371f3 SKIP - Harden the Code Audit Team merge gate; internal hardening, no documented contract change
+- 2026-07-20 1adb7076 SKIP - drop stale mentorship claims from [Unreleased]; prose/doc fix, no wiki fact affected
+- 2026-07-20 72fb5696 SKIP - silence shellcheck SC2016/SC2317 false positives in block-env-read.bats; test/refactor only, no wiki-tracked fact
+- 2026-07-20 c04094ab SKIP - point the CI audit prompt at the shared clearance writer; prose/doc fix, no wiki fact affected
+- 2026-07-20 552e1947 SKIP - mirror machinery globs into the builtin roster fallback; internal hardening, no documented contract change
+- 2026-07-20 a9a3165e WORTHY - complete section 9's maintainer-only CI workflow list; wiki/concepts/Release Workflow.md updated in-commit
+- 2026-07-20 81d3b249 WORTHY - per-PR distribution gate for unanswered newly-shipping files; wiki/concepts/Release Workflow.md updated in-commit
+- 2026-07-20 1ac0ece5 SKIP - enforce file-write deny rules via Edit(), not no-op Write(); internal hardening, no documented contract change
+- 2026-07-20 857eb077 WORTHY - clearance carry-forward for the Code Audit Team (SPEC-042); wiki/concepts/Audit Disposition and Debt Fix.md, Local Working State.md, PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in-commit
+- 2026-07-20 2421fbe7 WORTHY - key the progress-breadcrumb log to the audited tree; wiki/concepts/Audit Disposition and Debt Fix.md, wiki/concepts/Code Review Audit CI.md, wiki/concepts/Local Working State.md updated in-commit
+- 2026-07-20 10ca8709 WORTHY - remove the adaptive mentorship layer and its event pipeline (SPEC-038); deletes wiki/concepts/Telemetry.md, adds wiki/concepts/GAIA CLI.md, 8 other wiki pages + index updated in-commit
+- 2026-07-20 fd6f85f1 WORTHY - own the .bats suites in the Code Audit Team roster; wiki/concepts/PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in-commit
+- 2026-07-20 8a8a9c49 WORTHY - team-level git isolation policy (SPEC-039); wiki/concepts/Audit Disposition and Debt Fix.md, GAIA Init Workflow.md, Task Orchestration.md, Wiki Sync.md, index.md updated in-commit
+- 2026-07-20 855d34c3 WORTHY - record maintenance-command runs in the cost ledger; wiki/concepts/Cost Data Contract.md, wiki/concepts/Token Cost Readout.md updated in-commit
+- 2026-07-20 4496e6b9 SKIP - never force-remove a worktree the run didn't create; internal hardening, no documented contract change
+- 2026-07-20 c12fff07 WORTHY - detect and retry a silently no-op'd top-level Code Audit Team dispatch; wiki/concepts/PR Merge Workflow.md updated in-commit
+- 2026-07-20 c59ebbbd SKIP - out-of-scope skip's writer/comment sha and output-truthfulness gaps; internal hardening, no documented contract change
+- 2026-07-20 9ca77792 SKIP - pin the guard's read-failure door directly, not just at the callers; internal hardening, no documented contract change
+- 2026-07-20 d1a2b398 SKIP - remove pipefail/SIGPIPE exposure from the success-present guard; internal hardening, no documented contract change
+- 2026-07-20 fb2aa0e5 WORTHY - sequence the self-healing audit member ahead of its siblings; wiki/concepts/PR Merge Workflow.md updated in-commit
+- 2026-07-20 8360db4c SKIP - guard every GAIA-Audit pending writer, not three of four; internal hardening, no documented contract change
+- 2026-07-20 fd7fd5d9 WORTHY - make the pre-merge audit procedure roster-first; wiki/concepts/PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in-commit
+- 2026-07-20 9c3f6235 SKIP - path-qualified command word denied a whitelisted target, and make block-rm-rf sourceable; internal hardening, no documented contract change
+- 2026-07-20 add806aa WORTHY - key Code Audit Team markers to the tree sha, not the HEAD sha; wiki/concepts/Code Review Audit CI.md, Local Working State.md, PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in-commit
+- 2026-07-20 f72388b2 WORTHY - adds .claude to block-rm-rf.sh's protected-target list; wiki/concepts/Claude Hooks.md updated this sync
+- 2026-07-20 c3fd8ef2 SKIP - never claim the merge gate is satisfied when no status was stamped; internal hardening, no documented contract change
+- 2026-07-20 17a2da9b SKIP - scope the maintainer-audit-members leak-check to .github/audit/**; internal hardening, no documented contract change
+- 2026-07-20 138b73e9 WORTHY - screen security-class on finding content, not on the unclassified fallback class; wiki/concepts/Audit Disposition and Debt Fix.md, wiki/concepts/GAIA Audit.md updated in-commit
+- 2026-07-20 e3a10f16 SKIP - anchor the obscurity rule on the mentorship dir, not the events filename; internal hardening, no documented contract change
+- 2026-07-20 88d3a3f1 SKIP - close the dotfile-glob and quoted-separator bypasses in block-rm-rf; internal hardening, no documented contract change
+- 2026-07-20 91c3363a SKIP - make the CI GAIA-Audit status POST member-aware; internal hardening, no documented contract change
+- 2026-07-20 a82d4768 SKIP - delete the issue body-file after filing; internal hardening, no documented contract change
+- 2026-07-20 06257133 SKIP - close two block-rm-rf bypasses, cover the guard with tests; internal hardening, no documented contract change
+- 2026-07-20 96d1ae7a SKIP - require a seeded class for clustering rule 2; internal hardening, no documented contract change
+- 2026-07-20 2c5539ab SKIP - make the telemetry-v1 runbook's UAT-022/023 emit examples runnable; internal hardening, no documented contract change
+- 2026-07-20 07c71c45 SKIP - make the wiki-style audit grep runnable; internal hardening, no documented contract change
+- 2026-07-20 6bcdc811 WORTHY - /distribution-audit, refuse to ship a file no one decided to ship; wiki/concepts/Release Workflow.md updated in-commit
+- 2026-07-20 57d19e3e WORTHY - raise the Socratic clarify ceiling to 10 and own the number; wiki/concepts/GAIA Spec.md, wiki/decisions/spec-kit Extension Strategy.md, wiki/dependencies/spec-kit.md updated in-commit
+- 2026-07-20 a614e681 SKIP - enforce shellcheck on framework bash with a maintainer-only gate; internal hardening, no documented contract change
+- 2026-07-20 c94b5b37 WORTHY - enforce the terminal /gaia-plan handoff with a chain guard; wiki/concepts/Claude Hooks.md, wiki/concepts/GAIA Spec.md, wiki/index.md updated in-commit
+- 2026-07-20 a5b9e5a7 SKIP - bound the uvx fetch in the before_specify version gate; internal hardening, no documented contract change
+- 2026-07-20 cdcae06d SKIP - resolve a uvx-run spec-kit in the version check; internal hardening, no documented contract change
+- 2026-07-20 09da235c SKIP - run telemetry-v1 in the release-gate sweep, fail on unwired harnesses; internal hardening, no documented contract change
+- 2026-07-20 8ae35af1 SKIP - sweep orphaned re-run ledgers, rotate cloud telemetry events; internal hardening, no documented contract change
+- 2026-07-20 4d1e00f2 SKIP - make code-search.md the single source for serena routing; internal hardening, no documented contract change
+- 2026-07-20 26cf3ff8 WORTHY - add end-of-run publish flow; wiki/decisions/Claude Integration Fitness.md updated in-commit
+- 2026-07-20 9de37776 SKIP - point route-group rule at the real canonical pages; internal hardening, no documented contract change
+- 2026-07-20 04916e5a WORTHY - rename drain -> fix, add direct issue-number targeting; wiki/concepts/Audit Disposition and Debt Fix.md, Code Review Audit Agent.md, GAIA Audit.md, Local Working State.md, PR Merge Workflow.md, index.md updated in-commit
+- 2026-07-20 2e8c4364 SKIP - collapse restated control flow to pointers, stop live audit artifacts sitting at the flat root; internal hardening, no documented contract change
+- 2026-07-20 992b18e1 SKIP - gate the release pipeline on a rebuilt-from-src binary diff; internal hardening, no documented contract change
+- 2026-07-20 849191ff SKIP - batch drain 4 comprehensive-audit runbook gaps; internal hardening, no documented contract change
+- 2026-07-20 d9b338d9 SKIP - codify the shipped-.sh-scope-gap taxonomy class as a manifest lint; internal hardening, no documented contract change
+- 2026-07-20 56df58f1 WORTHY - comprehensive-phase integrity fixes, distribution-boundary leak closures, wiki hygiene; 10 wiki pages + index + log updated in-commit
+- 2026-07-20 dffae8b8 SKIP - cover three shipped trees in the maintainer-paths scrub scope; internal hardening, no documented contract change
 - 2026-07-09 663f4622 WORTHY - health-audit report-only invariant observable, refuter read-only guard; wiki/concepts/GAIA Spec.md Durability section updated in-commit
 - 2026-07-09 f45c8f78 WORTHY - health-audit distribution-boundary leak + manifest staleness fix; wiki/decisions/Bundle-time Scrub.md updated in-commit
 - 2026-07-09 37f6ca78 WORTHY - health-audit cycle 1-3 fixes, repairs code-review-audit to code-audit-frontend dead paths; wiki pages updated in-commit
