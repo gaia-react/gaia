@@ -95,9 +95,13 @@ jobs:
       # linted, and Chromatic's Vite build strips types instead of checking
       # them, so it is not a substitute. The `*.config.*` alternation names
       # every root config for the same reason, not only the four whose tools
-      # this job runs; each one is in the tsconfig program, is linted, and
-      # `react-router.config.` additionally feeds the typegen step that runs
-      # before `tsc`.
+      # this job runs: each one is linted, the `.ts` ones are also in the
+      # tsconfig program (the `.mjs` ones are not, since `include` lists no
+      # `.mjs` glob and `allowJs` is off), and `react-router.config.` feeds the
+      # typegen step that runs before `tsc`. `pnpm-workspace.yaml` and `.npmrc`
+      # are here because pnpm 11 reads install behavior from them that the
+      # lockfile's own `settings:` block does not carry, so a change to either
+      # can break `--frozen-lockfile` for the next unrelated PR.
       - name: Detect test-relevant changes in the incremental delta
         id: filter
         if: steps.chore-deps.outputs.skip == 'false'
@@ -106,7 +110,7 @@ jobs:
         run: |
           set -eu
           changed=$(git diff --name-only "${CHECK_BASE}...HEAD")
-          pattern='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.github/workflows/tests\.yml$'
+          pattern='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.github/workflows/tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
