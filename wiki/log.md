@@ -11,6 +11,22 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-21 883cfe6f SKIP - machinery_waived + same-PR-suggestion-economics policies already documented via the PR's own inline edits; health-check quota policy is a maintainer-only runbook constant with no dedicated wiki page
+- 2026-07-21 b27ec1d2 WORTHY - excluded-titles fence-pair tracking fix folded into the same Bundle-time Scrub.md description
+- 2026-07-21 8995a19f WORTHY - new excluded-titles leak-check → wiki/decisions/Bundle-time Scrub.md
+- 2026-07-21 76d0d388 WORTHY - templates-freshness + scrub-wiki --check release staleness gates → wiki/concepts/Release Workflow.md
+- 2026-07-21 d784f7c6 WORTHY - PR-gated distribution harness job → wiki/concepts/Release Workflow.md
+- 2026-07-21 e01851b8 WORTHY - new json-strip-array-element scrub transform → wiki/decisions/Bundle-time Scrub.md
+- 2026-07-21 7b26c293 WORTHY - shared conventional-commit grammar + PR-title gate → wiki/concepts/Release Workflow.md; classifier health signal + configurable path vocabulary → wiki/concepts/Wiki Sync.md
+- 2026-07-21 0c69da48 SKIP - block-rm-rf.sh absolute-whitelist and flag-segment fixes already documented via the PR's own inline edit to Claude Hooks.md
+- 2026-07-21 e2fdd348 SKIP - worktree guard main_root derivation fix already documented via the PR's own inline edit to Claude Hooks.md
+- 2026-07-21 c1f0de9d SKIP - no-verify deny-message wording + transient advisory-comment tolerance, internal CI/hook robustness, no architectural fact to add
+- 2026-07-21 08a70d76 SKIP - worktree-mode plan ledger exemption already documented via the PR's own inline edit to Claude Hooks.md
+- 2026-07-21 d68124e0 SKIP - file-tech-debt two-tool-call split already documented in Claude Hooks.md's one-decision-per-tool-call paragraph
+- 2026-07-21 7e416884 WORTHY - worktree guard's absolute-payload-cwd requirement → wiki/concepts/Claude Hooks.md
+- 2026-07-21 abbd4a52 SKIP - commit-classify scoped-subject bug fix, internal rule-matching implementation the playbook says not to re-derive in prose
+- 2026-07-21 cded55c7 SKIP - worktree guard payload-cwd fix already documented via the PR's own inline edit to Claude Hooks.md
+- 2026-07-21 dfe125d4 SKIP - prior wiki-sync/consolidate/lint maintenance-chain merge commit, meta, no new source facts
 - 2026-07-20 b2ed25c7 WORTHY - difficulty grading for tech-debt issues; wiki/concepts/Audit Disposition and Debt Fix.md updated in-commit
 - 2026-07-20 bed790c7 WORTHY - give the post-merge runbook a worktree cleanup arm; wiki/concepts/PR Merge Workflow.md updated in-commit
 - 2026-07-20 c4b7a3b1 WORTHY - narrows the worktree guard's shared-dir exemption to the four symlinked .gaia/local dirs; corrected the stale six-vs-five symlinked-paths count in wiki/concepts/Local Working State.md this sync
