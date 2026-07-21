@@ -162,15 +162,17 @@ const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
 const PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
 
 /**
- * Metacharacters that OPEN a glob pattern. All three are absent from
- * `PATH_BODY_CHAR`, so an expansion that reaches one has hit a pattern rather
- * than the end of a path token, and everything accumulated so far is a prefix
- * of a family of names, not a name.
+ * Characters that OPEN a shell pattern: glob metacharacters, brace expansion,
+ * and variable interpolation. All are absent from `PATH_BODY_CHAR`, so an
+ * expansion that reaches one has hit a pattern rather than the end of a path
+ * token, and everything accumulated so far is a prefix of a family of names,
+ * not a name.
  *
- * `]` is deliberately absent. It only ever closes a pattern, so a token halting
- * on it is complete rather than truncated.
+ * `]` and `}` are deliberately absent. They only ever close a pattern, so a
+ * token halting on one is complete rather than truncated, and reducing it the
+ * way `consumeStep` reduces a truncated token would discard a real reference.
  */
-const GLOB_OPENING_METACHAR = /[*?[]/;
+const PATH_TRUNCATING_METACHAR = /[$*?[{]/;
 
 /**
  * A path-constant occurrence found in a shipped script.
@@ -194,22 +196,20 @@ const stripCommentSuffix = (line: string): string => {
 
 /**
  * Expands the path token starting at `start`, and reports whether the
- * expansion halted part-way through a basename because it ran into a glob
+ * expansion halted part-way through a basename because it ran into a shell
  * pattern.
  *
- * Where the pattern opens at a directory boundary (`.claude/hooks/*.sh`) the
- * expansion is a whole directory token, which `isShippedPath` resolves against
- * the shipped directories; that idiom is in the tree and keeps working. Where
- * the pattern has a basename prefix (`.claude/agents/code-audit-*.md`) the
- * expansion is a fragment naming nothing on disk, so the caller drops it
- * instead of reporting it as a leak. Exact-match lookup is deliberate here (see
- * the allowlist comment above), so dropping an ambiguous candidate matches the
- * file's convention rather than expanding the pattern and verifying the family.
+ * A pattern opening at a directory boundary (`.claude/hooks/*.sh`) leaves a
+ * whole directory token, which `isShippedPath` resolves against the shipped
+ * directories; that idiom is in the tree. A pattern opening mid-basename
+ * (`.claude/agents/code-audit-*.md`) leaves a fragment that names nothing on
+ * disk, so `consumeStep` reduces it to the directory it sits in and both shapes
+ * are adjudicated as the same kind of token.
  */
 const expandPath = (
   line: string,
   start: number
-): {truncatedGlob: boolean; value: string} => {
+): {truncated: boolean; value: string} => {
   let end = start;
 
   while (end < line.length && PATH_BODY_CHAR.test(line[end])) {
@@ -219,9 +219,9 @@ const expandPath = (
   const value = line.slice(start, end);
 
   return {
-    truncatedGlob:
+    truncated:
       end < line.length &&
-      GLOB_OPENING_METACHAR.test(line[end]) &&
+      PATH_TRUNCATING_METACHAR.test(line[end]) &&
       !value.endsWith('/'),
     value,
   };
@@ -303,14 +303,19 @@ const consumeStep = (
 
   if (isSubstring) return {nextCursor: found + 1, ref: null};
 
-  const {truncatedGlob, value: candidate} = expandPath(stripped, found);
-  const nextCursor = found + candidate.length;
+  const {truncated, value} = expandPath(stripped, found);
+  const nextCursor = found + value.length;
+  // A fragment left by a pattern that opens mid-basename names a family, not a
+  // file, so ask the question one level up: does the directory holding that
+  // family ship? That is the same question a pattern opening at a directory
+  // boundary already asks, and it keeps the answer honest in both directions.
+  // A family under a shipped directory resolves, and one under a
+  // release-excluded directory is still the leak this scan exists to catch.
+  const candidate =
+    truncated ? value.slice(0, value.lastIndexOf('/') + 1) : value;
 
   // Skip pure-prefix matches (`.gaia/` with no body).
   if (candidate.length <= prefix.length) return {nextCursor, ref: null};
-
-  // Skip a fragment of a glob pattern; it is a family of names, not a path.
-  if (truncatedGlob) return {nextCursor, ref: null};
 
   const trimmed = trimTrailingDotsSlashes(candidate);
 
