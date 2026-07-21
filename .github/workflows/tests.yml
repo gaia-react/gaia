@@ -93,7 +93,11 @@ jobs:
       # here too even when it carries no tests: `.storybook/` holds neither
       # tests nor stories, but it is inside the tsconfig `include` and is
       # linted, and Chromatic's Vite build strips types instead of checking
-      # them, so it is not a substitute.
+      # them, so it is not a substitute. The `*.config.*` alternation names
+      # every root config for the same reason, not only the four whose tools
+      # this job runs; each one is in the tsconfig program, is linted, and
+      # `react-router.config.` additionally feeds the typegen step that runs
+      # before `tsc`.
       - name: Detect test-relevant changes in the incremental delta
         id: filter
         if: steps.chore-deps.outputs.skip == 'false'
@@ -102,7 +106,7 @@ jobs:
         run: |
           set -eu
           changed=$(git diff --name-only "${CHECK_BASE}...HEAD")
-          pattern='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint)\.config\.|^\.github/workflows/tests\.yml$'
+          pattern='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.github/workflows/tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
