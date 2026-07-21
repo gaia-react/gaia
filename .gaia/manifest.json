@@ -255,6 +255,7 @@
     ".nvmrc": "owned",
     ".playwright/a11y.ts": "owned",
     ".playwright/e2e/home-a11y.spec.ts": "owned",
+    ".playwright/e2e/hydration.spec.ts": "owned",
     ".playwright/e2e/language-switch-a11y.spec.ts": "owned",
     ".playwright/e2e/legal-a11y.spec.ts": "owned",
     ".playwright/fixtures.ts": "owned",
@@ -619,6 +620,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-21T11:50:50.494Z",
+  "generated": "2026-07-21T14:51:10.634Z",
   "version": "1.6.1"
 }

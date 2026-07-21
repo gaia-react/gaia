@@ -211,6 +211,71 @@ describe('extractPathRefs', () => {
       '.claude/shell-snapshots/snapshot-zsh.sh'
     );
   });
+
+  test('reduces a pattern that truncates mid-basename to its directory', () => {
+    // A pattern with a non-empty basename prefix before the `*` expanded to the
+    // fragment `.claude/agents/code-audit-`, which names no manifest entry and
+    // no shipped directory, so a legitimate line of prose reported a phantom
+    // leak. The fragment names a family of files, so the question worth asking
+    // is whether the directory holding that family ships.
+    const refs = extractPathRefs(
+      '.claude/hooks/foo.sh',
+      'reason="rewrites .claude/agents/code-audit-*.md, which are machinery"\n'
+    );
+    expect(refs.map((r) => r.path)).toEqual(['.claude/agents']);
+  });
+
+  test('keeps a pattern that starts at a directory boundary', () => {
+    // Control for the rule above, and the idiom already in the tree
+    // (`for f in .claude/hooks/*.sh`): the `*` follows a `/`, so the expansion
+    // is already the directory token, and both shapes now yield the same kind
+    // of token.
+    const refs = extractPathRefs(
+      '.gaia/scripts/lint-hook-array-guard.sh',
+      'for f in .claude/hooks/*.sh; do :; done\n'
+    );
+    expect(refs.map((r) => r.path)).toEqual(['.claude/hooks']);
+  });
+
+  test('reduces mid-basename truncation on the other pattern-opening characters', () => {
+    // `?`, `[`, `{`, and `$` are absent from the path-body character class for
+    // the same reason `*` is, so they truncate identically and are reduced
+    // identically. Mid-basename `${var}` is the most common of the five in
+    // shell.
+    for (const line of [
+      'ls .claude/agents/code-audit-?.md\n',
+      'ls .claude/agents/code-audit-[abc].md\n',
+      'ls .claude/agents/code-audit-{frontend,shell}.md\n',
+      // eslint-disable-next-line no-template-curly-in-string -- literal shell `${ }` syntax, not JS interpolation
+      'agent=".claude/agents/code-audit-${member}.md"\n',
+    ]) {
+      const refs = extractPathRefs('.claude/hooks/foo.sh', line);
+      expect(refs.map((r) => r.path)).toEqual(['.claude/agents']);
+    }
+  });
+
+  test('does not reduce a token that halts on a pattern-closing character', () => {
+    // `]` and `}` only ever close a pattern, so the token before one is a
+    // complete path. Reducing it to its directory would discard a real
+    // reference and silence a genuine leak.
+    const refs = extractPathRefs(
+      '.claude/hooks/foo.sh',
+      // eslint-disable-next-line no-template-curly-in-string -- literal shell `${ }` syntax, not JS interpolation
+      'echo "${paths[.gaia/scripts/missing.sh]}"\n'
+    );
+    expect(refs.map((r) => r.path)).toContain('.gaia/scripts/missing.sh');
+  });
+
+  test('still flags a genuine reference whose basename ends in a dash', () => {
+    // Guards the suppression against over-reach: the rule keys on the halting
+    // metacharacter, not on the shape of the token, so a real reference that
+    // merely looks like a truncated prefix must still flag.
+    const refs = extractPathRefs(
+      '.gaia/statusline/foo.sh',
+      'bash .claude/agents/code-audit-\n'
+    );
+    expect(refs.map((r) => r.path)).toEqual(['.claude/agents/code-audit-']);
+  });
 });
 
 describe('release runtime-deps CLI', () => {
@@ -351,6 +416,52 @@ describe('release runtime-deps CLI', () => {
     const exit = run([], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('runtime-dependency leaks: none');
+  });
+
+  test('passes when a shipped script names a file family by pattern', () => {
+    // The gate fails closed, so a phantom leak blocks every distribution
+    // scenario and `/gaia-release` itself until someone reverse-engineers the
+    // extractor. Operator-facing prose naming a family of files by pattern is
+    // legitimate and must not cost a release.
+    sandbox.writeManifest({
+      '.claude/agents/code-audit-frontend.md': 'owned',
+      '.claude/hooks/block-selfheal-paths.sh': 'owned',
+    });
+    sandbox.writeFile(
+      '.claude/hooks/block-selfheal-paths.sh',
+      [
+        '#!/usr/bin/env bash',
+        'deny "rewrites .claude/agents/code-audit-*.md, which are machinery"',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain('runtime-dependency leaks: none');
+  });
+
+  test('still flags a file family sourced from a release-excluded directory', () => {
+    // The counterpart to the test above, and the reason a truncated fragment is
+    // reduced rather than dropped: a shipped hook sourcing a family of files
+    // under a release-excluded directory is a genuine leak. Dropping the
+    // fragment would let it publish and fail on every adopter clone.
+    sandbox.writeManifest({
+      '.claude/hooks/ships.sh': 'owned',
+      '.gaia/scripts/run-tests.sh': 'owned',
+    });
+    sandbox.writeFile(
+      '.claude/hooks/ships.sh',
+      [
+        '#!/usr/bin/env bash',
+        'for t in .gaia/scripts/tests/run-*.sh; do bash "$t"; done',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('.gaia/scripts/tests');
   });
 
   test('still flags a bare directory token as a leak when no manifest entries exist beneath it', () => {
