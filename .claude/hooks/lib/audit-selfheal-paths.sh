@@ -11,6 +11,16 @@
 # of these is confined by a deterministic gate, not by an instruction alone,
 # whether or not the member was told not to.
 #
+# "The tests" is EVERY test surface, not just test/. .playwright/ holds the
+# e2e specs, the a11y assertions, and the react-perf harness. .storybook/
+# holds no stories (they sit beside their components under app/**/tests/) but
+# its config and decorators shape what Chromatic snapshots, and Chromatic is
+# a required merge check -- a member that may edit them may suppress the
+# visual regression its own repair caused. Both are refused whole, the same
+# way test/ is refused whole rather than narrowed to its assertion files: the
+# cost of over-refusing is that a member reports a finding instead of
+# repairing it, and the cost of under-refusing is a silently weakened gate.
+#
 # .gaia/local/ is deliberately NOT refused. It is the members' own gitignored
 # working and output directory -- clearance markers, findings sidecars,
 # disposition sidecars, the re-run ledger -- not gate-machinery source. A
@@ -42,4 +52,4 @@
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
 # shellcheck disable=SC2034 # consumed by both sourcing consumers named above
-AUDIT_SELFHEAL_REFUSE_ERE='^(\.claude|\.specify|wiki|test|\.github/workflows)/|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'
+AUDIT_SELFHEAL_REFUSE_ERE='^(\.claude|\.specify|wiki|test|\.playwright|\.storybook|\.github/workflows)/|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'
