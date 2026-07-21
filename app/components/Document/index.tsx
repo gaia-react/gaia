@@ -49,7 +49,11 @@ const Document: FC<DocumentProps> = ({
         <meta charSet="utf-8" />
         <meta content="width=device-width,initial-scale=1" name="viewport" />
         <MetaHydrated />
-        <Links />
+        {/* Every React Router component that emits a nonced element takes the
+            nonce explicitly. The server renders the real value; the browser
+            blanks the nonce attribute after parsing, so the client must render
+            the empty-string default to match the DOM it hydrates into. */}
+        <Links nonce={nonce} />
         {noIndex && <meta content="noindex" name="robots" />}
         {title && <title>{title}</title>}
       </head>
