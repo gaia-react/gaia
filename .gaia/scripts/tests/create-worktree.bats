@@ -43,6 +43,21 @@ setup() {
 STUB
   git -C "$MAIN" add -A
   git -C "$MAIN" commit -q -m "init"
+
+  # Stub the react-router CLI in the MAIN checkout only. It is created AFTER the
+  # commit, so it stays untracked and never lands in a created worktree's
+  # checkout: that absence is what makes the borrow-main's-toolchain assertion
+  # meaningful. The stub mimics `react-router typegen` by writing generated
+  # types under its CWD and printing to stdout, which the hook must swallow.
+  mkdir -p "$MAIN/node_modules/.bin"
+  cat > "$MAIN/node_modules/.bin/react-router" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = "typegen" ] || exit 2
+mkdir -p "$PWD/.react-router/types"
+: > "$PWD/.react-router/types/.typegen-ran"
+printf 'typegen noise on stdout\n'
+STUB
+  chmod +x "$MAIN/node_modules/.bin/react-router"
 }
 
 teardown() {
@@ -353,4 +368,56 @@ SHIM
   # The (possibly live) peer's registration and directory survive untouched.
   git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $wt"
   [ -d "$wt" ]
+}
+
+# ---------- 18. Typed routes: generated in the worktree, from the main CLI ----------
+@test "typegen: the new worktree gets typed routes without a dependency tree of its own" {
+  run_hook_stdout '{"name":"typed"}'
+  [ "$status" -eq 0 ]
+  wt="$MAIN/.claude/worktrees/typed"
+
+  # React Router's generated typed routes are gitignored, so a fresh worktree
+  # never inherits them from the checkout. The hook must generate them, or every
+  # app file importing ./+types/* lints against `error` typed values.
+  [ -f "$wt/.react-router/types/.typegen-ran" ]
+
+  # Generated in the worktree, not shared from main: a symlink would hand this
+  # branch main's types for its own routes.
+  [ ! -L "$wt/.react-router" ]
+
+  # The toolchain is borrowed, not installed: the worktree has no node_modules.
+  [ ! -e "$wt/node_modules" ]
+
+  # stdout still carries ONLY the worktree path. The harness parses this stdout
+  # as the path, so typegen's chatter must never reach it.
+  [ "$output" = "$wt" ]
+}
+
+# ---------- 19. Typegen is best-effort: no CLI installed yet ----------
+@test "typegen: a checkout with nothing installed still creates the worktree" {
+  rm -rf "$MAIN/node_modules"
+
+  run_hook_stdout '{"name":"no-cli"}'
+  [ "$status" -eq 0 ]
+  [ "$output" = "$MAIN/.claude/worktrees/no-cli" ]
+  [ -d "$MAIN/.claude/worktrees/no-cli" ]
+  git -C "$MAIN" show-ref --verify --quiet refs/heads/no-cli
+}
+
+# ---------- 20. Typegen is best-effort: a failing typegen never fails creation ----------
+@test "typegen: a failing typegen leaves the worktree created, and keeps its diagnostics" {
+  cat > "$MAIN/node_modules/.bin/react-router" <<'STUB'
+#!/usr/bin/env bash
+printf 'typegen exploded\n' >&2
+exit 1
+STUB
+  chmod +x "$MAIN/node_modules/.bin/react-router"
+
+  run_hook '{"name":"broken-typegen"}'
+  [ "$status" -eq 0 ]
+  # The hook says it skipped, and the CLI's own error survives for debugging.
+  grep -qF "typegen skipped" <<<"$output"
+  grep -qF "typegen exploded" <<<"$output"
+  [ -d "$MAIN/.claude/worktrees/broken-typegen" ]
+  git -C "$MAIN" show-ref --verify --quiet refs/heads/broken-typegen
 }
