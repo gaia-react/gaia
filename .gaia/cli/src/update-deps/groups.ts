@@ -17,6 +17,10 @@
  *     prefixes; that's why exact-name matches are checked first.
  *   - `msw-storybook-addon` belongs to both `storybook` and `msw` per the
  *     SKILL table; we route it to `storybook` (more specific addon scope).
+ *   - `typescript` and `@types/node` are deliberately ungrouped. A compiler
+ *     bump and an ambient Node type-definition bump are independent risks with
+ *     independent migration guides, so pairing them would force a TS major and
+ *     an `@types/node` major to move (or stall) as one.
  *   - Anything unmatched becomes `singleton:<name>`.
  */
 
@@ -96,10 +100,7 @@ const GROUP_RULES: readonly GroupRule[] = [
     ],
     group: 'testing-library',
   },
-  {
-    exactNames: ['@types/node', 'typescript'],
-    group: 'typescript',
-  },
+  // No `typescript` rule here on purpose; see the header's resolution rules.
   {
     exactNames: [
       'i18next',

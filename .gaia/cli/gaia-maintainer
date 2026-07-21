@@ -25671,10 +25671,7 @@ var GROUP_RULES = [
     ],
     group: "testing-library"
   },
-  {
-    exactNames: ["@types/node", "typescript"],
-    group: "typescript"
-  },
+  // No `typescript` rule here on purpose; see the header's resolution rules.
   {
     exactNames: [
       "i18next",

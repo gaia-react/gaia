@@ -101,7 +101,6 @@ update together**, so a group moves as one unit (and snoozes as one unit).
 | `playwright`      | `@playwright/test`, `@playwright-testing-library/test`                                                                                                                       |
 | `eslint`          | `eslint`, `@eslint/js`, `@eslint/compat`, `eslint-config-*`, `eslint-plugin-*` (9.x cap applies)                                                                             |
 | `testing-library` | `@testing-library/dom`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`                                                                 |
-| `typescript`      | `typescript`, `@types/node`                                                                                                                                                  |
 | `i18next`         | `i18next`, `react-i18next`, `remix-i18next`, `i18next-browser-languagedetector`                                                                                              |
 | `msw`             | `msw`, `msw-storybook-addon`                                                                                                                                                 |
 | `vite`            | `vite`, `@vitejs/plugin-react`                                                                                                                                               |
@@ -111,7 +110,9 @@ update together**, so a group moves as one unit (and snoozes as one unit).
 | `prettier`        | `prettier`, `eslint-config-prettier`, `eslint-plugin-prettier`                                                                                                               |
 | `husky`           | `husky`, `lint-staged`                                                                                                                                                       |
 
-Packages not matched form singleton groups.
+Packages not matched form singleton groups. `typescript` is deliberately one of
+them: a compiler bump and an ambient type-definition bump (`@types/node`) carry
+independent risk and independent migration guides, so they never move as a unit.
 
 ## Phase 1: Discover, preview, decide (orchestrator)
 
@@ -340,7 +341,8 @@ group the human skipped). If there are none, skip to Phase 6.
 
 For each Wave B group, classify complexity and assign a model:
 
-**Opus** (`model: "opus"`): `react-router`, `react`, `typescript`, `storybook`
+**Opus** (`model: "opus"`): `react-router`, `react`, `storybook`,
+`singleton:typescript`
 
 **Sonnet** (`model: "sonnet"`): `eslint`, all other groups
 
@@ -386,7 +388,7 @@ Migration guide URLs:
 | vitest       | `https://vitest.dev/guide/migration`                                       |
 | playwright   | `https://playwright.dev/docs/release-notes`                                |
 | eslint       | `https://eslint.org/docs/latest/use/migrate-to-9` (or relevant X)          |
-| typescript   | `https://www.typescriptlang.org/docs/handbook/release-notes/overview.html` |
+| singleton:typescript | `https://www.typescriptlang.org/docs/handbook/release-notes/overview.html` |
 | msw          | `https://mswjs.io/docs/migrations`                                         |
 | vite         | `https://vite.dev/guide/migration`                                         |
 
