@@ -129,6 +129,11 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  * This is the documented channel for false-positives, add the exact token
  * plus a justification rather than reword the reference.
  *
+ * A reference carrying a shell pattern is the one qualification on that: it
+ * reduces to the directory holding the family (see `expandPath`), so it is
+ * adjudicated against this allowlist as that directory rather than as the
+ * longer token its literal spelling would produce.
+ *
  *   - `.github/workflows`: named in `.claude/hooks/pr-merge-audit-check.sh`'s
  *     merge-gate error message as an example in-scope path, alongside `app/`,
  *     `test/`, `configs`. The directory is release-excluded; the reference is
@@ -162,6 +167,27 @@ const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
 const PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
 
 /**
+ * Characters that OPEN a shell pattern: glob metacharacters, brace expansion,
+ * and variable interpolation. All are absent from `PATH_BODY_CHAR`, so an
+ * expansion that reaches one has hit a pattern rather than the end of a path
+ * token, and everything accumulated so far is a prefix of a family of names,
+ * not a name.
+ *
+ * `]` and `}` are deliberately absent. They only ever close a pattern, so a
+ * token halting on one is complete rather than truncated, and reducing it the
+ * way `consumeStep` reduces a truncated token would discard a real reference.
+ *
+ * The halting character alone decides, with no check that what precedes it
+ * looks incomplete, so a whole path abutting one of these with no separator
+ * (prose ending in a question mark, an unescaped regex end-anchor) reduces to
+ * its directory too. That direction loses a leak rather than inventing one,
+ * which is why the set stays this narrow; no occurrence of the shape exists in
+ * the shipped corpus. Narrowing it further means demanding the fragment's last
+ * segment carry no recognized file extension.
+ */
+const PATH_TRUNCATING_METACHAR = /[$*?[{]/;
+
+/**
  * A path-constant occurrence found in a shipped script.
  */
 export type PathRef = {
@@ -181,14 +207,37 @@ const stripCommentSuffix = (line: string): string => {
   return line;
 };
 
-const expandPath = (line: string, start: number): string => {
+/**
+ * Expands the path token starting at `start`, and reports whether the
+ * expansion halted part-way through a basename because it ran into a shell
+ * pattern.
+ *
+ * A pattern opening at a directory boundary (`.claude/hooks/*.sh`) leaves a
+ * whole directory token, which `isShippedPath` resolves against the shipped
+ * directories; that idiom is in the tree. A pattern opening mid-basename
+ * (`.claude/agents/code-audit-*.md`) leaves a fragment that names nothing on
+ * disk, so `consumeStep` reduces it to the directory it sits in and both shapes
+ * are adjudicated as the same kind of token.
+ */
+const expandPath = (
+  line: string,
+  start: number
+): {truncated: boolean; value: string} => {
   let end = start;
 
   while (end < line.length && PATH_BODY_CHAR.test(line[end])) {
     end += 1;
   }
 
-  return line.slice(start, end);
+  const value = line.slice(start, end);
+
+  return {
+    truncated:
+      end < line.length &&
+      PATH_TRUNCATING_METACHAR.test(line[end]) &&
+      !value.endsWith('/'),
+    value,
+  };
 };
 
 /**
@@ -267,8 +316,16 @@ const consumeStep = (
 
   if (isSubstring) return {nextCursor: found + 1, ref: null};
 
-  const candidate = expandPath(stripped, found);
-  const nextCursor = found + candidate.length;
+  const {truncated, value} = expandPath(stripped, found);
+  const nextCursor = found + value.length;
+  // A fragment left by a pattern that opens mid-basename names a family, not a
+  // file, so ask the question one level up: does the directory holding that
+  // family ship? That is the same question a pattern opening at a directory
+  // boundary already asks, and it keeps the answer honest in both directions.
+  // A family under a shipped directory resolves, and one under a
+  // release-excluded directory is still the leak this scan exists to catch.
+  const candidate =
+    truncated ? value.slice(0, value.lastIndexOf('/') + 1) : value;
 
   // Skip pure-prefix matches (`.gaia/` with no body).
   if (candidate.length <= prefix.length) return {nextCursor, ref: null};
