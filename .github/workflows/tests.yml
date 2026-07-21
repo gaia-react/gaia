@@ -89,6 +89,11 @@ jobs:
       # required check green without running, so a path that carries tests
       # must appear here: `.playwright/` holds the e2e specs and their
       # helpers, which `playwright.config.` alone does not cover.
+      # This job also runs typecheck and lint, so a path those cover belongs
+      # here too even when it carries no tests: `.storybook/` holds neither
+      # tests nor stories, but it is inside the tsconfig `include` and is
+      # linted, and Chromatic's Vite build strips types instead of checking
+      # them, so it is not a substitute.
       - name: Detect test-relevant changes in the incremental delta
         id: filter
         if: steps.chore-deps.outputs.skip == 'false'
@@ -97,7 +102,7 @@ jobs:
         run: |
           set -eu
           changed=$(git diff --name-only "${CHECK_BASE}...HEAD")
-          pattern='^(app|test)/|^\.playwright/|^(package\.json|pnpm-lock\.yaml|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint)\.config\.|^\.github/workflows/tests\.yml$'
+          pattern='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint)\.config\.|^\.github/workflows/tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else

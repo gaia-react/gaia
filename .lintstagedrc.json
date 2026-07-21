@@ -4,7 +4,7 @@
     "prettier --write"
   ],
   "{.storybook,.playwright}/**/*.{ts,tsx}": [
-    "eslint --fix --max-warnings=0 --cache --cache-location ./node_modules/.cache/eslint",
+    "eslint --fix --max-warnings=0 --cache --cache-location ./node_modules/.cache/eslint-tooling",
     "prettier --write"
   ],
   "app/**/*.css": ["stylelint --fix", "prettier --write"],
