@@ -136,6 +136,42 @@ assert_allowed() {
   assert_denied
 }
 
+# --- every test surface is refused, not just test/ ---
+#
+# .playwright/ holds the e2e specs, the a11y assertions, and the react-perf
+# harness; .storybook/ holds the config and decorators that shape what
+# Chromatic snapshots, and Chromatic is a required merge check. Both carry
+# test/'s own rationale: a member must not be able to edit the assertion that
+# would catch its own bad repair. These pin that, so the refusal set cannot
+# silently narrow back to test/ alone.
+
+@test "code-audit-frontend editing .playwright/e2e/hydration.spec.ts is denied and names the path" {
+  run_hook_edit "code-audit-frontend" "Edit" ".playwright/e2e/hydration.spec.ts"
+  assert_denied
+  grep -qF -- '.playwright/e2e/hydration.spec.ts' <<<"$output"
+}
+
+@test "code-audit-frontend editing .playwright/utils.ts is denied (the whole tree, not just e2e/)" {
+  run_hook_edit "code-audit-frontend" "Edit" ".playwright/utils.ts"
+  assert_denied
+}
+
+@test "code-audit-frontend editing .storybook/preview.ts is denied and names the path" {
+  run_hook_edit "code-audit-frontend" "Edit" ".storybook/preview.ts"
+  assert_denied
+  grep -qF -- '.storybook/preview.ts' <<<"$output"
+}
+
+@test "code-audit-frontend editing .storybook/chromatic/decorator.tsx is denied" {
+  run_hook_edit "code-audit-frontend" "Edit" ".storybook/chromatic/decorator.tsx"
+  assert_denied
+}
+
+@test "Bash: code-audit-frontend redirecting into a .playwright/ spec is denied" {
+  run_hook_bash "code-audit-frontend" "echo x > .playwright/e2e/hydration.spec.ts"
+  assert_denied
+}
+
 # --- an app-only edit still allowed, criterion 3 ---
 
 @test "code-audit-frontend editing app/foo.ts is allowed" {
