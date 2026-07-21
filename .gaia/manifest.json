@@ -225,6 +225,7 @@
     ".gaia/scripts/token-rollup.sh": "owned",
     ".gaia/scripts/token-tally.sh": "owned",
     ".gaia/scripts/verify-audit-roster.sh": "owned",
+    ".gaia/scripts/write-audit-remits.sh": "owned",
     ".gaia/statusline/gaia-statusline.sh": "owned",
     ".gaia/templates/ci-issues/priority-critical-revert-failed.md": "owned",
     ".gaia/templates/ci-issues/priority-high-revert-opened.md": "owned",
@@ -618,6 +619,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-20T01:30:22.214Z",
+  "generated": "2026-07-21T11:50:50.494Z",
   "version": "1.6.1"
 }
