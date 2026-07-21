@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-07-18
+updated: 2026-07-21
 tags: [concept, ci, review]
 ---
 
@@ -160,6 +160,8 @@ Applying an in-scope Suggestion or an accepted finding is a content edit, so it 
 
 - **The member's digest is already rotating in this PR**, you are already changing files it owns this round (the ordinary audit → fix → re-audit loop) or a gate-machinery path every member's digest folds in. The re-dispatch is already being paid, so **apply the Suggestion in the same PR**: the fix rides a re-review that happens anyway and adds no marginal audit cost.
 - **The PR is already clean and the member is already marked**, with nothing else rotating its digest. Folding one more nit in buys a full re-dispatch of that member solely to re-earn the marker. **Accept-and-note instead**: record the Suggestion for a follow-up rather than folding it in, unless it is consequential enough that the re-dispatch is worth paying.
+
+Both arms assume the Suggestion is correct. A Suggestion is a finding, not a specification: it can assert a mechanism the member inferred rather than verified, and a claim about third-party behavior is where that is likeliest and hardest to spot. Verify the claim against the library's own source or a runnable probe before applying it, most of all when the fix is prose that ships as guidance, where implementing it verbatim turns a reviewer's error into a documented one that reads as reviewed. The re-dispatch these economics already price in re-reviews the edit and usually catches it, but only after a full extra round.
 
 This is operator guidance about **in-scope Suggestions and accepted findings**, distinct from **in-flight-fix promotion** (the audit's own automatic same-run repair of a qualifying **out-of-scope** finding through the self-heal path; see [[Audit Disposition and Debt Fix]]). In-flight-fix promotion is the audit repairing out-of-scope debt itself as it reviews; this is the operator deciding whether an in-scope Suggestion is worth folding into an already-marked PR. They do not overlap.
 
