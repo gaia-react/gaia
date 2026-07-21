@@ -158,6 +158,18 @@ bash .gaia/scripts/audit-write-clearance.sh \
   --provenance refused
 ```
 
+**Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker:
+
+```bash
+marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-maintainer-shell \
+  --provenance earned \
+  --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
+```
+
+The writer records the reversal in the marker body and removes your own refusal. Reach for it **only** after re-auditing this content and finding the blocker actually resolved or explicitly acknowledged by the operator, never to clear a refusal you still stand behind. It applies to unchanged content: repairing the finding edits a file you own, which rotates your digest and retires the refusal with it, so no supersede is needed there.
+
 **2. Stamp.** On a written marker, call the trailer stamp:
 
 ```bash
@@ -198,6 +210,8 @@ Shape:
 Every Critical / Important Issue in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".claude/hooks"]`). `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary: `holistic/swallowed-error` for a script that fails silently, `holistic/secret-exposure` for a leaked credential, and so on, whichever seeded member genuinely fits, and counts at any severity. A finding that maps to no seeded class is stamped `holistic/unclassified` and **included** in `findings[]` (never omitted), surfacing as the distinct unclassified recurrence signal. `"findings": []` when your report is clean is still a real, meaningful record; write it, do not skip the file.
 
 Best-effort: a write failure here never blocks or alters the marker / stamp / status sequence above.
+
+**Return contract: this sidecar is your report of record.** Your findings reach the orchestrator through this file, not through the text you return. The returned text is a human-readable convenience and the no-op classifier's input; it is not the durable channel, and an orchestrator reads the sidecar to learn what you actually found. Two consequences. First, no finding may exist only in your returned text: if it is in your report, it is in `findings[]`. Second, the sidecar's presence is what separates a genuine clean pass from a run whose report was lost in transit, so on a LOCAL pass with a resolved `base` you write it even when you found nothing (`"findings": []`) and even when you withheld your marker. A marker sitting on disk with no sidecar beside it reads as a lost report and gets your dispatch retried.
 
 ## Methodology
 

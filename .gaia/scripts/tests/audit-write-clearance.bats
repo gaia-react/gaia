@@ -508,3 +508,93 @@ scrub_maintainer_only() {
   [ "$(jq -r .digest "$out")" = "$adopter_digest" ]
   [ "$(jq -r .member "$out")" = "code-audit-frontend" ]
 }
+
+# -----------------------------------------------------------------------------
+# --supersede-refusal: a member's explicit, reasoned reversal of its OWN prior
+# same-digest refusal.
+#
+# The earned and refused families live at DIFFERENT filenames, so an earned
+# write alone leaves a refusal on disk and the gate (which checks the refusal
+# family first) stays shut forever. Superseding is the authored exit. The
+# anti-gaming invariant is the second test below: a PLAIN earned write must
+# never clear a refusal, or refusal-precedence decays into "newest marker
+# wins" and re-running an auditor until it passes becomes a merge bypass.
+# -----------------------------------------------------------------------------
+
+@test "supersede: earned + --supersede-refusal removes the sibling refusal and records the reason" {
+  m="code-audit-maintainer-shell"
+  d="$(member_digest "$ROOT" "$m")"
+  refused="$AUDIT_DIR/${d}.${m}.refused"
+  reason="operator acknowledged the Important with a stated reason"
+
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused >/dev/null
+  [ -f "$refused" ] || return 1
+
+  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+    --supersede-refusal "$reason")"
+
+  [ "$out" = "$AUDIT_DIR/${d}.${m}.ok" ]
+  [ "$(jq -r .provenance "$out")" = "earned" ]
+  # The refusal is gone, so the gate has nothing left to find.
+  [ ! -f "$refused" ]
+  # The reversal stays auditable in the earned body.
+  [ "$(jq -r .supersedes.provenance "$out")" = "refused" ]
+  [ "$(jq -r .supersedes.reason "$out")" = "$reason" ]
+  [ "$(jq -r .supersedes.superseded_at "$out")" = "$(jq -r .audited_at "$out")" ]
+}
+
+@test "supersede: ANTI-GAMING, a plain earned write never clears a same-digest refusal" {
+  # shellcheck source=/dev/null
+  . "$READER"
+  m="code-audit-maintainer-shell"
+  d="$(member_digest "$ROOT" "$m")"
+  refused="$AUDIT_DIR/${d}.${m}.refused"
+
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused >/dev/null
+  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned)"
+
+  # Both artifacts coexist, and no supersedes block is recorded.
+  [ -f "$refused" ] || return 1
+  [ -f "$out" ] || return 1
+  jq -e '.supersedes == null' "$out" >/dev/null || return 1
+
+  # The refusal still reads live: re-running an auditor until it passes must
+  # NOT open the gate. Final command, so its status decides the test.
+  clearance_member_refused "$ROOT" "$d" "$m"
+}
+
+@test "supersede: rejected with --provenance refused, and no marker is written" {
+  m="code-audit-maintainer-shell"
+  d="$(member_digest "$ROOT" "$m")"
+  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused \
+    --supersede-refusal "a refusal supersedes nothing"
+  [ "$status" -eq 2 ]
+  grep -qF -- "valid only with --provenance earned" <<<"$output" || return 1
+  [ ! -f "$AUDIT_DIR/${d}.${m}.refused" ]
+  [ ! -f "$AUDIT_DIR/${d}.${m}.ok" ]
+}
+
+@test "supersede: an empty or whitespace-only reason is a usage error" {
+  m="code-audit-maintainer-shell"
+  d="$(member_digest "$ROOT" "$m")"
+
+  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --supersede-refusal ""
+  [ "$status" -eq 2 ]
+  grep -qF -- "non-empty reason" <<<"$output" || return 1
+
+  # Whitespace is not a reason either: supersession must stay auditable.
+  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --supersede-refusal "   "
+  [ "$status" -eq 2 ]
+  [ ! -f "$AUDIT_DIR/${d}.${m}.ok" ]
+}
+
+@test "supersede: with no refusal on disk the earned write is a plain idempotent write" {
+  m="code-audit-maintainer-shell"
+  d="$(member_digest "$ROOT" "$m")"
+  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+    --supersede-refusal "nothing on disk to supersede")"
+  [ "$out" = "$AUDIT_DIR/${d}.${m}.ok" ]
+  [ "$(jq -r .provenance "$out")" = "earned" ]
+  # No sibling refusal existed, so no supersedes block is recorded.
+  jq -e '.supersedes == null' "$out" >/dev/null
+}

@@ -142,6 +142,8 @@ Best-effort: a sidecar write failure never blocks or alters the marker sequence.
 
 A `finding_class` must be a prose-level ROOT CAUSE, never a subsystem tag.
 
+**Return contract: this sidecar is your report of record.** Your findings reach the orchestrator through this file, not through the text you return. The returned text is a human-readable convenience and the no-op classifier's input; it is not the durable channel, and an orchestrator reads the sidecar to learn what you actually found. Two consequences. First, no finding may exist only in your returned text: if it is in your report, it is in `findings[]`. Second, the sidecar's presence is what separates a genuine clean pass from a run whose report was lost in transit, so on a LOCAL pass with a resolved `base` you write it even when you found nothing (`"findings": []`). A marker sitting on disk with no sidecar beside it reads as a lost report and gets your dispatch retried. This does not apply to a clean self-skip (no changed file in your remit), where you deliberately write no marker and no sidecar.
+
 ## Methodology
 
 1. Resolve the diff base and changed-file list; filter to `.claude/skills/**/*.md`; self-skip cleanly if empty.

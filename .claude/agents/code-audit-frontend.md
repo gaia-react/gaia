@@ -1044,6 +1044,18 @@ bash .gaia/scripts/audit-write-clearance.sh \
   --provenance refused
 ```
 
+**Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker, adding `--supersede-refusal "<why it is now cleared>"` to the earned invocation in step 1 above:
+
+```bash
+marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-frontend \
+  --provenance earned \
+  --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
+```
+
+The writer records the reversal in the marker body and removes your own refusal. Reach for it **only** after re-auditing this content and finding the blocker actually resolved or explicitly acknowledged by the operator, never to clear a refusal you still stand behind. It applies to unchanged content: repairing the finding edits a file you own, which rotates your digest and retires the refusal with it, so no supersede is needed there.
+
 Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to your **current** frontend digest, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(.gaia/scripts/audit-member-digest.sh --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same content remains backstop-checkable against a real sidecar.
 
 Also on a non-clean pass (marker NOT written), **write/update the re-run ledger** (LOCAL only, best-effort), the deterministic carry-forward briefing the next re-audit and the fixer read. Skip in CI (`GITHUB_ACTIONS`/`CI` set) and skip when `BASE_SHA` is empty. Set `round` to the prior valid same-branch same-base ledger's `round` + 1 (else 1), carrying `first_seen_round` for findings that persist across rounds; populate `remaining` (in-scope open findings: Critical + unaddressed Important + unresolved/escalated Suggestions), `fixed_last_round` (in-scope findings self-healed this round), `head_sha` = current HEAD, `branch`, `base_sha` = `BASE_SHA`, and `updated_at`. Write atomically (temp file + `mv`); a write failure never aborts the audit. This is an additional best-effort file write alongside the disposition sidecar above; it must NOT alter, replace, or reorder the marker / trailer / status / dispositions-sidecar writes. See "Re-run carry-forward ledger".

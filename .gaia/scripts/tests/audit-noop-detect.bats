@@ -440,3 +440,88 @@ _noop_write_clearance() {
   [ "$before" = "0" ]
   [ "$after" = "0" ]
 }
+
+# ---------------------------------------------------------------------------
+# audit-team-member --findings: LOST-REPORT detection.
+#
+# A member that completes, writes a valid earned marker, and whose report never
+# reaches the orchestrator is otherwise indistinguishable from a clean pass:
+# marker-presence alone classifies the dispatch REAL, suppresses the one-shot
+# retry, and leaves a green gate with zero visible findings. The findings
+# sidecar is the member's durable report of record, so when the caller names
+# it, the marker short-circuit requires BOTH. Omitting --findings preserves the
+# marker-only behavior for the default member and for a run whose base sha did
+# not resolve (which writes no sidecar at all).
+# ---------------------------------------------------------------------------
+
+# _noop_write_findings <path> [json]: a member's findings sidecar. Defaults to
+# the clean-pass shape, an EMPTY findings array, which is a real record.
+_noop_write_findings() {
+  local path="$1" body="${2:-}"
+  if [ -z "$body" ]; then
+    body='{"schema":1,"member":"code-audit-frontend","findings":[]}'
+  fi
+  printf '%s\n' "$body" > "$path"
+}
+
+@test "audit-team-member: EARNED marker + present findings sidecar is REAL" {
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.ok"
+  findings="$BATS_TEST_TMPDIR/base.code-audit-frontend.findings.json"
+  _noop_write_clearance "$marker" "$digest" earned
+  _noop_write_findings "$findings"
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" \
+    --marker "$marker" --findings "$findings"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member: LOST REPORT, EARNED marker + ABSENT findings sidecar is NO-OP" {
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.ok"
+  _noop_write_clearance "$marker" "$digest" earned
+  # The marker is valid and the return carries no finding token: exactly the
+  # shape of a member whose report was lost in transit.
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" \
+    --marker "$marker" --findings "$BATS_TEST_TMPDIR/never-written.findings.json"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "audit-team-member: EARNED marker + malformed findings sidecar is NO-OP" {
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.ok"
+  findings="$BATS_TEST_TMPDIR/malformed.findings.json"
+  _noop_write_clearance "$marker" "$digest" earned
+  # Present but not a findings record: `.findings` is not an array.
+  _noop_write_findings "$findings" '{"schema":1,"member":"code-audit-frontend"}'
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" \
+    --marker "$marker" --findings "$findings"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "audit-team-member: BACK-COMPAT, omitting --findings keeps the marker-only short-circuit" {
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.ok"
+  _noop_write_clearance "$marker" "$digest" earned
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member: absent marker + present findings sidecar falls through to content inspection" {
+  findings="$BATS_TEST_TMPDIR/orphan.code-audit-frontend.findings.json"
+  _noop_write_findings "$findings"
+  # A sidecar cannot stand in for the marker: token-free text is still NO-OP.
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" \
+    --marker "$BATS_TEST_TMPDIR/does-not-exist.ok" --findings "$findings"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+
+  # ...and a real finding token in the return still classifies REAL.
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/audit-team-member/finding-block.txt" \
+    --marker "$BATS_TEST_TMPDIR/does-not-exist.ok" --findings "$findings"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
