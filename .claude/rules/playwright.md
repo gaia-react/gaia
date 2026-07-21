@@ -97,17 +97,32 @@ expect(errors).toEqual([]);
 
 Once both channels are watched, filtering by message text is unnecessary and
 costs coverage: any error during a page load is a failure. The split applies
-to every uncaught runtime error, not only hydration.
+to every uncaught runtime error, not only hydration. In an app carrying
+third-party scripts (analytics, a CSP reporter, anything an ad blocker
+interferes with), scope the **collector** to same-origin or a named allowlist
+rather than weakening the **assertion**; deleting the assertion gives back the
+whole coverage this pattern buys.
 
-**Reset the collector before the load you assert on, then prove that load was
-clean.** `hydration()` self-heals a cold dev server by calling `page.reload()`,
-listeners registered on the `Page` survive that reload, and the requests that
-lost the race push errors that say nothing about the app. Asserting on the
-first load makes a successful self-heal fail the test. Resetting alone only
-moves the exposure, because the asserted load can self-heal too, so
-`hydration()` returns whether it did: assert it did not, and a recovered load
-fails on that fact instead of on the noise it produced.
+**Reset the collector before the load you assert on, then prove that load did
+not self-heal.** `hydration()` self-heals a cold dev server by calling
+`page.reload()`, listeners registered on the `Page` survive that reload, and
+the requests that lost the race push errors that say nothing about the app.
+Asserting on the first load makes a successful self-heal fail the test.
+Resetting alone only moves the exposure, because the asserted load can
+self-heal too, so `hydration()` returns whether it did: assert it did not, and
+a recovered load fails on that fact instead of on the noise it produced.
 `.playwright/e2e/hydration.spec.ts` is the worked example.
+
+One residual remains, and it is worth knowing rather than discovering. The
+flag describes the asserted load's own hydration probe; it is not a provenance
+stamp on the collected errors. The previous document stays live with both
+listeners attached until the reload commits, so anything it emits between the
+reset and that moment lands in the collector while the flag is legitimately
+`false`. The failure is directional: it can only produce a false failure
+attributed to the wrong load, never a false pass, because a real error on the
+asserted load always lands after the reset. Closing it needs per-load
+provenance (tag each error with a generation counter bumped on
+`framenavigated`), which is not worth doing until it actually flakes.
 
 ## MSW + real dev server
 
