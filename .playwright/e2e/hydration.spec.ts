@@ -1,21 +1,24 @@
-import {expect, test} from '../fixtures';
+import {expect, test} from '@playwright/test';
 import {hydration} from '../utils';
 
-// React reports every server/client divergence through console.error, and each
-// of those messages names hydration.
-const HYDRATION_MISMATCH = /hydrat(?:ed|ion)/i;
-
 test('home page hydrates with no server/client mismatch', async ({page}) => {
-  const mismatches: string[] = [];
+  const errors: string[] = [];
 
+  // React splits hydration reporting across two channels. Attribute diffs are a
+  // direct console.error, but a throw-path failure goes to window.reportError,
+  // which Chromium delivers as pageerror and never as a console message. Watch
+  // both, and treat any error during the load as the failure it is.
   page.on('console', (message) => {
-    if (message.type() === 'error' && HYDRATION_MISMATCH.test(message.text())) {
-      mismatches.push(message.text());
+    if (message.type() === 'error') {
+      errors.push(message.text());
     }
+  });
+  page.on('pageerror', (error) => {
+    errors.push(error.message);
   });
 
   await page.goto('/');
   await hydration(page);
 
-  expect(mismatches).toEqual([]);
+  expect(errors).toEqual([]);
 });
