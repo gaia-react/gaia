@@ -6,6 +6,7 @@
 # Usage:
 #   audit-write-clearance.sh --root <path> --member <name> \
 #                            --provenance earned|refused \
+#                            [--supersede-refusal <reason>] \
 #                            [--help|-h]
 #
 #   --root         REQUIRED. The audited working root. The member's content
@@ -15,6 +16,20 @@
 #                  another worktree's content.
 #   --member       REQUIRED. The Code Audit Team member writing the clearance.
 #   --provenance   REQUIRED. earned | refused.
+#   --supersede-refusal <reason>
+#                  OPTIONAL, valid ONLY with --provenance earned (a usage error
+#                  with refused, or with an empty/whitespace reason). A member's
+#                  explicit, reasoned reversal of its OWN prior same-digest
+#                  refusal: when set and a sibling <digest>[.<member>].refused
+#                  exists, the earned body records a `supersedes` block naming
+#                  the reason, and the writer removes that sibling refusal AFTER
+#                  the earned .ok is atomically published. This is the only
+#                  legitimate refused->earned path on identical content (an
+#                  operator acknowledges an unaddressed Important with a stated
+#                  reason, so the digest does not move). Absent the flag, an
+#                  earned write NEVER touches a sibling refusal, that strict
+#                  precedence is the anti-gaming control (a bare re-run must not
+#                  clear a refusal; only an authored, reasoned supersede may).
 #
 # Behavior (all contract):
 #   - Creates <root>/.gaia/local/audit/ if absent.
@@ -46,7 +61,12 @@ usage() {
   cat <<'EOF' >&2
 usage: audit-write-clearance.sh --root <path> --member <name>
                                 --provenance earned|refused
+                                [--supersede-refusal <reason>]
                                 [--help|-h]
+
+  --supersede-refusal <reason>  valid only with --provenance earned; records a
+                                reasoned reversal of this member's own prior
+                                same-digest refusal and removes it.
 EOF
 }
 
@@ -65,6 +85,11 @@ fi
 ROOT=""
 MEMBER=""
 PROVENANCE=""
+# SUPERSEDE_SEEN records that the flag was passed at all, kept separate from
+# SUPERSEDE_REASON so that an empty reason (flag present, value blank) is a
+# usage error while an absent flag is the ordinary no-supersede path.
+SUPERSEDE_SEEN=0
+SUPERSEDE_REASON=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -78,6 +103,11 @@ while [ "$#" -gt 0 ]; do
       ;;
     --provenance)
       PROVENANCE="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --supersede-refusal)
+      SUPERSEDE_SEEN=1
+      SUPERSEDE_REASON="${2:-}"
       shift 2 2>/dev/null || shift
       ;;
     --help|-h)
@@ -115,6 +145,24 @@ case "$PROVENANCE" in
     exit 2
     ;;
 esac
+
+# --supersede-refusal is a reasoned reversal of an EARNED write only. Reject it
+# on a refusal (a refusal supersedes nothing) and reject an empty/whitespace
+# reason (supersession must be auditable, so it must carry a stated reason).
+if [ "$SUPERSEDE_SEEN" -eq 1 ]; then
+  if [ "$PROVENANCE" != "earned" ]; then
+    err "--supersede-refusal is valid only with --provenance earned"
+    usage
+    exit 2
+  fi
+  _supersede_trimmed="${SUPERSEDE_REASON#"${SUPERSEDE_REASON%%[![:space:]]*}"}"
+  _supersede_trimmed="${_supersede_trimmed%"${_supersede_trimmed##*[![:space:]]}"}"
+  if [ -z "$_supersede_trimmed" ]; then
+    err "--supersede-refusal requires a non-empty reason"
+    usage
+    exit 2
+  fi
+fi
 
 # The member's content digest is the marker's validity key. Fail closed: never
 # write a marker keyed to an empty or partial digest.
@@ -181,6 +229,18 @@ case "$PROVENANCE" in
   refused) target="$refused_path" ;;
 esac
 
+# Supersession is an EARNED-only, explicit act. It records the reversal in the
+# body and removes the sibling refusal only when the flag was passed AND a
+# same-digest refusal is actually on disk. Absent the flag, do_supersede stays
+# false and the sibling refusal is never touched: an earned write can only clear
+# a refusal that its author explicitly, reasonedly reverses, never a bare re-run
+# (the anti-gaming invariant). With the flag but no sibling refusal, the earned
+# write is a plain idempotent write, no supersedes block, no error.
+do_supersede=false
+if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -eq 1 ] && [ -f "$refused_path" ]; then
+  do_supersede=true
+fi
+
 mkdir -p "$audit_dir" || {
   err "cannot create audit directory '$audit_dir'"
   exit 2
@@ -209,9 +269,15 @@ jq -cn \
   --arg sha "$sha" \
   --arg audited_at "$audited_at" \
   --argjson sidecar "$sidecar" \
+  --argjson do_supersede "$do_supersede" \
+  --arg supersede_reason "$SUPERSEDE_REASON" \
   '{version: $version, schema: $schema, member: $member,
     provenance: $provenance, digest: $digest, tree: $tree, sha: $sha,
-    audited_at: $audited_at, sidecar: $sidecar}' \
+    audited_at: $audited_at, sidecar: $sidecar}
+   + (if $do_supersede
+      then {supersedes: {provenance: "refused", reason: $supersede_reason,
+                         superseded_at: $audited_at}}
+      else {} end)' \
   > "$tmp" || {
   rm -f "$tmp"
   err "cannot build the marker body"
@@ -223,6 +289,20 @@ mv -f "$tmp" "$target" || {
   err "cannot publish marker to '$target'"
   exit 2
 }
+
+# Order is load-bearing: the earned .ok is published above FIRST, the sibling
+# refusal is removed here SECOND. A crash between the two leaves BOTH markers on
+# disk, and the merge gate checks the refusal family first, so it stays shut
+# (fail-safe). Removing the refusal first would open a window where neither an
+# earned nor a refused marker exists. If the removal itself fails, the earned
+# marker is already durably published, so warn and still exit 0 rather than
+# reporting a false failure; the stale refusal keeps the gate shut until the
+# next supersede attempt, never falsely opens it. This runs inside the writer
+# subprocess, not as a Claude Bash tool call, so the destructive-command guard
+# does not intercept it.
+if [ "$do_supersede" = "true" ]; then
+  rm -f "$refused_path" || err "warning: superseded but could not remove '$refused_path'"
+fi
 
 printf '%s\n' "$target"
 exit 0

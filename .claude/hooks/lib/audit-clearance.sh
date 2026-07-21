@@ -95,6 +95,16 @@ clearance_member_cleared() {
 #   exit 0 iff a refusal artifact exists for this exact digest and member. jq
 #   is REQUIRED: the body must parse and carry provenance "refused" with a
 #   matching digest and member. With jq absent this returns 1 (fail-closed).
+#
+#   Deliberately no timestamp comparison and no same-digest .ok lookup. A
+#   refusal is retired by its own author removing it, never by this reader
+#   inferring supersession: the shared writer
+#   (.gaia/scripts/audit-write-clearance.sh --supersede-refusal <reason>)
+#   removes the sibling refusal when the member explicitly and reasonedly
+#   reverses it, so by the time the gate runs there is no refusal left to
+#   find. Inferring "newest marker wins" here instead would turn refusal
+#   precedence, the control that stops someone re-running an auditor until it
+#   passes, into a no-op.
 clearance_member_refused() {
   local root="$1" digest="$2" member="$3" p
   p="$(clearance_refused_path "$root" "$digest" "$member")"

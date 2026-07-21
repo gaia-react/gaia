@@ -279,7 +279,7 @@ fi
 refusal_note=""
 if [ "$frontend_refused" -eq 1 ]; then
   refusal_note="
-A live refusal exists for this exact content: $(clearance_refused_path "$root" "$frontend_digest" code-audit-frontend). A refusal always takes precedence over any earned marker for the same content; re-spawn the code-audit-frontend agent to address the finding.
+A live refusal exists for this exact content: $(clearance_refused_path "$root" "$frontend_digest" code-audit-frontend). A refusal always takes precedence over any earned marker for the same content, and a bare re-spawn does NOT clear it: an ordinary earned write leaves the refusal in place, so re-running the agent against unchanged, still-unaddressed content refuses again. Clear it by resolving the finding (a content change rotates the digest, retiring this refusal), or, when the operator acknowledges an Important with a stated reason and the content does not move, by re-spawning code-audit-frontend so it writes its earned marker with --supersede-refusal \"<reason>\", which removes its own refusal as an explicit, recorded act.
 "
 fi
 
@@ -719,7 +719,7 @@ while IFS= read -r m; do
     all_cleared=0
     if [ "$m_refused" -eq 1 ]; then
       refused_path="$(clearance_refused_path "$root" "$m_digest" "$m")"
-      report="${report}  - ${m}: REFUSED (a live refusal exists for this exact content at ${refused_path}; re-spawn the member's agent to address the finding)
+      report="${report}  - ${m}: REFUSED (a live refusal exists for this exact content at ${refused_path}; a bare re-spawn does not clear it, the member must supersede it, see below)
 "
     elif [ "$m" = "code-audit-frontend" ]; then
       report="${report}  - code-audit-frontend: PENDING
@@ -751,6 +751,15 @@ the frontend digest), then retry gh pr merge. Markers are keyed to each
 member's own content digest (the files it owns plus the shared gate
 machinery), so an out-of-glob change never invalidates one, and a GAIA-Audit
 trailer stamp (an empty commit) never invalidates any either.
+
+A REFUSED member is not a PENDING one: its refusal outranks any earned marker
+for the same content, and an ordinary re-spawn does not clear it (a plain
+earned write leaves the refusal on disk). Resolve the finding, which rotates
+that member's digest and retires the refusal with it; or, when the operator
+acknowledges an Important with a stated reason and the content does not move,
+re-spawn the member so it writes its earned marker with
+--supersede-refusal \"<reason>\", removing its own refusal as an explicit,
+recorded act.
 
 LOCAL-SYNC FAILURE NOTE: if a previous gh pr merge exited with
 'fatal: main is already used by worktree at <path>', the GitHub-side merge
