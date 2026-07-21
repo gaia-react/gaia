@@ -272,6 +272,54 @@ assert_allowed() {
   assert_allowed
 }
 
+# --- the remit writer is an execution-shape refusal, not a write-shape one ---
+
+@test "SPEC-056 UAT-015: code-audit-frontend running the remit writer is denied" {
+  run_hook_bash "code-audit-frontend" "bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+  grep -qF -- "finding" <<<"$output"
+}
+
+@test "SPEC-056 UAT-015: an advisory member running the remit writer is denied too" {
+  run_hook_bash "code-audit-maintainer-shell" "bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer invoked by an absolute path is denied" {
+  run_hook_bash "code-audit-frontend" "bash /Users/you/projects/my-app/.gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer invoked with a leading ./ is denied" {
+  run_hook_bash "code-audit-frontend" "bash ./.gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: no agent_type running the remit writer is allowed" {
+  run_hook_bash "" "bash .gaia/scripts/write-audit-remits.sh"
+  assert_allowed
+}
+
+@test "SPEC-056 UAT-015: a non-member subagent running the remit writer is allowed" {
+  run_hook_bash "general-purpose" "bash .gaia/scripts/write-audit-remits.sh"
+  assert_allowed
+}
+
+@test "SPEC-056 UAT-015: neither payload writes a file" {
+  local agents_dir before after
+  agents_dir="$BATS_TEST_DIRNAME/../../../.claude/agents"
+  before=$(find "$agents_dir" -type f -exec shasum {} + | sort)
+  run_hook_bash "code-audit-frontend" "bash .gaia/scripts/write-audit-remits.sh"
+  run_hook_bash "" "bash .gaia/scripts/write-audit-remits.sh"
+  after=$(find "$agents_dir" -type f -exec shasum {} + | sort)
+  [ "$before" = "$after" ]
+}
+
+@test "SPEC-056 UAT-015: running the roster CHECK is still allowed for a member" {
+  run_hook_bash "code-audit-frontend" "bash .gaia/scripts/verify-audit-roster.sh"
+  assert_allowed
+}
+
 # --- structural ---
 
 @test "block-selfheal-paths.sh is executable" {

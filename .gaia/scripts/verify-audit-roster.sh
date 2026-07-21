@@ -18,7 +18,9 @@
 #     file that lands in it.
 #
 # Reads live state, never writes: no API write, no file write, no git mutation.
-# One finding block per violation on stdout; exit 1 if any fired.
+# One finding block per violation on stdout; exit 1 if any fired. `--emit-roster`
+# is a read-only output mode the remit writer (write-audit-remits.sh) consumes
+# to obtain the roster's raw globs.
 #
 # The five invariants:
 #
@@ -68,7 +70,7 @@
 #   Every accepted pair is decided; there is no accepted-but-undecided case.
 #
 #   REJECTED as undecidable, never passed: an empty glob or an empty segment
-#   (`a//b`, a leading or trailing `/`); any of ? [ ] { } \ , which a reader may
+#   (`a//b`, a leading or trailing `/`); any of ? [ ] { } or \, which a reader may
 #   intend as wildcards and which the classifier silently escapes into literals;
 #   `**` inside a segment rather than as a whole one (`app/**.ts`), whose
 #   compiled form the segment model cannot represent; a run of three or more
@@ -87,15 +89,17 @@ set -uo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: verify-audit-roster.sh [--root <dir>] [--config <file>]
+Usage: verify-audit-roster.sh [--root <dir>] [--config <file>] [--emit-roster]
   --root <dir>     repo root. Default: the repo holding this script.
                    Injection point for the machinery lists and the agent files.
   --config <file>  roster to verify. Default: <root>/.gaia/audit-ci.yml.
                    Injection point for the roster.
+  --emit-roster    print the roster's raw member/glob/default records and
+                   exit; read-only, runs no invariant.
   --help | -h      this text.
 
 Exit codes:
-  0  every invariant holds.
+  0  every invariant holds. With --emit-roster: always, once the roster parses.
   1  at least one invariant is violated (one finding block per violation).
   2  usage error.
 USAGE
@@ -105,12 +109,17 @@ root=""
 config=""
 root_given=0
 config_given=0
+emit_roster=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --help|-h)
       usage
       exit 0
+      ;;
+    --emit-roster)
+      emit_roster=1
+      shift
       ;;
     --root|--config)
       if [ $# -lt 2 ]; then
@@ -223,6 +232,21 @@ _verify_roster_read_globs() {
 
 class_records="$(_audit_scope_parse_auditors < "$config")"
 raw_records="$(_verify_roster_read_globs < "$config")"
+
+# --- Read-only roster emit ---------------------------------------------------
+#
+# The writer (.gaia/scripts/write-audit-remits.sh) needs the roster's RAW globs
+# to generate each member's remit region. This mode is how it gets them: the
+# scrape above is deliberately a second, independent reader of the same YAML, and
+# the roster-reader-drift invariant is exactly the comparison between it and the
+# classifier, so the writer reuses this reader rather than adding a third. Still
+# read-only: it prints and exits before any invariant runs, and writes nothing.
+if [ "$emit_roster" -eq 1 ]; then
+  printf '%s\n' "$raw_records"
+  printf '%s\n' "$class_records" |
+    awk '$1 == "DEFAULT" { printf "DEFAULT\t%s\n", $2 }'
+  exit 0
+fi
 
 # --- Invariant: exactly one default member -----------------------------------
 

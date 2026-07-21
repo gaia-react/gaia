@@ -39,6 +39,14 @@
 # whole diff at push time and cannot be evaded by the shape of the write;
 # this hook reads one attempted edit at a time and can be. That asymmetry is
 # real and accepted: under local mode a human watches every turn.
+#
+# The Bash branch also carries one EXECUTION-shape refusal, not a write
+# shape: a dispatched member may not invoke
+# .gaia/scripts/write-audit-remits.sh at all, since running it edits
+# .claude/agents/code-audit-*.md and rotates every member's clearance
+# digest. That literal lives here, not in the shared
+# AUDIT_SELFHEAL_REFUSE_ERE, because that ERE is a path matcher the CI push
+# gate applies to a diff, and a script invocation is not a path in a diff.
 set -euo pipefail
 
 payload=$(cat)
@@ -142,6 +150,23 @@ case "$tool_name" in
 
     read -r -a toks <<<"$cmd"
     n=${#toks[@]}
+
+    # A dispatched member may not repair its own declared remit. This is an
+    # EXECUTION shape, not a write shape: `bash .gaia/scripts/write-audit-remits.sh`
+    # presents no redirect, tee, sed -i, sponge, or cp/mv destination, so the
+    # write-shape loop below never sees it. The literal lives here rather than in
+    # the shared AUDIT_SELFHEAL_REFUSE_ERE because that ERE is a path matcher the
+    # CI push gate applies to a diff, and an invocation is not a path in a diff.
+    k=0
+    while [ "$k" -lt "$n" ]; do
+      cand=$(strip_quotes "${toks[$k]}")
+      case "${cand##*/}" in
+        write-audit-remits.sh)
+          deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites .claude/agents/code-audit-*.md, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
+          ;;
+      esac
+      k=$((k + 1))
+    done
 
     i=0
     while [ "$i" -lt "$n" ]; do
