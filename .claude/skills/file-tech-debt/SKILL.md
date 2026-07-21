@@ -47,12 +47,12 @@ If no match exists:
 1. Create the labels idempotently first (step 6), a pre-existing label is not an error.
 2. Build the full issue body (step 5) in a gitignored body-file, not inline. Give the file a per-run-unique name under `.gaia/local/audit/` (for example `.gaia/local/audit/issue-body-<something-unique>.md`). The name must be unique because sub-step 4 below deletes it: two runs sharing one fixed name (CI plus a local run, the same pair step 3 guards against) would race, and one run's cleanup would delete the other's in-flight body out from under it.
 3. Re-check the dedup query from step 2 immediately before creating, this shrinks the race window where a concurrent run (CI plus a local run, for instance) files the same finding twice. It is the same path+line matching basis as step 2, so a reclassification that lands between your first check and now still resolves to the already-open issue. Prefer a search-or-update path over a blind create when your environment supports it.
-4. Create the issue with the form that matches whether a grade is available, then delete the body file **in a second, separate Bash tool call**. A filing through one of the two grading routes (step 7) uses the graded form; every other filing drops the `--label difficulty:<grade>` flag entirely rather than passing it empty or with a placeholder:
+4. Create the issue with the form that matches whether a grade is available, then delete the body file **in a second, separate Bash tool call**. A filing that has a difficulty grade in hand (step 7) uses the graded form; a filing with no grade drops the `--label difficulty:<grade>` flag entirely rather than passing it empty or with a placeholder:
 
 ```bash
 body_file=.gaia/local/audit/issue-body-<something-unique>.md
 
-# Graded filing, the machine grading routes:
+# Graded filing, when a grade is in hand:
 gh issue create --label tech-debt --label severity:<tier> --label difficulty:<grade> --body-file "$body_file"
 
 # Ungraded filing, when no grade is available:
@@ -88,7 +88,7 @@ Build a self-contained issue body with these parts, in order:
 
 ## 6. Labels
 
-Every out-of-scope non-security issue this recipe files carries `tech-debt` plus **exactly one** severity label; a filing through one of the two grading routes (see step 7) carries exactly one severity label and exactly one difficulty label. Map the finding's report tier to the label like this:
+Every out-of-scope non-security issue this recipe files carries `tech-debt` plus **exactly one** severity label; a filing that carries a difficulty grade (see step 7) carries exactly one severity label and exactly one difficulty label. Map the finding's report tier to the label like this:
 
 | Report tier | Label |
 |---|---|
@@ -111,7 +111,7 @@ done
 
 ## 7. Difficulty grade
 
-Every issue a machine files through one of this recipe's two grading routes carries exactly one `difficulty:` label; those two routes are `.claude/agents/code-audit-frontend.md`'s non-security disposition pipeline and the tech-debt filing block in `.claude/skills/gaia/references/audit.md`, and every other path into this recipe files ungraded. This section is the single source of truth for the permitted values and for choosing between them; the grading routes never grade against a private reading of a grade's name.
+A filing grades, carrying exactly one `difficulty:` label, when the cited code is read at filing time, so the grade is the rubric below applied to real code rather than guessed from a description. Every filed issue already carries a concrete `file:line` and failure mode (step 5 makes both mandatory), so the discriminator is not those but whether the code behind them was read here. A filing that has not read the cited code omits the label rather than guess one. Two routes always read the code and so always grade: `.claude/agents/code-audit-frontend.md`'s non-security disposition pipeline and the tech-debt filing block in `.claude/skills/gaia/references/audit.md`. A direct human invocation grades on the same test, when it reads the cited code as it files (a reviewer or an audit agent surfaced the defect and you open the code to file it, as with a review follow-up), and omits when it files from a relayed summary or hand-off without reading the code. This section is the single source of truth for the permitted values and for choosing between them; a grading filing never grades against a private reading of a grade's name.
 
 Grade the difficulty of **the fix**, never the model, agent, or tooling that would perform it.
 
@@ -127,10 +127,10 @@ Difficulty adds the dimension the `Handler:` line does not capture. `Handler:` g
 
 Worked boundary, easy versus medium. A swallowed error the issue text says to rethrow is `difficulty:easy`: the issue determines the change. The same swallowed error, where the issue says only that it must not be swallowed and leaves the choice between rethrowing, logging and continuing, and surfacing to the caller, is `difficulty:medium`: the choice is real, and the sibling call sites settle it.
 
-- **Ungraded filings.** The ungraded paths omit a grade for path-specific reasons: a direct human invocation of this skill ("file a tech-debt issue", "record this as tech-debt") has none to give; the orchestrator's cross-remit disposition has not classified the finding out-of-scope against this rubric; and the `/health-audit` comprehensive runbook's human-gated filing offer files from an operator's yes on a written report rather than from freshly-read code. A filing on any of these paths omits the label rather than guessing a grade, and an issue carrying no grade is normal: it orders, clusters, and drains exactly as a graded one does. That guarantee is what keeps a mixed adopter state safe, since every file this feature touches resolves independently on update: a new copy of this recipe running against an old `debt.md` files grades that nothing yet reads, and a new `debt.md` running against old agents reads a backlog where nothing is graded. Both states are reachable and both benign.
+- **When a filing omits the grade.** A filing omits the label whenever the cited code was not read at filing time, rather than guessing a grade from a description: a direct human invocation that files from a relayed summary or hand-off without reopening the cited code has no rubric-applied grade to give; the orchestrator's cross-remit disposition has not read the finding against this rubric; and the `/health-audit` comprehensive runbook's human-gated filing offer files from an operator's yes on a written report rather than from freshly-read code. A human invocation that *does* read the cited code as it files grades instead (above); it is not forced ungraded merely for arriving by the human path. An issue carrying no grade is normal: it orders, clusters, and drains exactly as a graded one does. That guarantee is what keeps a mixed adopter state safe, since every file this feature touches resolves independently on update: a new copy of this recipe running against an old `debt.md` files grades that nothing yet reads, and a new `debt.md` running against old agents reads a backlog where nothing is graded. Both states are reachable and both benign.
 - **Argv constraint.** The value written to the `difficulty:<grade>` label must be one of the three literals above, byte-for-byte, before it reaches any `gh` argv. Argv exposure is minimal here, the token is fixed-vocabulary, which is why the `--body-file` mandate in step 4 is not implicated, but a model-produced string interpolated into a command CI runs with `--verbose` argv echoing earns the one-clause constraint anyway.
-- **Disclosure.** The three grade values are fixed and carry no information about the finding: they do not discriminate a security-class finding from any other. Machine filing never reaches a public repo for a security-class finding, the agent's security-class divert path intercepts it first, and a human-filed issue carries no grade at all.
-- **Where the grade comes from.** This file defines the rubric; it does not apply it. The two grading routes named at the top of this section read it and write the label; an edit to the value set or the rubric must reach both.
+- **Disclosure.** The three grade values are fixed and carry no information about the finding: they do not discriminate a security-class finding from any other, so a difficulty grade leaks nothing about security-sensitivity regardless of who applies it or where the issue lands. Machine filing never reaches a public repo for a security-class finding, the agent's security-class divert path intercepts it first; and because the grade itself is non-discriminating, a human-invoked filing that now carries one discloses nothing a graded machine filing would not.
+- **Where the grade comes from.** This file defines the rubric; it does not apply it. The two external grading routes named at the top of this section, the frontend audit agent and `audit.md`, read it and write the label; an edit to the value set or the rubric must reach both. The human-invocation grading applies this section's rubric in place, so it needs no separate propagation.
 
 ## 8. Touch the debt-count staleness sentinel
 

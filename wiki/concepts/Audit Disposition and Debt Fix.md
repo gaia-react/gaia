@@ -56,7 +56,7 @@ A non-security out-of-scope finding on a present backend files as a `tech-debt` 
 <!-- gaia-debt-key: v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer> -->
 ```
 
-The body is self-contained: the dedup-key line, the `file:line`, a concrete failure mode, a suggested fix, and a handler-class line (`prompt`, `plan`, or `spec`, advisory only). The issue carries exactly one `severity:*` label (mapped from the finding's report tier) plus `tech-debt`; a machine-graded filing also carries exactly one `difficulty:*` label, and an issue carrying none is ungraded, a normal case; a deliberately-closed finding carries the GitHub `wontfix` label instead so it is not re-filed.
+The body is self-contained: the dedup-key line, the `file:line`, a concrete failure mode, a suggested fix, and a handler-class line (`prompt`, `plan`, or `spec`, advisory only). The issue carries exactly one `severity:*` label (mapped from the finding's report tier) plus `tech-debt`; a filing that reads the cited code as it files also carries exactly one `difficulty:*` label, and an issue carrying none is ungraded, a normal case; a deliberately-closed finding carries the GitHub `wontfix` label instead so it is not re-filed.
 
 The `file-tech-debt` skill (`.claude/skills/file-tech-debt/SKILL.md`) is the source of truth for the filing mechanics: key construction, the `--body-file` invocation, idempotent labels, the body schema, and the sentinel touch.
 

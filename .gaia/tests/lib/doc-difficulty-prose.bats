@@ -2,7 +2,7 @@
 # UAT-011 (SPEC-053): doc-grep coverage for the difficulty-grading prose that
 # spans four adopter-shipping files. The vocabulary and rubric
 # (`.claude/skills/file-tech-debt/SKILL.md`), the two machine filing routes
-# that grade against it (`.claude/agents/code-audit-frontend.md`'s
+# that always grade against it (`.claude/agents/code-audit-frontend.md`'s
 # `### E. Non-security disposition pipeline`, and the out-of-scope filing
 # block in `.claude/skills/gaia/references/audit.md`), and the two consumer
 # subcommands that surface the grade (`.claude/skills/gaia/references/debt.md`
@@ -240,7 +240,7 @@ setup() {
 }
 
 @test "SKILL.md carries the three rider paragraphs beside the rubric block" {
-  grep -qF -- "omits the label rather than guessing a grade" "$VOCAB" || return 1
+  grep -qF -- "rather than guessing a grade from a description" "$VOCAB" || return 1
   grep -qF -- "byte-for-byte, before it reaches any" "$VOCAB" || return 1
   grep -qF -- "carry no information about the finding" "$VOCAB" || return 1
 }
