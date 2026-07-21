@@ -55,8 +55,9 @@ Exit codes:
   0  every member's region is in the generated state (whether or not
      anything changed).
   1  a hard failure: the check script is missing, the --emit-roster call
-     failed, or a definition's markers are duplicated, unbalanced, or the
-     definition has no insertion anchor.
+     failed, a definition's markers are duplicated, unbalanced, or reversed,
+     the definition has no insertion anchor, region generation failed, or
+     installing the regenerated file failed.
   2  usage error, including a roster that does not exist.
 USAGE
 }
@@ -131,7 +132,8 @@ member_list="$(printf '%s\n' "$records" | awk -F'\t' '$1 == "MEMBER" { print $2 
 default_name="$(printf '%s\n' "$records" | awk -F'\t' '$1 == "DEFAULT" { print $2; exit }')"
 
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/write-audit-remits.XXXXXX")"
-trap 'rm -rf "$tmpdir"' EXIT
+tmp=""
+trap 'rm -rf "$tmpdir"; [ -n "$tmp" ] && rm -f "$tmp"' EXIT
 
 overall_failed=0
 
@@ -260,10 +262,14 @@ $old_globs
 EOF
   removed="${removed% }"
 
-  # Rewrite mechanics: awk to a temp file, then mv over the original. Never
+  # Rewrite mechanics: awk to a temp file, then mv over the original. The temp
+  # file is a sibling of $agent, not under $tmpdir (normally a different
+  # filesystem), so the mv below is a same-filesystem atomic rename rather
+  # than a copy-then-unlink: a mid-copy failure (ENOSPC, EIO) can't leave
+  # $agent truncated while this script still reports it "not modified". Never
   # sed -i (the BSD/GNU -i forms disagree, and the region body carries
   # backticks, *, and . a sed replacement would mangle).
-  tmp="$tmpdir/out"
+  tmp="${agent}.gaia-remit-tmp.$$"
   if ! awk -v bodyfile="$body_file" -v start="$START_MARKER" -v end="$END_MARKER" \
       -v mode="$awk_mode" -v anchor="$REMIT_HEADING" '
     function emit_body(   line) {
@@ -309,6 +315,8 @@ EOF
   ' "$agent" > "$tmp"; then
     printf 'write-audit-remits: %s: failed to generate the regenerated region for %s; not modified\n' \
       "$name" "$agent" >&2
+    rm -f "$tmp"
+    tmp=""
     overall_failed=1
     continue
   fi
@@ -318,9 +326,12 @@ EOF
   if ! mv "$tmp" "$agent"; then
     printf 'write-audit-remits: %s: failed to install the regenerated %s; not modified\n' \
       "$name" "$agent" >&2
+    rm -f "$tmp"
+    tmp=""
     overall_failed=1
     continue
   fi
+  tmp=""
   [ "$was_exec" -eq 1 ] && chmod +x "$agent"
 
   if [ "$mode" = "insert" ]; then

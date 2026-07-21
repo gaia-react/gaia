@@ -330,6 +330,43 @@ assert_allowed() {
   assert_allowed
 }
 
+@test "SPEC-056 UAT-015: the writer invoked bare (no interpreter) is denied" {
+  run_hook_bash "code-audit-frontend" ".gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer invoked after a && separator is denied" {
+  run_hook_bash "code-audit-frontend" "true && bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+# --- execution-position anchor: skip interpreter options and env assignments ---
+
+@test "SPEC-056 UAT-015: bash -x <writer> is denied" {
+  run_hook_bash "code-audit-frontend" "bash -x .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: sh -x <writer> is denied" {
+  run_hook_bash "code-audit-frontend" "sh -x .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: bash --norc <writer> is denied" {
+  run_hook_bash "code-audit-frontend" "bash --norc .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: env FOO=1 <writer> is denied" {
+  run_hook_bash "code-audit-frontend" "env FOO=1 .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: nohup <writer> is denied" {
+  run_hook_bash "code-audit-frontend" "nohup .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
 # --- structural ---
 
 @test "block-selfheal-paths.sh is executable" {

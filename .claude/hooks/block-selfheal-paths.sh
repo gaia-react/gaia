@@ -158,30 +158,69 @@ case "$tool_name" in
     # the shared AUDIT_SELFHEAL_REFUSE_ERE because that ERE is a path matcher the
     # CI push gate applies to a diff, and an invocation is not a path in a diff.
     #
-    # Matched only at an EXECUTION position: token 0, or a token immediately
-    # following an interpreter (bash, sh, zsh, env) or a `;` / `&&` / `||` / `|`
-    # separator. A read-only command that merely NAMES the file as an argument
-    # (`shellcheck .gaia/scripts/write-audit-remits.sh`, `cat ...`, `git log
-    # --grep ...`) is not an invocation of it and must stay allowed.
+    # Matched only at an EXECUTION position: token 0, a token immediately
+    # following a `;` / `&&` / `||` / `|` separator, or -- after an
+    # interpreter-like token (bash, sh, zsh, env, nohup) -- the first
+    # following token that is neither a `-`-prefixed option nor (after `env`)
+    # a `VAR=VALUE` assignment, so `sh -x <writer>`, `bash --norc <writer>`,
+    # `env FOO=1 <writer>`, and `nohup <writer>` all deny. `-c` is never
+    # treated as a skippable option: its argument is a quoted script STRING
+    # this whitespace tokenizer cannot safely parse, so `bash -c '<writer>'`
+    # is left exactly as it was (a stated, out-of-scope gap; same for any
+    # invocation past line 1, since `read -r -a toks` above only tokenizes
+    # the first line). A read-only command that merely NAMES the file as an
+    # argument (`shellcheck .gaia/scripts/write-audit-remits.sh`, `cat ...`,
+    # `git log --grep ...`) is not an invocation of it and must stay allowed.
+    prev_sep=1
+    after_interp=0
+    after_interp_env=0
     k=0
     while [ "$k" -lt "$n" ]; do
+      cand=$(strip_quotes "${toks[$k]}")
+
       exec_pos=0
-      if [ "$k" -eq 0 ]; then
-        exec_pos=1
-      else
-        prev=$(strip_quotes "${toks[$((k - 1))]}")
-        case "$prev" in
-          ';' | '&&' | '||' | '|' | bash | sh | zsh | env) exec_pos=1 ;;
+      [ "$prev_sep" -eq 1 ] && exec_pos=1
+
+      if [ "$after_interp" -eq 1 ]; then
+        skip=0
+        case "$cand" in
+          -c) ;;
+          -*) skip=1 ;;
         esac
+        if [ "$skip" -eq 0 ] && [ "$after_interp_env" -eq 1 ]; then
+          case "$cand" in
+            [A-Za-z_]*=*) skip=1 ;;
+          esac
+        fi
+        if [ "$skip" -eq 0 ]; then
+          exec_pos=1
+          after_interp=0
+        fi
       fi
+
       if [ "$exec_pos" -eq 1 ]; then
-        cand=$(strip_quotes "${toks[$k]}")
         case "${cand##*/}" in
           write-audit-remits.sh)
             deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites every code-audit-*.md definition under .claude/agents/, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
             ;;
         esac
+        case "$cand" in
+          bash | sh | zsh | nohup)
+            after_interp=1
+            after_interp_env=0
+            ;;
+          env)
+            after_interp=1
+            after_interp_env=1
+            ;;
+        esac
       fi
+
+      case "$cand" in
+        ';' | '&&' | '||' | '|') prev_sep=1 ;;
+        *) prev_sep=0 ;;
+      esac
+
       k=$((k + 1))
     done
 

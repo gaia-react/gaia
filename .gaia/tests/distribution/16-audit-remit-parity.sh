@@ -170,8 +170,8 @@ orig_sha="$(shasum -a 256 "$TARGET" | awk '{print $1}')"
 # Delete the first bullet line inside the remit region.
 DRIFTED="$(mktemp)"
 awk '
-  /<!-- gaia:audit-remit:start -->/ { flag=1; print; next }
-  /<!-- gaia:audit-remit:end -->/ { flag=0 }
+  $0 == "<!-- gaia:audit-remit:start -->" { flag=1; print; next }
+  $0 == "<!-- gaia:audit-remit:end -->" { flag=0 }
   flag && /^- `/ && !deleted { deleted=1; next }
   { print }
 ' "$TARGET" > "$DRIFTED"

@@ -704,10 +704,11 @@ pair_records="$(
     $1 == "MEMBER" { nm++; mem[nm] = $2; next }
     $1 == "RAW" { nraw[$2]++; raw[$2, nraw[$2]] = $3; next }
     # An exact field compare, so REGIONOK / REGIONMISSING / REGIONDUP /
-    # REGIONUNBALANCED never match the REGION handler. The three shape records
-    # fall through every handler here and are ignored, which is right: they are
-    # rendered shell-side, and a member whose region could not be read carries
-    # no hasreg entry, so the parity section below skips it.
+    # REGIONUNBALANCED / REGIONREVERSED never match the REGION handler. These
+    # four shape records fall through every handler here and are ignored,
+    # which is right: they are rendered shell-side, and a member whose region
+    # could not be read carries no hasreg entry, so the parity section below
+    # skips it.
     $1 == "REGIONOK" { hasreg[$2] = 1; next }
     $1 == "REGION" { nreg[$2]++; reg[$2, nreg[$2]] = $3; next }
 
