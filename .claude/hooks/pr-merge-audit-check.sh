@@ -545,8 +545,9 @@ frontend_cleared() {
 # is what ultimately clears the merge), re-verify its disposition sidecar.
 # Seed-forward unions a still-open receipt across a digest rotation without
 # re-verifying it against the backend, so this hook is the deterministic
-# backstop: a filed key whose issue no longer exists, or a pending(definitive)
-# entry, denies. Fail closed when the marker is valid but its sidecar is
+# backstop: a filed key whose issue no longer exists, a pending(definitive)
+# entry, or a machinery_waived entry recorded against a non-machinery path,
+# denies. Fail closed when the marker is valid but its sidecar is
 # absent (a valid marker proves nothing about dispositions with no sidecar to
 # read). Prints the deny JSON and returns 1 on denial; returns 0 (silent) when
 # there is nothing to deny.
@@ -586,9 +587,10 @@ Offending finding key(s):
 
 ${offender_list}
 
-A filed tech-debt issue named in the sidecar no longer exists (or a
-pending(definitive) entry remains). Re-spawn the code-audit-frontend agent on
-this HEAD so it re-files the missing disposition, then retry gh pr merge.
+A filed tech-debt issue named in the sidecar no longer exists, a
+pending(definitive) entry remains, or a machinery_waived entry names a path that
+is not gate machinery. Re-spawn the code-audit-frontend agent on this HEAD so it
+re-files the missing disposition, then retry gh pr merge.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
   jq -n --arg r "$reason" '{

@@ -8,7 +8,7 @@ tags: [concept, claude, review]
 
 # Audit Disposition and Debt Fix
 
-Every finding the [[Code Review Audit Agent]] surfaces carries a **forced disposition** before its marker clears. In-scope findings keep their existing handling (a self-heal commit or an escalation that blocks the marker). Out-of-scope findings, debt in code the PR did not change but the audit opened anyway within its review radius, route out of the gating Critical/Important/Suggestions sections into a separate disposition: a same-run repair through the self-heal path when the finding qualifies for in-flight-fix promotion (below), a deduped, severity-labeled `tech-debt` GitHub issue, a diverted security surface, or a backend-absent waive. The `/gaia-debt` skill then fixes the filed backlog one fix unit at a time, a unit being a single issue or a user-approved related batch, and a statusline segment surfaces the open count.
+Every finding the [[Code Review Audit Agent]] surfaces carries a **forced disposition** before its marker clears. In-scope findings keep their existing handling (a self-heal commit or an escalation that blocks the marker). Out-of-scope findings, debt in code the PR did not change but the audit opened anyway within its review radius, route out of the gating Critical/Important/Suggestions sections into a separate disposition: a same-run repair through the self-heal path when the finding qualifies for in-flight-fix promotion (below), a deduped, severity-labeled `tech-debt` GitHub issue, a recorded machinery-path waive when the finding sits on the gate machinery itself, a diverted security surface, or a backend-absent waive. The `/gaia-debt` skill then fixes the filed backlog one fix unit at a time, a unit being a single issue or a user-approved related batch, and a statusline segment surfaces the open count.
 
 The system **fails open**. A definitively-absent issue backend makes the whole feature inert. A transient backend failure never silently drops a finding and never blocks the merge. The single intended block is a genuinely-missing disposition on a present, writable backend.
 
@@ -19,7 +19,7 @@ A finding sorts on two axes: **scope** (in-scope vs out-of-scope) and **resoluti
 | | auto-safe | needs-human |
 |---|---|---|
 | **in-scope** | self-heal commit in the working tree | escalation; blocks the marker until the operator resolves it |
-| **out-of-scope** | repaired in-flight when it qualifies for promotion (below), otherwise filed as a `tech-debt` issue (non-security), or backend-absent waive | diverted security surface (never a public channel); `/gaia-debt` fixes the filed backlog |
+| **out-of-scope** | repaired in-flight when it qualifies for promotion (below); recorded `machinery_waived` (not filed) when its path is gate machinery (non-security); otherwise filed as a `tech-debt` issue (non-security); or a backend-absent waive | diverted security surface (never a public channel); `/gaia-debt` fixes the filed backlog |
 
 For most out-of-scope findings the audit never edits the reviewed PR's working tree: it files, it does not fix, since auto-fixing debt the PR did not touch would breach surgical-changes. The one exception is in-flight-fix promotion.
 
@@ -38,7 +38,15 @@ The bound is hard: the audit **never opens an unrelated file to hunt for debt**.
 
 ## Out-of-scope disposition
 
-For each out-of-scope finding the audit classifies security first (below), probes the backend, then either files or diverts.
+For each out-of-scope finding the audit classifies security first (below), then, for a non-security finding whose path is the gate machinery itself, records a machinery-path waive; otherwise it probes the backend and either files or diverts.
+
+### Machinery-path waive
+
+When the audit reviews a fix to the **gate machinery itself** it surfaces out-of-scope findings **about that same machinery**. Filing each one opens a `tech-debt` issue that the next machinery PR's audit re-surfaces, a regeneration loop the `filed` disposition cannot escape. The `machinery_waived` disposition breaks that loop: it records the finding without filing it, so a machinery-fix PR does not seed the backlog with debt about the machinery it just touched.
+
+The disposition is gated by a deterministic **path-is-machinery** eligibility test so it cannot become a universal escape hatch: a finding is `machinery_waived`-eligible only when it is non-security (the security screen runs first and a security-class finding diverts, never machinery-waives) **and** its dedup-key `path` is a gate-machinery path, the self-referential set `audit_path_is_machinery` defines (`.claude/hooks/lib/audit-machinery.sh`), the files whose bytes change what a member reviews, who reviews it, where a clearance lands, or whether a clearance is believed. A finding that fails either condition files or diverts as usual.
+
+A machinery-waived finding is recorded as a `machinery_waived` entry in the disposition-ledger sidecar (with its dedup key) **and** listed in the PR body under a heading such as `## Out-of-scope machinery findings (recorded, not filed)`. The sidecar is gitignored and janitor-reaped, so the PR body is the durable, human-readable record of what was waived. An **offline abuse-check** enforces the eligibility test at merge time: a `machinery_waived` sidecar entry whose `path` is not a machinery path is an offender that denies the merge, in both the backstop hook and the merge gate (see "Deterministic backstop hook").
 
 ### Filing a tech-debt issue
 
@@ -88,10 +96,11 @@ The audit records its decision in a gitignored **disposition-ledger sidecar** at
 - `filed`: an open `tech-debt` issue carries the key (`issue_number` set).
 - `diverted`: security-class diverted; no public issue.
 - `waived`: backend definitively absent; the finding reverts to prose only.
+- `machinery_waived`: a non-security out-of-scope finding whose path is gate machinery; recorded and listed in the PR body, not filed. The offline abuse-check denies the merge if its path is not actually machinery.
 - `pending` with `pending_reason: "transient"`: a transient `gh` failure; the finding is surfaced and retained for the next idempotent run.
 - `pending` with `pending_reason: "definitive"`: a definitive filing failure on a present, writable backend; the disposition is genuinely missing.
 
-The marker writes when every entry is `filed`, `diverted`, `waived`, or `pending(transient)`. It is withheld **only** on `pending(definitive)`, the one intended block: the operator resolves the filing failure and re-invokes before the marker clears. Backend-absent, transient, and diversion-failure cases all fail open and never block the merge.
+The marker writes when every entry is `filed`, `diverted`, `waived`, `machinery_waived`, or `pending(transient)`. It is withheld **only** on `pending(definitive)`, the one intended block: the operator resolves the filing failure and re-invokes before the marker clears. Backend-absent, transient, diversion-failure, and machinery-waive cases all fail open and never block the merge; a `machinery_waived` entry recorded against a non-machinery path is caught instead by the offline abuse-check below.
 
 ### Backend probe (three outcomes)
 
@@ -103,13 +112,14 @@ The audit probes the issue backend once at the start of the disposition flow:
 
 ### Deterministic backstop hook
 
-The audit's verify-after-file re-query is agent behavior, not code. `.claude/hooks/audit-disposition-check.sh` is the deterministic backstop: a PreToolUse hook that gates `gh pr merge` alongside `pr-merge-audit-check.sh` and `worthiness-presence-check.sh`, each denying independently. It re-reads the sidecar for the current frontend content digest and denies the merge on exactly three conditions:
+The audit's verify-after-file re-query is agent behavior, not code. `.claude/hooks/audit-disposition-check.sh` is the deterministic backstop: a PreToolUse hook that gates `gh pr merge` alongside `pr-merge-audit-check.sh` and `worthiness-presence-check.sh`, each denying independently. It re-reads the sidecar for the current frontend content digest and denies the merge on exactly four conditions:
 
 1. a `filed` entry whose key has **no** matching open `tech-debt` issue on a reachable backend,
-2. a `pending(definitive)` entry, or
-3. a valid frontend earned marker for the current digest whose sidecar is absent (every audit run writes a sidecar, even an empty one, so a missing sidecar alongside a valid marker means the sidecar was lost, not that nothing was ever filed).
+2. a `pending(definitive)` entry,
+3. a `machinery_waived` entry whose key `path` is **not** a gate-machinery path (the offline abuse-check: the machinery-waive disposition is sanctioned only for a machinery path, so a machinery-waived finding recorded anywhere else is an unfiled out-of-scope finding wearing a machinery label), or
+4. a valid frontend earned marker for the current digest whose sidecar is absent (every audit run writes a sidecar, even an empty one, so a missing sidecar alongside a valid marker means the sidecar was lost, not that nothing was ever filed).
 
-It fails open everywhere else: no sidecar with no valid marker either, backend `absent`, every `filed` entry confirmed, all entries diverted/waived/pending(transient), or any `gh`/tooling failure. It also fails closed when the frontend digest itself cannot be derived (a missing sha256 tool, an unloadable classifier/machinery library, or a failing `git ls-tree`), since a digest-keyed gate that cannot compute its own key has no sidecar to check. A match is an issue body that **contains** the sidecar key as a substring, never whole-line equality. The CI workflow grants the job `issues: write` and adds `Bash(gh:*)` to the agent's `--allowedTools` so the same filing path runs from CI.
+The machinery-waive abuse-check is a purely local test (the key's `path` against the machinery set) shared by this hook and the merge gate through the one `disposition_offenders` implementation, and it fails open if the machinery library cannot be resolved. It fails open everywhere else too: no sidecar with no valid marker either, backend `absent`, every `filed` entry confirmed, all entries diverted/waived/machinery_waived-on-a-machinery-path/pending(transient), or any `gh`/tooling failure. It also fails closed when the frontend digest itself cannot be derived (a missing sha256 tool, an unloadable classifier/machinery library, or a failing `git ls-tree`), since a digest-keyed gate that cannot compute its own key has no sidecar to check. A match is an issue body that **contains** the sidecar key as a substring, never whole-line equality. The CI workflow grants the job `issues: write` and adds `Bash(gh:*)` to the agent's `--allowedTools` so the same filing path runs from CI.
 
 ### Seed-forward
 

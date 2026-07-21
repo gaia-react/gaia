@@ -24,26 +24,33 @@
 #   2. A `pending` entry with pending_reason "definitive" (a present, writable
 #      backend with a genuinely-missing disposition; a marker should not exist,
 #      but defend against a hand-written one).
-#   3. The frontend earned marker for the current frontend digest is VALID
+#   3. A `machinery_waived` entry whose key `path=` is NOT a gate-machinery path
+#      per audit_path_is_machinery (the abuse-check: the machinery-waive
+#      disposition is sanctioned only for a finding whose path is machinery, so
+#      a machinery_waived entry recorded against a non-machinery path is an
+#      unfiled out-of-scope finding wearing a machinery label). Purely local, no
+#      backend query; fails open if the machinery library cannot be resolved.
+#   4. The frontend earned marker for the current frontend digest is VALID
 #      (present, writer-shaped, provenance earned) but its sidecar is ABSENT.
 #      Every audit run, including one that identifies zero out-of-scope
 #      findings, writes a sidecar (an empty findings list at minimum), so an
 #      absent sidecar alongside a valid marker means the sidecar was lost, not
 #      that nothing was ever filed. Digest keying makes this a fail-open the
 #      old whole-tree key never exposed; this arm closes it.
-#   4. The frontend content digest cannot be derived (a missing sha256 tool, an
+#   5. The frontend content digest cannot be derived (a missing sha256 tool, an
 #      unloadable classifier/machinery library, a failing `git ls-tree`, or an
 #      absent digest library). A digest-keyed gate that cannot compute its own
 #      key has no path to check, so it denies rather than fall through to a
 #      permissive exit.
 #
-# FAIL-OPEN everywhere else (SPEC never-block invariant): no frontend marker at
+# FAIL-OPEN everywhere else (the never-block invariant): no frontend marker at
 # all (or one present but not writer-shaped/valid for the current digest),
 # backend "absent", every `filed` entry confirmed present, all entries
-# diverted/waived/pending(transient), or ANY gh/tooling failure (no gh,
-# unauthenticated, timeout, rate-limit, 5xx, unresolved repo). The backstop
-# blocks ONLY on a confirmed present-backend inconsistency, a
-# pending(definitive) entry, a valid-marker-with-absent-sidecar mismatch, or an
+# diverted/waived/pending(transient)/machinery_waived-on-a-machinery-path, or
+# ANY gh/tooling failure (no gh, unauthenticated, timeout, rate-limit, 5xx,
+# unresolved repo). The backstop blocks ONLY on a confirmed present-backend
+# inconsistency, a pending(definitive) entry, a machinery_waived entry whose
+# path is not machinery, a valid-marker-with-absent-sidecar mismatch, or an
 # undivertable digest-derive failure.
 #
 # Key relationship: the sidecar `key` is the dedup-key INNER content
@@ -137,6 +144,18 @@ if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
   . "$_lib_dir/audit-clearance.sh"
 fi
 
+# The machinery classifier, loaded the same guarded way. disposition_offenders'
+# machinery_waived abuse-check calls audit_path_is_machinery; the lib
+# self-sources this from its own dir as a fallback, but loading it here keeps
+# the guarded-sibling-lib pattern consistent and makes the classifier available
+# before the first call. Absent -> that arm fails open inside the lib (a naming
+# aid, never a security boundary), same posture as every other lib-load guard
+# here.
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-machinery.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-machinery.sh"
+fi
+
 deny() {
   jq -n --arg r "$1" '{
     hookSpecificOutput: {
@@ -211,6 +230,7 @@ ${offender_list}
 A marker for this content asserts every out-of-scope finding has a real disposition, but:
   - filed-but-missing: the sidecar marks the finding 'filed' yet no OPEN or CLOSED tech-debt issue carries its key on the reachable backend.
   - pending(definitive): the finding has no disposition (a definitive filing failure on a present, writable backend).
+  - machinery-waived-not-machinery: the sidecar waives the finding as gate machinery, but its key path is not a machinery path (the machinery-waive disposition is sanctioned only for a gate-machinery path).
 
 To unblock:
   1. Re-run the local code-audit-frontend agent on this HEAD so it re-files the

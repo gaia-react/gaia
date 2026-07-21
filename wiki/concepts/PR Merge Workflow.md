@@ -149,6 +149,15 @@ The local fix loop reads the re-run carry-forward ledger (`.gaia/local/audit/<BA
 - Stage, commit, and push the fixes; HEAD must move so the next audit runs against the fixed tree.
 - Re-spawn the audit agent on the new HEAD until it reports clean.
 
+#### Applying the audit's own Suggestions: digest economics
+
+Applying an in-scope Suggestion or an accepted finding is a content edit, so it rotates the reporting member's content digest, invalidates its marker, and forces a fresh re-dispatch of that member (~60-110k tokens) to re-earn the clearance. The cost decides whether to fold it into this PR:
+
+- **The member's digest is already rotating in this PR**, you are already changing files it owns this round (the ordinary audit → fix → re-audit loop) or a gate-machinery path every member's digest folds in. The re-dispatch is already being paid, so **apply the Suggestion in the same PR**: the fix rides a re-review that happens anyway and adds no marginal audit cost.
+- **The PR is already clean and the member is already marked**, with nothing else rotating its digest. Folding one more nit in buys a full re-dispatch of that member solely to re-earn the marker. **Accept-and-note instead**: record the Suggestion for a follow-up rather than folding it in, unless it is consequential enough that the re-dispatch is worth paying.
+
+This is operator guidance about **in-scope Suggestions and accepted findings**, distinct from **in-flight-fix promotion** (the audit's own automatic same-run repair of a qualifying **out-of-scope** finding through the self-heal path; see [[Audit Disposition and Debt Fix]]). In-flight-fix promotion is the audit repairing out-of-scope debt itself as it reviews; this is the operator deciding whether an in-scope Suggestion is worth folding into an already-marked PR. They do not overlap.
+
 #### Cross-remit findings
 
 A member can find a genuine defect in a file outside its own declared domain, a **cross-remit finding**. The member that found it applies no repair, whether or not the file's owner has already cleared it and whether or not the fix looks trivial; it reports the finding to the orchestrator instead. The orchestrator disposes of it one of two ways:
