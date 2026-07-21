@@ -23060,11 +23060,19 @@ var isFenceDelimiter = (line) => {
 var stripSkippedSpans = (line) => line.replaceAll(WIKILINK_SPAN, "").replaceAll(INLINE_CODE_SPAN, "");
 var findTitleLeaksInFile = (file2, matchers, lineAllowlist) => {
   const leaks = [];
-  let insideFence = false;
-  for (const [index, line] of file2.content.split("\n").entries()) {
-    if (isFenceDelimiter(line)) {
-      insideFence = !insideFence;
-    } else if (!insideFence && !lineAllowlist.some((rx) => rx.test(line))) {
+  const lines = file2.content.split("\n");
+  const fenceIndices = lines.flatMap(
+    (line, index) => isFenceDelimiter(line) ? [index] : []
+  );
+  const insideClosedFence = /* @__PURE__ */ new Set();
+  for (let pair = 0; pair + 1 < fenceIndices.length; pair += 2) {
+    for (let index = fenceIndices[pair]; index <= fenceIndices[pair + 1]; index += 1) {
+      insideClosedFence.add(index);
+    }
+  }
+  for (const [index, line] of lines.entries()) {
+    const scannable = !insideClosedFence.has(index) && !lineAllowlist.some((rx) => rx.test(line));
+    if (scannable) {
       const residue = stripSkippedSpans(line);
       for (const { regex, title } of matchers) {
         if (regex.test(residue)) {

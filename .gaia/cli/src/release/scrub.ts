@@ -981,10 +981,17 @@ type TitleMatcher = {regex: RegExp; title: string};
 
 /**
  * Scan one post-strip staging file for bare-title leaks with its OWN full
- * line-stream walk (not `scanForLeaks`), tracking fenced-code-block state per
- * file. Every line is observed so a fence delimiter always toggles state, even
- * a line-allowlisted one; routing this through `scanForLeaks` would drop
- * allowlisted lines before the walk and desync the fence counter.
+ * line-stream walk (not `scanForLeaks`), tracking fenced-code-block spans per
+ * file. Spans are derived from the raw line stream up front, independent of the
+ * line-allowlist, so an allowlisted line inside a fence can never desync
+ * detection; routing this through `scanForLeaks` would drop allowlisted lines
+ * before the walk and cause exactly that desync.
+ *
+ * Fence delimiters bound a code block only when they PAIR. An unbalanced (odd)
+ * delimiter count leaves a trailing unclosed fence whose lone opener closes
+ * nothing, so every line from it to EOF is scanned as prose rather than
+ * silently swallowed. Otherwise a bare excluded-title mention after an unclosed
+ * fence would go unreported (fail-open).
  */
 const findTitleLeaksInFile = (
   file: {content: string; id: string; path: string},
@@ -992,12 +999,32 @@ const findTitleLeaksInFile = (
   lineAllowlist: readonly RegExp[]
 ): Leak[] => {
   const leaks: Leak[] = [];
-  let insideFence = false;
+  const lines = file.content.split('\n');
 
-  for (const [index, line] of file.content.split('\n').entries()) {
-    if (isFenceDelimiter(line)) {
-      insideFence = !insideFence;
-    } else if (!insideFence && !lineAllowlist.some((rx) => rx.test(line))) {
+  // Line indices inside a CLOSED fence pair. Delimiters pair left-to-right; a
+  // final lone (odd) delimiter closes nothing and is deliberately left out, so
+  // it and every line after it stays scannable.
+  const fenceIndices = lines.flatMap((line, index) =>
+    isFenceDelimiter(line) ? [index] : []
+  );
+  const insideClosedFence = new Set<number>();
+
+  for (let pair = 0; pair + 1 < fenceIndices.length; pair += 2) {
+    for (
+      let index = fenceIndices[pair];
+      index <= fenceIndices[pair + 1];
+      index += 1
+    ) {
+      insideClosedFence.add(index);
+    }
+  }
+
+  for (const [index, line] of lines.entries()) {
+    const scannable =
+      !insideClosedFence.has(index) &&
+      !lineAllowlist.some((rx) => rx.test(line));
+
+    if (scannable) {
       const residue = stripSkippedSpans(line);
 
       for (const {regex, title} of matchers) {
