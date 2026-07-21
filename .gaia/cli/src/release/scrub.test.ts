@@ -1761,6 +1761,47 @@ describe('excluded-titles derived check', () => {
     expect(exit).toBe(0);
   });
 
+  test('flags a bare title after an unbalanced (unclosed) fence while still skipping a closed fence', () => {
+    // Fence delimiters bound a code block only when they PAIR. An odd delimiter
+    // count leaves a trailing unclosed fence: a naive per-line toggle stays
+    // stuck `inside` after it and swallows the rest of the file, so a real title
+    // leaking after the unclosed fence goes unreported (fail-open). The closed
+    // pair above it must still be skipped.
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      [
+        '# Foo',
+        '',
+        '```',
+        'Bundle-time Scrub inside a closed block.',
+        '```',
+        '',
+        '```',
+        'code with no closing fence',
+        '',
+        'The Forensics Triage Workflow leaks after the unclosed fence.',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir, '--json'], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const report = JSON.parse(stdio.outputs.join('')) as {
+      leaks: {check: string; file: string; line: number; match: string}[];
+    };
+    expect(report.leaks).toEqual([
+      {
+        check: 'excluded-titles',
+        file: 'wiki/concepts/Foo.md',
+        line: 10,
+        match: 'Forensics Triage Workflow',
+      },
+    ]);
+  });
+
   test('does not flag a bare title inside a stripped maintainer-only block', () => {
     // marker-strip runs before leak-check and re-reads the file fresh, so the
     // wrapped mention is gone before the title check ever sees the line.
