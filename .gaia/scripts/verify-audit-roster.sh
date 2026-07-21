@@ -5,8 +5,7 @@
 # verify-audit-roster.sh: the Code Audit Team roster's deterministic check.
 #
 # The roster is meant to grow, by adopters and by the maintainer, as a project
-# adds languages and surfaces. Two of its failure modes are silent, and this
-# check makes both loud:
+# adds languages and surfaces. Its silent failure modes, each made loud here:
 #
 #   * A forgotten machinery registration. Only files the machinery lists carry
 #     land in every member's content digest, so an unlisted agent file rotates
@@ -16,13 +15,17 @@
 #     over roster order, so an overlap hands a path to whichever member the
 #     roster happens to list first, and stays invisible until someone adds a
 #     file that lands in it.
+#   * A member's own definition disagreeing with the roster about what it owns.
+#     Claiming less makes a dispatched member self-skip work it was sent to do;
+#     claiming more makes a file read as covered while dispatching nobody, so
+#     the diff clears the merge gate having been reviewed by no one.
 #
 # Reads live state, never writes: no API write, no file write, no git mutation.
 # One finding block per violation on stdout; exit 1 if any fired. `--emit-roster`
 # is a read-only output mode the remit writer (write-audit-remits.sh) consumes
 # to obtain the roster's raw globs.
 #
-# The five invariants:
+# The invariants:
 #
 #   1. Pairwise claimant disjointness, as GLOB LANGUAGES, whether or not any
 #      such file is tracked. An overlap names the pair and cites a witness path
@@ -44,6 +47,18 @@
 #      off-convention escapes the boundary silently. The prefix is already
 #      load-bearing in the roster glob, the machinery lists, and the release
 #      scrub's leak-check; this asserts it rather than assuming it.
+#   6. Remit region parity. Every member's agent definition carries exactly one
+#      balanced remit region, and the globs inside it are that member's roster
+#      globs, complete and in roster order. A region that is absent, duplicated,
+#      or unbalanced fails; so does a roster glob the region omits, a region glob
+#      the roster does not grant, and the same set in a different order, because
+#      ownership is first-match-wins over roster order and a reordered region is
+#      a different reading order. Every glob inside a region is classified by the
+#      same bounded dialect as (3), which is why the default member's globs and a
+#      lone claimant's are dialect-checked at all: the pairwise comparison in (1)
+#      reaches neither position. The region's SENTENCE text is deliberately not
+#      compared here; the writer (write-audit-remits.sh) owns the region's exact
+#      form, and re-running it is the repair for every finding in this group.
 #
 # THE BOUNDED DIALECT, and why intersection is decidable over it at all. The
 # classifier compiles three constructs (glob_to_regex, in the roster module
@@ -230,6 +245,62 @@ _verify_roster_read_globs() {
   '
 }
 
+# --- The remit-region reader -------------------------------------------------
+#
+# Each member's agent definition carries one marker-delimited remit region, and
+# the globs bulleted inside it are what the dispatched member filters its
+# changed-file list against. This reads that region back so the parity invariant
+# can compare it to the roster. Shape only: it never interprets a glob and never
+# reads the region's sentence, which is the writer's to own.
+#
+# Emits, tab-separated so a glob may legally contain a space:
+#   REGIONMISSING <name> <agent-rel>
+#   REGIONDUP <name> <agent-rel> <nstart> <nend>
+#   REGIONUNBALANCED <name> <agent-rel> <nstart> <nend>
+#   REGIONOK <name>
+#   REGION <name> <glob>
+
+REMIT_START='<!-- gaia:audit-remit:start -->'
+REMIT_END='<!-- gaia:audit-remit:end -->'
+
+_verify_roster_read_regions() {
+  # <root> <raw-records>
+  local rr="$1" recs="$2" kind name agent_rel agent nstart nend
+  while IFS=$'\t' read -r kind name; do
+    [ "$kind" = "MEMBER" ] || continue
+    [ -n "$name" ] || continue
+    agent_rel=".claude/agents/${name}.md"
+    agent="${rr}/${agent_rel}"
+    # A member with no definition at all is already reported by the
+    # missing-agent-file invariant above; a region finding piled on top of that
+    # is noise, and every fixture that deletes an agent file depends on this.
+    [ -f "$agent" ] || continue
+    # grep -c prints 0 and exits 1 on no match, and this script carries no
+    # `set -e`; the `|| true` says so rather than leaving it to be inferred.
+    nstart="$(grep -cxF -- "$REMIT_START" "$agent" || true)"
+    nend="$(grep -cxF -- "$REMIT_END" "$agent" || true)"
+    if [ "$nstart" -eq 0 ] && [ "$nend" -eq 0 ]; then
+      printf 'REGIONMISSING\t%s\t%s\n' "$name" "$agent_rel"
+    elif [ "$nstart" -gt 1 ] || [ "$nend" -gt 1 ]; then
+      printf 'REGIONDUP\t%s\t%s\t%s\t%s\n' "$name" "$agent_rel" "$nstart" "$nend"
+    elif [ "$nstart" -ne "$nend" ]; then
+      printf 'REGIONUNBALANCED\t%s\t%s\t%s\t%s\n' "$name" "$agent_rel" "$nstart" "$nend"
+    else
+      printf 'REGIONOK\t%s\n' "$name"
+      # A marker state machine over the file, capturing every `- ` + backtick
+      # bullet strictly between the pair, in file order. A line between the
+      # markers that is not a bullet (the blank line, the canonical sentence)
+      # contributes nothing.
+      awk -v s="$REMIT_START" -v e="$REMIT_END" -v m="$name" '
+        BEGIN { OFS = "\t" }
+        $0 == s { infl = 1; next }
+        $0 == e { infl = 0; next }
+        infl && match($0, /^- `.*`$/) { print "REGION", m, substr($0, 4, length($0) - 4) }
+      ' "$agent"
+    fi
+  done < <(printf '%s\n' "$recs")
+}
+
 class_records="$(_audit_scope_parse_auditors < "$config")"
 raw_records="$(_verify_roster_read_globs < "$config")"
 
@@ -247,6 +318,8 @@ if [ "$emit_roster" -eq 1 ]; then
     awk '$1 == "DEFAULT" { printf "DEFAULT\t%s\n", $2 }'
   exit 0
 fi
+
+region_records="$(_verify_roster_read_regions "$root" "$raw_records")"
 
 # --- Invariant: exactly one default member -----------------------------------
 
@@ -356,6 +429,63 @@ while IFS=$'\t' read -r kind name; do
   fi
 done < <(printf '%s\n' "$raw_records")
 
+# --- Invariant: the remit region's SHAPE -------------------------------------
+#
+# Rendered here rather than in the awk pass below because these three say the
+# region could not be read at all, so there is nothing for the parity comparison
+# to compare. The writer refuses to repair a malformed pair, by design: it never
+# deletes bytes outside a pair it can identify, so a human deletes the extra or
+# unbalanced markers first and re-runs it.
+
+while IFS=$'\t' read -r kind name agent_rel nstart nend; do
+  case "$kind" in
+    REGIONMISSING)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL missing-remit-region\n'
+      printf '  member:     %s\n' "$name"
+      printf '  agent file: %s\n' "$agent_rel"
+      printf '  This definition carries no remit region, so nothing states which\n'
+      printf '  files it owns in a form the roster can be compared against. The\n'
+      printf '  region is never optional and deleting the markers is never an\n'
+      printf '  escape from the parity it enforces.\n'
+      printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
+      printf '\n'
+      ;;
+    REGIONDUP)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL duplicate-remit-region\n'
+      printf '  member:        %s\n' "$name"
+      printf '  agent file:    %s\n' "$agent_rel"
+      printf '  start markers: %s\n' "$nstart"
+      printf '  end markers:   %s\n' "$nend"
+      printf '  More than one remit region appears in this definition, so which\n'
+      printf '  pair states the member remit is ambiguous: a reader and the\n'
+      printf '  dispatched member could take different ones as authoritative.\n'
+      printf '  The writer will not repair this, because collapsing the pairs\n'
+      printf '  would delete bytes outside a region it can identify. Delete the\n'
+      printf '  extra pair by hand, leaving exactly one, then re-run the repair.\n'
+      printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
+      printf '\n'
+      ;;
+    REGIONUNBALANCED)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL unbalanced-remit-region\n'
+      printf '  member:        %s\n' "$name"
+      printf '  agent file:    %s\n' "$agent_rel"
+      printf '  start markers: %s\n' "$nstart"
+      printf '  end markers:   %s\n' "$nend"
+      printf '  The remit markers do not pair up, so where the region ends is\n'
+      printf '  ambiguous: everything from the unclosed marker to the end of the\n'
+      printf '  file reads as remit, or no region opens at all. The writer will\n'
+      printf '  not repair this, because it never deletes bytes outside a pair it\n'
+      printf '  can identify. Restore the missing marker by hand, leaving exactly\n'
+      printf '  one balanced pair, then re-run the repair.\n'
+      printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
+      printf '\n'
+      ;;
+  esac
+done < <(printf '%s\n' "$region_records")
+
 # --- Invariants: pairwise claimant disjointness, and undecidable pairs -------
 #
 # The decision and the witness synthesis live in one awk pass, which is where
@@ -368,6 +498,7 @@ pair_records="$(
     printf '%s\n' "$class_records" |
       awk '{ k = $1; m = $2; r = $0; sub(/^[^ ]+[ ]+[^ ]+[ ]*/, "", r); printf "%s\t%s\t%s\n", k, m, r }'
     printf '%s\n' "$raw_records"
+    printf '%s\n' "$region_records"
   } | awk -F'\t' '
     # --- The segment-pattern layer -------------------------------------------
     #
@@ -549,6 +680,13 @@ pair_records="$(
     $1 == "GLOB" || $1 == "DEFAULTGLOB" { nrx[$2]++; rx[$2, nrx[$2]] = $3; next }
     $1 == "MEMBER" { nm++; mem[nm] = $2; next }
     $1 == "RAW" { nraw[$2]++; raw[$2, nraw[$2]] = $3; next }
+    # An exact field compare, so REGIONOK / REGIONMISSING / REGIONDUP /
+    # REGIONUNBALANCED never match the REGION handler. The three shape records
+    # fall through every handler here and are ignored, which is right: they are
+    # rendered shell-side, and a member whose region could not be read carries
+    # no hasreg entry, so the parity section below skips it.
+    $1 == "REGIONOK" { hasreg[$2] = 1; next }
+    $1 == "REGION" { nreg[$2]++; reg[$2, nreg[$2]] = $3; next }
 
     END {
       # The scrape and the classifier agree about how many globs each member
@@ -587,6 +725,53 @@ pair_records="$(
                 printf "OVERLAP\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", pa, raw[pa, x], rx[pa, x], pb, raw[pb, y], rx[pb, y], WITNESS
                 repov = 1
               }
+            }
+          }
+        }
+      }
+
+      # --- Remit region parity, and the region-glob dialect -------------------
+      #
+      # Parity is an ORDERED string comparison between a member remit region and
+      # its roster entry; it needs no glob-language decision and never touches
+      # the pairwise walk above. The dialect classification does need one, and it
+      # reuses glob_items() rather than a second copy of it. That reuse is also
+      # why every region glob of the DEFAULT member and of a lone claimant is
+      # classified here: both are positions the pairwise invariant never reaches,
+      # and a lone claimant plus a default is the whole adopter roster shape.
+      #
+      # Membership is a nested string comparison over lists of at most a dozen
+      # globs. A hash keyed on the glob string would have to handle SUBSEP
+      # collisions to be correct; the nested loop is clearer and fast enough.
+      split("", seenrm)
+      for (i = 1; i <= nm; i++) {
+        m = mem[i]
+        if (m in seenrm) continue
+        seenrm[m] = 1
+        if (!(m in hasreg)) continue
+        for (k = 1; k <= (nreg[m] + 0); k++) {
+          if (glob_items(reg[m, k], IR) < 0)
+            printf "REMITUNDECIDABLE\t%s\t%s\t%s\n", m, reg[m, k], REJ
+        }
+        nmiss = 0; nextra = 0
+        for (x = 1; x <= (nraw[m] + 0); x++) {
+          hit = 0
+          for (y = 1; y <= (nreg[m] + 0); y++) if (raw[m, x] == reg[m, y]) { hit = 1; break }
+          if (!hit) { printf "REMITMISSING\t%s\t%s\n", m, raw[m, x]; nmiss++ }
+        }
+        for (y = 1; y <= (nreg[m] + 0); y++) {
+          hit = 0
+          for (x = 1; x <= (nraw[m] + 0); x++) if (reg[m, y] == raw[m, x]) { hit = 1; break }
+          if (!hit) { printf "REMITEXTRA\t%s\t%s\n", m, reg[m, y]; nextra++ }
+        }
+        # Order is only meaningful once the two lists hold the same globs; a
+        # set comparison must never pass a permuted region, so the first
+        # differing position is reported.
+        if (nmiss == 0 && nextra == 0 && (nreg[m] + 0) == (nraw[m] + 0)) {
+          for (p = 1; p <= (nraw[m] + 0); p++) {
+            if (raw[m, p] != reg[m, p]) {
+              printf "REMITORDER\t%s\t%d\t%s\t%s\n", m, p, raw[m, p], reg[m, p]
+              break
             }
           }
         }
@@ -649,16 +834,82 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4 f5 f6 f7; do
         printf '\n'
       fi
       ;;
+    REMITMISSING)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL remit-glob-missing\n'
+      printf '  member:     %s\n' "$f1"
+      printf '  glob:       %s\n' "$f2"
+      printf '  roster:     %s\n' "$config"
+      printf '  agent file: .claude/agents/%s.md\n' "$f1"
+      printf '  The roster grants this member the glob above and its remit region\n'
+      printf '  omits it, so the dispatched member filters the changed-file list\n'
+      printf '  against a narrower remit than the one it was dispatched for and\n'
+      printf '  self-skips work the gate sent it to do. The roster is the\n'
+      printf '  authority; regenerate the region rather than editing the roster\n'
+      printf '  down to fit it.\n'
+      printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
+      printf '\n'
+      ;;
+    REMITEXTRA)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL remit-glob-ungranted\n'
+      printf '  member:     %s\n' "$f1"
+      printf '  glob:       %s\n' "$f2"
+      printf '  roster:     %s\n' "$config"
+      printf '  agent file: .claude/agents/%s.md\n' "$f1"
+      printf '  This remit region claims a glob the roster does not grant this\n'
+      printf '  member, so a file matching it reads as covered while dispatching\n'
+      printf '  nobody: no clearance is ever demanded for it and the diff clears\n'
+      printf '  the merge gate having been reviewed by no one. Regenerate the\n'
+      printf '  region, or grant the glob in the roster if the claim is the\n'
+      printf '  intended one.\n'
+      printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
+      printf '\n'
+      ;;
+    REMITORDER)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL remit-glob-order\n'
+      printf '  member:   %s\n' "$f1"
+      printf '  position: %s\n' "$f2"
+      printf '  roster:   %s\n' "$f3"
+      printf '  region:   %s\n' "$f4"
+      printf '  The region holds exactly the globs the roster grants, in a\n'
+      printf '  different order. Ownership is first-match-wins over roster order,\n'
+      printf '  so a reordered region is a different reading order and a path two\n'
+      printf '  of its globs both match resolves differently than dispatch does.\n'
+      printf '  Parity is ordered; it is never a set comparison.\n'
+      printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
+      printf '\n'
+      ;;
+    REMITUNDECIDABLE)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL undecidable-remit-glob\n'
+      printf '  member:  %s\n' "$f1"
+      printf '  glob:    %s\n' "$f2"
+      printf '  reason:  %s\n' "$f3"
+      printf '  This check decides the classifier three-construct dialect only:\n'
+      printf '  literals, `*` within one segment, and a whole-segment `**`. It\n'
+      printf '  fails an undecidable glob rather than passing it, because a glob\n'
+      printf '  silently called harmless is the fail-open it exists to catch.\n'
+      printf '  Every glob inside a region is classified, the default member and\n'
+      printf '  a lone claimant included, and neither is a position the pairwise\n'
+      printf '  comparison ever reaches. Express the glob in the dialect, or\n'
+      printf '  teach the classifier and this check the new construct together.\n'
+      printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
+      printf '\n'
+      ;;
   esac
 done < <(printf '%s\n' "$pair_records")
 
 # gaia:maintainer-only:start
 # --- The built-in fallback lockstep ------------------------------------------
 #
-# Structurally separate from the four invariants, and maintainer-only: the
-# classifier's built-in roster is consulted only when the config yields no
-# records, which on an adopter machine does not happen, so the assertion is dead
-# code there.
+# Structurally separate from the invariants above -- pairwise disjointness, the
+# default member's exclusion from it, the undecidable-pair failure, machinery
+# registration and the single default, the member-name convention, and remit
+# region parity -- and maintainer-only: the classifier's built-in roster is
+# consulted only when the config yields no records, which on an adopter machine
+# does not happen, so the assertion is dead code there.
 #
 # It compares the fallback to THE SHIPPED ROSTER, so it runs only on a run that
 # resolves both inputs by default. Every fixture roster differs from the
