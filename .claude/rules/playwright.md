@@ -60,6 +60,51 @@ await page.goto('/');
 await hydration(page); // waits for <meta name="hydrated" content="true">
 ```
 
+## Asserting on errors, watch both channels
+
+React reports its failures through two separate channels, and a spec that
+watches only one silently guards nothing. An attribute mismatch is a direct
+`console.error`, but a throw-path failure (`Hydration failed because the
+server rendered…`) goes through `window.reportError`, which Chromium delivers
+to Playwright's `pageerror` event and never to the console.
+
+Collect both and assert on the union:
+
+```ts
+const errors: string[] = [];
+
+page.on('console', (message) => {
+  if (message.type() === 'error') {
+    errors.push(message.text());
+  }
+});
+page.on('pageerror', (error) => {
+  errors.push(error.message);
+});
+
+// Absorb the cold dev-server race, then assert on a known-warm load.
+await page.goto('/');
+await hydration(page);
+
+errors.length = 0;
+
+await page.reload();
+await hydration(page);
+
+expect(errors).toEqual([]);
+```
+
+Once both channels are watched, filtering by message text is unnecessary and
+costs coverage: any error during a page load is a failure. The split applies
+to every uncaught runtime error, not only hydration.
+
+**Reset the collector before the load you assert on.** `hydration()` self-heals
+a cold dev server by calling `page.reload()`, listeners registered on the
+`Page` survive that reload, and the requests that lost the race push errors
+that say nothing about the app. Asserting on the first load makes a successful
+self-heal fail the test. `.playwright/e2e/hydration.spec.ts` is the worked
+example.
+
 ## MSW + real dev server
 
 E2E tests run against `pnpm dev` (localhost:5173). MSW browser worker is
