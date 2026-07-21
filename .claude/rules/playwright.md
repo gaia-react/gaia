@@ -102,12 +102,16 @@ third-party scripts (analytics, a CSP reporter, anything an ad blocker
 interferes with), scope the **collector** to same-origin or a named allowlist
 rather than weakening the **assertion**; deleting the assertion gives back the
 whole coverage this pattern buys. Scoping is asymmetric across the two
-channels, so plan for both: a console message carries
+channels, so plan for both: a console message carries a structured
 `message.location().url` and filters directly, while `pageerror` hands the
-listener a bare `Error` whose only origin handle is `error.stack`, and a
-cross-origin script loaded without CORS arrives sanitized to `Script error.`
-with no stack to read. Drop those opaque errors rather than trying to
-attribute them.
+listener a bare `Error` whose only origin handle is the string in
+`error.stack`. That stack stays readable even for a cross-origin script
+loaded without CORS, because Playwright feeds `pageerror` from the
+inspector's exception channel rather than the page's `error` event, so it
+never sees the `Script error.` sanitization that blinds an in-page
+`window.onerror`. Fail on an error whose stack will not parse rather than
+dropping it; an unattributable error during a page load is exactly what the
+broad assertion is for.
 
 **Reset the collector before the load you assert on, then prove that load did
 not self-heal.** `hydration()` self-heals a cold dev server by calling
