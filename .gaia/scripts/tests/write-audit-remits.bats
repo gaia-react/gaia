@@ -605,6 +605,67 @@ YAML
   [ "$before_a" = "$after_a" ]
 }
 
+@test "robustness: a body write that fails after mktemp succeeds is refused, definitions byte-identical" {
+  # The sibling case above drives its failure with an unusable TMPDIR, which
+  # trips the mktemp guard and returns before the member loop ever runs. This
+  # one covers the state that guard cannot reach: mktemp -d succeeds and the
+  # region-body write inside the directory it created then fails, the
+  # ENOSPC/EIO class the region-body emptiness guard exists for. Without that
+  # guard the run installs a region holding the two markers and nothing
+  # between them over every definition, and still exits 0.
+  [ "$(id -u)" -eq 0 ] && skip "running as root: mode 500 does not deny the write"
+
+  local r="$BATS_TEST_TMPDIR/unwritable-tmpdir"
+  fixture_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+  - name: code-audit-a
+    globs:
+      - "a/**"
+YAML
+
+  # A PATH shim is the only handle on that directory: the writer names it with
+  # a random mktemp suffix, so no fixture can chmod it by name beforehand. The
+  # shim delegates to the real mktemp, then strips write permission from what
+  # it just created, leaving it readable and traversable so the body write is
+  # the only thing that fails.
+  local shim real_mktemp
+  shim="$BATS_TEST_TMPDIR/mktemp-shim"
+  mkdir -p "$shim"
+  real_mktemp="$(command -v mktemp)"
+  cat > "$shim/mktemp" <<SH
+#!/usr/bin/env bash
+d="\$("$real_mktemp" "\$@")" || exit 1
+chmod 500 "\$d" || exit 1
+printf '%s\n' "\$d"
+SH
+  chmod +x "$shim/mktemp"
+
+  local before_default before_a
+  before_default="$(cat "$r/.claude/agents/code-audit-default.md")"
+  before_a="$(cat "$r/.claude/agents/code-audit-a.md")"
+
+  run env PATH="$shim:$PATH" bash "$WRITER" --root "$r" --config "$r/.gaia/audit-ci.yml"
+  [ "$status" -eq 1 ]
+
+  # The emptiness guard is what refused, for every member, and the earlier
+  # mktemp guard is not what fired: that distinction is the whole point of
+  # this case, since the sibling above already covers the mktemp path.
+  assert_contains "code-audit-default: region body generation failed"
+  assert_contains "code-audit-a: region body generation failed"
+  assert_contains "could not create a temporary directory" && return 1
+
+  # No emptied region landed: every definition is byte-identical.
+  local after_default after_a
+  after_default="$(cat "$r/.claude/agents/code-audit-default.md")"
+  after_a="$(cat "$r/.claude/agents/code-audit-a.md")"
+  [ "$before_default" = "$after_default" ]
+  [ "$before_a" = "$after_a" ]
+}
+
 @test "robustness: a roster with no auditors block exits 0 and writes nothing" {
   local r="$BATS_TEST_TMPDIR/no-auditors"
   mkdir -p "$r/.gaia/scripts" "$r/.claude/agents" "$r/.claude/hooks/lib"
