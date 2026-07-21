@@ -7,6 +7,7 @@
   "type": "module",
   "gaia": {
     "updateDepsHold": {
+      "typescript": "6.0",
       "vite": "8.0"
     },
     "wikiClassify": {

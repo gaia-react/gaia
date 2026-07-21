@@ -281,6 +281,14 @@ describe('update-deps run: group resolution', () => {
     // We pick storybook (the more specific addon scope).
     expect(resolveGroup('msw-storybook-addon')).toBe('storybook');
   });
+
+  test('typescript and @types/node are independent singletons', () => {
+    // A compiler bump and an ambient Node type-definition bump have separate
+    // migration guides and separate blast radius, so a hold on one must never
+    // stall the other.
+    expect(resolveGroup('typescript')).toBe('singleton:typescript');
+    expect(resolveGroup('@types/node')).toBe('singleton:@types/node');
+  });
 });
 
 describe('update-deps run: computeUpdates', () => {
