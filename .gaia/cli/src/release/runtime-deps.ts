@@ -129,6 +129,11 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  * This is the documented channel for false-positives, add the exact token
  * plus a justification rather than reword the reference.
  *
+ * A reference carrying a shell pattern is the one qualification on that: it
+ * reduces to the directory holding the family (see `expandPath`), so it is
+ * adjudicated against this allowlist as that directory rather than as the
+ * longer token its literal spelling would produce.
+ *
  *   - `.github/workflows`: named in `.claude/hooks/pr-merge-audit-check.sh`'s
  *     merge-gate error message as an example in-scope path, alongside `app/`,
  *     `test/`, `configs`. The directory is release-excluded; the reference is
@@ -171,6 +176,14 @@ const PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
  * `]` and `}` are deliberately absent. They only ever close a pattern, so a
  * token halting on one is complete rather than truncated, and reducing it the
  * way `consumeStep` reduces a truncated token would discard a real reference.
+ *
+ * The halting character alone decides, with no check that what precedes it
+ * looks incomplete, so a whole path abutting one of these with no separator
+ * (prose ending in a question mark, an unescaped regex end-anchor) reduces to
+ * its directory too. That direction loses a leak rather than inventing one,
+ * which is why the set stays this narrow; no occurrence of the shape exists in
+ * the shipped corpus. Narrowing it further means demanding the fragment's last
+ * segment carry no recognized file extension.
  */
 const PATH_TRUNCATING_METACHAR = /[$*?[{]/;
 
