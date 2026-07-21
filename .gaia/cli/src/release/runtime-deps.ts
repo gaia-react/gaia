@@ -162,6 +162,17 @@ const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
 const PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
 
 /**
+ * Metacharacters that OPEN a glob pattern. All three are absent from
+ * `PATH_BODY_CHAR`, so an expansion that reaches one has hit a pattern rather
+ * than the end of a path token, and everything accumulated so far is a prefix
+ * of a family of names, not a name.
+ *
+ * `]` is deliberately absent. It only ever closes a pattern, so a token halting
+ * on it is complete rather than truncated.
+ */
+const GLOB_OPENING_METACHAR = /[*?[]/;
+
+/**
  * A path-constant occurrence found in a shipped script.
  */
 export type PathRef = {
@@ -181,14 +192,39 @@ const stripCommentSuffix = (line: string): string => {
   return line;
 };
 
-const expandPath = (line: string, start: number): string => {
+/**
+ * Expands the path token starting at `start`, and reports whether the
+ * expansion halted part-way through a basename because it ran into a glob
+ * pattern.
+ *
+ * Where the pattern opens at a directory boundary (`.claude/hooks/*.sh`) the
+ * expansion is a whole directory token, which `isShippedPath` resolves against
+ * the shipped directories; that idiom is in the tree and keeps working. Where
+ * the pattern has a basename prefix (`.claude/agents/code-audit-*.md`) the
+ * expansion is a fragment naming nothing on disk, so the caller drops it
+ * instead of reporting it as a leak. Exact-match lookup is deliberate here (see
+ * the allowlist comment above), so dropping an ambiguous candidate matches the
+ * file's convention rather than expanding the pattern and verifying the family.
+ */
+const expandPath = (
+  line: string,
+  start: number
+): {truncatedGlob: boolean; value: string} => {
   let end = start;
 
   while (end < line.length && PATH_BODY_CHAR.test(line[end])) {
     end += 1;
   }
 
-  return line.slice(start, end);
+  const value = line.slice(start, end);
+
+  return {
+    truncatedGlob:
+      end < line.length &&
+      GLOB_OPENING_METACHAR.test(line[end]) &&
+      !value.endsWith('/'),
+    value,
+  };
 };
 
 /**
@@ -267,11 +303,14 @@ const consumeStep = (
 
   if (isSubstring) return {nextCursor: found + 1, ref: null};
 
-  const candidate = expandPath(stripped, found);
+  const {truncatedGlob, value: candidate} = expandPath(stripped, found);
   const nextCursor = found + candidate.length;
 
   // Skip pure-prefix matches (`.gaia/` with no body).
   if (candidate.length <= prefix.length) return {nextCursor, ref: null};
+
+  // Skip a fragment of a glob pattern; it is a family of names, not a path.
+  if (truncatedGlob) return {nextCursor, ref: null};
 
   const trimmed = trimTrailingDotsSlashes(candidate);
 

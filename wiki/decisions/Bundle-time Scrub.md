@@ -47,6 +47,8 @@ Non-empty match in any check fails the build with a structured leak report.
 
 Walks `.gaia/statusline/**/*.sh`, `.gaia/cli/templates/**/*.sh`, `.gaia/scripts/**/*.sh`, `.claude/hooks/**/*.sh`, `.github/actions/**/*.sh`, `.github/audit/**/*.sh`, and `.specify/extensions/gaia/lib/**/*.sh` inside the staging tree, extracts repo-relative path constants, and verifies each is a shipped path (in `.gaia/manifest.json`), an adopter-owned sentinel (`wiki/hot.md`, `wiki/log.md`, `.gaia/VERSION`, `.gaia/manifest.json`), a directory with at least one shipped file beneath it (the shape a scan-glob directory decays to when a script globs it, e.g. `.claude/hooks/*.sh`), or a runtime-allocated path on adopter machines (`.gaia/local/`, which covers its `cache/` subtree, `.claude/handoff/`, `.claude/worktrees/`, `.claude/agent-memory/`, `.claude/audit/`, plus the per-session marker files).
 
+Extraction stops at the first character that cannot appear in a path, so a glob yields whatever precedes its pattern. Where the pattern opens at a directory boundary that remainder is the directory token above; where it opens mid-basename (`.claude/agents/code-audit-*.md`) the remainder is a fragment of a family of names rather than a path, so the candidate is dropped instead of checked. A script is free to name a file family by pattern in prose without the scan reading it as a dependency.
+
 Anything else is a runtime-dependency leak, a shipped caller pointing at a release-excluded callee. Lexical scrubbing cannot see this class because the reference survives prose-style transforms.
 
 ## Marker discipline

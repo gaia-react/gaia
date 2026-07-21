@@ -211,6 +211,58 @@ describe('extractPathRefs', () => {
       '.claude/shell-snapshots/snapshot-zsh.sh'
     );
   });
+
+  test('drops a glob whose pattern truncates mid-basename', () => {
+    // A pattern with a non-empty basename prefix before the `*` expanded to the
+    // truncated prefix `.claude/agents/code-audit-`, which names no manifest
+    // entry and no shipped directory, so a legitimate line of prose reported a
+    // phantom leak and failed the release gate closed.
+    const refs = extractPathRefs(
+      '.claude/hooks/foo.sh',
+      'reason="rewrites .claude/agents/code-audit-*.md, which are machinery"\n'
+    );
+    expect(refs).toEqual([]);
+  });
+
+  test('keeps a glob whose pattern starts at a directory boundary', () => {
+    // Control for the rule above, and the idiom already in the tree
+    // (`for f in .claude/hooks/*.sh`): the `*` follows a `/`, so the expansion
+    // is a complete directory token that resolves against the shipped
+    // directories rather than a truncated basename prefix.
+    const refs = extractPathRefs(
+      '.gaia/scripts/lint-hook-array-guard.sh',
+      'for f in .claude/hooks/*.sh; do :; done\n'
+    );
+    expect(refs.map((r) => r.path)).toEqual(['.claude/hooks']);
+  });
+
+  test('drops mid-basename truncation on the other pattern-opening metacharacters', () => {
+    // `?` and `[` are absent from the path-body character class for the same
+    // reason `*` is, so they truncate identically and must be suppressed
+    // identically.
+    const question = extractPathRefs(
+      '.claude/hooks/foo.sh',
+      'ls .claude/agents/code-audit-?.md\n'
+    );
+    expect(question).toEqual([]);
+
+    const bracket = extractPathRefs(
+      '.claude/hooks/foo.sh',
+      'ls .claude/agents/code-audit-[abc].md\n'
+    );
+    expect(bracket).toEqual([]);
+  });
+
+  test('still flags a genuine reference whose basename ends in a dash', () => {
+    // Guards the suppression against over-reach: the rule keys on the halting
+    // metacharacter, not on the shape of the token, so a real reference that
+    // merely looks like a truncated prefix must still flag.
+    const refs = extractPathRefs(
+      '.gaia/statusline/foo.sh',
+      'bash .claude/agents/code-audit-\n'
+    );
+    expect(refs.map((r) => r.path)).toEqual(['.claude/agents/code-audit-']);
+  });
 });
 
 describe('release runtime-deps CLI', () => {
@@ -346,6 +398,29 @@ describe('release runtime-deps CLI', () => {
     sandbox.writeFile(
       '.gaia/scripts/lint-hook-array-guard.sh',
       ['#!/usr/bin/env bash', 'SCAN_GLOB=(.claude/hooks/*.sh)', ''].join('\n')
+    );
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain('runtime-dependency leaks: none');
+  });
+
+  test('passes when a shipped script names a file family by pattern', () => {
+    // The gate fails closed, so a phantom leak blocks every distribution
+    // scenario and `/gaia-release` itself until someone reverse-engineers the
+    // extractor. Operator-facing prose naming a family of files by pattern is
+    // legitimate and must not cost a release.
+    sandbox.writeManifest({
+      '.claude/agents/code-audit-frontend.md': 'owned',
+      '.claude/hooks/block-selfheal-paths.sh': 'owned',
+    });
+    sandbox.writeFile(
+      '.claude/hooks/block-selfheal-paths.sh',
+      [
+        '#!/usr/bin/env bash',
+        'deny "rewrites .claude/agents/code-audit-*.md, which are machinery"',
+        '',
+      ].join('\n')
     );
 
     const exit = run([], {cwd: sandbox.rootDir});
