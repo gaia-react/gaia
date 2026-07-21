@@ -37,6 +37,14 @@ minimumReleaseAgeExclude:
   # release-age window is already satisfied for it. Scoped to the exact pinned
   # version; the package.json pin (no caret) keeps the exception inert for any
   # other release.
+  #
+  # Do not bump to 0.6.0: it drops the `secure` export the harness wraps its
+  # instrumentation in (.playwright/react-perf/harness-entry.ts), taking the
+  # production gate, install-check timeout, and non-throwing onError with it.
+  # 0.6.0 removes 13 exports with no changelog entry while its README still
+  # documents `secure`, so the removal may be unintentional; upstream question
+  # is https://github.com/aidenybai/bippy/issues/75. A bump also has to update
+  # the exact-version assertion in .playwright/e2e/react-perf-smoke.spec.ts.
   - 'bippy@0.5.42'
 
 # Resolution settings. pnpm 11 reads these from pnpm-workspace.yaml, not from
