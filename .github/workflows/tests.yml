@@ -85,8 +85,10 @@ jobs:
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           echo "tests: incremental base = ${base}" >&2
       # Allowlist of paths that affect the test suite (ERE, matched against
-      # `git diff --name-only`; mirrors the prior dorny globs 1:1). Anything
-      # outside this list reports the required check green without running.
+      # `git diff --name-only`). Anything outside this list reports the
+      # required check green without running, so a path that carries tests
+      # must appear here: `.playwright/` holds the e2e specs and their
+      # helpers, which `playwright.config.` alone does not cover.
       - name: Detect test-relevant changes in the incremental delta
         id: filter
         if: steps.chore-deps.outputs.skip == 'false'
@@ -95,7 +97,7 @@ jobs:
         run: |
           set -eu
           changed=$(git diff --name-only "${CHECK_BASE}...HEAD")
-          pattern='^(app|test)/|^(package\.json|pnpm-lock\.yaml|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint)\.config\.|^\.github/workflows/tests\.yml$'
+          pattern='^(app|test)/|^\.playwright/|^(package\.json|pnpm-lock\.yaml|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint)\.config\.|^\.github/workflows/tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
