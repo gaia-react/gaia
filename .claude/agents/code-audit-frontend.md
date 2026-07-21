@@ -277,6 +277,26 @@ A **security-class** finding (per section B) is **never** a promotion candidate,
 
 **Promotion lifecycle.** Promote a qualifying finding exactly as an in-scope suggestion self-heal (see "Self-heal, commit, and re-dispatch"): edit the working tree, subject to the `block-selfheal-paths.sh` edit guard, and set `AUDIT_SELF_HEALED="true"`. This pass writes **no marker** for it, a self-heal pass attests only committed content, and the fix is not yet committed. Record the finding in the re-run carry-forward ledger's `fixed_last_round[]` with `fixed_in_sha` (empty when uncommitted; the orchestrator's commit supplies the sha), and surface it in the report as fixed. This inherits the ledger's own CI gating (see "Re-run carry-forward ledger"): promotion is not scoped local-only, it simply follows self-heal's existing local/CI behavior. Add **no** dispositions-sidecar entry and invent **no** new disposition value: a promoted-and-repaired finding is an in-scope repair, it simply never appears in `<frontend-digest>.dispositions.json`. The orchestrator's commit rotates your frontend digest, your marker invalidates, and the resolver re-dispatches you; the repair is re-reviewed **in-scope** on the fresh HEAD. <!-- honors AUDIT plan-time directive 1 (post-repair verification) --> Post-repair verification is inherited from self-heal in full: "edit applied" is never "finding closed" until that re-dispatch re-reviews the repair in-scope and finds it clean.
 
+### B-mw. Machinery-path waive (file side)
+
+This decision runs **after** section B's security classification and section B-fix's promotion check, and **before** the backend probe and filing pipeline (C/D/E). Like a promoted finding, a machinery-waived finding never touches the issue backend.
+
+When the audit reviews a fix to the **gate machinery itself**, it surfaces out-of-scope findings **about that same machinery**. Filing each one opens a `tech-debt` issue the next machinery PR's audit re-surfaces, a regeneration loop the `filed` disposition cannot escape. The `machinery_waived` disposition breaks the loop: it records the finding **without filing it**, gated by a deterministic path-is-machinery abuse-check so it can never become a universal escape hatch.
+
+Record a non-security out-of-scope finding as **`machinery_waived`** (not filed) **if and only if both** hold:
+
+1. The finding is **non-security** per section B's classification, read as section B's own flag, never re-derived. A security-class finding is **never** machinery-waived, on any repo including a confirmed PRIVATE one; it takes its section D (divert) or section E (private file) path. Security screens FIRST, exactly as for promotion.
+2. The finding's `path` is a **gate-machinery path**: it matches the `AUDIT_MACHINERY_PATHS` set (`audit_path_is_machinery` in `.claude/hooks/lib/audit-machinery.sh`, exact-or-`/**`-prefix match). That set is the self-referential machinery, the files whose bytes change what a member reviews, who reviews it, where a clearance lands, or whether a clearance is believed.
+
+For a machinery-waived finding:
+
+- Record a `machinery_waived` sidecar entry (section F) carrying the same dedup-key `key` as any other entry (`v1 class=<finding_class> path=<machinery-path> line=<int>`), so the abuse-check can read its `path=`. Leave `issue_number` unset; do **not** file a `tech-debt` issue and do **not** touch the debt-count sentinel.
+- List the finding in the **PR body** under a heading such as **`## Out-of-scope machinery findings (recorded, not filed)`**, one entry per finding (its `file:line`, a one-line failure mode, and its dedup key). The sidecar is gitignored and janitor-reaped, so the PR body is the durable human-readable record of what was waived; keep it complete.
+
+Any finding that is not **both** non-security and machinery-pathed routes to the existing filing path (sections C/D/E) exactly as today.
+
+**Abuse-check (offline, deterministic).** The merge gate and the disposition backstop hook re-read the sidecar and DENY the merge for any `machinery_waived` entry whose `path=` is **not** a machinery path (`disposition_offenders` in `.claude/hooks/lib/audit-dispositions.sh`). A `machinery_waived` recorded against a non-machinery path is an unfiled out-of-scope finding wearing a machinery label, so the gate treats it as an offender. Record `machinery_waived` only for a genuine machinery path.
+
 ### C. Backend probe (three outcomes)
 
 Probe the issue backend once at the start of the disposition flow:
@@ -326,7 +346,7 @@ The disposition **entries** (the per-finding content) are decided at the marker-
       "key": "v1 class=holistic/swallowed-error path=app/services/foo.ts line=42",
       "severity": "critical|important|suggestion",
       "security_class": false,
-      "disposition": "filed|diverted|waived|pending",
+      "disposition": "filed|diverted|waived|machinery_waived|pending",
       "pending_reason": "transient|definitive",
       "issue_number": 123
     }
@@ -343,6 +363,7 @@ Disposition semantics:
 - `filed`, an open `tech-debt` issue carries the key (`issue_number` set). Verified by re-querying open issues for the key before the marker is written.
 - `diverted`, security-class diverted per section D (no public issue).
 - `waived`, backend definitively absent (section C); the finding reverts to prose only.
+- `machinery_waived`, a non-security out-of-scope finding on a gate-machinery path (section B-mw); recorded here and listed in the PR body, not filed. The backstop denies the merge if its `path=` is not a machinery path.
 - `pending` + `pending_reason:"transient"`, a transient `gh` failure; the finding is surfaced and retained for the next idempotent run.
 - `pending` + `pending_reason:"definitive"`, a definitive filing failure on a **present, writable** backend; the disposition is genuinely missing.
 
@@ -350,10 +371,10 @@ Disposition semantics:
 
 Before writing the marker, the disposition gate confirms every identified out-of-scope finding has a disposition. **Verify after filing:** re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) immediately before writing the marker, and confirm each `filed` entry still resolves to an open issue whose body carries the **wrapped** key `<!-- gaia-debt-key: ${key} -->` (match the wrapped form, not the bare inner key; see "Key relationship" for the `line=4`/`line=42` collision this prevents). This is exactly why a dedup-matched entry's `key` field holds the matched issue's own on-backend key (see "Key relationship" above): the entry recorded there is the entry this same verify re-queries, so recording any other key would fail this check after a reclassification. Then apply the marker-write rule:
 
-- **Write the marker** when every sidecar entry is `filed`, `diverted`, `waived`, or `pending(transient)`. A transient failure never blocks the merge, so it does not withhold the marker.
+- **Write the marker** when every sidecar entry is `filed`, `diverted`, `waived`, `machinery_waived`, or `pending(transient)`. A transient failure never blocks the merge, so it does not withhold the marker.
 - **Do NOT write the marker** when any entry is `pending(definitive)`, a present, writable backend with a genuinely-missing disposition. This is the **one intended block**; the operator must resolve the filing failure and re-invoke before the marker clears.
 
-`pending(definitive)` is the only disposition that withholds the marker. Backend-absent (`waived`), transient (`pending(transient)`), and diversion-failure (`diverted`) all fail open and never block the merge.
+`pending(definitive)` is the only disposition that withholds the marker. Backend-absent (`waived`), transient (`pending(transient)`), diversion-failure (`diverted`), and machinery-waive (`machinery_waived`) all fail open and never block the merge. A `machinery_waived` entry recorded against a non-machinery path is caught not here but by the offline abuse-check in the merge gate and backstop hook (section B-mw), which denies the merge.
 
 ## Output Format
 

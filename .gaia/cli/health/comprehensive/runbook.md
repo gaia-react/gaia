@@ -399,7 +399,9 @@ Verbatim writer dispatch template:
   file (refuted, intent-dependent, and verdict-missing findings excluded).
   Each entry whose `location` matches an open `tech-debt` issue's
   `gaia-debt-key` (on both path and line) carries a `Tracked: #<n>`
-  annotation; an entry with no match carries none.
+  annotation; an entry with no match carries none. The full ranked list is
+  reported here; the Step 6 filing offer draws only the top
+  `COMPREHENSIVE_FILE_CAP` of these by consequence and defers the tail.
 - `## Open questions`, one entry per `intent-dependent` verdict: the
   finding's `location`, the verdict's `question` verbatim, and the cost on
   each side of the decision. Present only when the round produced at least
@@ -473,7 +475,22 @@ confirmed finding exists, the Orchestrator makes **one** offer: file the
 unmatched confirmed findings as tech-debt issues through the existing
 `.claude/skills/file-tech-debt/SKILL.md` recipe, which owns the dedup key,
 the label set, and the debt-count sentinel, invoked once per unmatched
-finding. The operator answers yes or no; filing never happens without
+finding.
+
+**Consequence quota (`COMPREHENSIVE_FILE_CAP = 10`).** The offer surfaces
+only the top findings by consequence and discards the tail, rather than
+offering every confirmed finding. Rank the unmatched confirmed findings by
+consequence, severity descending (`blocker` → `high` → `medium`), then,
+within a severity, by the cost the refuter weighed, and offer only the top
+`COMPREHENSIVE_FILE_CAP`. The lower-consequence remainder stays in `##
+Priority index` for the maintainer to read but is **not** offered for
+filing: a comprehensive run that files every confirmed finding refills the
+tech-debt queue faster than `/gaia-debt` drains it, so the quota keeps the
+phase surfacing the most consequential work rather than restocking the
+backlog wholesale. Note the deferred count in the hand-back (e.g. `N
+lower-consequence findings deferred, not offered for filing`).
+
+The operator answers yes or no; filing never happens without
 that answer. This offer is a separate, post-integrity-check,
 human-approved Orchestrator action, distinct from and after the leaves'
 own work; the lenses, refuters, and writer still touch nothing outside

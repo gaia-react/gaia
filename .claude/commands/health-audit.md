@@ -29,6 +29,7 @@ After the loop above breaks or escalates — clean exit and escalation both rout
 
 - Runs **exactly once**, **never inside the loop above**.
 - Pass `--comprehensive-full` through to the gauge when the maintainer invoked `/health-audit` with that force flag. Pass `--major` through when the maintainer invoked `/health-audit --major` (the gauge maps it to `source=major`).
+- Surfaces only the **top findings by consequence** for the filing offer, discarding the lower-consequence tail (the runbook's `COMPREHENSIVE_FILE_CAP`); it never restocks the tech-debt backlog with every confirmed finding.
 - **Do not copy the comprehensive protocol here.** The comprehensive runbook is the single source of truth; this command file only points to it.
 - Does **not** recompute or mutate the integrity verdict math (the three-input floor). It reports alongside, in Step 5.
 

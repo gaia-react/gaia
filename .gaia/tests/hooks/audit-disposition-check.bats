@@ -114,6 +114,28 @@ write_sidecar() { printf '%s\n' "$1" > "$SIDECAR"; }
 }
 
 # ---------------------------------------------------------------------------
+# disposition_offenders: the machinery_waived abuse-check
+#
+# audit_path_is_machinery is resolved lazily by the lib from its own on-disk
+# dir (setup() sources only audit-dispositions.sh), so these call the function
+# in isolation and it self-loads the real machinery set. No backend query.
+# ---------------------------------------------------------------------------
+
+@test "offenders: a machinery_waived entry whose path IS machinery is NOT an offender" {
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=holistic/x path=.claude/hooks/lib/audit-machinery.sh line=5","disposition":"machinery_waived"}]}'
+  run disposition_offenders "$SIDECAR"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "offenders: a machinery_waived entry whose path is NOT machinery IS an offender" {
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=holistic/x path=app/x.ts line=5","disposition":"machinery_waived"}]}'
+  run disposition_offenders "$SIDECAR"
+  [ "$status" -eq 0 ]
+  grep -q "machinery-waived-not-machinery: v1 class=holistic/x path=app/x.ts line=5" <<<"$output" || return 1
+}
+
+# ---------------------------------------------------------------------------
 # disposition_offenders: fail-open everywhere else
 # ---------------------------------------------------------------------------
 
@@ -183,11 +205,12 @@ write_sidecar() { printf '%s\n' "$1" > "$SIDECAR"; }
   [ "$(jq -r '.findings[] | select(.key=="K2") | .disposition' "$SIDECAR")" = "pending" ]
 }
 
-@test "seed-forward: waived / diverted / pending(transient) are NOT still-open and are not seeded" {
+@test "seed-forward: waived / diverted / machinery_waived / pending(transient) are NOT still-open and are not seeded" {
   PREV="$BATS_TEST_TMPDIR/prev.json"
   printf '%s\n' '{"schema":1,"backend":"github","findings":[
     {"key":"W1","disposition":"waived"},
     {"key":"D1","disposition":"diverted"},
+    {"key":"M1","disposition":"machinery_waived"},
     {"key":"P1","disposition":"pending","pending_reason":"transient"}
   ]}' > "$PREV"
   printf '%s\n' '{"schema":1,"backend":"github","findings":[]}' > "$SIDECAR"
@@ -332,6 +355,33 @@ assert_denied() {
   run_disposition_hook "$ROOT"
   assert_denied
   grep -qF -- "filed-but-missing: v1 class=y path=b line=2" <<<"$output" || return 1
+}
+
+@test "hook: a machinery_waived entry whose path IS machinery -> allow (no offender)" {
+  ROOT="$BATS_TEST_TMPDIR/mwmachinery"
+  mkdir -p "$ROOT"
+  seed_repo "$ROOT"
+  digest="$(frontend_digest_of "$ROOT")"
+  [ -n "$digest" ] || skip "could not derive digest"
+  mkdir -p "$ROOT/.gaia/local/audit"
+  printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=holistic/x path=.claude/hooks/lib/audit-machinery.sh line=1","disposition":"machinery_waived"}]}\n' \
+    > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
+  run_disposition_hook "$ROOT"
+  assert_allowed
+}
+
+@test "hook: a machinery_waived entry whose path is NOT machinery -> DENY (abuse-check offender)" {
+  ROOT="$BATS_TEST_TMPDIR/mwnotmachinery"
+  mkdir -p "$ROOT"
+  seed_repo "$ROOT"
+  digest="$(frontend_digest_of "$ROOT")"
+  [ -n "$digest" ] || skip "could not derive digest"
+  mkdir -p "$ROOT/.gaia/local/audit"
+  printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=holistic/x path=app/x.ts line=1","disposition":"machinery_waived"}]}\n' \
+    > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
+  run_disposition_hook "$ROOT"
+  assert_denied
+  grep -qF -- "machinery-waived-not-machinery: v1 class=holistic/x path=app/x.ts line=1" <<<"$output" || return 1
 }
 
 @test "hook: sidecar present but unparseable -> fail open (allow)" {
