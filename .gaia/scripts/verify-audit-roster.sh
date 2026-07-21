@@ -50,7 +50,8 @@
 #   6. Remit region parity. Every member's agent definition carries exactly one
 #      balanced remit region, and the globs inside it are that member's roster
 #      globs, complete and in roster order. A region that is absent, duplicated,
-#      or unbalanced fails; so does a roster glob the region omits, a region glob
+#      unbalanced, or reversed (its end marker appearing before its start
+#      marker) fails; so does a roster glob the region omits, a region glob
 #      the roster does not grant, and the same set in a different order, because
 #      ownership is first-match-wins over roster order and a reordered region is
 #      a different reading order. Every glob inside a region is classified by the
@@ -257,6 +258,7 @@ _verify_roster_read_globs() {
 #   REGIONMISSING <name> <agent-rel>
 #   REGIONDUP <name> <agent-rel> <nstart> <nend>
 #   REGIONUNBALANCED <name> <agent-rel> <nstart> <nend>
+#   REGIONREVERSED <name> <agent-rel> <start-line> <end-line>
 #   REGIONOK <name>
 #   REGION <name> <glob>
 
@@ -265,7 +267,7 @@ REMIT_END='<!-- gaia:audit-remit:end -->'
 
 _verify_roster_read_regions() {
   # <root> <raw-records>
-  local rr="$1" recs="$2" kind name agent_rel agent nstart nend
+  local rr="$1" recs="$2" kind name agent_rel agent nstart nend start_line end_line
   while IFS=$'\t' read -r kind name; do
     [ "$kind" = "MEMBER" ] || continue
     [ -n "$name" ] || continue
@@ -286,17 +288,23 @@ _verify_roster_read_regions() {
     elif [ "$nstart" -ne "$nend" ]; then
       printf 'REGIONUNBALANCED\t%s\t%s\t%s\t%s\n' "$name" "$agent_rel" "$nstart" "$nend"
     else
-      printf 'REGIONOK\t%s\n' "$name"
-      # A marker state machine over the file, capturing every `- ` + backtick
-      # bullet strictly between the pair, in file order. A line between the
-      # markers that is not a bullet (the blank line, the canonical sentence)
-      # contributes nothing.
-      awk -v s="$REMIT_START" -v e="$REMIT_END" -v m="$name" '
-        BEGIN { OFS = "\t" }
-        $0 == s { infl = 1; next }
-        $0 == e { infl = 0; next }
-        infl && match($0, /^- `.*`$/) { print "REGION", m, substr($0, 4, length($0) - 4) }
-      ' "$agent"
+      start_line="$(grep -nxF -- "$REMIT_START" "$agent" | cut -d: -f1)"
+      end_line="$(grep -nxF -- "$REMIT_END" "$agent" | cut -d: -f1)"
+      if [ "$start_line" -gt "$end_line" ]; then
+        printf 'REGIONREVERSED\t%s\t%s\t%s\t%s\n' "$name" "$agent_rel" "$start_line" "$end_line"
+      else
+        printf 'REGIONOK\t%s\n' "$name"
+        # A marker state machine over the file, capturing every `- ` + backtick
+        # bullet strictly between the pair, in file order. A line between the
+        # markers that is not a bullet (the blank line, the canonical sentence)
+        # contributes nothing.
+        awk -v s="$REMIT_START" -v e="$REMIT_END" -v m="$name" '
+          BEGIN { OFS = "\t" }
+          $0 == s { infl = 1; next }
+          $0 == e { infl = 0; next }
+          infl && match($0, /^- `.*`$/) { print "REGION", m, substr($0, 4, length($0) - 4) }
+        ' "$agent"
+      fi
     fi
   done < <(printf '%s\n' "$recs")
 }
@@ -431,11 +439,11 @@ done < <(printf '%s\n' "$raw_records")
 
 # --- Invariant: the remit region's SHAPE -------------------------------------
 #
-# Rendered here rather than in the awk pass below because these three say the
+# Rendered here rather than in the awk pass below because these four say the
 # region could not be read at all, so there is nothing for the parity comparison
 # to compare. The writer refuses to repair a malformed pair, by design: it never
-# deletes bytes outside a pair it can identify, so a human deletes the extra or
-# unbalanced markers first and re-runs it.
+# deletes bytes outside a pair it can identify, so a human deletes the extra,
+# unbalanced, or reversed markers first and re-runs it.
 
 while IFS=$'\t' read -r kind name agent_rel nstart nend; do
   case "$kind" in
@@ -480,6 +488,21 @@ while IFS=$'\t' read -r kind name agent_rel nstart nend; do
       printf '  not repair this, because it never deletes bytes outside a pair it\n'
       printf '  can identify. Restore the missing marker by hand, leaving exactly\n'
       printf '  one balanced pair, then re-run the repair.\n'
+      printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
+      printf '\n'
+      ;;
+    REGIONREVERSED)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL reversed-remit-region\n'
+      printf '  member:      %s\n' "$name"
+      printf '  agent file:  %s\n' "$agent_rel"
+      printf '  start line:  %s\n' "$nstart"
+      printf '  end line:    %s\n' "$nend"
+      printf '  The end marker appears before the start marker, so nothing marks\n'
+      printf '  where the region actually begins and ends in file order. The\n'
+      printf '  writer will not repair this, because it never deletes bytes\n'
+      printf '  outside a pair it can identify. Fix the marker order by hand,\n'
+      printf '  leaving the start marker first, then re-run the repair.\n'
       printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
       printf '\n'
       ;;

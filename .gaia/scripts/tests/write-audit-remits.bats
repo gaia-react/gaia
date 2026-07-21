@@ -16,7 +16,13 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   WRITER="$REPO_ROOT/.gaia/scripts/write-audit-remits.sh"
   CHECK="$REPO_ROOT/.gaia/scripts/verify-audit-roster.sh"
-  [ -f "$WRITER" ] || skip "write-audit-remits.sh not present"
+  # A hard failure, not a skip: a `skip` here would silently retire every
+  # test in this suite to skipped-and-green if the committed writer ever
+  # went missing, which is the opposite of what a missing file should do.
+  if [ ! -f "$WRITER" ]; then
+    printf 'write-audit-remits.sh missing: %s\n' "$WRITER" >&2
+    return 1
+  fi
 }
 
 assert_contains() {
@@ -476,6 +482,63 @@ YAML
   local after
   after="$(cat "$f")"
   [ "$before" = "$after" ]
+}
+
+@test "malformed markers: a reversed pair (end before start) is refused, the file left byte-identical, tail intact" {
+  # The critical case: a single balanced pair (start=1, end=1) whose end
+  # marker sits ABOVE its start marker. Counting alone reads this as
+  # "replace"; only the line-order check catches it. A writer that missed
+  # this would print through the start marker, emit the new body, and then
+  # (because the state machine's end-marker rule never fires) drop every
+  # remaining line to EOF -- including this fixture's distinctive tail line.
+  local r="$BATS_TEST_TMPDIR/malformed-reversed"
+  fixture_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+  - name: code-audit-a
+    globs:
+      - "a/**"
+YAML
+  run_writer "$r"
+  [ "$status" -eq 0 ]
+
+  local f="$r/.claude/agents/code-audit-a.md"
+  cat > "$f" <<'MD'
+---
+name: code-audit-a
+---
+
+# code-audit-a
+
+## Remit and self-skip
+
+You own things.
+
+<!-- gaia:audit-remit:end -->
+- `a/**`
+
+Filter the changed-file list against the globs above.
+<!-- gaia:audit-remit:start -->
+
+## Some other important section
+
+THIS TAIL MUST SURVIVE
+MD
+
+  local before
+  before="$(cat "$f")"
+
+  run_writer "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "code-audit-a"
+
+  local after
+  after="$(cat "$f")"
+  [ "$before" = "$after" ]
+  grep -qxF -- "THIS TAIL MUST SURVIVE" "$f"
 }
 
 # ---------------------------------------------------------------------------

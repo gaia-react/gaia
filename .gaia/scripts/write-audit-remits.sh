@@ -152,10 +152,29 @@ while IFS= read -r name; do
   nstart="$(grep -cxF -- "$START_MARKER" "$agent")"
   nend="$(grep -cxF -- "$END_MARKER" "$agent")"
 
+  # A single balanced pair is still malformed if the end marker precedes the
+  # start marker: nothing then marks where the region actually begins and
+  # ends in file order, and the replace state machine below would print
+  # through the start marker, emit the new body, then drop every remaining
+  # line to EOF looking for an end marker it will never see (because the one
+  # on disk is already behind it). Caught here, before mode selection, so
+  # that shape is refused rather than silently destructive.
+  reversed=0
   if [ "$nstart" -eq 1 ] && [ "$nend" -eq 1 ]; then
+    start_line="$(grep -nxF -- "$START_MARKER" "$agent" | cut -d: -f1)"
+    end_line="$(grep -nxF -- "$END_MARKER" "$agent" | cut -d: -f1)"
+    [ "$start_line" -lt "$end_line" ] || reversed=1
+  fi
+
+  if [ "$nstart" -eq 1 ] && [ "$nend" -eq 1 ] && [ "$reversed" -eq 0 ]; then
     mode="replace"
   elif [ "$nstart" -eq 0 ] && [ "$nend" -eq 0 ]; then
     mode="insert"
+  elif [ "$reversed" -eq 1 ]; then
+    printf 'write-audit-remits: %s: remit markers in %s are reversed (end marker at line %d appears before start marker at line %d); fix the order by hand and re-run\n' \
+      "$name" "$agent" "$end_line" "$start_line" >&2
+    overall_failed=1
+    continue
   else
     printf 'write-audit-remits: %s: markers duplicated or unbalanced in %s (start=%d end=%d); delete the extra or unbalanced markers and re-run\n' \
       "$name" "$agent" "$nstart" "$nend" >&2
@@ -245,7 +264,7 @@ EOF
   # sed -i (the BSD/GNU -i forms disagree, and the region body carries
   # backticks, *, and . a sed replacement would mangle).
   tmp="$tmpdir/out"
-  awk -v bodyfile="$body_file" -v start="$START_MARKER" -v end="$END_MARKER" \
+  if ! awk -v bodyfile="$body_file" -v start="$START_MARKER" -v end="$END_MARKER" \
       -v mode="$awk_mode" -v anchor="$REMIT_HEADING" '
     function emit_body(   line) {
       while ((getline line < bodyfile) > 0) print line
@@ -287,11 +306,21 @@ EOF
       next
     }
     { print }
-  ' "$agent" > "$tmp"
+  ' "$agent" > "$tmp"; then
+    printf 'write-audit-remits: %s: failed to generate the regenerated region for %s; not modified\n' \
+      "$name" "$agent" >&2
+    overall_failed=1
+    continue
+  fi
 
   was_exec=0
   [ -x "$agent" ] && was_exec=1
-  mv "$tmp" "$agent"
+  if ! mv "$tmp" "$agent"; then
+    printf 'write-audit-remits: %s: failed to install the regenerated %s; not modified\n' \
+      "$name" "$agent" >&2
+    overall_failed=1
+    continue
+  fi
   [ "$was_exec" -eq 1 ] && chmod +x "$agent"
 
   if [ "$mode" = "insert" ]; then

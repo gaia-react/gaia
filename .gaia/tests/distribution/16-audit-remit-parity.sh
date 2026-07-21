@@ -44,10 +44,15 @@ WRITER="$STAGING/.gaia/scripts/write-audit-remits.sh"
 
 # region_globs FILE
 # Prints the glob value of every remit-region bullet in FILE, one per line.
+# Exact whole-line marker match, matching the two authoritative readers
+# (verify-audit-roster.sh's _verify_roster_read_regions and
+# write-audit-remits.sh's rewrite awk): an unanchored /regex/ match would
+# also fire on the marker appearing mid-line or as a quoted example, which
+# neither reader treats as a real marker.
 region_globs() {
   awk '
-    /<!-- gaia:audit-remit:start -->/ { flag=1; next }
-    /<!-- gaia:audit-remit:end -->/ { flag=0 }
+    $0 == "<!-- gaia:audit-remit:start -->" { flag=1; next }
+    $0 == "<!-- gaia:audit-remit:end -->" { flag=0 }
     flag && /^- `/ { print }
   ' "$1" | sed -e 's/^- `//' -e 's/`$//'
 }
@@ -133,6 +138,14 @@ fi
 shopt -s nullglob
 staged_agent_defs=("$STAGING"/.claude/agents/code-audit-*.md)
 shopt -u nullglob
+# A bare "${staged_agent_defs[@]}" expansion of an empty array aborts under
+# `set -u` on bash 3.2 (stock macOS /bin/bash). An empty array here would
+# also mean assertion 6 scans nothing, so failing explicitly is correct on
+# both counts, not just a portability guard.
+if [ "${#staged_agent_defs[@]}" -eq 0 ]; then
+  fail "no .claude/agents/code-audit-*.md shipped in the staged tree; assertion 6 has nothing to scan"
+  exit 1
+fi
 LEAKED_GLOBS=()
 for def in "${staged_agent_defs[@]}"; do
   while IFS= read -r g; do

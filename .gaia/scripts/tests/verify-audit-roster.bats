@@ -20,8 +20,17 @@ setup() {
   WRITER="$REPO_ROOT/.gaia/scripts/write-audit-remits.sh"
   REMIT_START='<!-- gaia:audit-remit:start -->'
   REMIT_END='<!-- gaia:audit-remit:end -->'
-  [ -f "$SCRIPT" ] || skip "verify-audit-roster.sh not present"
-  [ -f "$WRITER" ] || skip "write-audit-remits.sh not present"
+  # A hard failure, not a skip: a `skip` here would silently retire all 69+
+  # tests in this suite to skipped-and-green if either committed script ever
+  # went missing, which is the opposite of what a missing file should do.
+  if [ ! -f "$SCRIPT" ]; then
+    printf 'verify-audit-roster.sh missing: %s\n' "$SCRIPT" >&2
+    return 1
+  fi
+  if [ ! -f "$WRITER" ]; then
+    printf 'write-audit-remits.sh missing: %s\n' "$WRITER" >&2
+    return 1
+  fi
 }
 
 assert_contains() {
@@ -103,6 +112,20 @@ duplicate_region() {
 unbalance_region() {
   local f="$1"
   grep -vxF -- "$REMIT_END" "$f" > "$f.tmp"
+  mv "$f.tmp" "$f"
+}
+
+# Moves the end marker to appear BEFORE the start marker: still exactly one
+# of each (nstart=1, nend=1), so a counts-only classifier reads this as a
+# normal balanced pair, but the pair is reversed and the region cannot be
+# read in file order.
+reverse_region() {
+  local f="$1"
+  awk -v s="$REMIT_START" -v e="$REMIT_END" '
+    $0 == e { next }
+    $0 == s { print e; print; next }
+    { print }
+  ' "$f" > "$f.tmp"
   mv "$f.tmp" "$f"
 }
 
@@ -807,9 +830,23 @@ YAML
   assert_contains "bash .gaia/scripts/write-audit-remits.sh"
 }
 
+@test "reversed-remit-region: a definition whose end marker precedes its start marker fails" {
+  # A single balanced pair (start=1, end=1) is not enough: counting alone
+  # would read this as replaceable, which is exactly the shape that made the
+  # writer destructive before it checked marker ORDER too.
+  local r="$BATS_TEST_TMPDIR/remit-shape-reversed"
+  remit_root "$r"
+  reverse_region "$r/.claude/agents/code-audit-a.md"
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "reversed-remit-region"
+  assert_contains "code-audit-a"
+  assert_contains "bash .gaia/scripts/write-audit-remits.sh"
+}
+
 @test "SPEC-056 UAT-004: no marker-shape failure is ever reported as parity-clean" {
   local shape f r
-  for shape in strip duplicate unbalance; do
+  for shape in strip duplicate unbalance reverse; do
     r="$BATS_TEST_TMPDIR/remit-shape-clean-$shape"
     remit_root "$r"
     f="$r/.claude/agents/code-audit-a.md"
@@ -817,6 +854,7 @@ YAML
       strip)     strip_region "$f" ;;
       duplicate) duplicate_region "$f" ;;
       unbalance) unbalance_region "$f" ;;
+      reverse)   reverse_region "$f" ;;
     esac
     run_root "$r"
     [ "$status" -eq 1 ] || return 1

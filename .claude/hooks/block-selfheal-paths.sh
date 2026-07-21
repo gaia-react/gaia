@@ -157,14 +157,31 @@ case "$tool_name" in
     # write-shape loop below never sees it. The literal lives here rather than in
     # the shared AUDIT_SELFHEAL_REFUSE_ERE because that ERE is a path matcher the
     # CI push gate applies to a diff, and an invocation is not a path in a diff.
+    #
+    # Matched only at an EXECUTION position: token 0, or a token immediately
+    # following an interpreter (bash, sh, zsh, env) or a `;` / `&&` / `||` / `|`
+    # separator. A read-only command that merely NAMES the file as an argument
+    # (`shellcheck .gaia/scripts/write-audit-remits.sh`, `cat ...`, `git log
+    # --grep ...`) is not an invocation of it and must stay allowed.
     k=0
     while [ "$k" -lt "$n" ]; do
-      cand=$(strip_quotes "${toks[$k]}")
-      case "${cand##*/}" in
-        write-audit-remits.sh)
-          deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites every code-audit-*.md definition under .claude/agents/, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
-          ;;
-      esac
+      exec_pos=0
+      if [ "$k" -eq 0 ]; then
+        exec_pos=1
+      else
+        prev=$(strip_quotes "${toks[$((k - 1))]}")
+        case "$prev" in
+          ';' | '&&' | '||' | '|' | bash | sh | zsh | env) exec_pos=1 ;;
+        esac
+      fi
+      if [ "$exec_pos" -eq 1 ]; then
+        cand=$(strip_quotes "${toks[$k]}")
+        case "${cand##*/}" in
+          write-audit-remits.sh)
+            deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites every code-audit-*.md definition under .claude/agents/, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
+            ;;
+        esac
+      fi
       k=$((k + 1))
     done
 

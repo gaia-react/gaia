@@ -320,6 +320,16 @@ assert_allowed() {
   assert_allowed
 }
 
+@test "SPEC-056 UAT-015: shellcheck naming the writer as an argument is allowed, not an invocation" {
+  # The execution-shape refusal is anchored to an EXECUTABLE position (token
+  # 0, or right after an interpreter / a ; && || | separator), not to any
+  # token that merely names the file. A read-only command like `shellcheck`
+  # naming the writer as an argument must stay allowed, including the
+  # shell auditor's own mandated methodology against this very file.
+  run_hook_bash "code-audit-maintainer-shell" "shellcheck .gaia/scripts/write-audit-remits.sh"
+  assert_allowed
+}
+
 # --- structural ---
 
 @test "block-selfheal-paths.sh is executable" {
