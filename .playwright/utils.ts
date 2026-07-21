@@ -4,7 +4,11 @@ import {expect} from '@playwright/test';
 export const metatag = (page: Page, name: string): Locator =>
   page.locator(`head > meta[name="${name}"]`);
 
-export const hydration = async (page: Page): Promise<void> => {
+// Resolves true when the barrier had to self-heal with a reload, so a caller
+// asserting on console or page errors can tell a clean load from a recovered
+// one: the reload's aborted requests report errors that say nothing about the
+// app, and listeners registered on the Page survive it.
+export const hydration = async (page: Page): Promise<boolean> => {
   const meta = metatag(page, 'hydrated');
 
   // Warm server: the page hydrates within the probe window and the meta tag
@@ -24,4 +28,6 @@ export const hydration = async (page: Page): Promise<void> => {
   }
 
   await expect(meta).toHaveAttribute('content', 'true', {timeout: 30_000});
+
+  return !isHydrated;
 };

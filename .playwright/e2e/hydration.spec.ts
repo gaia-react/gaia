@@ -21,14 +21,18 @@ test('home page loads with no console or page errors', async ({page}) => {
   // The first load absorbs the cold dev-server race: hydration() self-heals it
   // with a reload, and the requests that lost the race report errors that say
   // nothing about the app. Listeners survive a reload, so reset and assert on a
-  // second, known-warm load.
+  // second load.
   await page.goto('/');
   await hydration(page);
 
   errors.length = 0;
 
   await page.reload();
-  await hydration(page);
+  const selfHealed = await hydration(page);
 
+  // The asserted load must be the clean one. A second self-heal would drop its
+  // own aborted-request errors into the reset collector, so fail on that
+  // directly rather than on the errors it produces.
+  expect(selfHealed).toBe(false);
   expect(errors).toEqual([]);
 });

@@ -82,15 +82,16 @@ page.on('pageerror', (error) => {
   errors.push(error.message);
 });
 
-// Absorb the cold dev-server race, then assert on a known-warm load.
+// Absorb the cold dev-server race, then assert on a second, clean load.
 await page.goto('/');
 await hydration(page);
 
 errors.length = 0;
 
 await page.reload();
-await hydration(page);
+const selfHealed = await hydration(page);
 
+expect(selfHealed).toBe(false);
 expect(errors).toEqual([]);
 ```
 
@@ -98,12 +99,15 @@ Once both channels are watched, filtering by message text is unnecessary and
 costs coverage: any error during a page load is a failure. The split applies
 to every uncaught runtime error, not only hydration.
 
-**Reset the collector before the load you assert on.** `hydration()` self-heals
-a cold dev server by calling `page.reload()`, listeners registered on the
-`Page` survive that reload, and the requests that lost the race push errors
-that say nothing about the app. Asserting on the first load makes a successful
-self-heal fail the test. `.playwright/e2e/hydration.spec.ts` is the worked
-example.
+**Reset the collector before the load you assert on, then prove that load was
+clean.** `hydration()` self-heals a cold dev server by calling `page.reload()`,
+listeners registered on the `Page` survive that reload, and the requests that
+lost the race push errors that say nothing about the app. Asserting on the
+first load makes a successful self-heal fail the test. Resetting alone only
+moves the exposure, because the asserted load can self-heal too, so
+`hydration()` returns whether it did: assert it did not, and a recovered load
+fails on that fact instead of on the noise it produced.
+`.playwright/e2e/hydration.spec.ts` is the worked example.
 
 ## MSW + real dev server
 
