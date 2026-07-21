@@ -395,6 +395,38 @@ transforms:
           - "wiki/hot.md"
           - "wiki/log.md"
 
+      # ---- Bare-prose Title-Case mentions of release-excluded wiki titles ----
+      # The wikilink-to-excluded check above only catches a `[[wikilink]]`
+      # whose target is release-excluded. It misses a bare Title-Case mention
+      # of an excluded page's title in ordinary prose, a dangling pointer to a
+      # page the adopter's clone never received.
+      #
+      # `derive: excluded-titles` builds the excluded-title set at scan time
+      # from `.gaia/release-exclude`, resolved against the source repo (that
+      # file excludes itself, so it never reaches the staging tree the other
+      # checks scan). Every `.md` exclude contributes its case-preserved
+      # basename; every bare-directory exclude (wiki/entities, wiki/meta)
+      # contributes the case-preserved basename of every page beneath it, not
+      # the directory basename itself (a lowercase common word that would
+      # cry wolf on ordinary prose). A newly excluded page is caught with no
+      # edit here; the set cannot drift from the exclude list.
+      #
+      # `title-opt-out` subtracts titles that read as ordinary prose and would
+      # otherwise cry wolf on nearly every shipped page:
+      - id: excluded-titles
+        description: "Bare-prose Title-Case mentions of release-excluded wiki page titles"
+        derive: excluded-titles
+        scope:
+          - "wiki/**/*.md"
+        path-allowlist:
+          - "wiki/hot.md"
+          - "wiki/log.md"
+        title-opt-out:
+          - "GAIA" # the project's own name; a generic word on nearly every shipped page.
+          - "dashboard" # a common noun; the wiki/meta/dashboard.md title is not a followable pointer in prose.
+          - "Steven Sacks" # the maintainer's name appears as attribution, not as a page reference.
+          - "Release Workflow" # a generic multi-word title; bare-prose form reads as ordinary text, and its [[wikilink]] and path forms stay covered by the sibling checks.
+
       # ---- Workflow paths-filter denylist syntax ----
       # `paths-ignore:` and inverted `!pattern` entries fail quiet: a new
       # top-level path added to the repo silently passes the filter and
