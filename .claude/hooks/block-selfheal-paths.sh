@@ -171,12 +171,34 @@ case "$tool_name" in
     # the first line). A read-only command that merely NAMES the file as an
     # argument (`shellcheck .gaia/scripts/write-audit-remits.sh`, `cat ...`,
     # `git log --grep ...`) is not an invocation of it and must stay allowed.
+    #
+    # A separator only ends a token when whitespace happens to follow it, so
+    # `<check>; <writer>`, `true&&bash <writer>`, and `echo x| bash <writer>`
+    # would otherwise present the separator glued to a neighbour and never
+    # mark a boundary at all. That is the realistic bypass, not an
+    # adversarial one: the check prints `repair:  bash .gaia/scripts/write-
+    # audit-remits.sh` under every finding, so chaining the printed repair
+    # onto the check that printed it is the natural next keystroke. Pad every
+    # separator character into a standalone token for THIS scan only, in its
+    # own array: the write-shape loop below reads the unpadded `toks`, where
+    # `>` / `>>` and exact `;`/`&&` shapes are load-bearing. `&&` and `||`
+    # degrade to two adjacent single-character tokens, which is harmless
+    # because this scan only asks whether a boundary occurred, never which
+    # operator produced it. Padding can also split a quoted argument, which
+    # only ever widens the deny surface, the safe direction here.
+    esrc="$cmd"
+    esrc="${esrc//;/ ; }"
+    esrc="${esrc//&/ & }"
+    esrc="${esrc//|/ | }"
+    read -r -a etoks <<<"$esrc"
+    en=${#etoks[@]}
+
     prev_sep=1
     after_interp=0
     after_interp_env=0
     k=0
-    while [ "$k" -lt "$n" ]; do
-      cand=$(strip_quotes "${toks[$k]}")
+    while [ "$k" -lt "$en" ]; do
+      cand=$(strip_quotes "${etoks[$k]}")
 
       exec_pos=0
       [ "$prev_sep" -eq 1 ] && exec_pos=1
@@ -216,8 +238,11 @@ case "$tool_name" in
         esac
       fi
 
+      # Single characters, not `&&` / `||`: the padding above has already
+      # split every multi-character operator into adjacent single-character
+      # tokens.
       case "$cand" in
-        ';' | '&&' | '||' | '|') prev_sep=1 ;;
+        ';' | '&' | '|') prev_sep=1 ;;
         *) prev_sep=0 ;;
       esac
 

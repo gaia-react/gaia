@@ -573,6 +573,38 @@ YAML
 # Robustness.
 # ---------------------------------------------------------------------------
 
+@test "robustness: an unusable TMPDIR is refused before any definition is touched" {
+  # Without the guard this is destructive and silent: an empty $tmpdir makes
+  # the region body file unwritable, awk's getline cannot tell unreadable
+  # from empty, and every definition is rewritten to a region holding the
+  # two markers and nothing between them, with exit 0. The writer must
+  # refuse instead, leaving every file byte-identical.
+  local r="$BATS_TEST_TMPDIR/bad-tmpdir"
+  fixture_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+  - name: code-audit-a
+    globs:
+      - "a/**"
+YAML
+  local before_default before_a
+  before_default="$(cat "$r/.claude/agents/code-audit-default.md")"
+  before_a="$(cat "$r/.claude/agents/code-audit-a.md")"
+
+  run env TMPDIR="$r/no-such-tmpdir" bash "$WRITER" --root "$r" --config "$r/.gaia/audit-ci.yml"
+  [ "$status" -eq 1 ]
+
+  # The definitions are untouched, and in particular no emptied region landed.
+  local after_default after_a
+  after_default="$(cat "$r/.claude/agents/code-audit-default.md")"
+  after_a="$(cat "$r/.claude/agents/code-audit-a.md")"
+  [ "$before_default" = "$after_default" ]
+  [ "$before_a" = "$after_a" ]
+}
+
 @test "robustness: a roster with no auditors block exits 0 and writes nothing" {
   local r="$BATS_TEST_TMPDIR/no-auditors"
   mkdir -p "$r/.gaia/scripts" "$r/.claude/agents" "$r/.claude/hooks/lib"

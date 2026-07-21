@@ -131,7 +131,10 @@ fi
 member_list="$(printf '%s\n' "$records" | awk -F'\t' '$1 == "MEMBER" { print $2 }')"
 default_name="$(printf '%s\n' "$records" | awk -F'\t' '$1 == "DEFAULT" { print $2; exit }')"
 
-tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/write-audit-remits.XXXXXX")"
+if ! tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/write-audit-remits.XXXXXX")" || [ -z "$tmpdir" ]; then
+  printf 'write-audit-remits: could not create a temporary directory; nothing modified\n' >&2
+  exit 1
+fi
 tmp=""
 trap 'rm -rf "$tmpdir"; [ -n "$tmp" ] && rm -f "$tmp"' EXIT
 
@@ -225,6 +228,22 @@ EOF
     printf '%s\n' "$DEFAULT_SENTENCE" >> "$body_file"
   else
     printf '%s\n' "$CLAIMANT_SENTENCE" >> "$body_file"
+  fi
+  # A generated body always carries at least the blank line and the canonical
+  # sentence just written, so an empty one means the writes above failed
+  # rather than that this member legitimately has nothing to declare. Assert
+  # it before the rewrite: awk's `while ((getline line < bodyfile) > 0)`
+  # cannot tell "unreadable" (-1) from "empty" (0) and emits nothing either
+  # way, so an unguarded failure here installs a region holding the two
+  # markers and nothing between them over every definition, drops every glob
+  # bullet and the canonical sentence, and still exits 0. Checking the body
+  # rather than any single cause covers ENOSPC and EIO too, the same failure
+  # class the atomic-rename comment below defends the install half against.
+  if [ ! -s "$body_file" ]; then
+    printf 'write-audit-remits: %s: region body generation failed for %s; not modified\n' \
+      "$name" "$agent" >&2
+    overall_failed=1
+    continue
   fi
   new_body="$(cat "$body_file")"
 

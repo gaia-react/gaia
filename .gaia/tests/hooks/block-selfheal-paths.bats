@@ -403,6 +403,55 @@ assert_allowed() {
   assert_denied
 }
 
+# --- execution-position anchor: separators glued to a neighbouring token ---
+#
+# A separator only ends a token when whitespace follows it, so these shapes
+# present the separator attached to a neighbour. The first is the realistic
+# one: the check prints its repair command under every finding, so chaining
+# that printed command onto the check that printed it lands exactly here.
+
+@test "SPEC-056 UAT-015: the writer chained onto the check with '; ' is denied" {
+  run_hook_bash "code-audit-frontend" \
+    "bash .gaia/scripts/verify-audit-roster.sh; bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer after a glued '; ' with no interpreter is denied" {
+  run_hook_bash "code-audit-frontend" "true; .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer after a pipe glued to the previous token is denied" {
+  run_hook_bash "code-audit-frontend" "echo x| bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer after a fully glued && is denied" {
+  run_hook_bash "code-audit-frontend" "true&&bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer after a glued || is denied" {
+  run_hook_bash "code-audit-frontend" "false|| bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: separator padding does not deny a read-only command naming the writer" {
+  # The padding widens only the execution-position scan. A command that names
+  # the writer as an argument, with a separator elsewhere, must stay allowed.
+  run_hook_bash "code-audit-maintainer-shell" \
+    "bash .gaia/scripts/verify-audit-roster.sh; shellcheck .gaia/scripts/write-audit-remits.sh"
+  assert_allowed
+}
+
+@test "SPEC-056 UAT-015: separator padding leaves the write-shape loop intact" {
+  # The write-shape loop reads the UNPADDED token array, where `>` and `2>&1`
+  # are load-bearing. A redirect into a refused path must still deny with a
+  # stderr redirect present in the same command.
+  run_hook_bash "code-audit-frontend" "echo x > .claude/agents/code-audit-frontend.md 2>&1"
+  assert_denied
+}
+
 # --- structural ---
 
 @test "block-selfheal-paths.sh is executable" {
