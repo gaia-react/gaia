@@ -94,19 +94,40 @@ const leakCheckBaseShape = {
 //   - `excluded-workflows`: release-excluded `.github/workflows/*.yml` that never
 //     reach an adopter (no on-demand render template), whose curated-regex gap is
 //     what the `maintainer-paths` check structurally cannot close.
-const StaticLeakCheckSchema = z.object({
+//   - `excluded-titles`: the release-excluded wiki page-title set, matched as
+//     bare Title-Case prose (the leak the three checks above each miss).
+//
+// Every member of the check union parses strictly, so an unknown key is rejected
+// rather than silently stripped. This matters most for `title-opt-out`, which is
+// valid ONLY on the `excluded-titles` variant: a strip-and-pass would drop a
+// maintainer's opt-out and ship the very leak it guards against.
+const StaticLeakCheckSchema = z.strictObject({
   ...leakCheckBaseShape,
   pattern: z.string().min(1),
 });
 
-const DerivedLeakCheckSchema = z.object({
+const OtherDerivedLeakCheckSchema = z.strictObject({
   ...leakCheckBaseShape,
   derive: z.literal(['excluded-slugs', 'excluded-workflows']),
 });
 
+const TitleDerivedLeakCheckSchema = z.strictObject({
+  ...leakCheckBaseShape,
+  derive: z.literal('excluded-titles'),
+  // Titles subtracted from the derived set by case-sensitive exact equality.
+  // The generics that appear in ordinary prose on nearly every page live here.
+  'title-opt-out': z.array(z.string()).optional(),
+});
+
 const LeakCheckSchema = z.object({
   checks: z
-    .array(z.union([DerivedLeakCheckSchema, StaticLeakCheckSchema]))
+    .array(
+      z.union([
+        TitleDerivedLeakCheckSchema,
+        OtherDerivedLeakCheckSchema,
+        StaticLeakCheckSchema,
+      ])
+    )
     .min(1),
   type: z.literal('leak-check'),
 });
@@ -155,7 +176,9 @@ const ConfigSchema = z.object({
 });
 
 export type ScrubConfig = z.infer<typeof ConfigSchema>;
-type DerivedLeakCheck = z.infer<typeof DerivedLeakCheckSchema>;
+type DerivedLeakCheck =
+  | z.infer<typeof OtherDerivedLeakCheckSchema>
+  | z.infer<typeof TitleDerivedLeakCheckSchema>;
 type JsonStripArrayElementTransform = z.infer<
   typeof JsonStripArrayElementSchema
 >;
@@ -164,6 +187,7 @@ type LeakCheckEntry = LeakCheckTransform['checks'][number];
 type LeakCheckTransform = z.infer<typeof LeakCheckSchema>;
 type MarkerStripTransform = z.infer<typeof MarkerStripSchema>;
 type StaticLeakCheck = z.infer<typeof StaticLeakCheckSchema>;
+type TitleDerivedLeakCheck = z.infer<typeof TitleDerivedLeakCheckSchema>;
 
 // ---------------------------------------------------------------------------
 // Glob → regex
@@ -864,6 +888,185 @@ const runDerivedWorkflowCheck = ({
 };
 
 // ---------------------------------------------------------------------------
+// Derived excluded-titles check
+// ---------------------------------------------------------------------------
+
+// Literal regex-escape set for a title body. Matches `escapeRegExp` in
+// `manifest.js`: `-` is deliberately absent, harmless as a literal outside a
+// character class, and the token boundaries below handle hyphen adjacency.
+const TITLE_ESCAPE = /[.*+?^${}()|[\]\\]/g;
+// Exclude BOTH brackets from the inner class: a wikilink target never contains
+// one, and excluding `[` keeps overlapping `[[` prefixes from forcing a rescan
+// (linear, not polynomial).
+const WIKILINK_SPAN = /\[\[[^[\]]*\]\]/g;
+const INLINE_CODE_SPAN = /`[^`]*`/g;
+
+// Adds the page title(s) contributed by one `.gaia/release-exclude` line: a
+// `.md` exclude contributes its own case-preserved basename; a bare-directory
+// exclude contributes the case-preserved basename of every `.md` page beneath
+// it, and NOT the directory basename itself (a directory name is not a page a
+// reader follows, and as a lowercase common word it appears in ordinary prose).
+// Guard-clause early returns (not `continue`): this runs once per line from a
+// plain `for` loop in the caller, not from inside a loop itself.
+const addTitlesForExcludeLine = (
+  line: string,
+  cwd: string,
+  addTitle: (value: string) => void
+): void => {
+  if (line !== 'wiki' && !line.startsWith('wiki/')) return;
+
+  if (line.endsWith('.md')) {
+    addTitle(slugFromPath(line));
+
+    return;
+  }
+
+  const absolute = path.join(cwd, line);
+
+  if (!isDirectory(absolute)) return;
+
+  for (const relative of walkFiles(absolute)) {
+    if (relative.endsWith('.md')) addTitle(slugFromPath(relative));
+  }
+};
+
+/**
+ * Build the set of release-excluded wiki page TITLES from `.gaia/release-exclude`
+ * resolved against `cwd`, the source repo.
+ *
+ * Distinct from `buildExcludedSlugSet`: titles are case-PRESERVED (bare prose is
+ * matched case-sensitively) and the bare-directory basename is never
+ * contributed. Reading from `cwd` is load-bearing: `release-exclude` excludes
+ * itself, so a staging read yields an empty set and passes silently.
+ */
+const buildExcludedTitleSet = (cwd: string): Set<string> => {
+  const lines = parseExcludeLines(
+    readFileSync(path.join(cwd, RELEASE_EXCLUDE_PATH), 'utf8')
+  );
+  const titles = new Set<string>();
+
+  for (const line of lines) {
+    addTitlesForExcludeLine(line, cwd, (value) => titles.add(value));
+  }
+
+  return titles;
+};
+
+const escapeTitle = (title: string): string =>
+  title.replaceAll(TITLE_ESCAPE, String.raw`\$&`);
+
+// Case-sensitive (no `i` flag), whole-token: alphanumerics AND hyphens are
+// token-internal, so `Bundle-time Scrub` never fires inside `Bundle-time
+// Scrubbing` and `CLI-Binary-Split` never fires inside `CLI-Binary-Split-Extra`
+// or `Pre-CLI-Binary-Split`.
+const titleToRegex = (title: string): RegExp =>
+  new RegExp(String.raw`(?<![\w-])${escapeTitle(title)}(?![\w-])`);
+
+// A fence delimiter opens or closes a fenced code block: a line whose trimmed
+// text begins with three backticks or three tildes.
+const isFenceDelimiter = (line: string): boolean => {
+  const trimmed = line.trim();
+
+  return trimmed.startsWith('```') || trimmed.startsWith('~~~');
+};
+
+// Remove `[[wikilink]]` and inline `` `code` `` spans (the span only, keeping
+// surrounding text) so a title inside either is not matched while a bare title
+// sharing the line still is. Order is independent: neither strip reintroduces
+// the other's delimiters.
+const stripSkippedSpans = (line: string): string =>
+  line.replaceAll(WIKILINK_SPAN, '').replaceAll(INLINE_CODE_SPAN, '');
+
+type TitleMatcher = {regex: RegExp; title: string};
+
+/**
+ * Scan one post-strip staging file for bare-title leaks with its OWN full
+ * line-stream walk (not `scanForLeaks`), tracking fenced-code-block state per
+ * file. Every line is observed so a fence delimiter always toggles state, even
+ * a line-allowlisted one; routing this through `scanForLeaks` would drop
+ * allowlisted lines before the walk and desync the fence counter.
+ */
+const findTitleLeaksInFile = (
+  file: {content: string; id: string; path: string},
+  matchers: readonly TitleMatcher[],
+  lineAllowlist: readonly RegExp[]
+): Leak[] => {
+  const leaks: Leak[] = [];
+  let insideFence = false;
+
+  for (const [index, line] of file.content.split('\n').entries()) {
+    if (isFenceDelimiter(line)) {
+      insideFence = !insideFence;
+    } else if (!insideFence && !lineAllowlist.some((rx) => rx.test(line))) {
+      const residue = stripSkippedSpans(line);
+
+      for (const {regex, title} of matchers) {
+        if (regex.test(residue)) {
+          leaks.push({
+            check: file.id,
+            file: file.path,
+            line: index + 1,
+            match: title,
+          });
+        }
+      }
+    }
+  }
+
+  return leaks;
+};
+
+type DerivedTitleCheckArgs = {
+  check: TitleDerivedLeakCheck;
+  cwd: string;
+  files: readonly string[];
+  stagingRoot: string;
+};
+
+const runDerivedTitleCheck = ({
+  check,
+  cwd,
+  files,
+  stagingRoot,
+}: DerivedTitleCheckArgs): readonly Leak[] => {
+  const optOut = new Set(check['title-opt-out']);
+  const matchers: TitleMatcher[] = [...buildExcludedTitleSet(cwd)]
+    .filter((title) => !optOut.has(title))
+    .map((title) => ({regex: titleToRegex(title), title}));
+
+  if (matchers.length === 0) return [];
+
+  const lineAllowlist = (check['line-allowlist'] ?? []).map(
+    (raw) => new RegExp(raw)
+  );
+  const pathAllowlist = check['path-allowlist'] ?? [];
+  const leaks: Leak[] = [];
+
+  for (const relativePath of files) {
+    const inScope =
+      matchesAnyGlob(relativePath, check.scope) &&
+      !matchesAnyGlob(relativePath, pathAllowlist);
+
+    if (inScope) {
+      const content = readFileSync(
+        path.join(stagingRoot, relativePath),
+        'utf8'
+      );
+
+      leaks.push(
+        ...findTitleLeaksInFile(
+          {content, id: check.id, path: relativePath},
+          matchers,
+          lineAllowlist
+        )
+      );
+    }
+  }
+
+  return leaks;
+};
+
+// ---------------------------------------------------------------------------
 // Config loading
 // ---------------------------------------------------------------------------
 
@@ -1051,19 +1254,22 @@ const runLeakChecksForTransform = (
 
   for (const check of checks) {
     if (isDerivedCheck(check)) {
-      const runDerived =
-        check.derive === 'excluded-workflows' ?
-          runDerivedWorkflowCheck
-        : runDerivedWikilinkCheck;
+      const args = {
+        cwd: ctx.cwd,
+        files: ctx.stagedFiles,
+        stagingRoot: ctx.stagingDir,
+      };
 
-      leaks.push(
-        ...runDerived({
-          check,
-          cwd: ctx.cwd,
-          files: ctx.stagedFiles,
-          stagingRoot: ctx.stagingDir,
-        })
-      );
+      if (check.derive === 'excluded-titles') {
+        leaks.push(...runDerivedTitleCheck({check, ...args}));
+      } else {
+        const runDerived =
+          check.derive === 'excluded-workflows' ?
+            runDerivedWorkflowCheck
+          : runDerivedWikilinkCheck;
+
+        leaks.push(...runDerived({check, ...args}));
+      }
     } else {
       leaks.push(...runLeakCheck(ctx.stagingDir, ctx.stagedFiles, check));
     }

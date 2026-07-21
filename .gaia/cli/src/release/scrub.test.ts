@@ -1602,3 +1602,402 @@ describe('excluded-workflow-ref derived check', () => {
     expect(stdio.outputs.join('')).toContain('.github/workflows/release.yml');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Derived excluded-titles check
+// ---------------------------------------------------------------------------
+
+const TITLE_DERIVED_CONFIG = `
+transforms:
+  - type: leak-check
+    checks:
+      - id: excluded-titles
+        derive: excluded-titles
+        scope:
+          - "wiki/**/*.md"
+        path-allowlist:
+          - "wiki/hot.md"
+          - "wiki/log.md"
+        title-opt-out:
+          - "GAIA"
+          - "dashboard"
+          - "Steven Sacks"
+          - "Release Workflow"
+`;
+
+const TITLE_WITH_MARKER_CONFIG = `
+transforms:
+  - type: marker-strip
+    paths:
+      - "wiki/**/*.md"
+    start: "<!-- gaia:maintainer-only:start -->"
+    end: "<!-- gaia:maintainer-only:end -->"
+
+  - type: leak-check
+    checks:
+      - id: excluded-titles
+        derive: excluded-titles
+        scope:
+          - "wiki/**/*.md"
+        path-allowlist:
+          - "wiki/hot.md"
+          - "wiki/log.md"
+        title-opt-out:
+          - "GAIA"
+          - "dashboard"
+          - "Steven Sacks"
+          - "Release Workflow"
+`;
+
+// Representative `.gaia/release-exclude` for the title derivation: two bare
+// directory excludes (entities, meta), four distinctive `.md` file excludes, and
+// non-wiki lines the derivation must ignore. `Release Workflow` is a `.md`
+// exclude so the config-level opt-out is observable against a title that IS in
+// the derived set.
+const TITLE_EXCLUDE_FIXTURE = [
+  '# Paths excluded from the distribution tarball.',
+  '',
+  'wiki/entities',
+  'wiki/meta',
+  'wiki/concepts/Forensics Triage Workflow.md',
+  'wiki/decisions/Bundle-time Scrub.md',
+  'wiki/concepts/Release Workflow.md',
+  'wiki/decisions/CLI-Binary-Split.md',
+  '.gaia/release-exclude',
+  '.claude/commands/gaia-release.md',
+].join('\n');
+
+// Lay down the source-tree inputs the derivation reads from cwd: the
+// release-exclude manifest plus real pages inside the excluded directories
+// (basenames NEVER enumerated as their own exclude lines). `Distinctive Meta
+// Page` is a non-opted-out page beneath the bare `wiki/meta` exclude; the
+// directory basename `meta` itself is deliberately never contributed.
+const seedTitleSource = (sandbox: Sandbox): void => {
+  sandbox.writeSource('.gaia/release-exclude', TITLE_EXCLUDE_FIXTURE);
+  sandbox.writeSource('wiki/entities/GAIA.md', '# GAIA\n');
+  sandbox.writeSource('wiki/entities/Steven Sacks.md', '# Steven Sacks\n');
+  sandbox.writeSource('wiki/meta/dashboard.md', '# Wiki Dashboard\n');
+  sandbox.writeSource(
+    'wiki/meta/Distinctive Meta Page.md',
+    '# Distinctive Meta Page\n'
+  );
+};
+
+describe('excluded-titles derived check', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('flags a bare-prose title, derived from cwd, with file/line/match', () => {
+    // The #1 trap: `.gaia/release-exclude` excludes itself and never reaches the
+    // staging tree, so the set must be derived from cwd.
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      [
+        '# Foo',
+        '',
+        'The Forensics Triage Workflow governs incident capture.',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir, '--json'], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const report = JSON.parse(stdio.outputs.join('')) as {
+      leaks: {check: string; file: string; line: number; match: string}[];
+    };
+    expect(report.leaks).toEqual([
+      {
+        check: 'excluded-titles',
+        file: 'wiki/concepts/Foo.md',
+        line: 3,
+        match: 'Forensics Triage Workflow',
+      },
+    ]);
+  });
+
+  test('does not flag a title that appears only as a wikilink', () => {
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      '# Foo\n\nSee [[Forensics Triage Workflow]] for the details.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('does not flag a title inside an inline-code span or a fenced block', () => {
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      [
+        '# Foo',
+        '',
+        'Inline `Bundle-time Scrub` reference.',
+        '',
+        '```',
+        'Bundle-time Scrub inside a fenced block.',
+        '```',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('does not flag a bare title inside a stripped maintainer-only block', () => {
+    // marker-strip runs before leak-check and re-reads the file fresh, so the
+    // wrapped mention is gone before the title check ever sees the line.
+    sandbox = setupSandbox({config: TITLE_WITH_MARKER_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      [
+        '# Foo',
+        '',
+        'Public prose.',
+        '<!-- gaia:maintainer-only:start -->',
+        'The Forensics Triage Workflow handles this internally.',
+        '<!-- gaia:maintainer-only:end -->',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('subtracts an opted-out title while flagging a non-opted-out one on the same page', () => {
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      [
+        '# Foo',
+        '',
+        'The Release Workflow and the Bundle-time Scrub both run at release time.',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('Bundle-time Scrub');
+    expect(out).not.toContain('Release Workflow');
+  });
+
+  test('flags a newly excluded title with no config change (drift-proof)', () => {
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeSource(
+      '.gaia/release-exclude',
+      `${TITLE_EXCLUDE_FIXTURE}\nwiki/decisions/Newly Excluded Decision.md\n`
+    );
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      '# Foo\n\nThe Newly Excluded Decision changed our approach.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('Newly Excluded Decision');
+  });
+
+  test('flags a bare title on a line that also carries a wikilink to a different excluded title', () => {
+    // Span-level, not line-level: the `[[wikilink]]` span is removed, but the
+    // bare mention of a different excluded title on the same line still fires.
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      '# Foo\n\nSee [[Bundle-time Scrub]] and the Forensics Triage Workflow config.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('Forensics Triage Workflow');
+    expect(out).not.toContain('Bundle-time Scrub');
+  });
+
+  test('does not flag a lowercase concept-prose mention that is not the exact title', () => {
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      '# Foo\n\nConfigure the bundle-time scrub before shipping.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('does not flag the excluded directory basenames themselves', () => {
+    // The directory basenames `meta` / `entities` are deliberately NOT in the
+    // set; a naive `buildExcludedSlugSet`-style derivation would flag them.
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      '# Foo\n\nThe meta directory and the entities folder hold working notes.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('flags a page beneath a bare-directory exclude by its basename', () => {
+    // The directory contributes its pages (Distinctive Meta Page) even though
+    // the directory name (meta) itself is never contributed.
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      '# Foo\n\nThe Distinctive Meta Page documents the layout.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('Distinctive Meta Page');
+  });
+
+  test('does not fire on a title abutted by an extra word char or hyphen', () => {
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      [
+        '# Foo',
+        '',
+        'We finished Bundle-time Scrubbing last week.',
+        'The CLI-Binary-Split-Extra step and the Pre-CLI-Binary-Split step differ.',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('fires on a standalone hyphenated title', () => {
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      '# Foo\n\nThe CLI-Binary-Split boundary is deliberate.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('CLI-Binary-Split');
+  });
+
+  test('exits 2 when title-opt-out is placed on a non-title derived check', () => {
+    const config = `
+transforms:
+  - type: leak-check
+    checks:
+      - id: wikilink-to-excluded
+        derive: excluded-slugs
+        scope:
+          - "wiki/**/*.md"
+        title-opt-out:
+          - "GAIA"
+`;
+    sandbox = setupSandbox({config});
+    sandbox.writeStaged('wiki/index.md', '# x\n');
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(2);
+    expect(stdio.errors.join('')).toContain('config_load_failed');
+  });
+
+  test('exits 2 when title-opt-out is placed on a static check', () => {
+    const config = `
+transforms:
+  - type: leak-check
+    checks:
+      - id: uat-narrative
+        pattern: "UAT-[0-9]{3}"
+        scope:
+          - "wiki/**"
+        title-opt-out:
+          - "GAIA"
+`;
+    sandbox = setupSandbox({config});
+    sandbox.writeStaged('wiki/index.md', '# x\n');
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(2);
+    expect(stdio.errors.join('')).toContain('config_load_failed');
+  });
+
+  test('exempts allowlisted hot.md / log.md from the title check', () => {
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/hot.md',
+      '# Hot\n\nThe Forensics Triage Workflow is next.\n'
+    );
+    sandbox.writeStaged(
+      'wiki/log.md',
+      '# Log\n\nThe Bundle-time Scrub landed.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('runs a static check and the title derived check in one config', () => {
+    const mixedConfig = `
+transforms:
+  - type: leak-check
+    checks:
+      - id: uat-narrative
+        pattern: "UAT-[0-9]{3}"
+        scope:
+          - "wiki/**"
+      - id: excluded-titles
+        derive: excluded-titles
+        scope:
+          - "wiki/**/*.md"
+        path-allowlist:
+          - "wiki/hot.md"
+        title-opt-out:
+          - "Release Workflow"
+`;
+    sandbox = setupSandbox({config: mixedConfig});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged('wiki/a.md', '# A\n\nUAT-007 reference.\n');
+    sandbox.writeStaged(
+      'wiki/b.md',
+      '# B\n\nThe Bundle-time Scrub runs here.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('uat-narrative');
+    expect(out).toContain('excluded-titles');
+  });
+});

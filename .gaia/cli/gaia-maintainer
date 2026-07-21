@@ -22631,16 +22631,29 @@ var leakCheckBaseShape = {
   "path-allowlist": external_exports.array(external_exports.string()).optional(),
   scope: external_exports.array(external_exports.string().min(1)).min(1)
 };
-var StaticLeakCheckSchema = external_exports.object({
+var StaticLeakCheckSchema = external_exports.strictObject({
   ...leakCheckBaseShape,
   pattern: external_exports.string().min(1)
 });
-var DerivedLeakCheckSchema = external_exports.object({
+var OtherDerivedLeakCheckSchema = external_exports.strictObject({
   ...leakCheckBaseShape,
   derive: external_exports.literal(["excluded-slugs", "excluded-workflows"])
 });
+var TitleDerivedLeakCheckSchema = external_exports.strictObject({
+  ...leakCheckBaseShape,
+  derive: external_exports.literal("excluded-titles"),
+  // Titles subtracted from the derived set by case-sensitive exact equality.
+  // The generics that appear in ordinary prose on nearly every page live here.
+  "title-opt-out": external_exports.array(external_exports.string()).optional()
+});
 var LeakCheckSchema = external_exports.object({
-  checks: external_exports.array(external_exports.union([DerivedLeakCheckSchema, StaticLeakCheckSchema])).min(1),
+  checks: external_exports.array(
+    external_exports.union([
+      TitleDerivedLeakCheckSchema,
+      OtherDerivedLeakCheckSchema,
+      StaticLeakCheckSchema
+    ])
+  ).min(1),
   type: external_exports.literal("leak-check")
 });
 var JsonStripSchema = external_exports.object({
@@ -23013,6 +23026,92 @@ var runDerivedWorkflowCheck = ({
     }))
   );
 };
+var TITLE_ESCAPE = /[.*+?^${}()|[\]\\]/g;
+var WIKILINK_SPAN = /\[\[[^[\]]*\]\]/g;
+var INLINE_CODE_SPAN = /`[^`]*`/g;
+var addTitlesForExcludeLine = (line, cwd, addTitle) => {
+  if (line !== "wiki" && !line.startsWith("wiki/")) return;
+  if (line.endsWith(".md")) {
+    addTitle(slugFromPath(line));
+    return;
+  }
+  const absolute = path22.join(cwd, line);
+  if (!isDirectory(absolute)) return;
+  for (const relative of walkFiles(absolute)) {
+    if (relative.endsWith(".md")) addTitle(slugFromPath(relative));
+  }
+};
+var buildExcludedTitleSet = (cwd) => {
+  const lines = parseExcludeLines(
+    readFileSync21(path22.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+  );
+  const titles = /* @__PURE__ */ new Set();
+  for (const line of lines) {
+    addTitlesForExcludeLine(line, cwd, (value) => titles.add(value));
+  }
+  return titles;
+};
+var escapeTitle = (title) => title.replaceAll(TITLE_ESCAPE, String.raw`\$&`);
+var titleToRegex = (title) => new RegExp(String.raw`(?<![\w-])${escapeTitle(title)}(?![\w-])`);
+var isFenceDelimiter = (line) => {
+  const trimmed = line.trim();
+  return trimmed.startsWith("```") || trimmed.startsWith("~~~");
+};
+var stripSkippedSpans = (line) => line.replaceAll(WIKILINK_SPAN, "").replaceAll(INLINE_CODE_SPAN, "");
+var findTitleLeaksInFile = (file2, matchers, lineAllowlist) => {
+  const leaks = [];
+  let insideFence = false;
+  for (const [index, line] of file2.content.split("\n").entries()) {
+    if (isFenceDelimiter(line)) {
+      insideFence = !insideFence;
+    } else if (!insideFence && !lineAllowlist.some((rx) => rx.test(line))) {
+      const residue = stripSkippedSpans(line);
+      for (const { regex, title } of matchers) {
+        if (regex.test(residue)) {
+          leaks.push({
+            check: file2.id,
+            file: file2.path,
+            line: index + 1,
+            match: title
+          });
+        }
+      }
+    }
+  }
+  return leaks;
+};
+var runDerivedTitleCheck = ({
+  check: check2,
+  cwd,
+  files,
+  stagingRoot
+}) => {
+  const optOut = new Set(check2["title-opt-out"]);
+  const matchers = [...buildExcludedTitleSet(cwd)].filter((title) => !optOut.has(title)).map((title) => ({ regex: titleToRegex(title), title }));
+  if (matchers.length === 0) return [];
+  const lineAllowlist = (check2["line-allowlist"] ?? []).map(
+    (raw) => new RegExp(raw)
+  );
+  const pathAllowlist = check2["path-allowlist"] ?? [];
+  const leaks = [];
+  for (const relativePath of files) {
+    const inScope = matchesAnyGlob(relativePath, check2.scope) && !matchesAnyGlob(relativePath, pathAllowlist);
+    if (inScope) {
+      const content = readFileSync21(
+        path22.join(stagingRoot, relativePath),
+        "utf8"
+      );
+      leaks.push(
+        ...findTitleLeaksInFile(
+          { content, id: check2.id, path: relativePath },
+          matchers,
+          lineAllowlist
+        )
+      );
+    }
+  }
+  return leaks;
+};
 var loadConfig = (configPath) => {
   const raw = readFileSync21(configPath, "utf8");
   const parsed = load(raw);
@@ -23110,15 +23209,17 @@ var runLeakChecksForTransform = (checks, ctx) => {
   const leaks = [];
   for (const check2 of checks) {
     if (isDerivedCheck(check2)) {
-      const runDerived = check2.derive === "excluded-workflows" ? runDerivedWorkflowCheck : runDerivedWikilinkCheck;
-      leaks.push(
-        ...runDerived({
-          check: check2,
-          cwd: ctx.cwd,
-          files: ctx.stagedFiles,
-          stagingRoot: ctx.stagingDir
-        })
-      );
+      const args = {
+        cwd: ctx.cwd,
+        files: ctx.stagedFiles,
+        stagingRoot: ctx.stagingDir
+      };
+      if (check2.derive === "excluded-titles") {
+        leaks.push(...runDerivedTitleCheck({ check: check2, ...args }));
+      } else {
+        const runDerived = check2.derive === "excluded-workflows" ? runDerivedWorkflowCheck : runDerivedWikilinkCheck;
+        leaks.push(...runDerived({ check: check2, ...args }));
+      }
     } else {
       leaks.push(...runLeakCheck(ctx.stagingDir, ctx.stagedFiles, check2));
     }
