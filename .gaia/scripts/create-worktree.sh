@@ -73,6 +73,42 @@ wt_entry_is_locked_initializing() {
   ' <<<"$list"
 }
 
+# Generate React Router's typed routes inside the freshly created worktree.
+#
+# `.react-router/types` is gitignored, so it exists only where it was generated
+# and a new worktree never receives it. Without it every app file importing
+# `./+types/*` resolves to `error` typed values, and a lint run inside the
+# worktree reports unsafe-assignment errors that do not exist on the base
+# branch, against code the branch never touched.
+#
+# Generate rather than symlink main's copy: the types derive from the worktree's
+# OWN route files, so sharing main's would hand a branch that adds or renames a
+# route a silently wrong answer in place of a loud one.
+#
+# Borrow the resolved project root's already-installed CLI rather than
+# installing into the worktree. The new worktree sits under that root, so Node's
+# upward node_modules traversal resolves both the CLI and the app's own imports
+# from there; generation costs no per-worktree dependency tree and no install
+# wait. A root with nothing installed has no CLI to borrow, which the guard
+# below treats as nothing to do rather than as a failure worth reporting.
+#
+# Best-effort, like the link step above it: a checkout with nothing installed
+# yet, or a typegen that fails, must never fail worktree creation. The CLI's
+# stdout is discarded because this hook's stdout carries only the worktree path;
+# its stderr passes through so a real failure stays diagnosable.
+generate_worktree_types() {
+  local path="$1"
+  local cli="$project_root/node_modules/.bin/react-router"
+
+  [ -x "$cli" ] || return 0
+
+  if (cd "$path" && "$cli" typegen) >/dev/null; then
+    printf 'create-worktree: generated typed routes in %s\n' "$path" >&2
+  else
+    printf 'create-worktree: typegen skipped (non-fatal) for %s\n' "$path" >&2
+  fi
+}
+
 # The create-and-cleanup critical section. Runs under the per-name lock below,
 # or unlocked as a fallback, and returns rather than exits so the lock helper can
 # capture its status. $1 records which: `1` when we hold the lock, `0` when we do
@@ -151,6 +187,9 @@ create_worktree_unit() {
 
   # Set up shared-state symlinks inside the new worktree.
   (cd "$worktree_path" && bash ".gaia/scripts/link-worktree.sh") || true
+
+  # Leave the worktree with typed routes matching its own branch.
+  generate_worktree_types "$worktree_path"
 
   printf '%s\n' "$worktree_path"
   return 0
