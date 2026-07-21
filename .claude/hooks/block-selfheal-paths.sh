@@ -162,7 +162,7 @@ case "$tool_name" in
       cand=$(strip_quotes "${toks[$k]}")
       case "${cand##*/}" in
         write-audit-remits.sh)
-          deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites .claude/agents/code-audit-*.md, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
+          deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites every code-audit-*.md definition under .claude/agents/, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
           ;;
       esac
       k=$((k + 1))
