@@ -85,10 +85,12 @@ wt_entry_is_locked_initializing() {
 # OWN route files, so sharing main's would hand a branch that adds or renames a
 # route a silently wrong answer in place of a loud one.
 #
-# Borrow the main checkout's already-installed CLI rather than installing into
-# the worktree. The worktree sits under the main checkout, so Node's upward
-# node_modules traversal resolves both the CLI and the app's own imports from
-# there; generation costs no per-worktree dependency tree and no install wait.
+# Borrow the resolved project root's already-installed CLI rather than
+# installing into the worktree. The new worktree sits under that root, so Node's
+# upward node_modules traversal resolves both the CLI and the app's own imports
+# from there; generation costs no per-worktree dependency tree and no install
+# wait. A root with nothing installed has no CLI to borrow, which the guard
+# below treats as nothing to do rather than as a failure worth reporting.
 #
 # Best-effort, like the link step above it: a checkout with nothing installed
 # yet, or a typegen that fails, must never fail worktree creation. The CLI's

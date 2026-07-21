@@ -394,14 +394,22 @@ SHIM
 }
 
 # ---------- 19. Typegen is best-effort: no CLI installed yet ----------
-@test "typegen: a checkout with nothing installed still creates the worktree" {
+@test "typegen: a checkout with nothing installed creates the worktree, silently" {
   rm -rf "$MAIN/node_modules"
 
-  run_hook_stdout '{"name":"no-cli"}'
+  run_hook '{"name":"no-cli"}'
   [ "$status" -eq 0 ]
-  [ "$output" = "$MAIN/.claude/worktrees/no-cli" ]
   [ -d "$MAIN/.claude/worktrees/no-cli" ]
   git -C "$MAIN" show-ref --verify --quiet refs/heads/no-cli
+
+  # Nothing to borrow is nothing to do, not a failure worth reporting: without
+  # the presence guard every worktree created before the first install would
+  # carry a skip notice for a step that was never owed.
+  grep -qF "typegen skipped" <<<"$output" && return 1
+
+  # stdout still carries only the worktree path.
+  run_hook_stdout '{"name":"no-cli-2"}'
+  [ "$output" = "$MAIN/.claude/worktrees/no-cli-2" ]
 }
 
 # ---------- 20. Typegen is best-effort: a failing typegen never fails creation ----------
