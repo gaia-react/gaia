@@ -182,11 +182,13 @@ wiki/decisions/Forensics Triage Workflow.md
 .github/workflows/shell-lint.yml
 .github/workflows/distribution-audit-pr.yml
 .github/workflows/verify-required-checks.yml
-# `audit-roster.yml` runs the maintainer-only .gaia/scripts/verify-audit-roster.sh
-# advisory drift check against the GAIA team's own Code Audit Team roster
-# (.gaia/audit-ci.yml) and machinery lists; an adopter clone's own roster is
-# adopter-owned and this script's invariants are a maintainer-repo concern,
-# so the check would be a silent passenger on adopter clones.
+# `audit-roster.yml` runs .gaia/scripts/verify-audit-roster.sh's advisory
+# drift check against the GAIA team's own Code Audit Team roster
+# (.gaia/audit-ci.yml) and CI on this repo's pull requests. The workflow is
+# excluded, not the check: an adopter clone's own roster is adopter-owned,
+# so this workflow would be a silent passenger there. The check itself, and
+# its repair writer (.gaia/scripts/write-audit-remits.sh), ship to every
+# clone and are run by hand on an adopter clone.
 .github/workflows/audit-roster.yml
 # `pr-title.yml` enforces THIS repo's declared commit-type vocabulary on PR
 # titles. An adopter's vocabulary is their own, and the check would fail their
