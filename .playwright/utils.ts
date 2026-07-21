@@ -16,7 +16,7 @@ export const hydration = async (page: Page): Promise<boolean> => {
   // dependencies mid-flight, which fails the dynamic import of entry.client.tsx
   // so the page never hydrates and the meta never appears.
   const isHydrated = await meta
-    .waitFor({state: 'attached', timeout: 5_000})
+    .waitFor({state: 'attached', timeout: 5000})
     .then(() => true)
     .catch(() => false);
 

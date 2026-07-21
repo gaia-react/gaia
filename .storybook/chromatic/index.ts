@@ -13,7 +13,6 @@ export const isChromaticSnapshot =
     [...(window?.location.ancestorOrigins ?? {length: 0})].some((origin) =>
       origin.includes('www.chromatic.com')
     )
-    // @ts-ignore
   : false);
 
 if (!isChromaticSnapshot) {
@@ -25,12 +24,10 @@ if (!isChromaticSnapshot) {
 
     if (isDark) {
       document.documentElement.classList.add('dark');
-      docsStory?.classList.add('bg-gray-900');
-      docsStory?.classList.add('text-white');
+      docsStory?.classList.add('bg-gray-900', 'text-white');
     } else {
       document.documentElement.classList.remove('dark');
-      docsStory?.classList.remove('bg-gray-900');
-      docsStory?.classList.remove('text-white');
+      docsStory?.classList.remove('bg-gray-900', 'text-white');
     }
   });
 }

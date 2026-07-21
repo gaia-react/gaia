@@ -14,6 +14,10 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ## [Unreleased]
 
+### Changed
+
+- ESLint now checks `.playwright/` and `.storybook/`. The lint preset ignored both by default, which silently disabled the very rules it configured for them, so every e2e spec, Playwright helper, and Storybook config file went unchecked while `pnpm lint` reported a clean tree. `@gaia-react/lint` 1.11.0 stops ignoring them, and the 78 findings that surfaced in GAIA's own tree are fixed here. **Action required:** run `pnpm lint` after updating. Most of what surfaces in your own e2e and Storybook code auto-fixes; what remains is real (#980)
+
 ### Added
 
 - the PR Merge Workflow now tells the operator to verify an audit Suggestion's technical claims before applying it. The existing guidance prices the re-audit a fix costs but assumes the Suggestion is right, and a member can assert a mechanism it inferred rather than verified; implementing such a claim verbatim turns a reviewer's error into documented guidance that reads as reviewed. The content digest still forces a re-review of the applied fix, so this buys one round rather than closing a hole (#986)

@@ -1,4 +1,3 @@
-/* eslint-disable better-tailwindcss/no-unregistered-classes */
 import type {ReactRenderer} from '@storybook/react-vite';
 import type {DecoratorFunction} from 'storybook/internal/types';
 
