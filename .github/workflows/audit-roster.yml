@@ -1,18 +1,21 @@
 name: Audit Roster Drift
 
-# Advisory-only drift detector for the Code Audit Team roster (SPEC-045):
-# runs .gaia/scripts/verify-audit-roster.sh's five deterministic invariants
-# against the live .gaia/audit-ci.yml -- pairwise claimant glob disjointness,
-# the default-member's exclusion from that comparison, a hard fail on any
-# glob pair the bounded dialect cannot decide, that every roster member has
-# an agent file on disk registered in both machinery lists, and that every
+# Advisory-only drift detector for the Code Audit Team roster: runs
+# .gaia/scripts/verify-audit-roster.sh's deterministic invariants against
+# the live .gaia/audit-ci.yml -- pairwise claimant glob disjointness, the
+# default-member's exclusion from that comparison, a hard fail on any glob
+# pair the bounded dialect cannot decide, that every roster member has an
+# agent file on disk registered in both machinery lists, that every
 # member's name carries the `code-audit-` prefix the self-heal repair
-# boundary keys off of. The roster is meant to grow as a project adds
-# languages and surfaces, and these failure modes are otherwise silent: an
-# unregistered agent file rotates no member's content digest and merges
-# unaudited, a glob overlap between two claimant members hands a path to
-# whichever member the roster happens to list first, and an off-convention
-# member name escapes the self-heal repair boundary silently.
+# boundary keys off of, and remit region parity (region vs roster entry,
+# ordered; the region-shape rules; the region-glob dialect rule). The
+# roster is meant to grow as a project adds languages and surfaces, and
+# these failure modes are otherwise silent: an unregistered agent file
+# rotates no member's content digest and merges unaudited, a glob overlap
+# between two claimant members hands a path to whichever member the roster
+# happens to list first, an off-convention member name escapes the
+# self-heal repair boundary silently, and a remit region that disagrees
+# with its roster entry misdescribes what the member actually reviews.
 #
 # Deliberately NOT added to the required set: registering this (or any
 # check) as a required status check is a maintainer-run, ask-first cutover
@@ -20,13 +23,14 @@ name: Audit Roster Drift
 # detector should do to itself. This job surfaces drift for a human to act
 # on; it never mutates the roster or the machinery lists.
 #
-# Maintainer-only: the roster, the machinery lists, and the script that
-# checks them all describe the GAIA team's own Code Audit Team. Shipping
-# this check to adopters (so their own CI runs it as their roster grows) is
-# a separate, larger call needing template + render wiring; not built here.
+# The check itself (manifest class `owned`) and its repair writer,
+# .gaia/scripts/write-audit-remits.sh, ship to every clone and run there by
+# hand. This workflow is maintainer-only and release-excluded because it
+# runs against the GAIA team's own roster and CI on this repo's pull
+# requests; an adopter clone's roster is adopter-owned, so the job would be
+# a silent passenger at best and a confusing red check at worst there.
 # Release-excluded alongside the other maintainer-only workflows (category
-# 9 in .gaia/release-exclude); on an adopter clone this would be a silent
-# passenger at best and a confusing red check at worst.
+# 9 in .gaia/release-exclude).
 #
 # Pinned action SHAs match the sibling maintainer workflows:
 #   actions/checkout   @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
@@ -75,6 +79,7 @@ jobs:
               - '.claude/hooks/lib/audit-machinery.sh'
               - '.gaia/scripts/audit-machinery-complete.sh'
               - '.gaia/scripts/verify-audit-roster.sh'
+              - '.gaia/scripts/write-audit-remits.sh'
               - '.github/workflows/audit-roster.yml'
       - if: steps.filter.outputs.roster == 'true'
         name: Verify roster invariants

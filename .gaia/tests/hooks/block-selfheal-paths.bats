@@ -308,6 +308,150 @@ assert_allowed() {
   assert_allowed
 }
 
+# --- the remit writer is an execution-shape refusal, not a write-shape one ---
+
+@test "SPEC-056 UAT-015: code-audit-frontend running the remit writer is denied" {
+  run_hook_bash "code-audit-frontend" "bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+  grep -qF -- "finding" <<<"$output"
+}
+
+@test "SPEC-056 UAT-015: an advisory member running the remit writer is denied too" {
+  run_hook_bash "code-audit-maintainer-shell" "bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer invoked by an absolute path is denied" {
+  run_hook_bash "code-audit-frontend" "bash /Users/you/projects/my-app/.gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer invoked with a leading ./ is denied" {
+  run_hook_bash "code-audit-frontend" "bash ./.gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: no agent_type running the remit writer is allowed" {
+  run_hook_bash "" "bash .gaia/scripts/write-audit-remits.sh"
+  assert_allowed
+}
+
+@test "SPEC-056 UAT-015: a non-member subagent running the remit writer is allowed" {
+  run_hook_bash "general-purpose" "bash .gaia/scripts/write-audit-remits.sh"
+  assert_allowed
+}
+
+@test "SPEC-056 UAT-015: neither payload writes a file" {
+  local agents_dir before after
+  agents_dir="$BATS_TEST_DIRNAME/../../../.claude/agents"
+  before=$(find "$agents_dir" -type f -exec shasum {} + | sort)
+  run_hook_bash "code-audit-frontend" "bash .gaia/scripts/write-audit-remits.sh"
+  run_hook_bash "" "bash .gaia/scripts/write-audit-remits.sh"
+  after=$(find "$agents_dir" -type f -exec shasum {} + | sort)
+  [ "$before" = "$after" ]
+}
+
+@test "SPEC-056 UAT-015: running the roster CHECK is still allowed for a member" {
+  run_hook_bash "code-audit-frontend" "bash .gaia/scripts/verify-audit-roster.sh"
+  assert_allowed
+}
+
+@test "SPEC-056 UAT-015: shellcheck naming the writer as an argument is allowed, not an invocation" {
+  # The execution-shape refusal is anchored to an EXECUTABLE position (token
+  # 0, or right after an interpreter / a ; && || | separator), not to any
+  # token that merely names the file. A read-only command like `shellcheck`
+  # naming the writer as an argument must stay allowed, including the
+  # shell auditor's own mandated methodology against this very file.
+  run_hook_bash "code-audit-maintainer-shell" "shellcheck .gaia/scripts/write-audit-remits.sh"
+  assert_allowed
+}
+
+@test "SPEC-056 UAT-015: the writer invoked bare (no interpreter) is denied" {
+  run_hook_bash "code-audit-frontend" ".gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer invoked after a && separator is denied" {
+  run_hook_bash "code-audit-frontend" "true && bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+# --- execution-position anchor: skip interpreter options and env assignments ---
+
+@test "SPEC-056 UAT-015: bash -x <writer> is denied" {
+  run_hook_bash "code-audit-frontend" "bash -x .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: sh -x <writer> is denied" {
+  run_hook_bash "code-audit-frontend" "sh -x .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: bash --norc <writer> is denied" {
+  run_hook_bash "code-audit-frontend" "bash --norc .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: env FOO=1 <writer> is denied" {
+  run_hook_bash "code-audit-frontend" "env FOO=1 .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: nohup <writer> is denied" {
+  run_hook_bash "code-audit-frontend" "nohup .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+# --- execution-position anchor: separators glued to a neighbouring token ---
+#
+# A separator only ends a token when whitespace follows it, so these shapes
+# present the separator attached to a neighbour. The first is the realistic
+# one: the check prints its repair command under every finding, so chaining
+# that printed command onto the check that printed it lands exactly here.
+
+@test "SPEC-056 UAT-015: the writer chained onto the check with '; ' is denied" {
+  run_hook_bash "code-audit-frontend" \
+    "bash .gaia/scripts/verify-audit-roster.sh; bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer after a glued '; ' with no interpreter is denied" {
+  run_hook_bash "code-audit-frontend" "true; .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer after a pipe glued to the previous token is denied" {
+  run_hook_bash "code-audit-frontend" "echo x| bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer after a fully glued && is denied" {
+  run_hook_bash "code-audit-frontend" "true&&bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: the writer after a glued || is denied" {
+  run_hook_bash "code-audit-frontend" "false|| bash .gaia/scripts/write-audit-remits.sh"
+  assert_denied
+}
+
+@test "SPEC-056 UAT-015: separator padding does not deny a read-only command naming the writer" {
+  # The padding widens only the execution-position scan. A command that names
+  # the writer as an argument, with a separator elsewhere, must stay allowed.
+  run_hook_bash "code-audit-maintainer-shell" \
+    "bash .gaia/scripts/verify-audit-roster.sh; shellcheck .gaia/scripts/write-audit-remits.sh"
+  assert_allowed
+}
+
+@test "SPEC-056 UAT-015: separator padding leaves the write-shape loop intact" {
+  # The write-shape loop reads the UNPADDED token array, where `>` and `2>&1`
+  # are load-bearing. A redirect into a refused path must still deny with a
+  # stderr redirect present in the same command.
+  run_hook_bash "code-audit-frontend" "echo x > .claude/agents/code-audit-frontend.md 2>&1"
+  assert_denied
+}
+
 # --- structural ---
 
 @test "block-selfheal-paths.sh is executable" {

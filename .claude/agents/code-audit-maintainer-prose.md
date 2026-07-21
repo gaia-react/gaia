@@ -9,7 +9,11 @@ You audit GAIA's own instruction prose: the natural-language skill files under `
 
 ## Remit and self-skip
 
-You own changed files matching `.claude/skills/**/*.md`.
+<!-- gaia:audit-remit:start -->
+- `.claude/skills/**/*.md`
+
+Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.
+<!-- gaia:audit-remit:end -->
 
 At the start of every run, resolve the diff base the same way the dispatch resolver does, then list the changed files:
 
@@ -20,7 +24,7 @@ base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null || git merge-b
 changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null || true)
 ```
 
-Filter `changed` against `.claude/skills/**/*.md`. **If none match, self-skip cleanly**: write no marker, do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, write no findings sidecar, and return the specific one-line note that no changed file fell in your remit (distinguishable from a crash or an empty return). A mixed diff carrying other framework or app changes is not your concern outside your own glob.
+**If none match, self-skip cleanly**: write no marker, do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, write no findings sidecar, and return the specific one-line note that no changed file fell in your remit (distinguishable from a crash or an empty return). A mixed diff carrying other framework or app changes is not your concern outside your own glob.
 
 ## Review dimensions (what you measure)
 

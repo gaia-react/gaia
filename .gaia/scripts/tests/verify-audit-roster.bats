@@ -17,7 +17,20 @@ setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   SCRIPT="$REPO_ROOT/.gaia/scripts/verify-audit-roster.sh"
-  [ -f "$SCRIPT" ] || skip "verify-audit-roster.sh not present"
+  WRITER="$REPO_ROOT/.gaia/scripts/write-audit-remits.sh"
+  REMIT_START='<!-- gaia:audit-remit:start -->'
+  REMIT_END='<!-- gaia:audit-remit:end -->'
+  # A hard failure, not a skip: a `skip` here would silently retire all 69+
+  # tests in this suite to skipped-and-green if either committed script ever
+  # went missing, which is the opposite of what a missing file should do.
+  if [ ! -f "$SCRIPT" ]; then
+    printf 'verify-audit-roster.sh missing: %s\n' "$SCRIPT" >&2
+    return 1
+  fi
+  if [ ! -f "$WRITER" ]; then
+    printf 'write-audit-remits.sh missing: %s\n' "$WRITER" >&2
+    return 1
+  fi
 }
 
 assert_contains() {
@@ -27,6 +40,12 @@ assert_contains() {
 # Scaffolds a fixture root: the roster arrives on stdin, and the agent files and
 # both machinery lists are derived from the member names it declares, so a
 # fixture is clean unless a test deliberately breaks one of them.
+#
+# Every stub carries a `## Remit and self-skip` heading, and the remit regions
+# come from the WRITER rather than from a generator here. A hand-rolled region
+# in this helper would be a second implementation of the region format, free to
+# drift from the writer's; invoking the writer cannot drift, and it gives every
+# fixture in this suite free integration coverage of the pair.
 scaffold_root() {
   local r="$1" names n
   rm -rf "$r"
@@ -44,11 +63,117 @@ scaffold_root() {
     for n in $names; do printf '.claude/agents/%s.md\n' "$n"; done
     printf 'EOF\n)"\n'
   } > "$r/.gaia/scripts/audit-machinery-complete.sh"
-  for n in $names; do printf '# %s\n' "$n" > "$r/.claude/agents/$n.md"; done
+  for n in $names; do
+    cat > "$r/.claude/agents/$n.md" <<MD
+---
+name: $n
+---
+
+# $n
+
+## Remit and self-skip
+
+You own things.
+MD
+  done
+  bash "$WRITER" --root "$r" --config "$r/.gaia/audit-ci.yml" >/dev/null
 }
 
 run_root() {
   run bash "$SCRIPT" --root "$1" --config "$1/.gaia/audit-ci.yml"
+}
+
+# --- Region post-processing, for the negative remit fixtures -----------------
+#
+# Each operates on one scaffolded agent file, breaking exactly one property the
+# remit invariant asserts. The fixture stubs carry no markdown bullets outside
+# the region, so a line-oriented edit reaches only the region.
+
+strip_region() {
+  local f="$1"
+  awk -v s="$REMIT_START" -v e="$REMIT_END" '
+    $0 == s { skip = 1; next }
+    $0 == e { skip = 0; next }
+    !skip
+  ' "$f" > "$f.tmp"
+  mv "$f.tmp" "$f"
+}
+
+duplicate_region() {
+  local f="$1" block
+  block="$(awk -v s="$REMIT_START" -v e="$REMIT_END" '
+    $0 == s { infl = 1 }
+    infl { print }
+    $0 == e { infl = 0 }
+  ' "$f")"
+  printf '\n%s\n' "$block" >> "$f"
+}
+
+unbalance_region() {
+  local f="$1"
+  grep -vxF -- "$REMIT_END" "$f" > "$f.tmp"
+  mv "$f.tmp" "$f"
+}
+
+# Moves the end marker to appear BEFORE the start marker: still exactly one
+# of each (nstart=1, nend=1), so a counts-only classifier reads this as a
+# normal balanced pair, but the pair is reversed and the region cannot be
+# read in file order.
+reverse_region() {
+  local f="$1"
+  awk -v s="$REMIT_START" -v e="$REMIT_END" '
+    $0 == e { next }
+    $0 == s { print e; print; next }
+    { print }
+  ' "$f" > "$f.tmp"
+  mv "$f.tmp" "$f"
+}
+
+drop_region_glob() {
+  local f="$1" g="$2"
+  grep -vxF -- "- \`$g\`" "$f" > "$f.tmp"
+  mv "$f.tmp" "$f"
+}
+
+add_region_glob() {
+  local f="$1" g="$2"
+  awk -v s="$REMIT_START" -v line="- \`$g\`" '
+    { print }
+    $0 == s { print line }
+  ' "$f" > "$f.tmp"
+  mv "$f.tmp" "$f"
+}
+
+swap_region_globs() {
+  local f="$1"
+  awk -v s="$REMIT_START" -v e="$REMIT_END" '
+    $0 == s { infl = 1; print; next }
+    $0 == e { infl = 0; print; next }
+    infl && /^- `.*`$/ {
+      n++
+      if (n == 1) { first = $0; next }
+      if (n == 2) { print; print first; next }
+    }
+    { print }
+  ' "$f" > "$f.tmp"
+  mv "$f.tmp" "$f"
+}
+
+# One default plus one claimant carrying two globs: enough to permute, and with
+# zero claimant pairs, so nothing the pairwise invariant decides can blur a
+# remit case.
+remit_root() {
+  scaffold_root "$1" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "zzz-default-only/**"
+    default: true
+  - name: code-audit-a
+    globs:
+      - "a/one/**"
+      - "a/two/*.ts"
+YAML
 }
 
 # A two-claimant roster over one glob each, plus a default that claims nothing
@@ -608,6 +733,226 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
+# SPEC-056 UAT-001/002/003: remit region parity. The roster is the authority on
+# what each member owns; its definition's region must say the same thing, in
+# the same order. Every case asserts the specific slug by name rather than a
+# process-wide exit code: the check emits one block per violation across
+# independent invariants, so an unrelated one firing would mask the case.
+# ---------------------------------------------------------------------------
+
+@test "SPEC-056 UAT-001: a roster glob missing from the region fails, naming the glob" {
+  local r="$BATS_TEST_TMPDIR/remit-missing"
+  remit_root "$r"
+  drop_region_glob "$r/.claude/agents/code-audit-a.md" 'a/two/*.ts'
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "remit-glob-missing"
+  assert_contains "code-audit-a"
+  assert_contains "a/two/*.ts"
+  assert_contains "bash .gaia/scripts/write-audit-remits.sh"
+  # The omission direction only: an omitted glob is not also an over-claim.
+  grep -qF "remit-glob-ungranted" <<<"$output" && return 1
+  return 0
+}
+
+@test "SPEC-056 UAT-002: an un-granted glob in the region fails, naming the glob" {
+  local r="$BATS_TEST_TMPDIR/remit-ungranted"
+  remit_root "$r"
+  # In the dialect on purpose, so the undecidable arm cannot fire and blur the
+  # case.
+  add_region_glob "$r/.claude/agents/code-audit-a.md" 'zzz-not-granted/**'
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "remit-glob-ungranted"
+  assert_contains "code-audit-a"
+  assert_contains "zzz-not-granted/**"
+  assert_contains "bash .gaia/scripts/write-audit-remits.sh"
+  # The over-claim direction only, and distinguishable from UAT-001's block.
+  grep -qF "remit-glob-missing" <<<"$output" && return 1
+  return 0
+}
+
+@test "SPEC-056 UAT-003: a permuted region fails, naming both globs at the position" {
+  # The case that proves parity is ordered, not a set comparison: the region
+  # holds exactly the roster's globs and still fails.
+  local r="$BATS_TEST_TMPDIR/remit-order"
+  remit_root "$r"
+  swap_region_globs "$r/.claude/agents/code-audit-a.md"
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "remit-glob-order"
+  assert_contains "code-audit-a"
+  assert_contains "position: 1"
+  assert_contains "roster:   a/one/**"
+  assert_contains "region:   a/two/*.ts"
+  assert_contains "bash .gaia/scripts/write-audit-remits.sh"
+  grep -qF "remit-glob-missing" <<<"$output" && return 1
+  grep -qF "remit-glob-ungranted" <<<"$output" && return 1
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# SPEC-056 UAT-004: the region's SHAPE. A region that cannot be read leaves
+# nothing to compare, so each of the three is its own finding and none of them
+# is reported as parity-clean.
+# ---------------------------------------------------------------------------
+
+@test "SPEC-056 UAT-004: a definition with no region fails" {
+  local r="$BATS_TEST_TMPDIR/remit-shape-missing"
+  remit_root "$r"
+  strip_region "$r/.claude/agents/code-audit-a.md"
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "missing-remit-region"
+  assert_contains "code-audit-a"
+  assert_contains "bash .gaia/scripts/write-audit-remits.sh"
+}
+
+@test "SPEC-056 UAT-004: a definition with two regions fails" {
+  local r="$BATS_TEST_TMPDIR/remit-shape-dup"
+  remit_root "$r"
+  duplicate_region "$r/.claude/agents/code-audit-a.md"
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "duplicate-remit-region"
+  assert_contains "code-audit-a"
+  assert_contains "bash .gaia/scripts/write-audit-remits.sh"
+}
+
+@test "SPEC-056 UAT-004: a definition whose markers do not pair up fails" {
+  local r="$BATS_TEST_TMPDIR/remit-shape-unbalanced"
+  remit_root "$r"
+  unbalance_region "$r/.claude/agents/code-audit-a.md"
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "unbalanced-remit-region"
+  assert_contains "code-audit-a"
+  assert_contains "bash .gaia/scripts/write-audit-remits.sh"
+}
+
+@test "reversed-remit-region: a definition whose end marker precedes its start marker fails" {
+  # A single balanced pair (start=1, end=1) is not enough: counting alone
+  # would read this as replaceable, which is exactly the shape that made the
+  # writer destructive before it checked marker ORDER too.
+  local r="$BATS_TEST_TMPDIR/remit-shape-reversed"
+  remit_root "$r"
+  reverse_region "$r/.claude/agents/code-audit-a.md"
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "reversed-remit-region"
+  assert_contains "code-audit-a"
+  assert_contains "bash .gaia/scripts/write-audit-remits.sh"
+}
+
+@test "SPEC-056 UAT-004: no marker-shape failure is ever reported as parity-clean" {
+  local shape f r
+  for shape in strip duplicate unbalance reverse; do
+    r="$BATS_TEST_TMPDIR/remit-shape-clean-$shape"
+    remit_root "$r"
+    f="$r/.claude/agents/code-audit-a.md"
+    case "$shape" in
+      strip)     strip_region "$f" ;;
+      duplicate) duplicate_region "$f" ;;
+      unbalance) unbalance_region "$f" ;;
+      reverse)   reverse_region "$f" ;;
+    esac
+    run_root "$r"
+    [ "$status" -eq 1 ] || return 1
+    grep -qF "roster clean" <<<"$output" && return 1
+  done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# SPEC-056 UAT-005: a region glob the bounded dialect cannot decide FAILS. The
+# only way a rejected glob reaches a region is a roster that grants one, and
+# the two fixtures below are exactly the positions the pairwise invariant never
+# reaches: the default member, and a lone claimant (zero pairs). A default plus
+# one claimant is the whole adopter roster shape.
+# ---------------------------------------------------------------------------
+
+undecidable_remit_root() {
+  # <fixture-dir> <default-glob> <claimant-glob>
+  scaffold_root "$1" <<YAML
+auditors:
+  - name: code-audit-default
+    globs:
+      - "$2"
+    default: true
+  - name: code-audit-a
+    globs:
+      - "$3"
+YAML
+  run_root "$1"
+}
+
+@test "SPEC-056 UAT-005: an undecidable glob granted to the DEFAULT member fails" {
+  local g
+  for g in 'a/[a-z].ts' 'a/{b,c}/x.ts' 'a/?.ts' 'a/\x.ts' 'app/**.ts' 'a/***/b'; do
+    undecidable_remit_root "$BATS_TEST_TMPDIR/remit-undec-default" "$g" 'a/one/**'
+    [ "$status" -eq 1 ] || return 1
+    grep -qF "undecidable-remit-glob" <<<"$output" || return 1
+    grep -qF "$g" <<<"$output" || return 1
+    grep -qF "reason:" <<<"$output" || return 1
+  done
+  return 0
+}
+
+@test "SPEC-056 UAT-005: an undecidable glob granted to a LONE claimant fails" {
+  local g
+  for g in 'a/[a-z].ts' 'a/{b,c}/x.ts' 'a/?.ts' 'a/\x.ts' 'app/**.ts' 'a/***/b'; do
+    undecidable_remit_root "$BATS_TEST_TMPDIR/remit-undec-claimant" 'zzz-default-only/**' "$g"
+    [ "$status" -eq 1 ] || return 1
+    grep -qF "undecidable-remit-glob" <<<"$output" || return 1
+    grep -qF "$g" <<<"$output" || return 1
+    grep -qF "reason:" <<<"$output" || return 1
+  done
+  return 0
+}
+
+@test "SPEC-056 UAT-005: the lone-claimant fixture reaches no pairwise verdict at all" {
+  # The negative control, and the coverage gap this invariant closes: one
+  # claimant means zero pairs, so undecidable-glob-pair cannot fire and the
+  # region rule is the only thing that catches the glob.
+  local g
+  for g in 'a/[a-z].ts' 'a/{b,c}/x.ts' 'a/?.ts' 'a/\x.ts' 'app/**.ts' 'a/***/b'; do
+    undecidable_remit_root "$BATS_TEST_TMPDIR/remit-undec-nopair" 'zzz-default-only/**' "$g"
+    grep -qF "undecidable-glob-pair" <<<"$output" && return 1
+    grep -qF "undecidable-remit-glob" <<<"$output" || return 1
+  done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# SPEC-056 UAT-009: the committed tree. Every shipped definition's region is
+# its roster entry, verbatim and in order. Read from the roster through
+# --emit-roster, never from a list or a count written down here.
+# ---------------------------------------------------------------------------
+
+@test "SPEC-056 UAT-009: every committed definition's region equals its roster globs, in order" {
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  assert_contains "roster clean"
+
+  local records members m roster_globs region_globs
+  records="$(bash "$SCRIPT" --emit-roster)"
+  members="$(printf '%s\n' "$records" | awk -F'\t' '$1 == "MEMBER" { print $2 }')"
+  [ -n "$members" ]
+  for m in $members; do
+    roster_globs="$(printf '%s\n' "$records" |
+      awk -F'\t' -v m="$m" '$1 == "RAW" && $2 == m { printf "%s|", $3 }')"
+    region_globs="$(awk -v s="$REMIT_START" -v e="$REMIT_END" '
+      $0 == s { infl = 1; next }
+      $0 == e { infl = 0; next }
+      infl && match($0, /^- `.*`$/) { printf "%s|", substr($0, 4, length($0) - 4) }
+    ' "$REPO_ROOT/.claude/agents/$m.md")"
+    [ -n "$roster_globs" ] || return 1
+    [ "$roster_globs" = "$region_globs" ] || return 1
+  done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # The raw-glob scrape is held in lockstep with the classifier
 # ---------------------------------------------------------------------------
 
@@ -624,6 +969,10 @@ drifted_reader_sandbox() {
   sed 's|if (g != "") print "RAW", member, g|if (g != "" \&\& g != "a/**") print "RAW", member, g|' \
     "$SCRIPT" > "$sb/.gaia/scripts/verify-audit-roster.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$sb/.claude/hooks/lib/audit-scope.sh"
+  # The writer resolves the check beside itself, so a copy here observes the
+  # perturbation rather than the repo's real scrape. That is what makes the
+  # writer's half of "one scrape, shared" testable at all.
+  cp "$WRITER" "$sb/.gaia/scripts/write-audit-remits.sh"
   grep -qF 'g != "a/**"' "$sb/.gaia/scripts/verify-audit-roster.sh"
 }
 
@@ -673,6 +1022,71 @@ YAML
   # table above). Under drift the overlap must NOT be reported as a verdict.
   grep -qF "claimant-glob-overlap" <<<"$output" && return 1
   assert_contains "roster-reader-drift"
+}
+
+# ---------------------------------------------------------------------------
+# SPEC-056 UAT-011: the writer reads the roster through THIS check's scrape,
+# so there is one scrape between the two scripts, not two. Perturbing it must
+# change what both observe.
+# ---------------------------------------------------------------------------
+
+drift_writer_fixture() {
+  scaffold_root "$1" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "zzz-default-only/**"
+    default: true
+  - name: code-audit-a
+    globs:
+      - "a/**"
+      - "a/b/*.ts"
+YAML
+}
+
+@test "SPEC-056 UAT-011: perturbing the scrape changes what the writer generates" {
+  local sb="$BATS_TEST_TMPDIR/drift-sandbox-writer"
+  drifted_reader_sandbox "$sb"
+  local r="$BATS_TEST_TMPDIR/drift-writer-fixture"
+  drift_writer_fixture "$r"
+  local agent="$r/.claude/agents/code-audit-a.md"
+  # scaffold_root ran the REAL writer against the real check, so both globs are
+  # in the region.
+  grep -qF -- "- \`a/**\`" "$agent"
+  # The sandbox writer resolves the perturbed check beside it, whose scrape
+  # drops a/**, so the region it regenerates drops it too.
+  bash "$sb/.gaia/scripts/write-audit-remits.sh" --root "$r" --config "$r/.gaia/audit-ci.yml" >/dev/null
+  grep -qF -- "- \`a/**\`" "$agent" && return 1
+  grep -qF -- "- \`a/b/*.ts\`" "$agent"
+  # And the real writer puts it back, which is what makes the difference
+  # attributable to the perturbation rather than to the writer.
+  bash "$WRITER" --root "$r" --config "$r/.gaia/audit-ci.yml" >/dev/null
+  grep -qF -- "- \`a/**\`" "$agent"
+}
+
+@test "SPEC-056 UAT-011: the perturbed check still fires roster-reader-drift" {
+  # The other half of the same perturbation: the check's own observable output
+  # changes too, so the shared scrape is load-bearing on both sides.
+  local sb="$BATS_TEST_TMPDIR/drift-sandbox-both"
+  drifted_reader_sandbox "$sb"
+  local r="$BATS_TEST_TMPDIR/drift-both-fixture"
+  drift_writer_fixture "$r"
+  run bash "$sb/.gaia/scripts/verify-audit-roster.sh" --root "$r" --config "$r/.gaia/audit-ci.yml"
+  [ "$status" -eq 1 ]
+  assert_contains "roster-reader-drift"
+  assert_contains "code-audit-a"
+}
+
+@test "SPEC-056 UAT-011: the writer carries no second roster scrape" {
+  # The structural half. Not `grep -qE 'globs[[:space:]]*:'`: the scrape's own
+  # line is `if (raw ~ /^[[:space:]]+globs[[:space:]]*:/)`, where the character
+  # after `globs` is a literal `[`, so that ERE would miss the scrape and match
+  # only finding-block printf lines. A verbatim copy would sail past it. These
+  # two state names are the scrape's own, and the last line is the positive
+  # control that they still name something real.
+  grep -qF 'in_globs' "$WRITER" && return 1
+  grep -qF 'in_auditors' "$WRITER" && return 1
+  grep -qF 'in_globs' "$SCRIPT"
 }
 
 # ---------------------------------------------------------------------------
@@ -793,6 +1207,21 @@ YAML
   before="$(find "$r" -type f -exec shasum {} + | sort)"
   run_root "$r"
   [ "$status" -eq 1 ]
+  after="$(find "$r" -type f -exec shasum {} + | sort)"
+  [ "$before" = "$after" ]
+}
+
+@test "SPEC-056 UAT-008: the check never writes on the passing path either" {
+  # The twin of the failing-path case above. A check that repaired a drifted
+  # region rather than reporting it would be indistinguishable from a clean run
+  # unless the clean run is pinned too. Fixture byte-identity, never git status:
+  # $BATS_TEST_TMPDIR is not a git repo.
+  local r="$BATS_TEST_TMPDIR/readonly-clean"
+  remit_root "$r"
+  local before after
+  before="$(find "$r" -type f -exec shasum {} + | sort)"
+  run_root "$r"
+  [ "$status" -eq 0 ]
   after="$(find "$r" -type f -exec shasum {} + | sort)"
   [ "$before" = "$after" ]
 }

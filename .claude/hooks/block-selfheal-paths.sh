@@ -39,6 +39,14 @@
 # whole diff at push time and cannot be evaded by the shape of the write;
 # this hook reads one attempted edit at a time and can be. That asymmetry is
 # real and accepted: under local mode a human watches every turn.
+#
+# The Bash branch also carries one EXECUTION-shape refusal, not a write
+# shape: a dispatched member may not invoke
+# .gaia/scripts/write-audit-remits.sh at all, since running it edits
+# .claude/agents/code-audit-*.md and rotates every member's clearance
+# digest. That literal lives here, not in the shared
+# AUDIT_SELFHEAL_REFUSE_ERE, because that ERE is a path matcher the CI push
+# gate applies to a diff, and a script invocation is not a path in a diff.
 set -euo pipefail
 
 payload=$(cat)
@@ -142,6 +150,104 @@ case "$tool_name" in
 
     read -r -a toks <<<"$cmd"
     n=${#toks[@]}
+
+    # A dispatched member may not repair its own declared remit. This is an
+    # EXECUTION shape, not a write shape: `bash .gaia/scripts/write-audit-remits.sh`
+    # presents no redirect, tee, sed -i, sponge, or cp/mv destination, so the
+    # write-shape loop below never sees it. The literal lives here rather than in
+    # the shared AUDIT_SELFHEAL_REFUSE_ERE because that ERE is a path matcher the
+    # CI push gate applies to a diff, and an invocation is not a path in a diff.
+    #
+    # Matched only at an EXECUTION position: token 0, a token immediately
+    # following a `;` / `&&` / `||` / `|` separator, or -- after an
+    # interpreter-like token (bash, sh, zsh, env, nohup) -- the first
+    # following token that is neither a `-`-prefixed option nor (after `env`)
+    # a `VAR=VALUE` assignment, so `sh -x <writer>`, `bash --norc <writer>`,
+    # `env FOO=1 <writer>`, and `nohup <writer>` all deny. `-c` is never
+    # treated as a skippable option: its argument is a quoted script STRING
+    # this whitespace tokenizer cannot safely parse, so `bash -c '<writer>'`
+    # is left exactly as it was (a stated, out-of-scope gap; same for any
+    # invocation past line 1, since `read -r -a toks` above only tokenizes
+    # the first line). A read-only command that merely NAMES the file as an
+    # argument (`shellcheck .gaia/scripts/write-audit-remits.sh`, `cat ...`,
+    # `git log --grep ...`) is not an invocation of it and must stay allowed.
+    #
+    # A separator only ends a token when whitespace happens to follow it, so
+    # `<check>; <writer>`, `true&&bash <writer>`, and `echo x| bash <writer>`
+    # would otherwise present the separator glued to a neighbour and never
+    # mark a boundary at all. That is the realistic bypass, not an
+    # adversarial one: the check prints `repair:  bash .gaia/scripts/write-
+    # audit-remits.sh` under every finding, so chaining the printed repair
+    # onto the check that printed it is the natural next keystroke. Pad every
+    # separator character into a standalone token for THIS scan only, in its
+    # own array: the write-shape loop below reads the unpadded `toks`, where
+    # `>` / `>>` and exact `;`/`&&` shapes are load-bearing. `&&` and `||`
+    # degrade to two adjacent single-character tokens, which is harmless
+    # because this scan only asks whether a boundary occurred, never which
+    # operator produced it. Padding can also split a quoted argument, which
+    # only ever widens the deny surface, the safe direction here.
+    esrc="$cmd"
+    esrc="${esrc//;/ ; }"
+    esrc="${esrc//&/ & }"
+    esrc="${esrc//|/ | }"
+    read -r -a etoks <<<"$esrc"
+    en=${#etoks[@]}
+
+    prev_sep=1
+    after_interp=0
+    after_interp_env=0
+    k=0
+    while [ "$k" -lt "$en" ]; do
+      cand=$(strip_quotes "${etoks[$k]}")
+
+      exec_pos=0
+      [ "$prev_sep" -eq 1 ] && exec_pos=1
+
+      if [ "$after_interp" -eq 1 ]; then
+        skip=0
+        case "$cand" in
+          -c) ;;
+          -*) skip=1 ;;
+        esac
+        if [ "$skip" -eq 0 ] && [ "$after_interp_env" -eq 1 ]; then
+          case "$cand" in
+            [A-Za-z_]*=*) skip=1 ;;
+          esac
+        fi
+        if [ "$skip" -eq 0 ]; then
+          exec_pos=1
+          after_interp=0
+        fi
+      fi
+
+      if [ "$exec_pos" -eq 1 ]; then
+        case "${cand##*/}" in
+          write-audit-remits.sh)
+            deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites every code-audit-*.md definition under .claude/agents/, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
+            ;;
+        esac
+        case "$cand" in
+          bash | sh | zsh | nohup)
+            after_interp=1
+            after_interp_env=0
+            ;;
+          env)
+            after_interp=1
+            after_interp_env=1
+            ;;
+        esac
+      fi
+
+      # Single characters, not `&&` / `||`: the padding above has already
+      # split every multi-character operator into adjacent single-character
+      # tokens.
+      case "$cand" in
+        ';' | '&' | '|') prev_sep=1 ;;
+        *) prev_sep=0 ;;
+      esac
+
+      k=$((k + 1))
+    done
 
     i=0
     while [ "$i" -lt "$n" ]; do

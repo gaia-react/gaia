@@ -35,6 +35,7 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 ├── 13-gaia-update-merge-workspace.sh  # Adopter-flow regression: gaia update merge-workspace verdict oracle
 ├── 14-gaia-update-deps.sh          # Adopter-flow regression: gaia update-deps decline (deterministic) + run/dispatch
 ├── 15-file-tech-debt-scrubbed.sh   # Marker-strip SEMANTIC: file-tech-debt survives the scrub (Layer 2, advisory probe)
+├── 16-audit-remit-parity.sh        # Roster-derived remit regions and writer repair hold on the scrubbed adopter shape
 └── diagnostic/
     └── claude-auth-in-docker.md
 ```
