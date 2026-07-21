@@ -25,7 +25,9 @@ The lint stack is the only consumer of TypeScript's programmatic API, which its 
 
 ## Enforcement
 
-`gaia.updateDepsHold` in `package.json` carries `{"typescript": "6.0"}`, so the `/update-deps` skill caps discovery at the 6.0 line: patches on that line still land, and 6.1, 7.0, and anything higher are never offered. The hold is committed rather than a local snooze, so it applies in CI runs too and holds until the maintainer lifts it. Lift it when TypeScript 7.1 ships and the typescript-eslint toolchain in [[gaia-lint]] supports the stabilized API.
+`gaia.updateDepsHold` in `package.json` carries `{"typescript": "6.0"}`, so the `/update-deps` skill caps discovery at the 6.0 line: patches on that line still land, and 6.1, 7.0, and anything higher are never offered. The hold is committed rather than a local snooze, so it applies in CI runs too and holds until the maintainer lifts it.
+
+The ceiling pins two segments rather than one because 6.1 is already out of range independent of the 7.1 API question: typescript-eslint declares `typescript: ">=4.8.4 <6.1.0"`, so a `"6"` ceiling would offer a TypeScript minor the lint stack does not support. That gives the hold two independent lift triggers, whichever comes first: the typescript-eslint peer range widening past 6.1, or TypeScript 7.1 shipping with the stabilized programmatic API the type-aware rules in [[gaia-lint]] depend on.
 
 `typescript` resolves to its own singleton update group, not a companion group with `@types/node`. A compiler bump and an ambient Node type-definition bump have independent migration guides and independent blast radius, so a hold on one must not stall the other.
 
