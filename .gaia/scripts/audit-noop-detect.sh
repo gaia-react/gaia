@@ -39,8 +39,13 @@
 #                 (.gaia/local/audit/<base-sha>.<member>.findings.json), the
 #                 durable report of record a specialized member writes on every
 #                 LOCAL pass, clean or withheld. When passed, the --marker
-#                 short-circuit additionally requires this file to exist (and,
-#                 with jq available, to parse with a `.findings` array).
+#                 short-circuit additionally requires this file to exist and,
+#                 with jq available, to parse with a `.findings` array AND a
+#                 `.member` equal to the member the marker filename names. That
+#                 identity binding matters: the orchestrator hand-builds one
+#                 sidecar path per dispatched member and those paths differ
+#                 only by the member infix, so a shape-only check would let one
+#                 member's sidecar vouch for another's lost report.
 #                 A member whose report never reached the orchestrator leaves
 #                 its marker present and this artifact absent, so requiring
 #                 BOTH is what makes a LOST REPORT detectable instead of
@@ -78,7 +83,8 @@
 #   audit-team-member     --marker path holds a writer-produced EARNED
 #                         clearance (a clean or non-blocking-dirty pass already
 #                         wrote it) AND, when --findings is passed, that
-#                         durable report of record is present too, OR the
+#                         durable report of record is present and attributed to
+#                         the same member, OR the
 #                         captured return in --path carries a backticked
 #                         `` `<path>:<line>` `` finding-location token (any
 #                         Code Audit Team member's shared Output Format
@@ -305,6 +311,23 @@ case "$SHAPE" in
     # absent the body cannot be inspected, so existence degrades to real as
     # before.
     if [ -n "$MARKER_PATH" ] && [ -f "$MARKER_PATH" ]; then
+      # Derive the audited member and digest from the marker FILENAME up front:
+      # pure parameter expansion plus basename, needing no sourced lib, so BOTH
+      # the findings gate and the clearance check below bind to the same
+      # identity. The detector is only ever handed the `.ok` earned marker path
+      # (a refusal or a member's non-blocking-dirty pass never reaches here), so
+      # stripping just `.ok` is the whole job: the remaining stem is `<digest>`
+      # (default member) or `<digest>.<member>` (a specialist).
+      _acd_base="$(basename "$MARKER_PATH")"
+      _acd_stem="${_acd_base%.ok}"
+      _acd_digest="${_acd_stem%%.*}"
+      _acd_member_part="${_acd_stem#"$_acd_digest"}"
+      if [ -z "$_acd_member_part" ]; then
+        _acd_member="code-audit-frontend"
+      else
+        _acd_member="${_acd_member_part#.}"
+      fi
+
       # Lost-report gate. When the caller names the member's durable findings
       # sidecar, the marker alone no longer authorizes REAL. A member whose
       # report never reached the orchestrator still wrote its marker, so
@@ -313,15 +336,24 @@ case "$SHAPE" in
       # act on, including the Suggestions the clean-pass contract requires them
       # to resolve or acknowledge. The sidecar is the report of record, so
       # demanding BOTH is what separates a real clean pass from a lost one.
-      # Existence is the signal; with jq available the body must also parse
-      # with a `.findings` array. An EMPTY array is valid and REAL: a member
-      # that genuinely found nothing still writes one.
+      #
+      # The predicate binds to the audited MEMBER, not merely to the shape. The
+      # orchestrator hand-builds one sidecar path per dispatched member and
+      # those paths differ only by the member infix, so a shape-only check
+      # would let member A's sidecar vouch for member B's lost report, exactly
+      # the failure this gate exists to close. It matches what the clearance
+      # check below already demands of the marker, so both arms of the same
+      # short-circuit agree on whether filename-derived identity is trusted.
+      # An EMPTY findings array is valid and REAL: a member that genuinely
+      # found nothing still writes one.
       _acd_findings_ok=1
       if [ -n "$FINDINGS_PATH" ]; then
         _acd_findings_ok=0
         if [ -f "$FINDINGS_PATH" ]; then
           if command -v jq >/dev/null 2>&1; then
-            if jq -e '.findings | type == "array"' "$FINDINGS_PATH" >/dev/null 2>&1; then
+            if jq -e --arg m "$_acd_member" \
+                 '(.member == $m) and (.findings | type == "array")' \
+                 "$FINDINGS_PATH" >/dev/null 2>&1; then
               _acd_findings_ok=1
             fi
           else
@@ -340,19 +372,6 @@ case "$SHAPE" in
       if [ -n "$_acd_lib" ] && [ -f "$_acd_lib/audit-clearance.sh" ]; then
         # shellcheck source=/dev/null
         . "$_acd_lib/audit-clearance.sh"
-        # The detector is only ever handed the `.ok` earned marker path (a
-        # refusal or a member's non-blocking-dirty pass never reaches here),
-        # so stripping just `.ok` is the whole job: the remaining stem is
-        # `<digest>` (default member) or `<digest>.<member>` (a specialist).
-        _acd_base="$(basename "$MARKER_PATH")"
-        _acd_stem="${_acd_base%.ok}"
-        _acd_digest="${_acd_stem%%.*}"
-        _acd_member_part="${_acd_stem#"$_acd_digest"}"
-        if [ -z "$_acd_member_part" ]; then
-          _acd_member="code-audit-frontend"
-        else
-          _acd_member="${_acd_member_part#.}"
-        fi
         if [ "$_acd_findings_ok" -eq 1 ] \
            && clearance_acceptable "$MARKER_PATH" "$_acd_member" "$_acd_digest" \
            && [ "$(clearance_field "$MARKER_PATH" provenance)" = "earned" ]; then

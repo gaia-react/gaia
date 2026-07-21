@@ -588,6 +588,23 @@ scrub_maintainer_only() {
   [ ! -f "$AUDIT_DIR/${d}.${m}.ok" ]
 }
 
+@test "supersede: ORDERING, the earned marker publishes before the refusal is removed" {
+  # Crash-safety invariant: an interruption between the publish and the removal
+  # must leave BOTH artifacts on disk, so the gate stays shut (the refusal
+  # still outranks), never neither. Removing first would open a window where no
+  # clearance of either provenance exists and the refusal record, which is the
+  # anti-gaming evidence, is already gone.
+  #
+  # This is pinned STRUCTURALLY on purpose: swapping the two statements leaves
+  # every behavioural supersede test above green, so only the order itself can
+  # catch a future reorder. Matches this suite's existing structural checks.
+  publish_line="$(grep -nF 'mv -f "$tmp" "$target"' "$WRITER" | head -1 | cut -d: -f1)"
+  remove_line="$(grep -nF 'rm -f "$refused_path"' "$WRITER" | head -1 | cut -d: -f1)"
+  [ -n "$publish_line" ] || return 1
+  [ -n "$remove_line" ] || return 1
+  [ "$publish_line" -lt "$remove_line" ]
+}
+
 @test "supersede: with no refusal on disk the earned write is a plain idempotent write" {
   m="code-audit-maintainer-shell"
   d="$(member_digest "$ROOT" "$m")"

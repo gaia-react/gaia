@@ -510,6 +510,75 @@ _noop_write_findings() {
   [ "$output" = "real" ]
 }
 
+@test "audit-team-member: a findings sidecar attributed to ANOTHER member is NO-OP" {
+  # The orchestrator hand-builds one sidecar path per dispatched member, and
+  # those paths differ only by the member infix. A shape-only check would let
+  # member A's sidecar vouch for member B's lost report, which is the very
+  # failure this gate closes, so the predicate binds to the audited member.
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.code-audit-maintainer-shell.ok"
+  findings="$BATS_TEST_TMPDIR/base.mismatched.findings.json"
+  printf '{"version":"1.6.1","schema":3,"member":"code-audit-maintainer-shell","provenance":"earned","digest":"%s","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","sha":"deadbeef","audited_at":"2026-01-01T00:00:00Z","sidecar":false}\n' \
+    "$digest" > "$marker"
+
+  # A sibling member's sidecar must not satisfy the shell member's gate.
+  _noop_write_findings "$findings" '{"schema":1,"member":"code-audit-frontend","findings":[]}'
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" \
+    --marker "$marker" --findings "$findings"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+
+  # A sidecar carrying no member attribution at all is equally unacceptable.
+  _noop_write_findings "$findings" '{"schema":1,"findings":[]}'
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" \
+    --marker "$marker" --findings "$findings"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+
+  # The correctly-attributed sidecar still passes: no false negative.
+  _noop_write_findings "$findings" '{"schema":1,"member":"code-audit-maintainer-shell","findings":[]}'
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" \
+    --marker "$marker" --findings "$findings"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member: jq absent, the findings gate degrades to existence, not to blanket acceptance" {
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.ok"
+  findings="$BATS_TEST_TMPDIR/jqless.code-audit-frontend.findings.json"
+  _noop_write_clearance "$marker" "$digest" earned
+  _noop_write_findings "$findings"
+
+  # Shim PATH rather than an empty one: the script's `#!/usr/bin/env bash`
+  # shebang and its basename/cat/grep calls all resolve through PATH, so
+  # emptying it fails the run at exec time (127) and tests nothing. Symlink in
+  # exactly what the script needs and deliberately leave jq out.
+  shim="$BATS_TEST_TMPDIR/nojq-bin"
+  mkdir -p "$shim"
+  for _c in bash basename cat grep dirname; do
+    _p="$(command -v "$_c" 2>/dev/null)" || continue
+    ln -sf "$_p" "$shim/$_c"
+  done
+  if PATH="$shim" command -v jq >/dev/null 2>&1; then
+    skip "jq still resolvable through the shim PATH"
+  fi
+
+  # Present sidecar: the marker arm's own jq-absent degradation applies.
+  run env PATH="$shim" "$SCRIPT" --shape audit-team-member \
+    --path "$FIX/shared/reminder-echo.txt" --marker "$marker" --findings "$findings"
+  [ "$status" -eq 0 ] || return 1
+  [ "$output" = "real" ] || return 1
+
+  # ABSENT sidecar must still be a lost report even with no jq to parse it:
+  # the degradation is to existence, never to skipping the gate.
+  run env PATH="$shim" "$SCRIPT" --shape audit-team-member \
+    --path "$FIX/shared/reminder-echo.txt" --marker "$marker" \
+    --findings "$BATS_TEST_TMPDIR/never-written-jqless.findings.json"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
 @test "audit-team-member: absent marker + present findings sidecar falls through to content inspection" {
   findings="$BATS_TEST_TMPDIR/orphan.code-audit-frontend.findings.json"
   _noop_write_findings "$findings"
