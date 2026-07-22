@@ -47,6 +47,25 @@ SENTINEL="$DEBT_DIR/refresh-requested"
 
 now=$(date +%s)
 
+# Portable mtime of $1 as an integer, 0 when the file is absent or unreadable.
+# Tries GNU `-c %Y` first, then BSD/macOS `-f %m`, validating the result is
+# numeric BETWEEN the two attempts rather than chaining on exit code: GNU
+# `stat -f %m` does NOT fail on an unknown filesystem directive, it exits 0
+# printing `?`, so a `-f %m || -c %Y` chain silently wins with garbage on Linux.
+# The numeric re-check defeats that. Both sentinel reads below go through this
+# one helper so the two can never drift apart.
+mtime_of() {
+  local m
+  m=$(stat -c %Y "$1" 2>/dev/null)
+  case "$m" in
+    ''|*[!0-9]*) m=$(stat -f %m "$1" 2>/dev/null) ;;
+  esac
+  case "$m" in
+    ''|*[!0-9]*) m=0 ;;
+  esac
+  printf '%s' "$m"
+}
+
 # Read previous cache values (used as fallbacks on partial failure).
 prev_computed_at=0
 prev_open_count=0
@@ -67,23 +86,14 @@ fi
 # regardless of the TTL (this is the SPEC's prompt-invalidation bypass).
 should_recompute=false
 sentinel_settled=true
+# Sampled here, re-read at the clear below; 0 means "no sentinel at sample time".
+# An unreadable mtime also reads as 0, i.e. "aged past the grace", so a stat
+# failure reverts to clear-on-recompute rather than wedging the sentinel armed
+# forever.
+sentinel_mtime=0
 if [ -e "$SENTINEL" ]; then
   should_recompute=true
-  # Portable mtime. Try GNU `-c %Y` first, then BSD/macOS `-f %m`, validating the
-  # result is numeric BETWEEN the two attempts rather than chaining on exit code:
-  # GNU `stat -f %m` does NOT fail on an unknown filesystem directive, it exits 0
-  # printing `?`, so a `-f %m || -c %Y` chain silently wins with garbage on Linux
-  # and the grace never engages. The numeric re-check defeats that. A mtime that
-  # stays unreadable falls back to 0, which reads as "aged past the grace" so a
-  # stat failure reverts to clear-on-recompute rather than wedging the sentinel
-  # armed forever.
-  sentinel_mtime=$(stat -c %Y "$SENTINEL" 2>/dev/null)
-  case "$sentinel_mtime" in
-    ''|*[!0-9]*) sentinel_mtime=$(stat -f %m "$SENTINEL" 2>/dev/null) ;;
-  esac
-  case "$sentinel_mtime" in
-    ''|*[!0-9]*) sentinel_mtime=0 ;;
-  esac
+  sentinel_mtime=$(mtime_of "$SENTINEL")
   if [ "$((now - sentinel_mtime))" -lt "$SENTINEL_SETTLE_GRACE" ]; then
     sentinel_settled=false
   fi
@@ -158,9 +168,25 @@ fi
 # is back). But hold a freshly-set sentinel armed through the settle grace so a
 # later tick re-reads GitHub's now-consistent count before the sentinel clears;
 # otherwise a recompute that raced the merge's `Closes #N` would freeze a stale
-# count until the TTL. `sentinel_settled` is true when no sentinel exists (the
-# rm is then a harmless no-op) or when it has aged past the grace.
-if [ "$recompute_ok" = "true" ] && [ "$sentinel_settled" = "true" ]; then
+# count until the TTL. `sentinel_settled` is true when no sentinel exists or when
+# it has aged past the grace.
+#
+# Compare-and-clear: `.gaia/local/debt/` is shared across every linked worktree,
+# so a peer's merge can arm the sentinel during the `gh` call above, minutes after
+# `sentinel_mtime` was sampled. Clearing on that stale sample would delete an
+# invalidation nothing has serviced, freezing the count until the next event or
+# the TTL. Re-read the mtime so the clear acts on current state instead: a
+# sentinel that is now absent, re-armed, or newly armed (sampled 0, present now)
+# all read as a mismatch and survive.
+#
+# This narrows the race rather than closing it. POSIX shell has no atomic
+# compare-and-unlink, so a peer arming the sentinel between this stat and the
+# `rm` below still loses its invalidation. That residual window is accepted: it
+# shrinks the exposure from a whole network round-trip to the gap between two
+# adjacent statements, and the cost of losing the bet is one delayed count
+# refresh, bounded by the TTL.
+if [ "$recompute_ok" = "true" ] && [ "$sentinel_settled" = "true" ] &&
+   [ "$(mtime_of "$SENTINEL")" = "$sentinel_mtime" ]; then
   rm -f "$SENTINEL" 2>/dev/null
 fi
 
