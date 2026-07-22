@@ -25,6 +25,8 @@ import {execFileSync} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {hasRejectedExcludeMetacharacter} from './manifest-answers.js';
+import {scanRegionDeclarations} from './region-scan.js';
+import type {RegionDeclaration} from './region-scan.js';
 import {SCAN_GLOBS} from './scan-globs.js';
 
 // Root governance files (CHANGELOG.md, CODE_OF_CONDUCT.md, CONTRIBUTING.md,
@@ -182,15 +184,37 @@ const ManifestClassSchema = z.literal([
   'wiki-owned',
 ] as const);
 
+const RegionRegenerateSchema = z.object({
+  args: z.array(z.string()),
+  interpreter: z.string().min(1),
+  operand: z.string().min(1),
+});
+
+const RegionDeclarationSchema = z.object({
+  endMarker: z.string().min(1),
+  id: z.string().min(1),
+  // `.min(1)` on the element, matching every sibling field: an empty declared
+  // path resolves to the repository root at every downstream use site, which
+  // turns the regeneration runner's snapshot scope into a recursive walk of
+  // the whole tree.
+  paths: z.array(z.string().min(1)),
+  regenerate: RegionRegenerateSchema,
+  startMarker: z.string().min(1),
+});
+
 /**
  * Runtime shape of `.gaia/manifest.json`. The committed manifest is
  * untrusted input (hand-edits, merge conflicts, a stale schema), so
  * `--check` validates it against this schema before diffing rather than
  * blindly casting `as ManifestShape`.
+ *
+ * `regions` is additive and optional: a manifest predating the generated-
+ * region mechanism has no such key and must still parse and validate clean.
  */
 export const ManifestSchema = z.object({
   files: z.record(z.string(), ManifestClassSchema),
   generated: z.string(),
+  regions: z.array(RegionDeclarationSchema).optional(),
   version: z.string(),
 });
 
@@ -260,10 +284,12 @@ export const buildManifest = (
 
   entries.sort(([a], [b]) => a.localeCompare(b));
   const files = Object.fromEntries(entries);
+  const regions = scanRegionDeclarations(repoRoot, files);
 
   return {
     files,
     generated: options.generatedAt ?? new Date().toISOString(),
+    regions,
     version,
   };
 };
@@ -456,6 +482,15 @@ export type ManifestDrift = {
   }[];
   extra: readonly {actual: ManifestClass; file: string}[];
   missing: readonly {expected: ManifestClass; file: string}[];
+  regionDrift: readonly {
+    /** One-line description of a mismatched marker pair or regeneration vector. */
+    contractDrift?: string;
+    /** In the committed declaration, absent from the fresh scan. */
+    extra: readonly string[];
+    /** In the fresh scan, absent from the committed declaration. */
+    missing: readonly string[];
+    regionId: string;
+  }[];
   scanScopeGaps: readonly ScanScopeGap[];
   versionDrift: undefined | {actual: string; expected: string};
 };
@@ -496,6 +531,128 @@ export const computeMissing = (
 ): string[] =>
   computeMissingEntries(expected, actual).map((entry) => entry.file);
 
+const pathSymmetricDiff = (
+  actualPaths: readonly string[],
+  expectedPaths: readonly string[]
+): {extra: string[]; missing: string[]} => {
+  const actualSet = new Set(actualPaths);
+  const expectedSet = new Set(expectedPaths);
+
+  return {
+    extra: actualPaths
+      .filter((entry) => !expectedSet.has(entry))
+      .toSorted((a, b) => a.localeCompare(b)),
+    missing: expectedPaths
+      .filter((entry) => !actualSet.has(entry))
+      .toSorted((a, b) => a.localeCompare(b)),
+  };
+};
+
+const argsEqual = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((value, index) => value === b[index]);
+
+/**
+ * A declared marker pair and regeneration vector are a stable contract
+ * across releases; a changed one must fail loudly rather than migrate
+ * silently. Returns `undefined` when every contract field agrees.
+ */
+const describeContractDrift = (
+  actual: RegionDeclaration,
+  expected: RegionDeclaration
+): string | undefined => {
+  const diffs: string[] = [];
+
+  if (actual.startMarker !== expected.startMarker) {
+    diffs.push(
+      `startMarker: committed ${JSON.stringify(actual.startMarker)} vs expected ${JSON.stringify(expected.startMarker)}`
+    );
+  }
+
+  if (actual.endMarker !== expected.endMarker) {
+    diffs.push(
+      `endMarker: committed ${JSON.stringify(actual.endMarker)} vs expected ${JSON.stringify(expected.endMarker)}`
+    );
+  }
+
+  if (actual.regenerate.interpreter !== expected.regenerate.interpreter) {
+    diffs.push(
+      `regenerate.interpreter: committed ${JSON.stringify(actual.regenerate.interpreter)} vs expected ${JSON.stringify(expected.regenerate.interpreter)}`
+    );
+  }
+
+  if (actual.regenerate.operand !== expected.regenerate.operand) {
+    diffs.push(
+      `regenerate.operand: committed ${JSON.stringify(actual.regenerate.operand)} vs expected ${JSON.stringify(expected.regenerate.operand)}`
+    );
+  }
+
+  if (!argsEqual(actual.regenerate.args, expected.regenerate.args)) {
+    diffs.push(
+      `regenerate.args: committed ${JSON.stringify(actual.regenerate.args)} vs expected ${JSON.stringify(expected.regenerate.args)}`
+    );
+  }
+
+  return diffs.length === 0 ? undefined : diffs.join('; ');
+};
+
+/**
+ * Region declarations, matched by `id`, over `expected` (a fresh scan) vs
+ * `actual` (the committed manifest). A committed manifest with no `regions`
+ * key at all is treated as an empty list, so every expected region falls
+ * into the id-only-in-expected case below, which is the correct, expected
+ * drift report until the manifest is regenerated.
+ */
+const computeRegionDrift = (
+  expectedRegions: readonly RegionDeclaration[],
+  actualRegions: readonly RegionDeclaration[]
+): ManifestDrift['regionDrift'] => {
+  const expectedById = new Map(expectedRegions.map((r) => [r.id, r]));
+  const actualById = new Map(actualRegions.map((r) => [r.id, r]));
+  const uniqueIds = [
+    ...new Set([...expectedById.keys(), ...actualById.keys()]),
+  ];
+  const ids = uniqueIds.toSorted((a, b) => a.localeCompare(b));
+
+  const drift: ManifestDrift['regionDrift'][number][] = [];
+
+  for (const id of ids) {
+    const expected = expectedById.get(id);
+    const actual = actualById.get(id);
+
+    if (expected === undefined && actual !== undefined) {
+      drift.push({
+        extra: actual.paths.toSorted((a, b) => a.localeCompare(b)),
+        missing: [],
+        regionId: id,
+      });
+    } else if (actual === undefined && expected !== undefined) {
+      drift.push({
+        extra: [],
+        missing: expected.paths.toSorted((a, b) => a.localeCompare(b)),
+        regionId: id,
+      });
+    } else if (expected !== undefined && actual !== undefined) {
+      const {extra, missing} = pathSymmetricDiff(actual.paths, expected.paths);
+      const contractDrift = describeContractDrift(actual, expected);
+
+      if (
+        extra.length > 0 ||
+        missing.length > 0 ||
+        contractDrift !== undefined
+      ) {
+        drift.push({
+          ...(contractDrift === undefined ? {} : {contractDrift}),
+          extra,
+          missing,
+          regionId: id,
+        });
+      }
+    }
+  }
+
+  return drift;
+};
+
 export const computeDrift = (
   expected: ManifestShape,
   actual: ManifestShape,
@@ -527,6 +684,11 @@ export const computeDrift = (
   extra.sort((a, b) => a.file.localeCompare(b.file));
   drift.sort((a, b) => a.file.localeCompare(b.file));
 
+  const regionDrift = computeRegionDrift(
+    expected.regions ?? [],
+    actual.regions ?? []
+  );
+
   const versionDrift =
     expected.version === actual.version ?
       undefined
@@ -537,6 +699,7 @@ export const computeDrift = (
     drift,
     extra,
     missing,
+    regionDrift,
     scanScopeGaps,
     versionDrift,
   };

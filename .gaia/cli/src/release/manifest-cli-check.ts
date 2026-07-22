@@ -85,6 +85,22 @@ const renderDriftLines = (result: ManifestDrift): string[] =>
       ),
     ];
 
+const renderRegionDriftLines = (result: ManifestDrift): string[] =>
+  result.regionDrift.length === 0 ?
+    []
+  : [
+      '',
+      `region declaration drift (${result.regionDrift.length}):`,
+      ...result.regionDrift.flatMap((entry) => [
+        `  region: ${entry.regionId}`,
+        ...entry.missing.map((file) => `    + ${file}`),
+        ...entry.extra.map((file) => `    - ${file}`),
+        ...(entry.contractDrift === undefined ?
+          []
+        : [`    ~ ${entry.contractDrift}`]),
+      ]),
+    ];
+
 const renderOverlapLines = (result: ManifestDrift): string[] =>
   result.classifierOverlaps.length === 0 ?
     []
@@ -120,6 +136,7 @@ const renderCheckReport = (
     result.drift.length +
     result.classifierOverlaps.length +
     result.scanScopeGaps.length +
+    result.regionDrift.length +
     (result.versionDrift === undefined ? 0 : 1);
 
   if (total === 0) {
@@ -132,6 +149,7 @@ const renderCheckReport = (
     ...renderMissingLines(result),
     ...renderExtraLines(result),
     ...renderDriftLines(result),
+    ...renderRegionDriftLines(result),
     ...renderOverlapLines(result),
     ...renderScanScopeLines(result),
   ];
@@ -242,6 +260,7 @@ export const runCheck = (
     result.drift.length > 0 ||
     result.classifierOverlaps.length > 0 ||
     result.scanScopeGaps.length > 0 ||
+    result.regionDrift.length > 0 ||
     result.versionDrift !== undefined;
 
   return hasIssue ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;

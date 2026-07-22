@@ -76,6 +76,13 @@ jobs:
               # of that equality, so a workflow-only edit must re-run the guard
               # or template drift lands silently.
               - '.github/workflows/code-review-audit.yml'
+              # The region-marker conformance suite binds the TypeScript parser
+              # to the two bash readers it inherits its semantics from. It runs
+              # in this job (see the step below), so an edit to either bash side
+              # must re-run it here or the binding goes unasserted.
+              - '.gaia/scripts/tests/region-marker-conformance.bats'
+              - '.gaia/scripts/write-audit-remits.sh'
+              - '.gaia/scripts/verify-audit-roster.sh'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
@@ -97,6 +104,19 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run Vitest tests
         run: pnpm -C .gaia/cli test --run
+      # The region-marker conformance suite drives the real TypeScript parser
+      # through tsx, so it needs .gaia/cli/node_modules and skips itself wherever
+      # they are absent. audit-ci-tests.yml runs the .gaia/scripts/tests suites on
+      # a lean box with no Node and no pnpm, so that guard is always true there
+      # and the suite reports skipped-and-green on every run. This job is the one
+      # place the dependency exists, which makes it the only place the binding
+      # between the parser and the two bash readers is actually asserted.
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Run region-marker conformance suite
+        run: bats .gaia/scripts/tests/region-marker-conformance.bats
       # PR-time mirror of release.yml's "Verify committed CLI binaries and
       # templates are rebuilt from src" gate. The committed
       # .gaia/cli/gaia{,-maintainer} bundles are what the runtime and the

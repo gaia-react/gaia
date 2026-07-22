@@ -149,4 +149,20 @@ jobs:
             exit 1
           fi
 
-          echo "Distribution gate: no unanswered newly-shipping files in this PR's changed set."
+          # Region declaration drift is a second, independent failure condition.
+          # Unlike `missing` above, this one fails on the WHOLE symmetric
+          # difference, not on an intersection with the PR's changed files: a
+          # region declaration has no backlog to be scoped away from, it is
+          # either current or wrong, and a wrong one silently returns adopters
+          # to conflicts on every declared path, not just the ones this PR
+          # touched. Do not narrow this to the PR's changed set to "match" the
+          # missing gate above; that would let a stale declaration slip through
+          # on any PR that doesn't happen to touch a declared region's files.
+          region_drift="$(printf '%s' "${check_json}" | jq -c '(.regionDrift // [])[]')"
+          if [ -n "${region_drift}" ]; then
+            echo "::error::the committed .gaia/manifest.json region declaration disagrees with a fresh scan of the shipped marker-bearing files. Regenerate the manifest with the release CLI and commit it to this branch."
+            printf '%s\n' "${region_drift}" | sed 's/^/  /'
+            exit 1
+          fi
+
+          echo "Distribution gate: no unanswered newly-shipping files in this PR's changed set, and the region declaration matches a fresh scan."

@@ -37,7 +37,7 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
   fitness render-card [--cols N]
   automation read-config|cron-decide
-  update merge-workspace --baseline <file> --latest <file> --current <file>
+  update merge-workspace|merge-region|regen-regions --baseline <file> --latest <file> --current <file>
   update-deps run --emit-updates <path>
   release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag|exclude-regex
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume

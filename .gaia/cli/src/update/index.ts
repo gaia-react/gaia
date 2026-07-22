@@ -2,9 +2,13 @@
  * `gaia update` subcommand router.
  *
  * Hosts the field-aware `merge-workspace` verdict oracle the
- * `/update-gaia` skill invokes for `pnpm-workspace.yaml` (Step 7b) and the
- * `merge-audit-ci` oracle it invokes for `.gaia/audit-ci.yml` (Step 7c). The
- * skill hand-walks the per-file decision table (Step 7) and field-merges
+ * `/update-gaia` skill invokes for `pnpm-workspace.yaml` (Step 7b), the
+ * `merge-audit-ci` oracle it invokes for `.gaia/audit-ci.yml` (Step 7c), the
+ * `merge-region` oracle it invokes for a declared generated region inside
+ * an owned file, and the `regen-regions` runner it invokes (Step 7d) once
+ * masking confirms a declared region's divergence is confined to its
+ * markers, to make the adopter's post-merge region correct again. The skill
+ * hand-walks the per-file decision table (Step 7) and field-merges
  * `package.json` (Step 7a) itself, so the router carries no generic
  * whole-file merge command.
  *
@@ -13,7 +17,9 @@
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {run as runMergeAuditCi} from './merge-audit-ci.js';
+import {run as runMergeRegion} from './merge-region.js';
 import {run as runMergeWorkspace} from './merge-workspace.js';
+import {run as runRegenRegions} from './regen-regions.js';
 
 const HELP_TEXT = `Usage: gaia update <subcommand> [args]
 
@@ -21,6 +27,10 @@ const HELP_TEXT = `Usage: gaia update <subcommand> [args]
                                               Field-aware pnpm-workspace.yaml verdict.
   merge-audit-ci  --baseline <file> --latest <file> --current <file> [--json]
                                               Field-aware .gaia/audit-ci.yml verdict.
+  merge-region    --baseline <file> --latest <file> --current <file> --start-marker <text> --end-marker <text> [--json]
+                                              Region-aware generated-region verdict.
+  regen-regions   --manifest <path> --root <dir> [--backup-dir <dir>] [--conflicted <path>]... [--absent-path <path>]... [--skip-region <id>]... [--json]
+                                              Regenerates declared generated regions via their shipped command.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -31,7 +41,9 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   'merge-audit-ci': runMergeAuditCi,
+  'merge-region': runMergeRegion,
   'merge-workspace': runMergeWorkspace,
+  'regen-regions': runRegenRegions,
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {

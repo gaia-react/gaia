@@ -473,4 +473,65 @@ describe('run --check', () => {
     expect(checkExit).toBe(0);
     expect(stdio.outputs.join('')).toContain('clean');
   });
+
+  test('region drift only (no file drift): exits non-zero and names the offending path', () => {
+    sandbox.commit('seed', {
+      '.claude/agents/test-auditor.md': [
+        '# Test Auditor',
+        '',
+        '## Remit and self-skip',
+        '',
+        '<!-- gaia:audit-remit:start -->',
+        '- `app/**`',
+        '',
+        'Filter the changed-file list against the globs above.',
+        '<!-- gaia:audit-remit:end -->',
+        '',
+      ].join('\n'),
+      '.gaia/audit-ci.yml': [
+        'auditors:',
+        '  - name: test-auditor',
+        '    globs:',
+        '      - "app/**"',
+        '    scope: adopter',
+        '    default: true',
+        '',
+      ].join('\n'),
+      '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '1.0.0\n',
+      'app/foo.ts': 'export {};\n',
+    });
+
+    const exit = run(['--allow-undecided'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+    expect(exit).toBe(0);
+    stdio.outputs.length = 0;
+
+    // Hand-edit the committed manifest so its region declaration disagrees
+    // with a fresh scan of the repo, with no file-level drift at all.
+    const manifestPath = path.join(sandbox.root, '.gaia/manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      regions: {id: string; paths: string[]}[];
+    };
+    manifest.regions = manifest.regions.map((region) =>
+      region.id === 'audit-remit' ? {...region, paths: []} : region
+    );
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      'utf8'
+    );
+
+    const checkExit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(checkExit).toBe(1);
+    const out = stdio.outputs.join('');
+    expect(out).toContain('region declaration drift');
+    expect(out).toContain('.claude/agents/test-auditor.md');
+  });
 });

@@ -533,6 +533,7 @@
     "wiki/concepts/GAIA Pickup.md": "wiki-owned",
     "wiki/concepts/GAIA Plan.md": "wiki-owned",
     "wiki/concepts/GAIA Spec.md": "wiki-owned",
+    "wiki/concepts/Generated Regions.md": "wiki-owned",
     "wiki/concepts/Git Workflow.md": "wiki-owned",
     "wiki/concepts/Incremental CI Skipping.md": "wiki-owned",
     "wiki/concepts/Local Working State.md": "wiki-owned",
@@ -620,6 +621,22 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-21T14:51:10.634Z",
+  "generated": "2026-07-22T01:54:26.137Z",
+  "regions": [
+    {
+      "endMarker": "<!-- gaia:audit-remit:end -->",
+      "id": "audit-remit",
+      "paths": [
+        ".claude/agents/code-audit-frontend.md",
+        ".claude/agents/code-audit-github-workflows.md"
+      ],
+      "regenerate": {
+        "args": [],
+        "interpreter": "bash",
+        "operand": ".gaia/scripts/write-audit-remits.sh"
+      },
+      "startMarker": "<!-- gaia:audit-remit:start -->"
+    }
+  ],
   "version": "1.6.1"
 }

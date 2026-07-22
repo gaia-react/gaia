@@ -7,7 +7,7 @@ var __export = (target, all) => {
 };
 
 // src/index.maintainer.ts
-import { realpathSync as realpathSync2 } from "node:fs";
+import { realpathSync as realpathSync3 } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 // src/exit.ts
@@ -791,10 +791,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path44) {
-  if (!path44)
+function getElementAtPath(obj, path48) {
+  if (!path48)
     return obj;
-  return path44.reduce((acc, key) => acc?.[key], obj);
+  return path48.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -1203,11 +1203,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path44, issues) {
+function prefixIssues(path48, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path44);
+    iss.path.unshift(path48);
     return iss;
   });
 }
@@ -1354,16 +1354,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path44 = []) => {
+  const processError = (error52, path48 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path44, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path48, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path44, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path48, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path44, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path48, ...issue2.path]);
       } else {
-        const fullpath = [...path44, ...issue2.path];
+        const fullpath = [...path48, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -1390,17 +1390,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path44 = []) => {
+  const processError = (error52, path48 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path44, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path48, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path44, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path48, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path44, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path48, ...issue2.path]);
       } else {
-        const fullpath = [...path44, ...issue2.path];
+        const fullpath = [...path48, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -1432,8 +1432,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path44 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path44) {
+  const path48 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path48) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -14125,13 +14125,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path44 = ref.slice(1).split("/").filter(Boolean);
-  if (path44.length === 0) {
+  const path48 = ref.slice(1).split("/").filter(Boolean);
+  if (path48.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path44[0] === defsKey) {
-    const key = path44[1];
+  if (path48[0] === defsKey) {
+    const key = path48[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -18353,8 +18353,8 @@ var run21 = (argv, options = {}) => {
 };
 
 // src/release/exclude-regex.ts
-import { readFileSync as readFileSync15 } from "node:fs";
-import path17 from "node:path";
+import { readFileSync as readFileSync17 } from "node:fs";
+import path19 from "node:path";
 
 // node_modules/.pnpm/js-yaml@4.2.0/node_modules/js-yaml/dist/js-yaml.mjs
 var __create = Object.create;
@@ -20720,8 +20720,8 @@ var index_vite_proxy_tmp_default = import_js_yaml.default;
 
 // src/release/manifest.ts
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { existsSync as existsSync12, readFileSync as readFileSync14 } from "node:fs";
-import path16 from "node:path";
+import { existsSync as existsSync14, readFileSync as readFileSync16 } from "node:fs";
+import path18 from "node:path";
 
 // src/release/manifest-answers.ts
 var CATEGORY_HEADER = /^# --- (\d+)\. (.+?) ---\s*$/;
@@ -20866,6 +20866,126 @@ var applyWithholds = (excludeText, withholds) => {
   return lines.join("\n");
 };
 
+// src/release/region-scan.ts
+import { existsSync as existsSync13, readFileSync as readFileSync15 } from "node:fs";
+import path17 from "node:path";
+
+// src/update/region-markers.ts
+var REGION_PLACEHOLDER = "<<<gaia:region>>>";
+var scanRegion = (source, startMarker, endMarker) => {
+  if (startMarker.trim() === "" || endMarker.trim() === "") {
+    return { kind: "absent" };
+  }
+  const startLines = [];
+  const endLines = [];
+  source.split("\n").forEach((line, index) => {
+    if (line === startMarker) startLines.push(index + 1);
+    if (line === endMarker) endLines.push(index + 1);
+  });
+  if (startLines.length > 1) {
+    return { kind: "malformed", reason: "duplicate-start" };
+  }
+  if (endLines.length > 1) {
+    return { kind: "malformed", reason: "duplicate-end" };
+  }
+  if (startLines.length === 0 && endLines.length === 0) {
+    return { kind: "absent" };
+  }
+  if (startLines.length !== endLines.length) {
+    return { kind: "malformed", reason: "unbalanced" };
+  }
+  const [startLine] = startLines;
+  const [endLine] = endLines;
+  if (startLine >= endLine) {
+    return { kind: "malformed", reason: "inverted" };
+  }
+  return { endLine, kind: "region", startLine };
+};
+var maskRegion = (source, startMarker, endMarker) => {
+  const scan = scanRegion(source, startMarker, endMarker);
+  if (scan.kind !== "region") {
+    return { masked: source, scan };
+  }
+  const lines = source.split("\n");
+  const before = lines.slice(0, scan.startLine);
+  const after = lines.slice(scan.endLine - 1);
+  const masked = [...before, REGION_PLACEHOLDER, ...after].join("\n");
+  return { masked, scan };
+};
+
+// src/release/region-registry.ts
+import { existsSync as existsSync12, readFileSync as readFileSync14 } from "node:fs";
+import path16 from "node:path";
+var rosterAgentPaths = (repoRoot) => {
+  const rosterPath = path16.join(repoRoot, ".gaia/audit-ci.yml");
+  if (!existsSync12(rosterPath)) return /* @__PURE__ */ new Set();
+  let parsed;
+  try {
+    parsed = load(readFileSync14(rosterPath, "utf8"));
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+  const auditors = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed.auditors : void 0;
+  if (!Array.isArray(auditors)) return /* @__PURE__ */ new Set();
+  const names = auditors.map(
+    (entry) => typeof entry === "object" && entry !== null && !Array.isArray(entry) ? entry.name : void 0
+  ).filter((name) => typeof name === "string");
+  return new Set(names.map((name) => `.claude/agents/${name}.md`));
+};
+var REGION_REGISTRY = [
+  {
+    args: [],
+    endMarker: "<!-- gaia:audit-remit:end -->",
+    id: "audit-remit",
+    interpreter: "bash",
+    operand: ".gaia/scripts/write-audit-remits.sh",
+    rewrites: rosterAgentPaths,
+    startMarker: "<!-- gaia:audit-remit:start -->"
+  }
+];
+
+// src/release/region-scan.ts
+var unrewrittenMessage = (filePath, id) => `${filePath} carries the '${id}' region's marker pair, but that region's regeneration command does not rewrite it. Declaring a region nothing regenerates is worse than not declaring it. Fix by either: re-adding the corresponding member to .gaia/audit-ci.yml, or deleting the marker pair and its body from ${filePath}.`;
+var malformedMessage = (filePath, id, reason) => `${filePath} carries a malformed '${id}' region marker pair (${reason}). Fix the markers by hand and re-run.`;
+var scanEntry = (repoRoot, shippedFiles, entry) => {
+  const rewrites = entry.rewrites(repoRoot);
+  const sortedKeys = Object.keys(shippedFiles).toSorted(
+    (a, b) => a.localeCompare(b)
+  );
+  const paths = [];
+  for (const key of sortedKeys) {
+    const absPath = path17.join(repoRoot, key);
+    if (existsSync13(absPath)) {
+      const scan = scanRegion(
+        readFileSync15(absPath, "utf8"),
+        entry.startMarker,
+        entry.endMarker
+      );
+      if (scan.kind === "malformed") {
+        throw new Error(malformedMessage(key, entry.id, scan.reason));
+      }
+      if (scan.kind === "region") {
+        if (!rewrites.has(key)) {
+          throw new Error(unrewrittenMessage(key, entry.id));
+        }
+        paths.push(key);
+      }
+    }
+  }
+  return {
+    endMarker: entry.endMarker,
+    id: entry.id,
+    paths,
+    regenerate: {
+      args: [...entry.args],
+      interpreter: entry.interpreter,
+      operand: entry.operand
+    },
+    startMarker: entry.startMarker
+  };
+};
+var scanRegionDeclarations = (repoRoot, shippedFiles, registry2 = REGION_REGISTRY) => registry2.map((entry) => scanEntry(repoRoot, shippedFiles, entry));
+
 // src/release/scan-globs.ts
 var SCAN_GLOBS = [
   ".gaia/statusline",
@@ -20942,9 +21062,26 @@ var ManifestClassSchema = external_exports.literal([
   "shared",
   "wiki-owned"
 ]);
+var RegionRegenerateSchema = external_exports.object({
+  args: external_exports.array(external_exports.string()),
+  interpreter: external_exports.string().min(1),
+  operand: external_exports.string().min(1)
+});
+var RegionDeclarationSchema = external_exports.object({
+  endMarker: external_exports.string().min(1),
+  id: external_exports.string().min(1),
+  // `.min(1)` on the element, matching every sibling field: an empty declared
+  // path resolves to the repository root at every downstream use site, which
+  // turns the regeneration runner's snapshot scope into a recursive walk of
+  // the whole tree.
+  paths: external_exports.array(external_exports.string().min(1)),
+  regenerate: RegionRegenerateSchema,
+  startMarker: external_exports.string().min(1)
+});
 var ManifestSchema = external_exports.object({
   files: external_exports.record(external_exports.string(), ManifestClassSchema),
   generated: external_exports.string(),
+  regions: external_exports.array(RegionDeclarationSchema).optional(),
   version: external_exports.string()
 });
 var resolveRepoRoot2 = (cwd) => execFileSync2("git", ["rev-parse", "--show-toplevel"], {
@@ -20952,8 +21089,8 @@ var resolveRepoRoot2 = (cwd) => execFileSync2("git", ["rev-parse", "--show-tople
   encoding: "utf8",
   stdio: ["ignore", "pipe", "pipe"]
 }).trim();
-var resolveExcludePath = (repoRoot) => path16.resolve(repoRoot, ".gaia/release-exclude");
-var resolveManifestPath = (repoRoot) => path16.resolve(repoRoot, ".gaia/manifest.json");
+var resolveExcludePath = (repoRoot) => path18.resolve(repoRoot, ".gaia/release-exclude");
+var resolveManifestPath = (repoRoot) => path18.resolve(repoRoot, ".gaia/manifest.json");
 var listGitFiles = (cwd) => execFileSync2("git", ["ls-files"], {
   cwd,
   encoding: "utf8",
@@ -20961,9 +21098,9 @@ var listGitFiles = (cwd) => execFileSync2("git", ["ls-files"], {
 }).split("\n").filter((line) => line.length > 0);
 var buildManifest = (cwd, options = {}) => {
   const repoRoot = options.repoRoot ?? resolveRepoRoot2(cwd);
-  const versionPath = path16.resolve(repoRoot, ".gaia/VERSION");
-  const version2 = readFileSync14(versionPath, "utf8").trim();
-  const excludeText = options.excludeText ?? readFileSync14(resolveExcludePath(repoRoot), "utf8");
+  const versionPath = path18.resolve(repoRoot, ".gaia/VERSION");
+  const version2 = readFileSync16(versionPath, "utf8").trim();
+  const excludeText = options.excludeText ?? readFileSync16(resolveExcludePath(repoRoot), "utf8");
   validateExcludeText(excludeText);
   const excludePatterns = parseExcludePatterns(excludeText);
   const isExcluded = (candidate) => excludePatterns.some((pattern) => pattern.test(candidate));
@@ -20979,9 +21116,11 @@ var buildManifest = (cwd, options = {}) => {
   }
   entries.sort(([a], [b]) => a.localeCompare(b));
   const files = Object.fromEntries(entries);
+  const regions = scanRegionDeclarations(repoRoot, files);
   return {
     files,
     generated: options.generatedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+    regions,
     version: version2
   };
 };
@@ -21010,9 +21149,9 @@ var lintClassifierSets = (excludePatterns) => {
 var RELEASE_SCRUB_PATH = ".gaia/release-scrub.yml";
 var MAINTAINER_PATHS_CHECK_ID = "maintainer-paths";
 var readMaintainerPathsScope = (repoRoot) => {
-  const scrubPath = path16.resolve(repoRoot, RELEASE_SCRUB_PATH);
-  if (!existsSync12(scrubPath)) return void 0;
-  const parsed = load(readFileSync14(scrubPath, "utf8"));
+  const scrubPath = path18.resolve(repoRoot, RELEASE_SCRUB_PATH);
+  if (!existsSync14(scrubPath)) return void 0;
+  const parsed = load(readFileSync16(scrubPath, "utf8"));
   for (const transform2 of parsed.transforms ?? []) {
     for (const check2 of transform2.checks ?? []) {
       if (check2.id === MAINTAINER_PATHS_CHECK_ID) return check2.scope ?? [];
@@ -21034,7 +21173,7 @@ var computeMissingScopes = (file2, inMaintainerScope) => {
   return missing;
 };
 var recordGap = (gapsByDir, file2, missing) => {
-  const dir = path16.dirname(file2);
+  const dir = path18.dirname(file2);
   const existing = gapsByDir.get(dir) ?? /* @__PURE__ */ new Set();
   for (const name of missing) existing.add(name);
   gapsByDir.set(dir, existing);
@@ -21053,6 +21192,82 @@ var lintScanScopes = (manifestFiles, maintainerPathsScope) => {
 var lookupClass = (files, file2) => files[file2];
 var computeMissingEntries = (expected, actual) => Object.entries(expected.files).filter(([file2]) => lookupClass(actual.files, file2) === void 0).map(([file2, expectedClass]) => ({ expected: expectedClass, file: file2 })).toSorted((a, b) => a.file.localeCompare(b.file));
 var computeMissing = (expected, actual) => computeMissingEntries(expected, actual).map((entry) => entry.file);
+var pathSymmetricDiff = (actualPaths, expectedPaths) => {
+  const actualSet = new Set(actualPaths);
+  const expectedSet = new Set(expectedPaths);
+  return {
+    extra: actualPaths.filter((entry) => !expectedSet.has(entry)).toSorted((a, b) => a.localeCompare(b)),
+    missing: expectedPaths.filter((entry) => !actualSet.has(entry)).toSorted((a, b) => a.localeCompare(b))
+  };
+};
+var argsEqual = (a, b) => a.length === b.length && a.every((value, index) => value === b[index]);
+var describeContractDrift = (actual, expected) => {
+  const diffs = [];
+  if (actual.startMarker !== expected.startMarker) {
+    diffs.push(
+      `startMarker: committed ${JSON.stringify(actual.startMarker)} vs expected ${JSON.stringify(expected.startMarker)}`
+    );
+  }
+  if (actual.endMarker !== expected.endMarker) {
+    diffs.push(
+      `endMarker: committed ${JSON.stringify(actual.endMarker)} vs expected ${JSON.stringify(expected.endMarker)}`
+    );
+  }
+  if (actual.regenerate.interpreter !== expected.regenerate.interpreter) {
+    diffs.push(
+      `regenerate.interpreter: committed ${JSON.stringify(actual.regenerate.interpreter)} vs expected ${JSON.stringify(expected.regenerate.interpreter)}`
+    );
+  }
+  if (actual.regenerate.operand !== expected.regenerate.operand) {
+    diffs.push(
+      `regenerate.operand: committed ${JSON.stringify(actual.regenerate.operand)} vs expected ${JSON.stringify(expected.regenerate.operand)}`
+    );
+  }
+  if (!argsEqual(actual.regenerate.args, expected.regenerate.args)) {
+    diffs.push(
+      `regenerate.args: committed ${JSON.stringify(actual.regenerate.args)} vs expected ${JSON.stringify(expected.regenerate.args)}`
+    );
+  }
+  return diffs.length === 0 ? void 0 : diffs.join("; ");
+};
+var computeRegionDrift = (expectedRegions, actualRegions) => {
+  const expectedById = new Map(expectedRegions.map((r) => [r.id, r]));
+  const actualById = new Map(actualRegions.map((r) => [r.id, r]));
+  const uniqueIds = [
+    .../* @__PURE__ */ new Set([...expectedById.keys(), ...actualById.keys()])
+  ];
+  const ids = uniqueIds.toSorted((a, b) => a.localeCompare(b));
+  const drift = [];
+  for (const id of ids) {
+    const expected = expectedById.get(id);
+    const actual = actualById.get(id);
+    if (expected === void 0 && actual !== void 0) {
+      drift.push({
+        extra: actual.paths.toSorted((a, b) => a.localeCompare(b)),
+        missing: [],
+        regionId: id
+      });
+    } else if (actual === void 0 && expected !== void 0) {
+      drift.push({
+        extra: [],
+        missing: expected.paths.toSorted((a, b) => a.localeCompare(b)),
+        regionId: id
+      });
+    } else if (expected !== void 0 && actual !== void 0) {
+      const { extra, missing } = pathSymmetricDiff(actual.paths, expected.paths);
+      const contractDrift = describeContractDrift(actual, expected);
+      if (extra.length > 0 || missing.length > 0 || contractDrift !== void 0) {
+        drift.push({
+          ...contractDrift === void 0 ? {} : { contractDrift },
+          extra,
+          missing,
+          regionId: id
+        });
+      }
+    }
+  }
+  return drift;
+};
 var computeDrift = (expected, actual, lints) => {
   const { classifierOverlaps, scanScopeGaps } = lints;
   const missing = computeMissingEntries(expected, actual);
@@ -21071,12 +21286,17 @@ var computeDrift = (expected, actual, lints) => {
   }
   extra.sort((a, b) => a.file.localeCompare(b.file));
   drift.sort((a, b) => a.file.localeCompare(b.file));
+  const regionDrift = computeRegionDrift(
+    expected.regions ?? [],
+    actual.regions ?? []
+  );
   const versionDrift = expected.version === actual.version ? void 0 : { actual: actual.version, expected: expected.version };
   return {
     classifierOverlaps,
     drift,
     extra,
     missing,
+    regionDrift,
     scanScopeGaps,
     versionDrift
   };
@@ -21134,8 +21354,8 @@ var run22 = (argv, options = {}) => {
   const { excludeFile } = parsed;
   let text;
   try {
-    const source = excludeFile === void 0 ? resolveExcludePath(resolveRepoRoot2(cwd)) : path17.isAbsolute(excludeFile) ? excludeFile : path17.join(cwd, excludeFile);
-    text = readFileSync15(source, "utf8");
+    const source = excludeFile === void 0 ? resolveExcludePath(resolveRepoRoot2(cwd)) : path19.isAbsolute(excludeFile) ? excludeFile : path19.join(cwd, excludeFile);
+    text = readFileSync17(source, "utf8");
   } catch (error51) {
     structuredError({
       code: "exclude_read_failed",
@@ -21159,8 +21379,8 @@ var run22 = (argv, options = {}) => {
 };
 
 // src/release/manifest-cli.ts
-import { existsSync as existsSync14, readFileSync as readFileSync17 } from "node:fs";
-import path18 from "node:path";
+import { existsSync as existsSync16, readFileSync as readFileSync19 } from "node:fs";
+import path20 from "node:path";
 
 // src/release/manifest-cli-args.ts
 var HELP_TEXT23 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
@@ -21330,7 +21550,7 @@ var parseFlags10 = (argv) => {
 };
 
 // src/release/manifest-cli-check.ts
-import { existsSync as existsSync13, readFileSync as readFileSync16 } from "node:fs";
+import { existsSync as existsSync15, readFileSync as readFileSync18 } from "node:fs";
 var UNEXPECTED_EXIT13 = 2;
 var renderVersionDriftLines = (result) => result.versionDrift === void 0 ? [] : [
   "",
@@ -21361,6 +21581,16 @@ var renderDriftLines = (result) => result.drift.length === 0 ? [] : [
     (entry) => `  ~ ${entry.file}  ${entry.actual} \u2192 ${entry.expected}`
   )
 ];
+var renderRegionDriftLines = (result) => result.regionDrift.length === 0 ? [] : [
+  "",
+  `region declaration drift (${result.regionDrift.length}):`,
+  ...result.regionDrift.flatMap((entry) => [
+    `  region: ${entry.regionId}`,
+    ...entry.missing.map((file2) => `    + ${file2}`),
+    ...entry.extra.map((file2) => `    - ${file2}`),
+    ...entry.contractDrift === void 0 ? [] : [`    ~ ${entry.contractDrift}`]
+  ])
+];
 var renderOverlapLines = (result) => result.classifierOverlaps.length === 0 ? [] : [
   "",
   `classifier-set overlaps with release-exclude (${result.classifierOverlaps.length}):`,
@@ -21378,7 +21608,7 @@ var renderScanScopeLines = (result) => result.scanScopeGaps.length === 0 ? [] : 
 var renderCheckReport = (result, jsonMode) => {
   if (jsonMode) return `${JSON.stringify(result, null, 2)}
 `;
-  const total = result.missing.length + result.extra.length + result.drift.length + result.classifierOverlaps.length + result.scanScopeGaps.length + (result.versionDrift === void 0 ? 0 : 1);
+  const total = result.missing.length + result.extra.length + result.drift.length + result.classifierOverlaps.length + result.scanScopeGaps.length + result.regionDrift.length + (result.versionDrift === void 0 ? 0 : 1);
   if (total === 0) {
     return "release manifest --check: clean (manifest matches classifier + .gaia/VERSION; this checks bookkeeping, not the distribution boundary)\n";
   }
@@ -21388,6 +21618,7 @@ var renderCheckReport = (result, jsonMode) => {
     ...renderMissingLines(result),
     ...renderExtraLines(result),
     ...renderDriftLines(result),
+    ...renderRegionDriftLines(result),
     ...renderOverlapLines(result),
     ...renderScanScopeLines(result)
   ];
@@ -21395,9 +21626,9 @@ var renderCheckReport = (result, jsonMode) => {
 `;
 };
 var readCommittedManifest = (manifestPath) => {
-  if (!existsSync13(manifestPath)) return { kind: "absent" };
+  if (!existsSync15(manifestPath)) return { kind: "absent" };
   try {
-    const rawJson = JSON.parse(readFileSync16(manifestPath, "utf8"));
+    const rawJson = JSON.parse(readFileSync18(manifestPath, "utf8"));
     return { kind: "ok", manifest: ManifestSchema.parse(rawJson) };
   } catch (error51) {
     const message = error51 instanceof external_exports.ZodError ? `committed manifest is malformed: ${external_exports.prettifyError(error51)}` : error51 instanceof Error ? error51.message : String(error51);
@@ -21412,7 +21643,7 @@ var runCheck = (cwd, generatedAt, jsonMode) => {
     repoRoot = resolveRepoRoot2(cwd);
     expected = buildManifest(cwd, { generatedAt, repoRoot });
     excludePatterns = parseExcludePatterns(
-      readFileSync16(resolveExcludePath(repoRoot), "utf8")
+      readFileSync18(resolveExcludePath(repoRoot), "utf8")
     );
   } catch (error51) {
     structuredError({
@@ -21452,7 +21683,7 @@ var runCheck = (cwd, generatedAt, jsonMode) => {
     scanScopeGaps
   });
   process.stdout.write(renderCheckReport(result, jsonMode));
-  const hasIssue = result.missing.length > 0 || result.extra.length > 0 || result.drift.length > 0 || result.classifierOverlaps.length > 0 || result.scanScopeGaps.length > 0 || result.versionDrift !== void 0;
+  const hasIssue = result.missing.length > 0 || result.extra.length > 0 || result.drift.length > 0 || result.classifierOverlaps.length > 0 || result.scanScopeGaps.length > 0 || result.regionDrift.length > 0 || result.versionDrift !== void 0;
   return hasIssue ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };
 
@@ -21473,7 +21704,7 @@ var trySnapshotOrReport = (cwd, generatedAt) => {
   try {
     const repoRoot = resolveRepoRoot2(cwd);
     const manifestPath = resolveManifestPath(repoRoot);
-    const excludeText = readFileSync17(resolveExcludePath(repoRoot), "utf8");
+    const excludeText = readFileSync19(resolveExcludePath(repoRoot), "utf8");
     const expected = buildManifest(cwd, { excludeText, generatedAt, repoRoot });
     const committed = readCommittedManifest(manifestPath);
     if (committed.kind === "invalid") {
@@ -21503,9 +21734,9 @@ var trySnapshotOrReport = (cwd, generatedAt) => {
 };
 var resolveOutputTarget = (cwd, repoRoot, outPath) => {
   if (outPath === void 0) {
-    return path18.join(repoRoot, ".gaia", "manifest.json");
+    return path20.join(repoRoot, ".gaia", "manifest.json");
   }
-  return path18.isAbsolute(outPath) ? outPath : path18.join(cwd, outPath);
+  return path20.isAbsolute(outPath) ? outPath : path20.join(cwd, outPath);
 };
 var tryWriteManifestOrReport = (target, serialized) => {
   try {
@@ -21544,7 +21775,7 @@ var reportSummary = (manifest, cwd, target) => {
   }
   const total = Object.keys(manifest.files).length;
   process.stdout.write(
-    `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts["wiki-owned"]}) \u2192 ${path18.relative(cwd, target) || target}
+    `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts["wiki-owned"]}) \u2192 ${path20.relative(cwd, target) || target}
 `
   );
 };
@@ -21610,10 +21841,10 @@ var run23 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const target = stdout ? void 0 : resolveOutputTarget(cwd, snapshot.repoRoot, outPath);
-  if (target !== void 0 && !existsSync14(path18.dirname(target))) {
+  if (target !== void 0 && !existsSync16(path20.dirname(target))) {
     structuredError({
       code: "output_dir_missing",
-      message: `output directory does not exist: ${path18.dirname(target)}`,
+      message: `output directory does not exist: ${path20.dirname(target)}`,
       subcommand: "release manifest"
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -21631,8 +21862,8 @@ var run23 = (argv, options = {}) => {
 import { spawnSync as spawnSync4 } from "node:child_process";
 
 // src/wiki/state.ts
-import { existsSync as existsSync15, readdirSync, readFileSync as readFileSync18, statSync } from "node:fs";
-import path19 from "node:path";
+import { existsSync as existsSync17, readdirSync, readFileSync as readFileSync20, statSync } from "node:fs";
+import path21 from "node:path";
 var HELP_TEXT24 = `Usage: gaia wiki state [--json]
 `;
 var HELP_TOKENS24 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -21655,8 +21886,8 @@ var DOMAIN_DIRS = [
 var countDomainPages = (wikiRoot) => {
   const counts = {};
   for (const domain2 of DOMAIN_DIRS) {
-    const domainDir = path19.join(wikiRoot, domain2);
-    if (!existsSync15(domainDir) || !statSync(domainDir).isDirectory()) {
+    const domainDir = path21.join(wikiRoot, domain2);
+    if (!existsSync17(domainDir) || !statSync(domainDir).isDirectory()) {
       counts[domain2] = 0;
     } else {
       const entries = readdirSync(domainDir, { withFileTypes: true });
@@ -21672,8 +21903,8 @@ var countDomainPages = (wikiRoot) => {
   return counts;
 };
 var readStateFile = (statePath) => {
-  if (!existsSync15(statePath)) return null;
-  const raw = readFileSync18(statePath, "utf8");
+  if (!existsSync17(statePath)) return null;
+  const raw = readFileSync20(statePath, "utf8");
   try {
     return JSON.parse(raw);
   } catch {
@@ -21744,8 +21975,8 @@ var run24 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path19.join(repoRoot, "wiki");
-  const statePath = path19.join(wikiRoot, ".state.json");
+  const wikiRoot = path21.join(repoRoot, "wiki");
+  const statePath = path21.join(wikiRoot, ".state.json");
   const stateFile = readStateFile(statePath);
   const stateSha = stateFile?.last_evaluated_sha ?? "";
   const stateAt = stateFile?.last_evaluated_at ?? "";
@@ -21991,8 +22222,8 @@ var run25 = (argv, options = {}) => {
 };
 
 // src/release/runtime-deps.ts
-import { readdirSync as readdirSync2, readFileSync as readFileSync19, statSync as statSync2 } from "node:fs";
-import path20 from "node:path";
+import { readdirSync as readdirSync2, readFileSync as readFileSync21, statSync as statSync2 } from "node:fs";
+import path22 from "node:path";
 
 // src/release/marker-strip.ts
 var stripMarkerBlocks = (source, startMarker, endMarker) => {
@@ -22160,10 +22391,10 @@ var extractPathRefs = (filePath, source) => {
 var computeShippedDirs = (manifest) => {
   const dirs = /* @__PURE__ */ new Set();
   for (const filePath of manifest) {
-    let dir = path20.dirname(filePath);
+    let dir = path22.dirname(filePath);
     while (dir !== "." && !dirs.has(dir)) {
       dirs.add(dir);
-      const parent = path20.dirname(dir);
+      const parent = path22.dirname(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -22185,11 +22416,11 @@ var isShippedPath = (candidate, manifest, shippedDirs) => {
 var walkSh = (root, dir) => {
   const out = [];
   for (const entry of readdirSync2(dir, { withFileTypes: true })) {
-    const full = path20.join(dir, entry.name);
+    const full = path22.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkSh(root, full));
     } else if (entry.isFile() && entry.name.endsWith(".sh")) {
-      out.push(path20.relative(root, full).split(path20.sep).join("/"));
+      out.push(path22.relative(root, full).split(path22.sep).join("/"));
     }
   }
   return out;
@@ -22197,7 +22428,7 @@ var walkSh = (root, dir) => {
 var walkScripts = (root) => {
   const out = [];
   for (const sub of SCAN_GLOBS) {
-    const absolute = path20.join(root, sub);
+    const absolute = path22.join(root, sub);
     let exists = true;
     try {
       statSync2(absolute);
@@ -22211,7 +22442,7 @@ var walkScripts = (root) => {
   return out;
 };
 var loadManifest = (manifestPath) => {
-  const raw = readFileSync19(manifestPath, "utf8");
+  const raw = readFileSync21(manifestPath, "utf8");
   const parsed = JSON.parse(raw);
   if (parsed.files === void 0) {
     throw new Error(`manifest at ${manifestPath} has no "files" field`);
@@ -22268,7 +22499,7 @@ var renderReport = (report, jsonMode) => {
 };
 var resolvePathFlag = (cwd, fallback, flag) => {
   if (flag === void 0) return fallback;
-  return path20.isAbsolute(flag) ? flag : path20.join(cwd, flag);
+  return path22.isAbsolute(flag) ? flag : path22.join(cwd, flag);
 };
 var tryVerifyRootExists = (root) => {
   try {
@@ -22309,7 +22540,7 @@ var collectLeaks = (root, scriptFiles, manifest) => {
   const leaks = [];
   const shippedDirs = computeShippedDirs(manifest);
   for (const scriptPath of scriptFiles) {
-    const rawSource = readFileSync19(path20.join(root, scriptPath), "utf8");
+    const rawSource = readFileSync21(path22.join(root, scriptPath), "utf8");
     const source = stripMarkerBlocks(
       rawSource,
       MAINTAINER_ONLY_START,
@@ -22363,7 +22594,7 @@ var run26 = (argv, options = {}) => {
   }
   const manifestPath = resolvePathFlag(
     cwd,
-    path20.join(root, ".gaia", "manifest.json"),
+    path22.join(root, ".gaia", "manifest.json"),
     parsed.flags.manifestPath
   );
   const manifest = tryLoadManifestOrReport(manifestPath);
@@ -22384,8 +22615,8 @@ var run26 = (argv, options = {}) => {
 };
 
 // src/release/scrub-wiki.ts
-import { existsSync as existsSync16, mkdirSync as mkdirSync6, readFileSync as readFileSync20 } from "node:fs";
-import path21 from "node:path";
+import { existsSync as existsSync18, mkdirSync as mkdirSync6, readFileSync as readFileSync22 } from "node:fs";
+import path23 from "node:path";
 var HELP_TEXT27 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>] [--check]
 
   Overwrite wiki/hot.md and wiki/log.md with release-clean content
@@ -22445,11 +22676,11 @@ var todayUtc2 = (now = /* @__PURE__ */ new Date()) => {
 };
 var readVersion3 = (cwd, override) => {
   if (override !== void 0 && override.length > 0) return override;
-  const target = path21.join(cwd, "package.json");
-  if (!existsSync16(target)) {
+  const target = path23.join(cwd, "package.json");
+  if (!existsSync18(target)) {
     throw new Error("package.json not found at repo root");
   }
-  const parsed = JSON.parse(readFileSync20(target, "utf8"));
+  const parsed = JSON.parse(readFileSync22(target, "utf8"));
   if (typeof parsed.version !== "string") {
     throw new TypeError('package.json has no string "version"');
   }
@@ -22499,8 +22730,8 @@ var runCheck2 = (args) => {
   const drifted = [];
   try {
     for (const target of targets) {
-      const missing = !existsSync16(target.path);
-      const stale = !missing && normalizeDates(readFileSync20(target.path, "utf8")) !== normalizeDates(target.rendered);
+      const missing = !existsSync18(target.path);
+      const stale = !missing && normalizeDates(readFileSync22(target.path, "utf8")) !== normalizeDates(target.rendered);
       if (missing || stale) {
         drifted.push(target.label);
       }
@@ -22550,8 +22781,8 @@ var run27 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const date5 = parsed.flags.date ?? options.today ?? todayUtc2();
-  const wikiDir = path21.join(cwd, "wiki");
-  if (!existsSync16(wikiDir)) {
+  const wikiDir = path23.join(cwd, "wiki");
+  if (!existsSync18(wikiDir)) {
     structuredError({
       code: "wiki_dir_missing",
       message: `wiki/ directory not found at ${wikiDir}`,
@@ -22559,8 +22790,8 @@ var run27 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const hotPath = path21.join(wikiDir, "hot.md");
-  const logPath = path21.join(wikiDir, "log.md");
+  const hotPath = path23.join(wikiDir, "hot.md");
+  const logPath = path23.join(wikiDir, "log.md");
   if (parsed.flags.check) {
     return runCheck2({ date: date5, hotPath, logPath, version: version2 });
   }
@@ -22580,8 +22811,8 @@ var run27 = (argv, options = {}) => {
 };
 
 // src/release/scrub.ts
-import { existsSync as existsSync17, readdirSync as readdirSync3, readFileSync as readFileSync21, statSync as statSync3 } from "node:fs";
-import path22 from "node:path";
+import { existsSync as existsSync19, readdirSync as readdirSync3, readFileSync as readFileSync23, statSync as statSync3 } from "node:fs";
+import path24 from "node:path";
 
 // src/wiki/util/wikilinks.ts
 var WIKILINK_PATTERN = /\[\[([^\][]+)\]\]/gu;
@@ -22701,11 +22932,11 @@ var matchesAnyGlob = (relativePath, globs) => globs.some((glob) => globToRegex(g
 var walkFiles = (root, current = root) => {
   const out = [];
   for (const entry of readdirSync3(current, { withFileTypes: true })) {
-    const full = path22.join(current, entry.name);
+    const full = path24.join(current, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkFiles(root, full));
     } else if (entry.isFile()) {
-      out.push(path22.relative(root, full).split(path22.sep).join("/"));
+      out.push(path24.relative(root, full).split(path24.sep).join("/"));
     }
   }
   return out;
@@ -22716,8 +22947,8 @@ var applyMarkerStrip = (stagingRoot, files, transform2) => {
   let blocksStripped = 0;
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path22.join(stagingRoot, relativePath);
-      const source = readFileSync21(absolutePath, "utf8");
+      const absolutePath = path24.join(stagingRoot, relativePath);
+      const source = readFileSync23(absolutePath, "utf8");
       const hasAnyMarker = source.includes(transform2.start) || source.includes(transform2.end);
       if (hasAnyMarker) {
         const result = stripMarkerBlocks(
@@ -22782,14 +23013,14 @@ var deleteKeyPath = (obj, segments) => {
 var stripJsonKeysFromFile = (absolutePath, relativePath, keySegments) => {
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync21(absolutePath, "utf8"));
+    parsed = JSON.parse(readFileSync23(absolutePath, "utf8"));
   } catch (error51) {
     throw new Error(
       `Failed to parse JSON at ${relativePath}: ${error51 instanceof Error ? error51.message : String(error51)}`
     );
   }
-  const isPlainObject2 = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
-  if (!isPlainObject2) return 0;
+  const isPlainObject3 = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+  if (!isPlainObject3) return 0;
   const obj = parsed;
   let removed = 0;
   for (const segments of keySegments) {
@@ -22807,7 +23038,7 @@ var applyJsonStrip = (stagingRoot, files, transform2) => {
   const keySegments = transform2.keys.map((k) => parseKeyPath(k));
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path22.join(stagingRoot, relativePath);
+      const absolutePath = path24.join(stagingRoot, relativePath);
       const removed = stripJsonKeysFromFile(
         absolutePath,
         relativePath,
@@ -22862,14 +23093,14 @@ var removeMatchingArrayElements = (node, segments, match) => {
 var stripArrayElementsFromFile = (absolutePath, relativePath, selectors) => {
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync21(absolutePath, "utf8"));
+    parsed = JSON.parse(readFileSync23(absolutePath, "utf8"));
   } catch (error51) {
     throw new Error(
       `Failed to parse JSON at ${relativePath}: ${error51 instanceof Error ? error51.message : String(error51)}`
     );
   }
-  const isPlainObject2 = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
-  if (!isPlainObject2) return 0;
+  const isPlainObject3 = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+  if (!isPlainObject3) return 0;
   let removed = 0;
   for (const selector of selectors) {
     removed += removeMatchingArrayElements(
@@ -22893,7 +23124,7 @@ var applyJsonStripArrayElement = (stagingRoot, files, transform2) => {
   }));
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path22.join(stagingRoot, relativePath);
+      const absolutePath = path24.join(stagingRoot, relativePath);
       const removed = stripArrayElementsFromFile(
         absolutePath,
         relativePath,
@@ -22916,7 +23147,7 @@ var scanForLeaks = ({ check: check2, files, stagingRoot }, findLeaksInLine) => {
   for (const relativePath of files) {
     const inScope = matchesAnyGlob(relativePath, check2.scope) && !matchesAnyGlob(relativePath, pathAllowlist);
     if (inScope) {
-      const source = readFileSync21(path22.join(stagingRoot, relativePath), "utf8");
+      const source = readFileSync23(path24.join(stagingRoot, relativePath), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
         if (!lineAllowlist.some((rx) => rx.test(line))) {
           leaks.push(...findLeaksInLine(line, index + 1, relativePath));
@@ -22944,7 +23175,7 @@ var runLeakCheck = (stagingRoot, files, check2) => {
   );
 };
 var isDerivedCheck = (check2) => "derive" in check2;
-var slugFromPath = (filePath) => path22.basename(filePath, ".md");
+var slugFromPath = (filePath) => path24.basename(filePath, ".md");
 var isDirectory = (absolutePath) => {
   try {
     return statSync3(absolutePath).isDirectory();
@@ -22958,16 +23189,16 @@ var addSlugsForExcludeLine = (line, cwd, addSlug) => {
     addSlug(slugFromPath(line));
     return;
   }
-  const absolute = path22.join(cwd, line);
+  const absolute = path24.join(cwd, line);
   if (!isDirectory(absolute)) return;
-  addSlug(path22.basename(line));
+  addSlug(path24.basename(line));
   for (const relative of walkFiles(absolute)) {
     if (relative.endsWith(".md")) addSlug(slugFromPath(relative));
   }
 };
 var buildExcludedSlugSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync21(path22.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync23(path24.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const slugs = /* @__PURE__ */ new Set();
   const addSlug = (value) => {
@@ -22997,17 +23228,17 @@ var runDerivedWikilinkCheck = ({
 };
 var buildNeverPresentWorkflowSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync21(path22.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync23(path24.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const paths = /* @__PURE__ */ new Set();
   for (const line of lines) {
     if (line.startsWith(`${WORKFLOWS_DIR}/`) && line.endsWith(".yml")) {
-      const templatePath = path22.join(
+      const templatePath = path24.join(
         cwd,
         SHIPPED_WORKFLOW_TEMPLATES_DIR,
-        `${path22.basename(line)}.tmpl`
+        `${path24.basename(line)}.tmpl`
       );
-      if (!existsSync17(templatePath)) {
+      if (!existsSync19(templatePath)) {
         paths.add(line);
       }
     }
@@ -23041,7 +23272,7 @@ var addTitlesForExcludeLine = (line, cwd, addTitle) => {
     addTitle(slugFromPath(line));
     return;
   }
-  const absolute = path22.join(cwd, line);
+  const absolute = path24.join(cwd, line);
   if (!isDirectory(absolute)) return;
   for (const relative of walkFiles(absolute)) {
     if (relative.endsWith(".md")) addTitle(slugFromPath(relative));
@@ -23049,7 +23280,7 @@ var addTitlesForExcludeLine = (line, cwd, addTitle) => {
 };
 var buildExcludedTitleSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync21(path22.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync23(path24.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const titles = /* @__PURE__ */ new Set();
   for (const line of lines) {
@@ -23111,8 +23342,8 @@ var runDerivedTitleCheck = ({
   for (const relativePath of files) {
     const inScope = matchesAnyGlob(relativePath, check2.scope) && !matchesAnyGlob(relativePath, pathAllowlist);
     if (inScope) {
-      const content = readFileSync21(
-        path22.join(stagingRoot, relativePath),
+      const content = readFileSync23(
+        path24.join(stagingRoot, relativePath),
         "utf8"
       );
       leaks.push(
@@ -23127,7 +23358,7 @@ var runDerivedTitleCheck = ({
   return leaks;
 };
 var loadConfig = (configPath) => {
-  const raw = readFileSync21(configPath, "utf8");
+  const raw = readFileSync23(configPath, "utf8");
   const parsed = load(raw);
   return ConfigSchema.parse(parsed);
 };
@@ -23185,7 +23416,7 @@ var renderHumanReport = (report, jsonMode) => {
   return `${out.join("\n")}
 `;
 };
-var resolveAbsolute = (cwd, value) => path22.isAbsolute(value) ? value : path22.join(cwd, value);
+var resolveAbsolute = (cwd, value) => path24.isAbsolute(value) ? value : path24.join(cwd, value);
 var tryVerifyExists = (target) => {
   try {
     statSync3(target);
@@ -23315,7 +23546,7 @@ var run28 = (argv, options = {}) => {
   }
   const cwd = options.cwd ?? process.cwd();
   const stagingDir = resolveAbsolute(cwd, parsed.flags.stagingDir);
-  const configPath = parsed.flags.configPath === void 0 ? path22.join(cwd, DEFAULT_CONFIG_PATH) : resolveAbsolute(cwd, parsed.flags.configPath);
+  const configPath = parsed.flags.configPath === void 0 ? path24.join(cwd, DEFAULT_CONFIG_PATH) : resolveAbsolute(cwd, parsed.flags.configPath);
   if (!tryVerifyExists(stagingDir)) {
     structuredError({
       code: "staging_dir_missing",
@@ -23411,24 +23642,24 @@ var run29 = async (argv) => {
 };
 
 // src/scaffold/component.ts
-import { existsSync as existsSync19, statSync as statSync4 } from "node:fs";
-import path24 from "node:path";
+import { existsSync as existsSync21, statSync as statSync4 } from "node:fs";
+import path26 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/scaffold/fs.ts
-import { existsSync as existsSync18, mkdirSync as mkdirSync7, readFileSync as readFileSync22 } from "node:fs";
-import path23 from "node:path";
+import { existsSync as existsSync20, mkdirSync as mkdirSync7, readFileSync as readFileSync24 } from "node:fs";
+import path25 from "node:path";
 var ensureDir = (absPath) => {
   mkdirSync7(absPath, { recursive: true });
 };
 var writeFileIfAbsent = (absPath, contents, options = {}) => {
-  if (existsSync18(absPath)) {
-    const existing = readFileSync22(absPath, "utf8");
+  if (existsSync20(absPath)) {
+    const existing = readFileSync24(absPath, "utf8");
     if (existing === contents) return { written: false };
     throw new Error(`refusing to overwrite ${absPath}`);
   }
   if (options.dryRun !== true) {
-    ensureDir(path23.dirname(absPath));
+    ensureDir(path25.dirname(absPath));
     atomicWriteFileSync(absPath, contents);
   }
   return { written: true };
@@ -23665,10 +23896,10 @@ var buildStoryTitle = (parent, componentName) => {
   if (stripped === "") return `Components/${componentName}`;
   return `Components/${stripped}/${componentName}`;
 };
-var defaultIsDirectory = (absPath) => existsSync19(absPath) && statSync4(absPath).isDirectory();
+var defaultIsDirectory = (absPath) => existsSync21(absPath) && statSync4(absPath).isDirectory();
 var renderComponentFile = (options) => {
   const { componentName, props, templatesRoot } = options;
-  const templatePath = path24.join(
+  const templatePath = path26.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.tsx.tmpl`
   );
@@ -23684,7 +23915,7 @@ var renderComponentFile = (options) => {
 };
 var renderTestFile = (options) => {
   const { componentName, props, templatesRoot, withStory } = options;
-  const templatePath = path24.join(
+  const templatePath = path26.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.test.tsx.tmpl`
   );
@@ -23696,7 +23927,7 @@ var renderTestFile = (options) => {
 };
 var renderStoryFile = (options) => {
   const { componentName, parent, props, templatesRoot } = options;
-  const templatePath = path24.join(
+  const templatePath = path26.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.stories.tsx.tmpl`
   );
@@ -23708,7 +23939,7 @@ var renderStoryFile = (options) => {
 };
 var resolveTemplatesRoot = () => {
   const here = fileURLToPath2(import.meta.url);
-  return path24.join(path24.dirname(here), "templates");
+  return path26.join(path26.dirname(here), "templates");
 };
 var writeOne = (absPath, contents, result) => {
   const { written } = writeFileIfAbsent(absPath, contents);
@@ -23749,7 +23980,7 @@ var run30 = (argv, options = {}) => {
   const { flags } = parsed;
   const cwd = options.cwd ?? process.cwd();
   const isDirectory2 = options.isDirectory ?? defaultIsDirectory;
-  const parentAbs = path24.resolve(cwd, flags.parent);
+  const parentAbs = path26.resolve(cwd, flags.parent);
   if (!isDirectory2(parentAbs)) {
     structuredError({
       code: "parent_not_found",
@@ -23759,11 +23990,11 @@ var run30 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const componentDir = path24.join(parentAbs, flags.name);
-  const indexPath = path24.join(componentDir, "index.tsx");
-  const testsDir = path24.join(componentDir, "tests");
-  const testPath = path24.join(testsDir, "index.test.tsx");
-  const storyPath = path24.join(testsDir, "index.stories.tsx");
+  const componentDir = path26.join(parentAbs, flags.name);
+  const indexPath = path26.join(componentDir, "index.tsx");
+  const testsDir = path26.join(componentDir, "tests");
+  const testPath = path26.join(testsDir, "index.test.tsx");
+  const storyPath = path26.join(testsDir, "index.stories.tsx");
   const templatesRoot = resolveTemplatesRoot();
   const result = { edited: [], skipped: [], written: [] };
   const renderOptions = {
@@ -23798,7 +24029,7 @@ var run30 = (argv, options = {}) => {
 
 // src/scaffold/hook.ts
 import { execSync } from "node:child_process";
-import path25 from "node:path";
+import path27 from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 var HOOK_NAME_PATTERN = /^use[A-Z][A-Za-z0-9]*$/u;
 var TEMPLATE_DIR_NAME = "hook";
@@ -23860,8 +24091,8 @@ var sentinelForType = (type) => {
 var formatCallArgs = (params) => params.map((param) => sentinelForType(param.type)).join(", ");
 var resolveTemplateFile = (filename) => {
   const here = fileURLToPath3(import.meta.url);
-  return path25.join(
-    path25.dirname(here),
+  return path27.join(
+    path27.dirname(here),
     "templates",
     TEMPLATE_DIR_NAME,
     filename
@@ -23954,9 +24185,9 @@ var run31 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const repoRoot = options.repoRoot ?? resolveRepoRoot3();
-  const hooksDir = path25.join(repoRoot, "app", "hooks");
-  const hookFilePath = path25.join(hooksDir, `${name}.ts`);
-  const testFilePath = path25.join(hooksDir, "tests", `${name}.test.ts`);
+  const hooksDir = path27.join(repoRoot, "app", "hooks");
+  const hookFilePath = path27.join(hooksDir, `${name}.ts`);
+  const testFilePath = path27.join(hooksDir, "tests", `${name}.test.ts`);
   let result;
   try {
     result = emitFiles({
@@ -23979,8 +24210,8 @@ var run31 = (argv, options = {}) => {
 };
 
 // src/scaffold/route.ts
-import { existsSync as existsSync20, readFileSync as readFileSync23 } from "node:fs";
-import path26 from "node:path";
+import { existsSync as existsSync22, readFileSync as readFileSync25 } from "node:fs";
+import path28 from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 var VALID_GROUPS = /* @__PURE__ */ new Set(["_public+", "_session+"]);
 var GROUP_TO_SEGMENT = {
@@ -24044,7 +24275,7 @@ var toCamelCase = (kebab) => {
 };
 var templateDir = () => {
   const here = fileURLToPath4(import.meta.url);
-  return path26.join(path26.dirname(here), "templates", "route");
+  return path28.join(path28.dirname(here), "templates", "route");
 };
 var CLOSE_BRACE_PATTERN = /^\s*\}[\s;]*$/u;
 var findImportInsertIndex = (lines, importName) => {
@@ -24107,8 +24338,8 @@ var insertExportEntry = (lines, args) => {
 };
 var insertIntoLocaleBarrel = (args) => {
   const { barrelPath, dryRun, importName, moduleName } = args;
-  if (!existsSync20(barrelPath)) return "missing";
-  const original = readFileSync23(barrelPath, "utf8");
+  if (!existsSync22(barrelPath)) return "missing";
+  const original = readFileSync25(barrelPath, "utf8");
   const importLine = `import ${importName} from './${moduleName}';`;
   if (original.includes(importLine)) return "present";
   const lines = original.split("\n");
@@ -24137,11 +24368,11 @@ var insertIntoLocaleBarrel = (args) => {
 var templatePaths = () => {
   const dir = templateDir();
   return {
-    locale: path26.join(dir, "locale.ts.tmpl"),
-    pageIndex: path26.join(dir, "page.index.tsx.tmpl"),
-    pageStories: path26.join(dir, "page.stories.tsx.tmpl"),
-    pageTest: path26.join(dir, "page.test.tsx.tmpl"),
-    route: path26.join(dir, "route.tsx.tmpl")
+    locale: path28.join(dir, "locale.ts.tmpl"),
+    pageIndex: path28.join(dir, "page.index.tsx.tmpl"),
+    pageStories: path28.join(dir, "page.stories.tsx.tmpl"),
+    pageTest: path28.join(dir, "page.test.tsx.tmpl"),
+    route: path28.join(dir, "route.tsx.tmpl")
   };
 };
 var resolveNames = (kebabName, group) => {
@@ -24200,7 +24431,7 @@ var printJson = (result) => {
 };
 var writeLocaleFiles = (args) => {
   const { dryRun, name, names, result, root, tmpls } = args;
-  const localeFile = path26.join(
+  const localeFile = path28.join(
     root,
     "app",
     "languages",
@@ -24219,7 +24450,7 @@ var writeLocaleFiles = (args) => {
     dryRun,
     result
   });
-  const localeBarrel = path26.join(
+  const localeBarrel = path28.join(
     root,
     "app",
     "languages",
@@ -24278,14 +24509,14 @@ var run32 = (rest, options = {}) => {
   const result = { edited: [], skipped: [], written: [] };
   try {
     const routeVars = buildRouteVars(names, flags, name);
-    const routeAbs = path26.join(root, "app", "routes", group, `${name}.tsx`);
+    const routeAbs = path28.join(root, "app", "routes", group, `${name}.tsx`);
     writeFile({
       absPath: routeAbs,
       contents: renderTemplate(tmpls.route, routeVars),
       dryRun,
       result
     });
-    const pageDir = path26.join(root, "app", "pages", groupSegment, pageName);
+    const pageDir = path28.join(root, "app", "pages", groupSegment, pageName);
     const pageVars = {
       groupSegment,
       hasI18n: i18n,
@@ -24294,19 +24525,19 @@ var run32 = (rest, options = {}) => {
       pageName
     };
     writeFile({
-      absPath: path26.join(pageDir, "index.tsx"),
+      absPath: path28.join(pageDir, "index.tsx"),
       contents: renderTemplate(tmpls.pageIndex, pageVars),
       dryRun,
       result
     });
     writeFile({
-      absPath: path26.join(pageDir, "tests", "index.test.tsx"),
+      absPath: path28.join(pageDir, "tests", "index.test.tsx"),
       contents: renderTemplate(tmpls.pageTest, pageVars),
       dryRun,
       result
     });
     writeFile({
-      absPath: path26.join(pageDir, "tests", "index.stories.tsx"),
+      absPath: path28.join(pageDir, "tests", "index.stories.tsx"),
       contents: renderTemplate(tmpls.pageStories, pageVars),
       dryRun,
       result
@@ -24331,8 +24562,8 @@ var run32 = (rest, options = {}) => {
 };
 
 // src/scaffold/service.ts
-import { existsSync as existsSync21, readFileSync as readFileSync24 } from "node:fs";
-import path27 from "node:path";
+import { existsSync as existsSync23, readFileSync as readFileSync26 } from "node:fs";
+import path29 from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 var KEBAB_PATTERN2 = /^[a-z][a-z\d]*(?:-[a-z\d]+)*$/u;
 var NAME_TOKEN_PATTERN = /^[a-zA-Z][a-zA-Z\d]*(?::[a-zA-Z][a-zA-Z\d]*(?:\([^)]*\))?)?$/u;
@@ -24635,7 +24866,7 @@ var applyDatabaseEdits = (args) => {
   return next;
 };
 var updateDatabaseBarrel = (databasePath, derived) => {
-  const raw = readFileSync24(databasePath, "utf8");
+  const raw = readFileSync26(databasePath, "utf8");
   const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
   const resetCall = `reset${derived.Plural}()`;
   if (raw.includes(importLine)) return { written: false };
@@ -24649,11 +24880,11 @@ var updateDatabaseBarrel = (databasePath, derived) => {
   atomicWriteFileSync(databasePath, next);
   return { written: true };
 };
-var TEMPLATES_DIR2 = path27.join(
-  path27.dirname(fileURLToPath5(import.meta.url)),
+var TEMPLATES_DIR2 = path29.join(
+  path29.dirname(fileURLToPath5(import.meta.url)),
   "templates"
 );
-var renderServiceTemplate = (templateName, vars) => renderTemplate(path27.join(TEMPLATES_DIR2, templateName), vars);
+var renderServiceTemplate = (templateName, vars) => renderTemplate(path29.join(TEMPLATES_DIR2, templateName), vars);
 var writeRendered = (absPath, contents, result) => {
   const { written } = writeFileIfAbsent(absPath, contents);
   if (written) {
@@ -24664,7 +24895,7 @@ var writeRendered = (absPath, contents, result) => {
 };
 var emitServiceFiles = (context, result) => {
   const { derived, endpoints, fields, repoRoot } = context;
-  const serviceDir = path27.join(
+  const serviceDir = path29.join(
     repoRoot,
     "app",
     "services",
@@ -24684,9 +24915,9 @@ var emitServiceFiles = (context, result) => {
     ...baseVars,
     fields: renderClientFields(fields)
   });
-  writeRendered(path27.join(serviceDir, "parsers.ts"), parsersBody, result);
+  writeRendered(path29.join(serviceDir, "parsers.ts"), parsersBody, result);
   const typesBody = renderServiceTemplate("service/types.ts.tmpl", baseVars);
-  writeRendered(path27.join(serviceDir, "types.ts"), typesBody, result);
+  writeRendered(path29.join(serviceDir, "types.ts"), typesBody, result);
   const requestsBody = renderServiceTemplate("service/requests.ts.tmpl", {
     ...baseVars,
     hasDelete: endpoints.has("delete"),
@@ -24694,15 +24925,15 @@ var emitServiceFiles = (context, result) => {
     hasPost: endpoints.has("post"),
     hasPut: endpoints.has("put")
   });
-  writeRendered(path27.join(serviceDir, "requests.ts"), requestsBody, result);
+  writeRendered(path29.join(serviceDir, "requests.ts"), requestsBody, result);
   const urlsBody = renderServiceTemplate("service/urls.ts.tmpl", baseVars);
-  writeRendered(path27.join(serviceDir, "urls.ts"), urlsBody, result);
+  writeRendered(path29.join(serviceDir, "urls.ts"), urlsBody, result);
   const indexBody = renderServiceTemplate("service/index.ts.tmpl", baseVars);
-  writeRendered(path27.join(serviceDir, "index.ts"), indexBody, result);
+  writeRendered(path29.join(serviceDir, "index.ts"), indexBody, result);
 };
 var emitMockFiles = (context, result) => {
   const { derived, endpoints, fields, repoRoot } = context;
-  const mockDir = path27.join(repoRoot, "test", "mocks", derived.name);
+  const mockDir = path29.join(repoRoot, "test", "mocks", derived.name);
   ensureDir(mockDir);
   const baseVars = {
     name: derived.name,
@@ -24716,31 +24947,31 @@ var emitMockFiles = (context, result) => {
     ...baseVars,
     serverFields: renderServerFields(fields)
   });
-  writeRendered(path27.join(mockDir, "data.ts"), dataBody, result);
+  writeRendered(path29.join(mockDir, "data.ts"), dataBody, result);
   if (endpoints.has("get")) {
     writeRendered(
-      path27.join(mockDir, "get.ts"),
+      path29.join(mockDir, "get.ts"),
       renderServiceTemplate("service/mock.get.ts.tmpl", baseVars),
       result
     );
   }
   if (endpoints.has("post")) {
     writeRendered(
-      path27.join(mockDir, "post.ts"),
+      path29.join(mockDir, "post.ts"),
       renderServiceTemplate("service/mock.post.ts.tmpl", baseVars),
       result
     );
   }
   if (endpoints.has("put")) {
     writeRendered(
-      path27.join(mockDir, "put.ts"),
+      path29.join(mockDir, "put.ts"),
       renderServiceTemplate("service/mock.put.ts.tmpl", baseVars),
       result
     );
   }
   if (endpoints.has("delete")) {
     writeRendered(
-      path27.join(mockDir, "delete.ts"),
+      path29.join(mockDir, "delete.ts"),
       renderServiceTemplate("service/mock.delete.ts.tmpl", baseVars),
       result
     );
@@ -24749,9 +24980,9 @@ var emitMockFiles = (context, result) => {
     ...baseVars,
     ...composeMockBarrel(endpoints)
   });
-  writeRendered(path27.join(mockDir, "index.ts"), barrelBody, result);
-  const databasePath = path27.join(repoRoot, "test", "mocks", "database.ts");
-  if (existsSync21(databasePath)) {
+  writeRendered(path29.join(mockDir, "index.ts"), barrelBody, result);
+  const databasePath = path29.join(repoRoot, "test", "mocks", "database.ts");
+  if (existsSync23(databasePath)) {
     const { written } = updateDatabaseBarrel(databasePath, derived);
     if (written) result.edited.push(databasePath);
     else result.skipped.push(databasePath);
@@ -24843,23 +25074,23 @@ var run34 = (argv) => {
 // src/setup/util/state-file.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
 import {
-  existsSync as existsSync22,
+  existsSync as existsSync24,
   mkdirSync as mkdirSync8,
-  readFileSync as readFileSync25,
+  readFileSync as readFileSync27,
   renameSync as renameSync4,
   writeFileSync as writeFileSync6
 } from "node:fs";
-import path28 from "node:path";
+import path30 from "node:path";
 var STATE_FILENAME = "setup-state.json";
-var STATE_DIRECTORY_RELATIVE = path28.join(".gaia", "local");
+var STATE_DIRECTORY_RELATIVE = path30.join(".gaia", "local");
 var resolveMainWorktreeRoot = (cwd) => {
   const commonDir = execFileSync3("git", ["rev-parse", "--git-common-dir"], {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   }).trim();
-  const absoluteCommonDir = path28.isAbsolute(commonDir) ? commonDir : path28.resolve(cwd, commonDir);
-  return path28.dirname(absoluteCommonDir);
+  const absoluteCommonDir = path30.isAbsolute(commonDir) ? commonDir : path30.resolve(cwd, commonDir);
+  return path30.dirname(absoluteCommonDir);
 };
 var SETUP_STEPS = [
   "install-tools",
@@ -24872,11 +25103,11 @@ var SETUP_STEPS = [
 var RETIRED_SETUP_STEPS = ["mentorship-decision"];
 var isSetupStep = (value) => SETUP_STEPS.includes(value);
 var isRetiredSetupStep = (value) => RETIRED_SETUP_STEPS.includes(value);
-var resolveStateFilePath = (repoRoot) => path28.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
+var resolveStateFilePath = (repoRoot) => path30.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
 var readStateFile2 = (repoRoot) => {
   const filePath = resolveStateFilePath(repoRoot);
-  if (!existsSync22(filePath)) return null;
-  const raw = readFileSync25(filePath, "utf8");
+  if (!existsSync24(filePath)) return null;
+  const raw = readFileSync27(filePath, "utf8");
   const parsed = JSON.parse(raw);
   if (parsed.version !== 1) {
     throw new Error(
@@ -24906,8 +25137,8 @@ var readStateFile2 = (repoRoot) => {
 };
 var writeStateFile = (repoRoot, state) => {
   const filePath = resolveStateFilePath(repoRoot);
-  const parent = path28.dirname(filePath);
-  if (!existsSync22(parent)) {
+  const parent = path30.dirname(filePath);
+  if (!existsSync24(parent)) {
     mkdirSync8(parent, { mode: 493, recursive: true });
   }
   const serialized = `${JSON.stringify(state, null, 2)}
@@ -25003,7 +25234,7 @@ var run35 = (argv, options = {}) => {
 // src/setup/link-worktree.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
 import {
-  existsSync as existsSync23,
+  existsSync as existsSync25,
   lstatSync,
   mkdirSync as mkdirSync9,
   readdirSync as readdirSync4,
@@ -25012,7 +25243,7 @@ import {
   renameSync as renameSync5,
   symlinkSync
 } from "node:fs";
-import path29 from "node:path";
+import path31 from "node:path";
 var HELP_TEXT35 = `Usage: gaia setup link-worktree [--json]
 
   Idempotently create the five worktree shared-state symlinks pointing at
@@ -25046,18 +25277,18 @@ var formatTimestamp = (date5) => {
   return `${String(yyyy)}${mm}${dd}-${hh}${mi}${ss}`;
 };
 var ensureParentDir = (filePath) => {
-  const parent = path29.dirname(filePath);
-  if (!existsSync23(parent)) {
+  const parent = path31.dirname(filePath);
+  if (!existsSync25(parent)) {
     mkdirSync9(parent, { mode: 493, recursive: true });
   }
 };
 var linkOne = (inputs) => {
   const { mainRoot, spec, symlink, timestamp, worktreeRoot } = inputs;
-  const sourcePath = path29.join(worktreeRoot, spec.relativePath);
-  const targetPath = path29.join(mainRoot, spec.relativePath);
+  const sourcePath = path31.join(worktreeRoot, spec.relativePath);
+  const targetPath = path31.join(mainRoot, spec.relativePath);
   try {
     ensureParentDir(sourcePath);
-    if (spec.ensureTargetDir && !existsSync23(targetPath)) {
+    if (spec.ensureTargetDir && !existsSync25(targetPath)) {
       mkdirSync9(targetPath, { mode: 493, recursive: true });
     }
     let sourceStat;
@@ -25079,7 +25310,7 @@ var linkOne = (inputs) => {
       renameSync5(sourcePath, backupPath2);
       symlink(targetPath, sourcePath);
       return {
-        backup: path29.relative(worktreeRoot, backupPath2),
+        backup: path31.relative(worktreeRoot, backupPath2),
         path: spec.relativePath,
         result: "linked-after-backup"
       };
@@ -25088,7 +25319,7 @@ var linkOne = (inputs) => {
     renameSync5(sourcePath, backupPath);
     symlink(targetPath, sourcePath);
     return {
-      backup: path29.relative(worktreeRoot, backupPath),
+      backup: path31.relative(worktreeRoot, backupPath),
       path: spec.relativePath,
       result: "linked-after-backup"
     };
@@ -25471,19 +25702,19 @@ var run39 = async (argv) => {
 };
 
 // src/update-deps/decline.ts
-import { readFileSync as readFileSync27 } from "node:fs";
-import path31 from "node:path";
+import { readFileSync as readFileSync29 } from "node:fs";
+import path33 from "node:path";
 
 // src/update-deps/declines.ts
-import { mkdirSync as mkdirSync10, readFileSync as readFileSync26, writeFileSync as writeFileSync7 } from "node:fs";
-import path30 from "node:path";
+import { mkdirSync as mkdirSync10, readFileSync as readFileSync28, writeFileSync as writeFileSync7 } from "node:fs";
+import path32 from "node:path";
 var MAX_SNOOZE_MS = 14 * 24 * 60 * 60 * 1e3;
-var LEDGER_RELATIVE_PATH = path30.join(
+var LEDGER_RELATIVE_PATH = path32.join(
   ".gaia",
   "local",
   "declined-updates.json"
 );
-var declinedLedgerPath = (cwd) => path30.join(cwd, LEDGER_RELATIVE_PATH);
+var declinedLedgerPath = (cwd) => path32.join(cwd, LEDGER_RELATIVE_PATH);
 var parseDeclinedRecord = (entry) => {
   if (entry === null || typeof entry !== "object") return null;
   const record2 = entry;
@@ -25503,7 +25734,7 @@ var parseDeclinedRecord = (entry) => {
 var loadDeclines = (cwd) => {
   let raw;
   try {
-    raw = readFileSync26(declinedLedgerPath(cwd), "utf8");
+    raw = readFileSync28(declinedLedgerPath(cwd), "utf8");
   } catch {
     return [];
   }
@@ -25526,7 +25757,7 @@ var loadDeclines = (cwd) => {
 var saveDeclines = (cwd, declined) => {
   const ledger = { declined, schema_version: 1 };
   const outPath = declinedLedgerPath(cwd);
-  mkdirSync10(path30.dirname(outPath), { recursive: true });
+  mkdirSync10(path32.dirname(outPath), { recursive: true });
   writeFileSync7(outPath, `${JSON.stringify(ledger, null, 2)}
 `, "utf8");
 };
@@ -25830,10 +26061,10 @@ var parseArgs6 = (argv) => {
   return finalizeParsedArgs(clear, source, skipRaw);
 };
 var readPayload = (cwd, source) => {
-  const sourcePath = path31.isAbsolute(source) ? source : path31.join(cwd, source);
+  const sourcePath = path33.isAbsolute(source) ? source : path33.join(cwd, source);
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync27(sourcePath, "utf8"));
+    parsed = JSON.parse(readFileSync29(sourcePath, "utf8"));
   } catch {
     return void 0;
   }
@@ -25908,8 +26139,8 @@ var run40 = (argv, options = {}) => {
 
 // src/update-deps/run.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { mkdirSync as mkdirSync11, readFileSync as readFileSync28, writeFileSync as writeFileSync8 } from "node:fs";
-import path32 from "node:path";
+import { mkdirSync as mkdirSync11, readFileSync as readFileSync30, writeFileSync as writeFileSync8 } from "node:fs";
+import path34 from "node:path";
 var HELP_TEXT40 = `Usage: gaia update-deps run --emit-updates <path>
 
   Discover outdated packages via \`pnpm outdated --json\`, classify each
@@ -25984,7 +26215,7 @@ var compareStrings2 = (a, b) => {
   return a > b ? 1 : 0;
 };
 var readPackageJson2 = (cwd) => {
-  const raw = readFileSync28(path32.join(cwd, "package.json"), "utf8");
+  const raw = readFileSync30(path34.join(cwd, "package.json"), "utf8");
   return JSON.parse(raw);
 };
 var readUpdateDepsHolds = (pkg) => {
@@ -26002,8 +26233,8 @@ var readUpdateDepsHolds = (pkg) => {
 };
 var readInstalledVersion = (cwd, name) => {
   try {
-    const raw = readFileSync28(
-      path32.join(cwd, "node_modules", name, "package.json"),
+    const raw = readFileSync30(
+      path34.join(cwd, "node_modules", name, "package.json"),
       "utf8"
     );
     const parsed = JSON.parse(raw);
@@ -26133,7 +26364,7 @@ var fetchLatestVersion = (name, cwd, pnpmRunner) => {
 var readMinimumReleaseAge = (cwd) => {
   let raw;
   try {
-    raw = readFileSync28(path32.join(cwd, "pnpm-workspace.yaml"), "utf8");
+    raw = readFileSync30(path34.join(cwd, "pnpm-workspace.yaml"), "utf8");
   } catch {
     return 0;
   }
@@ -26522,8 +26753,8 @@ var run41 = (argv, options = {}) => {
       pnpmRunner: options.pnpmRunner
     });
     const stamped = payload;
-    const outPath = path32.isAbsolute(parsed.emitUpdates) ? parsed.emitUpdates : path32.join(cwd, parsed.emitUpdates);
-    mkdirSync11(path32.dirname(outPath), { recursive: true });
+    const outPath = path34.isAbsolute(parsed.emitUpdates) ? parsed.emitUpdates : path34.join(cwd, parsed.emitUpdates);
+    mkdirSync11(path34.dirname(outPath), { recursive: true });
     writeFileSync8(outPath, `${JSON.stringify(stamped, null, 2)}
 `, "utf8");
     return EXIT_CODES.OK;
@@ -26574,8 +26805,8 @@ var run42 = async (argv) => {
 };
 
 // src/update/merge-audit-ci.ts
-import { existsSync as existsSync24, readFileSync as readFileSync29 } from "node:fs";
-import path33 from "node:path";
+import { existsSync as existsSync26, readFileSync as readFileSync31 } from "node:fs";
+import path35 from "node:path";
 var HELP_TEXT42 = `Usage: gaia update merge-audit-ci --baseline <file> --latest <file> --current <file> [--json]
 
   Field-aware three-way verdict for .gaia/audit-ci.yml. Reads three YAML files
@@ -26827,7 +27058,7 @@ var printHuman4 = (report) => {
 `);
 };
 var loadAuditCi = (absPath, role) => {
-  if (!existsSync24(absPath)) {
+  if (!existsSync26(absPath)) {
     return {
       code: "audit_ci_file_missing",
       message: `${role} audit-ci file not found: ${absPath}`,
@@ -26836,7 +27067,7 @@ var loadAuditCi = (absPath, role) => {
   }
   let parsed;
   try {
-    parsed = load(readFileSync29(absPath, "utf8"));
+    parsed = load(readFileSync31(absPath, "utf8"));
   } catch (error51) {
     return {
       code: "audit_ci_parse_failed",
@@ -26846,7 +27077,7 @@ var loadAuditCi = (absPath, role) => {
   }
   return { ok: true, root: asRecord(parsed) };
 };
-var resolvePath = (cwd, value) => path33.isAbsolute(value) ? value : path33.join(cwd, value);
+var resolvePath = (cwd, value) => path35.isAbsolute(value) ? value : path35.join(cwd, value);
 var run43 = (argv, options = {}) => {
   if (argv.length > 0 && HELP_TOKENS40.has(argv[0])) {
     process.stdout.write(HELP_TEXT42);
@@ -26891,10 +27122,200 @@ var run43 = (argv, options = {}) => {
   return EXIT_CODES.OK;
 };
 
+// src/update/merge-region.ts
+import { existsSync as existsSync27, readFileSync as readFileSync32 } from "node:fs";
+import path36 from "node:path";
+var HELP_TEXT43 = `Usage: gaia update merge-region --baseline <file> --latest <file> --current <file> --start-marker <text> --end-marker <text> [--json]
+
+  Region-aware three-way verdict for a marker-delimited generated region
+  inside an owned file. Masks the declared region on each side (a side with
+  no markers is compared unmasked; any malformed side bails the whole
+  comparison to raw content) and classifies the normalized result as
+  no-upstream-change, no-adopter-drift, already-latest, or conflict.
+
+  Read-only: never writes a file. The /update-gaia skill uses the verdict to
+  decide whether the path needs a conflict patch.
+
+  Exit codes:
+    0  success (every verdict, including malformed or absent markers)
+    1  user-correctable error (missing flag / file, empty marker, unreadable file)
+`;
+var HELP_TOKENS41 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var takeValue15 = (argv, index, flag) => {
+  const value = argv.at(index);
+  if (value === void 0)
+    return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+var VALUE_FLAGS3 = {
+  "--baseline": "baseline",
+  "--current": "current",
+  "--end-marker": "endMarker",
+  "--latest": "latest",
+  "--start-marker": "startMarker"
+};
+var lookupValueFlag2 = (token) => Object.hasOwn(VALUE_FLAGS3, token) ? VALUE_FLAGS3[token] : void 0;
+var parseFlags19 = (argv) => {
+  const collected = {};
+  let json2 = false;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    const field = lookupValueFlag2(token);
+    if (token === "--json") {
+      json2 = true;
+    } else if (field === void 0) {
+      return { message: `unknown flag: ${token}`, ok: false };
+    } else {
+      const taken = takeValue15(argv, index + 1, token);
+      if (!taken.ok) return taken;
+      collected[field] = taken.value;
+      index += 1;
+    }
+  }
+  const { baseline, current, endMarker, latest, startMarker } = collected;
+  if (baseline === void 0)
+    return { message: "--baseline is required", ok: false };
+  if (latest === void 0) return { message: "--latest is required", ok: false };
+  if (current === void 0)
+    return { message: "--current is required", ok: false };
+  if (startMarker === void 0)
+    return { message: "--start-marker is required", ok: false };
+  if (endMarker === void 0)
+    return { message: "--end-marker is required", ok: false };
+  if (startMarker.trim() === "")
+    return { message: "--start-marker must not be empty", ok: false };
+  if (endMarker.trim() === "")
+    return { message: "--end-marker must not be empty", ok: false };
+  return {
+    flags: { baseline, current, endMarker, json: json2, latest, startMarker },
+    ok: true
+  };
+};
+var resolveVerdict = (normalized) => {
+  if (normalized.baseline === normalized.latest) return "no-upstream-change";
+  if (normalized.current === normalized.baseline) return "no-adopter-drift";
+  if (normalized.current === normalized.latest) return "already-latest";
+  return "conflict";
+};
+var buildSideState = (scan, masked) => scan.kind === "malformed" ? { detail: scan.reason, masked, scan: scan.kind } : { masked, scan: scan.kind };
+var computeRegionMerge = (baseline, latest, current, startMarker, endMarker) => {
+  const baselineMask = maskRegion(baseline, startMarker, endMarker);
+  const latestMask = maskRegion(latest, startMarker, endMarker);
+  const currentMask = maskRegion(current, startMarker, endMarker);
+  const bailed = [baselineMask.scan, latestMask.scan, currentMask.scan].some(
+    (scan) => scan.kind === "malformed"
+  );
+  const normalized = bailed ? { baseline, current, latest } : {
+    baseline: baselineMask.masked,
+    current: currentMask.masked,
+    latest: latestMask.masked
+  };
+  const markers = {
+    bailed,
+    baseline: buildSideState(
+      baselineMask.scan,
+      !bailed && baselineMask.scan.kind === "region"
+    ),
+    current: buildSideState(
+      currentMask.scan,
+      !bailed && currentMask.scan.kind === "region"
+    ),
+    latest: buildSideState(
+      latestMask.scan,
+      !bailed && latestMask.scan.kind === "region"
+    )
+  };
+  return { markers, normalized, verdict: resolveVerdict(normalized) };
+};
+var describeSide = (side) => {
+  const detail = side.detail === void 0 ? "" : `/${side.detail}`;
+  return `${side.scan}${detail} (masked: ${side.masked})`;
+};
+var printHuman5 = (report) => {
+  const lines = [
+    "gaia update merge-region",
+    `  Verdict:  ${report.verdict}`,
+    `  Bailed:   ${report.markers.bailed}`,
+    `  Baseline: ${describeSide(report.markers.baseline)}`,
+    `  Latest:   ${describeSide(report.markers.latest)}`,
+    `  Current:  ${describeSide(report.markers.current)}`
+  ];
+  process.stdout.write(`${lines.join("\n")}
+`);
+};
+var loadRegionFile = (absPath, role) => {
+  if (!existsSync27(absPath)) {
+    return {
+      code: "region_file_missing",
+      message: `${role} file not found: ${absPath}`,
+      ok: false
+    };
+  }
+  try {
+    return { content: readFileSync32(absPath, "utf8"), ok: true };
+  } catch (error51) {
+    return {
+      code: "region_read_failed",
+      message: `${role} file could not be read (${absPath}): ${error51 instanceof Error ? error51.message : String(error51)}`,
+      ok: false
+    };
+  }
+};
+var resolvePath2 = (cwd, value) => path36.isAbsolute(value) ? value : path36.join(cwd, value);
+var run44 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS41.has(argv[0])) {
+    process.stdout.write(HELP_TEXT43);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags19(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "update merge-region"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const inputs = [
+    ["baseline", resolvePath2(cwd, parsed.flags.baseline)],
+    ["latest", resolvePath2(cwd, parsed.flags.latest)],
+    ["current", resolvePath2(cwd, parsed.flags.current)]
+  ];
+  const contents = [];
+  for (const [role, absPath] of inputs) {
+    const result = loadRegionFile(absPath, role);
+    if (!result.ok) {
+      structuredError({
+        code: result.code,
+        message: result.message,
+        subcommand: "update merge-region"
+      });
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
+    contents.push(result.content);
+  }
+  const [baseline, latest, current] = contents;
+  const report = computeRegionMerge(
+    baseline,
+    latest,
+    current,
+    parsed.flags.startMarker,
+    parsed.flags.endMarker
+  );
+  if (parsed.flags.json) {
+    process.stdout.write(`${JSON.stringify(report)}
+`);
+  } else {
+    printHuman5(report);
+  }
+  return EXIT_CODES.OK;
+};
+
 // src/update/merge-workspace.ts
-import { existsSync as existsSync25, readFileSync as readFileSync30 } from "node:fs";
-import path34 from "node:path";
-var HELP_TEXT43 = `Usage: gaia update merge-workspace --baseline <file> --latest <file> --current <file> [--json]
+import { existsSync as existsSync28, readFileSync as readFileSync33 } from "node:fs";
+import path37 from "node:path";
+var HELP_TEXT44 = `Usage: gaia update merge-workspace --baseline <file> --latest <file> --current <file> [--json]
 
   Field-aware three-way verdict for pnpm-workspace.yaml. Reads three YAML
   files (baseline / latest tarball + working-tree current), classifies the
@@ -26908,7 +27329,7 @@ var HELP_TEXT43 = `Usage: gaia update merge-workspace --baseline <file> --latest
     0  success
     1  user-correctable error (missing flag / file, malformed YAML)
 `;
-var HELP_TOKENS41 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS42 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var MANAGED_WHOLE_VALUE_KEYS2 = [
   "minimumReleaseAge",
   "trustPolicy",
@@ -26919,30 +27340,30 @@ var MANAGED_WHOLE_VALUE_KEYS2 = [
   "strictPeerDependencies"
 ];
 var SHARED_MAP_SECTIONS = ["overrides", "allowBuilds"];
-var takeValue15 = (argv, index, flag) => {
+var takeValue16 = (argv, index, flag) => {
   const value = argv.at(index);
   if (value === void 0)
     return { message: `${flag} requires a value`, ok: false };
   return { ok: true, value };
 };
-var VALUE_FLAGS3 = {
+var VALUE_FLAGS4 = {
   "--baseline": "baseline",
   "--current": "current",
   "--latest": "latest"
 };
-var lookupValueFlag2 = (token) => VALUE_FLAGS3[token];
-var parseFlags19 = (argv) => {
+var lookupValueFlag3 = (token) => VALUE_FLAGS4[token];
+var parseFlags20 = (argv) => {
   const collected = {};
   let json2 = false;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    const field = lookupValueFlag2(token);
+    const field = lookupValueFlag3(token);
     if (token === "--json") {
       json2 = true;
     } else if (field === void 0) {
       return { message: `unknown flag: ${token}`, ok: false };
     } else {
-      const taken = takeValue15(argv, index + 1, token);
+      const taken = takeValue16(argv, index + 1, token);
       if (!taken.ok) return taken;
       collected[field] = taken.value;
       index += 1;
@@ -27062,7 +27483,7 @@ var computeReport2 = (baseline, latest, current) => {
     suggestions: suggestions.toSorted(bySortKey2)
   };
 };
-var printHuman5 = (report) => {
+var printHuman6 = (report) => {
   const lines = [
     "gaia update merge-workspace",
     `  Applied:     ${report.applied.length}`,
@@ -27085,7 +27506,7 @@ var printHuman5 = (report) => {
 `);
 };
 var loadWorkspace = (absPath, role) => {
-  if (!existsSync25(absPath)) {
+  if (!existsSync28(absPath)) {
     return {
       code: "workspace_file_missing",
       message: `${role} workspace file not found: ${absPath}`,
@@ -27094,7 +27515,7 @@ var loadWorkspace = (absPath, role) => {
   }
   let parsed;
   try {
-    parsed = load(readFileSync30(absPath, "utf8"));
+    parsed = load(readFileSync33(absPath, "utf8"));
   } catch (error51) {
     return {
       code: "workspace_parse_failed",
@@ -27104,13 +27525,13 @@ var loadWorkspace = (absPath, role) => {
   }
   return { ok: true, root: asRecord2(parsed) };
 };
-var resolvePath2 = (cwd, value) => path34.isAbsolute(value) ? value : path34.join(cwd, value);
-var run44 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS41.has(argv[0])) {
-    process.stdout.write(HELP_TEXT43);
+var resolvePath3 = (cwd, value) => path37.isAbsolute(value) ? value : path37.join(cwd, value);
+var run45 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS42.has(argv[0])) {
+    process.stdout.write(HELP_TEXT44);
     return EXIT_CODES.OK;
   }
-  const parsed = parseFlags19(argv);
+  const parsed = parseFlags20(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -27121,9 +27542,9 @@ var run44 = (argv, options = {}) => {
   }
   const cwd = options.cwd ?? process.cwd();
   const inputs = [
-    ["baseline", resolvePath2(cwd, parsed.flags.baseline)],
-    ["latest", resolvePath2(cwd, parsed.flags.latest)],
-    ["current", resolvePath2(cwd, parsed.flags.current)]
+    ["baseline", resolvePath3(cwd, parsed.flags.baseline)],
+    ["latest", resolvePath3(cwd, parsed.flags.latest)],
+    ["current", resolvePath3(cwd, parsed.flags.current)]
   ];
   const roots = [];
   for (const [role, absPath] of inputs) {
@@ -27144,29 +27565,661 @@ var run44 = (argv, options = {}) => {
     process.stdout.write(`${JSON.stringify(report)}
 `);
   } else {
-    printHuman5(report);
+    printHuman6(report);
+  }
+  return EXIT_CODES.OK;
+};
+
+// src/update/regen-regions.ts
+import { execFileSync as execFileSync5 } from "node:child_process";
+import { createHash } from "node:crypto";
+import {
+  copyFileSync as copyFileSync2,
+  existsSync as existsSync29,
+  mkdirSync as mkdirSync12,
+  readdirSync as readdirSync5,
+  readFileSync as readFileSync34,
+  realpathSync as realpathSync2,
+  rmSync as rmSync3,
+  statSync as statSync5,
+  writeFileSync as writeFileSync9
+} from "node:fs";
+import path38 from "node:path";
+var HELP_TEXT45 = `Usage: gaia update regen-regions --manifest <path> --root <dir> [--backup-dir <dir>]
+                                  [--conflicted <repo-relative-path>]...
+                                  [--absent-path <repo-relative-path>]...
+                                  [--skip-region <id>]... [--json]
+
+  Runs each declared region's regeneration command against <root>, one region
+  at a time. A region named by --skip-region, or one of whose declared paths
+  appears in --conflicted or --absent-path, is left alone. A declaration that
+  fails well-formedness, or an operand that fails the shipped-path / symlink /
+  parent-segment guard, is refused before anything is spawned. Writes outside
+  a region's declared paths are reverted (inside the region's own directories)
+  or reported (anywhere else); never silently kept.
+
+  Read the manifest's regions from a RELEASE copy, never the adopter's stale
+  working-tree copy: pass $LATEST_DIR/.gaia/manifest.json as --manifest.
+
+  Exit codes:
+    0  success, including every refusal, skip, spawn failure, or non-zero
+       program exit
+    1  user-correctable error (missing flag / unreadable or unparseable
+       --manifest / missing --root)
+`;
+var HELP_TOKENS43 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var takeValue17 = (argv, index, flag) => {
+  const value = argv.at(index);
+  if (value === void 0)
+    return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+var VALUE_FLAGS5 = {
+  "--absent-path": (state, value) => {
+    state.absentPaths.push(value);
+  },
+  "--backup-dir": (state, value) => {
+    state.backupDir = value;
+  },
+  "--conflicted": (state, value) => {
+    state.conflicted.push(value);
+  },
+  "--manifest": (state, value) => {
+    state.manifest = value;
+  },
+  "--root": (state, value) => {
+    state.root = value;
+  },
+  "--skip-region": (state, value) => {
+    state.skipRegions.push(value);
+  }
+};
+var lookupValueFlag4 = (token) => Object.hasOwn(VALUE_FLAGS5, token) ? VALUE_FLAGS5[token] : void 0;
+var parseFlags21 = (argv) => {
+  const state = {
+    absentPaths: [],
+    backupDir: void 0,
+    conflicted: [],
+    json: false,
+    manifest: void 0,
+    root: void 0,
+    skipRegions: []
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    const handler = lookupValueFlag4(token);
+    if (token === "--json") {
+      state.json = true;
+    } else if (handler === void 0) {
+      return { message: `unknown flag: ${token}`, ok: false };
+    } else {
+      const taken = takeValue17(argv, index + 1, token);
+      if (!taken.ok) return taken;
+      handler(state, taken.value);
+      index += 1;
+    }
+  }
+  const {
+    absentPaths,
+    backupDir,
+    conflicted,
+    json: json2,
+    manifest,
+    root,
+    skipRegions
+  } = state;
+  if (manifest === void 0)
+    return { message: "--manifest is required", ok: false };
+  if (root === void 0) return { message: "--root is required", ok: false };
+  return {
+    flags: {
+      absentPaths,
+      backupDir,
+      conflicted,
+      json: json2,
+      manifest,
+      root,
+      skipRegions
+    },
+    ok: true
+  };
+};
+var isNonEmptyString = (value) => typeof value === "string" && value.trim() !== "";
+var isStringArray2 = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
+var isPlainObject2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var normalizeRepoPath = (value) => {
+  const posix = value.replaceAll("\\", "/").replaceAll(/\/{2,}/gu, "/");
+  return posix.startsWith("./") ? posix.slice(2) : posix;
+};
+var normalizeDeclaredPaths = (paths) => {
+  const normalized = [];
+  for (const declPath of paths) {
+    const candidate = normalizeRepoPath(declPath);
+    if (candidate.trim() === "")
+      return { ok: false, reason: "paths carries an empty entry" };
+    if (path38.isAbsolute(candidate))
+      return {
+        ok: false,
+        reason: `paths carries an absolute path: ${candidate}`
+      };
+    if (candidate.split("/").includes(".."))
+      return {
+        ok: false,
+        reason: `paths carries a parent-directory segment: ${candidate}`
+      };
+    if (path38.posix.dirname(candidate) === ".")
+      return {
+        ok: false,
+        reason: `paths carries a path whose parent is the repository root: ${candidate}`
+      };
+    normalized.push(candidate);
+  }
+  return { ok: true, paths: normalized };
+};
+var parseDeclaration = (raw, index, seenIds) => {
+  const fallbackId = `region-at-index-${index}`;
+  if (!isPlainObject2(raw))
+    return {
+      ok: false,
+      reason: "declaration is not an object",
+      regionId: fallbackId
+    };
+  const { endMarker, id, paths, regenerate, startMarker } = raw;
+  if (!isNonEmptyString(id))
+    return {
+      ok: false,
+      reason: "declaration is missing a non-empty id",
+      regionId: fallbackId
+    };
+  if (seenIds.has(id))
+    return { ok: false, reason: `duplicate region id: ${id}`, regionId: id };
+  seenIds.add(id);
+  if (!isNonEmptyString(startMarker))
+    return { ok: false, reason: "startMarker is missing or empty", regionId: id };
+  if (!isNonEmptyString(endMarker))
+    return { ok: false, reason: "endMarker is missing or empty", regionId: id };
+  if (!isStringArray2(paths))
+    return {
+      ok: false,
+      reason: "paths is missing or not an array of strings",
+      regionId: id
+    };
+  const declaredPaths = normalizeDeclaredPaths(paths);
+  if (!declaredPaths.ok)
+    return { ok: false, reason: declaredPaths.reason, regionId: id };
+  if (!isPlainObject2(regenerate))
+    return {
+      ok: false,
+      reason: "regenerate is missing or not an object",
+      regionId: id
+    };
+  const { args, interpreter, operand } = regenerate;
+  if (!isNonEmptyString(interpreter))
+    return {
+      ok: false,
+      reason: "regenerate.interpreter is missing or empty",
+      regionId: id
+    };
+  if (!isNonEmptyString(operand))
+    return {
+      ok: false,
+      reason: "regenerate.operand is missing or empty",
+      regionId: id
+    };
+  if (!isStringArray2(args))
+    return {
+      ok: false,
+      reason: "regenerate.args is missing or not an array of strings",
+      regionId: id
+    };
+  return {
+    declaration: {
+      args,
+      endMarker,
+      id,
+      interpreter,
+      operand,
+      paths: declaredPaths.paths,
+      startMarker
+    },
+    ok: true
+  };
+};
+var computeSkipReason = (decl, inputs) => {
+  const { absentPaths, conflicted, skipRegions } = inputs;
+  if (skipRegions.has(decl.id)) return "inputs not reconciled by this run";
+  const conflictedPaths = decl.paths.filter(
+    (declPath) => conflicted.has(declPath)
+  );
+  if (conflictedPaths.length > 0)
+    return `region is not regenerated until the adopter resolves the conflict patch for: ${conflictedPaths.join(", ")}`;
+  const missingPaths = decl.paths.filter(
+    (declPath) => absentPaths.has(declPath)
+  );
+  if (missingPaths.length > 0)
+    return `the adopter's tree does not carry: ${missingPaths.join(", ")}`;
+  return void 0;
+};
+var checkOperand = (decl, context) => {
+  const { realRoot, root, shippedKeys } = context;
+  const { interpreter, operand } = decl;
+  if (path38.isAbsolute(operand)) return "operand is an absolute path";
+  if (operand.split("/").includes(".."))
+    return "operand carries a parent-directory segment";
+  if (!shippedKeys.has(normalizeRepoPath(operand)))
+    return "operand is not a path this manifest ships";
+  let resolvedReal;
+  try {
+    resolvedReal = realpathSync2(path38.resolve(root, operand));
+  } catch {
+    resolvedReal = void 0;
+  }
+  if (resolvedReal !== void 0) {
+    const insideRoot = resolvedReal === realRoot || resolvedReal.startsWith(`${realRoot}${path38.sep}`);
+    if (!insideRoot)
+      return "operand resolves through a symlink out of the repository";
+  }
+  if (interpreter.trim() === "" || path38.isAbsolute(interpreter) || interpreter.includes("/") || interpreter.includes("\\"))
+    return "interpreter is not a bare program name";
+  return void 0;
+};
+var performBackup = (inputs) => {
+  const { backupDir, paths, regionId, root } = inputs;
+  if (backupDir === void 0) return [];
+  const backedUp = [];
+  paths.forEach((declPath) => {
+    const srcAbs = path38.resolve(root, declPath);
+    if (!existsSync29(srcAbs)) return;
+    const destinationAbs = path38.resolve(backupDir, declPath);
+    if (existsSync29(destinationAbs)) return;
+    try {
+      mkdirSync12(path38.dirname(destinationAbs), { recursive: true });
+      copyFileSync2(srcAbs, destinationAbs);
+      backedUp.push(declPath);
+    } catch (error51) {
+      structuredError({
+        code: "region_regen_backup_failed",
+        message: `backup skipped for '${declPath}' in region '${regionId}': ${error51 instanceof Error ? error51.message : String(error51)}`,
+        regionId,
+        subcommand: "update regen-regions"
+      });
+    }
+  });
+  return backedUp;
+};
+var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path38.posix.dirname(declPath)));
+var collectScopeDigests = (root, scopeDirs) => {
+  const digests = /* @__PURE__ */ new Map();
+  scopeDirs.forEach((dir) => {
+    const absDir = path38.resolve(root, dir);
+    if (!existsSync29(absDir)) return;
+    let entries;
+    try {
+      entries = readdirSync5(absDir, { recursive: true });
+    } catch {
+      return;
+    }
+    entries.forEach((rel) => {
+      const abs = path38.join(absDir, rel);
+      let stat;
+      try {
+        stat = statSync5(abs);
+      } catch {
+        return;
+      }
+      if (!stat.isFile()) return;
+      const repoRelative = path38.relative(root, abs).split(path38.sep).join("/");
+      let content;
+      try {
+        content = readFileSync34(abs);
+      } catch {
+        return;
+      }
+      digests.set(repoRelative, {
+        content,
+        digest: createHash("sha256").update(content).digest("hex")
+      });
+    });
+  });
+  return digests;
+};
+var sweepScope = (inputs) => {
+  const { after, before, declaredPaths, regionId, root } = inputs;
+  const declaredSet = new Set(declaredPaths);
+  const confined = [];
+  before.forEach((beforeEntry, relPath) => {
+    if (declaredSet.has(relPath)) return;
+    const afterEntry = after.get(relPath);
+    if (afterEntry === void 0) return;
+    if (afterEntry.digest !== beforeEntry.digest) {
+      try {
+        writeFileSync9(path38.resolve(root, relPath), beforeEntry.content);
+        confined.push({ action: "restored", path: relPath, regionId });
+      } catch {
+        confined.push({ action: "reported", path: relPath, regionId });
+      }
+    }
+  });
+  [...after.keys()].forEach((relPath) => {
+    if (declaredSet.has(relPath) || before.has(relPath)) return;
+    try {
+      rmSync3(path38.resolve(root, relPath), { force: true });
+      confined.push({ action: "removed", path: relPath, regionId });
+    } catch {
+      confined.push({ action: "reported", path: relPath, regionId });
+    }
+  });
+  return confined;
+};
+var isInsideScope = (relPath, scopeDirs) => [...scopeDirs].some(
+  (dir) => relPath === dir || relPath.startsWith(`${dir}/`)
+);
+var gitStatusPaths = (root) => {
+  try {
+    const out = execFileSync5("git", ["-C", root, "status", "--porcelain"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    return out.split("\n").flatMap((rawLine) => {
+      const line = rawLine.replace(/\r$/u, "");
+      if (line.length === 0) return [];
+      const rawPayload = line.slice(3);
+      const payload = rawPayload.startsWith('"') && rawPayload.endsWith('"') ? rawPayload.slice(1, -1) : rawPayload;
+      const renameSplit = payload.indexOf(" -> ");
+      return renameSplit === -1 ? [payload] : [payload.slice(0, renameSplit), payload.slice(renameSplit + 4)];
+    });
+  } catch {
+    return null;
+  }
+};
+var extractStatus = (error51) => {
+  if (typeof error51 !== "object" || error51 === null || !("status" in error51))
+    return void 0;
+  const { status } = error51;
+  return typeof status === "number" ? status : void 0;
+};
+var trySpawn = (decl, root) => {
+  try {
+    execFileSync5(
+      decl.interpreter,
+      [path38.resolve(root, decl.operand), ...decl.args],
+      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+    );
+    return { ok: true };
+  } catch (error51) {
+    const message = error51 instanceof Error ? error51.message : String(error51);
+    const status = extractStatus(error51);
+    return status === void 0 ? { kind: "spawn", message, ok: false } : { kind: "exit", message, ok: false, status };
+  }
+};
+var reportOutOfScopeWrites = (inputs) => {
+  const { afterStatus, beforeStatus, decl, report, scopeDirs } = inputs;
+  if (beforeStatus === null || afterStatus === null) {
+    structuredError({
+      code: "region_regen_git_delta_unavailable",
+      message: `whole-root out-of-scope-write detection skipped for region '${decl.id}': git status is unavailable or the run's root is not a git repository`,
+      regionId: decl.id,
+      subcommand: "update regen-regions"
+    });
+    return;
+  }
+  const beforeSet = new Set(beforeStatus);
+  const declaredSet = new Set(decl.paths);
+  afterStatus.forEach((changedPath) => {
+    if (beforeSet.has(changedPath) || declaredSet.has(changedPath) || isInsideScope(changedPath, scopeDirs))
+      return;
+    report.confined.push({
+      action: "reported",
+      path: changedPath,
+      regionId: decl.id
+    });
+  });
+};
+var runRegeneration = (decl, commandArgv, context) => {
+  const { backupDir, report, root } = context;
+  report.backedUp.push(
+    ...performBackup({
+      backupDir,
+      paths: decl.paths,
+      regionId: decl.id,
+      root
+    })
+  );
+  const scopeDirs = scopeDirsFor(decl.paths);
+  const before = collectScopeDigests(root, scopeDirs);
+  const beforeStatus = gitStatusPaths(root);
+  const spawnResult = trySpawn(decl, root);
+  const after = collectScopeDigests(root, scopeDirs);
+  report.confined.push(
+    ...sweepScope({
+      after,
+      before,
+      declaredPaths: decl.paths,
+      regionId: decl.id,
+      root
+    })
+  );
+  reportOutOfScopeWrites({
+    afterStatus: gitStatusPaths(root),
+    beforeStatus,
+    decl,
+    report,
+    scopeDirs
+  });
+  if (spawnResult.ok) {
+    const rewrote = decl.paths.filter(
+      (declPath) => before.get(declPath)?.digest !== after.get(declPath)?.digest
+    );
+    report.ran.push({ argv: commandArgv, regionId: decl.id, rewrote });
+  } else {
+    report.failed.push({
+      argv: commandArgv,
+      kind: spawnResult.kind,
+      message: spawnResult.message,
+      regionId: decl.id,
+      status: spawnResult.kind === "exit" ? spawnResult.status : void 0
+    });
+  }
+};
+var processRegion = (raw, index, context) => {
+  const {
+    absentPathSet,
+    conflictedSet,
+    realRoot,
+    report,
+    root,
+    seenIds,
+    shippedKeys,
+    skipRegionSet
+  } = context;
+  const parsedDecl = parseDeclaration(raw, index, seenIds);
+  if (!parsedDecl.ok) {
+    report.refused.push({
+      kind: "declaration",
+      reason: parsedDecl.reason,
+      regionId: parsedDecl.regionId
+    });
+    return;
+  }
+  const decl = parsedDecl.declaration;
+  const commandArgv = [decl.interpreter, decl.operand, ...decl.args];
+  const skipReason = computeSkipReason(decl, {
+    absentPaths: absentPathSet,
+    conflicted: conflictedSet,
+    skipRegions: skipRegionSet
+  });
+  if (skipReason !== void 0) {
+    report.skipped.push({
+      argv: commandArgv,
+      reason: skipReason,
+      regionId: decl.id
+    });
+    return;
+  }
+  const operandRefusal = checkOperand(decl, { realRoot, root, shippedKeys });
+  if (operandRefusal !== void 0) {
+    report.refused.push({
+      argv: commandArgv,
+      kind: "operand",
+      reason: operandRefusal,
+      regionId: decl.id
+    });
+    return;
+  }
+  runRegeneration(decl, commandArgv, context);
+};
+var resolvePath4 = (cwd, value) => path38.isAbsolute(value) ? value : path38.join(cwd, value);
+var loadRunInputs = (cwd, flags) => {
+  const manifestPath = resolvePath4(cwd, flags.manifest);
+  const root = resolvePath4(cwd, flags.root);
+  const backupDir = flags.backupDir === void 0 ? void 0 : resolvePath4(cwd, flags.backupDir);
+  if (!existsSync29(manifestPath)) {
+    structuredError({
+      code: "manifest_not_found",
+      message: `manifest not found: ${manifestPath}`,
+      subcommand: "update regen-regions"
+    });
+    return { ok: false };
+  }
+  let manifestRaw;
+  try {
+    manifestRaw = readFileSync34(manifestPath, "utf8");
+  } catch (error51) {
+    structuredError({
+      code: "manifest_read_failed",
+      message: `manifest could not be read (${manifestPath}): ${error51 instanceof Error ? error51.message : String(error51)}`,
+      subcommand: "update regen-regions"
+    });
+    return { ok: false };
+  }
+  let manifestParsed;
+  try {
+    manifestParsed = JSON.parse(manifestRaw);
+  } catch (error51) {
+    structuredError({
+      code: "manifest_parse_failed",
+      message: `manifest is not valid JSON (${manifestPath}): ${error51 instanceof Error ? error51.message : String(error51)}`,
+      subcommand: "update regen-regions"
+    });
+    return { ok: false };
+  }
+  if (!existsSync29(root)) {
+    structuredError({
+      code: "root_not_found",
+      message: `root directory not found: ${root}`,
+      subcommand: "update regen-regions"
+    });
+    return { ok: false };
+  }
+  let realRoot;
+  try {
+    realRoot = realpathSync2(root);
+  } catch (error51) {
+    structuredError({
+      code: "root_unreadable",
+      message: `root directory could not be resolved (${root}): ${error51 instanceof Error ? error51.message : String(error51)}`,
+      subcommand: "update regen-regions"
+    });
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    value: {
+      backupDir,
+      manifestRecord: isPlainObject2(manifestParsed) ? manifestParsed : {},
+      realRoot,
+      root
+    }
+  };
+};
+var printHuman7 = (report) => {
+  const lines = [
+    "gaia update regen-regions",
+    `  Ran:       ${report.ran.length}`,
+    `  Refused:   ${report.refused.length}`,
+    `  Skipped:   ${report.skipped.length}`,
+    `  Failed:    ${report.failed.length}`,
+    `  Backed up: ${report.backedUp.length}`,
+    `  Confined:  ${report.confined.length}`
+  ];
+  process.stdout.write(`${lines.join("\n")}
+`);
+};
+var run46 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS43.has(argv[0])) {
+    process.stdout.write(HELP_TEXT45);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags21(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "update regen-regions"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const loaded = loadRunInputs(cwd, parsed.flags);
+  if (!loaded.ok) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  const { backupDir, manifestRecord, realRoot, root } = loaded.value;
+  const rawRegions = Array.isArray(manifestRecord.regions) ? manifestRecord.regions : [];
+  const filesMap = isPlainObject2(manifestRecord.files) ? manifestRecord.files : {};
+  const shippedKeys = new Set(Object.keys(filesMap));
+  const context = {
+    absentPathSet: new Set(parsed.flags.absentPaths),
+    backupDir,
+    conflictedSet: new Set(parsed.flags.conflicted),
+    realRoot,
+    report: {
+      backedUp: [],
+      confined: [],
+      failed: [],
+      ran: [],
+      refused: [],
+      skipped: []
+    },
+    root,
+    seenIds: /* @__PURE__ */ new Set(),
+    shippedKeys,
+    skipRegionSet: new Set(parsed.flags.skipRegions)
+  };
+  rawRegions.forEach((raw, index) => {
+    processRegion(raw, index, context);
+  });
+  if (parsed.flags.json) {
+    process.stdout.write(`${JSON.stringify(context.report)}
+`);
+  } else {
+    printHuman7(context.report);
   }
   return EXIT_CODES.OK;
 };
 
 // src/update/index.ts
-var HELP_TEXT44 = `Usage: gaia update <subcommand> [args]
+var HELP_TEXT46 = `Usage: gaia update <subcommand> [args]
 
   merge-workspace --baseline <file> --latest <file> --current <file> [--json]
                                               Field-aware pnpm-workspace.yaml verdict.
   merge-audit-ci  --baseline <file> --latest <file> --current <file> [--json]
                                               Field-aware .gaia/audit-ci.yml verdict.
+  merge-region    --baseline <file> --latest <file> --current <file> --start-marker <text> --end-marker <text> [--json]
+                                              Region-aware generated-region verdict.
+  regen-regions   --manifest <path> --root <dir> [--backup-dir <dir>] [--conflicted <path>]... [--absent-path <path>]... [--skip-region <id>]... [--json]
+                                              Regenerates declared generated regions via their shipped command.
 `;
-var HELP_TOKENS42 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS44 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SUBCOMMAND_HANDLERS8 = {
   "merge-audit-ci": run43,
-  "merge-workspace": run44
+  "merge-region": run44,
+  "merge-workspace": run45,
+  "regen-regions": run46
 };
-var run45 = async (argv) => {
+var run47 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS42.has(subcommand)) {
-    process.stdout.write(HELP_TEXT44);
+  if (subcommand === void 0 || HELP_TOKENS44.has(subcommand)) {
+    process.stdout.write(HELP_TEXT46);
     return EXIT_CODES.OK;
   }
   const handler = SUBCOMMAND_HANDLERS8[subcommand];
@@ -27323,8 +28376,8 @@ var TALLY_SCRIPT = ".gaia/scripts/token-tally.sh";
 var passthroughFailure3 = (result, command, args) => passthroughFailure2({ args, command, prefix: "chain", result });
 var stepOk = commandSucceeded;
 var safeOutput3 = (value) => value ?? "";
-var HELP_TOKENS43 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var HELP_TEXT45 = `Usage: gaia wiki chain <begin|commit|finish> [args]
+var HELP_TOKENS45 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TEXT47 = `Usage: gaia wiki chain <begin|commit|finish> [args]
 
   begin [--branch-aware]       On main/master: cut wiki-sync/<date>-<sha> so the
                                whole chain lands on one branch + PR. On a feature
@@ -27638,11 +28691,11 @@ var ACTIONS = {
   commit,
   finish
 };
-var run46 = (argv, options = {}) => {
+var run48 = (argv, options = {}) => {
   const action = argv[0];
   const rest = argv.slice(1);
-  if (action === void 0 || HELP_TOKENS43.has(action)) {
-    process.stdout.write(HELP_TEXT45);
+  if (action === void 0 || HELP_TOKENS45.has(action)) {
+    process.stdout.write(HELP_TEXT47);
     return EXIT_CODES.OK;
   }
   const handler = ACTIONS[action];
@@ -27656,8 +28709,8 @@ var run46 = (argv, options = {}) => {
 };
 
 // src/wiki/classify-paths.ts
-import { existsSync as existsSync26, readFileSync as readFileSync31 } from "node:fs";
-import path35 from "node:path";
+import { existsSync as existsSync30, readFileSync as readFileSync35 } from "node:fs";
+import path39 from "node:path";
 var DEFAULT_CLASSIFY_PATHS = {
   inventoryPaths: [
     "app/components/",
@@ -27679,11 +28732,11 @@ var PackageJsonSchema = external_exports.object({
   gaia: external_exports.object({ wikiClassify: WikiClassifySchema.optional() }).optional()
 });
 var readClassifyPaths = (repoRoot) => {
-  const target = path35.join(repoRoot, "package.json");
-  if (!existsSync26(target)) return DEFAULT_CLASSIFY_PATHS;
+  const target = path39.join(repoRoot, "package.json");
+  if (!existsSync30(target)) return DEFAULT_CLASSIFY_PATHS;
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync31(target, "utf8"));
+    parsed = JSON.parse(readFileSync35(target, "utf8"));
   } catch {
     return DEFAULT_CLASSIFY_PATHS;
   }
@@ -27705,25 +28758,25 @@ var readClassifyPaths = (repoRoot) => {
 };
 
 // src/wiki/commit-classify.ts
-var HELP_TEXT46 = `Usage: gaia wiki commit-classify --since <sha> [--json]
+var HELP_TEXT48 = `Usage: gaia wiki commit-classify --since <sha> [--json]
 
   Emit a deterministic WORTHY/SKIP suggestion for every commit in
   <sha>..HEAD. Without --json, prints a tabular summary.
 `;
-var HELP_TOKENS44 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var takeValue16 = (argv, index, flag) => {
+var HELP_TOKENS46 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var takeValue18 = (argv, index, flag) => {
   if (index >= argv.length) {
     return { message: `${flag} requires a value`, ok: false };
   }
   return { ok: true, value: argv[index] };
 };
-var parseFlags20 = (argv) => {
+var parseFlags22 = (argv) => {
   let since;
   let json2 = false;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--since") {
-      const taken = takeValue16(argv, index + 1, "--since");
+      const taken = takeValue18(argv, index + 1, "--since");
       if (!taken.ok) return taken;
       since = taken.value;
       index += 1;
@@ -27910,7 +28963,7 @@ var warnIfInert = (health) => {
 `
   );
 };
-var printHuman6 = (classification) => {
+var printHuman8 = (classification) => {
   if (classification.commits.length === 0) {
     process.stdout.write("No commits to classify.\n");
     return;
@@ -27931,12 +28984,12 @@ var printHuman6 = (classification) => {
   process.stdout.write(`${lines.join("\n")}
 `);
 };
-var run47 = (argv, options = {}) => {
-  if (argv.length === 0 || HELP_TOKENS44.has(argv[0])) {
-    process.stdout.write(HELP_TEXT46);
+var run49 = (argv, options = {}) => {
+  if (argv.length === 0 || HELP_TOKENS46.has(argv[0])) {
+    process.stdout.write(HELP_TEXT48);
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
-  const parsed = parseFlags20(argv);
+  const parsed = parseFlags22(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -27990,15 +29043,15 @@ var run47 = (argv, options = {}) => {
     process.stdout.write(`${JSON.stringify(classification)}
 `);
   } else {
-    printHuman6(classification);
+    printHuman8(classification);
   }
   return EXIT_CODES.OK;
 };
 
 // src/wiki/dead-paths.ts
-import { readdirSync as readdirSync5, readFileSync as readFileSync32, statSync as statSync5 } from "node:fs";
-import path36 from "node:path";
-var HELP_TEXT47 = `Usage: gaia wiki dead-paths [--json]
+import { readdirSync as readdirSync6, readFileSync as readFileSync36, statSync as statSync6 } from "node:fs";
+import path40 from "node:path";
+var HELP_TEXT49 = `Usage: gaia wiki dead-paths [--json]
 
   Scan wiki/**/*.md for backticked repo-relative paths under .claude/, .gaia/,
   app/, test/, wiki/ that no longer exist on disk, plus any reference to
@@ -28007,7 +29060,7 @@ var HELP_TEXT47 = `Usage: gaia wiki dead-paths [--json]
   and wiki/meta/** (audit artifacts that legitimately reference historical
   paths).
 `;
-var HELP_TOKENS45 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS47 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var TRACKED_PREFIXES = [
   ".claude/",
   ".gaia/",
@@ -28039,21 +29092,21 @@ var isTrackedPath = (token) => {
 };
 var shouldSkipFile = (relPath) => SKIP_PATH_FRAGMENTS.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown = (root, dir) => {
-  const entries = readdirSync5(dir, { withFileTypes: true });
+  const entries = readdirSync6(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
-    const full = path36.join(dir, entry.name);
+    const full = path40.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkMarkdown(root, full));
     } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(path36.relative(root, full));
+      out.push(path40.relative(root, full));
     }
   }
   return out;
 };
 var pathExists = (root, candidate) => {
   try {
-    statSync5(path36.join(root, candidate));
+    statSync6(path40.join(root, candidate));
     return true;
   } catch {
     return false;
@@ -28072,27 +29125,27 @@ var collectDeadPathsInLine = (ctx, lineNumber, line) => {
   return refs;
 };
 var collectDeadPathsInFile = (ctx) => {
-  const content = readFileSync32(path36.join(ctx.cwd, ctx.filePath), "utf8");
+  const content = readFileSync36(path40.join(ctx.cwd, ctx.filePath), "utf8");
   const lines = content.split("\n");
   return lines.flatMap(
     (line, index) => collectDeadPathsInLine(ctx, index + 1, line)
   );
 };
 var findDeadPaths = (cwd) => {
-  const wikiDir = path36.join(cwd, "wiki");
+  const wikiDir = path40.join(cwd, "wiki");
   try {
-    statSync5(wikiDir);
+    statSync6(wikiDir);
   } catch {
     return [];
   }
   const files = walkMarkdown(cwd, wikiDir);
   return files.filter((filePath) => !shouldSkipFile(filePath)).flatMap((filePath) => collectDeadPathsInFile({ cwd, filePath }));
 };
-var run48 = (argv, options = {}) => {
+var run50 = (argv, options = {}) => {
   let json2 = false;
   for (const token of argv) {
-    if (HELP_TOKENS45.has(token)) {
-      process.stdout.write(HELP_TEXT47);
+    if (HELP_TOKENS47.has(token)) {
+      process.stdout.write(HELP_TEXT49);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -28130,8 +29183,8 @@ var run48 = (argv, options = {}) => {
 };
 
 // src/wiki/diff-size.ts
-import { execFileSync as execFileSync5 } from "node:child_process";
-var HELP_TEXT48 = `Usage: gaia wiki diff-size --threshold-pct <N> [--base <ref>] [--json]
+import { execFileSync as execFileSync6 } from "node:child_process";
+var HELP_TEXT50 = `Usage: gaia wiki diff-size --threshold-pct <N> [--base <ref>] [--json]
 
   Compute wiki/** lines-changed (added + removed) between <base> (default
   HEAD~1) and HEAD as a percentage of the base tree's wiki line count.
@@ -28143,9 +29196,9 @@ var HELP_TEXT48 = `Usage: gaia wiki diff-size --threshold-pct <N> [--base <ref>]
                       changed_lines, threshold_pct } instead of the bare
                       keyword.
 `;
-var HELP_TOKENS46 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS48 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var WIKI_PREFIX = "wiki/";
-var git = (cwd, args) => execFileSync5("git", ["-C", cwd, ...args], {
+var git = (cwd, args) => execFileSync6("git", ["-C", cwd, ...args], {
   encoding: "utf8",
   stdio: ["ignore", "pipe", "pipe"]
 });
@@ -28302,10 +29355,10 @@ var emitJson = (result) => {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}
 `);
 };
-var run49 = (argv, options = {}) => {
+var run51 = (argv, options = {}) => {
   for (const token of argv) {
-    if (HELP_TOKENS46.has(token)) {
-      process.stdout.write(HELP_TEXT48);
+    if (HELP_TOKENS48.has(token)) {
+      process.stdout.write(HELP_TEXT50);
       return EXIT_CODES.OK;
     }
   }
@@ -28343,8 +29396,8 @@ var run49 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readdirSync as readdirSync6, readFileSync as readFileSync33, statSync as statSync6 } from "node:fs";
-import path37 from "node:path";
+import { readdirSync as readdirSync7, readFileSync as readFileSync37, statSync as statSync7 } from "node:fs";
+import path41 from "node:path";
 
 // src/wiki/util/frontmatter.ts
 var FRONTMATTER_FENCE = "---";
@@ -28409,7 +29462,7 @@ var parseFrontmatter = (raw) => {
 };
 
 // src/wiki/empty-sections.ts
-var HELP_TEXT49 = `Usage: gaia wiki empty-sections [--json]
+var HELP_TEXT51 = `Usage: gaia wiki empty-sections [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**, wiki/hot.md, wiki/log.md) for
   LEAF headings with no body, no child heading and no non-blank, non-heading
@@ -28418,21 +29471,21 @@ var HELP_TEXT49 = `Usage: gaia wiki empty-sections [--json]
   Without --json, prints one "path:line  heading" line per finding. With
   --json, emits { "empty": [ { path, line, heading } ] }.
 `;
-var HELP_TOKENS47 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS49 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SKIP_PATH_FRAGMENTS2 = ["wiki/meta/"];
 var SKIP_PATHS = /* @__PURE__ */ new Set(["wiki/hot.md", "wiki/log.md"]);
 var ATX_HEADING_PATTERN = /^ {0,3}(#{1,6})(?:\s|$)/u;
 var FENCE_PATTERN = /^\s*(?:```|~~~)/u;
 var shouldSkipFile2 = (relPath) => SKIP_PATHS.has(relPath) || SKIP_PATH_FRAGMENTS2.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown2 = (root, dir) => {
-  const entries = readdirSync6(dir, { withFileTypes: true });
+  const entries = readdirSync7(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
-    const full = path37.join(dir, entry.name);
+    const full = path41.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkMarkdown2(root, full));
     } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(path37.relative(root, full));
+      out.push(path41.relative(root, full));
     }
   }
   return out;
@@ -28478,9 +29531,9 @@ var findInBody = (body, bodyLineOffset, relPath) => {
   });
 };
 var findEmptySections = (cwd) => {
-  const wikiDir = path37.join(cwd, "wiki");
+  const wikiDir = path41.join(cwd, "wiki");
   try {
-    statSync6(wikiDir);
+    statSync7(wikiDir);
   } catch {
     return [];
   }
@@ -28488,17 +29541,17 @@ var findEmptySections = (cwd) => {
     (a, b) => a.localeCompare(b)
   );
   return files.filter((filePath) => !shouldSkipFile2(filePath)).flatMap((filePath) => {
-    const content = readFileSync33(path37.join(cwd, filePath), "utf8");
+    const content = readFileSync37(path41.join(cwd, filePath), "utf8");
     const { body } = parseFrontmatter(content);
     const offset = content.split("\n").length - body.split("\n").length;
     return findInBody(body, offset, filePath);
   });
 };
-var run50 = (argv, options = {}) => {
+var run52 = (argv, options = {}) => {
   let json2 = false;
   for (const token of argv) {
-    if (HELP_TOKENS47.has(token)) {
-      process.stdout.write(HELP_TEXT49);
+    if (HELP_TOKENS49.has(token)) {
+      process.stdout.write(HELP_TEXT51);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -28541,37 +29594,37 @@ var run50 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync34, statSync as statSync7 } from "node:fs";
-import path38 from "node:path";
-var HELP_TEXT50 = `Usage: gaia wiki frontmatter [--json]
+import { readdirSync as readdirSync8, readFileSync as readFileSync38, statSync as statSync8 } from "node:fs";
+import path42 from "node:path";
+var HELP_TEXT52 = `Usage: gaia wiki frontmatter [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**) for pages missing required
   frontmatter. Required floor is type and status. Without --json, prints one
   "path: missing a, b" line per gap. With --json, emits
   { "gaps": [ { path, missing } ] }.
 `;
-var HELP_TOKENS48 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS50 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var REQUIRED_FIELDS = ["type", "status"];
 var SKIP_PATH_FRAGMENTS3 = ["wiki/meta/"];
 var shouldSkipFile3 = (relPath) => SKIP_PATH_FRAGMENTS3.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown3 = (root, dir) => {
-  const entries = readdirSync7(dir, { withFileTypes: true });
+  const entries = readdirSync8(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
-    const full = path38.join(dir, entry.name);
+    const full = path42.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkMarkdown3(root, full));
     } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(path38.relative(root, full));
+      out.push(path42.relative(root, full));
     }
   }
   return out;
 };
 var hasField = (frontmatter, field) => Object.hasOwn(frontmatter, field) && frontmatter[field] !== null;
 var findFrontmatterGaps = (cwd) => {
-  const wikiDir = path38.join(cwd, "wiki");
+  const wikiDir = path42.join(cwd, "wiki");
   try {
-    statSync7(wikiDir);
+    statSync8(wikiDir);
   } catch {
     return [];
   }
@@ -28581,7 +29634,7 @@ var findFrontmatterGaps = (cwd) => {
   );
   for (const filePath of files) {
     if (!shouldSkipFile3(filePath)) {
-      const content = readFileSync34(path38.join(cwd, filePath), "utf8");
+      const content = readFileSync38(path42.join(cwd, filePath), "utf8");
       const { frontmatter } = parseFrontmatter(content);
       const missing = REQUIRED_FIELDS.filter(
         (field) => !hasField(frontmatter, field)
@@ -28593,11 +29646,11 @@ var findFrontmatterGaps = (cwd) => {
   }
   return gaps;
 };
-var run51 = (argv, options = {}) => {
+var run53 = (argv, options = {}) => {
   let json2 = false;
   for (const token of argv) {
-    if (HELP_TOKENS48.has(token)) {
-      process.stdout.write(HELP_TEXT50);
+    if (HELP_TOKENS50.has(token)) {
+      process.stdout.write(HELP_TEXT52);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -28640,16 +29693,16 @@ var run51 = (argv, options = {}) => {
 };
 
 // src/wiki/log-prepend.ts
-import { existsSync as existsSync27, readFileSync as readFileSync35, renameSync as renameSync6, writeFileSync as writeFileSync9 } from "node:fs";
-import path39 from "node:path";
-var HELP_TEXT51 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
+import { existsSync as existsSync31, readFileSync as readFileSync39, renameSync as renameSync6, writeFileSync as writeFileSync10 } from "node:fs";
+import path43 from "node:path";
+var HELP_TEXT53 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
 
   Prepends one canonical line to wiki/log.md after the frontmatter.
 `;
-var HELP_TOKENS49 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS51 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var VALID_DECISIONS = /* @__PURE__ */ new Set(["RE_ANCHOR", "SKIP", "WORTHY"]);
 var FRONTMATTER_FENCE2 = "---";
-var takeValue17 = (argv, index, flag) => {
+var takeValue19 = (argv, index, flag) => {
   if (index >= argv.length) {
     return { message: `${flag} requires a value`, ok: false };
   }
@@ -28660,7 +29713,7 @@ var FLAG_BY_TOKEN = {
   "--reason": "reason",
   "--sha": "sha"
 };
-var parseFlags21 = (argv) => {
+var parseFlags23 = (argv) => {
   const values = {};
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -28668,7 +29721,7 @@ var parseFlags21 = (argv) => {
     if (key === void 0) {
       return { message: `unknown flag: ${token}`, ok: false };
     }
-    const taken = takeValue17(argv, index + 1, token);
+    const taken = takeValue19(argv, index + 1, token);
     if (!taken.ok) return taken;
     values[key] = taken.value;
     index += 1;
@@ -28716,17 +29769,17 @@ var findInsertionIndex = (lines, endFenceIndex) => {
   }
   return endFenceIndex + 1;
 };
-var run52 = (argv, options = {}) => {
+var run54 = (argv, options = {}) => {
   if (argv.length === 0) {
-    process.stdout.write(HELP_TEXT51);
+    process.stdout.write(HELP_TEXT53);
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const first = argv[0];
-  if (HELP_TOKENS49.has(first)) {
-    process.stdout.write(HELP_TEXT51);
+  if (HELP_TOKENS51.has(first)) {
+    process.stdout.write(HELP_TEXT53);
     return EXIT_CODES.OK;
   }
-  const parsed = parseFlags21(argv);
+  const parsed = parseFlags23(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -28746,8 +29799,8 @@ var run52 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const logPath = path39.join(repoRoot, "wiki", "log.md");
-  if (!existsSync27(logPath)) {
+  const logPath = path43.join(repoRoot, "wiki", "log.md");
+  if (!existsSync31(logPath)) {
     structuredError({
       code: "log_missing",
       message: "wiki/log.md does not exist",
@@ -28755,7 +29808,7 @@ var run52 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync35(logPath, "utf8");
+  const raw = readFileSync39(logPath, "utf8");
   const lines = raw.split("\n");
   const scan = scanFrontmatter(lines);
   if (scan.kind === "missing" || scan.kind === "malformed") {
@@ -28775,20 +29828,20 @@ var run52 = (argv, options = {}) => {
     ...lines.slice(insertionIndex)
   ].join("\n");
   const tmpPath = `${logPath}.tmp`;
-  writeFileSync9(tmpPath, next, "utf8");
+  writeFileSync10(tmpPath, next, "utf8");
   renameSync6(tmpPath, logPath);
   return EXIT_CODES.OK;
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync28, readdirSync as readdirSync8, statSync as statSync8 } from "node:fs";
-import path40 from "node:path";
-var HELP_TEXT52 = `Usage: gaia wiki near-collisions [--max-distance 3]
+import { existsSync as existsSync32, readdirSync as readdirSync9, statSync as statSync9 } from "node:fs";
+import path44 from "node:path";
+var HELP_TEXT54 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
   Per-domain Levenshtein over slugs. Emits tab-separated rows:
   <domain>  <slugA>  <slugB>  <distance>
 `;
-var HELP_TOKENS50 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS52 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var DEFAULT_MAX_DISTANCE = 3;
 var DOMAIN_DIRS2 = [
   "components",
@@ -28828,11 +29881,11 @@ var levenshtein = (a, b) => {
 };
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => {
-  const domainDir = path40.join(wikiRoot, domain2);
-  if (!existsSync28(domainDir) || !statSync8(domainDir).isDirectory()) {
+  const domainDir = path44.join(wikiRoot, domain2);
+  if (!existsSync32(domainDir) || !statSync9(domainDir).isDirectory()) {
     return [];
   }
-  const entries = readdirSync8(domainDir, { withFileTypes: true });
+  const entries = readdirSync9(domainDir, { withFileTypes: true });
   const slugs = entries.filter((entry) => isCollectibleSlugFile(entry)).map((entry) => entry.name.replace(/\.md$/u, "")).toSorted(
     (left, right) => left < right ? -1 : left > right ? 1 : 0
   );
@@ -28866,20 +29919,20 @@ var findCollisions = (domainGroups, maxDistance) => {
   });
   return results;
 };
-var takeValue18 = (argv, index, flag) => {
+var takeValue20 = (argv, index, flag) => {
   if (index >= argv.length) {
     return { message: `${flag} requires a value`, ok: false };
   }
   return { ok: true, value: argv[index] };
 };
-var parseFlags22 = (argv) => {
+var parseFlags24 = (argv) => {
   let maxDistance = DEFAULT_MAX_DISTANCE;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token !== "--max-distance") {
       return { message: `unknown flag: ${token}`, ok: false };
     }
-    const taken = takeValue18(argv, index + 1, "--max-distance");
+    const taken = takeValue20(argv, index + 1, "--max-distance");
     if (!taken.ok) return taken;
     const parsed = Number.parseInt(taken.value, 10);
     if (Number.isNaN(parsed) || parsed < 1) {
@@ -28893,12 +29946,12 @@ var parseFlags22 = (argv) => {
   }
   return { flags: { maxDistance }, ok: true };
 };
-var run53 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS50.has(argv[0])) {
-    process.stdout.write(HELP_TEXT52);
+var run55 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS52.has(argv[0])) {
+    process.stdout.write(HELP_TEXT54);
     return EXIT_CODES.OK;
   }
-  const parsed = parseFlags22(argv);
+  const parsed = parseFlags24(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -28918,7 +29971,7 @@ var run53 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path40.join(repoRoot, "wiki");
+  const wikiRoot = path44.join(repoRoot, "wiki");
   const domainGroups = collectDomainSlugs(wikiRoot);
   const collisions = findCollisions(domainGroups, parsed.flags.maxDistance);
   if (collisions.length === 0) return EXIT_CODES.OK;
@@ -28931,14 +29984,14 @@ var run53 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync29, readdirSync as readdirSync9, readFileSync as readFileSync36, statSync as statSync9 } from "node:fs";
-import path41 from "node:path";
-var HELP_TEXT53 = `Usage: gaia wiki page-index [--json]
+import { existsSync as existsSync33, readdirSync as readdirSync10, readFileSync as readFileSync40, statSync as statSync10 } from "node:fs";
+import path45 from "node:path";
+var HELP_TEXT55 = `Usage: gaia wiki page-index [--json]
 
   Walk wiki/<domain>/*.md, parse frontmatter, and count inbound/outbound
   wikilinks. Without --json, prints a tabular summary.
 `;
-var HELP_TOKENS51 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS53 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var DOMAIN_DIRS3 = [
   "components",
   "concepts",
@@ -28951,7 +30004,7 @@ var DOMAIN_DIRS3 = [
 ];
 var SKIPPED_FILES2 = /* @__PURE__ */ new Set(["_index.md", "README.md"]);
 var ROOT_LINK_SOURCES = ["index.md", "overview.md", "hot.md"];
-var slugFromPath2 = (filePath) => path41.basename(filePath, ".md");
+var slugFromPath2 = (filePath) => path45.basename(filePath, ".md");
 var extractTitle = (body, fallback) => {
   const lines = body.split("\n");
   for (const line of lines) {
@@ -28976,8 +30029,8 @@ var arrayOfStrings = (value) => {
 };
 var isIndexablePage = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES2.has(entry.name) && !entry.name.startsWith("_");
 var readPageRecord = (domainDir, domain2, entry) => {
-  const absPath = path41.join(domainDir, entry.name);
-  const raw = readFileSync36(absPath, "utf8");
+  const absPath = path45.join(domainDir, entry.name);
+  const raw = readFileSync40(absPath, "utf8");
   const { body, frontmatter } = parseFrontmatter(raw);
   const slug = slugFromPath2(entry.name);
   const title = extractTitle(body, slug);
@@ -28986,7 +30039,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
     body,
     domain: domain2,
     outboundTargets: targets,
-    relativePath: path41.posix.join("wiki", domain2, entry.name),
+    relativePath: path45.posix.join("wiki", domain2, entry.name),
     slug,
     status: stringValue(frontmatter.status),
     tags: arrayOfStrings(frontmatter.tags),
@@ -28995,16 +30048,16 @@ var readPageRecord = (domainDir, domain2, entry) => {
   };
 };
 var collectDomainPages = (wikiRoot, domain2) => {
-  const domainDir = path41.join(wikiRoot, domain2);
-  if (!existsSync29(domainDir) || !statSync9(domainDir).isDirectory()) return [];
-  const entries = readdirSync9(domainDir, { withFileTypes: true });
+  const domainDir = path45.join(wikiRoot, domain2);
+  if (!existsSync33(domainDir) || !statSync10(domainDir).isDirectory()) return [];
+  const entries = readdirSync10(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
 var collectPages = (wikiRoot) => DOMAIN_DIRS3.flatMap((domain2) => collectDomainPages(wikiRoot, domain2));
 var collectRootLinkSources = (wikiRoot) => ROOT_LINK_SOURCES.filter(
-  (filename) => existsSync29(path41.join(wikiRoot, filename))
+  (filename) => existsSync33(path45.join(wikiRoot, filename))
 ).map((filename) => {
-  const raw = readFileSync36(path41.join(wikiRoot, filename), "utf8");
+  const raw = readFileSync40(path45.join(wikiRoot, filename), "utf8");
   const { body } = parseFrontmatter(raw);
   return extractWikilinks(body);
 });
@@ -29039,7 +30092,7 @@ var buildIndex = (pages, rootSources = []) => {
     }))
   };
 };
-var printHuman7 = (index) => {
+var printHuman9 = (index) => {
   if (index.pages.length === 0) {
     process.stdout.write("No wiki pages found.\n");
     return;
@@ -29055,16 +30108,16 @@ var printHuman7 = (index) => {
 };
 var computePageIndex = (cwd) => {
   const repoRoot = resolveRepoRoot(cwd);
-  const wikiRoot = path41.join(repoRoot, "wiki");
+  const wikiRoot = path45.join(repoRoot, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   return buildIndex(pages, rootSources);
 };
-var run54 = (argv, options = {}) => {
+var run56 = (argv, options = {}) => {
   let json2 = false;
   for (const token of argv) {
-    if (HELP_TOKENS51.has(token)) {
-      process.stdout.write(HELP_TEXT53);
+    if (HELP_TOKENS53.has(token)) {
+      process.stdout.write(HELP_TEXT55);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -29089,7 +30142,7 @@ var run54 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path41.join(repoRoot, "wiki");
+  const wikiRoot = path45.join(repoRoot, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   const index = buildIndex(pages, rootSources);
@@ -29097,25 +30150,25 @@ var run54 = (argv, options = {}) => {
     process.stdout.write(`${JSON.stringify(index)}
 `);
   } else {
-    printHuman7(index);
+    printHuman9(index);
   }
   return EXIT_CODES.OK;
 };
 
 // src/wiki/orphans.ts
-var HELP_TEXT54 = `Usage: gaia wiki orphans [--json]
+var HELP_TEXT56 = `Usage: gaia wiki orphans [--json]
 
   List wiki pages with zero inbound wikilinks. Without --json, prints one
   repo-relative path per line. With --json, emits { "orphans": [ { path,
   title, domain } ] }.
 `;
-var HELP_TOKENS52 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var isMaintainerOnly = (path44) => path44.startsWith("wiki/meta/") || path44.startsWith("wiki/entities/");
-var run55 = (argv, options = {}) => {
+var HELP_TOKENS54 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var isMaintainerOnly = (path48) => path48.startsWith("wiki/meta/") || path48.startsWith("wiki/entities/");
+var run57 = (argv, options = {}) => {
   let json2 = false;
   for (const token of argv) {
-    if (HELP_TOKENS52.has(token)) {
-      process.stdout.write(HELP_TEXT54);
+    if (HELP_TOKENS54.has(token)) {
+      process.stdout.write(HELP_TEXT56);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -29166,15 +30219,15 @@ var run55 = (argv, options = {}) => {
 };
 
 // src/wiki/state-bump.ts
-import { existsSync as existsSync30, readFileSync as readFileSync37 } from "node:fs";
-import path42 from "node:path";
-var HELP_TEXT55 = `Usage: gaia wiki state-bump <field> <value>
+import { existsSync as existsSync34, readFileSync as readFileSync41 } from "node:fs";
+import path46 from "node:path";
+var HELP_TEXT57 = `Usage: gaia wiki state-bump <field> <value>
 
   Updates a single field in wiki/.state.json. Sibling fields and key order
   are preserved. <value> is parsed as JSON when it parses (numbers,
   booleans, null, arrays, objects); otherwise treated as a string.
 `;
-var HELP_TOKENS53 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS55 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var tryParseJson = (raw) => {
   try {
     return JSON.parse(raw);
@@ -29196,13 +30249,13 @@ var reorderObject = (source, field, newValue) => {
   next[field] = newValue;
   return next;
 };
-var run56 = (argv, options = {}) => {
+var run58 = (argv, options = {}) => {
   if (argv.length === 0) {
-    process.stdout.write(HELP_TEXT55);
+    process.stdout.write(HELP_TEXT57);
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  if (HELP_TOKENS53.has(argv[0])) {
-    process.stdout.write(HELP_TEXT55);
+  if (HELP_TOKENS55.has(argv[0])) {
+    process.stdout.write(HELP_TEXT57);
     return EXIT_CODES.OK;
   }
   const positional = [];
@@ -29237,8 +30290,8 @@ var run56 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const statePath = path42.join(repoRoot, "wiki", ".state.json");
-  if (!existsSync30(statePath)) {
+  const statePath = path46.join(repoRoot, "wiki", ".state.json");
+  if (!existsSync34(statePath)) {
     structuredError({
       code: "state_missing",
       message: "wiki/.state.json does not exist",
@@ -29246,7 +30299,7 @@ var run56 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync37(statePath, "utf8");
+  const raw = readFileSync41(statePath, "utf8");
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -29275,10 +30328,10 @@ var run56 = (argv, options = {}) => {
 };
 
 // src/wiki/state-init.ts
-import { execFileSync as execFileSync6 } from "node:child_process";
-import { existsSync as existsSync31, mkdirSync as mkdirSync12 } from "node:fs";
-import path43 from "node:path";
-var HELP_TEXT56 = `Usage: gaia wiki state-init <sha>
+import { execFileSync as execFileSync7 } from "node:child_process";
+import { existsSync as existsSync35, mkdirSync as mkdirSync13 } from "node:fs";
+import path47 from "node:path";
+var HELP_TEXT58 = `Usage: gaia wiki state-init <sha>
 
   Create wiki/.state.json with {version: 1, last_evaluated_sha,
   last_evaluated_at}. Refuses if the file already exists.
@@ -29286,10 +30339,10 @@ var HELP_TEXT56 = `Usage: gaia wiki state-init <sha>
   <sha> may be any ref (full sha, short sha, branch, tag); it is
   resolved to a full 40-char sha via \`git rev-parse\`.
 `;
-var HELP_TOKENS54 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS56 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var resolveFullSha = (ref, cwd) => {
   try {
-    const out = execFileSync6(
+    const out = execFileSync7(
       "git",
       ["rev-parse", "--verify", `${ref}^{commit}`],
       {
@@ -29303,13 +30356,13 @@ var resolveFullSha = (ref, cwd) => {
     return null;
   }
 };
-var run57 = (argv, options = {}) => {
+var run59 = (argv, options = {}) => {
   if (argv.length === 0) {
-    process.stdout.write(HELP_TEXT56);
+    process.stdout.write(HELP_TEXT58);
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  if (HELP_TOKENS54.has(argv[0])) {
-    process.stdout.write(HELP_TEXT56);
+  if (HELP_TOKENS56.has(argv[0])) {
+    process.stdout.write(HELP_TEXT58);
     return EXIT_CODES.OK;
   }
   const positional = [];
@@ -29353,9 +30406,9 @@ var run57 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiDir = path43.join(repoRoot, "wiki");
-  const statePath = path43.join(wikiDir, ".state.json");
-  if (existsSync31(statePath)) {
+  const wikiDir = path47.join(repoRoot, "wiki");
+  const statePath = path47.join(wikiDir, ".state.json");
+  if (existsSync35(statePath)) {
     structuredError({
       code: "state_already_exists",
       message: "wiki/.state.json already exists; use `gaia wiki state-bump` to update fields",
@@ -29363,7 +30416,7 @@ var run57 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  mkdirSync12(wikiDir, { recursive: true });
+  mkdirSync13(wikiDir, { recursive: true });
   const nowDate = (options.now ?? (() => /* @__PURE__ */ new Date()))();
   const isoNow = nowDate.toISOString();
   const payload = {
@@ -29378,7 +30431,7 @@ var run57 = (argv, options = {}) => {
 };
 
 // src/wiki/sync-land.ts
-var HELP_TEXT57 = `Usage: gaia wiki sync land [--branch-aware]
+var HELP_TEXT59 = `Usage: gaia wiki sync land [--branch-aware]
 
   Land staged wiki changes via the correct branch strategy:
     - on main/master: refuses unless --branch-aware (then branch + PR + auto-merge,
@@ -29390,8 +30443,8 @@ var HELP_TEXT57 = `Usage: gaia wiki sync land [--branch-aware]
     1  user-correctable refusal (dirty tree, missing flag, ...)
     2  unexpected (git/gh failure)
 `;
-var HELP_TOKENS55 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var parseFlags23 = (argv) => {
+var HELP_TOKENS57 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var parseFlags25 = (argv) => {
   let branchAware = false;
   for (const token of argv) {
     if (token === "--branch-aware") {
@@ -29517,12 +30570,12 @@ var spawnHead = (runner, cwd) => {
   }
   return safeOutput4(result.stdout).trim();
 };
-var run58 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS55.has(argv[0])) {
-    process.stdout.write(HELP_TEXT57);
+var run60 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS57.has(argv[0])) {
+    process.stdout.write(HELP_TEXT59);
     return EXIT_CODES.OK;
   }
-  const parsed = parseFlags23(argv);
+  const parsed = parseFlags25(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -29595,7 +30648,7 @@ var run58 = (argv, options = {}) => {
 };
 
 // src/wiki/index.ts
-var HELP_TEXT58 = `Usage: gaia wiki <subcommand> [args]
+var HELP_TEXT60 = `Usage: gaia wiki <subcommand> [args]
 
   state [--json]                              Drift report.
   commit-classify --since <sha> [--json]      Per-commit WORTHY/SKIP.
@@ -29620,16 +30673,16 @@ var SYNC_HELP_TEXT = `Usage: gaia wiki sync <subcommand> [args]
   land [--branch-aware]                       Land staged wiki changes via the correct
                                               branch strategy.
 `;
-var HELP_TOKENS56 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS58 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var runSync = async (args) => {
   const subcommand = args[0];
   const rest = args.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS56.has(subcommand)) {
+  if (subcommand === void 0 || HELP_TOKENS58.has(subcommand)) {
     process.stdout.write(SYNC_HELP_TEXT);
     return EXIT_CODES.OK;
   }
   if (subcommand === "land") {
-    return run58(rest);
+    return run60(rest);
   }
   structuredError({
     code: "unknown_subcommand",
@@ -29639,26 +30692,26 @@ var runSync = async (args) => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 var SUBCOMMAND_HANDLERS9 = {
-  chain: run46,
-  "commit-classify": run47,
-  "dead-paths": run48,
-  "diff-size": run49,
-  "empty-sections": run50,
-  frontmatter: run51,
-  "log-prepend": run52,
-  "near-collisions": run53,
-  orphans: run55,
-  "page-index": run54,
+  chain: run48,
+  "commit-classify": run49,
+  "dead-paths": run50,
+  "diff-size": run51,
+  "empty-sections": run52,
+  frontmatter: run53,
+  "log-prepend": run54,
+  "near-collisions": run55,
+  orphans: run57,
+  "page-index": run56,
   state: run24,
-  "state-bump": run56,
-  "state-init": run57,
+  "state-bump": run58,
+  "state-init": run59,
   sync: runSync
 };
-var run59 = async (argv) => {
+var run61 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS56.has(subcommand)) {
-    process.stdout.write(HELP_TEXT58);
+  if (subcommand === void 0 || HELP_TOKENS58.has(subcommand)) {
+    process.stdout.write(HELP_TEXT60);
     return EXIT_CODES.OK;
   }
   const handler = SUBCOMMAND_HANDLERS9[subcommand];
@@ -29675,7 +30728,7 @@ var run59 = async (argv) => {
 };
 
 // src/index.maintainer.ts
-var HELP_TEXT59 = `Usage: gaia-maintainer <subcommand> [args]
+var HELP_TEXT61 = `Usage: gaia-maintainer <subcommand> [args]
 
 Maintainer-only binary. Adopters use 'gaia' (no release namespace).
 
@@ -29684,16 +30737,16 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
   fitness render-card [--cols N]
   automation read-config|cron-decide
-  update merge-workspace --baseline <file> --latest <file> --current <file>
+  update merge-workspace|merge-region|regen-regions --baseline <file> --latest <file> --current <file>
   update-deps run --emit-updates <path>
   release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag|exclude-regex
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
   setup status|mark-step|finalize|link-worktree
 `;
 var printHelp2 = () => {
-  process.stdout.write(HELP_TEXT59);
+  process.stdout.write(HELP_TEXT61);
 };
-var HELP_TOKENS57 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS59 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SUBCOMMAND_HANDLERS10 = {
   automation: run5,
   fitness: run7,
@@ -29702,14 +30755,14 @@ var SUBCOMMAND_HANDLERS10 = {
   release: run29,
   scaffold: run34,
   setup: run39,
-  update: run45,
+  update: run47,
   "update-deps": run42,
-  wiki: run59
+  wiki: run61
 };
-var run60 = async (argv) => {
+var run62 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS57.has(subcommand)) {
+  if (subcommand === void 0 || HELP_TOKENS59.has(subcommand)) {
     printHelp2();
     return EXIT_CODES.OK;
   }
@@ -29722,10 +30775,10 @@ var run60 = async (argv) => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 var invokedPath = process.argv[1];
-var isDirectRun = invokedPath !== void 0 && import.meta.url === pathToFileURL(realpathSync2(invokedPath)).href;
+var isDirectRun = invokedPath !== void 0 && import.meta.url === pathToFileURL(realpathSync3(invokedPath)).href;
 if (isDirectRun) {
   try {
-    process.exitCode = await run60(process.argv.slice(2));
+    process.exitCode = await run62(process.argv.slice(2));
   } catch (error51) {
     structuredError({
       code: "cli_internal_error",
@@ -29735,7 +30788,7 @@ if (isDirectRun) {
   }
 }
 export {
-  run60 as run
+  run62 as run
 };
 /*! Bundled license information:
 

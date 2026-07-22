@@ -139,6 +139,8 @@ Dispatch lane-aware Fixer subagents (Sonnet) in parallel per the wiki page's lan
 | `gitignore`      | `.gitignore`                                                                                                         |
 | `manifest`       | `.gaia/manifest.json` (serialize, one Fixer at a time)                                                               |
 
+The `manifest` Fixer preserves every top-level key it does not own (for example `regions`) and never rewrites `.gaia/manifest.json` wholesale from the `files` map alone.
+
 If a finding's fix straddles multiple lanes, dispatch one Fixer with multi-lane scope.
 
 Run inside the bounded heal loop. The cap and stop conditions below mirror `wiki/decisions/Claude Integration Fitness.md`, which stays canonical; the cycle cap is tunable there:
