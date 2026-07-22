@@ -527,35 +527,48 @@ assert_allowed() {
 # the unpadded and the padded token streams, so these cases pin the property
 # for every padded character rather than for one instance of it.
 #
-# shellcheck disable=SC2016 # the literal `${VAR}` / `$(cmd)` IS the payload
-# under test; double-quoting would expand it away and hollow out every
-# assertion below.
+# A `shellcheck disable=` directive scopes to the next command, and each
+# `@test` parses as its own function, so every test below repeats the
+# directive. Hoisting a single file-scope disable instead would also cover
+# every test added here later, including one where an unexpanded expression is
+# a genuine defect. That is why this file is a deliberate exception to the
+# file-level SC2016 convention shell-lint.sh documents for `*.sh`. SC2016 is
+# info-tier and sits below the `warning` floor shell-lint.sh holds `.bats` to,
+# so these directives serve a hand-run `shellcheck -S style` rather than the
+# gate.
 
+# shellcheck disable=SC2016 # the literal `${VAR}` / `$(cmd)` IS the payload
+# under test; double-quoting would expand it away and hollow out the assertion.
 @test "the writer reached through a braced variable is denied" {
   run_hook_bash "code-audit-frontend" 'bash "${R}/.gaia/scripts/write-audit-remits.sh"'
   assert_denied
 }
 
+# shellcheck disable=SC2016 # the literal `${VAR}` IS the payload under test
 @test "the writer reached through a braced variable with no interpreter is denied" {
   run_hook_bash "code-audit-frontend" '${R}/.gaia/scripts/write-audit-remits.sh'
   assert_denied
 }
 
+# shellcheck disable=SC2016 # the literal `${VAR}` IS the payload under test
 @test "the writer reached through a braced variable after an interpreter option is denied" {
   run_hook_bash "code-audit-frontend" 'sh -x ${D}/write-audit-remits.sh'
   assert_denied
 }
 
+# shellcheck disable=SC2016 # the literal `$(cmd)` IS the payload under test
 @test "the writer reached through a command substitution in the path is denied" {
   run_hook_bash "code-audit-frontend" 'bash "$(pwd)/.gaia/scripts/write-audit-remits.sh"'
   assert_denied
 }
 
+# shellcheck disable=SC2016 # the literal `$(cmd)` IS the payload under test
 @test "the writer reached through a command substitution with no interpreter is denied" {
   run_hook_bash "code-audit-frontend" '"$(pwd)/.gaia/scripts/write-audit-remits.sh"'
   assert_denied
 }
 
+# shellcheck disable=SC2016 # the literal `$(cmd)` IS the payload under test
 @test "the writer reached through a command substitution after an interpreter option is denied" {
   run_hook_bash "code-audit-frontend" 'sh -x "$(pwd)/write-audit-remits.sh"'
   assert_denied

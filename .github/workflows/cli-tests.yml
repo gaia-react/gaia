@@ -10,11 +10,20 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. Each job below grants exactly what it needs.
+permissions: {}
+
 jobs:
   cli-tests:
     name: Vitest (.gaia/cli)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Checkout needs it to clone, and paths-filter and setup-node both default
+    # their `token` input to `github.token` for the compare API and the
+    # node-versions download. No step here passes a token to anything else.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       # Maintainer-only surface. PRs that don't touch the CLI source report
@@ -96,6 +105,10 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Same three consumers as cli-tests above; the scenarios run without a
+    # token by design (see the step name at the harness invocation below).
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       # PRs that touch neither the bundle inputs nor the harness report this
