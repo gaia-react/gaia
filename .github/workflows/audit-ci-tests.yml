@@ -66,6 +66,14 @@ jobs:
               # post-audit-status.sh); it now also covers every hook exercised
               # by the .gaia/tests/hooks/ suites below.
               - '.claude/hooks/**'
+              # husky-pre-commit.bats (.gaia/tests/hooks/) runs the real
+              # .husky/pre-commit and asserts which staged paths reach the
+              # Quality Gate floor. That hook lives outside every other path
+              # here, so without this line the edit the suite exists to catch --
+              # an arm added to or dropped from the change-detection guard --
+              # would report `code=false`, skip every bats step, and green the
+              # job having run the suite zero times.
+              - '.husky/**'
               - '.gaia/scripts/**'
               # The audit-guard-structural suite (.gaia/scripts/tests/) greps the
               # prose of these three instruction files for the no-op-guard wiring

@@ -14,8 +14,9 @@ fi
 HAS_APP_CHANGED=$(git diff --cached --name-only --diff-filter=ACDM | grep 'app/' || true)
 HAS_TEST_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep 'test/' || true)
 HAS_STORYBOOK_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep '.storybook/' || true)
+HAS_PLAYWRIGHT_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep '.playwright/' || true)
 
-if [ -n "$HAS_APP_CHANGED" ] || [ -n "$HAS_TEST_CHANGED" ] || [ -n "$HAS_STORYBOOK_CHANGED" ]
+if [ -n "$HAS_APP_CHANGED" ] || [ -n "$HAS_TEST_CHANGED" ] || [ -n "$HAS_STORYBOOK_CHANGED" ] || [ -n "$HAS_PLAYWRIGHT_CHANGED" ]
 then
   printf "\x1b[33m"
   printf "⚠️ Changes detected - running lint-staged\n"
