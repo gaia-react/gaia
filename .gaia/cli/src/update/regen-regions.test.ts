@@ -273,7 +273,7 @@ describe('update regen-regions: hostile-input coverage', () => {
     );
   });
 
-  test('1c. empty declared path is refused rather than scoping the snapshot to the whole root', () => {
+  test('1c. empty declared path is refused', () => {
     const root = buildRoot();
 
     writeDeclaredFiles(root, 'original');
@@ -285,6 +285,48 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(exit).toBe(0);
     expect(report.ran).toHaveLength(0);
     expect(report.refused[0]?.reason).toBe('paths carries an empty entry');
+  });
+
+  test('1e. a declared path whose parent is the repository root is refused, so the snapshot never scopes to the whole tree', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // A literal '.' passes the empty, absolute, and parent-segment checks,
+    // and so does any legitimate top-level path. Both scope the snapshot to
+    // the root. '.' additionally never equals a snapshot key, so the sweep
+    // reverts the region's own output while reporting the region as run.
+    const manifestPath = writeManifest(root, [
+      buildDeclaration({paths: ['.']}),
+    ]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.ran).toHaveLength(0);
+    expect(report.confined).toHaveLength(0);
+    expect(report.refused[0]?.kind).toBe('declaration');
+    expect(report.refused[0]?.reason).toBe(
+      'paths carries a path whose parent is the repository root: .'
+    );
+  });
+
+  test('1f. a top-level declared path is refused for the same reason', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    const manifestPath = writeManifest(root, [
+      buildDeclaration({paths: ['CHANGELOG.md']}),
+    ]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.ran).toHaveLength(0);
+    expect(report.refused[0]?.reason).toBe(
+      'paths carries a path whose parent is the repository root: CHANGELOG.md'
+    );
   });
 
   test('1d. a declared path written as ./a/b still matches its own snapshot key, so the run is not reverted', () => {
@@ -661,6 +703,30 @@ describe('update regen-regions: behavior coverage', () => {
     expect(readFileSync(path.join(backupDir, DECLARED_PATHS[0]), 'utf8')).toBe(
       'original one\n'
     );
+  });
+
+  test('14a. a failing backup still prints a report and still regenerates', () => {
+    const root = buildRoot();
+    const backupDir = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // The backup destination's parent exists as a FILE, so mkdirSync throws
+    // ENOTDIR. An unguarded throw prints no report at all, and the skill
+    // reads empty output as a CLI predating this subcommand rather than as a
+    // backup failure, discarding every confinement record with it.
+    writeFileSync(path.join(backupDir, '.claude'), 'not a directory\n');
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report, stderrText} = runCapturing(
+      baseArgv(manifestPath, root, ['--backup-dir', backupDir])
+    );
+
+    expect(exit).toBe(0);
+    expect(report.backedUp).toEqual([]);
+    expect(report.ran).toHaveLength(1);
+    expect(stderrText).toContain('region_regen_backup_failed');
+    expect(readDeclared(root, 0)).toBe('regenerated one\n');
   });
 
   test('15. --backup-dir does not overwrite an existing backup', () => {

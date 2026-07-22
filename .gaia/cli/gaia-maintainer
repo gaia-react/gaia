@@ -27707,6 +27707,11 @@ var normalizeDeclaredPaths = (paths) => {
         ok: false,
         reason: `paths carries a parent-directory segment: ${candidate}`
       };
+    if (path38.posix.dirname(candidate) === ".")
+      return {
+        ok: false,
+        reason: `paths carries a path whose parent is the repository root: ${candidate}`
+      };
     normalized.push(candidate);
   }
   return { ok: true, paths: normalized };
@@ -27818,7 +27823,8 @@ var checkOperand = (decl, context) => {
     return "interpreter is not a bare program name";
   return void 0;
 };
-var performBackup = (root, backupDir, paths) => {
+var performBackup = (inputs) => {
+  const { backupDir, paths, regionId, root } = inputs;
   if (backupDir === void 0) return [];
   const backedUp = [];
   paths.forEach((declPath) => {
@@ -27826,9 +27832,18 @@ var performBackup = (root, backupDir, paths) => {
     if (!existsSync29(srcAbs)) return;
     const destinationAbs = path38.resolve(backupDir, declPath);
     if (existsSync29(destinationAbs)) return;
-    mkdirSync12(path38.dirname(destinationAbs), { recursive: true });
-    copyFileSync2(srcAbs, destinationAbs);
-    backedUp.push(declPath);
+    try {
+      mkdirSync12(path38.dirname(destinationAbs), { recursive: true });
+      copyFileSync2(srcAbs, destinationAbs);
+      backedUp.push(declPath);
+    } catch (error51) {
+      structuredError({
+        code: "region_regen_backup_failed",
+        message: `backup skipped for '${declPath}' in region '${regionId}': ${error51 instanceof Error ? error51.message : String(error51)}`,
+        regionId,
+        subcommand: "update regen-regions"
+      });
+    }
   });
   return backedUp;
 };
@@ -27962,7 +27977,14 @@ var reportOutOfScopeWrites = (inputs) => {
 };
 var runRegeneration = (decl, commandArgv, context) => {
   const { backupDir, report, root } = context;
-  report.backedUp.push(...performBackup(root, backupDir, decl.paths));
+  report.backedUp.push(
+    ...performBackup({
+      backupDir,
+      paths: decl.paths,
+      regionId: decl.id,
+      root
+    })
+  );
   const scopeDirs = scopeDirsFor(decl.paths);
   const before = collectScopeDigests(root, scopeDirs);
   const beforeStatus = gitStatusPaths(root);

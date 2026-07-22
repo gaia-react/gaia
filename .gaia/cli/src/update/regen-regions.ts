@@ -297,6 +297,19 @@ const normalizeDeclaredPaths = (
         reason: `paths carries a parent-directory segment: ${candidate}`,
       };
 
+    // The snapshot scope is the union of the declared paths' parent
+    // directories, so a path whose parent is the repository root scopes the
+    // snapshot to the entire tree: every file under it read and buffered
+    // twice per region, `node_modules` and `.git` included. A literal '.'
+    // is worse than slow, because it is never equal to any snapshot key, so
+    // the sweep reverts the region's own freshly written output while still
+    // reporting the region as run.
+    if (path.posix.dirname(candidate) === '.')
+      return {
+        ok: false,
+        reason: `paths carries a path whose parent is the repository root: ${candidate}`,
+      };
+
     normalized.push(candidate);
   }
 
@@ -497,11 +510,16 @@ const checkOperand = (
  * Step 4: copy each existing declared path aside, unless a copy is already
  * there (the merge walk's own backup, or an earlier region's).
  */
-const performBackup = (
-  root: string,
-  backupDir: string | undefined,
-  paths: readonly string[]
-): string[] => {
+type BackupInputs = {
+  backupDir: string | undefined;
+  paths: readonly string[];
+  regionId: string;
+  root: string;
+};
+
+const performBackup = (inputs: BackupInputs): string[] => {
+  const {backupDir, paths, regionId, root} = inputs;
+
   if (backupDir === undefined) return [];
 
   const backedUp: string[] = [];
@@ -515,9 +533,22 @@ const performBackup = (
 
     if (existsSync(destinationAbs)) return;
 
-    mkdirSync(path.dirname(destinationAbs), {recursive: true});
-    copyFileSync(srcAbs, destinationAbs);
-    backedUp.push(declPath);
+    // Contained like every other IO call in the region loop. A throw here
+    // would discard the whole report, including the confinement records of
+    // every region already swept, and the caller reads an empty report as a
+    // CLI that predates this subcommand rather than as a backup failure.
+    try {
+      mkdirSync(path.dirname(destinationAbs), {recursive: true});
+      copyFileSync(srcAbs, destinationAbs);
+      backedUp.push(declPath);
+    } catch (error) {
+      structuredError({
+        code: 'region_regen_backup_failed',
+        message: `backup skipped for '${declPath}' in region '${regionId}': ${error instanceof Error ? error.message : String(error)}`,
+        regionId,
+        subcommand: 'update regen-regions',
+      });
+    }
   });
 
   return backedUp;
@@ -793,7 +824,14 @@ const runRegeneration = (
 ): void => {
   const {backupDir, report, root} = context;
 
-  report.backedUp.push(...performBackup(root, backupDir, decl.paths));
+  report.backedUp.push(
+    ...performBackup({
+      backupDir,
+      paths: decl.paths,
+      regionId: decl.id,
+      root,
+    })
+  );
 
   const scopeDirs = scopeDirsFor(decl.paths);
   const before = collectScopeDigests(root, scopeDirs);
