@@ -169,6 +169,33 @@ path_without_jq() {
   printf '%s' "$d"
 }
 
+# --- Freshness-advisory fixtures --------------------------------------------
+#
+# The sandbox has no `origin` remote; the local remote-tracking ref alone is
+# what the oracle reads, so these helpers write it directly.
+
+# Advance the sandbox's `origin/main` N commits past `main`, leaving HEAD (on
+# `feature`) behind by exactly N. Built with plumbing over main's own tree
+# rather than checkouts, so the working tree, the branch under test, and the
+# merge-base diff are all untouched: only the remote-tracking ref moves.
+advance_origin_main() {
+  local n="$1" i=1 parent tree
+  parent="$(git -C "$SANDBOX" rev-parse main)"
+  tree="$(git -C "$SANDBOX" rev-parse 'main^{tree}')"
+  while [ "$i" -le "$n" ]; do
+    parent="$(git -C "$SANDBOX" commit-tree "$tree" -p "$parent" -m "main $i")"
+    i=$((i + 1))
+  done
+  git -C "$SANDBOX" update-ref refs/remotes/origin/main "$parent"
+}
+
+# Point `origin/main` at `main` exactly: HEAD is ahead of it and behind by 0.
+sync_origin_main() {
+  local sha
+  sha="$(git -C "$SANDBOX" rev-parse main)"
+  git -C "$SANDBOX" update-ref refs/remotes/origin/main "$sha"
+}
+
 # Snapshot every file in the audit pool (name + content hash), to prove the
 # oracle mints nothing.
 pool_snapshot() {
@@ -615,4 +642,94 @@ code-audit-maintainer-shell"
   unfiltered="$(oracle_stdout --no-carry-forward)"
   [ "$unfiltered" = "$raw" ]
   grep -qxF "code-audit-frontend" <<<"$unfiltered" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# The behind-origin/main freshness advisory. A branch that drifts behind main
+# during a long run audits clean, then needs a rebase to merge, and the rebase
+# rotates the digests of every member owning a file main touched, burning the
+# whole audit round. The advisory is stderr-only: it must never alter the
+# member set on stdout and never alter the exit status.
+# ---------------------------------------------------------------------------
+
+@test "behind origin/main warns on stderr naming the commit count" {
+  write_full_roster
+  stage app/x.tsx
+  commit "feat"
+  advance_origin_main 3
+  err="$(oracle_stderr)"
+  grep -qF -- "resolve-audit-spawn: branch is 3 commits behind origin/main" <<<"$err" || return 1
+  grep -qF -- "rebase before dispatching" <<<"$err" || return 1
+}
+
+@test "the freshness warning fires on the --no-carry-forward path too" {
+  # The flag the frontend member's own self-skip probe uses, so it is a real
+  # dispatch-adjacent surface and owes the same advisory.
+  write_full_roster
+  stage app/x.tsx
+  commit "feat"
+  advance_origin_main 4
+  err="$(oracle_stderr --no-carry-forward)"
+  grep -qF -- "resolve-audit-spawn: branch is 4 commits behind origin/main" <<<"$err" || return 1
+}
+
+@test "the freshness warning leaves stdout byte-for-byte unchanged" {
+  write_full_roster
+  stage app/x.tsx .gaia/scripts/y.sh
+  commit "feat"
+  before="$(oracle_stdout)"
+  advance_origin_main 2
+  after="$(oracle_stdout)"
+  [ "$after" = "$before" ]
+  expected="code-audit-frontend
+code-audit-maintainer-shell"
+  [ "$after" = "$expected" ]
+}
+
+@test "the freshness warning leaves an empty spawn set empty and exits 0" {
+  write_full_roster
+  stage wiki/x.md
+  commit "docs"
+  advance_origin_main 1
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "the freshness warning never changes the exit status" {
+  write_full_roster
+  stage app/x.tsx
+  commit "feat"
+  advance_origin_main 5
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+@test "not behind origin/main emits no freshness warning" {
+  write_full_roster
+  stage app/x.tsx
+  commit "feat"
+  # HEAD is ahead of origin/main by the feature commit, behind by nothing.
+  sync_origin_main
+  run run_oracle
+  [ "$status" -eq 0 ]
+  err="$(oracle_stderr)"
+  grep -qF -- "behind origin/main" <<<"$err" && return 1
+  return 0
+}
+
+@test "an unresolvable origin/main emits no freshness warning" {
+  write_full_roster
+  stage app/x.tsx
+  commit "feat"
+  # The sandbox has no `origin` remote and no remote-tracking ref at all,
+  # which is the adopter-clone / different-default-branch shape.
+  git -C "$SANDBOX" rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1 && return 1
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+  err="$(oracle_stderr)"
+  grep -qF -- "behind origin/main" <<<"$err" && return 1
+  return 0
 }

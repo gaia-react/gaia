@@ -32,6 +32,10 @@
 #   spawn). The script writes no clearance artifact on any path (mints
 #   nothing).
 #
+#   stderr carries advisories only, never part of the answer: the fail-closed
+#   warnings below, the freshness advisory below, and the dispatch resolver's
+#   own diagnostics passed through.
+#
 # Branch table:
 #   --help / -h                     -> usage on stdout, exit 0.
 #   unknown flag                    -> warning on stderr, then the default
@@ -182,6 +186,39 @@ done
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$repo_root" ] || exit 0
+
+# --- Freshness advisory: HEAD behind origin/main ---------------------------
+#
+# This script runs immediately before every dispatch wave, which makes it the
+# one cheap place to notice a stale branch. A branch that falls behind main
+# during a long run audits clean, and only then needs a rebase to merge; the
+# rebase pulls main's changes to member-owned files into the branch, rotates
+# those members' content digests, and invalidates every marker the audit just
+# earned. The whole round is spent again.
+#
+# Advisory only. Auditing an older tree deliberately is legitimate, so this
+# warns and never blocks: it does not change the member set on stdout and does
+# not change the exit status, which stays 0 on every path.
+#
+# No `git fetch` here. The oracle runs before every dispatch wave and must stay
+# fast and offline-safe, so the comparison reads the local `origin/main` ref
+# exactly as it stands; a stale ref that yields no warning is an accepted false
+# negative. `origin/main` not resolving at all (an adopter clone, a different
+# default branch, no remote) emits nothing, the same fail-open answer as every
+# other uncertainty here.
+warn_if_behind_origin_main() {
+  local behind
+  git -C "$repo_root" rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1 || return 0
+  behind="$(git -C "$repo_root" rev-list --count HEAD..refs/remotes/origin/main 2>/dev/null || true)"
+  # Non-numeric or zero: nothing to say. Also swallows a `rev-list` failure,
+  # which returns an empty count.
+  case "$behind" in
+    '' | 0 | *[!0-9]*) return 0 ;;
+  esac
+  echo "resolve-audit-spawn: branch is $behind commits behind origin/main; rebase before dispatching or you will re-audit." >&2
+}
+
+warn_if_behind_origin_main || true
 
 resolver="$repo_root/.gaia/scripts/resolve-audit-members.sh"
 
