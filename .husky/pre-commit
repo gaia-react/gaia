@@ -1,3 +1,9 @@
+# shellcheck shell=sh
+# No shebang: husky runs this hook as `sh -e "$s"` from the generated .husky/_/h,
+# so the dialect comes from the runner, not the file. The directive above is
+# inert to every shell and pins that dialect for shellcheck, which otherwise
+# cannot infer one and reports SC2148.
+
 printf '\n🔎 Running pre-commit check\n'
 
 # Guard: exactly one react-doctor config may exist. react-doctor resolves the
@@ -11,10 +17,15 @@ if [ "$DOCTOR_CONFIGS" -gt 1 ]; then
   exit 1
 fi
 
+# All four arms share one --diff-filter, ACDM. `D` is load-bearing: deleting a
+# shared helper, fixture, or spec breaks the types of every file that imported
+# it, so a deletion-only commit is exactly when the skipped `pnpm typecheck`
+# earns its keep. lint-staged and `vitest --changed` both no-op safely on a
+# staged deletion, so the arms cost nothing when there is nothing left to lint.
 HAS_APP_CHANGED=$(git diff --cached --name-only --diff-filter=ACDM | grep 'app/' || true)
-HAS_TEST_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep 'test/' || true)
-HAS_STORYBOOK_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep '.storybook/' || true)
-HAS_PLAYWRIGHT_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep '.playwright/' || true)
+HAS_TEST_CHANGED=$(git diff --cached --name-only --diff-filter=ACDM | grep 'test/' || true)
+HAS_STORYBOOK_CHANGED=$(git diff --cached --name-only --diff-filter=ACDM | grep '.storybook/' || true)
+HAS_PLAYWRIGHT_CHANGED=$(git diff --cached --name-only --diff-filter=ACDM | grep '.playwright/' || true)
 
 if [ -n "$HAS_APP_CHANGED" ] || [ -n "$HAS_TEST_CHANGED" ] || [ -n "$HAS_STORYBOOK_CHANGED" ] || [ -n "$HAS_PLAYWRIGHT_CHANGED" ]
 then

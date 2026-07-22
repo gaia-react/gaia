@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# shell-lint.sh: run shellcheck over every tracked shell script and bats suite,
-# then the hook array-guard (.gaia/scripts/lint-hook-array-guard.sh).
+# shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
+# husky hook, then the hook array-guard (.gaia/scripts/lint-hook-array-guard.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
 #
@@ -15,7 +15,7 @@
 # the lenses shellcheck cannot model (hook fail-open, stdin-JSON shape,
 # `jq -n` injection safety).
 #
-# Two severity floors, one per file type, because the two file types carry
+# Two severity floors over three discovery passes, because the file types carry
 # different noise profiles:
 #
 #   *.sh   -> `style`, the strictest floor. The genuine style/info-tier codes are
@@ -24,6 +24,11 @@
 #            intentional single-quoted jq/awk programs (SC2016) carry file-level
 #            `# shellcheck disable=SC2016` directives, so the gate stays live to a
 #            genuine SC2016 bug in any file that does not opt out.
+#
+#   .husky/* -> `style` as well, but linted as POSIX `sh` in a pass of its own.
+#            The hooks are extensionless, so no glob above reaches them, and
+#            husky runs each one as `sh -e`, so bash-only constructs must fail
+#            here even though they pass in the *.sh pass.
 #
 #   *.bats -> `warning`. Errors and warnings are the tiers with live failure
 #            modes (a masked `!` assertion that never fails a test [SC2314], a
@@ -104,6 +109,11 @@ while IFS= read -r f; do
   bats_scripts+=("$f")
 done < <(git -C "$REPO_ROOT" ls-files '*.bats')
 
+husky_hooks=()
+while IFS= read -r f; do
+  husky_hooks+=("$f")
+done < <(git -C "$REPO_ROOT" ls-files '.husky/*')
+
 # Guard the expansion below: on bash 3.2 a bare "${sh_scripts[@]}" over an EMPTY
 # array aborts with `unbound variable` under `set -u`. An empty *.sh result also
 # means the glob or the repo root resolved wrong, which should fail loudly, not
@@ -127,6 +137,19 @@ fi
 if [ "${#bats_scripts[@]}" -gt 0 ]; then
   echo "--> shellcheck *.bats (severity=$BATS_SEVERITY): ${#bats_scripts[@]} tracked suites"
   if ! (cd "$REPO_ROOT" && shellcheck --severity="$BATS_SEVERITY" --exclude="$TOOLING_EXCLUDE" "${bats_scripts[@]}"); then
+    status=1
+  fi
+fi
+
+# The husky hooks are extensionless, so they match neither glob above and would
+# escape the gate entirely. `-s sh` is passed explicitly rather than left to the
+# per-file directive: husky runs every hook as `sh -e`, so the dialect is a
+# property of the directory, and a newly added hook is linted correctly whether
+# or not its author remembered the directive. It has to be its own invocation
+# because shellcheck takes one dialect per run.
+if [ "${#husky_hooks[@]}" -gt 0 ]; then
+  echo "--> shellcheck .husky/* (dialect=sh, severity=$SH_SEVERITY): ${#husky_hooks[@]} tracked hooks"
+  if ! (cd "$REPO_ROOT" && shellcheck -s sh --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" "${husky_hooks[@]}"); then
     status=1
   fi
 fi
