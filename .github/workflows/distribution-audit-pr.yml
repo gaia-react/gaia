@@ -24,9 +24,23 @@ name: Distribution Audit (PR)
 # No `push:` trigger. The gate only ever has something to say about a proposed
 # change; a push-to-main run would be a no-op cluttering the dashboard. Merges
 # land via PR, so the PR run is the gate.
+#
+# `workflow_dispatch:` is the CI-mode self-heal lane, not a manual convenience.
+# A GITHUB_TOKEN-authored self-heal push fires no `pull_request` event, so
+# code-review-audit.yml re-dispatches the workflows named in
+# `.gaia/audit-ci.yml`'s `retrigger_workflows` and stamps each dispatched run's
+# per-JOB conclusion onto the new HEAD. `Distribution Audit` is a declared-
+# required context, so without this trigger the check is absent on the self-heal
+# HEAD and branch protection blocks the merge. The job carries no `if:`, so it
+# runs on both triggers; the step below resolves its own comparison range when
+# there is no pull-request payload to read one from.
+# .gaia/scripts/tests/retrigger-reachability.bats guards the invariant. As with
+# its sibling workflows, GitHub honors the trigger only for the default-branch
+# copy of this file, so a dispatch fails with 422 until it lands on main.
 on:
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -44,6 +58,12 @@ jobs:
   distribution-audit-pr:
     name: Distribution Audit
     runs-on: ubuntu-latest
+    # The self-heal poller in code-review-audit.yml waits 25 minutes for a
+    # dispatched run, then gives up and stamps nothing, leaving this required
+    # context ABSENT on the self-heal HEAD rather than merely red. Cap well
+    # under that window so a hung fetch fails fast instead of inheriting the
+    # 6-hour runner default; the real runtime is well under a minute.
+    timeout-minutes: 15
     steps:
       # fetch-depth: 0 so both the base and head commits are present for the
       # diff below. The default merge-ref checkout has both as parents, but a
@@ -57,6 +77,31 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+
+          # A `workflow_dispatch` re-trigger carries no pull_request payload, so
+          # both SHAs arrive empty. `git diff A...B` defaults an omitted side to
+          # HEAD, so the range would collapse to `HEAD...HEAD`: an empty changed
+          # set, no offenders, and a vacuously green required check that audited
+          # nothing -- worse than a red one, because it looks like a pass.
+          # Resolve the same range from the dispatched ref instead: the branch
+          # tip against the default branch, which is what the PR's own
+          # base...head range resolves to anyway.
+          if [ -z "${BASE_SHA}" ] || [ -z "${HEAD_SHA}" ]; then
+            git fetch --no-tags origin main
+            BASE_SHA="$(git rev-parse FETCH_HEAD)"
+            HEAD_SHA="$(git rev-parse HEAD)"
+            # Dispatched against the default branch itself (a `gh workflow run`
+            # with no --ref), the two resolve to the same commit and the diff is
+            # empty again, reproducing the vacuous green this fallback exists to
+            # avoid. Refuse rather than report a pass over nothing; the audit's
+            # re-trigger always passes the PR branch, so this only ever fires on
+            # a hand-run dispatch aimed at the wrong ref.
+            if [ "${BASE_SHA}" = "${HEAD_SHA}" ]; then
+              echo "::error::dispatched ref has no commits ahead of main; the distribution gate cannot be evaluated" >&2
+              exit 1
+            fi
+            echo "distribution gate: no pull_request context; comparing ${BASE_SHA}...${HEAD_SHA}"
+          fi
 
           # Files this PR adds or modifies on the head side. Three-dot compares
           # from the point head diverged from base, so only the PR's own changes

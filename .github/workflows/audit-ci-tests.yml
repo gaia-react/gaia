@@ -13,11 +13,23 @@ name: Audit CI Tests
 #   actions/checkout    @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
 #   dorny/paths-filter  @ fbd0ab8f3e69293af611ebaee6363fc25e6d187d (v4.0.1)
 
+# `workflow_dispatch:` is the CI-mode self-heal lane. A GITHUB_TOKEN-authored
+# self-heal push fires no `pull_request` event, so code-review-audit.yml
+# re-dispatches the workflows named in `.gaia/audit-ci.yml`'s
+# `retrigger_workflows` and stamps each dispatched run's per-JOB conclusion onto
+# the new HEAD. `Audit CI Tests` below is a declared-required context, so
+# without this trigger -- and without the job admitting it in its `if:` -- the
+# check is absent on the self-heal HEAD and branch protection blocks the merge.
+# Same shape as cli-tests.yml; .gaia/scripts/tests/retrigger-reachability.bats
+# guards the invariant for every declared-required context. As there, GitHub
+# honors the trigger only for the default-branch copy of this file, so a
+# dispatch fails with 422 until it lands on main.
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -38,13 +50,27 @@ permissions:
 jobs:
   audit-ci-tests:
     name: Audit CI Tests
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # The self-heal poller in code-review-audit.yml waits 25 minutes for a
+    # dispatched run, then gives up and stamps nothing, which leaves this
+    # required context ABSENT on the self-heal HEAD rather than merely red: the
+    # exact wedge the dispatch lane exists to prevent. Cap well under that
+    # window so a hung `apt-get` fails fast instead of inheriting the 6-hour
+    # runner default. The real runtime is a couple of minutes.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       # PRs that don't touch the audit scripts report this check green
       # without installing or running anything.
+      #
+      # paths-filter resolves changed files from the pull-request context, which
+      # a `workflow_dispatch` run does not have, so the dispatch lane skips this
+      # step and every step below falls back to running unconditionally. That is
+      # the intent of a re-trigger: it exists to produce a real green on the
+      # self-heal HEAD, and a full run is the only thing that proves one.
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        if: github.event_name == 'pull_request'
         id: filter
         with:
           filters: |
@@ -75,6 +101,18 @@ jobs:
               # job having run the suite zero times.
               - '.husky/**'
               - '.gaia/scripts/**'
+              # shell-lint.bats (.gaia/scripts/tests/) asserts the wiring of the
+              # local shell gate .gaia/tests/shell-lint.sh -- its .husky/*
+              # discovery pass and its lint-hook-array-guard.sh invocation. The
+              # gate sits at the top of .gaia/tests/, matching none of the four
+              # .gaia/tests/*/ globs below, so without this line an edit dropping
+              # one of those passes would report `code=false`, skip every bats
+              # step, and green the job having run the assertions written to catch
+              # that edit zero times. shell-lint.yml does not backstop it: a gate
+              # that lints fewer files reports fewer findings, so a dropped pass
+              # looks identical to a clean tree. Same test-dir/source-dir pairing
+              # as the entries above.
+              - '.gaia/tests/shell-lint.sh'
               # The audit-guard-structural suite (.gaia/scripts/tests/) greps the
               # prose of these three instruction files for the no-op-guard wiring
               # (SPEC-025 plan DP-005). An instruction-only edit touches none of
@@ -135,19 +173,30 @@ jobs:
               # trigger on both the test dir and the script it guards.
               - '.gaia/statusline/**'
               - '.gaia/tests/statusline/**'
+              # retrigger-reachability.bats (.gaia/scripts/tests/) reads every
+              # workflow in .github/workflows/ and the retrigger_workflows knob
+              # in .gaia/audit-ci.yml, so both are sources it guards. Without
+              # them, the edit the suite exists to catch -- a required check's
+              # workflow losing its workflow_dispatch trigger, or dropping out
+              # of the knob -- matches no pattern here, every bats step skips,
+              # and the job greens having run that assertion zero times. The
+              # workflows glob self-maintains as the declared-required set
+              # changes, the same reasoning as the code-audit-*.md glob above.
+              - '.github/workflows/**'
+              - '.gaia/audit-ci.yml'
       # python3-yaml pins the parser lint-yaml.bats' require_yaml_parser needs
       # (python3+pyyaml), so its parser-backed negative tests run explicitly
       # rather than resting on whatever the runner image happens to preinstall.
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Install bats and YAML parser
         run: sudo apt-get update && sudo apt-get install -y bats python3-yaml
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run .github/audit bats suites
         run: bats .github/audit/tests/
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run .gaia/scripts bats suites
         run: bats .gaia/scripts/tests/
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run .gaia/tests/forensics bats suites
         run: bash .gaia/tests/forensics/run-all.sh
       # The hook suites are authored/run locally on macOS bash 3.2.57, where a
@@ -157,7 +206,7 @@ jobs:
       # for token-tally-git-op.bats, token-rollup-merge.bats, and siblings. The
       # four node-dependent RED-verify suites self-skip here (no node_modules on
       # this lean box); see their setup() guards.
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run .gaia/tests/hooks bats suites
         run: bats .gaia/tests/hooks/
       # The SPEC-ledger lib suites (.specify/extensions/gaia/lib/ scripts):
@@ -168,9 +217,9 @@ jobs:
       # instead of self-skipping) and the real project ledger is absent
       # (.gaia/local/ is gitignored), so spec-ledger-status's project-ledger
       # test self-skips; both are green outcomes.
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run .gaia/tests/lib bats suites
         run: bats .gaia/tests/lib/
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run .gaia/tests/statusline bats suites
         run: bats .gaia/tests/statusline/

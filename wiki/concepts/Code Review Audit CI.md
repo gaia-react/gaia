@@ -103,7 +103,7 @@ The adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the f
 | `budget_seconds`      | `1800`               | Hard wall-clock budget for the audit invocation. The workflow times out the agent step at this value and reports `audit aborted: budget` rather than failing red.                                                                                                                                           |
 | `max_turns`           | `30`                 | Maximum fix turns the agent is allowed inside CI. Maps to `claude_args`'s `--max-turns`. Lower = cheaper. Higher = more chance to self-heal. `30` is the script fallback when the key is missing; the bundled `.gaia/audit-ci.yml` ships `60`.                                                                |
 | `push_fixes`          | `true`               | Whether the agent may push self-heal commits to the PR branch. Set `false` to make the audit advisory-only (it comments findings but does not push).                                                                                                                                                        |
-| `retrigger_workflows` | `[Chromatic, Tests]` | Workflows the audit re-dispatches against the PR branch after a self-heal push (see [[#Self-heal re-trigger]]). Each entry is the workflow's `name:` field, not the filename. Workflows listed must declare `workflow_dispatch:` in their triggers; the GAIA template's `chromatic.yml` and `tests.yml` do. |
+| `retrigger_workflows` | `[Chromatic, Tests]` | Workflows the audit re-dispatches against the PR branch after a self-heal push (see [[#Self-heal re-trigger]]). Each entry is the workflow's `name:` field, not the filename. A listed workflow must declare `workflow_dispatch:` in its triggers **and** the job producing the required check must admit that event in its `if:`; the GAIA template's `chromatic.yml` and `tests.yml` do both. See [[#Re-trigger reachability]]. |
 | `default_mode`        | `local`              | Per-author fallback audit mode when no `audit_authors` pair matches (see [[#Per-author audit mode]]). `ci` runs the audit in CI; `local` stands CI down and defers to the local merge path. A pull request from a fork always resolves to `ci` regardless of this value.                                     |
 | `override_label`      | `run-audit`          | PR label that forces CI to run the audit regardless of the author's resolved mode. Present on the PR ⇒ `ci`.                                                                                                                                                                                                |
 | `audit_authors`       | `""` (empty)         | `login=mode` pairs (case-insensitive login) overriding `default_mode` per author. First matching login wins; an unmatched author falls back to `default_mode`.                                                                                                                                              |
@@ -149,6 +149,28 @@ This mechanism is invisible when `push_fixes: false`; the audit posts comments a
 
 [[Dispatched-Check Rollup via Polling]] documents the polling architecture in full and explains why a `workflow_run`-event listener does not work under `GITHUB_TOKEN`.
 
+### Re-trigger reachability
+
+Part 3 above stamps a check run **per job** of each dispatched run, mirroring that job's own conclusion. A required check therefore survives a self-heal commit only when all three of these hold:
+
+1. its workflow declares `workflow_dispatch:`, or `gh workflow run` cannot dispatch it at all;
+2. the job producing it admits `workflow_dispatch` in its `if:`, or the job skips and the stamp records `skipped`, which satisfies no required check;
+3. its workflow's display name appears in `retrigger_workflows`, or nothing dispatches it in the first place.
+
+Break any one and a self-heal commit strands the pull request: the check is absent (or skipped) on the new HEAD, branch protection blocks the merge, and there is no bypass short of an admin override or a manual empty commit to re-fire `pull_request`.
+
+A job that resolves its scope from the pull-request context (a `paths-filter` step, for instance) has no such context on a dispatch. Skipping that scoping step and running the job's real work unconditionally is the safer resolution: a re-trigger exists to produce a genuine green on the self-heal HEAD, and a full run is the only thing that proves one. Leaving a step gated on the skipped filter's output is its own trap, one level below condition 2: the step silently skips, the job still concludes `success`, and the stamped check is green over nothing.
+
+A dispatched job also has to finish inside the poller's window. The poller waits 25 minutes per run and then gives up without stamping, so a job that outlives it leaves its context absent rather than red, which is the same wedge. Keep each dispatched job's `timeout-minutes` comfortably under that.
+
+Nothing in the pull-request lane exercises the dispatch path, so a break here is invisible until the first self-heal wedges a PR. Every condition above is a repo-visible property of the workflow files and the knob, which makes the whole invariant worth asserting deterministically rather than leaving to review.
+
+<!-- gaia:maintainer-only:start -->
+On `gaia-react/gaia` the knob carries three maintainer-only entries beyond the shipped defaults (`CLI Tests`, `Audit CI Tests`, `Distribution Audit (PR)`), wrapped in maintainer-only markers so the release scrub strips them: their workflows are release-excluded, and naming them on an adopter clone would dispatch workflows that do not exist there.
+
+The assertion lives in `.gaia/scripts/tests/retrigger-reachability.bats`, covering every context in `.gaia/scripts/verify-required-checks.sh`'s declared-required list, including the step-level trap above.
+<!-- gaia:maintainer-only:end -->
+
 ## How to enable as a required check
 
 After the workflow lands on `main`, the maintainer (or an adopter applying the same posture on their fork) configures branch protection:
@@ -157,7 +179,7 @@ After the workflow lands on `main`, the maintainer (or an adopter applying the s
 2. Edit the rule for `main` (or add one if none exists).
 3. Enable **Require status checks to pass before merging**.
 4. Add `code-review-audit` to the required checks list. The check name is frozen; do not rename even if the workflow grows internal steps.
-5. If the rule also requires checks from sibling workflows (e.g. `Run Chromatic`, `Vitest and Playwright`), list those workflows in `retrigger_workflows` so the self-heal re-trigger restores them on the new HEAD. Without this, a self-heal push will strand the PR with the sibling checks missing.
+5. If the rule also requires checks from sibling workflows (e.g. `Run Chromatic`, `Vitest and Playwright`), list those workflows in `retrigger_workflows` and satisfy the two reachability conditions in [[#Re-trigger reachability]], so the self-heal re-trigger restores them on the new HEAD. Without this, a self-heal push strands the PR with the sibling checks missing.
 
 ## How to skip an audit run locally
 

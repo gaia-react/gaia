@@ -30,6 +30,12 @@ if [ "$1" = "--version" ]; then
   printf 'ShellCheck - shell script analysis tool\nversion: 0.11.0\n'
   exit 0
 fi
+# Record one line per invocation when a log path is set, so a test can assert
+# which files a pass linted and with which dialect. Unset by default, so the
+# stub stays a pure always-clean fake for every other test.
+if [ -n "${SHELLCHECK_LOG:-}" ]; then
+  printf '%s\n' "$*" >> "$SHELLCHECK_LOG"
+fi
 exit 0
 STUB
   chmod +x "$STUB_DIR/shellcheck"
@@ -53,4 +59,17 @@ teardown() {
   # leaves the header.
   grep -qF -- "lint-hook-array-guard: clean" <<<"$output"
   grep -qF -- "shell-lint passed" <<<"$output"
+}
+
+# ---------------------------------------------------------------------------
+# The husky hooks are extensionless, so they match neither the *.sh nor the
+# *.bats discovery glob and need a pass of their own. Husky runs them as
+# `sh -e`, so that pass pins the dialect: shellcheck takes one dialect per
+# invocation, which is why this cannot fold into the *.sh pass.
+# ---------------------------------------------------------------------------
+
+@test "shell-lint lints the tracked husky hooks as sh" {
+  run env PATH="$STUB_DIR:$PATH" SHELLCHECK_LOG="$STUB_DIR/argv.log" bash "$GATE"
+  [ "$status" -eq 0 ]
+  grep -qE -- '(^| )-s sh( |$).*\.husky/pre-commit' "$STUB_DIR/argv.log"
 }

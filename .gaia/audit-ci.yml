@@ -34,16 +34,28 @@ default_mode: local
 # check runs on the new HEAD.
 #
 # Each entry is the workflow's `name:` field (top of its YAML file), not the
-# filename. The two entries below match the GAIA template's required-check-
+# filename. The first two entries match the GAIA template's required-check-
 # producing workflows. Adopters who require additional workflows (e.g. a
 # custom lint or security scan) add them here; adopters who do not require
 # Chromatic / Tests can remove them.
 #
 # Workflows listed here must declare `workflow_dispatch:` in their `on:`
-# triggers. The GAIA template's `chromatic.yml` and `tests.yml` already do.
+# triggers, and the job producing the required check must admit that event in
+# its `if:` -- a job gated to `pull_request` skips on a dispatch, and the audit
+# stamps `skipped`, which satisfies no required check.
+# .gaia/scripts/tests/retrigger-reachability.bats guards both halves for every
+# declared-required context.
 retrigger_workflows:
   - Chromatic
   - Tests
+  # gaia:maintainer-only:start
+  # The three maintainer-only required checks. Their workflows are
+  # release-excluded, so naming them on an adopter clone would dispatch
+  # workflows that do not exist there; the release scrub strips this block.
+  - CLI Tests
+  - Audit CI Tests
+  - Distribution Audit (PR)
+  # gaia:maintainer-only:end
 
 # Code Audit Team roster. Each entry maps file-globs to a specialized auditor
 # member; the dispatch resolver (.gaia/scripts/resolve-audit-members.sh) reads

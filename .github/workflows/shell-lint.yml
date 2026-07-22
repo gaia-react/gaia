@@ -56,6 +56,12 @@ jobs:
             shell:
               - '**/*.sh'
               - '**/*.bats'
+              # The husky hooks are extensionless, so neither glob above reaches
+              # them -- the same gap that kept them out of the gate's own
+              # discovery. Without this line a PR that changes only a husky hook
+              # resolves `shell=false`, skips the install and the gate, and
+              # greens the check having linted nothing.
+              - '.husky/**'
               - '.github/workflows/shell-lint.yml'
       # Install a pinned release binary rather than `apt-get install shellcheck`:
       # Ubuntu ships 0.9.0 while a maintainer's Homebrew ships newer, and their
