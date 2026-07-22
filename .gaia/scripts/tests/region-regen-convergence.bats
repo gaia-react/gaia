@@ -52,10 +52,6 @@ setup() {
   fi
 }
 
-assert_contains() {
-  grep -qF -- "$1" <<<"$output"
-}
-
 # A fully self-contained scratch tree at $1: copies of the writer, the
 # check, and the roster-parsing library the check sources from its own
 # on-disk location (script-relative, .gaia/scripts -> ../../.claude/hooks/lib),

@@ -201,7 +201,8 @@ log "scenario 5 (idempotence): OK"
 # second `/update-gaia` run cannot reach the merge walk at all once
 # `.gaia/VERSION` is bumped, so this is the only layer that can observe a
 # re-invocation against the post-update state. The verdict this run returns
-# need not equal the pre-update verdict (see README.md C3); the assertable
+# need not equal the pre-update verdict, because once the working copy equals
+# the release copy the same inputs resolve to `already-latest`; the assertable
 # property is that repeated re-invocations against the SAME post-update
 # state produce the SAME output.
 cp "$FIXTURES/s1-latest.txt" "$FIXTURES/s1-current.txt"
@@ -242,7 +243,7 @@ log "scenario 8 (help lists merge-region and regen-regions): OK"
 # --- Scenario 9: release-resolution grep ------------------------------------
 # The skill invokes both new subcommands from the DOWNLOADED RELEASE COPY of
 # the CLI, never the adopter's already-installed working-tree copy, so a run
-# whose installed binary predates them can still reach them (README.md C5).
+# whose installed binary predates them can still reach them.
 # This is the grep-assertable half of that rule: the skill carries the
 # release-resolved form and carries no working-tree-resolved one.
 grep -q '"\$LATEST_DIR/\.gaia/cli/gaia" update merge-region' \
@@ -251,8 +252,14 @@ grep -q '"\$LATEST_DIR/\.gaia/cli/gaia" update merge-region' \
 grep -q '"\$LATEST_DIR/\.gaia/cli/gaia" update regen-regions' \
   "$PROJECT_ROOT/.claude/skills/update-gaia/SKILL.md" \
   || { fail "scenario 9: SKILL.md is missing the release-resolved regen-regions invocation"; exit 1; }
-if grep -qE '(^|[^R])\.gaia/cli/gaia update (merge-region|regen-regions)' \
-    "$PROJECT_ROOT/.claude/skills/update-gaia/SKILL.md"; then
+# Match the invocation whether or not a quote closes the binary path, then
+# exclude the release-resolved lines by the root they name. Matching on the
+# character before `.gaia` cannot do this job: a quoted working-tree invocation
+# puts `"` where the space is expected and goes unseen, and an unquoted
+# release-resolved one is preceded by `/`, so it reads as an offender.
+if grep -nE '\.gaia/cli/gaia"? update (merge-region|regen-regions)' \
+    "$PROJECT_ROOT/.claude/skills/update-gaia/SKILL.md" \
+    | grep -qvF 'LATEST_DIR'; then
   fail "scenario 9: SKILL.md carries a working-tree-resolved invocation of merge-region or regen-regions"
   exit 1
 fi
