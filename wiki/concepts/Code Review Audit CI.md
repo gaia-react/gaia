@@ -163,10 +163,12 @@ A job that resolves its scope from the pull-request context (a `paths-filter` st
 
 A dispatched job also has to finish inside the poller's window. The poller waits 25 minutes per run and then gives up without stamping, so a job that outlives it leaves its context absent rather than red, which is the same wedge. Keep each dispatched job's `timeout-minutes` comfortably under that.
 
-The whole invariant is a repo-visible property of the workflow files and the knob, so `.gaia/scripts/tests/retrigger-reachability.bats` asserts it for every declared-required context (`.gaia/scripts/verify-required-checks.sh`'s list), including the step-level trap above. Nothing in the pull-request lane exercises the dispatch path, so a break is otherwise invisible until the first self-heal wedges a PR.
+Nothing in the pull-request lane exercises the dispatch path, so a break here is invisible until the first self-heal wedges a PR. Every condition above is a repo-visible property of the workflow files and the knob, which makes the whole invariant worth asserting deterministically rather than leaving to review.
 
 <!-- gaia:maintainer-only:start -->
 On `gaia-react/gaia` the knob carries three maintainer-only entries beyond the shipped defaults (`CLI Tests`, `Audit CI Tests`, `Distribution Audit (PR)`), wrapped in maintainer-only markers so the release scrub strips them: their workflows are release-excluded, and naming them on an adopter clone would dispatch workflows that do not exist there.
+
+The assertion lives in `.gaia/scripts/tests/retrigger-reachability.bats`, covering every context in `.gaia/scripts/verify-required-checks.sh`'s declared-required list, including the step-level trap above.
 <!-- gaia:maintainer-only:end -->
 
 ## How to enable as a required check
