@@ -521,11 +521,17 @@ assert_allowed() {
   assert_allowed
 }
 
+# Padding characters shred any shell construct that embeds them mid-token, and
+# a shredded `${ROOT}/<writer>` or `$(pwd)/<writer>` drops the writer basename
+# out of execution position. The scan defends the CLASS by running over both
+# the unpadded and the padded token streams, so these cases pin the property
+# for every padded character rather than for one instance of it.
+#
+# shellcheck disable=SC2016 # the literal `${VAR}` / `$(cmd)` IS the payload
+# under test; double-quoting would expand it away and hollow out every
+# assertion below.
+
 @test "the writer reached through a braced variable is denied" {
-  # `${VAR}` is the path form .claude/rules/repo-relative-paths.md teaches a
-  # member to use, so it must survive the bracket padding intact. Padding `{`
-  # and `}` would shred it into `"$` `{` `R` `}` `/…` and drop the writer token
-  # out of execution position entirely.
   run_hook_bash "code-audit-frontend" 'bash "${R}/.gaia/scripts/write-audit-remits.sh"'
   assert_denied
 }
@@ -537,6 +543,21 @@ assert_allowed() {
 
 @test "the writer reached through a braced variable after an interpreter option is denied" {
   run_hook_bash "code-audit-frontend" 'sh -x ${D}/write-audit-remits.sh'
+  assert_denied
+}
+
+@test "the writer reached through a command substitution in the path is denied" {
+  run_hook_bash "code-audit-frontend" 'bash "$(pwd)/.gaia/scripts/write-audit-remits.sh"'
+  assert_denied
+}
+
+@test "the writer reached through a command substitution with no interpreter is denied" {
+  run_hook_bash "code-audit-frontend" '"$(pwd)/.gaia/scripts/write-audit-remits.sh"'
+  assert_denied
+}
+
+@test "the writer reached through a command substitution after an interpreter option is denied" {
+  run_hook_bash "code-audit-frontend" 'sh -x "$(pwd)/write-audit-remits.sh"'
   assert_denied
 }
 

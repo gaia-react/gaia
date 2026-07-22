@@ -134,6 +134,71 @@ deny_reason() {
   printf 'BLOCKED: self-heal may not edit %s -- off-limits to the repair boundary (tests, the CI pipeline, .gaia/ gate & roster machinery, instruction/convention surfaces, or root build config). This is a defect to report as a finding, not to repair. See .claude/hooks/lib/audit-selfheal-paths.sh.' "$1"
 }
 
+# scan_exec_positions <token>...: deny when the remit writer basename appears
+# at an EXECUTION position in the given token stream. Denies or returns; never
+# reports back, since `deny` exits.
+#
+# Called once per tokenization (see the Bash branch below). Every piece of
+# state is `local`, so the two calls cannot leak boundary or interpreter state
+# into each other.
+scan_exec_positions() {
+  local prev_sep=1 after_interp=0 after_interp_env=0 cand exec_pos skip
+
+  for cand in "$@"; do
+    cand=$(strip_quotes "$cand")
+
+    exec_pos=0
+    [ "$prev_sep" -eq 1 ] && exec_pos=1
+
+    if [ "$after_interp" -eq 1 ]; then
+      skip=0
+      case "$cand" in
+        -c) ;;
+        -*) skip=1 ;;
+      esac
+      if [ "$skip" -eq 0 ] && [ "$after_interp_env" -eq 1 ]; then
+        case "$cand" in
+          [A-Za-z_]*=*) skip=1 ;;
+        esac
+      fi
+      if [ "$skip" -eq 0 ]; then
+        exec_pos=1
+        after_interp=0
+      fi
+    fi
+
+    if [ "$exec_pos" -eq 1 ]; then
+      case "${cand##*/}" in
+        write-audit-remits.sh)
+          deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites every code-audit-*.md definition under .claude/agents/, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
+          ;;
+      esac
+      case "$cand" in
+        bash | sh | zsh | nohup)
+          after_interp=1
+          after_interp_env=0
+          ;;
+        env)
+          after_interp=1
+          after_interp_env=1
+          ;;
+      esac
+    fi
+
+    # Single characters, not `&&` / `||`: the separator padding has already
+    # split every multi-character operator into adjacent single-character
+    # tokens. `(` and `{` are openers rather than separators, but they mark
+    # the same thing this flag tracks: the next token starts a command. `{`
+    # earns its place here without any padding of its own, since a real brace
+    # group always presents it as a separate word already. In the unpadded
+    # stream these arms simply never match a lone bracket, which is correct.
+    case "$cand" in
+      ';' | '&' | '|' | '(' | '{') prev_sep=1 ;;
+      *) prev_sep=0 ;;
+    esac
+  done
+}
+
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
 case "$tool_name" in
@@ -215,83 +280,37 @@ case "$tool_name" in
     # an array literal (`files=(<writer>)`) a false deny: over-denying is the
     # safe direction for this guard.
     #
-    # BRACES ARE DELIBERATELY NOT PADDED, and the asymmetry with `(` is the
-    # whole point. A brace group's `{` is ALREADY its own word in any command
-    # bash will run -- `{bash foo; }` is a syntax error, not a brace group --
-    # so padding would buy nothing, while `}` is already detached by the `;`
-    # padding above. What it would cost is severe: `${VAR}` would shred into
-    # `$` `{` `VAR` `}`, stranding the remainder of a `${ROOT}/<writer>` path
-    # outside execution position and reopening this very deny for the most
-    # idiomatic path form in the repo (see .claude/rules/repo-relative-paths.md,
-    # which teaches exactly that form). The brace group still denies, because
-    # `{` below is a boundary on its own already-separate token.
-    esrc="$cmd"
-    esrc="${esrc//;/ ; }"
-    esrc="${esrc//&/ & }"
-    esrc="${esrc//|/ | }"
+    # PADDING SHREDS, so the scan never trusts a single tokenization. Any
+    # character padded into a standalone token also splits every construct
+    # that embeds it mid-word: `(` shreds `$(pwd)/<writer>` into `"$` `(`
+    # `pwd` `)` `/<writer>`, stranding the basename away from an execution
+    # position. Padding `{` would do the identical thing to `${ROOT}/<writer>`,
+    # the path form .claude/rules/repo-relative-paths.md teaches, which is why
+    # braces are NOT padded (and do not need to be: `{bash foo; }` is a syntax
+    # error, so a real brace group already presents `{` as its own word, and
+    # `}` is already detached by the `;` padding).
+    #
+    # Rather than hand-audit each padded character for that hazard, scan BOTH
+    # tokenizations and take the union. The scan only ever denies, so a second
+    # pass is structurally incapable of losing a deny: whatever a padded
+    # stream shreds, the unpadded stream still carries whole. That makes the
+    # guard immune to this class for any character padded here in future,
+    # rather than fixing one bracket at a time.
+    ssrc="$cmd"
+    ssrc="${ssrc//;/ ; }"
+    ssrc="${ssrc//&/ & }"
+    ssrc="${ssrc//|/ | }"
+    esrc="$ssrc"
     esrc="${esrc//(/ ( }"
     esrc="${esrc//)/ ) }"
+    read -r -a stoks <<<"$ssrc"
     read -r -a etoks <<<"$esrc"
-    en=${#etoks[@]}
 
-    prev_sep=1
-    after_interp=0
-    after_interp_env=0
-    k=0
-    while [ "$k" -lt "$en" ]; do
-      cand=$(strip_quotes "${etoks[$k]}")
-
-      exec_pos=0
-      [ "$prev_sep" -eq 1 ] && exec_pos=1
-
-      if [ "$after_interp" -eq 1 ]; then
-        skip=0
-        case "$cand" in
-          -c) ;;
-          -*) skip=1 ;;
-        esac
-        if [ "$skip" -eq 0 ] && [ "$after_interp_env" -eq 1 ]; then
-          case "$cand" in
-            [A-Za-z_]*=*) skip=1 ;;
-          esac
-        fi
-        if [ "$skip" -eq 0 ]; then
-          exec_pos=1
-          after_interp=0
-        fi
-      fi
-
-      if [ "$exec_pos" -eq 1 ]; then
-        case "${cand##*/}" in
-          write-audit-remits.sh)
-            deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites every code-audit-*.md definition under .claude/agents/, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
-            ;;
-        esac
-        case "$cand" in
-          bash | sh | zsh | nohup)
-            after_interp=1
-            after_interp_env=0
-            ;;
-          env)
-            after_interp=1
-            after_interp_env=1
-            ;;
-        esac
-      fi
-
-      # Single characters, not `&&` / `||`: the padding above has already
-      # split every multi-character operator into adjacent single-character
-      # tokens. `(` and `{` are openers rather than separators, but they mark
-      # the same thing this flag tracks: the next token starts a command. `{`
-      # earns its place here without any padding of its own, since a real
-      # brace group always presents it as a separate word already.
-      case "$cand" in
-        ';' | '&' | '|' | '(' | '{') prev_sep=1 ;;
-        *) prev_sep=0 ;;
-      esac
-
-      k=$((k + 1))
-    done
+    # `${arr[@]+"${arr[@]}"}` is required, not decoration: bash 3.2 under
+    # `set -u` errors on an empty-array expansion, the class
+    # .gaia/scripts/lint-hook-array-guard.sh exists to catch.
+    scan_exec_positions ${stoks[@]+"${stoks[@]}"}
+    scan_exec_positions ${etoks[@]+"${etoks[@]}"}
 
     i=0
     while [ "$i" -lt "$n" ]; do
