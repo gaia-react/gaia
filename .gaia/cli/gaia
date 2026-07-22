@@ -28039,6 +28039,30 @@ var parseFlags14 = (argv) => {
 var isNonEmptyString = (value) => typeof value === "string" && value.trim() !== "";
 var isStringArray2 = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
 var isPlainObject3 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var normalizeRepoPath = (value) => {
+  const posix = value.replaceAll("\\", "/").replaceAll(/\/{2,}/gu, "/");
+  return posix.startsWith("./") ? posix.slice(2) : posix;
+};
+var normalizeDeclaredPaths = (paths) => {
+  const normalized = [];
+  for (const declPath of paths) {
+    const candidate = normalizeRepoPath(declPath);
+    if (candidate.trim() === "")
+      return { ok: false, reason: "paths carries an empty entry" };
+    if (path40.isAbsolute(candidate))
+      return {
+        ok: false,
+        reason: `paths carries an absolute path: ${candidate}`
+      };
+    if (candidate.split("/").includes(".."))
+      return {
+        ok: false,
+        reason: `paths carries a parent-directory segment: ${candidate}`
+      };
+    normalized.push(candidate);
+  }
+  return { ok: true, paths: normalized };
+};
 var parseDeclaration = (raw, index, seenIds) => {
   const fallbackId = `region-at-index-${index}`;
   if (!isPlainObject3(raw))
@@ -28067,6 +28091,9 @@ var parseDeclaration = (raw, index, seenIds) => {
       reason: "paths is missing or not an array of strings",
       regionId: id
     };
+  const declaredPaths = normalizeDeclaredPaths(paths);
+  if (!declaredPaths.ok)
+    return { ok: false, reason: declaredPaths.reason, regionId: id };
   if (!isPlainObject3(regenerate))
     return {
       ok: false,
@@ -28099,7 +28126,7 @@ var parseDeclaration = (raw, index, seenIds) => {
       id,
       interpreter,
       operand,
-      paths,
+      paths: declaredPaths.paths,
       startMarker
     },
     ok: true
@@ -28120,17 +28147,13 @@ var computeSkipReason = (decl, inputs) => {
     return `the adopter's tree does not carry: ${missingPaths.join(", ")}`;
   return void 0;
 };
-var normalizeOperand = (operand) => {
-  const posix = operand.replaceAll("\\", "/").replaceAll(/\/{2,}/gu, "/");
-  return posix.startsWith("./") ? posix.slice(2) : posix;
-};
 var checkOperand = (decl, context) => {
   const { realRoot, root, shippedKeys } = context;
   const { interpreter, operand } = decl;
   if (path40.isAbsolute(operand)) return "operand is an absolute path";
   if (operand.split("/").includes(".."))
     return "operand carries a parent-directory segment";
-  if (!shippedKeys.has(normalizeOperand(operand)))
+  if (!shippedKeys.has(normalizeRepoPath(operand)))
     return "operand is not a path this manifest ships";
   let resolvedReal;
   try {
@@ -28183,7 +28206,12 @@ var collectScopeDigests = (root, scopeDirs) => {
       }
       if (!stat.isFile()) return;
       const repoRelative = path40.relative(root, abs).split(path40.sep).join("/");
-      const content = readFileSync31(abs);
+      let content;
+      try {
+        content = readFileSync31(abs);
+      } catch {
+        return;
+      }
       digests.set(repoRelative, {
         content,
         digest: createHash2("sha256").update(content).digest("hex")
@@ -28201,14 +28229,22 @@ var sweepScope = (inputs) => {
     const afterEntry = after.get(relPath);
     if (afterEntry === void 0) return;
     if (afterEntry.digest !== beforeEntry.digest) {
-      writeFileSync12(path40.resolve(root, relPath), beforeEntry.content);
-      confined.push({ action: "restored", path: relPath, regionId });
+      try {
+        writeFileSync12(path40.resolve(root, relPath), beforeEntry.content);
+        confined.push({ action: "restored", path: relPath, regionId });
+      } catch {
+        confined.push({ action: "reported", path: relPath, regionId });
+      }
     }
   });
   [...after.keys()].forEach((relPath) => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
-    rmSync4(path40.resolve(root, relPath), { force: true });
-    confined.push({ action: "removed", path: relPath, regionId });
+    try {
+      rmSync4(path40.resolve(root, relPath), { force: true });
+      confined.push({ action: "removed", path: relPath, regionId });
+    } catch {
+      confined.push({ action: "reported", path: relPath, regionId });
+    }
   });
   return confined;
 };

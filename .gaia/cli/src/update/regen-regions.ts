@@ -253,6 +253,56 @@ const isStringArray = (value: unknown): value is string[] =>
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+/** Strips a leading `./`, collapses separators, converts to POSIX. */
+const normalizeRepoPath = (value: string): string => {
+  const posix = value.replaceAll('\\', '/').replaceAll(/\/{2,}/gu, '/');
+
+  return posix.startsWith('./') ? posix.slice(2) : posix;
+};
+
+/**
+ * Well-formedness guard for `paths[]`, the counterpart to `checkOperand`'s
+ * guard on the operand. Both are downstream of the same untrusted manifest,
+ * and every consumer of a declared path resolves it against `--root`: the
+ * backup copies it, the snapshot walks its parent directory, and the sweep
+ * writes and deletes inside that directory. An entry that is absolute or
+ * carries a parent segment therefore reaches outside `--root` on all three.
+ *
+ * Normalizing here rather than at each use site is what makes `declaredSet`
+ * and the snapshot keys agree by construction. The snapshot canonicalizes its
+ * keys through `path.relative`, so a declared `./a/b.md` would otherwise never
+ * match its own snapshot entry, and the sweep would revert the very file the
+ * regeneration just wrote while reporting the run a success.
+ */
+const normalizeDeclaredPaths = (
+  paths: readonly string[]
+): {ok: false; reason: string} | {ok: true; paths: string[]} => {
+  const normalized: string[] = [];
+
+  for (const declPath of paths) {
+    const candidate = normalizeRepoPath(declPath);
+
+    if (candidate.trim() === '')
+      return {ok: false, reason: 'paths carries an empty entry'};
+
+    if (path.isAbsolute(candidate))
+      return {
+        ok: false,
+        reason: `paths carries an absolute path: ${candidate}`,
+      };
+
+    if (candidate.split('/').includes('..'))
+      return {
+        ok: false,
+        reason: `paths carries a parent-directory segment: ${candidate}`,
+      };
+
+    normalized.push(candidate);
+  }
+
+  return {ok: true, paths: normalized};
+};
+
 /**
  * Defensive shape parse of one `regions[]` entry (untrusted JSON). Never
  * throws: every defect resolves to a `refused[]`-shaped result, never a crash.
@@ -304,6 +354,11 @@ const parseDeclaration = (
       regionId: id,
     };
 
+  const declaredPaths = normalizeDeclaredPaths(paths);
+
+  if (!declaredPaths.ok)
+    return {ok: false, reason: declaredPaths.reason, regionId: id};
+
   if (!isPlainObject(regenerate))
     return {
       ok: false,
@@ -341,7 +396,7 @@ const parseDeclaration = (
       id,
       interpreter,
       operand,
-      paths,
+      paths: declaredPaths.paths,
       startMarker,
     },
     ok: true,
@@ -383,13 +438,6 @@ const computeSkipReason = (
   return undefined;
 };
 
-/** Strips a leading `./`, collapses separators, converts to POSIX. */
-const normalizeOperand = (operand: string): string => {
-  const posix = operand.replaceAll('\\', '/').replaceAll(/\/{2,}/gu, '/');
-
-  return posix.startsWith('./') ? posix.slice(2) : posix;
-};
-
 type OperandGuardContext = {
   realRoot: string;
   root: string;
@@ -413,7 +461,7 @@ const checkOperand = (
   if (operand.split('/').includes('..'))
     return 'operand carries a parent-directory segment';
 
-  if (!shippedKeys.has(normalizeOperand(operand)))
+  if (!shippedKeys.has(normalizeRepoPath(operand)))
     return 'operand is not a path this manifest ships';
 
   let resolvedReal: string | undefined;
@@ -518,7 +566,18 @@ const collectScopeDigests = (
       if (!stat.isFile()) return;
 
       const repoRelative = path.relative(root, abs).split(path.sep).join('/');
-      const content = readFileSync(abs);
+      let content;
+
+      try {
+        content = readFileSync(abs);
+      } catch {
+        // Unreadable file (permissions, a race with the spawn): skip it, the
+        // same way an unstattable entry is skipped above. Throwing here would
+        // abandon the confinement sweep and the report for every remaining
+        // region, which is the one outcome this command promises never to
+        // produce.
+        return;
+      }
 
       digests.set(repoRelative, {
         content,
@@ -558,16 +617,29 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
     if (afterEntry === undefined) return;
 
     if (afterEntry.digest !== beforeEntry.digest) {
-      writeFileSync(path.resolve(root, relPath), beforeEntry.content);
-      confined.push({action: 'restored', path: relPath, regionId});
+      try {
+        writeFileSync(path.resolve(root, relPath), beforeEntry.content);
+        confined.push({action: 'restored', path: relPath, regionId});
+      } catch {
+        // The revert itself failed. Surface the write rather than throwing:
+        // an abandoned sweep would leave every later entry unexamined and
+        // unreported, which is exactly the silent out-of-scope write the
+        // confinement guarantee rules out. `reported` is the contract's term
+        // for a write that is surfaced rather than reverted.
+        confined.push({action: 'reported', path: relPath, regionId});
+      }
     }
   });
 
   [...after.keys()].forEach((relPath) => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
 
-    rmSync(path.resolve(root, relPath), {force: true});
-    confined.push({action: 'removed', path: relPath, regionId});
+    try {
+      rmSync(path.resolve(root, relPath), {force: true});
+      confined.push({action: 'removed', path: relPath, regionId});
+    } catch {
+      confined.push({action: 'reported', path: relPath, regionId});
+    }
   });
 
   return confined;

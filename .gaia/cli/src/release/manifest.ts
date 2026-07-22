@@ -193,7 +193,11 @@ const RegionRegenerateSchema = z.object({
 const RegionDeclarationSchema = z.object({
   endMarker: z.string().min(1),
   id: z.string().min(1),
-  paths: z.array(z.string()),
+  // `.min(1)` on the element, matching every sibling field: an empty declared
+  // path resolves to the repository root at every downstream use site, which
+  // turns the regeneration runner's snapshot scope into a recursive walk of
+  // the whole tree.
+  paths: z.array(z.string().min(1)),
   regenerate: RegionRegenerateSchema,
   startMarker: z.string().min(1),
 });
