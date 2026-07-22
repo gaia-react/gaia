@@ -175,9 +175,16 @@ fi
 # so a peer's merge can arm the sentinel during the `gh` call above, minutes after
 # `sentinel_mtime` was sampled. Clearing on that stale sample would delete an
 # invalidation nothing has serviced, freezing the count until the next event or
-# the TTL. Re-read the mtime and only clear the sentinel this run actually
-# decided about; a sentinel that is now absent, re-armed, or newly armed (sampled
-# 0, present now) all read as a mismatch and survive.
+# the TTL. Re-read the mtime so the clear acts on current state instead: a
+# sentinel that is now absent, re-armed, or newly armed (sampled 0, present now)
+# all read as a mismatch and survive.
+#
+# This narrows the race rather than closing it. POSIX shell has no atomic
+# compare-and-unlink, so a peer arming the sentinel between this stat and the
+# `rm` below still loses its invalidation. That residual window is accepted: it
+# shrinks the exposure from a whole network round-trip to the gap between two
+# adjacent statements, and the cost of losing the bet is one delayed count
+# refresh, bounded by the TTL.
 if [ "$recompute_ok" = "true" ] && [ "$sentinel_settled" = "true" ] &&
    [ "$(mtime_of "$SENTINEL")" = "$sentinel_mtime" ]; then
   rm -f "$SENTINEL" 2>/dev/null
