@@ -57,12 +57,15 @@ stage_and_run() {
   echo "// content" > "$REPO/$path"
   git -C "$REPO" add "$path"
   run env PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" \
-    sh -c "cd '$REPO' && sh -e '$HOOK_ABS'"
+    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABS"
 }
 
+# Substring assertions use grep, not `[[ ]]`: a false bare `[[ ]]` that is not
+# the test's last command does not fail the test on bash 3.2, which is what a
+# stock macOS bats resolves to. See .claude/rules/bats-assertions.md.
 assert_gate_ran() {
   [ "$status" -eq 0 ]
-  [[ "$output" == *"running lint-staged"* ]]
+  grep -qF -- "running lint-staged" <<<"$output"
   grep -qx 'typecheck' "$PNPM_LOG"
   grep -qx 'exec lint-staged' "$PNPM_LOG"
   grep -qx 'test:lint-staged' "$PNPM_LOG"
@@ -70,7 +73,7 @@ assert_gate_ran() {
 
 assert_gate_skipped() {
   [ "$status" -eq 0 ]
-  [[ "$output" == *"skipping lint-staged"* ]]
+  grep -qF -- "skipping lint-staged" <<<"$output"
   [ ! -s "$PNPM_LOG" ]
 }
 
