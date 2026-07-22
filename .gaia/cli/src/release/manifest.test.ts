@@ -22,11 +22,15 @@ import path from 'node:path';
 import {
   buildManifest,
   classifyPath,
+  computeDrift,
   lintClassifierSets,
   lintScanScopes,
+  ManifestSchema,
   parseExcludePatterns,
+  serialize,
   validateExcludeText,
 } from './manifest.js';
+import type {ManifestShape} from './manifest.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -327,6 +331,184 @@ describe('lintScanScopes', () => {
         missingFrom: ['maintainer-paths scope', 'runtime-deps SCAN_GLOBS'],
       },
     ]);
+  });
+});
+
+describe('ManifestSchema: regions', () => {
+  const baseFields = {
+    files: {},
+    generated: '2026-05-07T00:00:00.000Z',
+    version: '1.0.0',
+  };
+
+  test('accepts a manifest object with no `regions` key', () => {
+    expect(() => ManifestSchema.parse(baseFields)).not.toThrow();
+  });
+
+  test('accepts a manifest object with `regions: []`', () => {
+    expect(() =>
+      ManifestSchema.parse({...baseFields, regions: []})
+    ).not.toThrow();
+  });
+
+  test('rejects a declaration with an empty startMarker', () => {
+    const regions = [
+      {
+        endMarker: '<!-- gaia:test:end -->',
+        id: 'test-region',
+        paths: [],
+        regenerate: {args: [], interpreter: 'bash', operand: 'test.sh'},
+        startMarker: '',
+      },
+    ];
+    expect(() => ManifestSchema.parse({...baseFields, regions})).toThrow(
+      /too small/i
+    );
+  });
+});
+
+const manifestWithRegions = (
+  regions: ManifestShape['regions']
+): ManifestShape => ({
+  files: {},
+  generated: '2026-05-07T00:00:00.000Z',
+  regions,
+  version: '1.0.0',
+});
+
+const regionDrift = (
+  expected: ManifestShape,
+  actual: ManifestShape
+): ReturnType<typeof computeDrift>['regionDrift'] =>
+  computeDrift(expected, actual, {classifierOverlaps: [], scanScopeGaps: []})
+    .regionDrift;
+
+describe('computeDrift: regionDrift', () => {
+  const region = {
+    endMarker: '<!-- gaia:test:end -->',
+    id: 'test-region',
+    paths: ['.claude/agents/a.md', '.claude/agents/b.md'],
+    regenerate: {args: [], interpreter: 'bash', operand: 'test.sh'},
+    startMarker: '<!-- gaia:test:start -->',
+  };
+
+  test('a committed manifest missing one region path reports it as missing for that region id', () => {
+    const expected = manifestWithRegions([region]);
+    const actual = manifestWithRegions([
+      {...region, paths: ['.claude/agents/a.md']},
+    ]);
+
+    expect(regionDrift(expected, actual)).toEqual([
+      {extra: [], missing: ['.claude/agents/b.md'], regionId: 'test-region'},
+    ]);
+  });
+
+  test('a committed manifest carrying an extra region path reports it in `extra`', () => {
+    const expected = manifestWithRegions([
+      {...region, paths: ['.claude/agents/a.md']},
+    ]);
+    const actual = manifestWithRegions([region]);
+
+    expect(regionDrift(expected, actual)).toEqual([
+      {extra: ['.claude/agents/b.md'], missing: [], regionId: 'test-region'},
+    ]);
+  });
+
+  test('a committed manifest whose startMarker differs reports contractDrift', () => {
+    const expected = manifestWithRegions([region]);
+    const actual = manifestWithRegions([
+      {...region, startMarker: '<!-- gaia:other:start -->'},
+    ]);
+
+    const result = regionDrift(expected, actual);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.contractDrift).toContain('startMarker');
+  });
+
+  test('identical declarations report an empty regionDrift', () => {
+    const expected = manifestWithRegions([region]);
+    const actual = manifestWithRegions([region]);
+
+    expect(regionDrift(expected, actual)).toEqual([]);
+  });
+
+  test('a committed manifest with no `regions` key against an expected manifest that has one reports the id-only-in-expected case', () => {
+    const expected = manifestWithRegions([region]);
+    const actual = manifestWithRegions(undefined);
+
+    expect(regionDrift(expected, actual)).toEqual([
+      {extra: [], missing: region.paths, regionId: 'test-region'},
+    ]);
+  });
+});
+
+describe('buildManifest: region round trip', () => {
+  // Uses the real REGION_REGISTRY (the `audit-remit` entry), against a
+  // sandbox that carries both a roster and an agent definition whose region
+  // it declares, so this exercises the same code path production `buildManifest`
+  // runs, not a fabricated registry.
+  test('ManifestSchema.parse(buildManifest(...)) succeeds on a scan that produces a non-empty regions array, and serialize is deterministic with regions between generated and version', () => {
+    const sandbox = setupSandbox();
+
+    try {
+      sandbox.commit('seed', {
+        '.claude/agents/test-auditor.md': [
+          '# Test Auditor',
+          '',
+          '## Remit and self-skip',
+          '',
+          '<!-- gaia:audit-remit:start -->',
+          '- `app/**`',
+          '',
+          'Filter the changed-file list against the globs above.',
+          '<!-- gaia:audit-remit:end -->',
+          '',
+        ].join('\n'),
+        '.gaia/audit-ci.yml': [
+          'auditors:',
+          '  - name: test-auditor',
+          '    globs:',
+          '      - "app/**"',
+          '    scope: adopter',
+          '    default: true',
+          '',
+        ].join('\n'),
+        '.gaia/release-exclude': '# none\n',
+        '.gaia/VERSION': '1.0.0\n',
+        'app/foo.ts': 'export {};\n',
+      });
+
+      const manifest = buildManifest(sandbox.root, {
+        generatedAt: '2026-05-07T00:00:00.000Z',
+      });
+
+      expect(manifest.regions).toEqual([
+        {
+          endMarker: '<!-- gaia:audit-remit:end -->',
+          id: 'audit-remit',
+          paths: ['.claude/agents/test-auditor.md'],
+          regenerate: {
+            args: [],
+            interpreter: 'bash',
+            operand: '.gaia/scripts/write-audit-remits.sh',
+          },
+          startMarker: '<!-- gaia:audit-remit:start -->',
+        },
+      ]);
+      expect(() => ManifestSchema.parse(manifest)).not.toThrow();
+
+      const once = serialize(manifest);
+      const twice = serialize(
+        buildManifest(sandbox.root, {generatedAt: '2026-05-07T00:00:00.000Z'})
+      );
+      expect(once).toBe(twice);
+
+      const keys = Object.keys(JSON.parse(once) as Record<string, unknown>);
+      expect(keys.indexOf('generated')).toBeLessThan(keys.indexOf('regions'));
+      expect(keys.indexOf('regions')).toBeLessThan(keys.indexOf('version'));
+    } finally {
+      sandbox.cleanup();
+    }
   });
 });
 

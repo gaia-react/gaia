@@ -67,6 +67,14 @@ Files deleted upstream (in baseline, not in latest):
 | `adopter[P] == baseline[P]` | Prompt `delete` (default) / `keep`. |
 | Adopter drifted             | Prompt `keep` (default) / `delete`. |
 
+## Generated regions
+
+Some shipped files carry a marker-delimited region whose body is machine-generated, rewritten by a command rather than edited by hand. The release manifest declares each one: its marker pair, the paths that carry it, and the command that regenerates it.
+
+`gaia update merge-region --baseline <file> --latest <file> --current <file> --start-marker <text> --end-marker <text>` compares the three sides with each region body replaced by a single placeholder line, so a divergence confined to a generated region does not read as adopter drift. It returns one of `no-upstream-change`, `no-adopter-drift`, `already-latest`, or `conflict`, and prints the normalized forms alongside the verdict with `--json`. The command only reports; it writes nothing.
+
+Each side is normalized on its own, so a side that carries no marker pair is still compared against masked siblings. When any side's markers are malformed, duplicated, unbalanced, or out of order, no side is normalized at all and the three sides compare as whole files, which is the same answer the walk reaches without region awareness.
+
 ## `package.json` (field-aware merge)
 
 A whole-file three-way merge of `package.json` is pure noise: every adopter rewrites `name` / `description` / `author` and resets `version` at init, and GAIA bumps its own `version` every release, so adopter, baseline, and latest all differ on every release. `package.json` is therefore merged at JSON-key granularity, acting only on the genuine upstream delta `B → L`.
