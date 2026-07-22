@@ -114,12 +114,13 @@ const VALUE_FLAGS: Readonly<Record<string, keyof Flags>> = {
   '--start-marker': 'startMarker',
 };
 
-// `Record<string, T>` indexing types as `T`, never `undefined`, without
-// `noUncheckedIndexedAccess`, but `token` may not be one of VALUE_FLAGS'
-// five known keys, and that absence is exactly what routes to the
-// unknown-flag branch below.
+// `token` may not be one of VALUE_FLAGS' five known keys, and that absence is
+// exactly what routes to the unknown-flag branch below. The own-property guard
+// is load-bearing: a bare index reaches `Object.prototype`, so a token like
+// `constructor` or `toString` returns a truthy inherited value, skips the
+// unknown-flag branch, and consumes the following argv element as its value.
 const lookupValueFlag = (token: string): keyof Flags | undefined =>
-  (VALUE_FLAGS as Record<string, keyof Flags | undefined>)[token];
+  Object.hasOwn(VALUE_FLAGS, token) ? VALUE_FLAGS[token] : undefined;
 
 const parseFlags = (argv: readonly string[]): ParsedFlagsResult => {
   const collected: Partial<Record<keyof Flags, string>> = {};

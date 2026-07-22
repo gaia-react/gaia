@@ -420,6 +420,23 @@ describe('update merge-region (run)', () => {
     expect(stdio.errors.join('')).toContain('invalid_arguments');
   });
 
+  test.each(['constructor', 'toString', 'valueOf', '__proto__'])(
+    'an unknown flag named after an Object.prototype key (%s) exits 1 with invalid_arguments',
+    (token) => {
+      // A bare VALUE_FLAGS index returns the inherited value for these tokens,
+      // which would skip the unknown-flag branch and silently consume the
+      // NEXT argv element as the flag's value.
+      sandbox.write('baseline', 'baseline\n');
+      sandbox.write('latest', 'latest\n');
+      sandbox.write('current', 'current\n');
+
+      const exit = run([...argv(sandbox), token, 'swallowed']);
+
+      expect(exit).toBe(1);
+      expect(stdio.errors.join('')).toContain('invalid_arguments');
+    }
+  );
+
   test('an empty --start-marker exits 1', () => {
     sandbox.write('baseline', 'baseline\n');
     sandbox.write('latest', 'latest\n');

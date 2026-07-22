@@ -27459,7 +27459,7 @@ var scanRegion = (source, startMarker, endMarker) => {
   }
   const [startLine] = startLines;
   const [endLine] = endLines;
-  if (startLine > endLine) {
+  if (startLine >= endLine) {
     return { kind: "malformed", reason: "inverted" };
   }
   return { endLine, kind: "region", startLine };
@@ -27506,7 +27506,7 @@ var VALUE_FLAGS2 = {
   "--latest": "latest",
   "--start-marker": "startMarker"
 };
-var lookupValueFlag2 = (token) => VALUE_FLAGS2[token];
+var lookupValueFlag2 = (token) => Object.hasOwn(VALUE_FLAGS2, token) ? VALUE_FLAGS2[token] : void 0;
 var parseFlags12 = (argv) => {
   const collected = {};
   let json2 = false;

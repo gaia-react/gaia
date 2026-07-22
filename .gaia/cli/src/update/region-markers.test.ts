@@ -68,6 +68,18 @@ describe('scanRegion', () => {
     });
   });
 
+  test('identical start and end markers → inverted, and maskRegion leaves the source alone', () => {
+    // One line lands in both the start and end lists, so `startLine ===
+    // endLine`. Without the `>=` guard this scans as a zero-length region and
+    // maskRegion duplicates the marker line while masking nothing.
+    const source = ['a', START, 'b', 'c'].join('\n');
+    expect(scanRegion(source, START, START)).toEqual({
+      kind: 'malformed',
+      reason: 'inverted',
+    });
+    expect(maskRegion(source, START, START).masked).toBe(source);
+  });
+
   test('substring-only line → absent (whole-line equality, not marker-strip.ts substring matching)', () => {
     const source = [
       'Use the `<!-- gaia:test:start -->` marker to delimit it.',
