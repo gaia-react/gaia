@@ -50,6 +50,22 @@ STUB
   chmod +x "$SANDBOX/bin/gh"
 }
 
+# stub_gh_touching <count>: a fake `gh` whose `issue list` reports <count> open
+# issues AND re-arms the sentinel mid-call, standing in for a peer worktree whose
+# /gaia-debt PR merges inside this run's network window. `.gaia/local/debt/` is a
+# shared-state path symlinked into every worktree, so both runs address one file.
+stub_gh_touching() {
+  cat > "$SANDBOX/bin/gh" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "issue" ] && [ "\$2" = "list" ]; then
+  : > "$SENTINEL"
+  printf '%s\n' "$1"
+fi
+exit 0
+STUB
+  chmod +x "$SANDBOX/bin/gh"
+}
+
 # stub_gh_json <json>: a fake `gh` whose `issue list` applies the script's own
 # --jq filter (scanned from argv) to <json>, so the real exclusion expression is
 # exercised rather than a pre-baked count.
@@ -173,4 +189,33 @@ open_count() { jq -r '.openCount' "$CACHE"; }
   run run_refresh
   [ "$status" -eq 0 ]
   [ "$(open_count)" = "1" ]
+}
+
+# --- 8. Aged sentinel re-armed mid-recompute: the re-arm SURVIVES --------------
+# The clear decides on state sampled before the `gh` call. A peer worktree that
+# merges inside that window re-touches the sentinel, and its invalidation must
+# not be deleted by this run: the count it demands is newer than the one this run
+# just wrote.
+@test "sentinel re-armed during the recompute: keeps the new sentinel" {
+  stub_gh_touching 1
+  : > "$SENTINEL"
+  touch -t "$(past_ts 300)" "$SENTINEL"   # aged past the grace: the clear is armed
+  run run_refresh
+  [ "$status" -eq 0 ]
+  [ "$(open_count)" = "1" ]
+  [ -e "$SENTINEL" ]                      # the peer's re-arm survives
+}
+
+# --- 9. No sentinel at sample time, armed mid-recompute: SURVIVES too ----------
+# A TTL/missing-cache recompute samples no sentinel at all, so nothing holds the
+# clear back and it fires blind on a sentinel armed during the `gh` call. Here the
+# cache is absent (the missing-cache trigger) and the peer arms mid-call.
+@test "sentinel armed during a no-sentinel recompute: keeps the new sentinel" {
+  stub_gh_touching 2
+  [ ! -e "$SENTINEL" ]
+  [ ! -e "$CACHE" ]
+  run run_refresh
+  [ "$status" -eq 0 ]
+  [ "$(open_count)" = "2" ]
+  [ -e "$SENTINEL" ]
 }
