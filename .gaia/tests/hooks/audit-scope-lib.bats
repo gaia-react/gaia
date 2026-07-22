@@ -474,6 +474,32 @@ EOF
   assert_every_machinery_path_owned
 }
 
+@test "the husky commit hook is owned by the shell member under both rosters" {
+  # .husky/pre-commit is the Quality Gate floor for every commit and is POSIX
+  # shell, so the shell member (which holds the shellcheck oracle) owns it.
+  # Without a glob claiming it, a PR that changes the hook alongside any other
+  # owned surface dispatches members for the other files only, and the hook
+  # itself merges with no member responsible for it.
+  #
+  # It is deliberately NOT in AUDIT_MACHINERY_PATHS: that list's generating
+  # rule is bytes that change what a member reviews, who reviews it, where a
+  # clearance lands, or whether a clearance is believed. This hook gates
+  # commits, not audits, so SEC-007 does not reach it and this test is the pin.
+
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIB"
+  audit_scope_init "$REPO_ROOT"
+  [ "$(audit_owner_for_path '.husky/pre-commit')" = "code-audit-maintainer-shell" ]
+
+  # The builtin fallback roster must claim it too: when .gaia/audit-ci.yml is
+  # absent the degraded gate falls back to it, and a glob present in the
+  # committed roster but missing here leaves the hook ownerless there.
+  EMPTY_ROOT=$(mktemp -d -t audit-scope-husky-XXXXXX)
+  audit_scope_init "$EMPTY_ROOT"
+  rm -rf "$EMPTY_ROOT"
+  [ "$(audit_owner_for_path '.husky/pre-commit')" = "code-audit-maintainer-shell" ]
+}
+
 @test "UAT-002: skills-md is owned by the prose member; non-md under skills stays ownerless" {
   # shellcheck source=/dev/null
   . "$SCOPE_LIB"

@@ -91,6 +91,10 @@ auditors:
       - ".specify/extensions/gaia/lib/*.sh"
       - ".github/**/*.sh"
       - ".github/**/*.bats"
+      # The husky hooks are extensionless POSIX shell, so no *.sh glob reaches
+      # them. .husky/pre-commit is the Quality Gate floor for every commit, so
+      # it gets the shell lens and the shellcheck oracle like any other script.
+      - ".husky/**"
       - ".gaia/audit-ci.yml"
       - ".gaia/VERSION"
       - ".claude/agents/code-audit-*.md"
