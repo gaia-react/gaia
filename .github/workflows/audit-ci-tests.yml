@@ -75,6 +75,18 @@ jobs:
               # job having run the suite zero times.
               - '.husky/**'
               - '.gaia/scripts/**'
+              # shell-lint.bats (.gaia/scripts/tests/) asserts the wiring of the
+              # local shell gate .gaia/tests/shell-lint.sh -- its .husky/*
+              # discovery pass and its lint-hook-array-guard.sh invocation. The
+              # gate sits at the top of .gaia/tests/, matching none of the four
+              # .gaia/tests/*/ globs below, so without this line an edit dropping
+              # one of those passes would report `code=false`, skip every bats
+              # step, and green the job having run the assertions written to catch
+              # that edit zero times. shell-lint.yml does not backstop it: a gate
+              # that lints fewer files reports fewer findings, so a dropped pass
+              # looks identical to a clean tree. Same test-dir/source-dir pairing
+              # as the entries above.
+              - '.gaia/tests/shell-lint.sh'
               # The audit-guard-structural suite (.gaia/scripts/tests/) greps the
               # prose of these three instruction files for the no-op-guard wiring
               # (SPEC-025 plan DP-005). An instruction-only edit touches none of
