@@ -148,6 +148,18 @@ case "$tool_name" in
     cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
     [[ -n "$cmd" ]] || exit 0
 
+    # `read` stops at the first newline, so a multi-line payload would leave
+    # everything past line 1 untokenized and invisible to BOTH scans below.
+    # Fold the payload onto one line once, here, ahead of both `read -r -a`
+    # calls. The two newline kinds are not interchangeable: a
+    # backslash-newline is a line CONTINUATION and folds to a plain space,
+    # while a bare newline is a command separator and folds to `;`. Folding a
+    # continuation to a separator instead would break a continued
+    # `cp` / `sed` / `tee` argument scan at the line boundary and allow the
+    # very write it is meant to deny.
+    cmd="${cmd//\\$'\n'/ }"
+    cmd="${cmd//$'\n'/ ; }"
+
     read -r -a toks <<<"$cmd"
     n=${#toks[@]}
 
@@ -166,10 +178,12 @@ case "$tool_name" in
     # `env FOO=1 <writer>`, and `nohup <writer>` all deny. `-c` is never
     # treated as a skippable option: its argument is a quoted script STRING
     # this whitespace tokenizer cannot safely parse, so `bash -c '<writer>'`
-    # is left exactly as it was (a stated, out-of-scope gap; same for any
-    # invocation past line 1, since `read -r -a toks` above only tokenizes
-    # the first line). A read-only command that merely NAMES the file as an
-    # argument (`shellcheck .gaia/scripts/write-audit-remits.sh`, `cat ...`,
+    # is a stated, out-of-scope gap. A backtick-quoted invocation is a second
+    # stated gap, and deliberately not closed the way the brackets below are:
+    # a backtick is common inside ordinary quoted prose (a commit message
+    # naming a script), so padding it would false-deny commands that write
+    # nothing. A read-only command that merely NAMES the file as an argument
+    # (`shellcheck .gaia/scripts/write-audit-remits.sh`, `cat ...`,
     # `git log --grep ...`) is not an invocation of it and must stay allowed.
     #
     # A separator only ends a token when whitespace happens to follow it, so
@@ -186,10 +200,27 @@ case "$tool_name" in
     # because this scan only asks whether a boundary occurred, never which
     # operator produced it. Padding can also split a quoted argument, which
     # only ever widens the deny surface, the safe direction here.
+    #
+    # A subshell `(` and a brace group `{` need the same padding for a second
+    # reason: unpadded they GLUE to the command they open, so `(bash <writer>`
+    # tokenizes as `(bash`, which is not the interpreter `bash`. Padded, they
+    # become standalone tokens that mark a boundary, and the command they open
+    # reads at an execution position. `)` and `}` are padded too, so a closer
+    # glued to the writer (`<writer>)`) cannot defeat the `${cand##*/}`
+    # basename match. Padding `(` deliberately makes `(cd foo && ...)` an
+    # execution position as well: over-denying is the safe direction for this
+    # guard. `)` and `}` are padded but NOT treated as boundaries below, since
+    # a real shell always needs a separator after them anyway and treating
+    # them as boundaries would put a quoted `awk '{...}'` program's trailing
+    # file argument at an execution position for no gain.
     esrc="$cmd"
     esrc="${esrc//;/ ; }"
     esrc="${esrc//&/ & }"
     esrc="${esrc//|/ | }"
+    esrc="${esrc//(/ ( }"
+    esrc="${esrc//)/ ) }"
+    esrc="${esrc//\{/ { }"
+    esrc="${esrc//\}/ \} }"
     read -r -a etoks <<<"$esrc"
     en=${#etoks[@]}
 
@@ -240,9 +271,10 @@ case "$tool_name" in
 
       # Single characters, not `&&` / `||`: the padding above has already
       # split every multi-character operator into adjacent single-character
-      # tokens.
+      # tokens. `(` and `{` are openers rather than separators, but they mark
+      # the same thing this flag tracks: the next token starts a command.
       case "$cand" in
-        ';' | '&' | '|') prev_sep=1 ;;
+        ';' | '&' | '|' | '(' | '{') prev_sep=1 ;;
         *) prev_sep=0 ;;
       esac
 

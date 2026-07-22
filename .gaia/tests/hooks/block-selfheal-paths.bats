@@ -452,6 +452,82 @@ assert_allowed() {
   assert_denied
 }
 
+# --- execution-position anchor: multi-line, subshell, and brace-group shapes ---
+#
+# `read` stops at the first newline, so the whole payload is folded to one line
+# before either token array is built: a real newline becomes a `;` separator, a
+# backslash-newline (line continuation) becomes a plain space. `(` and `{` are
+# padded into standalone tokens for the execution scan only, so they mark a
+# boundary instead of occupying the execution position themselves, and `)` /
+# `}` are padded so a glued closer cannot defeat the basename match.
+
+@test "the writer on line 2 of a multi-line payload is denied" {
+  run_hook_bash "code-audit-frontend" \
+    $'R=$(git rev-parse --show-toplevel)\nbash "$R/.gaia/scripts/write-audit-remits.sh"'
+  assert_denied
+}
+
+@test "a write vector on line 2 of a multi-line payload is denied" {
+  run_hook_bash "code-audit-frontend" $'echo start\necho x > test/foo.ts'
+  assert_denied
+}
+
+@test "a write vector continued across a backslash-newline is denied" {
+  # The continuation folds to a space, not a `;`. Folding it to a separator
+  # would break the cp destination scan at the line boundary and allow this.
+  run_hook_bash "code-audit-frontend" $'cp /tmp/x.ts \\\n  test/foo.ts'
+  assert_denied
+}
+
+@test "the writer inside a subshell is denied" {
+  run_hook_bash "code-audit-frontend" "(bash .gaia/scripts/write-audit-remits.sh)"
+  assert_denied
+}
+
+@test "the writer invoked bare inside a subshell is denied" {
+  run_hook_bash "code-audit-frontend" "(.gaia/scripts/write-audit-remits.sh)"
+  assert_denied
+}
+
+@test "the writer inside a brace group is denied" {
+  run_hook_bash "code-audit-frontend" "{ bash .gaia/scripts/write-audit-remits.sh; }"
+  assert_denied
+}
+
+@test "the writer inside a command substitution is denied" {
+  run_hook_bash "code-audit-frontend" "OUT=\$(bash .gaia/scripts/write-audit-remits.sh)"
+  assert_denied
+}
+
+@test "the writer after a cd inside a subshell is denied" {
+  run_hook_bash "code-audit-frontend" \
+    "(cd .gaia/scripts && bash write-audit-remits.sh)"
+  assert_denied
+}
+
+@test "a read-only command naming the writer inside a subshell is allowed" {
+  # Bracket padding widens only the execution-position scan. A subshell whose
+  # command merely NAMES the writer as an argument must stay allowed.
+  run_hook_bash "code-audit-maintainer-shell" \
+    "(shellcheck .gaia/scripts/write-audit-remits.sh)"
+  assert_allowed
+}
+
+@test "an awk brace program does not make its trailing argument an execution position" {
+  # `{` opens a boundary but `}` does not close one back into an execution
+  # position, so the file argument after a quoted brace program stays allowed.
+  run_hook_bash "code-audit-maintainer-shell" \
+    "awk '{print}' .gaia/scripts/write-audit-remits.sh"
+  assert_allowed
+}
+
+@test "bracket padding leaves the write-shape loop intact" {
+  # The write-shape loop reads the UNPADDED token array. A subshell-wrapped
+  # redirect into an allowed path must still be allowed.
+  run_hook_bash "code-audit-frontend" "(echo x > app/foo.ts)"
+  assert_allowed
+}
+
 # --- structural ---
 
 @test "block-selfheal-paths.sh is executable" {
