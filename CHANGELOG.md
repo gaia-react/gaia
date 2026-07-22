@@ -16,6 +16,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Changed
 
+- the Chromatic workflow no longer passes the repository's real `SESSION_SECRET` into the Storybook build. Storybook never signs a cookie, so the variable only ever had to satisfy a required environment schema, and it now receives a literal placeholder instead. Nothing reached the published static build before either, but that depended on a bundler optimization rather than on the secret never being there (#996)
 - ESLint now checks `.playwright/` and `.storybook/`. The lint preset ignored both by default, which silently disabled the very rules it configured for them, so every e2e spec, Playwright helper, and Storybook config file went unchecked while `pnpm lint` reported a clean tree. `@gaia-react/lint` 1.11.0 stops ignoring them, and the 78 findings that surfaced in GAIA's own tree are fixed here. **Action required:** run `pnpm lint` after updating. Most of what surfaces in your own e2e and Storybook code auto-fixes; what remains is real (#980)
 
 ### Added
