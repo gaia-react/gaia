@@ -81,6 +81,12 @@ run_hook_stdout() {
   run bash -c 'cd "$1" && printf "%s" "$2" | bash "$3" 2>/dev/null' _ "$MAIN" "$1" "$SCRIPT"
 }
 
+# Same again, but with cwd in a caller-supplied directory rather than the main
+# checkout, so a test can run the hook from inside a linked worktree.
+run_hook_stdout_in() {
+  run bash -c 'cd "$1" && printf "%s" "$2" | bash "$3" 2>/dev/null' _ "$1" "$2" "$SCRIPT"
+}
+
 # ---------- 1. Current contract: name under `.name` ----------
 @test "name field: prints worktree path, creates branch, runs link delegate" {
   run_hook_stdout '{"name":"alpha"}'
@@ -428,4 +434,31 @@ STUB
   grep -qF "typegen exploded" <<<"$output"
   [ -d "$MAIN/.claude/worktrees/broken-typegen" ]
   git -C "$MAIN" show-ref --verify --quiet refs/heads/broken-typegen
+}
+
+# ---------- 21. Root derivation: the main checkout, from whatever tree fires the hook ----------
+@test "run from inside a linked worktree: creates under the main checkout, with typed routes" {
+  run_hook_stdout '{"name":"outer"}'
+  [ "$status" -eq 0 ]
+  outer="$MAIN/.claude/worktrees/outer"
+  [ -d "$outer" ]
+
+  # Every path the hook derives -- the worktrees base, the borrowed CLI, the
+  # per-name lock dir -- belongs to the main checkout, so the root must come
+  # from the common git dir, which is identical from every tree of the repo.
+  # `--show-toplevel` instead answers with the CURRENT tree, and a linked
+  # worktree has neither `.claude/worktrees/` nor a `node_modules` to borrow.
+  run_hook_stdout_in "$outer" '{"name":"nested"}'
+  [ "$status" -eq 0 ]
+  [ "$output" = "$MAIN/.claude/worktrees/nested" ]
+  git -C "$MAIN" show-ref --verify --quiet refs/heads/nested
+
+  # The new worktree is a sibling under the main checkout, not a tree nested
+  # inside the tree that fired the hook.
+  [ ! -e "$outer/.claude/worktrees" ]
+
+  # Typed routes are still generated: the CLI borrow resolved main's
+  # node_modules, so the guard that treats a missing CLI as nothing-to-do --
+  # deliberately silent -- never swallows this run.
+  [ -f "$MAIN/.claude/worktrees/nested/.react-router/types/.typegen-ran" ]
 }
