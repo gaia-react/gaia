@@ -10,6 +10,9 @@
 // (never injectProfilingHooks/lite); it gates real renders via didFiberRender
 // (traverseRenderedFibers) and keys cross-commit identity by getFiberId; it
 // retains no fibers, DOM nodes, or fiber.type objects.
+
+/* eslint-disable no-underscore-dangle -- window.__renders / __bippyMeta are the
+   harness wire contract this file publishes for capture.ts to read. */
 import {
   ClassComponentTag,
   detectReactBuildType,
@@ -60,6 +63,7 @@ const getTypeLabel = (value: unknown): string => {
   if (value === null) return 'null';
   if (value === undefined) return 'undefined';
   if (Array.isArray(value)) return `array(${value.length})`;
+
   return typeof value;
 };
 
@@ -85,6 +89,7 @@ const getFiberKindLabel = (tag: number): string => {
   if (tag === ForwardRefTag) return 'ForwardRef';
   if (tag === ClassComponentTag) return 'Class';
   if (tag === FunctionComponentTag) return 'Function';
+
   return `tag(${tag})`;
 };
 
@@ -101,7 +106,7 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
     const {selfTime, totalTime} = getTimings(fiber);
     if (totalTime > 0 || selfTime > 0) meta.profilingAvailable = true;
 
-    const tag = fiber.tag;
+    const {tag} = fiber;
     const isMemo =
       tag === MemoComponentTag ||
       tag === SimpleMemoComponentTag ||
@@ -127,6 +132,7 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
       traverseState(fiber, (next, prev) => {
         const nextValue = next?.memoizedState;
         const prevValue = prev?.memoizedState;
+
         if (!isEffectState(nextValue) && !Object.is(prevValue, nextValue)) {
           stateChanged.push({
             index: stateIndex,
@@ -141,6 +147,7 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
       traverseContexts(fiber, (next, prev) => {
         const nextValue = next?.memoizedValue;
         const prevValue = prev?.memoizedValue;
+
         if (!Object.is(prevValue, nextValue)) {
           contextChanged.push({
             next: getTypeLabel(nextValue),
@@ -150,6 +157,9 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
         }
       });
     }
+
+    const seq = renderSequenceNumber;
+    renderSequenceNumber += 1;
 
     const record: RenderRecord = {
       changedTotal:
@@ -164,7 +174,7 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
       phase,
       propsChanged,
       selfTime,
-      seq: renderSequenceNumber++,
+      seq,
       stateChanged,
       tag,
       totalTime,
@@ -181,8 +191,10 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
 const inspectRenderers = (): void => {
   try {
     const hook = getRDTHook();
+
     for (const renderer of hook.renderers.values()) {
       meta.rendererVersion ??= renderer.version;
+
       if (detectReactBuildType(renderer) === 'production') {
         meta.productionDetected = true;
         meta.errors.push(
@@ -199,12 +211,13 @@ instrument(
   secure(
     {
       name: 'gaia-react-perf',
-      onActive() {
+      onActive: () => {
         meta.installed = true;
         inspectRenderers();
       },
-      onCommitFiberRoot(_rendererID, root) {
+      onCommitFiberRoot: (_rendererID, root) => {
         meta.commits += 1;
+
         try {
           traverseRenderedFibers(root, onRender);
         } catch (error) {

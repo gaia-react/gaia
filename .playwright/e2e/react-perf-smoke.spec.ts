@@ -1,6 +1,6 @@
-import {readFileSync} from 'node:fs';
 import {expect, test} from '@playwright/test';
 import type {Page} from '@playwright/test';
+import {readFileSync} from 'node:fs';
 import {collectRenderDump, installRenderCapture} from '../react-perf/capture';
 import type {RawDump} from '../react-perf/types';
 import {hydration} from '../utils';
@@ -72,6 +72,7 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
   // §6 #2 + #6: records carry phase + a numeric fiberId; update records exist.
   const updates = dump.all.filter((record) => record.phase === 'update');
   expect(updates.length).toBeGreaterThan(0);
+
   for (const record of dump.all) {
     expect(typeof record.phase).toBe('string');
     expect(Number.isFinite(record.fiberId)).toBe(true);
@@ -84,6 +85,7 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
       ...record.stateChanged,
       ...record.contextChanged,
     ];
+
     for (const change of changes) {
       expect(typeof change.prev).toBe('string');
       expect(typeof change.next).toBe('string');
@@ -101,14 +103,14 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
   expect(
     canaryRecords.every((record) => record.componentName !== 'Unknown')
   ).toBe(true);
-  expect(canaryRecords.every((record) => record.isMemo === false)).toBe(true);
+  expect(canaryRecords.every((record) => !record.isMemo)).toBe(true);
   expect(canaryRecords.some((record) => record.totalTime > 0)).toBe(true);
   expect(canaryRecords.some((record) => record.phase === 'update')).toBe(true);
 });
 
 test('noStrict bypass disables StrictMode (render-time inflation collapses)', async ({
-  browser,
   baseURL,
+  browser,
 }) => {
   const load = async (isStrictModeDisabled: boolean) => {
     const context = await browser.newContext({baseURL});
@@ -119,6 +121,7 @@ test('noStrict bypass disables StrictMode (render-time inflation collapses)', as
     const result = await collectRenderDump(page);
     const dump = readDump(result.rawPath);
     await context.close();
+
     return {meta: result.meta, total: totalRenderTime(dump)};
   };
 

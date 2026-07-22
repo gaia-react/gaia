@@ -7,7 +7,7 @@ const LEGAL_ROUTES = [
   {h1: 'Terms of Service', path: '/terms'},
 ] as const;
 
-for (const {path, h1} of LEGAL_ROUTES) {
+for (const {h1, path} of LEGAL_ROUTES) {
   test(`${path} renders and has no serious a11y violations`, async ({
     page,
   }, testInfo) => {

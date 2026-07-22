@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-// @ts-ignore
 window.process.env = {
   API_URL: import.meta.env.API_URL,
   COMMIT_SHA: import.meta.env.COMMIT_SHA,

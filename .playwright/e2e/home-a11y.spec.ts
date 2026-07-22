@@ -2,7 +2,6 @@ import {expectNoSeriousA11yViolations} from '../a11y';
 import {expect, test} from '../fixtures';
 import {hydration} from '../utils';
 
-// eslint-disable-next-line playwright/expect-expect -- expectNoSeriousA11yViolations is the assertion
 test('home page has no serious a11y violations', async ({page}, testInfo) => {
   await page.goto('/');
   await hydration(page);
@@ -36,9 +35,9 @@ test('home dark mode has no serious a11y violations', async ({
 });
 
 test('home page landmarks and headings pass best-practice rules', async ({
-  page,
   makeAxeBuilder,
-}, testInfo) => {
+  page,
+}) => {
   await page.goto('/');
   await hydration(page);
 
@@ -47,24 +46,18 @@ test('home page landmarks and headings pass best-practice rules', async ({
   const {violations} = await axe.analyze();
 
   const targetRules = new Set([
-    'region',
-    'landmark-one-main',
     'heading-order',
+    'landmark-one-main',
     'page-has-heading-one',
+    'region',
   ]);
-  const relevant = violations.filter((v) => targetRules.has(v.id));
+  // Project each violation to its triage fields: a failure names the rule, its
+  // impact, and how many nodes tripped it, without dumping serialized axe nodes.
+  const relevant = violations
+    .filter((v) => targetRules.has(v.id))
+    .map((v) => ({id: v.id, impact: v.impact, nodes: v.nodes.length}));
 
-  if (relevant.length > 0) {
-    await testInfo.attach('axe-landmark-violations.json', {
-      body: JSON.stringify(relevant, null, 2),
-      contentType: 'application/json',
-    });
-    throw new Error(
-      `Found ${relevant.length} landmark/heading violations: ${relevant
-        .map((v) => `${v.id} (${v.impact})`)
-        .join(', ')}`
-    );
-  }
+  expect(relevant).toEqual([]);
 
   // Structural invariants: exactly one <main> (Layout-owned) and one <h1>.
   await expect(page.locator('main')).toHaveCount(1);
