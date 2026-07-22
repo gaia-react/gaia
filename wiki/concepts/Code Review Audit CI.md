@@ -159,9 +159,11 @@ Part 3 above stamps a check run **per job** of each dispatched run, mirroring th
 
 Break any one and a self-heal commit strands the pull request: the check is absent (or skipped) on the new HEAD, branch protection blocks the merge, and there is no bypass short of an admin override or a manual empty commit to re-fire `pull_request`.
 
-A job gated to `pull_request` that resolves its scope from the pull-request context (a `paths-filter` step, for instance) has no such context on a dispatch. Skipping that scoping step and running the job's real work unconditionally is the safer resolution: a re-trigger exists to produce a genuine green on the self-heal HEAD, and a full run is the only thing that proves one.
+A job that resolves its scope from the pull-request context (a `paths-filter` step, for instance) has no such context on a dispatch. Skipping that scoping step and running the job's real work unconditionally is the safer resolution: a re-trigger exists to produce a genuine green on the self-heal HEAD, and a full run is the only thing that proves one. Leaving a step gated on the skipped filter's output is its own trap, one level below condition 2: the step silently skips, the job still concludes `success`, and the stamped check is green over nothing.
 
-The whole invariant is a repo-visible property of the workflow files and the knob, so `.gaia/scripts/tests/retrigger-reachability.bats` asserts it for every declared-required context (`.gaia/scripts/verify-required-checks.sh`'s list). Nothing in the pull-request lane exercises the dispatch path, so a break is otherwise invisible until the first self-heal wedges a PR.
+A dispatched job also has to finish inside the poller's window. The poller waits 25 minutes per run and then gives up without stamping, so a job that outlives it leaves its context absent rather than red, which is the same wedge. Keep each dispatched job's `timeout-minutes` comfortably under that.
+
+The whole invariant is a repo-visible property of the workflow files and the knob, so `.gaia/scripts/tests/retrigger-reachability.bats` asserts it for every declared-required context (`.gaia/scripts/verify-required-checks.sh`'s list), including the step-level trap above. Nothing in the pull-request lane exercises the dispatch path, so a break is otherwise invisible until the first self-heal wedges a PR.
 
 <!-- gaia:maintainer-only:start -->
 On `gaia-react/gaia` the knob carries three maintainer-only entries beyond the shipped defaults (`CLI Tests`, `Audit CI Tests`, `Distribution Audit (PR)`), wrapped in maintainer-only markers so the release scrub strips them: their workflows are release-excluded, and naming them on an adopter clone would dispatch workflows that do not exist there.

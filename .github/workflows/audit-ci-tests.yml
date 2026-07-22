@@ -21,7 +21,9 @@ name: Audit CI Tests
 # without this trigger -- and without the job admitting it in its `if:` -- the
 # check is absent on the self-heal HEAD and branch protection blocks the merge.
 # Same shape as cli-tests.yml; .gaia/scripts/tests/retrigger-reachability.bats
-# guards the invariant for every declared-required context.
+# guards the invariant for every declared-required context. As there, GitHub
+# honors the trigger only for the default-branch copy of this file, so a
+# dispatch fails with 422 until it lands on main.
 on:
   push:
     branches: [ main ]
@@ -50,6 +52,13 @@ jobs:
     name: Audit CI Tests
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # The self-heal poller in code-review-audit.yml waits 25 minutes for a
+    # dispatched run, then gives up and stamps nothing, which leaves this
+    # required context ABSENT on the self-heal HEAD rather than merely red: the
+    # exact wedge the dispatch lane exists to prevent. Cap well under that
+    # window so a hung `apt-get` fails fast instead of inheriting the 6-hour
+    # runner default. The real runtime is a couple of minutes.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       # PRs that don't touch the audit scripts report this check green

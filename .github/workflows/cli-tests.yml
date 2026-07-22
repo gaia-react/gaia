@@ -10,6 +10,11 @@ name: CLI Tests
 # in their `if:` -- a self-heal commit leaves the check absent and branch
 # protection blocks the merge with no bypass short of an admin override.
 # .gaia/scripts/tests/retrigger-reachability.bats guards the whole invariant.
+#
+# GitHub honors `workflow_dispatch` only for the copy of a workflow on the
+# DEFAULT branch, so a dispatch of this file fails with 422 until it lands on
+# main; the audit logs and tolerates that failure. Expect it on the branch that
+# introduces the trigger, not after.
 on:
   push:
     branches: [ main ]

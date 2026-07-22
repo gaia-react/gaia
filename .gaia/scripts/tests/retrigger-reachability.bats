@@ -44,17 +44,53 @@ setup() {
 # point them at a doctored sandbox copy and prove the assertions are not hollow.
 # ---------------------------------------------------------------------------
 
-# Declared-required contexts, minus GAIA-Audit (a commit status, not a job).
-required_job_contexts() {
+# Every context `REQUIRED_CONTEXTS` declares, scraped by literal shape.
+declared_contexts() {
   sed -n '/^REQUIRED_CONTEXTS=(/,/^)/p' "$VERIFY" \
-    | sed -n 's/^  "\([^"]*\)".*$/\1/p' \
-    | grep -vxF -- "GAIA-Audit"
+    | sed -n 's/^  "\([^"]*\)".*$/\1/p'
 }
 
-# The workflow file declaring a job whose display name is <context>.
+# How many entries the array declares, counted without depending on the quoting
+# or indentation the scrape above keys on. Continuation comment lines inside the
+# array (the rationale after `Vitest (.gaia/cli)`) start with `#` and are excluded.
+declared_entry_count() {
+  sed -n '/^REQUIRED_CONTEXTS=(/,/^)/p' "$VERIFY" \
+    | sed '1d;$d' \
+    | grep -cE '^[[:space:]]*[^#[:space:]]'
+}
+
+# Guard the scrape before any assertion loops over it. A cosmetic edit to
+# `REQUIRED_CONTEXTS` (single quotes, a different indent, an inline comment
+# line) defeats the literal scrape, `declared_contexts` emits nothing, every
+# loop below runs zero iterations, and all three tests report green having
+# asserted nothing -- on the one invariant whose breakage wedges a pull request
+# permanently. Comparing against a shape-independent count catches a partial
+# scrape too, not only a total one.
+assert_extraction_intact() {
+  local got want
+  got="$(declared_contexts | grep -c .)"
+  want="$(declared_entry_count)"
+  [ "$want" -gt 0 ] || { echo "REQUIRED_CONTEXTS declares no entries" >&2; return 1; }
+  [ "$got" -eq "$want" ] || {
+    echo "scraped ${got} of ${want} REQUIRED_CONTEXTS entries; the array's literal shape changed" >&2
+    return 1
+  }
+}
+
+# Declared-required contexts, minus GAIA-Audit (a commit status, not a job).
+required_job_contexts() {
+  declared_contexts | grep -vxF -- "GAIA-Audit"
+}
+
+# The workflow file declaring a job whose display name is <context>. Both
+# extensions, matching the directory scan in verify-required-checks.sh.
 workflow_for_context() {
-  local dir="$1" ctx="$2"
-  grep -lxF -- "    name: ${ctx}" "$dir"/*.yml 2>/dev/null | head -n1
+  local dir="$1" ctx="$2" f
+  for f in "$dir"/*.yml "$dir"/*.yaml; do
+    [ -f "$f" ] || continue
+    grep -qxF -- "    name: ${ctx}" "$f" && { printf '%s' "$f"; return 0; }
+  done
+  return 0
 }
 
 # The job block (job-id line through the line before the next job-id line)
@@ -99,6 +135,7 @@ retrigger_workflow_names() {
 
 @test "every declared-required context's workflow declares workflow_dispatch" {
   local ctx file gaps=""
+  assert_extraction_intact
   while IFS= read -r ctx; do
     [ -n "$ctx" ] || continue
     file="$(workflow_for_context "$WORKFLOWS_DIR" "$ctx")"
@@ -121,6 +158,7 @@ retrigger_workflow_names() {
 
 @test "every declared-required context's job admits workflow_dispatch in its if:" {
   local ctx file expr gaps=""
+  assert_extraction_intact
   while IFS= read -r ctx; do
     [ -n "$ctx" ] || continue
     file="$(workflow_for_context "$WORKFLOWS_DIR" "$ctx")"
@@ -128,8 +166,54 @@ retrigger_workflow_names() {
     expr="$(job_block "$file" "$ctx" | job_if_expr)"
     # No `if:` at all is fine: the job runs on every trigger the workflow declares.
     printf '%s' "$expr" | grep -q '[^[:space:]]' || continue
-    printf '%s' "$expr" | grep -qF -- "workflow_dispatch" \
-      || gaps="${gaps}${ctx}: job if: excludes workflow_dispatch ->${expr}"$'\n'
+    # Require the event, and reject a negated mention: a bare token match reads
+    # `!= 'workflow_dispatch'` as satisfying the very condition it excludes.
+    if printf '%s' "$expr" | grep -qF -- "!= 'workflow_dispatch'"; then
+      gaps="${gaps}${ctx}: job if: negates workflow_dispatch ->${expr}"$'\n'
+    elif ! printf '%s' "$expr" | grep -qF -- "workflow_dispatch"; then
+      gaps="${gaps}${ctx}: job if: excludes workflow_dispatch ->${expr}"$'\n'
+    fi
+  done < <(required_job_contexts)
+
+  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# 2b. The job's own steps have to run too, or the job concludes `success`
+#     having done nothing and the audit stamps a vacuously green required check
+#     onto the self-heal HEAD.
+#
+#     This bites only where the job resolves its scope from a step that the
+#     dispatch lane skips: `dorny/paths-filter` reads changed files from the
+#     pull-request context, so a job that gates it to `pull_request` leaves
+#     `steps.filter.outputs.*` empty on a dispatch, and any step gated on that
+#     output alone silently skips. A job whose filter is a `run:` step that
+#     computes its own base (tests.yml, chromatic.yml) still populates the
+#     output on a dispatch and is correctly not subject to this rule.
+# ---------------------------------------------------------------------------
+
+# True when the job gates a `dorny/paths-filter` step to `pull_request`, so the
+# outputs it produces are unset on the dispatch lane.
+job_skips_filter_on_dispatch() {
+  local block="$1"
+  printf '%s' "$block" | grep -qF -- "dorny/paths-filter" || return 1
+  printf '%s' "$block" | grep -qxF -- "        if: github.event_name == 'pull_request'"
+}
+
+@test "no required-context job step is gated on a dispatch-skipped filter alone" {
+  local ctx file block gaps=""
+  assert_extraction_intact
+  while IFS= read -r ctx; do
+    [ -n "$ctx" ] || continue
+    file="$(workflow_for_context "$WORKFLOWS_DIR" "$ctx")"
+    [ -n "$file" ] || continue
+    block="$(job_block "$file" "$ctx")"
+    job_skips_filter_on_dispatch "$block" || continue
+    while IFS= read -r step_if; do
+      [ -n "$step_if" ] || continue
+      printf '%s' "$step_if" | grep -qF -- "workflow_dispatch" \
+        || gaps="${gaps}${ctx}: step gated on the skipped filter alone ->${step_if}"$'\n'
+    done < <(printf '%s' "$block" | grep -F -- "steps.filter.outputs.")
   done < <(required_job_contexts)
 
   [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
@@ -142,6 +226,7 @@ retrigger_workflow_names() {
 
 @test "every declared-required context's workflow is listed in retrigger_workflows" {
   local ctx file wf_name names gaps=""
+  assert_extraction_intact
   names="$(retrigger_workflow_names)"
   [ -n "$names" ] || { echo "retrigger_workflows resolved empty" >&2; return 1; }
 
@@ -190,4 +275,26 @@ retrigger_workflow_names() {
   printf '%s' "$expr" | grep -qF -- "workflow_dispatch" && return 1
 
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# Negative: a cosmetic reformat of REQUIRED_CONTEXTS defeats the literal scrape.
+# Without the extraction guard this empties every loop above and the whole suite
+# reports green having asserted nothing, so prove the guard catches it.
+# ---------------------------------------------------------------------------
+
+@test "negative: a REQUIRED_CONTEXTS reformat that defeats the scrape is caught" {
+  local original="$VERIFY"
+
+  # Same entries, single-quoted: the scrape's `^  "` anchor no longer matches.
+  VERIFY="$BATS_TEST_TMPDIR/verify-reformatted.sh"
+  sed "s/^  \"\([^\"]*\)\"/  '\1'/" "$original" > "$VERIFY"
+
+  # The scrape goes empty while the shape-independent count still sees entries.
+  [ "$(declared_contexts | grep -c .)" -eq 0 ] || { VERIFY="$original"; return 1; }
+  [ "$(declared_entry_count)" -gt 0 ] || { VERIFY="$original"; return 1; }
+
+  run assert_extraction_intact
+  VERIFY="$original"
+  [ "$status" -ne 0 ]
 }
