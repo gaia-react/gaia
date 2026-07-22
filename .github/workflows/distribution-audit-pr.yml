@@ -24,9 +24,21 @@ name: Distribution Audit (PR)
 # No `push:` trigger. The gate only ever has something to say about a proposed
 # change; a push-to-main run would be a no-op cluttering the dashboard. Merges
 # land via PR, so the PR run is the gate.
+#
+# `workflow_dispatch:` is the CI-mode self-heal lane, not a manual convenience.
+# A GITHUB_TOKEN-authored self-heal push fires no `pull_request` event, so
+# code-review-audit.yml re-dispatches the workflows named in
+# `.gaia/audit-ci.yml`'s `retrigger_workflows` and stamps each dispatched run's
+# per-JOB conclusion onto the new HEAD. `Distribution Audit` is a declared-
+# required context, so without this trigger the check is absent on the self-heal
+# HEAD and branch protection blocks the merge. The job carries no `if:`, so it
+# runs on both triggers; the step below resolves its own comparison range when
+# there is no pull-request payload to read one from.
+# .gaia/scripts/tests/retrigger-reachability.bats guards the invariant.
 on:
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -57,6 +69,21 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+
+          # A `workflow_dispatch` re-trigger carries no pull_request payload, so
+          # both SHAs arrive empty. `git diff A...B` defaults an omitted side to
+          # HEAD, so the range would collapse to `HEAD...HEAD`: an empty changed
+          # set, no offenders, and a vacuously green required check that audited
+          # nothing -- worse than a red one, because it looks like a pass.
+          # Resolve the same range from the dispatched ref instead: the branch
+          # tip against the default branch, which is what the PR's own
+          # base...head range resolves to anyway.
+          if [ -z "${BASE_SHA}" ] || [ -z "${HEAD_SHA}" ]; then
+            git fetch --no-tags origin main
+            BASE_SHA="$(git rev-parse FETCH_HEAD)"
+            HEAD_SHA="$(git rev-parse HEAD)"
+            echo "distribution gate: no pull_request context; comparing ${BASE_SHA}...${HEAD_SHA}"
+          fi
 
           # Files this PR adds or modifies on the head side. Three-dot compares
           # from the point head diverged from base, so only the PR's own changes
