@@ -521,6 +521,25 @@ assert_allowed() {
   assert_allowed
 }
 
+@test "the writer reached through a braced variable is denied" {
+  # `${VAR}` is the path form .claude/rules/repo-relative-paths.md teaches a
+  # member to use, so it must survive the bracket padding intact. Padding `{`
+  # and `}` would shred it into `"$` `{` `R` `}` `/…` and drop the writer token
+  # out of execution position entirely.
+  run_hook_bash "code-audit-frontend" 'bash "${R}/.gaia/scripts/write-audit-remits.sh"'
+  assert_denied
+}
+
+@test "the writer reached through a braced variable with no interpreter is denied" {
+  run_hook_bash "code-audit-frontend" '${R}/.gaia/scripts/write-audit-remits.sh'
+  assert_denied
+}
+
+@test "the writer reached through a braced variable after an interpreter option is denied" {
+  run_hook_bash "code-audit-frontend" 'sh -x ${D}/write-audit-remits.sh'
+  assert_denied
+}
+
 @test "bracket padding leaves the write-shape loop intact" {
   # The write-shape loop reads the UNPADDED token array. A subshell-wrapped
   # redirect into an allowed path must still be allowed.

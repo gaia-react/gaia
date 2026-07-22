@@ -156,7 +156,11 @@ case "$tool_name" in
     # while a bare newline is a command separator and folds to `;`. Folding a
     # continuation to a separator instead would break a continued
     # `cp` / `sed` / `tee` argument scan at the line boundary and allow the
-    # very write it is meant to deny.
+    # very write it is meant to deny. The fold is line-oriented and knows
+    # nothing about heredocs, so a heredoc BODY folds into command position
+    # too and can false-deny on data rather than on a command. That is an
+    # accepted over-deny, the safe direction here; narrowing it would mean
+    # tracking heredoc regions, not relaxing the fold.
     cmd="${cmd//\\$'\n'/ }"
     cmd="${cmd//$'\n'/ ; }"
 
@@ -201,26 +205,32 @@ case "$tool_name" in
     # operator produced it. Padding can also split a quoted argument, which
     # only ever widens the deny surface, the safe direction here.
     #
-    # A subshell `(` and a brace group `{` need the same padding for a second
-    # reason: unpadded they GLUE to the command they open, so `(bash <writer>`
-    # tokenizes as `(bash`, which is not the interpreter `bash`. Padded, they
-    # become standalone tokens that mark a boundary, and the command they open
-    # reads at an execution position. `)` and `}` are padded too, so a closer
-    # glued to the writer (`<writer>)`) cannot defeat the `${cand##*/}`
-    # basename match. Padding `(` deliberately makes `(cd foo && ...)` an
-    # execution position as well: over-denying is the safe direction for this
-    # guard. `)` and `}` are padded but NOT treated as boundaries below, since
-    # a real shell always needs a separator after them anyway and treating
-    # them as boundaries would put a quoted `awk '{...}'` program's trailing
-    # file argument at an execution position for no gain.
+    # A subshell opener needs the same padding for a second reason: unpadded it
+    # GLUES to the command it opens, so `(bash <writer>` tokenizes as `(bash`,
+    # which is not the interpreter `bash`. Padded, `(` becomes a standalone
+    # token that marks a boundary and the command it opens reads at an
+    # execution position; `)` is padded so a closer glued to the writer
+    # (`<writer>)`) cannot defeat the `${cand##*/}` basename match. Padding `(`
+    # deliberately makes `(cd foo && ...)` an execution position as well, and
+    # an array literal (`files=(<writer>)`) a false deny: over-denying is the
+    # safe direction for this guard.
+    #
+    # BRACES ARE DELIBERATELY NOT PADDED, and the asymmetry with `(` is the
+    # whole point. A brace group's `{` is ALREADY its own word in any command
+    # bash will run -- `{bash foo; }` is a syntax error, not a brace group --
+    # so padding would buy nothing, while `}` is already detached by the `;`
+    # padding above. What it would cost is severe: `${VAR}` would shred into
+    # `$` `{` `VAR` `}`, stranding the remainder of a `${ROOT}/<writer>` path
+    # outside execution position and reopening this very deny for the most
+    # idiomatic path form in the repo (see .claude/rules/repo-relative-paths.md,
+    # which teaches exactly that form). The brace group still denies, because
+    # `{` below is a boundary on its own already-separate token.
     esrc="$cmd"
     esrc="${esrc//;/ ; }"
     esrc="${esrc//&/ & }"
     esrc="${esrc//|/ | }"
     esrc="${esrc//(/ ( }"
     esrc="${esrc//)/ ) }"
-    esrc="${esrc//\{/ { }"
-    esrc="${esrc//\}/ \} }"
     read -r -a etoks <<<"$esrc"
     en=${#etoks[@]}
 
@@ -272,7 +282,9 @@ case "$tool_name" in
       # Single characters, not `&&` / `||`: the padding above has already
       # split every multi-character operator into adjacent single-character
       # tokens. `(` and `{` are openers rather than separators, but they mark
-      # the same thing this flag tracks: the next token starts a command.
+      # the same thing this flag tracks: the next token starts a command. `{`
+      # earns its place here without any padding of its own, since a real
+      # brace group always presents it as a separate word already.
       case "$cand" in
         ';' | '&' | '|' | '(' | '{') prev_sep=1 ;;
         *) prev_sep=0 ;;
