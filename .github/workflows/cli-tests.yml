@@ -1,10 +1,26 @@
 name: CLI Tests
 
+# `workflow_dispatch:` is the CI-mode self-heal lane, not a convenience. When
+# the Code Review Audit pushes a self-heal commit, GitHub's GITHUB_TOKEN
+# recursion guard fires no `pull_request` event for the new HEAD, so
+# code-review-audit.yml re-dispatches the workflows named in
+# `.gaia/audit-ci.yml`'s `retrigger_workflows` and stamps each dispatched run's
+# per-JOB conclusion onto that HEAD. `Vitest (.gaia/cli)` below is a declared-
+# required context, so without this trigger -- and without the jobs admitting it
+# in their `if:` -- a self-heal commit leaves the check absent and branch
+# protection blocks the merge with no bypass short of an admin override.
+# .gaia/scripts/tests/retrigger-reachability.bats guards the whole invariant.
+#
+# GitHub honors `workflow_dispatch` only for the copy of a workflow on the
+# DEFAULT branch, so a dispatch of this file fails with 422 until it lands on
+# main; the audit logs and tolerates that failure. Expect it on the branch that
+# introduces the trigger, not after.
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,7 +33,7 @@ permissions: {}
 jobs:
   cli-tests:
     name: Vitest (.gaia/cli)
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # This job is a declared-required context, so a wedged install or a hung
     # Vitest run would hold every PR at "Expected" for the 6-hour runner
@@ -40,7 +56,14 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       # Maintainer-only surface. PRs that don't touch the CLI source report
       # this required check green without installing or running anything.
+      #
+      # paths-filter resolves changed files from the pull-request context, which
+      # a `workflow_dispatch` run does not have, so the dispatch lane skips this
+      # step entirely and every step below falls back to running unconditionally.
+      # That is the intent of a re-trigger: it exists to produce a real green on
+      # the self-heal HEAD, and a full run is the only thing that proves one.
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        if: github.event_name == 'pull_request'
         id: filter
         with:
           filters: |
@@ -53,25 +76,25 @@ jobs:
               # of that equality, so a workflow-only edit must re-run the guard
               # or template drift lands silently.
               - '.github/workflows/code-review-audit.yml'
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
           cache-dependency-path: '.gaia/cli/pnpm-lock.yaml'
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Install CLI dependencies
         run: pnpm -C .gaia/cli install --frozen-lockfile
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Typecheck
         run: pnpm -C .gaia/cli typecheck
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Lint
         run: pnpm -C .gaia/cli lint
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run Vitest tests
         run: pnpm -C .gaia/cli test --run
       # PR-time mirror of release.yml's "Verify committed CLI binaries and
@@ -86,7 +109,7 @@ jobs:
       # Keep this step in lockstep with release.yml's copy. A gap here is not
       # caught anywhere else in the PR lane, and this job is a required check,
       # so what it misses merges.
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Verify committed CLI binaries and templates are rebuilt from src
         run: |
           cp .gaia/cli/gaia /tmp/gaia-committed
@@ -136,7 +159,12 @@ jobs:
   # maintainer-only surface adopters cannot see.
   distribution-harness:
     name: Distribution harness (no-Docker)
-    if: github.event_name == 'pull_request'
+    # Advisory, not a required context, but it shares this workflow with the
+    # required sibling above: one dispatch runs both, and the audit stamps a
+    # check run per JOB. Left gated to `pull_request` it would stamp a bare
+    # `skipped` onto the self-heal HEAD, which reads as a regression rather than
+    # the "not evaluated" it actually is.
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Same three consumers as cli-tests above; the scenarios run without a
@@ -148,8 +176,10 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       # PRs that touch neither the bundle inputs nor the harness report this
-      # check green without installing or running anything.
+      # check green without installing or running anything. Skipped on the
+      # dispatch lane for the same reason as the sibling job above.
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        if: github.event_name == 'pull_request'
         id: filter
         with:
           filters: |
@@ -160,9 +190,9 @@ jobs:
               # The harness itself: a scenario, lib, or runner edit must re-run.
               - '.gaia/tests/distribution/**'
               - '.github/workflows/cli-tests.yml'
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -176,7 +206,7 @@ jobs:
       # does not `pnpm -C .gaia/cli install`. Freshness of those binaries vs.
       # src is the sibling cli-tests job's concern; here we test the committed
       # bundle as-is, which is what the release tarball ships.
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Verify committed CLI binaries are present
         run: |
           for bin in .gaia/cli/gaia .gaia/cli/gaia-maintainer; do
@@ -185,7 +215,7 @@ jobs:
               exit 1
             fi
           done
-      - if: steps.filter.outputs.code == 'true'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run distribution scenarios (Layers 0+1 + adopter-flow; no token)
         # Intentionally no CLAUDE_CODE_OAUTH_TOKEN: keeps the Docker/secret
         # scenarios out of the required PR lane (they self-skip as soft PASS).
