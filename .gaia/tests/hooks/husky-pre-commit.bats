@@ -60,6 +60,20 @@ stage_and_run() {
     sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABS"
 }
 
+# Commit one file, then stage its deletion and run the hook. A deletion-only
+# commit is the arm-agnostic case: it matches an arm only when that arm's
+# --diff-filter carries `D`.
+stage_deletion_and_run() {
+  local path="$1"
+  mkdir -p "$REPO/$(dirname "$path")"
+  echo "// content" > "$REPO/$path"
+  git -C "$REPO" add "$path"
+  git -C "$REPO" commit --quiet -m "add $path"
+  git -C "$REPO" rm --quiet "$path"
+  run env PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" \
+    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABS"
+}
+
 # Substring assertions use grep, not `[[ ]]`: a false bare `[[ ]]` that is not
 # the test's last command does not fail the test on bash 3.2, which is what a
 # stock macOS bats resolves to. See .claude/rules/bats-assertions.md.
@@ -99,6 +113,33 @@ assert_gate_skipped() {
 # unreachable for an e2e-spec-only commit, the most common .playwright shape.
 @test ".playwright/ change runs the gate" {
   stage_and_run ".playwright/e2e/home.spec.ts"
+  assert_gate_ran
+}
+
+# --- a deletion in a lintable directory runs the gate ---
+#
+# Deleting a shared helper, fixture, or spec breaks the types of every file that
+# imported it, which is exactly what the skipped `pnpm typecheck` would catch.
+# All four arms therefore carry `D`; these tests pin that agreement so a future
+# edit cannot narrow one arm back without a failure.
+
+@test "app/ deletion runs the gate" {
+  stage_deletion_and_run "app/routes/home.tsx"
+  assert_gate_ran
+}
+
+@test "test/ deletion runs the gate" {
+  stage_deletion_and_run "test/setup.ts"
+  assert_gate_ran
+}
+
+@test ".storybook/ deletion runs the gate" {
+  stage_deletion_and_run ".storybook/preview.ts"
+  assert_gate_ran
+}
+
+@test ".playwright/ deletion runs the gate" {
+  stage_deletion_and_run ".playwright/e2e/home.spec.ts"
   assert_gate_ran
 }
 
