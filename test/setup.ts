@@ -7,8 +7,11 @@ import './test.server';
 
 // Fallback values for required server env vars: env.server.ts parses
 // process.env at import time; tests that import it transitively fail
-// in clean environments (no .env) without these defaults.
+// in clean environments (no .env) without these defaults. npm_package_version
+// needs one too: only a package-manager script sets it, so a directly
+// spawned Vitest (npx/pnpm exec, IDE integrations) has none.
 process.env.API_URL ??= 'http://localhost:3001';
+process.env.npm_package_version ??= '0.0.0';
 process.env.SESSION_SECRET ??= 'test-secret';
 process.env.SITE_URL ??= 'http://localhost:3000';
 
