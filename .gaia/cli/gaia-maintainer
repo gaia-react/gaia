@@ -22075,6 +22075,7 @@ var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
   ".github/workflows/code-review-audit.yml"
 ]);
 var PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
+var PATH_TRUNCATING_METACHAR = /[$*?[{]/;
 var stripCommentSuffix = (line) => {
   if (/^\s*#/.test(line)) return "";
   return line;
@@ -22084,7 +22085,11 @@ var expandPath = (line, start) => {
   while (end < line.length && PATH_BODY_CHAR.test(line[end])) {
     end += 1;
   }
-  return line.slice(start, end);
+  const value = line.slice(start, end);
+  return {
+    truncated: end < line.length && PATH_TRUNCATING_METACHAR.test(line[end]) && !value.endsWith("/"),
+    value
+  };
 };
 var isVariableExpansionContext = (line, found) => {
   let cursor = found - 1;
@@ -22110,8 +22115,9 @@ var consumeStep = (args) => {
   const leading = found === 0 ? "" : stripped[found - 1];
   const isSubstring = leading.length > 0 && PATH_BODY_CHAR.test(leading) && !isVariableExpansionContext(stripped, found);
   if (isSubstring) return { nextCursor: found + 1, ref: null };
-  const candidate = expandPath(stripped, found);
-  const nextCursor = found + candidate.length;
+  const { truncated, value } = expandPath(stripped, found);
+  const nextCursor = found + value.length;
+  const candidate = truncated ? value.slice(0, value.lastIndexOf("/") + 1) : value;
   if (candidate.length <= prefix.length) return { nextCursor, ref: null };
   const trimmed = trimTrailingDotsSlashes(candidate);
   if (trimmed.length <= prefix.length || PROSE_PATH_ALLOWLIST.has(trimmed)) {

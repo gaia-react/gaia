@@ -27,7 +27,8 @@ setup() {
 Audit CI Tests
 Run Chromatic
 Distribution Audit
-Vitest and Playwright"
+Vitest and Playwright
+Vitest (.gaia/cli)"
 }
 
 # ---------------------------------------------------------------------------
@@ -97,6 +98,22 @@ Vitest and Playwright"
   run ! grep -qF -- "- Vitest and Playwright" <<<"$prior_output"
 }
 
+@test "clean pass: advisory section omits a required job whose name carries punctuation" {
+  run "$SCRIPT" --repo gaia-react/gaia --branch main \
+    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET") \
+    --workflows-dir "$FIX/workflows-clean"
+  # "Vitest (.gaia/cli)" is the only declared-required context containing `(`,
+  # `)`, and `/`. It must survive the awk job-name extractor intact and then be
+  # recognized as required, so it appears as no advisory bullet.
+  grep -qF -- "- Vitest (.gaia/cli)" <<<"$output" && return 1
+  # That absence alone is satisfied two ways: the name was extracted and matched
+  # as required (intended), or the extractor dropped it (silent regression). Its
+  # non-required sibling in the same fixture carries the same `(`, `)`, and `/`,
+  # so it must be PRESENT. An extractor regex that stops accepting `/` fails
+  # here, which the absence assertion above can never do on its own.
+  assert_contains "- Distribution harness (.gaia/tests)"
+}
+
 @test "--ruleset-contexts - reads the live-required set from stdin" {
   run bash -c "printf '%s\n' \"$FULL_RULESET\" | \"$SCRIPT\" --repo gaia-react/gaia --branch main --ruleset-contexts - --workflows-dir \"$FIX/workflows-clean\""
   [ "$status" -eq 0 ]
@@ -110,7 +127,8 @@ Vitest and Playwright"
   local partial="Audit CI Tests
 Run Chromatic
 Distribution Audit
-Vitest and Playwright"
+Vitest and Playwright
+Vitest (.gaia/cli)"
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
     --ruleset-contexts <(printf '%s\n' "$partial") \
     --workflows-dir "$FIX/workflows-clean"
@@ -121,12 +139,22 @@ Vitest and Playwright"
   local partial="Audit CI Tests
 Run Chromatic
 Distribution Audit
-Vitest and Playwright"
+Vitest and Playwright
+Vitest (.gaia/cli)"
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
     --ruleset-contexts <(printf '%s\n' "$partial") \
     --workflows-dir "$FIX/workflows-clean"
   assert_contains "MISSING"
   assert_contains "GAIA-Audit"
+  # "exactly" is only true while `partial` above stays in sync with
+  # REQUIRED_CONTEXTS: a context added to the script but not to `partial` would
+  # leave both drift tests green while they silently degrade to "at least one
+  # missing", retiring the specific-context reporting they exist to guard.
+  # Pin the count so that desync fails loudly instead. Scope the count to the
+  # MISSING section: the Advisory section below it bullets identically.
+  local missing_bullets
+  missing_bullets=$(awk '/^MISSING/{f=1;next} /^Advisory/{f=0} f && /^  - /{c++} END{print c+0}' <<<"$output")
+  [ "$missing_bullets" -eq 1 ]
 }
 
 @test "drift: an empty live ruleset reports every declared-required context missing" {
@@ -142,6 +170,7 @@ Vitest and Playwright"
   assert_contains "Run Chromatic"
   assert_contains "Distribution Audit"
   assert_contains "Vitest and Playwright"
+  assert_contains "Vitest (.gaia/cli)"
 }
 
 # ---------------------------------------------------------------------------

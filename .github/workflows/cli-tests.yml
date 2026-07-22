@@ -19,11 +19,23 @@ jobs:
     name: Vitest (.gaia/cli)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # This job is a declared-required context, so a wedged install or a hung
+    # Vitest run would hold every PR at "Expected" for the 6-hour runner
+    # default. Fail fast instead; the real runtime is well under a minute.
+    timeout-minutes: 15
     # Checkout needs it to clone, and paths-filter and setup-node both default
     # their `token` input to `github.token` for the compare API and the
     # node-versions download. No step here passes a token to anything else.
+    #
+    # `pull-requests: read` is load-bearing for paths-filter, which resolves a
+    # PR's changed files through the API (the same reasoning spelled out in
+    # verify-required-checks.yml). Omitting it works only while this repo is
+    # public; the day it went private every run would 403 with "Resource not
+    # accessible by integration", and since this is a required context that
+    # would block every merge rather than redden one advisory check.
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       # Maintainer-only surface. PRs that don't touch the CLI source report
@@ -62,18 +74,29 @@ jobs:
       - if: steps.filter.outputs.code == 'true'
         name: Run Vitest tests
         run: pnpm -C .gaia/cli test --run
-      # PR-time mirror of release.yml's "Verify committed CLI binaries are
-      # rebuilt from src" gate. The committed .gaia/cli/gaia{,-maintainer}
-      # bundles are what the runtime and the release tarball actually execute,
-      # so a PR that edits .gaia/cli/src/** without rebuilding them would merge
-      # a stale binary that only the release cut later catches. Rebuilding is
-      # deterministic (esbuild), so a fresh bundle that differs from the
-      # committed one means the commit is stale; bundle is idempotent and fast.
+      # PR-time mirror of release.yml's "Verify committed CLI binaries and
+      # templates are rebuilt from src" gate. The committed
+      # .gaia/cli/gaia{,-maintainer} bundles are what the runtime and the
+      # release tarball actually execute, so a PR that edits .gaia/cli/src/**
+      # without rebuilding them would merge a stale binary that only the
+      # release cut later catches. Rebuilding is deterministic (esbuild), so a
+      # fresh bundle that differs from the committed one means the commit is
+      # stale; bundle is idempotent and fast.
+      #
+      # Keep this step in lockstep with release.yml's copy. A gap here is not
+      # caught anywhere else in the PR lane, and this job is a required check,
+      # so what it misses merges.
       - if: steps.filter.outputs.code == 'true'
-        name: Verify committed CLI binaries are rebuilt from src
+        name: Verify committed CLI binaries and templates are rebuilt from src
         run: |
           cp .gaia/cli/gaia /tmp/gaia-committed
           cp .gaia/cli/gaia-maintainer /tmp/gaia-maintainer-committed
+          # bundle:adopter regenerates .gaia/cli/templates/ from src as a side
+          # effect (rm -rf templates && cp -r src/scaffold/templates ...),
+          # decoupled from the bundled binary bytes. Snapshot the committed copy
+          # before the bundle overwrites it so the diff below can see drift.
+          rm -rf /tmp/templates-committed
+          cp -r .gaia/cli/templates /tmp/templates-committed
           pnpm -C .gaia/cli bundle
           if ! cmp -s /tmp/gaia-committed .gaia/cli/gaia; then
             echo "::error::.gaia/cli/gaia is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
@@ -81,6 +104,16 @@ jobs:
           fi
           if ! cmp -s /tmp/gaia-maintainer-committed .gaia/cli/gaia-maintainer; then
             echo "::error::.gaia/cli/gaia-maintainer is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
+            exit 1
+          fi
+          # Template content resolves at runtime via import.meta.url and never
+          # enters the bundled binary, so the byte-cmp above cannot catch a
+          # stale committed template. The dogfood drift-guard in the Vitest step
+          # covers only templates/workflows/; component/, hook/, route/, and
+          # service/ have no other guard in this lane. Diff the regenerated tree
+          # against the snapshot taken before the bundle.
+          if ! diff -rq /tmp/templates-committed .gaia/cli/templates; then
+            echo "::error::.gaia/cli/templates is stale: regenerating from src (pnpm -C .gaia/cli bundle) produces different template files. Run the bundle and commit the result." >&2
             exit 1
           fi
 
@@ -96,10 +129,11 @@ jobs:
   # CLAUDE_CODE_OAUTH_TOKEN, so the Docker/secret-dependent scenarios (06, and
   # 15's advisory model probe) soft-pass-skip via their own guards; the full
   # Layers 0+1+2 run stays with release.yml and distribution.yml, which have the
-  # org secret. Not a declared-required context (see verify-required-checks.sh);
-  # like the sibling cli-tests job it always runs and reports green when the
-  # filter does not match, so it is branch-protection-safe without ever
-  # forcing a merge block from a maintainer-only surface adopters cannot see.
+  # org secret. Not a declared-required context (see verify-required-checks.sh),
+  # unlike the sibling cli-tests job. It shares that job's always-runs shape --
+  # reporting green when the filter does not match -- so it is
+  # branch-protection-safe without ever forcing a merge block from a
+  # maintainer-only surface adopters cannot see.
   distribution-harness:
     name: Distribution harness (no-Docker)
     if: github.event_name == 'pull_request'
@@ -107,8 +141,10 @@ jobs:
     timeout-minutes: 15
     # Same three consumers as cli-tests above; the scenarios run without a
     # token by design (see the step name at the harness invocation below).
+    # `pull-requests: read` is paths-filter's, for the same reason given there.
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       # PRs that touch neither the bundle inputs nor the harness report this
