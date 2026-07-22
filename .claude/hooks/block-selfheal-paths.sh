@@ -134,6 +134,71 @@ deny_reason() {
   printf 'BLOCKED: self-heal may not edit %s -- off-limits to the repair boundary (tests, the CI pipeline, .gaia/ gate & roster machinery, instruction/convention surfaces, or root build config). This is a defect to report as a finding, not to repair. See .claude/hooks/lib/audit-selfheal-paths.sh.' "$1"
 }
 
+# scan_exec_positions <token>...: deny when the remit writer basename appears
+# at an EXECUTION position in the given token stream. Denies or returns; never
+# reports back, since `deny` exits.
+#
+# Called once per tokenization (see the Bash branch below). Every piece of
+# state is `local`, so the two calls cannot leak boundary or interpreter state
+# into each other.
+scan_exec_positions() {
+  local prev_sep=1 after_interp=0 after_interp_env=0 cand exec_pos skip
+
+  for cand in "$@"; do
+    cand=$(strip_quotes "$cand")
+
+    exec_pos=0
+    [ "$prev_sep" -eq 1 ] && exec_pos=1
+
+    if [ "$after_interp" -eq 1 ]; then
+      skip=0
+      case "$cand" in
+        -c) ;;
+        -*) skip=1 ;;
+      esac
+      if [ "$skip" -eq 0 ] && [ "$after_interp_env" -eq 1 ]; then
+        case "$cand" in
+          [A-Za-z_]*=*) skip=1 ;;
+        esac
+      fi
+      if [ "$skip" -eq 0 ]; then
+        exec_pos=1
+        after_interp=0
+      fi
+    fi
+
+    if [ "$exec_pos" -eq 1 ]; then
+      case "${cand##*/}" in
+        write-audit-remits.sh)
+          deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites every code-audit-*.md definition under .claude/agents/, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
+          ;;
+      esac
+      case "$cand" in
+        bash | sh | zsh | nohup)
+          after_interp=1
+          after_interp_env=0
+          ;;
+        env)
+          after_interp=1
+          after_interp_env=1
+          ;;
+      esac
+    fi
+
+    # Single characters, not `&&` / `||`: the separator padding has already
+    # split every multi-character operator into adjacent single-character
+    # tokens. `(` and `{` are openers rather than separators, but they mark
+    # the same thing this flag tracks: the next token starts a command. `{`
+    # earns its place here without any padding of its own, since a real brace
+    # group always presents it as a separate word already. In the unpadded
+    # stream these arms simply never match a lone bracket, which is correct.
+    case "$cand" in
+      ';' | '&' | '|' | '(' | '{') prev_sep=1 ;;
+      *) prev_sep=0 ;;
+    esac
+  done
+}
+
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
 case "$tool_name" in
@@ -147,6 +212,22 @@ case "$tool_name" in
   Bash)
     cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
     [[ -n "$cmd" ]] || exit 0
+
+    # `read` stops at the first newline, so a multi-line payload would leave
+    # everything past line 1 untokenized and invisible to BOTH scans below.
+    # Fold the payload onto one line once, here, ahead of both `read -r -a`
+    # calls. The two newline kinds are not interchangeable: a
+    # backslash-newline is a line CONTINUATION and folds to a plain space,
+    # while a bare newline is a command separator and folds to `;`. Folding a
+    # continuation to a separator instead would break a continued
+    # `cp` / `sed` / `tee` argument scan at the line boundary and allow the
+    # very write it is meant to deny. The fold is line-oriented and knows
+    # nothing about heredocs, so a heredoc BODY folds into command position
+    # too and can false-deny on data rather than on a command. That is an
+    # accepted over-deny, the safe direction here; narrowing it would mean
+    # tracking heredoc regions, not relaxing the fold.
+    cmd="${cmd//\\$'\n'/ }"
+    cmd="${cmd//$'\n'/ ; }"
 
     read -r -a toks <<<"$cmd"
     n=${#toks[@]}
@@ -166,10 +247,12 @@ case "$tool_name" in
     # `env FOO=1 <writer>`, and `nohup <writer>` all deny. `-c` is never
     # treated as a skippable option: its argument is a quoted script STRING
     # this whitespace tokenizer cannot safely parse, so `bash -c '<writer>'`
-    # is left exactly as it was (a stated, out-of-scope gap; same for any
-    # invocation past line 1, since `read -r -a toks` above only tokenizes
-    # the first line). A read-only command that merely NAMES the file as an
-    # argument (`shellcheck .gaia/scripts/write-audit-remits.sh`, `cat ...`,
+    # is a stated, out-of-scope gap. A backtick-quoted invocation is a second
+    # stated gap, and deliberately not closed the way the brackets below are:
+    # a backtick is common inside ordinary quoted prose (a commit message
+    # naming a script), so padding it would false-deny commands that write
+    # nothing. A read-only command that merely NAMES the file as an argument
+    # (`shellcheck .gaia/scripts/write-audit-remits.sh`, `cat ...`,
     # `git log --grep ...`) is not an invocation of it and must stay allowed.
     #
     # A separator only ends a token when whitespace happens to follow it, so
@@ -186,68 +269,48 @@ case "$tool_name" in
     # because this scan only asks whether a boundary occurred, never which
     # operator produced it. Padding can also split a quoted argument, which
     # only ever widens the deny surface, the safe direction here.
-    esrc="$cmd"
-    esrc="${esrc//;/ ; }"
-    esrc="${esrc//&/ & }"
-    esrc="${esrc//|/ | }"
+    #
+    # A subshell opener needs the same padding for a second reason: unpadded it
+    # GLUES to the command it opens, so `(bash <writer>` tokenizes as `(bash`,
+    # which is not the interpreter `bash`. Padded, `(` becomes a standalone
+    # token that marks a boundary and the command it opens reads at an
+    # execution position; `)` is padded so a closer glued to the writer
+    # (`<writer>)`) cannot defeat the `${cand##*/}` basename match. Padding `(`
+    # deliberately makes `(cd foo && ...)` an execution position as well, and
+    # an array literal (`files=(<writer>)`) a false deny: over-denying is the
+    # safe direction for this guard.
+    #
+    # PADDING SHREDS, so the scan never trusts a single tokenization. Any
+    # character padded into a standalone token also splits every construct
+    # that embeds it mid-word: `(` shreds `$(pwd)/<writer>` into `"$` `(`
+    # `pwd` `)` `/<writer>`, stranding the basename away from an execution
+    # position. Padding `{` would do the identical thing to `${ROOT}/<writer>`,
+    # the path form .claude/rules/repo-relative-paths.md teaches, which is why
+    # braces are NOT padded (and do not need to be: `{bash foo; }` is a syntax
+    # error, so a real brace group already presents `{` as its own word, and
+    # `}` is already detached by the `;` padding).
+    #
+    # Rather than hand-audit each padded character for that hazard, scan BOTH
+    # tokenizations and take the union. The scan only ever denies, so a second
+    # pass is structurally incapable of losing a deny: whatever a padded
+    # stream shreds, the unpadded stream still carries whole. That makes the
+    # guard immune to this class for any character padded here in future,
+    # rather than fixing one bracket at a time.
+    ssrc="$cmd"
+    ssrc="${ssrc//;/ ; }"
+    ssrc="${ssrc//&/ & }"
+    ssrc="${ssrc//|/ | }"
+    esrc="$ssrc"
+    esrc="${esrc//(/ ( }"
+    esrc="${esrc//)/ ) }"
+    read -r -a stoks <<<"$ssrc"
     read -r -a etoks <<<"$esrc"
-    en=${#etoks[@]}
 
-    prev_sep=1
-    after_interp=0
-    after_interp_env=0
-    k=0
-    while [ "$k" -lt "$en" ]; do
-      cand=$(strip_quotes "${etoks[$k]}")
-
-      exec_pos=0
-      [ "$prev_sep" -eq 1 ] && exec_pos=1
-
-      if [ "$after_interp" -eq 1 ]; then
-        skip=0
-        case "$cand" in
-          -c) ;;
-          -*) skip=1 ;;
-        esac
-        if [ "$skip" -eq 0 ] && [ "$after_interp_env" -eq 1 ]; then
-          case "$cand" in
-            [A-Za-z_]*=*) skip=1 ;;
-          esac
-        fi
-        if [ "$skip" -eq 0 ]; then
-          exec_pos=1
-          after_interp=0
-        fi
-      fi
-
-      if [ "$exec_pos" -eq 1 ]; then
-        case "${cand##*/}" in
-          write-audit-remits.sh)
-            deny "BLOCKED: a dispatched Code Audit Team member may not run the remit writer (.gaia/scripts/write-audit-remits.sh). Regenerating a remit region rewrites every code-audit-*.md definition under .claude/agents/, which are audit-machinery paths: it rotates every member's content digest and invalidates every clearance marker on this PR. Reporting the remit drift as a finding is your only correct action here; repairing it is the orchestrator's, never a member's."
-            ;;
-        esac
-        case "$cand" in
-          bash | sh | zsh | nohup)
-            after_interp=1
-            after_interp_env=0
-            ;;
-          env)
-            after_interp=1
-            after_interp_env=1
-            ;;
-        esac
-      fi
-
-      # Single characters, not `&&` / `||`: the padding above has already
-      # split every multi-character operator into adjacent single-character
-      # tokens.
-      case "$cand" in
-        ';' | '&' | '|') prev_sep=1 ;;
-        *) prev_sep=0 ;;
-      esac
-
-      k=$((k + 1))
-    done
+    # `${arr[@]+"${arr[@]}"}` is required, not decoration: bash 3.2 under
+    # `set -u` errors on an empty-array expansion, the class
+    # .gaia/scripts/lint-hook-array-guard.sh exists to catch.
+    scan_exec_positions ${stoks[@]+"${stoks[@]}"}
+    scan_exec_positions ${etoks[@]+"${etoks[@]}"}
 
     i=0
     while [ "$i" -lt "$n" ]; do
