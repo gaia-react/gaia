@@ -42,6 +42,10 @@ REQUIRED_CONTEXTS=(
   "Run Chromatic"                     # .github/workflows/chromatic.yml
   "Distribution Audit"                # .github/workflows/distribution-audit-pr.yml (SPEC-044)
   "Vitest and Playwright"             # .github/workflows/tests.yml
+  "Vitest (.gaia/cli)"                # .github/workflows/cli-tests.yml; its
+                                      # reproducibility step is the only gate on
+                                      # the committed CLI bundles, and a stale
+                                      # bundle silently disarms /gaia-release
 )
 
 repo=""

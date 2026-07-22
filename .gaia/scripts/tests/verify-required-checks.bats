@@ -27,7 +27,8 @@ setup() {
 Audit CI Tests
 Run Chromatic
 Distribution Audit
-Vitest and Playwright"
+Vitest and Playwright
+Vitest (.gaia/cli)"
 }
 
 # ---------------------------------------------------------------------------
@@ -110,7 +111,8 @@ Vitest and Playwright"
   local partial="Audit CI Tests
 Run Chromatic
 Distribution Audit
-Vitest and Playwright"
+Vitest and Playwright
+Vitest (.gaia/cli)"
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
     --ruleset-contexts <(printf '%s\n' "$partial") \
     --workflows-dir "$FIX/workflows-clean"
@@ -121,7 +123,8 @@ Vitest and Playwright"
   local partial="Audit CI Tests
 Run Chromatic
 Distribution Audit
-Vitest and Playwright"
+Vitest and Playwright
+Vitest (.gaia/cli)"
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
     --ruleset-contexts <(printf '%s\n' "$partial") \
     --workflows-dir "$FIX/workflows-clean"
@@ -142,6 +145,7 @@ Vitest and Playwright"
   assert_contains "Run Chromatic"
   assert_contains "Distribution Audit"
   assert_contains "Vitest and Playwright"
+  assert_contains "Vitest (.gaia/cli)"
 }
 
 # ---------------------------------------------------------------------------

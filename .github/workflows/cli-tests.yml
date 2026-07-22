@@ -96,10 +96,11 @@ jobs:
   # CLAUDE_CODE_OAUTH_TOKEN, so the Docker/secret-dependent scenarios (06, and
   # 15's advisory model probe) soft-pass-skip via their own guards; the full
   # Layers 0+1+2 run stays with release.yml and distribution.yml, which have the
-  # org secret. Not a declared-required context (see verify-required-checks.sh);
-  # like the sibling cli-tests job it always runs and reports green when the
-  # filter does not match, so it is branch-protection-safe without ever
-  # forcing a merge block from a maintainer-only surface adopters cannot see.
+  # org secret. Not a declared-required context (see verify-required-checks.sh),
+  # unlike the sibling cli-tests job. It shares that job's always-runs shape --
+  # reporting green when the filter does not match -- so it is
+  # branch-protection-safe without ever forcing a merge block from a
+  # maintainer-only surface adopters cannot see.
   distribution-harness:
     name: Distribution harness (no-Docker)
     if: github.event_name == 'pull_request'
