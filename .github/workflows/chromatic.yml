@@ -93,5 +93,8 @@ jobs:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           MSW_ENABLED: ${{ secrets.MSW_ENABLED || 'true' }}
           npm_package_version: ${{ steps.package-version.outputs.current-version}}
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'ci-placeholder-session-secret-not-real' }}
+          # Storybook never signs a cookie, so this only has to satisfy the
+          # required z.string() in app/env.server.ts. Keep it a literal: the real
+          # secret has no reason to enter a build that publishes a public artifact.
+          SESSION_SECRET: 'storybook-placeholder-not-used-for-signing'
           SITE_URL: ${{ secrets.SITE_URL || 'http://localhost:3000' }}
