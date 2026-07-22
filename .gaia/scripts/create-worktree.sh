@@ -41,7 +41,26 @@ if [[ "$worktree_name" == *..* || "$worktree_name" == /* ]]; then
   exit 1
 fi
 
-project_root="$(git rev-parse --show-toplevel)"
+# Resolve the MAIN checkout, which every path below is relative to: the
+# .claude/worktrees/ base, the borrowed react-router CLI, and the per-name lock
+# dir (link-worktree.sh shares five .gaia/local/ paths into a worktree, and the
+# lock dir is not one of them). The hook can fire from any tree of the repo, and
+# `--show-toplevel` answers with whichever one that is, so a run from inside a
+# linked worktree would nest its worktree there, look for a node_modules the
+# worktree does not have, and lock where no peer contends. `--git-common-dir` is
+# identical from every tree, so dirname(absolute(it)) names the main checkout
+# from anywhere. Same derivation as remove-worktree.sh and link-worktree.sh.
+#
+# Unguarded on purpose: outside a git repo this exits 128 and `set -e` aborts
+# the hook, because a root that cannot be resolved has no worktree to create.
+# `pwd -P` keeps the root physical, so a symlinked checkout resolves the same
+# way git's own path reporting does.
+common_dir="$(git rev-parse --git-common-dir)"
+case "$common_dir" in
+  /*) absolute_common_dir="$common_dir" ;;
+  *)  absolute_common_dir="$PWD/$common_dir" ;;
+esac
+project_root="$(cd "$(dirname "$absolute_common_dir")" && pwd -P)"
 
 # No base ref is carried in the WorktreeCreate payload, so derive one: honor a
 # ref if a future harness version supplies it, else branch fresh from the remote
