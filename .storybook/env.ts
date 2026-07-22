@@ -5,6 +5,5 @@ window.process.env = {
   MSW_ENABLED: import.meta.env.MSW_ENABLED,
   NODE_ENV: import.meta.env.NODE_ENV,
   npm_package_version: import.meta.env.npm_package_version,
-  SESSION_SECRET: import.meta.env.SESSION_SECRET,
   SITE_URL: import.meta.env.SITE_URL,
 };

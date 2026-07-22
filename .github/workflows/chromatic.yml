@@ -8,10 +8,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. Each job below grants exactly what it needs.
+permissions: {}
+
 jobs:
   has-chromatic-token:
     name: Check for Chromatic token
     runs-on: ubuntu-latest
+    # Reads a secret's presence and echoes a boolean. No API calls, no token.
+    permissions: {}
     outputs:
       present: ${{ steps.check.outputs.present }}
     steps:
@@ -25,6 +31,15 @@ jobs:
     needs: has-chromatic-token
     if: needs.has-chromatic-token.outputs.present == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    # `contents: read` is the complete set, not an under-scoped starting point.
+    # Checkout needs it to clone, and paths-filter and setup-node both default
+    # their `token` input to `github.token` for the compare API and the
+    # node-versions download. chromaui/action calls no GitHub API and takes no
+    # token: Chromatic authenticates with `projectToken`, and its commit
+    # statuses arrive through the Chromatic GitHub App installation. Nothing
+    # here needs write, so do not widen this when Chromatic statuses misbehave.
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -80,7 +95,6 @@ jobs:
         name: Run Chromatic
         uses: chromaui/action@8d925269a481085d451544f6bd9aa2ab3af55b5d # v16.9.1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           exitZeroOnChanges: true
           exitOnceUploaded: true
@@ -93,5 +107,8 @@ jobs:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           MSW_ENABLED: ${{ secrets.MSW_ENABLED || 'true' }}
           npm_package_version: ${{ steps.package-version.outputs.current-version}}
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'ci-placeholder-session-secret-not-real' }}
+          # Storybook never signs a cookie, so this only has to satisfy the
+          # required z.string() in app/env.server.ts. Keep it a literal: the real
+          # secret has no reason to enter a build that publishes a public artifact.
+          SESSION_SECRET: 'storybook-placeholder-not-used-for-signing'
           SITE_URL: ${{ secrets.SITE_URL || 'http://localhost:3000' }}

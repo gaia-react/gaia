@@ -615,7 +615,7 @@ YAML
   # between them over every definition, and still exits 0.
   [ "$(id -u)" -eq 0 ] && skip "running as root: mode 500 does not deny the write"
 
-  local r="$BATS_TEST_TMPDIR/unwritable-tmpdir"
+  local r="$BATS_TEST_TMPDIR/unwritable-body-dir"
   fixture_root "$r" <<'YAML'
 auditors:
   - name: code-audit-default
@@ -631,7 +631,10 @@ YAML
   # a random mktemp suffix, so no fixture can chmod it by name beforehand. The
   # shim delegates to the real mktemp, then strips write permission from what
   # it just created, leaving it readable and traversable so the body write is
-  # the only thing that fails.
+  # the only thing that fails. It chmods every mktemp in the writer's process
+  # tree, so it assumes exactly one call site there; a second one, such as in
+  # the verify-audit-roster.sh child, breaks that call first and surfaces as
+  # `--emit-roster failed` rather than as an obvious shim problem.
   local shim real_mktemp
   shim="$BATS_TEST_TMPDIR/mktemp-shim"
   mkdir -p "$shim"

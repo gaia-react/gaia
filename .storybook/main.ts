@@ -37,9 +37,6 @@ const config: StorybookConfig = {
         'import.meta.env.npm_package_version': JSON.stringify(
           process.env.npm_package_version
         ),
-        'import.meta.env.SESSION_SECRET': JSON.stringify(
-          process.env.SESSION_SECRET
-        ),
         'import.meta.env.SITE_URL': JSON.stringify(process.env.SITE_URL),
       },
       resolve: {tsconfigPaths: true},
