@@ -98,6 +98,19 @@ Vitest (.gaia/cli)"
   run ! grep -qF -- "- Vitest and Playwright" <<<"$prior_output"
 }
 
+@test "clean pass: advisory section omits a required job whose name carries punctuation" {
+  run "$SCRIPT" --repo gaia-react/gaia --branch main \
+    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET") \
+    --workflows-dir "$FIX/workflows-clean"
+  # "Vitest (.gaia/cli)" is the only declared-required context containing `(`,
+  # `)`, and `/`. It must survive the awk job-name extractor intact and then be
+  # recognized as required, so it appears as no advisory bullet.
+  grep -qF -- "- Vitest (.gaia/cli)" <<<"$output" && return 1
+  # Guard the inverse: a silent extractor change that dropped the job entirely
+  # would also satisfy the assertion above, so prove the fixture is being read.
+  assert_contains "shellcheck (tracked *.sh)"
+}
+
 @test "--ruleset-contexts - reads the live-required set from stdin" {
   run bash -c "printf '%s\n' \"$FULL_RULESET\" | \"$SCRIPT\" --repo gaia-react/gaia --branch main --ruleset-contexts - --workflows-dir \"$FIX/workflows-clean\""
   [ "$status" -eq 0 ]
@@ -130,6 +143,15 @@ Vitest (.gaia/cli)"
     --workflows-dir "$FIX/workflows-clean"
   assert_contains "MISSING"
   assert_contains "GAIA-Audit"
+  # "exactly" is only true while `partial` above stays in sync with
+  # REQUIRED_CONTEXTS: a context added to the script but not to `partial` would
+  # leave both drift tests green while they silently degrade to "at least one
+  # missing", retiring the specific-context reporting they exist to guard.
+  # Pin the count so that desync fails loudly instead. Scope the count to the
+  # MISSING section: the Advisory section below it bullets identically.
+  local missing_bullets
+  missing_bullets=$(awk '/^MISSING/{f=1;next} /^Advisory/{f=0} f && /^  - /{c++} END{print c+0}' <<<"$output")
+  [ "$missing_bullets" -eq 1 ]
 }
 
 @test "drift: an empty live ruleset reports every declared-required context missing" {
