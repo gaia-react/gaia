@@ -7,6 +7,7 @@ export default defineConfig([
   ...lint.ignores({extra: ['.gaia/**']}),
   ...lint.base,
   ...lint.react,
+  ...lint.reactRouter,
   ...lint.testing,
   ...lint.storybook,
   ...lint.playwright,
