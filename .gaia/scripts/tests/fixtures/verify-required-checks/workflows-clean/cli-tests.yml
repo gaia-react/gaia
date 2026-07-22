@@ -5,6 +5,12 @@ name: CLI Tests
 # advisory scan through the awk job-name extractor in verify-required-checks.sh.
 # A future tightening of that extractor's job-name regex that dropped punctuated
 # names would otherwise go uncaught.
+#
+# Two jobs, deliberately: one required, one not. Asserting only that the
+# required name is ABSENT from the advisory list is satisfied both by "matched
+# as required" and by "the extractor dropped it", so the non-required sibling
+# carries the same `(`, `)`, and `/` punctuation and must be PRESENT. A regex
+# tightening that drops slash-bearing names fails that positive assertion.
 
 on:
   pull_request:
@@ -15,4 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run CLI vitest
+        run: true
+
+  distribution-harness:
+    name: Distribution harness (.gaia/tests)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run distribution scenarios
         run: true

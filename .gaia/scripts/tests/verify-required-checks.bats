@@ -106,9 +106,12 @@ Vitest (.gaia/cli)"
   # `)`, and `/`. It must survive the awk job-name extractor intact and then be
   # recognized as required, so it appears as no advisory bullet.
   grep -qF -- "- Vitest (.gaia/cli)" <<<"$output" && return 1
-  # Guard the inverse: a silent extractor change that dropped the job entirely
-  # would also satisfy the assertion above, so prove the fixture is being read.
-  assert_contains "shellcheck (tracked *.sh)"
+  # That absence alone is satisfied two ways: the name was extracted and matched
+  # as required (intended), or the extractor dropped it (silent regression). Its
+  # non-required sibling in the same fixture carries the same `(`, `)`, and `/`,
+  # so it must be PRESENT. An extractor regex that stops accepting `/` fails
+  # here, which the absence assertion above can never do on its own.
+  assert_contains "- Distribution harness (.gaia/tests)"
 }
 
 @test "--ruleset-contexts - reads the live-required set from stdin" {
