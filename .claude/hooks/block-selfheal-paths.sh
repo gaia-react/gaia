@@ -277,8 +277,10 @@ case "$tool_name" in
     # execution position; `)` is padded so a closer glued to the writer
     # (`<writer>)`) cannot defeat the `${cand##*/}` basename match. Padding `(`
     # deliberately makes `(cd foo && ...)` an execution position as well, and
-    # an array literal (`files=(<writer>)`) a false deny: over-denying is the
-    # safe direction for this guard.
+    # turns both an array literal (`files=(<writer>)`) and paren-led quoted
+    # prose (`echo "(<writer>)"`, the likeliest of the three to be hit in
+    # practice) into a false deny: over-denying is the safe direction for this
+    # guard.
     #
     # PADDING SHREDS, so the scan never trusts a single tokenization. Any
     # character padded into a standalone token also splits every construct
