@@ -115,7 +115,7 @@ const VALUE_FLAGS: Readonly<Record<string, keyof Flags>> = {
 };
 
 // `Record<string, T>` indexing types as `T`, never `undefined`, without
-// `noUncheckedIndexedAccess` — but `token` may not be one of VALUE_FLAGS'
+// `noUncheckedIndexedAccess`, but `token` may not be one of VALUE_FLAGS'
 // five known keys, and that absence is exactly what routes to the
 // unknown-flag branch below.
 const lookupValueFlag = (token: string): keyof Flags | undefined =>

@@ -69,7 +69,7 @@ Files deleted upstream (in baseline, not in latest):
 
 ## Generated regions
 
-Some shipped files carry a marker-delimited region whose body is machine-generated, rewritten by a command rather than edited by hand. The release manifest declares each one: its marker pair, the paths that carry it, and the command that regenerates it.
+Some shipped files carry a marker-delimited region whose body is machine-generated, rewritten by a command rather than edited by hand. The release manifest declares each one: its marker pair, the paths that carry it, and the command that regenerates it. See [[Generated Regions]] for the declaration shape, the marker contract, and the trust model; this section covers only where the merge walk's Step 7 branches for a declared path and where Step 7d's regeneration sits in the flow.
 
 `gaia update merge-region --baseline <file> --latest <file> --current <file> --start-marker <text> --end-marker <text>` compares the three sides with each region body replaced by a single placeholder line, so a divergence confined to a generated region does not read as adopter drift. It returns one of `no-upstream-change`, `no-adopter-drift`, `already-latest`, or `conflict`, and prints the normalized forms alongside the verdict with `--json`. The command only reports; it writes nothing.
 
