@@ -54,6 +54,21 @@
 #   audit, telemetry, debt. Prints nothing and returns 1 when the registry
 #   cannot be read (see gaia_registry_path).
 #
+# gaia_registry_main_only_dirs
+#   Prints, one per line in a STABLE order, the .gaia/local-relative top-level
+#   directory of every scope=="main-only" entry with kind=="dir": the
+#   directories wholly anchored to the main checkout. A linked worktree has no
+#   own copy of these, so a write to one from a worktree resolves to main by
+#   construction and is legitimate, not a wrong-checkout write. The checkout-
+#   boundary write-guard reads this (alongside gaia_registry_linkable_paths)
+#   to know which main-checkout writes to exempt, instead of hand-listing
+#   plans/ and specs/. Kind=="dir" is load-bearing: it keeps a main-only FILE
+#   entry (e.g. cache/gh-artifact-pr.json) from exempting its whole first
+#   segment (cache/), which also holds per-tree and ephemeral state. Derived
+#   from the registry, never hardcoded; today this is specs, plans,
+#   worktree-locks. Prints nothing and returns 1 when the registry cannot be
+#   read (see gaia_registry_path).
+#
 # gaia_registry_drop_zones
 #   Prints, one per line in registry order, the .gaia/local-relative
 #   structural directories the janitor's empty-dir sweep must preserve even
@@ -107,6 +122,7 @@
 # Usage (executable):
 #   bash .gaia/scripts/state-registry-lib.sh path                       # gaia_registry_path
 #   bash .gaia/scripts/state-registry-lib.sh linkable-paths             # gaia_registry_linkable_paths
+#   bash .gaia/scripts/state-registry-lib.sh main-only-dirs             # gaia_registry_main_only_dirs
 #   bash .gaia/scripts/state-registry-lib.sh drop-zones                 # gaia_registry_drop_zones
 #   bash .gaia/scripts/state-registry-lib.sh recognizes <relpath> <f|d> # gaia_registry_recognizes
 #   bash .gaia/scripts/state-registry-lib.sh classify <relpath>         # gaia_registry_classify
@@ -189,6 +205,21 @@ gaia_registry_linkable_paths() {
       .entries[]
       | select(.scope == "shared")
       | (if .match == "prefix" then (.path | rtrimstr("/")) else (.path | split("/")[0]) end)
+    ]
+    | reduce .[] as $x ([]; if any(.[]; . == $x) then . else . + [$x] end)
+    | .[]
+  ' "$registry"
+}
+
+# gaia_registry_main_only_dirs: see the header contract above.
+gaia_registry_main_only_dirs() {
+  local registry
+  registry="$(gaia_registry_path)" || return 1
+  jq -r '
+    [
+      .entries[]
+      | select(.scope == "main-only" and .kind == "dir")
+      | (.path | rtrimstr("/") | split("/")[0])
     ]
     | reduce .[] as $x ([]; if any(.[]; . == $x) then . else . + [$x] end)
     | .[]
@@ -299,6 +330,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       gaia_registry_linkable_paths
       exit $?
       ;;
+    main-only-dirs)
+      shift
+      gaia_registry_main_only_dirs
+      exit $?
+      ;;
     drop-zones)
       shift
       gaia_registry_drop_zones
@@ -315,7 +351,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       exit $?
       ;;
     *)
-      printf 'usage: %s {path|linkable-paths|drop-zones|recognizes <relpath> <f|d>|classify <relpath>}\n' "$0" >&2
+      printf 'usage: %s {path|linkable-paths|main-only-dirs|drop-zones|recognizes <relpath> <f|d>|classify <relpath>}\n' "$0" >&2
       exit 2
       ;;
   esac

@@ -44,6 +44,41 @@ make_repo() {
   echo init >"$REPO/f"
   git -C "$REPO" add f
   git -C "$REPO" commit -q -m init
+  write_registry
+}
+
+# The guard reads the exempt set from .gaia/state-registry.json via
+# .gaia/scripts/state-registry-lib.sh (linkable shared dirs + wholly
+# main-anchored dirs), never a hardcoded list. Every test repo therefore needs a
+# registry the reader can find at <main-root>/.gaia/state-registry.json. This is
+# a minimal fixture, not the real registry, so the tests exercise the
+# registry-read MECHANISM and stay decoupled from the shipped registry's exact
+# contents. It carries the four symlinked shared dirs (audit, debt, telemetry,
+# cache/shared) plus the symlinked setup-state.json file, the two main-anchored
+# ledger dirs (plans, specs) plus worktree-locks, and one main-only FILE
+# (cache/gh-artifact-pr.json) that must NOT exempt its cache/ segment.
+write_registry() {
+  mkdir -p "$REPO/.gaia"
+  cat >"$REPO/.gaia/state-registry.json" <<'JSON'
+{
+  "$schema": "./state-registry.schema.json",
+  "version": 1,
+  "description": "block-worktree-path-mismatch test fixture",
+  "entries": [
+    { "id": "setup-state", "path": "setup-state.json", "match": "exact", "kind": "file", "scope": "shared" },
+    { "id": "cache-shared", "path": "cache/shared/", "match": "prefix", "kind": "dir", "scope": "shared" },
+    { "id": "audit", "path": "audit/*.ok", "match": "glob", "kind": "file", "scope": "shared" },
+    { "id": "telemetry", "path": "telemetry/cost.jsonl", "match": "exact", "kind": "file", "scope": "shared" },
+    { "id": "debt", "path": "debt/count.json", "match": "exact", "kind": "file", "scope": "shared" },
+    { "id": "specs", "path": "specs/", "match": "prefix", "kind": "dir", "scope": "main-only" },
+    { "id": "plans", "path": "plans/", "match": "prefix", "kind": "dir", "scope": "main-only" },
+    { "id": "worktree-locks", "path": "worktree-locks/<name>/", "match": "prefix", "kind": "dir", "scope": "main-only" },
+    { "id": "gh-cache", "path": "cache/gh-artifact-pr.json", "match": "exact", "kind": "file", "scope": "main-only" }
+  ],
+  "residue": [],
+  "drop_zones": []
+}
+JSON
 }
 
 # make_worktree <rel> <branch>: a real linked worktree at
@@ -164,12 +199,13 @@ assert_allowed() {
   assert_allowed
 }
 
-# Regression: main_root is derived via `cd ... && pwd`, while current_root and
-# file_root come from `git rev-parse --show-toplevel`, which always resolves
-# symlinks. Reaching the main checkout through a symlinked path (an external
-# volume, a cloud-synced folder, or simply a macOS /tmp -> /private/tmp
-# style path) used to desync the two, so the guard wrongly believed itself
-# inside a linked worktree and denied a legitimate main-checkout edit.
+# Regression: both roots the guard compares are symlink-canonicalized (main_root
+# through the shared resolver, current_root and file_root through `pwd -P`), so
+# they stay on the same footing. Reaching the main checkout through a symlinked
+# path (an external volume, a cloud-synced folder, or simply a macOS /tmp ->
+# /private/tmp style path) resolves to the same physical root either way, so the
+# guard does not mistake the main checkout for a linked worktree and deny a
+# legitimate main-checkout edit.
 @test "a main checkout reached via a symlinked path allows editing a worktree file" {
   make_repo
   make_worktree "debt/11-foo" "debt/11-foo"
@@ -328,6 +364,55 @@ assert_allowed() {
   assert_allowed
 }
 
+# worktree-locks/ is a wholly main-anchored directory in the registry
+# (scope main-only, kind dir) with no worktree-side copy, so a write to it from a
+# worktree resolves to main legitimately. It is exempt through
+# gaia_registry_main_only_dirs, the same arm as plans/ and specs/, proving that
+# arm consumes the whole main-only-dir set rather than a hand-listed plans+specs
+# pair.
+@test "a worktree-mode write to the main checkout's main-anchored worktree-locks dir is allowed" {
+  make_repo
+  make_worktree "debt/40-foo" "debt/40-foo"
+  mkdir -p "$REPO/.gaia/local/worktree-locks/some-lock"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/worktree-locks/some-lock/lock"
+  assert_allowed
+}
+
+# The exemption is registry-driven, not a fixed list baked into this hook. A
+# directory newly classified `shared` in the registry is exempted here with no
+# edit to the guard: this is the structural property that keeps the guard,
+# link-worktree.sh, and link-worktree.ts in lockstep off one registry, replacing
+# the byte-locked-twin enumeration a hand-maintained list would need. A synthetic
+# shared dir the fixture does not otherwise carry proves the guard reads the
+# registry rather than a hardcoded set.
+@test "a shared dir added to the registry is auto-exempted with no edit to the hook" {
+  make_repo
+  make_worktree "debt/41-foo" "debt/41-foo"
+  jq '.entries += [{ "id": "newshared", "path": "newshared/", "match": "prefix", "kind": "dir", "scope": "shared" }]' \
+    "$REPO/.gaia/state-registry.json" >"$REPO/.gaia/state-registry.json.tmp"
+  mv "$REPO/.gaia/state-registry.json.tmp" "$REPO/.gaia/state-registry.json"
+  mkdir -p "$REPO/.gaia/local/newshared"
+  mkdir -p "$WT/.gaia/local"
+  ln -s "$REPO/.gaia/local/newshared" "$WT/.gaia/local/newshared"
+  cd "$WT"
+  run_hook_edit "Write" "$WT/.gaia/local/newshared/marker"
+  assert_allowed
+}
+
+# The converse of the auto-exempt case: the guard exempts ONLY what the registry
+# classifies shared or main-only. A stale main-checkout write into a .gaia/local
+# tree the registry does not know stays denied, so the registry-driven exemption
+# cannot silently widen to the whole .gaia/local tree.
+@test "a stale main-checkout write into a registry-unknown .gaia/local tree is still denied" {
+  make_repo
+  make_worktree "debt/42-foo" "debt/42-foo"
+  mkdir -p "$REPO/.gaia/local/unregistered"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/unregistered/notes.md"
+  assert_denied
+}
+
 # --- allowed: a sibling worktree, which the guard can no longer adjudicate ---
 
 # The guard adjudicates one question: does the target resolve to the main
@@ -446,12 +531,14 @@ assert_allowed() {
   assert_denied
 }
 
-# A payload cwd inside a different repository is not a worktree of this one, so
-# honoring it would arm the gate on a comparison between two unrelated
-# repositories and deny a legitimate main-checkout edit. The hook checks that
-# the payload cwd shares this repo's common git dir and falls back to the
-# process cwd when it does not.
-@test "a payload cwd inside an unrelated repository falls back to the process cwd" {
+# The payload cwd is authoritative for tree identity whenever it is absolute and
+# resolves to a checkout: the guard takes it at its word, with no cross-check
+# against the process cwd. A payload naming an unrelated repository therefore
+# makes the guard resolve THAT repository, find it is not a linked worktree, and
+# stand down. Here the process cwd sits in the main checkout, so the outcome is
+# allowed either way; the companion case below, with the process cwd in the
+# worktree, is where taking the payload at its word is observable.
+@test "a payload cwd inside an unrelated repository is taken at its word (process cwd in main)" {
   make_repo
   make_worktree "debt/27-foo" "debt/27-foo"
   make_other_repo
@@ -460,38 +547,35 @@ assert_allowed() {
   assert_allowed
 }
 
-# The killer for that same-repo check, and the reason the case above cannot
-# stand alone: it allows whether the check fires or not, since honoring the
-# foreign cwd there yields two equal roots and reads as no worktree session.
-# Move the process cwd into the worktree and the two verdicts separate. An
-# honored foreign cwd makes BOTH roots the foreign repo's, they compare equal,
-# the guard concludes no worktree session is active, and the stale
-# main-checkout target sails through: the guard disarmed by a cwd belonging to
-# a repository it is not adjudicating.
-@test "a payload cwd inside an unrelated repository does not disarm a worktree session" {
+# The accepted residual of making the payload authoritative (the dropped
+# payload-versus-process cross-check). The process cwd is inside the worktree, so
+# the old cross-check would have used it and denied the stale main-checkout
+# write. The payload names an unrelated repository and is now taken at its word,
+# so the guard resolves that repository, sees no linked worktree, and stands
+# down. This gives up defense against a harness that ever delivers a well-shaped
+# cwd from an unrelated checkout; across every measured configuration the harness
+# delivers the acting agent's own tree, never a cross-repository one, so the
+# cross-check only ever fired on the false positive it was invented to suppress
+# (which was itself a false deny of a legitimate edit). Pinned so a future
+# re-introduction of the cross-check is a deliberate, visible decision.
+@test "a foreign payload cwd is taken at its word, standing the guard down (accepted residual)" {
   make_repo
   make_worktree "debt/39-foo" "debt/39-foo"
   make_other_repo
   cd "$WT"
   run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
-  assert_denied
+  assert_allowed
 }
 
-# The payload cwd is honored only when absolute. Every consumer downstream of it
-# option-parses its own operand: `dirname --` stops dirname there, but the value
-# dirname returns still reaches a bare `cd`, which reads a leading dash as its
-# own options. `cd -P`, `cd -L`, and `cd -e` all parse as an option with no
-# operand, so cd succeeds into $HOME instead of firing the `|| payload_main_root=""`
-# fallback, and `cd -` moves to $OLDPWD and prints it. A payload cwd of exactly
-# `-P` naming a real directory would therefore set payload_main_root to $HOME;
-# were that to equal main_root, the same-repo check would pass spuriously and a
-# legitimate main-checkout edit would be denied off a foreign cwd. Requiring an
-# absolute path shuts every one of those doors at the source, and is the same
-# property the neighbouring main_root derivation already relies on.
-#
-# A relative cwd resolving to the main checkout is the observable case: honored,
-# it would read the agent as sitting in the main checkout and allow the target;
-# ignored, the worktree process cwd stays in charge and denies.
+# The payload cwd is honored only when it is absolute. The absolute check gates
+# the payload before it reaches `git -C`, so a relative value is never resolved
+# against the hook's own process cwd and mistaken for the agent's tree: `git -C
+# linkdir` would otherwise resolve `linkdir` relative to wherever the hook
+# process sits. The absolute requirement also shuts the leading-dash door (a
+# value like `-P` would option-parse inside a bare `cd`). A relative cwd
+# resolving to the main checkout is the observable case: honored, it would read
+# the agent as sitting in the main checkout and allow the target; ignored, the
+# worktree process cwd stays in charge and denies.
 @test "a relative payload cwd is ignored in favour of the process cwd" {
   make_repo
   make_worktree "debt/28-foo" "debt/28-foo"
@@ -514,16 +598,14 @@ assert_allowed() {
   assert_allowed
 }
 
-# --git-common-dir answers relative to the directory it is asked about: `.git`
-# from a checkout root, `../.git` from a subdirectory. A payload cwd below the
-# main checkout's root therefore takes the `*)` branch, which resolves that
-# `..` against payload_cwd for `cd` + `pwd -P` to collapse. (A linked worktree
-# reports an absolute common dir from root and subdirectories alike, so the main
-# checkout is the only source of the relative form.) This pins the collapse:
-# string-stripping the trailing /.git instead of resolving it leaves
-# `$REPO/sub/..`, which fails the same-repo check and falls back to the process
-# cwd, denying a correct write.
-@test "a payload cwd in a main-checkout subdirectory resolves its relative common dir" {
+# A payload cwd below the main checkout's root, not at it. The shared resolver
+# answers "is this a linked worktree" and "where is main" identically from a
+# subdirectory as from the root (it resolves git's directory-relative common-dir
+# form itself), so the guard reads a main-checkout subdirectory as the main
+# checkout, not a worktree, and allows the agent's own main-checkout write. A
+# derivation that mishandled the subdirectory case would read it as a worktree
+# and deny the correct write.
+@test "a payload cwd in a main-checkout subdirectory is read as the main checkout" {
   make_repo
   make_worktree "debt/30-foo" "debt/30-foo"
   mkdir -p "$REPO/sub"
@@ -559,11 +641,11 @@ assert_allowed() {
   assert_allowed
 }
 
-# The foreign-repo cross-check needs a process-cwd repo to check against, and
-# here there is none, so the payload is taken at its word and BOTH roots come
-# from it. That can never produce a false deny, which is what the cross-check
-# exists to prevent: main_root and current_root are then two values read from
-# the same repo, and a target in a different repo cannot equal main_root.
+# The payload is authoritative and both roots come from it, so a target in a
+# different repository can never equal the payload repo's main root: a foreign
+# payload cwd cannot produce a false deny of an edit in this repo. Here the
+# process cwd is outside every repository, confirming the payload alone decides
+# regardless of where the hook process sits.
 @test "a payload cwd in an unrelated repository cannot deny a target in this repo" {
   make_repo
   make_worktree "debt/38-foo" "debt/38-foo"

@@ -49,12 +49,14 @@ run_in_repo() {
   [ -x "$LIB" ]
 }
 
-@test "structural: sourcing the library defines all four public functions with no side effects" {
+@test "structural: sourcing the library defines all public functions with no side effects" {
   run bash -c '
     # shellcheck disable=SC1090
     source "$1"
     type gaia_registry_path >/dev/null
     type gaia_registry_linkable_paths >/dev/null
+    type gaia_registry_main_only_dirs >/dev/null
+    type gaia_registry_drop_zones >/dev/null
     type gaia_registry_recognizes >/dev/null
     type gaia_registry_classify >/dev/null
     echo OK
@@ -140,6 +142,28 @@ run_in_repo() {
   [ "${lines[2]}" = "audit" ]
   [ "${lines[3]}" = "telemetry" ]
   [ "${lines[4]}" = "debt" ]
+}
+
+# ========== gaia_registry_main_only_dirs ==========
+
+@test "gaia_registry_main_only_dirs: prints exactly the main-only DIR top-levels in stable order" {
+  run_in_repo gaia_registry_main_only_dirs
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 3 ]
+  [ "${lines[0]}" = "specs" ]
+  [ "${lines[1]}" = "plans" ]
+  [ "${lines[2]}" = "worktree-locks" ]
+}
+
+# The kind=="dir" filter is load-bearing: a main-only FILE entry
+# (cache/gh-artifact-pr.json, cache/spec-chain-*.json) must NOT surface its
+# first segment (cache), because cache/ also holds per-tree and ephemeral
+# state the checkout-boundary guard must keep guarding.
+@test "gaia_registry_main_only_dirs: excludes main-only FILE entries, so cache never appears" {
+  run_in_repo gaia_registry_main_only_dirs
+  [ "$status" -eq 0 ]
+  grep -qxF 'cache' <<<"$output" && return 1
+  return 0
 }
 
 # ========== gaia_registry_recognizes ==========
