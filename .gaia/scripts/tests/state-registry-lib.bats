@@ -57,6 +57,7 @@ run_in_repo() {
     type gaia_registry_linkable_paths >/dev/null
     type gaia_registry_main_only_dirs >/dev/null
     type gaia_registry_drop_zones >/dev/null
+    type gaia_registry_rm_whitelist >/dev/null
     type gaia_registry_recognizes >/dev/null
     type gaia_registry_classify >/dev/null
     echo OK
@@ -164,6 +165,38 @@ run_in_repo() {
   [ "$status" -eq 0 ]
   grep -qxF 'cache' <<<"$output" && return 1
   return 0
+}
+
+# ========== gaia_registry_rm_whitelist ==========
+
+@test "gaia_registry_rm_whitelist: prints exactly the 7 rm-whitelist rows in registry order" {
+  run_in_repo gaia_registry_rm_whitelist
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 7 ]
+  [ "${lines[0]}" = $'.gaia/local/plans\ttrue' ]
+  [ "${lines[1]}" = $'.gaia/local/specs\ttrue' ]
+  [ "${lines[2]}" = $'.gaia/local/audit\ttrue' ]
+  [ "${lines[3]}" = $'.gaia/local/handoff\ttrue' ]
+  [ "${lines[4]}" = $'.gaia/local/cache\ttrue' ]
+  [ "${lines[5]}" = $'dist\tfalse' ]
+  [ "${lines[6]}" = $'build\tfalse' ]
+}
+
+@test "gaia_registry_rm_whitelist: no jq on PATH returns 1 and prints nothing on stdout (a caller that cannot read the list treats every path as non-whitelisted)" {
+  # Stdout and stderr are captured separately here rather than through `run`
+  # (which merges them), because gaia_registry_path's own stderr diagnostic
+  # would otherwise land in $output and fail the stdout-emptiness assertion
+  # for a reason unrelated to this function's own contract.
+  saved_path="$PATH"
+  # shellcheck disable=SC2123 # deliberately blank PATH to make jq unfindable; restored right after the call
+  PATH=""
+  set +e
+  stdout_val="$(gaia_registry_rm_whitelist 2>/dev/null)"
+  status_val=$?
+  set -e
+  PATH="$saved_path"
+  [ "$status_val" -eq 1 ]
+  [ -z "$stdout_val" ]
 }
 
 # ========== gaia_registry_recognizes ==========

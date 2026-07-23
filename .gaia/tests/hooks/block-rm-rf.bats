@@ -1288,6 +1288,63 @@ assert_position_preserving() {
   done
 }
 
+# --- _rm_whitelisted_abs: the registry-driven absolute-whitelist matcher ---
+#
+# Tested directly against a SYNTHETIC tsv, no fixture repo and no real
+# registry read: the helper takes the whitelist as an argument precisely so
+# its match logic can be pinned here independent of the real registry's
+# contents.
+
+@test "_rm_whitelisted_abs: a child under a children_only base matches" {
+  source_hook
+  run _rm_whitelisted_abs "/x/y/.gaia/local/audit/f" $'.gaia/local/audit\ttrue'
+  [ "$status" -eq 0 ]
+}
+
+@test "_rm_whitelisted_abs: the bare base itself does NOT match when children_only" {
+  source_hook
+  run _rm_whitelisted_abs "/x/y/.gaia/local/plans" $'.gaia/local/plans\ttrue'
+  [ "$status" -eq 1 ]
+}
+
+@test "_rm_whitelisted_abs: the bare base matches when children_only is false" {
+  source_hook
+  run _rm_whitelisted_abs "/x/y/dist" $'dist\tfalse'
+  [ "$status" -eq 0 ]
+}
+
+@test "_rm_whitelisted_abs: a child under a children_only=false base also matches" {
+  source_hook
+  run _rm_whitelisted_abs "/x/y/dist/a" $'dist\tfalse'
+  [ "$status" -eq 0 ]
+}
+
+@test "_rm_whitelisted_abs: a non-empty parent segment is required" {
+  source_hook
+  run _rm_whitelisted_abs "/dist" $'dist\tfalse'
+  [ "$status" -eq 1 ]
+}
+
+@test "_rm_whitelisted_abs: a base absent from the tsv does not match" {
+  source_hook
+  run _rm_whitelisted_abs "/x/y/notlisted" $'dist\tfalse'
+  [ "$status" -eq 1 ]
+}
+
+@test "_rm_whitelisted_abs: a base ADDED to the tsv matches with no hook edit" {
+  # The auto-extend proof: a new registry base is whitelisted with no hook
+  # edit, the 3.3 analog of the write-guard's own catch.
+  source_hook
+  run _rm_whitelisted_abs "/x/y/newbase" $'dist\tfalse\nnewbase\tfalse'
+  [ "$status" -eq 0 ]
+}
+
+@test "_rm_whitelisted_abs: an empty tsv matches nothing (the fail-toward-deny substrate)" {
+  source_hook
+  run _rm_whitelisted_abs "/x/y/dist" ""
+  [ "$status" -eq 1 ]
+}
+
 # --- structural ---
 
 @test "the hook is sourceable: sourcing defines the helpers and runs no body" {

@@ -20,18 +20,18 @@
 #   - rm -rf node_modules (anywhere, must use pnpm clean / explicit path)
 #
 # Allowed (whitelist of safe scratch paths):
-#   - .gaia/local/plans/*
-#   - .gaia/local/specs/*
-#   - .gaia/local/audit/*
-#   - .gaia/local/handoff/*
-#   - .gaia/local/cache/*
-#   - dist/*
-#   - build/*
+#   The safe-scratch set is declared in .gaia/state-registry.json's
+#   `rm_whitelist` array, not spelled here, and read via
+#   gaia_registry_rm_whitelist (.gaia/scripts/state-registry-lib.sh). See that
+#   registry entry for the current list and its bare-vs-children-only shape.
 #
-# Each is whitelisted in both its relative and its absolute spelling, so
+# Each entry is whitelisted in both its relative and its absolute spelling, so
 # `rm -rf /path/to/repo/dist` is allowed exactly as `rm -rf dist` is. The absolute
 # form is what .claude/rules/shell-cwd.md requires of every Bash call, and a guard
-# that took only the relative one denied the form the rule mandates.
+# that took only the relative one denied the form the rule mandates. The relative
+# spelling needs no explicit arm: it is caught by no deny arm and reaches the
+# catch-all allow. The absolute spelling is matched by `_rm_whitelisted_abs`
+# against the registry-read list, once per invocation.
 #
 # Anything that does not match a denied pattern AND is not on the whitelist
 # falls through (exit 0), this hook intentionally only blocks the well-known
@@ -237,6 +237,34 @@ deny() {
   exit 0
 }
 
+# _rm_whitelisted_abs <tok> <whitelist_tsv>
+# True when <tok> is the ABSOLUTE spelling of a registry-declared safe-scratch path:
+#   /<non-empty parent>/<base>/<child>   for any base, or
+#   /<non-empty parent>/<base>           for a base whose whole directory is deletable.
+# <whitelist_tsv> is `path<TAB>children_only` lines, read once per invocation and passed
+# in so this helper stays pure and testable with a synthetic list. Empty input matches
+# nothing (return 1): an unresolved whitelist lets an absolute scratch path fall to the
+# absolute-path deny rather than be allowed on a list that could not be read -- the safe
+# direction for this deny guard. Absolute-only by construction: a relative scratch path is
+# not caught by any deny arm and reaches the catch-all allow, so it needs no arm here (and
+# this is what preserves the abs-allows / rel-denies asymmetry on <base>/node_modules).
+_rm_whitelisted_abs() {
+  local tok="$1" tsv="$2" base children_only
+  [[ -n "$tsv" ]] || return 1
+  while IFS=$'\t' read -r base children_only; do
+    [[ -n "$base" ]] || continue
+    case "$tok" in
+      /?*/"$base"/*) return 0 ;;
+    esac
+    if [[ "$children_only" != true ]]; then
+      case "$tok" in
+        /?*/"$base") return 0 ;;
+      esac
+    fi
+  done <<<"$tsv"
+  return 1
+}
+
 main() {
   set -euo pipefail
 
@@ -245,6 +273,7 @@ main() {
   # fail-open on a missing jq. The file is sourceable, so scoping these also keeps a
   # caller that invokes `main` from having its own globals clobbered.
   local payload cmd rm_segments rm_segment tokens tok i first_seg
+  local gaia_scripts rm_whitelist
 
   payload=$(cat)
   cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
@@ -338,6 +367,23 @@ main() {
   # deliberate one documented in the header, and narrowing by flag does not touch it.
   rm_segments=$(grep -oE "${rm_anchor}${rm_flag_boundary}${rm_flag}[^;&|]*" <<<"$cmd" || true)
   [[ -n "$rm_segments" ]] || exit 0
+
+  # The registry-declared safe-scratch whitelist (block-rm-rf's only registry read),
+  # resolved ONCE per invocation. Best-effort: the hardcoded deny arms below do not
+  # depend on it, so if the resolver or registry is unreachable the guard keeps every
+  # protection and loses only the scratch carve-outs (an absolute scratch path then falls
+  # to the absolute-path deny -- the safe direction for a deny guard). No hardcoded
+  # fallback list (Prime Directive #5): an unreadable registry yields an empty whitelist,
+  # never a hand-maintained copy of the set the registry now owns.
+  if gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"; then
+    # shellcheck source=/dev/null
+    source "$gaia_scripts/.gaia/scripts/main-root-lib.sh" 2>/dev/null || true
+    # shellcheck source=/dev/null
+    source "$gaia_scripts/.gaia/scripts/state-registry-lib.sh" 2>/dev/null || true
+    if command -v gaia_registry_rm_whitelist >/dev/null 2>&1; then
+      rm_whitelist="$(gaia_registry_rm_whitelist 2>/dev/null || true)"
+    fi
+  fi
 
   # A here-string keeps the loop in the current shell, so deny()'s exit is the
   # hook's exit rather than a subshell's.
@@ -486,6 +532,58 @@ main() {
         deny "BLOCKED: rm -rf of an unscoped brace glob ('$tok') is forbidden, it removes .git and .claude."
       fi
 
+      # Traversal escapes resolve somewhere the spelling does not name, so they can
+      # never be a safe scratch target and are denied ahead of the whitelist check
+      # below: the escape `/repo/.gaia/local/audit/../../../.git` spells a
+      # whitelisted scratch directory and lands on `.git`. Ordering this ahead of
+      # the whitelist is what keeps the suffix match below from becoming a bypass.
+      # (Relative `..` escapes stay out of reach, as the SCOPE note above says;
+      # this arm is not that claim.)
+      #
+      # The leading spellings are listed separately because the interior patterns
+      # cannot reach them: `/../x` has nothing between the root slash and the `..`
+      # for a `/*/` prefix to match, so it would otherwise fall through to the
+      # whitelist check with `..` serving as its non-empty parent segment.
+      case "$tok" in
+        /../*|/..|/*/../*|/*/..)
+          deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
+          ;;
+      esac
+
+      # The registry-declared safe-scratch whitelist, ABSOLUTE spelling, matched
+      # here between the traversal deny above and the blanket absolute-path deny
+      # below -- exactly where the hand-listed `/?*/…` arm used to sit (so it still
+      # beats node_modules for an absolute /repo/dist/node_modules, as today). The
+      # relative spelling needs no arm: a relative scratch path is caught by no
+      # deny arm and reaches the catch-all allow.
+      #
+      # `.claude/rules/shell-cwd.md` mandates an absolute path on every Bash call,
+      # repo-wide, because a single `cd` persists for the rest of the session and
+      # breaks every relative-path hook. Whitelisting these directories relatively
+      # only put that rule in direct conflict with this guard: the form the rule
+      # requires is the form the arm below denies, and an agent could satisfy one
+      # or the other but never both. Both spellings are accepted now, and absolute
+      # is the authoritative one to write.
+      #
+      # Matched as a SUFFIX on the scratch segment, deliberately. Recognizing the
+      # absolute spelling of a repo-relative target otherwise means resolving the
+      # repo root, and both routes there are closed: a live `git rev-parse` is the
+      # computed state this guard is designed to do without, and a literal absolute
+      # prefix baked into a `.claude/`-distributed file would violate
+      # .claude/rules/instruction-files.md. A suffix needs neither.
+      #
+      # The widening is honest and small: it permits these scratch directories
+      # under ANY parent, not just the current repo. The relative spelling already
+      # did that, since it resolves against whatever the cwd happens to be.
+      #
+      # `/?*/` (inside `_rm_whitelisted_abs`) requires a non-empty parent segment,
+      # so `/dist` and `/.gaia/local/audit/x` stay denied. Those are
+      # filesystem-root removals that merely share a name with project scratch,
+      # and the whitelist is about scratch inside a project.
+      if _rm_whitelisted_abs "$tok" "$rm_whitelist"; then
+        continue
+      fi
+
       # SC2088 (tilde does not expand in quotes) is disabled for this whole case: the
       # `~` / `$HOME` patterns below are literal match targets, not paths to expand.
       # They are tested against the raw command string, where the user's unexpanded
@@ -493,48 +591,6 @@ main() {
       # The directive has to sit in front of the `case` itself, not the branch (SC1124).
       # shellcheck disable=SC2088
       case "$tok" in
-        # An absolute path carrying a `..` segment resolves somewhere its spelling
-        # does not name, so it can never reach the whitelist below: the escape
-        # `/repo/.gaia/local/audit/../../../.git` spells a whitelisted scratch
-        # directory and lands on `.git`. Ordering this ahead of the whitelist is what
-        # keeps the suffix match from becoming a bypass. (Relative `..` escapes stay
-        # out of reach, as the SCOPE note above says; this arm is not that claim.)
-        #
-        # The leading spellings are listed separately because the interior patterns
-        # cannot reach them: `/../x` has nothing between the root slash and the `..`
-        # for the `/*/` prefix to match, so it would otherwise fall through to the
-        # whitelist with `..` serving as its non-empty parent segment.
-        /../*|/..|/*/../*|/*/..)
-          deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
-          ;;
-        # The whitelisted scratch paths, in their ABSOLUTE spelling.
-        #
-        # `.claude/rules/shell-cwd.md` mandates an absolute path on every Bash call,
-        # repo-wide, because a single `cd` persists for the rest of the session and
-        # breaks every relative-path hook. Whitelisting these directories relatively
-        # only put that rule in direct conflict with this guard: the form the rule
-        # requires is the form the arm below denies, and an agent could satisfy one
-        # or the other but never both. Both spellings are accepted now, and absolute
-        # is the authoritative one to write.
-        #
-        # Matched as a SUFFIX on the scratch segment, deliberately. Recognizing the
-        # absolute spelling of a repo-relative target otherwise means resolving the
-        # repo root, and both routes there are closed: a live `git rev-parse` is the
-        # computed state this guard is designed to do without, and a literal absolute
-        # prefix baked into a `.claude/`-distributed file would violate
-        # .claude/rules/instruction-files.md. A suffix needs neither.
-        #
-        # The widening is honest and small: it permits these scratch directories
-        # under ANY parent, not just the current repo. The relative arms already did
-        # that, since they resolve against whatever the cwd happens to be.
-        #
-        # `/?*/` requires a non-empty parent segment, so `/dist` and
-        # `/.gaia/local/audit/x` stay denied. Those are filesystem-root removals that
-        # merely share a name with project scratch, and the whitelist is about scratch
-        # inside a project.
-        /?*/.gaia/local/plans/*|/?*/.gaia/local/specs/*|/?*/.gaia/local/audit/*|/?*/.gaia/local/handoff/*|/?*/.gaia/local/cache/*|/?*/dist|/?*/dist/*|/?*/build|/?*/build/*)
-          : # whitelisted
-          ;;
         /|/*)
           deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
           ;;
@@ -578,29 +634,8 @@ main() {
         node_modules|./node_modules|*/node_modules|node_modules/*)
           deny "BLOCKED: rm -rf of node_modules is forbidden, use 'pnpm store prune' or remove deliberately."
           ;;
-        .gaia/local/plans/*|./.gaia/local/plans/*)
-          : # whitelisted
-          ;;
-        .gaia/local/specs/*|./.gaia/local/specs/*)
-          : # whitelisted (colocated plan scratch under specs/<SPEC-ID>/plan)
-          ;;
-        .gaia/local/audit/*|./.gaia/local/audit/*)
-          : # whitelisted
-          ;;
-        .gaia/local/handoff/*|./.gaia/local/handoff/*)
-          : # whitelisted
-          ;;
-        .gaia/local/cache/*|./.gaia/local/cache/*)
-          : # whitelisted
-          ;;
-        dist|dist/*|./dist|./dist/*)
-          : # whitelisted
-          ;;
-        build|build/*|./build|./build/*)
-          : # whitelisted
-          ;;
         *)
-          : # unknown relative path, let it through; permissions / other hooks may still gate it.
+          : # unknown-or-whitelisted relative path: allowed, as before (the relative whitelist folds in here).
           ;;
       esac
     done

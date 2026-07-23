@@ -9,7 +9,7 @@
 # library is the ONLY place that parses the registry; every consumer (link
 # twins, the janitor, conformance checks) calls these functions instead of
 # re-reading or hand-restating the registry's shape. Dual-mode, mirroring
-# .gaia/scripts/main-root-lib.sh: source it for the four functions below, or
+# .gaia/scripts/main-root-lib.sh: source it for the reader functions below, or
 # run it directly as a script (see "Executable entry" at the bottom).
 #
 # Location: the registry lives at the MAIN checkout's .gaia/, never a linked
@@ -78,6 +78,14 @@
 #   caller failing to read the list keeps every empty dir rather than rmdir a
 #   structural directory it could not classify.
 #
+# gaia_registry_rm_whitelist
+#   Prints, one per line as `path<TAB>children_only` (children_only "true"/"false"),
+#   the repo-root-relative safe-scratch directories block-rm-rf.sh carves out of its
+#   absolute-path deny. Derived from the registry, never hand-listed in the hook.
+#   Prints nothing and returns 1 when the registry cannot be read (see
+#   gaia_registry_path), so a caller that cannot read the list treats every path as
+#   non-whitelisted -- the safe direction for a deny guard.
+#
 # gaia_registry_recognizes <relpath> <type: f|d>
 #   The janitor's "may I reap this?" predicate. Exit 0 ("recognized",
 #   never reap) when <relpath> (a .gaia/local-relative child path) matches
@@ -124,6 +132,7 @@
 #   bash .gaia/scripts/state-registry-lib.sh linkable-paths             # gaia_registry_linkable_paths
 #   bash .gaia/scripts/state-registry-lib.sh main-only-dirs             # gaia_registry_main_only_dirs
 #   bash .gaia/scripts/state-registry-lib.sh drop-zones                 # gaia_registry_drop_zones
+#   bash .gaia/scripts/state-registry-lib.sh rm-whitelist               # gaia_registry_rm_whitelist
 #   bash .gaia/scripts/state-registry-lib.sh recognizes <relpath> <f|d> # gaia_registry_recognizes
 #   bash .gaia/scripts/state-registry-lib.sh classify <relpath>         # gaia_registry_classify
 
@@ -233,6 +242,13 @@ gaia_registry_drop_zones() {
   jq -r '.drop_zones[]?.path' "$registry"
 }
 
+# gaia_registry_rm_whitelist: see the header contract above.
+gaia_registry_rm_whitelist() {
+  local registry
+  registry="$(gaia_registry_path)" || return 1
+  jq -r '.rm_whitelist[]? | [.path, (.children_only | tostring)] | @tsv' "$registry"
+}
+
 # gaia_registry_recognizes <relpath> <type: f|d>: see the header contract above.
 gaia_registry_recognizes() {
   local relpath="${1:-}" reqtype="${2:-}"
@@ -340,6 +356,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       gaia_registry_drop_zones
       exit $?
       ;;
+    rm-whitelist)
+      shift
+      gaia_registry_rm_whitelist
+      exit $?
+      ;;
     recognizes)
       shift
       gaia_registry_recognizes "${1:-}" "${2:-}"
@@ -351,7 +372,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       exit $?
       ;;
     *)
-      printf 'usage: %s {path|linkable-paths|main-only-dirs|drop-zones|recognizes <relpath> <f|d>|classify <relpath>}\n' "$0" >&2
+      printf 'usage: %s {path|linkable-paths|main-only-dirs|drop-zones|rm-whitelist|recognizes <relpath> <f|d>|classify <relpath>}\n' "$0" >&2
       exit 2
       ;;
   esac

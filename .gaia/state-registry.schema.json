@@ -4,7 +4,7 @@
   "description": "Constrains .gaia/state-registry.json: the one classification of every .gaia/local entry (SPEC-061). A malformed edit fails this cheap validation before any consumer or conformance check runs.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "version", "description", "entries", "residue", "drop_zones"],
+  "required": ["$schema", "version", "description", "entries", "residue", "drop_zones", "rm_whitelist"],
   "properties": {
     "$schema": { "type": "string", "minLength": 1 },
     "version": { "type": "integer", "const": 1 },
@@ -21,6 +21,11 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/dropZone" }
+    },
+    "rm_whitelist": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/rmWhitelistEntry" }
     }
   },
   "$defs": {
@@ -126,6 +131,22 @@
           "type": "string",
           "minLength": 1,
           "description": "A .gaia/local-relative structural directory (no trailing slash) the empty-dir sweep must preserve even when momentarily empty, because GAIA tooling expects to find it."
+        },
+        "why": { "type": "string", "minLength": 1 }
+      }
+    },
+    "rmWhitelistEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "children_only", "why"],
+      "properties": {
+        "path": {
+          "type": "string", "minLength": 1,
+          "description": "A repo-root-relative directory (no trailing slash) under which `rm -rf` is a permitted scratch cleanup, so block-rm-rf.sh carves it out of the absolute-path deny. Repo-root-relative, NOT .gaia/local-relative like entries/drop_zones, because the safe-scratch set spans build output (dist, build) outside .gaia/local."
+        },
+        "children_only": {
+          "type": "boolean",
+          "description": "true: only children are deletable (<path>/*), never the directory itself (the .gaia/local ledgers). false: the directory itself and its children are both deletable (regenerable build output)."
         },
         "why": { "type": "string", "minLength": 1 }
       }
