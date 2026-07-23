@@ -149,6 +149,14 @@ if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
   . "$_lib_dir/audit-clearance.sh"
 fi
 
+# Load the shared main-root resolver the same guarded way, from this hook's
+# own on-disk location. Backs the main-anchored `root` derivation below.
+_root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_root_lib_dir/.gaia/scripts/main-root-lib.sh"
+fi
+
 # Load the shared ownership classifier + machinery list + digest engine from
 # the same on-disk location. check_out_of_scope_pr() and
 # check_self_mod_only_update_pr() below depend on the classifier to know what
@@ -204,10 +212,18 @@ fi
 # a member's own content digest, computed next.
 tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
 
-# The audited working root. clearance_member_cleared builds its marker paths
-# from this; the hook runs with cwd at the repo root, so a bare toplevel query
-# answers it (fall back to pwd only when git cannot).
-root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# The audited working root, resolved to the MAIN checkout: every marker
+# clearance_member_cleared builds a path for is main-anchored shared state
+# (SPEC-061 scope=shared, the symlinked audit/ store), not a property of
+# whichever tree this hook happens to run in. Sourced from this hook's own
+# on-disk location, matching the sibling lib-loads above. Falls back to a
+# bare toplevel query, then pwd, when the resolver is unavailable or fails --
+# the same fail-open direction the original CWD-anchored derivation had.
+root=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  root="$(gaia_resolve_main_root 2>/dev/null)" || root=""
+fi
+[ -n "$root" ] || root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 # Parse the roster ONCE per run (never once per path); the classifier module
 # was sourced above. audit_digests_all below re-inits the same state
@@ -266,7 +282,7 @@ member_digest() {
 
 frontend_digest="$(member_digest code-audit-frontend)" || frontend_digest=""
 
-marker=".gaia/local/audit/${frontend_digest}.ok"
+marker="$root/.gaia/local/audit/${frontend_digest}.ok"
 
 # A refusal for the frontend's CURRENT digest is checked before any earned
 # signal and is absolute (C6): denies regardless of a same-digest earned
@@ -729,7 +745,7 @@ while IFS= read -r m; do
       chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
 "
     else
-      member_marker=".gaia/local/audit/${m_digest:-<unavailable>}.${m}.ok"
+      member_marker="$root/.gaia/local/audit/${m_digest:-<unavailable>}.${m}.ok"
       report="${report}  - ${m}: PENDING (marker ${member_marker} $(marker_state "$member_marker"))
 "
     fi
@@ -745,8 +761,8 @@ reason="PR merge gate: not every dispatched Code Audit Team member has cleared H
 
 ${report}
 To unblock: spawn each PENDING member's agent on HEAD so it writes its marker
-(code-audit-frontend writes .gaia/local/audit/${frontend_digest}.ok; each
-specialized member writes .gaia/local/audit/<its-own-digest>.<member>.ok, NOT
+(code-audit-frontend writes ${root}/.gaia/local/audit/${frontend_digest}.ok; each
+specialized member writes ${root}/.gaia/local/audit/<its-own-digest>.<member>.ok, NOT
 the frontend digest), then retry gh pr merge. Markers are keyed to each
 member's own content digest (the files it owns plus the shared gate
 machinery), so an out-of-glob change never invalidates one, and a GAIA-Audit

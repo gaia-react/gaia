@@ -7,7 +7,7 @@
 #
 # Usage (from a hook script, pwd = repo root):
 #   [ -f .claude/hooks/lib/red-ledger.sh ] && . .claude/hooks/lib/red-ledger.sh
-#   ledger=$(red_ledger_path)
+#   ledger=$(red_ledger_path "$tree_root")
 #   rel=$(red_ledger_repo_rel "$some_path")
 #   red_ledger_signals "$rel"          # NDJSON on stdout; helper's exit code
 #
@@ -17,9 +17,24 @@
 [ -n "${RED_LEDGER_LIB_SOURCED:-}" ] && return 0
 RED_LEDGER_LIB_SOURCED=1
 
-# Repo-relative path to the append-only JSON Lines ledger.
+# Absolute path to the append-only JSON Lines ledger, rooted at ROOT (the
+# per-tree root a caller has already resolved, typically via Pattern T's
+# payload-anchored gaia_resolve_tree_root). Defaults to gaia_resolve_tree_root
+# of the process cwd when no ROOT is supplied; the resolver is sourced here,
+# deferred into this function's own body (never at source time), so this
+# lib's "no side effects at source time" contract holds -- matching
+# state-registry-lib.sh's own gaia_registry_path.
 red_ledger_path() {
-  printf '%s\n' '.gaia/local/red-ledger/observations.jsonl'
+  local root="${1:-}"
+  if [ -z "$root" ]; then
+    local self_dir
+    self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 1
+    # shellcheck disable=SC1091
+    source "$self_dir/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || return 1
+    root="$(gaia_resolve_tree_root 2>/dev/null)" || return 1
+  fi
+  [ -n "$root" ] || return 1
+  printf '%s\n' "$root/.gaia/local/red-ledger/observations.jsonl"
 }
 
 # Repo-relative path to the Node signal helper.

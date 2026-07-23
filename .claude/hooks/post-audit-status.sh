@@ -91,6 +91,14 @@ if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-digest.sh" ]; then
   . "$_lib_dir/audit-digest.sh"
 fi
 
+# Load the shared main-root resolver the same guarded way, from this hook's
+# own on-disk location. Backs the main-anchored `repo_root` derivation below.
+_root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_root_lib_dir/.gaia/scripts/main-root-lib.sh"
+fi
+
 emit_posted() {
   printf 'status: posted GAIA-Audit success %s\n' "$1"
 }
@@ -148,7 +156,17 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 0
 fi
 
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+# Resolved to the MAIN checkout: every clearance marker this script reads or
+# posts about is main-anchored shared state (SPEC-061 scope=shared, the
+# symlinked audit/ store), not a property of whichever tree this script
+# happens to run in. Falls back to a bare toplevel query when the resolver is
+# unavailable or fails -- the same fail-open direction the original
+# CWD-anchored derivation had.
+repo_root=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  repo_root="$(gaia_resolve_main_root 2>/dev/null)" || repo_root=""
+fi
+[ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
 if [ -z "$repo_root" ]; then
   emit_decline "repo slug unresolved"
   exit 0

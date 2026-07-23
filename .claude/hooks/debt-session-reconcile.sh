@@ -33,8 +33,22 @@ cat >/dev/null 2>&1 || true
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-# Relative to the repo root, the working directory for a settings.json hook.
-CACHE=".gaia/local/debt/count.json"
+# The shared main-root resolver, sourced from this hook's own on-disk
+# location (never cwd): the debt count cache is main-anchored shared state
+# (SPEC-061 scope=shared), so this reconcile reads and re-arms main's copy,
+# never a worktree's discarded one.
+gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+if [ -n "$gaia_scripts" ] && [ -f "$gaia_scripts/.gaia/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$gaia_scripts/.gaia/scripts/main-root-lib.sh"
+fi
+main_root=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  main_root="$(gaia_resolve_main_root 2>/dev/null || true)"
+fi
+[ -n "$main_root" ] || exit 0
+
+CACHE="$main_root/.gaia/local/debt/count.json"
 
 # No cache yet: nothing is being shown, and the refresher's own missing-cache
 # branch will seed a count on the next tick. Nothing to reconcile here.
@@ -51,7 +65,7 @@ esac
 
 # Create the parent dir first (every sentinel writer owns its mkdir; the dir is
 # not assumed to pre-exist on a fresh clone or in CI), then touch the sentinel.
-mkdir -p .gaia/local/debt 2>/dev/null || true
-: > .gaia/local/debt/refresh-requested 2>/dev/null || true
+mkdir -p "$main_root/.gaia/local/debt" 2>/dev/null || true
+: > "$main_root/.gaia/local/debt/refresh-requested" 2>/dev/null || true
 
 exit 0

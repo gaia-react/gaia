@@ -1,0 +1,311 @@
+{
+  "$schema": "./hook-scopes.schema.json",
+  "hooks": [
+    {
+      "hook": ".claude/hooks/audit-disposition-check.sh",
+      "scope": "main-only",
+      "state": ["audit-clearance-markers"],
+      "why": "Reads/derives the disposition-ledger sidecar under audit/, the symlinked shared store every checkout reaches through main; anchors on gaia_resolve_main_root so the check reads the one real copy regardless of which tree the merge command runs from."
+    },
+    {
+      "hook": ".claude/hooks/audit-stamp-trailer.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Touches only the tracked .gaia/VERSION file and a per-worktree git-dir stamp lock (git's own --absolute-git-dir, correct by construction); no .gaia/local root to resolve."
+    },
+    {
+      "hook": ".claude/hooks/block-bare-test.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches a Bash command string only; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/block-env-read.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches a Bash command string only; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/block-env-write.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches an Edit/Write file_path only; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/block-eslint-config-edit.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches an Edit/Write file_path only; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/block-invalid-yaml-write.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Validates the YAML content of an Edit/Write payload only; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/block-lockfile-edit.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches an Edit/Write file_path only; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/block-main-destructive-git.sh",
+      "scope": "main-only",
+      "state": ["machine-markers"],
+      "why": "Reads the setup-in-progress standdown sentinel, a per-machine marker anchored to main; a resolver failure falls back to the prior process-cwd derivation rather than allowing, since this guard is fail-closed on ambiguity, never fail-open."
+    },
+    {
+      "hook": ".claude/hooks/block-manifest-write.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches an Edit/Write file_path against .gaia/manifest.json only; touches no .gaia/local state."
+    },
+    {
+      "hook": ".claude/hooks/block-no-verify.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches a Bash command string only; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/block-rm-rf.sh",
+      "scope": "main-only",
+      "state": ["path:.gaia/local/plans", "path:.gaia/local/specs", "path:.gaia/local/audit", "path:.gaia/local/handoff", "path:.gaia/local/cache", "path:dist", "path:build"],
+      "why": "Already resolver-based: reads the registry's rm_whitelist (gaia_registry_rm_whitelist, itself main-anchored through state-registry-lib.sh) to carve safe-scratch directories out of its absolute-path rm -rf deny. The whitelist is a distinct top-level registry list with no entry ids of its own, so its repo-relative targets are declared as path: tokens. Declared here, not converted (already correct)."
+    },
+    {
+      "hook": ".claude/hooks/block-secrets-write.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches an Edit/Write payload for secret-shaped content only; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/block-selfheal-paths.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Resolves the repo toplevel only to relativize a candidate path for its refusal-set match (test/, .claude/, the CI pipeline, root build config); the refusal set names no .gaia/local path (.gaia/local is deliberately exempt, per lib/audit-selfheal-paths.sh's own header)."
+    },
+    {
+      "hook": ".claude/hooks/block-spec-plan-chain.sh",
+      "scope": "main-only",
+      "state": ["spec-chain-guard"],
+      "why": "Reads/writes the spec-to-plan chain guard sentinel under cache/, deliberately resolved to main so the guard holds across a mid-session tree switch; anchors on gaia_resolve_main_root."
+    },
+    {
+      "hook": ".claude/hooks/block-vitest-globals-tsconfig.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches an Edit/Write payload against tsconfig content only; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/block-worktree-path-mismatch.sh",
+      "scope": "main-only",
+      "state": ["setup-state", "cache-shared", "audit-clearance-markers", "audit-findings-rerun-sidecars", "audit-progress-log", "audit-security-notes", "telemetry-cost-ledger", "debt-count-and-refresh", "specs-main", "plans-main", "worktree-locks"],
+      "why": "Already resolver-based: compares the acting tree's root against gaia_resolve_main_root and reads the registry's shared + main-only-dir lists (gaia_registry_linkable_paths / gaia_registry_main_only_dirs) to exempt every main-anchored write path from its wrong-checkout deny. Declared here, not converted (already correct)."
+    },
+    {
+      "hook": ".claude/hooks/capture-gh-artifact.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Delegates its cache path and write entirely to the already resolver-based .gaia/scripts/gh-artifact-lib.sh; this hook itself derives no root and holds no bare .gaia/local literal."
+    },
+    {
+      "hook": ".claude/hooks/capture-red-observations.sh",
+      "scope": "per-tree",
+      "state": ["red-ledger"],
+      "why": "Appends genuinely-failing test observations to the RED ledger for the tree where the gated Bash action ran; anchors on gaia_resolve_tree_root, applied to the payload cwd (falling back to process cwd) since the acting tree is the one question that matters for this state."
+    },
+    {
+      "hook": ".claude/hooks/check-i18n-strings.sh",
+      "scope": "per-tree",
+      "state": ["path:.claude/i18n-strings-checked"],
+      "why": "Writes a once-per-session advisory marker at a fixed repo-relative path in whatever checkout the session runs in; a tracked-working-file marker, not .gaia/local state, so no root to resolve (Pattern D: declared, no conversion)."
+    },
+    {
+      "hook": ".claude/hooks/check-story-exists.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches a component index.tsx file_path against a sibling stories file only; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/debt-sentinel-touch.sh",
+      "scope": "main-only",
+      "state": ["debt-count-and-refresh"],
+      "why": "Arms main's shared debt-count staleness sentinel after a debt-mutating gh command; anchors on gaia_resolve_main_root so a worktree fix arms the one cache the statusline actually reads, closing a prior latent wrong-tree write."
+    },
+    {
+      "hook": ".claude/hooks/debt-session-reconcile.sh",
+      "scope": "main-only",
+      "state": ["debt-count-and-refresh"],
+      "why": "Reads and re-arms main's shared debt-count cache/sentinel at session start; anchors on gaia_resolve_main_root, same reasoning as debt-sentinel-touch.sh."
+    },
+    {
+      "hook": ".claude/hooks/distribution-preflight-check.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Checks the tracked .gaia/manifest.json and the built maintainer CLI binary only; touches no .gaia/local state."
+    },
+    {
+      "hook": ".claude/hooks/local-janitor.sh",
+      "scope": "per-tree",
+      "state": ["audit-clearance-markers", "audit-findings-rerun-sidecars", "audit-progress-log", "plans-main", "specs-main", "spec-draft-and-gate1-scratch", "spec-session-scratch", "spec-audit-scratch", "react-perf-run-scratch", "gh-artifact-pr-cache"],
+      "why": "Already reads the state registry (main-anchored internally via state-registry-lib.sh) for its generic residue sweep; its own root variable is the CURRENT tree (git rev-parse --show-toplevel), with a separate hand-derived main-root lookup for its worktree-teardown sub-sweep only. Declared here, not converted (already reviewed and frozen)."
+    },
+    {
+      "hook": ".claude/hooks/post-audit-status.sh",
+      "scope": "main-only",
+      "state": ["audit-clearance-markers"],
+      "why": "Posts the GAIA-Audit commit status only after every dispatched member's clearance marker (main-anchored shared state) is confirmed; anchors on gaia_resolve_main_root. Agent-invoked, not settings-registered, but it derives a root so it still declares here."
+    },
+    {
+      "hook": ".claude/hooks/post-findings-block-on-merge.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Resolves a PR number and an incremental audit base, then delegates the findings-block post entirely to .gaia/scripts/post-findings-block.sh; this hook itself derives no root and holds no .gaia/local literal."
+    },
+    {
+      "hook": ".claude/hooks/pr-merge-audit-check.sh",
+      "scope": "main-only",
+      "state": ["audit-clearance-markers"],
+      "why": "Reads every dispatched Code Audit Team member's clearance marker under audit/, the symlinked shared store; anchors on gaia_resolve_main_root so the gate reads the one real copy regardless of which tree the merge command runs from."
+    },
+    {
+      "hook": ".claude/hooks/red-verify-commit-check.sh",
+      "scope": "per-tree",
+      "state": ["red-ledger"],
+      "why": "Reads the RED ledger for the tree where the gated git commit runs, requiring a matching failing-run record for a new-at-HEAD passing test; anchors on gaia_resolve_tree_root, applied to the payload cwd (falling back to process cwd)."
+    },
+    {
+      "hook": ".claude/hooks/serena-code-search-guard.sh",
+      "scope": "main-only",
+      "state": ["cache-shared"],
+      "why": "Reads/writes the block-once escape state under cache/shared/serena-guard/, machine-scoped shared state; anchors on gaia_resolve_main_root rather than the current tree's symlinked copy."
+    },
+    {
+      "hook": ".claude/hooks/token-rollup-merge.sh",
+      "scope": "main-only",
+      "state": ["plans-main", "specs-main", "telemetry-cost-ledger"],
+      "why": "Resolves the active plan folder (main-anchored, via lib/gaia-active-plan.sh) and the cost ledger (main-anchored, via the already resolver-based .gaia/scripts/ledger-path-lib.sh) to render the merge-time cost roll-up. No local derivation of its own; inherits both anchors (verified, not converted)."
+    },
+    {
+      "hook": ".claude/hooks/token-tally-git-op.sh",
+      "scope": "main-only",
+      "state": ["plans-main", "specs-main", "telemetry-cost-ledger"],
+      "why": "Cheap-gates on a live plan RUNNING sentinel (main-anchored) before invoking token-tally.sh, which appends to the shared cost ledger; sources the resolver directly for its own cheap-gate main_root, and inherits the same anchor via lib/gaia-active-plan.sh for plan resolution."
+    },
+    {
+      "hook": ".claude/hooks/token-tally-review.sh",
+      "scope": "main-only",
+      "state": ["plans-main", "specs-main", "telemetry-cost-ledger"],
+      "why": "Resolves the active plan folder (main-anchored, via lib/gaia-active-plan.sh) to key a review-cost tally row appended to the shared cost ledger. No local derivation of its own; inherits the anchor (verified, not converted)."
+    },
+    {
+      "hook": ".claude/hooks/wiki-commit-nudge.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Reads the tracked wiki/.state.json (identical content in every checkout via git) to compute a drift count; [ -d .git ]-dead surface owned by a later phase's conversion, but it writes no per-checkout marker of its own today."
+    },
+    {
+      "hook": ".claude/hooks/wiki-drift-check.sh",
+      "scope": "per-tree",
+      "state": ["path:.claude/wiki-drift-checked"],
+      "why": "Writes a once-per-session drift-reminder marker at a fixed repo-relative path in whatever checkout the session runs in; a tracked-working-file marker, not .gaia/local state. [ -d .git ]-dead surface; a later phase owns any future conversion."
+    },
+    {
+      "hook": ".claude/hooks/wiki-recompact-inject.sh",
+      "scope": "per-tree",
+      "state": ["path:wiki/hot.md", "path:.claude/wiki-recompact-pending"],
+      "why": "Reads wiki/hot.md and consumes the .claude/wiki-recompact-pending sentinel, both tracked/working files at fixed repo-relative paths in whatever checkout the prompt is submitted in; no .gaia/local root to resolve (Pattern D: declared, no conversion; the payload cwd is not even measured on UserPromptSubmit)."
+    },
+    {
+      "hook": ".claude/hooks/wiki-recompact-sentinel.sh",
+      "scope": "per-tree",
+      "state": ["path:wiki/hot.md", "path:.claude/wiki-recompact-pending"],
+      "why": "Writes the .claude/wiki-recompact-pending sentinel after confirming wiki/hot.md exists, both tracked/working files at fixed repo-relative paths; no .gaia/local root to resolve (Pattern D: declared, no conversion; the payload cwd is not even measured on PostCompact)."
+    },
+    {
+      "hook": ".claude/hooks/wiki-session-start.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Records HEAD under the per-worktree git-dir (git rev-parse --git-dir, correct by construction, oracle G) and delegates to the already-converted local-janitor.sh; touches no .gaia/local state itself."
+    },
+    {
+      "hook": ".claude/hooks/wiki-session-stop.sh",
+      "scope": "per-tree",
+      "state": ["path:.claude/wiki-safety-checked"],
+      "why": "Writes the .claude/wiki-safety-checked once-per-session marker at a fixed repo-relative path, alongside a per-worktree git-dir session marker (oracle G, correct); [ -d .git ]-dead surface, a later phase owns any future conversion."
+    },
+    {
+      "hook": ".claude/hooks/wiki-squash-autocommits.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Manipulates git history (reset/commit/push/PR) only; writes no per-checkout marker and touches no .gaia/local state. [ -d .git ]-dead surface owned by a later phase's conversion."
+    },
+    {
+      "hook": ".claude/hooks/worthiness-presence-check.sh",
+      "scope": "per-tree",
+      "state": ["audit-worthiness-ledger"],
+      "why": "Reads the per-tree worthiness ledger for the tree where the gated gh pr merge runs; anchors on gaia_resolve_tree_root, applied to the payload cwd (falling back to process cwd) since the acting tree is the one question that matters for this state."
+    },
+    {
+      "hook": ".claude/hooks/lib/audit-clearance.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Every function takes <root> as a parameter from its caller; this lib derives no root of its own."
+    },
+    {
+      "hook": ".claude/hooks/lib/audit-digest.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Every function takes <root> as a parameter from its caller; this lib derives no root of its own."
+    },
+    {
+      "hook": ".claude/hooks/lib/audit-dispositions.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Every function takes a sidecar path as a parameter from its caller; this lib derives no root of its own."
+    },
+    {
+      "hook": ".claude/hooks/lib/audit-machinery.sh",
+      "scope": "any",
+      "state": [],
+      "why": "A pure path-list matcher with no root parameter and no filesystem access at all."
+    },
+    {
+      "hook": ".claude/hooks/lib/audit-scope.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Every function takes <root> as a parameter from its caller; this lib derives no root of its own."
+    },
+    {
+      "hook": ".claude/hooks/lib/audit-selfheal-paths.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Exports one ERE constant; no filesystem access, no root derivation."
+    },
+    {
+      "hook": ".claude/hooks/lib/gaia-active-plan.sh",
+      "scope": "main-only",
+      "state": ["plans-main", "specs-main"],
+      "why": "Resolves the active plan folder's RUNNING sentinel, which lives only in the main checkout (.gaia/local/plans, .gaia/local/specs); resolve_active_plan_dir sources the shared resolver deferred into its own body and calls gaia_resolve_main_root, replacing a hand-rolled twin of the same derivation (deleted in the same change)."
+    },
+    {
+      "hook": ".claude/hooks/lib/gaia-ci-defer.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Reads .gaia/automation.json, a tracked repo-relative config file, not .gaia/local state; touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/lib/red-ledger.sh",
+      "scope": "per-tree",
+      "state": ["red-ledger"],
+      "why": "red_ledger_path takes a root argument (the caller's payload-anchored tree_root); when none is supplied it defaults to gaia_resolve_tree_root of the process cwd, sourcing the resolver deferred into its own body so the lib's no-side-effects-at-source-time contract holds."
+    },
+    {
+      "hook": ".claude/hooks/lib/repo-scope.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Compares the home repo's git toplevel against a command's target repo for cross-repo scoping; touches no .gaia/local state."
+    }
+  ]
+}

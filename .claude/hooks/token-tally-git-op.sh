@@ -39,10 +39,16 @@ else
   exit 0
 fi
 
-# Source the shared resolver first: it defines resolve_main_checkout_root, the
-# anchor the cheap gate below reuses. Sourcing is side-effect-free and near-free;
-# the expensive work (token-tally.sh's transcript parse) still runs only past the
-# gate.
+# Source the shared resolver first, from this hook's own checkout via
+# BASH_SOURCE (never the process cwd): the cheap gate below needs
+# gaia_resolve_main_root before resolve_active_plan_dir (which defers its own
+# copy of this same source into its body) ever runs. Then the plan-folder lib.
+# Sourcing is side-effect-free and near-free; the expensive work
+# (token-tally.sh's transcript parse) still runs only past the gate.
+gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
+gaia_scripts="$gaia_scripts/.gaia/scripts"
+# shellcheck source=/dev/null
+source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
 . .claude/hooks/lib/gaia-active-plan.sh
 
 # Cheap negative gate: no live plan RUNNING sentinel at all, skip before paying
@@ -51,7 +57,7 @@ fi
 # .gaia/local/specs | plans) only in the main checkout, which is not symlinked
 # into the worktree, so a cwd-relative glob from the worktree would find nothing
 # and silently lose the execute row.
-main_root="$(resolve_main_checkout_root)"
+main_root="$(gaia_resolve_main_root 2>/dev/null)" || exit 0
 has_plan=0
 for rf in "$main_root"/.gaia/local/plans/*/RUNNING "$main_root"/.gaia/local/specs/*/plan/RUNNING "$main_root"/.gaia/local/specs/*/plan-*/RUNNING; do
   [ -f "$rf" ] || continue

@@ -110,9 +110,31 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 classifier_script=".gaia/scripts/classifier/classify-determinism.mjs"
 [ -f "$classifier_script" ] || exit 0
 
-# Worthiness ledger location (sibling to the RED ledger). A missing ledger means
-# zero matches, which denies for the clean case below.
-ledger=".gaia/local/audit/worthiness.jsonl"
+# The shared main-root resolver, sourced from this hook's own checkout via
+# BASH_SOURCE (never process cwd): the worthiness ledger is per-tree state,
+# so its root is the ACTING tree, not wherever this hook process happens to
+# sit.
+gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
+gaia_scripts="$gaia_scripts/.gaia/scripts"
+# shellcheck source=/dev/null
+source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
+
+# The acting agent's working directory: the payload cwd when it is absolute
+# and resolves to a checkout, this hook's process cwd otherwise (mirrors
+# block-worktree-path-mismatch.sh's own payload-cwd idiom). Payload cwd is
+# measured, not contracted, and only established on PreToolUse, so the
+# fallback is mandatory.
+payload_cwd=$(echo "$input" | jq -r '.cwd // empty' 2>/dev/null)
+source_cwd="$PWD"
+if [[ "$payload_cwd" == /* ]] && git -C "$payload_cwd" rev-parse --show-toplevel >/dev/null 2>&1; then
+  source_cwd="$payload_cwd"
+fi
+tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
+
+# Worthiness ledger location (sibling to the RED ledger), anchored on this
+# tree's root. A missing ledger means zero matches, which denies for the
+# clean case below.
+ledger="$tree_root/.gaia/local/audit/worthiness.jsonl"
 
 # ---------------------------------------------------------------------------
 # Resolve the PR base, the default branch this work forks from. Prefer the

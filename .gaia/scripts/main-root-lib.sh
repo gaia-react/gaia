@@ -48,6 +48,19 @@
 #   "no" or "indeterminate" (git unavailable, not a repository). Prints
 #   nothing on stdout ever, in every case.
 #
+# gaia_resolve_tree_root [dir]
+#   The per-tree counterpart of gaia_resolve_main_root: answers "which tree is
+#   this" rather than "where is main". Resolves the current working-tree root
+#   of `dir` (default: the process working directory) -- for a linked
+#   worktree, that worktree's own root, not main's. SUCCESS: prints the root
+#   as one line, absolute, physically resolved (symlink-canonicalized via
+#   `pwd -P`, the same physical form gaia_resolve_main_root prints, so the two
+#   are comparable and a symlinked checkout path never reads differently
+#   between them), terminated by a single newline; returns 0. FAILURE
+#   (`dir` is not inside a work tree): prints nothing on stdout; returns
+#   non-zero. Reuses this file's own env-scrub (_gaia_git) and physical
+#   resolver (_gaia_physical_dir); it is not a second resolver.
+#
 # Neither function holds state between calls: two independent resolutions,
 # for two different directories, are safe in one process.
 #
@@ -55,10 +68,12 @@
 #   . .gaia/scripts/main-root-lib.sh
 #   root="$(gaia_resolve_main_root)" || { echo "no root: $?" >&2; }
 #   if gaia_is_linked_worktree "$some_dir"; then ...; fi
+#   tree_root="$(gaia_resolve_tree_root "$some_dir")" || { echo "no tree: $?" >&2; }
 #
 # Usage (executable):
 #   bash .gaia/scripts/main-root-lib.sh [dir]                # resolve
 #   bash .gaia/scripts/main-root-lib.sh --is-worktree [dir]  # predicate
+#   bash .gaia/scripts/main-root-lib.sh --tree-root [dir]    # per-tree resolve
 
 # Run git with the three repository-discovery overrides stripped from the
 # environment, so every call here answers from on-disk layout alone.
@@ -244,11 +259,34 @@ gaia_is_linked_worktree() {
   [[ "$git_dir" != "$common_dir" ]]
 }
 
+gaia_resolve_tree_root() {
+  local dir="${1:-}"
+  local -a g
+  if [[ -n "$dir" ]]; then
+    g=(_gaia_git -C "$dir")
+  else
+    g=(_gaia_git)
+  fi
+
+  local top
+  top="$("${g[@]}" rev-parse --show-toplevel 2>/dev/null)" || return 1
+  [[ -n "$top" ]] || return 1
+  top="$(_gaia_physical_dir "$top")" || return 1
+  [[ -n "$top" ]] || return 1
+  printf '%s\n' "$top"
+  return 0
+}
+
 # Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   if [[ "${1:-}" == "--is-worktree" ]]; then
     shift
     gaia_is_linked_worktree "${1:-}"
+    exit $?
+  fi
+  if [[ "${1:-}" == "--tree-root" ]]; then
+    shift
+    gaia_resolve_tree_root "${1:-}"
     exit $?
   fi
   gaia_resolve_main_root "${1:-}"

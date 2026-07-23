@@ -162,10 +162,16 @@ run_lib() {
 
 # --- shell lib: red_ledger_path ---
 
-@test "red_ledger_path echoes the gitignored ledger location" {
+@test "red_ledger_path with an explicit root joins it onto the ledger path" {
+  run_lib "red_ledger_path '$REPO_ROOT'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO_ROOT/.gaia/local/red-ledger/observations.jsonl" ]
+}
+
+@test "red_ledger_path with no root defaults to gaia_resolve_tree_root of the process cwd" {
   run_lib 'red_ledger_path'
   [ "$status" -eq 0 ]
-  [ "$output" = ".gaia/local/red-ledger/observations.jsonl" ]
+  [ "$output" = "$REPO_ROOT/.gaia/local/red-ledger/observations.jsonl" ]
 }
 
 # --- shell lib: red_ledger_repo_rel ---
@@ -205,7 +211,7 @@ run_lib() {
 # --- double-sourcing is safe ---
 
 @test "sourcing the lib twice is a no-op" {
-  run bash -c "cd '$REPO_ROOT' && set -uo pipefail && . '$LIB' && . '$LIB' && red_ledger_path"
+  run bash -c "cd '$REPO_ROOT' && set -uo pipefail && . '$LIB' && . '$LIB' && red_ledger_path '$REPO_ROOT'"
   [ "$status" -eq 0 ]
-  [ "$output" = ".gaia/local/red-ledger/observations.jsonl" ]
+  [ "$output" = "$REPO_ROOT/.gaia/local/red-ledger/observations.jsonl" ]
 }

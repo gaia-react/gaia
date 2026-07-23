@@ -209,7 +209,22 @@ case "$tool_name" in
     exit 0 ;;   # never block a tool this guard was not meant to see
 esac
 
-ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+# Resolved to the MAIN checkout: the block-once escape state below is
+# machine-scoped shared state (SPEC-061 scope=shared, cache/shared/), not a
+# property of whichever tree this guard happens to run in. Sourced from this
+# hook's own on-disk location (never cwd). Falls back to a bare toplevel
+# query, then pwd, when the resolver is unavailable or fails -- the same
+# fail-open direction the original CWD-anchored derivation had.
+_root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_root_lib_dir/.gaia/scripts/main-root-lib.sh"
+fi
+ROOT=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  ROOT="$(gaia_resolve_main_root 2>/dev/null)" || ROOT=""
+fi
+[ -n "$ROOT" ] || ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 # --- Gate 3: Serena must actually be available ------------------------------
 # tsconfig is what Serena indexes; no tsconfig -> nothing to route to.

@@ -62,7 +62,27 @@ done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
 [ -f .claude/hooks/lib/red-ledger.sh ] && . .claude/hooks/lib/red-ledger.sh
 type red_ledger_path >/dev/null 2>&1 || exit 0
 
-ledger=$(red_ledger_path)
+# The shared main-root resolver, sourced from this hook's own checkout via
+# BASH_SOURCE (never process cwd): the RED ledger is per-tree state, so its
+# root is the ACTING tree, not wherever this hook process happens to sit.
+gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
+gaia_scripts="$gaia_scripts/.gaia/scripts"
+# shellcheck source=/dev/null
+source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
+
+# The acting agent's working directory: the payload cwd when it is absolute
+# and resolves to a checkout, this hook's process cwd otherwise (mirrors
+# block-worktree-path-mismatch.sh's own payload-cwd idiom). Payload cwd is
+# measured, not contracted, and only established on PreToolUse/PostToolUse,
+# so the fallback is mandatory.
+payload_cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || echo "")
+source_cwd="$PWD"
+if [[ "$payload_cwd" == /* ]] && git -C "$payload_cwd" rev-parse --show-toplevel >/dev/null 2>&1; then
+  source_cwd="$payload_cwd"
+fi
+tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
+
+ledger=$(red_ledger_path "$tree_root") || exit 0
 ledger_dir=$(dirname "$ledger")
 tmp_dir="${ledger_dir}/.tmp"
 

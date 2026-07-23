@@ -11,43 +11,31 @@
 #   plan_dir="$(resolve_active_plan_dir)"
 #   [ -n "$plan_dir" ] && feature_key="$(resolve_feature_key "$plan_dir")"
 
-# Echoes the absolute path of the MAIN checkout root -- the working tree that
-# owns the shared .git dir -- so a run inside a linked worktree resolves the same
-# plan/spec folders (and, via the ledger lib, the same ledger) the main checkout
-# owns. A linked worktree symlinks only the fixed shared-state set that
-# .gaia/scripts/link-worktree.sh names; .gaia/local/specs and .gaia/local/plans
-# are NOT among them, so a RUNNING sentinel is visible only from
-# the main checkout. main_root = dirname(absolute(git rev-parse --git-common-dir)),
-# matching the ledger lib's derivation. Echoes nothing when git cannot resolve the
-# common dir; callers degrade to no match.
-resolve_main_checkout_root() {
-  local common_dir abs main_root
-  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || common_dir=""
-  [ -n "$common_dir" ] || return 0
-  case "$common_dir" in
-    /*) abs="$common_dir" ;;
-    *)  abs="$PWD/$common_dir" ;;
-  esac
-  main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)" || main_root=""
-  [ -n "$main_root" ] && printf '%s' "$main_root"
-  return 0
-}
-
 # Echoes the absolute path of the plan directory whose RUNNING sentinel names the
-# current branch, or nothing when none match. The search is anchored to the main
-# checkout (resolve_main_checkout_root), so a plan executed in a linked worktree
-# -- where its RUNNING sentinel lives only in the main checkout -- still resolves.
-# When several plans match, disambiguates on the lexicographically latest
-# `started:` value (ISO-8601 sorts correctly as a string): the most recently
-# started run wins. A RUNNING file missing a `branch:` or `started:` line is
-# skipped, not an error.
+# current branch, or nothing when none match. The search is anchored to the MAIN
+# checkout -- the working tree that owns the shared .git dir -- via the shared
+# resolver (.gaia/scripts/main-root-lib.sh), sourced here rather than into any
+# top-level scope so this lib's "no side effects at source time" contract holds
+# (the sourced-lib placement rule; matches state-registry-lib.sh's own
+# gaia_registry_path). A linked worktree symlinks only the fixed shared-state
+# set .gaia/scripts/link-worktree.sh names; .gaia/local/specs and
+# .gaia/local/plans are NOT among them, so a RUNNING sentinel is visible only
+# from the main checkout, and a plan executed in a linked worktree still
+# resolves through it. When several plans match, disambiguates on the
+# lexicographically latest `started:` value (ISO-8601 sorts correctly as a
+# string): the most recently started run wins. A RUNNING file missing a
+# `branch:` or `started:` line is skipped, not an error.
 resolve_active_plan_dir() {
   local cur main_root running_file file_branch file_started best_dir best_started
 
   cur="$(git branch --show-current 2>/dev/null)" || true
   [ -n "$cur" ] || return 0
 
-  main_root="$(resolve_main_checkout_root)"
+  local self_dir
+  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
+  # shellcheck disable=SC1091
+  source "$self_dir/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || return 0
+  main_root="$(gaia_resolve_main_root 2>/dev/null)" || return 0
   [ -n "$main_root" ] || return 0
 
   best_dir=""

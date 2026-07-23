@@ -7,8 +7,11 @@
 # UI, a teammate, a plain `gh issue close` in a non-hooked shell), which would
 # otherwise linger until the 6h TTL.
 #
-# The hook reads `.gaia/local/debt/count.json` and writes the sentinel relative
-# to CWD, so each test runs it inside an isolated sandbox dir.
+# The hook reads `.gaia/local/debt/count.json` and writes the sentinel under
+# the MAIN checkout root (gaia_resolve_main_root), so each test runs it inside
+# an isolated sandbox dir that is itself a real git repo -- a SessionStart hook
+# always runs inside one in production, and the resolver needs a git layout to
+# answer from.
 
 setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/debt-session-reconcile.sh
@@ -17,6 +20,10 @@ setup() {
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   rm -rf "$SANDBOX"
   mkdir -p "$SANDBOX/.gaia/local/debt"
+  git init -q --initial-branch=main "$SANDBOX"
+  git -C "$SANDBOX" config user.email gaia-test@example.com
+  git -C "$SANDBOX" config user.name "GAIA Test"
+  git -C "$SANDBOX" config commit.gpgsign false
   SENTINEL="$SANDBOX/.gaia/local/debt/refresh-requested"
   CACHE="$SANDBOX/.gaia/local/debt/count.json"
 }

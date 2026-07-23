@@ -20,6 +20,7 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HOOK_ABS="$REPO_ROOT/.claude/hooks/token-tally-review.sh"
   LIB_SRC="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
+  LIB_MAIN_ROOT_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -45,6 +46,7 @@ build_repo() {
   mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts"
   cp "$LIB_SRC" "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
   chmod +x "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
+  cp "$LIB_MAIN_ROOT_SRC" "$REPO/.gaia/scripts/main-root-lib.sh"
 
   CALLS_FILE="$REPO/.gaia/local/tally-review-calls.txt"
   mkdir -p "$(dirname "$CALLS_FILE")"

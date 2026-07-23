@@ -108,10 +108,24 @@ fi
 # fail-closed posture the digest redesign requires here.
 sha=$(git rev-parse HEAD 2>/dev/null || true)
 
-# The audited working root, CWD-independent for the digest walk. The hook
-# runs with cwd at the repo root, so a bare toplevel query answers it (fall
-# back to pwd only when git cannot, e.g. no git at all).
-root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# The audited working root, resolved to the MAIN checkout: the disposition
+# sidecar is main-anchored shared state (SPEC-061 scope=shared, the same
+# symlinked audit/ store the frontend digest marker lives in), not a property
+# of whichever tree this hook happens to run in. The shared resolver is
+# sourced from this hook's own on-disk location (never cwd, never $root),
+# matching the sibling lib-loads below. Falls back to a bare toplevel query,
+# then pwd, when the resolver is unavailable or fails -- the same fail-open
+# direction the original CWD-anchored derivation had.
+_root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_root_lib_dir/.gaia/scripts/main-root-lib.sh"
+fi
+root=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  root="$(gaia_resolve_main_root 2>/dev/null)" || root=""
+fi
+[ -n "$root" ] || root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 # Load the shared disposition logic from this hook's OWN on-disk location
 # (never cwd, never $root). The offender collection lives in the lib so this
@@ -186,7 +200,7 @@ Likely causes: a missing sha256 tool (sha256sum / shasum), an unloadable ownersh
 See wiki/concepts/Audit Disposition and Debt Fix.md for the full contract."
 fi
 
-sidecar=".gaia/local/audit/${frontend_digest}.dispositions.json"
+sidecar="$root/.gaia/local/audit/${frontend_digest}.dispositions.json"
 
 # New fail-closed arm (C4): a valid frontend earned marker for this exact
 # digest with an ABSENT sidecar. Degrades to a no-op (the arm never fires)

@@ -157,6 +157,20 @@ is_worktree() {
   run bash -c 'bash "$1" --is-worktree "$2" 2>/dev/null' _ "$LIB" "$dir"
 }
 
+# resolve_tree <dir>: runs the executable entry's --tree-root operand.
+# Mirrors resolve()'s stderr-discard-inside-bash-c note.
+resolve_tree() {
+  local dir="$1"
+  run bash -c 'bash "$1" --tree-root "$2" 2>/dev/null' _ "$LIB" "$dir"
+}
+
+# resolve_tree_from <cwd> <dir>: process cwd=$1 (unrelated to $2), operand=$2.
+# Mirrors resolve_from().
+resolve_tree_from() {
+  local cwd="$1" dir="$2"
+  run bash -c 'cd "$1" && bash "$2" --tree-root "$3" 2>/dev/null' _ "$cwd" "$LIB" "$dir"
+}
+
 # The current (pre-resolver) physical derivation, matching
 # .gaia/statusline/gaia-statusline.sh's own formula:
 # dirname(absolute(git rev-parse --git-common-dir)), physically resolved via
@@ -471,18 +485,116 @@ old_derivation() {
   [ "$output" != "$other" ]
 }
 
+# ---------- gaia_resolve_tree_root (task 3.6) ----------
+# The per-tree counterpart of gaia_resolve_main_root: "which tree is this",
+# not "where is main". Its one behavioral divergence from gaia_resolve_main_root
+# is the whole point -- a linked worktree resolves to ITS OWN root, not main's.
+
+@test "gaia_resolve_tree_root: ordinary clone resolves to the clone root" {
+  make_repo
+  resolve_tree "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO" ]
+}
+
+@test "gaia_resolve_tree_root: a linked worktree resolves to the WORKTREE's own root, diverging from gaia_resolve_main_root" {
+  make_repo
+  make_worktree "$REPO" "w" "treewtbranch"
+  resolve_tree "$WT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$WT" ]
+  [ "$output" != "$REPO" ]
+
+  # Parity check: gaia_resolve_main_root answers the OTHER root for the same dir.
+  resolve "$WT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO" ]
+}
+
+@test "gaia_resolve_tree_root: physical-form parity with gaia_resolve_main_root for the main checkout itself" {
+  make_repo
+  resolve_tree "$REPO"
+  [ "$status" -eq 0 ]
+  local tree_output="$output"
+  resolve "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$tree_output" = "$output" ]
+}
+
+@test "gaia_resolve_tree_root: a symlinked checkout path resolves to the physical (non-symlink) root" {
+  make_repo
+  local symlink
+  symlink="${REPO}-treesymlink"
+  ln -s "$REPO" "$symlink"
+  CLEANUP_DIRS+=("$symlink")
+  resolve_tree "$symlink"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO" ]
+}
+
+@test "gaia_resolve_tree_root: outside any work tree fails, empty stdout" {
+  local nongit
+  nongit=$(mktemp -d -t gaia-mrl-treenongit-XXXXXX)
+  CLEANUP_DIRS+=("$nongit")
+  resolve_tree "$nongit"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "gaia_resolve_tree_root: a supplied dir operand resolves correctly when the process cwd is unrelated to it" {
+  make_repo
+  local neutral
+  neutral=$(mktemp -d -t gaia-mrl-treeneutral-XXXXXX)
+  CLEANUP_DIRS+=("$neutral")
+  resolve_tree_from "$neutral" "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO" ]
+}
+
+@test "gaia_resolve_tree_root: two independent resolutions for two different trees succeed in one process" {
+  make_repo
+  make_worktree "$REPO" "w" "treewtbranch2"
+  run bash -c '
+    # shellcheck disable=SC1090
+    source "$1"
+    a="$(gaia_resolve_tree_root "$2")" || exit 10
+    b="$(gaia_resolve_tree_root "$3")" || exit 11
+    printf "%s\n%s\n" "$a" "$b"
+  ' _ "$LIB" "$REPO" "$WT"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "$REPO" ]
+  [ "${lines[1]}" = "$WT" ]
+  [ "${lines[0]}" != "${lines[1]}" ]
+}
+
+@test "gaia_resolve_tree_root: GIT_DIR and GIT_WORK_TREE exported in the environment do not override the layout-derived root" {
+  make_repo
+  local other neutral
+  other=$(mktemp -d -t gaia-mrl-treeother-XXXXXX)
+  CLEANUP_DIRS+=("$other")
+  git -C "$other" init -q --initial-branch=main
+  neutral=$(mktemp -d -t gaia-mrl-treeneutral2-XXXXXX)
+  CLEANUP_DIRS+=("$neutral")
+
+  run bash -c 'cd "$1" && GIT_DIR="$2/.git" GIT_WORK_TREE="$2" bash "$3" --tree-root "$4"' _ "$neutral" "$other" "$LIB" "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO" ]
+  [ "$output" != "$other" ]
+}
+
 # ---------- structural ----------
 
 @test "structural: main-root-lib.sh is executable" {
   [ -x "$LIB" ]
 }
 
-@test "structural: sourcing the library defines both functions with no side effects" {
+@test "structural: sourcing the library defines all three functions with no side effects" {
   run bash -c '
     # shellcheck disable=SC1090
     source "$1"
     type gaia_resolve_main_root >/dev/null
     type gaia_is_linked_worktree >/dev/null
+    type gaia_resolve_tree_root >/dev/null
     echo OK
   ' _ "$LIB"
   [ "$status" -eq 0 ]

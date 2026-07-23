@@ -28,6 +28,24 @@ if type cmd_targets_foreign_repo >/dev/null 2>&1 \
   exit 0
 fi
 
+# The shared main-root resolver, sourced from this hook's own on-disk
+# location (never cwd): the setup-in-progress sentinel below is main-anchored
+# machine state (SPEC-061 scope=main-only), not a property of whichever tree
+# this hook happens to run in. A load or resolve failure here must not weaken
+# this guard's deny logic below, so it falls back to the prior bare-relative
+# (process-cwd) derivation rather than exiting -- this guard is fail-closed on
+# ambiguity, never fail-open.
+gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || true
+if [ -n "${gaia_scripts:-}" ] && [ -f "$gaia_scripts/.gaia/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$gaia_scripts/.gaia/scripts/main-root-lib.sh" 2>/dev/null || true
+fi
+main_root=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  main_root="$(gaia_resolve_main_root 2>/dev/null)" || main_root=""
+fi
+[ -n "$main_root" ] || main_root="$PWD"
+
 # Setup standdown: while /setup-gaia provisions a greenfield repo it lands
 # GAIA's own known-safe CI-install commit directly on main (main is not yet a
 # collaboration surface and the commit has nothing to audit). setup-gaia
@@ -43,8 +61,8 @@ fi
 # setup left behind goes stale on its own and enforcement resumes WITHOUT
 # waiting for a /setup-gaia re-run to remove it. `find` returning empty (stale,
 # missing, or unreadable) falls through to full enforcement, fail-closed.
-if [ -f .gaia/local/setup-in-progress ] \
-   && [ -n "$(find .gaia/local/setup-in-progress -mmin -10 2>/dev/null)" ]; then
+if [ -f "$main_root/.gaia/local/setup-in-progress" ] \
+   && [ -n "$(find "$main_root/.gaia/local/setup-in-progress" -mmin -10 2>/dev/null)" ]; then
   exit 0
 fi
 
