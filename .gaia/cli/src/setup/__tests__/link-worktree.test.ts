@@ -8,6 +8,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  */
 import {execFileSync} from 'node:child_process';
 import {
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -19,7 +20,35 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {run as runLinkWorktree} from '../link-worktree.js';
+
+// The handler reads the shared-path set from this repo's own state registry,
+// via state-registry-lib.sh (which sources its sibling main-root-lib.sh),
+// resolved relative to the sandbox's main root. A sandbox is a throwaway
+// `git init`, not a checkout of this repo, so its main root needs its own
+// copies of these three tracked files to resolve against.
+const REPO_GAIA_DIR = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  '..'
+);
+const REPO_STATE_REGISTRY_PATH = path.join(
+  REPO_GAIA_DIR,
+  'state-registry.json'
+);
+const REPO_STATE_REGISTRY_LIB_PATH = path.join(
+  REPO_GAIA_DIR,
+  'scripts',
+  'state-registry-lib.sh'
+);
+const REPO_MAIN_ROOT_LIB_PATH = path.join(
+  REPO_GAIA_DIR,
+  'scripts',
+  'main-root-lib.sh'
+);
 
 type MainOnlySandbox = {
   cleanup: () => void;
@@ -57,6 +86,20 @@ const setupWorktreeSandbox = (): WorktreeSandbox => {
     'git',
     ['worktree', 'add', '-q', linkedRoot, '-b', 'feature/test'],
     {cwd: mainRoot, env: {...process.env, ...GIT_IDENTITY_ENV}}
+  );
+
+  mkdirSync(path.join(mainRoot, '.gaia', 'scripts'), {recursive: true});
+  copyFileSync(
+    REPO_STATE_REGISTRY_PATH,
+    path.join(mainRoot, '.gaia', 'state-registry.json')
+  );
+  copyFileSync(
+    REPO_STATE_REGISTRY_LIB_PATH,
+    path.join(mainRoot, '.gaia', 'scripts', 'state-registry-lib.sh')
+  );
+  copyFileSync(
+    REPO_MAIN_ROOT_LIB_PATH,
+    path.join(mainRoot, '.gaia', 'scripts', 'main-root-lib.sh')
   );
 
   // macOS resolves /var -> /private/var; the handler canonicalizes via

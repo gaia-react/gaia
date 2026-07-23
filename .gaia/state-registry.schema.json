@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GAIA .gaia/local state registry",
+  "description": "Constrains .gaia/state-registry.json: the one classification of every .gaia/local entry (SPEC-061). A malformed edit fails this cheap validation before any consumer or conformance check runs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "version", "description", "entries", "residue"],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "const": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    },
+    "residue": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/residueEntry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "match",
+        "kind",
+        "scope",
+        "keyed_by",
+        "why",
+        "writer",
+        "reaped_by",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "Stable kebab-case key, referenced by consumers/tests."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative to .gaia/local/. May join more than one concrete on-disk shape with '|' when one logical entry covers several filenames (e.g. a clearance marker's .ok/.refused/.dispositions.json siblings); each '|'-joined alternative is matched independently under this entry's own `match` rule. May carry a '<placeholder>' token for a variable path segment (a spec id, a digest, a worktree name): for `match: glob` a placeholder behaves as a shell '*' wildcard, and for `match: prefix` only the literal text before the first '<' is significant (or the whole trimmed path, when it carries no placeholder)."
+        },
+        "match": {
+          "enum": ["exact", "glob", "prefix"],
+          "description": "How `path` matches a real .gaia/local child. exact: literal equality per '|' alternative. glob: shell-glob equality ('*' matches any run of characters, including '/'). prefix: the child's path starts with `path`'s literal text (trimmed of a trailing '/', truncated at its first '<' placeholder if any)."
+        },
+        "kind": { "enum": ["file", "dir"] },
+        "scope": { "enum": ["shared", "per-tree", "main-only", "ephemeral"] },
+        "keyed_by": {
+          "type": ["string", "null"],
+          "description": "Required non-null partition key, lock, or singleton-overwrite strategy when scope=='shared'; null for every other scope. Per-tree's key is the resolver-supplied tree identity, uniform across every per-tree entry and stated once in prose rather than per row; ephemeral's key is its own session/spec/uuid embedded in `path`; main-only is a singleton or a main-anchored coordination store."
+        },
+        "why": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plain-language reason this entry carries this scope, grounded in the classification's record."
+        },
+        "writer": {
+          "enum": ["code", "hand-authored", "none-residue", "not-yet-live"],
+          "description": "code: a shipped writer exists. hand-authored: GAIA-recognized and protected, but a human writes it, never GAIA. not-yet-live: allowlisted for a writer that has not shipped yet. none-residue: never used inside `entries` (residue-only; see residueEntry)."
+        },
+        "reaped_by": {
+          "type": ["string", "null"],
+          "description": "The janitor arm that owns this entry's lifecycle, or null when nothing reaps it (a persistent value, or a producer that self-prunes)."
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Provenance pointer back to the classification row this entry transcribes."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "scope": { "const": "shared" } },
+            "required": ["scope"]
+          },
+          "then": {
+            "properties": { "keyed_by": { "type": "string", "minLength": 1 } }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": { "scope": { "const": "shared" } },
+              "required": ["scope"]
+            }
+          },
+          "then": {
+            "properties": { "keyed_by": { "type": "null" } }
+          }
+        }
+      ]
+    },
+    "residueEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "match", "why", "writer"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "path": { "type": "string", "minLength": 1 },
+        "match": { "enum": ["exact", "glob", "prefix"] },
+        "why": { "type": "string", "minLength": 1 },
+        "writer": { "const": "none-residue" }
+      }
+    }
+  }
+}

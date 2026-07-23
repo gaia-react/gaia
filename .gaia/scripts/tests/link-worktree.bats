@@ -33,6 +33,13 @@ setup() {
   git -C "$MAIN" init -q
   git -C "$MAIN" commit --allow-empty -q -m "init"
   git -C "$MAIN" worktree add -q "$LINKED" -b "feature/test"
+
+  # The script under test reads the shared-path set from the state registry
+  # at the main checkout's .gaia/state-registry.json (tracked in a real repo;
+  # seeded here since this sandbox is a throwaway git init, not a checkout of
+  # this repo).
+  mkdir -p "$MAIN/.gaia"
+  cp "$SCRIPT_DIR/../state-registry.json" "$MAIN/.gaia/state-registry.json"
 }
 
 teardown() {
@@ -203,8 +210,9 @@ $LINKED/.gaia/local/telemetry"
 
 # ---------- 6. Main checkout missing target directories ----------
 @test "main missing targets: creates main-side dirs before symlinking" {
-  # Confirm the main checkout has nothing under .gaia/.
-  [ ! -d "$MAIN/.gaia" ]
+  # Confirm the main checkout has no shared-state targets yet (.gaia/ itself
+  # already holds the seeded state registry; see setup()).
+  [ ! -d "$MAIN/.gaia/local" ]
 
   run run_in "$LINKED"
   [ "$status" -eq 0 ]
@@ -365,50 +373,37 @@ FAKE
   [ ! -L "$LINKED/.env.local~" ]
 }
 
-# ---------- 16. The shared-path set has copies; keep the checkable ones in sync ----------
+# ---------- 16. The shared-path set comes from the state registry ----------
 
-# The set of symlinked shared-state paths is restated across several surfaces:
-# this script's own header, the CLI's SHARED_PATHS, the worktree write-guard's
-# exemption arms, wiki/concepts/Local Working State.md. Hand-syncing them has
-# drifted more than once (tech-debt #953). These two tests pin the two copies a
-# machine can compare exactly, and their failure doubles as the checklist:
-# when this set changes, the prose surfaces named above need the same edit.
-#
-# link_one's first argument is the authoritative set, it is what the script
-# actually symlinks. The .env arm passes a bare basename, so anchoring on
-# .gaia/local/ selects the fixed shared-state set and nothing else.
-authority_paths() {
-  grep -oE 'link_one "\.gaia/local/[^"]+"' "$SCRIPT" | sed -E 's/^link_one "//; s/"$//' | sort
-}
+# Before the state registry, this script's own link_one list and the CLI's
+# SHARED_PATHS were two hand-maintained copies of the same five paths, kept in
+# sync by hand (tech-debt #953). Both twins now read the one registry function
+# (gaia_registry_linkable_paths) instead, so there is nothing left to keep in
+# sync; this test proves the wiring end-to-end instead: the paths this script
+# actually symlinks, in the order it symlinks them, match the registry's own
+# executable-mode output, which in turn matches the five paths every consumer
+# expects today.
+@test "shared paths: the script's effective linked set matches the state registry, in order" {
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
 
-@test "shared paths: the CLI's SHARED_PATHS matches what this script symlinks" {
-  local cli from_sh from_ts
-  cli="$SCRIPT_DIR/../cli/src/setup/link-worktree.ts"
-  [ -f "$cli" ]
-  from_sh="$(authority_paths)"
-  from_ts="$(grep -oE "relativePath: '[^']+'" "$cli" | sed -E "s/^relativePath: '//; s/'$//" | sort)"
-  [ -n "$from_sh" ]
-  [ "$from_sh" = "$from_ts" ]
-}
-
-# The guard denies a write from a linked worktree into the main checkout, and
-# `git -C` resolves a symlink before reporting a toplevel, so every symlinked
-# shared-state DIRECTORY reads as such a write and needs its own exemption arm.
-# Add a sixth shared directory without one and the guard denies the very writes
-# the symlink exists to make shared. A symlinked FILE needs no arm (its parent
-# directory is the worktree's own), and the set's only file is a .json.
-#
-# Subset, not equality: the guard carries further exemption arms on unrelated
-# rationale (the main-checkout plan and SPEC ledgers, which are not symlinked
-# at all), and those are none of this script's business.
-@test "shared paths: the worktree write-guard exempts every symlinked directory" {
-  local guard p
-  guard="$SCRIPT_DIR/../../.claude/hooks/block-worktree-path-mismatch.sh"
-  [ -f "$guard" ]
-  while IFS= read -r p; do
-    case "$p" in
-      *.json) continue ;;
+  linked_paths=()
+  while IFS= read -r line; do
+    case "$line" in
+      "linked: $LINKED/.gaia/local/"*)
+        linked_paths+=("${line#linked: "$LINKED"/.gaia/local/}")
+        ;;
     esac
-    grep -qF -- '"$main_root"/'"$p"'/*' "$guard" || return 1
-  done <<< "$(authority_paths)"
+  done <<< "$output"
+
+  linked_joined="$(printf '%s\n' "${linked_paths[@]}")"
+  registry_paths="$(bash "$SCRIPT_DIR/state-registry-lib.sh" linkable-paths)"
+  expected="setup-state.json
+cache/shared
+audit
+telemetry
+debt"
+
+  [ "$linked_joined" = "$registry_paths" ]
+  [ "$registry_paths" = "$expected" ]
 }

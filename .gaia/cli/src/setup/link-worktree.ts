@@ -1,14 +1,15 @@
 /**
  * `gaia setup link-worktree [--json]` handler.
  *
- * Idempotently creates the five SPEC-005 shared-state symlinks from the
- * current linked worktree into the main checkout:
+ * Idempotently creates the shared-state symlinks the state registry
+ * declares (`.gaia/state-registry.json`, read via
+ * `.gaia/scripts/state-registry-lib.sh`) from the current linked worktree
+ * into the main checkout:
  *
- *   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
- *   <worktree>/.gaia/local/cache/shared/     -> <main>/.gaia/local/cache/shared/
- *   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
- *   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
- *   <worktree>/.gaia/local/debt/             -> <main>/.gaia/local/debt/
+ *   <worktree>/.gaia/local/<registry-declared path> -> <main>/.gaia/local/<same path>
+ *
+ * Today the registry declares exactly five: setup-state.json, cache/shared/,
+ * audit/, telemetry/, debt/.
  *
  * Also links gitignored checkout-root `.env` / `.env.*` files (excluding the
  * committed `.env.example`) from the main checkout, one symlink per file,
@@ -95,22 +96,49 @@ type SharedPathSpec = {
   relativePath: string;
 };
 
+// Relative path (from the main checkout) to the state-registry reader that
+// declares which .gaia/local paths are shared into main. Both twins consume
+// the same registry function; see .gaia/scripts/state-registry-lib.sh.
+const STATE_REGISTRY_LIB_RELATIVE = path.join(
+  '.gaia',
+  'scripts',
+  'state-registry-lib.sh'
+);
+
 /**
- * Frozen path set; five entries, in this order, always present in the
- * output `actions` array regardless of result. See SPEC-005 plan README.
+ * Load the shared-path set from the state registry: the one definition of
+ * which `.gaia/local` paths are shared into main (`.gaia/state-registry.json`,
+ * via `state-registry-lib.sh linkable-paths`), in a stable order, always
+ * present in the output `actions` array regardless of result. See SPEC-005
+ * plan README and the state-registry design doc.
  *
- * `debt/` holds the `/gaia-debt` count cache and its `refresh-requested`
- * sentinel. Sharing it means a tech-debt fix merged from inside a linked
- * worktree arms the main checkout's sentinel, so the statusline debt nudge
- * recomputes instead of freezing on its TTL until the backlog empties.
+ * A registry-declared path with no file extension is a directory
+ * (`ensureTargetDir: true`); the one file entry (`setup-state.json`) is not
+ * pre-created (see `SharedPathSpec.ensureTargetDir`). Throws if the registry
+ * lib is missing or fails (jq unavailable, registry unreadable); the caller
+ * surfaces that as a structured CLI error rather than linking nothing
+ * silently.
  */
-const SHARED_PATHS: readonly SharedPathSpec[] = [
-  {ensureTargetDir: false, relativePath: '.gaia/local/setup-state.json'},
-  {ensureTargetDir: true, relativePath: '.gaia/local/cache/shared'},
-  {ensureTargetDir: true, relativePath: '.gaia/local/audit'},
-  {ensureTargetDir: true, relativePath: '.gaia/local/telemetry'},
-  {ensureTargetDir: true, relativePath: '.gaia/local/debt'},
-];
+const loadSharedPathSpecs = (mainRoot: string): SharedPathSpec[] => {
+  const libraryPath = path.join(mainRoot, STATE_REGISTRY_LIB_RELATIVE);
+  // cwd: mainRoot -- the lib resolves the registry relative to $PWD (via
+  // gaia_resolve_main_root), so it must run from the main checkout, not
+  // wherever the CLI process itself happened to start.
+  const output = execFileSync('bash', [libraryPath, 'linkable-paths'], {
+    cwd: mainRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((relativePath) => ({
+      ensureTargetDir: path.extname(relativePath) === '',
+      relativePath: path.join('.gaia', 'local', relativePath),
+    }));
+};
 
 // Shareable env-file basename set: `.env` and any `.env.*` variant under the
 // checkout root, except the committed `.env.example`. Mirrors .gitignore's
@@ -373,6 +401,25 @@ const resolveWorktreeRoots = (
   }
 };
 
+// Extracted out of `run` (kept its cognitive complexity under the frozen
+// limit): loading the shared-path set from the state registry, independent
+// of the json/human output that follows.
+const resolveSharedPathSpecs = (
+  mainRoot: string
+): {exitCode: number} | {sharedPathSpecs: SharedPathSpec[]} => {
+  try {
+    return {sharedPathSpecs: loadSharedPathSpecs(mainRoot)};
+  } catch (error) {
+    structuredError({
+      code: 'state_registry_unavailable',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'setup link-worktree',
+    });
+
+    return {exitCode: EXIT_CODES.STORAGE_INACCESSIBLE};
+  }
+};
+
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -428,7 +475,14 @@ export const run = (
   const timestamp = formatTimestamp(nowDate);
   const symlink = options.symlink ?? symlinkSync;
 
-  const actions = SHARED_PATHS.map((spec) =>
+  const sharedPathSpecsResult = resolveSharedPathSpecs(mainRoot);
+
+  if ('exitCode' in sharedPathSpecsResult)
+    return sharedPathSpecsResult.exitCode;
+
+  const {sharedPathSpecs} = sharedPathSpecsResult;
+
+  const actions = sharedPathSpecs.map((spec) =>
     linkOne({mainRoot, spec, symlink, timestamp, worktreeRoot})
   );
 

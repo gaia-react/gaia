@@ -111,17 +111,22 @@
 #      long-running session. Teardown delegates to the WorktreeRemove hook's
 #      own remove-worktree.sh so remove + branch-delete + parent-prune stays
 #      defined in one place.
-#   9. off-pattern outlier residue: anything NOT on an explicit per-root
-#      allowlist, at the top level of .gaia/local plus the direct children
-#      (maxdepth-1, mindepth-1, no deeper) of audit/ and cache/, once its
-#      mtime clears GAIA_OUTLIER_RETENTION_DAYS (default 7, floor 2); OS junk
-#      (.DS_Store, Thumbs.db, ._*) is reaped at any age. It never recurses
-#      below maxdepth-1 to delete and never enters the ledger / self-managing
-#      zones (telemetry/, red-ledger/, handoff/, plans/, specs/, debt/,
-#      forensics/, and the audit/archived, audit/security, and
-#      audit/comprehensive subtrees), nor follows a symlinked scope root from
-#      a linked worktree. Two off-pattern writers get their own dedicated arms
-#      instead of the blanket allowlist reap, each on its own floored knob:
+#   9. off-pattern outlier residue: at the top level of .gaia/local plus the
+#      direct children (maxdepth-1, mindepth-1, no deeper) of audit/ and
+#      cache/, every child is put to the state registry
+#      (.gaia/state-registry.json, read through gaia_registry_recognizes in
+#      .gaia/scripts/state-registry-lib.sh): a child the registry recognizes
+#      (a live entry or a named residue path) is kept, silently; a child the
+#      registry does NOT recognize is left in place and reported on stderr,
+#      never deleted -- the registry is the single answer to "may I reap
+#      this?", not a hardcoded allowlist. OS junk (.DS_Store, Thumbs.db,
+#      ._*) is the one exception, reaped at any age regardless of the
+#      registry. The sweep never recurses below maxdepth-1 -- the three
+#      zones it walks never include telemetry/, red-ledger/, handoff/,
+#      plans/, specs/, debt/, forensics/, harden/, or worktree-locks/ -- and
+#      never follows a symlinked scope root from a linked worktree. Two
+#      off-pattern writers still get their own dedicated reap arms
+#      elsewhere, unrelated to this sweep's registry consultation:
 #      audit/*.findings.json attached to sweep #2
 #      (GAIA_AUDIT_FINDINGS_RETENTION_HOURS, default 72, floor 24) and
 #      cache/gh-artifact-pr.json attached to sweep #5
@@ -165,92 +170,56 @@ fi
 local_dir="$root/.gaia/local"
 [ -d "$local_dir" ] || exit 0
 
-# --- Sweep #9 allowlists (single source of truth) ---------------------------
+# --- Sweep #9's reap predicate: the state registry, not a hardcoded list ---
 #
-# The completed per-writer census: every subsystem known to write to these
-# three roots. Each array holds the exact names / globs a root's children
-# must NOT be reaped for; a directory-typed entry carries a trailing "/"
-# (matched only against a directory child, slash stripped before the glob
-# compare) so one shared matcher (janitor_outlier_kept below) can read
-# straight off these arrays with no parallel type list to drift out of sync.
-# The disjoint-owner guard test reads these same arrays from source, so they
-# are the single frozen source of truth for both what sweep #9 keeps and what
-# the guard checks -- never re-derive them here.
-JANITOR_OUTLIER_ALLOW_TOPLEVEL=(
-  maintainer-statusline.sh .patched-statusline.sh .project-id
-  .mentorship-swept setup-state.json declined-updates.json
-  automation.json sandbox.json dep-audit-baseline.json setup-in-progress
-  audit/ cache/ debt/ forensics/ handoff/ plans/ red-ledger/ specs/ telemetry/
-  worktree-locks/ harden/
-)
-JANITOR_OUTLIER_ALLOW_AUDIT=(
-  '*.ok' '*.refused' '*.carried' '*.dispositions.json' '*.progress.log'
-  '*.rerun.json' '*.findings.json' worthiness.jsonl 'KNOWLEDGE-*.md'
-  archived/ security/ comprehensive/
-)
-JANITOR_OUTLIER_ALLOW_CACHE=(
-  'gate1-*.json' 'draft-*.md' draft.md 'spec-session-*.json' 'spec-session-*.lock'
-  'spec-chain-*.json'
-  gh-artifact-pr.json version-check.lock v2-update-notes.md
-  'audit-*/' wiki-promote/ uat-write/ shared/
-)
+# "May I reap this off-pattern child?" is answered by the state registry
+# (.gaia/state-registry.json) through gaia_registry_recognizes, the one
+# consumer-facing predicate .gaia/scripts/state-registry-lib.sh exposes for
+# exactly this question. Sourced from THIS file's own sibling .gaia/scripts/
+# (via BASH_SOURCE), never from $root: $root is whatever checkout the janitor
+# happens to be running against (a bats fixture, a linked worktree), while
+# this file and .gaia/scripts/state-registry-lib.sh ship together, so the
+# library is always found beside the janitor regardless of which tree's
+# .gaia/local it is sweeping. The library locates the registry itself, via
+# the resolver, independent of where it was sourced from.
+#
+# Fail-safe by the library's own contract: jq unavailable or the registry
+# unreadable makes gaia_registry_recognizes return "recognized" (exit 0), so
+# a broken registry degrades to "sweep #9 reaps and reports nothing", never
+# to "sweep #9 reaps everything it cannot classify" -- see
+# state-registry-lib.sh's own header for the fail-safe contract.
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.gaia/scripts/state-registry-lib.sh"
 
-# janitor_outlier_kept <name> <type: f|d> <allow-entries...>: exit 0 iff
-# <name> (a file/dotfile when <type> is f, a directory when <type> is d)
-# matches one of the given allowlist entries for its own type. See the array
-# comment above for the trailing-"/" directory-entry convention.
-janitor_outlier_kept() {
-  local name="$1" etype="$2"
-  shift 2
-  local entry pattern
-  for entry in "$@"; do
-    case "$entry" in
-      */)
-        [ "$etype" = d ] || continue
-        pattern="${entry%/}"
-        ;;
-      *)
-        [ "$etype" = f ] || continue
-        pattern="$entry"
-        ;;
-    esac
-    # Deliberate glob match: $pattern holds an allowlist entry (e.g.
-    # 'KNOWLEDGE-*.md'), never a literal to compare byte-for-byte.
-    # shellcheck disable=SC2254
-    case "$name" in
-      $pattern) return 0 ;;
-    esac
-  done
-  return 1
-}
-
-# janitor_outlier_is_old <path> <days>: exit 0 iff <path>'s own mtime is older
-# than <days>. `-maxdepth 0` bounds `find` to the path itself, so a
-# directory's age is judged as one unit, never by its contents.
-janitor_outlier_is_old() {
-  [ -n "$(find "$1" -maxdepth 0 -mtime "+$2" 2>/dev/null)" ]
-}
-
-# janitor_sweep_outliers <local_dir>: the allowlist-based ninth sweep. Walks
-# exactly three scope roots (top level of <local_dir>, its audit/, its
-# cache/), each at maxdepth-1/mindepth-1, and reaps any child not on that
-# root's allowlist once older than GAIA_OUTLIER_RETENTION_DAYS (OS junk at any
-# age). Self-contained: reads its own knob, computes its own cutoff, resolves
-# real directories only (never follows a symlinked scope root, so a run from
-# a linked worktree never deletes another checkout's state, and never reaps a
-# symlinked entry), and never recurses below maxdepth-1 to
-# delete -- the one exception, a bounded one-level peek for a `renders.json`
-# child, only ever KEEPS. No stdout; deletes in place; always returns 0.
+# janitor_sweep_outliers <local_dir>: the ninth sweep. Walks exactly three
+# scope roots (top level of <local_dir>, its audit/, its cache/), each at
+# maxdepth-1/mindepth-1, and for every child asks the state registry whether
+# it is recognized (a live entry or a named residue path). A recognized child
+# is kept, silently; an unrecognized child is reported on stderr and left in
+# place -- report, never reap. OS junk is the one exception, reaped at any
+# age regardless of the registry. Self-contained: resolves real directories
+# only (never follows a symlinked scope root, so a run from a linked worktree
+# never touches another checkout's state, and never reaps a symlinked entry),
+# and never recurses below maxdepth-1 -- the one exception, a bounded
+# one-level peek for a `renders.json` child, only ever KEEPS. No stdout;
+# deletes only OS junk; always returns 0.
 janitor_sweep_outliers() {
   local scope_root="$1"
   [ -n "$scope_root" ] && [ -d "$scope_root" ] || return 0
 
-  local outlier_days
-  outlier_days="${GAIA_OUTLIER_RETENTION_DAYS:-7}"
-  case "$outlier_days" in '' | *[!0-9]*) outlier_days=7 ;; esac
-  [ "$outlier_days" -lt 2 ] && outlier_days=2
+  # Probe the registry ONCE per invocation, not once per child: each
+  # gaia_registry_path resolution forks git several times (through the
+  # main-root resolver), so asking gaia_registry_recognizes per child would
+  # scale git-fork cost with the number of children in .gaia/local. When the
+  # registry is unusable (no jq, no registry file, unresolvable root) the
+  # fail-safe answer is "recognized" for every child regardless of which
+  # child is asked, so one probe answers it for the whole sweep. A usable
+  # registry still asks gaia_registry_recognizes per child below, since only
+  # it knows a given child's own match.
+  local registry_usable=1
+  gaia_registry_path >/dev/null 2>&1 || registry_usable=0
 
-  local zone sroot child base etype candidate
+  local zone sroot child base etype relpath
   for zone in toplevel audit cache; do
     case "$zone" in
       toplevel) sroot="$scope_root" ;;
@@ -267,7 +236,7 @@ janitor_sweep_outliers() {
       base=${child##*/}
       if [ -d "$child" ]; then etype=d; else etype=f; fi
 
-      # OS junk: reaped at any age, the only age-independent case.
+      # OS junk: reaped at any age, the only case the registry never governs.
       case "$base" in
         .DS_Store | Thumbs.db | ._*)
           rm -rf -- "$child"
@@ -275,33 +244,31 @@ janitor_sweep_outliers() {
           ;;
       esac
 
-      candidate=1
-      case "$zone" in
-        toplevel)
-          janitor_outlier_kept "$base" "$etype" ${JANITOR_OUTLIER_ALLOW_TOPLEVEL[@]+"${JANITOR_OUTLIER_ALLOW_TOPLEVEL[@]}"} && candidate=0
-          ;;
-        audit)
-          janitor_outlier_kept "$base" "$etype" ${JANITOR_OUTLIER_ALLOW_AUDIT[@]+"${JANITOR_OUTLIER_ALLOW_AUDIT[@]}"} && candidate=0
-          ;;
-        cache)
-          janitor_outlier_kept "$base" "$etype" ${JANITOR_OUTLIER_ALLOW_CACHE[@]+"${JANITOR_OUTLIER_ALLOW_CACHE[@]}"} && candidate=0
-          # Bounded one-level renders.json protection: a not-otherwise-
-          # allowlisted cache/ child directory still keeps if it
-          # directly holds a renders.json file (a react-perf run dir, whose
-          # own name is arbitrary). Only ever KEEPS, never reaps.
-          if [ "$candidate" -eq 1 ] && [ "$etype" = d ] && [ -f "$child/renders.json" ]; then
-            candidate=0
-          fi
-          ;;
-      esac
-      [ "$candidate" -eq 1 ] || continue
-
-      janitor_outlier_is_old "$child" "$outlier_days" || continue
-      if [ "$etype" = d ]; then
-        rm -rf -- "$child"
-      else
-        rm -f -- "$child"
+      if [ "$registry_usable" -eq 0 ]; then
+        continue   # registry unusable: fail-safe recognizes everything
       fi
+
+      case "$zone" in
+        toplevel) relpath="$base" ;;
+        audit)    relpath="audit/$base" ;;
+        cache)    relpath="cache/$base" ;;
+      esac
+
+      if gaia_registry_recognizes "$relpath" "$etype"; then
+        continue   # recognized (live or residue): kept, silently
+      fi
+
+      # Bounded one-level renders.json protection: a not-otherwise-recognized
+      # cache/ child directory still keeps if it directly holds a
+      # renders.json file (a react-perf run dir, whose own name is arbitrary
+      # and never itself a registry entry). Only ever KEEPS.
+      if [ "$zone" = cache ] && [ "$etype" = d ] && [ -f "$child/renders.json" ]; then
+        continue
+      fi
+
+      # Unrecognized: report, never reap.
+      printf 'local-janitor: sweep #9: unrecognized %s not in the state registry, left in place: %s\n' \
+        "$etype" "$child" >&2
     done
   done
   return 0
