@@ -182,6 +182,7 @@ copy_plan_archive_deps() {
   cp "$REPO_ROOT_REAL/.gaia/scripts/plan-archive.sh" "$REPO/.gaia/scripts/plan-archive.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/cost-represented.sh" "$REPO/.gaia/scripts/cost-represented.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
   cp "$REPO_ROOT_REAL/.specify/extensions/gaia/lib/plan-ledger-update.sh" \
     "$REPO/.specify/extensions/gaia/lib/plan-ledger-update.sh"
   cp "$REPO_ROOT_REAL/.specify/extensions/gaia/lib/with-ledger-lock.sh" \
@@ -347,6 +348,7 @@ copy_plan_archive_merged_deps() {
     "$REPO/.specify/extensions/gaia/lib/plan-archive-merged.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/cost-represented.sh" "$REPO/.gaia/scripts/cost-represented.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
 }
 
 # copy_plan_archive_abandoned_deps: mirrors plan-archive-abandoned.sh's own
@@ -359,6 +361,7 @@ copy_plan_archive_abandoned_deps() {
     "$REPO/.specify/extensions/gaia/lib/plan-archive-abandoned.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/cost-represented.sh" "$REPO/.gaia/scripts/cost-represented.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
 }
 
 # days_ago <n>: portable ISO8601 timestamp n days in the past, computed with

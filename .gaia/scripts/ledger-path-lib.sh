@@ -6,20 +6,17 @@
 # No side effects at source time; defines one function.
 
 # Echoes the main-checkout cost ledger path; honors an override (test seam).
-# main_root = dirname(absolute(git rev-parse --git-common-dir)), so a run inside
-# a linked worktree records to the surviving main ledger, not the worktree's
-# discarded copy. Returns 1 when git cannot resolve the common dir.
+# main_root comes from the shared main-root resolver
+# (.gaia/scripts/main-root-lib.sh), so a run inside a linked worktree records
+# to the surviving main ledger, not the worktree's discarded copy. Returns 1
+# when the resolver cannot resolve a main checkout.
 gaia_resolve_ledger_path() {
   local override="${1:-}"
   if [[ -n "$override" ]]; then printf '%s' "$override"; return 0; fi
-  local common_dir abs main_root
-  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-  [[ -z "$common_dir" ]] && return 1
-  case "$common_dir" in
-    /*) abs="$common_dir" ;;
-    *)  abs="$PWD/$common_dir" ;;
-  esac
-  main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)"
-  [[ -z "$main_root" ]] && return 1
+  local script_dir main_root
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck disable=SC1091
+  source "$script_dir/main-root-lib.sh"
+  main_root="$(gaia_resolve_main_root)" || return 1
   printf '%s' "$main_root/.gaia/local/telemetry/cost.jsonl"
 }

@@ -11,8 +11,9 @@
 #   - copies (NOT symlinks) of the scripts under test from the real repo so
 #     ${BASH_SOURCE[0]}-relative sourcing inside the scripts resolves to the
 #     tmp lib dir and finds the sibling with-ledger-lock.sh
-#   - copies of cost-represented.sh and ledger-path-lib.sh under .gaia/scripts,
-#     and an empty .gaia/local/telemetry/cost.jsonl, so spec-archive-merged.sh's
+#   - copies of cost-represented.sh, ledger-path-lib.sh, and its sibling
+#     main-root-lib.sh under .gaia/scripts, and an empty
+#     .gaia/local/telemetry/cost.jsonl, so spec-archive-merged.sh's
 #     representation gate resolves against this tmp repo, not the real one
 #   - one initial commit so require_git / rev-parse --git-dir succeeds
 #
@@ -126,7 +127,9 @@ done
 # Copy the cost-representation gate + ledger-path resolver so
 # spec-archive-merged.sh's representation gate resolves against this tmp
 # repo's own git identity and cost.jsonl instead of the real repo's.
-for s in cost-represented.sh ledger-path-lib.sh; do
+# ledger-path-lib.sh sources its own sibling main-root-lib.sh by on-disk
+# location, so that sibling is copied alongside it too.
+for s in cost-represented.sh ledger-path-lib.sh main-root-lib.sh; do
   cp "${real_scripts}/${s}" ".gaia/scripts/${s}"
   chmod +x ".gaia/scripts/${s}"
 done

@@ -274,7 +274,7 @@ setup_c4_base_sha_pair() {
   # Simulated: the GitHub PR/merge round-trip is stood in by a fixture; only
   # the real capture/read library (gh-artifact-lib.sh) is driven for real.
   MAIN="$(gaia_new_main gaia-c403-main)"
-  gaia_copy_real "$MAIN" .gaia/scripts/gh-artifact-lib.sh
+  gaia_copy_real "$MAIN" .gaia/scripts/gh-artifact-lib.sh .gaia/scripts/main-root-lib.sh
   gaia_commit_all "$MAIN" "add gh-artifact lib"
 
   A="$(gaia_add_worktree "$MAIN" treeA treeA)"

@@ -46,7 +46,11 @@ setup() {
   repo="$BATS_TEST_TMPDIR/repo3"
   mkdir -p "$repo"
   git init -q "$repo"
-  repo_abs="$(cd "$repo" && pwd)"
+  # pwd -P: the resolver behind this function physically resolves (mirrors the
+  # worktree-safe test below); $BATS_TEST_TMPDIR itself can sit under a
+  # symlinked component (e.g. macOS /var -> private/var), so the comparison
+  # side must canonicalize too or this drifts from the resolver's own answer.
+  repo_abs="$(cd "$repo" && pwd -P)"
   out="$(cd "$repo" && gaia_gh_artifact_cache_dir)"
   [ "$out" = "$repo_abs/.gaia/local/cache" ]
 }
@@ -70,10 +74,14 @@ setup() {
 }
 
 # ---------- 5 ----------
-@test "gaia_gh_artifact_cache_dir: outside any git repo, echoes nothing and returns 0" {
+@test "gaia_gh_artifact_cache_dir: outside any git repo, echoes nothing on stdout and returns 0" {
   plain="$BATS_TEST_TMPDIR/no-git"
   mkdir -p "$plain"
-  run bash -c "cd '$plain' && source '$LIB' && gaia_gh_artifact_cache_dir"
+  # The shared resolver behind this function writes one diagnostic to STDERR
+  # on failure (by design, unlike the old silent-on-both-streams derivation);
+  # this function's own contract is stdout-silence only, so the inner stderr
+  # is redirected away rather than merged into $output.
+  run bash -c "cd '$plain' && source '$LIB' && gaia_gh_artifact_cache_dir 2>/dev/null"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }

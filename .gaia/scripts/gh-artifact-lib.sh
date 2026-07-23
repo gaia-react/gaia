@@ -26,23 +26,20 @@
 # second `gh pr create` overwrites it.
 
 # gaia_gh_artifact_cache_dir
-# Echoes <main_root>/.gaia/local/cache, or nothing when git cannot resolve the
-# common dir. Honors $GAIA_GH_ARTIFACT_CACHE_DIR when set (test seam). Always
-# returns 0.
+# Echoes <main_root>/.gaia/local/cache, or nothing when the shared main-root
+# resolver (.gaia/scripts/main-root-lib.sh) cannot resolve a main checkout.
+# Honors $GAIA_GH_ARTIFACT_CACHE_DIR when set (test seam). Always returns 0.
 gaia_gh_artifact_cache_dir() {
   if [[ -n "${GAIA_GH_ARTIFACT_CACHE_DIR:-}" ]]; then
     printf '%s' "$GAIA_GH_ARTIFACT_CACHE_DIR"
     return 0
   fi
-  local common_dir abs main_root
-  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
-  [[ -z "$common_dir" ]] && return 0
-  case "$common_dir" in
-    /*) abs="$common_dir" ;;
-    *)  abs="$PWD/$common_dir" ;;
-  esac
-  main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)" || return 0
-  [[ -n "$main_root" ]] && printf '%s' "$main_root/.gaia/local/cache"
+  local script_dir main_root
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck disable=SC1091
+  source "$script_dir/main-root-lib.sh"
+  main_root="$(gaia_resolve_main_root)" || return 0
+  printf '%s' "$main_root/.gaia/local/cache"
   return 0
 }
 

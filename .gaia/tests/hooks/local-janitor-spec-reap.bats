@@ -50,6 +50,7 @@ copy_archive_deps() {
     "$REPO/.specify/extensions/gaia/lib/spec-archive-abandoned.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/cost-represented.sh" "$REPO/.gaia/scripts/cost-represented.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
   chmod +x "$REPO/.specify/extensions/gaia/lib/spec-archive-merged.sh" \
     "$REPO/.specify/extensions/gaia/lib/spec-archive-abandoned.sh"
 }

@@ -42,6 +42,7 @@ setup() {
   # sandbox's own cost ledger instead of the real repo's.
   cp "$REPO_ROOT/.gaia/scripts/cost-represented.sh" "$SANDBOX/.gaia/scripts/cost-represented.sh"
   cp "$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh" "$SANDBOX/.gaia/scripts/ledger-path-lib.sh"
+  cp "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" "$SANDBOX/.gaia/scripts/main-root-lib.sh"
 
   printf '{\n  "version": 1,\n  "plans": []\n}\n' > "$SANDBOX/.gaia/local/plans/ledger.json"
   : > "$SANDBOX/.gaia/local/telemetry/cost.jsonl"

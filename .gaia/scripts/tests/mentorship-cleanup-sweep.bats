@@ -341,9 +341,11 @@ tree_digest() {
   [ -f "$JANITOR" ] || skip "local-janitor.sh not found"
 
   # The janitor resolves the sweep at its real repo-relative path under the root
-  # it derives from git, so the fixture repo needs its own copy there.
+  # it derives from git, so the fixture repo needs its own copy there, plus the
+  # sibling main-root-lib.sh the sweep now sources by its own on-disk location.
   mkdir -p "$MAIN/.gaia/scripts"
   cp "$SCRIPT" "$MAIN/.gaia/scripts/mentorship-cleanup-sweep.sh"
+  cp "$THIS_DIR/../main-root-lib.sh" "$MAIN/.gaia/scripts/main-root-lib.sh"
   chmod +x "$MAIN/.gaia/scripts/mentorship-cleanup-sweep.sh"
 
   cd "$MAIN"

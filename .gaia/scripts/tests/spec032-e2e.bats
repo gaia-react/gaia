@@ -131,6 +131,7 @@ build_full_repo() {
   chmod +x "$REPO/.gaia/scripts/token-tally.sh"
   cp "$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh" "$REPO/.gaia/scripts/token-pricing-lib.sh"
   cp "$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
   cp "$REPO_ROOT/.gaia/scripts/audit-window-lib.sh" "$REPO/.gaia/scripts/audit-window-lib.sh"
   cp "$REPO_ROOT/.specify/extensions/gaia/lib/with-ledger-lock.sh" "$REPO/.specify/extensions/gaia/lib/with-ledger-lock.sh"
 }

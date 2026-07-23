@@ -591,6 +591,11 @@ led() { jq -r "$1" "$LEDGER"; }
     */.gaia/local/telemetry/cost.jsonl) : ;;
     *) echo "unexpected ledger path: $got2" >&2; return 1 ;;
   esac
+  # Differential oracle, exact match: the shared resolver behind this function
+  # physically resolves (pwd -P), so the expected side must too, or this drifts
+  # on a $BATS_TEST_TMPDIR under a symlinked component (e.g. macOS /var).
+  repo_abs="$(cd "$repo" && pwd -P)"
+  [ "$got2" = "$repo_abs/.gaia/local/telemetry/cost.jsonl" ]
 
   # outside any git repo -> non-zero, no output
   nongit="$BATS_TEST_TMPDIR/nongit"
@@ -1046,4 +1051,61 @@ setup_auditreview() {
   run cost_folder_represented "$OUTDIR" spec_id SPEC-032 "$LEDGER"
   [ "$status" -eq 0 ]
   grep -qF "$(printf 'spec\tREPRESENTED')" <<<"$output"
+}
+
+# =====================================================================
+# 25. Task 3.5 differential oracle: compute_project_id's path fallback and the
+# CACHE_DIR derivation now both resolve main_root through the shared resolver
+# (.gaia/scripts/main-root-lib.sh) instead of hand-deriving it from
+# git-common-dir. Both fixtures deliberately sit under $BATS_TEST_TMPDIR,
+# which resolves through a symlinked component on macOS (/var -> private/var):
+# the resolver physically resolves (pwd -P) where the old derivation used a
+# plain pwd, so the expected-value side below canonicalizes with pwd -P too,
+# the same fix applied to gh-artifact-lib.bats test 3.
+# =====================================================================
+
+@test "25.1: project id path-fallback (no origin remote) hashes the resolver's physically-resolved main_root" {
+  repo="$BATS_TEST_TMPDIR/projrepo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q
+  git -C "$repo" commit --allow-empty -q -m init
+
+  repo_abs="$(cd "$repo" && pwd -P)"
+  expected_hash="$(printf '%s' "$repo_abs" | shasum -a 256 | awk '{print substr($1,1,16)}')"
+
+  run bash -c "cd '$repo' && bash '$SCRIPT' \
+    --action spec --spec-id SPEC-013 \
+    --out-dir '$repo/out' --session-id fixturesingle0001 \
+    --projects-root '$FIX/single/projects' --ledger '$repo/cost.jsonl' \
+    --cache-dir '$repo/.gaia/local/cache'"
+  [ "$status" -eq 0 ]
+
+  [ "$(jq -r '.project' "$repo/cost.jsonl")" = "path:$expected_hash" ]
+}
+
+@test "25.2: CACHE_DIR with no --cache-dir flag resolves through the shared resolver (FC-6 github breadcrumb)" {
+  repo="$BATS_TEST_TMPDIR/cachedir-repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q -b feature/cache-dir-test
+  git -C "$repo" commit --allow-empty -q -m init
+
+  # Seed the FC-6 breadcrumb at the path the resolver derives:
+  # <main_root>/.gaia/local/cache/gh-artifact-pr.json, main_root == $repo here
+  # (an ordinary checkout, no worktree involved).
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/gh-artifact-lib.sh"
+  bc_dir="$repo/.gaia/local/cache"
+  mkdir -p "$bc_dir"
+  gaia_gh_artifact_write "$bc_dir/gh-artifact-pr.json" 999 "acme/widgets" \
+    "feature/cache-dir-test" "$SESSION"
+
+  # Deliberately no --cache-dir: token-tally.sh must derive it itself.
+  run bash -c "cd '$repo' && bash '$SCRIPT' \
+    --action execute --spec-id SPEC-013 --plan-slug s \
+    --out-dir '$repo/out' --session-id '$SESSION' \
+    --projects-root '$ANCHOR' --ledger '$repo/cost.jsonl'"
+  [ "$status" -eq 0 ]
+
+  [ "$(jq -r '.github.number' "$repo/cost.jsonl")" -eq 999 ]
+  [ "$(jq -r '.github.repo' "$repo/cost.jsonl")" = "acme/widgets" ]
 }

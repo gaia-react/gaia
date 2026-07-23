@@ -171,9 +171,10 @@ fi
 # count until the TTL. `sentinel_settled` is true when no sentinel exists or when
 # it has aged past the grace.
 #
-# Compare-and-clear: `.gaia/local/debt/` is shared across every linked worktree,
-# so a peer's merge can arm the sentinel during the `gh` call above, minutes after
-# `sentinel_mtime` was sampled. Clearing on that stale sample would delete an
+# Compare-and-clear: the state registry classifies `.gaia/local/debt/` as a
+# shared entry (shared across every linked worktree), so a peer's merge can arm
+# the sentinel during the `gh` call above, minutes after `sentinel_mtime` was
+# sampled. Clearing on that stale sample would delete an
 # invalidation nothing has serviced, freezing the count until the next event or
 # the TTL. Re-read the mtime so the clear acts on current state instead: a
 # sentinel that is now absent, re-armed, or newly armed (sampled 0, present now)

@@ -90,6 +90,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/audit-window-lib.sh" 2>/dev/null || true
 # shellcheck source=.gaia/scripts/gh-artifact-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/gh-artifact-lib.sh" 2>/dev/null || true
+# shellcheck source=.gaia/scripts/main-root-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/main-root-lib.sh" 2>/dev/null || true
 
 log() {
   printf '%s\n' "$*" >&2
@@ -135,7 +137,7 @@ rate_table_id() {
 # --action review branch and the phase-action path below can call it before
 # either is textually reached.
 compute_project_id() {
-  local url norm h common_dir abs main_root
+  local url norm h main_root
   url="$(git remote get-url origin 2>/dev/null || true)"
   if [[ -n "$url" ]]; then
     norm="$(printf '%s' "$url" | tr '[:upper:]' '[:lower:]')"
@@ -148,13 +150,10 @@ compute_project_id() {
     [[ -n "$h" ]] && printf 'sha256:%s' "$h"
     return 0
   fi
-  # Path fallback: hash the main-checkout absolute path (same derivation the lib
-  # uses for the ledger, here for the directory rather than the file).
-  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-  [[ -z "$common_dir" ]] && return 0
-  case "$common_dir" in /*) abs="$common_dir" ;; *) abs="$PWD/$common_dir" ;; esac
-  main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)"
-  [[ -z "$main_root" ]] && return 0
+  # Path fallback: hash the main-checkout absolute path, resolved through the
+  # shared main-root resolver -- the same one ledger-path-lib.sh uses for the
+  # ledger, here for the directory rather than the file, so the two stay tied.
+  main_root="$(gaia_resolve_main_root)" || return 0
   h="$(printf '%s' "$main_root" | hash16)" || return 0
   [[ -n "$h" ]] && printf 'path:%s' "$h"
 }
@@ -820,23 +819,18 @@ fi
 # ---------- CACHE_DIR resolution (hoisted): spec/plan's FC-2 audit-window
 #            breadcrumb AND execute's FC-6 gh-artifact breadcrumb both resolve
 #            through this one derivation. --cache-dir (test seam) defaults to
-#            <main_root>/.gaia/local/cache, deriving main_root the same
-#            git-common-dir way ledger-path-lib.sh derives the ledger main_root
-#            -- NOT via compute_project_id, which returns a hash, not a path
+#            <main_root>/.gaia/local/cache, deriving main_root through the
+#            shared main-root resolver (.gaia/scripts/main-root-lib.sh), the
+#            same one ledger-path-lib.sh uses for the ledger main_root -- NOT
+#            via compute_project_id, which returns a hash, not a path
 #            (CG-002). A command or review run pays nothing for this (guarded
 #            out below).
 CACHE_DIR=""
 if [[ "$ACTION" == "spec" || "$ACTION" == "plan" || "$ACTION" == "execute" ]]; then
   CACHE_DIR="$CACHE_DIR_ARG"
   if [[ -z "$CACHE_DIR" ]]; then
-    audit_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-    if [[ -n "$audit_common_dir" ]]; then
-      case "$audit_common_dir" in
-        /*) audit_abs="$audit_common_dir" ;;
-        *)  audit_abs="$PWD/$audit_common_dir" ;;
-      esac
-      audit_main_root="$(cd "$(dirname "$audit_abs")" 2>/dev/null && pwd)"
-      [[ -n "$audit_main_root" ]] && CACHE_DIR="$audit_main_root/.gaia/local/cache"
+    if audit_main_root="$(gaia_resolve_main_root)"; then
+      CACHE_DIR="$audit_main_root/.gaia/local/cache"
     fi
   fi
 fi
