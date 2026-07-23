@@ -10,9 +10,6 @@
 #   <worktree>/.gaia/local/<registry-declared shared path> -> <main>/.gaia/local/<same path>
 #   <worktree>/.env, <worktree>/.env.*                     -> <main>/.env, <main>/.env.*
 #
-# Today the registry declares exactly five shared paths: setup-state.json,
-# cache/shared/, audit/, telemetry/, debt/ (see .gaia/state-registry.json).
-#
 # Behavior:
 #   - Idempotent: re-running on an already-linked worktree is a no-op.
 #   - Pre-existing plain files / dirs are moved to <path>.bak.<ts> first.

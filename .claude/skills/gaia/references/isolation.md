@@ -26,17 +26,14 @@ Walk the arms top to bottom and stop at the first one that matches. The order is
 
 ### Already inside a linked worktree
 
-Detect it the way `.gaia/scripts/link-worktree.sh` does, by comparing the current toplevel against the
-directory that holds the common git dir:
+Ask the shared resolver, the one definition of "which checkout am I in", correct in every checkout
+shape (ordinary, submodule, separate-git-dir):
 
 ```bash
-COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null)"
-case "$COMMON_DIR" in /*) ABS="$COMMON_DIR" ;; *) ABS="$PWD/$COMMON_DIR" ;; esac
-MAIN_ROOT="$(cd "$(dirname "$ABS")" 2>/dev/null && pwd)"
-CURRENT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+bash .gaia/scripts/main-root-lib.sh --is-worktree
 ```
 
-If `MAIN_ROOT` and `CURRENT_ROOT` differ, the session is already inside a linked worktree. **Stay in it**:
+If it exits 0, the session is already inside a linked worktree. **Stay in it**:
 do not nest a second worktree inside it, and do not cut a branch. Set `RESOLVED_MODE=worktree` and skip
 every arm below.
 

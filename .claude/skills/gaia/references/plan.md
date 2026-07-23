@@ -170,7 +170,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       When `RESOLVED_MODE` is `worktree`, every later step, task sub-agent edits, per-phase commits, `gh pr create`, and the pre-merge Code Audit Team audit, runs from inside the worktree.
 
-      **The plan folder stays in the main checkout.** The worktree shares only the fixed gitignored set that `.gaia/scripts/link-worktree.sh` symlinks; the plan folder is not among them, so `{PLAN_DIR}` exists only in the main checkout. Read the task docs and `README.md` from `{PLAN_DIR}` (its main-checkout absolute path) and write `PROGRESS.md` there, while each task edits the worktree's own copy of the tracked files it touches. Write the ledger with the ordinary `Edit`/`Write` tools; the worktree write-guard exempts the main-checkout plan and SPEC ledgers by design (`.claude/hooks/block-worktree-path-mismatch.sh`, which carries the rationale). Never route a ledger write through a `Bash` redirect to dodge the guard. Dispatch each task sub-agent with both: `RESOLVED_ROOT` (the worktree's absolute path) for the file to edit, and `{PLAN_DIR}` for the docs to read. Run `plan-archive.sh {PLAN_DIR}` only after `ExitWorktree` returns the session to the main checkout, so the helper's repo-root guard resolves the main checkout rather than the worktree.
+      **The plan folder stays in the main checkout.** The worktree shares only the gitignored set the state registry declares (`.gaia/state-registry.json`); the plan folder is not among them, so `{PLAN_DIR}` exists only in the main checkout. Read the task docs and `README.md` from `{PLAN_DIR}` (its main-checkout absolute path) and write `PROGRESS.md` there, while each task edits the worktree's own copy of the tracked files it touches. Write the ledger with the ordinary `Edit`/`Write` tools; the worktree write-guard exempts the main-checkout plan and SPEC ledgers by design (`.claude/hooks/block-worktree-path-mismatch.sh`, which carries the rationale). Never route a ledger write through a `Bash` redirect to dodge the guard. Dispatch each task sub-agent with both: `RESOLVED_ROOT` (the worktree's absolute path) for the file to edit, and `{PLAN_DIR}` for the docs to read. Run `plan-archive.sh {PLAN_DIR}` only after `ExitWorktree` returns the session to the main checkout, so the helper's repo-root guard resolves the main checkout rather than the worktree.
 
     - **RUNNING sentinel.** Immediately after the pre-flight isolation above (the feature branch is cut, or the worktree is entered), write a sentinel file at `{PLAN_DIR}/RUNNING`. Content:
 
@@ -274,15 +274,13 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
     - **Post-merge auto-reconcile (both isolation modes).** After the PR merges, before any worktree-discard handoff or isolation-context stop (see the next bullet), the orchestrator reconciles the plan/SPEC ledger. This is its OWN standalone step with its OWN `MERGED` confirmation, separate from the worktree-only cleanup below, and it applies to BOTH feature-branch and worktree isolation modes; a feature-branch run never reaches the worktree-only cleanup, so nesting the reconcile there would silently drop it for the default (Recommended) mode.
       1. Confirm merge via `gh pr view <N> --json state`. Parse the JSON; require `.state == "MERGED"`. If not merged, do NOT proceed, surface to user and stop.
-      2. **Resolve the main-checkout root; never pass `$PWD`.** In worktree isolation the orchestrator's cwd is the worktree, whose `.gaia/local/specs/` and `.gaia/local/plans/` ledgers are not among the symlink-shared paths, so `"$PWD"` resolves a nonexistent ledger and the reconcile silently no-ops. Resolve the main root the same way `token-tally.sh` does for its ledger:
+      2. **Resolve the main-checkout root; never pass `$PWD`.** In worktree isolation the orchestrator's cwd is the worktree, whose `.gaia/local/specs/` and `.gaia/local/plans/` ledgers are not among the shared paths the state registry declares, so `"$PWD"` resolves a nonexistent ledger and the reconcile silently no-ops. Ask the shared resolver, the one definition of the main-checkout root:
 
          ```bash
-         common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-         case "$common_dir" in /*) abs="$common_dir" ;; *) abs="$PWD/$common_dir" ;; esac
-         main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)"
+         main_root="$(bash .gaia/scripts/main-root-lib.sh)"
          ```
 
-         In a feature-branch run `main_root` equals `$PWD`, so the same code is correct in both modes.
+         In a feature-branch run the resolver returns the current checkout, so `main_root` equals `$PWD` and the same call is correct in both modes.
       3. A spec-colocated plan on a `spec-NNN-*` branch runs `bash .specify/extensions/gaia/lib/spec-reconcile.sh "$main_root" || true` (flips the SPEC's `specs/ledger.json` row `ready` → `merged`, the unified vocabulary); a spec-less `PLAN-NNN` plan runs `bash .specify/extensions/gaia/lib/plan-reconcile.sh "$main_root" "$PLAN_ID" || true` (flips the `plans/ledger.json` row → `merged`, stamping `merged_at`). Both are best-effort and never block.
       4. Backstops remain: `spec-reconcile.sh` still runs in the `/gaia-spec` pre-flight sweep (spec arm); `plan-archive.sh`'s pre-gate stamp remains the plan-arm backstop (now stamping `merged` + `merged_at`), so the ledger still converges if the orchestrator is interrupted mid-cleanup. `plan-close` (the spec-less mirror of `spec-close`) is the plan-side manual close path for when this automated step did not run.
 
@@ -429,9 +427,7 @@ Collect findings across all lenses. The plan is editable and unsaved-to-handoff,
 ```bash
 AUDIT_WINDOW_END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 . .gaia/scripts/audit-window-lib.sh 2>/dev/null || true
-audit_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-case "$audit_common_dir" in /*) audit_abs="$audit_common_dir" ;; *) audit_abs="$PWD/$audit_common_dir" ;; esac
-AUDIT_CACHE_DIR="$(cd "$(dirname "$audit_abs")" 2>/dev/null && pwd)/.gaia/local/cache"
+AUDIT_CACHE_DIR="$(bash .gaia/scripts/main-root-lib.sh)/.gaia/local/cache"
 if [[ -n "${SPEC_PATH:-}" ]]; then
   AUDIT_SPEC_ID="$(basename "$(dirname "$SPEC_PATH")")"
   AUDIT_WINDOW_PATH="$AUDIT_CACHE_DIR/audit-window-${AUDIT_SPEC_ID}-plan.json"

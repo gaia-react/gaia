@@ -781,9 +781,7 @@ When a sibling `AUDIT.md` exists, the step-11 `/gaia-plan` handoff names it so i
 ```bash
 AUDIT_WINDOW_END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 . .gaia/scripts/audit-window-lib.sh 2>/dev/null || true
-audit_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-case "$audit_common_dir" in /*) audit_abs="$audit_common_dir" ;; *) audit_abs="$PWD/$audit_common_dir" ;; esac
-AUDIT_CACHE_DIR="$(cd "$(dirname "$audit_abs")" 2>/dev/null && pwd)/.gaia/local/cache"
+AUDIT_CACHE_DIR="$(bash .gaia/scripts/main-root-lib.sh)/.gaia/local/cache"
 gaia_audit_window_write \
   "$AUDIT_CACHE_DIR/audit-window-$SPEC_ID.json" \
   "${CLAUDE_CODE_SESSION_ID}" \
@@ -792,7 +790,7 @@ gaia_audit_window_write \
   "<audit_intensity>" || true
 ```
 
-`<lenses-json-array>` is a JSON array of the dispatched lens-id set, e.g. built with `jq -cn '$ARGS.positional' --args FG TST COV RT`. `<audit_intensity>` is the tier recorded at the top of step 7 (`standard` | `deep`); passing it as the 6th argument makes the writer include the `intensity` key. `$AUDIT_CACHE_DIR` resolves to the main checkout's cache root the same way `token-tally.sh` derives it, so the breadcrumb lands there even when authoring runs inside a linked worktree; it never sits inside `.gaia/local/cache/audit-<spec_id>/`, so the step-9.1 teardown does not remove it. The call is best-effort (`|| true`) and never blocks the handoff to gate 2.
+`<lenses-json-array>` is a JSON array of the dispatched lens-id set, e.g. built with `jq -cn '$ARGS.positional' --args FG TST COV RT`. `<audit_intensity>` is the tier recorded at the top of step 7 (`standard` | `deep`); passing it as the 6th argument makes the writer include the `intensity` key. `$AUDIT_CACHE_DIR` resolves to the main checkout's cache root via the shared resolver (`.gaia/scripts/main-root-lib.sh`), so the breadcrumb lands there even when authoring runs inside a linked worktree; it never sits inside `.gaia/local/cache/audit-<spec_id>/`, so the step-9.1 teardown does not remove it. The call is best-effort (`|| true`) and never blocks the handoff to gate 2.
 
 After the report is written, any folds are cached, and the breadcrumb is written, proceed to gate 2 (step 8), which renders the hardened draft.
 

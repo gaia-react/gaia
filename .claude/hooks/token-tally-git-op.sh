@@ -54,9 +54,9 @@ source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
 # Cheap negative gate: no live plan RUNNING sentinel at all, skip before paying
 # for token-tally.sh's transcript parse. Anchored to the MAIN checkout: a plan
 # executed in a linked worktree keeps its RUNNING sentinel (and all of
-# .gaia/local/specs | plans) only in the main checkout, which is not symlinked
-# into the worktree, so a cwd-relative glob from the worktree would find nothing
-# and silently lose the execute row.
+# .gaia/local/specs | plans) only in the main checkout -- the state registry
+# declares those main-only, not shared -- so a cwd-relative glob from the
+# worktree would find nothing and silently lose the execute row.
 main_root="$(gaia_resolve_main_root 2>/dev/null)" || exit 0
 has_plan=0
 for rf in "$main_root"/.gaia/local/plans/*/RUNNING "$main_root"/.gaia/local/specs/*/plan/RUNNING "$main_root"/.gaia/local/specs/*/plan-*/RUNNING; do

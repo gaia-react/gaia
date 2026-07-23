@@ -12,15 +12,11 @@ This wrapper writes a new `pnpm-lock.yaml` and opens a PR, both belong on the ma
 Detection (run this first, before anything else):
 
 ```bash
-common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-if [ -n "$common_dir" ]; then
-  case "$common_dir" in
-    /*) absolute_common_dir="$common_dir" ;;
-    *)  absolute_common_dir="$(pwd)/$common_dir" ;;
-  esac
-  main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
+. .gaia/scripts/main-root-lib.sh
+if gaia_is_linked_worktree; then
+  main_root="$(gaia_resolve_main_root)"
   current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
-  if [ -n "$main_root" ] && [ -n "$current_root" ] && [ "$main_root" != "$current_root" ]; then
+  if [ -n "$main_root" ]; then
     cached_line="Cached state unavailable on main; symlinks may be broken, run \`.gaia/cli/gaia setup link-worktree\` to repair."
     cache_file="$main_root/.gaia/local/cache/shared/update-check.json"
     if [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1; then

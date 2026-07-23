@@ -17,8 +17,8 @@
 # resolver (.gaia/scripts/main-root-lib.sh), sourced here rather than into any
 # top-level scope so this lib's "no side effects at source time" contract holds
 # (the sourced-lib placement rule; matches state-registry-lib.sh's own
-# gaia_registry_path). A linked worktree symlinks only the fixed shared-state
-# set .gaia/scripts/link-worktree.sh names; .gaia/local/specs and
+# gaia_registry_path). A linked worktree shares only the set the state registry
+# declares (.gaia/state-registry.json); .gaia/local/specs and
 # .gaia/local/plans are NOT among them, so a RUNNING sentinel is visible only
 # from the main checkout, and a plan executed in a linked worktree still
 # resolves through it. When several plans match, disambiguates on the
