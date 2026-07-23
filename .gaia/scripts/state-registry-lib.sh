@@ -54,6 +54,15 @@
 #   audit, telemetry, debt. Prints nothing and returns 1 when the registry
 #   cannot be read (see gaia_registry_path).
 #
+# gaia_registry_drop_zones
+#   Prints, one per line in registry order, the .gaia/local-relative
+#   structural directories the janitor's empty-dir sweep must preserve even
+#   when momentarily empty (the drop_zones the registry declares). Derived
+#   from the registry, never hardcoded in the janitor. Prints nothing and
+#   returns 1 when the registry cannot be read (see gaia_registry_path), so a
+#   caller failing to read the list keeps every empty dir rather than rmdir a
+#   structural directory it could not classify.
+#
 # gaia_registry_recognizes <relpath> <type: f|d>
 #   The janitor's "may I reap this?" predicate. Exit 0 ("recognized",
 #   never reap) when <relpath> (a .gaia/local-relative child path) matches
@@ -98,6 +107,7 @@
 # Usage (executable):
 #   bash .gaia/scripts/state-registry-lib.sh path                       # gaia_registry_path
 #   bash .gaia/scripts/state-registry-lib.sh linkable-paths             # gaia_registry_linkable_paths
+#   bash .gaia/scripts/state-registry-lib.sh drop-zones                 # gaia_registry_drop_zones
 #   bash .gaia/scripts/state-registry-lib.sh recognizes <relpath> <f|d> # gaia_registry_recognizes
 #   bash .gaia/scripts/state-registry-lib.sh classify <relpath>         # gaia_registry_classify
 
@@ -183,6 +193,13 @@ gaia_registry_linkable_paths() {
     | reduce .[] as $x ([]; if any(.[]; . == $x) then . else . + [$x] end)
     | .[]
   ' "$registry"
+}
+
+# gaia_registry_drop_zones: see the header contract above.
+gaia_registry_drop_zones() {
+  local registry
+  registry="$(gaia_registry_path)" || return 1
+  jq -r '.drop_zones[]?.path' "$registry"
 }
 
 # gaia_registry_recognizes <relpath> <type: f|d>: see the header contract above.
@@ -282,6 +299,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       gaia_registry_linkable_paths
       exit $?
       ;;
+    drop-zones)
+      shift
+      gaia_registry_drop_zones
+      exit $?
+      ;;
     recognizes)
       shift
       gaia_registry_recognizes "${1:-}" "${2:-}"
@@ -293,7 +315,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       exit $?
       ;;
     *)
-      printf 'usage: %s {path|linkable-paths|recognizes <relpath> <f|d>|classify <relpath>}\n' "$0" >&2
+      printf 'usage: %s {path|linkable-paths|drop-zones|recognizes <relpath> <f|d>|classify <relpath>}\n' "$0" >&2
       exit 2
       ;;
   esac

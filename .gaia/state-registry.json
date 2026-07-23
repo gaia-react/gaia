@@ -445,5 +445,20 @@
       "why": "Legacy pre-existing archived-SPEC layout; the live spec-archive path reduces a SPEC folder in place today and does not move it here. Read only by repair and migration tooling.",
       "writer": "none-residue"
     }
+  ],
+  "drop_zones": [
+    { "path": "audit", "why": "The Code Audit Team clearance-marker store, symlinked into every worktree; tooling drops markers here." },
+    { "path": "audit/archived", "why": "Health-audit's archived per-run buckets; a persistent archive destination kept even when momentarily empty." },
+    { "path": "cache", "why": "The machine- and session-cache container many flows write into." },
+    { "path": "debt", "why": "The tech-debt count-cache container." },
+    { "path": "forensics", "why": "The per-tree forensics-report container." },
+    { "path": "handoff", "why": "The per-tree session-handoff container." },
+    { "path": "plans", "why": "The main-checkout plan-folder container." },
+    { "path": "plans/archived", "why": "Legacy archived-plan destination, preserved for repair and migration tooling." },
+    { "path": "red-ledger", "why": "The per-tree RED-observation container." },
+    { "path": "red-ledger/.tmp", "why": "RED-ledger's atomic-write scratch subdir." },
+    { "path": "specs", "why": "The main-checkout SPEC-folder container." },
+    { "path": "specs/archived", "why": "Legacy archived-SPEC destination, preserved for repair and migration tooling." },
+    { "path": "telemetry", "why": "The append-only cost-ledger container." }
   ]
 }

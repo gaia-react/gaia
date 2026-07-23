@@ -628,6 +628,39 @@ seed_sidecar() {
   [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
 }
 
+# Fail-safe invariant: keep-arm A only fires when the live-tree set was
+# reliably enumerated. When BOTH `git for-each-ref` and `git worktree list`
+# fail (a transient git error, lock contention, a broken checkout), the
+# marker's tree cannot be proven dead OR alive, so the fail-safe must keep it
+# regardless of retention age -- an unprovable tree is not the same as a dead
+# one, and treating it as dead here would reap a clearance a parallel audit
+# may still need.
+@test "sweep 2: live-tree enumeration failure keeps a genuinely-live marker even past the retention window (fail-safe, not fail-open)" {
+  make_repo
+  tree=$(head_tree)
+  digest=$(gen_digest "frontend-$tree")
+  seed_marker "$digest" "" ok "$tree" "$(hours_ago 1000)"
+
+  # A PATH-shimmed `git` that fails exactly the two live-tree enumeration
+  # calls and passes everything else through to the real binary.
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  real_git=$(command -v git)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+case "\$*" in
+  *for-each-ref*refs/heads/*) exit 128 ;;
+  *"worktree list"*) exit 128 ;;
+esac
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git"
+
+  cd "$REPO"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
+}
+
 @test "sweep 2: MIG-005 a sidecar co-keyed with a live marker is kept; an old sha-keyed sidecar is reaped" {
   make_repo
   tree=$(head_tree)
@@ -1119,24 +1152,49 @@ jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
 
 # --- Sweep #4: the telemetry drop-zone split --------------------------------
 #
-# The highest-consequence line in is_drop_zone. `telemetry` is a drop-zone and
-# `telemetry/cloud` is not, and the two halves pull in opposite directions:
+# The highest-consequence entry in the state registry's drop_zones list.
+# `telemetry` is a drop-zone and `telemetry/cloud` is not, and the two halves
+# pull in opposite directions:
 #
 #   telemetry/       holds the token/cost ledger (cost.jsonl). Sweep #4 rmdirs
 #                    any empty dir under .gaia/local that is not a drop-zone, so
-#                    dropping `telemetry` from the arm would delete the directory
-#                    that ledger lives in the moment it is momentarily empty.
+#                    dropping `telemetry` from the registry would delete the
+#                    directory that ledger lives in the moment it is
+#                    momentarily empty.
 #   telemetry/cloud  is dead. Nothing writes it and nothing reads it, so an empty
 #                    one left on disk is exactly what sweep #4 exists to prune.
 #
 # Two janitor passes, because the guard only bites on the second: the first pass
 # sees `telemetry` as non-empty (it still contains `cloud`) and would keep it for
 # that reason alone, which proves nothing. Only once `cloud` is gone is
-# `telemetry` empty at find time, and the drop-zone arm is then the sole thing
-# standing between the ledgers' directory and `rmdir`.
+# `telemetry` empty at find time, and the registry's drop_zones list is then the
+# sole thing standing between the ledgers' directory and `rmdir`.
 
-@test "sweep 4: an empty telemetry/cloud is rmdir'd; the telemetry drop-zone survives even when empty" {
+# write_registry <gaia_dir>: writes a minimal, schema-shaped
+# .gaia/state-registry.json fixture into <gaia_dir> (e.g. "$REPO/.gaia"), with
+# empty entries/residue and a drop_zones array covering exactly the
+# `telemetry` drop-zone this section's fixtures need. Not the real registry --
+# a fixture-local stand-in so gaia_registry_path (which resolves through the
+# fixture repo's own git root) has a real file to read.
+write_registry() {
+  mkdir -p "$1"
+  cat > "$1/state-registry.json" <<'JSON'
+{
+  "$schema": "./state-registry.schema.json",
+  "version": 1,
+  "description": "fixture registry for the sweep-4 empty-dir suite",
+  "entries": [],
+  "residue": [],
+  "drop_zones": [
+    { "path": "telemetry", "why": "fixture" }
+  ]
+}
+JSON
+}
+
+@test "sweep 4: with a registry present, the telemetry drop-zone survives empty while a non-drop-zone empty dir is rmdir'd" {
   make_repo
+  write_registry "$REPO/.gaia"
   mkdir -p "$REPO/.gaia/local/telemetry/cloud"
   cd "$REPO"
 
@@ -1145,11 +1203,30 @@ jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
   [ -e "$REPO/.gaia/local/telemetry/cloud" ] && return 1
   [ -d "$REPO/.gaia/local/telemetry" ]
 
-  # Second pass, with telemetry now empty at find time: the drop-zone arm is the
-  # only thing keeping the ledgers' directory alive.
+  # Second pass: telemetry is now empty at find time, so the registry's
+  # drop_zones list is the only thing keeping the ledgers' directory alive. A
+  # sibling non-drop-zone empty dir, added in the same pass, proves the sweep
+  # actually consulted the registry and ran -- not skipped, which would have
+  # kept every empty dir, drop-zone or not.
+  mkdir -p "$REPO/.gaia/local/stray-empty"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -d "$REPO/.gaia/local/telemetry" ]
+  [ ! -e "$REPO/.gaia/local/stray-empty" ]
+}
+
+# Fail-safe invariant: sweep #4 only rmdirs an empty dir when it can read the
+# registry's drop_zones list. No registry -> gaia_registry_drop_zones fails ->
+# the sweep skips entirely, so a non-drop-zone empty dir survives right
+# alongside where a real drop-zone would -- an unreadable registry can never
+# classify anything, so nothing gets reaped on its say-so.
+@test "sweep 4: an unreadable registry is a fail-safe skip, not a bare rmdir: a non-drop-zone empty dir is kept" {
+  make_repo
+  mkdir -p "$REPO/.gaia/local/stray-empty"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/stray-empty" ]
 }
 
 # The janitor's delegation to the one-time cleanup sweep is covered in that

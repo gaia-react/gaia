@@ -350,16 +350,30 @@ sweep="$root/.gaia/scripts/mentorship-cleanup-sweep.sh"
 # markers. Collect the branch tips AND each worktree's HEAD (which covers a
 # detached checkout no branch names) so a sweep here never reaps a live marker
 # belonging to a parallel audit over there.
-live_trees=$(
-  {
-    git -C "$root" for-each-ref --format='%(objectname)' refs/heads/ 2>/dev/null || true
-    git -C "$root" worktree list --porcelain 2>/dev/null \
-      | awk '$1 == "HEAD" { print $2 }' || true
-  } | sort -u | while IFS= read -r commit; do
-    [ -n "$commit" ] || continue
-    git -C "$root" rev-parse "${commit}^{tree}" 2>/dev/null || true
-  done
-)
+#
+# Reliability, not just contents: the two enumeration commands are captured with
+# their exit status, not swallowed by `|| true`. An empty live_trees set is an
+# inability to prove LIFE, which the marker loop must never read as proof of
+# death. When either enumeration fails (a transient git error, lock contention,
+# a broken checkout), live_trees_reliable is 0 and keep-arm A below keeps every
+# new-scheme marker rather than reap a clearance whose tree it could not check.
+live_trees_reliable=1
+refs_raw=$(git -C "$root" for-each-ref --format='%(objectname)' refs/heads/ 2>/dev/null) \
+  || live_trees_reliable=0
+wt_raw=$(git -C "$root" worktree list --porcelain 2>/dev/null) \
+  || live_trees_reliable=0
+live_trees=""
+if [ "$live_trees_reliable" -eq 1 ]; then
+  live_trees=$(
+    {
+      printf '%s\n' "$refs_raw"
+      printf '%s\n' "$wt_raw" | awk '$1 == "HEAD" { print $2 }'
+    } | sort -u | while IFS= read -r commit; do
+      [ -n "$commit" ] || continue
+      git -C "$root" rev-parse "${commit}^{tree}" 2>/dev/null || true
+    done
+  )
+fi
 
 # Retention window: computed ONCE here, never once per marker. A non-numeric
 # override falls back to the default rather than disabling the window.
@@ -459,7 +473,11 @@ if [ -d "$audit_dir" ]; then
             body_tree=${fields%%$'\t'*}
             body_epoch=${fields#*$'\t'}
 
-            # Keep-arm A: the marker's own tree is a live branch/worktree tip.
+            # Keep-arm A: the marker's own tree is a live branch/worktree tip,
+            # OR the live-tree set could not be reliably enumerated this run
+            # (git failed), in which case the tree cannot be proven dead and
+            # the fail-safe keeps the marker rather than reap a clearance a
+            # parallel audit may still need.
             #
             # Match with a herestring, never `printf ... | grep -q`. Under
             # `pipefail`, `grep -q` exits the instant it matches, `printf`
@@ -467,9 +485,13 @@ if [ -d "$audit_dir" ]; then
             # would read as a miss and this reaps the live marker it just
             # found. The herestring has no pipe, so grep's own status is the
             # answer.
-            if [ -n "$body_tree" ] && [ -n "$live_trees" ] \
-               && grep -qxF -- "$body_tree" <<< "$live_trees"; then
-              keep=1
+            if [ -n "$body_tree" ]; then
+              if [ "$live_trees_reliable" -eq 0 ]; then
+                keep=1
+              elif [ -n "$live_trees" ] \
+                 && grep -qxF -- "$body_tree" <<< "$live_trees"; then
+                keep=1
+              fi
             fi
             # Keep-arm B: within the retention window of its own audited_at.
             if [ "$keep" -eq 0 ] && [ -n "$body_epoch" ]; then
@@ -620,24 +642,25 @@ for running in "$root/.gaia/local/plans"/*/RUNNING "$root/.gaia/local/specs"/*/p
 done
 
 # --- 4. Stray empty dirs (keep the structural drop-zones) ------------------
-is_drop_zone() {
-  case "$1" in
-    audit | audit/archived | cache | debt | forensics | handoff | plans \
-      | plans/archived | red-ledger | red-ledger/.tmp | specs | specs/archived \
-      | telemetry) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-empties=$(find "$local_dir" -mindepth 1 -type d -empty 2>/dev/null | sort -r)
-if [ -n "$empties" ]; then
-  while IFS= read -r d; do
-    [ -n "$d" ] || continue
-    rel=${d#"$local_dir"/}
-    is_drop_zone "$rel" && continue
-    rmdir "$d" 2>/dev/null
-  done <<EOF
+# The structural drop-zones -- directories GAIA tooling expects to find and
+# writes into, kept even when momentarily empty -- are declared in the state
+# registry (.gaia/state-registry.json) and read here via gaia_registry_drop_zones
+# (from the state-registry lib sourced above). Fail-safe: an unreadable or empty
+# drop-zone list skips the sweep, so a run that cannot classify the skeleton
+# keeps every empty dir rather than rmdir a structural one it could not identify.
+drop_zones="$(gaia_registry_drop_zones 2>/dev/null)" || drop_zones=""
+if [ -n "$drop_zones" ]; then
+  empties=$(find "$local_dir" -mindepth 1 -type d -empty 2>/dev/null | sort -r)
+  if [ -n "$empties" ]; then
+    while IFS= read -r d; do
+      [ -n "$d" ] || continue
+      rel=${d#"$local_dir"/}
+      grep -qxF -- "$rel" <<< "$drop_zones" && continue
+      rmdir "$d" 2>/dev/null
+    done <<EOF
 $empties
 EOF
+  fi
 fi
 
 # --- 5. Stale cache artifacts (age-gated; generous window so paused authoring survives) ---
