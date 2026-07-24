@@ -8,7 +8,8 @@
 #   - dotenv-style assignment to suspicious names:
 #       (_TOKEN|_SECRET|_KEY|_PASSWORD)=<non-placeholder-value>
 #       Placeholders allowed: empty, "", '', x, xxx, changeme, your-*, <...>,
-#       ${...}, $VAR, $(...), REPLACE_ME, TODO, PLACEHOLDER (case-insensitive).
+#       ${...}, $VAR, $(...) (unnested, whole-value), REPLACE_ME, TODO,
+#       PLACEHOLDER (case-insensitive).
 set -euo pipefail
 
 payload=$(cat)
@@ -60,12 +61,19 @@ while IFS= read -r line; do
     x|xx|xxx|xxxx|changeme|CHANGEME|REPLACE_ME|TODO|PLACEHOLDER|placeholder)
       continue ;;
   esac
-  # Allow values that carry no literal secret: templated ones (${VAR}, $VAR,
-  # <something>, your-…, example…) and a value that is wholly a command
-  # substitution, $(…), which resolves at run time. The command-substitution arm
-  # is anchored at both ends on purpose: a value that merely *contains* $(…)
-  # alongside literal text still falls through to the deny below.
-  if grep -Eqi '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\(.+\)$|^<.+>$|^your[-_]|^example' <<<"$val"; then
+  # Allow values whose source line carries no literal secret: templated ones
+  # (${VAR}, $VAR, <something>, your-…, example…) and a value that is wholly a
+  # single command substitution, $(…), which resolves at run time.
+  #
+  # The substitution arm is a shape heuristic, not a proof. Excluding `)` from
+  # the body is what makes the anchors mean "wholly": without it, `$(a)b)` and
+  # `$(a)<literal>$(b)` both start with `$(`, end with `)`, and match. With it,
+  # a value that merely *contains* $(…) alongside literal text falls through to
+  # the deny below. The cost is a nested `$(… $(…) …)`, denied too, because
+  # balanced parens need a parser rather than a regex. Shape also cannot
+  # separate `$(mint_key)` from `$(echo <a-literal-secret>)`; that needs reading
+  # the command, so this arm does not claim to.
+  if grep -Eqi '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\([^)]+\)$|^<.+>$|^your[-_]|^example' <<<"$val"; then
     continue
   fi
   deny "BLOCKED: write contains a non-placeholder secret assignment: '$line'. Use environment variables / .env (gitignored), not committed source."

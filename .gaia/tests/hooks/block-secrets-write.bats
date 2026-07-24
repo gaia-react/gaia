@@ -97,6 +97,33 @@ assert_allowed() {
   assert_denied
 }
 
+# The four below pin the allowlist's command-substitution arm to "wholly a
+# substitution" rather than "starts with $( and ends with )". Each is a value a
+# both-ends-anchored `\$\(.+\)` would admit, because `.` matches the very `)`
+# the closing anchor is supposed to certify. Together they also pin both
+# anchors: the trailing one against the first three, the leading one against
+# the last, which is the shape a dropped `^` would silently let through.
+
+@test "a literal value between two command substitutions is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$(true)sk-live-9f3a1c4e8b7d2064$(true)')"
+  assert_denied
+}
+
+@test "a literal value is denied when it merely ends in a closing paren" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$(whoami)sk-live-9f3a1c4e8b7d2064)')"
+  assert_denied
+}
+
+@test "a literal value spliced between quoted command substitutions is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '"$(a)"sk-live-9f3a1c4e8b7d2064"$(b)"')"
+  assert_denied
+}
+
+@test "a literal value is denied even when a command substitution follows it" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064$(whoami)')"
+  assert_denied
+}
+
 # --- The existing allowlist arms still allow ---
 
 @test "an empty value is allowed" {
@@ -124,12 +151,18 @@ assert_allowed() {
   assert_allowed
 }
 
-# --- A computed value is allowed: it holds no literal secret ---
+# --- A computed value is allowed: the source line holds no literal secret ---
 #
 # A value that is wholly a command substitution is resolved at run time, so the
 # source line carries nothing to leak. Denying it taught callers to launder the
 # assignment through a throwaway variable or an off-target name, which is
 # unexplained residue in exchange for no security.
+#
+# The arm reads shape, not meaning, and the deny cases above are the price of
+# keeping that shape honest. A nested `$(op read op://vault/$(hostname))` is
+# denied, and `$(echo <a-literal-secret>)` is allowed: no regex tells those
+# apart from `$(mint_key)` without reading the command. Neither is pinned here,
+# because neither is behavior worth freezing.
 
 @test "a value that is wholly a command substitution is allowed" {
   run_hook_write "$(printf 'AUDIT_KEY="%s"\n' '$(gaia_audit_key "$BASE_SHA")')"
