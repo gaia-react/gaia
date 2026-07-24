@@ -14,6 +14,16 @@
 # and spec.md's 7d (AUDIT.md write) and 7c (the no-op guard's --audit-md
 # argument).
 #
+# THE READ SIDE IS THE SAME CLASS. Once the writes land in main, a read that
+# still builds a relative `.gaia/local/specs` path looks into a tree that holds
+# no SPECs at all. Three read sites in spec.md build the path themselves rather
+# than handing it to a library: step 2's cold-consolidation sweep (the ledger
+# scan plus the per-candidate folder), step 2's resume-point recency comparison
+# (the canonical `SPEC.md` half of it; the draft cache is per-tree and stays in
+# the acting worktree), and step 9.2's read of the `dollars` field from the
+# SPEC folder's `cost.json` sidecar -- whose write, one block above it, is
+# already main-anchored.
+#
 # EXECUTE THE ARTIFACT, DO NOT PARAPHRASE IT. The precedent is
 # doc-isolation.bats's "the policy read literal defaults to prefer-branch"
 # test: it writes the fragment's OWN literal to a script and runs it, rather
@@ -48,8 +58,17 @@
 # (named only in inline prose, so there is nothing to execute) or builds
 # without the resolver, so it lands in the acting worktree. Test 3 catches the
 # bare relative `.gaia/local/specs/` literal returning to any of the three
-# sites. Each extraction failure reports a legible reason rather than an
+# write sites. Each extraction failure reports a legible reason rather than an
 # opaque bash error.
+#
+# The two read tests use a DECOY: the worktree is seeded with its own forked
+# specs tree naming a different SPEC id, and main with the canonical one. A
+# read that resolves main returns main's id; a read that stays relative returns
+# the decoy. That distinguishes a genuinely anchored read from one that merely
+# happens to find something, which an "is the result non-empty" assertion
+# cannot. The third read site (step 9.2's `cost.json` read) is prose an agent
+# executes with a file read, not a shell block, so it is covered by the
+# read-side negative-space test rather than by execution.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -61,6 +80,10 @@ setup() {
 
   mkdir -p "$MAIN/.gaia/scripts"
   cp "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" "$MAIN/.gaia/scripts/main-root-lib.sh"
+  # The cold-consolidation sweep gates each candidate on the real verify
+  # script, so the fixture carries the real script rather than letting a
+  # missing-file failure stand in for a failed verify.
+  cp "$REPO_ROOT/.gaia/scripts/summary-verify.sh" "$MAIN/.gaia/scripts/summary-verify.sh"
 
   git -C "$MAIN" init -q -b main
   git -C "$MAIN" config user.email 'test@example.com'
@@ -192,6 +215,124 @@ range_between() {
       return 1
       ;;
   esac
+  true
+}
+
+# The ```bash fence inside an extracted range, as a runnable script.
+bash_fence_of() {
+  printf '%s\n' "$1" | awk '/^```bash/{f=1;next} /^```[[:space:]]*$/{f=0} f'
+}
+
+# main holds the canonical SPEC-999; the worktree holds a forked SPEC-888. A
+# read that resolves main sees 999; a read that stays relative sees 888.
+seed_decoy() {
+  mkdir -p "$MAIN_PHYS/.gaia/local/specs/SPEC-999"
+  printf '# canonical\n' > "$MAIN_PHYS/.gaia/local/specs/SPEC-999/SPEC.md"
+  printf '{"specs":[{"id":"SPEC-999","status":"merged"}]}\n' \
+    > "$MAIN_PHYS/.gaia/local/specs/ledger.json"
+
+  mkdir -p "$WORKTREE_PHYS/.gaia/local/specs/SPEC-888"
+  printf '# forked decoy\n' > "$WORKTREE_PHYS/.gaia/local/specs/SPEC-888/SPEC.md"
+  printf '{"specs":[{"id":"SPEC-888","status":"merged"}]}\n' \
+    > "$WORKTREE_PHYS/.gaia/local/specs/ledger.json"
+}
+
+@test "R1: step 2's cold-consolidation sweep reads the ledger and folders from main" {
+  block="$(range_between "$SPEC_MD" 'Then, for any merged row whose folder still holds' 'For each candidate id, run a cold consolidation')"
+  fence="$(bash_fence_of "$block")"
+
+  if ! printf '%s\n' "$fence" | grep -qF 'ledger.json'; then
+    printf "step 2's cold-consolidation sweep has no shell block that reads the SPEC ledger\n" >&2
+    return 1
+  fi
+
+  seed_decoy
+
+  script="$BATS_TEST_TMPDIR/sweep.sh"
+  printf '%s\n' "$fence" > "$script"
+
+  run bash -c "cd '$WORKTREE' && bash '$script'"
+  [ "$status" -eq 0 ]
+
+  if ! printf '%s\n' "$output" | grep -qF 'SPEC-999'; then
+    printf 'the sweep run from the worktree never reached main'"'"'s merged SPEC-999 (output: "%s")\n' "$output" >&2
+    return 1
+  fi
+
+  # THE LOAD-BEARING ASSERTION. Emitting the worktree's forked id is proof the
+  # ledger scan and the per-candidate folder are still relative.
+  if printf '%s\n' "$output" | grep -qF 'SPEC-888'; then
+    printf 'the sweep read the worktree'"'"'s forked specs tree (emitted SPEC-888): "%s"\n' "$output" >&2
+    return 1
+  fi
+  true
+}
+
+@test "R2: the resume-point comparison resolves the canonical SPEC path into main" {
+  block="$(range_between "$SPEC_MD" 'Before prompting, gather context' 'Before presenting the resume choice')"
+  fence="$(bash_fence_of "$block")"
+
+  if ! printf '%s\n' "$fence" | grep -qF 'SPEC_PATH'; then
+    printf "the resume-point block does not build SPEC_PATH; nothing to measure\n" >&2
+    return 1
+  fi
+
+  seed_decoy
+  # The block's own placeholder for the allocator's answer. Substituting it
+  # keeps this an execution of the artifact rather than a re-typed paraphrase.
+  fence="${fence//<from allocator>/SPEC-999}"
+
+  script="$BATS_TEST_TMPDIR/resume.sh"
+  {
+    printf '%s\n' "$fence"
+    printf 'printf %%s "$WORKING"\n'
+  } > "$script"
+
+  # No draft cache exists, so WORKING is the canonical artifact's path -- the
+  # half of the comparison this task anchors. The draft cache is per-tree by
+  # registry classification and deliberately stays relative to the acting tree.
+  run bash -c "cd '$WORKTREE' && bash '$script'"
+  [ "$status" -eq 0 ]
+
+  case "$output" in
+    "$MAIN_PHYS"/*) : ;;
+    *)
+      printf 'the resume point "%s" is not under main root "%s"\n' "$output" "$MAIN_PHYS" >&2
+      return 1
+      ;;
+  esac
+
+  case "$output" in
+    "$WORKTREE_PHYS"/*)
+      printf 'the resume point "%s" is under the WORKTREE, not main\n' "$output" >&2
+      return 1
+      ;;
+  esac
+  true
+}
+
+@test "negative space: no bare relative .gaia/local/specs/ read survives at the three converted read sites" {
+  r1="$(range_between "$SPEC_MD" 'Then, for any merged row whose folder still holds' 'Then delete any merged SPEC folder')"
+  r2="$(range_between "$SPEC_MD" 'Before prompting, gather context' 'Before presenting the resume choice')"
+  r3="$(range_between "$SPEC_MD" 'The helper reads `CLAUDE_CODE_SESSION_ID`' '**Auto-mode:** the tally fires identically')"
+
+  # Ranges are scoped to the executable instructions only. Display prose that
+  # names the generic path for a human to read (the draft-phase note above the
+  # resume block, step 9's own narration) sits outside all three and is
+  # deliberately not converted.
+  bad=""
+  for site in "$r1" "$r2" "$r3"; do
+    hit="$(printf '%s\n' "$site" | grep -F '.gaia/local/specs/' | grep -v -E 'MAIN_ROOT|SPEC_DIR' || true)"
+    if [ -n "$hit" ]; then
+      bad="${bad}${hit}
+"
+    fi
+  done
+
+  if [ -n "$bad" ]; then
+    printf 'unanchored .gaia/local/specs/ read survives at a converted site:\n%s\n' "$bad" >&2
+    return 1
+  fi
   true
 }
 

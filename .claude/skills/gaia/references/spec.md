@@ -68,7 +68,7 @@ There is no `on_save` event. The `/gaia-plan` handoff lives inline at the end of
 
 Used by multiple steps below. Defined once here to keep step-level prose tight.
 
-Every ledger and lock library this skill invokes (`spec-session-lock.sh`, `spec-reconcile.sh`, the `spec-archive-*` / `spec-abandon-empty` sweeps, `spec-allocator.sh`, `ledger-update.sh`) takes the current tree as its `$PWD` operand and resolves the main checkout itself before touching `.gaia/local/specs`, so `$PWD` honestly names the running tree and the caller never resolves main for these calls. The SPEC-folder writes in step 7d and step 9 are the exception: they build a `.gaia/local/specs` path directly rather than handing it to a library, so they anchor to main explicitly.
+Every ledger and lock library this skill invokes (`spec-session-lock.sh`, `spec-reconcile.sh`, the `spec-archive-*` / `spec-abandon-empty` sweeps, `spec-allocator.sh`, `ledger-update.sh`) takes the current tree as its `$PWD` operand and resolves the main checkout itself before touching `.gaia/local/specs`, so `$PWD` honestly names the running tree and the caller never resolves main for these calls. The SPEC-folder paths this skill builds for itself are the exception, on both sides: step 2's cold-consolidation sweep and its resume-point comparison read them, and step 7d, step 9, and step 9.2's cost read write and read them. Each of those builds a `.gaia/local/specs` path directly rather than handing it to a library, so each anchors to main explicitly.
 
 ### Session-shape cache (`spec-session-<spec_id>.json`)
 
@@ -258,15 +258,22 @@ bash .specify/extensions/gaia/lib/spec-reconcile.sh "$PWD" 2>/dev/null || true
 Then, for any merged row whose folder still holds `SPEC.md` or `AUDIT.md` with no well-formed consolidated `SUMMARY.md`, an out-of-band merge that never ran the close flow's consolidation, cold-consolidate it before the delete sweep below runs. This pass is the producer for `spec-archive-merged.sh`'s consolidation gate, which keeps any folder still holding unconsolidated layers; without this pass those folders would never clear that gate. Identify candidates:
 
 ```bash
-jq -r '.specs[] | select(.status == "merged") | .id' .gaia/local/specs/ledger.json 2>/dev/null | while read -r id; do
-  folder=".gaia/local/specs/${id}"
-  { [ -f "${folder}/SPEC.md" ] || [ -f "${folder}/AUDIT.md" ]; } || continue
-  bash .gaia/scripts/summary-verify.sh "${folder}/SUMMARY.md" >/dev/null 2>&1 && continue
-  echo "$id"
-done
+MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+if [ -z "$MAIN_ROOT" ]; then
+  echo "gaia-spec: cannot resolve the main checkout; skipping the cold-consolidation sweep" >&2
+else
+  jq -r '.specs[] | select(.status == "merged") | .id' "${MAIN_ROOT}/.gaia/local/specs/ledger.json" 2>/dev/null | while read -r id; do
+    folder="${MAIN_ROOT}/.gaia/local/specs/${id}"
+    { [ -f "${folder}/SPEC.md" ] || [ -f "${folder}/AUDIT.md" ]; } || continue
+    bash .gaia/scripts/summary-verify.sh "${folder}/SUMMARY.md" >/dev/null 2>&1 && continue
+    echo "$id"
+  done
+fi
 ```
 
-For each candidate id, run a cold consolidation (agent synthesis, not a script): read the layers in precedence `SPEC.md` → `AUDIT.md` → plan `PROGRESS.md` (top wins), grounded in the merged code and passing tests, and write `.gaia/local/specs/<id>/SUMMARY.md` in the pinned shape (present-tense body, `wiki_promote_default` + `wiki_promote_targets` frontmatter, non-empty H1, optional `## Divergence`). Then gate the layer removal on the verify script: `bash .gaia/scripts/summary-verify.sh .gaia/local/specs/<id>/SUMMARY.md`; on exit 0, `rm .gaia/local/specs/<id>/SPEC.md .gaia/local/specs/<id>/AUDIT.md`; on exit 1, leave the layers in place and move to the next candidate. This pass never destroys a layer it failed to replace, and a candidate whose synthesis or verify fails is simply left for a future pass, never blocking this prompt.
+The ledger and the SPEC folders are main-anchored state (state registry `specs-main`), so this sweep resolves the main checkout before reading either; from a linked worktree a relative path names a tree that holds no SPECs, and the sweep would report nothing while the work sits in main. The resolver fails closed, printing nothing when it cannot resolve a main checkout, so an unresolved root skips the pass **out loud** rather than falling back to a relative path and silently finding nothing.
+
+For each candidate id, run a cold consolidation (agent synthesis, not a script) against that candidate's main-anchored folder, `${MAIN_ROOT}/.gaia/local/specs/<id>/` (`MAIN_ROOT` from the resolver in the block above): read the layers in precedence `SPEC.md` → `AUDIT.md` → plan `PROGRESS.md` (top wins), grounded in the merged code and passing tests, and write `${MAIN_ROOT}/.gaia/local/specs/<id>/SUMMARY.md` in the pinned shape (present-tense body, `wiki_promote_default` + `wiki_promote_targets` frontmatter, non-empty H1, optional `## Divergence`). Then gate the layer removal on the verify script: `bash .gaia/scripts/summary-verify.sh ${MAIN_ROOT}/.gaia/local/specs/<id>/SUMMARY.md`; on exit 0, `rm ${MAIN_ROOT}/.gaia/local/specs/<id>/SPEC.md ${MAIN_ROOT}/.gaia/local/specs/<id>/AUDIT.md`; on exit 1, leave the layers in place and move to the next candidate. This pass never destroys a layer it failed to replace, and a candidate whose synthesis or verify fails is simply left for a future pass, never blocking this prompt.
 
 Then delete any merged SPEC folder that is past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days), whose layers are consolidated (the pass above), and whose cost is fully represented in `cost.jsonl`, the safety net for a PR that merged out-of-band or a close that never ran (an unparseable or unrepresented cost sidecar phase blocks that folder's deletion rather than risking an unrecoverable loss; a folder still within the window is kept regardless of representation). Delete any SPEC folder already at `abandoned` status past the same retention window and cost-represented too, no consolidation gate applies since nothing about an abandoned draft is ever promoted. Then sweep any never-authored draft older than the guard age to the terminal `abandoned` status, so a ghost allocation (no SPEC.md, no draft cache, no gate-1 snapshot) stops re-surfacing on this very prompt. All three passes are best-effort and fail-open:
 
@@ -292,7 +299,8 @@ Before prompting, gather context for an informed choice. The newer of the canoni
 
 ```bash
 SPEC_ID="<from allocator>"
-SPEC_PATH=".gaia/local/specs/${SPEC_ID}/SPEC.md"
+MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+SPEC_PATH="${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}/SPEC.md"
 DRAFT_PATH=".gaia/local/cache/draft-${SPEC_ID}.md"
 if [[ -f "$DRAFT_PATH" && "$DRAFT_PATH" -nt "$SPEC_PATH" ]]; then
   WORKING="$DRAFT_PATH"
@@ -300,6 +308,8 @@ else
   WORKING="$SPEC_PATH"
 fi
 ```
+
+The two halves of that comparison live in different trees on purpose: the canonical artifact is main-anchored (state registry `specs-main`), so `SPEC_PATH` resolves main, while the working draft is per-tree and stays in the acting worktree where the authoring session wrote it. If `MAIN_ROOT` comes back empty the resolver could not find a main checkout; stop and surface that rather than comparing against a relative path, which from a linked worktree names a file that is never there and would silently make the draft look newer.
 
 Before presenting the resume choice, check whether the draft is being authored live in another session right now (interactive only; auto mode already skips this entire resume prompt per the exception above, so it never computes `LOCK_STATUS`):
 
@@ -889,7 +899,7 @@ bash .gaia/scripts/token-tally.sh \
   --out-dir "${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}" || true
 ```
 
-The helper reads `CLAUDE_CODE_SESSION_ID` from the environment, sums `message.usage` across the main transcript and every sub-agent sidecar (deduped to ground truth), appends one record keyed to `SPEC_ID` to the durable ledger (`.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout so a worktree run still records there), writes the `cost.json` sidecar (the `spec` record) into the SPEC folder, and prints the four-bucket tally, total, and elapsed time. The dollar cost it computes lands in the ledger and the `cost.json` sidecar, not in that printed block. Do not restate the four-bucket block to the user; instead report the cost as exactly one line: `Cost: ~<total> tokens, $<dollars>, <elapsed>`. Take `<total>` (the total token count abbreviated to millions with one decimal and a `~` prefix, e.g. `~2.4M`) and `<elapsed>` (the helper's own `<N>h<M>m<S>s` figure) from the printed tally, and read `<dollars>` (formatted `$X.XX`) from the `dollars` field of the `spec` record in `.gaia/local/specs/${SPEC_ID}/cost.json`. Never fabricate: if `dollars` is null or unpriced write `cost unavailable` in its place; if elapsed is unavailable drop that term; if the figure is a partial lower bound append ` (partial: lower bound)`. This line reads identically to the `/gaia-plan` cost line (plan reference, step 5) and the orchestrator's full-cycle line; keep the three in sync. This same call reads and deletes the step-7 audit-window breadcrumb (`.gaia/local/cache/audit-window-<spec_id>.json`) if present, nesting an `audit.adversarial` annotation into this `spec` record when the window resolves; the step-9.1 `rm -rf .gaia/local/cache/audit-<spec_id>/` above does not touch this breadcrumb, since it lives outside that directory.
+The helper reads `CLAUDE_CODE_SESSION_ID` from the environment, sums `message.usage` across the main transcript and every sub-agent sidecar (deduped to ground truth), appends one record keyed to `SPEC_ID` to the durable ledger (`.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout so a worktree run still records there), writes the `cost.json` sidecar (the `spec` record) into the SPEC folder, and prints the four-bucket tally, total, and elapsed time. The dollar cost it computes lands in the ledger and the `cost.json` sidecar, not in that printed block. Do not restate the four-bucket block to the user; instead report the cost as exactly one line: `Cost: ~<total> tokens, $<dollars>, <elapsed>`. Take `<total>` (the total token count abbreviated to millions with one decimal and a `~` prefix, e.g. `~2.4M`) and `<elapsed>` (the helper's own `<N>h<M>m<S>s` figure) from the printed tally, and read `<dollars>` (formatted `$X.XX`) from the `dollars` field of the `spec` record in `${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}/cost.json` (`MAIN_ROOT` from the resolver in the block above, the same value `--out-dir` was given, so this reads back the sidecar that call just wrote). Never fabricate: if `dollars` is null or unpriced write `cost unavailable` in its place; if elapsed is unavailable drop that term; if the figure is a partial lower bound append ` (partial: lower bound)`. This line reads identically to the `/gaia-plan` cost line (plan reference, step 5) and the orchestrator's full-cycle line; keep the three in sync. This same call reads and deletes the step-7 audit-window breadcrumb (`.gaia/local/cache/audit-window-<spec_id>.json`) if present, nesting an `audit.adversarial` annotation into this `spec` record when the window resolves; the step-9.1 `rm -rf .gaia/local/cache/audit-<spec_id>/` above does not touch this breadcrumb, since it lives outside that directory.
 
 **Auto-mode:** the tally fires identically in interactive and auto mode; it is a mechanical helper call, not a user prompt, so no auto-mode branch is needed. In auto mode the printed tally simply lands in the transcript, nothing to prompt.
 
