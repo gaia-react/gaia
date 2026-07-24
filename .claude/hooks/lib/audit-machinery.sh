@@ -26,6 +26,7 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .claude/hooks/lib/audit-machinery.sh
 .claude/hooks/lib/audit-clearance.sh
 .gaia/scripts/audit-write-clearance.sh
+.gaia/scripts/audit-write-findings.sh
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-machinery-complete.sh
 .claude/hooks/lib/audit-dispositions.sh
