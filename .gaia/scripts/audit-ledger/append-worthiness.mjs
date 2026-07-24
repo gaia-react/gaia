@@ -26,29 +26,39 @@
 // so the signal byte-matches what the RED ledger and the presence-gate
 // recompute produce. It does NOT reinvent the identity primitive.
 //
-// Ledger path: .gaia/local/audit/worthiness.jsonl (append-only,
-// gitignored, grows-forever, sibling to the RED ledger). Override with
-// WORTHINESS_LEDGER_PATH (the test seam; production leaves it unset).
+// Ledger path: .gaia/local/worthiness-ledger/worthiness.jsonl (append-only,
+// gitignored, grows-forever), a directory sibling to the RED ledger's
+// .gaia/local/red-ledger/. The path is anchored on the ACTING tree's own
+// root (never the writer's own repo-relative literal), resolved by shelling
+// out to the one canonical resolver, main-root-lib.sh --tree-root, so writer
+// and reader stay symmetric. Override with WORTHINESS_LEDGER_PATH (the test
+// seam; production leaves it unset).
 //
 // Exit 0 on a successful append. Exit non-zero with a one-line stderr message
 // on a bad argument, an unknown verdict, a missing artifact for a non-keep, an
-// unreadable file, a signal-helper failure, or a fullName the file does not
-// contain. The evaluator edits no files; this writer only ever appends to the
-// gitignored ledger.
+// unreadable file, a signal-helper failure, a fullName the file does not
+// contain, an unresolvable tree root, or an unwritable ledger. The evaluator
+// edits no files; this writer only ever appends to the gitignored ledger.
 
 import {execFileSync} from 'node:child_process';
 import {appendFileSync, mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+
 const SIGNAL_HELPER = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
+  SCRIPTS_DIR,
   '..',
   'red-ledger',
   'extract-test-signals.mjs',
 );
 
-const DEFAULT_LEDGER = '.gaia/local/audit/worthiness.jsonl';
+// The one canonical tree-root resolver (see main-root-lib.sh's own header).
+// Shelled out to rather than reimplemented, so this writer never becomes a
+// seventh "where is the repo root" derivation.
+const TREE_ROOT_RESOLVER = path.join(SCRIPTS_DIR, '..', 'main-root-lib.sh');
+
 const VERDICTS = new Set(['keep', 'fix', 'delete']);
 
 const fail = (message, code) => {
@@ -113,7 +123,31 @@ if (artifact) {
   record.artifact = artifact;
 }
 
-const ledgerPath = process.env.WORTHINESS_LEDGER_PATH || DEFAULT_LEDGER;
+// Resolve the default ledger path against the ACTING tree's own root, not a
+// cwd-relative literal, so this writer and its reader
+// (.claude/hooks/worthiness-presence-check.sh) agree on where a given tree's
+// observations live. Skipped entirely when the test seam overrides the path.
+let ledgerPath = process.env.WORTHINESS_LEDGER_PATH;
+if (!ledgerPath) {
+  let treeRoot;
+  try {
+    treeRoot = execFileSync('bash', [TREE_ROOT_RESOLVER, '--tree-root'], {
+      encoding: 'utf8',
+    }).trim();
+  } catch (err) {
+    fail(`cannot resolve the tree root: ${err.message}`, 8);
+  }
+  if (!treeRoot) {
+    fail('cannot resolve the tree root: main-root-lib.sh returned no path', 8);
+  }
+  ledgerPath = path.join(
+    treeRoot,
+    '.gaia',
+    'local',
+    'worthiness-ledger',
+    'worthiness.jsonl',
+  );
+}
 
 try {
   mkdirSync(path.dirname(ledgerPath), {recursive: true});

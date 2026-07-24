@@ -333,7 +333,7 @@ run_in_repo() {
     "debt/count.json:shared"
     "debt/refresh-requested:shared"
     "red-ledger/observations.jsonl:per-tree"
-    "audit/worthiness.jsonl:per-tree"
+    "worthiness-ledger/worthiness.jsonl:per-tree"
     "forensics/2026-07-23-x.md:per-tree"
     "handoff/HANDOFF-2026-07-23-x.md:per-tree"
     "harden/declines.json:per-tree"

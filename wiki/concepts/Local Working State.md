@@ -24,7 +24,7 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `audit/<frontend-digest>.dispositions.json` | [[Code Review Audit Agent]] merge gate | ephemeral | kept alongside its frontend marker whenever that marker is kept; additionally kept on its own while it still holds a still-open receipt |
 | `audit/<tree>.progress.log` | [[Code Review Audit Agent]] merge gate | ephemeral | reaped unconditionally every session (a CI-observability breadcrumb, never liveness-tracked) |
 | `audit/KNOWLEDGE-*.md` | [[GAIA Audit]] | ephemeral | self-pruned by the next applied run |
-| `audit/worthiness.jsonl` | worthiness check | live | append-only |
+| `worthiness-ledger/worthiness.jsonl` | worthiness check | live | append-only |
 | `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |
 | `debt/` | debt sentinel | live | symlinked to the main worktree's copy so a debt fix merged from a linked worktree arms the main checkout's count cache and sentinel; recomputed |
 | `cache/` | [[GAIA Spec]] / gate sessions | ephemeral | reaped on SPEC merge/close and the merged-SPEC age reap; stale entries age-swept |
@@ -58,6 +58,6 @@ The sweep is fail-safe: any inability to prove a thing is dead (no git, an unrea
 
 ## Deciding by hand
 
-Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for a merged spec. The append-only ledgers (`red-ledger/observations.jsonl`, `audit/worthiness.jsonl`, `telemetry`), the identity files (`.project-id`, `setup-state.json`), and `.gaia/local/specs/ledger.json` (and the `specs/` store it lives in) are the load-bearing exceptions; deleting the ledger drops per-machine draft-resume state and the local half of SPEC-number allocation.
+Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for a merged spec. The append-only ledgers (`red-ledger/observations.jsonl`, `worthiness-ledger/worthiness.jsonl`, `telemetry`), the identity files (`.project-id`, `setup-state.json`), and `.gaia/local/specs/ledger.json` (and the `specs/` store it lives in) are the load-bearing exceptions; deleting the ledger drops per-machine draft-resume state and the local half of SPEC-number allocation.
 
 See [[Claude Hooks]] for the hook surface and [[Audit Disposition and Debt Fix]] for the marker lifecycle.

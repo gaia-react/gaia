@@ -134,7 +134,7 @@ tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
 # Worthiness ledger location (sibling to the RED ledger), anchored on this
 # tree's root. A missing ledger means zero matches, which denies for the
 # clean case below.
-ledger="$tree_root/.gaia/local/audit/worthiness.jsonl"
+ledger="$tree_root/.gaia/local/worthiness-ledger/worthiness.jsonl"
 
 # ---------------------------------------------------------------------------
 # Resolve the PR base, the default branch this work forks from. Prefer the

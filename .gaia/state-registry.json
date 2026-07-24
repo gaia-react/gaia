@@ -113,12 +113,12 @@
     },
     {
       "id": "audit-worthiness-ledger",
-      "path": "audit/worthiness.jsonl",
-      "match": "exact",
-      "kind": "file",
+      "path": "worthiness-ledger/",
+      "match": "prefix",
+      "kind": "dir",
       "scope": "per-tree",
       "keyed_by": null,
-      "why": "A worthiness observation is a claim about one working tree's emergent-surface tests at one commit, the same kind of per-tree fact as a RED observation; reopened per-tree to match its RED-ledger sibling. Its filing under the symlinked audit/ directory is a keys-phase relocation, not its target scope.",
+      "why": "A worthiness observation is a claim about one working tree's emergent-surface tests at one commit, the same kind of per-tree fact as a RED observation. It lives under worthiness-ledger/, outside the wholesale-symlinked audit/ segment, so it is per-tree by the same mechanism as its RED-ledger sibling: gaia_registry_linkable_paths only symlinks scope:\"shared\" entries, and this one is not.",
       "writer": "code",
       "reaped_by": null,
       "source": "SPEC-061 §per-tree (reopened; see SPEC-061 reopen rationale)"
@@ -480,7 +480,8 @@
     { "path": "red-ledger/.tmp", "why": "RED-ledger's atomic-write scratch subdir." },
     { "path": "specs", "why": "The main-checkout SPEC-folder container." },
     { "path": "specs/archived", "why": "Legacy archived-SPEC destination, preserved for repair and migration tooling." },
-    { "path": "telemetry", "why": "The append-only cost-ledger container." }
+    { "path": "telemetry", "why": "The append-only cost-ledger container." },
+    { "path": "worthiness-ledger", "why": "The per-tree worthiness-observation container." }
   ],
   "integrity_snapshot": [
     { "path": "specs",   "why": "Durable, leaf-authored SPEC folders; a destructive script deleting one (the SPEC-031 incident) must be caught, never mistaken for background churn." },

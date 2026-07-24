@@ -218,6 +218,31 @@ old writer. What the fixtures still cannot prove is that the five agent definiti
 (`.gaia/scripts/check-audit-key-callers.sh`), because prose drift would otherwise
 leave a green meter over a broken writer.
 
+### C4-04 — the target path moved; the assertion gained two positive controls and an old-location negative control
+
+**No assertion text changed in the tranche-4 table.** What changed is where the
+fixture looks, and how much it proves. Task 4.3 moves the ledger's flat file, which
+sat directly under the `audit/` directory (shared in practice: `link-worktree.sh`
+symlinks `audit/` wholesale into main because other registry entries under it are
+`scope: "shared"`), to `worthiness-ledger/worthiness.jsonl`, a directory sibling to
+`red-ledger/`. What protects it is the segment, not the label: `link-worktree.sh`
+symlinks a top-level segment when *any* registry entry under it is `scope: "shared"`,
+and `worthiness-ledger/` has no shared siblings, so nothing pulls it into main. The
+entry was already `scope: "per-tree"` before this task and that did not save it, which
+is the whole lesson of the defect — the scope was describing an intent the machinery
+did not enforce. Re-pointing the scenario at the new path is what the frozen
+assertion already demands ("not shared under `audit/`"), not a weakening of it.
+
+The old fixture's single check read tree B's OLD shared path for tree A's
+observation leaking in — a check that could pass even when the writer wrote
+nothing at all there, since an empty or absent file also contains zero matches of
+"a only test". The rewritten scenario proves four things instead of one: each
+tree's own ledger exists and holds its own observation (the writer really wrote,
+not a vacuous silence); neither ledger holds the other tree's observation (both
+directions, not only the one originally checked); and the old shared location
+receives nothing at all in either tree. The assertion is strictly stronger than
+before.
+
 ---
 
 ## Green at freeze

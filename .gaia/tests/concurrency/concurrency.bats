@@ -412,14 +412,45 @@ JS
   run run_in "$B" -- node "$append_script" test/b.test.ts "b only test" keep
   [ "$status" -eq 0 ]
 
-  # Target: tree B's own ledger holds only B's observation, matching its RED
-  # sibling (per-tree), not shared under audit/. Today audit/worthiness.jsonl
-  # (registry scope "per-tree") lives under audit/, a directory
-  # link-worktree.sh symlinks WHOLESALE into main because other entries under
-  # it are scope "shared" -- so the two trees' appends land in the SAME
-  # physical file, and B's view contains A's entry too.
-  contamination_count="$(grep -c '"a only test"' "$B/.gaia/local/audit/worthiness.jsonl")"
-  [ "$contamination_count" -eq 0 ]
+  # Target: each tree's own ledger, now at worthiness-ledger/ (scope
+  # "per-tree", never symlinked -- link-worktree.sh only symlinks
+  # scope:"shared" entries, exactly like its RED-ledger sibling), holds only
+  # its own observation. worthiness-ledger/ sits outside the audit/ directory
+  # that link-worktree.sh symlinks WHOLESALE into main (audit/ carries four
+  # other scope:"shared" entries), which is what made the two trees' appends
+  # land in the SAME physical file before this fix.
+  #
+  # Four things must all hold, so a writer that silently wrote nothing cannot
+  # pass vacuously (a single "B doesn't contain A's entry" check would also
+  # be true of an empty or missing ledger): (a) A's own ledger exists and
+  # contains A's observation; (b) B's own ledger exists and contains B's
+  # observation; (c) neither ledger contains the other tree's observation
+  # (both directions); (d) the old shared location under audit/ is written in
+  # neither tree.
+  A_LEDGER="$A/.gaia/local/worthiness-ledger/worthiness.jsonl"
+  B_LEDGER="$B/.gaia/local/worthiness-ledger/worthiness.jsonl"
+
+  [ -f "$A_LEDGER" ]
+  grep -qF '"a only test"' "$A_LEDGER"
+  [ -f "$B_LEDGER" ]
+  grep -qF '"b only test"' "$B_LEDGER"
+
+  if grep -qF '"b only test"' "$A_LEDGER"; then
+    echo "tree A's ledger contains tree B's observation" >&2
+    return 1
+  fi
+  if grep -qF '"a only test"' "$B_LEDGER"; then
+    echo "tree B's ledger contains tree A's observation" >&2
+    return 1
+  fi
+  if [ -e "$A/.gaia/local/audit/worthiness.jsonl" ]; then
+    echo "the old shared worthiness path was written in tree A" >&2
+    return 1
+  fi
+  if [ -e "$B/.gaia/local/audit/worthiness.jsonl" ]; then
+    echo "the old shared worthiness path was written in tree B" >&2
+    return 1
+  fi
 }
 
 @test "C4-05: SPEC/plan locks serialize across worktrees" {

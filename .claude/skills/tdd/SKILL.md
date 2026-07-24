@@ -135,7 +135,7 @@ With no orchestrator to record verdicts, **the tdd skill is the ledger writer**,
 node .gaia/scripts/audit-ledger/append-worthiness.mjs <repo-rel-test-path> <fullName> <verdict> [artifact]
 ```
 
-`<verdict>` is `keep` | `fix` | `delete`; `[artifact]` is REQUIRED for a non-keep verdict (the cited machine-verified sibling for a redundancy delete, the unreachable/missing assertion for a fix) and omitted for `keep`. The writer recomputes the test-identity signal from the file via the RED-ledger signal helper, so it byte-matches what the presence gate later recomputes; the ledger at `.gaia/local/audit/worthiness.jsonl` is append-only and gitignored.
+`<verdict>` is `keep` | `fix` | `delete`; `[artifact]` is REQUIRED for a non-keep verdict (the cited machine-verified sibling for a redundancy delete, the unreachable/missing assertion for a fix) and omitted for `keep`. The writer recomputes the test-identity signal from the file via the RED-ledger signal helper, so it byte-matches what the presence gate later recomputes; the ledger at `.gaia/local/worthiness-ledger/worthiness.jsonl` is append-only and gitignored.
 
 Surface the evaluator's verdicts in the same end-of-task summary (see "Surfacing the advisory findings"). Deletes are proposals: present them for human confirmation, never act on them.
 
