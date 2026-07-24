@@ -839,6 +839,35 @@ write_sidecar_for() {
   [ "$(jq '.fixed_last_round | length' "$LEDGER")" = "0" ]
 }
 
+@test "ledger: a repair rotates the digest, and the plain earned write then retires" {
+  ledger_setup
+  write_sidecar_for code-audit-maintainer-shell 113
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LBASE" >/dev/null
+  write_sidecar_for code-audit-maintainer-node 7
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LBASE" >/dev/null
+  old_digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
+
+  # The documented primary exit: repairing the finding edits content the member
+  # covers, which rotates its digest, so no refusal exists at the new key and
+  # nothing needs superseding. This is the arm the gate must NOT block; pinning
+  # it is what stops the gate from being narrowed to "only a supersede retires".
+  printf '1.6.2\n' > "$ROOT/.gaia/VERSION"
+  git -C "$ROOT" add .gaia/VERSION
+  git -C "$ROOT" commit --quiet -m "repair"
+  new_digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
+  [ "$new_digest" != "$old_digest" ]
+  [ -f "$AUDIT_DIR/${old_digest}.code-audit-maintainer-shell.refused" ]
+  [ -f "$AUDIT_DIR/${new_digest}.code-audit-maintainer-shell.refused" ] && return 1
+
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LBASE" >/dev/null
+
+  [ -f "$LEDGER" ]
+  [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-shell")] | length' "$LEDGER")" = "0" ]
+  [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-node")] | length' "$LEDGER")" = "1" ]
+  [ "$(jq -r '.fixed_last_round[0].member' "$LEDGER")" = "code-audit-maintainer-shell" ]
+  [ "$(jq -r '.fixed_last_round[0].line' "$LEDGER")" = "113" ]
+}
+
 @test "ledger: two findings sharing a line do not double remaining[] each round" {
   ledger_setup
   m="code-audit-maintainer-shell"
