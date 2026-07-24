@@ -414,7 +414,10 @@ if [ -n "$BASE" ]; then
     err "warning: --base given but the audit key does not resolve; no ledger written"
   else
     ledger="${audit_dir}/${LEDGER_TAG}.rerun.json"
-    sidecar="${audit_dir}/${LEDGER_TAG}.${MEMBER}.findings.json"
+    # Deliberately NOT named `sidecar`: that name already holds the marker body's
+    # boolean flag built above, and reusing it here would shadow the flag for any
+    # future edit that moves a body build below this block.
+    findings_sidecar="${audit_dir}/${LEDGER_TAG}.${MEMBER}.findings.json"
     branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
 
     # A prior ledger counts only when it is for THIS branch and base; anything
@@ -430,8 +433,8 @@ if [ -n "$BASE" ]; then
 
     ledger_body=""
     if [ "$PROVENANCE" = "refused" ]; then
-      if [ ! -f "$sidecar" ]; then
-        err "warning: refusal recorded with no findings sidecar at '$sidecar'; the ledger cannot brief the repair"
+      if [ ! -f "$findings_sidecar" ]; then
+        err "warning: refusal recorded with no findings sidecar at '$findings_sidecar'; the ledger cannot brief the repair"
       else
         # remaining[] for THIS member is rebuilt from its sidecar every round:
         # the sidecar is the current report, so a finding it no longer names is
@@ -444,7 +447,7 @@ if [ -n "$BASE" ]; then
         # was nothing to write".
         if ! ledger_body="$(jq -n \
           --argjson prior "$prior" \
-          --slurpfile sc "$sidecar" \
+          --slurpfile sc "$findings_sidecar" \
           --arg member "$MEMBER" \
           --arg base "$BASE" \
           --arg branch "$branch" \
@@ -459,10 +462,10 @@ if [ -n "$BASE" ]; then
           | (($sc[0].findings // []))                           as $found
           | ([ $found[]
               | . as $f
-              | ((($prev[] | select(.member == $member
-                                    and .finding_class == $f.finding_class
-                                    and .path == $f.path
-                                    and .line == $f.line)) // null) as $was
+              | ((first($prev[] | select(.member == $member
+                                        and .finding_class == $f.finding_class
+                                        and .path == $f.path
+                                        and .line == $f.line)) // null) as $was
                 | {member: $member,
                    finding_class: $f.finding_class,
                    severity: ($f.severity | ledger_severity),
@@ -494,7 +497,16 @@ if [ -n "$BASE" ]; then
       # An earned write ends this member's loop, so its open entries are retired
       # rather than left to misbrief the next round: each moves into
       # fixed_last_round stamped with the sha that closed it.
-      if [ "$prior" != "null" ]; then
+      #
+      # Gated on this member's own refusal being gone. A plain earned write never
+      # clears a live refusal (that is the anti-gaming rule: only --supersede-refusal
+      # retires one, and it removes the file above at line 390, before this block).
+      # So a refusal surviving here means the merge is still blocked on findings
+      # that are still open, and retiring them would stamp fixed_in_sha on a repair
+      # no commit made, then delete the very briefing needed to clear the block.
+      # Skipping leaves ledger_body empty, which writes nothing and removes
+      # nothing, so the briefing survives intact.
+      if [ "$prior" != "null" ] && [ ! -f "$refused_path" ]; then
         if ! ledger_body="$(jq -n \
           --argjson prior "$prior" \
           --arg member "$MEMBER" \

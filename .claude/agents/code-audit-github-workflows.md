@@ -130,7 +130,6 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-github-workflows \
   --provenance earned \
-  --base "$BASE_SHA" \
   --base "$BASE_SHA")"
 ```
 

@@ -935,7 +935,6 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-frontend \
   --provenance earned \
-  --base "$BASE_SHA" \
   --base "$BASE_SHA")"
 
 # 2. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per the

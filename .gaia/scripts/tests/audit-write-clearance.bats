@@ -789,7 +789,12 @@ write_sidecar_for() {
   write_sidecar_for code-audit-maintainer-node 7
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LBASE" >/dev/null
 
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LBASE" >/dev/null
+  # Supersede, not a plain earned write: this member's own refusal is live, and
+  # retiring its entries beneath a live refusal would claim a repair no commit
+  # made. Superseding removes the refusal first, which is what legitimately ends
+  # the loop. The plain-earned case is pinned by its own test below.
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LBASE" \
+    --supersede-refusal "operator accepted the tradeoff" >/dev/null
   [ -f "$LEDGER" ]
   # The cleared member is gone from remaining; the other member survives.
   [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-shell")] | length' "$LEDGER")" = "0" ]
@@ -806,11 +811,51 @@ write_sidecar_for() {
   write_sidecar_for code-audit-maintainer-node 7
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LBASE" >/dev/null
 
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LBASE" \
+    --supersede-refusal "operator accepted the tradeoff" >/dev/null
   [ -f "$LEDGER" ]
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance earned --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance earned --base "$LBASE" \
+    --supersede-refusal "operator accepted the tradeoff" >/dev/null
   [ -f "$LEDGER" ] && return 1
   return 0
+}
+
+@test "ledger: a plain earned write beside a live refusal leaves the briefing intact" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  write_sidecar_for "$m" 113
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
+
+  # A plain earned write never clears a live refusal, so the merge is still
+  # blocked on this finding. Retiring it here would stamp fixed_in_sha on a
+  # repair no commit made and then delete the only briefing that can clear the
+  # block, which is the exact opaque-refusal state this channel exists to end.
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --base "$LBASE" >/dev/null
+
+  [ -f "$LEDGER" ]
+  [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
+  [ "$(jq -r '.remaining[0].line' "$LEDGER")" = "113" ]
+  [ "$(jq '.fixed_last_round | length' "$LEDGER")" = "0" ]
+}
+
+@test "ledger: two findings sharing a line do not double remaining[] each round" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  # Two distinct defects on one line, same finding_class: the findings writer
+  # permits this, and the carry-forward lookup must match one prior entry per
+  # finding rather than binding a generator that re-emits the body per match.
+  printf '[{"finding_class":"holistic/unclassified","severity":"warning","path":".gaia/scripts/a.sh","line":42,"title":"first defect","failure_mode":"the guard admits an empty value","verified_by":"ran it at base and at HEAD","suggested_fix":"reject an empty value"},{"finding_class":"holistic/unclassified","severity":"warning","path":".gaia/scripts/a.sh","line":42,"title":"second defect","failure_mode":"the same line also swallows stderr","verified_by":"stubbed the program to exit non-zero","suggested_fix":"check the status"}]' \
+    | bash "$THIS_DIR/../audit-write-findings.sh" --root "$ROOT" --member "$m" --base "$LBASE" --findings - >/dev/null
+
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
+  # Both have been open since round 1 and say so.
+  [ "$(jq -c '[.remaining[].first_seen_round] | sort' "$LEDGER")" = "[1,1]" ]
 }
 
 @test "ledger: a stale ledger (different base) is replaced, never extended" {
