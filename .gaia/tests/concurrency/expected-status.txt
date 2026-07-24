@@ -1,0 +1,54 @@
+# The expected-status manifest for the INV-7 concurrency meter.
+#
+# meter-gate.sh runs the WHOLE suite and fails the build on any deviation from
+# this file, in either direction. An expected-pass going red is a regression.
+# An expected-fail going green is progress, and it fails too -- deliberately --
+# because an advance that lands as a silent green is an advance nobody recorded.
+# When a scenario turns, flip its row here and move the reading in README.md in
+# the same change that turned it.
+#
+# `target` is the meter's frozen denominator. The number of scenario rows below
+# must equal it, which is what stops the denominator being shrunk to improve a
+# reading. It moves upward only for an added scenario and only by the
+# maintainer's word (README.md, "The target, stated up front").
+#
+# An expected-fail row names the task that owns turning it green, so a red that
+# has quietly become permanent is visible here rather than inferred.
+
+target 22
+
+# Tranche 3 -- CONVERT (phase 3, closed)
+C3-01 pass
+C3-02 pass
+C3-03 pass
+C3-04 pass
+C3-05 pass
+
+# Tranche 4 -- KEYS, the contamination tranche (phase 4). C4-06 and C4-07 are
+# cutover guards: green before the change they guard, and their owning phase
+# must preserve them rather than take credit for them.
+C4-01 pass
+C4-02 pass
+C4-03 pass
+C4-04 pass
+C4-05 pass
+C4-06 pass
+C4-07 pass
+
+# Tranche 5 -- SURFACE (phase 5, not run)
+C5-01 fail  task 5.1 statusline: the worktree's own segment is suppressed
+C5-02 fail  task 5.2 wiki hooks: four hooks are silently dead in a worktree
+C5-03 fail  task 5.3 loud-refusal: no main-only entry point consults the resolver
+C5-04 pass
+
+# Tranche 6 -- LIFECYCLE (phase 6, not run). All three are green at freeze:
+# today's creation and linker already hold the property, and phase 6 must keep
+# holding it after the move to harness-native creation.
+C6-01 pass
+C6-02 pass
+C6-03 pass
+
+# The hard three (phase 7, not run)
+C7-01 fail  task 7.1 Serena: a query from one tree is answered against another
+C7-02 fail  task 7.2 node_modules: a test resolves main's dependencies, silently
+C7-03 pass

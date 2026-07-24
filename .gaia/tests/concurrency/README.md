@@ -6,10 +6,24 @@ running full audit → PR → merge cycles at the same time — written as a fro
 of named scenarios and **expected to fail**. Every top-ranked failure the worktree
 audit found would be caught here, and no other test in the repo catches any of them.
 
-**It is red by design and does not gate CI yet.** No workflow runs
-`.gaia/tests/concurrency/`; it is quarantined by directory omission (the same way
-`.gaia/tests/sandbox/` is), exactly as the audit-ci-tests manifest requires. The step
-that arms it as a required check is named below. Run it by hand with:
+**It is red by design, and as of step 4 it gates CI anyway.** Those two are not in
+tension, and reconciling them is the whole of the arming design: the already-required
+`Audit CI Tests` check runs the **whole** suite through `meter-gate.sh`, which
+adjudicates every scenario against `expected-status.txt` and fails the build on a
+deviation **in either direction**. An expected-pass going red is a regression. An
+expected-red going **green** fails too, deliberately, because an advance absorbed into
+a silent green is an advance nobody recorded. So the scenarios that are red by design
+gate nothing, while still counting in the reading, and no scenario is filtered out of
+the suite to achieve that. See
+[Armed as a required CI check](#armed-as-a-required-ci-check).
+
+Run the gate the way CI runs it:
+
+```bash
+bash .gaia/tests/concurrency/meter-gate.sh
+```
+
+Or read the raw suite by hand, without the adjudication:
 
 ```bash
 .gaia/scripts/bats5.sh .gaia/tests/concurrency/
@@ -76,7 +90,8 @@ something is found is a target that rewards not looking.
   expected green and where this suite becomes a **required CI check** — added to the
   `audit-ci-tests` bats manifest and kept required forever after (one of the three
   permanent defenses, alongside the resolver-singleton build check and the registry
-  conformance check). Until then it must not gate: it is red by design from step 2.
+  conformance check). **Done: it is armed.** See
+  [Armed as a required CI check](#armed-as-a-required-ci-check).
 - **Six scenarios are green at freeze — the starting reading is `6 / 21`, and none of the
   six is a landed fix.** Five assert a property that already holds through pre-existing
   machinery and must be *preserved* by their owning phase; one is the designated cutover
@@ -385,17 +400,82 @@ Most `direct` scenarios flip green on their own as their owning task lands its f
 edit here. The **contamination tranche** and the `simulated` scenarios are the exception,
 and it is disclosed rather than hidden: they demonstrate the collision against *today's*
 on-disk convention (they hand-construct the current key, or stand in the un-runnable side),
-because the real fixed writer does not exist yet. **The step that arms this suite as a
-required check — step 4 for the `C4-*` tranche — also re-points those scenarios at the
-real, fixed writers**, so a green then reflects the writer's new keying, not a hand-built
-path. That is a mechanism update, published visibly. The **frozen assertion** (tree A reads
-its own state; nothing of tree B's appears) is what may never be weakened to move a number.
+because the real fixed writer does not exist yet. **Step 4 re-pointed those scenarios at
+the real, fixed writers**, so their greens now reflect the writer's new keying rather than
+a hand-built path; each re-pointing is published under
+[Published assertion changes](#published-assertion-changes). That is a mechanism update,
+published visibly. The **frozen assertion** (tree A reads its own state; nothing of tree
+B's appears) is what may never be weakened to move a number.
+
+## Armed as a required CI check
+
+Step 4's arming, and what it does not need. `meter-gate.sh` runs as the last step of the
+`Audit CI Tests` job (`.github/workflows/audit-ci-tests.yml`), alongside the six bats
+suites that job already runs.
+
+**It needed no branch-protection change, and earlier drafts of this file were wrong to
+imply one.** `Audit CI Tests` is *already* a declared-required context
+(`.gaia/scripts/verify-required-checks.sh`, `REQUIRED_CONTEXTS`), so a step inside that job
+inherits the requirement. Arming would have needed a ruleset edit only if it meant adding a
+**new** job, creating a check context nobody requires yet — and it never had to mean that;
+this file always described arming as "added to the `audit-ci-tests` bats manifest," which
+is exactly a step inside the already-required job.
+
+**One thing is still the maintainer's, and it is a confirmation, not a cutover:** that the
+live GitHub ruleset really lists `Audit CI Tests`. `REQUIRED_CONTEXTS` is *intent*; the
+live ruleset is a separate thing that can drift from it, which is why
+`verify-required-checks.yml` exists as a drift detector. Reading the live ruleset leaves
+the machine, so nothing local can confirm it.
+
+**How the red-by-design scenarios avoid wedging `main`.** `expected-status.txt` records
+what every scenario is expected to do today, and the gate fails on any deviation from it in
+either direction — regression *and* unrecorded progress. It also fails when a scenario runs
+that the manifest does not know, when a manifest entry reports no result, when the entry
+count stops equalling the frozen `target`, or when any scenario reports `skip` (banned
+here, and now enforced rather than only stated). The rejected alternative was a
+`bats --filter` over the armed tranches, and it is worse three ways: it hides the red
+scenarios, it makes a newly added scenario invisible by default, and it is the same quiet
+caveat this program spent its week removing.
+
+When a scenario turns, flip its row in `expected-status.txt` and move the reading in this
+file **in the same change that turned it**. The gate's whole value is that neither can be
+deferred.
+
+**Two dependency installs precede the step, and both are load-bearing.** Three scenarios
+drive real node code: `C4-04` and `C4-07` resolve `typescript` from the repo root, and
+`C3-05` runs the CLI's own `tsx` out of `.gaia/cli/node_modules`. The runner box is lean
+(the job apt-installs only `bats` and `python3-yaml`) and `.gaia/cli` is deliberately its
+own isolated pnpm workspace, so a repo-root install does not reach it — hence
+`pnpm install` **and** `pnpm -C .gaia/cli install`. Without both, three landed green
+scenarios go red for want of an npm install, which would read as a regression in the
+number rather than as the environment gap it is. **The five sibling suites under
+`.gaia/tests/hooks/` guard this same dependency with `|| skip "typescript not installed"`,
+and that hatch is unavailable here** — a skip reports green, which is the opposite of what
+this suite means, so it has to actually have the dependency.
+
+**The job's `dorny/paths-filter` gained this suite and the sources it reads.** Without the
+entries, a PR touching only those sources would report `code=false`, skip every step, and
+green the job having run the meter zero times. Most of what the fixtures copy in
+(`.claude/hooks/**`, `.gaia/scripts/**`, `.gaia/statusline/**`,
+`.specify/extensions/gaia/lib/**`) was already listed; the additions are this directory,
+`.gaia/state-registry.json` and its schema, `.gaia/cli/src/**`,
+`.claude/commands/gaia-release.md`, and both lockfiles — the last because a dependency bump
+touches a lockfile without touching any source dir, and could otherwise red the meter with
+the next unrelated PR the first to notice.
 
 ## Files
 
 - `README.md` — this file. The frozen meter: scenarios, assertions, tranches, target,
-  execution models, the arming step, and the second (deletion) number.
-- `concurrency.bats` — the suite. One `@test` per scenario id above; each fails today.
+  execution models, the arming, and the second (deletion) number.
+- `concurrency.bats` — the suite. One `@test` per scenario id above. (This entry used to
+  read "each fails today," which stopped being true as the tranches turned; the live
+  per-scenario expectation is `expected-status.txt`, and no prose copy of it belongs here.)
+- `expected-status.txt` — what each scenario is expected to do today, plus the frozen
+  `target`. The gate's denominator and its adjudication list.
+- `meter-gate.sh` — the CI gate: runs the whole suite, compares every scenario against
+  `expected-status.txt`, prints the reading, and fails on any deviation in either
+  direction. **Not** the same contract as `.gaia/tests/forensics/run-all.sh`, which fails
+  when any test fails; this one exits zero with scenarios red.
 - `lib/concurrency-harness.sh` — the fixture builder: a main checkout plus N linked
   worktrees off one base, seeded `.gaia/local` state, real hooks/scripts/libs copied in
   at their repo-relative paths, and a run-in-tree helper. Sourced by the suite.
