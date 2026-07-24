@@ -124,6 +124,49 @@ assert_allowed() {
   assert_denied
 }
 
+# --- The other allowlist arms mean "wholly" too ---
+#
+# The command-substitution arm is not the only one that has to resist a splice.
+# `<…>` had the identical defect (`.` matches `>`), and the `your-` / `example`
+# arms matched a prefix with nothing anchoring the tail, so any value merely
+# *starting* like a placeholder was allowed whatever followed it.
+
+@test "a literal value between two angle-bracket placeholders is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<a>sk-live-9f3a1c4e8b7d2064<b>')"
+  assert_denied
+}
+
+@test "a literal value carrying an example- placeholder prefix is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example-sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a literal value carrying a your- placeholder prefix is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'your-key-sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+# --- A shell declaration keyword does not hide the assignment ---
+#
+# The name grep anchors the suspicious name to the start of the line, so a
+# declaration keyword in front of it took the line out of the scan entirely,
+# and no allowlist arm was ever consulted.
+
+@test "an exported literal value is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a local-declared literal value is denied" {
+  run_hook_write "$(printf 'local API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a readonly-declared literal value is denied through Edit too" {
+  run_hook_edit "$(printf 'readonly DB_PASSWORD=%s\n' 'hunter2-not-a-placeholder')"
+  assert_denied
+}
+
 # --- The existing allowlist arms still allow ---
 
 @test "an empty value is allowed" {
@@ -149,6 +192,123 @@ assert_allowed() {
 @test "content with no secret shape at all is allowed" {
   run_hook_write "export function add(a, b) { return a + b }"
   assert_allowed
+}
+
+# The tightened arms have to stay usable: these are the placeholder values the
+# arms exist to admit, and the ones a too-eager anchor would take down with the
+# splices above.
+
+@test "an angle-bracket placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<your-key-here>')"
+  assert_allowed
+}
+
+@test "a your- placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'your-api-key-here')"
+  assert_allowed
+}
+
+@test "a bare example placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example')"
+  assert_allowed
+}
+
+@test "an example domain placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example.com')"
+  assert_allowed
+}
+
+@test "an exported \$VAR value is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$MY_API_KEY')"
+  assert_allowed
+}
+
+# Recognizing the declaration keywords pulls shell lines into a rule written for
+# dotenv files, and a shell value references a variable far more often than a
+# dotenv value does. These are the shapes that carry no literal secret but that
+# the bare-identifier `${VAR}` arm alone would deny.
+
+@test "an expansion carrying a default operator is allowed" {
+  run_hook_write "$(printf 'export GITHUB_TOKEN=%s\n' '"${GITHUB_TOKEN:-}"')"
+  assert_allowed
+}
+
+@test "a positional expansion is allowed" {
+  run_hook_write "$(printf 'local CACHE_KEY=%s\n' '"${1}"')"
+  assert_allowed
+}
+
+@test "an expansion followed by a literal path is allowed" {
+  run_hook_write "$(printf 'readonly SIGNING_KEY=%s\n' '"${REPO_ROOT}/dev.pem"')"
+  assert_allowed
+}
+
+@test "a named fake placeholder is allowed" {
+  run_hook_write "$(printf 'export GH_TOKEN=%s\n' '"fake-token"')"
+  assert_allowed
+}
+
+# The expansion allowance is bounded by the same segment rule as the placeholder
+# arms: a secret does not stop being a secret for sitting inside a default.
+
+@test "a literal secret inside an expansion default is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${API_KEY:-sk-live-9f3a1c4e8b7d2064}')"
+  assert_denied
+}
+
+@test "a literal secret concatenated onto an expansion is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '"${PREFIX}sk-live-9f3a1c4e8b7d2064"')"
+  assert_denied
+}
+
+# A segmented secret has the same structure a placeholder does, so the operand
+# arm requires an EMPTY operand rather than a short one: a default value is
+# exactly where a real secret lands, and a UUID clears any per-segment bound.
+
+@test "a segmented secret inside an expansion default is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${API_KEY:-550e8400-e29b-41d4-a716-446655440000}')"
+  assert_denied
+}
+
+@test "an expansion followed by a non-path literal is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${X}550e8400-e29b-41d4-a716-446655440000')"
+  assert_denied
+}
+
+# A variable reference inside a command-substitution body must not buy the
+# value an expansion arm: that would re-open the very splice the `$(…)` arm
+# exists to close.
+
+@test "a substitution whose body references a variable is still spliced, so denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$(echo ${X})550e8400-e29b-41d4-a716-446655440000')"
+  assert_denied
+}
+
+# The placeholder arms require a separator BETWEEN segments. Making it optional
+# would let one unbroken run be read as several short ones, which is the bound
+# defeating itself.
+
+@test "an unbroken run behind a placeholder prefix cannot be read as segments" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example550e8400e29b41d4a716446655440000')"
+  assert_denied
+}
+
+# Segmented placeholders pass at any length; an unbroken run does not. A length
+# cap gets both of these backwards, which is why the arms bound the segment.
+
+@test "a long but segmented your- placeholder is allowed" {
+  run_hook_write "$(printf 'GITHUB_TOKEN=%s\n' 'your-github-personal-access-token')"
+  assert_allowed
+}
+
+@test "an underscore-segmented your_ placeholder is allowed" {
+  run_hook_write "$(printf 'SUPABASE_ANON_KEY=%s\n' 'your_supabase_anon_key_here')"
+  assert_allowed
+}
+
+@test "a short unbroken run behind a placeholder prefix is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'your-aB3xK9pQ7zR2wL5t')"
+  assert_denied
 }
 
 # --- A computed value is allowed: the source line holds no literal secret ---

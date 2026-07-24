@@ -48,7 +48,7 @@ These are the load-bearing safety net. They block the action outright and return
 - `block-env-read.sh`: denies Read-tool and Bash reads of `.env.<env>` variants (`.env.local`, `.env.production`) that the literal `Read(.env)` deny misses, plus residual Bash read paths (sourcing, redirection, readers outside cat/head/tail/sed) and bare `env`/`printenv` dumps; allows `.env.example`. Heuristic defense-in-depth, not a sandbox. Registered on the `Read` and `Bash` matchers.
 - `block-eslint-config-edit.sh`: prevents modifying `eslint.config.mjs` to fix lint errors. Fix the source, not the config.
 - `block-lockfile-edit.sh`: denies direct edits to `pnpm-lock.yaml`. Use `pnpm install` / `add` / `remove`.
-- `block-secrets-write.sh`: detects AWS keys, GH PATs, PEM headers, high-entropy secret-like values; allows placeholders.
+- `block-secrets-write.sh`: detects AWS keys, GH PATs, PEM headers, and dotenv-style assignments to `_TOKEN` / `_SECRET` / `_KEY` / `_PASSWORD` names, with or without a leading `export` / `declare` / `local` / `readonly`; allows placeholders. It matches known shapes, not entropy.
 - `block-vitest-globals-tsconfig.sh`: prevents adding `vitest/globals` to `tsconfig.json`. Use explicit imports.
 - `block-bare-test.sh`: denies bare `pnpm test` / `npm test` (watch mode). Requires `--run`.
 - `block-main-destructive-git.sh`: denies `git commit` on `main`/`master`, plain `git push` from `main`/`master` (PR-only flow), and force-push to `main`/`master`. See [[Git Workflow]].
