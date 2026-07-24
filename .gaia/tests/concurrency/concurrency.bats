@@ -116,7 +116,7 @@ count_autocommits() {
   grep -qF -- '"permissionDecision": "deny"' <<< "$output"
 }
 
-@test "C3-03: a wrong tree identity is refused, not trusted" {
+@test "C3-03: tree identity is the payload cwd, and the target is judged against it" {
   MAIN="$(gaia_new_main gaia-c303-main)"
   gaia_copy_real "$MAIN" \
     .claude/hooks/block-worktree-path-mismatch.sh \
@@ -127,24 +127,50 @@ count_autocommits() {
 
   A="$(gaia_add_worktree "$MAIN" treeA treeA)"
   B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  guard="$MAIN/.claude/hooks/block-worktree-path-mismatch.sh"
+  outside="$(gaia_mk_tmp gaia-c303-outside)"
 
-  # The REAL acting process sits in treeB (run_in below); the hook payload
-  # instead names treeA -- a well-shaped, absolute cwd that resolves to a
-  # DIFFERENT real checkout of the same repo, not a garbage/unresolvable
-  # value. The write targets treeA's own file (the tree the payload claims).
+  # The REAL acting process sits in treeB throughout (every run_in below), while
+  # the payload names treeA -- a well-shaped, absolute cwd resolving to a
+  # DIFFERENT real checkout of the same repo, not a garbage value. Identity is
+  # decided by the payload, so treeA is the acting tree in cases 1 and 2.
+
+  # (1) ADOPTED. Payload names treeA, target lands in treeA: judged against
+  # treeA and allowed, even though the hook process runs in treeB.
   json="$(jq -n --arg c "$A" --arg p "$A/README.md" \
     '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$MAIN/.claude/hooks/block-worktree-path-mismatch.sh"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
   [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output" && return 1
 
-  # Target: a plausible-but-wrong identity claim is refused, or corroborated
-  # against where the call really came from -- never silently trusted at face
-  # value. Today the guard's only cross-check is "does the payload cwd's own
-  # main root match the process cwd's main root", and every worktree of one
-  # repo shares the same main root, so a payload naming ANY sibling worktree
-  # always passes that check and is trusted outright, with no signal that the
-  # real acting process (treeB) differs from the claim (treeA).
-  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
+  # (2) ADJUDICATED AGAINST THE NAMED TREE -- the half that separates this
+  # design from a process-cwd one. Payload names treeA, target lands in treeB,
+  # the tree the hook process itself sits in: denied. A guard taking identity
+  # from its own process cwd would see treeB writing into treeB and allow it.
+  json="$(jq -n --arg c "$A" --arg p "$B/README.md" \
+    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output" || return 1
+
+  # (3) FALLBACK, LIVE NOT INERT. An unusable payload cwd -- absolute but not a
+  # checkout (a relative one routes the same way) -- is not adopted, so identity
+  # falls back to the process cwd, treeB, and a target in treeA is denied.
+  json="$(jq -n --arg c "$outside" --arg p "$A/README.md" \
+    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output" || return 1
+
+  # (4) FAIL-OPEN ON AN UNDETERMINABLE IDENTITY. Neither the payload cwd nor the
+  # process cwd names a checkout, so the guard cannot attribute the write and
+  # allows it -- emitting no decision at all -- rather than blocking an edit on
+  # an identity it could not confirm. The contract every block-*.sh guard shares.
+  json="$(jq -n --arg c "$outside" --arg p "$A/README.md" \
+    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
+  run run_in "$outside" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
 @test "C3-04: main-anchored ledgers resolve to main from a worktree" {

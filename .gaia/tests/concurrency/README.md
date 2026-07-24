@@ -102,7 +102,7 @@ hand-rolled-derivation defects, not keying collisions.
 |---|---|---|---|---|
 | **C3-01** | janitor spares a live peer tree | direct | 3.12 janitor | With two linked worktrees both live off one base, the session-start janitor run from tree A reaps none of tree B's per-tree residue; the `live_trees` set includes every live worktree, and no live tree's state is swept. |
 | **C3-02** | write-guard attributes by payload cwd | direct | 3.2 write-guard | A write issued by a subagent in worktree B, delivered with B's payload cwd, is attributed to B's tree (not the hook's process cwd); the guard does not deny a legitimate B write while the main thread is active, and denies a write whose payload cwd names a *different* tree than the target path. |
-| **C3-03** | a wrong tree identity is refused, not trusted | direct | 3.2 / 3.5 identity | When the identity signal is made to name a plausible-but-wrong checkout (a well-shaped cwd resolving to a different real checkout), a per-tree writer refuses or writes to the *named* tree — it never silently writes B's state under A's key. Fails if a wrong identity passes as right. (The cluster-D "wrong, not merely absent" guard.) |
+| **C3-03** | tree identity is the payload cwd, and the target is judged against it | direct | 3.2 / 3.10 identity | The acting tree is the tree the payload cwd *names*, whenever that cwd is absolute and resolves to a checkout, and the write is adjudicated against **that** tree: a target inside the named tree is allowed, and a target in any other tree — including the one the hook process itself sits in — is denied. An unusable payload cwd (relative, or absolute but not a checkout) falls back to the process cwd and the guard stays live against it rather than going inert. An identity that cannot be determined at all allows the write, emitting no decision (fail-open, defense-in-depth), never blocks it. (Assertion rewritten — see [Published assertion changes](#published-assertion-changes).) |
 | **C3-04** | main-anchored ledgers resolve to main from a worktree | direct | 3.9 ledgers | A SPEC/plan ledger write issued from inside worktree B lands in the main checkout's single ledger, not a forked per-tree copy; the resolver, not `$PWD`, supplies the path. |
 | **C3-05** | the project id is one value per clone | direct | 3 consumer conv. | Reading `.project-id` from worktree B yields the main checkout's id, not a second id minted from the worktree's own root path. |
 
@@ -153,6 +153,39 @@ target, recorded here when it happens.
 | **C7-01** | Serena answers the acting tree or refuses | simulated | 7.1 Serena | A symbol query issued from worktree B is answered against B's own index, or refuses out loud; it never silently returns a symbol resolved against a different tree. Simulated: the single MCP process is stood in by a fixture. |
 | **C7-02** | tests use the acting tree's dependencies | direct | 7.2 node_modules | A test run inside worktree B resolves its dependencies from B's own tree (or a correctly keyed shared store), never silently against main's `node_modules` when they differ. |
 | **C7-03** | the wiki state value is not cross-clobbered | direct | 7.3 wiki state | Two worktrees on different branches do not clobber each other's `wiki/.state.json` value; the single-valued sha is keyed, merge-driven, or the store is untracked — never a last-writer-wins race across trees. |
+
+---
+
+## Published assertion changes
+
+The meter is frozen, so a changed assertion is published here the way an added
+scenario would be, with what changed and what it did to the number. **The target
+never moves for a repair** — a scenario is repaired, never subtracted.
+
+### C3-03 — the assertion demanded a mechanism the design forbids
+
+**As frozen it could never pass, by any code.** It required the write-guard to
+refuse a payload cwd that names a sibling worktree, which is the
+payload-versus-process cross-check the tree-identity rule's binding `never` list
+forecloses unconditionally. So every reading published while it stood carried an
+unturnable scenario in its denominator. (The cross-check it asked for compared
+*main-checkout* roots, which every worktree of one clone shares, so it could not
+have caught this case even before it was removed — the scenario may always have
+been describing a protection that never existed.)
+
+It is re-pointed at what the shipped design does guarantee, in four parts: the
+payload cwd is adopted as the acting tree; the target is adjudicated against that
+tree, not against the hook's own process cwd; an unusable payload falls back to
+the process cwd with the guard still live; an undeterminable identity fails open.
+
+**The reading moves 11 → 12, and that is a measurement, not a repair artifact.**
+The repair shipped no code. It is green because tasks 3.2 and 3.10 already landed
+the behavior, which the old assertion could not see. Verified by mutating the real
+hook twice and watching the scenario go red each time: restore the pre-3.10 deny
+condition (`file_root == main_root`) and part 2 fails; take identity from the
+process cwd instead of the payload and part 1 fails. It now stands as a regression
+guard on the identity rule, in the same role as the [green-at-freeze](#green-at-freeze)
+six.
 
 ---
 
