@@ -129,7 +129,7 @@ Seed-forward alone would not survive a long idle gap between audit rounds: the S
 
 ### Sibling: the re-run carry-forward ledger
 
-The local re-run carry-forward ledger (`.gaia/local/audit/<base-sha>.rerun.json`) is a distinct artifact from this disposition-ledger sidecar, not an overlap. The sidecar holds **out-of-scope** findings keyed to the frontend member's content digest and gates the merge through the backstop hook; the re-run ledger holds **in-scope** remaining work keyed to the incremental base and never gates anything. They do not overlap and do not read each other: `audit-disposition-check.sh` reads only the dispositions sidecar by exact path, so the re-run ledger is invisible to merge gating. See [[Code Review Audit Agent]] for the ledger's role in the local fix → re-audit loop.
+The local re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`, `<audit-key>` the incremental base sha plus the acting tree's own branch, `.gaia/scripts/audit-key-lib.sh`) is a distinct artifact from this disposition-ledger sidecar, not an overlap. The sidecar holds **out-of-scope** findings keyed to the frontend member's content digest and gates the merge through the backstop hook; the re-run ledger holds **in-scope** remaining work keyed to the incremental base plus branch, so two worktrees sharing a base sha never collide on it, and never gates anything. They do not overlap and do not read each other: `audit-disposition-check.sh` reads only the dispositions sidecar by exact path, so the re-run ledger is invisible to merge gating. See [[Code Review Audit Agent]] for the ledger's role in the local fix → re-audit loop.
 
 ## /gaia-debt: fixing the backlog
 

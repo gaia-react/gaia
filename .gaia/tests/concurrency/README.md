@@ -42,6 +42,13 @@ assertion to make a number move.
   flow that correctly refuses out loud from a worktree is a pass; demanding it fire would
   be wrong. A *silently* wrong answer is never a pass and is never carved out (see the
   target).
+- **One number, always.** A scenario that goes green because its assertion was repaired
+  counts as passing, exactly like one turned by a fix; there is no second "fixed" count
+  running alongside. The distinction is not lost, it lives in
+  [Published assertion changes](#published-assertion-changes), which is written at the
+  moment an assertion moves and so is never reconstructed afterwards. That section is the
+  whole safeguard on this number: a repair published nowhere is the one way the reading
+  can mislead.
 
 ## The target, stated up front
 
@@ -113,8 +120,8 @@ the claim the program exists to make verifiable.
 
 | id | scenario | exec | owning task | frozen assertion |
 |---|---|---|---|---|
-| **C4-01** | findings sidecar isolated across worktrees | direct | 4.1 findings | Two worktrees off one main tip each run an audit that writes a findings sidecar; keyed by base-sha **plus branch**, tree A's findings never overwrite, and never appear in, tree B's sidecar. (Today's base-sha-only key collides — the live-harm defect.) |
-| **C4-02** | rerun ledger isolated across worktrees | direct | 4.1 rerun | The rerun ledger written by concurrent audits off one base is partitioned by base-sha plus branch, so one tree's rerun record does not overwrite the other's. |
+| **C4-01** | findings sidecar isolated across worktrees | direct | 4.1 findings | Two worktrees off one main tip each run an audit that writes a findings sidecar; keyed by base-sha **plus branch**, tree A's findings never overwrite, and never appear in, tree B's sidecar. (Today's base-sha-only key collides — the live-harm defect.) (Mechanism re-pointed at the shipped writer — see [Published assertion changes](#published-assertion-changes).) |
+| **C4-02** | rerun ledger isolated across worktrees | direct | 4.1 rerun | The rerun ledger written by concurrent audits off one base is partitioned by base-sha plus branch, so one tree's rerun record does not overwrite the other's. (Mechanism re-pointed at the shipped writer — see [Published assertion changes](#published-assertion-changes).) |
 | **C4-03** | PR-artifact capture is per branch | simulated | 4.2 gh-artifact | With the GitHub PR/merge round-trip stood in by fixtures, the PR-artifact capture is keyed per branch, so tree A's captured artifact is never posted into tree B's PR. Marked simulated: the PR side is GitHub-side and not run live in CI. |
 | **C4-04** | worthiness ledger is per tree | direct | 4.3 worthiness | Tree A's worthiness observation is addressed under A's tree key and is neither read nor overwritten by tree B; the ledger is per-tree, matching its RED sibling, not shared under `audit/`. |
 | **C4-05** | SPEC/plan locks serialize across worktrees | direct | 4.4 locks | Two worktrees each acquiring the SPEC (or plan) ledger lock, anchored to main, serialize: concurrent number allocations do not both mint the same id, and the second waits rather than racing. |
@@ -186,6 +193,30 @@ condition (`file_root == main_root`) and part 2 fails; take identity from the
 process cwd instead of the payload and part 1 fails. It now stands as a regression
 guard on the identity rule, in the same role as the [green-at-freeze](#green-at-freeze)
 six.
+
+### C4-01 / C4-02 — the mechanism moved to the real writer; the assertions did not move
+
+**No assertion text changed here.** What changed is where the path under test comes
+from. Both scenarios were written before the fixed writer existed, so each
+hand-built today's colliding `<base-sha>`-only path inside the test. A scenario
+that builds the very key it is judging can only ever measure the fixture.
+
+Task 4.1 ships `gaia_audit_key` (`.gaia/scripts/audit-key-lib.sh`), the one function
+every Code Audit Team member's definition now derives its findings-sidecar and
+re-run-ledger paths through. Both fixtures now **ask that function, inside each
+worktree, where to write** — the standing rule that a conversion repairs the fixture
+whose dependency set it changes, in the same change.
+
+Two consequences are named rather than left implicit. First, each scenario now also
+reads back **tree B's** file, not only tree A's: the frozen assertion always said
+"never overwrite, and never appear in, tree B's sidecar", and only the first half was
+being measured. Second, a fixture that drives the shipped function can go green
+vacuously, so the green is backed by mutation: breaking the shipped key (dropping the
+branch component) turns both scenarios red, and the same fixtures stay red for the
+old writer. What the fixtures still cannot prove is that the five agent definitions
+*call* the function — that is a static check
+(`.gaia/scripts/check-audit-key-callers.sh`), because prose drift would otherwise
+leave a green meter over a broken writer.
 
 ---
 

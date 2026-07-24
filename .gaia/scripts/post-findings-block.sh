@@ -16,13 +16,15 @@
 #
 # Usage
 #   post-findings-block.sh --base <sha> [--pr <N>]
-#     --base <sha>  REQUIRED. The incremental audit base; keys the sidecar
-#                   glob (.gaia/local/audit/<sha>.*.findings.json). Callers
-#                   resolve this the same way the audited member(s) already
-#                   do (.github/audit/resolve-audit-base.sh + merge-base, or
-#                   the plain merge-base a specialized member computes for
-#                   its own remit filter); this script invents no base of
-#                   its own.
+#     --base <sha>  REQUIRED. The incremental audit base; combined with this
+#                   tree's own branch (gaia_audit_key, audit-key-lib.sh) into
+#                   the key that globs the sidecars
+#                   (.gaia/local/audit/<sha>.<branch-slug>.*.findings.json).
+#                   Callers resolve <sha> the same way the audited member(s)
+#                   already do (.github/audit/resolve-audit-base.sh +
+#                   merge-base, or the plain merge-base a specialized member
+#                   computes for its own remit filter); this script invents
+#                   no base of its own.
 #     --pr <N>      PR number. Default: resolved from the current branch via
 #                   `gh pr view --json number`.
 #     --help | -h   Usage, exit 0.
@@ -52,7 +54,10 @@
 #   wiki/concepts/PR Merge Workflow.md.
 #
 # Sidecar shape (frozen; each Code Audit Team member's own contract)
-#   .gaia/local/audit/<base-sha>.<member>.findings.json
+#   .gaia/local/audit/<base-sha>.<branch-slug>.<member>.findings.json, the
+#   key gaia_audit_key computes (audit-key-lib.sh): base-sha alone collides
+#   between two worktrees cut from the same main tip, so the acting tree's
+#   own branch is the discriminator.
 #   {"schema":1,"member":"<name>","findings":[
 #     {"finding_class":"...","severity":"error|warning|suggestion","area_tags":["..."]}
 #   ]}
@@ -82,10 +87,10 @@
 # Filename collision with a clearance marker: PROVABLY NONE
 #   A clearance marker/refusal/dispositions-sidecar is keyed to a member's
 #   CONTENT DIGEST, a 64-hex sha256 (audit-digest.sh). A findings sidecar is
-#   keyed to <base-sha>, a 40-hex git commit sha. The two key spaces never
-#   collide on length, so a findings sidecar can never be mistaken for, or
-#   glob-matched as, a marker by VALUE. Direction two: no marker reader globs
-#   the audit directory for `.ok`/`.refused` files by pattern.
+#   keyed to <base-sha>.<branch-slug> (gaia_audit_key), never a bare 64-hex
+#   value, so a findings sidecar can never be mistaken for, or glob-matched
+#   as, a marker by VALUE. Direction two: no marker reader globs the audit
+#   directory for `.ok`/`.refused` files by pattern.
 #   post-audit-status.sh operates only on the single marker path an agent
 #   hands it as an argument; pr-merge-audit-check.sh and
 #   audit-disposition-check.sh read only their own single exact digest-keyed
@@ -101,10 +106,14 @@
 
 set -uo pipefail
 
+# shellcheck source=/dev/null
+. "$(dirname "${BASH_SOURCE[0]}")/audit-key-lib.sh"
+
 usage() {
   cat <<'EOF' >&2
 usage: post-findings-block.sh --base <sha> [--pr <N>]
-  --base <sha>  the incremental audit base; keys the sidecar glob.
+  --base <sha>  the incremental audit base; combined with this tree's own
+                branch into the key that globs the sidecars.
   --pr <N>      PR number. Default: resolved from the current branch via gh.
   --help | -h   usage, exit 0.
 EOF
@@ -158,16 +167,27 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$repo_root" ] || repo_root="."
 audit_dir="${repo_root}/.gaia/local/audit"
 
+# AUDIT_TAG combines --base with THIS tree's own branch (gaia_audit_key,
+# audit-key-lib.sh): a base sha alone collides between two worktrees cut
+# from the same main tip, since both compute the identical merge-base. Empty
+# when the branch is undeterminable (detached HEAD) -- the glob below then
+# matches nothing, which declines "no sidecars" below, the same fail-open
+# rule an empty --base already gets.
+AUDIT_TAG=""
+AUDIT_TAG="$(gaia_audit_key "$BASE" "$repo_root" 2>/dev/null || true)"
+
 # -----------------------------------------------------------------------------
-# 1. Glob sidecars for this base, sorted LC_ALL=C for a deterministic merge
-#    order (matches the dispatch resolver's own sort discipline).
+# 1. Glob sidecars for this tree's tag, sorted LC_ALL=C for a deterministic
+#    merge order (matches the dispatch resolver's own sort discipline).
 # -----------------------------------------------------------------------------
 
 sidecars=()
-for f in "${audit_dir}"/"${BASE}".*.findings.json; do
-  [ -e "$f" ] || continue
-  sidecars+=("$f")
-done
+if [ -n "$AUDIT_TAG" ]; then
+  for f in "${audit_dir}"/"${AUDIT_TAG}".*.findings.json; do
+    [ -e "$f" ] || continue
+    sidecars+=("$f")
+  done
+fi
 
 if [ "${#sidecars[@]}" -gt 0 ]; then
   sorted_list="$(printf '%s\n' ${sidecars[@]+"${sidecars[@]}"} | LC_ALL=C sort)"

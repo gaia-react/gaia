@@ -45,7 +45,7 @@
       "match": "glob",
       "kind": "file",
       "scope": "shared",
-      "keyed_by": "base-sha plus branch (target; base-sha alone collides across worktrees cut from one main tip)",
+      "keyed_by": "base-sha plus branch, computed by gaia_audit_key (.gaia/scripts/audit-key-lib.sh); base-sha alone collides across worktrees cut from one main tip",
       "why": "Co-written into the symlinked audit store; the branch discriminator is the missing partition that keeps two trees' findings from overwriting each other.",
       "writer": "code",
       "reaped_by": "orphaned audit markers sweep",

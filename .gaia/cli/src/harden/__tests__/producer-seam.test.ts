@@ -119,13 +119,23 @@ const runProducer = (args: {
   const sandbox = mkdtempSync(path.join(tmpdir(), 'gaia-seam-'));
 
   try {
-    execFileSync('git', ['init', '-q'], {cwd: sandbox});
+    // Pinned to "main" (an unborn HEAD already answers "main" to `git branch
+    // --show-current`, so no commit is needed) so the sidecar name below is
+    // deterministic rather than riding whatever `init.defaultBranch` the
+    // host has configured: the real producer keys the sidecar on base-sha +
+    // branch slug (gaia_audit_key, audit-key-lib.sh), not the bare base sha.
+    execFileSync('git', ['init', '-q', '--initial-branch=main'], {
+      cwd: sandbox,
+    });
 
     const auditDir = path.join(sandbox, '.gaia', 'local', 'audit');
 
     mkdirSync(auditDir, {recursive: true});
     writeFileSync(
-      path.join(auditDir, `${args.base}.code-audit-frontend.findings.json`),
+      path.join(
+        auditDir,
+        `${args.base}.main.code-audit-frontend.findings.json`
+      ),
       JSON.stringify({
         findings: args.findings,
         member: 'code-audit-frontend',

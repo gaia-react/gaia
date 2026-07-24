@@ -910,16 +910,23 @@ SHIM
 # records: code-audit-frontend deletes it on a clean pass, so one that outlives
 # its branch belongs to a line abandoned before it ever reached clean.
 
-# seed_rerun_ledger <base-sha> <recorded-branch>: writes the ledger the way the
-# audit really names it -- keyed on the base sha, with the audited branch inside.
-# Pass an empty branch to write a ledger with no branch recorded.
+# seed_rerun_ledger <base-sha> <branch> [<body-branch>]: writes the ledger the
+# way the audit really names and shapes it now (gaia_audit_key,
+# .gaia/scripts/audit-key-lib.sh): the filename is base-sha + branch slug, not
+# the bare base sha -- a bare base sha collides across two worktrees cut from
+# the same main tip, which is the defect task 4.1 removes. The body's
+# `.branch` defaults to the same value (the real writer derives both from one
+# `git branch --show-current` call). Pass a third arg to give the body a
+# DIFFERENT (or empty) branch than the filename carries, modeling a ledger
+# whose body is missing `.branch` under an already validly-keyed filename.
 seed_rerun_ledger() {
   mkdir -p "$REPO/.gaia/local/audit"
-  jq -cn --arg branch "$2" --arg base "$1" '
+  local base="$1" filename_branch="$2" body_branch="${3-$2}"
+  jq -cn --arg branch "$body_branch" --arg base "$base" '
     {schema: 1, round: 1, base_sha: $base, head_sha: $base,
      remaining: [], fixed_last_round: [], notes: null}
     | if $branch == "" then . else . + {branch: $branch} end
-  ' > "$REPO/.gaia/local/audit/$1.rerun.json"
+  ' > "$REPO/.gaia/local/audit/${base}.${filename_branch}.rerun.json"
 }
 
 @test "sweep 2b: a ledger whose audited branch is gone is swept, even though its base sha is on main" {
@@ -934,7 +941,7 @@ seed_rerun_ledger() {
   [ -n "$(git -C "$REPO" branch --contains "$base")" ]
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$base.rerun.json" ]
+  [ ! -e "$REPO/.gaia/local/audit/$base.abandoned-feature.rerun.json" ]
 }
 
 @test "sweep 2b: a ledger whose audited branch still exists is kept" {
@@ -945,17 +952,20 @@ seed_rerun_ledger() {
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$base.rerun.json" ]
+  [ -f "$REPO/.gaia/local/audit/$base.live-feature.rerun.json" ]
 }
 
 @test "sweep 2b: a ledger with no recorded branch is kept (fail-safe: death unprovable)" {
   make_repo
   base=$(git -C "$REPO" rev-parse HEAD)
-  seed_rerun_ledger "$base" ""
+  # A validly-keyed filename (gaia_audit_key never fails open on an
+  # undeterminable branch here -- it just never writes at all in that case)
+  # whose body nonetheless lacks `.branch`, e.g. a pre-4.1 body shape.
+  seed_rerun_ledger "$base" "some-branch" ""
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$base.rerun.json" ]
+  [ -f "$REPO/.gaia/local/audit/$base.some-branch.rerun.json" ]
 }
 
 @test "sweep 2b: an unparseable ledger is kept (fail-safe: death unprovable)" {

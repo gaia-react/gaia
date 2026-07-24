@@ -21,6 +21,8 @@ At the start of every run, resolve the diff base the same way the dispatch resol
 default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"
 base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null || git merge-base HEAD "${default_branch}" 2>/dev/null || true)
+. .gaia/scripts/audit-key-lib.sh
+audit_key="$(gaia_audit_key "$base")" || audit_key=""
 changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null || true)
 ```
 
@@ -128,7 +130,7 @@ This call is best-effort and guarded; the helper resolves the full dispatched me
 
 On **every LOCAL pass**, at least one finding or genuinely clean, write a findings sidecar. **Skip entirely in CI** (`GITHUB_ACTIONS`/`CI` set); CI never dispatches you.
 
-Path: `.gaia/local/audit/${base}.code-audit-maintainer-prose.findings.json`, reusing the SAME `base` resolved at run start (never a second resolution). If `base` is empty, skip the sidecar write.
+Path: `.gaia/local/audit/${audit_key}.code-audit-maintainer-prose.findings.json`, reusing the SAME `audit_key` derived at run start (never a second derivation). If `audit_key` is empty, skip the sidecar write.
 
 Shape:
 
@@ -146,7 +148,7 @@ Best-effort: a sidecar write failure never blocks or alters the marker sequence.
 
 A `finding_class` must be a prose-level ROOT CAUSE, never a subsystem tag.
 
-**Return contract: this sidecar is your report of record.** Your findings reach the orchestrator through this file, not through the text you return. The returned text is a human-readable convenience and the no-op classifier's input; it is not the durable channel, and an orchestrator reads the sidecar to learn what you actually found. Two consequences. First, no finding may exist only in your returned text: if it is in your report, it is in `findings[]`. Second, the sidecar's presence is what separates a genuine clean pass from a run whose report was lost in transit, so on a LOCAL pass with a resolved `base` you write it even when you found nothing (`"findings": []`). A marker sitting on disk with no sidecar beside it reads as a lost report and gets your dispatch retried. This does not apply to a clean self-skip (no changed file in your remit), where you deliberately write no marker and no sidecar.
+**Return contract: this sidecar is your report of record.** Your findings reach the orchestrator through this file, not through the text you return. The returned text is a human-readable convenience and the no-op classifier's input; it is not the durable channel, and an orchestrator reads the sidecar to learn what you actually found. Two consequences. First, no finding may exist only in your returned text: if it is in your report, it is in `findings[]`. Second, the sidecar's presence is what separates a genuine clean pass from a run whose report was lost in transit, so on a LOCAL pass with a resolved `audit_key` you write it even when you found nothing (`"findings": []`). A marker sitting on disk with no sidecar beside it reads as a lost report and gets your dispatch retried. This does not apply to a clean self-skip (no changed file in your remit), where you deliberately write no marker and no sidecar.
 
 ## Methodology
 

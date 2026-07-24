@@ -36,9 +36,11 @@
 #                 every other shape.
 #   --findings    optional; honored ONLY for --shape audit-team-member. The
 #                 member's findings sidecar
-#                 (.gaia/local/audit/<base-sha>.<member>.findings.json), the
-#                 durable report of record a specialized member writes on every
-#                 LOCAL pass, clean or withheld. When passed, the --marker
+#                 (.gaia/local/audit/<audit-key>.<member>.findings.json --
+#                 audit-key is the incremental base sha plus the acting tree's
+#                 branch, .gaia/scripts/audit-key-lib.sh), the durable report
+#                 of record a specialized member writes on every LOCAL pass,
+#                 clean or withheld. When passed, the --marker
 #                 short-circuit additionally requires this file to exist and,
 #                 with jq available, to parse with a `.findings` array AND a
 #                 `.member` equal to the member the marker filename names. That

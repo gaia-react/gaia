@@ -240,13 +240,23 @@ count_autocommits() {
 # the same base, so both compute the identical BASE_SHA the real documented
 # recipe uses (`git merge-base "$BASE_REF" HEAD`, per
 # .claude/agents/code-audit-frontend.md). Sets MAIN, A, B, BASE_SHA_A,
-# BASE_SHA_B.
+# BASE_SHA_B, KEY_A, KEY_B.
+#
+# KEY_A/KEY_B come from the SHIPPED writer, `gaia_audit_key`
+# (.gaia/scripts/audit-key-lib.sh), run inside each tree -- the same function
+# every Code Audit Team member's definition now derives its sidecar and ledger
+# paths through. Before task 4.1 these two scenarios hand-built today's
+# colliding `<base-sha>`-only path inside the test, because the fixed writer did
+# not exist yet; asking the real function where to write is what makes a green
+# here a measurement of GAIA rather than of the fixture. See the meter README's
+# "Published assertion changes".
 setup_c4_base_sha_pair() {
   MAIN="$(gaia_new_main "$1")"
   gaia_copy_real "$MAIN" \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
-    .gaia/scripts/link-worktree.sh
+    .gaia/scripts/link-worktree.sh \
+    .gaia/scripts/audit-key-lib.sh
   gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add link-worktree deps"
 
@@ -264,46 +274,61 @@ setup_c4_base_sha_pair() {
 
   BASE_SHA_A="$(run_in "$A" -- git merge-base main HEAD)"
   BASE_SHA_B="$(run_in "$B" -- git merge-base main HEAD)"
+
+  KEY_A="$(run_in "$A" -- bash -c '. .gaia/scripts/audit-key-lib.sh; gaia_audit_key "$1"' _ "$BASE_SHA_A")"
+  KEY_B="$(run_in "$B" -- bash -c '. .gaia/scripts/audit-key-lib.sh; gaia_audit_key "$1"' _ "$BASE_SHA_B")"
 }
 
 @test "C4-01: findings sidecar isolated across worktrees" {
   setup_c4_base_sha_pair gaia-c401-main
+  # The collision precondition, measured rather than assumed: two trees cut
+  # from one main tip compute the SAME base sha.
   [ "$BASE_SHA_A" = "$BASE_SHA_B" ]
+  # A key the writer could not determine would make both paths identical and
+  # produce a confusing red; assert the writer answered before relying on it.
+  [ -n "$KEY_A" ]
+  [ -n "$KEY_B" ]
 
-  sidecar_a="$A/.gaia/local/audit/${BASE_SHA_A}.code-audit-frontend.findings.json"
-  sidecar_b="$B/.gaia/local/audit/${BASE_SHA_B}.code-audit-frontend.findings.json"
+  sidecar_a="$A/.gaia/local/audit/${KEY_A}.code-audit-frontend.findings.json"
+  sidecar_b="$B/.gaia/local/audit/${KEY_B}.code-audit-frontend.findings.json"
 
   jq -n '{schema: 1, member: "frontend", tree: "treeA", findings: ["A-only finding"]}' > "$sidecar_a"
   jq -n '{schema: 1, member: "frontend", tree: "treeB", findings: ["B-only finding"]}' > "$sidecar_b"
 
-  # Target: tree A's findings are never overwritten by, nor contain, tree B's
-  # (keyed by base-sha plus branch). Today the sidecar path is
-  # .gaia/local/audit/${BASE_SHA}.code-audit-frontend.findings.json --
-  # base-sha alone -- and audit/ is symlinked to main from every worktree, so
-  # both trees' writes land on the SAME physical file and B's write clobbers
-  # A's.
+  # The frozen assertion, both halves: tree A's findings never overwrite, and
+  # never appear in, tree B's sidecar. audit/ is symlinked to main from every
+  # worktree, so the two writes land on one physical file unless the KEY
+  # partitions them.
   run jq -r '.tree' "$sidecar_a"
   [ "$status" -eq 0 ]
   [ "$output" = "treeA" ]
+
+  run jq -r '.tree' "$sidecar_b"
+  [ "$status" -eq 0 ]
+  [ "$output" = "treeB" ]
 }
 
 @test "C4-02: rerun ledger isolated across worktrees" {
   setup_c4_base_sha_pair gaia-c402-main
   [ "$BASE_SHA_A" = "$BASE_SHA_B" ]
+  [ -n "$KEY_A" ]
+  [ -n "$KEY_B" ]
 
-  ledger_a="$A/.gaia/local/audit/${BASE_SHA_A}.rerun.json"
-  ledger_b="$B/.gaia/local/audit/${BASE_SHA_B}.rerun.json"
+  ledger_a="$A/.gaia/local/audit/${KEY_A}.rerun.json"
+  ledger_b="$B/.gaia/local/audit/${KEY_B}.rerun.json"
 
   jq -n --arg br treeA --arg base "$BASE_SHA_A" '{schema: 1, branch: $br, base_sha: $base, round: 1}' > "$ledger_a"
   jq -n --arg br treeB --arg base "$BASE_SHA_B" '{schema: 1, branch: $br, base_sha: $base, round: 1}' > "$ledger_b"
 
-  # Target: the rerun ledger is partitioned by base-sha plus branch, so one
-  # tree's rerun record never overwrites the other's. Today it is base-sha
-  # alone (.gaia/local/audit/${BASE_SHA}.rerun.json, shared audit/), so B's
-  # write clobbers A's.
+  # The frozen assertion: the ledger is partitioned by base-sha plus branch, so
+  # one tree's rerun record never overwrites the other's.
   run jq -r '.branch' "$ledger_a"
   [ "$status" -eq 0 ]
   [ "$output" = "treeA" ]
+
+  run jq -r '.branch' "$ledger_b"
+  [ "$status" -eq 0 ]
+  [ "$output" = "treeB" ]
 }
 
 @test "C4-03: PR-artifact capture is per branch (simulated)" {
