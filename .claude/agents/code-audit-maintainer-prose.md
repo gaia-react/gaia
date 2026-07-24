@@ -115,10 +115,14 @@ findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-maintainer-prose \
-  --provenance earned)"
+  --provenance earned \
+  --base "$BASE_SHA" \
+  --base "$BASE_SHA")"
 ```
 
 Do NOT include a `--provenance refused` path, you never refuse.
+
+`--base` maintains the shared re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`): your earned write retires any entries recorded under your name, and the file goes away once no member has anything left. Pass the same `BASE_SHA` you gave the sidecar writer. It is non-gating and best-effort, and it never touches a co-dispatched member's entries.
 
 **2. Stamp.** Call the trailer stamp:
 

@@ -162,7 +162,9 @@ The marker is keyed to your own content digest, not HEAD's commit sha or tree: a
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-maintainer-shell \
-  --provenance earned)"
+  --provenance earned \
+  --base "$BASE_SHA" \
+  --base "$BASE_SHA")"
 ```
 
 The shared writer derives your content digest internally from `--root`, resolves the filename from it, writes atomically, and prints the marker path it wrote. Every write lands unconditionally: it replaces whatever marker was already on disk for this digest, there is no carried provenance to out-rank, only earned or refused.
@@ -173,8 +175,13 @@ Withhold the marker on any unresolved Critical or unaddressed/unacknowledged Imp
 bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-maintainer-shell \
-  --provenance refused
+  --provenance refused \
+  --base "$BASE_SHA"
 ```
+
+`--base` is what makes the refusal self-describing. A refusal blocks the merge and is retired only by its own author, so an operator who cannot learn what you refused on can neither repair it nor legitimately supersede it: superseding requires stating a reason they are not in a position to state. With `--base` the writer derives the re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`) from the findings sidecar you wrote in step 0, so `remaining[]` names every open finding with its path, line, failure mode and recommended repair. Pass the same `BASE_SHA` you gave the sidecar writer. The ledger is non-gating and best-effort: it never blocks a merge, no hook reads it, and a failure there never fails your marker write. Your `remaining[]` entries are rebuilt from your sidecar on every round, so a finding it no longer names is closed; a co-dispatched member's entries are never touched.
+
+Passing `--base` on the earned write too is what retires your ledger entries: the writer moves them into `fixed_last_round[]` stamped with the sha that closed them, and removes the ledger file once no member has anything left. Without it, a repaired finding lingers in `remaining[]` and the next round's fixer acts on work that is already done.
 
 **Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker:
 
@@ -183,6 +190,7 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-maintainer-shell \
   --provenance earned \
+  --base "$BASE_SHA" \
   --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
 ```
 

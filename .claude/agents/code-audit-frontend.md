@@ -542,12 +542,14 @@ If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the led
   "updated_at": "2026-07-01T12:00:00Z",
   "remaining": [
     {
+      "member": "code-audit-frontend",
       "finding_class": "holistic/swallowed-error",
       "severity": "critical",
       "path": "app/services/foo.ts",
       "line": 42,
       "title": "<short>",
       "failure_mode": "<input + state + bad outcome>",
+      "verified_by": "<the executed evidence>",
       "suggested_fix": "<concrete instruction>",
       "source": "holistic",
       "first_seen_round": 1,
@@ -556,6 +558,7 @@ If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the led
   ],
   "fixed_last_round": [
     {
+      "member": "code-audit-frontend",
       "finding_class": "holistic/non-null-assertion",
       "path": "app/pages/Bar/index.tsx",
       "line": 17,
@@ -575,8 +578,8 @@ Field semantics (frozen):
 - `round`: integer round counter. Round 1 is the first non-clean audit; each re-audit that writes the ledger increments it.
 - `head_sha`: the HEAD the most recent round audited (provenance / debugging).
 - `updated_at`: ISO-8601 UTC, `date -u +%Y-%m-%dT%H:%M:%SZ`.
-- `remaining[]`: **in-scope open findings only** (Critical + unaddressed Important + unresolved/escalated Suggestions). Out-of-scope findings are NOT here; they live in `<frontend-digest>.dispositions.json` plus filed `tech-debt` issues. Per-finding fields: `finding_class` (seeded class or `holistic/unclassified`), `severity` (`critical|important|suggestion`), `path` (repo-relative POSIX), `line` (integer), `title`, `failure_mode` (input + state + bad outcome), `suggested_fix`, `source` (`holistic|rule|oracle`), `first_seen_round` (integer), `escalated` (boolean; an in-scope Suggestion escalated for a human tradeoff, which blocks the marker).
-- `fixed_last_round[]`: in-scope findings self-healed / fixed in the most recent round. Lighter shape: `finding_class`, `path`, `line`, `title`, `fixed_in_sha` (the fix commit's sha, or empty if uncommitted).
+- `remaining[]`: **in-scope open findings only** (Critical + unaddressed Important + unresolved/escalated Suggestions). Out-of-scope findings are NOT here; they live in `<frontend-digest>.dispositions.json` plus filed `tech-debt` issues. Per-finding fields: `member` (which member owns this entry, since one ledger serves the whole dispatched set), `finding_class` (seeded class or `holistic/unclassified`), `severity` (`critical|important|suggestion`), `path` (repo-relative POSIX), `line` (integer), `title`, `failure_mode` (input + state + bad outcome), `verified_by` (the executed evidence), `suggested_fix`, `source` (`holistic|rule|oracle`), `first_seen_round` (integer), `escalated` (boolean; an in-scope Suggestion escalated for a human tradeoff, which blocks the marker).
+- `fixed_last_round[]`: in-scope findings self-healed / fixed in the most recent round. Lighter shape: `member`, `finding_class`, `path`, `line`, `title`, `fixed_in_sha` (the fix commit's sha, or empty if uncommitted).
 - `notes`: optional free text.
 
 Per-finding identity for cross-round dedup / closure-confirmation = (`finding_class`, `path`, `line`). This accepts the same residual line-drift risk the `tech-debt` dedup already accepts. The ledger is a **briefing**, not an authority over the next round's fresh findings: each re-audit derives its own findings from scratch; the ledger tells the fixer what to act on and lets the re-audit confirm closure.
@@ -590,8 +593,12 @@ Per-finding identity for cross-round dedup / closure-confirmation = (`finding_cl
 
 ### Writer behavior (LOCAL only)
 
-- **Non-clean pass** (marker NOT written): write/update `LEDGER`. `round` = (valid same-branch same-base ledger's `round`) + 1, else 1. Carry `first_seen_round` for findings that persist across rounds. Set `remaining`, `fixed_last_round`, `head_sha` = current HEAD, `branch`, `updated_at`. Write atomically (temp file + `mv`) and best-effort: a write failure never aborts the audit, same philosophy as `progress.log`.
-- **Clean pass** (marker written): `rm -f "$LEDGER"` (best-effort). Cleanup runs on every clean pass, so a lingering ledger for this base is always removed when the loop ends.
+**The shared clearance writer maintains the ledger; you do not write it by hand.** Pass `--base "$BASE_SHA"` to `.gaia/scripts/audit-write-clearance.sh` on every clearance write, earned or refused, and it does the whole of the behavior below. Hooking the ledger to the clearance write is deliberate: a refusal that briefs nothing is an artifact that blocks a merge no one can clear, and the one moment a refusal is guaranteed to be written is the moment it is written. A third prose step would be a third place to forget.
+
+- **Refusal** (marker withheld, refusal recorded): `remaining[]` for your member is rebuilt from your findings sidecar, so every open finding arrives with its `path`, `line`, `title`, `failure_mode`, `verified_by`, and `suggested_fix` already populated (the sidecar's severity scale is mapped onto the ledger's: `error` → `critical`, `warning` → `important`). `round` = (valid same-branch same-base ledger's `round`) + 1, else 1; `first_seen_round` carries per (member, `finding_class`, `path`, `line`) so a finding that survives rounds keeps its original round. `head_sha`, `branch`, and `updated_at` are set from the write. A finding your sidecar no longer names is closed and does not survive the rebuild.
+- **Clean pass** (earned marker written): your entries are retired, moving into `fixed_last_round[]` stamped with the sha that closed them. The FILE is removed once no member has anything left, matching the clean-pass cleanup without discarding a co-dispatched member's still-open work.
+- One ledger serves the whole dispatched set (its key is the base, not a digest), so each entry carries a `member` field and a write only ever touches its own member's entries.
+- Atomic (temp file + `mv`) and best-effort throughout: a ledger failure warns on stderr and never fails the clearance write, never aborts the audit, and cannot hold a merge shut or open one.
 
 ### CI gating (load-bearing)
 
@@ -927,7 +934,9 @@ findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-frontend \
-  --provenance earned)"
+  --provenance earned \
+  --base "$BASE_SHA" \
+  --base "$BASE_SHA")"
 
 # 2. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per the
 #    placement rule). The empty commit changes no blob sha, so it rotates no
@@ -1060,8 +1069,13 @@ When you withhold the marker after genuinely auditing this exact content (a real
 bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-frontend \
-  --provenance refused
+  --provenance refused \
+  --base "$BASE_SHA"
 ```
+
+`--base` is what makes the refusal self-describing. A refusal blocks the merge and is retired only by its own author, so an operator who cannot learn what you refused on can neither repair it nor legitimately supersede it: superseding requires stating a reason they are not in a position to state. With `--base` the writer derives the re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`) from the findings sidecar you wrote in step 0, so `remaining[]` names every open finding with its path, line, failure mode and recommended repair. Pass the same `BASE_SHA` you gave the sidecar writer. The ledger is non-gating and best-effort: it never blocks a merge, no hook reads it, and a failure there never fails your marker write. Your `remaining[]` entries are rebuilt from your sidecar on every round, so a finding it no longer names is closed; a co-dispatched member's entries are never touched.
+
+Passing `--base` on the earned write too is what retires your ledger entries: the writer moves them into `fixed_last_round[]` stamped with the sha that closed them, and removes the ledger file once no member has anything left. Without it, a repaired finding lingers in `remaining[]` and the next round's fixer acts on work that is already done.
 
 **Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker, adding `--supersede-refusal "<why it is now cleared>"` to the earned invocation in step 1 above:
 
@@ -1070,6 +1084,7 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-frontend \
   --provenance earned \
+  --base "$BASE_SHA" \
   --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
 ```
 

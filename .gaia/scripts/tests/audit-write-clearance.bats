@@ -615,3 +615,220 @@ scrub_maintainer_only() {
   # No sibling refusal existed, so no supersedes block is recorded.
   jq -e '.supersedes == null' "$out" >/dev/null
 }
+
+# =============================================================================
+# Re-run carry-forward ledger (--base)
+#
+# The ledger is what makes a refusal self-describing. A refusal blocks a merge
+# and is retired only by its own author, so an operator who cannot learn what
+# was refused can neither repair it nor legitimately supersede it. These tests
+# pin that a refusal writes a ledger carrying the actionable detail, that the
+# ledger is derived from the member's own findings sidecar, and that it never
+# gets in the way of the marker write it rides along with.
+# =============================================================================
+
+# ledger_setup: a base commit, a branch off it, and the audit key both artifacts
+# share. Sets LBASE, LEDGER, and defines sidecar_for.
+ledger_setup() {
+  LBASE="$(git -C "$ROOT" rev-parse HEAD)"
+  git -C "$ROOT" checkout --quiet -b "fix/ledger"
+  echo "more" >> "$ROOT/README.md"
+  git -C "$ROOT" add README.md
+  git -C "$ROOT" commit --quiet -m "work"
+  LHEAD="$(git -C "$ROOT" rev-parse HEAD)"
+  # gaia_key_slug percent-encodes "/" as "%2F".
+  LEDGER="$AUDIT_DIR/${LBASE}.fix%2Fledger.rerun.json"
+}
+
+# write_sidecar_for <member> <line> [<severity>]: a complete one-finding sidecar.
+write_sidecar_for() {
+  local member="$1" line="$2" sev="${3:-warning}"
+  local writer="$THIS_DIR/../audit-write-findings.sh"
+  [ -x "$writer" ] || skip "audit-write-findings.sh not executable"
+  printf '[{"finding_class":"holistic/secret-exposure","severity":"%s","path":".claude/hooks/block-secrets-write.sh","line":%s,"title":"the path arm admits arbitrary trailing text","failure_mode":"a separator after the closing brace unbounds the tail over the secret character set","verified_by":"ran the hook at base and at HEAD: base denies, HEAD allows","suggested_fix":"bound each trailing segment"}]' \
+    "$sev" "$line" \
+    | bash "$writer" --root "$ROOT" --member "$member" --base "$LBASE" --findings - >/dev/null
+}
+
+@test "ledger: a refusal with --base writes the carry-forward ledger from the findings sidecar" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  write_sidecar_for "$m" 113
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ -f "$LEDGER" ]
+  [ "$(jq -r .schema "$LEDGER")" = "1" ]
+  [ "$(jq -r .base_sha "$LEDGER")" = "$LBASE" ]
+  [ "$(jq -r .branch "$LEDGER")" = "fix/ledger" ]
+  [ "$(jq -r .head_sha "$LEDGER")" = "$LHEAD" ]
+  [ "$(jq -r .round "$LEDGER")" = "1" ]
+  [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
+}
+
+@test "ledger: every actionable field reaches remaining[], so the refusal briefs its own repair" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  write_sidecar_for "$m" 113
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  entry="$(jq -c '.remaining[0]' "$LEDGER")"
+  [ "$(jq -r .member <<<"$entry")" = "$m" ]
+  [ "$(jq -r .path <<<"$entry")" = ".claude/hooks/block-secrets-write.sh" ]
+  [ "$(jq -r .line <<<"$entry")" = "113" ]
+  [ "$(jq -r .finding_class <<<"$entry")" = "holistic/secret-exposure" ]
+  grep -qF "unbounds the tail" <<<"$(jq -r .failure_mode <<<"$entry")"
+  grep -qF "base denies, HEAD allows" <<<"$(jq -r .verified_by <<<"$entry")"
+  grep -qF "bound each trailing segment" <<<"$(jq -r .suggested_fix <<<"$entry")"
+  [ "$(jq -r .first_seen_round <<<"$entry")" = "1" ]
+}
+
+@test "ledger: the sidecar's severity scale is mapped onto the ledger's" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  write_sidecar_for "$m" 113 error
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq -r '.remaining[0].severity' "$LEDGER")" = "critical" ]
+
+  write_sidecar_for "$m" 113 warning
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq -r '.remaining[0].severity' "$LEDGER")" = "important" ]
+
+  write_sidecar_for "$m" 113 suggestion
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq -r '.remaining[0].severity' "$LEDGER")" = "suggestion" ]
+}
+
+@test "ledger: round increments across refusals and first_seen_round carries" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  write_sidecar_for "$m" 113
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq -r .round "$LEDGER")" = "3" ]
+  # The finding has been open since round 1 and says so.
+  [ "$(jq -r '.remaining[0].first_seen_round' "$LEDGER")" = "1" ]
+}
+
+@test "ledger: a finding the sidecar no longer names is closed, not carried forever" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  write_sidecar_for "$m" 113
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
+  # Round two: the member still refuses, but on a different finding.
+  write_sidecar_for "$m" 59
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
+  [ "$(jq -r '.remaining[0].line' "$LEDGER")" = "59" ]
+  # A new finding starts its own clock.
+  [ "$(jq -r '.remaining[0].first_seen_round' "$LEDGER")" = "2" ]
+}
+
+@test "ledger: one member's write never touches a co-dispatched member's entries" {
+  ledger_setup
+  write_sidecar_for code-audit-maintainer-shell 113
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LBASE" >/dev/null
+  write_sidecar_for code-audit-maintainer-node 7
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
+  [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-shell")] | length' "$LEDGER")" = "1" ]
+  [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-node")] | length' "$LEDGER")" = "1" ]
+}
+
+@test "ledger: an earned write retires that member's entries into fixed_last_round" {
+  ledger_setup
+  write_sidecar_for code-audit-maintainer-shell 113
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LBASE" >/dev/null
+  write_sidecar_for code-audit-maintainer-node 7
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LBASE" >/dev/null
+
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LBASE" >/dev/null
+  [ -f "$LEDGER" ]
+  # The cleared member is gone from remaining; the other member survives.
+  [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-shell")] | length' "$LEDGER")" = "0" ]
+  [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-node")] | length' "$LEDGER")" = "1" ]
+  [ "$(jq -r '.fixed_last_round[0].member' "$LEDGER")" = "code-audit-maintainer-shell" ]
+  [ "$(jq -r '.fixed_last_round[0].line' "$LEDGER")" = "113" ]
+  [ "$(jq -r '.fixed_last_round[0].fixed_in_sha' "$LEDGER")" = "$LHEAD" ]
+}
+
+@test "ledger: the file is removed only once NO member has anything left" {
+  ledger_setup
+  write_sidecar_for code-audit-maintainer-shell 113
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LBASE" >/dev/null
+  write_sidecar_for code-audit-maintainer-node 7
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LBASE" >/dev/null
+
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LBASE" >/dev/null
+  [ -f "$LEDGER" ]
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance earned --base "$LBASE" >/dev/null
+  [ -f "$LEDGER" ] && return 1
+  return 0
+}
+
+@test "ledger: a stale ledger (different base) is replaced, never extended" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  write_sidecar_for "$m" 113
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  # Rewrite the on-disk ledger to claim a different base; the writer must not
+  # inherit its round or its entries.
+  jq '.base_sha = "0000000000000000000000000000000000000000" | .round = 9' "$LEDGER" > "$LEDGER.tmp"
+  mv "$LEDGER.tmp" "$LEDGER"
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  [ "$(jq -r .round "$LEDGER")" = "1" ]
+  [ "$(jq -r .base_sha "$LEDGER")" = "$LBASE" ]
+}
+
+@test "ledger: omitting --base leaves behavior exactly as before, no ledger written" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  write_sidecar_for "$m" 113
+  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused)"
+  d="$(member_digest "$ROOT" "$m")"
+  [ "$out" = "$AUDIT_DIR/${d}.${m}.refused" ]
+  [ -f "$LEDGER" ] && return 1
+  return 0
+}
+
+@test "ledger: a refusal with NO sidecar still writes the marker, and says the briefing is missing" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE"
+  [ "$status" -eq 0 ]
+  grep -qF "no findings sidecar" <<<"$output"
+  d="$(member_digest "$ROOT" "$m")"
+  [ -f "$AUDIT_DIR/${d}.${m}.refused" ]
+  [ -f "$LEDGER" ] && return 1
+  return 0
+}
+
+@test "ledger: an unresolvable audit key warns and never fails the marker write" {
+  ledger_setup
+  m="code-audit-maintainer-shell"
+  write_sidecar_for "$m" 113
+  git -C "$ROOT" checkout --quiet --detach HEAD
+  d="$(member_digest "$ROOT" "$m")"
+  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE"
+  [ "$status" -eq 0 ]
+  grep -qF "audit key does not resolve" <<<"$output"
+  [ -f "$AUDIT_DIR/${d}.${m}.refused" ]
+}
+
+@test "ledger: the marker is published BEFORE any ledger work, so a ledger failure cannot lose it" {
+  # Structural. The marker is the gate artifact and the ledger is a briefing, so
+  # the order is load-bearing: reversing it would let a ledger problem abort a
+  # write that must always land. Every behavioural test above stays green under a
+  # reorder, so only this can catch one.
+  publish_line="$(grep -nF 'mv -f "$tmp" "$target"' "$WRITER" | head -1 | cut -d: -f1)"
+  ledger_line="$(grep -nF 'Re-run carry-forward ledger (only with --base)' "$WRITER" | head -1 | cut -d: -f1)"
+  [ -n "$publish_line" ] || return 1
+  [ -n "$ledger_line" ] || return 1
+  [ "$publish_line" -lt "$ledger_line" ]
+}
+
+@test "ledger: a jq failure while building it is surfaced, never silently swallowed" {
+  # Both jq passes here once used `2>/dev/null || true`, which turned a real
+  # program error into "there was nothing to write". The status is checked now.
+  grep -qF 'cannot build the carry-forward ledger' "$WRITER"
+  grep -qF 'cannot update the carry-forward ledger' "$WRITER"
+}
