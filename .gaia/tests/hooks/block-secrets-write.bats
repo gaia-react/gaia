@@ -223,6 +223,62 @@ assert_allowed() {
   assert_allowed
 }
 
+# Recognizing the declaration keywords pulls shell lines into a rule written for
+# dotenv files, and a shell value references a variable far more often than a
+# dotenv value does. These are the shapes that carry no literal secret but that
+# the bare-identifier `${VAR}` arm alone would deny.
+
+@test "an expansion carrying a default operator is allowed" {
+  run_hook_write "$(printf 'export GITHUB_TOKEN=%s\n' '"${GITHUB_TOKEN:-}"')"
+  assert_allowed
+}
+
+@test "a positional expansion is allowed" {
+  run_hook_write "$(printf 'local CACHE_KEY=%s\n' '"${1}"')"
+  assert_allowed
+}
+
+@test "an expansion followed by a literal path is allowed" {
+  run_hook_write "$(printf 'readonly SIGNING_KEY=%s\n' '"${REPO_ROOT}/dev.pem"')"
+  assert_allowed
+}
+
+@test "a named fake placeholder is allowed" {
+  run_hook_write "$(printf 'export GH_TOKEN=%s\n' '"fake-token"')"
+  assert_allowed
+}
+
+# The expansion allowance is bounded by the same segment rule as the placeholder
+# arms: a secret does not stop being a secret for sitting inside a default.
+
+@test "a literal secret inside an expansion default is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${API_KEY:-sk-live-9f3a1c4e8b7d2064}')"
+  assert_denied
+}
+
+@test "a literal secret concatenated onto an expansion is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '"${PREFIX}sk-live-9f3a1c4e8b7d2064"')"
+  assert_denied
+}
+
+# Segmented placeholders pass at any length; an unbroken run does not. A length
+# cap gets both of these backwards, which is why the arms bound the segment.
+
+@test "a long but segmented your- placeholder is allowed" {
+  run_hook_write "$(printf 'GITHUB_TOKEN=%s\n' 'your-github-personal-access-token')"
+  assert_allowed
+}
+
+@test "an underscore-segmented your_ placeholder is allowed" {
+  run_hook_write "$(printf 'SUPABASE_ANON_KEY=%s\n' 'your_supabase_anon_key_here')"
+  assert_allowed
+}
+
+@test "a short unbroken run behind a placeholder prefix is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'your-aB3xK9pQ7zR2wL5t')"
+  assert_denied
+}
+
 # --- A computed value is allowed: the source line holds no literal secret ---
 #
 # A value that is wholly a command substitution is resolved at run time, so the

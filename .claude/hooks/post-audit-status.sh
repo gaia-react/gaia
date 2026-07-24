@@ -14,7 +14,12 @@
 #   POST itself.
 #
 # Invocation
-#   .claude/hooks/post-audit-status.sh <marker-path>
+#   .claude/hooks/post-audit-status.sh [--root <path>] <marker-path>
+#
+#   --root <path>  The audited working root. Every git call, derived path, and
+#                  gh invocation is scoped to it. Defaults to the ambient
+#                  checkout, which is correct only when the caller reviewed
+#                  that tree; a worktree dispatch must name the tree it read.
 #
 #   <marker-path>  The marker file the calling member's agent just wrote
 #                  (.gaia/local/audit/<digest>.ok for code-audit-frontend,
@@ -56,10 +61,12 @@
 #          version file empty
 #          frontend digest unavailable
 #          repo slug unresolved
+#          root not a directory
 #          audited tree not on pushed head
 #          members pending <list>
 #          post failed
-#   2 , Usage error (no marker path argument). Stderr.
+#   2 , Usage error (no marker path argument, an unknown option, or --root
+#       with no value). Stderr.
 #
 # References
 #   Audit-marker handshake: .claude/agents/code-audit-frontend.md "Audit marker (gate handshake)"
@@ -69,8 +76,12 @@
 #
 # Notes
 #   - Bash 3.2 compatible (macOS-default bash).
-#   - Never `cd`s (per .claude/rules/shell-cwd.md). Resolves the repo root via
-#     git rev-parse and uses repo-relative paths from there.
+#   - Resolves the repo root via git rev-parse and scopes every git call to it
+#     with -C. The two gh calls are the exception: gh takes no root argument
+#     and reads the repo and PR from its working directory, so they run inside
+#     a subshell `cd "$repo_root"` whose effect cannot outlive the command
+#     (per .claude/rules/shell-cwd.md, which bans a cd that leaks into the
+#     caller's environment, not a contained one).
 #   - The success description "<version> <frontend-digest> <tree-sha>" (three
 #     positional fields; field 2 is the digest) matches what every
 #     state-aware GAIA-Audit reader accepts as cleared, and state=success
@@ -112,7 +123,10 @@ root_arg=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --root)
-      if [ "$#" -lt 2 ]; then
+      # An EMPTY value errors rather than falling back to the cwd: a caller that
+      # asked for an explicit root and silently got the ambient checkout is the
+      # exact failure this flag exists to prevent.
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then
         emit_error "--root requires a path"
         exit 2
       fi
@@ -121,6 +135,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --root=*)
       root_arg="${1#--root=}"
+      if [ -z "$root_arg" ]; then
+        emit_error "--root requires a path"
+        exit 2
+      fi
       shift
       ;;
     --)
@@ -223,7 +241,11 @@ fi
 # On the empty-commit stamp path local HEAD is an un-pushed commit origin has
 # never seen, so a status posted there 422s and never lands (#726). Target the
 # pushed PR head instead (mirrors CI, which posts on pull_request.head.sha).
-head_sha="$(gh pr view --json headRefOid --jq .headRefOid 2>/dev/null || true)"
+# Run gh from the audited root, not the ambient cwd: gh resolves both the repo
+# and the PR from the working directory's remotes and current branch, so under
+# worktree dispatch a cwd-run call reads whatever branch the main checkout
+# happens to hold. The subshell keeps the directory change from leaking.
+head_sha="$( (cd "$repo_root" && gh pr view --json headRefOid --jq .headRefOid) 2>/dev/null || true)"
 if [ -z "$head_sha" ]; then
   # No PR resolvable: fall back to the upstream tracking tip, then local HEAD.
   head_sha="$(git -C "$repo_root" rev-parse '@{u}' 2>/dev/null || true)"
@@ -284,7 +306,7 @@ fi
 # carried provenance), so the shape is fixed: no branch, no CLI flag.
 desc="${version} ${frontend_digest} ${tree_sha}"
 
-repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
+repo=$( (cd "$repo_root" && gh repo view --json nameWithOwner --jq .nameWithOwner) 2>/dev/null || true)
 if [ -z "$repo" ]; then
   emit_decline "repo slug unresolved"
   exit 0

@@ -63,30 +63,48 @@ while IFS= read -r line; do
     x|xx|xxx|xxxx|changeme|CHANGEME|REPLACE_ME|TODO|PLACEHOLDER|placeholder)
       continue ;;
   esac
-  # Allow values whose source line carries no literal secret: templated ones
-  # (${VAR}, $VAR, <something>, your-…, example…) and a value that is wholly a
-  # single command substitution, $(…), which resolves at run time.
-  #
-  # Every arm here is a shape heuristic, not a proof, and each one has to mean
-  # "the value is WHOLLY this shape". Two ways an arm loses that meaning:
+  # Allow values whose source line carries no literal secret. Every arm below is
+  # a shape heuristic, not a proof, and each has to mean "the value is WHOLLY
+  # this shape" rather than "the value starts or ends like it". Two ways an arm
+  # loses that meaning, both of which this allowlist has shipped:
   #
   #   - A delimiter class that swallows its own terminator. `$(.+)` and `<.+>`
-  #     both match `)` / `>` inside the body, so `$(a)<literal>$(b)` and
+  #     match `)` / `>` inside the body, so `$(a)<literal>$(b)` and
   #     `<a><literal><b>` satisfy anchors that were supposed to certify a whole
-  #     value. Excluding the terminator from the body is what fixes it, at the
-  #     cost of a nested `$(… $(…) …)`, denied, since balanced delimiters need a
-  #     parser rather than a regex.
+  #     value. Excluding the terminator from the body is the fix, at the cost of
+  #     a nested `$(… $(…) …)`, denied, since balanced delimiters need a parser.
   #   - An unanchored tail. `^your[-_]` and `^example` matched a PREFIX, so any
-  #     secret rode through behind a placeholder-shaped lead-in. They are now
-  #     anchored and length-bounded: a doc placeholder is short and self
-  #     describing, and splicing a real secret behind one pushes the value past
-  #     the bound. A short enough secret still fits, the same honest limit the
-  #     substitution arm has.
+  #     secret rode through behind a placeholder-shaped lead-in.
+  #
+  # What separates a placeholder from a secret is STRUCTURE, not length: a
+  # placeholder is short words joined by -_. while a secret is one unbroken
+  # alphanumeric run. So the placeholder arms below bound each SEGMENT rather
+  # than the whole value, which keeps `your-github-personal-access-token` (long,
+  # segmented) and rejects `your-aB3xK9pQ7zR2wL5t` (short, unbroken). A length
+  # cap gets both of those backwards.
   #
   # None of these read meaning. `$(mint_key)` and `$(echo <a-literal-secret>)`
   # are the same shape, so the arm admits both; separating them needs reading
   # the command, and this allowlist does not claim to.
-  if grep -Eqi '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\([^)]+\)$|^<[^>]+>$|^your[-_][A-Za-z0-9._@+-]{0,20}$|^example[A-Za-z0-9._@+-]{0,20}$' <<<"$val"; then
+  if grep -Eqi \
+    '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\([^)]+\)$|^<[^>]+>$|^(your|fake|dummy)[-_][A-Za-z0-9]{1,12}([-_.][A-Za-z0-9]{1,12})*$|^example([-_.][A-Za-z0-9]{1,12})*$' \
+    <<<"$val"; then
+    continue
+  fi
+  # A shell declaration (`export FOO_KEY=…`) reaches this rule too, and those
+  # values are variable references far more often than dotenv literals are:
+  # `${VAR:-}`, `${1}`, `${ROOT}/dev.pem`. The braced arm above admits only a
+  # bare identifier, so every expansion carrying an operator, a positional, or a
+  # trailing path would deny. Allow a value that REFERENCES a variable and whose
+  # remaining literal text is not secret-shaped, judged by the same segment rule
+  # the placeholder arms use: one unbroken alphanumeric run of 13+ is the shape
+  # a key, token, or hash has and a path, flag, or word does not. This keeps
+  # `${API_KEY:-sk-live-9f3a1c4e8b7d2064}` denied, since the run is inside the
+  # value wherever it sits. It does not extend to `$(…)`, whose splices are a
+  # demonstrated bypass; a command substitution spliced onto literal text still
+  # denies above.
+  if grep -Eq '\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*' <<<"$val" &&
+    ! grep -Eq '[A-Za-z0-9]{13,}' <<<"$val"; then
     continue
   fi
   deny "BLOCKED: write contains a non-placeholder secret assignment: '$line'. Use environment variables / .env (gitignored), not committed source."

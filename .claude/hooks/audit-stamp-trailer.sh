@@ -11,9 +11,12 @@
 #   digest of the PR head.
 #
 # Invocation
-#   .claude/hooks/audit-stamp-trailer.sh
+#   .claude/hooks/audit-stamp-trailer.sh [--root <path>]
 #
-#   Argument-less. Reads its inputs from the environment + git state.
+#   --root <path>  The audited working root. Defaults to the ambient checkout,
+#                  which is correct only when the caller reviewed that tree;
+#                  a worktree dispatch must name the tree it read. Every other
+#                  input still comes from the environment + git state.
 #
 # Required env input
 #   AUDIT_TREE_SHA      The tree-sha the audit reviewed (captured at audit
@@ -35,6 +38,9 @@
 #          version file empty
 #          tree changed since audit started
 #          not in a git repo
+#          root not a directory
+#          --root requires a path
+#          unknown argument: <arg>
 #          already stamped
 #          frontend digest unavailable
 #          members pending <list>
@@ -133,7 +139,11 @@ root_arg=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --root)
-      if [ "$#" -lt 2 ]; then
+      # An EMPTY value declines rather than falling back to the cwd: a caller
+      # that asked for an explicit root and silently got the ambient checkout
+      # is the exact failure this flag exists to prevent, and the binding is
+      # model-authored prose, so an empty one is a live case, not a hypothetical.
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then
         emit_decline "--root requires a path"
         exit 0
       fi
@@ -142,6 +152,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --root=*)
       root_arg="${1#--root=}"
+      if [ -z "$root_arg" ]; then
+        emit_decline "--root requires a path"
+        exit 0
+      fi
       shift
       ;;
     *)

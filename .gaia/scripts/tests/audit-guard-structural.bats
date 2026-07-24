@@ -308,7 +308,11 @@ assert_predicate_retry_fallback() {
 @test "UAT-013: the frontend self-skip invokes resolve-audit-spawn.sh --no-carry-forward" {
   block="$(section_between "$CRA_MD" '^## Remit and self-skip' '^## Extension Loading')"
   assert_section_nonempty "code-audit-frontend.md Remit and self-skip" "$block"
-  grep -qF -- "resolve-audit-spawn.sh --no-carry-forward" <<<"$block" || return 1
+  # The optional `"` absorbs the root-anchored form
+  # (`bash "$AUDIT_ROOT/.gaia/scripts/resolve-audit-spawn.sh" --no-carry-forward`)
+  # without loosening what is asserted: the flag must still follow the script
+  # token immediately.
+  grep -qE -- 'resolve-audit-spawn\.sh"? --no-carry-forward' <<<"$block" || return 1
 }
 
 @test "UAT-013: the self-skip block contains no bare resolve-audit-spawn.sh call (all carry --no-carry-forward)" {
@@ -317,6 +321,6 @@ assert_predicate_retry_fallback() {
   # Every line that invokes the spawn oracle must carry the flag. A bare
   # invocation (resolve-audit-spawn.sh NOT immediately followed by
   # --no-carry-forward) is the bad case.
-  bare="$(grep -F -- "resolve-audit-spawn.sh" <<<"$block" | grep -vF -- "resolve-audit-spawn.sh --no-carry-forward" || true)"
+  bare="$(grep -F -- "resolve-audit-spawn.sh" <<<"$block" | grep -vE -- 'resolve-audit-spawn\.sh"? --no-carry-forward' || true)"
   [ -z "$bare" ]
 }

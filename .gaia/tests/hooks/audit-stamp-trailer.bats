@@ -498,6 +498,29 @@ commit_mixed_diff() {
   [ "$output" = "stamp: declined: --root requires a path" ]
 }
 
+# An EMPTY value is the dangerous one: it parses, so a silent fallback to the
+# ambient checkout would stamp a tree nobody audited while the caller believes
+# it named a root. The binding is model-authored prose, so this is a live case.
+
+@test "--root with an empty value: declines instead of falling back to the cwd" {
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="" AUDIT_SELF_HEALED="false" run "$HOOK_ABS" --root ""
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: --root requires a path" ]
+  [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
+}
+
+@test "--root= with an empty value: declines too" {
+  cd "$REPO"
+  AUDIT_TREE_SHA="" AUDIT_SELF_HEALED="false" run "$HOOK_ABS" "--root="
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: --root requires a path" ]
+}
+
 @test "an unrecognized argument: declines and does not move HEAD" {
   before_sha=$(git -C "$REPO" rev-parse HEAD)
 
