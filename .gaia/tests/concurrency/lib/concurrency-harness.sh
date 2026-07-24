@@ -78,6 +78,25 @@ gaia_copy_real() {
   done
 }
 
+# gaia_link_real <main> <repo-rel-path> [<repo-rel-path> ...]: symlinks one or
+# more real directories from the real repo into the fixture at the SAME
+# repo-relative path (mkdir -p the parent first, mirroring gaia_copy_real's own
+# signature). Reserved for the node helper dirs whose own
+# createRequire(import.meta.url) resolves `node_modules` from THEIR OWN
+# on-disk location: a gaia_copy_real copy would carry no node_modules of its
+# own and fail to resolve `typescript`, but a symlink's realpath lands back in
+# the real repo, where `typescript` is actually installed, so the copied hook
+# resolves it exactly as it does in production.
+gaia_link_real() {
+  local main="$1"
+  shift
+  local rel
+  for rel in "$@"; do
+    mkdir -p "$main/$(dirname "$rel")"
+    ln -s "$GAIA_REPO_ROOT_REAL/$rel" "$main/$rel"
+  done
+}
+
 # gaia_commit_all <main> <message>: stage and commit everything currently on
 # disk in <main> (copied scripts, fixture content). .gaia/local/ is excluded
 # by the .gitignore gaia_new_main wrote.

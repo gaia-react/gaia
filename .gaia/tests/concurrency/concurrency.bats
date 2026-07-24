@@ -576,6 +576,152 @@ JS
   fi
 }
 
+@test "C4-07: one tree's RED never satisfies another tree's commit gate" {
+  MAIN="$(gaia_new_main gaia-c407-main)"
+  gaia_copy_real "$MAIN" \
+    .claude/hooks/red-verify-commit-check.sh \
+    .claude/hooks/capture-red-observations.sh \
+    .claude/hooks/lib/red-ledger.sh \
+    .claude/hooks/lib/repo-scope.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .gaia/scripts/link-worktree.sh
+  gaia_copy_registry "$MAIN"
+
+  # Both node helpers the gate calls (the signal extractor and the determinism
+  # classifier) resolve `typescript` via createRequire(import.meta.url), which
+  # is anchored to THEIR OWN on-disk file, not the caller's cwd. A plain
+  # gaia_copy_real copy would carry no node_modules of its own and could never
+  # resolve `typescript`; a symlink's realpath instead lands back in the real
+  # repo, where `typescript` is actually installed, so both helpers resolve it
+  # exactly as they do in production. Linked in MAIN, before the commit below,
+  # so treeA and treeB check out the IDENTICAL symlink (a git blob is just the
+  # target-path string) rather than two independently-constructed ones.
+  gaia_link_real "$MAIN" .gaia/scripts/red-ledger .gaia/scripts/classifier
+
+  gaia_commit_all "$MAIN" "add RED-verify gate deps"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$A"
+  gaia_link_worktree "$B"
+
+  # A test under app/utils/** so the determinism classifier (scoped to
+  # app/utils, app/services, app/hooks, and .ts under app/components) returns
+  # "strict" for it rather than "emergent" -- an emergent verdict would make
+  # the check hook skip the file outright, and the deny in check 2 below would
+  # never fire, for a reason that has nothing to do with tree isolation.
+  test_rel="app/utils/c407/index.test.ts"
+  full_name="adds two numbers c407"
+  test_body='import {expect, test} from "vitest";
+test("adds two numbers c407", () => {
+  expect(1 + 1).toBe(2);
+});
+'
+  mkdir -p "$A/app/utils/c407" "$B/app/utils/c407"
+  # Both trees write the IDENTICAL body: same fullName, same content signal.
+  # That identity is the whole point -- it is what makes tree A's observation
+  # a candidate to satisfy tree B's gate for a test B never ran.
+  printf '%s' "$test_body" > "$A/$test_rel"
+  printf '%s' "$test_body" > "$B/$test_rel"
+
+  canned="$(gaia_mk_tmp gaia-c407-json)/canned.json"
+  jq -nc --arg name "$test_rel" --arg full "$full_name" '{
+    numTotalTestSuites: 1, numFailedTests: 1, numPassedTests: 0,
+    numTotalTests: 1, success: false,
+    testResults: [{
+      name: $name, status: "failed", message: "",
+      assertionResults: [
+        {title: $full, fullName: $full, status: "failed",
+         failureMessages: ["AssertionError: expected 1 to be 2"]}
+      ]
+    }]
+  }' > "$canned"
+
+  # Drive the REAL capture hook FROM <tree>'s OWN checkout, feeding the canned
+  # vitest json above through its documented RED_CAPTURE_JSON_OVERRIDE seam (a
+  # real vitest run in bats is impractical -- see red-verify-e2e.bats). The
+  # SIGNAL is NOT canned: the hook recomputes it from the staged file's real
+  # on-disk body via the (symlinked) signal helper, so what gets recorded is a
+  # genuine per-tree observation, not a fixture fiction. pwd and the payload's
+  # own .cwd both name <tree>, matching how the check hook below resolves the
+  # acting tree.
+  capture_in() {
+    local tree="$1"
+    local payload
+    payload=$(jq -nc --arg c "pnpm test --run $test_rel" --arg d "$tree" \
+      '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d, tool_response:{stdout:"", stderr:"", interrupted:false}}')
+    run bash -c "cd '$tree' && export RED_CAPTURE_JSON_OVERRIDE='$canned'; printf '%s' '$payload' | bash '$tree/.claude/hooks/capture-red-observations.sh'"
+  }
+
+  # Drive the REAL check hook for a `git commit` PreToolUse, FROM <tree>'s OWN
+  # checkout -- never the real repo's copy, because the check hook derives its
+  # lib paths from BASH_SOURCE, so in production each worktree enforces with
+  # its own on-disk copy of the hook.
+  check_in() {
+    local tree="$1"
+    local payload
+    payload=$(jq -nc --arg c "git commit -m change" --arg d "$tree" \
+      '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}')
+    run bash -c "cd '$tree' && printf '%s' '$payload' | bash '$tree/.claude/hooks/red-verify-commit-check.sh'"
+  }
+
+  # ---------------------------------------------------------------------------
+  # Check 1 -- the handshake works (positive control). Tree A records its own
+  # RED via the real capture hook, then stages the test; the real check hook
+  # run from A allows. Without this, a deny anywhere below could just as
+  # easily be this fixture never producing an allow at all.
+  # ---------------------------------------------------------------------------
+  capture_in "$A"
+  [ "$status" -eq 0 ]
+
+  git -C "$A" add "$test_rel"
+  check_in "$A"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+
+  # ---------------------------------------------------------------------------
+  # Check 2 -- the assertion. Tree B stages the IDENTICAL test; the RED exists
+  # ONLY in tree A's ledger, never in B's. The real check hook run from B
+  # denies: tree A's observation of the test failing is not tree B's
+  # observation of the test failing. This is the INVERSE of C4-06's "never
+  # blocks tree B's commit" clause -- C4-06 guards against one tree's state
+  # wrongly BLOCKING a peer's commit; this guards against one tree's state
+  # wrongly CLEARING a peer's gate. A gate that never falsely blocks can still
+  # falsely pass, and no assertion shaped like C4-06's catches that, so this
+  # is a distinct scenario, not a variant folded into it.
+  # ---------------------------------------------------------------------------
+  git -C "$B" add "$test_rel"
+  check_in "$B"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
+
+  # ---------------------------------------------------------------------------
+  # Check 3 -- the deny is caused by the missing per-tree observation, and
+  # nothing else. Record a RED in tree B too (the real capture hook, the same
+  # canned failure, the same on-disk body), then re-run the SAME check from
+  # the SAME tree: it now allows. Without this, check 2's deny could be
+  # produced by any fixture defect unrelated to isolation (a wrong staged
+  # path, a body the helper cannot parse, a missing node/typescript) and the
+  # scenario would still show a deny -- a vacuous "pass". Closing that
+  # vacuity is exactly what C4-06 was repaired for; omitting it here would
+  # reintroduce the same hole this suite exists to catch.
+  # ---------------------------------------------------------------------------
+  capture_in "$B"
+  [ "$status" -eq 0 ]
+
+  check_in "$B"
+  [ "$status" -eq 0 ]
+  # Not the assertion's final statement: a `grep ... && return 1` whose good
+  # case is grep failing (nothing found) would otherwise hand grep's own
+  # non-zero status back as the TEST's exit code when it is the function's
+  # last command, per .claude/rules/bats-assertions.md's "custom checks end
+  # the failing branch with an explicit return 1" note -- the same hazard in
+  # its final-statement form.
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Tranche 5 -- SURFACE
 # ---------------------------------------------------------------------------

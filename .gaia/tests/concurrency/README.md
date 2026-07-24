@@ -52,7 +52,14 @@ assertion to make a number move.
 
 ## The target, stated up front
 
-**The isolation claim holds when all 21 scenarios pass.** That is the frozen target.
+**The isolation claim holds when all 22 scenarios pass.** That is the frozen target.
+
+**The target rose from 21 to 22, by the maintainer's decision, and that is the only way it may
+move upward.** A real cross-tree defect was found that no scenario could see (`C4-07`, the
+commit gate's inverse harm), so the instrument grew to cover it rather than the defect being
+left outside the number. Published here the way any added scenario is; the reasoning is in
+[Published assertion changes](#published-assertion-changes). A target that never grows when
+something is found is a target that rewards not looking.
 
 - **Step-7 carve-out accounting.** The three hard-case scenarios (`C7-*`) are in the
   denominator today. Under the program's step-7 bar each must end **fixed, or refusing
@@ -60,9 +67,12 @@ assertion to make a number move.
   stay in the target. A scenario leaves the denominator (and the target drops by one)
   **only** if the maintainer writes the §1 clause it guards out of the goal, and that
   subtraction is recorded here visibly when it happens. **A silent wrong answer is never
-  a carve-out.** No clause is carved at freeze, so the target is the full 21.
-- **The contamination tranche is the central claim.** The six `C4-*` scenarios are the
-  ones the whole program exists to turn green. **Step 4 (KEYS)** is where that tranche is
+  a carve-out.** No clause is carved, so the target is the full 22.
+- **The contamination tranche is the central claim.** The `C4-*` scenarios are the ones the
+  whole program exists to turn green; there are **seven**, the seventh added after the
+  tranche was first read green. It passes too, so the reading was not disturbed and the
+  tranche's claim now stands against a strictly larger set than the one it was first made
+  against. **Step 4 (KEYS)** is where that tranche is
   expected green and where this suite becomes a **required CI check** — added to the
   `audit-ci-tests` bats manifest and kept required forever after (one of the three
   permanent defenses, alongside the resolver-singleton build check and the registry
@@ -126,6 +136,7 @@ the claim the program exists to make verifiable.
 | **C4-04** | worthiness ledger is per tree | direct | 4.3 worthiness | Tree A's worthiness observation is addressed under A's tree key and is neither read nor overwritten by tree B; the ledger is per-tree, matching its RED sibling, not shared under `audit/`. |
 | **C4-05** | SPEC/plan locks serialize across worktrees | direct | 4.4 locks | Two worktrees each acquiring the SPEC (or plan) ledger lock, anchored to main, serialize: concurrent number allocations do not both mint the same id, and the second waits rather than racing. |
 | **C4-06** | per-tree state survives the cutover *(regression guard, green now)* | direct | 4 cutover | The RED ledger — correctly per-tree today — stays isolated after the single-symlink flip: tree A's RED observation never resolves into main's one path and never blocks tree B's commit. Guards the cutover risk that a not-yet-re-keyed per-tree writer bleeds into main. (Mechanism made real, and one clause named as not measured; see [Published assertion changes](#published-assertion-changes).) |
+| **C4-07** | one tree's RED never satisfies another tree's commit gate *(cutover guard, green now)* | direct | 4 cutover | Tree A's observed failing run for a test never satisfies tree B's TDD commit gate for that same test. With the identical new test staged in both trees, the real gate **allows** the commit in the tree that recorded the RED and **denies** it in the tree that did not; recording B's own RED then flips B to allow, so the deny is attributable to the missing per-tree observation and to nothing else. Guards the *inverse* of `C4-06`'s clause: the harm that wrongly **clears** a peer's gate, which an appending ledger writer makes invisible to any blocking-shaped assertion. (Added scenario — see [Published assertion changes](#published-assertion-changes).) |
 
 ### Tranche 5 — SURFACE (green when a channel fires correctly or refuses out loud)
 
@@ -167,7 +178,51 @@ target, recorded here when it happens.
 
 The meter is frozen, so a changed assertion is published here the way an added
 scenario would be, with what changed and what it did to the number. **The target
-never moves for a repair** — a scenario is repaired, never subtracted.
+never moves for a repair** — a scenario is repaired, never subtracted. It moves
+**upward** only for an added scenario, and only by the maintainer's word.
+
+### C4-07 — an added scenario, and the first movement in the target
+
+**The target goes 21 → 22, on the maintainer's decision.** `C4-06`'s repair found that one
+clause of that scenario's frozen wording points the wrong way. It says one tree's RED must
+never *block* the other tree's commit — which cannot happen, because the ledger writer
+appends, so even one merged ledger still holds tree B's own record and B's commit is allowed.
+The real harm is the inverse and it is quiet: if the ledgers merge, **tree A's observation
+satisfies tree B's gate for a test B never ran**, so B commits a test nobody watched fail,
+which is the single thing that gate exists to prevent.
+
+**It could not be folded into `C4-06`.** That scenario reads green under exactly this failure,
+so an added check there would have hidden the defect rather than caught it — a second false
+green inside the scenario that had just been repaired for its first one. A distinct scenario
+was therefore the only honest option, and adding one to a frozen target is not a repair's call
+to make.
+
+**The mechanism is the real gate, both halves of it.** The fixture drives the shipped capture
+hook to *write* each RED (through the documented `RED_CAPTURE_JSON_OVERRIDE` seam the hooks'
+own bats suite uses, because a live vitest run is impractical here) and the shipped check hook
+to *read* it. The signal is not canned: each hook recomputes it from the staged file's real
+on-disk body, so the cross-tree question is asked of a genuine identity handshake. Two
+directories are symlinked from the real repo rather than copied — the signal extractor and the
+determinism classifier — because both resolve `typescript` through
+`createRequire(import.meta.url)` from their own on-disk location, and a copy into a fixture
+resolves nothing. That is disclosed rather than hidden: it is the same install-state dependency
+`C3-05` and `C4-04` carry, and the step that arms this suite in CI has to install dependencies
+for all three.
+
+**Three checks, and the third is the one that keeps it honest.** The tree that recorded the RED
+must be *allowed* (so the fixture is known to be capable of producing an allow at all); the
+tree that did not must be *denied*; and then, with its own RED recorded, that same tree must
+flip to *allowed*. Without the third, the deny could have come from any fixture defect — a
+wrong staged path, an unparseable body, a missing binary — and the scenario would have read
+green vacuously, which is precisely the hole `C4-06` was repaired to close.
+
+**The reading moves 16 / 21 → 17 / 22, and the numerator rising is a measurement, not a
+fix.** The scenario passes on arrival because the RED ledger is genuinely per-tree today. It is
+a cutover guard in the same role as `C4-06`: its owning phase must **preserve** it, and it is
+not one of the fixes this program landed. Non-vacuity proven by mutation, not argued:
+simulating the Phase-6 cutover (each tree's `.gaia/local` replaced by a single symlink to
+main's) turns it red at the deny assertion, which is the exact condition it exists to catch. No
+other scenario moved; the five red ones stayed red for their own reasons.
 
 ### C3-03 — the assertion demanded a mechanism the design forbids
 
@@ -291,7 +346,9 @@ appends, so a shared ledger still holds tree B's own RED and B's commit is allow
 would have added a second false green inside the repaired scenario. The genuine cross-tree
 harm at that gate is the inverse (tree A's RED satisfying tree B's demand for a test B
 never ran), which is a different scenario, and adding one to a frozen target of 21 is the
-maintainer's call, not a repair's.
+maintainer's call, not a repair's. **They made it: that scenario is `C4-07` and the target is
+now 22.** The clause stays unmeasured here on the reasoning above; what measures the real harm
+is the new scenario, not this one.
 
 ---
 
@@ -301,6 +358,11 @@ These six pass today. Each drives real code (or a disclosed stand-in) and assert
 property — none is vacuous — but none is a fix this program landed, so the honest starting
 reading is `6 / 21`. A green-at-freeze scenario going *red* later is a regression signal,
 exactly as a red one going green is progress; its owning phase must **preserve** it.
+
+**`C4-07` belongs to this class but is deliberately not listed in it.** It was added after the
+freeze, so it is not part of the `6 / 21` starting reading and adding it here would corrupt what
+that number means. It carries the same obligation: green on arrival, guarding a change that has
+not happened yet, and its owning phase must preserve it.
 
 | id | why it is green at freeze |
 |---|---|
