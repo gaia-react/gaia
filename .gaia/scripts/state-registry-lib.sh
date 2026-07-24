@@ -86,6 +86,21 @@
 #   gaia_registry_path), so a caller that cannot read the list treats every path as
 #   non-whitelisted -- the safe direction for a deny guard.
 #
+# gaia_registry_integrity_snapshot
+#   Prints, one per line in registry order, the .gaia/local-relative durable-
+#   state directories (integrity_snapshot the registry declares) the health-
+#   audit snapshots before and after each run: durable, leaf-authored content
+#   a destructive script can wipe out unnoticed, deliberately excluding
+#   background-churned dirs (debt, telemetry, audit, cache, red-ledger).
+#   Derived from the registry, never hardcoded in the runbook. Prints nothing
+#   and returns 1 when the registry cannot be read (see gaia_registry_path).
+#   FAIL-CLOSED CONSUMER CONTRACT: unlike gaia_registry_recognizes (which
+#   fails open by design), the health-audit uses this list as an integrity
+#   TRIPWIRE -- a caller that reads an empty or failed result MUST REFUSE
+#   (stop before hand-back), never proceed with an empty snapshot. An empty
+#   snapshot would diff clean against itself and mask a real deletion, the
+#   opposite of a deny guard's safe-empty default.
+#
 # gaia_registry_recognizes <relpath> <type: f|d>
 #   The janitor's "may I reap this?" predicate. Exit 0 ("recognized",
 #   never reap) when <relpath> (a .gaia/local-relative child path) matches
@@ -133,6 +148,7 @@
 #   bash .gaia/scripts/state-registry-lib.sh main-only-dirs             # gaia_registry_main_only_dirs
 #   bash .gaia/scripts/state-registry-lib.sh drop-zones                 # gaia_registry_drop_zones
 #   bash .gaia/scripts/state-registry-lib.sh rm-whitelist               # gaia_registry_rm_whitelist
+#   bash .gaia/scripts/state-registry-lib.sh integrity-snapshot         # gaia_registry_integrity_snapshot
 #   bash .gaia/scripts/state-registry-lib.sh recognizes <relpath> <f|d> # gaia_registry_recognizes
 #   bash .gaia/scripts/state-registry-lib.sh classify <relpath>         # gaia_registry_classify
 
@@ -249,6 +265,13 @@ gaia_registry_rm_whitelist() {
   jq -r '.rm_whitelist[]? | [.path, (.children_only | tostring)] | @tsv' "$registry"
 }
 
+# gaia_registry_integrity_snapshot: see the header contract above.
+gaia_registry_integrity_snapshot() {
+  local registry
+  registry="$(gaia_registry_path)" || return 1
+  jq -r '.integrity_snapshot[]?.path' "$registry"
+}
+
 # gaia_registry_recognizes <relpath> <type: f|d>: see the header contract above.
 gaia_registry_recognizes() {
   local relpath="${1:-}" reqtype="${2:-}"
@@ -361,6 +384,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       gaia_registry_rm_whitelist
       exit $?
       ;;
+    integrity-snapshot)
+      shift
+      gaia_registry_integrity_snapshot
+      exit $?
+      ;;
     recognizes)
       shift
       gaia_registry_recognizes "${1:-}" "${2:-}"
@@ -372,7 +400,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       exit $?
       ;;
     *)
-      printf 'usage: %s {path|linkable-paths|main-only-dirs|drop-zones|rm-whitelist|recognizes <relpath> <f|d>|classify <relpath>}\n' "$0" >&2
+      printf 'usage: %s {path|linkable-paths|main-only-dirs|drop-zones|rm-whitelist|integrity-snapshot|recognizes <relpath> <f|d>|classify <relpath>}\n' "$0" >&2
       exit 2
       ;;
   esac

@@ -4,7 +4,7 @@
   "description": "Constrains .gaia/state-registry.json: the one classification of every .gaia/local entry (SPEC-061). A malformed edit fails this cheap validation before any consumer or conformance check runs.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "version", "description", "entries", "residue", "drop_zones", "rm_whitelist"],
+  "required": ["$schema", "version", "description", "entries", "residue", "drop_zones", "rm_whitelist", "integrity_snapshot"],
   "properties": {
     "$schema": { "type": "string", "minLength": 1 },
     "version": { "type": "integer", "const": 1 },
@@ -26,6 +26,11 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/rmWhitelistEntry" }
+    },
+    "integrity_snapshot": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/integritySnapshotEntry" }
     }
   },
   "$defs": {
@@ -147,6 +152,19 @@
         "children_only": {
           "type": "boolean",
           "description": "true: only children are deletable (<path>/*), never the directory itself (the .gaia/local ledgers). false: the directory itself and its children are both deletable (regenerable build output)."
+        },
+        "why": { "type": "string", "minLength": 1 }
+      }
+    },
+    "integritySnapshotEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "why"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A .gaia/local-relative durable-state directory (no trailing slash) whose modification during an audit run signals a destructive script silently wiped irreplaceable, leaf-authored content; the health-audit snapshots exactly these before and after each run."
         },
         "why": { "type": "string", "minLength": 1 }
       }

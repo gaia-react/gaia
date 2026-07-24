@@ -92,20 +92,24 @@ nothing", not "the tree is clean":
 git status --porcelain > .gaia/local/audit/comprehensive/git-status.pre.txt
 ```
 
-Snapshot the durable working-state directories under `.gaia/local/`:
-`specs/`, `plans/`, and `handoff/`, the artifact classes a destructive
-script can wipe out unnoticed (the incident this guard exists for: a
-refuter ran `spec-archive-merged.sh --close` to probe its gates and
-deleted `.gaia/local/specs/SPEC-031/`). `debt/`, `telemetry/`, `audit/`,
-`cache/`, and `red-ledger/` are deliberately excluded: each is rewritten
-or appended by a background process with no leaf involved (the
-statusline's debt-count refresher, the token tally, other audit runs'
-`<sha>.rerun.json` markers, the wiki-promote cache, and RED-phase test
-hooks), so including them would turn routine churn into a false integrity
-violation:
+Snapshot the durable working-state directories under `.gaia/local/`: the
+`integrity_snapshot` set the state registry (`.gaia/state-registry.json`)
+declares, the artifact classes a destructive script can wipe out unnoticed
+(the incident this guard exists for: a refuter ran
+`spec-archive-merged.sh --close` to probe its gates and deleted
+`.gaia/local/specs/SPEC-031/`). The registry is the authoritative
+inventory of which dirs are in and out; the excluded dirs (`debt/`,
+`telemetry/`, `audit/`, `cache/`, `red-ledger/`) are each rewritten or
+appended by a background process with no leaf involved, so including them
+would turn routine churn into a false integrity violation:
 
 ```bash
-find .gaia/local/specs .gaia/local/plans .gaia/local/handoff -type f -print0 2>/dev/null \
+snap_args=""
+while IFS= read -r d; do snap_args="$snap_args .gaia/local/$d"; done \
+  < <(bash .gaia/scripts/state-registry-lib.sh integrity-snapshot)
+[ -n "$snap_args" ] || { echo "integrity snapshot: cannot read the durable-state inventory from the state registry; stop before hand-back" >&2; exit 1; }
+# shellcheck disable=SC2086  # deliberate word-split: registry-authored dir names, no spaces
+find $snap_args -type f -print0 2>/dev/null \
   | sort -z \
   | xargs -0 -r sh -c '(shasum -a 256 "$@" 2>/dev/null || sha256sum "$@")' _ \
   > .gaia/local/audit/comprehensive/local-inventory.pre.txt
@@ -449,11 +453,16 @@ diff .gaia/local/audit/comprehensive/git-status.pre.txt .gaia/local/audit/compre
 ```
 
 Second, the gitignored working state. Recompute the inventory captured in
-Step 0, `specs/`, `plans/`, and `handoff/` only, and diff against that
+Step 0 (the registry's `integrity_snapshot` set) and diff against that
 baseline:
 
 ```bash
-find .gaia/local/specs .gaia/local/plans .gaia/local/handoff -type f -print0 2>/dev/null \
+snap_args=""
+while IFS= read -r d; do snap_args="$snap_args .gaia/local/$d"; done \
+  < <(bash .gaia/scripts/state-registry-lib.sh integrity-snapshot)
+[ -n "$snap_args" ] || { echo "integrity snapshot: cannot read the durable-state inventory from the state registry; stop before hand-back" >&2; exit 1; }
+# shellcheck disable=SC2086  # deliberate word-split: registry-authored dir names, no spaces
+find $snap_args -type f -print0 2>/dev/null \
   | sort -z \
   | xargs -0 -r sh -c '(shasum -a 256 "$@" 2>/dev/null || sha256sum "$@")' _ \
   > .gaia/local/audit/comprehensive/local-inventory.post.txt

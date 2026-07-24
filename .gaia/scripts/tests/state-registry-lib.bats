@@ -58,6 +58,7 @@ run_in_repo() {
     type gaia_registry_main_only_dirs >/dev/null
     type gaia_registry_drop_zones >/dev/null
     type gaia_registry_rm_whitelist >/dev/null
+    type gaia_registry_integrity_snapshot >/dev/null
     type gaia_registry_recognizes >/dev/null
     type gaia_registry_classify >/dev/null
     echo OK
@@ -192,6 +193,34 @@ run_in_repo() {
   PATH=""
   set +e
   stdout_val="$(gaia_registry_rm_whitelist 2>/dev/null)"
+  status_val=$?
+  set -e
+  PATH="$saved_path"
+  [ "$status_val" -eq 1 ]
+  [ -z "$stdout_val" ]
+}
+
+# ========== gaia_registry_integrity_snapshot ==========
+
+@test "gaia_registry_integrity_snapshot: prints exactly the 3 durable-state dirs in registry order" {
+  run_in_repo gaia_registry_integrity_snapshot
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 3 ]
+  [ "${lines[0]}" = "specs" ]
+  [ "${lines[1]}" = "plans" ]
+  [ "${lines[2]}" = "handoff" ]
+}
+
+@test "gaia_registry_integrity_snapshot: no jq on PATH returns 1 and prints nothing on stdout (a fail-closed consumer must refuse rather than treat an empty list as a clean diff)" {
+  # Stdout and stderr are captured separately here rather than through `run`
+  # (which merges them), because gaia_registry_path's own stderr diagnostic
+  # would otherwise land in $output and fail the stdout-emptiness assertion
+  # for a reason unrelated to this function's own contract.
+  saved_path="$PATH"
+  # shellcheck disable=SC2123 # deliberately blank PATH to make jq unfindable; restored right after the call
+  PATH=""
+  set +e
+  stdout_val="$(gaia_registry_integrity_snapshot 2>/dev/null)"
   status_val=$?
   set -e
   PATH="$saved_path"

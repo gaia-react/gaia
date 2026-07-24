@@ -469,5 +469,10 @@
     { "path": "specs", "why": "The main-checkout SPEC-folder container." },
     { "path": "specs/archived", "why": "Legacy archived-SPEC destination, preserved for repair and migration tooling." },
     { "path": "telemetry", "why": "The append-only cost-ledger container." }
+  ],
+  "integrity_snapshot": [
+    { "path": "specs",   "why": "Durable, leaf-authored SPEC folders; a destructive script deleting one (the SPEC-031 incident) must be caught, never mistaken for background churn." },
+    { "path": "plans",   "why": "Durable, leaf-authored plan folders and their PROGRESS ledgers; irreplaceable working state a run must not silently alter." },
+    { "path": "handoff", "why": "The live per-tree session handoff; leaf-authored durable content, unlike the background-churned debt/telemetry/audit/cache/red-ledger dirs the snapshot deliberately excludes." }
   ]
 }
