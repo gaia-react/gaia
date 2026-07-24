@@ -100,10 +100,10 @@ hand-rolled-derivation defects, not keying collisions.
 
 | id | scenario | exec | owning task | frozen assertion |
 |---|---|---|---|---|
-| **C3-01** | janitor spares a live peer tree | direct | 3.1 janitor | With two linked worktrees both live off one base, the session-start janitor run from tree A reaps none of tree B's per-tree residue; the `live_trees` set includes every live worktree, and no live tree's state is swept. |
+| **C3-01** | janitor spares a live peer tree | direct | 3.12 janitor | With two linked worktrees both live off one base, the session-start janitor run from tree A reaps none of tree B's per-tree residue; the `live_trees` set includes every live worktree, and no live tree's state is swept. |
 | **C3-02** | write-guard attributes by payload cwd | direct | 3.2 write-guard | A write issued by a subagent in worktree B, delivered with B's payload cwd, is attributed to B's tree (not the hook's process cwd); the guard does not deny a legitimate B write while the main thread is active, and denies a write whose payload cwd names a *different* tree than the target path. |
 | **C3-03** | a wrong tree identity is refused, not trusted | direct | 3.2 / 3.5 identity | When the identity signal is made to name a plausible-but-wrong checkout (a well-shaped cwd resolving to a different real checkout), a per-tree writer refuses or writes to the *named* tree — it never silently writes B's state under A's key. Fails if a wrong identity passes as right. (The cluster-D "wrong, not merely absent" guard.) |
-| **C3-04** | main-anchored ledgers resolve to main from a worktree | direct | 3.5 / 3.7 ledgers | A SPEC/plan ledger write issued from inside worktree B lands in the main checkout's single ledger, not a forked per-tree copy; the resolver, not `$PWD`, supplies the path. |
+| **C3-04** | main-anchored ledgers resolve to main from a worktree | direct | 3.9 ledgers | A SPEC/plan ledger write issued from inside worktree B lands in the main checkout's single ledger, not a forked per-tree copy; the resolver, not `$PWD`, supplies the path. |
 | **C3-05** | the project id is one value per clone | direct | 3 consumer conv. | Reading `.project-id` from worktree B yields the main checkout's id, not a second id minted from the worktree's own root path. |
 
 ### Tranche 4 — KEYS (the contamination tranche; armed as required CI at step 4)

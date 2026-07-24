@@ -104,8 +104,13 @@
 #      it), so this delegation currently has no candidates to act on.
 #   8. orphaned GAIA worktrees under .claude/worktrees/ whose branch upstream
 #      is [gone] (the same provable-death signal sweep #1 uses for
-#      wiki-sync/* branches) and whose working tree is clean. A crashed or
-#      abandoned session leaves the worktree dir behind after its PR
+#      wiki-sync/* branches), whose working tree is clean, AND whose branch
+#      is not named by a live RUNNING plan sentinel. The sentinel is
+#      gitignored, so it is invisible to both git-level checks above it; a
+#      crashed session with an in-flight plan can otherwise read as
+#      provably dead. Checked in both the worktree's own .gaia/local/ and
+#      main's, since a worktree still forks its own plans/ today. A crashed
+#      or abandoned session leaves the worktree dir behind after its PR
 #      squash-merges, and nothing else reclaims it. Never age-reap: there is
 #      no session-liveness signal, so an old worktree may still be a live
 #      long-running session. Teardown delegates to the WorktreeRemove hook's
@@ -761,6 +766,40 @@ if [ -n "$wt_common" ]; then
       [ "$wt_track" = "[gone]" ] || continue
       # Never discard uncommitted working-tree changes.
       [ -z "$(git -C "$wt_path" status --porcelain 2>/dev/null)" ] || continue
+      # Never reap a branch named by a live RUNNING plan sentinel. The
+      # sentinel is gitignored, so it is invisible to both git checks above:
+      # a plan can be genuinely in-flight on a branch that reads [gone] +
+      # clean. Scanned in both the worktree's own .gaia/local/ and main's --
+      # the state registry declares plans/ main-only and a later task
+      # anchors plan paths to main, but today a worktree still forks its own
+      # plans/, exactly where this sentinel is written, so both locations
+      # are correct before and after that change lands. Same parse idiom as
+      # sweep #3.
+      wt_live=0
+      for wt_running in "$wt_path/.gaia/local/plans"/*/RUNNING \
+        "$wt_path/.gaia/local/specs"/*/plan/RUNNING \
+        "$wt_path/.gaia/local/specs"/*/plan-*/RUNNING \
+        "$wt_main/.gaia/local/plans"/*/RUNNING \
+        "$wt_main/.gaia/local/specs"/*/plan/RUNNING \
+        "$wt_main/.gaia/local/specs"/*/plan-*/RUNNING; do
+        [ -f "$wt_running" ] || continue
+        wt_running_branch=$(sed -nE 's/^branch:[[:space:]]*([^[:space:]]+).*/\1/p' \
+          "$wt_running" 2>/dev/null | head -1)
+        if [ "$wt_running_branch" = "$wt_branch" ]; then
+          wt_live=1
+          break
+        fi
+        # An unparseable sentinel under the worktree's OWN tree names no
+        # branch but still proves something is running there -- this guard
+        # fails toward sparing, since a false "dead" reading deletes
+        # someone's work. The same case under main's tree names no worktree
+        # either, so it cannot be attributed to this one; that gap is real
+        # and left uncovered rather than papered over.
+        case "$wt_running" in
+          "$wt_path"/*) [ -z "$wt_running_branch" ] && { wt_live=1; break; } ;;
+        esac
+      done
+      [ "$wt_live" -eq 0 ] || continue
       # Reap via the WorktreeRemove hook's own teardown script (remove + branch
       # -D [never main/master] + empty parent-dir prune, all in one place).
       # jq-built, not printf-interpolated: a path containing `"` or `\` could

@@ -2,8 +2,10 @@
 #
 # Sweep #8 of local-janitor.sh: reap orphaned GAIA worktrees under
 # .claude/worktrees/ whose branch upstream is [gone] (the same provable-death
-# signal sweep #1 uses for wiki-sync/* branches) and whose working tree is
-# clean. Teardown delegates to the WorktreeRemove hook's own
+# signal sweep #1 uses for wiki-sync/* branches), whose working tree is clean,
+# and whose branch is not named by a live RUNNING plan sentinel (gitignored, so
+# invisible to both git-level signals). Teardown delegates to the WorktreeRemove
+# hook's own
 # remove-worktree.sh, so these tests copy the real script into the fixture
 # repo at its real repo-relative path, exactly as a real checkout would have
 # it, rather than re-deriving remove + branch-delete + parent-prune here.
@@ -112,6 +114,32 @@ branch_exists() {
   git -C "$REPO" rev-parse --verify --quiet "refs/heads/$1" >/dev/null 2>&1
 }
 
+# ignore_local_state: commit the .gitignore entry every real GAIA checkout
+# carries for .gaia/local/. Load-bearing for the sentinel tests below: without
+# it a RUNNING sentinel written into a worktree shows up as an untracked file,
+# sweep #8's clean-working-tree check spares the worktree for that reason, and
+# the sentinel guard is never exercised at all.
+ignore_local_state() {
+  printf '.gaia/local/\n' > "$REPO/.gitignore"
+  git -C "$REPO" add .gitignore
+  git -C "$REPO" commit -q -m "ignore local state"
+}
+
+# write_plan_sentinel <root> <plan-rel> <branch>: a RUNNING plan sentinel at
+# <root>/.gaia/local/<plan-rel>/RUNNING naming <branch>, the marker GAIA leaves
+# for an in-flight execution. An empty <branch> writes a sentinel with no
+# parseable `branch:` line.
+write_plan_sentinel() {
+  local root="$1" rel="$2" br="$3" file
+  file="$root/.gaia/local/$rel/RUNNING"
+  mkdir -p "$root/.gaia/local/$rel"
+  : > "$file"
+  if [ -n "$br" ]; then
+    printf 'branch: %s\n' "$br" >> "$file"
+  fi
+  printf 'status: RUNNING\n' >> "$file"
+}
+
 @test "reaps a [gone]-branch worktree with a clean working tree" {
   make_repo
   copy_worktree_reaper_deps
@@ -201,5 +229,74 @@ branch_exists() {
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   branch_exists "debt/105-spaced" && return 1
+  [ ! -e "$wt" ]
+}
+
+# The third guard: a RUNNING plan sentinel is gitignored, so a genuinely live
+# session reads as [gone] + clean to both git-level signals above. Both the
+# worktree's own .gaia/local/ and the main checkout's are scanned, because the
+# state registry declares plans/ main-only while a worktree still forks its own
+# plans/ today, and the guard must be correct on both sides of that change.
+@test "keeps a [gone]-branch worktree whose own tree holds a live RUNNING plan" {
+  make_repo
+  ignore_local_state
+  copy_worktree_reaper_deps
+  make_gone_worktree "debt/106-live" "debt/106-live"
+  wt="$REPO/.claude/worktrees/debt/106-live"
+  write_plan_sentinel "$wt" "plans/PLAN-901" "debt/106-live"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/106-live"
+}
+
+# The main-checkout half of the same guard, on the colocated
+# specs/<SPEC-ID>/plan/ sentinel shape rather than a plans/<slug>/ one.
+@test "keeps a [gone]-branch worktree named by a RUNNING plan in the main checkout" {
+  make_repo
+  ignore_local_state
+  copy_worktree_reaper_deps
+  make_gone_worktree "debt/107-mainside" "debt/107-mainside"
+  wt="$REPO/.claude/worktrees/debt/107-mainside"
+  write_plan_sentinel "$REPO" "specs/SPEC-901/plan" "debt/107-mainside"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/107-mainside"
+}
+
+# The guard fails toward sparing: a sentinel under the worktree's own tree that
+# names no branch still proves something is running there, so it is not reaped.
+@test "keeps a [gone]-branch worktree whose own RUNNING sentinel names no branch" {
+  make_repo
+  ignore_local_state
+  copy_worktree_reaper_deps
+  make_gone_worktree "debt/108-unparseable" "debt/108-unparseable"
+  wt="$REPO/.claude/worktrees/debt/108-unparseable"
+  write_plan_sentinel "$wt" "plans/PLAN-902" ""
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/108-unparseable"
+}
+
+# The guard is a branch comparison, not a blanket "any sentinel spares
+# everything": a live plan on some other branch does not keep this worktree
+# alive, so sweep #8 still reclaims a provably-dead one.
+@test "reaps a [gone]-branch worktree when the only RUNNING plan names another branch" {
+  make_repo
+  ignore_local_state
+  copy_worktree_reaper_deps
+  make_gone_worktree "debt/109-other" "debt/109-other"
+  wt="$REPO/.claude/worktrees/debt/109-other"
+  write_plan_sentinel "$wt" "plans/PLAN-903" "debt/999-unrelated"
+  [ -d "$wt" ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "debt/109-other" && return 1
   [ ! -e "$wt" ]
 }
