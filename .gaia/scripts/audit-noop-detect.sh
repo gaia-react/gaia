@@ -32,8 +32,10 @@
 #                 dispatched member already wrote its clearance marker (a clean
 #                 pass, or an advisory member's non-Critical dirty pass). When
 #                 --findings is also passed, that durable report must be
-#                 present too before the marker authorizes REAL. Ignored for
-#                 every other shape.
+#                 present too before the marker authorizes REAL. The marker's
+#                 REFUSAL sibling (the same path with `.ok` replaced by
+#                 `.refused`) is checked FIRST and classifies REFUSED, see the
+#                 audit-team-member shape below. Ignored for every other shape.
 #   --findings    optional; honored ONLY for --shape audit-team-member. The
 #                 member's findings sidecar
 #                 (.gaia/local/audit/<audit-key>.<member>.findings.json --
@@ -82,7 +84,12 @@
 #                         no-op.
 #   cra-refuter           content contains a standalone verdict token
 #                         REFUTED, DOWNGRADE, or STANDS
-#   audit-team-member     --marker path holds a writer-produced EARNED
+#   audit-team-member     the --marker path's REFUSAL sibling
+#                         (`<marker-without-.ok>.refused`) holds a
+#                         writer-produced refusal for the same member and
+#                         digest, which classifies REFUSED (a distinct stdout
+#                         token, exit 0), OR
+#                         --marker path holds a writer-produced EARNED
 #                         clearance (a clean or non-blocking-dirty pass already
 #                         wrote it) AND, when --findings is passed, that
 #                         durable report of record is present and attributed to
@@ -101,10 +108,30 @@
 #                         style echo carries none of the three and classifies
 #                         NO-OP.
 #
+# A REFUSAL IS PROOF OF LIFE, NEVER A NO-OP (audit-team-member only)
+#   A member that reviewed the content fully and withheld its clearance writes
+#   `<digest>[.<member>].refused` and no `.ok`. Keying only on the earned
+#   family classifies that member NO-OP, which spends the protocol's single
+#   hardened re-dispatch on a member that was never broken and hands the
+#   operator "no-op'd twice" when what happened is "refused twice, with cause".
+#   The refusal is a deliberately-written blocking artifact, so it settles the
+#   classification on its own: REFUSED, exit 0 (do not retry), and it is
+#   checked BEFORE the earned family, matching the merge gate's own
+#   refusal-first precedence for the window where a crash leaves both markers
+#   on disk.
+#
+#   The lost-report gate (--findings) deliberately does NOT apply to a refusal.
+#   A refusal with no sidecar beside it is a differently-broken run, not a
+#   no-op, and re-dispatching it returns the identical empty hand -- that loop
+#   is the failure this arm exists to end. The report a refusal must carry is
+#   made durable by the member's own remit (its findings sidecar and the
+#   carry-forward ledger the refusal write produces), not by a retry here.
+#
 # Exit code IS the boolean: 0 = REAL (not a no-op), 1 = NO-OP, 2 = usage
-# error (unknown --shape, missing --shape/--path). Also prints `real` or
-# `noop` to stdout for human/log readability -- callers branch on the exit
-# code, never on stdout.
+# error (unknown --shape, missing --shape/--path). Also prints `real`,
+# `refused`, or `noop` to stdout for human/log readability -- `refused` is a
+# finer-grained label on the same exit-0 "not a no-op" verdict, so callers
+# branch on the exit code, never on stdout.
 #
 # A harness-reminder-echo / output-style block / empty or whitespace-only
 # return matches none of the above predicates, so it classifies NO-OP for
@@ -132,12 +159,15 @@ usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_
   --path   file-backed shape: expected output file.
            return-conformance shape: captured-return temp file.
   --audit-md  optional; honored only for --shape applier-summary.
-  --marker    optional; honored only for --shape audit-team-member.
+  --marker    optional; honored only for --shape audit-team-member. Its
+              `.refused` sibling is checked first and classifies refused.
   --findings  optional; honored only for --shape audit-team-member. The
-              member's findings sidecar; when passed, the marker
-              short-circuit also requires it (lost-report detection).
+              member's findings sidecar; when passed, the EARNED marker
+              short-circuit also requires it (lost-report detection). It does
+              not gate the refusal arm.
 
-exit 0 = real, 1 = noop, 2 = usage error.
+exit 0 = real (stdout `real`, or `refused` for a withheld clearance),
+1 = noop, 2 = usage error.
 EOF
 }
 
@@ -152,6 +182,14 @@ real() {
 noop() {
   echo noop
   exit 1
+}
+
+# refused: a member that withheld clearance after a full review. Same exit-0
+# "not a no-op" verdict as real(), with its own stdout token so a log or an
+# operator reading it gets the right diagnosis instead of "no-op".
+refused() {
+  echo refused
+  exit 0
 }
 
 SHAPE=""
@@ -299,6 +337,50 @@ case "$SHAPE" in
     ;;
 
   audit-team-member)
+    # Resolve the clearance reader from this script's own on-disk location
+    # (.gaia/scripts -> ../../.claude/hooks/lib), never from cwd. Hoisted above
+    # both marker arms below so the refusal check and the earned check read
+    # markers through the same writer-shape reader.
+    _acd_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)"
+    if [ -n "$_acd_lib" ] && [ -f "$_acd_lib/audit-clearance.sh" ]; then
+      # shellcheck source=/dev/null
+      . "$_acd_lib/audit-clearance.sh"
+    fi
+
+    # ---------- refusal arm (checked FIRST) ----------
+    # A refusing member writes `<digest>[.<member>].refused` and no `.ok`, so
+    # the caller's --marker path names a file that will never exist for this
+    # run. Derive its refusal sibling and settle the classification there: a
+    # deliberately-written blocking artifact is the strongest proof of life the
+    # protocol has, and calling it a no-op spends the single retry re-running a
+    # member that was never broken. Refusal-first also matches the merge gate's
+    # own precedence, so the crash window that leaves both markers on disk
+    # classifies the same way in both readers.
+    if [ -n "$MARKER_PATH" ]; then
+      _acd_refused_path="${MARKER_PATH%.ok}.refused"
+      if [ -f "$_acd_refused_path" ]; then
+        _acd_r_base="$(basename "$_acd_refused_path")"
+        _acd_r_stem="${_acd_r_base%.refused}"
+        _acd_r_digest="${_acd_r_stem%%.*}"
+        _acd_r_member_part="${_acd_r_stem#"$_acd_r_digest"}"
+        if [ -z "$_acd_r_member_part" ]; then
+          _acd_r_member="code-audit-frontend"
+        else
+          _acd_r_member="${_acd_r_member_part#.}"
+        fi
+        # With jq absent the body cannot be inspected, so existence alone
+        # settles it -- the same degradation the earned arm below already
+        # applies.
+        if ! command -v jq >/dev/null 2>&1; then
+          refused
+        fi
+        if command -v clearance_refusal_acceptable >/dev/null 2>&1 \
+           && clearance_refusal_acceptable "$_acd_refused_path" "$_acd_r_member" "$_acd_r_digest"; then
+          refused
+        fi
+      fi
+    fi
+
     # The marker is conditional (withheld on a blocking finding), unlike the
     # file-backed shapes above whose file always writes on any real
     # completion, so its absence alone cannot mean no-op. Check it first as a
@@ -368,12 +450,8 @@ case "$SHAPE" in
       if [ "$_acd_findings_ok" -eq 1 ] && ! command -v jq >/dev/null 2>&1; then
         real
       fi
-      # Resolve the clearance reader from this script's own on-disk location
-      # (.gaia/scripts -> ../../.claude/hooks/lib), never from cwd.
-      _acd_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)"
-      if [ -n "$_acd_lib" ] && [ -f "$_acd_lib/audit-clearance.sh" ]; then
-        # shellcheck source=/dev/null
-        . "$_acd_lib/audit-clearance.sh"
+      # The clearance reader is sourced at the top of this branch.
+      if command -v clearance_acceptable >/dev/null 2>&1; then
         if [ "$_acd_findings_ok" -eq 1 ] \
            && clearance_acceptable "$MARKER_PATH" "$_acd_member" "$_acd_digest" \
            && [ "$(clearance_field "$MARKER_PATH" provenance)" = "earned" ]; then
