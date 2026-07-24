@@ -18799,31 +18799,98 @@ var run22 = async (argv) => {
 };
 
 // src/ping/send.ts
-import { readFileSync as readFileSync14 } from "node:fs";
-import path20 from "node:path";
+import { readFileSync as readFileSync15 } from "node:fs";
+import path21 from "node:path";
 
 // src/storage/paths.ts
-import { execSync } from "node:child_process";
+import path19 from "node:path";
+
+// src/setup/util/state-file.ts
+import { execFileSync as execFileSync2 } from "node:child_process";
+import {
+  existsSync as existsSync11,
+  mkdirSync as mkdirSync8,
+  readFileSync as readFileSync13,
+  renameSync as renameSync5,
+  writeFileSync as writeFileSync7
+} from "node:fs";
 import path18 from "node:path";
-var cachedRepoRoot;
-var resolveRepoRoot2 = () => {
-  if (cachedRepoRoot !== void 0) {
-    return cachedRepoRoot;
-  }
-  try {
-    const out = execSync("git rev-parse --show-toplevel", {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    cachedRepoRoot = out.length > 0 ? out : process.cwd();
-  } catch {
-    cachedRepoRoot = process.cwd();
-  }
-  return cachedRepoRoot;
+var STATE_FILENAME = "setup-state.json";
+var STATE_DIRECTORY_RELATIVE = path18.join(".gaia", "local");
+var resolveMainWorktreeRoot = (cwd) => {
+  const commonDir = execFileSync2("git", ["rev-parse", "--git-common-dir"], {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  }).trim();
+  const absoluteCommonDir = path18.isAbsolute(commonDir) ? commonDir : path18.resolve(cwd, commonDir);
+  return path18.dirname(absoluteCommonDir);
 };
-var resolveStorageRoots = (args) => {
-  const repoRoot = args?.repoRoot ?? resolveRepoRoot2();
-  const projectIdPath = path18.join(repoRoot, ".gaia", "local", ".project-id");
+var SETUP_STEPS = [
+  "install-tools",
+  "install-plugins",
+  "init-speckit",
+  "chmod-statusline",
+  "bootstrap-env",
+  "audit-mode-decision"
+];
+var RETIRED_SETUP_STEPS = ["mentorship-decision"];
+var isSetupStep = (value) => SETUP_STEPS.includes(value);
+var isRetiredSetupStep = (value) => RETIRED_SETUP_STEPS.includes(value);
+var resolveStateFilePath = (repoRoot) => path18.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
+var readStateFile = (repoRoot) => {
+  const filePath = resolveStateFilePath(repoRoot);
+  if (!existsSync11(filePath)) return null;
+  const raw = readFileSync13(filePath, "utf8");
+  const parsed = JSON.parse(raw);
+  if (parsed.version !== 1) {
+    throw new Error(
+      `setup-state.json has unexpected version: ${String(parsed.version)}`
+    );
+  }
+  const rawSteps = parsed.completed_steps ?? [];
+  const unknownSteps = rawSteps.filter(
+    (step) => !isSetupStep(step) && !isRetiredSetupStep(step)
+  );
+  if (unknownSteps.length > 0) {
+    throw new Error(
+      `setup-state.json has unrecognized completed_steps: ${unknownSteps.join(
+        ", "
+      )}`
+    );
+  }
+  if (typeof parsed.started_at !== "string") {
+    throw new TypeError("setup-state.json is missing a valid started_at");
+  }
+  return {
+    completed_at: parsed.completed_at ?? null,
+    completed_steps: rawSteps.filter(isSetupStep),
+    started_at: parsed.started_at,
+    version: 1
+  };
+};
+var writeStateFile = (repoRoot, state) => {
+  const filePath = resolveStateFilePath(repoRoot);
+  const parent = path18.dirname(filePath);
+  if (!existsSync11(parent)) {
+    mkdirSync8(parent, { mode: 493, recursive: true });
+  }
+  const serialized = `${JSON.stringify(state, null, 2)}
+`;
+  const tmpPath = `${filePath}.tmp`;
+  writeFileSync7(tmpPath, serialized, "utf8");
+  renameSync5(tmpPath, filePath);
+};
+var pendingSteps = (state) => {
+  const completed = new Set(state?.completed_steps);
+  return SETUP_STEPS.filter((step) => !completed.has(step));
+};
+var isComplete = (state) => state?.completed_at !== null && state?.completed_at !== void 0;
+
+// src/storage/paths.ts
+var resolveStorageRoots = ({ repoRoot }) => {
+  const mainRoot = resolveMainWorktreeRoot(repoRoot);
+  const projectIdPath = path19.join(mainRoot, ".gaia", "local", ".project-id");
   return {
     projectIdPath
   };
@@ -18831,8 +18898,8 @@ var resolveStorageRoots = (args) => {
 
 // src/storage/project-id.ts
 import { createHash } from "node:crypto";
-import { existsSync as existsSync11, mkdirSync as mkdirSync8, readFileSync as readFileSync13, writeFileSync as writeFileSync7 } from "node:fs";
-import path19 from "node:path";
+import { existsSync as existsSync12, mkdirSync as mkdirSync9, readFileSync as readFileSync14, writeFileSync as writeFileSync8 } from "node:fs";
+import path20 from "node:path";
 var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 var formatAsUuidV4 = (hex32) => {
   const version2 = "4";
@@ -18845,22 +18912,22 @@ var deriveProjectId = (repoRootPath) => {
   const hash2 = createHash("sha256").update(repoRootPath).digest("hex");
   return formatAsUuidV4(hash2.slice(0, 32));
 };
-var repoRootFromProjectIdPath = (projectIdPath) => path19.dirname(path19.dirname(path19.dirname(projectIdPath)));
+var repoRootFromProjectIdPath = (projectIdPath) => path20.dirname(path20.dirname(path20.dirname(projectIdPath)));
 var readOrCreateProjectId = (roots) => {
   const filePath = roots.projectIdPath;
-  if (existsSync11(filePath)) {
-    const existing = readFileSync13(filePath, "utf8").trim();
+  if (existsSync12(filePath)) {
+    const existing = readFileSync14(filePath, "utf8").trim();
     if (UUID_RE.test(existing)) {
       return existing;
     }
   }
-  const parent = path19.dirname(filePath);
-  if (!existsSync11(parent)) {
-    mkdirSync8(parent, { mode: 493, recursive: true });
+  const parent = path20.dirname(filePath);
+  if (!existsSync12(parent)) {
+    mkdirSync9(parent, { mode: 493, recursive: true });
   }
   const repoRoot = repoRootFromProjectIdPath(filePath);
   const id = deriveProjectId(repoRoot);
-  writeFileSync7(filePath, `${id}
+  writeFileSync8(filePath, `${id}
 `, { mode: 420 });
   return id;
 };
@@ -18877,7 +18944,7 @@ var PLATFORM_LABELS = {
 var normalizePlatform = (platform) => PLATFORM_LABELS[platform] ?? "other";
 var readGaiaVersion = (cwd) => {
   try {
-    const raw = readFileSync14(path20.join(cwd, MANIFEST_RELATIVE), "utf8");
+    const raw = readFileSync15(path21.join(cwd, MANIFEST_RELATIVE), "utf8");
     const parsed = JSON.parse(raw);
     return typeof parsed.version === "string" ? parsed.version : "unknown";
   } catch {
@@ -19045,7 +19112,7 @@ var run23 = async (argv, options = {}) => {
 };
 
 // src/react-perf/reduce.ts
-import { readFileSync as readFileSync15 } from "node:fs";
+import { readFileSync as readFileSync16 } from "node:fs";
 
 // src/schemas/react-perf-summary.ts
 var ChangeEntrySchema = external_exports.object({
@@ -19391,7 +19458,7 @@ var run24 = (argv) => {
   }
   let raw;
   try {
-    raw = readFileSync15(args.filePath, "utf8");
+    raw = readFileSync16(args.filePath, "utf8");
   } catch (error51) {
     structuredError({
       code: "input_unreadable",
@@ -19463,88 +19530,6 @@ var run25 = async (argv) => {
 import { execFileSync as execFileSync3 } from "node:child_process";
 import { existsSync as existsSync14, mkdirSync as mkdirSync11, readFileSync as readFileSync18 } from "node:fs";
 import path23 from "node:path";
-
-// src/setup/util/state-file.ts
-import { execFileSync as execFileSync2 } from "node:child_process";
-import {
-  existsSync as existsSync12,
-  mkdirSync as mkdirSync9,
-  readFileSync as readFileSync16,
-  renameSync as renameSync5,
-  writeFileSync as writeFileSync8
-} from "node:fs";
-import path21 from "node:path";
-var STATE_FILENAME = "setup-state.json";
-var STATE_DIRECTORY_RELATIVE = path21.join(".gaia", "local");
-var resolveMainWorktreeRoot = (cwd) => {
-  const commonDir = execFileSync2("git", ["rev-parse", "--git-common-dir"], {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  }).trim();
-  const absoluteCommonDir = path21.isAbsolute(commonDir) ? commonDir : path21.resolve(cwd, commonDir);
-  return path21.dirname(absoluteCommonDir);
-};
-var SETUP_STEPS = [
-  "install-tools",
-  "install-plugins",
-  "init-speckit",
-  "chmod-statusline",
-  "bootstrap-env",
-  "audit-mode-decision"
-];
-var RETIRED_SETUP_STEPS = ["mentorship-decision"];
-var isSetupStep = (value) => SETUP_STEPS.includes(value);
-var isRetiredSetupStep = (value) => RETIRED_SETUP_STEPS.includes(value);
-var resolveStateFilePath = (repoRoot) => path21.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
-var readStateFile = (repoRoot) => {
-  const filePath = resolveStateFilePath(repoRoot);
-  if (!existsSync12(filePath)) return null;
-  const raw = readFileSync16(filePath, "utf8");
-  const parsed = JSON.parse(raw);
-  if (parsed.version !== 1) {
-    throw new Error(
-      `setup-state.json has unexpected version: ${String(parsed.version)}`
-    );
-  }
-  const rawSteps = parsed.completed_steps ?? [];
-  const unknownSteps = rawSteps.filter(
-    (step) => !isSetupStep(step) && !isRetiredSetupStep(step)
-  );
-  if (unknownSteps.length > 0) {
-    throw new Error(
-      `setup-state.json has unrecognized completed_steps: ${unknownSteps.join(
-        ", "
-      )}`
-    );
-  }
-  if (typeof parsed.started_at !== "string") {
-    throw new TypeError("setup-state.json is missing a valid started_at");
-  }
-  return {
-    completed_at: parsed.completed_at ?? null,
-    completed_steps: rawSteps.filter(isSetupStep),
-    started_at: parsed.started_at,
-    version: 1
-  };
-};
-var writeStateFile = (repoRoot, state) => {
-  const filePath = resolveStateFilePath(repoRoot);
-  const parent = path21.dirname(filePath);
-  if (!existsSync12(parent)) {
-    mkdirSync9(parent, { mode: 493, recursive: true });
-  }
-  const serialized = `${JSON.stringify(state, null, 2)}
-`;
-  const tmpPath = `${filePath}.tmp`;
-  writeFileSync8(tmpPath, serialized, "utf8");
-  renameSync5(tmpPath, filePath);
-};
-var pendingSteps = (state) => {
-  const completed = new Set(state?.completed_steps);
-  return SETUP_STEPS.filter((step) => !completed.has(step));
-};
-var isComplete = (state) => state?.completed_at !== null && state?.completed_at !== void 0;
 
 // src/sandbox/apply.ts
 var isPlainObject2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -20509,7 +20494,7 @@ var run27 = (argv, options = {}) => {
 };
 
 // src/scaffold/hook.ts
-import { execSync as execSync2 } from "node:child_process";
+import { execSync } from "node:child_process";
 import path26 from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 var HOOK_NAME_PATTERN = /^use[A-Z][A-Za-z0-9]*$/u;
@@ -20579,9 +20564,9 @@ var resolveTemplateFile = (filename) => {
     filename
   );
 };
-var resolveRepoRoot3 = () => {
+var resolveRepoRoot2 = () => {
   try {
-    const out = execSync2("git rev-parse --show-toplevel", {
+    const out = execSync("git rev-parse --show-toplevel", {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
     }).trim();
@@ -20665,7 +20650,7 @@ var run28 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const repoRoot = options.repoRoot ?? resolveRepoRoot3();
+  const repoRoot = options.repoRoot ?? resolveRepoRoot2();
   const hooksDir = path26.join(repoRoot, "app", "hooks");
   const hookFilePath = path26.join(hooksDir, `${name}.ts`);
   const testFilePath = path26.join(hooksDir, "tests", `${name}.test.ts`);
@@ -23202,13 +23187,23 @@ var HELP_TEXT45 = `Usage: gaia setup link-worktree [--json]
            human-readable summary.
 `;
 var HELP_TOKENS43 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var SHARED_PATHS = [
-  { ensureTargetDir: false, relativePath: ".gaia/local/setup-state.json" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/cache/shared" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/audit" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/telemetry" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/debt" }
-];
+var STATE_REGISTRY_LIB_RELATIVE = path33.join(
+  ".gaia",
+  "scripts",
+  "state-registry-lib.sh"
+);
+var loadSharedPathSpecs = (mainRoot) => {
+  const libraryPath = path33.join(mainRoot, STATE_REGISTRY_LIB_RELATIVE);
+  const output = execFileSync5("bash", [libraryPath, "linkable-paths"], {
+    cwd: mainRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  return output.split("\n").map((line) => line.trim()).filter((line) => line.length > 0).map((relativePath) => ({
+    ensureTargetDir: path33.extname(relativePath) === "",
+    relativePath: path33.join(".gaia", "local", relativePath)
+  }));
+};
 var ENV_BASENAME_RE = /^\.env(\.[A-Za-z0-9_-]+)*$/;
 var isShareableEnvironmentFile = (base) => ENV_BASENAME_RE.test(base) && base !== ".env.example";
 var formatTimestamp = (date5) => {
@@ -23376,6 +23371,18 @@ var resolveWorktreeRoots = (cwd) => {
     return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
   }
 };
+var resolveSharedPathSpecs = (mainRoot) => {
+  try {
+    return { sharedPathSpecs: loadSharedPathSpecs(mainRoot) };
+  } catch (error51) {
+    structuredError({
+      code: "state_registry_unavailable",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "setup link-worktree"
+    });
+    return { exitCode: EXIT_CODES.STORAGE_INACCESSIBLE };
+  }
+};
 var run47 = (argv, options = {}) => {
   let json2 = false;
   for (const token of argv) {
@@ -23417,7 +23424,11 @@ var run47 = (argv, options = {}) => {
   const nowDate = (options.now ?? (() => /* @__PURE__ */ new Date()))();
   const timestamp = formatTimestamp(nowDate);
   const symlink = options.symlink ?? symlinkSync;
-  const actions = SHARED_PATHS.map(
+  const sharedPathSpecsResult = resolveSharedPathSpecs(mainRoot);
+  if ("exitCode" in sharedPathSpecsResult)
+    return sharedPathSpecsResult.exitCode;
+  const { sharedPathSpecs } = sharedPathSpecsResult;
+  const actions = sharedPathSpecs.map(
     (spec) => linkOne({ mainRoot, spec, symlink, timestamp, worktreeRoot })
   );
   const envSpecs = readdirSync2(mainRoot).filter((name) => isShareableEnvironmentFile(name)).toSorted((a, b) => a.localeCompare(b)).map((name) => ({ ensureTargetDir: false, relativePath: name }));

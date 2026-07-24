@@ -25257,13 +25257,23 @@ var HELP_TEXT35 = `Usage: gaia setup link-worktree [--json]
            human-readable summary.
 `;
 var HELP_TOKENS33 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var SHARED_PATHS = [
-  { ensureTargetDir: false, relativePath: ".gaia/local/setup-state.json" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/cache/shared" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/audit" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/telemetry" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/debt" }
-];
+var STATE_REGISTRY_LIB_RELATIVE = path31.join(
+  ".gaia",
+  "scripts",
+  "state-registry-lib.sh"
+);
+var loadSharedPathSpecs = (mainRoot) => {
+  const libraryPath = path31.join(mainRoot, STATE_REGISTRY_LIB_RELATIVE);
+  const output = execFileSync4("bash", [libraryPath, "linkable-paths"], {
+    cwd: mainRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  return output.split("\n").map((line) => line.trim()).filter((line) => line.length > 0).map((relativePath) => ({
+    ensureTargetDir: path31.extname(relativePath) === "",
+    relativePath: path31.join(".gaia", "local", relativePath)
+  }));
+};
 var ENV_BASENAME_RE = /^\.env(\.[A-Za-z0-9_-]+)*$/;
 var isShareableEnvironmentFile = (base) => ENV_BASENAME_RE.test(base) && base !== ".env.example";
 var formatTimestamp = (date5) => {
@@ -25431,6 +25441,18 @@ var resolveWorktreeRoots = (cwd) => {
     return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
   }
 };
+var resolveSharedPathSpecs = (mainRoot) => {
+  try {
+    return { sharedPathSpecs: loadSharedPathSpecs(mainRoot) };
+  } catch (error51) {
+    structuredError({
+      code: "state_registry_unavailable",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "setup link-worktree"
+    });
+    return { exitCode: EXIT_CODES.STORAGE_INACCESSIBLE };
+  }
+};
 var run36 = (argv, options = {}) => {
   let json2 = false;
   for (const token of argv) {
@@ -25472,7 +25494,11 @@ var run36 = (argv, options = {}) => {
   const nowDate = (options.now ?? (() => /* @__PURE__ */ new Date()))();
   const timestamp = formatTimestamp(nowDate);
   const symlink = options.symlink ?? symlinkSync;
-  const actions = SHARED_PATHS.map(
+  const sharedPathSpecsResult = resolveSharedPathSpecs(mainRoot);
+  if ("exitCode" in sharedPathSpecsResult)
+    return sharedPathSpecsResult.exitCode;
+  const { sharedPathSpecs } = sharedPathSpecsResult;
+  const actions = sharedPathSpecs.map(
     (spec) => linkOne({ mainRoot, spec, symlink, timestamp, worktreeRoot })
   );
   const envSpecs = readdirSync4(mainRoot).filter((name) => isShareableEnvironmentFile(name)).toSorted((a, b) => a.localeCompare(b)).map((name) => ({ ensureTargetDir: false, relativePath: name }));

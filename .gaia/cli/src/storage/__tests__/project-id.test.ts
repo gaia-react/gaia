@@ -4,7 +4,7 @@ import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {existsSync, mkdtempSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {resolveStorageRoots} from '../paths.js';
+import type {StorageRoots} from '../paths.js';
 import {
   readOrCreateProjectId,
   repoRootFromProjectIdPath,
@@ -12,6 +12,17 @@ import {
 
 const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
+/**
+ * The roots for a given repo root, built directly rather than through
+ * `resolveStorageRoots`. These tests exercise the id writer — derivation,
+ * idempotence, mode, parent creation — not the resolution that decides which
+ * checkout owns the file; that is `paths.test.ts`, which needs real git
+ * sandboxes. Keeping them separate lets these run against a plain temp dir.
+ */
+const rootsFor = (repoRoot: string): StorageRoots => ({
+  projectIdPath: path.join(repoRoot, '.gaia', 'local', '.project-id'),
+});
 
 describe('readOrCreateProjectId', () => {
   let repoRoot: string;
@@ -25,7 +36,7 @@ describe('readOrCreateProjectId', () => {
   });
 
   test('writes a UUIDv4-shaped id with mode 644 on first call', () => {
-    const roots = resolveStorageRoots({repoRoot});
+    const roots = rootsFor(repoRoot);
 
     const id = readOrCreateProjectId(roots);
 
@@ -36,7 +47,7 @@ describe('readOrCreateProjectId', () => {
   });
 
   test('returns the same id on subsequent calls (idempotent)', () => {
-    const roots = resolveStorageRoots({repoRoot});
+    const roots = rootsFor(repoRoot);
 
     const first = readOrCreateProjectId(roots);
     const second = readOrCreateProjectId(roots);
@@ -48,9 +59,7 @@ describe('readOrCreateProjectId', () => {
     const repoA = mkdtempSync(path.join(tmpdir(), 'gaia-pid-stable-A-'));
 
     try {
-      const rootsA1 = resolveStorageRoots({
-        repoRoot: repoA,
-      });
+      const rootsA1 = rootsFor(repoA);
       const idA1 = readOrCreateProjectId(rootsA1);
       // Wipe the file; recompute from scratch.
       rmSync(rootsA1.projectIdPath, {force: true});
@@ -66,12 +75,8 @@ describe('readOrCreateProjectId', () => {
     const repoB = mkdtempSync(path.join(tmpdir(), 'gaia-pid-distinct-B-'));
 
     try {
-      const rootsA = resolveStorageRoots({
-        repoRoot: repoA,
-      });
-      const rootsB = resolveStorageRoots({
-        repoRoot: repoB,
-      });
+      const rootsA = rootsFor(repoA);
+      const rootsB = rootsFor(repoB);
       const idA = readOrCreateProjectId(rootsA);
       const idB = readOrCreateProjectId(rootsB);
       expect(idA).not.toBe(idB);
@@ -106,7 +111,7 @@ describe('readOrCreateProjectId', () => {
   );
 
   test('creates the parent .gaia/local/ directory if absent', () => {
-    const roots = resolveStorageRoots({repoRoot});
+    const roots = rootsFor(repoRoot);
 
     expect(existsSync(path.dirname(roots.projectIdPath))).toBe(false);
 

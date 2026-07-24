@@ -2,10 +2,12 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for the shared `postPing` core.
  */
+import {execFileSync} from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -21,7 +23,12 @@ describe('postPing', () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    root = mkdtempSync(path.join(tmpdir(), 'gaia-ping-send-'));
+    // A real repository, because the project id is now resolved from the cwd
+    // to the main checkout that owns it rather than taken as given. `postPing`
+    // always runs inside a checkout in the shipped flows, so this is the real
+    // shape, not an accommodation.
+    root = realpathSync(mkdtempSync(path.join(tmpdir(), 'gaia-ping-send-')));
+    execFileSync('git', ['init', '-q', '--initial-branch=main'], {cwd: root});
     mkdirSync(path.join(root, '.gaia'), {recursive: true});
     fetchSpy = vi.fn().mockResolvedValue(new Response(null, {status: 204}));
     vi.stubGlobal('fetch', fetchSpy);
