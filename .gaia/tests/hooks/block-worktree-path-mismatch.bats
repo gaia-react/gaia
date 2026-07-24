@@ -413,23 +413,41 @@ assert_allowed() {
   assert_denied
 }
 
-# --- allowed: a sibling worktree, which the guard can no longer adjudicate ---
+# --- denied: a sibling worktree, the same wrong-checkout write as #841 ---
 
-# The guard adjudicates one question: does the target resolve to the main
-# checkout. main_root comes from --git-common-dir, which is identical from every
-# worktree of the repo, so that answer holds no matter which worktree the
-# calling agent sits in. A sibling worktree is a different, equally valid
-# checkout, and judging one agent's write against another agent's worktree would
-# deny correct writes, so the guard leaves that to the caller's own
-# RESOLVED_ROOT discipline.
-@test "an edit to a sibling worktree is allowed while cwd sits in another worktree" {
+# The guard adjudicates one question: does the target resolve into the acting
+# tree. A sibling worktree is a different, equally valid checkout, so a write
+# from this worktree into a sibling's file is the same silent-wrong-write a stale
+# main-checkout path is: a real, valid file in another checkout the edit tools
+# apply with no error. The acting tree here comes from the process cwd (no
+# payload cwd); the companion case below drives the same detection from an
+# authoritative payload cwd.
+@test "an edit to a sibling worktree is denied while cwd sits in another worktree" {
   make_repo
   make_worktree "debt/14-a" "debt/14-a"
   WT_A="$WT"
   make_worktree "debt/14-b" "debt/14-b"
   cd "$WT"
   run_hook_edit "Edit" "$WT_A/f"
-  assert_allowed
+  assert_denied
+}
+
+# The payload cwd is authoritative for the acting tree, so the target-side
+# detection holds no matter where the hook process sits. Here the process cwd is
+# in the main checkout -- which alone would stand the guard down (a main-checkout
+# session guards nothing) -- but the payload names worktree B, so the guard reads
+# B as the acting tree and denies a target in sibling worktree A. This is the
+# worktree->worktree detection: the payload is taken at its word, and the target
+# is judged against that tree with no cross-check against the process cwd.
+@test "a payload cwd in one worktree denies a target in a sibling worktree" {
+  make_repo
+  make_worktree "debt/43-a" "debt/43-a"
+  WT_A="$WT"
+  make_worktree "debt/43-b" "debt/43-b"
+  WT_B="$WT"
+  cd "$REPO"
+  run_hook_edit_cwd "Edit" "$WT_A/f" "$WT_B"
+  assert_denied
 }
 
 # --- ignored: not our matcher ---

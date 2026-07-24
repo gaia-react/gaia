@@ -88,7 +88,11 @@ count_autocommits() {
 
 @test "C3-02: write-guard attributes by payload cwd" {
   MAIN="$(gaia_new_main gaia-c302-main)"
-  gaia_copy_real "$MAIN" .claude/hooks/block-worktree-path-mismatch.sh
+  gaia_copy_real "$MAIN" \
+    .claude/hooks/block-worktree-path-mismatch.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh
+  gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add write-guard"
 
   A="$(gaia_add_worktree "$MAIN" treeA treeA)"
@@ -114,7 +118,11 @@ count_autocommits() {
 
 @test "C3-03: a wrong tree identity is refused, not trusted" {
   MAIN="$(gaia_new_main gaia-c303-main)"
-  gaia_copy_real "$MAIN" .claude/hooks/block-worktree-path-mismatch.sh
+  gaia_copy_real "$MAIN" \
+    .claude/hooks/block-worktree-path-mismatch.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh
+  gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add write-guard"
 
   A="$(gaia_add_worktree "$MAIN" treeA treeA)"

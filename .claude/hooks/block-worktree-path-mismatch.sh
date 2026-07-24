@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# PreToolUse Edit/Write/MultiEdit hook: deny a file_path that resolves to the
-# main checkout while this session works inside a linked git worktree.
+# PreToolUse Edit/Write/MultiEdit hook: deny a file_path that resolves to a
+# checkout other than the linked git worktree this session works inside -- the
+# main checkout or a sibling worktree.
 #
 # Once a session has switched into a linked worktree (see
 # .claude/skills/gaia/references/isolation.md, "Export: RESOLVED_MODE and
@@ -34,12 +35,14 @@
 #   roots physically keeps their comparison symmetric, so a checkout reached
 #   through a symlinked path is never mistaken for a different tree.
 #
-# Scope, and why it stops there: the guard adjudicates "does this target resolve
-# to the main checkout", which is #841's own case. `main_root` is identical from
-# every worktree of the repo, so that question is cwd-independent by
-# construction. A write from one linked worktree into another is left to the
-# caller's own RESOLVED_ROOT discipline, per this guard's defense-in-depth role
-# in isolation.md.
+# Scope: the guard adjudicates "does this target resolve into the acting tree",
+# denying any write whose target lands in a different checkout -- the main
+# checkout (#841's own case) or a sibling linked worktree. The acting tree is the
+# worktree the payload cwd names; the target's own tree is compared against it,
+# so the question is answered from that one authoritative identity, not from main
+# alone. This is the defense-in-depth role isolation.md contracts: deny an
+# Edit/Write/MultiEdit whose file_path resolves to a different worktree than
+# RESOLVED_ROOT.
 #
 # Fail-open, matching the other block-*.sh guards: any ambiguity (identity
 # undeterminable, a target directory that does not exist yet, `git` unavailable,
@@ -115,9 +118,11 @@ gaia_is_linked_worktree "$source_cwd" || exit 0
 main_root="$(gaia_resolve_main_root "$source_cwd")" || exit 0
 [[ -n "$main_root" ]] || exit 0
 
-# current_root is the acting tree's own physically-resolved toplevel, used only
-# in the deny message. It is resolved physically, as main_root already is, so the
-# two roots stay on the same footing.
+# current_root is the acting tree's own physically-resolved toplevel: the tree
+# the target must land in, and the value the deny condition compares file_root
+# against. It is resolved physically, as main_root and file_root already are, so
+# the roots stay on the same footing and a symlinked path cannot make a same-tree
+# write look cross-tree or the reverse.
 current_root="$(_wg_git -C "$source_cwd" rev-parse --show-toplevel 2>/dev/null)" || exit 0
 current_root="$(CDPATH='' cd "$current_root" 2>/dev/null && pwd -P)" || exit 0
 [[ -n "$current_root" ]] || exit 0
@@ -170,15 +175,20 @@ while IFS= read -r exempt; do
 done <<<"$exempt_paths"
 
 # The target's own checkout, physically resolved so the comparison against the
-# physically-resolved main_root is symmetric: a symlinked path cannot make an
-# in-worktree write look like a main-checkout one, or the reverse.
+# physically-resolved current_root is symmetric: a symlinked path cannot make a
+# same-tree write look cross-tree, or the reverse.
 file_root="$(_wg_git -C "$target_dir" rev-parse --show-toplevel 2>/dev/null)" || exit 0
 [[ -n "$file_root" ]] || exit 0
 file_root="$(CDPATH='' cd "$file_root" 2>/dev/null && pwd -P)" || exit 0
 [[ -n "$file_root" ]] || exit 0
 
-if [[ "$file_root" == "$main_root" ]]; then
-  deny "BLOCKED: '$file_path' resolves to the main checkout ('$main_root') while this session works inside a linked worktree ('$current_root'). This is the silent-wrong-write footgun from tech-debt #841: a stale pre-switch absolute path is a real, valid file in another checkout, so the edit tools would apply it with no error. Resolve RESOLVED_ROOT fresh (git rev-parse --show-toplevel) and prefix file_path with it."
+# The target resolves into a checkout other than the acting tree: the main
+# checkout or a sibling worktree, both the #841 silent-wrong-write. The exempt
+# shared and main-anchored paths have already returned above, so a cross-tree
+# target reaching here is a real wrong-write, not a legitimate write-through to
+# main.
+if [[ "$file_root" != "$current_root" ]]; then
+  deny "BLOCKED: '$file_path' resolves to a different checkout ('$file_root') than the linked worktree this session works inside ('$current_root'). This is the silent-wrong-write footgun from tech-debt #841: a stale pre-switch absolute path is a real, valid file in another checkout (the main checkout or a sibling worktree), so the edit tools would apply it with no error. Resolve RESOLVED_ROOT fresh (git rev-parse --show-toplevel) and prefix file_path with it."
 fi
 
 exit 0
