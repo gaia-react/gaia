@@ -124,6 +124,49 @@ assert_allowed() {
   assert_denied
 }
 
+# --- The other allowlist arms mean "wholly" too ---
+#
+# The command-substitution arm is not the only one that has to resist a splice.
+# `<…>` had the identical defect (`.` matches `>`), and the `your-` / `example`
+# arms matched a prefix with nothing anchoring the tail, so any value merely
+# *starting* like a placeholder was allowed whatever followed it.
+
+@test "a literal value between two angle-bracket placeholders is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<a>sk-live-9f3a1c4e8b7d2064<b>')"
+  assert_denied
+}
+
+@test "a literal value carrying an example- placeholder prefix is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example-sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a literal value carrying a your- placeholder prefix is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'your-key-sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+# --- A shell declaration keyword does not hide the assignment ---
+#
+# The name grep anchors the suspicious name to the start of the line, so a
+# declaration keyword in front of it took the line out of the scan entirely,
+# and no allowlist arm was ever consulted.
+
+@test "an exported literal value is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a local-declared literal value is denied" {
+  run_hook_write "$(printf 'local API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a readonly-declared literal value is denied through Edit too" {
+  run_hook_edit "$(printf 'readonly DB_PASSWORD=%s\n' 'hunter2-not-a-placeholder')"
+  assert_denied
+}
+
 # --- The existing allowlist arms still allow ---
 
 @test "an empty value is allowed" {
@@ -148,6 +191,35 @@ assert_allowed() {
 
 @test "content with no secret shape at all is allowed" {
   run_hook_write "export function add(a, b) { return a + b }"
+  assert_allowed
+}
+
+# The tightened arms have to stay usable: these are the placeholder values the
+# arms exist to admit, and the ones a too-eager anchor would take down with the
+# splices above.
+
+@test "an angle-bracket placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<your-key-here>')"
+  assert_allowed
+}
+
+@test "a your- placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'your-api-key-here')"
+  assert_allowed
+}
+
+@test "a bare example placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example')"
+  assert_allowed
+}
+
+@test "an example domain placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example.com')"
+  assert_allowed
+}
+
+@test "an exported \$VAR value is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$MY_API_KEY')"
   assert_allowed
 }
 

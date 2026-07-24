@@ -97,11 +97,22 @@ Never gates your own marker; the orchestrator decides the disposition.
 
 There is no withhold path here; the only "no marker" case is the self-skip above. On ANY in-remit review, run the handshake below in order: mark, stamp, status. Even a finding-bearing pass writes the earned marker, the findings are advisory PR comments, not a gate.
 
+**0. Resolve the audited root.** Every call in this handshake reads and writes through `$AUDIT_ROOT`, the absolute working root the dispatch names. Bind it at the top of each `bash` block you run:
+
+```bash
+# The dispatch names this; substitute the path it gave you.
+AUDIT_ROOT="<absolute working root from the dispatch>"
+# Only when the dispatch named no root (an ordinary single-checkout run):
+AUDIT_ROOT="$(git rev-parse --show-toplevel)"
+```
+
+Under worktree isolation those two are different directories: the reviewed tree is a linked worktree while your ambient working directory is the main checkout. A root taken from the cwd there keys your marker to content you never read, files your sidecar in the wrong store, and stamps a tree nobody audited. Deriving it is correct only when the dispatch named no root.
+
 **1. Mark.** Write the earned marker with the shared writer, keyed to your own content digest, not HEAD's commit sha or tree: a sha256 over exactly the files you own (`.claude/skills/**/*.md`) plus the shared gate machinery, computed by `.claude/hooks/lib/audit-digest.sh`. It attests that you audited that CONTENT: an out-of-glob change (one that touches neither your owned glob nor a machinery file) rotates nothing in your digest, so your marker keeps validating with zero re-review. A change to a file you own, or to any machinery file, rotates your digest and invalidates your marker, and you must re-audit.
 
 ```bash
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-prose \
   --provenance earned)"
 ```
@@ -111,7 +122,7 @@ Do NOT include a `--provenance refused` path, you never refuse.
 **2. Stamp.** Call the trailer stamp:
 
 ```bash
-stamp_line=$(.claude/hooks/audit-stamp-trailer.sh)
+stamp_line=$("$AUDIT_ROOT/.claude/hooks/audit-stamp-trailer.sh" --root "$AUDIT_ROOT")
 ```
 
 It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this content, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. You never push, here or anywhere else. Surface the returned `stamp_line` in your report. Because the stamp is a content-preserving empty commit, it rotates no digest, so the marker you wrote in step 1 stays valid after it.
@@ -119,7 +130,7 @@ It is member-aware and idempotent: it declines `members pending <list>` until ev
 **3. Status.** Immediately after the stamp step, call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
 
 ```bash
-.claude/hooks/post-audit-status.sh "$marker"
+"$AUDIT_ROOT/.claude/hooks/post-audit-status.sh" --root "$AUDIT_ROOT" "$marker"
 ```
 
 This call is best-effort and guarded; the helper resolves the full dispatched member set and declines until every member's marker exists. Surface its one-line output (`status: posted GAIA-Audit success <sha>` or `status: declined: <reason>`) in your report.
@@ -128,7 +139,7 @@ This call is best-effort and guarded; the helper resolves the full dispatched me
 
 On **every LOCAL pass**, at least one finding or genuinely clean, write a findings sidecar. **Skip entirely in CI** (`GITHUB_ACTIONS`/`CI` set); CI never dispatches you.
 
-Path: `.gaia/local/audit/${base}.code-audit-maintainer-prose.findings.json`, reusing the SAME `base` resolved at run start (never a second resolution). If `base` is empty, skip the sidecar write.
+Path: `$AUDIT_ROOT/.gaia/local/audit/${base}.code-audit-maintainer-prose.findings.json`, reusing the SAME `base` resolved at run start (never a second resolution). If `base` is empty, skip the sidecar write.
 
 Shape:
 

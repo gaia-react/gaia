@@ -5,11 +5,13 @@
 #   - AWS access key prefix:   AKIA[0-9A-Z]{16}
 #   - GitHub PATs:             ghp_, gho_, ghu_, ghs_, ghr_  (followed by token chars)
 #   - Private key headers:     -----BEGIN [A-Z ]*PRIVATE KEY-----
-#   - dotenv-style assignment to suspicious names:
+#   - dotenv-style assignment to suspicious names, with or without a leading
+#     export / declare / local / readonly:
 #       (_TOKEN|_SECRET|_KEY|_PASSWORD)=<non-placeholder-value>
-#       Placeholders allowed: empty, "", '', x, xxx, changeme, your-*, <...>,
-#       ${...}, $VAR, $(...) (unnested, whole-value), REPLACE_ME, TODO,
-#       PLACEHOLDER (case-insensitive).
+#       Placeholders allowed: empty, "", '', x, xxx, changeme, REPLACE_ME,
+#       TODO, PLACEHOLDER, ${...}, $VAR, and three whole-value shapes:
+#       $(...) unnested, <...> with no inner `>`, and a short your-* /
+#       example* placeholder (case-insensitive).
 set -euo pipefail
 
 payload=$(cat)
@@ -65,18 +67,29 @@ while IFS= read -r line; do
   # (${VAR}, $VAR, <something>, your-…, example…) and a value that is wholly a
   # single command substitution, $(…), which resolves at run time.
   #
-  # The substitution arm is a shape heuristic, not a proof. Excluding `)` from
-  # the body is what makes the anchors mean "wholly": without it, `$(a)b)` and
-  # `$(a)<literal>$(b)` both start with `$(`, end with `)`, and match. With it,
-  # a value that merely *contains* $(…) alongside literal text falls through to
-  # the deny below. The cost is a nested `$(… $(…) …)`, denied too, because
-  # balanced parens need a parser rather than a regex. Shape also cannot
-  # separate `$(mint_key)` from `$(echo <a-literal-secret>)`; that needs reading
-  # the command, so this arm does not claim to.
-  if grep -Eqi '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\([^)]+\)$|^<.+>$|^your[-_]|^example' <<<"$val"; then
+  # Every arm here is a shape heuristic, not a proof, and each one has to mean
+  # "the value is WHOLLY this shape". Two ways an arm loses that meaning:
+  #
+  #   - A delimiter class that swallows its own terminator. `$(.+)` and `<.+>`
+  #     both match `)` / `>` inside the body, so `$(a)<literal>$(b)` and
+  #     `<a><literal><b>` satisfy anchors that were supposed to certify a whole
+  #     value. Excluding the terminator from the body is what fixes it, at the
+  #     cost of a nested `$(… $(…) …)`, denied, since balanced delimiters need a
+  #     parser rather than a regex.
+  #   - An unanchored tail. `^your[-_]` and `^example` matched a PREFIX, so any
+  #     secret rode through behind a placeholder-shaped lead-in. They are now
+  #     anchored and length-bounded: a doc placeholder is short and self
+  #     describing, and splicing a real secret behind one pushes the value past
+  #     the bound. A short enough secret still fits, the same honest limit the
+  #     substitution arm has.
+  #
+  # None of these read meaning. `$(mint_key)` and `$(echo <a-literal-secret>)`
+  # are the same shape, so the arm admits both; separating them needs reading
+  # the command, and this allowlist does not claim to.
+  if grep -Eqi '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\([^)]+\)$|^<[^>]+>$|^your[-_][A-Za-z0-9._@+-]{0,20}$|^example[A-Za-z0-9._@+-]{0,20}$' <<<"$val"; then
     continue
   fi
   deny "BLOCKED: write contains a non-placeholder secret assignment: '$line'. Use environment variables / .env (gitignored), not committed source."
-done < <(grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*(_TOKEN|_SECRET|_KEY|_PASSWORD)[[:space:]]*=' <<<"$content" || true)
+done < <(grep -E '^[[:space:]]*((export|declare|local|readonly)[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*(_TOKEN|_SECRET|_KEY|_PASSWORD)[[:space:]]*=' <<<"$content" || true)
 
 exit 0

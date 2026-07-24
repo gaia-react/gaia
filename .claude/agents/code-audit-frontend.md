@@ -523,7 +523,7 @@ A base-keyed filename therefore survives HEAD moves with no HEAD-chaining logic.
 # then anchor the key to the fork point so it is stable across fix rounds.
 BASE_REF="$(.github/audit/resolve-audit-base.sh)"   # <sha> | origin/main | origin/<base-ref> | main
 BASE_SHA="$(git merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
-LEDGER=".gaia/local/audit/${BASE_SHA}.rerun.json"
+LEDGER="$AUDIT_ROOT/.gaia/local/audit/${BASE_SHA}.rerun.json"
 ```
 
 If `BASE_SHA` is empty (resolution failed), skip the ledger entirely (fail-open; behave as today). In CI the agent prompt provides `<base>...HEAD`; use that same base when present, but the ledger is skipped in CI regardless (see "CI gating").
@@ -633,7 +633,7 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 
 1. **Identify changed files** against the incremental base:
    - Resolve the base: if the invoking context provides one (CI passes `<base>...HEAD` in the agent prompt), use it; otherwise run `.github/audit/resolve-audit-base.sh`. It returns the most recent ancestor that already passed a clean audit under the current `.gaia/VERSION` (via a GAIA-Audit trailer or commit status), or `origin/main` when none exists.
-   - **Derive the re-run ledger path and read it (LOCAL only) as the prior-round briefing.** From the same resolved base, compute `BASE_SHA="$(git merge-base "$BASE_REF" HEAD 2>/dev/null || true)"` and `LEDGER=".gaia/local/audit/${BASE_SHA}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `BASE_SHA` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `BASE_SHA` and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
+   - **Derive the re-run ledger path and read it (LOCAL only) as the prior-round briefing.** From the same resolved base, compute `BASE_SHA="$(git merge-base "$BASE_REF" HEAD 2>/dev/null || true)"` and `LEDGER="$AUDIT_ROOT/.gaia/local/audit/${BASE_SHA}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `BASE_SHA` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `BASE_SHA` and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
    - List changed files: `git diff --name-only "$(.github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'`. The two-dot form (`<base>`, not `<base>...HEAD`) includes uncommitted working-tree changes, the right scope for a pre-commit/pre-merge review.
    - When the base is an audited ancestor, everything before it was already cleared; only the delta needs review. **For any exported symbol whose signature or contract changed in the delta, grep its importers and check them even if unchanged**, a cleared caller can still break from a delta change.
    - Once the changed-file list is resolved and before dispatching subagents, emit the `scope resolved` breadcrumb (see Progress breadcrumbs).
@@ -866,6 +866,17 @@ This binds the **local** path, where the orchestrator, not the member, owns git.
 
 ## Audit marker (gate handshake)
 
+**0. Resolve the audited root.** Every call in this handshake reads and writes through `$AUDIT_ROOT`, the absolute working root the dispatch names. Bind it at the top of each `bash` block you run:
+
+```bash
+# The dispatch names this; substitute the path it gave you.
+AUDIT_ROOT="<absolute working root from the dispatch>"
+# Only when the dispatch named no root (an ordinary single-checkout run):
+AUDIT_ROOT="$(git rev-parse --show-toplevel)"
+```
+
+Under worktree isolation those two are different directories: the reviewed tree is a linked worktree while your ambient working directory is the main checkout. A root taken from the cwd there keys your marker to content you never read, files your sidecar in the wrong store, and stamps a tree nobody audited. Deriving it is correct only when the dispatch named no root.
+
 `.claude/hooks/pr-merge-audit-check.sh` blocks `gh pr merge` until a marker file at `.gaia/local/audit/<digest>.ok` exists, where `<digest>` is your own current content digest: a sha256 over exactly the files you own, the shared gate machinery, and every in-scope-but-ownerless path (an in-scope file no specialized member claims, e.g. a root `Dockerfile` or a file under `public/**`), computed by `.claude/hooks/lib/audit-digest.sh`. The marker proves the audit ran against the exact **content** being merged: an out-of-glob change (a CHANGELOG line, a wiki edit) rotates none of that content, so your digest is unchanged and your marker keeps validating with zero re-review; a change to anything you own, to the shared machinery, or to an in-scope-but-ownerless path rotates your digest, so a stale marker no longer matches and you must re-audit. **You** are responsible for writing the marker, only when the audit is genuinely clean.
 
 After producing the report (which includes the adversarial verification of Critical/Important survivors), decide whether to write the marker. The preconditions are scoped to **in-scope** findings; out-of-scope findings gate through the disposition gate (precondition 4), not the Critical/Important/Suggestions sections.
@@ -883,8 +894,8 @@ Decide the disposition entries (section F) at this marker-decision point regardl
 **Seed-forward.** A fresh incremental audit reviews only the delta since the resolved base and does not re-encounter a prior out-of-scope finding, so re-keying the sidecar to a new digest would otherwise silently drop a still-open receipt across the rotation. Before finishing the sidecar write, compute the PRIOR frontend digest at the incremental base (the same `BASE_SHA` resolved for the re-run ledger, see "Re-run carry-forward ledger"):
 
 ```bash
-prev_frontend_digest="$(.gaia/scripts/audit-member-digest.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+prev_frontend_digest="$("$AUDIT_ROOT/.gaia/scripts/audit-member-digest.sh" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --ref "$BASE_SHA" 2>/dev/null || true)"
 ```
@@ -893,8 +904,8 @@ then call the shared helper (`disposition_seed_forward`, sourced from `.claude/h
 
 ```bash
 disposition_seed_forward \
-  ".gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
-  ".gaia/local/audit/${new_frontend_digest}.dispositions.json"
+  "$AUDIT_ROOT/.gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
+  "$AUDIT_ROOT/.gaia/local/audit/${new_frontend_digest}.dispositions.json"
 ```
 
 A fresh entry already present in the new sidecar always wins a key collision; a seeded entry only ever adds keys. This is a single deterministic hop, not a search: each digest rotation seeds from its immediate predecessor, so a still-open receipt propagates across an arbitrary run of rotations that never re-encounter the finding, because every hop already carries forward what the hop before it carried. An empty `prev_frontend_digest` (no resolvable base, or the digest engine failed) or an absent prior sidecar is a safe no-op, per the helper's own fail-safe contract.
@@ -911,8 +922,8 @@ When the marker is warranted, the write is a mark → stamp → push → status 
 #    marker to the content the audit ENDS on (after self-heal, before the
 #    stamp), and prints the marker path. The write is unconditional: it
 #    replaces any marker already on disk for this digest.
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance earned)"
 
@@ -928,9 +939,9 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
 #    validity key, which is the digest).
 stamp_line=$(
   AUDIT_TREE_SHA="$AUDIT_TREE_SHA" AUDIT_SELF_HEALED="$AUDIT_SELF_HEALED" \
-    .claude/hooks/audit-stamp-trailer.sh
+    "$AUDIT_ROOT/.claude/hooks/audit-stamp-trailer.sh" --root "$AUDIT_ROOT"
 )
-HEAD_SHA="$(git rev-parse HEAD)"
+HEAD_SHA="$(git -C "$AUDIT_ROOT" rev-parse HEAD)"
 
 # 3. Push the stamp commit, BEFORE the status call, only when the helper
 #    created an empty commit AND HEAD is on an attached tracking branch
@@ -964,7 +975,7 @@ fi
 #    marker still clears the Claude merge path, while the github.com
 #    button stays blocked until a success status lands. The status POST
 #    never runs ahead of the marker.
-audit_status_line=$(.claude/hooks/post-audit-status.sh "$marker")
+audit_status_line=$("$AUDIT_ROOT/.claude/hooks/post-audit-status.sh" --root "$AUDIT_ROOT" "$marker")
 
 # 5. Write the disposition-ledger sidecar (section F), keyed to YOUR OWN
 #    frontend digest -- the same digest the marker in step 1 is keyed to,
@@ -978,16 +989,16 @@ audit_status_line=$(.claude/hooks/post-audit-status.sh "$marker")
 #    derived key; a newly-filed issue records the freshly-built key it just
 #    wrote into the new issue's body.
 new_frontend_digest="$(basename "$marker" .ok)"
-sidecar=".gaia/local/audit/${new_frontend_digest}.dispositions.json"
+sidecar="$AUDIT_ROOT/.gaia/local/audit/${new_frontend_digest}.dispositions.json"
 # Write the section-F dispositions JSON (decided at the marker-decision
 # point, with "sha":"$HEAD_SHA" as a plain data field) to "$sidecar".
-prev_frontend_digest="$(.gaia/scripts/audit-member-digest.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+prev_frontend_digest="$("$AUDIT_ROOT/.gaia/scripts/audit-member-digest.sh" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --ref "$BASE_SHA" 2>/dev/null || true)"
 if [ -n "$prev_frontend_digest" ]; then
   disposition_seed_forward \
-    ".gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
+    "$AUDIT_ROOT/.gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
     "$sidecar"
 fi
 
@@ -998,7 +1009,7 @@ fi
 #    best-effort file op; it does not alter the marker / trailer / status /
 #    dispositions-sidecar writes.
 if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ] && [ -n "$BASE_SHA" ]; then
-  rm -f ".gaia/local/audit/${BASE_SHA}.rerun.json"
+  rm -f "$AUDIT_ROOT/.gaia/local/audit/${BASE_SHA}.rerun.json"
 fi
 ```
 
@@ -1044,8 +1055,8 @@ If you do not write the marker for any other reason, surface this instead:
 When you withhold the marker after genuinely auditing this exact content (a real audit that refuses it), **record the refusal** with the same shared writer. A self-healed pass is not this case: it is not a refusal, it is a repair awaiting the orchestrator's commit, so it records no refusal. A refusal is a first-class, digest-keyed artifact: it is the only way this member says "I read this exact content and I refuse". The merge gate checks the refusal family before the earned family, so a live refusal for the current digest denies the merge regardless of any same-digest earned marker.
 
 ```bash
-bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance refused
 ```
@@ -1053,8 +1064,8 @@ bash .gaia/scripts/audit-write-clearance.sh \
 **Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker, adding `--supersede-refusal "<why it is now cleared>"` to the earned invocation in step 1 above:
 
 ```bash
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance earned \
   --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
@@ -1062,7 +1073,7 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
 
 The writer records the reversal in the marker body and removes your own refusal. Reach for it **only** after re-auditing this content and finding the blocker actually resolved or explicitly acknowledged by the operator, never to clear a refusal you still stand behind. It applies to unchanged content: repairing the finding edits a file you own, which rotates your digest and retires the refusal with it, so no supersede is needed there.
 
-Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to your **current** frontend digest, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(.gaia/scripts/audit-member-digest.sh --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same content remains backstop-checkable against a real sidecar.
+Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to your **current** frontend digest, which has not moved because the stamp sequence above did not run: `sidecar="$AUDIT_ROOT/.gaia/local/audit/$("$AUDIT_ROOT/.gaia/scripts/audit-member-digest.sh" --root "$AUDIT_ROOT" --member code-audit-frontend).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same content remains backstop-checkable against a real sidecar.
 
 Also on a non-clean pass (marker NOT written), **write/update the re-run ledger** (LOCAL only, best-effort), the deterministic carry-forward briefing the next re-audit and the fixer read. Skip in CI (`GITHUB_ACTIONS`/`CI` set) and skip when `BASE_SHA` is empty. Set `round` to the prior valid same-branch same-base ledger's `round` + 1 (else 1), carrying `first_seen_round` for findings that persist across rounds; populate `remaining` (in-scope open findings: Critical + unaddressed Important + unresolved/escalated Suggestions), `fixed_last_round` (in-scope findings self-healed this round), `head_sha` = current HEAD, `branch`, `base_sha` = `BASE_SHA`, and `updated_at`. Write atomically (temp file + `mv`); a write failure never aborts the audit. This is an additional best-effort file write alongside the disposition sidecar above; it must NOT alter, replace, or reorder the marker / trailer / status / dispositions-sidecar writes. See "Re-run carry-forward ledger".
 

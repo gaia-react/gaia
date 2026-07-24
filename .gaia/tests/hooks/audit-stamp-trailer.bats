@@ -445,6 +445,70 @@ commit_mixed_diff() {
   [ "$output" = "stamp: declined: not in a git repo" ]
 }
 
+# --- --root: the audited tree is the one the caller names, not the ambient cwd
+#
+# This is the linked-worktree dispatch shape. There the cwd is the MAIN
+# checkout while the reviewed tree is somewhere else entirely, so a root taken
+# from cwd stamps a tree nobody audited. The test above is the paired half: the
+# same cwd, no --root, declines rather than guessing.
+
+@test "--root: stamps the named repo from a cwd outside it" {
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
+
+  OUTSIDE=$(mktemp -d -t audit-stamp-outside-XXXXXX)
+  cd "$OUTSIDE"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS" --root "$REPO"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  [ "$before_sha" != "$after_sha" ]
+
+  trailer=$(trailer_on_head)
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
+}
+
+@test "--root=<path>: the equals form resolves the same repo" {
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  OUTSIDE=$(mktemp -d -t audit-stamp-outside-XXXXXX)
+  cd "$OUTSIDE"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS" "--root=$REPO"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
+}
+
+@test "--root naming a path that is not a directory: declines" {
+  cd "$REPO"
+  AUDIT_TREE_SHA="" AUDIT_SELF_HEALED="false" run "$HOOK_ABS" --root "$REPO/README.md"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: root not a directory" ]
+}
+
+@test "--root with no value: declines rather than consuming the next thing" {
+  cd "$REPO"
+  AUDIT_TREE_SHA="" AUDIT_SELF_HEALED="false" run "$HOOK_ABS" --root
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: --root requires a path" ]
+}
+
+@test "an unrecognized argument: declines and does not move HEAD" {
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="" AUDIT_SELF_HEALED="false" run "$HOOK_ABS" --bogus
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: unknown argument: --bogus" ]
+  [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
+}
+
 @test "frontend digest unavailable (sha256 tool masked): declines fail-closed and does not move HEAD" {
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")

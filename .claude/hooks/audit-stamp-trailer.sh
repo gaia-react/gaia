@@ -123,13 +123,48 @@ acquire_stamp_lock() {
 # Repo + version preconditions
 # -----------------------------------------------------------------------------
 
-# Verify we are inside a git work tree.
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  emit_decline "not in a git repo"
-  exit 0
-fi
+# The audited working root. `--root` names it explicitly; every other path and
+# git call below derives from it. A dispatch against a linked worktree must
+# pass it, because there the ambient cwd is the MAIN checkout: a cwd-derived
+# root digests, gates, and stamps a tree the caller never reviewed. Absent the
+# flag the ambient checkout is the root, which is the ordinary single-checkout
+# case and the long-standing behavior.
+root_arg=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --root)
+      if [ "$#" -lt 2 ]; then
+        emit_decline "--root requires a path"
+        exit 0
+      fi
+      root_arg="$2"
+      shift 2
+      ;;
+    --root=*)
+      root_arg="${1#--root=}"
+      shift
+      ;;
+    *)
+      emit_decline "unknown argument: $1"
+      exit 0
+      ;;
+  esac
+done
 
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+# Verify the root is inside a git work tree.
+if [ -n "$root_arg" ]; then
+  if [ ! -d "$root_arg" ]; then
+    emit_decline "root not a directory"
+    exit 0
+  fi
+  repo_root=$(git -C "$root_arg" rev-parse --show-toplevel 2>/dev/null || true)
+else
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    emit_decline "not in a git repo"
+    exit 0
+  fi
+  repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+fi
 if [ -z "$repo_root" ]; then
   emit_decline "not in a git repo"
   exit 0

@@ -109,13 +109,24 @@ Never gates your own marker; the orchestrator decides the disposition.
 
 On a genuinely clean pass, no Critical finding, every Important finding either fixed in the working tree since the last invocation (verify by re-reading the file, never trust a prior chat claim) or explicitly acknowledged by the operator with a stated reason, run the handshake below in order: mark, stamp, status.
 
+**0. Resolve the audited root.** Every call in this handshake reads and writes through `$AUDIT_ROOT`, the absolute working root the dispatch names. Bind it at the top of each `bash` block you run:
+
+```bash
+# The dispatch names this; substitute the path it gave you.
+AUDIT_ROOT="<absolute working root from the dispatch>"
+# Only when the dispatch named no root (an ordinary single-checkout run):
+AUDIT_ROOT="$(git rev-parse --show-toplevel)"
+```
+
+Under worktree isolation those two are different directories: the reviewed tree is a linked worktree while your ambient working directory is the main checkout. A root taken from the cwd there keys your marker to content you never read, files your sidecar in the wrong store, and stamps a tree nobody audited. Deriving it is correct only when the dispatch named no root.
+
 **1. Mark (pre-stamp).** Write the per-member marker:
 
 The marker is keyed to your own content digest, not HEAD's commit sha or tree: a sha256 over exactly the files you own (see "Remit and self-skip") plus the shared gate machinery, computed by `.claude/hooks/lib/audit-digest.sh`. It attests that you audited that CONTENT: an out-of-glob change (one that touches neither your owned globs nor a machinery file) rotates nothing in your digest, so your marker keeps validating with zero re-review, including across the `GAIA-Audit` trailer stamp below (a content-preserving empty commit: it advances HEAD while leaving every blob, and therefore your digest, unchanged). That is what lets the team's members run in any order. A change to a file you own, or to any machinery file, rotates your digest and invalidates your marker, and you must re-audit. Writing the marker before the stamp also feeds the member-aware stamp gate in step 2: the trailer is never stamped while any dispatched member's own marker, this one included, is missing.
 
 ```bash
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-github-workflows \
   --provenance earned)"
 ```
@@ -125,8 +136,8 @@ The shared writer derives your content digest internally from `--root`, resolves
 Withhold the marker on any unresolved Critical or unaddressed/unacknowledged Important finding; withholding it holds the shared `GAIA-Audit` gate shut via the AND-aggregator, since this member is part of the dispatched set for the diff. When you withhold after genuinely auditing this exact content, **record the refusal** with the same shared writer so the merge gate treats it as absolute, checking the refusal family before the earned family: a live refusal for the current digest denies the merge regardless of any same-digest earned marker. Stop here, the remaining handshake steps below apply only to a written marker:
 
 ```bash
-bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-github-workflows \
   --provenance refused
 ```
@@ -134,8 +145,8 @@ bash .gaia/scripts/audit-write-clearance.sh \
 **Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker:
 
 ```bash
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-github-workflows \
   --provenance earned \
   --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
@@ -146,7 +157,7 @@ The writer records the reversal in the marker body and removes your own refusal.
 **2. Stamp.** On a written marker, call the trailer stamp:
 
 ```bash
-stamp_line=$(.claude/hooks/audit-stamp-trailer.sh)
+stamp_line=$("$AUDIT_ROOT/.claude/hooks/audit-stamp-trailer.sh" --root "$AUDIT_ROOT")
 ```
 
 It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this content, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. You never push, here or anywhere else: the trailer commit this call may create is a content-preserving local commit the local merge gate does not need pushed (it reads digest-keyed markers), and the member-aware status call in step 3 clears independently via the remote head. Surface the returned `stamp_line` in your report. Because the stamp is a content-preserving empty commit, it rotates no digest, so the marker you wrote in step 1 stays valid after it: there is nothing to re-write.
@@ -156,7 +167,7 @@ You write **only** your own marker. Never write another member's marker, and nev
 **3. Status.** Immediately after the stamp step (never on a withheld marker), call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
 
 ```bash
-.claude/hooks/post-audit-status.sh "$marker"
+"$AUDIT_ROOT/.claude/hooks/post-audit-status.sh" --root "$AUDIT_ROOT" "$marker"
 ```
 
 This call is best-effort and guarded; you are not deciding whether the status posts, the helper resolves the full dispatched member set and declines until every member's marker exists. Surface its one-line output (`status: posted GAIA-Audit success <sha>` or `status: declined: <reason>`) in your report.
@@ -169,7 +180,7 @@ If the marker is withheld, surface:
 
 The finding-recurrence tally reads PR comments for a machine-readable findings block; CI's own workflow prompt emits one only for `code-audit-frontend`, never for you. Close that gap yourself: on **every LOCAL pass**, clean or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set); it never applies there, since CI never runs you.
 
-Path: `.gaia/local/audit/${base}.code-audit-github-workflows.findings.json`, the **same** `base` you already resolve at the start of every run (see "Remit and self-skip" above), never a second base resolution. If `base` is empty (resolution failed), skip the sidecar write entirely.
+Path: `$AUDIT_ROOT/.gaia/local/audit/${base}.code-audit-github-workflows.findings.json`, the **same** `base` you already resolve at the start of every run (see "Remit and self-skip" above), never a second base resolution. If `base` is empty (resolution failed), skip the sidecar write entirely.
 
 Shape:
 

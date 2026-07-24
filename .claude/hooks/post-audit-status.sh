@@ -103,9 +103,43 @@ emit_error() {
   printf 'post-audit-status: %s\n' "$1" >&2
 }
 
+# The audited working root. `--root` names it explicitly; every git call and
+# derived path below is scoped to it. A dispatch against a linked worktree must
+# pass it, because there the ambient cwd is the MAIN checkout, so a cwd-derived
+# root resolves the wrong head, digest, and member set. Absent the flag the
+# ambient checkout is the root, the ordinary single-checkout case.
+root_arg=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --root)
+      if [ "$#" -lt 2 ]; then
+        emit_error "--root requires a path"
+        exit 2
+      fi
+      root_arg="$2"
+      shift 2
+      ;;
+    --root=*)
+      root_arg="${1#--root=}"
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      emit_error "unknown option: $1"
+      exit 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 marker="${1:-}"
 if [ -z "$marker" ]; then
-  emit_error "usage: post-audit-status.sh <marker-path>"
+  emit_error "usage: post-audit-status.sh [--root <path>] <marker-path>"
   exit 2
 fi
 
@@ -148,7 +182,15 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 0
 fi
 
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [ -n "$root_arg" ]; then
+  if [ ! -d "$root_arg" ]; then
+    emit_decline "root not a directory"
+    exit 0
+  fi
+  repo_root=$(git -C "$root_arg" rev-parse --show-toplevel 2>/dev/null || true)
+else
+  repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+fi
 if [ -z "$repo_root" ]; then
   emit_decline "repo slug unresolved"
   exit 0
