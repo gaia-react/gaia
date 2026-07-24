@@ -30,17 +30,32 @@ fi
 mode="$1"
 repo_root="$2"
 subject_arg="${3:-}"
-plans_dir="${repo_root%/}/.gaia/local/plans"
-ledger_path="${plans_dir}/ledger.json"
 
-# Source the shared ledger mutex from this script's own directory so it
-# resolves identically from the real repo and from test copies of the lib
-# dir (no hardcoded repo path, template-distributed, repo-relative).
+# Source the shared libs from this script's own directory so they resolve
+# identically from the real repo and from test copies of the lib dir (no
+# hardcoded repo path, template-distributed, repo-relative). The ledger-path
+# lib is reached by the same own-directory hop rather than through repo_root:
+# repo_root is the value whose trustworthiness is in question here, so loading
+# a library by it would decide correctness with the input under test.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 . "${_lib_dir}/with-ledger-lock.sh"
 # shellcheck source=/dev/null
 . "${_lib_dir}/title-normalize.sh"
+# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+
+# repo_root names the tree this allocation runs in; the ledger it feeds is
+# main's, because the state registry declares plans/ main-only. Resolve rather
+# than trust: from a linked worktree the operand is that worktree's own root,
+# and using it forks the ledger and points the mutex at a directory no peer
+# tree locks. Refuse when main is unresolvable -- the same stance this script
+# already takes on a lock it cannot acquire, and for the same reason.
+if ! plans_dir="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_dir" ]; then
+  echo "plan-allocator: cannot resolve the main checkout for '$repo_root'; refuse to allocate (would risk duplicate PLAN ids across worktrees)" >&2
+  exit 4
+fi
+ledger_path="${plans_dir}/ledger.json"
 
 # Emit one bare integer per known PLAN number, one per line, unsorted.
 # Sources: the ledger's plan ids, and on-disk PLAN-* basenames under

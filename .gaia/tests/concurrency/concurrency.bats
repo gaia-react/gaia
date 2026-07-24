@@ -144,7 +144,9 @@ count_autocommits() {
   gaia_copy_real "$MAIN" \
     .specify/extensions/gaia/lib/plan-allocator.sh \
     .specify/extensions/gaia/lib/with-ledger-lock.sh \
-    .specify/extensions/gaia/lib/title-normalize.sh
+    .specify/extensions/gaia/lib/title-normalize.sh \
+    .gaia/scripts/ledger-path-lib.sh \
+    .gaia/scripts/main-root-lib.sh
   gaia_commit_all "$MAIN" "add plan allocator"
 
   B="$(gaia_add_worktree "$MAIN" treeB treeB)"
@@ -365,7 +367,9 @@ JS
   gaia_copy_real "$MAIN" \
     .specify/extensions/gaia/lib/plan-allocator.sh \
     .specify/extensions/gaia/lib/with-ledger-lock.sh \
-    .specify/extensions/gaia/lib/title-normalize.sh
+    .specify/extensions/gaia/lib/title-normalize.sh \
+    .gaia/scripts/ledger-path-lib.sh \
+    .gaia/scripts/main-root-lib.sh
   gaia_commit_all "$MAIN" "add plan allocator"
 
   A="$(gaia_add_worktree "$MAIN" treeA treeA)"
