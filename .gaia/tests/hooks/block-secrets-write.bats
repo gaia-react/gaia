@@ -98,11 +98,11 @@ assert_allowed() {
 }
 
 # The four below pin the allowlist's command-substitution arm to "wholly a
-# substitution" rather than "starts with $( and ends with )". Each is a value a
-# both-ends-anchored `\$\(.+\)` would admit, because `.` matches the very `)`
-# the closing anchor is supposed to certify. Together they also pin both
-# anchors: the trailing one against the first three, the leading one against
-# the last, which is the shape a dropped `^` would silently let through.
+# substitution" rather than "starts with $( and ends with )". The first three
+# are values a both-ends-anchored `\$\(.+\)` admits, because `.` matches the
+# very `)` the closing anchor is supposed to certify; they pin the trailing
+# anchor. The fourth pins the leading one, and only that one: it never starts
+# with `$(`, so it is the shape a dropped `^` would silently let through.
 
 @test "a literal value between two command substitutions is denied" {
   run_hook_write "$(printf 'API_KEY=%s\n' '$(true)sk-live-9f3a1c4e8b7d2064$(true)')"
