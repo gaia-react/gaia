@@ -214,6 +214,32 @@ extract_payload() {
   [ "$(jq 'has("area_tags")' <<<"$entry")" = "true" ]
 }
 
+@test "a finding's actionable detail stays in the sidecar and is projected OUT of the posted block" {
+  # The sidecar is the report of record and carries file / line / defect /
+  # verification / repair. The PR comment is a published surface whose
+  # visibility follows the repo's, and a finding's text can quote the very hole
+  # it reports, so only the three keys the block contract freezes go out.
+  write_sidecar code-audit-maintainer-shell '[{"finding_class":"holistic/secret-exposure","severity":"warning","area_tags":[".claude/hooks"],"path":".claude/hooks/block-secrets-write.sh","line":113,"title":"the path arm admits arbitrary trailing text","failure_mode":"one separator after the expansion unlocks an unbounded run over the secret character set","verified_by":"fed the hook the braced-expansion fixture: base denies, HEAD allows","suggested_fix":"bound each path segment"}]'
+  stub_gh '[]'
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  payload="$(extract_payload)"
+  entry="$(jq -c '.findings[0]' <<<"$payload")"
+  # The three frozen keys survive, verbatim.
+  [ "$(jq -r '.finding_class' <<<"$entry")" = "holistic/secret-exposure" ]
+  [ "$(jq -r '.severity' <<<"$entry")" = "warning" ]
+  [ "$(jq -r '.area_tags[0]' <<<"$entry")" = ".claude/hooks" ]
+  # Exactly those three, nothing more.
+  [ "$(jq -r '[keys[]] | sort | join(",")' <<<"$entry")" = "area_tags,finding_class,severity" ]
+  # And no detail leaks into the comment body by any other route.
+  grep -qF "block-secrets-write.sh" "$SANDBOX/posted_body.txt" && return 1
+  grep -qF "bound each path segment" "$SANDBOX/posted_body.txt" && return 1
+  # The sidecar itself still holds everything.
+  sidecar="$AUDIT_DIR/${AUDIT_TAG}.code-audit-maintainer-shell.findings.json"
+  [ "$(jq -r '.findings[0].line' "$sidecar")" = "113" ]
+  [ "$(jq -r '.findings[0].suggested_fix' "$sidecar")" = "bound each path segment" ]
+}
+
 # =============================================================================
 # AC3: a second run with the same base updates, never duplicates
 # =============================================================================

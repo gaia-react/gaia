@@ -906,6 +906,17 @@ Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory
 When the marker is warranted, the write is a mark → stamp → push → status sequence, run in that fixed order. The marker is written first, before the stamp, so it feeds the member-aware stamp gate immediately below and closes the crash window: a trailer is never believed while any dispatched member's own marker, this one included, is missing. The stamp runs next: the helper picks amend vs empty-commit per the placement rule and never pushes. Because the stamp is a content-preserving empty commit, it changes no blob sha, so it rotates no digest and the marker written in step 1 stays valid after it, there is no repair write. The trailer commit is pushed next, before the status call, only on the empty-commit path and only on an attached tracking branch, since that push is what makes the remote PR head the trailer commit and lets the status POST (which targets the remote head) land on the sha branch protection checks; on the amend path there is nothing new to push, and the status helper declines `audited tree not on pushed head` until the operator pushes, which is the correct fail-safe. Finally, the `GAIA-Audit` success commit status is posted, gated on the marker file already existing; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The shared clearance writer (`.gaia/scripts/audit-write-clearance.sh`) writes the marker unconditionally: every write lands, overwriting whatever was already on disk for this digest; provenance is `earned` or `refused` only, there is no carried family to out-rank:
 
 ```bash
+# 0. Write the findings sidecar FIRST, before any clearance artifact (see
+#    "Findings sidecar" below for the full field contract). It is your report
+#    of record, so it exists before the artifact that gates on it: a marker
+#    or refusal published ahead of its own report is exactly the state an
+#    orchestrator cannot act on. LOCAL only.
+findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-frontend \
+  --base "$BASE_SHA" \
+  --findings /path/to/findings.json)"
+
 # 1. Write the earned clearance BEFORE the stamp (mark-before-stamp): this
 #    feeds the member-aware stamp gate in step 2 and closes the crash window
 #    -- a trailer is never believed while any dispatched member's marker is
@@ -1074,20 +1085,38 @@ Never write a marker for content other than current `HEAD`. The shared writer de
 
 The finding-recurrence tally reads PR comments for a machine-readable findings block; CI's own workflow prompt already emits one (`code-review-audit.yml:359-372`), but a PR audited by the local producer left the tally with nothing. Close that gap yourself: on **every LOCAL pass**, clean or not, marker written or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set): CI's own prompt already covers it, unrelated to this file.
 
-Path: `.gaia/local/audit/${AUDIT_KEY}.code-audit-frontend.findings.json`, the **same** `AUDIT_KEY` you already derive for the re-run carry-forward ledger (see "Re-run carry-forward ledger" above), never a second derivation. If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the sidecar write entirely, the same fail-open rule the ledger itself follows.
+**Write it with the shared writer, never by hand**, and write it **before** any clearance artifact (step 0 of the gate handshake above). The writer derives the path, validates every entry, and publishes atomically:
 
-Shape:
-
-```json
-{"schema":1,"member":"code-audit-frontend","findings":[
-  {"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]},
-  {"finding_class":"holistic/unclassified","severity":"suggestion","area_tags":["app/routes"]}
-]}
+```bash
+findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-frontend \
+  --base "$BASE_SHA" \
+  --findings /path/to/findings.json)"
 ```
 
-Every Critical / Important / Suggestion finding in your report (in-scope or out-of-scope; not a cross-remit finding, which belongs to another member) goes into `findings[]`, with `severity` mapped from your grading: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `["app/routes"]`). A finding carrying a valid `finding_class` from the closed holistic/rule vocabulary (see "Finding classification" above) counts at any severity; a finding that genuinely maps to no seeded class is stamped `holistic/unclassified` and **included**, never omitted, surfacing as the distinct unclassified recurrence signal. `"findings": []` when your report is empty is still a real, meaningful "this run found nothing" record; write it, do not skip the file.
+Pass the same `BASE_SHA` you already resolved for the re-run carry-forward ledger (see "Re-run carry-forward ledger" above), never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-frontend.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable, the same fail-open rule the ledger itself follows. `--findings -` reads the array from stdin when you would rather not stage a temp file.
 
-Best-effort: a write failure here never blocks or alters the marker / stamp / status / dispositions-sidecar / ledger sequence above.
+Shape (one entry per finding; the writer rejects the write and names the offending index if any required field is missing):
+
+```json
+[
+  {"finding_class":"holistic/swallowed-error","severity":"error",
+   "path":"app/services/gaia/foo/requests.ts","line":42,
+   "title":"a rejected request resolves as success",
+   "failure_mode":"a 500 from the endpoint takes the catch arm, which returns the empty parse result, so the caller renders an empty list as if the fetch succeeded",
+   "verified_by":"drove the MSW 500 handler through the hook: the error boundary never mounts and the list renders empty",
+   "suggested_fix":"rethrow after logging, or return a discriminated failure the caller must handle"}
+]
+```
+
+Field contract. `severity` maps from your grading: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `finding_class` comes from the closed holistic/rule vocabulary (see "Finding classification" above) and counts at any severity; a finding that genuinely maps to no seeded class is stamped `holistic/unclassified` and **included**, never omitted, surfacing as the distinct unclassified recurrence signal. `path` and `line` locate the defect. `failure_mode` is the defect itself: input, state, and wrong outcome. `verified_by` is the executed evidence that establishes it, the same evidence your Finding Proof Gate already demands, not the reasoning that suggested looking. `suggested_fix` is the repair, concrete enough to act on. `area_tags` is optional and defaults to the `path`'s directory; supply it only to say something the dirname does not. `[]` when your report is empty is still a real, meaningful "this run found nothing" record; write it, do not skip the file.
+
+**This is the report of record, so it carries what a fix needs.** A sidecar entry holding only a class, a severity, and a directory tag cannot brief a repair, and when a marker is withheld it is the artifact the operator has to work from: they cannot resolve a finding they cannot locate, cannot confirm one they cannot reproduce, and cannot legitimately supersede a refusal whose grounds they never learned. Every Critical / Important / Suggestion finding in your report goes in, in-scope or out-of-scope (a cross-remit finding belongs to another member and does not). No finding may exist only in your returned text.
+
+The detail stays local. `post-findings-block.sh` projects each entry down to `finding_class` / `severity` / `area_tags` when it renders the PR-comment block, so extending this sidecar never widens what gets published to a PR.
+
+Best-effort: a write failure here never blocks or alters the marker / stamp / status / dispositions-sidecar / ledger sequence above. Best-effort is not optional, though: fix the rejected entry and call the writer again, do not proceed with an unwritten report.
 
 ## GAIA-Audit trailer (CI handshake)
 

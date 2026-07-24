@@ -53,17 +53,35 @@
 #   one carrying only the locally-dispatched members' findings. See
 #   wiki/concepts/PR Merge Workflow.md.
 #
-# Sidecar shape (frozen; each Code Audit Team member's own contract)
+# Sidecar shape (each Code Audit Team member's own contract; written by
+# .gaia/scripts/audit-write-findings.sh)
 #   .gaia/local/audit/<base-sha>.<branch-slug>.<member>.findings.json, the
 #   key gaia_audit_key computes (audit-key-lib.sh): base-sha alone collides
 #   between two worktrees cut from the same main tip, so the acting tree's
 #   own branch is the discriminator.
 #   {"schema":1,"member":"<name>","findings":[
-#     {"finding_class":"...","severity":"error|warning|suggestion","area_tags":["..."]}
+#     {"finding_class":"...","severity":"error|warning|suggestion",
+#      "area_tags":["..."],"path":"...","line":N,"title":"...",
+#      "failure_mode":"...","verified_by":"...","suggested_fix":"..."}
 #   ]}
 #   "findings":[] is a valid, meaningful sidecar (the member ran and found
 #   nothing countable); an ABSENT sidecar is not the same thing, and this
 #   script never fabricates one.
+#
+# Projection to the block (load-bearing)
+#   The sidecar is the member's full report of record: it carries the file,
+#   line, defect, verification, and recommended repair a fix needs. The PR
+#   comment block does NOT. Each finding is projected to exactly
+#   finding_class / severity / area_tags on the way out, for two reasons. The
+#   block's contract is frozen at those three keys (parse-findings-block.ts
+#   reads only them, and the recurrence tally counts distinct PRs per
+#   finding_class), so anything else is dead weight in a comment nobody reads
+#   by hand. And a PR comment is a published surface whose visibility follows
+#   the repo's, while a finding's text can quote the very secret or hole it
+#   reports; the local sidecar is the right home for that, and the
+#   security-class disposition rules exist precisely because publishing such a
+#   finding is not always safe. Extending the sidecar therefore never widens
+#   what this script publishes.
 #
 # Rendered block shape (frozen, matches parse-findings-block.ts)
 #   <!-- gaia-harden:findings:start -->
@@ -258,7 +276,7 @@ fi
 #    so it never renders (matches parse-findings-block.ts:5-20).
 # -----------------------------------------------------------------------------
 
-merged_findings="$(jq -s '[.[] | .findings[]?]' ${valid_files[@]+"${valid_files[@]}"} 2>/dev/null || true)"
+merged_findings="$(jq -s '[.[] | .findings[]? | {finding_class, severity, area_tags}]' ${valid_files[@]+"${valid_files[@]}"} 2>/dev/null || true)"
 if [ -z "$merged_findings" ]; then
   merged_findings="[]"
 fi

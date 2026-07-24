@@ -97,7 +97,17 @@ Never gates your own marker; the orchestrator decides the disposition.
 
 ## Gate handshake (per-member marker)
 
-There is no withhold path here; the only "no marker" case is the self-skip above. On ANY in-remit review, run the handshake below in order: mark, stamp, status. Even a finding-bearing pass writes the earned marker, the findings are advisory PR comments, not a gate.
+There is no withhold path here; the only "no marker" case is the self-skip above. On ANY in-remit review, run the handshake below in order: sidecar, mark, stamp, status. Even a finding-bearing pass writes the earned marker, the findings are advisory PR comments, not a gate.
+
+**0. Sidecar (every LOCAL in-remit pass).** Before the marker, write your findings sidecar with the shared writer (see "Findings sidecar" below for the full field contract). It is your report of record, so it exists before the artifact that attests to it.
+
+```bash
+findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-maintainer-prose \
+  --base "$BASE_SHA" \
+  --findings /path/to/findings.json)"
+```
 
 **1. Mark.** Write the earned marker with the shared writer, keyed to your own content digest, not HEAD's commit sha or tree: a sha256 over exactly the files you own (`.claude/skills/**/*.md`) plus the shared gate machinery, computed by `.claude/hooks/lib/audit-digest.sh`. It attests that you audited that CONTENT: an out-of-glob change (one that touches neither your owned glob nor a machinery file) rotates nothing in your digest, so your marker keeps validating with zero re-review. A change to a file you own, or to any machinery file, rotates your digest and invalidates your marker, and you must re-audit.
 
@@ -130,25 +140,38 @@ This call is best-effort and guarded; the helper resolves the full dispatched me
 
 On **every LOCAL pass**, at least one finding or genuinely clean, write a findings sidecar. **Skip entirely in CI** (`GITHUB_ACTIONS`/`CI` set); CI never dispatches you.
 
-Path: `.gaia/local/audit/${audit_key}.code-audit-maintainer-prose.findings.json`, reusing the SAME `audit_key` derived at run start (never a second derivation). If `audit_key` is empty, skip the sidecar write.
+**Write it with the shared writer, never by hand**, and write it **before** the marker (step 0 of the gate handshake above). The writer derives the path, validates every entry, and publishes atomically:
 
-Shape:
-
-```json
-{"schema":1,"member":"code-audit-maintainer-prose","findings":[
-  {"finding_class":"prose/excessive-length","severity":"warning","area_tags":[".claude/skills/gaia/references"]}
-]}
+```bash
+findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-maintainer-prose \
+  --base "$BASE_SHA" \
+  --findings /path/to/findings.json)"
 ```
 
-Severity mapping: Important → `warning`, Suggestion → `suggestion`; both count at any severity. You never emit `error`, there is no Critical tier.
+Pass the same `BASE_SHA` you already resolved at run start, never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${audit_key}.code-audit-maintainer-prose.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable. `--findings -` reads the array from stdin when you would rather not stage a temp file.
 
-`finding_class` is one of the four seeded classes ONLY: `prose/excessive-length`, `prose/deep-nesting`, `prose/high-indirection`, `prose/redundant-instruction`. Every finding that survives the Finding Proof Gate already maps to one of them, by construction (see "Review dimensions" above), so `findings[]` carries every finding in your report; unlike the holistic vocabulary's `holistic/unclassified` fallback (used by sibling members for a genuine no-map), this closed four-class vocabulary has no no-map case to fall back for. `"findings": []` on a clean pass is a real, meaningful record, write it, do not skip the file.
+Shape (one entry per finding; the writer rejects the write and names the offending index if any required field is missing):
 
-Best-effort: a sidecar write failure never blocks or alters the marker sequence.
+```json
+[
+  {"finding_class":"prose/high-indirection","severity":"warning",
+   "path":".claude/skills/gaia/references/plan.md","line":214,
+   "title":"the retry rule is three hops from the step that must apply it",
+   "failure_mode":"the step says \"apply the hardened retry\" and names no prefix, the prefix lives in a sibling reference that points at a third file for the substitution rule, so a reader following the step has to reconstruct the instruction from three places and most will guess",
+   "verified_by":"followed the chain from the step as written: plan.md:214 to the retry section to the agent definition, three reads before the literal prefix appears",
+   "suggested_fix":"inline the prefix at the step, and keep the sibling as the rationale rather than the source"}
+]
+```
 
-A `finding_class` must be a prose-level ROOT CAUSE, never a subsystem tag.
+Field contract. Severity mapping: Important → `warning`, Suggestion → `suggestion`; both count at any severity. You never emit `error`, there is no Critical tier. `finding_class` is one of the four seeded classes ONLY: `prose/excessive-length`, `prose/deep-nesting`, `prose/high-indirection`, `prose/redundant-instruction`. Every finding that survives the Finding Proof Gate already maps to one of them, by construction (see "Review dimensions" above), so the sidecar carries every finding in your report; unlike the holistic vocabulary's `holistic/unclassified` fallback (used by sibling members for a genuine no-map), this closed four-class vocabulary has no no-map case to fall back for. A `finding_class` must be a prose-level ROOT CAUSE, never a subsystem tag. `path` and `line` locate the finding. `failure_mode` is the reading failure itself: what a reader following the prose as written actually does wrong. `verified_by` is how you established it, the evidence your Finding Proof Gate already demands. `suggested_fix` is the rewrite, concrete enough to act on. `area_tags` is optional and defaults to the `path`'s directory. `[]` on a clean pass is a real, meaningful record, write it, do not skip the file.
 
-**Return contract: this sidecar is your report of record.** Your findings reach the orchestrator through this file, not through the text you return. The returned text is a human-readable convenience and the no-op classifier's input; it is not the durable channel, and an orchestrator reads the sidecar to learn what you actually found. Two consequences. First, no finding may exist only in your returned text: if it is in your report, it is in `findings[]`. Second, the sidecar's presence is what separates a genuine clean pass from a run whose report was lost in transit, so on a LOCAL pass with a resolved `audit_key` you write it even when you found nothing (`"findings": []`). A marker sitting on disk with no sidecar beside it reads as a lost report and gets your dispatch retried. This does not apply to a clean self-skip (no changed file in your remit), where you deliberately write no marker and no sidecar.
+**Return contract: this sidecar is your report of record, so it carries what a fix needs.** Your findings reach the orchestrator through this file, not through the text you return. The returned text is a human-readable convenience and the no-op classifier's input; it is not the durable channel, and it does not reliably arrive. An entry holding only a class, a severity, and a directory tag cannot brief a rewrite: a reader cannot fix prose they cannot locate. Two consequences. First, no finding may exist only in your returned text: if it is in your report, it is in the sidecar. Second, the sidecar's presence is what separates a genuine clean pass from a run whose report was lost in transit, so on a LOCAL pass with a resolvable key you write it even when you found nothing. A marker sitting on disk with no sidecar beside it reads as a lost report and gets your dispatch retried. This does not apply to a clean self-skip (no changed file in your remit), where you deliberately write no marker and no sidecar.
+
+The detail stays local. `post-findings-block.sh` projects each entry down to `finding_class` / `severity` / `area_tags` when it renders the PR-comment block, so extending this sidecar never widens what gets published to a PR.
+
+Best-effort: a sidecar write failure never blocks or alters the marker sequence. Best-effort is not optional, though: fix the rejected entry and call the writer again, do not proceed with an unwritten report.
 
 ## Methodology
 
@@ -157,5 +180,5 @@ A `finding_class` must be a prose-level ROOT CAUSE, never a subsystem tag.
 3. Apply the four review dimensions above.
 4. Run each candidate through the Finding Proof Gate.
 5. Produce the report.
-6. Always write the earned marker, stamp the trailer, and call `post-audit-status.sh`.
-7. Write the findings sidecar.
+6. Write the findings sidecar.
+7. Always write the earned marker, stamp the trailer, and call `post-audit-status.sh`.

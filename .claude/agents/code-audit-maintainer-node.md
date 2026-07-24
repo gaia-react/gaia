@@ -113,7 +113,17 @@ Never gates your own marker; the orchestrator decides the disposition (see "Cros
 
 ## Gate handshake (per-member marker)
 
-On a clean pass, no Critical finding, run the handshake below in order: mark, stamp, status.
+On a clean pass, no Critical finding, run the handshake below in order: sidecar, mark, stamp, status.
+
+**0. Sidecar (every LOCAL pass, clean or withheld).** Before any clearance artifact, write your findings sidecar with the shared writer (see "Findings sidecar" below for the full field contract). It is your report of record, so it exists before the artifact that gates on it: a marker or refusal published ahead of its own report is exactly the state an orchestrator cannot act on.
+
+```bash
+findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-maintainer-node \
+  --base "$BASE_SHA" \
+  --findings /path/to/findings.json)"
+```
 
 **1. Mark (pre-stamp).** Write the per-member marker:
 
@@ -173,24 +183,40 @@ If the marker is withheld, surface:
 
 ## Findings sidecar (local run record)
 
-The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments for a machine-readable findings block; CI never dispatches you, so nothing you find has ever reached that record before. Close that gap yourself: on **every LOCAL pass**, clean or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set); it never applies there, since CI never runs you.
+The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments for a machine-readable findings block; CI never dispatches you, so nothing you find has ever reached that record before. Close that gap yourself, and give a withheld marker something to brief: on **every LOCAL pass**, clean or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set); it never applies there, since CI never runs you.
 
-Path: `.gaia/local/audit/${audit_key}.code-audit-maintainer-node.findings.json`, the **same** `audit_key` you already derive at the start of every run (see "Remit and self-skip" above), never a second derivation. If `audit_key` is empty (the base or the branch is undeterminable), skip the sidecar write entirely.
+**Write it with the shared writer, never by hand**, and write it **before** any clearance artifact (step 0 of the gate handshake above). The writer derives the path, validates every entry, and publishes atomically:
 
-Shape:
-
-```json
-{"schema":1,"member":"code-audit-maintainer-node","findings":[
-  {"finding_class":"holistic/unhandled-promise-rejection","severity":"error","area_tags":[".gaia/cli/src"]},
-  {"finding_class":"holistic/unclassified","severity":"suggestion","area_tags":[".gaia/cli/src"]}
-]}
+```bash
+findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-maintainer-node \
+  --base "$BASE_SHA" \
+  --findings /path/to/findings.json)"
 ```
 
-Every Critical / Important / Suggestion finding in your report maps to `severity`: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `[".gaia/cli/src/release"]`). `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary: `holistic/unhandled-promise-rejection` and `holistic/swallowed-error` for the async/error-handling defects your review dimensions already name, `holistic/over-permissive-zod` for a schema that is too permissive, `holistic/secret-exposure` for a leaked credential, `holistic/non-null-assertion` for a hidden `!`, whichever seeded member genuinely fits, and counts at any severity. A finding that maps to no seeded class (most injection-safety and filesystem/IO findings today) is stamped `holistic/unclassified` and **included** in `findings[]` (never omitted), surfacing as the distinct unclassified recurrence signal. `"findings": []` when your report is clean is still a real, meaningful record; write it, do not skip the file.
+Pass the same `BASE_SHA` you already resolved at the start of the run (see "Remit and self-skip" above), never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-maintainer-node.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable, so an unresolvable key skips the write rather than inventing a fallback path no reader looks under. `--findings -` reads the array from stdin when you would rather not stage a temp file.
 
-Best-effort: a write failure here never blocks or alters the marker / stamp / status sequence above.
+Shape (one entry per finding; the writer rejects the write and names the offending index if any required field is missing):
 
-**Return contract: this sidecar is your report of record.** Your findings reach the orchestrator through this file, not through the text you return. The returned text is a human-readable convenience and the no-op classifier's input; it is not the durable channel, and an orchestrator reads the sidecar to learn what you actually found. Two consequences. First, no finding may exist only in your returned text: if it is in your report, it is in `findings[]`. Second, the sidecar's presence is what separates a genuine clean pass from a run whose report was lost in transit, so on a LOCAL pass with a resolved `audit_key` you write it even when you found nothing (`"findings": []`) and even when you withheld your marker. A marker sitting on disk with no sidecar beside it reads as a lost report and gets your dispatch retried.
+```json
+[
+  {"finding_class":"holistic/secret-exposure","severity":"warning",
+   "path":".gaia/cli/src/harden/tally.ts","line":113,
+   "title":"the expansion-then-path arm admits arbitrary trailing text",
+   "failure_mode":"once a separator follows the closing brace the tail is unbounded over the character set a literal secret uses, so a live token assigned behind one is allowed",
+   "verified_by":"ran the hook on the braced-expansion fixture at base and at HEAD: base denies, HEAD allows",
+   "suggested_fix":"bound each trailing segment, e.g. ([/.][A-Za-z0-9_-]{1,12})+$, which keeps ${ROOT}/dev.pem and rejects the token"}
+]
+```
+
+Field contract. `severity` maps from your grading: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `finding_class` uses the same closed holistic vocabulary `code-audit-frontend` draws from (`.gaia/cli/src/schemas/finding-class.ts`, `HOLISTIC_FINDING_CLASSES`), reused verbatim, never a second vocabulary, and counts at any severity; a finding that maps to no seeded class is stamped `holistic/unclassified` and **included**, never omitted, surfacing as the distinct unclassified recurrence signal. `path` and `line` locate the defect. `failure_mode` is the defect itself: input, state, and wrong outcome. `verified_by` is the executed evidence that establishes it, the same evidence your Finding Proof Gate already demands, not the reasoning that suggested looking. `suggested_fix` is the repair, concrete enough to act on. `area_tags` is optional and defaults to the `path`'s directory; supply it only to say something the dirname does not. `[]` when your report is clean is still a real, meaningful record; write it, do not skip the file.
+
+**Return contract: this sidecar is your report of record, so it carries what a fix needs.** Your findings reach the orchestrator through this file, not through the text you return: the returned text is a human-readable convenience and the no-op classifier's input, and it does not reliably arrive. An entry holding only a class, a severity, and a directory tag cannot brief a repair, and when you withhold your marker it is the artifact the operator has to work from. They cannot resolve a finding they cannot locate, cannot confirm one they cannot reproduce, and cannot legitimately supersede a refusal whose grounds they never learned, which is why every field above is required rather than encouraged. Three consequences. First, no finding may exist only in your returned text: if it is in your report, it is in the sidecar. Second, a **withheld** marker obliges this write just as a clean pass does, and more urgently, because a refusal that briefs nothing blocks a merge no one can clear. Third, the sidecar's presence is what separates a genuine clean pass from a run whose report was lost in transit, so on a LOCAL pass with a resolvable key you write it even when you found nothing. A marker sitting on disk with no sidecar beside it reads as a lost report and gets your dispatch retried.
+
+The detail stays local. `post-findings-block.sh` projects each entry down to `finding_class` / `severity` / `area_tags` when it renders the PR-comment block, so extending this sidecar never widens what gets published to a PR.
+
+Best-effort: a write failure never blocks or alters the marker / stamp / status sequence. Best-effort is not optional, though: fix the rejected entry and call the writer again, do not proceed with an unwritten report.
 
 ## Methodology
 
@@ -198,4 +224,4 @@ Best-effort: a write failure here never blocks or alters the marker / stamp / st
 2. Read every in-remit changed file, plus (for source) its callers and its test siblings.
 3. Run `pnpm typecheck` and `pnpm lint` as advisory oracles.
 4. Collect candidates from the review dimensions; run each through the Finding Proof Gate.
-5. Produce the report; decide the marker; write it (or withhold it) and, on a write, stamp the trailer and call `post-audit-status.sh`.
+5. Produce the report; write the findings sidecar; then decide the marker, write it (or withhold it, recording the refusal) and, on a write, stamp the trailer and call `post-audit-status.sh`.
