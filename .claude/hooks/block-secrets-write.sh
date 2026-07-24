@@ -8,7 +8,7 @@
 #   - dotenv-style assignment to suspicious names:
 #       (_TOKEN|_SECRET|_KEY|_PASSWORD)=<non-placeholder-value>
 #       Placeholders allowed: empty, "", '', x, xxx, changeme, your-*, <...>,
-#       ${...}, $VAR, REPLACE_ME, TODO, PLACEHOLDER (case-insensitive).
+#       ${...}, $VAR, $(...), REPLACE_ME, TODO, PLACEHOLDER (case-insensitive).
 set -euo pipefail
 
 payload=$(cat)
@@ -60,8 +60,12 @@ while IFS= read -r line; do
     x|xx|xxx|xxxx|changeme|CHANGEME|REPLACE_ME|TODO|PLACEHOLDER|placeholder)
       continue ;;
   esac
-  # Allow templated values: ${VAR}, $VAR, <something>, your-…, example…
-  if grep -Eqi '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^<.+>$|^your[-_]|^example' <<<"$val"; then
+  # Allow values that carry no literal secret: templated ones (${VAR}, $VAR,
+  # <something>, your-…, example…) and a value that is wholly a command
+  # substitution, $(…), which resolves at run time. The command-substitution arm
+  # is anchored at both ends on purpose: a value that merely *contains* $(…)
+  # alongside literal text still falls through to the deny below.
+  if grep -Eqi '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\(.+\)$|^<.+>$|^your[-_]|^example' <<<"$val"; then
     continue
   fi
   deny "BLOCKED: write contains a non-placeholder secret assignment: '$line'. Use environment variables / .env (gitignored), not committed source."
