@@ -25,14 +25,37 @@ fi
 repo_root="$1"
 old_id="$2"
 new_id="$3"
-specs_dir="${repo_root%/}/.gaia/local/specs"
-ledger_path="${repo_root%/}/.gaia/local/specs/ledger.json"
 allocator="${repo_root%/}/.specify/extensions/gaia/lib/spec-allocator.sh"
+
+# Source the shared ledger-path lib from this script's own directory, never
+# through repo_root: repo_root is the value whose trustworthiness is in
+# question here, so loading a library by it would decide correctness with the
+# input under test.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
 if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
   echo "spec-renumber: $repo_root is not a git repository" >&2
   exit 3
 fi
+
+# repo_root names the tree this renumber runs in; the ledger and folder it
+# rewrites are main's, because the state registry declares specs/ main-only.
+# Resolve rather than trust: using repo_root directly could rename a folder
+# in one tree while the ledger row lands in main's, forking the two. Refuse
+# rather than fall back to the unresolved operand.
+if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+  echo "spec-renumber: cannot resolve the main checkout for '$repo_root'; refuse to renumber (would fork the ledger across worktrees)" >&2
+  exit 3
+fi
+ledger_path="${specs_dir}/ledger.json"
+# main_root: the checkout that physically owns specs_dir, derived from the
+# resolver's own contract (<main_root>/.gaia/local/specs) rather than a second
+# resolution. The git mv/ls-files calls below touch paths under specs_dir, so
+# they must run against the repo that contains them, not the raw repo_root
+# operand, which can be a different worktree.
+main_root="${specs_dir%/.gaia/local/specs}"
 
 for id in "$old_id" "$new_id"; do
   if [[ ! "$id" =~ ^SPEC-[0-9]+$ ]]; then
@@ -87,8 +110,8 @@ fi
 
 # 1. Move the folder whole. Inner SPEC.md keeps its name; siblings ride along.
 #    git mv when the inner SPEC.md is tracked, plain mv otherwise.
-if git -C "$repo_root" ls-files --error-unmatch "$old_spec" >/dev/null 2>&1; then
-  git -C "$repo_root" mv "$old_path" "$new_path"
+if git -C "$main_root" ls-files --error-unmatch "$old_spec" >/dev/null 2>&1; then
+  git -C "$main_root" mv "$old_path" "$new_path"
 else
   mv "$old_path" "$new_path"
 fi
@@ -125,8 +148,8 @@ if [ -f "$ledger_path" ]; then
   else
     rm -f "$tmp_ledger"
     echo "spec-renumber: failed to update ledger; reverting folder move" >&2
-    if git -C "$repo_root" ls-files --error-unmatch "$new_spec" >/dev/null 2>&1; then
-      git -C "$repo_root" mv "$new_path" "$old_path"
+    if git -C "$main_root" ls-files --error-unmatch "$new_spec" >/dev/null 2>&1; then
+      git -C "$main_root" mv "$new_path" "$old_path"
     else
       mv "$new_path" "$old_path"
     fi

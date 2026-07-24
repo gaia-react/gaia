@@ -30,13 +30,25 @@ if [ "$#" -lt 1 ]; then
 fi
 
 repo_root="$1"
-ledger_path="${repo_root%/}/.gaia/local/specs/ledger.json"
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
-# No ledger, no jq, or not a git tree → nothing to do.
-[ -f "$ledger_path" ] || exit 0
+# No jq, or not a git tree → nothing to do (checked before resolving main,
+# since resolving main needs a git tree too).
 command -v jq >/dev/null 2>&1 || exit 0
 git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || exit 0
+
+# repo_root names the tree this reconcile runs in; the ledger it reconciles
+# is main's, because the state registry declares specs/ main-only. Best-
+# effort by contract: an unresolvable main takes the same silent-exit-0 shape
+# as the git-tree check above, nothing touched.
+specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || exit 0
+[ -n "$specs_dir" ] || exit 0
+ledger_path="${specs_dir}/ledger.json"
+
+# No ledger → nothing to do.
+[ -f "$ledger_path" ] || exit 0
 
 # --- Normalize known-misnamed statuses to canonical (local, no network) ------
 # Pre-guard ledgers can carry an off-vocabulary status (a hand-edited or

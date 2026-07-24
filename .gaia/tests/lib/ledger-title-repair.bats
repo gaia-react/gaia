@@ -29,7 +29,14 @@ setup() {
     chmod +x "$SANDBOX/.specify/extensions/gaia/lib/$f"
   done
 
-  mkdir -p "$SANDBOX/.gaia/local/specs" "$SANDBOX/.gaia/local/plans"
+  mkdir -p "$SANDBOX/.gaia/local/specs" "$SANDBOX/.gaia/local/plans" "$SANDBOX/.gaia/scripts"
+  # The scripts under test now resolve the main checkout via
+  # ledger-path-lib.sh/main-root-lib.sh, which requires a real git repo
+  # (fail-closed, no operand fallback); a plain mktemp -d is not one.
+  git -C "$SANDBOX" init --quiet --initial-branch=main
+  cp "$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh" "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" \
+    "$SANDBOX/.gaia/scripts/"
+  chmod +x "$SANDBOX/.gaia/scripts/ledger-path-lib.sh" "$SANDBOX/.gaia/scripts/main-root-lib.sh"
 }
 
 teardown() {

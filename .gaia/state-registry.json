@@ -293,12 +293,24 @@
     },
     {
       "id": "spec-session-scratch",
-      "path": "cache/spec-session-*.json|cache/spec-session-*.lock",
+      "path": "cache/spec-session-*.json",
       "match": "glob",
       "kind": "file",
       "scope": "ephemeral",
       "keyed_by": null,
-      "why": "Session shape (start time, Socratic question-ceiling counter) and the session-host liveness lock for one SPEC-authoring session; keyed by spec id.",
+      "why": "Per-tree session shape (start time, Socratic question-ceiling counter) for one SPEC-authoring session; the holder's own working state, keyed by spec id, stays where it is written.",
+      "writer": "code",
+      "reaped_by": "stale cache sweep",
+      "source": "SPEC-061 §ephemeral"
+    },
+    {
+      "id": "spec-session-lock",
+      "path": "cache/spec-session-*.lock",
+      "match": "glob",
+      "kind": "file",
+      "scope": "ephemeral",
+      "keyed_by": null,
+      "why": "The session-host liveness lock for one SPEC-authoring session; deliberately resolved to main so the cross-tree mutex is reachable from both trees, keyed by spec id.",
       "writer": "code",
       "reaped_by": "stale cache sweep",
       "source": "SPEC-061 §ephemeral"

@@ -8,22 +8,31 @@
 # lib list that excludes plan-ledger-update.sh and seeds only the specs
 # ledger. Instead, mirrors the self-copy sandbox pattern from
 # `.gaia/scripts/tests/plan-archive.bats`: copy the script under test plus its
-# runtime dep (with-ledger-lock.sh) into a sibling lib dir so the
-# ${BASH_SOURCE[0]}-relative source resolves, and seed the plans ledger
-# explicitly.
+# runtime deps (with-ledger-lock.sh, ledger-path-lib.sh, main-root-lib.sh)
+# into a sibling lib dir so the ${BASH_SOURCE[0]}-relative source resolves,
+# `git init` the sandbox so plan-ledger-update.sh's main-checkout resolver
+# (gaia_resolve_plans_dir) has a real repository to resolve against, and seed
+# the plans ledger explicitly.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   SRC_LIB="$REPO_ROOT/.specify/extensions/gaia/lib"
+  SRC_SCRIPTS="$REPO_ROOT/.gaia/scripts"
   [ -x "$SRC_LIB/plan-ledger-update.sh" ] || skip "plan-ledger-update.sh not executable"
 
   SANDBOX_RAW="$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")"
   SANDBOX="$(cd "$SANDBOX_RAW" && pwd -P)"
 
+  git -C "$SANDBOX" init --quiet --initial-branch=main
+
   mkdir -p "$SANDBOX/.specify/extensions/gaia/lib"
   cp "$SRC_LIB/plan-ledger-update.sh" "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh"
   cp "$SRC_LIB/with-ledger-lock.sh" "$SANDBOX/.specify/extensions/gaia/lib/with-ledger-lock.sh"
+
+  mkdir -p "$SANDBOX/.gaia/scripts"
+  cp "$SRC_SCRIPTS/ledger-path-lib.sh" "$SANDBOX/.gaia/scripts/ledger-path-lib.sh"
+  cp "$SRC_SCRIPTS/main-root-lib.sh" "$SANDBOX/.gaia/scripts/main-root-lib.sh"
 
   mkdir -p "$SANDBOX/.gaia/local/plans"
   cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'

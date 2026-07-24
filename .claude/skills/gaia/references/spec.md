@@ -68,6 +68,8 @@ There is no `on_save` event. The `/gaia-plan` handoff lives inline at the end of
 
 Used by multiple steps below. Defined once here to keep step-level prose tight.
 
+Every ledger and lock library this skill invokes (`spec-session-lock.sh`, `spec-reconcile.sh`, the `spec-archive-*` / `spec-abandon-empty` sweeps, `spec-allocator.sh`, `ledger-update.sh`) takes the current tree as its `$PWD` operand and resolves the main checkout itself before touching `.gaia/local/specs`, so `$PWD` honestly names the running tree and the caller never resolves main for these calls. Step 9's SPEC-artifact writes are the one exception: they build a `.gaia/local/specs` path directly rather than handing it to a library, so they anchor to main explicitly.
+
 ### Session-shape cache (`spec-session-<spec_id>.json`)
 
 Tracks `start_at` and `question_count` across the multi-step flow. `question_count` enforces the Socratic question ceiling across a pause and resume, the sole counter for that ceiling. The file lives at `.gaia/local/cache/spec-session-<spec_id>.json`. Schema:
@@ -822,13 +824,14 @@ Only after gate-2 confirmation may you proceed to step 9.
 
 ### 9. Save to .gaia/local/specs/SPEC-NNN/SPEC.md
 
-Create the SPEC folder, then write the confirmed draft to its canonical inner file (using the `spec_id` allocated in step 3):
+Create the SPEC folder in the main checkout, then write the confirmed draft to its canonical inner file (using the `spec_id` allocated in step 3). The SPEC folder is main-anchored state (state registry `specs-main`), so a session inside a linked worktree writes the artifact where the ledger row (written to main by the anchored ledger libraries) indexes it:
 
 ```bash
-mkdir -p .gaia/local/specs/${SPEC_ID}
+MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+mkdir -p "${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"
 ```
 
-Write to `.gaia/local/specs/SPEC-NNN/SPEC.md`. This is the canonical save location, never anywhere else, never duplicate copies. The folder is the archival unit; sibling artifacts live beside `SPEC.md` in the same folder. A sibling's filename is the uppercased remainder of its flat form (`SPEC-NNN-<rest>.md` → `SPEC-NNN/<REST>.md`); any `SPEC-NNN-*` file is a sibling. `lib/spec-folderize.sh` applies this mapping for any legacy flat files.
+Write the confirmed draft to `SPEC.md` inside that folder, `${MAIN_ROOT}/.gaia/local/specs/SPEC-NNN/SPEC.md` (`MAIN_ROOT` from the resolver above). This is the canonical save location, never anywhere else, never duplicate copies. The folder is the archival unit; sibling artifacts live beside `SPEC.md` in the same folder. A sibling's filename is the uppercased remainder of its flat form (`SPEC-NNN-<rest>.md` → `SPEC-NNN/<REST>.md`); any `SPEC-NNN-*` file is a sibling. `lib/spec-folderize.sh` applies this mapping for any legacy flat files.
 
 Update the frontmatter `updated` field to today's date.
 
@@ -838,7 +841,11 @@ After the canonical write succeeds:
 2. **Update the ledger row:** flip the row in `.gaia/local/specs/ledger.json` from `status: draft` to `status: ready` and stamp the intent (the SPEC's `intent` field reduced to a full first sentence, or a word-safe bounded prefix + `...` when the first sentence runs long, via the shared title-normalize rule) for at-a-glance scanning. This is the finalize transition: the SPEC artifact is now frozen, so the authoring session is done and the allocator stops reporting it for resume-vs-start-new. Downstream (plan → implement → merge) owns the feature from here; the ledger's `merged` transition is reconciled from git by `spec-reconcile.sh`, not set here. Failure is non-blocking, log to stderr and continue. The remote `spec/*` tags are the cross-team allocation authority; `.gaia/local/specs/ledger.json` is a per-machine local cache; the SPEC artifact and git history remain authoritative.
 
 ```bash
-SPEC_PATH=".gaia/local/specs/${SPEC_ID}/SPEC.md"
+# SPEC.md lives in the main checkout (saved above); read it back from there.
+# ledger-update.sh below keeps its $PWD operand: it resolves main itself (see
+# Operational primitives), so only this directly-built read path anchors to main.
+MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+SPEC_PATH="${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}/SPEC.md"
 INTENT_RAW=$(awk '
   /^intent:[[:space:]]*\|/ { in_block=1; next }
   /^intent:[[:space:]]*[^|[:space:]]/ {
@@ -861,10 +868,14 @@ bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
 4. **Token tally (never blocks):** tally the session's ground-truth token cost and record it. `${SPEC_ID}`'s folder already exists from the canonical save, so the `cost.json` sidecar (the `spec` record) lands beside `SPEC.md`. This call never blocks or fails the save; on unreadable input it degrades to a partial figure with a marker, never a fabricated number.
 
 ```bash
+# cost.json is the SPEC folder's sidecar, so --out-dir must be the main-anchored
+# folder (token-tally writes the sidecar to --out-dir verbatim; only its ledger
+# resolves main on its own).
+MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
 bash .gaia/scripts/token-tally.sh \
   --action spec \
   --spec-id "$SPEC_ID" \
-  --out-dir ".gaia/local/specs/${SPEC_ID}" || true
+  --out-dir "${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}" || true
 ```
 
 The helper reads `CLAUDE_CODE_SESSION_ID` from the environment, sums `message.usage` across the main transcript and every sub-agent sidecar (deduped to ground truth), appends one record keyed to `SPEC_ID` to the durable ledger (`.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout so a worktree run still records there), writes the `cost.json` sidecar (the `spec` record) into the SPEC folder, and prints the four-bucket tally, total, and elapsed time. The dollar cost it computes lands in the ledger and the `cost.json` sidecar, not in that printed block. Do not restate the four-bucket block to the user; instead report the cost as exactly one line: `Cost: ~<total> tokens, $<dollars>, <elapsed>`. Take `<total>` (the total token count abbreviated to millions with one decimal and a `~` prefix, e.g. `~2.4M`) and `<elapsed>` (the helper's own `<N>h<M>m<S>s` figure) from the printed tally, and read `<dollars>` (formatted `$X.XX`) from the `dollars` field of the `spec` record in `.gaia/local/specs/${SPEC_ID}/cost.json`. Never fabricate: if `dollars` is null or unpriced write `cost unavailable` in its place; if elapsed is unavailable drop that term; if the figure is a partial lower bound append ` (partial: lower bound)`. This line reads identically to the `/gaia-plan` cost line (plan reference, step 5) and the orchestrator's full-cycle line; keep the three in sync. This same call reads and deletes the step-7 audit-window breadcrumb (`.gaia/local/cache/audit-window-<spec_id>.json`) if present, nesting an `audit.adversarial` annotation into this `spec` record when the window resolves; the step-9.1 `rm -rf .gaia/local/cache/audit-<spec_id>/` above does not touch this breadcrumb, since it lives outside that directory.

@@ -37,12 +37,22 @@ if [ "$#" -lt 1 ]; then
 fi
 
 repo_root="${1%/}"
-ledger_path="${repo_root}/.gaia/local/specs/ledger.json"
-specs_dir="${repo_root}/.gaia/local/specs"
 cache_dir="${repo_root}/.gaia/local/cache"
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
 GUARD_AGE_SECONDS=86400
+
+# repo_root names the tree this sweep runs in; the ledger it sweeps is
+# main's, because the state registry declares specs/ main-only. Best-effort
+# by contract: an unresolvable main is one diagnostic and exit 0, nothing
+# touched.
+if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+  echo "spec-abandon-empty: cannot resolve the main checkout for '$repo_root'; nothing swept" >&2
+  exit 0
+fi
+ledger_path="${specs_dir}/ledger.json"
 
 # No ledger or no jq → nothing to do.
 [ -f "$ledger_path" ] || exit 0

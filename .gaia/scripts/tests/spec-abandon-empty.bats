@@ -11,12 +11,19 @@
 
 setup() {
   LIB_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.specify/extensions/gaia/lib" && pwd)"
+  REPO_SCRIPTS="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.gaia/scripts" && pwd)"
   SCRIPT="$LIB_DIR/spec-abandon-empty.sh"
   LEDGER_UPDATE="$LIB_DIR/ledger-update.sh"
   [ -x "$SCRIPT" ] || skip "spec-abandon-empty.sh not executable"
 
   SANDBOX="$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")"
-  mkdir -p "$SANDBOX/.gaia/local/specs" "$SANDBOX/.gaia/local/cache"
+  mkdir -p "$SANDBOX/.gaia/local/specs" "$SANDBOX/.gaia/local/cache" "$SANDBOX/.gaia/scripts"
+  # The scripts under test now resolve the main checkout via
+  # ledger-path-lib.sh/main-root-lib.sh, which requires a real git repo
+  # (fail-closed, no operand fallback); a plain mktemp -d is not one.
+  git -C "$SANDBOX" init --quiet --initial-branch=main
+  cp "$REPO_SCRIPTS/ledger-path-lib.sh" "$REPO_SCRIPTS/main-root-lib.sh" "$SANDBOX/.gaia/scripts/"
+  chmod +x "$SANDBOX/.gaia/scripts/ledger-path-lib.sh" "$SANDBOX/.gaia/scripts/main-root-lib.sh"
   LEDGER="$SANDBOX/.gaia/local/specs/ledger.json"
 }
 

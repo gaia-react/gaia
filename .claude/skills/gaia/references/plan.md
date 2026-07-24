@@ -21,7 +21,9 @@ Check the description for a SPEC reference. Three forms are recognized:
 If any form matched, extract the `SPEC-\d+` id from wherever it appeared (the bare token, the path segment, or the text before the colon), then resolve it against the actual filesystem, self-healing a zero-padding mismatch (e.g. `SPEC-026` also resolves from the bare `SPEC-26`):
 
 ```bash
-ROOT="$(git rev-parse --show-toplevel)"
+# Main checkout root: SPEC folders are main-anchored state (state registry
+# specs-main), reachable from a linked worktree only through main.
+ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
 RAW="<the SPEC-\d+ id extracted above, e.g. SPEC-026 or SPEC-26>"
 NUM="${RAW#SPEC-}"
 PADDED="SPEC-$(printf '%03d' "$((10#$NUM))")"
@@ -73,7 +75,10 @@ This decision governs the **planner** only. The plan's **execution** sub-agents 
 Resolve the absolute plan directory, then create it. The spec-derived arm suffixes `-2`, `-3`, … if a colocated plan folder already exists; the spec-less arm allocates a fresh `PLAN-NNN`, so it never collides:
 
 ```bash
-ROOT="$(git rev-parse --show-toplevel)"
+# Main checkout root: plan and SPEC folders are main-anchored state (state
+# registry plans-main / specs-main), so PLAN_DIR and the allocator operand point
+# at main even when /gaia-plan runs from a linked worktree.
+ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
 if [[ -n "${SPEC_PATH:-}" ]]; then
   # Spec-derived: colocate the plan inside its SPEC folder.
   SPEC_DIR="$(dirname "$SPEC_PATH")"          # .../.gaia/local/specs/SPEC-NNN

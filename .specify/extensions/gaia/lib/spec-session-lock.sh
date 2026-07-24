@@ -81,12 +81,18 @@
 # --- Subcommand contract ---
 #
 # Executable script, sibling of spec-allocator.sh / spec-abandon-empty.sh.
-# Best-effort / fail-open by contract: except for acquire's one meaningful
-# non-zero code (3), every path exits 0 and never blocks a caller.
+# Best-effort / fail-open by contract: except for acquire's two meaningful
+# non-zero codes (3, 4), every path exits 0 and never blocks a caller.
 #
-# Lock file path: <repo_root>/.gaia/local/cache/spec-session-<spec_id>.lock
-#   (the `.lock` extension is load-bearing: it must never false-match the
-#   existing spec-session-<spec_id>.json session-shape cache.)
+# Lock file path: <main_root>/.gaia/local/cache/spec-session-<spec_id>.lock,
+#   where main_root is resolved from <repo_root> via the shared main-root
+#   resolver. Deliberately anchored to main, not to repo_root directly: once
+#   the SPEC ledger and folder resolve to one main checkout, two worktrees can
+#   genuinely author the same draft, and a per-tree lock cannot see a peer
+#   tree's holder. Anchoring to main makes the mutex reachable from every tree
+#   of the repository (the `.lock` extension is load-bearing: it must never
+#   false-match the existing spec-session-<spec_id>.json session-shape cache,
+#   which stays per-tree).
 #
 # Lock file body (single jq-readable JSON object):
 #   {
@@ -143,6 +149,10 @@
 #       reclaim: force-remove + create, exit 0). Dormant / stale / error ->
 #       reclaim (remove + create), exit 0. Host unresolvable -> warn to stderr,
 #       write NO lock, exit 0 (accepted fail-open-to-"always dormant" degrade).
+#       Main checkout unresolvable -> warn to stderr, write NO lock, refuse,
+#       exit 4 (a lock that cannot establish where it belongs must not pretend
+#       to hold -- distinct from the host-unresolvable degrade above, which
+#       still knows where to write, just not who holds it).
 #   status
 #       Print exactly one verdict word -- live | dormant | error -- exit 0
 #       always, empty stderr on normal paths. Does NOT mutate the lock.
@@ -216,14 +226,15 @@
 #
 # Exit: resolve-host/match-host return non-zero ONLY to signal "no match / no
 # host found". status/release always exit 0. acquire exits 0 on every path
-# except a live-foreign lock without --override, which exits 3. No path here
-# crashes a caller.
+# except a live-foreign lock without --override (3) or an unresolvable main
+# checkout (4). No path here crashes a caller.
 set -uo pipefail
 
-# Resolve own dir (the sibling-lib preamble convention keeps it here; reserved
-# for a future sibling-script call, unused by acquire/status/release below).
-# shellcheck disable=SC2034
+# Resolve own dir so main-root-lib.sh loads identically from the real repo and
+# from test copies of the lib dir (no hardcoded repo path).
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../../.gaia/scripts/main-root-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || true
 
 # Pinned default Claude-CLI host-match ERE. See the header for the anchor
 # rationale and the `.claude/` false-match trap. Single-quoted on purpose: the
@@ -284,11 +295,21 @@ _resolve_host() {
   return 1
 }
 
-# _lock_path <repo_root> <spec_id>: the frozen lock-file location. The `.lock`
-# extension is load-bearing -- see the header note on never false-matching the
-# existing spec-session-<spec_id>.json session-shape cache.
+# _lock_path <repo_root> <spec_id>: the frozen lock-file location, anchored to
+# main (see the header note): a per-tree lock cannot see a peer worktree's
+# holder once the draft it guards resolves to one main checkout, so the mutex
+# has to live where every tree can reach it. Prints nothing and returns 1 when
+# main is unresolvable, rather than falling back to repo_root -- that fallback
+# is the exact per-tree-lock defect this anchoring removes. A caller that must
+# not proceed without a lock location checks this explicitly (_acquire);
+# best-effort callers (status/release) accept the resulting empty path as "no
+# lock file", which reads safely as absent. The `.lock` extension is itself
+# load-bearing -- see the header note on never false-matching the existing
+# spec-session-<spec_id>.json session-shape cache.
 _lock_path() {
-  printf '%s/.gaia/local/cache/spec-session-%s.lock' "${1%/}" "$2"
+  local main_root
+  main_root="$(gaia_resolve_main_root "$1")" || return 1
+  printf '%s/.gaia/local/cache/spec-session-%s.lock' "$main_root" "$2"
 }
 
 # _generate_nonce: a per-call fallback host_nonce when no stable
@@ -427,7 +448,10 @@ _acquire() {
   fi
   local repo_root="$1" spec_id="$2"
   local lockfile
-  lockfile="$(_lock_path "$repo_root" "$spec_id")"
+  if ! lockfile="$(_lock_path "$repo_root" "$spec_id")" || [ -z "$lockfile" ]; then
+    echo "spec-session-lock: cannot resolve the main checkout for '$repo_root'; refuse to acquire (a lock that cannot establish where it belongs must not pretend to hold)" >&2
+    return 4
+  fi
 
   command -v jq >/dev/null 2>&1 || {
     echo "spec-session-lock: jq not found; skipping acquire (fail-open)" >&2

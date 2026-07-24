@@ -25,14 +25,18 @@
 # overridden GAIA_SPEC_LOCK_HOST_PATTERN matches the fake host's argv so no real
 # `claude` process is required.
 #
-# Cases 7+ (the liveness-lock helper: acquire/status/release) use a plain
-# `<repo_root>` = $BATS_TEST_TMPDIR, needing no git fixture either. `status`
-# cases stamp a lock file directly with `jq -n` and drive liveness with a
-# plain backgrounded `sleep` (a real controllable pid + its real
-# `ps -o lstart=`); `acquire` cases reuse `_spawn_fake_host` above so the walk
-# resolves to a controllable process, never a real `claude` ancestor. Every
-# call site in this file is kept free of a bare `claude` word in the same
-# shell command line -- belt-and-suspenders atop the snapshot-wrapper
+# Cases 7+ (the liveness-lock helper: acquire/status/release) use
+# `<repo_root>` = $BATS_TEST_TMPDIR, `git init`ed in setup(): the lock file is
+# main-anchored, so acquiring it needs a resolvable git checkout, which it did
+# not before -- a real narrowing of the library's accepted input, not a
+# fixture workaround. A standalone, non-worktree init is its own main root, so
+# the fixture's own `_lock_file_path` prediction stays exactly the path the
+# script resolves to. `status` cases stamp a lock file directly with `jq -n`
+# and drive liveness with a plain backgrounded `sleep` (a real controllable
+# pid + its real `ps -o lstart=`); `acquire` cases reuse `_spawn_fake_host`
+# above so the walk resolves to a controllable process, never a real `claude`
+# ancestor. Every call site in this file is kept free of a bare `claude` word
+# in the same shell command line -- belt-and-suspenders atop the snapshot-wrapper
 # exclusion in the script itself, so this suite can never accidentally walk to
 # a real Claude Code host process running this very session.
 #
@@ -54,9 +58,11 @@ setup() {
   }
   # The overridden pattern cases 2-3 match against the spawned fixture's argv.
   FAKE_PATTERN='(^|/)bats-fake-host([[:space:]]|$)'
-  # Fixture repo root for the acquire/status/release cases (7+); no git
-  # fixture needed, just a plain directory the helper can mkdir -p under.
+  # Fixture repo root for the acquire/status/release cases (7+). The lock
+  # file is main-anchored, so this must be a real, resolvable git checkout --
+  # a plain directory reads as an unresolvable main root and acquire refuses.
   REPO="$BATS_TEST_TMPDIR"
+  git init --quiet "$REPO"
   # Space-separated extra pids the liveness-lock cases spawn (beyond GC/HOST),
   # reaped by teardown below.
   EXTRA_PIDS=""

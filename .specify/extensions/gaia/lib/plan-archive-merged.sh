@@ -94,8 +94,6 @@ fi
 
 repo_root="${args[0]%/}"
 filter_id="${args[1]:-}"
-ledger_path="${repo_root}/.gaia/local/plans/ledger.json"
-plans_dir="${repo_root}/.gaia/local/plans"
 cache_dir="${repo_root}/.gaia/local/cache/wiki-promote"
 
 # Retention knob, read once: a non-numeric override falls back to the default.
@@ -134,15 +132,31 @@ _consolidation_gate_pass() {
   [ -s "$summary" ]
 }
 
-# No ledger or no jq → nothing to do. (No git needed for the delete itself:
-# plans are local/gitignored, so it is a plain filesystem rm, never a git op.)
-[ -f "$ledger_path" ] || exit 0
+# No jq -> nothing to do (checked first: cheap, and every other gate needs it).
 command -v jq >/dev/null 2>&1 || exit 0
 
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../../../.gaia/scripts/cost-represented.sh
 . "${repo_root}/.gaia/scripts/cost-represented.sh" 2>/dev/null || true
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${repo_root}/.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+
+# repo_root names the tree this sweep runs in; the ledger and plan folders it
+# reads are main's, because the state registry declares plans/ main-only.
+# Resolve rather than trust a per-tree fallback: best-effort sweep, so an
+# unresolvable main root is one stderr diagnostic and exit 0 (this script's
+# own fail-open contract), never a silent fallback to the unresolved operand
+# -- that fallback is the forked-ledger defect this task removes. Resolving
+# still needs git; the delete itself remains a plain filesystem rm, never a
+# git op (plans are local/gitignored).
+if ! plans_dir="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_dir" ]; then
+  echo "plan-archive-merged: cannot resolve the main checkout for '$repo_root'; skipping sweep" >&2
+  exit 0
+fi
+ledger_path="${plans_dir}/ledger.json"
+
+# No ledger -> nothing to do.
+[ -f "$ledger_path" ] || exit 0
 
 # Resolve the main-checkout cost ledger from repo_root's own git identity,
 # never the caller's cwd (a subshell cd keeps this script's cwd unchanged).
