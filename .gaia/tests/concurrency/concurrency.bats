@@ -482,22 +482,98 @@ JS
 
 @test "C4-06: per-tree state survives the cutover" {
   MAIN="$(gaia_new_main gaia-c406-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .gaia/scripts/link-worktree.sh \
+    .claude/hooks/lib/red-ledger.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add link-worktree deps"
+
   A="$(gaia_add_worktree "$MAIN" treeA treeA)"
   B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$A"
+  gaia_link_worktree "$B"
 
-  mkdir -p "$A/.gaia/local/red-ledger" "$B/.gaia/local/red-ledger"
-  echo '{"tree":"treeA","observation":"red-a"}' > "$A/.gaia/local/red-ledger/observations.jsonl"
-  echo '{"tree":"treeB","observation":"red-b"}' > "$B/.gaia/local/red-ledger/observations.jsonl"
+  # WHY the RED ledger is not symlinked, asked of the shipped code rather than
+  # asserted by hand: the registry classifies it per-tree, and the linker's own
+  # shared-set function is the single thing that decides what gets a symlink. A
+  # registry entry that started calling it shared -- the precise Phase-6
+  # cutover risk this scenario guards -- fails here rather than silently
+  # sharing the ledger.
+  classify="$(run_in "$A" -- bash -c \
+    '. .gaia/scripts/state-registry-lib.sh; gaia_registry_classify red-ledger/observations.jsonl' 2>/dev/null)"
+  [ "$classify" = "per-tree" ]
 
-  # red-ledger/ is NOT among link-worktree.sh's five shared paths (state
-  # registry scope "per-tree"), so it is never symlinked: each tree keeps a
-  # genuinely separate, physical copy. This is the regression guard the meter
-  # names already-green: it must STAY isolated after the single-symlink
-  # cutover -- tree A's observation never resolves into main's one path and
-  # never blocks tree B's commit.
-  grep -qF 'red-b' "$A/.gaia/local/red-ledger/observations.jsonl" && return 1
-  grep -qF 'red-a' "$B/.gaia/local/red-ledger/observations.jsonl" && return 1
-  [ ! -e "$MAIN/.gaia/local/red-ledger/observations.jsonl" ]
+  linkable="$(run_in "$A" -- bash -c \
+    '. .gaia/scripts/state-registry-lib.sh; gaia_registry_linkable_paths' 2>/dev/null)"
+  [ -n "$linkable" ]
+  grep -qxF red-ledger <<<"$linkable" && return 1
+
+  # Positive control on the linker itself. link-worktree.sh always exits 0 by
+  # contract (a broken hook must not break worktree creation), so a run that
+  # linked NOTHING -- unreadable registry, no symlink permission -- would leave
+  # red-ledger/ unlinked too and every isolation check below would pass for the
+  # wrong reason. Assert that shared state really is shared: the first
+  # directory the registry names shared resolves, from both trees, to main's
+  # one copy. Stated as resolution rather than as "is a symlink" so it holds
+  # under today's per-entry links AND after the single-symlink cutover, which
+  # keeps the control from forcing Phase 6 to weaken this scenario.
+  first_shared=""
+  while IFS= read -r shared_path; do
+    [ -n "$shared_path" ] || continue
+    if [ -d "$MAIN/.gaia/local/$shared_path" ]; then
+      first_shared="$shared_path"
+      break
+    fi
+  done <<<"$linkable"
+  [ -n "$first_shared" ]
+  MAIN_SHARED="$(cd "$MAIN/.gaia/local/$first_shared" && pwd -P)"
+  [ "$(cd "$A/.gaia/local/$first_shared" && pwd -P)" = "$MAIN_SHARED" ]
+  [ "$(cd "$B/.gaia/local/$first_shared" && pwd -P)" = "$MAIN_SHARED" ]
+
+  # No shared-state symlink exists for the per-tree entry in either tree. This
+  # is the mechanism check for TODAY's per-entry linking; the physical-path
+  # checks further down are what carry the guarantee across the cutover.
+  [ -L "$A/.gaia/local/red-ledger" ] && return 1
+  [ -L "$B/.gaia/local/red-ledger" ] && return 1
+
+  # The shipped path function decides where each tree's ledger lives -- the
+  # capture hook and the commit gate both address it through this one function
+  # -- so the fixture asks GAIA where to write instead of hand-building a path.
+  LEDGER_A="$(run_in "$A" -- bash -c '. .claude/hooks/lib/red-ledger.sh; red_ledger_path')"
+  LEDGER_B="$(run_in "$B" -- bash -c '. .claude/hooks/lib/red-ledger.sh; red_ledger_path')"
+  [ -n "$LEDGER_A" ]
+  [ -n "$LEDGER_B" ]
+
+  mkdir -p "$(dirname "$LEDGER_A")" "$(dirname "$LEDGER_B")"
+  printf '%s\n' '{"tree":"treeA","observation":"red-a"}' > "$LEDGER_A"
+  printf '%s\n' '{"tree":"treeB","observation":"red-b"}' > "$LEDGER_B"
+
+  # The half that still holds AFTER the cutover, and the reason this scenario
+  # is the named cutover guard. Once .gaia/local is ITSELF one symlink to main,
+  # red-ledger/ stays a plain directory while resolving inside main, so the -L
+  # checks above stop being sufficient on their own. Physical resolution is
+  # what catches that: the two ledgers must sit in different real directories,
+  # and neither in main's.
+  PHYS_A="$(cd "$(dirname "$LEDGER_A")" && pwd -P)"
+  PHYS_B="$(cd "$(dirname "$LEDGER_B")" && pwd -P)"
+  [ "$PHYS_A" != "$PHYS_B" ]
+  [ "$PHYS_A" != "$MAIN/.gaia/local/red-ledger" ]
+  [ "$PHYS_B" != "$MAIN/.gaia/local/red-ledger" ]
+
+  # Each tree's own observation is still there (a write that landed elsewhere,
+  # or that the peer overwrote, fails here -- an absence check alone would pass
+  # vacuously over an empty file), and neither ledger carries the other's.
+  grep -qF red-a "$LEDGER_A"
+  grep -qF red-b "$LEDGER_B"
+  grep -qF red-b "$LEDGER_A" && return 1
+  grep -qF red-a "$LEDGER_B" && return 1
+
+  if [ -e "$MAIN/.gaia/local/red-ledger/observations.jsonl" ]; then
+    echo "a per-tree RED observation resolved into main's copy" >&2
+    return 1
+  fi
 }
 
 # ---------------------------------------------------------------------------

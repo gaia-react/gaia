@@ -125,7 +125,7 @@ the claim the program exists to make verifiable.
 | **C4-03** | PR-artifact capture is per branch | simulated | 4.2 gh-artifact | With the GitHub PR/merge round-trip stood in by fixtures, the PR-artifact capture is keyed per branch, so tree A's captured artifact is never posted into tree B's PR. Marked simulated: the PR side is GitHub-side and not run live in CI. |
 | **C4-04** | worthiness ledger is per tree | direct | 4.3 worthiness | Tree A's worthiness observation is addressed under A's tree key and is neither read nor overwritten by tree B; the ledger is per-tree, matching its RED sibling, not shared under `audit/`. |
 | **C4-05** | SPEC/plan locks serialize across worktrees | direct | 4.4 locks | Two worktrees each acquiring the SPEC (or plan) ledger lock, anchored to main, serialize: concurrent number allocations do not both mint the same id, and the second waits rather than racing. |
-| **C4-06** | per-tree state survives the cutover *(regression guard, green now)* | direct | 4 cutover | The RED ledger — correctly per-tree today — stays isolated after the single-symlink flip: tree A's RED observation never resolves into main's one path and never blocks tree B's commit. Guards the cutover risk that a not-yet-re-keyed per-tree writer bleeds into main. |
+| **C4-06** | per-tree state survives the cutover *(regression guard, green now)* | direct | 4 cutover | The RED ledger — correctly per-tree today — stays isolated after the single-symlink flip: tree A's RED observation never resolves into main's one path and never blocks tree B's commit. Guards the cutover risk that a not-yet-re-keyed per-tree writer bleeds into main. (Mechanism made real, and one clause named as not measured; see [Published assertion changes](#published-assertion-changes).) |
 
 ### Tranche 5 — SURFACE (green when a channel fires correctly or refuses out loud)
 
@@ -243,6 +243,56 @@ directions, not only the one originally checked); and the old shared location
 receives nothing at all in either tree. The assertion is strictly stronger than
 before.
 
+### C4-06: the assertion did not move; the scenario went from asserting nothing to driving GAIA
+
+**It ran no GAIA code at all.** It created two `red-ledger/` directories itself, in two
+separate `git worktree add` checkouts, wrote one line into each, and asserted that each
+lacked the other's line. All of that is true by construction of `git worktree add`,
+whatever the registry and the linker do. Its own comment claimed `red-ledger/` "is never
+symlinked", an affirmative claim about `link-worktree.sh` that the test never checked.
+Because this is the **designated cutover guard**, that made it false safety on precisely
+the class it exists to protect, and it was counted among the [green-at-freeze](#green-at-freeze)
+six under a stated claim that none of them is vacuous.
+
+**No assertion text changed.** What changed is that every step now asks GAIA. The fixture
+copies in the real state registry, the real `link-worktree.sh`, the real main/tree
+resolver and the RED ledger's own path lib, runs the real linker in both worktrees, and
+then: asks the registry what scope `red-ledger/` carries; asks the linker's own shared-set
+function whether it names `red-ledger`; and asks the shipped `red_ledger_path` where each
+tree's ledger belongs, rather than hand-building the path.
+
+**Two things were added that the filed repair did not name, both inside the frozen
+assertion rather than beyond it.** First, a **positive control on the linker**:
+`link-worktree.sh` always exits 0 by contract, so a run that linked nothing at all would
+leave `red-ledger/` unlinked too and the isolation checks would pass for the wrong reason.
+The control asserts that shared state really is shared: the first shared directory the
+registry names resolves, from both trees, to main's one copy. It is stated as *resolution*
+rather than as "is a symlink" so that it still holds after the single-symlink cutover, and
+so Phase 6 is never pushed to weaken this scenario to land. Second, a **physical-path
+comparison** of the two ledgers. Once `.gaia/local` is itself one symlink to main,
+`red-ledger/` stays a plain directory while resolving inside main, so a symlink check
+alone would have gone on reading green straight through the flip it was written to catch,
+a repaired-but-shallow guard failing the same way the original did.
+
+**The reading does not move: 16 / 21 before and after, with `C4-06` green both times.**
+That is the honest outcome for a repair to a scenario that was already (falsely) green, and
+it is not "no change": the same green is now backed by GAIA's code instead of by the
+fixture's own `mkdir`. Non-vacuity is proven by three mutations, each red at the intended
+assertion: replacing each worktree's `.gaia/local` with a single symlink to main (the
+Phase-6 cutover, simulated) reds at the physical-path comparison; reclassifying
+`red-ledger/` as `shared` in the registry reds at the scope check; and a linker that links
+nothing reds at the positive control. Both mutated shipped files were restored and verified
+byte-identical by checksum.
+
+**One clause of the frozen assertion is deliberately not measured, and saying so is the
+point.** "Never blocks tree B's commit" names the consequence, and driving the real commit
+gate here would have *passed under the very bleed this scenario guards*: the ledger writer
+appends, so a shared ledger still holds tree B's own RED and B's commit is allowed. It
+would have added a second false green inside the repaired scenario. The genuine cross-tree
+harm at that gate is the inverse (tree A's RED satisfying tree B's demand for a test B
+never ran), which is a different scenario, and adding one to a frozen target of 21 is the
+maintainer's call, not a repair's.
+
 ---
 
 ## Green at freeze
@@ -254,7 +304,7 @@ exactly as a red one going green is progress; its owning phase must **preserve**
 
 | id | why it is green at freeze |
 |---|---|
-| **C4-06** | The designated cutover guard: the RED ledger is genuinely per-tree today (never symlinked), so it is already isolated. It must *stay* isolated across the single-symlink flip. |
+| **C4-06** | The designated cutover guard: the RED ledger is genuinely per-tree today (never symlinked), so it is already isolated. It must *stay* isolated across the single-symlink flip. **This row's "none is vacuous" claim did not hold for this scenario until its mechanism was made real; see [Published assertion changes](#published-assertion-changes).** |
 | **C5-04** | The debt-count refresher already dedupes across worktrees through its shared, TTL-gated cache, so this machine-scoped nudge is not mis-scoped today. Task 5.3/5.4 must not introduce mis-scoping. |
 | **C6-01** | Today's creation refuses to delete a peer it did not create. The Phase-6 move to harness-native creation must preserve that — the trial answered by trying it, not assumed. |
 | **C6-02** | The linker already self-heals a broken shared-state symlink on re-run. Phase-6.2 SessionStart provisioning must keep that self-heal. |
