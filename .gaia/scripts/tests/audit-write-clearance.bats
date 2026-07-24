@@ -6,7 +6,7 @@
 # The writer takes the audited working root as a REQUIRED argument, derives
 # the member's content digest from it via the digest engine
 # (.claude/hooks/lib/audit-digest.sh, never from CWD), writes atomically, and
-# records a versioned schema-3 body with a `provenance` field. It is NOT
+# records a versioned schema-4 body with a `provenance` field. It is NOT
 # evidence-gated: it takes no --report, calls no detector, and its body
 # carries no evidence block. Provenance is earned or refused only; there is no
 # carried family, no --anchor-tree, and every write lands unconditionally
@@ -98,19 +98,23 @@ member_digest() {
   [ -z "$leftover" ]
 }
 
-@test "earned body records the schema-3 fields, digest as validity key, no carried leftovers" {
+@test "earned body records the schema-4 fields, digest as validity key, no carried leftovers" {
   digest="$(member_digest "$ROOT" code-audit-frontend)"
   bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned >/dev/null
   marker="$AUDIT_DIR/${digest}.ok"
   [ -f "$marker" ]
   [ "$(jq -r .version "$marker")" = "1.6.1" ]
-  [ "$(jq -r .schema "$marker")" = "3" ]
+  [ "$(jq -r .schema "$marker")" = "4" ]
   [ "$(jq -r .member "$marker")" = "code-audit-frontend" ]
   [ "$(jq -r .provenance "$marker")" = "earned" ]
   [ "$(jq -r .digest "$marker")" = "$digest" ]
   [ "$(jq -r .sha "$marker")" = "$HEAD_SHA" ]
   [ "$(jq -r .tree "$marker")" = "$TREE" ]
+  # Two flags, two sidecars: `sidecar` answers "does this member file a findings
+  # sidecar" (every member does), `dispositions_sidecar` answers "does it file
+  # the out-of-scope disposition sidecar" (only the default member does).
   [ "$(jq -r .sidecar "$marker")" = "true" ]
+  [ "$(jq -r .dispositions_sidecar "$marker")" = "true" ]
   grep -qE '"audited_at":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"' "$marker"
   # No evidence block, no anchor_tree, no second sidecar pointer.
   [ "$(jq -r 'has("evidence")' "$marker")" = "false" ]
@@ -119,12 +123,56 @@ member_digest() {
   [ "$(jq -r 'has("anchor_tree")' "$marker")" = "false" ]
 }
 
-@test "a specialized member's earned sidecar flag is false" {
+@test "a specialized member's sidecar flag is TRUE: it files a findings sidecar too" {
+  # This field used to record false for every specialized member, which the
+  # store itself contradicts: most of the findings sidecars on disk belong to
+  # specialized members. Anything reasoning from it about whether a report
+  # exists was wrong for four of the five, and "no report" is exactly what makes
+  # a refusal look unrepairable.
   digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned >/dev/null
   marker="$AUDIT_DIR/${digest}.code-audit-maintainer-shell.ok"
   [ -f "$marker" ]
-  [ "$(jq -r .sidecar "$marker")" = "false" ]
+  [ "$(jq -r .sidecar "$marker")" = "true" ]
+  # The distinction the old single field was actually carrying survives under
+  # its own name: only the default member files a disposition sidecar.
+  [ "$(jq -r .dispositions_sidecar "$marker")" = "false" ]
+}
+
+@test "every member records sidecar true; only the default member records dispositions_sidecar true" {
+  for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node \
+           code-audit-github-workflows code-audit-maintainer-prose; do
+    out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned)"
+    [ "$(jq -r .sidecar "$out")" = "true" ]
+    if [ "$m" = "code-audit-frontend" ]; then
+      [ "$(jq -r .dispositions_sidecar "$out")" = "true" ]
+    else
+      [ "$(jq -r .dispositions_sidecar "$out")" = "false" ]
+    fi
+  done
+}
+
+@test "a refusal carries the same two flags as an earned marker" {
+  # A refusal is the case that matters most: its sidecar flag is what tells a
+  # reader a report exists to work from.
+  digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused >/dev/null
+  marker="$AUDIT_DIR/${digest}.code-audit-maintainer-shell.refused"
+  [ "$(jq -r .sidecar "$marker")" = "true" ]
+  [ "$(jq -r .dispositions_sidecar "$marker")" = "false" ]
+}
+
+@test "back-compat: a schema-3 body still validates through the shared reader" {
+  # The schema bump is informational; clearance_acceptable ignores the field, so
+  # a marker written under the previous contract is still acceptable and the
+  # gate's accept/reject behavior is unchanged by the bump.
+  digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
+  marker="$AUDIT_DIR/${digest}.code-audit-maintainer-shell.ok"
+  mkdir -p "$AUDIT_DIR"
+  printf '{"version":"1.6.1","schema":3,"member":"code-audit-maintainer-shell","provenance":"earned","digest":"%s","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","sha":"deadbeef","audited_at":"2026-01-01T00:00:00Z","sidecar":false}\n' \
+    "$digest" > "$marker"
+  run bash -c '. "$1"; clearance_acceptable "$2" "$3" "$4"' _ "$READER" "$marker" code-audit-maintainer-shell "$digest"
+  [ "$status" -eq 0 ]
 }
 
 # -----------------------------------------------------------------------------
@@ -288,7 +336,7 @@ member_digest() {
   out="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned)"
   [ "$out" = "$AUDIT_DIR/${digest}.ok" ]
   [ "$(jq -r .provenance "$AUDIT_DIR/${digest}.ok")" = "earned" ]
-  [ "$(jq -r .schema "$AUDIT_DIR/${digest}.ok")" = "3" ]
+  [ "$(jq -r .schema "$AUDIT_DIR/${digest}.ok")" = "4" ]
   [ "$(jq -r .digest "$AUDIT_DIR/${digest}.ok")" = "$digest" ]
 }
 
@@ -504,7 +552,7 @@ scrub_maintainer_only() {
   adopter_digest="$(member_digest "$ADOPTER" code-audit-frontend)"
   [ "$out" = "$ADOPTER/.gaia/local/audit/${adopter_digest}.ok" ]
   [ -f "$out" ]
-  [ "$(jq -r .schema "$out")" = "3" ]
+  [ "$(jq -r .schema "$out")" = "4" ]
   [ "$(jq -r .digest "$out")" = "$adopter_digest" ]
   [ "$(jq -r .member "$out")" = "code-audit-frontend" ]
 }

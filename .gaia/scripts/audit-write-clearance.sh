@@ -53,6 +53,12 @@
 #     the member's content digest cannot be derived, or when the body cannot be
 #     built (message on stderr) -- never a marker written keyed to an empty or
 #     partial digest, and never an empty or partial body published.
+#   - The body is schema 4. `schema` is informational: no reader validates it,
+#     and clearance_acceptable ignores it entirely, so a schema-3 body on disk
+#     still validates exactly as before. The bump records that `sidecar`'s
+#     meaning changed and that `dispositions_sidecar` joined it (see the two
+#     flags' derivation below), so someone diffing two markers can tell which
+#     contract each was written under.
 #   - jq is REQUIRED: it builds the body, so every value is escaped by
 #     construction. Absent jq the writer fails closed rather than emitting a
 #     hand-assembled body. The gate's reader requires jq for the same reason.
@@ -130,8 +136,14 @@ if [ -n "${_write_clearance_lib_dir:-}" ] && [ -f "$_write_clearance_lib_dir/aud
 fi
 
 # The ledger's key rule, shared with every other worktree-partitioned artifact.
-# shellcheck source=/dev/null
-. "$(dirname "${BASH_SOURCE[0]}")/audit-key-lib.sh"
+# Sourced defensively, exactly as the digest engine above is: the marker write
+# is this script's job and the ledger is a rider, so a missing key lib must
+# degrade to "no ledger", never to a failed or noisy clearance write.
+_write_clearance_script_dir="$(dirname "${BASH_SOURCE[0]}")"
+if [ -f "${_write_clearance_script_dir}/audit-key-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "${_write_clearance_script_dir}/audit-key-lib.sh"
+fi
 
 ROOT=""
 MEMBER=""
@@ -258,12 +270,28 @@ if [ -f "$version_file" ]; then
   version="${version%"${version##*[![:space:]]}"}"
 fi
 
-# sidecar is true only for the default member (the only member that files a
-# disposition sidecar). Derived from the member name; no CLI flag for it.
+# Two sidecar flags, because there are two sidecars and one field cannot answer
+# for both. Derived from the member name; no CLI flag for either.
+#
+#   sidecar               does this member file a FINDINGS sidecar, its report
+#                         of record? Every member does, so this is always true.
+#                         It used to be true only for the default member, which
+#                         was contradicted by the store itself: most of the
+#                         findings sidecars on disk belong to specialized
+#                         members. Anything reasoning from this field about
+#                         whether a report exists was therefore wrong for four
+#                         of the five members, and a wrong answer here reads as
+#                         "this refusal has no report", which is the state that
+#                         makes a refusal look unrepairable.
+#   dispositions_sidecar  does this member file the out-of-scope DISPOSITION
+#                         sidecar the merge gate's backstop reads? Only the
+#                         default member does. This is the distinction the old
+#                         single field was actually carrying.
+sidecar="true"
 if [ "$MEMBER" = "$DEFAULT_MEMBER" ]; then
-  sidecar="true"
+  dispositions_sidecar="true"
 else
-  sidecar="false"
+  dispositions_sidecar="false"
 fi
 
 audited_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -317,7 +345,7 @@ fi
 # consumers read. A jq failure must not publish an empty or partial marker.
 jq -cn \
   --arg version "$version" \
-  --argjson schema 3 \
+  --argjson schema 4 \
   --arg member "$MEMBER" \
   --arg provenance "$PROVENANCE" \
   --arg digest "$digest" \
@@ -325,11 +353,13 @@ jq -cn \
   --arg sha "$sha" \
   --arg audited_at "$audited_at" \
   --argjson sidecar "$sidecar" \
+  --argjson dispositions_sidecar "$dispositions_sidecar" \
   --argjson do_supersede "$do_supersede" \
   --arg supersede_reason "$SUPERSEDE_REASON" \
   '{version: $version, schema: $schema, member: $member,
     provenance: $provenance, digest: $digest, tree: $tree, sha: $sha,
-    audited_at: $audited_at, sidecar: $sidecar}
+    audited_at: $audited_at, sidecar: $sidecar,
+    dispositions_sidecar: $dispositions_sidecar}
    + (if $do_supersede
       then {supersedes: {provenance: "refused", reason: $supersede_reason,
                          superseded_at: $audited_at}}
@@ -376,7 +406,10 @@ fi
 # -----------------------------------------------------------------------------
 
 if [ -n "$BASE" ]; then
-  LEDGER_TAG="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
+  LEDGER_TAG=""
+  if command -v gaia_audit_key >/dev/null 2>&1; then
+    LEDGER_TAG="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
+  fi
   if [ -z "$LEDGER_TAG" ]; then
     err "warning: --base given but the audit key does not resolve; no ledger written"
   else
