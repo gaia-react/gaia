@@ -261,6 +261,38 @@ assert_allowed() {
   assert_denied
 }
 
+# A segmented secret has the same structure a placeholder does, so the operand
+# arm requires an EMPTY operand rather than a short one: a default value is
+# exactly where a real secret lands, and a UUID clears any per-segment bound.
+
+@test "a segmented secret inside an expansion default is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${API_KEY:-550e8400-e29b-41d4-a716-446655440000}')"
+  assert_denied
+}
+
+@test "an expansion followed by a non-path literal is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${X}550e8400-e29b-41d4-a716-446655440000')"
+  assert_denied
+}
+
+# A variable reference inside a command-substitution body must not buy the
+# value an expansion arm: that would re-open the very splice the `$(…)` arm
+# exists to close.
+
+@test "a substitution whose body references a variable is still spliced, so denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$(echo ${X})550e8400-e29b-41d4-a716-446655440000')"
+  assert_denied
+}
+
+# The placeholder arms require a separator BETWEEN segments. Making it optional
+# would let one unbroken run be read as several short ones, which is the bound
+# defeating itself.
+
+@test "an unbroken run behind a placeholder prefix cannot be read as segments" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example550e8400e29b41d4a716446655440000')"
+  assert_denied
+}
+
 # Segmented placeholders pass at any length; an unbroken run does not. A length
 # cap gets both of these backwards, which is why the arms bound the segment.
 

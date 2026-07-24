@@ -283,7 +283,12 @@ fi
 # -----------------------------------------------------------------------------
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ -x "$resolver" ] && command -v clearance_member_cleared >/dev/null 2>&1; then
-  members="$(bash "$resolver" 2>/dev/null || true)"
+  # Run the resolver FROM the audited root, not merely by a path under it:
+  # it derives its own repo root from its working directory, so an ambient-cwd
+  # run resolves the main checkout's member set. Under worktree dispatch that
+  # set is usually empty, which would make this member-aware gate pass
+  # vacuously and let the first member through before any sibling cleared.
+  members="$( (cd "$repo_root" && bash "$resolver") 2>/dev/null || true)"
   pending=""
   while IFS= read -r m; do
     [ -n "$m" ] || continue

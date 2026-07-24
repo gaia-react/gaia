@@ -92,19 +92,25 @@ while IFS= read -r line; do
     continue
   fi
   # A shell declaration (`export FOO_KEY=…`) reaches this rule too, and those
-  # values are variable references far more often than dotenv literals are:
-  # `${VAR:-}`, `${1}`, `${ROOT}/dev.pem`. The braced arm above admits only a
-  # bare identifier, so every expansion carrying an operator, a positional, or a
-  # trailing path would deny. Allow a value that REFERENCES a variable and whose
-  # remaining literal text is not secret-shaped, judged by the same segment rule
-  # the placeholder arms use: one unbroken alphanumeric run of 13+ is the shape
-  # a key, token, or hash has and a path, flag, or word does not. This keeps
-  # `${API_KEY:-sk-live-9f3a1c4e8b7d2064}` denied, since the run is inside the
-  # value wherever it sits. It does not extend to `$(…)`, whose splices are a
-  # demonstrated bypass; a command substitution spliced onto literal text still
-  # denies above.
-  if grep -Eq '\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*' <<<"$val" &&
-    ! grep -Eq '[A-Za-z0-9]{13,}' <<<"$val"; then
+  # values are variable references far more often than dotenv literals are.
+  # The bare-identifier arm above admits none of the ordinary expansion forms,
+  # so these four whole-value shapes are allowed alongside it: a positional
+  # (`${1}`), an expansion whose operand is EMPTY (`${VAR:-}`, `${VAR:?}`), and
+  # an expansion followed by a path (`${ROOT}/dev.pem`).
+  #
+  # Each is anchored end to end, and the operand arm requires the operand to be
+  # empty rather than merely short: a default value is exactly where a real
+  # secret lands, and no shape test tells `${K:-550e8400-e29b-41d4-a716-…}`
+  # from a legitimate one, because a segmented secret has the same structure a
+  # placeholder does. The path arm requires the literal to open with `/` or `.`
+  # for the same reason: it admits a path suffix without admitting arbitrary
+  # trailing text, which is how a secret would ride along.
+  #
+  # These deliberately do NOT match a value containing `$(…)`. A reference
+  # inside a substitution body would otherwise re-open the splice bypass the
+  # `$(…)` arm above exists to close, since `$(echo ${X})<secret>` contains a
+  # reference like any other.
+  if grep -Eq '^\$\{[0-9]+\}$|^\$\{[A-Za-z_][A-Za-z0-9_]*:?[-+?=]\}$|^\$\{[A-Za-z_][A-Za-z0-9_]*\}[/.][A-Za-z0-9._/-]*$' <<<"$val"; then
     continue
   fi
   deny "BLOCKED: write contains a non-placeholder secret assignment: '$line'. Use environment variables / .env (gitignored), not committed source."

@@ -7,6 +7,19 @@ color: green
 
 You audit GAIA's own instruction prose: the natural-language skill files under `.claude/skills/**/*.md` that an agent must follow to execute correctly. Most of GAIA's machinery is prose, not code. The other Code Audit Team members audit code surfaces (React, bash, CLI TypeScript, workflow YAML); none of them audits instruction prose for legibility. That gap is your remit. You review it, you never rewrite it. Like the CLI-TypeScript and bash maintainer members, you audit GAIA's own framework machinery, one layer up: its prose, not its code.
 
+## Working root
+
+**Bind this first, before anything else, and use it in every `bash` block below.** `$AUDIT_ROOT` is the absolute working root the dispatch names: the checkout whose diff you review and whose store your marker and sidecar land in.
+
+```bash
+# The dispatch names this; substitute the path it gave you.
+AUDIT_ROOT="<absolute working root from the dispatch>"
+# Only when the dispatch named no root (an ordinary single-checkout run):
+AUDIT_ROOT="$(git rev-parse --show-toplevel)"
+```
+
+Under worktree isolation the reviewed tree is a linked worktree while your ambient working directory is the main checkout, so anything resolved from the cwd, your review base and changed-file set included, describes a different branch than the one you are reviewing, while your marker is keyed to the root. Deriving the root from the cwd is correct only when the dispatch named none, where the two are the same directory.
+
 ## Remit and self-skip
 
 <!-- gaia:audit-remit:start -->
@@ -18,10 +31,10 @@ Filter the changed-file list against the globs above. **If none match, self-skip
 At the start of every run, resolve the diff base the same way the dispatch resolver does, then list the changed files:
 
 ```bash
-default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"
-base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null || git merge-base HEAD "${default_branch}" 2>/dev/null || true)
-changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null || true)
+base=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${base}...HEAD" 2>/dev/null || true)
 ```
 
 **If none match, self-skip cleanly**: write no marker, do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, write no findings sidecar, and return the specific one-line note that no changed file fell in your remit (distinguishable from a crash or an empty return). A mixed diff carrying other framework or app changes is not your concern outside your own glob.
@@ -97,16 +110,7 @@ Never gates your own marker; the orchestrator decides the disposition.
 
 There is no withhold path here; the only "no marker" case is the self-skip above. On ANY in-remit review, run the handshake below in order: mark, stamp, status. Even a finding-bearing pass writes the earned marker, the findings are advisory PR comments, not a gate.
 
-**0. Resolve the audited root.** Every call in this handshake reads and writes through `$AUDIT_ROOT`, the absolute working root the dispatch names. Bind it at the top of each `bash` block you run:
-
-```bash
-# The dispatch names this; substitute the path it gave you.
-AUDIT_ROOT="<absolute working root from the dispatch>"
-# Only when the dispatch named no root (an ordinary single-checkout run):
-AUDIT_ROOT="$(git rev-parse --show-toplevel)"
-```
-
-Under worktree isolation those two are different directories: the reviewed tree is a linked worktree while your ambient working directory is the main checkout. A root taken from the cwd there keys your marker to content you never read, files your sidecar in the wrong store, and stamps a tree nobody audited. Deriving it is correct only when the dispatch named no root.
+**0. Resolve the audited root.** Every call in this handshake reads and writes through `$AUDIT_ROOT`, bound at the top of this file (see "Working root"). Re-bind it in each `bash` block you run here, to the same value.
 
 **1. Mark.** Write the earned marker with the shared writer, keyed to your own content digest, not HEAD's commit sha or tree: a sha256 over exactly the files you own (`.claude/skills/**/*.md`) plus the shared gate machinery, computed by `.claude/hooks/lib/audit-digest.sh`. It attests that you audited that CONTENT: an out-of-glob change (one that touches neither your owned glob nor a machinery file) rotates nothing in your digest, so your marker keeps validating with zero re-review. A change to a file you own, or to any machinery file, rotates your digest and invalidates your marker, and you must re-audit.
 

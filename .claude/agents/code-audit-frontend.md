@@ -46,7 +46,7 @@ Do not re-derive that set by hand. On a **local** run, at the start of every rev
 
 ```bash
 if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ]; then
-  spawn_set="$(bash "$AUDIT_ROOT/.gaia/scripts/resolve-audit-spawn.sh" --no-carry-forward 2>/dev/null || true)"
+  spawn_set="$( (cd "$AUDIT_ROOT" && bash .gaia/scripts/resolve-audit-spawn.sh --no-carry-forward) 2>/dev/null || true)"
 fi
 ```
 
@@ -282,7 +282,7 @@ This decision runs **after** section B's security classification and **before** 
 
 Promote a non-security out-of-scope finding into the self-heal path, repaired in place rather than filed, **if and only if all five** of these hold:
 
-1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `git -C "$AUDIT_ROOT" diff --name-only "$("$AUDIT_ROOT/.github/audit/resolve-audit-base.sh")" -- '*.ts' '*.tsx'` set the audit already resolves. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
+1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `git -C "$AUDIT_ROOT" diff --name-only "$( (cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh) )" -- '*.ts' '*.tsx'` set the audit already resolves. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
 2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out, because `block-selfheal-paths.sh` would hard-deny the edit and leave the finding with no disposition at all.
 3. The file is in **your own remit** (your declared globs, see "Remit and self-skip", evaluated at the second precedence tier), not a cross-remit file a claimant member owns.
 4. The finding is **non-security** per section B's classification, read as section B's own flag, bound on **every repo including a confirmed PRIVATE one**. Never re-derive "non-security" from the `finding_class` tag or a fresh screen.
@@ -534,7 +534,7 @@ A base-keyed filename therefore survives HEAD moves with no HEAD-chaining logic.
 ```bash
 # Resolve the incremental base the SAME way the audit already resolves scope,
 # then anchor the key to the fork point so it is stable across fix rounds.
-BASE_REF="$("$AUDIT_ROOT/.github/audit/resolve-audit-base.sh")"   # <sha> | origin/main | origin/<base-ref> | main
+BASE_REF="$( (cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh) )"   # <sha> | origin/main | origin/<base-ref> | main
 BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
 LEDGER="$AUDIT_ROOT/.gaia/local/audit/${BASE_SHA}.rerun.json"
 ```
@@ -647,7 +647,7 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 1. **Identify changed files** against the incremental base:
    - Resolve the base: if the invoking context provides one (CI passes `<base>...HEAD` in the agent prompt), use it; otherwise run `.github/audit/resolve-audit-base.sh`. It returns the most recent ancestor that already passed a clean audit under the current `.gaia/VERSION` (via a GAIA-Audit trailer or commit status), or `origin/main` when none exists.
    - **Derive the re-run ledger path and read it (LOCAL only) as the prior-round briefing.** From the same resolved base, compute `BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "$BASE_REF" HEAD 2>/dev/null || true)"` and `LEDGER="$AUDIT_ROOT/.gaia/local/audit/${BASE_SHA}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `BASE_SHA` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `BASE_SHA` and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
-   - List changed files: `git -C "$AUDIT_ROOT" diff --name-only "$("$AUDIT_ROOT/.github/audit/resolve-audit-base.sh")" -- '*.ts' '*.tsx'`. The two-dot form (`<base>`, not `<base>...HEAD`) includes uncommitted working-tree changes, the right scope for a pre-commit/pre-merge review.
+   - List changed files: `git -C "$AUDIT_ROOT" diff --name-only "$( (cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh) )" -- '*.ts' '*.tsx'`. The two-dot form (`<base>`, not `<base>...HEAD`) includes uncommitted working-tree changes, the right scope for a pre-commit/pre-merge review.
    - When the base is an audited ancestor, everything before it was already cleared; only the delta needs review. **For any exported symbol whose signature or contract changed in the delta, grep its importers and check them even if unchanged**, a cleared caller can still break from a delta change.
    - Once the changed-file list is resolved and before dispatching subagents, emit the `scope resolved` breadcrumb (see Progress breadcrumbs).
 2. **Gate each subagent** on file scope, don't spawn a subagent that has nothing to review:
