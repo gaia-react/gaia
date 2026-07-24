@@ -68,7 +68,7 @@ There is no `on_save` event. The `/gaia-plan` handoff lives inline at the end of
 
 Used by multiple steps below. Defined once here to keep step-level prose tight.
 
-Every ledger and lock library this skill invokes (`spec-session-lock.sh`, `spec-reconcile.sh`, the `spec-archive-*` / `spec-abandon-empty` sweeps, `spec-allocator.sh`, `ledger-update.sh`) takes the current tree as its `$PWD` operand and resolves the main checkout itself before touching `.gaia/local/specs`, so `$PWD` honestly names the running tree and the caller never resolves main for these calls. Step 9's SPEC-artifact writes are the one exception: they build a `.gaia/local/specs` path directly rather than handing it to a library, so they anchor to main explicitly.
+Every ledger and lock library this skill invokes (`spec-session-lock.sh`, `spec-reconcile.sh`, the `spec-archive-*` / `spec-abandon-empty` sweeps, `spec-allocator.sh`, `ledger-update.sh`) takes the current tree as its `$PWD` operand and resolves the main checkout itself before touching `.gaia/local/specs`, so `$PWD` honestly names the running tree and the caller never resolves main for these calls. The SPEC-folder writes in step 7d and step 9 are the exception: they build a `.gaia/local/specs` path directly rather than handing it to a library, so they anchor to main explicitly.
 
 ### Session-shape cache (`spec-session-<spec_id>.json`)
 
@@ -136,7 +136,7 @@ The self-review (step 6) and adversarial audit (step 7) route their finding, ver
 
 Per-lens and per-finding-plus-lens filenames avoid write collisions in the parallel fan-out: each agent owns exactly one path, so many agents write the cache concurrently without contending.
 
-**Delegated fold.** At a delegated fold checkpoint the fold is performed by a single-writer subagent, not by main; it replaces an in-main fold at that checkpoint. Main dispatches a `general-purpose` Agent (the **applier**) with three inputs: the draft path (`.gaia/local/cache/draft-<spec_id>.md`), the audit-cache directory (`.gaia/local/cache/audit-<spec_id>/`), and the thin **decision list**:
+**Delegated fold.** At a delegated fold checkpoint the fold is performed by a single-writer subagent, not by main; it replaces an in-main fold at that checkpoint. Main dispatches a `general-purpose` Agent (the **applier**) with four inputs: the draft path (`.gaia/local/cache/draft-<spec_id>.md`), the audit-cache directory (`.gaia/local/cache/audit-<spec_id>/`), the main-anchored SPEC folder `${SPEC_DIR}` that main resolved for it (7d), and the thin **decision list**:
 
     [ { "id": "<finding-id>", "action": "apply"|"keep"|"revise", "revision": "<free text, optional>" } ]
 
@@ -148,9 +148,9 @@ The applier **reads every findings and verdict file in the cache** (not just the
 
 `directives` is optional (absent for pure draft folds); it lists finding ids routed to `AUDIT.md` as plan-time directives. The `counts` object is the pinned **fold-outcome** schema that the applier's own reporting reads.
 
-Reading the full cache (rather than only the listed ids) is what lets the applier both author `AUDIT.md` from the complete on-disk record (see 7d) and fold the **low-severity spec-defect fixes main never surfaced** — the decision list carries only the interactively-gated material survivors, and low spec-defects are folded silently by the applier from the on-disk findings files, preserving the current flow. When the fold routes any finding to a plan-time directive, the applier also writes `AUDIT.md`.
+Reading the full cache (rather than only the listed ids) is what lets the applier both author `AUDIT.md` from the complete on-disk record (see 7d) and fold the **low-severity spec-defect fixes main never surfaced** — the decision list carries only the interactively-gated material survivors, and low spec-defects are folded silently by the applier from the on-disk findings files, preserving the current flow. When the fold routes any finding to a plan-time directive, the applier also writes `AUDIT.md`, at the `${SPEC_DIR}` path it was handed; it resolves no path of its own.
 
-**Fallback.** If subagent dispatch is unavailable, the main thread folds inline exactly as today.
+**Fallback.** If subagent dispatch is unavailable, the main thread folds inline exactly as today, writing `AUDIT.md` at that same resolved path.
 
 ### No-op guard (detection, retry, inline fallback)
 
@@ -736,13 +736,24 @@ Route each surviving finding by its `disposition`, read from the **thin verdict 
 
 **Auto-mode per rule 12.** No reads; **no finding body reaches main**. The transcript carries ids, severities, titles, verdicts, and dispositions only. Unambiguous spec-defect ids apply (added to the decision list as `apply`); a defect with more than one defensible repair becomes a deferred-clarification note in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` and is not applied. Never revert intentional clarify-loop evolution.
 
-**Fold through the delegated applier.** Dispatch the applier (see "Audit cache + delegated fold") with the draft path, the audit-cache directory, and the decision list. It reads the draft plus every findings and verdict file plus the decision list, folds every spec-defect fix in **one Write**, and **writes `AUDIT.md` itself** (7d) from the on-disk findings and verdicts — main never loads a finding body to produce `AUDIT.md`. **Fallback:** if subagent dispatch is unavailable, main folds inline as today.
+**Fold through the delegated applier.** Dispatch the applier (see "Audit cache + delegated fold") with the draft path, the audit-cache directory, the main-anchored SPEC folder `${SPEC_DIR}` (7d), and the decision list. It reads the draft plus every findings and verdict file plus the decision list, folds every spec-defect fix in **one Write**, and **writes `AUDIT.md` itself** (7d) at the folder path it was handed, from the on-disk findings and verdicts — main never loads a finding body to produce `AUDIT.md`. **Fallback:** if subagent dispatch is unavailable, main folds inline as today, writing `AUDIT.md` at that same resolved path.
 
-**No-op guard (site #6).** This is a **mutating unit**: the applier's draft-cache write pre-exists, so a no-op is judged on its returned summary's shape, not on file-absence. Before dispatching, snapshot the live draft to `.gaia/local/cache/draft-<spec_id>.pre-7c.md`, and finalize `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`, one thin JSON-Lines record per in-scope dispatch resolved so far, `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }`, carrying no finding body (this is the applier's data source for `## Coverage` in 7d; the findings/verdict files cannot encode a disposition). Capture the applier's returned summary to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape applier-summary --path <summary_file>` (add `--audit-md .gaia/local/specs/<spec_id>/AUDIT.md` at the 7c-with-directives dispatch, when the fold routes any finding to a plan-time directive, so AUDIT.md presence is also required; exit 0 = real, exit 1 = no-op). On a no-op: restore the live draft from `draft-<spec_id>.pre-7c.md` first, then re-dispatch the applier **exactly one** time with the hardened retry prefix (`<target>` = the audit-cache directory). A second no-op runs the **inline fallback**, which reuses the pre-existing applier inline-fold above (main folds inline as today), recorded degraded. Delete `draft-<spec_id>.pre-7c.md` once the unit resolves.
+**No-op guard (site #6).** This is a **mutating unit**: the applier's draft-cache write pre-exists, so a no-op is judged on its returned summary's shape, not on file-absence. Before dispatching, snapshot the live draft to `.gaia/local/cache/draft-<spec_id>.pre-7c.md`, and finalize `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`, one thin JSON-Lines record per in-scope dispatch resolved so far, `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }`, carrying no finding body (this is the applier's data source for `## Coverage` in 7d; the findings/verdict files cannot encode a disposition). Capture the applier's returned summary to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape applier-summary --path <summary_file>` (add `--audit-md "${AUDIT_MD}"`, the report path resolved in 7d, at the 7c-with-directives dispatch, when the fold routes any finding to a plan-time directive, so AUDIT.md presence is also required; exit 0 = real, exit 1 = no-op). On a no-op: restore the live draft from `draft-<spec_id>.pre-7c.md` first, then re-dispatch the applier **exactly one** time with the hardened retry prefix (`<target>` = the audit-cache directory). A second no-op runs the **inline fallback**, which reuses the pre-existing applier inline-fold above (main folds inline as today), recorded degraded. Delete `draft-<spec_id>.pre-7c.md` once the unit resolves.
 
 #### 7d. Persist AUDIT.md
 
-The **applier** writes a sibling report to `.gaia/local/specs/<spec_id>/AUDIT.md` from the on-disk findings and verdicts (it already holds the complete record, so main never loads a finding body to produce it). The SPEC folder already exists from step 3, and `.gaia/local/specs/**` is on the write-surface allowlist. Keep it lean:
+Resolve the SPEC folder in the main checkout and create it, so the report lands beside the artifact the ledger row indexes rather than in a second specs tree inside a linked worktree (the SPEC folder is main-anchored state, state registry `specs-main`):
+
+```bash
+MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+SPEC_DIR="${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"
+mkdir -p "$SPEC_DIR"
+AUDIT_MD="${SPEC_DIR}/AUDIT.md"
+```
+
+The resolver fails closed: it prints nothing and exits non-zero when it cannot resolve a main checkout. If `MAIN_ROOT` comes back empty, stop and surface that; never fall back to a relative path. The `mkdir -p` keeps this step self-sufficient: step 3 creates the same folder from another file under another agent, and this step writes into it either way.
+
+The **applier** writes a sibling report at `${AUDIT_MD}`, the folder path main hands it, from the on-disk findings and verdicts (it already holds the complete record, so main never loads a finding body to produce it). `${SPEC_DIR}` sits inside the `.gaia/local/specs/**` write-surface allowlist entry. Keep it lean:
 
 ```markdown
 # <spec_id> Adversarial Audit
