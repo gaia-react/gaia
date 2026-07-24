@@ -1090,14 +1090,14 @@ setup_auditreview() {
   git -C "$repo" commit --allow-empty -q -m init
 
   # Seed the FC-6 breadcrumb at the path the resolver derives:
-  # <main_root>/.gaia/local/cache/gh-artifact-pr.json, main_root == $repo here
-  # (an ordinary checkout, no worktree involved).
+  # <main_root>/.gaia/local/cache/gh-artifact-pr.<branch-slug>.json,
+  # main_root == $repo here (an ordinary checkout, no worktree involved).
   # shellcheck source=/dev/null
   source "$SCRIPT_DIR/gh-artifact-lib.sh"
   bc_dir="$repo/.gaia/local/cache"
   mkdir -p "$bc_dir"
-  gaia_gh_artifact_write "$bc_dir/gh-artifact-pr.json" 999 "acme/widgets" \
-    "feature/cache-dir-test" "$SESSION"
+  gaia_gh_artifact_write "$(gaia_gh_artifact_path "$bc_dir" "feature/cache-dir-test")" \
+    999 "acme/widgets" "feature/cache-dir-test" "$SESSION"
 
   # Deliberately no --cache-dir: token-tally.sh must derive it itself.
   run bash -c "cd '$repo' && bash '$SCRIPT' \

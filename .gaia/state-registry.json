@@ -185,12 +185,12 @@
     },
     {
       "id": "gh-artifact-pr-cache",
-      "path": "cache/gh-artifact-pr.json",
-      "match": "exact",
+      "path": "cache/gh-artifact-pr.*.json",
+      "match": "glob",
       "kind": "file",
       "scope": "main-only",
       "keyed_by": null,
-      "why": "A PR-capture written under main's cache for the merge flow, main-anchored not per-tree; currently unkeyed last-writer-wins, with a per-branch key as the keys-phase target.",
+      "why": "A PR-capture written under main's cache for the merge flow, main-anchored not per-tree, and partitioned per-branch in the filename (cache/gh-artifact-pr.<branch-slug>.json) so two worktrees opening PRs concurrently no longer share one unkeyed last-writer-wins file. Still main-only rather than shared: worktrees reach this file by resolving main's root, they are never given their own linked copy, so keyed_by stays null per the schema's rule and the key shows up in `path` instead.",
       "writer": "code",
       "reaped_by": "stale cache sweep",
       "source": "SPEC-061 §main-only"

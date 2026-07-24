@@ -315,7 +315,7 @@ assert_github_absent_and_not_partial() {
   REPO="$BATS_TEST_TMPDIR/repo15"
   BRANCH="feature/telemetry-15"
   mk_exec_repo "$REPO" "$BRANCH"
-  bc="$CACHE/gh-artifact-pr.json"
+  bc="$(gaia_gh_artifact_path "$CACHE" "$BRANCH")"
   gaia_gh_artifact_write "$bc" 712 "gaia-react/gaia" "$BRANCH" "$ANCHOR_SESSION"
   [ -f "$bc" ]
 
@@ -336,7 +336,7 @@ assert_github_absent_and_not_partial() {
   BRANCH="feature/telemetry-16"
   SID="exec-session-16"
   mk_exec_repo "$REPO" "$BRANCH"
-  gaia_gh_artifact_write "$CACHE/gh-artifact-pr.json" 712 "gaia-react/gaia" "$BRANCH" "$SID"
+  gaia_gh_artifact_write "$(gaia_gh_artifact_path "$CACHE" "$BRANCH")" 712 "gaia-react/gaia" "$BRANCH" "$SID"
 
   run run_execute "$REPO" "$SID" "$LEDGER"
   [ "$status" -eq 0 ]
@@ -351,7 +351,7 @@ assert_github_absent_and_not_partial() {
   BRANCH="feature/telemetry-17"
   SID="exec-session-17"
   mk_exec_repo "$REPO" "$BRANCH"
-  bc="$CACHE/gh-artifact-pr.json"
+  bc="$(gaia_gh_artifact_path "$CACHE" "$BRANCH")"
   gaia_gh_artifact_write "$bc" 712 "gaia-react/gaia" "$BRANCH" "$SID"
 
   run run_execute "$REPO" "$SID" "$LEDGER"
@@ -366,7 +366,7 @@ assert_github_absent_and_not_partial() {
   BRANCH="feature/telemetry-18"
   SID="exec-session-18"
   mk_exec_repo "$REPO" "$BRANCH"
-  gaia_gh_artifact_write "$CACHE/gh-artifact-pr.json" 712 "gaia-react/gaia" "$BRANCH" "$SID"
+  gaia_gh_artifact_write "$(gaia_gh_artifact_path "$CACHE" "$BRANCH")" 712 "gaia-react/gaia" "$BRANCH" "$SID"
 
   run run_execute "$REPO" "$SID" "$LEDGER"
   [ "$status" -eq 0 ]
@@ -389,8 +389,12 @@ assert_github_absent_and_not_partial() {
   REPO="$BATS_TEST_TMPDIR/repo19"
   SID="exec-session-19"
   mk_exec_repo "$REPO" "feature/actual-branch-19"
-  gaia_gh_artifact_write "$CACHE/gh-artifact-pr.json" 712 "gaia-react/gaia" \
-    "feature/different-branch-19" "$SID"
+  # Written at the path keyed by the REPO's real branch (what the reader looks
+  # up), with the BODY's branch field deliberately set to a different value --
+  # isolates the read-side body-mismatch guard (gaia_gh_artifact_read's own
+  # branch check) from the filename keying, which is a separate mechanism.
+  gaia_gh_artifact_write "$(gaia_gh_artifact_path "$CACHE" "feature/actual-branch-19")" \
+    712 "gaia-react/gaia" "feature/different-branch-19" "$SID"
 
   run run_execute "$REPO" "$SID" "$LEDGER"
   [ "$status" -eq 0 ]
@@ -405,7 +409,7 @@ assert_github_absent_and_not_partial() {
   REPO="$BATS_TEST_TMPDIR/repo20"
   BRANCH="feature/telemetry-20"
   mk_exec_repo "$REPO" "$BRANCH"
-  gaia_gh_artifact_write "$CACHE/gh-artifact-pr.json" 712 "gaia-react/gaia" "$BRANCH" \
+  gaia_gh_artifact_write "$(gaia_gh_artifact_path "$CACHE" "$BRANCH")" 712 "gaia-react/gaia" "$BRANCH" \
     "some-other-session-20"
 
   run run_execute "$REPO" "exec-session-20" "$LEDGER"
@@ -422,7 +426,7 @@ assert_github_absent_and_not_partial() {
   BRANCH="feature/telemetry-21"
   SID="exec-session-21"
   mk_exec_repo "$REPO" "$BRANCH"
-  bc="$CACHE/gh-artifact-pr.json"
+  bc="$(gaia_gh_artifact_path "$CACHE" "$BRANCH")"
   gaia_gh_artifact_write "$bc" 712 "gaia-react/gaia" "$BRANCH" "$SID"
 
   # The production writer always stamps "now"; there is no --ts seam, so aging
@@ -450,13 +454,14 @@ assert_github_absent_and_not_partial() {
   L2="$BATS_TEST_TMPDIR/l22-without.jsonl"
 
   . "$LIB"
-  gaia_gh_artifact_write "$CACHE/gh-artifact-pr.json" 712 "gaia-react/gaia" "$BRANCH" \
+  bc="$(gaia_gh_artifact_path "$CACHE" "$BRANCH")"
+  gaia_gh_artifact_write "$bc" 712 "gaia-react/gaia" "$BRANCH" \
     "exec-session-22"
   run run_execute "$REPO" "exec-session-22" "$L1"
   [ "$status" -eq 0 ]
   partial_with="$(jq -r '.partial' "$L1")"
 
-  rm -f "$CACHE/gh-artifact-pr.json"
+  rm -f "$bc"
   run run_execute "$REPO" "exec-session-22" "$L2"
   [ "$status" -eq 0 ]
   rec="$(tail -n 1 "$L2")"
@@ -474,7 +479,7 @@ assert_github_absent_and_not_partial() {
 
   ELSEWHERE="$BATS_TEST_TMPDIR/elsewhere-cache-23"
   mkdir -p "$ELSEWHERE"
-  gaia_gh_artifact_write "$ELSEWHERE/gh-artifact-pr.json" 712 "gaia-react/gaia" "$BRANCH" "$SID"
+  gaia_gh_artifact_write "$(gaia_gh_artifact_path "$ELSEWHERE" "$BRANCH")" 712 "gaia-react/gaia" "$BRANCH" "$SID"
 
   EMPTY="$BATS_TEST_TMPDIR/empty-cache-23"
   mkdir -p "$EMPTY"
@@ -504,7 +509,7 @@ assert_github_absent_and_not_partial() {
   jq -e 'has("github")' >/dev/null 2>&1 <<<"$rec_before" && return 1
 
   # gh pr create happens AFTER that row was already appended.
-  gaia_gh_artifact_write "$CACHE/gh-artifact-pr.json" 712 "gaia-react/gaia" "$BRANCH" "$SID"
+  gaia_gh_artifact_write "$(gaia_gh_artifact_path "$CACHE" "$BRANCH")" 712 "gaia-react/gaia" "$BRANCH" "$SID"
 
   # The already-written row is a static ledger line: nothing re-reads or
   # rewrites it, so it is byte-identical and still carries no github.

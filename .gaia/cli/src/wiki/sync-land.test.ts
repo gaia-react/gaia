@@ -16,6 +16,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -356,17 +357,18 @@ describe('wiki sync land', () => {
     });
     expect(exit).toBe(0);
     expect(tallyCalls(recorded)).toHaveLength(0);
-    expect(
-      existsSync(
-        path.join(
-          sandbox.root,
-          '.gaia',
-          'local',
-          'cache',
-          'gh-artifact-pr.json'
+    // No breadcrumb of ANY shape. The filename is keyed by branch
+    // (gh-artifact-pr.<branch-slug>.json), so naming one literal path here
+    // would assert the absence of a file nothing can produce; the directory
+    // listing is what keeps this assertion able to fail.
+    const cacheDir = path.join(sandbox.root, '.gaia', 'local', 'cache');
+    const breadcrumbs =
+      existsSync(cacheDir) ?
+        readdirSync(cacheDir).filter(
+          (name) => name.startsWith('gh-artifact-pr') && name.endsWith('.json')
         )
-      )
-    ).toBe(false);
+      : [];
+    expect(breadcrumbs).toEqual([]);
   });
 
   test('on main with --branch-aware, merge does not land: auto-merge stays queued, cleanup deferred', () => {

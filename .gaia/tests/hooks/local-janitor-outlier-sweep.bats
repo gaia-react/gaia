@@ -369,42 +369,60 @@ JSON
   [ -f "$audit_dir/beefdead.findings.json" ]
 }
 
-@test "UAT-009: the sweep 5 gh-artifact arm reaps an aged cache/gh-artifact-pr.json" {
+@test "UAT-009: the sweep 5 gh-artifact arm reaps an aged cache/gh-artifact-pr.<branch-slug>.json" {
+  make_repo
+  cache_dir="$REPO/.gaia/local/cache"
+  mkdir -p "$cache_dir"
+  # A percent-encoded slug (branch "feat/x"), not a bare word: the reap glob
+  # has to keep matching once gaia_key_slug has encoded a "/" into the name.
+  echo '{"branch":"feat/x"}' > "$cache_dir/gh-artifact-pr.feat%2Fx.json"
+  touch -t 202001010000 "$cache_dir/gh-artifact-pr.feat%2Fx.json"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$cache_dir/gh-artifact-pr.feat%2Fx.json" ]
+}
+
+@test "UAT-009b: the sweep 5 gh-artifact arm keeps a fresh cache/gh-artifact-pr.<branch-slug>.json" {
+  make_repo
+  cache_dir="$REPO/.gaia/local/cache"
+  mkdir -p "$cache_dir"
+  echo '{"branch":"treeA"}' > "$cache_dir/gh-artifact-pr.treeA.json"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$cache_dir/gh-artifact-pr.treeA.json" ]
+}
+
+@test "UAT-009c: an isolation sweep-9-only run never reaps cache/gh-artifact-pr.<branch-slug>.json (the owner arm, not sweep 9, is the reaper)" {
+  make_repo
+  cache_dir="$REPO/.gaia/local/cache"
+  mkdir -p "$cache_dir"
+  echo '{"branch":"treeA"}' > "$cache_dir/gh-artifact-pr.treeA.json"
+  touch -t 202001010000 "$cache_dir/gh-artifact-pr.treeA.json"
+
+  cd "$REPO"
+  GAIA_JANITOR_SWEEP_ONLY=outliers run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$cache_dir/gh-artifact-pr.treeA.json" ]
+}
+
+@test "UAT-009d: the sweep 5 gh-artifact arm's widened glob reaps BOTH a per-branch keyed name and the pre-4.2 unkeyed name when aged" {
   make_repo
   cache_dir="$REPO/.gaia/local/cache"
   mkdir -p "$cache_dir"
   echo '{"branch":"x"}' > "$cache_dir/gh-artifact-pr.json"
   touch -t 202001010000 "$cache_dir/gh-artifact-pr.json"
+  echo '{"branch":"treeA"}' > "$cache_dir/gh-artifact-pr.treeA.json"
+  touch -t 202001010000 "$cache_dir/gh-artifact-pr.treeA.json"
 
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ ! -e "$cache_dir/gh-artifact-pr.json" ]
-}
-
-@test "UAT-009b: the sweep 5 gh-artifact arm keeps a fresh cache/gh-artifact-pr.json" {
-  make_repo
-  cache_dir="$REPO/.gaia/local/cache"
-  mkdir -p "$cache_dir"
-  echo '{"branch":"x"}' > "$cache_dir/gh-artifact-pr.json"
-
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ -f "$cache_dir/gh-artifact-pr.json" ]
-}
-
-@test "UAT-009c: an isolation sweep-9-only run never reaps cache/gh-artifact-pr.json (the owner arm, not sweep 9, is the reaper)" {
-  make_repo
-  cache_dir="$REPO/.gaia/local/cache"
-  mkdir -p "$cache_dir"
-  echo '{"branch":"x"}' > "$cache_dir/gh-artifact-pr.json"
-  touch -t 202001010000 "$cache_dir/gh-artifact-pr.json"
-
-  cd "$REPO"
-  GAIA_JANITOR_SWEEP_ONLY=outliers run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ -f "$cache_dir/gh-artifact-pr.json" ]
+  [ ! -e "$cache_dir/gh-artifact-pr.treeA.json" ]
 }
 
 # --- CG-001: sweep 5's own age arm reaps the spec-session-*.lock glob -------
@@ -453,13 +471,13 @@ JSON
   make_repo
   cache_dir="$REPO/.gaia/local/cache"
   mkdir -p "$cache_dir"
-  echo '{}' > "$cache_dir/gh-artifact-pr.json"
-  touch -t "$(past_ts $((3 * 86400)))" "$cache_dir/gh-artifact-pr.json"   # 3d old > 2d default
+  echo '{}' > "$cache_dir/gh-artifact-pr.treeA.json"
+  touch -t "$(past_ts $((3 * 86400)))" "$cache_dir/gh-artifact-pr.treeA.json"   # 3d old > 2d default
 
   cd "$REPO"
   GAIA_CACHE_ARTIFACT_RETENTION_DAYS=abc run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ ! -e "$cache_dir/gh-artifact-pr.json" ]
+  [ ! -e "$cache_dir/gh-artifact-pr.treeA.json" ]
 }
 
 @test "UAT-010e: GAIA_AUDIT_FINDINGS_RETENTION_HOURS=1 clamps up to the floor 24h" {
@@ -479,13 +497,13 @@ JSON
   make_repo
   cache_dir="$REPO/.gaia/local/cache"
   mkdir -p "$cache_dir"
-  echo '{}' > "$cache_dir/gh-artifact-pr.json"
-  touch -t "$(past_ts $((30 * 3600)))" "$cache_dir/gh-artifact-pr.json"   # ~30h old
+  echo '{}' > "$cache_dir/gh-artifact-pr.treeA.json"
+  touch -t "$(past_ts $((30 * 3600)))" "$cache_dir/gh-artifact-pr.treeA.json"   # ~30h old
 
   cd "$REPO"
   GAIA_CACHE_ARTIFACT_RETENTION_DAYS=0 run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$cache_dir/gh-artifact-pr.json" ]
+  [ -f "$cache_dir/gh-artifact-pr.treeA.json" ]
 }
 
 # --- Sweep-count structure (guards the Phase-2 wiki-conformance dependency) -

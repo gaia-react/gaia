@@ -335,7 +335,8 @@ setup_c4_base_sha_pair() {
   # Simulated: the GitHub PR/merge round-trip is stood in by a fixture; only
   # the real capture/read library (gh-artifact-lib.sh) is driven for real.
   MAIN="$(gaia_new_main gaia-c403-main)"
-  gaia_copy_real "$MAIN" .gaia/scripts/gh-artifact-lib.sh .gaia/scripts/main-root-lib.sh
+  gaia_copy_real "$MAIN" .gaia/scripts/gh-artifact-lib.sh .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/audit-key-lib.sh
   gaia_commit_all "$MAIN" "add gh-artifact lib"
 
   A="$(gaia_add_worktree "$MAIN" treeA treeA)"
@@ -345,7 +346,7 @@ setup_c4_base_sha_pair() {
   run run_in "$A" -- bash -c '
     . .gaia/scripts/gh-artifact-lib.sh
     cache_dir="$(gaia_gh_artifact_cache_dir)"
-    path="$(gaia_gh_artifact_path "$cache_dir")"
+    path="$(gaia_gh_artifact_path "$cache_dir" treeA)"
     gaia_gh_artifact_write "$path" 100 owner/repo treeA sessA
   '
   [ "$status" -eq 0 ]
@@ -354,7 +355,7 @@ setup_c4_base_sha_pair() {
   run run_in "$B" -- bash -c '
     . .gaia/scripts/gh-artifact-lib.sh
     cache_dir="$(gaia_gh_artifact_cache_dir)"
-    path="$(gaia_gh_artifact_path "$cache_dir")"
+    path="$(gaia_gh_artifact_path "$cache_dir" treeB)"
     gaia_gh_artifact_write "$path" 200 owner/repo treeB sessB
   '
   [ "$status" -eq 0 ]
@@ -363,7 +364,7 @@ setup_c4_base_sha_pair() {
   run run_in "$A" -- bash -c '
     . .gaia/scripts/gh-artifact-lib.sh
     cache_dir="$(gaia_gh_artifact_cache_dir)"
-    path="$(gaia_gh_artifact_path "$cache_dir")"
+    path="$(gaia_gh_artifact_path "$cache_dir" treeA)"
     gaia_gh_artifact_read "$path" sessA treeA
   '
   [ "$status" -eq 0 ]

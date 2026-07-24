@@ -86,6 +86,68 @@ setup() {
   [ -z "$output" ]
 }
 
+# ========== gaia_gh_artifact_path ==========
+
+# ---------- 5b ----------
+@test "gaia_gh_artifact_path: cache_dir and branch both present yields the keyed filename" {
+  run gaia_gh_artifact_path "/x/y" "some-branch"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/x/y/gh-artifact-pr.some-branch.json" ]
+}
+
+# ---------- 5c ----------
+@test "gaia_gh_artifact_path: a branch containing / and a branch containing . both percent-encode into the filename" {
+  run gaia_gh_artifact_path "/x/y" "feat/thing"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/x/y/gh-artifact-pr.feat%2Fthing.json" ]
+
+  run gaia_gh_artifact_path "/x/y" "release/1.2"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/x/y/gh-artifact-pr.release%2F1%2E2.json" ]
+}
+
+# ---------- 5d ----------
+@test "gaia_gh_artifact_path: an empty cache_dir OR an empty branch echoes nothing and returns 0" {
+  run gaia_gh_artifact_path "" "some-branch"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run gaia_gh_artifact_path "/x/y" ""
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run gaia_gh_artifact_path "" ""
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# ---------- 5e ----------
+@test "gaia_gh_artifact_path: two different branches under the same cache_dir yield two different paths" {
+  path_a="$(gaia_gh_artifact_path "/x/y" "branch-a")"
+  path_b="$(gaia_gh_artifact_path "/x/y" "branch-b")"
+  [ -n "$path_a" ]
+  [ -n "$path_b" ]
+  [ "$path_a" != "$path_b" ]
+}
+
+# ---------- 5f ----------
+@test "gaia_gh_artifact_path: end-to-end -- tree A's write-then-read survives a same-cache_dir write from tree B" {
+  cache_dir="$BATS_TEST_TMPDIR/shared-cache"
+  mkdir -p "$cache_dir"
+
+  path_a="$(gaia_gh_artifact_path "$cache_dir" "tree-a")"
+  path_b="$(gaia_gh_artifact_path "$cache_dir" "tree-b")"
+  [ "$path_a" != "$path_b" ]
+
+  gaia_gh_artifact_write "$path_a" 100 "gaia-react/gaia" "tree-a" "sess-a"
+  gaia_gh_artifact_write "$path_b" 200 "gaia-react/gaia" "tree-b" "sess-b"
+
+  run gaia_gh_artifact_read "$path_a" "sess-a" "tree-a"
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [ "$(jq -r '.number' <<<"$output")" -eq 100 ]
+}
+
 # ========== gaia_gh_artifact_parse_url ==========
 
 # ---------- 6 ----------

@@ -158,7 +158,7 @@ run_in_repo() {
 }
 
 # The kind=="dir" filter is load-bearing: a main-only FILE entry
-# (cache/gh-artifact-pr.json, cache/spec-chain-*.json) must NOT surface its
+# (cache/gh-artifact-pr.*.json, cache/spec-chain-*.json) must NOT surface its
 # first segment (cache), because cache/ also holds per-tree and ephemeral
 # state the checkout-boundary guard must keep guarding.
 @test "gaia_registry_main_only_dirs: excludes main-only FILE entries, so cache never appears" {
@@ -339,7 +339,7 @@ run_in_repo() {
     "harden/declines.json:per-tree"
     "specs/ledger.json:main-only"
     "plans/ledger.json:main-only"
-    "cache/gh-artifact-pr.json:main-only"
+    "cache/gh-artifact-pr.treeA.json:main-only"
     "cache/spec-chain-abc123.json:main-only"
     "worktree-locks/my-worktree:main-only"
     ".project-id:main-only"

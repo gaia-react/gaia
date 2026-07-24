@@ -11,6 +11,7 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HOOK_ABS="$REPO_ROOT/.claude/hooks/capture-gh-artifact.sh"
   LIB_SRC="$REPO_ROOT/.gaia/scripts/gh-artifact-lib.sh"
+  AKL_SRC="$REPO_ROOT/.gaia/scripts/audit-key-lib.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -29,11 +30,17 @@ teardown() {
 
 # Scaffolds a tmp git repo with the real lib copied in at its repo-relative
 # path, so the hook's `source .gaia/scripts/gh-artifact-lib.sh` resolves.
-# Sets $REPO.
+# Also copies audit-key-lib.sh beside it: gaia_gh_artifact_path sources it via
+# BASH_SOURCE (the same idiom gaia_gh_artifact_cache_dir uses for
+# main-root-lib.sh), so without its sibling present the hook's own internal
+# source would fail and no breadcrumb would ever be written, breaking every
+# "writes the breadcrumb" test below for a reason unrelated to what they mean
+# to exercise. Sets $REPO.
 build_repo() {
   REPO="$("$HELPERS/tmp-git-repo.sh")"
   mkdir -p "$REPO/.gaia/scripts"
   cp "$LIB_SRC" "$REPO/.gaia/scripts/gh-artifact-lib.sh"
+  cp "$AKL_SRC" "$REPO/.gaia/scripts/audit-key-lib.sh"
 }
 
 # run_hook <command> [stdout] [session_id]
@@ -50,8 +57,26 @@ run_hook_raw() {
   run bash -c "echo '$input' | '$HOOK_ABS'"
 }
 
+# breadcrumb_path <branch>: the exact keyed filename the hook (and the real
+# gaia_gh_artifact_path) computes for <branch>. Sources the REAL, repo-level
+# audit-key-lib.sh (not $REPO's copy) purely to compute the expected value
+# with the same gaia_key_slug the production code calls, rather than keeping
+# a second, potentially-drifting copy of the encoding rule in this test file.
 breadcrumb_path() {
-  printf '%s/gh-artifact-pr.json' "$CACHE"
+  local branch="$1"
+  # shellcheck disable=SC1090
+  source "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh"
+  printf '%s/gh-artifact-pr.%s.json' "$CACHE" "$(gaia_key_slug "$branch")"
+}
+
+# any_breadcrumb_exists: true iff ANY gh-artifact-pr*.json breadcrumb sits in
+# $CACHE, regardless of its branch-slug. The "should not write" tests below
+# assert no breadcrumb was written at all, not merely that one specific keyed
+# name is absent, so this is a stronger and simpler check than reconstructing
+# an exact expected filename for every negative case (several of which never
+# check out a named branch at all).
+any_breadcrumb_exists() {
+  compgen -G "$CACHE/gh-artifact-pr*.json" >/dev/null 2>&1
 }
 
 # ---------- It writes the breadcrumb when it should ----------
@@ -65,7 +90,7 @@ breadcrumb_path() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
-  bc="$(breadcrumb_path)"
+  bc="$(breadcrumb_path "feat/x")"
   [ -f "$bc" ]
   jq -e '.number | type == "number"' "$bc" >/dev/null
   [ "$(jq -r '.type' "$bc")" = "pr" ]
@@ -85,7 +110,7 @@ breadcrumb_path() {
   run_hook "cd /tmp && gh pr create --title x" "https://github.com/gaia-react/gaia/pull/900"
   [ "$status" -eq 0 ]
 
-  bc="$(breadcrumb_path)"
+  bc="$(breadcrumb_path "feat/y")"
   [ -f "$bc" ]
   [ "$(jq -r '.number' "$bc")" = "900" ]
 }
@@ -101,8 +126,7 @@ breadcrumb_path() {
     "https://github.com/gaia-react/gaia/issues/415"
   [ "$status" -eq 0 ]
 
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   return 0
 }
 
@@ -113,8 +137,7 @@ breadcrumb_path() {
   run bash -c "echo '$input' | '$HOOK_ABS'"
   [ "$status" -eq 0 ]
 
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   return 0
 }
 
@@ -124,8 +147,7 @@ breadcrumb_path() {
   run_hook 'git commit -m "run gh pr create next"' ""
   [ "$status" -eq 0 ]
 
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   return 0
 }
 
@@ -135,8 +157,7 @@ breadcrumb_path() {
   run_hook "gh pr create --title x --body y" ""
   [ "$status" -eq 0 ]
 
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   return 0
 }
 
@@ -146,8 +167,7 @@ breadcrumb_path() {
   run_hook "gh pr create --title x --body y" "Creating pull request..."
   [ "$status" -eq 0 ]
 
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   return 0
 }
 
@@ -159,8 +179,7 @@ breadcrumb_path() {
   run_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/712"
   [ "$status" -eq 0 ]
 
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   return 0
 }
 
@@ -177,8 +196,7 @@ breadcrumb_path() {
   run_hook_raw "$input"
   [ "$status" -eq 0 ]
 
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   return 0
 }
 
@@ -199,8 +217,7 @@ breadcrumb_path() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   return 0
 }
 
@@ -213,8 +230,7 @@ breadcrumb_path() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   return 0
 }
 
@@ -229,8 +245,7 @@ breadcrumb_path() {
   [ "$status" -eq 0 ]
 
   [ -e "$REPO/CANARY" ] && return 1
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   [ -e "$CACHE/CANARY" ] && return 1
   return 0
 }
@@ -243,8 +258,7 @@ breadcrumb_path() {
   run_hook "gh pr create --title x" "https://github.com/o;id/n/pull/1"
   [ "$status" -eq 0 ]
 
-  bc="$(breadcrumb_path)"
-  [ -e "$bc" ] && return 1
+  any_breadcrumb_exists && return 1
   return 0
 }
 

@@ -63,7 +63,7 @@
 #   boundary write-guard reads this (alongside gaia_registry_linkable_paths)
 #   to know which main-checkout writes to exempt, instead of hand-listing
 #   plans/ and specs/. Kind=="dir" is load-bearing: it keeps a main-only FILE
-#   entry (e.g. cache/gh-artifact-pr.json) from exempting its whole first
+#   entry (e.g. cache/gh-artifact-pr.*.json) from exempting its whole first
 #   segment (cache/), which also holds per-tree and ephemeral state. Derived
 #   from the registry, never hardcoded; today this is specs, plans,
 #   worktree-locks. Prints nothing and returns 1 when the registry cannot be

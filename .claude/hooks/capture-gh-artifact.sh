@@ -50,7 +50,7 @@ branch="$(git branch --show-current 2>/dev/null || true)"
 
 cache_dir="$(gaia_gh_artifact_cache_dir)"
 [ -n "$cache_dir" ] || exit 0
-bc_path="$(gaia_gh_artifact_path "$cache_dir")"
+bc_path="$(gaia_gh_artifact_path "$cache_dir" "$branch")"
 [ -n "$bc_path" ] || exit 0
 
 gaia_gh_artifact_write "$bc_path" "$number" "$repo" "$branch" "$sid" >/dev/null 2>&1 || true

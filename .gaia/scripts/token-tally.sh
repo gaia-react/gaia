@@ -942,7 +942,7 @@ fi
 # The lib being absent/unsourceable, or nothing matching, both just omit
 # `github`, never fail.
 if [[ "$ACTION" == "execute" ]] && declare -F gaia_gh_artifact_read >/dev/null 2>&1; then
-  gh_bc_path="$(gaia_gh_artifact_path "$CACHE_DIR")"
+  gh_bc_path="$(gaia_gh_artifact_path "$CACHE_DIR" "$GIT_BRANCH")"
   if [[ -n "$gh_bc_path" ]]; then
     gh_bc="$(gaia_gh_artifact_read "$gh_bc_path" "$SESSION_ID" "$GIT_BRANCH")"
     if [[ -n "$gh_bc" ]] && jq -e 'type == "object"' >/dev/null 2>&1 <<<"$gh_bc"; then

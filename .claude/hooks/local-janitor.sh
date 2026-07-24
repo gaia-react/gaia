@@ -134,8 +134,10 @@
 #      elsewhere, unrelated to this sweep's registry consultation:
 #      audit/*.findings.json attached to sweep #2
 #      (GAIA_AUDIT_FINDINGS_RETENTION_HOURS, default 72, floor 24) and
-#      cache/gh-artifact-pr.json attached to sweep #5
-#      (GAIA_CACHE_ARTIFACT_RETENTION_DAYS, default 2, floor 1).
+#      cache/gh-artifact-pr*.json attached to sweep #5
+#      (GAIA_CACHE_ARTIFACT_RETENTION_DAYS, default 2, floor 1; the glob also
+#      covers the pre-4.2 unkeyed cache/gh-artifact-pr.json some machines
+#      may still carry -- see sweep #5's own comment for why).
 #
 # Fail-safe by construction: any inability to PROVE death (no git, unreadable
 # HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
@@ -686,14 +688,25 @@ if [ -d "$cache_dir" ]; then
       rm -rf -- "$(dirname "$hit")"
     done
 
-  # cache/gh-artifact-pr.json: mtime-only, on its own floor-clamped knob
-  # (default 2d, floor 1d). It records a branch and session_id, but a
-  # gh-artifact PR cache this old is stale regardless of which branch or
-  # session produced it, so staleness alone is the reap signal.
+  # cache/gh-artifact-pr*.json: mtime-only, on its own floor-clamped knob
+  # (default 2d, floor 1d). The glob is the family pattern for "every
+  # gh-artifact breadcrumb", not a special case bolted on for migration: it
+  # covers the current per-branch filename (cache/gh-artifact-pr.<branch
+  # -slug>.json) AND the pre-4.2 unkeyed cache/gh-artifact-pr.json some
+  # machines may still carry from before this file was keyed. Sweep #9
+  # (off-pattern outlier residue, above) reports an unrecognized cache/ child
+  # on stderr and never reaps it -- report-not-delete, by design -- so an old
+  # unkeyed file left outside this arm's reach would nag on every session
+  # start with nothing able to clear it; folding it into this arm's own glob
+  # is the difference between an orphan that ages out in a couple of days
+  # and one that lives forever. Each matched file records a branch and
+  # session_id, but a gh-artifact PR cache this old is stale regardless of
+  # which branch or session produced it, so staleness alone is the reap
+  # signal.
   cache_artifact_days="${GAIA_CACHE_ARTIFACT_RETENTION_DAYS:-2}"
   case "$cache_artifact_days" in '' | *[!0-9]*) cache_artifact_days=2 ;; esac
   [ "$cache_artifact_days" -lt 1 ] && cache_artifact_days=1
-  find "$cache_dir" -maxdepth 1 -type f -name 'gh-artifact-pr.json' \
+  find "$cache_dir" -maxdepth 1 -type f -name 'gh-artifact-pr*.json' \
     -mtime +"$cache_artifact_days" -delete 2>/dev/null
 fi
 

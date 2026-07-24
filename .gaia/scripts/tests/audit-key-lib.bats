@@ -77,6 +77,46 @@ make_repo() {
   [ "$output" = "OK" ]
 }
 
+@test "structural: sourcing the lib defines the now-public gaia_key_slug" {
+  run bash -c '
+    # shellcheck disable=SC1090
+    source "$1"
+    type gaia_key_slug >/dev/null
+    echo OK
+  ' _ "$LIB"
+  [ "$status" -eq 0 ]
+  [ "$output" = "OK" ]
+}
+
+# ========== gaia_key_slug: the general slug rule, tested directly ==========
+# gaia_audit_key's own tests below exercise this rule indirectly (through the
+# key it builds); these test it in isolation, since gh-artifact-lib.sh's
+# gaia_gh_artifact_path (task 4.2) now calls it directly too.
+
+@test "gaia_key_slug: a plain string (already in [A-Za-z0-9_-]) passes through unchanged" {
+  run gaia_key_slug "worktree-program"
+  [ "$status" -eq 0 ]
+  [ "$output" = "worktree-program" ]
+}
+
+@test "gaia_key_slug: a slash and a dot both percent-encode" {
+  run gaia_key_slug "release/1.2"
+  [ "$status" -eq 0 ]
+  [ "$output" = "release%2F1%2E2" ]
+}
+
+@test "gaia_key_slug: a percent sign percent-encodes (the encoding is self-escaping)" {
+  run gaia_key_slug "has%percent"
+  [ "$status" -eq 0 ]
+  [ "$output" = "has%25percent" ]
+}
+
+@test "gaia_key_slug: empty input yields empty output" {
+  run gaia_key_slug ""
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
 # ========== gaia_audit_key: the happy path ==========
 
 @test "a plain branch (already in [A-Za-z0-9_-]) passes through unchanged" {
