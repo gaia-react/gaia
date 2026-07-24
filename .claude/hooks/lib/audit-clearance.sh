@@ -82,6 +82,27 @@ clearance_acceptable() {
     "$path" >/dev/null 2>&1
 }
 
+# clearance_refusal_acceptable <path> <member> <digest> -> exit 0 iff the file
+# at <path> is a writer-shaped REFUSAL for this member and digest. The refusal
+# twin of clearance_acceptable, with the same well-formedness semantics and the
+# same fail-closed jq rule, taking a PATH rather than a root: a caller holding
+# only the artifact's path (the no-op classifier derives the refusal from the
+# marker path it was handed, never from a root) has no root to pass
+# clearance_member_refused. That function delegates here, so both entry points
+# read a refusal through one predicate.
+clearance_refusal_acceptable() {
+  local path="$1" member="$2" digest="$3"
+  [ -f "$path" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  jq -e \
+    --arg digest "$digest" \
+    --arg member "$member" \
+    '(.digest == $digest)
+      and (.member == $member)
+      and (.provenance == "refused")' \
+    "$path" >/dev/null 2>&1
+}
+
 # clearance_member_cleared <root> <digest> <member>
 #   exit 0 iff an acceptable earned clearance exists for this member and
 #   digest. Earned only, there is no carried family.
@@ -108,13 +129,5 @@ clearance_member_cleared() {
 clearance_member_refused() {
   local root="$1" digest="$2" member="$3" p
   p="$(clearance_refused_path "$root" "$digest" "$member")"
-  [ -f "$p" ] || return 1
-  command -v jq >/dev/null 2>&1 || return 1
-  jq -e \
-    --arg digest "$digest" \
-    --arg member "$member" \
-    '(.digest == $digest)
-      and (.member == $member)
-      and (.provenance == "refused")' \
-    "$p" >/dev/null 2>&1
+  clearance_refusal_acceptable "$p" "$member" "$digest"
 }

@@ -6,6 +6,7 @@
 # Usage:
 #   audit-write-clearance.sh --root <path> --member <name> \
 #                            --provenance earned|refused \
+#                            [--base <sha>] \
 #                            [--supersede-refusal <reason>] \
 #                            [--help|-h]
 #
@@ -30,6 +31,17 @@
 #                  earned write NEVER touches a sibling refusal, that strict
 #                  precedence is the anti-gaming control (a bare re-run must not
 #                  clear a refusal; only an authored, reasoned supersede may).
+#   --base <sha>   OPTIONAL. The incremental audit base sha. When given, the
+#                  write also maintains the re-run CARRY-FORWARD LEDGER
+#                  (.gaia/local/audit/<audit-key>.rerun.json, keyed by
+#                  gaia_audit_key: this base plus the acting tree's branch).
+#                  This is what makes a refusal self-describing. A refusal
+#                  blocks a merge, and a refusal is retired only by its own
+#                  author, so an operator who cannot learn WHAT was refused can
+#                  neither repair it nor legitimately supersede it. The ledger
+#                  is that briefing, derived from the member's own findings
+#                  sidecar (see "Ledger" below), so it costs the member nothing
+#                  beyond the report it already wrote.
 #
 # Behavior (all contract):
 #   - Creates <root>/.gaia/local/audit/ if absent.
@@ -41,9 +53,46 @@
 #     the member's content digest cannot be derived, or when the body cannot be
 #     built (message on stderr) -- never a marker written keyed to an empty or
 #     partial digest, and never an empty or partial body published.
+#   - The body is schema 4. `schema` is informational: no reader validates it,
+#     and clearance_acceptable ignores it entirely, so a schema-3 body on disk
+#     still validates exactly as before. The bump records that `sidecar`'s
+#     meaning changed and that `dispositions_sidecar` joined it (see the two
+#     flags' derivation below), so someone diffing two markers can tell which
+#     contract each was written under.
 #   - jq is REQUIRED: it builds the body, so every value is escaped by
 #     construction. Absent jq the writer fails closed rather than emitting a
 #     hand-assembled body. The gate's reader requires jq for the same reason.
+#
+# Ledger (only with --base; NON-GATING, best-effort)
+#   Path: <root>/.gaia/local/audit/<base-sha>.<branch-slug>.rerun.json
+#   Shape: schema 1, as the frontend member's "Re-run carry-forward ledger"
+#   defines it, plus a `member` field on each entry. One ledger serves the whole
+#   dispatched set (its key is the base, not a digest), so without that field a
+#   second member's write would silently clobber the first's remaining work.
+#
+#   refused: this member's `remaining[]` entries are rebuilt from its findings
+#     sidecar (.gaia/local/audit/<audit-key>.<member>.findings.json), which
+#     already carries each finding's path, line, title, failure_mode and
+#     suggested_fix. Severity is mapped onto the ledger's own scale
+#     (error -> critical, warning -> important, suggestion -> suggestion).
+#     Other members' entries are preserved untouched. `round` increments from a
+#     valid same-branch same-base ledger, else starts at 1, and
+#     `first_seen_round` carries forward per (member, finding_class, path, line)
+#     so a finding that survives rounds keeps its original round.
+#   earned: the loop ended for this member, so its `remaining[]` entries are
+#     retired: each moves to `fixed_last_round[]` stamped with the current HEAD
+#     sha. The FILE is removed only when no member has anything left, matching
+#     the documented clean-pass cleanup without discarding a co-dispatched
+#     member's still-open work.
+#   No sidecar, or an unresolvable key, or a `jq` failure: no ledger work, and
+#   the marker write is unaffected. The ledger never gates a merge, no hook
+#   reads it, and a failure here never fails the write, so a ledger problem can
+#   never hold a merge shut or open one.
+#
+#   LEDGER_TAG, not the conventional name, holds gaia_audit_key's output: the
+#   secret-write guard (.claude/hooks/block-secrets-write.sh) denies an
+#   assignment to a `*_KEY` name whose value is a command substitution, so the
+#   conventional spelling cannot be written to a tracked file at all.
 #
 # This writer is NOT evidence-gated: it takes no --report, calls no detector,
 # and its body carries no evidence block. It raises the forgery bar (a forged
@@ -61,9 +110,13 @@ usage() {
   cat <<'EOF' >&2
 usage: audit-write-clearance.sh --root <path> --member <name>
                                 --provenance earned|refused
+                                [--base <sha>]
                                 [--supersede-refusal <reason>]
                                 [--help|-h]
 
+  --base <sha>                  the incremental audit base sha; maintains the
+                                re-run carry-forward ledger so a refusal briefs
+                                its own repair. Non-gating, best-effort.
   --supersede-refusal <reason>  valid only with --provenance earned; records a
                                 reasoned reversal of this member's own prior
                                 same-digest refusal and removes it.
@@ -82,9 +135,20 @@ if [ -n "${_write_clearance_lib_dir:-}" ] && [ -f "$_write_clearance_lib_dir/aud
   . "$_write_clearance_lib_dir/audit-digest.sh"
 fi
 
+# The ledger's key rule, shared with every other worktree-partitioned artifact.
+# Sourced defensively, exactly as the digest engine above is: the marker write
+# is this script's job and the ledger is a rider, so a missing key lib must
+# degrade to "no ledger", never to a failed or noisy clearance write.
+_write_clearance_script_dir="$(dirname "${BASH_SOURCE[0]}")"
+if [ -f "${_write_clearance_script_dir}/audit-key-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "${_write_clearance_script_dir}/audit-key-lib.sh"
+fi
+
 ROOT=""
 MEMBER=""
 PROVENANCE=""
+BASE=""
 # SUPERSEDE_SEEN records that the flag was passed at all, kept separate from
 # SUPERSEDE_REASON so that an empty reason (flag present, value blank) is a
 # usage error while an absent flag is the ordinary no-supersede path.
@@ -103,6 +167,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --provenance)
       PROVENANCE="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --base)
+      BASE="${2:-}"
       shift 2 2>/dev/null || shift
       ;;
     --supersede-refusal)
@@ -202,12 +270,28 @@ if [ -f "$version_file" ]; then
   version="${version%"${version##*[![:space:]]}"}"
 fi
 
-# sidecar is true only for the default member (the only member that files a
-# disposition sidecar). Derived from the member name; no CLI flag for it.
+# Two sidecar flags, because there are two sidecars and one field cannot answer
+# for both. Derived from the member name; no CLI flag for either.
+#
+#   sidecar               does this member file a FINDINGS sidecar, its report
+#                         of record? Every member does, so this is always true.
+#                         It used to be true only for the default member, which
+#                         was contradicted by the store itself: most of the
+#                         findings sidecars on disk belong to specialized
+#                         members. Anything reasoning from this field about
+#                         whether a report exists was therefore wrong for four
+#                         of the five members, and a wrong answer here reads as
+#                         "this refusal has no report", which is the state that
+#                         makes a refusal look unrepairable.
+#   dispositions_sidecar  does this member file the out-of-scope DISPOSITION
+#                         sidecar the merge gate's backstop reads? Only the
+#                         default member does. This is the distinction the old
+#                         single field was actually carrying.
+sidecar="true"
 if [ "$MEMBER" = "$DEFAULT_MEMBER" ]; then
-  sidecar="true"
+  dispositions_sidecar="true"
 else
-  sidecar="false"
+  dispositions_sidecar="false"
 fi
 
 audited_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -261,7 +345,7 @@ fi
 # consumers read. A jq failure must not publish an empty or partial marker.
 jq -cn \
   --arg version "$version" \
-  --argjson schema 3 \
+  --argjson schema 4 \
   --arg member "$MEMBER" \
   --arg provenance "$PROVENANCE" \
   --arg digest "$digest" \
@@ -269,11 +353,13 @@ jq -cn \
   --arg sha "$sha" \
   --arg audited_at "$audited_at" \
   --argjson sidecar "$sidecar" \
+  --argjson dispositions_sidecar "$dispositions_sidecar" \
   --argjson do_supersede "$do_supersede" \
   --arg supersede_reason "$SUPERSEDE_REASON" \
   '{version: $version, schema: $schema, member: $member,
     provenance: $provenance, digest: $digest, tree: $tree, sha: $sha,
-    audited_at: $audited_at, sidecar: $sidecar}
+    audited_at: $audited_at, sidecar: $sidecar,
+    dispositions_sidecar: $dispositions_sidecar}
    + (if $do_supersede
       then {supersedes: {provenance: "refused", reason: $supersede_reason,
                          superseded_at: $audited_at}}
@@ -302,6 +388,169 @@ mv -f "$tmp" "$target" || {
 # does not intercept it.
 if [ "$do_supersede" = "true" ]; then
   rm -f "$refused_path" || err "warning: superseded but could not remove '$refused_path'"
+fi
+
+# -----------------------------------------------------------------------------
+# Re-run carry-forward ledger (only with --base).
+#
+# Runs AFTER the marker is durably published, and every failure path below is a
+# warning that still exits 0. The ordering and the fail-open are both
+# deliberate: the marker is the gate artifact and the ledger is a briefing, so a
+# ledger problem must never fail a write that already landed, and must never be
+# able to hold a merge shut or open one.
+#
+# This is the step that makes a refusal self-describing. Without it a refusal is
+# an opaque blocking artifact: it cannot be repaired by an operator who does not
+# know what it found, and it cannot be superseded either, since supersession
+# requires stating a reason the operator is not in a position to state.
+# -----------------------------------------------------------------------------
+
+if [ -n "$BASE" ]; then
+  LEDGER_TAG=""
+  if command -v gaia_audit_key >/dev/null 2>&1; then
+    LEDGER_TAG="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
+  fi
+  if [ -z "$LEDGER_TAG" ]; then
+    err "warning: --base given but the audit key does not resolve; no ledger written"
+  else
+    ledger="${audit_dir}/${LEDGER_TAG}.rerun.json"
+    # Deliberately NOT named `sidecar`: that name already holds the marker body's
+    # boolean flag built above, and reusing it here would shadow the flag for any
+    # future edit that moves a body build below this block.
+    findings_sidecar="${audit_dir}/${LEDGER_TAG}.${MEMBER}.findings.json"
+    branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
+
+    # A prior ledger counts only when it is for THIS branch and base; anything
+    # else is stale and is replaced rather than extended (the reader contract's
+    # own staleness rule, applied at the writer so a stale file never briefs).
+    prior='null'
+    if [ -f "$ledger" ]; then
+      prior="$(jq -c --arg b "$branch" --arg base "$BASE" \
+        'if (.schema == 1) and (.branch == $b) and (.base_sha == $base) then . else null end' \
+        "$ledger" 2>/dev/null || echo null)"
+      [ -n "$prior" ] || prior='null'
+    fi
+
+    ledger_body=""
+    if [ "$PROVENANCE" = "refused" ]; then
+      if [ ! -f "$findings_sidecar" ]; then
+        err "warning: refusal recorded with no findings sidecar at '$findings_sidecar'; the ledger cannot brief the repair"
+      else
+        # remaining[] for THIS member is rebuilt from its sidecar every round:
+        # the sidecar is the current report, so a finding it no longer names is
+        # closed and must not linger. Other members' entries pass through
+        # untouched, and first_seen_round is carried per finding identity.
+        # Every `as` binding is fully parenthesized: jq's `as` binds looser than
+        # `+` and `//`, so `a + 1 as $r | body` parses as `a + (1 as $r | body)`
+        # and errors at runtime. jq's stderr is captured rather than discarded --
+        # a silently-swallowed program error here would look exactly like "there
+        # was nothing to write".
+        if ! ledger_body="$(jq -n \
+          --argjson prior "$prior" \
+          --slurpfile sc "$findings_sidecar" \
+          --arg member "$MEMBER" \
+          --arg base "$BASE" \
+          --arg branch "$branch" \
+          --arg head "$sha" \
+          --arg now "$audited_at" \
+          '
+          def ledger_severity:
+            {"error":"critical","warning":"important","suggestion":"suggestion"}[.] // "important";
+          ((($prior.round // 0) + 1)                            as $round
+          | (($prior.remaining // []))                          as $prev
+          | ([$prev[] | select(.member != $member)])            as $others
+          | (($sc[0].findings // []))                           as $found
+          | ([ $found[]
+              | . as $f
+              | ((first($prev[] | select(.member == $member
+                                        and .finding_class == $f.finding_class
+                                        and .path == $f.path
+                                        and .line == $f.line)) // null) as $was
+                | {member: $member,
+                   finding_class: $f.finding_class,
+                   severity: ($f.severity | ledger_severity),
+                   path: $f.path,
+                   line: $f.line,
+                   title: $f.title,
+                   failure_mode: $f.failure_mode,
+                   verified_by: $f.verified_by,
+                   suggested_fix: $f.suggested_fix,
+                   first_seen_round: ($was.first_seen_round // $round),
+                   escalated: false})
+            ])                                                  as $mine
+          | {schema: 1,
+             base_sha: $base,
+             branch: $branch,
+             round: $round,
+             head_sha: $head,
+             updated_at: $now,
+             remaining: ($others + $mine),
+             fixed_last_round: [($prior.fixed_last_round // [])[]
+                                | select(.member != $member)],
+             notes: ($prior.notes // "")})
+          ' 2>&1)"; then
+          err "warning: cannot build the carry-forward ledger: $ledger_body"
+          ledger_body=""
+        fi
+      fi
+    else
+      # An earned write ends this member's loop, so its open entries are retired
+      # rather than left to misbrief the next round: each moves into
+      # fixed_last_round stamped with the sha that closed it.
+      #
+      # Gated on this member's own refusal being gone. A plain earned write never
+      # clears a live refusal (that is the anti-gaming rule: only --supersede-refusal
+      # retires one, and it removes the file above at line 390, before this block).
+      # So a refusal surviving here means the merge is still blocked on findings
+      # that are still open, and retiring them would stamp fixed_in_sha on a repair
+      # no commit made, then delete the very briefing needed to clear the block.
+      # Skipping leaves ledger_body empty, which writes nothing and removes
+      # nothing, so the briefing survives intact.
+      if [ "$prior" != "null" ] && [ ! -f "$refused_path" ]; then
+        if ! ledger_body="$(jq -n \
+          --argjson prior "$prior" \
+          --arg member "$MEMBER" \
+          --arg head "$sha" \
+          --arg now "$audited_at" \
+          '
+          ((($prior.remaining // []))                            as $prev
+          | ([$prev[] | select(.member == $member)])             as $closed
+          | $prior
+            + {updated_at: $now,
+               head_sha: $head,
+               remaining: [$prev[] | select(.member != $member)],
+               fixed_last_round:
+                 ([($prior.fixed_last_round // [])[] | select(.member != $member)]
+                  + [$closed[] | {member, finding_class, path, line, title,
+                                  fixed_in_sha: $head}])})
+          ' 2>&1)"; then
+          err "warning: cannot update the carry-forward ledger: $ledger_body"
+          ledger_body=""
+        fi
+      fi
+    fi
+
+    if [ -n "$ledger_body" ]; then
+      # Clean-pass cleanup: the file goes away only when NO member has anything
+      # left, so a co-dispatched member's still-open work is never discarded by
+      # another member's clean pass.
+      if [ "$PROVENANCE" = "earned" ] \
+         && [ "$(printf '%s' "$ledger_body" | jq -r '(.remaining | length) == 0' 2>/dev/null)" = "true" ]; then
+        rm -f "$ledger" || err "warning: could not remove the spent ledger '$ledger'"
+      else
+        ledger_tmp="$(mktemp "${audit_dir}/.audit-rerun-ledger.XXXXXX" 2>/dev/null || true)"
+        if [ -z "$ledger_tmp" ]; then
+          err "warning: cannot create a temp file for the ledger in '$audit_dir'"
+        elif ! printf '%s\n' "$ledger_body" > "$ledger_tmp"; then
+          rm -f "$ledger_tmp"
+          err "warning: cannot stage the ledger"
+        elif ! mv -f "$ledger_tmp" "$ledger"; then
+          rm -f "$ledger_tmp"
+          err "warning: cannot publish the ledger to '$ledger'"
+        fi
+      fi
+    fi
+  fi
 fi
 
 printf '%s\n' "$target"

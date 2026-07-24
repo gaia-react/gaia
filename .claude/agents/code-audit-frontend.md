@@ -542,12 +542,14 @@ If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the led
   "updated_at": "2026-07-01T12:00:00Z",
   "remaining": [
     {
+      "member": "code-audit-frontend",
       "finding_class": "holistic/swallowed-error",
       "severity": "critical",
       "path": "app/services/foo.ts",
       "line": 42,
       "title": "<short>",
       "failure_mode": "<input + state + bad outcome>",
+      "verified_by": "<the executed evidence>",
       "suggested_fix": "<concrete instruction>",
       "source": "holistic",
       "first_seen_round": 1,
@@ -556,6 +558,7 @@ If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the led
   ],
   "fixed_last_round": [
     {
+      "member": "code-audit-frontend",
       "finding_class": "holistic/non-null-assertion",
       "path": "app/pages/Bar/index.tsx",
       "line": 17,
@@ -575,8 +578,8 @@ Field semantics (frozen):
 - `round`: integer round counter. Round 1 is the first non-clean audit; each re-audit that writes the ledger increments it.
 - `head_sha`: the HEAD the most recent round audited (provenance / debugging).
 - `updated_at`: ISO-8601 UTC, `date -u +%Y-%m-%dT%H:%M:%SZ`.
-- `remaining[]`: **in-scope open findings only** (Critical + unaddressed Important + unresolved/escalated Suggestions). Out-of-scope findings are NOT here; they live in `<frontend-digest>.dispositions.json` plus filed `tech-debt` issues. Per-finding fields: `finding_class` (seeded class or `holistic/unclassified`), `severity` (`critical|important|suggestion`), `path` (repo-relative POSIX), `line` (integer), `title`, `failure_mode` (input + state + bad outcome), `suggested_fix`, `source` (`holistic|rule|oracle`), `first_seen_round` (integer), `escalated` (boolean; an in-scope Suggestion escalated for a human tradeoff, which blocks the marker).
-- `fixed_last_round[]`: in-scope findings self-healed / fixed in the most recent round. Lighter shape: `finding_class`, `path`, `line`, `title`, `fixed_in_sha` (the fix commit's sha, or empty if uncommitted).
+- `remaining[]`: **in-scope open findings only** (Critical + unaddressed Important + unresolved/escalated Suggestions). Out-of-scope findings are NOT here; they live in `<frontend-digest>.dispositions.json` plus filed `tech-debt` issues. Per-finding fields: `member` (which member owns this entry, since one ledger serves the whole dispatched set), `finding_class` (seeded class or `holistic/unclassified`), `severity` (`critical|important|suggestion`), `path` (repo-relative POSIX), `line` (integer), `title`, `failure_mode` (input + state + bad outcome), `verified_by` (the executed evidence), `suggested_fix`, `source` (`holistic|rule|oracle`), `first_seen_round` (integer), `escalated` (boolean; an in-scope Suggestion escalated for a human tradeoff, which blocks the marker).
+- `fixed_last_round[]`: in-scope findings self-healed / fixed in the most recent round. Lighter shape: `member`, `finding_class`, `path`, `line`, `title`, `fixed_in_sha` (the fix commit's sha, or empty if uncommitted).
 - `notes`: optional free text.
 
 Per-finding identity for cross-round dedup / closure-confirmation = (`finding_class`, `path`, `line`). This accepts the same residual line-drift risk the `tech-debt` dedup already accepts. The ledger is a **briefing**, not an authority over the next round's fresh findings: each re-audit derives its own findings from scratch; the ledger tells the fixer what to act on and lets the re-audit confirm closure.
@@ -590,8 +593,12 @@ Per-finding identity for cross-round dedup / closure-confirmation = (`finding_cl
 
 ### Writer behavior (LOCAL only)
 
-- **Non-clean pass** (marker NOT written): write/update `LEDGER`. `round` = (valid same-branch same-base ledger's `round`) + 1, else 1. Carry `first_seen_round` for findings that persist across rounds. Set `remaining`, `fixed_last_round`, `head_sha` = current HEAD, `branch`, `updated_at`. Write atomically (temp file + `mv`) and best-effort: a write failure never aborts the audit, same philosophy as `progress.log`.
-- **Clean pass** (marker written): `rm -f "$LEDGER"` (best-effort). Cleanup runs on every clean pass, so a lingering ledger for this base is always removed when the loop ends.
+**The shared clearance writer maintains the ledger; you do not write it by hand.** Pass `--base "$BASE_SHA"` to `.gaia/scripts/audit-write-clearance.sh` on every clearance write, earned or refused, and it does the whole of the behavior below. Hooking the ledger to the clearance write is deliberate: a refusal that briefs nothing is an artifact that blocks a merge no one can clear, and the one moment a refusal is guaranteed to be written is the moment it is written. A third prose step would be a third place to forget.
+
+- **Refusal** (marker withheld, refusal recorded): `remaining[]` for your member is rebuilt from your findings sidecar, so every open finding arrives with its `path`, `line`, `title`, `failure_mode`, `verified_by`, and `suggested_fix` already populated (the sidecar's severity scale is mapped onto the ledger's: `error` → `critical`, `warning` → `important`). `round` = (valid same-branch same-base ledger's `round`) + 1, else 1; `first_seen_round` carries per (member, `finding_class`, `path`, `line`) so a finding that survives rounds keeps its original round. `head_sha`, `branch`, and `updated_at` are set from the write. A finding your sidecar no longer names is closed and does not survive the rebuild.
+- **Clean pass** (earned marker written): your entries are retired, moving into `fixed_last_round[]` stamped with the sha that closed them. The FILE is removed once no member has anything left, matching the clean-pass cleanup without discarding a co-dispatched member's still-open work.
+- One ledger serves the whole dispatched set (its key is the base, not a digest), so each entry carries a `member` field and a write only ever touches its own member's entries.
+- Atomic (temp file + `mv`) and best-effort throughout: a ledger failure warns on stderr and never fails the clearance write, never aborts the audit, and cannot hold a merge shut or open one.
 
 ### CI gating (load-bearing)
 
@@ -906,6 +913,17 @@ Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory
 When the marker is warranted, the write is a mark → stamp → push → status sequence, run in that fixed order. The marker is written first, before the stamp, so it feeds the member-aware stamp gate immediately below and closes the crash window: a trailer is never believed while any dispatched member's own marker, this one included, is missing. The stamp runs next: the helper picks amend vs empty-commit per the placement rule and never pushes. Because the stamp is a content-preserving empty commit, it changes no blob sha, so it rotates no digest and the marker written in step 1 stays valid after it, there is no repair write. The trailer commit is pushed next, before the status call, only on the empty-commit path and only on an attached tracking branch, since that push is what makes the remote PR head the trailer commit and lets the status POST (which targets the remote head) land on the sha branch protection checks; on the amend path there is nothing new to push, and the status helper declines `audited tree not on pushed head` until the operator pushes, which is the correct fail-safe. Finally, the `GAIA-Audit` success commit status is posted, gated on the marker file already existing; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The shared clearance writer (`.gaia/scripts/audit-write-clearance.sh`) writes the marker unconditionally: every write lands, overwriting whatever was already on disk for this digest; provenance is `earned` or `refused` only, there is no carried family to out-rank:
 
 ```bash
+# 0. Write the findings sidecar FIRST, before any clearance artifact (see
+#    "Findings sidecar" below for the full field contract). It is your report
+#    of record, so it exists before the artifact that gates on it: a marker
+#    or refusal published ahead of its own report is exactly the state an
+#    orchestrator cannot act on. LOCAL only.
+findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-frontend \
+  --base "$BASE_SHA" \
+  --findings /path/to/findings.json)"
+
 # 1. Write the earned clearance BEFORE the stamp (mark-before-stamp): this
 #    feeds the member-aware stamp gate in step 2 and closes the crash window
 #    -- a trailer is never believed while any dispatched member's marker is
@@ -916,7 +934,8 @@ When the marker is warranted, the write is a mark → stamp → push → status 
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-frontend \
-  --provenance earned)"
+  --provenance earned \
+  --base "$BASE_SHA")"
 
 # 2. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per the
 #    placement rule). The empty commit changes no blob sha, so it rotates no
@@ -1049,8 +1068,13 @@ When you withhold the marker after genuinely auditing this exact content (a real
 bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-frontend \
-  --provenance refused
+  --provenance refused \
+  --base "$BASE_SHA"
 ```
+
+`--base` is what makes the refusal self-describing. A refusal blocks the merge and is retired only by its own author, so an operator who cannot learn what you refused on can neither repair it nor legitimately supersede it: superseding requires stating a reason they are not in a position to state. With `--base` the writer derives the re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`) from the findings sidecar you wrote in step 0, so `remaining[]` names every open finding with its path, line, failure mode and recommended repair. Pass the same `BASE_SHA` you gave the sidecar writer. The ledger is non-gating and best-effort: it never blocks a merge, no hook reads it, and a failure there never fails your marker write. Your `remaining[]` entries are rebuilt from your sidecar on every round, so a finding it no longer names is closed; a co-dispatched member's entries are never touched.
+
+Passing `--base` on the earned write too is what retires your ledger entries: the writer moves them into `fixed_last_round[]` stamped with the sha that closed them, and removes the ledger file once no member has anything left. Without it, a repaired finding lingers in `remaining[]` and the next round's fixer acts on work that is already done.
 
 **Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker, adding `--supersede-refusal "<why it is now cleared>"` to the earned invocation in step 1 above:
 
@@ -1059,6 +1083,7 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$(git rev-parse --show-toplevel)" \
   --member code-audit-frontend \
   --provenance earned \
+  --base "$BASE_SHA" \
   --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
 ```
 
@@ -1074,20 +1099,38 @@ Never write a marker for content other than current `HEAD`. The shared writer de
 
 The finding-recurrence tally reads PR comments for a machine-readable findings block; CI's own workflow prompt already emits one (`code-review-audit.yml:359-372`), but a PR audited by the local producer left the tally with nothing. Close that gap yourself: on **every LOCAL pass**, clean or not, marker written or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set): CI's own prompt already covers it, unrelated to this file.
 
-Path: `.gaia/local/audit/${AUDIT_KEY}.code-audit-frontend.findings.json`, the **same** `AUDIT_KEY` you already derive for the re-run carry-forward ledger (see "Re-run carry-forward ledger" above), never a second derivation. If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the sidecar write entirely, the same fail-open rule the ledger itself follows.
+**Write it with the shared writer, never by hand**, and write it **before** any clearance artifact (step 0 of the gate handshake above). The writer derives the path, validates every entry, and publishes atomically:
 
-Shape:
-
-```json
-{"schema":1,"member":"code-audit-frontend","findings":[
-  {"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]},
-  {"finding_class":"holistic/unclassified","severity":"suggestion","area_tags":["app/routes"]}
-]}
+```bash
+findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
+  --root "$(git rev-parse --show-toplevel)" \
+  --member code-audit-frontend \
+  --base "$BASE_SHA" \
+  --findings /path/to/findings.json)"
 ```
 
-Every Critical / Important / Suggestion finding in your report (in-scope or out-of-scope; not a cross-remit finding, which belongs to another member) goes into `findings[]`, with `severity` mapped from your grading: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `area_tags` is a short array of the finding's directory-level location(s) (e.g. `["app/routes"]`). A finding carrying a valid `finding_class` from the closed holistic/rule vocabulary (see "Finding classification" above) counts at any severity; a finding that genuinely maps to no seeded class is stamped `holistic/unclassified` and **included**, never omitted, surfacing as the distinct unclassified recurrence signal. `"findings": []` when your report is empty is still a real, meaningful "this run found nothing" record; write it, do not skip the file.
+Pass the same `BASE_SHA` you already resolved for the re-run carry-forward ledger (see "Re-run carry-forward ledger" above), never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-frontend.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable, the same fail-open rule the ledger itself follows. `--findings -` reads the array from stdin when you would rather not stage a temp file.
 
-Best-effort: a write failure here never blocks or alters the marker / stamp / status / dispositions-sidecar / ledger sequence above.
+Shape (one entry per finding; the writer rejects the write and names the offending index if any required field is missing):
+
+```json
+[
+  {"finding_class":"holistic/swallowed-error","severity":"error",
+   "path":"app/services/gaia/foo/requests.ts","line":42,
+   "title":"a rejected request resolves as success",
+   "failure_mode":"a 500 from the endpoint takes the catch arm, which returns the empty parse result, so the caller renders an empty list as if the fetch succeeded",
+   "verified_by":"drove the MSW 500 handler through the hook: the error boundary never mounts and the list renders empty",
+   "suggested_fix":"rethrow after logging, or return a discriminated failure the caller must handle"}
+]
+```
+
+Field contract. `severity` maps from your grading: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `finding_class` comes from the closed holistic/rule vocabulary (see "Finding classification" above) and counts at any severity; a finding that genuinely maps to no seeded class is stamped `holistic/unclassified` and **included**, never omitted, surfacing as the distinct unclassified recurrence signal. `path` and `line` locate the defect. `failure_mode` is the defect itself: input, state, and wrong outcome. `verified_by` is the executed evidence that establishes it, the same evidence your Finding Proof Gate already demands, not the reasoning that suggested looking. `suggested_fix` is the repair, concrete enough to act on. `area_tags` is optional and defaults to the `path`'s directory; supply it only to say something the dirname does not. `[]` when your report is empty is still a real, meaningful "this run found nothing" record; write it, do not skip the file.
+
+**This is the report of record, so it carries what a fix needs.** A sidecar entry holding only a class, a severity, and a directory tag cannot brief a repair, and when a marker is withheld it is the artifact the operator has to work from: they cannot resolve a finding they cannot locate, cannot confirm one they cannot reproduce, and cannot legitimately supersede a refusal whose grounds they never learned. Every Critical / Important / Suggestion finding in your report goes in, in-scope or out-of-scope (a cross-remit finding belongs to another member and does not). No finding may exist only in your returned text.
+
+The detail stays local. `post-findings-block.sh` projects each entry down to `finding_class` / `severity` / `area_tags` when it renders the PR-comment block, so extending this sidecar never widens what gets published to a PR.
+
+Best-effort: a write failure here never blocks or alters the marker / stamp / status / dispositions-sidecar / ledger sequence above. Best-effort is not optional, though: fix the rejected entry and call the writer again, do not proceed with an unwritten report.
 
 ## GAIA-Audit trailer (CI handshake)
 
