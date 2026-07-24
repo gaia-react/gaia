@@ -276,9 +276,17 @@ fi
 #    so it never renders (matches parse-findings-block.ts:5-20).
 # -----------------------------------------------------------------------------
 
-merged_findings="$(jq -s '[.[] | .findings[]? | {finding_class, severity, area_tags}]' ${valid_files[@]+"${valid_files[@]}"} 2>/dev/null || true)"
-if [ -z "$merged_findings" ]; then
-  merged_findings="[]"
+#    jq's STATUS is checked, not its emptiness. Every file left in valid_files
+#    already parsed with an array `.findings`, so this pass cannot come back
+#    empty on data grounds: an empty result means the merge itself failed.
+#    Defaulting that to `[]` would publish "the audit found nothing" on a PR
+#    when what happened is "the merge broke", which is the one wrong answer
+#    here, so a merge failure declines exactly as the render failure below
+#    does. Its stderr is captured rather than discarded for the same reason.
+if ! merged_findings="$(jq -s '[.[] | .findings[]? | {finding_class, severity, area_tags}]' ${valid_files[@]+"${valid_files[@]}"} 2>&1)"; then
+  emit_error "cannot merge the findings sidecars: $merged_findings"
+  emit_decline "post failed"
+  exit 0
 fi
 n="$(printf '%s' "$merged_findings" | jq 'length' 2>/dev/null || echo 0)"
 m="${#valid_files[@]}"

@@ -93,6 +93,27 @@ STUB
   chmod +x "$SANDBOX/bin/gh"
 }
 
+# stub_jq_merge_fails: a jq that is the real jq for every call EXCEPT the `-s`
+# merge pass, which it fails. Only that one invocation passes `-s`, so the run
+# still validates its sidecars for real and reaches the merge with a legitimate
+# file set in hand, which is the only state where the fallback under test was
+# ever reachable.
+stub_jq_merge_fails() {
+  local real
+  real="$(command -v jq)"
+  cat > "$SANDBOX/bin/jq" <<STUB
+#!/usr/bin/env bash
+for a in "\$@"; do
+  if [ "\$a" = "-s" ]; then
+    echo "jq: error: simulated merge failure" >&2
+    exit 5
+  fi
+done
+exec "$real" "\$@"
+STUB
+  chmod +x "$SANDBOX/bin/jq"
+}
+
 # stub_gh_no_auth: gh is present but `gh auth status` fails.
 stub_gh_no_auth() {
   cat > "$SANDBOX/bin/gh" <<'STUB'
@@ -317,6 +338,25 @@ extract_payload() {
   grep -qF "malformed sidecar" <<<"$output"
   [ "$(tail -n 1 <<<"$output")" = "findings: declined: no sidecars" ]
   [ ! -e "$GH_LOG" ]
+}
+
+@test "a merge that fails declines, and never publishes an empty findings block" {
+  # Every sidecar reaching the merge already parsed with an array `.findings`,
+  # so the merge cannot legitimately come back empty. Falling back to `[]`
+  # would post "the audit found nothing" on a PR when the merge broke, which
+  # is a false statement on a published surface.
+  write_sidecar code-audit-maintainer-shell \
+    '[{"finding_class":"holistic/secret-exposure","severity":"warning","area_tags":[".claude/hooks"],"path":".claude/hooks/guard.sh","line":9,"title":"t","failure_mode":"f","verified_by":"v","suggested_fix":"s"}]'
+  stub_gh '[]'
+  stub_jq_merge_fails
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  grep -qF "cannot merge the findings sidecars" <<<"$output"
+  [ "$(tail -n 1 <<<"$output")" = "findings: declined: post failed" ]
+  # Nothing was posted or edited at all.
+  [ -f "$SANDBOX/posted_body.txt" ] && return 1
+  grep -qE 'gh api .*--method' "$GH_LOG" && return 1
+  return 0
 }
 
 # =============================================================================
