@@ -72,12 +72,6 @@
 # GITHUB_ACTIONS/CI check here would make the writer's own test suite decline
 # on CI and pass locally, which is the wrong place to put an environment rule.
 #
-# AUDIT_TAG, not AUDIT_KEY, holds gaia_audit_key's output, matching
-# post-findings-block.sh: the secret-write guard
-# (.claude/hooks/block-secrets-write.sh) denies an assignment to a `*_KEY` name
-# whose value is a command substitution, so the conventional name cannot be
-# written to a tracked file at all.
-#
 # Bash 3.2 compatible (macOS default). Never `cd`s. jq required (fails closed,
 # matching every other audit artifact writer in this directory).
 
@@ -232,14 +226,14 @@ fi
 #    fail-open skip, not an error: no reader looks under a fallback key.
 # -----------------------------------------------------------------------------
 
-AUDIT_TAG="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
-if [ -z "$AUDIT_TAG" ]; then
+AUDIT_KEY="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
+if [ -z "$AUDIT_KEY" ]; then
   printf 'findings-sidecar: declined: audit key unresolved\n'
   exit 0
 fi
 
 audit_dir="${ROOT}/.gaia/local/audit"
-target="${audit_dir}/${AUDIT_TAG}.${MEMBER}.findings.json"
+target="${audit_dir}/${AUDIT_KEY}.${MEMBER}.findings.json"
 
 mkdir -p "$audit_dir" || {
   err "cannot create audit directory '$audit_dir'"

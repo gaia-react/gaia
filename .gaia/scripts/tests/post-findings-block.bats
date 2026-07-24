@@ -33,7 +33,7 @@ setup() {
   # The real tag (gaia_audit_key, audit-key-lib.sh) is base-sha + branch
   # slug; "main" has nothing to percent-encode, so the slug is the branch
   # name verbatim.
-  AUDIT_TAG="${BASE}.main"
+  AUDIT_KEY="${BASE}.main"
   GH_LOG="$SANDBOX/gh.log"
 }
 
@@ -41,7 +41,7 @@ setup() {
 write_sidecar() {
   local member="$1" findings="$2"
   printf '{"schema":1,"member":"%s","findings":%s}\n' "$member" "$findings" \
-    > "$AUDIT_DIR/${AUDIT_TAG}.${member}.findings.json"
+    > "$AUDIT_DIR/${AUDIT_KEY}.${member}.findings.json"
 }
 
 # stub_gh <comments-json>: a fake `gh` supporting `auth status` (ok), `pr view`
@@ -256,7 +256,7 @@ extract_payload() {
   grep -qF "block-secrets-write.sh" "$SANDBOX/posted_body.txt" && return 1
   grep -qF "bound each path segment" "$SANDBOX/posted_body.txt" && return 1
   # The sidecar itself still holds everything.
-  sidecar="$AUDIT_DIR/${AUDIT_TAG}.code-audit-maintainer-shell.findings.json"
+  sidecar="$AUDIT_DIR/${AUDIT_KEY}.code-audit-maintainer-shell.findings.json"
   [ "$(jq -r '.findings[0].line' "$sidecar")" = "113" ]
   [ "$(jq -r '.findings[0].suggested_fix' "$sidecar")" = "bound each path segment" ]
 }
@@ -310,7 +310,7 @@ extract_payload() {
 
 @test "a malformed sidecar (invalid JSON) is skipped, named on stderr, and the rest still posts" {
   write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
-  echo 'not json at all' > "$AUDIT_DIR/${AUDIT_TAG}.code-audit-maintainer-shell.findings.json"
+  echo 'not json at all' > "$AUDIT_DIR/${AUDIT_KEY}.code-audit-maintainer-shell.findings.json"
   stub_gh '[]'
   run run_script --base "$BASE"
   [ "$status" -eq 0 ]
@@ -321,7 +321,7 @@ extract_payload() {
 
 @test "a sidecar with a non-array findings field is malformed and skipped" {
   printf '{"schema":1,"member":"code-audit-maintainer-node","findings":"oops"}\n' \
-    > "$AUDIT_DIR/${AUDIT_TAG}.code-audit-maintainer-node.findings.json"
+    > "$AUDIT_DIR/${AUDIT_KEY}.code-audit-maintainer-node.findings.json"
   write_sidecar code-audit-frontend '[]'
   stub_gh '[]'
   run run_script --base "$BASE"
@@ -331,7 +331,7 @@ extract_payload() {
 }
 
 @test "when every matched sidecar is malformed, declines no sidecars (each still named on stderr)" {
-  echo 'not json' > "$AUDIT_DIR/${AUDIT_TAG}.code-audit-frontend.findings.json"
+  echo 'not json' > "$AUDIT_DIR/${AUDIT_KEY}.code-audit-frontend.findings.json"
   stub_gh '[]'
   run run_script --base "$BASE"
   [ "$status" -eq 0 ]
@@ -418,7 +418,7 @@ extract_payload() {
   : > "$AUDIT_DIR/${BASE}.ok"
   : > "$AUDIT_DIR/${BASE}.refused"
   : > "$AUDIT_DIR/${BASE}.dispositions.json"
-  : > "$AUDIT_DIR/${AUDIT_TAG}.rerun.json"
+  : > "$AUDIT_DIR/${AUDIT_KEY}.rerun.json"
   write_sidecar code-audit-frontend '[]'
   stub_gh '[]'
   run run_script --base "$BASE"
@@ -427,7 +427,7 @@ extract_payload() {
   grep -qF "${BASE}.ok" <<<"$output" && return 1
   grep -qF "${BASE}.refused" <<<"$output" && return 1
   grep -qF "${BASE}.dispositions.json" <<<"$output" && return 1
-  grep -qF "${AUDIT_TAG}.rerun.json" <<<"$output" && return 1
+  grep -qF "${AUDIT_KEY}.rerun.json" <<<"$output" && return 1
   return 0
 }
 

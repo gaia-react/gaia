@@ -185,14 +185,14 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$repo_root" ] || repo_root="."
 audit_dir="${repo_root}/.gaia/local/audit"
 
-# AUDIT_TAG combines --base with THIS tree's own branch (gaia_audit_key,
+# AUDIT_KEY combines --base with THIS tree's own branch (gaia_audit_key,
 # audit-key-lib.sh): a base sha alone collides between two worktrees cut
 # from the same main tip, since both compute the identical merge-base. Empty
 # when the branch is undeterminable (detached HEAD) -- the glob below then
 # matches nothing, which declines "no sidecars" below, the same fail-open
 # rule an empty --base already gets.
-AUDIT_TAG=""
-AUDIT_TAG="$(gaia_audit_key "$BASE" "$repo_root" 2>/dev/null || true)"
+AUDIT_KEY=""
+AUDIT_KEY="$(gaia_audit_key "$BASE" "$repo_root" 2>/dev/null || true)"
 
 # -----------------------------------------------------------------------------
 # 1. Glob sidecars for this tree's tag, sorted LC_ALL=C for a deterministic
@@ -200,8 +200,8 @@ AUDIT_TAG="$(gaia_audit_key "$BASE" "$repo_root" 2>/dev/null || true)"
 # -----------------------------------------------------------------------------
 
 sidecars=()
-if [ -n "$AUDIT_TAG" ]; then
-  for f in "${audit_dir}"/"${AUDIT_TAG}".*.findings.json; do
+if [ -n "$AUDIT_KEY" ]; then
+  for f in "${audit_dir}"/"${AUDIT_KEY}".*.findings.json; do
     [ -e "$f" ] || continue
     sidecars+=("$f")
   done

@@ -89,11 +89,6 @@
 #   reads it, and a failure here never fails the write, so a ledger problem can
 #   never hold a merge shut or open one.
 #
-#   LEDGER_TAG, not the conventional name, holds gaia_audit_key's output: the
-#   secret-write guard (.claude/hooks/block-secrets-write.sh) denies an
-#   assignment to a `*_KEY` name whose value is a command substitution, so the
-#   conventional spelling cannot be written to a tracked file at all.
-#
 # This writer is NOT evidence-gated: it takes no --report, calls no detector,
 # and its body carries no evidence block. It raises the forgery bar (a forged
 # marker must now be writer-shaped) but does not close the pool's
@@ -406,18 +401,18 @@ fi
 # -----------------------------------------------------------------------------
 
 if [ -n "$BASE" ]; then
-  LEDGER_TAG=""
+  AUDIT_KEY=""
   if command -v gaia_audit_key >/dev/null 2>&1; then
-    LEDGER_TAG="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
+    AUDIT_KEY="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
   fi
-  if [ -z "$LEDGER_TAG" ]; then
+  if [ -z "$AUDIT_KEY" ]; then
     err "warning: --base given but the audit key does not resolve; no ledger written"
   else
-    ledger="${audit_dir}/${LEDGER_TAG}.rerun.json"
+    ledger="${audit_dir}/${AUDIT_KEY}.rerun.json"
     # Deliberately NOT named `sidecar`: that name already holds the marker body's
     # boolean flag built above, and reusing it here would shadow the flag for any
     # future edit that moves a body build below this block.
-    findings_sidecar="${audit_dir}/${LEDGER_TAG}.${MEMBER}.findings.json"
+    findings_sidecar="${audit_dir}/${AUDIT_KEY}.${MEMBER}.findings.json"
     branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
 
     # A prior ledger counts only when it is for THIS branch and base; anything
