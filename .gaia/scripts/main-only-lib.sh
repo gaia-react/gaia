@@ -67,8 +67,36 @@
 # check-registry-runtime.sh): resolve this file's own directory via
 # BASH_SOURCE, never cwd. Guarded so a consumer that already sourced
 # main-root-lib.sh itself needs no second, redundant source.
-_GAIA_MAIN_ONLY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if ! declare -F gaia_resolve_main_root >/dev/null 2>&1; then
+#
+# Both statements below are written for the shell that actually sources this
+# file. Unlike a hook, which settings.json invokes as `bash <script>`, the
+# three call sites are markdown blocks an agent runs through its shell tool,
+# so the sourcing shell is that machine's login shell -- zsh on a stock Mac.
+# Under zsh BASH_SOURCE is unset, and `declare -F` declares a float and
+# succeeds rather than answering whether a function exists, so the resolver
+# was never sourced and every refusal returned 0: the flow continued, from a
+# worktree, with no refusal printed. `command -v` asks the same question in
+# either shell.
+#
+# The location candidates are tried in order of authority. $0 is second
+# because zsh names the sourced file there, but only sometimes: under
+# `zsh -c` a relative `.` drops the directory, so the bare-name and empty
+# cases are skipped rather than resolving to the cwd. The last candidate is
+# the repo-relative path every call site sources, from a checkout root, where
+# the sibling is a tracked file present in every tree. Each candidate must
+# actually hold main-root-lib.sh to win, so a wrong guess cannot be adopted.
+_GAIA_MAIN_ONLY_LIB_DIR=""
+for _gaia_main_only_cand in "${BASH_SOURCE[0]:-}" "${0:-}" ".gaia/scripts/main-only-lib.sh"; do
+  case "$_gaia_main_only_cand" in */*) ;; *) continue ;; esac
+  _gaia_main_only_dir="$(cd "$(dirname "$_gaia_main_only_cand")" 2>/dev/null && pwd)" || continue
+  if [ -f "$_gaia_main_only_dir/main-root-lib.sh" ]; then
+    _GAIA_MAIN_ONLY_LIB_DIR="$_gaia_main_only_dir"
+    break
+  fi
+done
+unset _gaia_main_only_cand _gaia_main_only_dir
+
+if ! command -v gaia_resolve_main_root >/dev/null 2>&1 && [ -n "$_GAIA_MAIN_ONLY_LIB_DIR" ]; then
   # shellcheck disable=SC1091
   source "$_GAIA_MAIN_ONLY_LIB_DIR/main-root-lib.sh"
 fi

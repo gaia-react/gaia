@@ -192,6 +192,66 @@ gaia_refuse_if_worktree "/update-gaia" my_state
   [ "$output" = "OK" ]
 }
 
+# ---------- as the call sites actually invoke it ----------
+#
+# Every test above sources $LIB by ABSOLUTE path under bash. The three call
+# sites do neither: they are markdown blocks an agent runs through its shell
+# tool, so the sourcing shell is that machine's login shell (zsh on a stock
+# Mac, not bash as a settings.json-registered hook gets), and the line they run
+# is the repo-relative `. .gaia/scripts/main-only-lib.sh` from a checkout root.
+#
+# Both halves of that matter, and each hid the other. Under zsh BASH_SOURCE is
+# unset and `declare -F` declares a float and succeeds, so the sibling resolver
+# was never sourced and every refusal returned 0 -- the flow continuing, from a
+# worktree, with no refusal printed. And under `zsh -c` a relative `.` drops
+# the directory from $0, so a test that sources by absolute path greens while
+# the real relative-path call stays dead.
+#
+# install_libs copies both libraries into the fixture at the same repo-relative
+# path a real checkout has them, and commits them before the worktree is cut so
+# both trees carry them.
+install_libs() {
+  local repo="$1" src
+  src="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  mkdir -p "$repo/.gaia/scripts"
+  cp "$src/main-only-lib.sh" "$src/main-root-lib.sh" "$repo/.gaia/scripts/"
+  git -C "$repo" add .gaia/scripts
+  git -C "$repo" commit -q -m "libs"
+}
+
+@test "as invoked: relative source from a worktree root refuses out loud, under zsh" {
+  command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
+  make_repo
+  install_libs "$REPO"
+  make_worktree "$REPO" w wtbranchzsh1
+  run run_in "$WT" -- zsh -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
+  [ "$status" -eq 1 ]
+  grep -qF -- "/gaia-release must run from the main checkout, not a worktree." <<<"$output" || return 1
+  grep -qF -- "Main checkout:  $REPO" <<<"$output" || return 1
+  # The failure this test exists for was near-silent: no refusal, and a stray
+  # shell error in its place.
+  grep -qF -- "command not found" <<<"$output" && return 1
+  return 0
+}
+
+@test "as invoked: relative source from a worktree root refuses out loud, under bash" {
+  make_repo
+  install_libs "$REPO"
+  make_worktree "$REPO" w wtbranchrel1
+  run run_in "$WT" -- bash -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
+  [ "$status" -eq 1 ]
+  grep -qF -- "/gaia-release must run from the main checkout, not a worktree." <<<"$output" || return 1
+}
+
+@test "as invoked: relative source from the main checkout returns 0 and prints nothing, under zsh" {
+  command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
+  make_repo
+  install_libs "$REPO"
+  run run_in "$REPO" -- zsh -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
 @test "structural: sourcing main-root-lib.sh first, then this file, does not error (guarded re-source)" {
   local mrl
   mrl="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/main-root-lib.sh"
