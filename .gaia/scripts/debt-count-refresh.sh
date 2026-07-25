@@ -41,7 +41,25 @@ SENTINEL_SETTLE_GRACE=120
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
-DEBT_DIR="$PROJECT_ROOT/.gaia/local/debt"
+
+# debt/count.json and debt/refresh-requested are registry scope `shared`: one
+# physical copy per clone, which the statusline reads by resolving the main
+# checkout. This script's own location answers "which tree am I in", never
+# "where does shared state live", so a copy running inside a worktree must ask
+# the resolver the same question the reader asks. Degrade-to-local rather than
+# fail (D-5.3-c), matching .gaia/statusline/gaia-statusline.sh: with no resolver
+# to ask, the local root is the honest answer and the refresher still refreshes.
+if [ -f "$GAIA_DIR/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$GAIA_DIR/scripts/main-root-lib.sh" 2>/dev/null || true
+fi
+STATE_ROOT=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  STATE_ROOT="$(gaia_resolve_main_root "$PROJECT_ROOT" 2>/dev/null || true)"
+fi
+[ -n "$STATE_ROOT" ] || STATE_ROOT="$PROJECT_ROOT"
+
+DEBT_DIR="$STATE_ROOT/.gaia/local/debt"
 CACHE_FILE="$DEBT_DIR/count.json"
 SENTINEL="$DEBT_DIR/refresh-requested"
 
