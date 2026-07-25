@@ -14,6 +14,11 @@
 # at the borrowed path under the main checkout, the same proxy the concurrency
 # meter's C6-03 uses. A real typegen needs the app's whole dependency tree.
 #
+# The install arm is exercised through a stub `pnpm` binary prepended onto
+# PATH, standing in for the package manager the same way the react-router
+# stub stands in for typegen: a real `pnpm install` needs registry access and
+# the app's whole dependency tree, neither of which a hermetic suite has.
+#
 # Assertion style follows .claude/rules/bats-assertions.md: POSIX `[ ]` and
 # `grep -qF`, with every non-final custom check ending in an explicit
 # `return 1`.
@@ -25,6 +30,7 @@ setup() {
 
 teardown() {
   [ -n "${MAIN:-}" ] && rm -rf "$MAIN"
+  [ -n "${PNPM_STUB_DIR:-}" ] && rm -rf "$PNPM_STUB_DIR"
   return 0
 }
 
@@ -86,6 +92,35 @@ enter_payload() {
 # copy, since add_worktree checks it out from the same commit).
 tree_key_for() {
   bash "$MAIN/.gaia/scripts/main-root-lib.sh" --tree-key "$1"
+}
+
+# add_lockfile: commits a placeholder pnpm-lock.yaml onto MAIN, so a worktree
+# added afterward checks out its own copy -- the file the install step gates
+# on. Content is irrelevant; the stub pnpm never reads it.
+add_lockfile() {
+  echo lockfile > "$MAIN/pnpm-lock.yaml"
+  git -C "$MAIN" add -A
+  git -C "$MAIN" commit -q -m "add lockfile"
+}
+
+# stub_pnpm [exit_code]: a pnpm stand-in prepended onto PATH, standing in for
+# the real package manager the same way stub_typegen stands in for
+# react-router. Every invocation appends the cwd it ran in to PNPM_LOG, so the
+# assertions can tell which tree the install ran in, and how many times it
+# ran. Exits with <exit_code> (default 0).
+stub_pnpm() {
+  local exit_code="${1:-0}"
+  PNPM_STUB_DIR="$(mktemp -d -t gaia-provision-pnpm-XXXXXX)"
+  PNPM_LOG="$PNPM_STUB_DIR/pnpm.log"
+  : > "$PNPM_LOG"
+  cat > "$PNPM_STUB_DIR/pnpm" <<SH
+#!/bin/sh
+pwd -P >> "$PNPM_LOG"
+exit $exit_code
+SH
+  chmod +x "$PNPM_STUB_DIR/pnpm"
+  PATH="$PNPM_STUB_DIR:$PATH"
+  export PATH
 }
 
 # ---------- 1. The direct-call form provisions the named tree ----------
@@ -198,7 +233,10 @@ tree_key_for() {
 }
 
 # ---------- 8. Typed routes are generated in the worktree, not in main ----------
-@test "typegen runs against the worktree, borrowing the main checkout's CLI" {
+# The fallback arm: no lockfile means the install step never runs, so the tree
+# has no CLI of its own and typegen borrows main's. The prefers-its-own arm is
+# test 32, below.
+@test "typegen falls back to the main checkout's CLI when the tree has none of its own" {
   make_main
   stub_typegen
   WT="$(add_worktree feat-typegen)"
@@ -572,4 +610,114 @@ tree_key_for() {
   [ "$(cat "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl")" = "main-own-data" ]
   [ -L "$MAIN/.gaia/local" ] && return 1
   return 0
+}
+
+# ---------- 27. Dependencies are installed on entry when a lockfile is present ----------
+@test "dependencies are installed on entry when a lockfile is present" {
+  make_main
+  add_lockfile
+  stub_pnpm
+  WT="$(add_worktree feat-install)"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  [ -s "$PNPM_LOG" ] || return 1
+  # The stub records the cwd it ran in: the worktree, never main.
+  [ "$(cat "$PNPM_LOG")" = "$WT" ]
+}
+
+# ---------- 28. The install runs on EVERY entry, not only when node_modules is absent ----------
+@test "dependencies are installed on every entry, not only when node_modules is absent" {
+  make_main
+  add_lockfile
+  stub_pnpm
+  WT="$(add_worktree feat-install-every)"
+  mkdir -p "$WT/node_modules"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$PNPM_LOG" | tr -d ' ')" = "1" ] || return 1
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$PNPM_LOG" | tr -d ' ')" = "2" ]
+}
+
+# ---------- 29. No lockfile: no install attempted, linking and typegen still happen ----------
+@test "no lockfile means no install is attempted, and linking plus typegen still happen" {
+  make_main
+  stub_typegen
+  stub_pnpm
+  WT="$(add_worktree feat-nolock)"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  [ -s "$PNPM_LOG" ] && return 1
+  [ -L "$WT/.gaia/local" ] || return 1
+  [ -f "$WT/.react-router/types/.stamp" ]
+}
+
+# ---------- 30. pnpm absent from PATH: logged, non-fatal, typegen still runs ----------
+@test "pnpm absent from PATH: install is skipped, logged, non-fatal, and typegen still runs" {
+  make_main
+  add_lockfile
+  stub_typegen
+  WT="$(add_worktree feat-nopnpm)"
+
+  # Strip only the directory the resolved `pnpm` binary lives in, leaving
+  # every other tool the hook needs (bash, git, jq, coreutils) resolvable --
+  # a curated allowlist would have to name every tool the hook and its
+  # libraries call and rot the moment one more is added. When pnpm is already
+  # absent (as it is at this point in CI, before the dependency-install
+  # steps later in the job), stripping is a no-op and the case is already
+  # naturally in effect.
+  pnpm_path="$(command -v pnpm 2>/dev/null)" || pnpm_path=""
+  filtered_path="$PATH"
+  if [ -n "$pnpm_path" ]; then
+    pnpm_dir="$(dirname "$pnpm_path")"
+    filtered_path="${filtered_path//$pnpm_dir:/}"
+    filtered_path="${filtered_path%:$pnpm_dir}"
+  fi
+
+  PATH="$filtered_path" run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "no pnpm found on PATH" <<<"$output" || return 1
+  [ -f "$WT/.react-router/types/.stamp" ]
+}
+
+# ---------- 31. The install exiting non-zero is logged, non-fatal, typegen still runs ----------
+@test "the install exiting non-zero is logged, non-fatal, and typegen still runs" {
+  make_main
+  add_lockfile
+  stub_typegen
+  stub_pnpm 1
+  WT="$(add_worktree feat-installfail)"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "INSTALL FAILED for $WT" <<<"$output" || return 1
+  [ -f "$WT/.react-router/types/.stamp" ]
+}
+
+# ---------- 32. Typegen prefers the tree's own CLI when one is present ----------
+# The other half of test 8's pair: when the tree HAS its own CLI, it is used
+# instead of main's borrowed one, even though main's is also present here.
+@test "typegen prefers the tree's own CLI when one is present" {
+  make_main
+  stub_typegen
+  WT="$(add_worktree feat-typegen-own)"
+
+  mkdir -p "$WT/node_modules/.bin"
+  cat > "$WT/node_modules/.bin/react-router" <<'SH'
+#!/bin/sh
+if [ "$1" = "typegen" ]; then
+  mkdir -p .react-router/types
+  echo own-cli > .react-router/types/.stamp
+fi
+SH
+  chmod +x "$WT/node_modules/.bin/react-router"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$WT/.react-router/types/.stamp")" = "own-cli" ]
 }

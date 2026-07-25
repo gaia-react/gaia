@@ -51,5 +51,5 @@ C6-03 pass
 
 # The hard three (phase 7, not run)
 C7-01 fail  task 7.1 Serena: a query from one tree is answered against another
-C7-02 fail  task 7.2 node_modules: a test resolves main's dependencies, silently
+C7-02 pass
 C7-03 pass

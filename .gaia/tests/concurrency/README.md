@@ -210,7 +210,7 @@ target, recorded here when it happens.
 | id | scenario | exec | owning task | frozen assertion |
 |---|---|---|---|---|
 | **C7-01** | Serena answers the acting tree or refuses | simulated | 7.1 Serena | A symbol query issued from worktree B is answered against B's own index, or refuses out loud; it never silently returns a symbol resolved against a different tree. Simulated: the single MCP process is stood in by a fixture. |
-| **C7-02** | tests use the acting tree's dependencies | direct | 7.2 node_modules | A test run inside worktree B resolves its dependencies from B's own tree (or a correctly keyed shared store), never silently against main's `node_modules` when they differ. |
+| **C7-02** | tests use the acting tree's dependencies | direct | 7.2 node_modules | A test run inside worktree B resolves its dependencies from B's own tree (or a correctly keyed shared store), never silently against main's `node_modules` when they differ. (Fixture re-pointed at the shipped provisioning hook, see [Published assertion changes](#published-assertion-changes).) |
 | **C7-03** | the wiki state value is not cross-clobbered | direct | 7.3 wiki state | Two worktrees on different branches do not clobber each other's `wiki/.state.json` value; the single-valued sha is keyed, merge-driven, or the store is untracked — never a last-writer-wins race across trees. |
 
 ---
@@ -221,6 +221,51 @@ The meter is frozen, so a changed assertion is published here the way an added
 scenario would be, with what changed and what it did to the number. **The target
 never moves for a repair** — a scenario is repaired, never subtracted. It moves
 **upward** only for an added scenario, and only by the maintainer's word.
+
+### C7-02: the assertion did not move; the fixture now drives the shipped provisioning hook
+
+**The target does not move: 23 before, 23 after.** This is a repair, not an added
+scenario.
+
+**What the row claims is unchanged, word for word.** A test run inside worktree B
+resolves its dependencies from B's own tree, never silently against main's when they
+differ. What changed is the mechanism proving it. The old fixture asserted the defect by
+construction: a bare `git worktree add` with no provisioning of any kind, then a bare
+`node -e require.resolve('left-pad')`. That could only ever show the defect; nothing in
+it installed anything anywhere, so it could never turn green for the right reason. The
+fixture now copies in the real `.claude/hooks/provision-worktree.sh` and the libraries it
+sources (`link-worktree.sh`, `main-root-lib.sh`, `state-registry-lib.sh`), commits them
+onto main, adds worktree B off that commit with a real dependency divergence (main has
+left-pad 1.0.0 installed, B's own branch pins 2.0.0), and fires the same `EnterWorktree`
+provisioning payload C6-02 and C6-03 use.
+
+**A bare "resolution fails" assertion is the wrong shape here, and the comment in the
+test says why.** Worktree B is nested under main, so Node's own upward `node_modules`
+search reaches main's copy whether or not B has one of its own; a divergent tree does not
+make Node refuse, it makes Node silently answer with the wrong package. The property that
+matters is not whether resolution succeeds, it is which tree answers. So the assertion
+reads the resolved path (must sit under B's own `node_modules`) and the resolved version
+(must be the 2.0.0 B's own branch pinned, not the 1.0.0 main installed), not the exit
+status alone.
+
+**The `pnpm` stand-in, and what it stands in for.** A real `pnpm install` needs registry
+access and the app's whole dependency tree, neither of which a hermetic bats fixture has.
+The stub reads the current directory's own `package.json`, the tree the hook `cd`s into
+before invoking it, and materializes `node_modules/<dep>/` for each declared dependency at
+the declared version: a `package.json` carrying the right `version` field plus a trivial
+`index.js`. That is what a package manager does to the on-disk tree, and nothing more. It
+does not fake the property under test: if the hook never runs the stub inside B, B gets no
+`node_modules` of its own, exactly as a real install's absence would leave it, and Node's
+upward search reaches main's older copy instead.
+
+**Non-vacuity proven by mutation.** Suppressing the install step in the real hook reds the
+scenario at exactly the resolved-path assertion, because Node then walks past B, which has
+no `node_modules` of its own, straight to main's. The source was restored and verified
+byte-identical by checksum afterward.
+
+**The reading moves 21/23 to 22/23 because the fix landed, not because the fixture
+changed.** Task 7.2 ships the install step this scenario now drives; the fixture repair is
+what makes that fix visible to the meter, not the reason the number moved.
 
 ### C6-01 and C6-03 at the move to harness-native creation, and C3-01's fixture with them
 

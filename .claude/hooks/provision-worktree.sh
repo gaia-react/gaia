@@ -223,6 +223,36 @@ else
   log "no linker found at $linker"
 fi
 
+# ---------- install the tree's own dependencies ----------
+# Runs on EVERY entry, not only when node_modules is missing: a warm re-run
+# costs a quarter of a second, and paying that every time is what keeps a tree
+# whose branch moved package.json or pnpm-lock.yaml from silently resolving
+# the dependency graph it had at last entry instead of the one its branch
+# commits now.
+#
+# --frozen-lockfile is deliberate: a hook the user did not invoke must not
+# rewrite a tracked file, and a plain `pnpm install` rewrites pnpm-lock.yaml
+# when the manifest disagrees with it. This way the tree gets exactly the
+# dependency graph its own branch committed. A disagreement between
+# package.json and the lockfile is a state a human resolves deliberately, so
+# it is refused out loud (logged below, non-fatal) rather than papered over.
+#
+# No lockfile means nothing declares a graph to install from, so the tree is
+# left alone. A tree with a lockfile but no pnpm on PATH, or an install that
+# fails, keeps whatever dependencies it already had; either way typegen below
+# still runs.
+if [ -f "$tree/pnpm-lock.yaml" ]; then
+  if command -v pnpm >/dev/null 2>&1; then
+    if (cd "$tree" && pnpm install --frozen-lockfile) >/dev/null 2>&1; then
+      log "installed dependencies in $tree"
+    else
+      log "INSTALL FAILED for $tree (non-fatal): the tree keeps whatever dependencies it already had -- run 'pnpm install' there to see why; a package.json/pnpm-lock.yaml disagreement is refused here by design"
+    fi
+  else
+    log "no pnpm found on PATH -- dependency install skipped for $tree"
+  fi
+fi
+
 # ---------- regenerate the typed routes ----------
 # `.react-router/types` is gitignored, so it exists only where it was generated
 # and a worktree never receives it. Without it every app file importing
@@ -236,20 +266,24 @@ fi
 # what keeps them current rather than merely present, which is the property a
 # create-time run cannot hold once the branch moves.
 #
-# Borrow the main checkout's installed CLI rather than installing into the
-# worktree: the worktree sits under that root, so Node's upward node_modules
-# traversal resolves both the CLI and the app's imports from there. A checkout
-# with nothing installed has no CLI to borrow, which is nothing to do rather
-# than a failure worth reporting.
-main_root="$(gaia_resolve_main_root "$tree" 2>/dev/null)" || main_root=""
-if [ -n "$main_root" ]; then
-  cli="$main_root/node_modules/.bin/react-router"
-  if [ -x "$cli" ]; then
-    if (cd "$tree" && "$cli" typegen) >/dev/null; then
-      log "generated typed routes in $tree"
-    else
-      log "typegen skipped (non-fatal) for $tree"
-    fi
+# Prefer the tree's OWN installed CLI: the install step above is what gives
+# the tree its own `node_modules`, and once it exists that is the copy whose
+# resolution matches the app's own imports. Borrowing the main checkout's copy
+# is the fallback for a tree where the install above could not run (no
+# lockfile, no pnpm on PATH, or the install itself failed): the worktree still
+# sits under that root, so Node's upward node_modules traversal resolves both
+# the CLI and the app's imports from there. Neither tree having an installed
+# CLI is nothing to do rather than a failure worth reporting.
+cli="$tree/node_modules/.bin/react-router"
+if [ ! -x "$cli" ]; then
+  main_root="$(gaia_resolve_main_root "$tree" 2>/dev/null)" || main_root=""
+  [ -n "$main_root" ] && cli="$main_root/node_modules/.bin/react-router"
+fi
+if [ -x "$cli" ]; then
+  if (cd "$tree" && "$cli" typegen) >/dev/null; then
+    log "generated typed routes in $tree"
+  else
+    log "typegen skipped (non-fatal) for $tree"
   fi
 fi
 

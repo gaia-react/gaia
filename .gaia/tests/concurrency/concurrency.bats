@@ -1284,38 +1284,83 @@ SH
 
 @test "C7-02: tests use the acting tree's dependencies" {
   MAIN="$(gaia_new_main gaia-c702-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/link-worktree.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .claude/hooks/provision-worktree.sh
+  gaia_copy_registry "$MAIN"
+
   jq -n '{name: "fixture", dependencies: {"left-pad": "1.0.0"}}' > "$MAIN/package.json"
-  gaia_commit_all "$MAIN" "add package.json"
+  # A placeholder is enough: provisioning gates the install step on the
+  # lockfile's PRESENCE only, and the stub pnpm below reads the manifest, not
+  # the lockfile's content.
+  echo lockfile > "$MAIN/pnpm-lock.yaml"
+  gaia_commit_all "$MAIN" "add provisioning deps + package.json + lockfile"
 
   # node_modules is gitignored and never shared/re-installed per worktree in
   # real GAIA; created directly on disk AFTER the commit, so it never becomes
-  # a tracked path a worktree would check out (a real worktree never gets one
-  # at all).
+  # a tracked path a worktree would check out. This is main's own installed
+  # copy -- the divergence the worktree must not silently resolve against.
   mkdir -p "$MAIN/node_modules/left-pad"
-  echo '{"name":"left-pad"}' > "$MAIN/node_modules/left-pad/package.json"
-  echo "module.exports = 1;" > "$MAIN/node_modules/left-pad/index.js"
+  echo '{"name":"left-pad","version":"1.0.0"}' > "$MAIN/node_modules/left-pad/package.json"
+  echo "module.exports = '1.0.0';" > "$MAIN/node_modules/left-pad/index.js"
 
   B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
-  # Tree B's branch drops the dependency (a real divergence: its own manifest
-  # no longer names left-pad) and never gets its own node_modules -- worktrees
-  # are never installed into, and instead borrow main's: Node's upward
-  # node_modules traversal resolves a worktree's imports from the main
-  # checkout's tree.
-  jq '.dependencies = {}' "$B/package.json" > "$B/package.json.tmp"
+  # Tree B's branch commits a real divergence: not a dropped dependency but a
+  # different pinned version. It never gets its own node_modules except
+  # through the provisioning hook fired below.
+  jq '.dependencies = {"left-pad": "2.0.0"}' "$B/package.json" > "$B/package.json.tmp"
   mv "$B/package.json.tmp" "$B/package.json"
   git -C "$B" add package.json
-  git -C "$B" commit -q -m "drop left-pad"
+  git -C "$B" commit -q -m "pin left-pad 2.0.0"
   [ ! -e "$B/node_modules" ]
 
-  # Target: resolving left-pad from inside B either finds B's own copy (there
-  # is none) or refuses; it never silently resolves against main's, since B's
-  # own manifest disagrees with what main has installed.
-  run run_in "$B" -- node -e "require.resolve('left-pad')"
+  # A pnpm stand-in: reads the CURRENT directory's own package.json (the tree
+  # the hook cd'd into before invoking it) and materializes node_modules/<dep>
+  # for each declared dependency at the declared version -- what a package
+  # manager does to the on-disk tree, and nothing more; no registry, no real
+  # install. It does not fake the property under test: if the hook never runs
+  # this in B, B gets no node_modules of its own, exactly as a real install's
+  # absence would leave it.
+  stub_dir="$(gaia_mk_tmp gaia-c702-pnpm-stub)"
+  cat > "$stub_dir/pnpm" <<'SH'
+#!/bin/sh
+if [ "$1" = "install" ]; then
+  jq -r '.dependencies // {} | to_entries[] | "\(.key) \(.value)"' package.json |
+    while IFS=' ' read -r name version; do
+      mkdir -p "node_modules/$name"
+      printf '{"name":"%s","version":"%s"}' "$name" "$version" > "node_modules/$name/package.json"
+      printf 'module.exports = "%s";\n' "$version" > "node_modules/$name/index.js"
+    done
+fi
+SH
+  chmod +x "$stub_dir/pnpm"
 
-  # Today Node's own upward node_modules search walks past B (which has none)
-  # straight to main's, resolving silently despite the divergent manifest.
-  [ "$status" -ne 0 ]
+  # Fire the real EnterWorktree provisioning payload against B -- same
+  # payload shape as C6-02 and C6-03: cwd already switched, tool_response
+  # naming the path -- with the stub pnpm on PATH for the hook's own install
+  # step.
+  entry_payload="$(jq -nc --arg p "$B" \
+    '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
+  ( cd "$B" && printf '%s' "$entry_payload" | PATH="$stub_dir:$PATH" bash "$B/.claude/hooks/provision-worktree.sh" ) >/dev/null 2>&1
+
+  # Target: a test run inside B resolves its dependencies from B's own tree,
+  # never silently against main's when they differ. A bare "resolution
+  # fails" assertion is the wrong shape here: B is nested UNDER main, so
+  # Node's own upward node_modules search reaches main's copy regardless of
+  # whether B has one of its own -- it resolves and succeeds either way. The
+  # property that matters is WHICH tree answers, so the assertion reads the
+  # resolved path and the resolved version rather than the exit status alone.
+  run run_in "$B" -- node -e "console.log(require.resolve('left-pad')); console.log(require('left-pad/package.json').version);"
+  [ "$status" -eq 0 ] || return 1
+
+  case "${lines[0]}" in
+    "$B"/node_modules/*) ;;
+    *) return 1 ;;
+  esac
+  [ "${lines[1]}" = "2.0.0" ]
 }
 
 @test "C7-03: the wiki state value is not cross-clobbered" {
