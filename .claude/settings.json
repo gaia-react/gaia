@@ -43,7 +43,7 @@
       "Bash(pnpm test:ci:*)",
       "Bash(pnpm typecheck:*)",
       "Bash(rm -f .gaia/local/cache/*)",
-      "Bash(rm -f .gaia/local/handoff/HANDOFF-*.md)",
+      "Bash(rm -f .gaia/local/handoff/*/HANDOFF-*.md)",
       "Bash(rm -rf .gaia/cache)",
       "Bash(rm -rf .gaia/local/cache/*)",
       "Bash(rm -rf .gaia/local/plans/*)",

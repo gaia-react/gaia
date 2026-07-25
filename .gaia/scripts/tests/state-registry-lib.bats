@@ -201,6 +201,66 @@ run_in_repo() {
   [ -z "$stdout_val" ]
 }
 
+# ========== gaia_registry_drop_zones ==========
+
+@test "gaia_registry_drop_zones: prints path<TAB>match rows, one per drop zone, in registry order" {
+  run_in_repo gaia_registry_drop_zones
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 18 ]
+  [ "${lines[0]}" = $'audit\texact' ]
+  [ "${lines[1]}" = $'audit/archived\texact' ]
+  [ "${lines[2]}" = $'cache\texact' ]
+  [ "${lines[3]}" = $'debt\texact' ]
+  [ "${lines[4]}" = $'forensics\texact' ]
+  [ "${lines[5]}" = $'forensics/*\tglob' ]
+  [ "${lines[6]}" = $'handoff\texact' ]
+  [ "${lines[7]}" = $'handoff/*\tglob' ]
+  [ "${lines[8]}" = $'plans\texact' ]
+  [ "${lines[9]}" = $'plans/archived\texact' ]
+  [ "${lines[10]}" = $'red-ledger\texact' ]
+  [ "${lines[11]}" = $'red-ledger/.tmp\texact' ]
+  [ "${lines[12]}" = $'red-ledger/*\tglob' ]
+  [ "${lines[13]}" = $'specs\texact' ]
+  [ "${lines[14]}" = $'specs/archived\texact' ]
+  [ "${lines[15]}" = $'telemetry\texact' ]
+  [ "${lines[16]}" = $'worthiness-ledger\texact' ]
+  [ "${lines[17]}" = $'worthiness-ledger/*\tglob' ]
+}
+
+@test "gaia_registry_drop_zones: no jq on PATH returns 1 and prints nothing on stdout (a caller that cannot read the list keeps every empty dir)" {
+  # Stdout and stderr are captured separately here rather than through `run`
+  # (which merges them), because gaia_registry_path's own stderr diagnostic
+  # would otherwise land in $output and fail the stdout-emptiness assertion
+  # for a reason unrelated to this function's own contract.
+  saved_path="$PATH"
+  # shellcheck disable=SC2123 # deliberately blank PATH to make jq unfindable; restored right after the call
+  PATH=""
+  set +e
+  stdout_val="$(gaia_registry_drop_zones 2>/dev/null)"
+  status_val=$?
+  set -e
+  PATH="$saved_path"
+  [ "$status_val" -eq 1 ]
+  [ -z "$stdout_val" ]
+}
+
+# The keyed-shape rows are the regression rail for the defect where sweep #4
+# used to hand-roll `grep -qxF` (an exact-string test) against these paths:
+# a keyed per-tree child never exact-matched a bare container name, so an
+# empty red-ledger/<tree_key>/ or its .tmp scratch subdir was one rmdir away
+# from deletion. These two checks prove the glob row's SHAPE actually matches
+# a real tree-key-formed relpath via the shared matcher, independent of the
+# janitor end-to-end test in local-janitor.bats's own sweep-#4 section.
+@test "gaia_registry_drop_zones: the red-ledger keyed-child glob row matches a tree-key-shaped path via _gaia_registry_pattern_matches" {
+  run _gaia_registry_pattern_matches "red-ledger/3f9c2b1a4e5d6f78" "red-ledger/*" "glob"
+  [ "$status" -eq 0 ]
+}
+
+@test "gaia_registry_drop_zones: the red-ledger keyed-child glob row also matches its own .tmp atomic-write scratch subdir" {
+  run _gaia_registry_pattern_matches "red-ledger/3f9c2b1a4e5d6f78/.tmp" "red-ledger/*" "glob"
+  [ "$status" -eq 0 ]
+}
+
 # ========== gaia_registry_integrity_snapshot ==========
 
 @test "gaia_registry_integrity_snapshot: prints exactly the 3 durable-state dirs in registry order" {
@@ -398,8 +458,14 @@ run_in_repo() {
   [ "$output" = "true" ]
 }
 
-@test "schema invariant: every non-shared entry has keyed_by == null" {
-  run jq -e '[.entries[] | select(.scope != "shared") | (.keyed_by == null)] | all' "$REGISTRY"
+@test "schema invariant: every per-tree entry has a non-empty string keyed_by" {
+  run jq -e '[.entries[] | select(.scope == "per-tree") | (.keyed_by | type == "string" and length > 0)] | all' "$REGISTRY"
+  [ "$status" -eq 0 ]
+  [ "$output" = "true" ]
+}
+
+@test "schema invariant: every main-only or ephemeral entry has keyed_by == null" {
+  run jq -e '[.entries[] | select(.scope == "main-only" or .scope == "ephemeral") | (.keyed_by == null)] | all' "$REGISTRY"
   [ "$status" -eq 0 ]
   [ "$output" = "true" ]
 }
@@ -412,6 +478,7 @@ run_in_repo() {
     and ([.entries[].writer] | all(. as $w | ["code","hand-authored","not-yet-live"] | index($w) != null))
     and ([.residue[].match] | all(. as $m | ["exact","glob","prefix"] | index($m) != null))
     and ([.residue[].writer] | all(. == "none-residue"))
+    and ([.drop_zones[].match] | all(. as $m | ["exact","glob","prefix"] | index($m) != null))
   ' "$REGISTRY"
   [ "$status" -eq 0 ]
   [ "$output" = "true" ]

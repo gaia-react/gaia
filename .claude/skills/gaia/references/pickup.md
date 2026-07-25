@@ -6,13 +6,21 @@ Rebuild "where did we leave off" at session start and suggest the next action.
 
 ### 0. Sweep (defensive)
 
-Only one handoff should ever exist. If `ls .gaia/local/handoff/HANDOFF-*.md` returns more than one, keep the newest (`ls -t .gaia/local/handoff/HANDOFF-*.md | head -1`) and delete the rest. This self-heals any pile-up left by a crash between writing a handoff and clearing the prior one.
+Resolve the tree key first, reused for every `.gaia/local/handoff/` path below:
+
+```bash
+bash .gaia/scripts/main-root-lib.sh --tree-key
+```
+
+This prints 16 lowercase hex characters (`<tree_key>`) on stdout and exits 0, or prints nothing and writes one `GAIA_TREE_KEY_UNRESOLVABLE` line to stderr and exits 1. On failure, stop here: surface the stderr line to the user and go no further. This is not the same case as "no handoff found": never treat an unresolved key as an empty `.gaia/local/handoff/<tree_key>/` and fall through to the `wiki/hot.md` fallback below.
+
+Only one handoff should ever exist. If `ls .gaia/local/handoff/<tree_key>/HANDOFF-*.md` returns more than one, keep the newest (`ls -t .gaia/local/handoff/<tree_key>/HANDOFF-*.md | head -1`) and delete the rest. This self-heals any pile-up left by a crash between writing a handoff and clearing the prior one.
 
 ### 1. Locate
 
 Find the most recent handoff:
 
-- `ls -t .gaia/local/handoff/HANDOFF-*.md | head -1`
+- `ls -t .gaia/local/handoff/<tree_key>/HANDOFF-*.md | head -1`
 - If none exists, fall back to `wiki/hot.md` (already loaded) and report "No handoff found, resuming from hot cache."
 
 ### 2. Read
@@ -48,7 +56,7 @@ Do **not** paste the whole handoff back, the user wrote it, they know the shape.
 A handoff is consumed once the user acts. It is never moved or archived.
 
 - **Happy path:** the handoff deletes itself. Its Teardown section instructs the working session to `rm` the file once the Next Actions are complete and verified, so there is nothing for pickup to do.
-- **Stale re-pickup:** if the located handoff describes work that has already fully landed (its branch merged or deleted, its Next Actions all reflected in `git log`), delete it now with `rm -f .gaia/local/handoff/HANDOFF-*.md`, report "previous handoff's work has landed, cleared it", and resume from `wiki/hot.md`.
+- **Stale re-pickup:** if the located handoff describes work that has already fully landed (its branch merged or deleted, its Next Actions all reflected in `git log`), delete it now with `rm -f .gaia/local/handoff/<tree_key>/HANDOFF-*.md`, report "previous handoff's work has landed, cleared it", and resume from `wiki/hot.md`.
 - **Still outstanding:** leave the file in place so an interruption stays recoverable, and resume the unfinished Next Actions.
 
 Be aggressive: a handoff is one-and-done. Only one ever exists, and a finished one is deleted, not kept.

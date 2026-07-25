@@ -8,13 +8,15 @@ no matching RED on record.
 
 ## Ledger
 
-- **Directory:** `.gaia/local/red-ledger/` (under the gitignored `.gaia/local/`,
-  so the ledger never gets committed). The capture hook `mkdir -p`s it on first
-  write.
-- **File:** `.gaia/local/red-ledger/observations.jsonl`; append-only JSON
-  Lines, one observation per line. Capture never rewrites or dedups; duplicate
-  observations for the same `(file, fullName, signal)` are harmless and the
-  check treats "at least one matching valid RED exists" as satisfied.
+- **Directory:** `.gaia/local/red-ledger/<tree_key>/` (under the gitignored
+  `.gaia/local/`, so the ledger never gets committed). `<tree_key>` identifies
+  the working tree, printed by `bash .gaia/scripts/main-root-lib.sh
+  --tree-key`. The capture hook `mkdir -p`s it on first write.
+- **File:** `.gaia/local/red-ledger/<tree_key>/observations.jsonl`;
+  append-only JSON Lines, one observation per line. Capture never rewrites or
+  dedups; duplicate observations for the same `(file, fullName, signal)` are
+  harmless and the check treats "at least one matching valid RED exists" as
+  satisfied.
 
 ## Record schema
 

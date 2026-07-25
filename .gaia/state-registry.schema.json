@@ -68,7 +68,7 @@
         "scope": { "enum": ["shared", "per-tree", "main-only", "ephemeral"] },
         "keyed_by": {
           "type": ["string", "null"],
-          "description": "Required non-null partition key, lock, or singleton-overwrite strategy when scope=='shared'; null for every other scope. Per-tree's key is the resolver-supplied tree identity, uniform across every per-tree entry and stated once in prose rather than per row; ephemeral's key is its own session/spec/uuid embedded in `path`; main-only is a singleton or a main-anchored coordination store."
+          "description": "Required non-null partition key, lock, or singleton-overwrite strategy when scope=='shared' or scope=='per-tree'; null for 'main-only' and 'ephemeral'. Per-tree's key is the resolver-supplied tree identity (gaia_tree_key, .gaia/scripts/main-root-lib.sh), stated per row so each per-tree entry names its own keyed subpath; ephemeral's key is its own session/spec/uuid embedded in `path`; main-only is a singleton or a main-anchored coordination store."
         },
         "why": {
           "type": "string",
@@ -92,7 +92,7 @@
       "allOf": [
         {
           "if": {
-            "properties": { "scope": { "const": "shared" } },
+            "properties": { "scope": { "enum": ["shared", "per-tree"] } },
             "required": ["scope"]
           },
           "then": {
@@ -102,7 +102,7 @@
         {
           "if": {
             "not": {
-              "properties": { "scope": { "const": "shared" } },
+              "properties": { "scope": { "enum": ["shared", "per-tree"] } },
               "required": ["scope"]
             }
           },
@@ -130,12 +130,16 @@
     "dropZone": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "why"],
+      "required": ["path", "match", "why"],
       "properties": {
         "path": {
           "type": "string",
           "minLength": 1,
-          "description": "A .gaia/local-relative structural directory (no trailing slash) the empty-dir sweep must preserve even when momentarily empty, because GAIA tooling expects to find it."
+          "description": "A .gaia/local-relative structural directory (no trailing slash) the empty-dir sweep must preserve even when momentarily empty, because GAIA tooling expects to find it. May carry a literal shell-glob '*' segment (match: glob) standing in for a keyed per-tree child whose exact name (the tree key) is a runtime value, never a registry literal."
+        },
+        "match": {
+          "enum": ["exact", "glob", "prefix"],
+          "description": "How `path` matches a real .gaia/local child, tested via the same _gaia_registry_pattern_matches matcher entries[] uses (not a hand-rolled string test). exact: literal equality. glob: shell-glob equality ('*' matches any run of characters, including '/'). prefix: the child's path starts with `path`'s literal text (trimmed of a trailing '/')."
         },
         "why": { "type": "string", "minLength": 1 }
       }

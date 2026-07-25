@@ -101,6 +101,14 @@ type red_ledger_repo_rel >/dev/null 2>&1 || exit 0
 type red_ledger_signals >/dev/null 2>&1 || exit 0
 type red_ledger_signal_script >/dev/null 2>&1 || exit 0
 
+# Shared worthiness-ledger lib: the one definition of where a tree's
+# worthiness verdicts live, also called by the ledger writer
+# (.gaia/scripts/audit-ledger/append-worthiness.mjs) so the two never hand-
+# build the path independently. Without it we cannot locate the ledger, so
+# fail-open.
+[ -f .claude/hooks/lib/worthiness-ledger.sh ] && . .claude/hooks/lib/worthiness-ledger.sh
+type worthiness_ledger_path >/dev/null 2>&1 || exit 0
+
 command -v git >/dev/null 2>&1 || exit 0
 command -v node >/dev/null 2>&1 || exit 0
 
@@ -131,10 +139,10 @@ if [[ "$payload_cwd" == /* ]] && git -C "$payload_cwd" rev-parse --show-toplevel
 fi
 tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
 
-# Worthiness ledger location (sibling to the RED ledger), anchored on this
-# tree's root. A missing ledger means zero matches, which denies for the
-# clean case below.
-ledger="$tree_root/.gaia/local/worthiness-ledger/worthiness.jsonl"
+# Worthiness ledger location (sibling to the RED ledger), anchored on and
+# keyed to this tree's root via the shared resolver. A missing ledger means
+# zero matches, which denies for the clean case below.
+ledger="$(worthiness_ledger_path "$tree_root")" || exit 0
 
 # ---------------------------------------------------------------------------
 # Resolve the PR base, the default branch this work forks from. Prefer the

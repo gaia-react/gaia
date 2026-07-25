@@ -81,6 +81,13 @@ enter_payload() {
   jq -nc --arg p "$1" '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}'
 }
 
+# tree_key_for <tree>: the same gaia_tree_key the hook itself computes,
+# derived from MAIN's own copy of the library (identical to the tree's own
+# copy, since add_worktree checks it out from the same commit).
+tree_key_for() {
+  bash "$MAIN/.gaia/scripts/main-root-lib.sh" --tree-key "$1"
+}
+
 # ---------- 1. The direct-call form provisions the named tree ----------
 @test "an explicit worktree argument is provisioned" {
   make_main
@@ -260,5 +267,188 @@ enter_payload() {
   run bash "$HOOK_ABS" "some/relative/path"
   [ "$status" -eq 0 ]
   [ -L "$WT/.gaia/local/audit" ] && return 1
+  return 0
+}
+
+# ---------- 13. Carry-forward: red-ledger, the case the phase exists for ----------
+@test "unkeyed red-ledger data is carried forward to the keyed path, byte for byte" {
+  make_main
+  WT="$(add_worktree feat-carry-red)"
+  mkdir -p "$WT/.gaia/local/red-ledger"
+  printf '{"a":1}\n{"a":2}\n' > "$WT/.gaia/local/red-ledger/observations.jsonl"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  key="$(tree_key_for "$WT")"
+  [ -f "$WT/.gaia/local/red-ledger/$key/observations.jsonl" ] || return 1
+  [ -e "$WT/.gaia/local/red-ledger/observations.jsonl" ] && return 1
+  diff <(printf '{"a":1}\n{"a":2}\n') "$WT/.gaia/local/red-ledger/$key/observations.jsonl"
+}
+
+# ---------- 14. Carry-forward is idempotent ----------
+@test "carrying forward the RED ledger twice loses nothing on the second run" {
+  make_main
+  WT="$(add_worktree feat-carry-red-twice)"
+  mkdir -p "$WT/.gaia/local/red-ledger"
+  printf 'line-one\n' > "$WT/.gaia/local/red-ledger/observations.jsonl"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  key="$(tree_key_for "$WT")"
+  [ -f "$WT/.gaia/local/red-ledger/$key/observations.jsonl" ] || return 1
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$WT/.gaia/local/red-ledger/$key/observations.jsonl")" = "line-one" ]
+  [ -e "$WT/.gaia/local/red-ledger/observations.jsonl" ] && return 1
+  return 0
+}
+
+# ---------- 15. Carry-forward never overwrites keyed data ----------
+@test "keyed red-ledger data already present is never overwritten by stale unkeyed data" {
+  make_main
+  WT="$(add_worktree feat-carry-red-noclobber)"
+  key="$(tree_key_for "$WT")"
+  mkdir -p "$WT/.gaia/local/red-ledger/$key"
+  echo keyed > "$WT/.gaia/local/red-ledger/$key/observations.jsonl"
+  mkdir -p "$WT/.gaia/local/red-ledger"
+  echo stale > "$WT/.gaia/local/red-ledger/observations.jsonl"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$WT/.gaia/local/red-ledger/$key/observations.jsonl")" = "keyed" ]
+  [ -f "$WT/.gaia/local/red-ledger/observations.jsonl" ] || return 1
+  [ "$(cat "$WT/.gaia/local/red-ledger/observations.jsonl")" = "stale" ]
+}
+
+# ---------- 16. A symlinked .gaia/local disables the step entirely ----------
+# The gate this test exercises exists for a change not yet landed: a linked
+# worktree's whole .gaia/local becomes one symlink to main's. Simulated here
+# with a symlink to an independent directory (not MAIN's own .gaia/local) so
+# the assertion isolates the carry-forward step from link-worktree.sh's own,
+# separately-owned behavior toward a symlinked .gaia/local.
+@test "a symlinked .gaia/local skips the carry-forward step entirely" {
+  make_main
+  WT="$(add_worktree feat-carry-symlink)"
+  target_dir="$(mktemp -d -t gaia-provision-symlink-target-XXXXXX)"
+  mkdir -p "$target_dir/red-ledger"
+  echo untouched > "$target_dir/red-ledger/observations.jsonl"
+  rm -rf "$WT/.gaia/local"
+  ln -s "$target_dir" "$WT/.gaia/local"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  key="$(tree_key_for "$WT")"
+  if [ -e "$target_dir/red-ledger/$key" ]; then
+    rm -rf "$target_dir"
+    return 1
+  fi
+  if [ "$(cat "$target_dir/red-ledger/observations.jsonl")" != "untouched" ]; then
+    rm -rf "$target_dir"
+    return 1
+  fi
+  rm -rf "$target_dir"
+  return 0
+}
+
+# ---------- 17. The main checkout's own unkeyed data is rescued too ----------
+# The case the early gate would otherwise miss: nothing else runs at main's
+# own session start to carry this forward.
+@test "the main checkout's own unkeyed data is carried forward" {
+  make_main
+  mkdir -p "$MAIN/.gaia/local/red-ledger"
+  echo main-red > "$MAIN/.gaia/local/red-ledger/observations.jsonl"
+
+  payload="$(jq -nc --arg p "$MAIN" '{hook_event_name: "SessionStart", source: "startup", cwd: $p}')"
+  run bash -c "printf '%s' '$payload' | bash '$HOOK_ABS'"
+  [ "$status" -eq 0 ]
+
+  key="$(tree_key_for "$MAIN")"
+  [ -f "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl" ] || return 1
+  [ "$(cat "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl")" = "main-red" ]
+  [ -e "$MAIN/.gaia/local/red-ledger/observations.jsonl" ] && return 1
+  return 0
+}
+
+# ---------- 18. Nothing to migrate is silent ----------
+@test "nothing to migrate is a silent no-op" {
+  make_main
+  WT="$(add_worktree feat-carry-nothing)"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "CARRY-FORWARD" <<<"$output" && return 1
+  grep -qF -- "carried forward" <<<"$output" && return 1
+  return 0
+}
+
+# ---------- 19. The worthiness-ledger sibling migrates the same way ----------
+@test "unkeyed worthiness-ledger data is carried forward to the keyed path" {
+  make_main
+  WT="$(add_worktree feat-carry-worthiness)"
+  mkdir -p "$WT/.gaia/local/worthiness-ledger"
+  echo worth-data > "$WT/.gaia/local/worthiness-ledger/worthiness.jsonl"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  key="$(tree_key_for "$WT")"
+  [ -f "$WT/.gaia/local/worthiness-ledger/$key/worthiness.jsonl" ] || return 1
+  [ "$(cat "$WT/.gaia/local/worthiness-ledger/$key/worthiness.jsonl")" = "worth-data" ]
+}
+
+# ---------- 20. forensics/: the multi-file, loosely-named directory shape ----------
+@test "unkeyed forensics reports are carried forward to the keyed subdirectory" {
+  make_main
+  WT="$(add_worktree feat-carry-forensics)"
+  mkdir -p "$WT/.gaia/local/forensics"
+  echo report-one > "$WT/.gaia/local/forensics/20260101T000000Z-hook.md"
+  echo report-two > "$WT/.gaia/local/forensics/20260102T000000Z-hook.md"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  key="$(tree_key_for "$WT")"
+  [ "$(cat "$WT/.gaia/local/forensics/$key/20260101T000000Z-hook.md")" = "report-one" ]
+  [ "$(cat "$WT/.gaia/local/forensics/$key/20260102T000000Z-hook.md")" = "report-two" ]
+  [ -e "$WT/.gaia/local/forensics/20260101T000000Z-hook.md" ] && return 1
+  [ -e "$WT/.gaia/local/forensics/20260102T000000Z-hook.md" ] && return 1
+  return 0
+}
+
+# ---------- 21. forensics/: never overwrites a keyed file with a stale one ----------
+@test "keyed forensics data already present is never overwritten by stale unkeyed data" {
+  make_main
+  WT="$(add_worktree feat-carry-forensics-noclobber)"
+  key="$(tree_key_for "$WT")"
+  mkdir -p "$WT/.gaia/local/forensics/$key"
+  echo keyed-report > "$WT/.gaia/local/forensics/$key/20260101T000000Z-hook.md"
+  mkdir -p "$WT/.gaia/local/forensics"
+  echo stale-report > "$WT/.gaia/local/forensics/20260101T000000Z-hook.md"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$WT/.gaia/local/forensics/$key/20260101T000000Z-hook.md")" = "keyed-report" ]
+  [ -f "$WT/.gaia/local/forensics/20260101T000000Z-hook.md" ] || return 1
+  [ "$(cat "$WT/.gaia/local/forensics/20260101T000000Z-hook.md")" = "stale-report" ]
+}
+
+# ---------- 22. handoff/: the fourth entry, same directory shape as forensics ----------
+@test "unkeyed handoff data is carried forward to the keyed subdirectory" {
+  make_main
+  WT="$(add_worktree feat-carry-handoff)"
+  mkdir -p "$WT/.gaia/local/handoff"
+  echo handoff-body > "$WT/.gaia/local/handoff/HANDOFF-2026-01-01-x.md"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  key="$(tree_key_for "$WT")"
+  [ "$(cat "$WT/.gaia/local/handoff/$key/HANDOFF-2026-01-01-x.md")" = "handoff-body" ]
+  [ -e "$WT/.gaia/local/handoff/HANDOFF-2026-01-01-x.md" ] && return 1
   return 0
 }

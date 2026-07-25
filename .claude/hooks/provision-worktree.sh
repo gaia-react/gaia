@@ -67,6 +67,89 @@ case "$tree" in
 esac
 [ -d "$tree" ] || exit 0
 
+# ---------- carry forward per-tree ledger/report data under the tree key ----------
+# Four .gaia/local segments moved one path segment deeper, keyed by this
+# tree's own gaia_tree_key, so multiple trees stop shadowing each other's
+# data at one shared unkeyed path: red-ledger/observations.jsonl,
+# worthiness-ledger/worthiness.jsonl, forensics/<file>, handoff/<file>.
+# Every reader looks at the keyed path only -- this is the one place that
+# migrates the old data, so anything left behind here is gone from its own
+# reader's point of view.
+#
+# Runs for EVERY tree, main included, and runs BEFORE the linked-worktree
+# gate below on purpose. The move shadows main's own unkeyed data exactly
+# the way it shadows a worktree's, and nothing else runs at main's session
+# start to rescue it. The gate below is unchanged by this: only the re-link
+# and typegen steps after it stay worktree-only.
+
+# carry_forward_file <dir> <file>: moves the one old unkeyed file at
+# .gaia/local/<dir>/<file> to .gaia/local/<dir>/<tree_key>/<file>, only when
+# the old file exists and the keyed file does not, so a second run, or a
+# keyed file a live session already wrote, is left untouched and unkeyed
+# content never overwrites keyed content. Nothing to move is a silent
+# no-op; a tree key that could not be resolved, or a move that fails, is
+# not -- a stranded red-ledger or worthiness-ledger file is exactly the
+# condition that silently blocks the next commit gate, so both are logged
+# loudly enough to act on.
+carry_forward_file() {
+  local dir="$1"
+  local file="$2"
+  local old="$tree/.gaia/local/$dir/$file"
+  [ -f "$old" ] || return 0
+  if [ -z "$tree_key" ]; then
+    log "CARRY-FORWARD FAILED: $dir/$file has no resolvable tree key for $tree -- move it to $dir/<tree-key>/$file by hand, or a stranded ledger will silently block the next commit gate"
+    return 0
+  fi
+  local new="$tree/.gaia/local/$dir/$tree_key/$file"
+  [ -e "$new" ] && return 0
+  if mkdir -p "$tree/.gaia/local/$dir/$tree_key" 2>/dev/null && mv "$old" "$new" 2>/dev/null; then
+    log "carried forward $dir/$file -> $dir/$tree_key/$file"
+  else
+    log "CARRY-FORWARD FAILED: $dir/$file -> $dir/$tree_key/$file -- move it by hand, or a stranded ledger will silently block the next commit gate"
+  fi
+}
+
+# carry_forward_dir_contents <dir>: the forensics/ and handoff/ shape --
+# any number of loosely-named files sitting directly in the old unkeyed
+# directory, never a subdirectory (which is how an already-migrated keyed
+# subdir is left alone). Same existence and never-overwrite rules as
+# carry_forward_file, applied file by file.
+carry_forward_dir_contents() {
+  local dir="$1"
+  local old_dir="$tree/.gaia/local/$dir"
+  [ -d "$old_dir" ] || return 0
+  local f base new
+  while IFS= read -r f; do
+    base="$(basename "$f")"
+    if [ -z "$tree_key" ]; then
+      log "CARRY-FORWARD FAILED: $dir/$base has no resolvable tree key for $tree -- move it to $dir/<tree-key>/$base by hand, or a stranded ledger will silently block the next commit gate"
+      continue
+    fi
+    new="$tree/.gaia/local/$dir/$tree_key/$base"
+    [ -e "$new" ] && continue
+    if mkdir -p "$tree/.gaia/local/$dir/$tree_key" 2>/dev/null && mv "$f" "$new" 2>/dev/null; then
+      log "carried forward $dir/$base -> $dir/$tree_key/$base"
+    else
+      log "CARRY-FORWARD FAILED: $dir/$base -> $dir/$tree_key/$base -- move it by hand, or a stranded ledger will silently block the next commit gate"
+    fi
+  done < <(find "$old_dir" -maxdepth 1 -type f 2>/dev/null)
+}
+
+# Skipped outright when .gaia/local is itself a symlink. A later change in
+# this same phase makes a linked worktree's whole .gaia/local one symlink to
+# main's; once that lands, the "old unkeyed path" a worktree sees through
+# that symlink IS main's own data, and moving it under the WORKTREE's own
+# key would steal main's ledger out from under it. Gating on the symlink
+# keeps this step correct both before and after that later change lands,
+# without this hook needing to know which state it is in.
+if [ ! -L "$tree/.gaia/local" ]; then
+  tree_key="$(gaia_tree_key "$tree" 2>/dev/null)" || tree_key=""
+  carry_forward_file "red-ledger" "observations.jsonl"
+  carry_forward_file "worthiness-ledger" "worthiness.jsonl"
+  carry_forward_dir_contents "forensics"
+  carry_forward_dir_contents "handoff"
+fi
+
 # ---------- only a linked worktree is provisioned ----------
 # gaia_is_linked_worktree is the one predicate for this question, so the main
 # checkout costs a single resolver call and nothing else. It answers "no" for

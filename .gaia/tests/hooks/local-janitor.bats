@@ -1186,9 +1186,10 @@ jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
 # write_registry <gaia_dir>: writes a minimal, schema-shaped
 # .gaia/state-registry.json fixture into <gaia_dir> (e.g. "$REPO/.gaia"), with
 # empty entries/residue and a drop_zones array covering exactly the
-# `telemetry` drop-zone this section's fixtures need. Not the real registry --
-# a fixture-local stand-in so gaia_registry_path (which resolves through the
-# fixture repo's own git root) has a real file to read.
+# `telemetry` drop-zone this section's fixtures need, plus `red-ledger` and
+# its keyed-child glob row for the keyed-per-tree-dir case below. Not the
+# real registry -- a fixture-local stand-in so gaia_registry_path (which
+# resolves through the fixture repo's own git root) has a real file to read.
 write_registry() {
   mkdir -p "$1"
   cat > "$1/state-registry.json" <<'JSON'
@@ -1199,7 +1200,10 @@ write_registry() {
   "entries": [],
   "residue": [],
   "drop_zones": [
-    { "path": "telemetry", "why": "fixture" }
+    { "path": "telemetry", "match": "exact", "why": "fixture" },
+    { "path": "red-ledger", "match": "exact", "why": "fixture" },
+    { "path": "red-ledger/.tmp", "match": "exact", "why": "fixture" },
+    { "path": "red-ledger/*", "match": "glob", "why": "fixture: keyed per-tree child (red-ledger/<tree_key>/) and its own .tmp scratch subdir" }
   ]
 }
 JSON
@@ -1240,6 +1244,28 @@ JSON
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -d "$REPO/.gaia/local/stray-empty" ]
+}
+
+# Regression rail: `.gaia/local` entries re-keyed under a per-tree subpath
+# (red-ledger/<tree_key>/, .gaia/state-registry.json's `keyed_by` for the
+# per-tree entries) address themselves one path segment deeper than the bare
+# container. Before the drop-zones matcher understood glob rows, only the
+# bare `red-ledger` and `red-ledger/.tmp` literals survived; a keyed child
+# never exact-matched either and was one empty-dir sweep away from `rmdir`.
+# Two independent dirs, two different tree-key-shaped names, prove both
+# shapes named in the state registry's red-ledger/* row: the keyed container
+# itself, and that container's own atomic-write .tmp scratch subdir.
+@test "sweep 4: a keyed per-tree red-ledger dir, and a keyed dir's own .tmp scratch subdir, both survive empty" {
+  make_repo
+  write_registry "$REPO/.gaia"
+  mkdir -p "$REPO/.gaia/local/red-ledger/3f9c2b1a4e5d6f78"
+  mkdir -p "$REPO/.gaia/local/red-ledger/71a8c4d92e6b0f35/.tmp"
+  cd "$REPO"
+
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/red-ledger/3f9c2b1a4e5d6f78" ]
+  [ -d "$REPO/.gaia/local/red-ledger/71a8c4d92e6b0f35/.tmp" ]
 }
 
 # The janitor's delegation to the one-time cleanup sweep is covered in that

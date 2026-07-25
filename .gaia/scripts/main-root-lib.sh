@@ -61,6 +61,25 @@
 #   non-zero. Reuses this file's own env-scrub (_gaia_git) and physical
 #   resolver (_gaia_physical_dir); it is not a second resolver.
 #
+# gaia_tree_key [dir]
+#   The path-safe rendering of the tree identity gaia_resolve_tree_root
+#   returns: the first 16 hex characters of the sha256 of that physically
+#   resolved root. Per-tree state that has to live under one shared
+#   .gaia/local addresses itself at a subpath named by this key, because a
+#   path segment cannot itself be a path. SUCCESS: prints 16 lowercase hex
+#   characters as one line; returns 0. FAILURE (`dir` is not inside a work
+#   tree, or neither `shasum` nor `sha256sum` is on PATH): prints nothing on
+#   stdout, writes ONE diagnostic line to stderr naming the constant token
+#   GAIA_TREE_KEY_UNRESOLVABLE; returns 1. Never both fails and prints a key.
+#
+#   Applied UNIFORMLY, including to the main checkout: a caller keys its own
+#   state the same way in every tree, so no code carries an "am I main" branch
+#   for state it owns. sha256-of-the-root-path is the idiom .project-id
+#   already establishes for this repo, so this is a new caller of a settled
+#   mechanism, not a new mechanism. The key deliberately does NOT derive from
+#   a worktree's directory name: nothing requires a worktree to live under
+#   .claude/worktrees/, and name-shaped keys have already had to move once.
+#
 # Neither function holds state between calls: two independent resolutions,
 # for two different directories, are safe in one process.
 #
@@ -69,11 +88,13 @@
 #   root="$(gaia_resolve_main_root)" || { echo "no root: $?" >&2; }
 #   if gaia_is_linked_worktree "$some_dir"; then ...; fi
 #   tree_root="$(gaia_resolve_tree_root "$some_dir")" || { echo "no tree: $?" >&2; }
+#   key="$(gaia_tree_key "$some_dir")" || { echo "no key: $?" >&2; }
 #
 # Usage (executable):
 #   bash .gaia/scripts/main-root-lib.sh [dir]                # resolve
 #   bash .gaia/scripts/main-root-lib.sh --is-worktree [dir]  # predicate
 #   bash .gaia/scripts/main-root-lib.sh --tree-root [dir]    # per-tree resolve
+#   bash .gaia/scripts/main-root-lib.sh --tree-key [dir]     # per-tree key
 
 # Run git with the three repository-discovery overrides stripped from the
 # environment, so every call here answers from on-disk layout alone.
@@ -277,6 +298,37 @@ gaia_resolve_tree_root() {
   return 0
 }
 
+# gaia_tree_key: see the header contract above.
+gaia_tree_key() {
+  local dir="${1:-}"
+
+  local root
+  root="$(gaia_resolve_tree_root "$dir")" || {
+    printf 'GAIA_TREE_KEY_UNRESOLVABLE: not inside a work tree\n' >&2
+    return 1
+  }
+
+  # `shasum -a 256` is present on macOS and most Linux; `sha256sum` is the
+  # coreutils fallback. Same order and same guard as the repo's other
+  # sha256 shims. `printf` (never `echo`) so no trailing newline enters the
+  # digest and no backslash sequence is interpreted in a checkout path.
+  local out
+  if out="$(printf '%s' "$root" | shasum -a 256 2>/dev/null)"; then :
+  elif out="$(printf '%s' "$root" | sha256sum 2>/dev/null)"; then :
+  else
+    printf 'GAIA_TREE_KEY_UNRESOLVABLE: no sha256 tool on PATH (shasum / sha256sum)\n' >&2
+    return 1
+  fi
+  out="${out%% *}"
+  if [[ -z "$out" ]]; then
+    printf 'GAIA_TREE_KEY_UNRESOLVABLE: sha256 tool produced no digest\n' >&2
+    return 1
+  fi
+
+  printf '%s\n' "${out:0:16}"
+  return 0
+}
+
 # Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   if [[ "${1:-}" == "--is-worktree" ]]; then
@@ -287,6 +339,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   if [[ "${1:-}" == "--tree-root" ]]; then
     shift
     gaia_resolve_tree_root "${1:-}"
+    exit $?
+  fi
+  if [[ "${1:-}" == "--tree-key" ]]; then
+    shift
+    gaia_tree_key "${1:-}"
     exit $?
   fi
   gaia_resolve_main_root "${1:-}"

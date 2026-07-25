@@ -383,7 +383,8 @@ setup_c4_base_sha_pair() {
   gaia_copy_real "$MAIN" \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
-    .gaia/scripts/link-worktree.sh
+    .gaia/scripts/link-worktree.sh \
+    .claude/hooks/lib/worthiness-ledger.sh
   gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add link-worktree deps"
 
@@ -412,13 +413,20 @@ JS
   run run_in "$B" -- node "$append_script" test/b.test.ts "b only test" keep
   [ "$status" -eq 0 ]
 
-  # Target: each tree's own ledger, now at worthiness-ledger/ (scope
-  # "per-tree", never symlinked -- link-worktree.sh only symlinks
-  # scope:"shared" entries, exactly like its RED-ledger sibling), holds only
-  # its own observation. worthiness-ledger/ sits outside the audit/ directory
-  # that link-worktree.sh symlinks WHOLESALE into main (audit/ carries four
-  # other scope:"shared" entries), which is what made the two trees' appends
-  # land in the SAME physical file before this fix.
+  # Target: each tree's own ledger, at worthiness-ledger/ (scope "per-tree",
+  # never symlinked -- link-worktree.sh only symlinks scope:"shared" entries,
+  # exactly like its RED-ledger sibling), holds only its own observation.
+  # worthiness-ledger/ sits outside the audit/ directory that link-worktree.sh
+  # symlinks WHOLESALE into main (audit/ carries four other scope:"shared"
+  # entries), which is what made the two trees' appends land in the SAME
+  # physical file before this fix.
+  #
+  # The shipped path function decides where each tree's ledger lives -- the
+  # writer and the presence check both address it through this one function --
+  # so the fixture asks GAIA where the ledger is instead of hand-building a
+  # path. Hand-building it would re-state the tree-keyed subpath the function
+  # owns, and a fixture carrying its own copy of that shape is the same defect
+  # one layer along.
   #
   # Four things must all hold, so a writer that silently wrote nothing cannot
   # pass vacuously (a single "B doesn't contain A's entry" check would also
@@ -427,8 +435,10 @@ JS
   # observation; (c) neither ledger contains the other tree's observation
   # (both directions); (d) the old shared location under audit/ is written in
   # neither tree.
-  A_LEDGER="$A/.gaia/local/worthiness-ledger/worthiness.jsonl"
-  B_LEDGER="$B/.gaia/local/worthiness-ledger/worthiness.jsonl"
+  A_LEDGER="$(run_in "$A" -- bash -c '. .claude/hooks/lib/worthiness-ledger.sh; worthiness_ledger_path')"
+  B_LEDGER="$(run_in "$B" -- bash -c '. .claude/hooks/lib/worthiness-ledger.sh; worthiness_ledger_path')"
+  [ -n "$A_LEDGER" ]
+  [ -n "$B_LEDGER" ]
 
   [ -f "$A_LEDGER" ]
   grep -qF '"a only test"' "$A_LEDGER"

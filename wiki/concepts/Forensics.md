@@ -42,7 +42,7 @@ Before writing or filing anything, the skill runs a single redaction pass over t
 
 ## Where reports go
 
-The skill writes to `.gaia/local/forensics/<timestamp>-<class>.md` using an ISO-8601 compact UTC timestamp (`YYYYMMDDTHHMMSSZ`). This path is gitignored by default, so reports stay local to the machine that generated them and never appear in git history.
+The skill writes to `.gaia/local/forensics/<tree_key>/<timestamp>-<class>.md` using an ISO-8601 compact UTC timestamp (`YYYYMMDDTHHMMSSZ`); `<tree_key>` identifies the working tree, printed by `bash .gaia/scripts/main-root-lib.sh --tree-key`. This path is gitignored by default, so reports stay local to the machine that generated them and never appear in git history.
 
 The skill's write-surface allowlist is exactly two directories: `.gaia/local/forensics/` (the report) and `.gaia/local/telemetry/` (GAIA's local cost ledger sink). No other path is writable. The "read-only" framing means it never mutates GAIA state, the working tree, or anything under `app/` or `wiki/`; it does not extend to these two local-only sink directories.
 

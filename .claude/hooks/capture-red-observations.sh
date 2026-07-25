@@ -4,9 +4,11 @@
 # When the agent runs a one-shot vitest run (`pnpm test --run [scope]`), this
 # hook re-invokes vitest with the json reporter on the same scope, reads the
 # per-test results, and appends every GENUINELY-FAILING test to the
-# RED-observation ledger (.gaia/local/red-ledger/observations.jsonl). The
-# companion check hook (red-verify-commit-check.sh) later reads that ledger to
-# decide whether a `git commit` introducing a now-passing new test may land.
+# RED-observation ledger (.gaia/local/red-ledger/<tree_key>/observations.jsonl;
+# <tree_key> identifies the working tree, printed by
+# `bash .gaia/scripts/main-root-lib.sh --tree-key`). The companion check hook
+# (red-verify-commit-check.sh) later reads that ledger to decide whether a
+# `git commit` introducing a now-passing new test may land.
 #
 # This hook ONLY observes. It never blocks, never emits a deny, and ALWAYS
 # exits 0, a missing capture only means the check may later deny, which is the

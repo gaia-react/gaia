@@ -312,6 +312,12 @@
       "scope": "any",
       "state": [],
       "why": "Compares the home repo's git toplevel against a command's target repo for cross-repo scoping; touches no .gaia/local state."
+    },
+    {
+      "hook": ".claude/hooks/lib/worthiness-ledger.sh",
+      "scope": "per-tree",
+      "state": ["audit-worthiness-ledger"],
+      "why": "worthiness_ledger_path takes a root argument (the caller's already-resolved tree_root); when none is supplied it defaults to gaia_resolve_tree_root of the process cwd, sourcing the resolver deferred into its own body so the lib's no-side-effects-at-source-time contract holds. It is the one definition of the ledger path for both the Node writer and the bash reader, exactly as its red-ledger sibling is."
     }
   ]
 }

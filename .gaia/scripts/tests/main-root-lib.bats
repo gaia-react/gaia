@@ -582,19 +582,113 @@ old_derivation() {
   [ "$output" != "$other" ]
 }
 
+# ---------- gaia_tree_key ----------
+# The path-safe rendering of the tree identity gaia_resolve_tree_root returns:
+# the first 16 hex characters of the sha256 of that physically resolved root.
+
+# resolve_key <dir>: runs the executable entry's --tree-key operand. Mirrors
+# resolve()'s stderr-discard-inside-bash-c note.
+resolve_key() {
+  local dir="$1"
+  run bash -c 'bash "$1" --tree-key "$2" 2>/dev/null' _ "$LIB" "$dir"
+}
+
+# resolve_key_from <cwd> <dir>: process cwd=$1 (unrelated to $2), operand=$2.
+# Mirrors resolve_from().
+resolve_key_from() {
+  local cwd="$1" dir="$2"
+  run bash -c 'cd "$1" && bash "$2" --tree-key "$3" 2>/dev/null' _ "$cwd" "$LIB" "$dir"
+}
+
+@test "gaia_tree_key: two independent calls for the same tree agree" {
+  make_repo
+  resolve_key "$REPO"
+  [ "$status" -eq 0 ]
+  local first="$output"
+  resolve_key "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$first" ]
+}
+
+@test "gaia_tree_key: output is 16 lowercase hex characters" {
+  make_repo
+  resolve_key "$REPO"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ ^[0-9a-f]{16}$ ]] || return 1
+}
+
+@test "gaia_tree_key: differential, matches the first 16 hex chars of sha256(resolved root)" {
+  make_repo
+  local expected
+  expected=$(printf '%s' "$REPO" | shasum -a 256 | cut -c1-16)
+  resolve_key "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$expected" ]
+}
+
+@test "gaia_tree_key: two different trees get two different keys" {
+  make_repo
+  make_submodule
+  resolve_key "$REPO"
+  [ "$status" -eq 0 ]
+  local key_repo="$output"
+  resolve_key "$SUB"
+  [ "$status" -eq 0 ]
+  local key_sub="$output"
+  [ "$key_repo" != "$key_sub" ]
+}
+
+@test "gaia_tree_key: a linked worktree gets its own key, distinct from main's" {
+  make_repo
+  make_worktree "$REPO" "w" "keywtbranch"
+  resolve_key "$REPO"
+  [ "$status" -eq 0 ]
+  local main_key="$output"
+  resolve_key "$WT"
+  [ "$status" -eq 0 ]
+  local wt_key="$output"
+  [ "$main_key" != "$wt_key" ]
+}
+
+@test "gaia_tree_key: outside any work tree fails rc 1 with the named diagnostic, empty stdout" {
+  local nongit
+  nongit=$(mktemp -d -t gaia-mrl-keynongit-XXXXXX)
+  CLEANUP_DIRS+=("$nongit")
+
+  resolve_key "$nongit"
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+
+  run bash -c 'bash "$1" --tree-key "$2" 2>&1 1>/dev/null' _ "$LIB" "$nongit"
+  grep -qF -- "GAIA_TREE_KEY_UNRESOLVABLE" <<<"$output" || return 1
+}
+
+@test "gaia_tree_key: honors an explicit dir argument when the process cwd is unrelated to it" {
+  make_repo
+  local neutral
+  neutral=$(mktemp -d -t gaia-mrl-keyneutral-XXXXXX)
+  CLEANUP_DIRS+=("$neutral")
+  resolve_key_from "$neutral" "$REPO"
+  [ "$status" -eq 0 ]
+  local expected
+  expected=$(printf '%s' "$REPO" | shasum -a 256 | cut -c1-16)
+  [ "$output" = "$expected" ]
+}
+
 # ---------- structural ----------
 
 @test "structural: main-root-lib.sh is executable" {
   [ -x "$LIB" ]
 }
 
-@test "structural: sourcing the library defines all three functions with no side effects" {
+@test "structural: sourcing the library defines all four functions with no side effects" {
   run bash -c '
     # shellcheck disable=SC1090
     source "$1"
     type gaia_resolve_main_root >/dev/null
     type gaia_is_linked_worktree >/dev/null
     type gaia_resolve_tree_root >/dev/null
+    type gaia_tree_key >/dev/null
     echo OK
   ' _ "$LIB"
   [ "$status" -eq 0 ]

@@ -12,10 +12,10 @@
 # directly against the registry by
 # .gaia/scripts/tests/state-registry-lib.bats's own structural tests (no
 # duplicate ids across entries+residue; every scope value is one of the four
-# enum members; keyed_by required iff scope=="shared"; every required field
-# present) -- this script does not repeat those. It adds the one thing they
-# do not cover: whether the registry's OWN id set still matches what it was
-# authored against.
+# enum members; keyed_by required iff scope=="shared" or scope=="per-tree";
+# every required field present) -- this script does not repeat those. It adds
+# the one thing they do not cover: whether the registry's OWN id set still
+# matches what it was authored against.
 #
 # The inventory denominator (analysis/gaia-local-state-inventory.md) lives in
 # the sibling program repo, one level above this checkout, and is never read

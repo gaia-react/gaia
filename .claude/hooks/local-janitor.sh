@@ -652,9 +652,14 @@ done
 # The structural drop-zones -- directories GAIA tooling expects to find and
 # writes into, kept even when momentarily empty -- are declared in the state
 # registry (.gaia/state-registry.json) and read here via gaia_registry_drop_zones
-# (from the state-registry lib sourced above). Fail-safe: an unreadable or empty
-# drop-zone list skips the sweep, so a run that cannot classify the skeleton
-# keeps every empty dir rather than rmdir a structural one it could not identify.
+# (from the state-registry lib sourced above) as `path<TAB>match` rows, each
+# tested against an empty dir's relpath via _gaia_registry_pattern_matches --
+# the same matcher gaia_registry_recognizes/gaia_registry_classify use, never a
+# hand-rolled literal-string test. This is what lets a keyed per-tree subdir
+# (e.g. red-ledger/<tree_key>/, declared as a glob row) survive alongside a
+# bare literal container. Fail-safe: an unreadable or empty drop-zone list
+# skips the sweep, so a run that cannot classify the skeleton keeps every
+# empty dir rather than rmdir a structural one it could not identify.
 drop_zones="$(gaia_registry_drop_zones 2>/dev/null)" || drop_zones=""
 if [ -n "$drop_zones" ]; then
   empties=$(find "$local_dir" -mindepth 1 -type d -empty 2>/dev/null | sort -r)
@@ -662,7 +667,12 @@ if [ -n "$drop_zones" ]; then
     while IFS= read -r d; do
       [ -n "$d" ] || continue
       rel=${d#"$local_dir"/}
-      grep -qxF -- "$rel" <<< "$drop_zones" && continue
+      is_drop_zone=0
+      while IFS="$(printf '\t')" read -r dz_path dz_match; do
+        [ -n "$dz_path" ] || continue
+        _gaia_registry_pattern_matches "$rel" "$dz_path" "$dz_match" && { is_drop_zone=1; break; }
+      done <<<"$drop_zones"
+      [ "$is_drop_zone" -eq 1 ] && continue
       rmdir "$d" 2>/dev/null
     done <<EOF
 $empties

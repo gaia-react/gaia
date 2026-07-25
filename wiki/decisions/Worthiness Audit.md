@@ -109,8 +109,10 @@ ledger:
 {"schema": 1, "file": "<repo-rel>", "fullName": "<vitest fullName>", "signal": "sha256:...", "verdict": "keep"|"fix"|"delete", "auditedAt": "<iso>", "artifact": "<...>"}
 ```
 
-- Path: `.gaia/local/worthiness-ledger/worthiness.jsonl` (append-only, gitignored,
-  grows-forever, a directory sibling to `.gaia/local/red-ledger/observations.jsonl`).
+- Path: `.gaia/local/worthiness-ledger/<tree_key>/worthiness.jsonl` (append-only,
+  gitignored, grows-forever, a directory sibling to
+  `.gaia/local/red-ledger/<tree_key>/observations.jsonl`). `<tree_key>` identifies
+  the working tree, printed by `bash .gaia/scripts/main-root-lib.sh --tree-key`.
 - `signal` is the SAME `sha256`-of-normalized-test-call the RED ledger computes
   via `.gaia/scripts/red-ledger/extract-test-signals.mjs`. The writer reuses
   that helper, so the signal byte-matches what the merge presence gate

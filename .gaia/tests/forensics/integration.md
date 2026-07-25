@@ -213,8 +213,10 @@ because the skill's diagnosis runs through the Claude Code LLM and cannot execut
 inside a bats unit (do not fabricate an LLM-driven bats test for it).
 
 The two write sinks are the only paths the skill may create or modify:
-`.gaia/local/forensics/` and `.gaia/local/telemetry/`. Everything else -
-`app/`, `wiki/`, `.claude/`, and any git-tracked source - must be untouched.
+`.gaia/local/forensics/<tree_key>/` (`<tree_key>` from
+`bash .gaia/scripts/main-root-lib.sh --tree-key`) and `.gaia/local/telemetry/`.
+Everything else - `app/`, `wiki/`, `.claude/`, and any git-tracked source -
+must be untouched.
 
 - **Setup**: from a clean tree (`git status --porcelain` empty), drop a marker
   and snapshot tracked state.
