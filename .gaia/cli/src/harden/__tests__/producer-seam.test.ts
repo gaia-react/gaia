@@ -11,7 +11,6 @@
 import {describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -20,30 +19,13 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {computeTally} from '../compute-tally.js';
 import type {TallyPrRecord} from '../compute-tally.js';
 import {parseFindingsBlock} from '../parse-findings-block.js';
 
-// Walk up from this file's location to the repo root (contains .git), the
-// same resolver `gaia-ci-template-refs.test.ts` uses, so this test needs no
-// hardcoded machine path to find the sibling `.gaia/scripts/` producer.
-const resolveRepoRoot = (): string => {
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-
-  for (let attempts = 0; attempts < 20; attempts += 1) {
-    if (existsSync(path.join(dir, '.git'))) return dir;
-    const parent = path.dirname(dir);
-
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  throw new Error('Could not find repo root (no .git directory found)');
-};
-
 const PRODUCER_SCRIPT = path.join(
-  resolveRepoRoot(),
+  resolveRepoRootFromImportMeta(import.meta.url),
   '.gaia',
   'scripts',
   'post-findings-block.sh'

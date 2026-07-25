@@ -5,10 +5,7 @@ import {existsSync, mkdtempSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {StorageRoots} from '../paths.js';
-import {
-  readOrCreateProjectId,
-  repoRootFromProjectIdPath,
-} from '../project-id.js';
+import {readOrCreateProjectId} from '../project-id.js';
 
 const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -21,6 +18,7 @@ const UUID_V4_RE =
  * sandboxes. Keeping them separate lets these run against a plain temp dir.
  */
 const rootsFor = (repoRoot: string): StorageRoots => ({
+  mainRoot: repoRoot,
   projectIdPath: path.join(repoRoot, '.gaia', 'local', '.project-id'),
 });
 
@@ -86,29 +84,37 @@ describe('readOrCreateProjectId', () => {
     }
   });
 
-  test('repoRootFromProjectIdPath round-trips a native-separator path', () => {
-    // resolveStorageRoots builds projectIdPath with path.join (native
-    // separators); the helper must recover the exact root via path.dirname
-    // rather than a regex hard-coded to `/`, which breaks on Windows `\`.
-    const root = path.join(repoRoot, 'nested', 'project');
-    const projectIdPath = path.join(root, '.gaia', 'local', '.project-id');
+  test("the derived id depends only on mainRoot, not on projectIdPath's own location (change 2: hash target is mainRoot)", () => {
+    // Two StorageRoots that share a mainRoot but point at different
+    // projectIdPath locations must derive the SAME id: both hash the same
+    // mainRoot string, and nothing else.
+    const mainRoot = path.join(repoRoot, 'shared-main-root');
+    const projectIdPathA = path.join(
+      repoRoot,
+      'a',
+      '.gaia',
+      'local',
+      '.project-id'
+    );
+    const projectIdPathB = path.join(
+      repoRoot,
+      'b',
+      '.gaia',
+      'local',
+      '.project-id'
+    );
 
-    expect(repoRootFromProjectIdPath(projectIdPath)).toBe(root);
+    const idA = readOrCreateProjectId({
+      mainRoot,
+      projectIdPath: projectIdPathA,
+    });
+    const idB = readOrCreateProjectId({
+      mainRoot,
+      projectIdPath: projectIdPathB,
+    });
+
+    expect(idA).toBe(idB);
   });
-
-  // repoRootFromProjectIdPath delegates to path.dirname, which is
-  // separator-aware for the host platform. A backslash-separated path is
-  // only resolvable by the function on Windows; on POSIX, path.dirname does
-  // not treat `\` as a separator, so this case runs natively only.
-  test.runIf(process.platform === 'win32')(
-    'repoRootFromProjectIdPath recovers the root from a Windows backslash path',
-    () => {
-      const root = String.raw`C:\Users\me\project`;
-      const projectIdPath = [root, '.gaia', 'local', '.project-id'].join('\\');
-
-      expect(repoRootFromProjectIdPath(projectIdPath)).toBe(root);
-    }
-  );
 
   test('creates the parent .gaia/local/ directory if absent', () => {
     const roots = rootsFor(repoRoot);

@@ -18,34 +18,12 @@ import {afterEach, beforeEach, describe, expect, test} from 'vitest';
  * devDependency, so the test runner can exec it.
  */
 import {execFileSync} from 'node:child_process';
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 
-const resolveRepoRoot = (): string => {
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-
-  for (let attempts = 0; attempts < 20; attempts += 1) {
-    if (existsSync(path.join(dir, '.git'))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  throw new Error('Could not find repo root (no .git directory found)');
-};
-
-const REPO_ROOT = resolveRepoRoot();
+const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const WRITER = path.join(
   REPO_ROOT,
   '.gaia/scripts/audit-ledger/append-worthiness.mjs'

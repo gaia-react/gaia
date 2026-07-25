@@ -3,31 +3,11 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {newMainCheckout} from '../../util/main-checkout-fixture.js';
 import {resolveStorageRoots} from '../paths.js';
 
 const git = (cwd: string, args: string[]): void => {
   execFileSync('git', args, {cwd, stdio: ['ignore', 'ignore', 'pipe']});
-};
-
-/**
- * A real main checkout with one commit. The temp root is `realpathSync`d
- * because `os.tmpdir()` is a symlinked path on macOS (`/var/folders/…` ->
- * `/private/var/folders/…`) and git canonicalizes the path it records for a
- * linked worktree while returning a caller-relative `.git` from the main
- * checkout. Canonicalizing here is the concurrency harness's own convention
- * (`gaia_mk_tmp` uses `pwd -P`) and keeps these tests measuring main-anchoring
- * rather than path form; the resolver's lack of physical resolution is filed
- * separately as F-3.11-tsresolver.
- */
-const newMainCheckout = (): string => {
-  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'gaia-storage-')));
-  git(root, ['init', '-q', '--initial-branch=main']);
-  git(root, ['config', 'user.email', 'test@example.com']);
-  git(root, ['config', 'user.name', 'Test']);
-  git(root, ['config', 'commit.gpgsign', 'false']);
-  git(root, ['commit', '-q', '--allow-empty', '-m', 'init']);
-
-  return root;
 };
 
 const projectIdPathUnder = (root: string): string =>
@@ -38,7 +18,7 @@ describe('resolveStorageRoots', () => {
   let scratch: string[];
 
   beforeEach(() => {
-    mainRoot = newMainCheckout();
+    mainRoot = newMainCheckout('gaia-storage-');
     scratch = [mainRoot];
   });
 

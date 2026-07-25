@@ -37,7 +37,7 @@ import {EXIT_CODES} from '../exit.js';
 import {readAutomationConfig, TOOL_IDS} from '../schemas/automation-config.js';
 import type {AutomationConfig, ToolId} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 
 const HELP_TEXT = `Usage: gaia setup-ci check-drift [--workflows-dir <path>] [--json]
 

@@ -14,11 +14,11 @@
  * Re-running is idempotent: identical files are reported in `skipped`,
  * differing files cause `writeFileIfAbsent` to throw to protect customizations.
  */
-import {execSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {writeFileIfAbsent} from './fs.js';
 import {renderTemplate} from './template.js';
 import type {ScaffoldResult} from './types.js';
@@ -123,19 +123,6 @@ const resolveTemplateFile = (filename: string): string => {
     TEMPLATE_DIR_NAME,
     filename
   );
-};
-
-const resolveRepoRoot = (): string => {
-  try {
-    const out = execSync('git rev-parse --show-toplevel', {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-
-    return out.length > 0 ? out : process.cwd();
-  } catch {
-    return process.cwd();
-  }
 };
 
 type EmitOptions = {
@@ -244,7 +231,20 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const repoRoot = options.repoRoot ?? resolveRepoRoot();
+  let repoRoot: string;
+
+  try {
+    repoRoot = options.repoRoot ?? resolveRepoRoot();
+  } catch {
+    structuredError({
+      code: 'not_a_git_repo',
+      message: 'gaia scaffold hook must run inside a git repository',
+      subcommand: 'scaffold hook',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
   const hooksDir = path.join(repoRoot, 'app', 'hooks');
   const hookFilePath = path.join(hooksDir, `${name}.ts`);
   const testFilePath = path.join(hooksDir, 'tests', `${name}.test.ts`);

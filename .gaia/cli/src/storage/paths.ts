@@ -1,7 +1,8 @@
 import path from 'node:path';
-import {resolveMainWorktreeRoot} from '../setup/util/state-file.js';
+import {resolveMainWorktreeRoot} from '../util/main-root.js';
 
 export type StorageRoots = {
+  mainRoot: string;
   projectIdPath: string;
 };
 
@@ -41,6 +42,7 @@ export const resolveStorageRoots = ({repoRoot}: ResolveArgs): StorageRoots => {
   const projectIdPath = path.join(mainRoot, '.gaia', 'local', '.project-id');
 
   return {
+    mainRoot,
     projectIdPath,
   };
 };

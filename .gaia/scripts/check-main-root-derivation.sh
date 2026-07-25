@@ -20,7 +20,7 @@
 # legitimate use anywhere outside the resolver itself.
 #
 #   1. `--git-common-dir`. The literal git flag both canonical resolvers
-#      hide behind (main-root-lib.sh in shell, state-file.ts in TypeScript).
+#      hide behind (main-root-lib.sh in shell, main-root.ts in TypeScript).
 #      Every other historical use in this repo was the pre-resolver idiom
 #      `dirname(absolute(git rev-parse --git-common-dir))` -- still named in
 #      a stale comment in token-rollup.sh describing what it used to do
@@ -93,7 +93,7 @@
 #                                 must not trip the real-source scan, same
 #                                 exclusion check-resolver-singleton.sh uses.
 #   the two resolver definitions themselves (main-root-lib.sh,
-#     state-file.ts) -- they ARE the legitimate derivation.
+#     main-root.ts) -- they ARE the legitimate derivation.
 #   the two committed CLI bundles -- esbuild output containing an inlined
 #     copy of the resolver, not a second one; scanning them would fail this
 #     check on every release, the same reasoning check-resolver-singleton.sh
@@ -112,7 +112,7 @@ GAIA_MAIN_ROOT_DERIVATION_EXCLUDE=(
   ':!*.test.tsx'
   ':!.gaia/scripts/main-root-lib.sh'
   ':!.gaia/scripts/check-main-root-derivation.sh'
-  ':!.gaia/cli/src/setup/util/state-file.ts'
+  ':!.gaia/cli/src/util/main-root.ts'
   ':!.gaia/cli/gaia'
   ':!.gaia/cli/gaia-maintainer'
 )

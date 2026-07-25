@@ -18,7 +18,7 @@ import {
 } from '../schemas/revert-ledger.js';
 import type {RevertAttempt, RevertLedger} from '../schemas/revert-ledger.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {runGh, runGit} from './util/run-process.js';
 import type {ProcessResult} from './util/run-process.js';
 

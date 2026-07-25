@@ -13,7 +13,7 @@ import type {Dirent} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from './util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 
 const HELP_TEXT = `Usage: gaia wiki near-collisions [--max-distance 3]
 

@@ -11,7 +11,7 @@
 import {execFileSync} from 'node:child_process';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {parseRemoteUrl} from './util/parse-remote-url.js';
 
 const HELP_TEXT = `Usage: gaia setup-ci detect-remote [--json]

@@ -28,7 +28,6 @@
  *
  * Frozen JSON shape; see SPEC-005 plan README.md for the contract.
  */
-import {execFileSync} from 'node:child_process';
 import {
   existsSync,
   lstatSync,
@@ -42,7 +41,8 @@ import {
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {resolveMainWorktreeRoot} from './util/state-file.js';
+import {resolveMainWorktreeRoot} from '../util/main-root.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 
 const HELP_TEXT = `Usage: gaia setup link-worktree [--json]
 
@@ -354,11 +354,7 @@ const resolveWorktreeRoots = (
   // succeeded above, this fork is essentially guaranteed to succeed too, but
   // guard for the unlikely case anyway.
   try {
-    const worktreeRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      cwd: canonicalCwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
+    const worktreeRoot = resolveRepoRoot(canonicalCwd);
 
     return {mainRoot, worktreeRoot};
   } catch {

@@ -49,7 +49,7 @@ GAIA="$SCAFFOLD/.gaia/cli/gaia"
   || { fail "staged tree missing or non-executable .gaia/cli/gaia (bundled CLI)"; exit 1; }
 
 # `gaia setup` resolves the repo root via `git rev-parse --git-common-dir`
-# (setup/util/state-file.ts); the staged tree carries no `.git` (git
+# (util/main-root.ts); the staged tree carries no `.git` (git
 # ls-files never lists it), so a real adopter clone is mirrored by
 # initializing one here. No commit is needed: --git-common-dir only
 # requires the `.git` directory to exist.

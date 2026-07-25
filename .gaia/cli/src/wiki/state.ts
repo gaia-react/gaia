@@ -19,13 +19,13 @@ import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {
   ancestorBefore,
   commitsAhead,
   headSha,
   isReachable,
   recentCommits,
-  resolveRepoRoot,
   shortSha,
 } from './util/git.js';
 import type {RecentCommit} from './util/git.js';

@@ -17,6 +17,7 @@ import {z} from 'zod';
 import {existsSync, readFileSync} from 'node:fs';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {
   buildManifest,
   computeDrift,
@@ -27,7 +28,6 @@ import {
   readMaintainerPathsScope,
   resolveExcludePath,
   resolveManifestPath,
-  resolveRepoRoot,
 } from './manifest.js';
 import type {ManifestDrift, ManifestShape} from './manifest.js';
 

@@ -11,10 +11,10 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolveMainWorktreeRoot} from '../util/main-root.js';
 import {
   pendingSteps,
   readStateFile,
-  resolveMainWorktreeRoot,
   writeStateFile,
 } from './util/state-file.js';
 import type {SetupState} from './util/state-file.js';

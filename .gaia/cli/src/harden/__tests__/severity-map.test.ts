@@ -1,7 +1,7 @@
 import {describe, expect, test} from 'vitest';
-import {existsSync, readdirSync, readFileSync} from 'node:fs';
+import {readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {SEVERITIES} from '../parse-findings-block.js';
 import {SEVERITY_BY_GRADING} from '../severity-map.js';
 
@@ -84,24 +84,7 @@ const validateAgentFile = (fileContent: string): ValidationResult => {
   return {ok: true};
 };
 
-const resolveRepoRoot = (): string => {
-  // Walk up from this file's location to find the repo root (contains .git).
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-
-  for (let attempts = 0; attempts < 20; attempts += 1) {
-    if (existsSync(path.join(dir, '.git'))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  throw new Error('Could not find repo root (no .git directory found)');
-};
-
-const repoRoot = resolveRepoRoot();
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const agentsDir = path.join(repoRoot, '.claude', 'agents');
 const agentFiles = readdirSync(agentsDir).filter((name) =>
   /^code-audit-.+\.md$/u.test(name)

@@ -20,7 +20,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {run as runLinkWorktree} from '../link-worktree.js';
 
 // The handler reads the shared-path set from this repo's own state registry,
@@ -29,11 +29,8 @@ import {run as runLinkWorktree} from '../link-worktree.js';
 // `git init`, not a checkout of this repo, so its main root needs its own
 // copies of these three tracked files to resolve against.
 const REPO_GAIA_DIR = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-  '..',
-  '..'
+  resolveRepoRootFromImportMeta(import.meta.url),
+  '.gaia'
 );
 const REPO_STATE_REGISTRY_PATH = path.join(
   REPO_GAIA_DIR,

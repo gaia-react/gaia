@@ -7,12 +7,8 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {
-  readStateFile,
-  resolveMainWorktreeRoot,
-  SETUP_STEPS,
-  writeStateFile,
-} from './util/state-file.js';
+import {resolveMainWorktreeRoot} from '../util/main-root.js';
+import {readStateFile, SETUP_STEPS, writeStateFile} from './util/state-file.js';
 import type {SetupState, SetupStep} from './util/state-file.js';
 
 const HELP_TEXT = `Usage: gaia setup mark-step <step>

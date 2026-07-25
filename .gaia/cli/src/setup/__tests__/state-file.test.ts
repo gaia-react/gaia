@@ -1,14 +1,24 @@
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 /**
- * Tests for `.gaia/cli/src/setup/util/state-file.ts`, focused on the
- * retired-step migration: `readStateFile` must tolerate a persisted
+ * Tests for `.gaia/cli/src/setup/util/state-file.ts`'s retired-step
+ * migration: `readStateFile` must tolerate a persisted
  * `'mentorship-decision'` entry (dropping it from the returned
  * `completed_steps`) while still throwing on a genuinely unrecognized step.
+ * Also covers `resolveMainWorktreeRoot`'s validation hardening (task 8.3);
+ * that resolver now lives in `.gaia/cli/src/util/main-root.ts`.
  */
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {newMainCheckout} from '../../util/main-checkout-fixture.js';
+import {resolveMainWorktreeRoot} from '../../util/main-root.js';
 import {
   pendingSteps,
   readStateFile,
@@ -112,5 +122,87 @@ describe('readStateFile: retired-step migration', () => {
     });
 
     expect(() => readStateFile(sandbox.root)).toThrow('bogus-step');
+  });
+});
+
+describe('resolveMainWorktreeRoot', () => {
+  let scratch: string[];
+
+  beforeEach(() => {
+    scratch = [];
+  });
+
+  afterEach(() => {
+    for (const dir of scratch) rmSync(dir, {force: true, recursive: true});
+  });
+
+  test('resolves a main checkout to itself', () => {
+    const mainRoot = newMainCheckout('gaia-resolver-');
+    scratch.push(mainRoot);
+
+    expect(resolveMainWorktreeRoot(mainRoot)).toBe(mainRoot);
+  });
+
+  test('resolves a linked worktree to the main checkout root', () => {
+    const mainRoot = newMainCheckout('gaia-resolver-');
+    scratch.push(mainRoot);
+    const worktree = realpathSync(
+      mkdtempSync(path.join(tmpdir(), 'gaia-resolver-wt-'))
+    );
+    rmSync(worktree, {force: true, recursive: true});
+    execFileSync(
+      'git',
+      ['worktree', 'add', '-q', '-b', 'gaia-resolver-treeB', worktree],
+      {cwd: mainRoot}
+    );
+    scratch.push(worktree);
+
+    expect(resolveMainWorktreeRoot(worktree)).toBe(mainRoot);
+  });
+
+  test('throws a named validation error for a candidate that cannot round-trip (bare repository)', () => {
+    // A bare repository's --git-common-dir is ".", so the candidate this
+    // derives is the bare repo's PARENT directory -- which is not a git
+    // working tree at all. `--show-toplevel` from there fails, so
+    // validation must reject the candidate rather than returning it.
+    const parent = realpathSync(
+      mkdtempSync(path.join(tmpdir(), 'gaia-resolver-bare-'))
+    );
+    scratch.push(parent);
+    const bareRepo = path.join(parent, 'bare.git');
+    execFileSync('git', ['init', '-q', '--bare', bareRepo]);
+
+    expect(() => resolveMainWorktreeRoot(bareRepo)).toThrow(
+      /resolveMainWorktreeRoot:.*not a git working tree/u
+    );
+  });
+
+  test('an ambient GIT_DIR pointing at an unrelated repository does not change the answer', () => {
+    // D1 regression test: GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR override git's
+    // repository discovery for every subprocess regardless of `cwd`. Without
+    // the env-stripping in execGaiaGit, this would hijack resolution toward
+    // `other` and the answer would silently change.
+    const mainRoot = newMainCheckout('gaia-resolver-');
+    scratch.push(mainRoot);
+    const other = newMainCheckout('gaia-resolver-');
+    scratch.push(other);
+
+    const saved = {
+      GIT_COMMON_DIR: process.env.GIT_COMMON_DIR,
+      GIT_DIR: process.env.GIT_DIR,
+      GIT_WORK_TREE: process.env.GIT_WORK_TREE,
+    };
+    process.env.GIT_DIR = path.join(other, '.git');
+    process.env.GIT_WORK_TREE = other;
+    process.env.GIT_COMMON_DIR = path.join(other, '.git');
+
+    try {
+      expect(resolveMainWorktreeRoot(mainRoot)).toBe(mainRoot);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });

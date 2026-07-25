@@ -68,9 +68,10 @@ import type {
   CommitType,
   ConventionalCommitHeader,
 } from '../util/conventional-commit.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {readClassifyPaths} from './classify-paths.js';
 import type {ClassifyPaths} from './classify-paths.js';
-import {commitDetails, resolveRepoRoot} from './util/git.js';
+import {commitDetails} from './util/git.js';
 import type {CommitDetail} from './util/git.js';
 
 const HELP_TEXT = `Usage: gaia wiki commit-classify --since <sha> [--json]

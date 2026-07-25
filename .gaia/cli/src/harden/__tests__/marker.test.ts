@@ -8,36 +8,14 @@ import {describe, expect, test} from 'vitest';
  * every copy plus the regex to `markerComment(...)` so a drifted copy fails the
  * suite instead of silently breaking one binder.
  */
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {coveredClassesFromRules} from '../covered-classes.js';
 import {MARKER_PREFIX, markerComment} from '../marker.js';
 
-const resolveRepoRoot = (): string => {
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-
-  for (let attempts = 0; attempts < 20; attempts += 1) {
-    if (existsSync(path.join(dir, '.git'))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  throw new Error('Could not find repo root (no .git directory found)');
-};
-
-const REPO_ROOT = resolveRepoRoot();
+const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 
 const readRepoFile = (relative: string): string =>
   readFileSync(path.join(REPO_ROOT, relative), 'utf8');

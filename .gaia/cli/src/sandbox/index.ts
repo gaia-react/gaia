@@ -16,9 +16,9 @@ import {execFileSync} from 'node:child_process';
 import {existsSync, mkdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
-import {resolveMainWorktreeRoot} from '../setup/util/state-file.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {resolveMainWorktreeRoot} from '../util/main-root.js';
 import {mergeSandboxSettings} from './apply.js';
 import {classifyCapability} from './capability.js';
 import type {

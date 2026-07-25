@@ -12,10 +12,10 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {
   renderExcludeRegex,
   resolveExcludePath,
-  resolveRepoRoot,
   validateExcludeText,
 } from './manifest.js';
 

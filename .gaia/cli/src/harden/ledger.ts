@@ -28,7 +28,7 @@ import {
 } from '../schemas/decline-ledger.js';
 import type {DeclineLedger} from '../schemas/decline-ledger.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 
 const HELP_TEXT = `Usage: gaia harden-ledger <subcommand> [args]
 

@@ -11,29 +11,11 @@ import {describe, expect, test} from 'vitest';
  */
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {workflowAuditTemplatePath} from '../paths.js';
 
-const resolveRepoRoot = (): string => {
-  // Walk up from this file's location to find the repo root (contains .git).
-  const here = fileURLToPath(import.meta.url);
-  let dir = path.dirname(here);
-
-  for (let attempts = 0; attempts < 20; attempts += 1) {
-    if (existsSync(path.join(dir, '.git'))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  throw new Error('Could not find repo root (no .git directory found)');
-};
-
 describe('audit-template dogfood drift-guard', () => {
-  const repoRoot = resolveRepoRoot();
+  const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
   const inTreePath = path.join(
     repoRoot,
     '.github',
@@ -103,7 +85,7 @@ const rmCommand = (relative: string): string =>
   `rm ${artifactRelativePath(relative)}`;
 
 describe('audit-template artifact drift-guard (source vs. committed artifact, all templates)', () => {
-  const repoRoot = resolveRepoRoot();
+  const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
   // The source directory holding every template `workflowAuditTemplatePath()`
   // resolves one of; walking its parent reaches all twelve, partials included.
   const sourceDir = path.dirname(workflowAuditTemplatePath());
