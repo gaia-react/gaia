@@ -915,6 +915,7 @@ test("adds two numbers c407", () => {
     .gaia/scripts/link-worktree.sh \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
+    .claude/hooks/provision-worktree.sh \
     .specify/extensions/gaia/lib/with-ledger-lock.sh
   gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add create-worktree + deps"
@@ -948,7 +949,8 @@ test("adds two numbers c407", () => {
   gaia_copy_real "$MAIN" \
     .gaia/scripts/link-worktree.sh \
     .gaia/scripts/main-root-lib.sh \
-    .gaia/scripts/state-registry-lib.sh
+    .gaia/scripts/state-registry-lib.sh \
+    .claude/hooks/provision-worktree.sh
   gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add link-worktree deps"
 
@@ -961,8 +963,15 @@ test("adds two numbers c407", () => {
   mkdir -p "$B/.gaia/local/audit"
   echo orphaned > "$B/.gaia/local/audit/orphan.txt"
 
-  # Re-entry: the next session start re-runs link-worktree.sh.
-  gaia_link_worktree "$B"
+  # Re-entry, driven through the real provisioning hook rather than through the
+  # linker it delegates to: entering a worktree is a PostToolUse EnterWorktree
+  # event, and the payload shape below is the one the harness emits (its cwd is
+  # already the worktree and its tool_response names the path outright). The
+  # hook is run from the worktree's own on-disk copy, as it is in production,
+  # where settings.json names it by a path relative to the session's cwd.
+  reentry_payload="$(jq -nc --arg p "$B" \
+    '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
+  ( cd "$B" && printf '%s' "$reentry_payload" | bash "$B/.claude/hooks/provision-worktree.sh" ) >/dev/null 2>&1
 
   # Target: repaired to a correct symlink at main's real audit dir, on the
   # next session start, without manual intervention.
@@ -979,13 +988,14 @@ test("adds two numbers c407", () => {
     .gaia/scripts/link-worktree.sh \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
+    .claude/hooks/provision-worktree.sh \
     .specify/extensions/gaia/lib/with-ledger-lock.sh
   gaia_copy_registry "$MAIN"
 
-  # A stand-in react-router CLI: create-worktree.sh borrows the resolved
-  # project root's own installed binary rather than installing one per
-  # worktree, so a fixture-local stub at the same borrowed path is a faithful
-  # proxy for the real typegen call.
+  # A stand-in react-router CLI: provisioning borrows the resolved main
+  # checkout's own installed binary rather than installing one per worktree,
+  # so a fixture-local stub at the same borrowed path is a faithful proxy for
+  # the real typegen call.
   mkdir -p "$MAIN/node_modules/.bin"
   cat > "$MAIN/node_modules/.bin/react-router" <<'SH'
 #!/bin/sh

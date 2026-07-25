@@ -170,6 +170,12 @@
       "why": "Reads every dispatched Code Audit Team member's clearance marker under audit/, the symlinked shared store; anchors on gaia_resolve_main_root so the gate reads the one real copy regardless of which tree the merge command runs from."
     },
     {
+      "hook": ".claude/hooks/provision-worktree.sh",
+      "scope": "per-tree",
+      "state": ["path:.react-router/types"],
+      "why": "Provisions the linked worktree a session is working in, resolving that tree from the hook payload (EnterWorktree's own worktreePath, else the payload cwd) and confirming it with gaia_is_linked_worktree before acting. The one path it writes itself is that worktree's generated typed routes, a per-checkout gitignored directory with no registry entry. The shared-state symlinks are delegated to .gaia/scripts/link-worktree.sh, which reads the registry itself, so this hook names no .gaia/local path of its own."
+    },
+    {
       "hook": ".claude/hooks/red-verify-commit-check.sh",
       "scope": "per-tree",
       "state": ["red-ledger"],

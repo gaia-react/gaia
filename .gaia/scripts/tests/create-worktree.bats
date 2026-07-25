@@ -41,6 +41,17 @@ setup() {
 #!/usr/bin/env bash
 : > "$PWD/.link-ran"
 STUB
+
+  # The hook delegates both post-create steps to the REAL provisioning script,
+  # which is the one definition of what a worktree needs and also runs on every
+  # session start and worktree entry. It is copied rather than stubbed so this
+  # suite exercises the actual delegation, and it brings its own dependency:
+  # the shared resolver it sources to identify the tree it is provisioning.
+  mkdir -p "$MAIN/.claude/hooks"
+  cp "$SCRIPT_DIR/../../.claude/hooks/provision-worktree.sh" "$MAIN/.claude/hooks/"
+  cp "$SCRIPT_DIR/main-root-lib.sh" "$MAIN/.gaia/scripts/main-root-lib.sh"
+  chmod +x "$MAIN/.claude/hooks/provision-worktree.sh"
+
   git -C "$MAIN" add -A
   git -C "$MAIN" commit -q -m "init"
 

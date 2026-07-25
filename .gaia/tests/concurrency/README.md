@@ -188,7 +188,7 @@ mis-scoped.
 | id | scenario | exec | owning task | frozen assertion |
 |---|---|---|---|---|
 | **C6-01** | a name collision deletes no peer | direct | 6.1 creation | Creating two worktrees whose names would collide deletes neither peer's worktree; the collision is refused or disambiguated, never resolved by removing an existing tree. The trial that must be answered by trying it, not assumed. |
-| **C6-02** | provisioning self-heals on re-entry | direct | 6.2 provisioning | A worktree whose shared-state symlinks are deliberately broken repairs them on the next session start, idempotently, without manual intervention. |
+| **C6-02** | provisioning self-heals on re-entry | direct | 6.2 provisioning | A worktree whose shared-state symlinks are deliberately broken repairs them on the next session start, idempotently, without manual intervention. (Mechanism re-pointed at the shipped provisioning hook — see [Published assertion changes](#published-assertion-changes).) |
 | **C6-03** | generated types are present in a fresh worktree | direct | 6.2 provisioning | A freshly created worktree has its generated build types present and current before first use, not missing or stale. |
 
 ### Step-7 carve-out candidates (the hard three)
@@ -488,6 +488,26 @@ never ran), which is a different scenario, and adding one to a frozen target of 
 maintainer's call, not a repair's. **They made it: that scenario is `C4-07` and the target is
 now 22.** The clause stays unmeasured here on the reasoning above; what measures the real harm
 is the new scenario, not this one.
+
+### C6-02: the assertion did not move; the re-entry step now drives the code that runs on re-entry
+
+The scenario is named "provisioning self-heals on re-entry", and its assertion — a
+shared-state link broken by hand is a correct symlink at main's real directory again after
+the next entry — is unchanged, word for word. What moved is the step that stands for the
+re-entry itself. It ran the linker directly, which was the whole of provisioning while
+provisioning happened only at creation time. Provisioning is now its own script with its
+own triggers, and the linker is one of two things it does, so a scenario that calls the
+linker measures a component of re-entry rather than re-entry. That gap is the shape `M-2`
+and `M-5` were repairs for: a scenario green on a mechanism nobody runs.
+
+The step now feeds the real hook the payload the harness actually emits for entering a
+worktree — a `PostToolUse` `EnterWorktree` event whose `cwd` is already the worktree and
+whose `tool_response` names the path — and runs the worktree's own on-disk copy of the
+hook, which is how a hook named by a session-relative path in `settings.json` resolves.
+Non-vacuity is proven by mutation: a hook body that returns before doing anything reds the
+scenario at the symlink assertion, and the shipped file was restored and verified
+byte-identical. The reading does not move; `C6-02` was green before and is green now, for a
+reason that is now the shipped one.
 
 ---
 

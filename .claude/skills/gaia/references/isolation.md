@@ -152,6 +152,12 @@ name fresh from the remote default branch (`main`), else local HEAD, lands it un
 caller runs no manual `git checkout -b`. Everything the caller does after this point runs from inside the
 worktree.
 
+Provisioning the worktree — the shared-state symlinks and the generated typed routes — is a separate
+concern from creating it, and it runs on entry rather than at creation: `.claude/hooks/provision-worktree.sh`
+fires on session start and on entering a worktree, and repairs whatever it finds. So a worktree whose links
+were broken by hand, and one made with a plain `git worktree add` outside this flow, are both provisioned
+the next time a session works in them. Nothing here needs a manual repair step.
+
 ## Export: `RESOLVED_MODE` and `RESOLVED_ROOT`
 
 This reference exports two values.
