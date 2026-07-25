@@ -1417,7 +1417,7 @@ SH
   git -C "$B" add wiki/.state.json
   git -C "$B" commit -q -m "wiki: bump state to b"
 
-  # Tree A's session lands first (mirrors a squash-merged PR).
+  # Tree A's session lands first.
   git -C "$MAIN" merge -q --no-ff treeA -m "merge A"
   after_a="$(jq -r '.last_evaluated_sha' "$MAIN/wiki/.state.json")"
   [ "$after_a" = "$a_sha" ]
@@ -1431,6 +1431,13 @@ SH
   # and refuses the merge outright (a real conflict), rather than silently
   # letting whichever session lands second clobber the other's value with no
   # signal -- never a last-writer-wins race across trees.
+  #
+  # This fixture builds its own repository, so it proves the behavior but not
+  # that the real repository still qualifies for it: git refuses only while
+  # the state file is tracked and no merge driver is bound to its path, and a
+  # fixture cannot see either. .gaia/scripts/check-wiki-state-collision.sh
+  # asserts both against the real tree, so the two halves together are the
+  # coverage; this one alone is not.
   if [ "$status" -eq 0 ]; then
     final_sha="$(jq -r '.last_evaluated_sha' "$MAIN/wiki/.state.json")"
     [ "$final_sha" = "$a_sha" ] && return 1

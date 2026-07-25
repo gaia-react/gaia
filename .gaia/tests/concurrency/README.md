@@ -211,7 +211,7 @@ target, recorded here when it happens.
 |---|---|---|---|---|
 | **C7-01** | Serena answers the acting tree or refuses | direct | 7.1 Serena | An `activate_project` call issued from worktree B is denied, naming B's own root, when it would silently activate a different checkout of this clone -- the main checkout or a sibling worktree by absolute path, or the bare project name (which resolves through Serena's machine-global registry to the main checkout); a call naming B's own root is allowed. A symbol query is therefore never silently answered against a different tree's index. (Assertion rewritten -- see [Published assertion changes](#published-assertion-changes).) |
 | **C7-02** | tests use the acting tree's dependencies | direct | 7.2 node_modules | A test run inside worktree B resolves its dependencies from B's own tree (or a correctly keyed shared store), never silently against main's `node_modules` when they differ. (Fixture re-pointed at the shipped provisioning hook, see [Published assertion changes](#published-assertion-changes).) |
-| **C7-03** | the wiki state value is not cross-clobbered | direct | 7.3 wiki state | Two worktrees on different branches do not clobber each other's `wiki/.state.json` value; the single-valued sha is keyed, merge-driven, or the store is untracked — never a last-writer-wins race across trees. |
+| **C7-03** | the wiki state value is not cross-clobbered | direct | 7.3 wiki state | Two worktrees on different branches do not clobber each other's `wiki/.state.json` value — never a last-writer-wins race across trees. The mechanism is git's own three-way merge refusing the collision on the tracked file; the two preconditions that entitle the real repository to it are asserted separately by `.gaia/scripts/check-wiki-state-collision.sh`. (Assertion rewritten — see [Published assertion changes](#published-assertion-changes).) |
 
 ---
 
@@ -221,6 +221,47 @@ The meter is frozen, so a changed assertion is published here the way an added
 scenario would be, with what changed and what it did to the number. **The target
 never moves for a repair** — a scenario is repaired, never subtracted. It moves
 **upward** only for an added scenario, and only by the maintainer's word.
+
+### C7-03: the assertion named three resolutions and the answer is a fourth; the mechanism it actually rests on is now guarded
+
+**The target does not move: 23 before, 23 after.** This is a repair, not an added
+scenario, and the scenario's own result does not change: it was green and stays
+green, for the same reason it was always green.
+
+**What the frozen assertion used to be, and what it is now.** It read "the
+single-valued sha is keyed, merge-driven, or the store is untracked — never a
+last-writer-wins race across trees". Those three clauses named the resolutions
+anticipated for this row, and the scenario passes on none of them: it passes
+because git's default three-way merge sees both branches change the same scalar
+lines against a common ancestor and refuses. The assertion now states the
+operative clause — no last-writer-wins across trees — and names the mechanism
+that delivers it, so a reader is not told to look for keying that is not there.
+
+**Why none of the three is adopted.** Every field in the file is a position in one
+line of commit history, so a per-branch value is what the file is *for*, not a
+defect in it. Keying it would first require moving it out of `wiki/`, since the
+state registry is scoped to `.gaia/local/` by its own definition — untracking by
+another name. Untracking, in either spelling, removes the merge that makes the
+collision visible at all and leaves each tree with a private value that diverges
+in silence. And a merge driver is the one shape that would *introduce* the
+last-writer-wins this row forbids: a driver that resolves automatically has to
+pick a side, or, in `union`'s case, concatenate both into invalid JSON and commit
+it clean.
+
+**What was missing, and is the repair.** The green rested entirely on a git
+default that no code here authored, which is the same "green nobody wrote" this
+meter rejects elsewhere. The fixture also cannot see the real repository's own
+tracking and attribute state, so its result did not transfer.
+`.gaia/scripts/check-wiki-state-collision.sh` asserts the two preconditions
+against the real tree — the file is tracked, and no `merge` attribute binds it to
+a driver — and its suite proves non-vacuity by running the identical collision in
+two fixtures that differ only by that attribute: one conflicts, the other merges
+clean and holds both values at once.
+
+**One thing this row still does not measure, stated so its green is not
+overread.** It covers the *write* collision. It says nothing about how a reader
+recovers a baseline once a squash merge orphans the recorded sha, which is a
+separate property of the readers.
 
 ### C7-01: the simulated single-process premise was false; the scenario now drives the shipped activation guard
 
@@ -761,7 +802,7 @@ not happened yet, and its owning phase must preserve it.
 | **C6-01** | Today's creation refuses to delete a peer it did not create. The Phase-6 move to harness-native creation must preserve that — the trial answered by trying it, not assumed. **Restated when that move landed; the row now measures GAIA's half and the trial measures the harness's. See [Published assertion changes](#published-assertion-changes).** |
 | **C6-02** | The linker already self-heals a broken shared-state symlink on re-run. Phase-6.2 SessionStart provisioning must keep that self-heal. |
 | **C6-03** | Creation already invokes typegen for a fresh worktree (driven here through a stand-in CLI at the borrowed binary path). Phase 6.2 must keep generated types present. **Re-pointed at provisioning when creation moved to the harness, and strictly stronger for it. See [Published assertion changes](#published-assertion-changes).** |
-| **C7-03** | On the tracked-file path, git's own three-way merge conflicts on the single scalar rather than silently clobbering. Task 7.3's resolution (keying, merge-driver, or untrack) must not introduce a silent last-writer-wins. |
+| **C7-03** | On the tracked-file path, git's own three-way merge conflicts on the single scalar rather than silently clobbering. That mechanism is the resolution — none of keying, a merge driver, or untracking is adopted, each for a reason given under [Published assertion changes](#published-assertion-changes) — and `.gaia/scripts/check-wiki-state-collision.sh` keeps the repository entitled to it. |
 
 ## Why it is red, and how it goes green
 

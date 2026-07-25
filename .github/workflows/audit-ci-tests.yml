@@ -119,6 +119,20 @@ jobs:
               # settings.json alone would skip every bats step and green the job
               # having run that scan zero times.
               - '.claude/settings.json'
+              # check-wiki-state-collision.bats (.gaia/scripts/tests/) asserts
+              # that wiki/.state.json stays tracked and that no merge driver is
+              # bound to it, which is what keeps a cross-branch collision on the
+              # single recorded sha a conflict rather than a silent overwrite.
+              # Those are exactly the two files the check reads, and both match
+              # nothing else here, so without these lines the edits the check
+              # exists to catch -- untracking the state file, or adding a
+              # .gitattributes that resolves it automatically -- would skip every
+              # bats step and green the job having run that scan zero times.
+              # .gitattributes is listed at both depths because git honors a
+              # nested one and a root-level glob would not match it.
+              - 'wiki/.state.json'
+              - '.gitattributes'
+              - '**/.gitattributes'
               # shell-lint.bats (.gaia/scripts/tests/) asserts the wiring of the
               # local shell gate .gaia/tests/shell-lint.sh -- its .husky/*
               # discovery pass and its lint-hook-array-guard.sh invocation. The
