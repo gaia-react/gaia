@@ -128,13 +128,14 @@ gaia_scripts="$gaia_scripts/.gaia/scripts"
 source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
 
 # The acting agent's working directory: the payload cwd when it is absolute
-# and resolves to a checkout, this hook's process cwd otherwise (mirrors
-# block-worktree-path-mismatch.sh's own payload-cwd idiom). Payload cwd is
+# and resolves to a checkout, this hook's process cwd otherwise. "Resolves to
+# a checkout" is the resolver's own question, so it is asked by calling it
+# rather than by a raw git call this hook writes itself. Payload cwd is
 # measured, not contracted, and only established on PreToolUse, so the
 # fallback is mandatory.
 payload_cwd=$(echo "$input" | jq -r '.cwd // empty' 2>/dev/null)
 source_cwd="$PWD"
-if [[ "$payload_cwd" == /* ]] && git -C "$payload_cwd" rev-parse --show-toplevel >/dev/null 2>&1; then
+if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
   source_cwd="$payload_cwd"
 fi
 tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0

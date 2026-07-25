@@ -394,9 +394,10 @@ sweep="$root/.gaia/scripts/mentorship-cleanup-sweep.sh"
 # call and no digest recompute happens inside the per-marker loop.
 
 # The live tree set: every tree an audit could still be merging. Local refs are
-# shared across linked worktrees, and the audit drop-zone is symlinked into each
-# of them, so a sweep launched from one worktree judges every worktree's
-# markers. Collect the branch tips AND each worktree's HEAD (which covers a
+# shared across linked worktrees, and a linked worktree's whole .gaia/local is
+# one symlink to the main checkout's, so the audit drop-zone is literally the
+# same directory in every tree and a sweep launched from one worktree judges
+# every worktree's markers. Collect the branch tips AND each worktree's HEAD (which covers a
 # detached checkout no branch names) so a sweep here never reaps a live marker
 # belonging to a parallel audit over there.
 #

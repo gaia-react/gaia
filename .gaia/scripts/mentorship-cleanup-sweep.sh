@@ -167,10 +167,11 @@ rm -rf -- "${main_root:?}/.gaia/local/telemetry/analytics" 2>/dev/null || true
 
 # .gaia/local/cache/shared/coaching-active.txt: orphaned residue. Its former
 # writer (wiki-session-start.sh) and reader (gaia-statusline.sh) are both gone,
-# so nothing else ever reaps it. cache/shared/ is symlinked in a linked
-# worktree back to this same main-checkout path (link-worktree.sh), which is
-# exactly why this targets $main_root rather than $repo_root, matching every
-# other real-file deletion in this sweep.
+# so nothing else ever reaps it. A linked worktree's whole .gaia/local is one
+# symlink to the main checkout's (link-worktree.sh), so every path beneath it
+# resolves to this same main-checkout file, which is exactly why this targets
+# $main_root rather than $repo_root, matching every other real-file deletion in
+# this sweep.
 rm -f -- "$main_root/.gaia/local/cache/shared/coaching-active.txt" 2>/dev/null || true
 
 # --- Sentinel --------------------------------------------------------------

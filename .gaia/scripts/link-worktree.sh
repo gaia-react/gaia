@@ -49,7 +49,11 @@ main_root="$(gaia_resolve_main_root)" || {
   exit 0
 }
 
-current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+# The other half of the same comparison, from the same resolver: its contract
+# prints the acting tree's root in the physical form gaia_resolve_main_root
+# prints, so a symlinked checkout path can never read differently between the
+# two sides of the test below.
+current_root="$(gaia_resolve_tree_root 2>/dev/null)"
 if [ -z "$current_root" ]; then
   log "not a git repo"
   exit 0
