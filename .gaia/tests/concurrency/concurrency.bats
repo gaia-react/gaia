@@ -1299,9 +1299,9 @@ SH
 
   # Tree B's branch drops the dependency (a real divergence: its own manifest
   # no longer names left-pad) and never gets its own node_modules -- worktrees
-  # are never installed into, matching create-worktree.sh's own borrow-from-
-  # main design ("Node's upward node_modules traversal resolves ... the app's
-  # own imports from there").
+  # are never installed into, and instead borrow main's: Node's upward
+  # node_modules traversal resolves a worktree's imports from the main
+  # checkout's tree.
   jq '.dependencies = {}' "$B/package.json" > "$B/package.json.tmp"
   mv "$B/package.json.tmp" "$B/package.json"
   git -C "$B" add package.json

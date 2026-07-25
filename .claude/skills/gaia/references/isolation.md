@@ -146,11 +146,16 @@ Create the worktree with the runtime tool, passing the caller's branch name as t
 EnterWorktree({name: "<branch-name>"})
 ```
 
-The `WorktreeCreate` hook (`.gaia/scripts/create-worktree.sh`) owns creation: it cuts a new branch of that
-name fresh from the remote default branch (`main`), else local HEAD, lands it under
-`.claude/worktrees/<branch-name>/`, and switches the session into it. The branch is already cut, so the
-caller runs no manual `git checkout -b`. Everything the caller does after this point runs from inside the
-worktree.
+The harness owns creation. GAIA registers no hook on it and runs no creation script of its own: the runtime
+cuts the branch, lands the tree under `.claude/worktrees/<name>/`, and switches the session into it. The
+branch is cut fresh from the repository's default base rather than from the current HEAD, which is the
+runtime's own `worktree.baseRef: fresh` default. The branch is already cut, so the caller runs no manual
+`git checkout -b`. Everything the caller does after this point runs from inside the worktree.
+
+**The branch is named `worktree-<name>`, not `<name>`.** A worktree requested as `debt/123-slug` gets a
+branch called `worktree-debt/123-slug`. Nothing downstream depends on that spelling, because every consumer
+reads the current branch from git rather than deriving it from the worktree's name, but it is what appears
+in `git branch` and on the PR.
 
 Provisioning the worktree — the shared-state symlinks and the generated typed routes — is a separate
 concern from creating it, and it runs on entry rather than at creation: `.claude/hooks/provision-worktree.sh`

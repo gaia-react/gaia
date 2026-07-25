@@ -65,7 +65,7 @@ setup() {
   git -C "$main" worktree add -q -b feat-wt "$linked" >/dev/null
   # pwd -P: macOS resolves /var -> /private/var inside `git rev-parse`, and
   # the function's output comes back through that canonical form, so the
-  # comparison side must canonicalize too (mirrors create-worktree.bats).
+  # comparison side must canonicalize too.
   main_abs="$(cd "$main" && pwd -P)"
   wt_abs="$(cd "$linked" && pwd -P)"
   out="$(cd "$linked" && gaia_gh_artifact_cache_dir)"

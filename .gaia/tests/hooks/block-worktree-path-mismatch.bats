@@ -231,9 +231,9 @@ assert_allowed() {
 
 # --- allowed: the shared .gaia/local tree ---
 
-# create-worktree.sh / link-worktree.sh deliberately symlink a fixed set of
-# per-machine working state out of a linked worktree and into the main
-# checkout, so audit markers and debt state are shared rather than forked. `git -C` resolves a symlink before computing
+# link-worktree.sh deliberately symlinks a linked worktree's per-machine working
+# state out to the main checkout, so audit markers and debt state are shared
+# rather than forked. `git -C` resolves a symlink before computing
 # --show-toplevel, so a write to the worktree's own .gaia/local/audit/ reports
 # file_root as the MAIN checkout and looks like a wrong-checkout write. It is
 # the intended write: that tree is shared by construction, and nothing under it
