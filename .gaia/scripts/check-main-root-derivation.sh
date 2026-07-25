@@ -98,6 +98,11 @@
 #     copy of the resolver, not a second one; scanning them would fail this
 #     check on every release, the same reasoning check-resolver-singleton.sh
 #     documents for its own TypeScript pattern.
+#   this file itself -- a detector necessarily spells the ingredients it
+#     detects, in its own scan code and in the comments that explain them, so
+#     scanning itself reports its own definition as a violation and can never
+#     be clean. Same exemption on the same grounds as the two resolver
+#     definitions above: the file IS the legitimate occurrence.
 GAIA_MAIN_ROOT_DERIVATION_EXCLUDE=(
   ':!*.md'
   ':!*.bats'
@@ -106,6 +111,7 @@ GAIA_MAIN_ROOT_DERIVATION_EXCLUDE=(
   ':!*.test.ts'
   ':!*.test.tsx'
   ':!.gaia/scripts/main-root-lib.sh'
+  ':!.gaia/scripts/check-main-root-derivation.sh'
   ':!.gaia/cli/src/setup/util/state-file.ts'
   ':!.gaia/cli/gaia'
   ':!.gaia/cli/gaia-maintainer'
