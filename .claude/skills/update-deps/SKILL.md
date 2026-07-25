@@ -12,41 +12,26 @@ This wrapper writes a new `pnpm-lock.yaml` and opens a PR, both belong on the ma
 Detection (run this first, before anything else):
 
 ```bash
-. .gaia/scripts/main-root-lib.sh
-if gaia_is_linked_worktree; then
-  main_root="$(gaia_resolve_main_root)"
-  current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
-  if [ -n "$main_root" ]; then
-    cached_line="Cached state unavailable on main; symlinks may be broken, run \`.gaia/cli/gaia setup link-worktree\` to repair."
-    cache_file="$main_root/.gaia/local/cache/shared/update-check.json"
-    if [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1; then
-      outdated_count="$(jq -r '.outdatedCount // 0' "$cache_file" 2>/dev/null)"
-      checked_at="$(jq -r '.checkedAt // 0' "$cache_file" 2>/dev/null)"
-      if [ -n "$outdated_count" ] && [ -n "$checked_at" ] && [ "$checked_at" != "0" ]; then
-        now=$(date +%s)
-        age=$((now - checked_at))
-        # Format age as <Nm ago> / <Nh ago> / <Nd ago>.
-        ago_unit="s"; ago_value="$age"
-        if [ "$age" -ge 86400 ]; then ago_unit="d"; ago_value=$((age / 86400));
-        elif [ "$age" -ge 3600 ]; then ago_unit="h"; ago_value=$((age / 3600));
-        elif [ "$age" -ge 60 ]; then ago_unit="m"; ago_value=$((age / 60));
-        fi
-        cached_line="Cached on main: $outdated_count packages outdated (last checked ${ago_value}${ago_unit} ago)."
-      fi
-    fi
-    cat <<EOF
-/update-deps must run from the main checkout, not a worktree.
-
-Worktree:       $current_root
-Main checkout:  $main_root
-
-$cached_line
-
-Run \`cd $main_root\` then re-invoke /update-deps.
-EOF
-    exit 1
+. .gaia/scripts/main-only-lib.sh
+gaia_update_deps_state_line() {
+  local cache_file="$1"
+  [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1 || return 0
+  local outdated_count checked_at
+  outdated_count="$(jq -r '.outdatedCount // 0' "$cache_file" 2>/dev/null)"
+  checked_at="$(jq -r '.checkedAt // 0' "$cache_file" 2>/dev/null)"
+  [ -n "$outdated_count" ] && [ -n "$checked_at" ] && [ "$checked_at" != "0" ] || return 0
+  local now age ago_unit ago_value
+  now=$(date +%s)
+  age=$((now - checked_at))
+  # Format age as <Nm ago> / <Nh ago> / <Nd ago>.
+  ago_unit="s"; ago_value="$age"
+  if [ "$age" -ge 86400 ]; then ago_unit="d"; ago_value=$((age / 86400));
+  elif [ "$age" -ge 3600 ]; then ago_unit="h"; ago_value=$((age / 3600));
+  elif [ "$age" -ge 60 ]; then ago_unit="m"; ago_value=$((age / 60));
   fi
-fi
+  printf 'Cached on main: %s packages outdated (last checked %s%s ago).\n' "$outdated_count" "$ago_value" "$ago_unit"
+}
+gaia_refuse_if_worktree "/update-deps" gaia_update_deps_state_line || exit 1
 ```
 
 If the detection does not fire, fall through to the existing `## Pre-flight: Branch check` section.

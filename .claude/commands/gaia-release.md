@@ -19,6 +19,19 @@ If the argument is missing, including when `/gaia-release` is reached as part of
 
 The conventional-commit scan over-proposes `minor` for CI/plumbing commits incorrectly tagged `feat:` that are patch-level in spirit; the maintainer is the only reliable source for semver intent. Never proceed without an explicit `patch|minor|major` from the maintainer.
 
+## Pre-flight: Worktree check
+
+This command bumps `.gaia/VERSION`, commits and tags on `main`, and opens the release PR, all main-checkout operations that must never run from a per-SPEC worktree branch. If invoked from a linked worktree, reject hard: `gaia_refuse_if_worktree` (`.gaia/scripts/main-only-lib.sh`) asks the shared resolver which tree this is and refuses out loud, naming the main checkout, when the answer is a worktree.
+
+Detection (run this first, before anything else):
+
+```bash
+. .gaia/scripts/main-only-lib.sh
+gaia_refuse_if_worktree "/gaia-release" || exit 1
+```
+
+If the detection does not fire, fall through to `### 1. Preflight` below.
+
 ## Workflow
 
 The CLI surface is the source of truth. The classification rules for `.gaia/manifest.json` live in code (`.gaia/cli/src/release/manifest.ts`); the on-disk manifest is the single source of truth for `/update-gaia` consumers.

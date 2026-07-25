@@ -522,7 +522,16 @@ Set the report frontmatter `status:` to the terminal value the verification step
 Then bust the statusline cache so the audit nudge clears and a fresh check is triggered on the next render (mirrors the `/update-deps` post-run cache-bust). This runs on every Stage 2 completion: the gated Apply path, the `--apply` path, and the 0-action auto-apply path.
 
 ```bash
-CACHE="$PROJECT_ROOT/.gaia/local/cache/shared/update-check.json"
+CACHE_ROOT="$PROJECT_ROOT"
+if [ -f "$PROJECT_ROOT/.gaia/scripts/main-root-lib.sh" ]; then
+  # shellcheck disable=SC1091
+  . "$PROJECT_ROOT/.gaia/scripts/main-root-lib.sh"
+fi
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  main_root="$(gaia_resolve_main_root "$PROJECT_ROOT" 2>/dev/null || true)"
+  [ -n "$main_root" ] && CACHE_ROOT="$main_root"
+fi
+CACHE="$CACHE_ROOT/.gaia/local/cache/shared/update-check.json"
 if [ -f "$CACHE" ]; then
   if command -v jq >/dev/null 2>&1; then
     tmp="$(mktemp)"
