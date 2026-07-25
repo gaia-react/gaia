@@ -72,10 +72,10 @@ if type cmd_targets_foreign_repo >/dev/null 2>&1 \
   exit 0
 fi
 
-# The shared main-root resolver, sourced from this hook's own on-disk
-# location (never cwd): the debt count cache is main-anchored shared state
-# (SPEC-061 scope=shared), so a worktree fix must arm main's sentinel, never
-# a discarded per-tree copy.
+# The shared main-root resolver, sourced from this hook's own on-disk location
+# (never cwd): the debt count cache is main-anchored shared state
+# (.gaia/state-registry.json scope=shared), so a worktree fix must arm main's
+# sentinel, never a discarded per-tree copy.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 if [ -n "$gaia_scripts" ] && [ -f "$gaia_scripts/.gaia/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null

@@ -214,11 +214,12 @@ tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
 
 # The audited working root, resolved to the MAIN checkout: every marker
 # clearance_member_cleared builds a path for is main-anchored shared state
-# (SPEC-061 scope=shared, the symlinked audit/ store), not a property of
-# whichever tree this hook happens to run in. Sourced from this hook's own
-# on-disk location, matching the sibling lib-loads above. Falls back to a
-# bare toplevel query, then pwd, when the resolver is unavailable or fails --
-# the same fail-open direction the original CWD-anchored derivation had.
+# (.gaia/state-registry.json scope=shared, the symlinked audit/ store), not
+# a property of whichever tree this hook happens to run in. Sourced from
+# this hook's own on-disk location, matching the sibling lib-loads above.
+# Falls back to a bare toplevel query, then pwd, when the resolver is
+# unavailable or fails -- the same fail-open direction the original
+# CWD-anchored derivation had.
 root=""
 if command -v gaia_resolve_main_root >/dev/null 2>&1; then
   root="$(gaia_resolve_main_root 2>/dev/null)" || root=""

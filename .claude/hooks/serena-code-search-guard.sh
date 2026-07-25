@@ -210,11 +210,11 @@ case "$tool_name" in
 esac
 
 # Resolved to the MAIN checkout: the block-once escape state below is
-# machine-scoped shared state (SPEC-061 scope=shared, cache/shared/), not a
-# property of whichever tree this guard happens to run in. Sourced from this
-# hook's own on-disk location (never cwd). Falls back to a bare toplevel
-# query, then pwd, when the resolver is unavailable or fails -- the same
-# fail-open direction the original CWD-anchored derivation had.
+# machine-scoped shared state (.gaia/state-registry.json scope=shared,
+# cache/shared/), not a property of whichever tree this guard happens to run
+# in. Sourced from this hook's own on-disk location (never cwd). Falls back to
+# a bare toplevel query, then pwd, when the resolver is unavailable or fails
+# -- the same fail-open direction the original CWD-anchored derivation had.
 _root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null

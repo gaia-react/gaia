@@ -28,13 +28,13 @@ if type cmd_targets_foreign_repo >/dev/null 2>&1 \
   exit 0
 fi
 
-# The shared main-root resolver, sourced from this hook's own on-disk
-# location (never cwd): the setup-in-progress sentinel below is main-anchored
-# machine state (SPEC-061 scope=main-only), not a property of whichever tree
-# this hook happens to run in. A load or resolve failure here must not weaken
-# this guard's deny logic below, so it falls back to the prior bare-relative
-# (process-cwd) derivation rather than exiting -- this guard is fail-closed on
-# ambiguity, never fail-open.
+# The shared main-root resolver, sourced from this hook's own on-disk location
+# (never cwd): the setup-in-progress sentinel below is main-anchored machine
+# state (.gaia/state-registry.json scope=main-only), not a property of
+# whichever tree this hook happens to run in. A load or resolve failure here
+# must not weaken this guard's deny logic below, so it falls back to the prior
+# bare-relative (process-cwd) derivation rather than exiting -- this guard is
+# fail-closed on ambiguity, never fail-open.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || true
 if [ -n "${gaia_scripts:-}" ] && [ -f "$gaia_scripts/.gaia/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null

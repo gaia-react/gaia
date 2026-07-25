@@ -123,12 +123,12 @@ resolved_target_dir="$(CDPATH='' cd "$target_dir" 2>/dev/null && pwd -P)" || exi
 [[ -n "$resolved_target_dir" ]] || exit 0
 
 # A linked worktree's whole .gaia/local is one symlink to the main checkout's
-# own .gaia/local (SPEC-061's cutover). `git -C` resolves that symlink before
-# computing --show-toplevel, so a write ANYWHERE under .gaia/local now reports
-# the MAIN checkout as its toplevel and looks like a wrong-checkout write --
-# true of the whole tree, not a hand-listed subset, so this is ONE
-# registry-driven rule instead of the two hand-listed exempt sets (linkable
-# paths, main-anchored dirs) this guard used to maintain.
+# own .gaia/local (see wiki/concepts/Worktrees.md). `git -C` resolves that
+# symlink before computing --show-toplevel, so a write ANYWHERE under
+# .gaia/local now reports the MAIN checkout as its toplevel and looks like a
+# wrong-checkout write -- true of the whole tree, not a hand-listed subset, so
+# this is ONE registry-driven rule instead of the two hand-listed exempt sets
+# (linkable paths, main-anchored dirs) this guard used to maintain.
 #
 # gaia_registry_recognizes (with its own ancestor recognition: a container
 # such as debt/ or audit/ is recognized once ANY child under it is a

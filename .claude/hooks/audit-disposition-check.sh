@@ -109,13 +109,13 @@ fi
 sha=$(git rev-parse HEAD 2>/dev/null || true)
 
 # The audited working root, resolved to the MAIN checkout: the disposition
-# sidecar is main-anchored shared state (SPEC-061 scope=shared, the same
-# symlinked audit/ store the frontend digest marker lives in), not a property
-# of whichever tree this hook happens to run in. The shared resolver is
-# sourced from this hook's own on-disk location (never cwd, never $root),
-# matching the sibling lib-loads below. Falls back to a bare toplevel query,
-# then pwd, when the resolver is unavailable or fails -- the same fail-open
-# direction the original CWD-anchored derivation had.
+# sidecar is main-anchored shared state (.gaia/state-registry.json
+# scope=shared, the same symlinked audit/ store the frontend digest marker
+# lives in), not a property of whichever tree this hook happens to run in. The
+# shared resolver is sourced from this hook's own on-disk location (never cwd,
+# never $root), matching the sibling lib-loads below. Falls back to a bare
+# toplevel query, then pwd, when the resolver is unavailable or fails -- the
+# same fail-open direction the original CWD-anchored derivation had.
 _root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null

@@ -157,11 +157,11 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 
 # Resolved to the MAIN checkout: every clearance marker this script reads or
-# posts about is main-anchored shared state (SPEC-061 scope=shared, the
-# symlinked audit/ store), not a property of whichever tree this script
-# happens to run in. Falls back to a bare toplevel query when the resolver is
-# unavailable or fails -- the same fail-open direction the original
-# CWD-anchored derivation had.
+# posts about is main-anchored shared state (.gaia/state-registry.json
+# scope=shared, the symlinked audit/ store), not a property of whichever tree
+# this script happens to run in. Falls back to a bare toplevel query when the
+# resolver is unavailable or fails -- the same fail-open direction the
+# original CWD-anchored derivation had.
 repo_root=""
 if command -v gaia_resolve_main_root >/dev/null 2>&1; then
   repo_root="$(gaia_resolve_main_root 2>/dev/null)" || repo_root=""
