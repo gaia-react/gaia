@@ -121,6 +121,31 @@ setup() {
   [ -z "$output" ]
 }
 
+# A failing slug is the third way this path is undeterminable, alongside an
+# empty cache_dir and an empty branch, and it takes the same empty-output exit.
+# The slug is captured and checked rather than interpolated into the printf,
+# because a command substitution discards its own status: an unchecked failure
+# would echo "gh-artifact-pr..json", the unkeyed shared path this function's
+# contract promises never to invent, and both callers would then treat it as a
+# real path because it is non-empty.
+#
+# The stub is a sibling file rather than a function override: the function
+# sources audit-key-lib.sh from beside ITSELF at call time, so an override in
+# this test body would be clobbered by that source. Copying the real lib next
+# to a stub slug exercises the real resolution path.
+@test "gaia_gh_artifact_path: a failing slug echoes nothing, never an unkeyed shared path" {
+  local scratch="$BATS_TEST_TMPDIR/failing-slug"
+  mkdir -p "$scratch"
+  cp "$LIB" "$scratch/gh-artifact-lib.sh"
+  printf 'gaia_key_slug() { return 1; }\n' >"$scratch/audit-key-lib.sh"
+
+  run bash -c "source '$scratch/gh-artifact-lib.sh'; gaia_gh_artifact_path '/x/y' 'some-branch'"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  grep -qF 'gh-artifact-pr..json' <<<"$output" && return 1
+  return 0
+}
+
 # ---------- 5e ----------
 @test "gaia_gh_artifact_path: two different branches under the same cache_dir yield two different paths" {
   path_a="$(gaia_gh_artifact_path "/x/y" "branch-a")"

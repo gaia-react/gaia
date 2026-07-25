@@ -182,6 +182,29 @@ make_repo() {
   [ -z "$output" ]
 }
 
+# A failing slug is the third way this key can be undeterminable, and it is the
+# one the documented contract used to promise without enforcing: the slug was
+# interpolated straight into the output inside a command substitution, so a
+# non-zero slug still printed "<base_sha>." at status 0 -- a plausible-looking
+# key with the branch discriminator silently gone, which is precisely the
+# unkeyed collision this lib exists to remove. The stub reproduces the failure
+# shape without depending on what makes a real slug fail.
+@test "a failing slug fails the whole key non-zero and prints nothing, never a bare base" {
+  make_repo "main"
+  gaia_key_slug() { return 1; }
+  run gaia_audit_key "$BASE" "$REPO"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "a failing slug never yields the base with a trailing separator" {
+  make_repo "main"
+  gaia_key_slug() { return 1; }
+  run gaia_audit_key "$BASE" "$REPO"
+  [ "$output" != "${BASE}." ]
+  [ "$output" != "$BASE" ]
+}
+
 # ========== the defect, expressed as a unit ==========
 
 @test "two real linked worktrees off one base produce DIFFERENT keys from the SAME base sha" {
@@ -220,4 +243,19 @@ make_repo() {
 @test "structural: shellcheck is clean" {
   command -v shellcheck >/dev/null 2>&1 || skip "shellcheck not available"
   shellcheck "$LIB"
+}
+
+# gaia_key_slug walks its input with `${text:$i:1}`, not bash's bare
+# `${text:i:1}`: zsh reads the bare identifier as a history modifier and aborts
+# the function mid-walk. This is not a claim of zsh support -- the lib is a bash
+# lib and every script caller is `#!/usr/bin/env bash` -- it is that a
+# maintainer who sources it in an interactive zsh, which the header's own Usage
+# block invites, gets the same slug rather than a quietly different one.
+@test "portability: the slug is byte-identical under zsh, where zsh exists" {
+  command -v zsh >/dev/null 2>&1 || skip "zsh not available"
+  local branch='feat/a.b%c' from_bash from_zsh
+  from_bash="$(gaia_key_slug "$branch")"
+  from_zsh="$(zsh -c "source '$LIB'; gaia_key_slug '$branch'")"
+  [ -n "$from_bash" ]
+  [ "$from_zsh" = "$from_bash" ]
 }

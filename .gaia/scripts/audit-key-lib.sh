@@ -23,11 +23,11 @@
 #   <dir> defaults to "."; the branch is THAT tree's own
 #   (`git -C "$dir" branch --show-current`), deliberately per-tree and never
 #   main-anchored -- the whole point is to discriminate trees, not resolve a
-#   root. Prints nothing and returns 1 when <base_sha> is empty or the branch
-#   is undeterminable (detached HEAD, not a git repository): the same
-#   fail-open rule every caller already applies to an empty base extends
-#   verbatim to the whole key, so a caller skips its write rather than
-#   inventing a fallback key.
+#   root. Prints nothing and returns 1 when <base_sha> is empty, the branch
+#   is undeterminable (detached HEAD, not a git repository), or the slug
+#   itself fails: the same fail-open rule every caller already applies to an
+#   empty base extends verbatim to the whole key, so a caller skips its write
+#   rather than inventing a fallback key. A half-built key is never printed.
 #
 # gaia_key_slug <text>: every character outside [A-Za-z0-9_-] is
 # percent-encoded (uppercase hex, e.g. "/" -> "%2F", "." -> "%2E", "%" ->
@@ -70,7 +70,13 @@ gaia_key_slug() {
   local text="$1" out="" i len c
   len="${#text}"
   for ((i = 0; i < len; i++)); do
-    c="${text:i:1}"
+    # `${text:$i:1}`, not bash's bare `${text:i:1}`: zsh reads a bare
+    # identifier after the colon as a history modifier, aborts the function
+    # mid-walk, and returns non-zero having printed a partial slug. Both forms
+    # are identical in bash, so the `$` costs nothing and removes the only
+    # shell-specific construct in the walk. Callers must still check this
+    # function's status -- the `$`-form is not a substitute for that.
+    c="${text:$i:1}"
     case "$c" in
       [A-Za-z0-9_-]) out+="$c" ;;
       *) out+="$(printf '%%%02X' "'$c")" ;;
@@ -82,9 +88,17 @@ gaia_key_slug() {
 gaia_audit_key() {
   local base_sha="${1:-}" dir="${2:-.}"
   [[ -n "$base_sha" ]] || return 1
-  local branch
+  local branch slug
   branch="$(git -C "$dir" branch --show-current 2>/dev/null)" || branch=""
   [[ -n "$branch" ]] || return 1
-  printf '%s.%s\n' "$base_sha" "$(gaia_key_slug "$branch")"
+  # The slug is captured and checked rather than interpolated into the printf,
+  # because a command substitution discards its own status: a failing slug
+  # inside the format arguments would still print "<base_sha>." and return 0 --
+  # a plausible-looking key with the discriminator silently gone, which is the
+  # unkeyed collision this lib exists to remove. A failing slug is the third
+  # way this key is undeterminable and it takes the same fail-open exit as an
+  # empty base and an undeterminable branch.
+  slug="$(gaia_key_slug "$branch")" || return 1
+  printf '%s.%s\n' "$base_sha" "$slug"
   return 0
 }

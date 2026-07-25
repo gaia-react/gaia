@@ -54,7 +54,8 @@ gaia_gh_artifact_cache_dir() {
 
 # gaia_gh_artifact_path <cache_dir> <branch>
 # Echoes "<cache_dir>/gh-artifact-pr.<gaia_key_slug branch>.json"; echoes
-# nothing when EITHER <cache_dir> or <branch> is empty. Always returns 0.
+# nothing when EITHER <cache_dir> or <branch> is empty, or when the slug
+# itself fails. Always returns 0.
 # Sources .gaia/scripts/audit-key-lib.sh from beside itself via BASH_SOURCE,
 # the same idiom gaia_gh_artifact_cache_dir above already uses for
 # main-root-lib.sh.
@@ -82,7 +83,15 @@ gaia_gh_artifact_path() {
   self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # shellcheck disable=SC1091
   source "$self_dir/audit-key-lib.sh"
-  printf '%s' "$cache_dir/gh-artifact-pr.$(gaia_key_slug "$branch").json"
+  # The slug is captured and checked, not interpolated into the printf: a
+  # command substitution discards its own status, so a failing slug inside the
+  # format arguments would print "gh-artifact-pr..json" -- the unkeyed shared
+  # path this function's contract promises never to invent. A failing slug
+  # takes the same empty-output exit as an empty cache_dir or branch, which
+  # both callers already handle by skipping.
+  local slug
+  slug="$(gaia_key_slug "$branch")" || return 0
+  printf '%s' "$cache_dir/gh-artifact-pr.$slug.json"
   return 0
 }
 
