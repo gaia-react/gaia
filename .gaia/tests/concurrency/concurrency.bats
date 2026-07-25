@@ -819,9 +819,9 @@ test("adds two numbers c407", () => {
   [ "$after_n" -eq 1 ] || dead="$dead wiki-squash-autocommits"
 
   # Target: none silently dead -- each either fires correctly or refuses out
-  # loud. Today all four exit 0 at their own `[ -d .git ]` guard the instant
-  # they see a linked worktree's .git FILE (not a directory), doing none of
-  # the above.
+  # loud. A hook that still gated repository detection on a bare
+  # `[ -d .git ]` test would die here, since a linked worktree's .git is a
+  # FILE, not a directory.
   if [ -n "$dead" ]; then
     echo "silently dead in a worktree:$dead" >&2
     return 1

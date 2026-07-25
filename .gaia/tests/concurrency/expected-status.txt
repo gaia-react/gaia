@@ -37,7 +37,7 @@ C4-07 pass
 
 # Tranche 5 -- SURFACE (phase 5, not run)
 C5-01 pass
-C5-02 fail  task 5.2 wiki hooks: four hooks are silently dead in a worktree
+C5-02 pass
 C5-03 fail  task 5.3 loud-refusal: no main-only entry point consults the resolver
 C5-04 pass
 

@@ -203,13 +203,13 @@
       "hook": ".claude/hooks/wiki-commit-nudge.sh",
       "scope": "any",
       "state": [],
-      "why": "Reads the tracked wiki/.state.json (identical content in every checkout via git) to compute a drift count; [ -d .git ]-dead surface owned by a later phase's conversion, but it writes no per-checkout marker of its own today."
+      "why": "Reads the tracked wiki/.state.json (identical content in every checkout via git) to compute a drift count; detects the repository via git rev-parse --is-inside-work-tree, so it stays live in a linked worktree, but it writes no per-checkout marker of its own today."
     },
     {
       "hook": ".claude/hooks/wiki-drift-check.sh",
       "scope": "per-tree",
       "state": ["path:.claude/wiki-drift-checked"],
-      "why": "Writes a once-per-session drift-reminder marker at a fixed repo-relative path in whatever checkout the session runs in; a tracked-working-file marker, not .gaia/local state. [ -d .git ]-dead surface; a later phase owns any future conversion."
+      "why": "Writes a once-per-session drift-reminder marker at a fixed repo-relative path in whatever checkout the session runs in; a tracked-working-file marker, not .gaia/local state. Detects the repository via git rev-parse --is-inside-work-tree, so it stays live in a linked worktree rather than going dead at a .git-is-a-directory test."
     },
     {
       "hook": ".claude/hooks/wiki-recompact-inject.sh",
@@ -233,13 +233,13 @@
       "hook": ".claude/hooks/wiki-session-stop.sh",
       "scope": "per-tree",
       "state": ["path:.claude/wiki-safety-checked"],
-      "why": "Writes the .claude/wiki-safety-checked once-per-session marker at a fixed repo-relative path, alongside a per-worktree git-dir session marker (oracle G, correct); [ -d .git ]-dead surface, a later phase owns any future conversion."
+      "why": "Writes the .claude/wiki-safety-checked once-per-session marker at a fixed repo-relative path, alongside a per-worktree git-dir session marker (oracle G, correct); the same git rev-parse --git-dir call that resolves that marker also detects the repository, so there is no separate .git-is-a-directory guard left to go dead in a linked worktree."
     },
     {
       "hook": ".claude/hooks/wiki-squash-autocommits.sh",
       "scope": "any",
       "state": [],
-      "why": "Manipulates git history (reset/commit/push/PR) only; writes no per-checkout marker and touches no .gaia/local state. [ -d .git ]-dead surface owned by a later phase's conversion."
+      "why": "Manipulates git history (reset/commit/push/PR) only; writes no per-checkout marker and touches no .gaia/local state. Detects the repository via git rev-parse --is-inside-work-tree, so it stays live in a linked worktree rather than going dead at a .git-is-a-directory test."
     },
     {
       "hook": ".claude/hooks/worthiness-presence-check.sh",

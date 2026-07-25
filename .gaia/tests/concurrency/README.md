@@ -196,6 +196,38 @@ scenario would be, with what changed and what it did to the number. **The target
 never moves for a repair** — a scenario is repaired, never subtracted. It moves
 **upward** only for an added scenario, and only by the maintainer's word.
 
+### C5-02: nothing about the scenario changed, only the code under it
+
+**No assertion, no name, no fixture moved.** This entry exists for one reason: the reading
+cannot move without being published, and `C5-02` is the first scenario in this suite to turn
+on a code fix alone, with the instrument untouched. That is the case the meter was built for,
+so it is worth naming as distinct from the four entries below it, each of which had to change
+something about the scenario itself.
+
+**What turned it.** Four wiki hooks each opened with `[ -d .git ] || exit 0`. In a linked
+worktree `.git` is a file, not a directory, so all four exited before their first real
+statement: no drift nudge, no end-of-session safety net, no autocommit squash, and no word
+that any of it had stopped. Three now ask git the question directly, with
+`git rev-parse --is-inside-work-tree`, the form three other hooks in this repo already use.
+The fourth already had the answer: `wiki-session-stop.sh` resolves `git rev-parse --git-dir`
+on the very next line, so its guard was deleted rather than converted, because two probes for
+one question is the duplication this program removes. **Nothing was made to refuse**, and the
+scope manifest is why: `.gaia/hook-scopes.json` declares all four `any` or `per-tree`, so
+firing from a worktree is what they are for, and a refusal would have been a second defect
+wearing the first one's fix.
+
+**The frozen row still identifies them by the guard they carried at freeze**, and that is left
+alone on purpose. Rewriting a frozen assertion so it tracks the fix that satisfied it is how an
+assertion stops being frozen.
+
+**The reading moves 18 / 22 → 19 / 22, and this is a fix, not a measurement.** Non-vacuity
+proven by mutation, not argued: the old guard was restored in each of the four hooks in turn,
+one hook at a time, and each time the scenario went red naming exactly the mutated hook. So all
+four conversions are load-bearing, none rides on another, and none of the four checks is
+vacuous. Every source was restored byte-identical (checksum-verified) after each mutation, and
+the four sibling suites under `.gaia/tests/hooks/` that own these hooks stay green (27 of 27).
+No other scenario moved.
+
 ### C5-01 — the name changed, the assertion did not, and the fixture now drives the real resolver
 
 **The assertion text above is untouched.** What changed is the scenario's *name* and what
