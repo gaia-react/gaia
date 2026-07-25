@@ -209,7 +209,7 @@ target, recorded here when it happens.
 
 | id | scenario | exec | owning task | frozen assertion |
 |---|---|---|---|---|
-| **C7-01** | Serena answers the acting tree or refuses | simulated | 7.1 Serena | A symbol query issued from worktree B is answered against B's own index, or refuses out loud; it never silently returns a symbol resolved against a different tree. Simulated: the single MCP process is stood in by a fixture. |
+| **C7-01** | Serena answers the acting tree or refuses | direct | 7.1 Serena | An `activate_project` call issued from worktree B is denied, naming B's own root, when it would silently activate a different checkout of this clone -- the main checkout or a sibling worktree by absolute path, or the bare project name (which resolves through Serena's machine-global registry to the main checkout); a call naming B's own root is allowed. A symbol query is therefore never silently answered against a different tree's index. (Assertion rewritten -- see [Published assertion changes](#published-assertion-changes).) |
 | **C7-02** | tests use the acting tree's dependencies | direct | 7.2 node_modules | A test run inside worktree B resolves its dependencies from B's own tree (or a correctly keyed shared store), never silently against main's `node_modules` when they differ. (Fixture re-pointed at the shipped provisioning hook, see [Published assertion changes](#published-assertion-changes).) |
 | **C7-03** | the wiki state value is not cross-clobbered | direct | 7.3 wiki state | Two worktrees on different branches do not clobber each other's `wiki/.state.json` value; the single-valued sha is keyed, merge-driven, or the store is untracked — never a last-writer-wins race across trees. |
 
@@ -221,6 +221,46 @@ The meter is frozen, so a changed assertion is published here the way an added
 scenario would be, with what changed and what it did to the number. **The target
 never moves for a repair** — a scenario is repaired, never subtracted. It moves
 **upward** only for an added scenario, and only by the maintainer's word.
+
+### C7-01: the simulated single-process premise was false; the scenario now drives the shipped activation guard
+
+**The target does not move: 23 before, 23 after.** This is a repair, not an added
+scenario.
+
+**What the frozen assertion used to be, and what it is now.** The old fixture stood
+in for "the single shared MCP process" with a pointer file: tree A wrote its own
+path to it, and a bare `cat` "queried" it "from" tree B, always reading back A's
+path -- a fixture that could only ever demonstrate the defect it was written to
+prove, never turn green for the right reason. The row now drives the shipped
+`.claude/hooks/block-serena-cross-tree-activation.sh` directly: a real
+`activate_project` payload, carrying tree B's own `cwd`, fed to the real hook
+copied in from this repo.
+
+**The old premise was false, not merely weaker.** Claude Code spawns one Serena
+MCP process PER SESSION (measured: two live processes for two concurrent
+sessions). There is no single shared process for a later activation in one tree to
+silently overwrite for a query "from" another -- the "last activation wins"
+collision the old fixture simulated cannot happen through a shared process,
+because there is no shared process. The real silent-wrong-tree path is a bare
+project NAME: `.serena/project.yml` is tracked, so every linked worktree of a
+clone carries the identical `project_name`, and Serena resolves that name through
+its own machine-global registry (`~/.serena/serena_config.yml`) to whichever
+checkout registered it first -- the main checkout. A session working in a linked
+worktree that activates by that name gets every subsequent symbol answer resolved
+against main's files, with no error and no indication. That is what the scenario
+now asserts is refused, in both the name form and the equivalent stale-absolute-path
+form.
+
+**Non-vacuity proven by mutation.** Neutralizing the shipped guard's name-arm
+`deny` call (replacing it with a no-op) reds the scenario at exactly its first
+assertion, the bare-name-from-B deny check -- the scenario's own assertion, not a
+harness crash. The source was restored and verified byte-identical by checksum
+afterward.
+
+**The reading moves 22/23 to 23/23 because the fix landed, not because the fixture
+changed.** Task 7.1 ships the activation guard this scenario now drives; the
+fixture repair is what makes that fix visible to the meter, not the reason the
+number moved.
 
 ### C7-02: the assertion did not move; the fixture now drives the shipped provisioning hook
 

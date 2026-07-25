@@ -86,6 +86,12 @@
       "why": "Resolves the repo toplevel only to relativize a candidate path for its refusal-set match (test/, .claude/, the CI pipeline, root build config); the refusal set names no .gaia/local path (.gaia/local is deliberately exempt, per lib/audit-selfheal-paths.sh's own header)."
     },
     {
+      "hook": ".claude/hooks/block-serena-cross-tree-activation.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Reads only the acting tree's own .serena/project.yml and compares physically-resolved git roots via the resolver; holds no state of its own under .gaia/local."
+    },
+    {
       "hook": ".claude/hooks/block-spec-plan-chain.sh",
       "scope": "main-only",
       "state": ["spec-chain-guard"],

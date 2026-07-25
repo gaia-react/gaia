@@ -1255,31 +1255,56 @@ SH
 # Step-7 carve-out candidates -- the hard three
 # ---------------------------------------------------------------------------
 
-@test "C7-01: Serena answers the acting tree or refuses (simulated)" {
-  # Simulated: Serena is a single MCP process for the whole environment; a
-  # fixture stands in for it (a plain "active project" pointer file, plus a
-  # query stand-in reporting whichever project last activated it), since
-  # there is no way to drive the real MCP process from a bats fixture.
+@test "C7-01: Serena answers the acting tree or refuses" {
+  # Claude Code spawns one Serena MCP process PER SESSION (measured: two live
+  # processes for two sessions), so there is no single shared process for a
+  # later activation to collide inside. The real silent-wrong-tree path is a
+  # bare project NAME resolving through Serena's own machine-global registry
+  # to whichever checkout registered it, which .serena/project.yml (tracked,
+  # identical in every linked worktree) makes the main checkout. This drives
+  # the shipped activation guard that denies it.
   MAIN="$(gaia_new_main gaia-c701-main)"
+  mkdir -p "$MAIN/.serena"
+  printf 'project_name: "gaia"\n' > "$MAIN/.serena/project.yml"
+  gaia_copy_real "$MAIN" \
+    .claude/hooks/block-serena-cross-tree-activation.sh \
+    .gaia/scripts/main-root-lib.sh
+  gaia_commit_all "$MAIN" "add serena activation guard"
+
   A="$(gaia_add_worktree "$MAIN" treeA treeA)"
   B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  guard="$MAIN/.claude/hooks/block-serena-cross-tree-activation.sh"
 
-  serena_root="$(gaia_mk_tmp gaia-c701-serena)"
-  serena_state="$serena_root/active-project"
+  # (1) NAME ARM. B's own .serena/project.yml (checked out from the same
+  # tracked file main carries) names "gaia", exactly the name the registry
+  # would resolve to main. Denied, naming B's own root as the correct value.
+  json="$(jq -n --arg c "$B" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: "gaia"}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
+  grep -qF -- "$B" <<< "$output"
 
-  serena_activate() { printf '%s' "$1" > "$serena_state"; }
-  serena_query() { cat "$serena_state" 2>/dev/null; }
+  # (2) PATH ARM, the main checkout. The same silent-wrong-tree shape by
+  # absolute path instead of by name.
+  json="$(jq -n --arg c "$B" --arg p "$MAIN" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
+  grep -qF -- "$B" <<< "$output"
 
-  # Tree A activates the single shared MCP process/index...
-  serena_activate "$A"
-  # ...then a symbol query is issued "from" tree B.
-  answered_for="$(serena_query)"
+  # (3) PATH ARM, a sibling worktree -- the case the original simulated
+  # scenario named (tree A, not only main).
+  json="$(jq -n --arg c "$B" --arg p "$A" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
 
-  # Target: the query is answered against B's own index, or refuses out
-  # loud; it never silently returns a symbol resolved against a different
-  # tree. Today the single shared index answers with whichever project last
-  # activated it -- A's -- silently, with no refusal and no B-scoped answer.
-  [ "$answered_for" = "$B" ]
+  # (4) PATH ARM, B's own root: the correct activation, allowed.
+  json="$(jq -n --arg c "$B" --arg p "$B" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output" && return 1
+  return 0
 }
 
 @test "C7-02: tests use the acting tree's dependencies" {

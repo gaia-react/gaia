@@ -326,6 +326,16 @@
             "statusMessage": "Checking distribution manifest pre-flight…"
           }
         ]
+      },
+      {
+        "matcher": "mcp__serena__activate_project",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-serena-cross-tree-activation.sh",
+            "statusMessage": "Checking Serena activation tree guard…"
+          }
+        ]
       }
     ],
     "PostToolUse": [

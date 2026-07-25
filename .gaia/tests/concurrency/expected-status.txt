@@ -50,6 +50,6 @@ C6-02 pass
 C6-03 pass
 
 # The hard three (phase 7, not run)
-C7-01 fail  task 7.1 Serena: a query from one tree is answered against another
+C7-01 pass  a cross-tree activate_project call, by name or by path, is denied and names the acting tree's own root
 C7-02 pass
 C7-03 pass
