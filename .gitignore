@@ -59,7 +59,9 @@ __pycache__/
 .claude/wiki-recompact-pending
 
 # GAIA release/update working directories
-.gaia/local/
+# No trailing slash: in the main checkout this is a directory, in a provisioned
+# worktree it is a symlink to that directory. The slash form matches only the first.
+.gaia/local
 .gaia/statusline/.use-vendored-base
 .gaia-backup/
 .gaia-merge/
