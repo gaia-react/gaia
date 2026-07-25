@@ -726,28 +726,35 @@ test("adds two numbers c407", () => {
 # Tranche 5 -- SURFACE
 # ---------------------------------------------------------------------------
 
-@test "C5-01: statusline renders the worktree's own segment" {
+@test "C5-01: the statusline renders in a worktree" {
   MAIN="$(gaia_new_main gaia-c501-main)"
-  gaia_copy_real "$MAIN" .gaia/statusline/gaia-statusline.sh
-  gaia_commit_all "$MAIN" "add statusline"
+  gaia_copy_real "$MAIN" \
+    .gaia/statusline/gaia-statusline.sh \
+    .gaia/scripts/main-root-lib.sh
+  gaia_commit_all "$MAIN" "add statusline + resolver"
 
   B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
-  mkdir -p "$B/.gaia/local/debt"
-  jq -n '{schema: 1, openCount: 3, computedAt: 0}' > "$B/.gaia/local/debt/count.json"
-  jq -n '{completed_at: "2026-01-01T00:00:00Z"}' > "$B/.gaia/local/setup-state.json"
+  # The debt count and the setup marker are registry scope "shared", so they
+  # live under MAIN's .gaia/local -- one physical copy for every tree. B is
+  # left deliberately UNPROVISIONED (no symlinks back to main), so the segment
+  # can only render if the statusline resolved main for itself.
+  mkdir -p "$MAIN/.gaia/local/debt"
+  jq -n '{schema: 1, openCount: 3, computedAt: 0}' > "$MAIN/.gaia/local/debt/count.json"
+  jq -n '{completed_at: "2026-01-01T00:00:00Z"}' > "$MAIN/.gaia/local/setup-state.json"
 
   home_dir="$(gaia_mk_tmp gaia-c501-home)"
   json="$(jq -n --arg d "$B" '{workspace: {current_dir: $d}}')"
   run env HOME="$home_dir" bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$B/.gaia/statusline/gaia-statusline.sh"
   [ "$status" -eq 0 ]
 
-  # Target: the right side renders B's own segment (e.g. the debt nudge), not
-  # blanket-suppressed; no segment shows main's or another tree's state.
-  # Today ANY session inside a linked worktree blanket-suppresses the whole
-  # right side ("if [ "$is_worktree" -eq 0 ]" gates everything from the debt
-  # segment down to setup completion), so the right side is dark regardless
-  # of what the (correctly shared) cache holds.
+  # Target: the right side renders the clone's segment (e.g. the debt nudge)
+  # from a worktree session, not blanket-suppressed; no segment shows a fact
+  # true of one tree and false of this one.
+  # Before task 5.1, ANY session inside a linked worktree blanket-suppressed
+  # the whole right side ("if [ "$is_worktree" -eq 0 ]" gated everything from
+  # the debt segment down to setup completion), so the right side was dark
+  # regardless of what the (correctly shared) cache held.
   grep -qF 'gaia-debt' <<< "$output"
 }
 

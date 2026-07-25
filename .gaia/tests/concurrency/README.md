@@ -162,7 +162,7 @@ mis-scoped.
 
 | id | scenario | exec | owning task | frozen assertion |
 |---|---|---|---|---|
-| **C5-01** | statusline renders the worktree's own segment | direct | 5.1 statusline | Run from worktree B (with B's `workspace.current_dir`), the statusline renders B's per-tree segment and is not blanket-suppressed; the right side is not dark, and no segment shows main's or another tree's state. |
+| **C5-01** | the statusline renders in a worktree | direct | 5.1 statusline | Run from worktree B (with B's `workspace.current_dir`), the statusline renders B's per-tree segment and is not blanket-suppressed; the right side is not dark, and no segment shows main's or another tree's state. (Name changed and mechanism re-pointed at the shipped resolver — see [Published assertion changes](#published-assertion-changes).) |
 | **C5-02** | wiki hooks are live in a worktree | direct | 5.2 wiki hooks | Each of the four `[ -d .git ]` wiki hooks, fired from inside a worktree, either fires correctly or refuses out loud — none is silently dead (the `[ -d .git ]` guard no longer reads a linked worktree as "no repo"). |
 | **C5-03** | main-only flows refuse out loud from a worktree | proxy | 5.3 loud-refusal | A main-only flow (release / audit / wiki) triggered from a worktree refuses out loud with a named reason, rather than running against the wrong tree or dying silently. A correct loud refusal is a pass. **Proxy:** the release/audit/wiki flows are network + `gh` + multi-agent and impractical to drive in a fixture, so this asserts the deciding fact — that a main-only entry point actually consults the resolver's worktree predicate to refuse on — via a static call-site check. Red today (no entry point consults it); flips when task 5.3 adds the refusal. |
 | **C5-04** | a machine-scoped nudge is not mis-scoped | direct | 5.3 / 5.4 nudges | A machine-scoped nudge fires once for the machine, not once per worktree; firing from every worktree is the mis-scoped defect and fails the scenario. |
@@ -195,6 +195,44 @@ The meter is frozen, so a changed assertion is published here the way an added
 scenario would be, with what changed and what it did to the number. **The target
 never moves for a repair** — a scenario is repaired, never subtracted. It moves
 **upward** only for an added scenario, and only by the maintainer's word.
+
+### C5-01 — the name changed, the assertion did not, and the fixture now drives the real resolver
+
+**The assertion text above is untouched.** What changed is the scenario's *name* and what
+the fixture actually exercises.
+
+**The name said something the delivered design contradicts.** "Statusline renders the
+worktree's own segment" presumes a per-tree segment. There is none, and there should not
+be: all three state files the statusline reads — the update-check cache, the debt count,
+the setup marker — are registry scope `shared`, meaning one physical copy under main for
+the whole clone. Every segment states a fact about the clone, so the honest claim is that
+the statusline *renders in a worktree*, not that it renders something the worktree owns.
+Leaving the old name would have left the meter advertising a mechanism GAIA does not have,
+which is the defect `C3-03`'s repair removed rather than one to reintroduce.
+
+**The second clause of the assertion is kept, and read as it must be to mean anything.**
+"No segment shows main's or another tree's state" guards cross-tree contamination: a
+segment true of one tree and false of the tree you are in. It cannot mean "never read a
+file that physically sits under main", because every segment reads exactly such a file —
+under that reading no code could satisfy the scenario at all while also leaving the right
+side lit, which is the unwinnable shape `C3-03` was repaired out of. Shared state is the
+clone's state, and reporting it from any tree is correct.
+
+**The fixture was measuring the fallback, not the fix.** It copied in only the statusline
+and seeded the state under worktree B, so the script found no resolver library, fell back
+to its own install path, and read B's own files — green through the no-resolver path
+rather than through the shipped one. It now copies `main-root-lib.sh` alongside the
+statusline and seeds the state under **main**, where shared state actually lives, with B
+left deliberately unprovisioned. The segment can therefore only render if the statusline
+resolved main for itself. That is the standing rule that a conversion repairs the fixture
+whose dependency set it changes, in the same change.
+
+**The reading moves 17 / 22 → 18 / 22, and this one is a fix, not a measurement.**
+Non-vacuity proven by mutation, not argued: restoring the blanket worktree gate turns it
+red, and anchoring the state paths on the session tree instead of main turns it red as
+well, so the green is attributable to the gate's removal *and* to main-anchoring, not to
+either alone. The statusline source was restored byte-identical (checksum-verified) after
+both. No other scenario moved; the four still red stayed red for their own reasons.
 
 ### C4-07 — an added scenario, and the first movement in the target
 
