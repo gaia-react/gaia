@@ -131,48 +131,73 @@ target_dir=$(dirname -- "$file_path")
 resolved_target_dir="$(CDPATH='' cd "$target_dir" 2>/dev/null && pwd -P)" || exit 0
 [[ -n "$resolved_target_dir" ]] || exit 0
 
-# Exempt the main-checkout paths a linked worktree legitimately writes through to
-# main, read from the state registry so this guard never hand-lists them:
+# A linked worktree's whole .gaia/local is one symlink to the main checkout's
+# own .gaia/local (SPEC-061's cutover). `git -C` resolves that symlink before
+# computing --show-toplevel, so a write ANYWHERE under .gaia/local now reports
+# the MAIN checkout as its toplevel and looks like a wrong-checkout write --
+# true of the whole tree, not a hand-listed subset, so this is ONE
+# registry-driven rule instead of the two hand-listed exempt sets (linkable
+# paths, main-anchored dirs) this guard used to maintain.
 #
-#   - The registry's linkable trees (gaia_registry_linkable_paths): the shared
-#     state link-worktree.sh symlinks out of every worktree into the main
-#     checkout, so state is shared rather than forked. `git -C` resolves a
-#     symlink before computing --show-toplevel, so a write to the worktree's own
-#     symlinked .gaia/local/audit/ reports the MAIN checkout as its toplevel and
-#     looks like a wrong-checkout write. It is the intended write; the symlinked
-#     dirs are exempt. (A symlinked FILE such as setup-state.json needs no arm of
-#     its own: its target_dir is the worktree's own real .gaia/local, which never
-#     reaches this case and is allowed by the main-checkout test below.)
-#   - The registry's wholly main-anchored directories
-#     (gaia_registry_main_only_dirs): the plan and SPEC ledgers and the
-#     worktree-creation locks, which have no worktree-side copy at all. The
-#     main-checkout path is the only path that resolves to a real ledger there,
-#     so denying it would block the sole correct write rather than catch a wrong
-#     one (tech-debt #934).
+# gaia_registry_recognizes (with its own ancestor recognition: a container
+# such as debt/ or audit/ is recognized once ANY child under it is a
+# registered entry, even though the bare container is not itself a row) says
+# whether the write targets a real, registry-known part of .gaia/local at
+# all; gaia_registry_classify then says which scope. Every scope except
+# per-tree is main's by construction post-flip and is exempt outright:
+# shared and main-anchored state already had no worktree-side copy worth
+# protecting, and the ephemeral cache entries (spec-session locks,
+# audit-window breadcrumbs, and the rest) never had one either -- denying
+# them would block the sole correct write, not catch a wrong one (tech-debt
+# #934's class). A relpath the registry does not recognize at all (typo,
+# stray, or genuinely unclassified) is NOT exempted here and falls through
+# to the ordinary cross-tree deny below, the same as before the cutover.
 #
-# Reading both from the registry is what keeps this guard, link-worktree.sh, and
-# link-worktree.ts in agreement: a directory newly classified shared or
-# main-only in the registry is armed here with no edit to this hook, where a
-# hand-maintained twin of the list would drift. The rest of .gaia/local/
-# (handoff/, red-ledger/, forensics/, the non-shared cache/ subdirs) is
-# per-worktree, so a stale pre-switch path into main's copy is exactly the #841
-# silent-wrong-write this guard exists to catch, and stays denied. The read runs
-# with cwd at main_root so the reader locates main's registry even when the hook
-# process sits outside the repository. The trailing slash on both sides keeps
-# each arm a path-segment match, so a sibling such as .gaia/localish/ or
-# .gaia/local/plansible/ stays guarded.
-exempt_paths="$(
-  cd "$main_root" 2>/dev/null || exit 0
-  gaia_registry_linkable_paths 2>/dev/null || true
-  gaia_registry_main_only_dirs 2>/dev/null || true
-)" || exempt_paths=""
+# The one entry that still needs protecting is per-tree state
+# (red-ledger/, worthiness-ledger/, forensics/, handoff/): each addresses
+# itself under a subdirectory named by gaia_tree_key
+# (.gaia/scripts/main-root-lib.sh), the acting tree's own physically-resolved
+# root, hashed. A write whose path carries the ACTING tree's own key is
+# exempt; one carrying a peer tree's key, or the bare unkeyed container, is
+# not, and falls through to the same deny.
+#
+# LOST PROTECTION: pre-cutover this guard told a correct per-tree write from
+# a stale pre-switch one by PHYSICAL location -- a real per-worktree
+# directory versus main's. Post-cutover the tree key in the path is the only
+# signal, and a key is a deterministic hash of a tree's own root, not a
+# secret: this guard can no longer distinguish a write that is genuinely
+# from a live session in the acting tree from an absolute path some other
+# mechanism constructed that merely happens to embed the acting tree's own
+# key. Designing a replacement is a later phase's job; naming the loss here
+# is this one's.
 gaia_local="$main_root/.gaia/local"
-while IFS= read -r exempt; do
-  [[ -n "$exempt" ]] || continue
-  case "$resolved_target_dir/" in
-    "$gaia_local/$exempt"/*) exit 0 ;;
-  esac
-done <<<"$exempt_paths"
+case "$resolved_target_dir" in
+  "$gaia_local" | "$gaia_local"/*)
+    relpath="${resolved_target_dir#"$gaia_local"}"
+    relpath="${relpath#/}"
+    if (cd "$main_root" 2>/dev/null && gaia_registry_recognizes "$relpath" d); then
+      scope="$(cd "$main_root" 2>/dev/null && gaia_registry_classify "$relpath" 2>/dev/null)" || scope=""
+      if [[ "$scope" != "per-tree" ]]; then
+        exit 0
+      fi
+      acting_key="$(gaia_tree_key "$current_root" 2>/dev/null)" || exit 0
+      [[ -n "$acting_key" ]] || exit 0
+      container="${relpath%%/*}"
+      case "$relpath" in
+        "$container/$acting_key" | "$container/$acting_key"/*) exit 0 ;;
+      esac
+      # Both messages name the local-state root through $gaia_local rather than
+      # spelling it out. That is the derive rule this hook is held to (the
+      # manifest's derive arm, check-hook-scope-manifest.sh) applied to prose as
+      # well as to logic, and it makes the advice better: the caller is told the
+      # absolute path to use, not a repo-relative fragment they have to rebuild
+      # from a root the symlink has already moved out from under them.
+      wg_local_reason="'$file_path' is per-tree state under '$container/', which is addressed by the writing tree's own key. This session's tree key is '$acting_key', so the correct path is '$gaia_local/$container/$acting_key/'. The path given carries a different tree's key, or none at all, and every reader looks only under the key -- so this write would be invisible to the tree that made it and could shadow another tree's."
+    else
+      wg_local_reason="'$file_path' is under '$gaia_local', which a linked worktree reaches through one symlink to the main checkout, but no entry in .gaia/state-registry.json recognizes it. Because it is unregistered, this guard cannot tell whether it is state the whole clone shares or state this tree must keep to itself, and re-resolving the repository root will not change the answer -- the symlink resolves to the main checkout either way. Register it in .gaia/state-registry.json with its scope, or write it under an entry that already exists."
+    fi
+    ;;
+esac
 
 # The target's own checkout, physically resolved so the comparison against the
 # physically-resolved current_root is symmetric: a symlinked path cannot make a
@@ -188,6 +213,16 @@ file_root="$(CDPATH='' cd "$file_root" 2>/dev/null && pwd -P)" || exit 0
 # target reaching here is a real wrong-write, not a legitimate write-through to
 # main.
 if [[ "$file_root" != "$current_root" ]]; then
+  # A .gaia/local target reaching here has a more useful thing to say than the
+  # generic stale-path advice, and saying the generic thing would be actively
+  # wrong: re-resolving the repository root does not move a path that reaches
+  # main through the one .gaia/local symlink, so the caller would be sent round
+  # a loop it cannot exit. The branch above sets the specific reason; the
+  # generic one still covers every path outside .gaia/local, where the stale
+  # pre-switch absolute path really is the cause.
+  if [[ -n "${wg_local_reason:-}" ]]; then
+    deny "BLOCKED: $wg_local_reason"
+  fi
   deny "BLOCKED: '$file_path' resolves to a different checkout ('$file_root') than the linked worktree this session works inside ('$current_root'). This is the silent-wrong-write footgun from tech-debt #841: a stale pre-switch absolute path is a real, valid file in another checkout (the main checkout or a sibling worktree), so the edit tools would apply it with no error. Resolve RESOLVED_ROOT fresh (git rev-parse --show-toplevel) and prefix file_path with it."
 fi
 

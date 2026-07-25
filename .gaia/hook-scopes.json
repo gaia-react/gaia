@@ -100,8 +100,8 @@
     {
       "hook": ".claude/hooks/block-worktree-path-mismatch.sh",
       "scope": "main-only",
-      "state": ["setup-state", "cache-shared", "audit-clearance-markers", "audit-findings-rerun-sidecars", "audit-progress-log", "audit-security-notes", "telemetry-cost-ledger", "debt-count-and-refresh", "specs-main", "plans-main", "worktree-locks"],
-      "why": "Already resolver-based: compares the acting tree's root against gaia_resolve_main_root and reads the registry's shared + main-only-dir lists (gaia_registry_linkable_paths / gaia_registry_main_only_dirs) to exempt every main-anchored write path from its wrong-checkout deny. Declared here, not converted (already correct)."
+      "state": ["setup-state", "cache-shared", "audit-clearance-markers", "audit-findings-rerun-sidecars", "audit-progress-log", "audit-security-notes", "telemetry-cost-ledger", "debt-count-and-refresh", "specs-main", "plans-main", "worktree-locks", "red-ledger", "audit-worthiness-ledger", "forensics", "handoff"],
+      "why": "Resolver-based: compares the acting tree's root against gaia_resolve_main_root, and reads the registry (gaia_registry_recognizes, gaia_registry_classify) for every write under the worktree's whole .gaia/local -- one symlink to main's own now -- to decide whether it is main's by construction (shared/main-only/ephemeral, exempt outright) or per-tree (red-ledger/worthiness-ledger/forensics/handoff, exempt only under the acting tree's own gaia_tree_key). Declared here, not converted (already correct)."
     },
     {
       "hook": ".claude/hooks/capture-gh-artifact.sh",

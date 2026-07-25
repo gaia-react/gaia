@@ -292,6 +292,15 @@ setup_c4_base_sha_pair() {
   sidecar_a="$A/.gaia/local/audit/${KEY_A}.code-audit-frontend.findings.json"
   sidecar_b="$B/.gaia/local/audit/${KEY_B}.code-audit-frontend.findings.json"
 
+  # The fixture creates its own parent, the way the real writers do
+  # (audit-write-findings.sh:238, audit-write-clearance.sh:323). Before the
+  # single-symlink cutover it did not have to: the per-entry linker created
+  # main's audit/ as its symlink's target, and the fixture inherited that. The
+  # cutover removed that side effect deliberately -- a worktree now creates
+  # directories exactly when and how the main checkout does -- so a fixture that
+  # still leaned on it was testing the linker's housekeeping, not this scenario.
+  mkdir -p "$(dirname "$sidecar_a")" "$(dirname "$sidecar_b")"
+
   jq -n '{schema: 1, member: "frontend", tree: "treeA", findings: ["A-only finding"]}' > "$sidecar_a"
   jq -n '{schema: 1, member: "frontend", tree: "treeB", findings: ["B-only finding"]}' > "$sidecar_b"
 
@@ -316,6 +325,9 @@ setup_c4_base_sha_pair() {
 
   ledger_a="$A/.gaia/local/audit/${KEY_A}.rerun.json"
   ledger_b="$B/.gaia/local/audit/${KEY_B}.rerun.json"
+
+  # Its own parent, as the real writers do and as C4-01 explains.
+  mkdir -p "$(dirname "$ledger_a")" "$(dirname "$ledger_b")"
 
   jq -n --arg br treeA --arg base "$BASE_SHA_A" '{schema: 1, branch: $br, base_sha: $base, round: 1}' > "$ledger_a"
   jq -n --arg br treeB --arg base "$BASE_SHA_B" '{schema: 1, branch: $br, base_sha: $base, round: 1}' > "$ledger_b"
@@ -524,23 +536,23 @@ JS
   # contract (a broken hook must not break worktree creation), so a run that
   # linked NOTHING -- unreadable registry, no symlink permission -- would leave
   # red-ledger/ unlinked too and every isolation check below would pass for the
-  # wrong reason. Assert that shared state really is shared: the first
-  # directory the registry names shared resolves, from both trees, to main's
-  # one copy. Stated as resolution rather than as "is a symlink" so it holds
-  # under today's per-entry links AND after the single-symlink cutover, which
-  # keeps the control from forcing Phase 6 to weaken this scenario.
-  first_shared=""
-  while IFS= read -r shared_path; do
-    [ -n "$shared_path" ] || continue
-    if [ -d "$MAIN/.gaia/local/$shared_path" ]; then
-      first_shared="$shared_path"
-      break
-    fi
-  done <<<"$linkable"
-  [ -n "$first_shared" ]
-  MAIN_SHARED="$(cd "$MAIN/.gaia/local/$first_shared" && pwd -P)"
-  [ "$(cd "$A/.gaia/local/$first_shared" && pwd -P)" = "$MAIN_SHARED" ]
-  [ "$(cd "$B/.gaia/local/$first_shared" && pwd -P)" = "$MAIN_SHARED" ]
+  # wrong reason. Assert that shared state really is shared, by resolution
+  # rather than by "is a symlink".
+  #
+  # RESTATED AT THE CUTOVER (see README, Published assertion changes). It used
+  # to hunt for the first entry the registry names shared that already existed
+  # as a directory under main, because before the flip "shared" meant six
+  # individually-symlinked entries and the per-entry linker created each one in
+  # main as its symlink's target. The flip removes both the per-entry links and
+  # that side effect: a worktree now creates directories exactly when and how
+  # the main checkout does, through the one parent symlink. So the control asks
+  # the parent, which is simpler and strictly stronger -- it holds for all six
+  # shared entries at once instead of whichever one happened to be pre-created.
+  # It fails, as it must, on a linker that linked nothing: .gaia/local would
+  # then be each tree's own real directory and resolve somewhere else.
+  MAIN_LOCAL="$(cd "$MAIN/.gaia/local" && pwd -P)"
+  [ "$(cd "$A/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
+  [ "$(cd "$B/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
 
   # No shared-state symlink exists for the per-tree entry in either tree. This
   # is the mechanism check for TODAY's per-entry linking; the physical-path
@@ -797,20 +809,13 @@ test("adds two numbers c407", () => {
   # same reason: link-worktree.sh always exits 0 by contract, so a run that
   # linked NOTHING would leave forensics/ and handoff/ unlinked too and every
   # isolation check below would pass for the wrong reason. Stated as resolution
-  # rather than as "is a symlink" so it holds under today's per-entry links AND
-  # after the single-symlink cutover.
-  first_shared=""
-  while IFS= read -r shared_path; do
-    [ -n "$shared_path" ] || continue
-    if [ -d "$MAIN/.gaia/local/$shared_path" ]; then
-      first_shared="$shared_path"
-      break
-    fi
-  done <<<"$linkable"
-  [ -n "$first_shared" ]
-  MAIN_SHARED="$(cd "$MAIN/.gaia/local/$first_shared" && pwd -P)"
-  [ "$(cd "$A/.gaia/local/$first_shared" && pwd -P)" = "$MAIN_SHARED" ]
-  [ "$(cd "$B/.gaia/local/$first_shared" && pwd -P)" = "$MAIN_SHARED" ]
+  # rather than as "is a symlink", and asked of `.gaia/local` itself, which is
+  # what the cutover made the shared thing -- the same restatement C4-06
+  # carries, for the same reason and with the same non-vacuity: a linker that
+  # linked nothing leaves each tree its own real directory, resolving elsewhere.
+  MAIN_LOCAL="$(cd "$MAIN/.gaia/local" && pwd -P)"
+  [ "$(cd "$A/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
+  [ "$(cd "$B/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
 
   # Both trees do what the prose tells an agent to do: resolve the key, then
   # write under it. The paths are built from the key the SHIPPED code just
@@ -1048,6 +1053,11 @@ test("adds two numbers c407", () => {
 
   # debt/ is a state-registry "shared" path, so both A's and B's own copy of
   # the refresher resolve the SAME physical cache through their own symlink.
+  # The fixture creates the directory the way the real writers do
+  # (debt-sentinel-touch.sh:93, debt-count-refresh.sh:114); before the
+  # single-symlink cutover the per-entry linker created it as a symlink target
+  # and the fixture inherited that, which the cutover deliberately removed.
+  mkdir -p "$MAIN/.gaia/local/debt"
   jq -n --argjson t "$(date +%s)" '{schema: 1, openCount: 2, computedAt: $t}' \
     > "$MAIN/.gaia/local/debt/count.json"
   computed_before="$(jq -r '.computedAt' "$MAIN/.gaia/local/debt/count.json")"
@@ -1119,10 +1129,23 @@ test("adds two numbers c407", () => {
 
   B="$(gaia_add_worktree "$MAIN" treeB treeB)"
   gaia_link_worktree "$B"
-  [ -L "$B/.gaia/local/audit" ]
 
-  # Deliberately break the shared-state symlink: replace it with a plain dir.
-  rm -f "$B/.gaia/local/audit"
+  # RESTATED AT THE CUTOVER (see README, Published assertion changes). This
+  # asserted `-L` on .gaia/local/audit, which was one of six individually
+  # symlinked shared entries. After the flip there is ONE symlink -- .gaia/local
+  # itself -- and audit/ is a plain directory reached through it, so the old
+  # assertion is structurally false however correctly provisioning behaves. The
+  # scenario is unchanged in what it claims (provisioning repairs a broken
+  # worktree on re-entry, with no manual step); only the thing that can be
+  # broken has moved up one level, because that is now the only thing there is
+  # to break. Breaking audit/ instead would reach through the symlink and
+  # damage the main checkout's own state, which is not what this measures.
+  [ -L "$B/.gaia/local" ]
+
+  # Deliberately break the shared-state symlink: replace it with a plain dir
+  # holding content that belongs to nobody, which is what a hand-broken link or
+  # a plain `git worktree add` leaves behind.
+  rm -f "$B/.gaia/local"
   mkdir -p "$B/.gaia/local/audit"
   echo orphaned > "$B/.gaia/local/audit/orphan.txt"
 
@@ -1136,11 +1159,11 @@ test("adds two numbers c407", () => {
     '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
   ( cd "$B" && printf '%s' "$reentry_payload" | bash "$B/.claude/hooks/provision-worktree.sh" ) >/dev/null 2>&1
 
-  # Target: repaired to a correct symlink at main's real audit dir, on the
-  # next session start, without manual intervention.
-  [ -L "$B/.gaia/local/audit" ] || return 1
-  target_real="$(cd "$B/.gaia/local/audit" && pwd -P)"
-  main_real="$(cd "$MAIN/.gaia/local/audit" && pwd -P)"
+  # Target: repaired to a correct symlink at main's real .gaia/local, on
+  # re-entry, without manual intervention.
+  [ -L "$B/.gaia/local" ] || return 1
+  target_real="$(cd "$B/.gaia/local" && pwd -P)"
+  main_real="$(cd "$MAIN/.gaia/local" && pwd -P)"
   [ "$target_real" = "$main_real" ]
 }
 

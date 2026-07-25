@@ -233,10 +233,13 @@ write_plan_sentinel() {
 }
 
 # The third guard: a RUNNING plan sentinel is gitignored, so a genuinely live
-# session reads as [gone] + clean to both git-level signals above. Both the
-# worktree's own .gaia/local/ and the main checkout's are scanned, because the
-# state registry declares plans/ main-only while a worktree still forks its own
-# plans/ today, and the guard must be correct on both sides of that change.
+# session reads as [gone] + clean to both git-level signals above. Scanned in
+# both the worktree's own .gaia/local/ and main's: for a properly linked
+# worktree these are the same physical directory (.gaia/local is one symlink
+# to main's), but a worktree nobody has linked -- provisioning failed, or
+# never ran, exactly what this fixture models by never linking `wt` -- still
+# has its own real, unconnected .gaia/local, and only the worktree-side scan
+# sees a live plan sentinel written there.
 @test "keeps a [gone]-branch worktree whose own tree holds a live RUNNING plan" {
   make_repo
   ignore_local_state

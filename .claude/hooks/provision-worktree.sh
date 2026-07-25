@@ -135,19 +135,67 @@ carry_forward_dir_contents() {
   done < <(find "$old_dir" -maxdepth 1 -type f 2>/dev/null)
 }
 
-# Skipped outright when .gaia/local is itself a symlink. A later change in
-# this same phase makes a linked worktree's whole .gaia/local one symlink to
-# main's; once that lands, the "old unkeyed path" a worktree sees through
-# that symlink IS main's own data, and moving it under the WORKTREE's own
-# key would steal main's ledger out from under it. Gating on the symlink
-# keeps this step correct both before and after that later change lands,
-# without this hook needing to know which state it is in.
+# migrate_keyed_subtrees_to_main: the second half of the same migration, and
+# the one the cutover itself forces.
+#
+# A linked worktree still holding a REAL .gaia/local is a tree that predates
+# the single-symlink cutover. The linker's next act is to move that whole
+# directory aside to .gaia/local.bak.<ts> and put one symlink in its place,
+# and its contract is explicit that nothing under the backup is inspected or
+# merged. So without this step the four per-tree entries -- including the ones
+# the carry-forward above has just keyed correctly -- end up inside a backup
+# nobody reads. A stranded RED observation is not a missing file: it silently
+# BLOCKS a commit the gate should pass, which is precisely the failure the
+# cutover's back-off condition names.
+#
+# So the keyed subtree moves to main's .gaia/local before the linker runs.
+# It is safe to move rather than merge: the destination is keyed by THIS
+# tree's key, so it cannot collide with the main checkout's own data or with
+# any peer worktree's. A destination that already exists is left alone and
+# said out loud rather than merged -- two sources for one tree's ledger is a
+# state to be told about, not one to resolve by guessing.
+#
+# Self-retiring, exactly like the carry-forward above: the moment the linker
+# has run once, .gaia/local is a symlink and the whole block is skipped.
+migrate_keyed_subtrees_to_main() {
+  [ -n "$tree_key" ] || return 0
+  gaia_is_linked_worktree "$tree" || return 0
+
+  local main_root
+  main_root="$(gaia_resolve_main_root "$tree" 2>/dev/null)" || return 0
+  [ -n "$main_root" ] || return 0
+  [ "$main_root" = "$tree" ] && return 0
+
+  local dir src dest
+  for dir in red-ledger worthiness-ledger forensics handoff; do
+    src="$tree/.gaia/local/$dir/$tree_key"
+    [ -d "$src" ] || continue
+    dest="$main_root/.gaia/local/$dir/$tree_key"
+    if [ -e "$dest" ]; then
+      log "CUTOVER MIGRATION SKIPPED: $dir/$tree_key exists in both this worktree and the main checkout -- merge them by hand; the worktree's copy is about to be moved aside to .gaia/local.bak.* and nothing reads it there"
+      continue
+    fi
+    if mkdir -p "$main_root/.gaia/local/$dir" 2>/dev/null && mv "$src" "$dest" 2>/dev/null; then
+      log "migrated $dir/$tree_key into the main checkout's .gaia/local"
+    else
+      log "CUTOVER MIGRATION FAILED: $dir/$tree_key -- move it into the main checkout's .gaia/local/$dir/ by hand, or a stranded ledger will silently block the next commit gate"
+    fi
+  done
+}
+
+# Skipped outright when .gaia/local is itself a symlink. Once the single-symlink
+# cutover has run for this tree, the "old unkeyed path" a worktree sees through
+# that symlink IS main's own data, and moving it under the WORKTREE's own key
+# would steal main's ledger out from under it. Gating on the symlink keeps both
+# steps correct on either side of the cutover, without this hook needing to know
+# which state it is in.
 if [ ! -L "$tree/.gaia/local" ]; then
   tree_key="$(gaia_tree_key "$tree" 2>/dev/null)" || tree_key=""
   carry_forward_file "red-ledger" "observations.jsonl"
   carry_forward_file "worthiness-ledger" "worthiness.jsonl"
   carry_forward_dir_contents "forensics"
   carry_forward_dir_contents "handoff"
+  migrate_keyed_subtrees_to_main
 fi
 
 # ---------- only a linked worktree is provisioned ----------

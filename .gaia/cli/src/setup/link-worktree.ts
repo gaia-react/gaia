@@ -1,26 +1,30 @@
 /**
  * `gaia setup link-worktree [--json]` handler.
  *
- * Idempotently creates the shared-state symlinks the state registry
- * declares (`.gaia/state-registry.json`, read via
- * `.gaia/scripts/state-registry-lib.sh`) from the current linked worktree
- * into the main checkout:
+ * Idempotently symlinks the current linked worktree's whole `.gaia/local`
+ * to the main checkout's own `.gaia/local`:
  *
- *   <worktree>/.gaia/local/<registry-declared path> -> <main>/.gaia/local/<same path>
+ *   <worktree>/.gaia/local -> <main>/.gaia/local
  *
- * Today the registry declares exactly five: setup-state.json, cache/shared/,
- * audit/, telemetry/, debt/.
+ * Every registry-declared entry (`.gaia/state-registry.json`) lives under
+ * that one shared directory now; the per-tree entries (red-ledger/,
+ * worthiness-ledger/, forensics/, handoff/) address themselves under a
+ * subdirectory keyed by the acting tree's own `gaia_tree_key`
+ * (`.gaia/scripts/main-root-lib.sh`), so they stay private to the tree that
+ * wrote them even though the physical directory is shared.
  *
  * Also links gitignored checkout-root `.env` / `.env.*` files (excluding the
  * committed `.env.example`) from the main checkout, one symlink per file,
- * reported separately in the `env_actions` field so the frozen five-entry
+ * reported separately in the `env_actions` field so the frozen single-entry
  * `actions` contract above is untouched.
  *
- * No-op on a main checkout (not a linked worktree). Pre-existing plain
- * files / dirs are moved to <path>.bak.<timestamp> before the symlink is
- * created. Exits 1 on any `failed` action; the user explicitly invoked
- * the CLI, so surfacing the error is correct (the script counterpart
- * always exits 0 because it must not break worktree creation).
+ * No-op on a main checkout (not a linked worktree). A pre-existing plain
+ * `.gaia/local` (file or directory) is moved to
+ * `.gaia/local.bak.<timestamp>` before the symlink is created; nothing
+ * under it is inspected or merged. Exits 1 on any `failed` action; the
+ * user explicitly invoked the CLI, so surfacing the error is correct (the
+ * script counterpart always exits 0 because it must not break worktree
+ * creation).
  *
  * Frozen JSON shape; see SPEC-005 plan README.md for the contract.
  */
@@ -42,12 +46,12 @@ import {resolveMainWorktreeRoot} from './util/state-file.js';
 
 const HELP_TEXT = `Usage: gaia setup link-worktree [--json]
 
-  Idempotently create the five worktree shared-state symlinks pointing at
-  the main checkout. Also links gitignored checkout-root .env / .env.*
-  files (excluding .env.example) from the main checkout. Backs up
-  pre-existing plain files to <path>.bak.<ts>. No-op on a main checkout
-  (not a linked worktree); exits 0 with a one-line "not a linked worktree"
-  message.
+  Idempotently symlink the worktree's whole .gaia/local to the main
+  checkout's own .gaia/local. Also links gitignored checkout-root .env /
+  .env.* files (excluding .env.example) from the main checkout. Backs up
+  a pre-existing plain .gaia/local to .gaia/local.bak.<ts>. No-op on a main
+  checkout (not a linked worktree); exits 0 with a one-line "not a linked
+  worktree" message.
 
   --json   Print a single JSON line describing the result instead of the
            human-readable summary.
@@ -88,56 +92,23 @@ type RunOptions = {
 type SharedPathSpec = {
   /**
    * Whether the main-side target should be ensured (created if missing) as
-   * a directory before the symlink is made. `setup-state.json` is a file
-   * and is intentionally NOT pre-created; the symlink dangles until the
-   * normal setup flow writes it; readers treat missing as "no state yet".
+   * a directory before the symlink is made. `.gaia/local` is always a
+   * directory.
    */
   ensureTargetDir: boolean;
   relativePath: string;
 };
 
-// Relative path (from the main checkout) to the state-registry reader that
-// declares which .gaia/local paths are shared into main. Both twins consume
-// the same registry function; see .gaia/scripts/state-registry-lib.sh.
-const STATE_REGISTRY_LIB_RELATIVE = path.join(
-  '.gaia',
-  'scripts',
-  'state-registry-lib.sh'
-);
-
-/**
- * Load the shared-path set from the state registry: the one definition of
- * which `.gaia/local` paths are shared into main (`.gaia/state-registry.json`,
- * via `state-registry-lib.sh linkable-paths`), in a stable order, always
- * present in the output `actions` array regardless of result. See SPEC-005
- * plan README and the state-registry design doc.
- *
- * A registry-declared path with no file extension is a directory
- * (`ensureTargetDir: true`); the one file entry (`setup-state.json`) is not
- * pre-created (see `SharedPathSpec.ensureTargetDir`). Throws if the registry
- * lib is missing or fails (jq unavailable, registry unreadable); the caller
- * surfaces that as a structured CLI error rather than linking nothing
- * silently.
- */
-const loadSharedPathSpecs = (mainRoot: string): SharedPathSpec[] => {
-  const libraryPath = path.join(mainRoot, STATE_REGISTRY_LIB_RELATIVE);
-  // cwd: mainRoot -- the lib resolves the registry relative to $PWD (via
-  // gaia_resolve_main_root), so it must run from the main checkout, not
-  // wherever the CLI process itself happened to start.
-  const output = execFileSync('bash', [libraryPath, 'linkable-paths'], {
-    cwd: mainRoot,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  return output
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((relativePath) => ({
-      ensureTargetDir: path.extname(relativePath) === '',
-      relativePath: path.join('.gaia', 'local', relativePath),
-    }));
+// The one shared path every linked worktree gets: its whole `.gaia/local`,
+// symlinked wholesale to the main checkout's own `.gaia/local`. Every
+// registry-declared entry (`.gaia/state-registry.json`) lives under that one
+// directory now; a per-tree entry addresses itself under a subdirectory
+// keyed by the acting tree's own `gaia_tree_key`
+// (`.gaia/scripts/main-root-lib.sh`), so it stays private to the tree that
+// wrote it even though the physical directory is shared.
+const GAIA_LOCAL_SPEC: SharedPathSpec = {
+  ensureTargetDir: true,
+  relativePath: path.join('.gaia', 'local'),
 };
 
 // Shareable env-file basename set: `.env` and any `.env.*` variant under the
@@ -401,25 +372,6 @@ const resolveWorktreeRoots = (
   }
 };
 
-// Extracted out of `run` (kept its cognitive complexity under the frozen
-// limit): loading the shared-path set from the state registry, independent
-// of the json/human output that follows.
-const resolveSharedPathSpecs = (
-  mainRoot: string
-): {exitCode: number} | {sharedPathSpecs: SharedPathSpec[]} => {
-  try {
-    return {sharedPathSpecs: loadSharedPathSpecs(mainRoot)};
-  } catch (error) {
-    structuredError({
-      code: 'state_registry_unavailable',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'setup link-worktree',
-    });
-
-    return {exitCode: EXIT_CODES.STORAGE_INACCESSIBLE};
-  }
-};
-
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -475,21 +427,20 @@ export const run = (
   const timestamp = formatTimestamp(nowDate);
   const symlink = options.symlink ?? symlinkSync;
 
-  const sharedPathSpecsResult = resolveSharedPathSpecs(mainRoot);
-
-  if ('exitCode' in sharedPathSpecsResult)
-    return sharedPathSpecsResult.exitCode;
-
-  const {sharedPathSpecs} = sharedPathSpecsResult;
-
-  const actions = sharedPathSpecs.map((spec) =>
-    linkOne({mainRoot, spec, symlink, timestamp, worktreeRoot})
-  );
+  const actions = [
+    linkOne({
+      mainRoot,
+      spec: GAIA_LOCAL_SPEC,
+      symlink,
+      timestamp,
+      worktreeRoot,
+    }),
+  ];
 
   // Env files are a separate, discovered (not fixed) set: every gitignored
   // `.env` / `.env.*` under the main checkout root except `.env.example`.
-  // Reported in the new `env_actions` field; the frozen five-entry `actions`
-  // array above is untouched.
+  // Reported in the new `env_actions` field; the frozen single-entry
+  // `actions` array above is untouched.
   const envSpecs: SharedPathSpec[] = readdirSync(mainRoot)
     .filter((name) => isShareableEnvironmentFile(name))
     .toSorted((a, b) => a.localeCompare(b))

@@ -222,6 +222,47 @@ scenario would be, with what changed and what it did to the number. **The target
 never moves for a repair** — a scenario is repaired, never subtracted. It moves
 **upward** only for an added scenario, and only by the maintainer's word.
 
+### Six scenarios repaired at the single-symlink cutover, all from one cause
+
+**The target does not move: 23 before, 23 after.** These are repairs, and the reading is
+unchanged at 21/23 either side of the change.
+
+**The one cause, stated once.** Before the cutover a linked worktree's `.gaia/local` held six
+individually-symlinked shared entries, and the linker created each one **under main** as its
+symlink's target. After the cutover there is one symlink and nothing to target, so that
+pre-creation is gone — deliberately. A worktree now creates directories exactly when and how the
+main checkout does, through the one parent symlink, which is the whole point of the flip rather
+than a casualty of it. Every real writer already creates its own parent
+(`audit-write-findings.sh:238`, `audit-write-clearance.sh:323`, `debt-sentinel-touch.sh:93`,
+`debt-count-refresh.sh:114`, `serena-code-search-guard.sh:259`, `check-updates.sh:98`,
+`decline-ledger.ts:103`), so nothing that ships depended on it. Six scenarios did.
+
+**`C4-01`, `C4-02`, `C5-04` — fixture, no assertion touched.** Each wrote into
+`.gaia/local/<shared>/…` with a bare redirection and inherited the directory from the linker.
+Each now creates its own parent, the way its real writer does. What the scenario claims is
+untouched; it stops testing the linker's housekeeping on the way to testing itself.
+
+**`C4-06`, `C4-08` — the positive control is restated, and comes out stronger.** The control
+exists because `link-worktree.sh` always exits 0 by contract, so a run that linked *nothing*
+would leave the per-tree entries unlinked too and every isolation check below would pass for the
+wrong reason. It used to hunt for the first registry-declared shared entry that already existed
+as a directory under main — which only existed because of the pre-creation above. It now asks
+`.gaia/local` itself: the shared thing after the flip is the parent, so one resolution covers all
+six shared entries at once instead of whichever happened to be pre-created. **Non-vacuity proven
+by mutation:** a `link-worktree.sh` replaced by `exit 0` (its literal contract) reds both
+scenarios at exactly that line, because each tree's `.gaia/local` is then its own real directory
+resolving somewhere else. The isolation clauses, which are what these two scenarios are *for*,
+are untouched.
+
+**`C6-02` — the assertion moves up one level, because that is the only level left.** It asserted
+`-L` on `.gaia/local/audit`, one of the six per-entry symlinks. After the flip `audit/` is a
+plain directory reached through the one parent symlink, so the assertion is structurally false
+however correctly provisioning behaves. The scenario claims exactly what it claimed before —
+provisioning repairs a broken worktree on re-entry with no manual step — with the breakage and
+the repair restated at `.gaia/local`, the only thing there is left to break. Breaking `audit/`
+instead would reach through the symlink and damage the main checkout's own state, which is not
+what this measures.
+
 ### C4-08 — an added scenario, and the second movement in the target
 
 **The target goes 22 → 23, on the maintainer's decision.** Scoping the single-symlink cutover

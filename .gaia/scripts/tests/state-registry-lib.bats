@@ -55,7 +55,6 @@ run_in_repo() {
     source "$1"
     type gaia_registry_path >/dev/null
     type gaia_registry_linkable_paths >/dev/null
-    type gaia_registry_main_only_dirs >/dev/null
     type gaia_registry_drop_zones >/dev/null
     type gaia_registry_rm_whitelist >/dev/null
     type gaia_registry_integrity_snapshot >/dev/null
@@ -134,8 +133,13 @@ run_in_repo() {
 }
 
 # ========== gaia_registry_linkable_paths ==========
+# link-worktree.sh / link-worktree.ts no longer call this to build their own
+# symlink set (a linked worktree's whole .gaia/local is one symlink to
+# main's now). It stays as the regression guard the concurrency meter's
+# cutover-risk scenarios (C4-06, C4-08) run against the shipped registry: the
+# concrete proof that a per-tree entry is genuinely not shared.
 
-@test "gaia_registry_linkable_paths: prints exactly the 6 linkable paths in stable order" {
+@test "gaia_registry_linkable_paths: prints exactly the 6 shared paths in stable order" {
   run_in_repo gaia_registry_linkable_paths
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 6 ]
@@ -147,25 +151,10 @@ run_in_repo() {
   [ "${lines[5]}" = "harden" ]
 }
 
-# ========== gaia_registry_main_only_dirs ==========
-
-@test "gaia_registry_main_only_dirs: prints exactly the main-only DIR top-levels in stable order" {
-  run_in_repo gaia_registry_main_only_dirs
+@test "gaia_registry_linkable_paths: a per-tree entry (red-ledger) never appears" {
+  run_in_repo gaia_registry_linkable_paths
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 3 ]
-  [ "${lines[0]}" = "specs" ]
-  [ "${lines[1]}" = "plans" ]
-  [ "${lines[2]}" = "worktree-locks" ]
-}
-
-# The kind=="dir" filter is load-bearing: a main-only FILE entry
-# (cache/gh-artifact-pr.*.json, cache/spec-chain-*.json) must NOT surface its
-# first segment (cache), because cache/ also holds per-tree and ephemeral
-# state the checkout-boundary guard must keep guarding.
-@test "gaia_registry_main_only_dirs: excludes main-only FILE entries, so cache never appears" {
-  run_in_repo gaia_registry_main_only_dirs
-  [ "$status" -eq 0 ]
-  grep -qxF 'cache' <<<"$output" && return 1
+  grep -qxF 'red-ledger' <<<"$output" && return 1
   return 0
 }
 

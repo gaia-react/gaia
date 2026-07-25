@@ -19,6 +19,7 @@ setup() {
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-worktree-path-mismatch.sh"
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
+  MAIN_ROOT_LIB="$(cd "$HOOKS_SRC/../.." && pwd)/.gaia/scripts/main-root-lib.sh"
 }
 
 teardown() {
@@ -48,15 +49,16 @@ make_repo() {
 }
 
 # The guard reads the exempt set from .gaia/state-registry.json via
-# .gaia/scripts/state-registry-lib.sh (linkable shared dirs + wholly
-# main-anchored dirs), never a hardcoded list. Every test repo therefore needs a
-# registry the reader can find at <main-root>/.gaia/state-registry.json. This is
-# a minimal fixture, not the real registry, so the tests exercise the
+# .gaia/scripts/state-registry-lib.sh (gaia_registry_recognizes,
+# gaia_registry_classify), never a hardcoded list. Every test repo therefore
+# needs a registry the reader can find at <main-root>/.gaia/state-registry.json.
+# This is a minimal fixture, not the real registry, so the tests exercise the
 # registry-read MECHANISM and stay decoupled from the shipped registry's exact
 # contents. It carries the four symlinked shared dirs (audit, debt, telemetry,
 # cache/shared) plus the symlinked setup-state.json file, the two main-anchored
-# ledger dirs (plans, specs) plus worktree-locks, and one main-only FILE
-# (cache/gh-artifact-pr.json) that must NOT exempt its cache/ segment.
+# ledger dirs (plans, specs) plus worktree-locks, one main-only FILE
+# (cache/gh-artifact-pr.json) that must NOT exempt its cache/ segment, and one
+# per-tree dir (handoff) representing the four keyed entries the flip protects.
 write_registry() {
   mkdir -p "$REPO/.gaia"
   cat >"$REPO/.gaia/state-registry.json" <<'JSON'
@@ -73,12 +75,21 @@ write_registry() {
     { "id": "specs", "path": "specs/", "match": "prefix", "kind": "dir", "scope": "main-only" },
     { "id": "plans", "path": "plans/", "match": "prefix", "kind": "dir", "scope": "main-only" },
     { "id": "worktree-locks", "path": "worktree-locks/<name>/", "match": "prefix", "kind": "dir", "scope": "main-only" },
-    { "id": "gh-cache", "path": "cache/gh-artifact-pr.json", "match": "exact", "kind": "file", "scope": "main-only" }
+    { "id": "gh-cache", "path": "cache/gh-artifact-pr.json", "match": "exact", "kind": "file", "scope": "main-only" },
+    { "id": "handoff", "path": "handoff/", "match": "prefix", "kind": "dir", "scope": "per-tree" }
   ],
   "residue": [],
   "drop_zones": []
 }
 JSON
+}
+
+# The acting tree's own gaia_tree_key, computed via the real
+# main-root-lib.sh (not fixture-specific; the resolver depends only on git
+# layout, never on the registry). Used to construct a per-tree write the
+# guard must recognize as this tree's own.
+own_tree_key() {
+  bash "$MAIN_ROOT_LIB" --tree-key "$1"
 }
 
 # make_worktree <rel> <branch>: a real linked worktree at
@@ -247,19 +258,53 @@ assert_allowed() {
   assert_denied
 }
 
-# link-worktree.sh symlinks a fixed, closed set of shared-state paths, and
-# handoff/ is not in it. Most of the rest of .gaia/local/ is per-worktree, so a
-# stale pre-switch path into the main checkout's copy is the #841
-# silent-wrong-write, not a shared-state write, and must stay denied. Exempting
-# the whole .gaia/local/ tree would re-open exactly that. handoff/ stands in for
-# the per-worktree remainder here; plans/ and specs/ are the two carve-outs, and
-# they get their own cases below.
-@test "a stale main-checkout write under non-symlinked .gaia/local is still denied" {
+# link-worktree.sh now symlinks the worktree's whole .gaia/local wholesale to
+# main's own .gaia/local, so a write into ANY subpath of it -- handoff/
+# included -- physically resolves to main and would otherwise look like the
+# #841 silent-wrong-write. handoff/ is per-tree scope, so its protection is no
+# longer "was this write symlinked in", it is "does the path carry the ACTING
+# tree's own key" (gaia_tree_key, .gaia/scripts/main-root-lib.sh). The three
+# cases below are the guard's whole remaining per-tree contract: the acting
+# tree's own keyed subtree is the correct write and stays allowed; a peer
+# tree's keyed subtree, or the bare unkeyed container, is exactly the
+# #841-shaped mistake and stays denied.
+
+@test "a worktree-mode write to its own keyed handoff subtree in the main checkout is allowed" {
   make_repo
   make_worktree "debt/15-foo" "debt/15-foo"
+  own_key="$(own_tree_key "$WT")"
+  mkdir -p "$REPO/.gaia/local/handoff/$own_key"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/handoff/$own_key/HANDOFF-2026-01-01.md"
+  assert_allowed
+}
+
+@test "a worktree-mode write to a PEER tree's keyed handoff subtree in the main checkout is denied" {
+  make_repo
+  make_worktree "debt/15b-foo" "debt/15b-foo"
+  peer_key="deadbeefdeadbeef"
+  own_key="$(own_tree_key "$WT")"
+  [ "$peer_key" != "$own_key" ]
+  mkdir -p "$REPO/.gaia/local/handoff/$peer_key"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/handoff/$peer_key/HANDOFF-2026-01-01.md"
+  assert_denied
+  # The refusal has to name the key, not repeat the generic stale-path advice.
+  # Re-resolving the repository root does not move a path that reaches main
+  # through the one .gaia/local symlink, so the generic message would send the
+  # caller round a loop it cannot exit -- which is how a loud refusal becomes
+  # useless without ever going silent.
+  grep -qF -- "$own_key" <<<"$output" || return 1
+  grep -qF -- "git rev-parse --show-toplevel" <<<"$output" && return 1
+  return 0
+}
+
+@test "a worktree-mode write to the bare unkeyed handoff container in the main checkout is denied" {
+  make_repo
+  make_worktree "debt/15c-foo" "debt/15c-foo"
   mkdir -p "$REPO/.gaia/local/handoff"
   cd "$WT"
-  run_hook_edit "Write" "$REPO/.gaia/local/handoff/2026-01-01.md"
+  run_hook_edit "Write" "$REPO/.gaia/local/handoff/HANDOFF-2026-01-01.md"
   assert_denied
 }
 
@@ -337,16 +382,19 @@ assert_allowed() {
   assert_allowed
 }
 
-# Only cache/shared is symlinked. The rest of .gaia/local/cache/ is per-worktree
-# and holds draft SPEC content, so widening the arm to cache/* would silently
-# allow a stale main-checkout write to a draft.
-@test "a stale main-checkout write under non-shared .gaia/local/cache is still denied" {
+# Once .gaia/local is one shared symlink, cache/ has no worktree-side copy at
+# all -- draft SPEC content included -- so denying a write into it protects
+# nothing; it only blocks the sole correct write (tech-debt #934's class).
+# cache/ is a recognized container (an ancestor of cache/shared/ and the
+# main-only cache/gh-artifact-pr.json entry) and holds no per-tree entry, so
+# it is allowed the same way debt/, telemetry/, and audit/ already are above.
+@test "a write under .gaia/local/cache is allowed (no worktree-side copy exists to protect)" {
   make_repo
   make_worktree "debt/21-foo" "debt/21-foo"
   mkdir -p "$REPO/.gaia/local/cache"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/cache/draft-SPEC-001.md"
-  assert_denied
+  assert_allowed
 }
 
 # setup-state.json is a symlinked FILE, so its target_dir is the worktree's own
@@ -379,13 +427,14 @@ assert_allowed() {
   assert_allowed
 }
 
-# The exemption is registry-driven, not a fixed list baked into this hook. A
-# directory newly classified `shared` in the registry is exempted here with no
-# edit to the guard: this is the structural property that keeps the guard,
-# link-worktree.sh, and link-worktree.ts in lockstep off one registry, replacing
-# the byte-locked-twin enumeration a hand-maintained list would need. A synthetic
-# shared dir the fixture does not otherwise carry proves the guard reads the
-# registry rather than a hardcoded set.
+# The exemption is registry-driven (gaia_registry_recognizes +
+# gaia_registry_classify), not a fixed list baked into this hook. A directory
+# newly classified `shared` in the registry is exempted here with no edit to
+# the guard: this is the structural property that keeps the guard,
+# link-worktree.sh, and link-worktree.ts in lockstep off one registry,
+# replacing the byte-locked-twin enumeration a hand-maintained list would
+# need. A synthetic shared dir the fixture does not otherwise carry proves
+# the guard reads the registry rather than a hardcoded set.
 @test "a shared dir added to the registry is auto-exempted with no edit to the hook" {
   make_repo
   make_worktree "debt/41-foo" "debt/41-foo"
@@ -400,10 +449,12 @@ assert_allowed() {
   assert_allowed
 }
 
-# The converse of the auto-exempt case: the guard exempts ONLY what the registry
-# classifies shared or main-only. A stale main-checkout write into a .gaia/local
-# tree the registry does not know stays denied, so the registry-driven exemption
-# cannot silently widen to the whole .gaia/local tree.
+# The converse of the auto-exempt case: the guard exempts ONLY what the
+# registry recognizes, by direct entry or as an ancestor of one. A stale
+# main-checkout write into a .gaia/local tree the registry has never heard of
+# (no entry, and no registered descendant) stays denied, so the
+# registry-driven exemption cannot silently widen to the whole .gaia/local
+# tree.
 @test "a stale main-checkout write into a registry-unknown .gaia/local tree is still denied" {
   make_repo
   make_worktree "debt/42-foo" "debt/42-foo"
@@ -411,6 +462,14 @@ assert_allowed() {
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/unregistered/notes.md"
   assert_denied
+  # An unregistered path under .gaia/local is denied because the guard cannot
+  # tell shared state from per-tree state without a registry row, and it must
+  # say that rather than blame a stale path -- the same reason as the peer-key
+  # case: re-resolving the root cannot move a path that reaches main through
+  # the one symlink.
+  grep -qF -- ".gaia/state-registry.json" <<<"$output" || return 1
+  grep -qF -- "git rev-parse --show-toplevel" <<<"$output" && return 1
+  return 0
 }
 
 # --- denied: a sibling worktree, the same wrong-checkout write as #841 ---

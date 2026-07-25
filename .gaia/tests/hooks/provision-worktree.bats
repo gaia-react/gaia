@@ -95,10 +95,10 @@ tree_key_for() {
 
   run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
-  [ -L "$WT/.gaia/local/audit" ] || return 1
+  [ -L "$WT/.gaia/local" ] || return 1
 
-  target_real="$(cd "$WT/.gaia/local/audit" && pwd -P)"
-  main_real="$(cd "$MAIN/.gaia/local/audit" && pwd -P)"
+  target_real="$(cd "$WT/.gaia/local" && pwd -P)"
+  main_real="$(cd "$MAIN/.gaia/local" && pwd -P)"
   [ "$target_real" = "$main_real" ]
 }
 
@@ -109,7 +109,7 @@ tree_key_for() {
 
   run bash -c "printf '%s' '$(enter_payload "$WT")' | bash '$HOOK_ABS'"
   [ "$status" -eq 0 ]
-  [ -L "$WT/.gaia/local/audit" ] || return 1
+  [ -L "$WT/.gaia/local" ] || return 1
 }
 
 # ---------- 3. The payload cwd is used when there is no tool_response ----------
@@ -122,7 +122,7 @@ tree_key_for() {
   payload="$(jq -nc --arg p "$WT" '{hook_event_name: "SessionStart", source: "startup", cwd: $p}')"
   run bash -c "printf '%s' '$payload' | bash '$HOOK_ABS'"
   [ "$status" -eq 0 ]
-  [ -L "$WT/.gaia/local/audit" ] || return 1
+  [ -L "$WT/.gaia/local" ] || return 1
 }
 
 # ---------- 4. The main checkout is never provisioned ----------
@@ -149,17 +149,17 @@ tree_key_for() {
 
   run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
-  before="$(cd "$WT/.gaia/local/audit" && pwd -P)"
+  before="$(cd "$WT/.gaia/local" && pwd -P)"
 
   # Something real must be reachable through the link, so a second run that
   # silently replaced the target rather than leaving it alone is detectable.
-  echo kept > "$MAIN/.gaia/local/audit/marker.txt"
+  echo kept > "$MAIN/.gaia/local/marker.txt"
 
   run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
-  after="$(cd "$WT/.gaia/local/audit" && pwd -P)"
+  after="$(cd "$WT/.gaia/local" && pwd -P)"
   [ "$before" = "$after" ]
-  grep -qF kept "$WT/.gaia/local/audit/marker.txt"
+  grep -qF kept "$WT/.gaia/local/marker.txt"
 }
 
 # ---------- 6. Self-healing: a broken link is repaired ----------
@@ -171,16 +171,16 @@ tree_key_for() {
   run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
 
-  rm -f "$WT/.gaia/local/audit"
+  rm -f "$WT/.gaia/local"
   mkdir -p "$WT/.gaia/local/audit"
   echo orphaned > "$WT/.gaia/local/audit/orphan.txt"
 
   run bash -c "printf '%s' '$(enter_payload "$WT")' | bash '$HOOK_ABS'"
   [ "$status" -eq 0 ]
 
-  [ -L "$WT/.gaia/local/audit" ] || return 1
-  target_real="$(cd "$WT/.gaia/local/audit" && pwd -P)"
-  main_real="$(cd "$MAIN/.gaia/local/audit" && pwd -P)"
+  [ -L "$WT/.gaia/local" ] || return 1
+  target_real="$(cd "$WT/.gaia/local" && pwd -P)"
+  main_real="$(cd "$MAIN/.gaia/local" && pwd -P)"
   [ "$target_real" = "$main_real" ]
 }
 
@@ -190,11 +190,11 @@ tree_key_for() {
 @test "a worktree created by plain git worktree add is provisioned on entry" {
   make_main
   WT="$(add_worktree feat-byhand)"
-  [ -L "$WT/.gaia/local/audit" ] && return 1
+  [ -L "$WT/.gaia/local" ] && return 1
 
   run bash -c "printf '%s' '$(enter_payload "$WT")' | bash '$HOOK_ABS'"
   [ "$status" -eq 0 ]
-  [ -L "$WT/.gaia/local/audit" ] || return 1
+  [ -L "$WT/.gaia/local" ] || return 1
 }
 
 # ---------- 8. Typed routes are generated in the worktree, not in main ----------
@@ -240,7 +240,7 @@ tree_key_for() {
 
   run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
-  [ -L "$WT/.gaia/local/audit" ] || return 1
+  [ -L "$WT/.gaia/local" ] || return 1
   [ -e "$WT/.react-router/types/.stamp" ] && return 1
   return 0
 }
@@ -318,9 +318,22 @@ tree_key_for() {
   run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
 
+  # The keyed data survives untouched, reached through the worktree's new
+  # symlink into main's .gaia/local: migrate_keyed_subtrees_to_main moved it
+  # there, never overwriting it.
   [ "$(cat "$WT/.gaia/local/red-ledger/$key/observations.jsonl")" = "keyed" ]
-  [ -f "$WT/.gaia/local/red-ledger/observations.jsonl" ] || return 1
-  [ "$(cat "$WT/.gaia/local/red-ledger/observations.jsonl")" = "stale" ]
+
+  # The stale unkeyed file was carry-forward's to move, and carry-forward
+  # declined because the keyed file already existed -- so it was never
+  # touched, and it rides along inside the whole pre-cutover .gaia/local that
+  # the linker backs up wholesale, unread and unmerged, when it replaces it
+  # with the symlink. It survives there, not at the live (now-symlinked) path.
+  backup_dir=""
+  for d in "$WT"/.gaia/local.bak.*; do
+    [ -d "$d" ] && backup_dir="$d"
+  done
+  [ -n "$backup_dir" ] || return 1
+  [ "$(cat "$backup_dir/red-ledger/observations.jsonl")" = "stale" ]
 }
 
 # ---------- 16. A symlinked .gaia/local disables the step entirely ----------
@@ -432,9 +445,20 @@ tree_key_for() {
   run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
 
+  # The keyed report survives untouched, reached through the worktree's new
+  # symlink into main's .gaia/local.
   [ "$(cat "$WT/.gaia/local/forensics/$key/20260101T000000Z-hook.md")" = "keyed-report" ]
-  [ -f "$WT/.gaia/local/forensics/20260101T000000Z-hook.md" ] || return 1
-  [ "$(cat "$WT/.gaia/local/forensics/20260101T000000Z-hook.md")" = "stale-report" ]
+
+  # Same reasoning as the red-ledger sibling: carry-forward declined to move
+  # the stale unkeyed report because the keyed one already existed, so it
+  # rides along inside the whole pre-cutover .gaia/local the linker backs up
+  # wholesale, unread and unmerged.
+  backup_dir=""
+  for d in "$WT"/.gaia/local.bak.*; do
+    [ -d "$d" ] && backup_dir="$d"
+  done
+  [ -n "$backup_dir" ] || return 1
+  [ "$(cat "$backup_dir/forensics/20260101T000000Z-hook.md")" = "stale-report" ]
 }
 
 # ---------- 22. handoff/: the fourth entry, same directory shape as forensics ----------
@@ -450,5 +474,102 @@ tree_key_for() {
   key="$(tree_key_for "$WT")"
   [ "$(cat "$WT/.gaia/local/handoff/$key/HANDOFF-2026-01-01-x.md")" = "handoff-body" ]
   [ -e "$WT/.gaia/local/handoff/HANDOFF-2026-01-01-x.md" ] && return 1
+  return 0
+}
+
+# ---------- 23. migrate_keyed_subtrees_to_main: the cutover-migration half ----------
+# A linked worktree still holding a REAL .gaia/local (pre-cutover, already
+# tree-keyed by an earlier session) must have its keyed per-tree subtrees
+# rescued into main's .gaia/local before the linker backs the whole directory
+# up to .gaia/local.bak.<ts> and replaces it with the one shared symlink --
+# otherwise the data ends up inside a backup nothing reads.
+@test "pre-cutover keyed data migrates into main's .gaia/local, byte for byte, reachable through the new symlink" {
+  make_main
+  WT="$(add_worktree feat-migrate-basic)"
+  key="$(tree_key_for "$WT")"
+  mkdir -p "$WT/.gaia/local/red-ledger/$key" "$WT/.gaia/local/forensics/$key"
+  printf '{"a":1}\n{"a":2}\n' > "$WT/.gaia/local/red-ledger/$key/observations.jsonl"
+  echo forensic-body > "$WT/.gaia/local/forensics/$key/20260101T000000Z-hook.md"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  # Landed in MAIN's own .gaia/local, byte for byte.
+  diff <(printf '{"a":1}\n{"a":2}\n') "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl"
+  [ "$(cat "$MAIN/.gaia/local/forensics/$key/20260101T000000Z-hook.md")" = "forensic-body" ]
+
+  # Reachable from the worktree through the new single symlink too.
+  [ -L "$WT/.gaia/local" ] || return 1
+  diff <(printf '{"a":1}\n{"a":2}\n') "$WT/.gaia/local/red-ledger/$key/observations.jsonl"
+  [ "$(cat "$WT/.gaia/local/forensics/$key/20260101T000000Z-hook.md")" = "forensic-body" ]
+}
+
+# ---------- 24. migrate_keyed_subtrees_to_main is idempotent ----------
+@test "migrate_keyed_subtrees_to_main is idempotent: a second run changes nothing" {
+  make_main
+  WT="$(add_worktree feat-migrate-idempotent)"
+  key="$(tree_key_for "$WT")"
+  mkdir -p "$WT/.gaia/local/red-ledger/$key"
+  echo line-one > "$WT/.gaia/local/red-ledger/$key/observations.jsonl"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl")" = "line-one" ]
+
+  # After the first run .gaia/local is a symlink, so the migration gate skips
+  # entirely -- the second run must neither re-log a migration nor disturb
+  # what the first run already moved.
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "migrated red-ledger/$key into the main checkout" <<<"$output" && return 1
+  [ "$(cat "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl")" = "line-one" ]
+  [ "$(cat "$WT/.gaia/local/red-ledger/$key/observations.jsonl")" = "line-one" ]
+}
+
+# ---------- 25. A destination that already exists is skipped, not merged ----------
+@test "a destination that already exists in main is skipped, not overwritten, not merged, and logged loudly" {
+  make_main
+  WT="$(add_worktree feat-migrate-conflict)"
+  key="$(tree_key_for "$WT")"
+
+  mkdir -p "$MAIN/.gaia/local/red-ledger/$key"
+  echo main-data > "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl"
+
+  mkdir -p "$WT/.gaia/local/red-ledger/$key"
+  echo worktree-data > "$WT/.gaia/local/red-ledger/$key/observations.jsonl"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  grep -qF -- "CUTOVER MIGRATION SKIPPED: red-ledger/$key exists in both this worktree and the main checkout" <<<"$output" || return 1
+
+  # Main's own data is untouched -- not overwritten, not merged.
+  [ "$(cat "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl")" = "main-data" ]
+
+  # The worktree's copy is untouched by the migration step itself; it only
+  # leaves the live worktree path when the linker backs up the whole
+  # pre-cutover .gaia/local afterward, unread and unmerged.
+  backup_dir=""
+  for d in "$WT"/.gaia/local.bak.*; do
+    [ -d "$d" ] && backup_dir="$d"
+  done
+  [ -n "$backup_dir" ] || return 1
+  [ "$(cat "$backup_dir/red-ledger/$key/observations.jsonl")" = "worktree-data" ]
+}
+
+# ---------- 26. The main checkout itself is never migrated ----------
+@test "the main checkout itself is never migrated -- it is not a linked worktree" {
+  make_main
+  key="$(tree_key_for "$MAIN")"
+  mkdir -p "$MAIN/.gaia/local/red-ledger/$key"
+  echo main-own-data > "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl"
+
+  payload="$(jq -nc --arg p "$MAIN" '{hook_event_name: "SessionStart", source: "startup", cwd: $p}')"
+  run bash -c "printf '%s' '$payload' | bash '$HOOK_ABS'"
+  [ "$status" -eq 0 ]
+
+  grep -qF -- "CUTOVER MIGRATION" <<<"$output" && return 1
+  [ "$(cat "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl")" = "main-own-data" ]
+  [ -L "$MAIN/.gaia/local" ] && return 1
   return 0
 }

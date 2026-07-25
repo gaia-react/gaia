@@ -109,9 +109,14 @@
 #      gitignored, so it is invisible to both git-level checks above it; a
 #      crashed session with an in-flight plan can otherwise read as
 #      provably dead. Checked in both the worktree's own .gaia/local/ and
-#      main's, since a worktree still forks its own plans/ today. A crashed
-#      or abandoned session leaves the worktree dir behind after its PR
-#      squash-merges, and nothing else reclaims it. Never age-reap: there is
+#      main's: for a properly linked worktree these are the same physical
+#      directory (.gaia/local is one symlink to main's) and this is a
+#      harmless double read, but a worktree nobody has linked -- provisioning
+#      failed, or never ran -- still has its own real, unconnected
+#      .gaia/local, and only the worktree-side scan sees a live plan sentinel
+#      written there. A crashed or abandoned session leaves the worktree dir
+#      behind after its PR squash-merges, and nothing else reclaims it.
+#      Never age-reap: there is
 #      no session-liveness signal, so an old worktree may still be a live
 #      long-running session. Teardown delegates to the WorktreeRemove hook's
 #      own remove-worktree.sh so remove + branch-delete + parent-prune stays
@@ -144,8 +149,44 @@
 # always exits 0 so it cannot block a session start.
 set -uo pipefail
 
+# --- Two questions, not one: which tree am I, and where is main ------------
+# `root` answers "which tree is invoking this run" -- the physically resolved
+# git toplevel of the CURRENT checkout. Sweep #1's `current` branch-protect
+# below, and every worktree-teardown git call in sweep #8, need exactly this:
+# the tree actually running right now, never main's.
+#
+# `main_root` answers "where does .gaia/local actually live". A linked
+# worktree's .gaia/local is one symlink to main's (D-011), so the sweeps that
+# walk .gaia/local below are conceptually always asking for main's tree, not
+# the invoking one. Resolved via the shared resolver
+# (.gaia/scripts/main-root-lib.sh), sourced beside this file via BASH_SOURCE
+# the same way the ~14 other hooks that already depend on it do, rather than
+# re-deriving "where is main" a fifteenth time by hand.
+#
+# Repointing `root` itself at `gaia_resolve_main_root` was considered and
+# rejected: sweep #1's `current` guard exists to protect the INVOKING tree's
+# branch, and swapping `root` wholesale would silently make it protect main's
+# branch instead on every worktree-invoked run. The two questions get two
+# variables, not one repointed one.
+#
+# Degrades to $root on any resolver failure or a missing sibling library --
+# the same shape gaia-statusline.sh's STATE_ROOT fallback uses: an
+# unresolvable main is not grounds to skip every sweep, it just means this
+# tree answers for itself (true for a fresh, not-yet-`git init` checkout, and
+# for main's own run, where root already IS main).
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -n "$root" ] || exit 0
+
+main_root_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)/.gaia/scripts/main-root-lib.sh"
+if [ -f "$main_root_lib" ]; then
+  # shellcheck disable=SC1091
+  . "$main_root_lib" 2>/dev/null || true
+fi
+main_root=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  main_root="$(gaia_resolve_main_root "$root" 2>/dev/null || true)"
+fi
+[ -n "$main_root" ] || main_root="$root"
 
 # --- 1. Merged-and-gone wiki-sync branches ---------------------------------
 # Git-scoped: independent of .gaia/local, so it runs before that guard (a fresh
@@ -688,7 +729,7 @@ cache_dir="$local_dir/cache"
 if [ -d "$cache_dir" ]; then
   find "$cache_dir" -maxdepth 1 \( \
       -name 'gate1-*.json' -o -name 'draft-*.md' -o -name 'spec-session-*.json' \
-      -o -name 'spec-session-*.lock' -o -name 'spec-chain-*.json' \
+      -o -name 'spec-session-*.lock' \
     \) -type f -mtime +14 -delete 2>/dev/null
   find "$cache_dir" -maxdepth 1 -type d -name 'audit-*' -mtime +14 -exec rm -rf {} + 2>/dev/null
   # react-perf run dumps: a dir at cache root containing renders.json. `dirname`
@@ -697,6 +738,24 @@ if [ -d "$cache_dir" ]; then
     while IFS= read -r hit; do
       rm -rf -- "$(dirname "$hit")"
     done
+fi
+
+# --- 5b. Main-only cache globs, swept at MAIN's cache, never the invoking tree's ---
+# cache/spec-chain-*.json and cache/gh-artifact-pr*.json are both registry
+# main-only (spec-chain-guard / gh-artifact-pr-cache in
+# .gaia/state-registry.json): their sole writers (block-spec-plan-chain.sh,
+# gh-artifact-lib.sh's gaia_gh_artifact_cache_dir) always resolve MAIN's root
+# before writing, so a worktree-invoked sweep has to target
+# $main_root/.gaia/local/cache too -- never $cache_dir above, which is this
+# INVOKING tree's own .gaia/local/cache, empty for these two files on every
+# tree but main. Split out of the tree-scoped glob above rather than folded
+# in: the rest of that glob (gate1/draft/spec-session) is registry ephemeral
+# and genuinely IS the writing tree's own working state, so it stays where it
+# is written.
+main_cache_dir="$main_root/.gaia/local/cache"
+if [ -d "$main_cache_dir" ]; then
+  find "$main_cache_dir" -maxdepth 1 -type f -name 'spec-chain-*.json' \
+    -mtime +14 -delete 2>/dev/null
 
   # cache/gh-artifact-pr*.json: mtime-only, on its own floor-clamped knob
   # (default 2d, floor 1d). The glob is the family pattern for "every
@@ -716,7 +775,7 @@ if [ -d "$cache_dir" ]; then
   cache_artifact_days="${GAIA_CACHE_ARTIFACT_RETENTION_DAYS:-2}"
   case "$cache_artifact_days" in '' | *[!0-9]*) cache_artifact_days=2 ;; esac
   [ "$cache_artifact_days" -lt 1 ] && cache_artifact_days=1
-  find "$cache_dir" -maxdepth 1 -type f -name 'gh-artifact-pr*.json' \
+  find "$main_cache_dir" -maxdepth 1 -type f -name 'gh-artifact-pr*.json' \
     -mtime +"$cache_artifact_days" -delete 2>/dev/null
 fi
 
@@ -792,12 +851,17 @@ if [ -n "$wt_common" ]; then
       # Never reap a branch named by a live RUNNING plan sentinel. The
       # sentinel is gitignored, so it is invisible to both git checks above:
       # a plan can be genuinely in-flight on a branch that reads [gone] +
-      # clean. Scanned in both the worktree's own .gaia/local/ and main's --
-      # the state registry declares plans/ main-only and a later task
-      # anchors plan paths to main, but today a worktree still forks its own
-      # plans/, exactly where this sentinel is written, so both locations
-      # are correct before and after that change lands. Same parse idiom as
-      # sweep #3.
+      # clean. Scanned in both the worktree's own .gaia/local/ and main's.
+      # For a PROPERLY LINKED worktree these are the same physical directory
+      # (.gaia/local is one symlink to main's, D-011) and this is a harmless
+      # double read. They are genuinely different directories for a worktree
+      # that is not yet linked -- provisioning failed or has not run, or (as
+      # this candidate itself may be, mid-teardown-evaluation) a worktree
+      # nobody ever linked -- whose .gaia/local is still its own real,
+      # unconnected directory. Scanning only main's would miss a live plan
+      # sentinel written there and reap a session's whole worktree out from
+      # under it, so both locations are scanned regardless of which state
+      # this candidate is in. Same parse idiom as sweep #3.
       wt_live=0
       for wt_running in "$wt_path/.gaia/local/plans"/*/RUNNING \
         "$wt_path/.gaia/local/specs"/*/plan/RUNNING \

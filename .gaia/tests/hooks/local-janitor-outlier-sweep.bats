@@ -273,40 +273,51 @@ JSON
   return 0
 }
 
-@test "REG-007: from a linked worktree, sweep 9 skips a symlinked audit/ root and leaves the worktree's own off-pattern children in place" {
+@test "REG-007: from a linked worktree, sweep 9 skips the symlinked .gaia/local root itself but still walks a real audit/ one hop beneath it" {
   make_repo
+  write_registry "$REPO/.gaia"
   MAIN="$REPO"
-  mkdir -p "$MAIN/.gaia/local/audit" "$MAIN/.gaia/local/telemetry" \
-    "$MAIN/.gaia/local/debt" "$MAIN/.gaia/local/cache/shared"
+  mkdir -p "$MAIN/.gaia/local/audit"
 
   WT="$MAIN/.claude/worktrees/wt1"
   mkdir -p "$MAIN/.claude/worktrees"
   git -C "$MAIN" worktree add -q -b wt1-branch "$WT"
-  mkdir -p "$WT/.gaia/local/cache"
-  ln -s "$MAIN/.gaia/local/audit" "$WT/.gaia/local/audit"
-  ln -s "$MAIN/.gaia/local/telemetry" "$WT/.gaia/local/telemetry"
-  ln -s "$MAIN/.gaia/local/debt" "$WT/.gaia/local/debt"
-  ln -s "$MAIN/.gaia/local/cache/shared" "$WT/.gaia/local/cache/shared"
+  # The cutover shape: .gaia/local is ONE symlink to main's, not a real
+  # directory holding individually-symlinked entries (today's pre-cutover
+  # shape, which this suite no longer models -- see REG-005's sibling top-
+  # level dirs for that era's fixture, kept only where it still applies).
+  # There is no separate worktree-local .gaia/local left to construct a
+  # "worktree's own real off-pattern child" in: a write through the
+  # worktree's own path physically lands in MAIN's real .gaia/local, as
+  # cruft.md below demonstrates.
+  mkdir -p "$WT/.gaia"
+  ln -s "$MAIN/.gaia/local" "$WT/.gaia/local"
 
-  # An off-pattern file in MAIN's REAL audit/ dir.
+  # An off-pattern file in MAIN's real audit/ dir, one hop beneath the single
+  # top-level symlink -- once that hop is resolved, audit/ is itself a real
+  # directory, not a symlink, so it is not skipped.
   echo x > "$MAIN/.gaia/local/audit/stray-in-main.md"
 
-  # Off-pattern files in the WORKTREE's own real dirs (top level + cache).
+  # Written through the WORKTREE's own path; physically MAIN's file (see
+  # above).
   echo x > "$WT/.gaia/local/cruft.md"
-  echo x > "$WT/.gaia/local/cache/stray.json"
 
   cd "$WT"
-  run bash "$HOOK_ABS"
+  GAIA_JANITOR_SWEEP_ONLY=outliers run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
 
-  # The symlinked scope root was skipped: main's file was never even
-  # evaluated from the worktree's run.
-  [ -f "$MAIN/.gaia/local/audit/stray-in-main.md" ]
+  # The top-level scope root IS the symlink itself now, so it is skipped
+  # entirely and never reported on, even though the file behind it is real
+  # and physically present (never reaped either -- sweep 9 never deletes a
+  # non-junk child, skipped or not).
+  [ -f "$MAIN/.gaia/local/cruft.md" ]
+  grep -qF -- "cruft.md" <<< "$output" && return 1
 
-  # The worktree's own real, off-pattern children are left in place too --
-  # report, not reap, holds regardless of which checkout is sweeping.
-  [ -f "$WT/.gaia/local/cruft.md" ]
-  [ -f "$WT/.gaia/local/cache/stray.json" ]
+  # audit/'s unrecognized child is still reported from this SAME
+  # worktree-invoked run, proving only the top-level symlink itself is
+  # special, not every path that happens to resolve through it.
+  [ -f "$MAIN/.gaia/local/audit/stray-in-main.md" ]
+  grep -qF -- "$WT/.gaia/local/audit/stray-in-main.md" <<< "$output" || return 1
 }
 
 # --- UAT-006: OS junk, the only age-independent deletion --------------------
@@ -423,6 +434,52 @@ JSON
   [ "$status" -eq 0 ]
   [ ! -e "$cache_dir/gh-artifact-pr.json" ]
   [ ! -e "$cache_dir/gh-artifact-pr.treeA.json" ]
+}
+
+# --- MAIN-CACHE: the two main-only cache globs, swept at MAIN's cache when --
+# --- invoked from a linked worktree, never the invoking tree's own -----------
+# gh-artifact-pr-cache and spec-chain-guard are both registry main-only
+# (.gaia/state-registry.json): their real writers (gh-artifact-lib.sh,
+# block-spec-plan-chain.sh) always resolve main's root before writing, so a
+# worktree-invoked sweep has to target main's cache too. Before this fix, the
+# sweep read $cache_dir off the INVOKING tree's own root, so a worktree-run
+# janitor cleaned an empty worktree-local cache and never main's real one --
+# live today, independent of the .gaia/local symlink cutover.
+
+@test "MAIN-CACHE-01: the sweep 5 gh-artifact arm reaps an aged cache/gh-artifact-pr.*.json at MAIN's cache when invoked from a linked worktree" {
+  make_repo
+  MAIN="$REPO"
+  mkdir -p "$MAIN/.gaia/local/cache"
+  echo '{"branch":"treeA"}' > "$MAIN/.gaia/local/cache/gh-artifact-pr.treeA.json"
+  touch -t 202001010000 "$MAIN/.gaia/local/cache/gh-artifact-pr.treeA.json"
+
+  WT="$MAIN/.claude/worktrees/wt-cache1"
+  mkdir -p "$MAIN/.claude/worktrees"
+  git -C "$MAIN" worktree add -q -b wt-cache1-branch "$WT"
+  mkdir -p "$WT/.gaia/local/cache"
+
+  cd "$WT"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$MAIN/.gaia/local/cache/gh-artifact-pr.treeA.json" ]
+}
+
+@test "MAIN-CACHE-02: the sweep 5 spec-chain arm reaps an aged cache/spec-chain-*.json at MAIN's cache when invoked from a linked worktree" {
+  make_repo
+  MAIN="$REPO"
+  mkdir -p "$MAIN/.gaia/local/cache"
+  echo '{}' > "$MAIN/.gaia/local/cache/spec-chain-sess123.json"
+  touch -t 202001010000 "$MAIN/.gaia/local/cache/spec-chain-sess123.json"
+
+  WT="$MAIN/.claude/worktrees/wt-cache2"
+  mkdir -p "$MAIN/.claude/worktrees"
+  git -C "$MAIN" worktree add -q -b wt-cache2-branch "$WT"
+  mkdir -p "$WT/.gaia/local/cache"
+
+  cd "$WT"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$MAIN/.gaia/local/cache/spec-chain-sess123.json" ]
 }
 
 # --- CG-001: sweep 5's own age arm reaps the spec-session-*.lock glob -------
