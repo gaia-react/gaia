@@ -15,7 +15,7 @@
 # An expected-fail row names the task that owns turning it green, so a red that
 # has quietly become permanent is visible here rather than inferred.
 
-target 22
+target 23
 
 # Tranche 3 -- CONVERT (phase 3, closed)
 C3-01 pass
@@ -24,9 +24,9 @@ C3-03 pass
 C3-04 pass
 C3-05 pass
 
-# Tranche 4 -- KEYS, the contamination tranche (phase 4). C4-06 and C4-07 are
-# cutover guards: green before the change they guard, and their owning phase
-# must preserve them rather than take credit for them.
+# Tranche 4 -- KEYS, the contamination tranche (phase 4). C4-06, C4-07 and
+# C4-08 are cutover guards: green before the change they guard, and their
+# owning phase must preserve them rather than take credit for them.
 C4-01 pass
 C4-02 pass
 C4-03 pass
@@ -34,6 +34,7 @@ C4-04 pass
 C4-05 pass
 C4-06 pass
 C4-07 pass
+C4-08 pass
 
 # Tranche 5 -- SURFACE (phase 5, not run)
 C5-01 pass

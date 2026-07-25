@@ -732,6 +732,159 @@ test("adds two numbers c407", () => {
   return 0
 }
 
+@test "C4-08: one tree's handoff and forensics reports are not another tree's to clear" {
+  MAIN="$(gaia_new_main gaia-c408-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .gaia/scripts/link-worktree.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add link-worktree deps"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$A"
+  gaia_link_worktree "$B"
+
+  # WHY this scenario exists and why it is not folded into C4-06 or C4-04:
+  # those two guard the RED ledger and the worthiness ledger, each of which is
+  # addressed by a shipped shell function. `forensics/` and `handoff/` have no
+  # function and no script at all -- they are instruction prose an agent
+  # executes, which PROGRAM.md section 6 calls a fifth execution surface. Until
+  # the cutover their separation came free from each worktree owning a separate
+  # physical .gaia/local, so nothing had to be right for it to hold. After the
+  # cutover their separation IS the tree key, resolved by an agent following
+  # written instructions, and nothing else. That is the least-guarded mechanism
+  # in the riskiest change in the program.
+
+  # The mechanism the prose depends on, asked of the shipped code exactly as
+  # the prose asks for it: `bash .gaia/scripts/main-root-lib.sh --tree-key`,
+  # run from inside the tree. Not sourced -- the executable entry is what
+  # forensics.md step 7 and handoff.md step 0 actually invoke, so a regression
+  # in the CLI dispatch (as opposed to the function) is a real break for these
+  # two surfaces and must fail here.
+  run run_in "$A" -- bash .gaia/scripts/main-root-lib.sh --tree-key
+  [ "$status" -eq 0 ]
+  KEY_A="$output"
+  run run_in "$B" -- bash .gaia/scripts/main-root-lib.sh --tree-key
+  [ "$status" -eq 0 ]
+  KEY_B="$output"
+
+  # The contract the prose relies on literally ("16 lowercase hex characters"),
+  # and the property without which everything below is decoration.
+  printf '%s' "$KEY_A" | grep -qE '^[0-9a-f]{16}$' || return 1
+  printf '%s' "$KEY_B" | grep -qE '^[0-9a-f]{16}$' || return 1
+  [ "$KEY_A" != "$KEY_B" ]
+
+  # Mechanism check for TODAY's per-entry linking, mirroring C4-06: the
+  # registry classifies both entries per-tree and the linker's own shared-set
+  # function names neither, so neither is symlinked into main. A registry edit
+  # that started calling either one shared -- the precise cutover risk -- fails
+  # here rather than silently merging two trees' reports.
+  for entry in forensics handoff; do
+    classify="$(run_in "$A" -- bash -c \
+      ". .gaia/scripts/state-registry-lib.sh; gaia_registry_classify $entry/x.md" 2>/dev/null)"
+    [ "$classify" = "per-tree" ]
+  done
+
+  linkable="$(run_in "$A" -- bash -c \
+    '. .gaia/scripts/state-registry-lib.sh; gaia_registry_linkable_paths' 2>/dev/null)"
+  [ -n "$linkable" ]
+  grep -qxF forensics <<<"$linkable" && return 1
+  grep -qxF handoff <<<"$linkable" && return 1
+
+  # Positive control on the linker, in the same form C4-06 uses and for the
+  # same reason: link-worktree.sh always exits 0 by contract, so a run that
+  # linked NOTHING would leave forensics/ and handoff/ unlinked too and every
+  # isolation check below would pass for the wrong reason. Stated as resolution
+  # rather than as "is a symlink" so it holds under today's per-entry links AND
+  # after the single-symlink cutover.
+  first_shared=""
+  while IFS= read -r shared_path; do
+    [ -n "$shared_path" ] || continue
+    if [ -d "$MAIN/.gaia/local/$shared_path" ]; then
+      first_shared="$shared_path"
+      break
+    fi
+  done <<<"$linkable"
+  [ -n "$first_shared" ]
+  MAIN_SHARED="$(cd "$MAIN/.gaia/local/$first_shared" && pwd -P)"
+  [ "$(cd "$A/.gaia/local/$first_shared" && pwd -P)" = "$MAIN_SHARED" ]
+  [ "$(cd "$B/.gaia/local/$first_shared" && pwd -P)" = "$MAIN_SHARED" ]
+
+  # Both trees do what the prose tells an agent to do: resolve the key, then
+  # write under it. The paths are built from the key the SHIPPED code just
+  # returned, never from a literal the fixture invented -- a fixture that
+  # hand-built the keyed shape would be re-stating the thing under test, which
+  # is the defect M-1 was written to remove from C4-06.
+  HANDOFF_A="$A/.gaia/local/handoff/$KEY_A/HANDOFF-2026-07-25-treeA.md"
+  HANDOFF_B="$B/.gaia/local/handoff/$KEY_B/HANDOFF-2026-07-25-treeB.md"
+  FORENSICS_A="$A/.gaia/local/forensics/$KEY_A/20260725T120000Z-hook-misfire.md"
+  FORENSICS_B="$B/.gaia/local/forensics/$KEY_B/20260725T120000Z-hook-misfire.md"
+  mkdir -p "$(dirname "$HANDOFF_A")" "$(dirname "$HANDOFF_B")" \
+    "$(dirname "$FORENSICS_A")" "$(dirname "$FORENSICS_B")"
+  printf '%s\n' 'handoff-body-treeA' > "$HANDOFF_A"
+  printf '%s\n' 'handoff-body-treeB' > "$HANDOFF_B"
+  printf '%s\n' 'forensics-body-treeA' > "$FORENSICS_A"
+  printf '%s\n' 'forensics-body-treeB' > "$FORENSICS_B"
+
+  # The half that still holds AFTER the cutover, and the reason this scenario
+  # is a cutover guard rather than a test of today's directory layout. Once
+  # .gaia/local is ITSELF one symlink to main, both trees' keyed directories
+  # resolve inside main and any "is it under my own tree" check reads green
+  # through the very flip it guards. Physical resolution is what catches a lost
+  # key: the two trees' directories must be different real directories, and
+  # neither may be the unkeyed parent that the pre-cutover prose named.
+  PHYS_HANDOFF_A="$(cd "$(dirname "$HANDOFF_A")" && pwd -P)"
+  PHYS_HANDOFF_B="$(cd "$(dirname "$HANDOFF_B")" && pwd -P)"
+  PHYS_FOR_A="$(cd "$(dirname "$FORENSICS_A")" && pwd -P)"
+  PHYS_FOR_B="$(cd "$(dirname "$FORENSICS_B")" && pwd -P)"
+  [ "$PHYS_HANDOFF_A" != "$PHYS_HANDOFF_B" ]
+  [ "$PHYS_FOR_A" != "$PHYS_FOR_B" ]
+  [ "$PHYS_HANDOFF_A" != "$MAIN/.gaia/local/handoff" ]
+  [ "$PHYS_HANDOFF_B" != "$MAIN/.gaia/local/handoff" ]
+  [ "$PHYS_FOR_A" != "$MAIN/.gaia/local/forensics" ]
+  [ "$PHYS_FOR_B" != "$MAIN/.gaia/local/forensics" ]
+
+  # ---------------------------------------------------------------------------
+  # The harm, driven rather than described. handoff.md step 0 is a DELETE:
+  # "Delete any existing handoff before writing: rm -f
+  # .gaia/local/handoff/<tree_key>/HANDOFF-*.md", and settings.json carries a
+  # permission entry for exactly that glob. It is the one instruction in either
+  # prose surface that destroys data, so it is the one whose blast radius has
+  # to be bounded to the acting tree. Run it from A, with A's key, and B's
+  # handoff must survive untouched. If a future change drops the key segment
+  # from that line -- or from the permission glob, which would push an agent
+  # toward the unkeyed form -- this is what reds.
+  # ---------------------------------------------------------------------------
+  run run_in "$A" -- bash -c "rm -f .gaia/local/handoff/$KEY_A/HANDOFF-*.md"
+  [ "$status" -eq 0 ]
+
+  if [ -e "$HANDOFF_A" ]; then
+    echo "the documented clear-prior step did not delete the acting tree's own handoff" >&2
+    return 1
+  fi
+  [ -f "$HANDOFF_B" ]
+  grep -qF handoff-body-treeB "$HANDOFF_B"
+
+  # Neither tree can read the other's report through its own keyed path, and
+  # the unkeyed parent -- the path both prose surfaces used before the
+  # re-keying, and the one an agent falls back to if the key step is skipped --
+  # holds nothing in either tree.
+  grep -qF forensics-body-treeB "$FORENSICS_A" && return 1
+  grep -qF forensics-body-treeA "$FORENSICS_B" && return 1
+  for tree in "$A" "$B" "$MAIN"; do
+    if find "$tree/.gaia/local/forensics" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -q .; then
+      echo "a forensics report landed at the unkeyed path in $tree" >&2
+      return 1
+    fi
+    if find "$tree/.gaia/local/handoff" -maxdepth 1 -type f -name 'HANDOFF-*.md' 2>/dev/null | grep -q .; then
+      echo "a handoff landed at the unkeyed path in $tree" >&2
+      return 1
+    fi
+  done
+}
+
 # ---------------------------------------------------------------------------
 # Tranche 5 -- SURFACE
 # ---------------------------------------------------------------------------

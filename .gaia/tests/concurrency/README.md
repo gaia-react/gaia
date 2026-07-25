@@ -66,14 +66,23 @@ assertion to make a number move.
 
 ## The target, stated up front
 
-**The isolation claim holds when all 22 scenarios pass.** That is the frozen target.
+**The isolation claim holds when all 23 scenarios pass.** That is the frozen target.
 
-**The target rose from 21 to 22, by the maintainer's decision, and that is the only way it may
-move upward.** A real cross-tree defect was found that no scenario could see (`C4-07`, the
-commit gate's inverse harm), so the instrument grew to cover it rather than the defect being
-left outside the number. Published here the way any added scenario is; the reasoning is in
-[Published assertion changes](#published-assertion-changes). A target that never grows when
-something is found is a target that rewards not looking.
+**The target has risen twice, 21 → 22 → 23, each time by the maintainer's decision, and that is
+the only way it may move upward.** First a real cross-tree defect was found that no scenario could
+see (`C4-07`, the commit gate's inverse harm). Then two of the four per-tree entries turned out to
+have no cross-tree scenario of any kind, on the eve of the change that makes their separation
+load-bearing (`C4-08`, forensics reports and handoffs). Each is published here the way any added
+scenario is; the reasoning is in [Published assertion changes](#published-assertion-changes). A
+target that never grows when something is found is a target that rewards not looking.
+
+**What does NOT move the target, so the two rises are not read as a habit.** A scenario is added
+when a real cross-tree harm has *no* scenario that can see it. It is not added to make an
+assertion that already exists somewhere else more visible: two candidates were declined on that
+exact ground the same week (task 5.4's durable decline, already asserted in the worktree linker's
+own suite, and the zsh-shell refusal defect, whose case this suite structurally cannot host — see
+[What this meter cannot see](#what-this-meter-cannot-see-the-shell-an-agent-actually-uses)).
+Visibility for a covered assertion is not coverage.
 
 - **Step-7 carve-out accounting.** The three hard-case scenarios (`C7-*`) are in the
   denominator today. Under the program's step-7 bar each must end **fixed, or refusing
@@ -81,10 +90,10 @@ something is found is a target that rewards not looking.
   stay in the target. A scenario leaves the denominator (and the target drops by one)
   **only** if the maintainer writes the §1 clause it guards out of the goal, and that
   subtraction is recorded here visibly when it happens. **A silent wrong answer is never
-  a carve-out.** No clause is carved, so the target is the full 22.
+  a carve-out.** No clause is carved, so the target is the full 23.
 - **The contamination tranche is the central claim.** The `C4-*` scenarios are the ones the
-  whole program exists to turn green; there are **seven**, the seventh added after the
-  tranche was first read green. It passes too, so the reading was not disturbed and the
+  whole program exists to turn green; there are **eight**, the seventh and eighth added after
+  the tranche was first read green. Both pass, so the reading was not disturbed and the
   tranche's claim now stands against a strictly larger set than the one it was first made
   against. **Step 4 (KEYS)** is where that tranche is
   expected green and where this suite becomes a **required CI check** — added to the
@@ -168,6 +177,7 @@ the claim the program exists to make verifiable.
 | **C4-05** | SPEC/plan locks serialize across worktrees | direct | 4.4 locks | Two worktrees each acquiring the SPEC (or plan) ledger lock, anchored to main, serialize: concurrent number allocations do not both mint the same id, and the second waits rather than racing. |
 | **C4-06** | per-tree state survives the cutover *(regression guard, green now)* | direct | 4 cutover | The RED ledger — correctly per-tree today — stays isolated after the single-symlink flip: tree A's RED observation never resolves into main's one path and never blocks tree B's commit. Guards the cutover risk that a not-yet-re-keyed per-tree writer bleeds into main. (Mechanism made real, and one clause named as not measured; see [Published assertion changes](#published-assertion-changes).) |
 | **C4-07** | one tree's RED never satisfies another tree's commit gate *(cutover guard, green now)* | direct | 4 cutover | Tree A's observed failing run for a test never satisfies tree B's TDD commit gate for that same test. With the identical new test staged in both trees, the real gate **allows** the commit in the tree that recorded the RED and **denies** it in the tree that did not; recording B's own RED then flips B to allow, so the deny is attributable to the missing per-tree observation and to nothing else. Guards the *inverse* of `C4-06`'s clause: the harm that wrongly **clears** a peer's gate, which an appending ledger writer makes invisible to any blocking-shaped assertion. (Added scenario — see [Published assertion changes](#published-assertion-changes).) |
+| **C4-08** | one tree's handoff and forensics reports are not another tree's to clear *(cutover guard, green now)* | direct | 4 cutover | Tree A and tree B resolve **different** tree keys from the shipped `main-root-lib.sh --tree-key` entry point that both prose surfaces invoke, and each tree's forensics reports and handoffs live under its own key: two different real directories, neither of them the unkeyed parent, in either tree or in main. The documented clear-prior step — `rm -f .gaia/local/handoff/<tree_key>/HANDOFF-*.md`, the one instruction in either surface that destroys data — run from A deletes A's handoff and leaves B's untouched. Guards the two per-tree entries whose only mechanism is instruction prose an agent executes, and which had no cross-tree scenario at all before this. (Added scenario — see [Published assertion changes](#published-assertion-changes).) |
 
 ### Tranche 5 — SURFACE (green when a channel fires correctly or refuses out loud)
 
@@ -211,6 +221,49 @@ The meter is frozen, so a changed assertion is published here the way an added
 scenario would be, with what changed and what it did to the number. **The target
 never moves for a repair** — a scenario is repaired, never subtracted. It moves
 **upward** only for an added scenario, and only by the maintainer's word.
+
+### C4-08 — an added scenario, and the second movement in the target
+
+**The target goes 22 → 23, on the maintainer's decision.** Scoping the single-symlink cutover
+turned up a coverage gap rather than a defect: of the four `.gaia/local` entries that must stay
+private to one tree, the RED ledger and the worthiness ledger each had a scenario (`C4-06`,
+`C4-04`), and **forensics reports and handoffs had nothing of the kind** — only tests that they
+get written at all, none that two trees stay separate.
+
+That gap cost nothing while separateness came free from each worktree owning a separate physical
+`.gaia/local`. The cutover is what makes it load-bearing: afterwards the separation is a tree key,
+and for these two entries the "code" that has to get the key right is **instruction prose an agent
+executes** (`.claude/skills/gaia/references/forensics.md`, `handoff.md`, `pickup.md`), which is the
+least mechanically-enforced surface in the repo. Guarding the riskiest change in the program on two
+of the four entries it touches, and not on the other two, is not a defensible place to leave the
+instrument.
+
+**One scenario, not two.** Both entries are prose surfaces keyed by the same function through the
+same entry point; they fail for the same reason if they fail, and a second scenario would assert
+the same mechanism twice for a second row.
+
+**It is green on arrival and is not a landed fix.** Like `C4-06` and `C4-07` it joins the
+cutover-guard class: green before the change it guards, and the phase that makes the change must
+*preserve* it rather than take credit for turning it. The reading is therefore 20/22 → **21/23**,
+which is a coverage gain, not progress.
+
+**Proven non-vacuous two ways, both by running it.**
+
+1. *The mechanism is the shipped one.* Making `gaia_tree_key` return a constant reds the scenario
+   at the key-inequality check. The scenario reads the key through
+   `bash .gaia/scripts/main-root-lib.sh --tree-key` — the executable entry, not the sourced
+   function — because that is what the prose surfaces actually invoke, so a regression in the CLI
+   dispatch alone is a real break for these two and fails here.
+2. *The harm is real, not described.* In a throwaway fixture that **simulates the flip** (each
+   worktree's whole `.gaia/local` replaced by one symlink to main's), the documented clear-prior
+   step in its pre-re-keying unkeyed form — `rm -f .gaia/local/handoff/HANDOFF-*.md` — run from
+   tree A **destroys tree B's handoff**. The same step in its keyed form deletes A's and spares
+   B's. That is the harm C4-08 asserts, and the key is demonstrably the only thing preventing it.
+
+**What it deliberately does not do.** It does not grep either prose file for the string
+`<tree_key>`. That is the `C5-03` failure mode — an assertion satisfied by a sentence of
+documentation — and it is the reason this scenario drives a deletion and compares physical paths
+instead.
 
 ### C5-03: the assertion was measuring a symbol's name in prose, and is rewritten to drive the refusal
 

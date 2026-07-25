@@ -35,7 +35,6 @@ setup() {
   # Ask the shipped lib where the ledger belongs (tree-keyed) rather than
   # hardcoding a second copy of the keyed literal.
   LEDGER_ABS="$( . "$REPO_ROOT/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$REPO_ROOT" )"
-  LEDGER_REL="${LEDGER_ABS#"$REPO_ROOT"/}"
 
   # Stash any pre-existing local ledger; restore in teardown.
   STASH=""
