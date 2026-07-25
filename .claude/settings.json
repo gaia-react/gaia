@@ -154,28 +154,6 @@
         ]
       }
     ],
-    "WorktreeCreate": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .gaia/scripts/create-worktree.sh"
-          }
-        ]
-      }
-    ],
-    "WorktreeRemove": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash -c 'root=\"$(dirname \"$(git rev-parse --git-common-dir)\")\"; exec bash \"$root/.gaia/scripts/remove-worktree.sh\"'"
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "matcher": "Skill",

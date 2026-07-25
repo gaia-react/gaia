@@ -27,9 +27,10 @@
 #                                   already the worktree and its tool_response
 #                                   names the path outright.
 #
-# Also callable directly with the worktree path as an argument, which is how
-# worktree creation provisions the tree it just made without synthesizing a
-# hook payload. One definition, three callers.
+# Also callable directly with the worktree path as an argument, for a caller
+# that already knows the tree and has no hook payload to synthesize. One
+# definition, three callers: SessionStart, PostToolUse/EnterWorktree, and the
+# direct call.
 #
 # Always exits 0. Provisioning repairs a worktree; failing to provision must
 # never block the session that asked for one.

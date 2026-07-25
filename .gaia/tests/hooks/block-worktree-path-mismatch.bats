@@ -55,8 +55,10 @@ make_repo() {
 # This is a minimal fixture, not the real registry, so the tests exercise the
 # registry-read MECHANISM and stay decoupled from the shipped registry's exact
 # contents. It carries the four symlinked shared dirs (audit, debt, telemetry,
-# cache/shared) plus the symlinked setup-state.json file, the two main-anchored
-# ledger dirs (plans, specs) plus worktree-locks, one main-only FILE
+# cache/shared) plus the symlinked setup-state.json file, three main-anchored
+# dirs (the two real ledgers, plans and specs, plus a synthetic third,
+# fixture-main-dir, that exists only to prove the guard's arm consumes the
+# whole main-only-dir set rather than a hand-listed pair), one main-only FILE
 # (cache/gh-artifact-pr.json) that must NOT exempt its cache/ segment, and one
 # per-tree dir (handoff) representing the four keyed entries the flip protects.
 write_registry() {
@@ -74,7 +76,7 @@ write_registry() {
     { "id": "debt", "path": "debt/count.json", "match": "exact", "kind": "file", "scope": "shared" },
     { "id": "specs", "path": "specs/", "match": "prefix", "kind": "dir", "scope": "main-only" },
     { "id": "plans", "path": "plans/", "match": "prefix", "kind": "dir", "scope": "main-only" },
-    { "id": "worktree-locks", "path": "worktree-locks/<name>/", "match": "prefix", "kind": "dir", "scope": "main-only" },
+    { "id": "fixture-main-dir", "path": "fixture-main-dir/<name>/", "match": "prefix", "kind": "dir", "scope": "main-only" },
     { "id": "gh-cache", "path": "cache/gh-artifact-pr.json", "match": "exact", "kind": "file", "scope": "main-only" },
     { "id": "handoff", "path": "handoff/", "match": "prefix", "kind": "dir", "scope": "per-tree" }
   ],
@@ -412,18 +414,18 @@ assert_allowed() {
   assert_allowed
 }
 
-# worktree-locks/ is a wholly main-anchored directory in the registry
-# (scope main-only, kind dir) with no worktree-side copy, so a write to it from a
-# worktree resolves to main legitimately. It is exempt through
+# fixture-main-dir/ is a synthetic third main-only directory in the fixture
+# registry (scope main-only, kind dir) with no worktree-side copy, so a write
+# to it from a worktree resolves to main legitimately. It is exempt through
 # gaia_registry_main_only_dirs, the same arm as plans/ and specs/, proving that
 # arm consumes the whole main-only-dir set rather than a hand-listed plans+specs
 # pair.
-@test "a worktree-mode write to the main checkout's main-anchored worktree-locks dir is allowed" {
+@test "a worktree-mode write to the main checkout's main-anchored fixture-main-dir is allowed" {
   make_repo
   make_worktree "debt/40-foo" "debt/40-foo"
-  mkdir -p "$REPO/.gaia/local/worktree-locks/some-lock"
+  mkdir -p "$REPO/.gaia/local/fixture-main-dir/some-lock"
   cd "$WT"
-  run_hook_edit "Write" "$REPO/.gaia/local/worktree-locks/some-lock/lock"
+  run_hook_edit "Write" "$REPO/.gaia/local/fixture-main-dir/some-lock/lock"
   assert_allowed
 }
 

@@ -238,7 +238,7 @@ JSON
 @test "REG-005: the self-managing top-level zone directories are never recursed into, so nested content beneath them survives" {
   make_repo
   local_dir="$REPO/.gaia/local"
-  for d in telemetry red-ledger handoff plans specs debt forensics harden worktree-locks; do
+  for d in telemetry red-ledger handoff plans specs debt forensics harden; do
     mkdir -p "$local_dir/$d"
     echo x > "$local_dir/$d/junk.txt"
   done
@@ -247,7 +247,7 @@ JSON
   GAIA_JANITOR_SWEEP_ONLY=outliers run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
 
-  for d in telemetry red-ledger handoff plans specs debt forensics harden worktree-locks; do
+  for d in telemetry red-ledger handoff plans specs debt forensics harden; do
     [ -f "$local_dir/$d/junk.txt" ] || return 1
   done
 }

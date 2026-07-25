@@ -208,18 +208,6 @@
       "source": "SPEC-061 §main-only"
     },
     {
-      "id": "worktree-locks",
-      "path": "worktree-locks/<name>/",
-      "match": "prefix",
-      "kind": "dir",
-      "scope": "main-only",
-      "keyed_by": null,
-      "why": "Transient creation-coordination locks that must live in one place, because they serialize attempts made before either candidate worktree exists; hold no durable data, keyed by worktree name.",
-      "writer": "code",
-      "reaped_by": "stray empty dir sweep",
-      "source": "SPEC-061 §main-only"
-    },
-    {
       "id": "project-id",
       "path": ".project-id",
       "match": "exact",

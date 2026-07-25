@@ -77,7 +77,6 @@ telemetry-cost-ledger
 v2-update-notes
 version-check-lock
 wiki-promote-and-uat-write-scratch
-worktree-locks
 '
 
 # Frozen at task 2.3's build, one id per line, sorted -- matches

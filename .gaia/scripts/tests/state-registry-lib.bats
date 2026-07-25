@@ -391,7 +391,6 @@ run_in_repo() {
     "plans/ledger.json:main-only"
     "cache/gh-artifact-pr.treeA.json:main-only"
     "cache/spec-chain-abc123.json:main-only"
-    "worktree-locks/my-worktree:main-only"
     ".project-id:main-only"
     "declined-updates.json:main-only"
     ".patched-statusline.sh:main-only"

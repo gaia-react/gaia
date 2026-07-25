@@ -40,7 +40,6 @@ count_autocommits() {
   gaia_copy_real "$MAIN" \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
-    .gaia/scripts/remove-worktree.sh \
     .gaia/scripts/link-worktree.sh \
     .claude/hooks/local-janitor.sh
   gaia_copy_registry "$MAIN"
@@ -1082,39 +1081,73 @@ test("adds two numbers c407", () => {
 # ---------------------------------------------------------------------------
 
 @test "C6-01: a name collision deletes no peer" {
+  # RESTATED AT THE MOVE TO HARNESS-NATIVE CREATION (see README, Published
+  # assertion changes). This drove GAIA's own create-worktree.sh twice on one
+  # name and watched the peer. That creator is gone, so the harm it guarded
+  # moved rather than disappeared, and this scenario follows it to where it
+  # now lives. Both halves below are hermetic and both can regress; the
+  # harness's own collision behaviour is NOT asserted here, because a bats
+  # fixture cannot drive it -- that half is the phase gate's live trial, run
+  # and recorded, and the README says so rather than implying this row covers
+  # it.
+
+  # ---- half 1: GAIA does not interpose a creator that could delete a peer.
+  # The shipped settings register no WorktreeCreate and no WorktreeRemove, so
+  # no GAIA code adjudicates a collision at all. This is the half that can
+  # silently come back: re-registering either hook restores exactly the class
+  # of defect the deletion removed, and nothing else in the suite would notice.
+  # Read from the REAL settings.json, not a fixture, because the claim is about
+  # what GAIA ships.
+  settings="$GAIA_REPO_ROOT_REAL/.claude/settings.json"
+  [ -f "$settings" ]
+  [ "$(jq -r 'has("hooks") and (.hooks | has("WorktreeCreate"))' "$settings")" = "false" ]
+  [ "$(jq -r 'has("hooks") and (.hooks | has("WorktreeRemove"))' "$settings")" = "false" ]
+
+  # ---- half 2: the one place GAIA still removes a worktree spares a peer's
+  # uncommitted work. The janitor's reap sweep owns teardown now, so it is the
+  # only shipped code left that can delete someone's tree, and this task is
+  # what moved that teardown into it. C3-01 covers the sweep's OTHER spare-arm
+  # (a live RUNNING plan sentinel); this covers the arm that carries the
+  # original harm -- irreplaceable uncommitted work destroyed by a reaper that
+  # judged the tree dead.
   MAIN="$(gaia_new_main gaia-c601-main)"
   gaia_copy_real "$MAIN" \
-    .gaia/scripts/create-worktree.sh \
     .gaia/scripts/link-worktree.sh \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
-    .claude/hooks/provision-worktree.sh \
-    .specify/extensions/gaia/lib/with-ledger-lock.sh
+    .claude/hooks/local-janitor.sh
   gaia_copy_registry "$MAIN"
-  gaia_commit_all "$MAIN" "add create-worktree + deps"
+  gaia_commit_all "$MAIN" "add janitor deps"
 
-  json="$(jq -n '{name: "debt/collide"}')"
-  run run_in "$MAIN" -- bash -c 'printf %s "$1" | bash .gaia/scripts/create-worktree.sh' _ "$json"
+  ORIGIN="$(gaia_mk_tmp gaia-c601-origin)"
+  git init -q --bare "$ORIGIN"
+  git -C "$MAIN" remote add origin "$ORIGIN"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" "debt/collide" "worktree-debt/collide")"
+
+  # treeB reads provably dead to every git-level signal the reaper has: its
+  # upstream is pushed then deleted remotely, so the branch tracks [gone].
+  git -C "$B" push -q -u origin "worktree-debt/collide"
+  git -C "$B" push -q origin --delete "worktree-debt/collide"
+  git -C "$B" fetch -q --prune
+
+  # ...and it holds real, valuable, uncommitted work. That is the ONLY thing
+  # standing between it and the reaper.
+  echo irreplaceable > "$B/uncommitted.txt"
+  git -C "$B" add -A
+
+  # treeA needs its own .gaia/local present or the janitor's local_dir guard
+  # exits before the worktree-reap sweep is ever reached (same as C3-01).
+  gaia_link_worktree "$A"
+
+  run run_in "$A" -- bash "$MAIN/.claude/hooks/local-janitor.sh"
   [ "$status" -eq 0 ]
-  # The hook's own diagnostics (link-worktree.sh's "linked: ..." lines) go to
-  # stderr, which `run` merges into $output alongside the hook's one stdout
-  # line (the worktree path); the path is always the LAST line.
-  wt1="$(tail -n1 <<< "$output")"
-  [ -d "$wt1" ]
 
-  # The peer worktree now holds real, valuable, uncommitted work.
-  echo irreplaceable > "$wt1/uncommitted.txt"
-
-  # A second session asks to create a worktree of the SAME name: the
-  # collision. Its own outcome (refuse / disambiguate) is not asserted here,
-  # only that it never deletes the existing peer to resolve itself -- the
-  # trial answered by trying it, not assumed.
-  run run_in "$MAIN" -- bash -c 'printf %s "$1" | bash .gaia/scripts/create-worktree.sh' _ "$json"
-
-  # Target: the original peer, and its uncommitted work, survive the
-  # collision.
-  [ -d "$wt1" ]
-  [ -f "$wt1/uncommitted.txt" ]
+  # Target: the peer, and its uncommitted work, survive.
+  [ -d "$B" ] || return 1
+  [ -f "$B/uncommitted.txt" ] || return 1
+  grep -qxF irreplaceable "$B/uncommitted.txt"
 }
 
 @test "C6-02: provisioning self-heals on re-entry" {
@@ -1170,12 +1203,10 @@ test("adds two numbers c407", () => {
 @test "C6-03: generated types are present in a fresh worktree" {
   MAIN="$(gaia_new_main gaia-c603-main)"
   gaia_copy_real "$MAIN" \
-    .gaia/scripts/create-worktree.sh \
     .gaia/scripts/link-worktree.sh \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
-    .claude/hooks/provision-worktree.sh \
-    .specify/extensions/gaia/lib/with-ledger-lock.sh
+    .claude/hooks/provision-worktree.sh
   gaia_copy_registry "$MAIN"
 
   # A stand-in react-router CLI: provisioning borrows the resolved main
@@ -1191,13 +1222,30 @@ if [ "$1" = "typegen" ]; then
 fi
 SH
   chmod +x "$MAIN/node_modules/.bin/react-router"
-  gaia_commit_all "$MAIN" "add create-worktree + stub CLI"
+  gaia_commit_all "$MAIN" "add provisioning deps + stub CLI"
 
-  json="$(jq -n '{name: "feat/types"}')"
-  run run_in "$MAIN" -- bash -c 'printf %s "$1" | bash .gaia/scripts/create-worktree.sh' _ "$json"
-  [ "$status" -eq 0 ]
-  # See C6-01: the hook's one stdout line (the worktree path) is always last.
-  wt="$(tail -n1 <<< "$output")"
+  # RESTATED AT THE MOVE TO HARNESS-NATIVE CREATION (see README, Published
+  # assertion changes). This drove GAIA's own create-worktree.sh, which called
+  # typegen itself at the end of creation. The harness creates worktrees now, so
+  # a fixture that drives GAIA's creator would be measuring a thing that no
+  # longer runs. What the scenario CLAIMS is unchanged -- a fresh worktree has
+  # its generated build types before first use -- and it is now measured against
+  # the mechanism that really holds it.
+  #
+  # The worktree is made the way the harness makes one: a plain `git worktree
+  # add` under .claude/worktrees/, on the harness's own branch spelling
+  # (worktree-<name>), with nothing GAIA-specific done to it at creation time.
+  # That is also what a hand-rolled `git worktree add` leaves behind, so this
+  # covers the tree nobody's tooling created as well as the one the harness did.
+  wt="$(gaia_add_worktree "$MAIN" "feat/types" "worktree-feat/types")"
+
+  # Entering the tree is what provisions it, so the property is asserted after
+  # the event that has to hold it. Same payload shape as C6-02: the one the
+  # harness emits on PostToolUse/EnterWorktree, whose cwd is already the
+  # worktree and whose tool_response names the path outright.
+  entry_payload="$(jq -nc --arg p "$wt" \
+    '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
+  ( cd "$wt" && printf '%s' "$entry_payload" | bash "$wt/.claude/hooks/provision-worktree.sh" ) >/dev/null 2>&1
 
   # Target: generated build types are present and current before first use.
   [ -f "$wt/.react-router/types/.stamp" ]

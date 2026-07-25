@@ -4,11 +4,11 @@
 # .claude/worktrees/ whose branch upstream is [gone] (the same provable-death
 # signal sweep #1 uses for wiki-sync/* branches), whose working tree is clean,
 # and whose branch is not named by a live RUNNING plan sentinel (gitignored, so
-# invisible to both git-level signals). Teardown delegates to the WorktreeRemove
-# hook's own
-# remove-worktree.sh, so these tests copy the real script into the fixture
-# repo at its real repo-relative path, exactly as a real checkout would have
-# it, rather than re-deriving remove + branch-delete + parent-prune here.
+# invisible to both git-level signals). Teardown runs inline in the janitor
+# itself: remove the worktree, delete its now-detached branch, and prune the
+# empty parent directories a slashed name leaves behind. These tests run
+# .claude/hooks/local-janitor.sh directly; nothing else needs to be staged
+# into the fixture repo for teardown to happen for real.
 #
 # Conservative provable-death policy: never age-reap, never the current
 # checkout, never a worktree with uncommitted changes, never a detached-HEAD
@@ -20,7 +20,6 @@
 
 setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/local-janitor.sh
-  REPO_ROOT_REAL=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
 }
 
 teardown() {
@@ -62,16 +61,6 @@ make_repo_spaced() {
   git -C "$REPO" add f
   git -C "$REPO" commit -q -m init
   mkdir -p "$REPO/.gaia/local"
-}
-
-# copy_worktree_reaper_deps: mirrors remove-worktree.sh's own repo-relative
-# location inside the fixture repo (<main>/.gaia/scripts/remove-worktree.sh)
-# so sweep #8's `bash "$wt_main/.gaia/scripts/remove-worktree.sh"` call
-# resolves for real instead of silently no-op'ing.
-copy_worktree_reaper_deps() {
-  mkdir -p "$REPO/.gaia/scripts"
-  cp "$REPO_ROOT_REAL/.gaia/scripts/remove-worktree.sh" "$REPO/.gaia/scripts/remove-worktree.sh"
-  chmod +x "$REPO/.gaia/scripts/remove-worktree.sh"
 }
 
 # A branch whose upstream is [gone]: pushed (tracking ref created), then the
@@ -142,7 +131,6 @@ write_plan_sentinel() {
 
 @test "reaps a [gone]-branch worktree with a clean working tree" {
   make_repo
-  copy_worktree_reaper_deps
   make_gone_worktree "debt/100-foo" "debt/100-foo"
   wt="$REPO/.claude/worktrees/debt/100-foo"
   # Present before the sweep runs, so the reap below is provably real.
@@ -154,9 +142,45 @@ write_plan_sentinel() {
   [ ! -e "$wt" ]
 }
 
+# The third step of the inline teardown: pruning the empty parent directory a
+# slashed worktree name leaves behind. debt/<n>-<slug> is exactly that shape --
+# reaping the leaf must not leave an empty "debt/" directory behind, but the
+# shared .claude/worktrees/ base itself is never removed even once it is empty.
+@test "prunes the empty parent directory left behind by a slashed worktree name" {
+  make_repo
+  make_gone_worktree "debt/110-prune" "debt/110-prune"
+  wt="$REPO/.claude/worktrees/debt/110-prune"
+  [ -d "$wt" ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$wt" ]
+  [ ! -d "$REPO/.claude/worktrees/debt" ]
+  [ -d "$REPO/.claude/worktrees" ]
+}
+
+# Regression coverage for the teardown's lock-reclaim fallback: a worktree
+# left `locked ... initializing` is what a session killed mid-`git worktree
+# add` leaves behind, and git refuses a SINGLE --force against it. Only a
+# double --force clears it, so a [gone]-branch worktree in this state must
+# still be reaped rather than silently surviving every future run.
+@test "reaps a [gone]-branch worktree wedged locked-initializing by a crashed add" {
+  make_repo
+  make_gone_worktree "debt/111-wedged" "debt/111-wedged"
+  wt="$REPO/.claude/worktrees/debt/111-wedged"
+  admin="$REPO/.git/worktrees/111-wedged"
+  [ -d "$admin" ]
+  printf 'initializing\n' > "$admin/locked"
+  git -C "$REPO" worktree list --porcelain | grep -qF "locked initializing"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "debt/111-wedged" && return 1
+  [ ! -e "$wt" ]
+}
+
 @test "keeps a worktree whose branch upstream is still live" {
   make_repo
-  copy_worktree_reaper_deps
   make_live_worktree "debt/101-bar" "debt/101-bar"
   wt="$REPO/.claude/worktrees/debt/101-bar"
   cd "$REPO"
@@ -168,7 +192,6 @@ write_plan_sentinel() {
 
 @test "keeps a [gone]-branch worktree that has uncommitted changes" {
   make_repo
-  copy_worktree_reaper_deps
   make_gone_worktree "debt/102-baz" "debt/102-baz"
   wt="$REPO/.claude/worktrees/debt/102-baz"
   echo "dirty" > "$wt/dirty.txt"
@@ -187,7 +210,6 @@ write_plan_sentinel() {
 # reaching sweep #8, and this test would pass for the wrong reason.
 @test "never reaps the current checkout even when its own branch is gone" {
   make_repo
-  copy_worktree_reaper_deps
   make_gone_worktree "debt/103-self" "debt/103-self"
   wt="$REPO/.claude/worktrees/debt/103-self"
   mkdir -p "$wt/.gaia/local"
@@ -202,7 +224,6 @@ write_plan_sentinel() {
 
 @test "leaves a detached-HEAD worktree untouched" {
   make_repo
-  copy_worktree_reaper_deps
   sha=$(git -C "$REPO" rev-parse HEAD)
   mkdir -p "$REPO/.claude/worktrees"
   git -C "$REPO" worktree add -q --detach "$REPO/.claude/worktrees/detached-104" "$sha"
@@ -221,7 +242,6 @@ write_plan_sentinel() {
 # checkout lives under a spaced directory.
 @test "reaps a [gone]-branch worktree even when the repo's absolute path contains a space" {
   make_repo_spaced
-  copy_worktree_reaper_deps
   make_gone_worktree "debt/105-spaced" "debt/105-spaced"
   wt="$REPO/.claude/worktrees/debt/105-spaced"
   [ -d "$wt" ]
@@ -243,7 +263,6 @@ write_plan_sentinel() {
 @test "keeps a [gone]-branch worktree whose own tree holds a live RUNNING plan" {
   make_repo
   ignore_local_state
-  copy_worktree_reaper_deps
   make_gone_worktree "debt/106-live" "debt/106-live"
   wt="$REPO/.claude/worktrees/debt/106-live"
   write_plan_sentinel "$wt" "plans/PLAN-901" "debt/106-live"
@@ -259,7 +278,6 @@ write_plan_sentinel() {
 @test "keeps a [gone]-branch worktree named by a RUNNING plan in the main checkout" {
   make_repo
   ignore_local_state
-  copy_worktree_reaper_deps
   make_gone_worktree "debt/107-mainside" "debt/107-mainside"
   wt="$REPO/.claude/worktrees/debt/107-mainside"
   write_plan_sentinel "$REPO" "specs/SPEC-901/plan" "debt/107-mainside"
@@ -275,7 +293,6 @@ write_plan_sentinel() {
 @test "keeps a [gone]-branch worktree whose own RUNNING sentinel names no branch" {
   make_repo
   ignore_local_state
-  copy_worktree_reaper_deps
   make_gone_worktree "debt/108-unparseable" "debt/108-unparseable"
   wt="$REPO/.claude/worktrees/debt/108-unparseable"
   write_plan_sentinel "$wt" "plans/PLAN-902" ""
@@ -292,7 +309,6 @@ write_plan_sentinel() {
 @test "reaps a [gone]-branch worktree when the only RUNNING plan names another branch" {
   make_repo
   ignore_local_state
-  copy_worktree_reaper_deps
   make_gone_worktree "debt/109-other" "debt/109-other"
   wt="$REPO/.claude/worktrees/debt/109-other"
   write_plan_sentinel "$wt" "plans/PLAN-903" "debt/999-unrelated"

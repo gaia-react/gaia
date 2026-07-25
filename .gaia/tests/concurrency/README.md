@@ -197,9 +197,9 @@ mis-scoped.
 
 | id | scenario | exec | owning task | frozen assertion |
 |---|---|---|---|---|
-| **C6-01** | a name collision deletes no peer | direct | 6.1 creation | Creating two worktrees whose names would collide deletes neither peer's worktree; the collision is refused or disambiguated, never resolved by removing an existing tree. The trial that must be answered by trying it, not assumed. |
+| **C6-01** | a name collision deletes no peer | direct | 6.1 creation | No GAIA code adjudicates a worktree-name collision: the shipped settings register no `WorktreeCreate` and no `WorktreeRemove` hook, so creation and session teardown are the harness's. The one place GAIA still removes a worktree — the janitor's reap sweep — spares a peer holding uncommitted work even when that peer is provably dead by every git-level signal the reaper has. The harness's own collision behaviour is **not** asserted here and is discharged by the phase gate's live trial. (Assertion narrowed, deliberately — see [Published assertion changes](#published-assertion-changes).) |
 | **C6-02** | provisioning self-heals on re-entry | direct | 6.2 provisioning | A worktree whose shared-state symlinks are deliberately broken repairs them on the next session start, idempotently, without manual intervention. (Mechanism re-pointed at the shipped provisioning hook — see [Published assertion changes](#published-assertion-changes).) |
-| **C6-03** | generated types are present in a fresh worktree | direct | 6.2 provisioning | A freshly created worktree has its generated build types present and current before first use, not missing or stale. |
+| **C6-03** | generated types are present in a fresh worktree | direct | 6.2 provisioning | A freshly created worktree has its generated build types present and current before first use, not missing or stale. Measured on a worktree made the way the harness makes one, with nothing GAIA-specific done at creation time, so it covers a hand-rolled `git worktree add` equally. (Mechanism re-pointed at provisioning — see [Published assertion changes](#published-assertion-changes).) |
 
 ### Step-7 carve-out candidates (the hard three)
 
@@ -221,6 +221,58 @@ The meter is frozen, so a changed assertion is published here the way an added
 scenario would be, with what changed and what it did to the number. **The target
 never moves for a repair** — a scenario is repaired, never subtracted. It moves
 **upward** only for an added scenario, and only by the maintainer's word.
+
+### C6-01 and C6-03 at the move to harness-native creation, and C3-01's fixture with them
+
+**The target does not move: 23 before, 23 after.** All three are repairs. The reading is
+unchanged either side of the change.
+
+One cause: GAIA's own `create-worktree.sh` and `remove-worktree.sh` are deleted, because the
+harness creates and removes worktrees natively and does it better (same `.claude/worktrees/`
+layout, stricter name validation, committed-symlink refusal, its own locking, and `fresh` as its
+base-ref default). Three scenarios drove or copied one of those two files, so all three had to
+follow the behaviour to where it now lives rather than keep measuring code that no longer runs.
+
+**C3-01 — fixture only, assertion untouched.** It copied `remove-worktree.sh` because the
+janitor's reap sweep delegated teardown to it. The sweep does its own teardown now, so the
+dependency is simply gone. Nothing else in the scenario changed.
+
+**C6-03 — the assertion did not move; the mechanism under it did.** It drove
+`create-worktree.sh`, which called typegen itself as its last act. Provisioning holds that
+property now, so the scenario makes a worktree the way the harness makes one (a plain `git
+worktree add` under `.claude/worktrees/`, on the harness's own `worktree-<name>` branch
+spelling, with nothing GAIA-specific done at creation time) and then fires the real
+`EnterWorktree` provisioning payload. **This is strictly stronger than what it replaced**: the
+old form could only ever cover a tree GAIA itself created, and the new form covers the tree
+made by the harness, by a hand-rolled `git worktree add`, and by anything else, because none of
+them differ from provisioning's point of view. Proven non-vacuous by mutation: suppressing the
+provisioning call reds it at exactly the target assertion, with the source restored
+byte-identical afterwards.
+
+**C6-01 — the assertion is narrowed, deliberately, and this is the one to read.** Its old form
+ran GAIA's creator twice on one name and watched the peer. There is no GAIA creator now, and
+**a bats fixture cannot drive the harness's own collision handling** — that is a call into the
+binary, needing auth and a network, which a hermetic suite run in CI cannot make. So the row is
+split honestly rather than left to imply coverage it does not have:
+
+- **What this row asserts, hermetically, in two halves.** First, that the shipped
+  `.claude/settings.json` registers no `WorktreeCreate` and no `WorktreeRemove` hook, read from
+  the real file rather than a fixture, because the claim is about what GAIA ships. That is the
+  half that can silently come back: re-registering either hook restores exactly the class of
+  defect the deletion removed, and nothing else in the suite would notice. Second, that the one
+  place GAIA still removes a worktree — the janitor's reap sweep, which is where this change
+  re-homes teardown — spares a peer holding uncommitted work, driven through the real janitor in
+  a real two-worktree fixture whose peer is provably dead by every git-level signal the reaper
+  has. That second half is not a duplicate of C3-01: C3-01 covers the sweep's *other* spare-arm,
+  a live `RUNNING` plan sentinel; this covers the arm carrying the original harm, irreplaceable
+  uncommitted work destroyed by a reaper that judged the tree dead.
+- **What this row does NOT assert, said plainly.** The harness's own behaviour on a colliding
+  name. That is discharged by the phase gate's live trial — run, not read — and recorded there.
+  A string in the binary claiming the collision "reuses" rather than deletes is not evidence
+  this row stands on.
+- **Non-vacuity came for free.** Half one was red on arrival, before the deletion landed, and
+  went green when it landed. That is the guard-before-the-change position without anyone having
+  to construct it.
 
 ### Six scenarios repaired at the single-symlink cutover, all from one cause
 
@@ -621,9 +673,9 @@ not happened yet, and its owning phase must preserve it.
 |---|---|
 | **C4-06** | The designated cutover guard: the RED ledger is genuinely per-tree today (never symlinked), so it is already isolated. It must *stay* isolated across the single-symlink flip. **This row's "none is vacuous" claim did not hold for this scenario until its mechanism was made real; see [Published assertion changes](#published-assertion-changes).** |
 | **C5-04** | The debt-count refresher already dedupes across worktrees through its shared, TTL-gated cache, so this machine-scoped nudge is not mis-scoped today. Task 5.3/5.4 must not introduce mis-scoping. |
-| **C6-01** | Today's creation refuses to delete a peer it did not create. The Phase-6 move to harness-native creation must preserve that — the trial answered by trying it, not assumed. |
+| **C6-01** | Today's creation refuses to delete a peer it did not create. The Phase-6 move to harness-native creation must preserve that — the trial answered by trying it, not assumed. **Restated when that move landed; the row now measures GAIA's half and the trial measures the harness's. See [Published assertion changes](#published-assertion-changes).** |
 | **C6-02** | The linker already self-heals a broken shared-state symlink on re-run. Phase-6.2 SessionStart provisioning must keep that self-heal. |
-| **C6-03** | Creation already invokes typegen for a fresh worktree (driven here through a stand-in CLI at the borrowed binary path). Phase 6.2 must keep generated types present. |
+| **C6-03** | Creation already invokes typegen for a fresh worktree (driven here through a stand-in CLI at the borrowed binary path). Phase 6.2 must keep generated types present. **Re-pointed at provisioning when creation moved to the harness, and strictly stronger for it. See [Published assertion changes](#published-assertion-changes).** |
 | **C7-03** | On the tracked-file path, git's own three-way merge conflicts on the single scalar rather than silently clobbering. Task 7.3's resolution (keying, merge-driver, or untrack) must not introduce a silent last-writer-wins. |
 
 ## Why it is red, and how it goes green

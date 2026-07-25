@@ -118,9 +118,10 @@
 #      behind after its PR squash-merges, and nothing else reclaims it.
 #      Never age-reap: there is
 #      no session-liveness signal, so an old worktree may still be a live
-#      long-running session. Teardown delegates to the WorktreeRemove hook's
-#      own remove-worktree.sh so remove + branch-delete + parent-prune stays
-#      defined in one place.
+#      long-running session. Teardown runs inline: the harness owns worktree
+#      creation and removal for a live session, but this sweep reaps worktrees
+#      no session is in, so there is no session-scoped hook to delegate to,
+#      and the janitor does its own remove + branch-delete + parent-prune.
 #   9. off-pattern outlier residue: at the top level of .gaia/local plus the
 #      direct children (maxdepth-1, mindepth-1, no deeper) of audit/ and
 #      cache/, every child is put to the state registry
@@ -133,7 +134,7 @@
 #      ._*) is the one exception, reaped at any age regardless of the
 #      registry. The sweep never recurses below maxdepth-1 -- the three
 #      zones it walks never include telemetry/, red-ledger/, handoff/,
-#      plans/, specs/, debt/, forensics/, harden/, or worktree-locks/ -- and
+#      plans/, specs/, debt/, forensics/, or harden/ -- and
 #      never follows a symlinked scope root from a linked worktree. Two
 #      off-pattern writers still get their own dedicated reap arms
 #      elsewhere, unrelated to this sweep's registry consultation:
@@ -811,99 +812,125 @@ fi
 # abandoned after the merge but before ExitWorktree leaves the worktree dir
 # behind, and nothing else reclaims it. Reap only such provably-dead worktrees:
 # never age-reap (an old worktree may be a live long-running session, and there
-# is no session-liveness signal to tell them apart). Teardown is delegated to
-# the WorktreeRemove hook's own script so remove + branch-delete + parent-prune
-# stays defined in one place.
+# is no session-liveness signal to tell them apart). Teardown runs inline here:
+# the harness owns worktree creation and removal for a live session, but this
+# sweep reaps worktrees no session is in, so there is no session-scoped hook to
+# delegate to, and the janitor does its own remove + branch-delete +
+# parent-prune.
 #
-# Resolve the MAIN checkout: worktrees register there and physically live under
-# <main>/.claude/worktrees/, and this janitor may itself run from inside a
-# worktree, so `root` is not necessarily main.
-wt_common="$(git -C "$root" rev-parse --git-common-dir 2>/dev/null || true)"
-if [ -n "$wt_common" ]; then
-  case "$wt_common" in
-    /*) wt_main_git="$wt_common" ;;
-    *)  wt_main_git="$root/$wt_common" ;;
-  esac
-  wt_main="$(cd "$(dirname "$wt_main_git")" 2>/dev/null && pwd -P || true)"
-  wt_reaper="$wt_main/.gaia/scripts/remove-worktree.sh"
-  wt_current="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
-  wt_current="$(cd "$wt_current" 2>/dev/null && pwd -P || printf '%s' "$wt_current")"
-  wt_base="$wt_main/.claude/worktrees"
-  if [ -n "$wt_main" ] && [ -f "$wt_reaper" ] && [ -d "$wt_base" ]; then
-    # Enumerate worktrees from the main checkout: porcelain emits `worktree
-    # <path>` then (for an attached checkout) `branch refs/heads/<name>`, or
-    # `detached`. Emit `<path>\t<branch>` per worktree; a detached worktree
-    # yields an empty branch and is skipped (no branch to test for [gone]).
-    while IFS="$(printf '\t')" read -r wt_path wt_branch; do
-      [ -n "$wt_path" ] || continue
-      # Only GAIA worktrees under the main checkout's .claude/worktrees/.
-      case "$wt_path" in "$wt_base"/*) ;; *) continue ;; esac
-      # Never the current checkout (also protects a janitor run from inside one).
-      [ "$wt_path" != "$wt_current" ] || continue
-      # Detached HEAD has no branch to prove [gone] on: leave it.
-      [ -n "$wt_branch" ] || continue
-      # Provable death: upstream-track is exactly [gone].
-      wt_track="$(git -C "$wt_main" for-each-ref \
-        --format='%(upstream:track)' "refs/heads/$wt_branch" 2>/dev/null || true)"
-      [ "$wt_track" = "[gone]" ] || continue
-      # Never discard uncommitted working-tree changes.
-      [ -z "$(git -C "$wt_path" status --porcelain 2>/dev/null)" ] || continue
-      # Never reap a branch named by a live RUNNING plan sentinel. The
-      # sentinel is gitignored, so it is invisible to both git checks above:
-      # a plan can be genuinely in-flight on a branch that reads [gone] +
-      # clean. Scanned in both the worktree's own .gaia/local/ and main's.
-      # For a PROPERLY LINKED worktree these are the same physical directory
-      # (.gaia/local is one symlink to main's, D-011) and this is a harmless
-      # double read. They are genuinely different directories for a worktree
-      # that is not yet linked -- provisioning failed or has not run, or (as
-      # this candidate itself may be, mid-teardown-evaluation) a worktree
-      # nobody ever linked -- whose .gaia/local is still its own real,
-      # unconnected directory. Scanning only main's would miss a live plan
-      # sentinel written there and reap a session's whole worktree out from
-      # under it, so both locations are scanned regardless of which state
-      # this candidate is in. Same parse idiom as sweep #3.
-      wt_live=0
-      for wt_running in "$wt_path/.gaia/local/plans"/*/RUNNING \
-        "$wt_path/.gaia/local/specs"/*/plan/RUNNING \
-        "$wt_path/.gaia/local/specs"/*/plan-*/RUNNING \
-        "$wt_main/.gaia/local/plans"/*/RUNNING \
-        "$wt_main/.gaia/local/specs"/*/plan/RUNNING \
-        "$wt_main/.gaia/local/specs"/*/plan-*/RUNNING; do
-        [ -f "$wt_running" ] || continue
-        wt_running_branch=$(sed -nE 's/^branch:[[:space:]]*([^[:space:]]+).*/\1/p' \
-          "$wt_running" 2>/dev/null | head -1)
-        if [ "$wt_running_branch" = "$wt_branch" ]; then
-          wt_live=1
-          break
-        fi
-        # An unparseable sentinel under the worktree's OWN tree names no
-        # branch but still proves something is running there -- this guard
-        # fails toward sparing, since a false "dead" reading deletes
-        # someone's work. The same case under main's tree names no worktree
-        # either, so it cannot be attributed to this one; that gap is real
-        # and left uncovered rather than papered over.
-        case "$wt_running" in
-          "$wt_path"/*) [ -z "$wt_running_branch" ] && { wt_live=1; break; } ;;
-        esac
-      done
-      [ "$wt_live" -eq 0 ] || continue
-      # Reap via the WorktreeRemove hook's own teardown script (remove + branch
-      # -D [never main/master] + empty parent-dir prune, all in one place).
-      # jq-built, not printf-interpolated: a path containing `"` or `\` could
-      # otherwise produce malformed or injected JSON.
-      jq -nc --arg p "$wt_path" '{worktree_path:$p}' \
-        | bash "$wt_reaper" >/dev/null 2>&1 || true
-    done < <(
-      # `worktree` line: substr, not $2 -- porcelain does not quote the path,
-      # so a $2 split would truncate at the first space in the path.
-      git -C "$wt_main" worktree list --porcelain 2>/dev/null | awk '
-        $1=="worktree"{ p=substr($0,10); b="" }
-        $1=="branch"{b=$2; sub(/^refs\/heads\//,"",b)}
-        $1==""{ if(p!="") print p "\t" b; p=""; b="" }
-        END{ if(p!="") print p "\t" b }
-      '
-    )
-  fi
+# Resolve the MAIN checkout via the shared resolver: worktrees register there
+# and physically live under <main>/.claude/worktrees/, and this janitor may
+# itself run from inside a worktree, so `root` is not necessarily main. An
+# unresolvable main root skips this sweep outright rather than guessing --
+# unlike the file-level `main_root` above (which degrades to `root`), reaping
+# a worktree against a wrongly-assumed root is destructive, so this sweep has
+# nothing safe to fall back to.
+wt_main=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  wt_main="$(gaia_resolve_main_root "$root" 2>/dev/null || true)"
+fi
+wt_current="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+wt_current="$(cd "$wt_current" 2>/dev/null && pwd -P || printf '%s' "$wt_current")"
+wt_base="$wt_main/.claude/worktrees"
+if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
+  # Enumerate worktrees from the main checkout: porcelain emits `worktree
+  # <path>` then (for an attached checkout) `branch refs/heads/<name>`, or
+  # `detached`. Emit `<path>\t<branch>` per worktree; a detached worktree
+  # yields an empty branch and is skipped (no branch to test for [gone]).
+  while IFS="$(printf '\t')" read -r wt_path wt_branch; do
+    [ -n "$wt_path" ] || continue
+    # Only GAIA worktrees under the main checkout's .claude/worktrees/.
+    case "$wt_path" in "$wt_base"/*) ;; *) continue ;; esac
+    # Never the current checkout (also protects a janitor run from inside one).
+    [ "$wt_path" != "$wt_current" ] || continue
+    # Detached HEAD has no branch to prove [gone] on: leave it.
+    [ -n "$wt_branch" ] || continue
+    # Provable death: upstream-track is exactly [gone].
+    wt_track="$(git -C "$wt_main" for-each-ref \
+      --format='%(upstream:track)' "refs/heads/$wt_branch" 2>/dev/null || true)"
+    [ "$wt_track" = "[gone]" ] || continue
+    # Never discard uncommitted working-tree changes.
+    [ -z "$(git -C "$wt_path" status --porcelain 2>/dev/null)" ] || continue
+    # Never reap a branch named by a live RUNNING plan sentinel. The
+    # sentinel is gitignored, so it is invisible to both git checks above:
+    # a plan can be genuinely in-flight on a branch that reads [gone] +
+    # clean. Scanned in both the worktree's own .gaia/local/ and main's.
+    # For a PROPERLY LINKED worktree these are the same physical directory
+    # (.gaia/local is one symlink to main's, D-011) and this is a harmless
+    # double read. They are genuinely different directories for a worktree
+    # that is not yet linked -- provisioning failed or has not run, or (as
+    # this candidate itself may be, mid-teardown-evaluation) a worktree
+    # nobody ever linked -- whose .gaia/local is still its own real,
+    # unconnected directory. Scanning only main's would miss a live plan
+    # sentinel written there and reap a session's whole worktree out from
+    # under it, so both locations are scanned regardless of which state
+    # this candidate is in. Same parse idiom as sweep #3.
+    wt_live=0
+    for wt_running in "$wt_path/.gaia/local/plans"/*/RUNNING \
+      "$wt_path/.gaia/local/specs"/*/plan/RUNNING \
+      "$wt_path/.gaia/local/specs"/*/plan-*/RUNNING \
+      "$wt_main/.gaia/local/plans"/*/RUNNING \
+      "$wt_main/.gaia/local/specs"/*/plan/RUNNING \
+      "$wt_main/.gaia/local/specs"/*/plan-*/RUNNING; do
+      [ -f "$wt_running" ] || continue
+      wt_running_branch=$(sed -nE 's/^branch:[[:space:]]*([^[:space:]]+).*/\1/p' \
+        "$wt_running" 2>/dev/null | head -1)
+      if [ "$wt_running_branch" = "$wt_branch" ]; then
+        wt_live=1
+        break
+      fi
+      # An unparseable sentinel under the worktree's OWN tree names no
+      # branch but still proves something is running there -- this guard
+      # fails toward sparing, since a false "dead" reading deletes
+      # someone's work. The same case under main's tree names no worktree
+      # either, so it cannot be attributed to this one; that gap is real
+      # and left uncovered rather than papered over.
+      case "$wt_running" in
+        "$wt_path"/*) [ -z "$wt_running_branch" ] && { wt_live=1; break; } ;;
+      esac
+    done
+    [ "$wt_live" -eq 0 ] || continue
+    # Tear down inline: remove the worktree, delete its now-detached branch,
+    # and prune the empty parent dirs a slashed name leaves behind. $wt_branch
+    # is already in hand from the porcelain parse above, so there is no
+    # branch re-read here, and the current-checkout guard above already rules
+    # out git's own "refuses to remove the tree it is standing in" case.
+    #
+    # git also refuses a SINGLE --force against a worktree its own lock still
+    # marks `locked ... initializing` -- what a session killed mid-`git
+    # worktree add` leaves behind. Only a double --force clears that lock, so
+    # step 1 retries with one before falling back to prune: a reaper that
+    # cannot clear a wedged entry is a reaper that silently stops reaping it,
+    # forever.
+    if ! git -C "$wt_main" worktree remove --force "$wt_path" >/dev/null 2>&1; then
+      git -C "$wt_main" worktree remove --force --force "$wt_path" >/dev/null 2>&1 || true
+      if [ -e "$wt_path" ]; then
+        git -C "$wt_main" worktree prune >/dev/null 2>&1 || true
+        # Idempotent: an already-gone path is success; anything else is left
+        # alone rather than force-deleted.
+        [ -e "$wt_path" ] && continue
+      fi
+    fi
+    # Never the default branch.
+    if [ "$wt_branch" != "main" ] && [ "$wt_branch" != "master" ]; then
+      git -C "$wt_main" branch -D "$wt_branch" >/dev/null 2>&1 || true
+    fi
+    # Walk up only within $wt_base, stopping at the first non-empty dir.
+    wt_parent="$(dirname "$wt_path")"
+    while [ "$wt_parent" != "$wt_base" ] && [ "${wt_parent#"$wt_base"/}" != "$wt_parent" ]; do
+      rmdir "$wt_parent" 2>/dev/null || break
+      wt_parent="$(dirname "$wt_parent")"
+    done
+  done < <(
+    # `worktree` line: substr, not $2 -- porcelain does not quote the path,
+    # so a $2 split would truncate at the first space in the path.
+    git -C "$wt_main" worktree list --porcelain 2>/dev/null | awk '
+      $1=="worktree"{ p=substr($0,10); b="" }
+      $1=="branch"{b=$2; sub(/^refs\/heads\//,"",b)}
+      $1==""{ if(p!="") print p "\t" b; p=""; b="" }
+      END{ if(p!="") print p "\t" b }
+    '
+  )
 fi
 
 # --- 9. Off-pattern outlier residue ----------------------------------------
