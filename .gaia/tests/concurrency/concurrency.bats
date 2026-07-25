@@ -829,25 +829,39 @@ test("adds two numbers c407", () => {
 }
 
 @test "C5-03: main-only flows refuse out loud from a worktree" {
-  # Proxy note (see the return): release/audit/wiki flows are CLI/skill-
-  # driven (network, gh, multi-agent orchestration) and impractical to run
-  # live in a bats fixture. This drives the real, already-correct predicate
-  # (gaia_is_linked_worktree, proven by main-root-lib.sh's own conformance
-  # suite) against a real linked worktree, then asserts the fact that decides
-  # this scenario: does any main-only entry point actually call it to refuse?
+  # Proxy note: the release/audit/wiki flows are CLI/skill-driven (network,
+  # gh, multi-agent orchestration) and impractical to run live in a bats
+  # fixture. What IS run live is the shipped refusal itself, against a real
+  # linked worktree -- the helper is the whole refusal, so the only thing
+  # proxied here is the flow that calls it, not the message it prints.
   MAIN="$(gaia_new_main gaia-c503-main)"
-  gaia_copy_real "$MAIN" .gaia/scripts/main-root-lib.sh
-  gaia_commit_all "$MAIN" "add resolver"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/main-only-lib.sh
+  gaia_commit_all "$MAIN" "add resolver + refusal helper"
   B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
+  # The fixture really is a linked worktree, before anything is asserted about
+  # what a flow does from inside one.
   run run_in "$B" -- bash "$MAIN/.gaia/scripts/main-root-lib.sh" --is-worktree
   [ "$status" -eq 0 ]
 
-  # Target: a main-only flow triggered from a worktree refuses out loud with
-  # a named reason, which requires some entry point to actually consult the
-  # resolver's own worktree predicate. Today no release/wiki entry point
-  # calls it at all (this grep finds nothing), so none can be refusing on it.
-  run grep -rl "gaia_is_linked_worktree" \
+  # Target, part 1 -- the refusal is real and it is LOUD. It refuses (non-zero),
+  # names the tree it refused from AND the main checkout to use instead, and
+  # hands back the command to get there. A refusal that does not say where to go
+  # is the silent-death shape this tranche exists to reject.
+  run run_in "$B" -- bash -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
+  [ "$status" -eq 1 ]
+  grep -qxF -- "/gaia-release must run from the main checkout, not a worktree." <<<"$output"
+  grep -qxF -- "Worktree:       $B" <<<"$output"
+  grep -qxF -- "Main checkout:  $MAIN" <<<"$output"
+  grep -qxF -- "Run \`cd $MAIN\` then re-invoke /gaia-release." <<<"$output"
+
+  # Target, part 2 -- a main-only entry point actually CALLS it, so part 1's
+  # refusal is reachable rather than orphaned. Anchored to the start of a line:
+  # a prose mention of the helper's name cannot satisfy this, only an
+  # invocation can.
+  run grep -rlE '^[[:space:]]*gaia_refuse_if_worktree "' \
     "$GAIA_REPO_ROOT_REAL/.gaia/cli/src/wiki" \
     "$GAIA_REPO_ROOT_REAL/.gaia/cli/src/release" \
     "$GAIA_REPO_ROOT_REAL/.claude/commands/gaia-release.md"
