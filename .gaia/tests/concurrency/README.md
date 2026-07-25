@@ -117,6 +117,22 @@ design requires.
 Between them the two numbers cover all eight steps: this meter from step 2 through its
 surface and lifecycle tranches at 5–6, the deletion meter from step 3 through 8.
 
+## What this meter cannot see: the shell an agent actually uses
+
+Every scenario here runs under bats, which runs under bash. Some of what GAIA ships is
+not invoked that way: a hook registered in `.claude/settings.json` runs as
+`bash <script>`, but a markdown block an agent executes through its shell tool runs
+under that machine's login shell, which on a stock Mac is zsh. A green row therefore
+says nothing about whether the same code works where an agent runs it.
+
+This is not hypothetical. `C5-03` drove the real main-only refusal from a real worktree
+and was green while all three of those flows failed to refuse at all under zsh, because
+the helper they source used `BASH_SOURCE` and `declare -F`, which mean nothing and
+something wrong there respectively. Milestone 5's own gate — a sweep that fires each
+channel rather than running this suite — is what found it. Where a surface is invoked
+through an agent's shell, its conformance suite carries the shell-specific case
+(`.gaia/scripts/tests/main-only-lib.bats` does), because this meter structurally cannot.
+
 ---
 
 ## The scenarios
