@@ -49,10 +49,10 @@
 #   scope=="shared" registry entry's own top-level linkable unit (its own
 #   `path`, trimmed, for a match=="prefix" entry; otherwise its `path`'s
 #   first "/"-segment), de-duplicated in first-occurrence order. Derived
-#   from the registry, never hardcoded; today this is exactly the five
+#   from the registry, never hardcoded; today this is exactly the six
 #   link-worktree.sh already symlinks: setup-state.json, cache/shared,
-#   audit, telemetry, debt. Prints nothing and returns 1 when the registry
-#   cannot be read (see gaia_registry_path).
+#   audit, telemetry, debt, harden. Prints nothing and returns 1 when the
+#   registry cannot be read (see gaia_registry_path).
 #
 # gaia_registry_main_only_dirs
 #   Prints, one per line in a STABLE order, the .gaia/local-relative top-level

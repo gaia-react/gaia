@@ -152,12 +152,12 @@
       "path": "harden/declines.json",
       "match": "exact",
       "kind": "file",
-      "scope": "per-tree",
-      "keyed_by": null,
-      "why": "An operator's declines on this checkout's hardening candidates. Forks with the worktree today, a defect since a decline dies with the tree; classified at its per-tree target with the persistence fix deferred to a later phase.",
+      "scope": "shared",
+      "keyed_by": "singleton per-clone ledger keyed internally by finding_class; atomic replace without a cross-tree lock, so simultaneous writes can drop one decline and re-offer that candidate",
+      "why": "The operator's declines on the machine's hardening candidates. The candidate set is the repo's merged-PR window and the nudge it feeds is machine-scoped, so one copy per clone is the only scope at which a decline can suppress what it declined. Shared through the registry-driven symlink, so a decline recorded in a linked worktree lands in the main checkout's copy and survives that worktree's removal.",
       "writer": "code",
       "reaped_by": null,
-      "source": "SPEC-061 §per-tree"
+      "source": "SPEC-061 §shared"
     },
     {
       "id": "specs-main",

@@ -11,6 +11,9 @@ import {z} from 'zod';
  * corrupt or hand-edited file fails loud (the discriminated `read*` result
  * carries `status: 'malformed'`) rather than being silently treated as
  * empty, which would wrongly re-surface or wrongly suppress a candidate.
+ * The path is shared across the clone's worktrees by the state registry's
+ * symlink, so a decline recorded from a linked worktree lands in the main
+ * checkout's copy and survives that worktree's removal.
  */
 import {existsSync, mkdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';

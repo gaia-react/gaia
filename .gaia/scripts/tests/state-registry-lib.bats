@@ -135,15 +135,16 @@ run_in_repo() {
 
 # ========== gaia_registry_linkable_paths ==========
 
-@test "gaia_registry_linkable_paths: prints exactly the 5 linkable paths in stable order" {
+@test "gaia_registry_linkable_paths: prints exactly the 6 linkable paths in stable order" {
   run_in_repo gaia_registry_linkable_paths
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 5 ]
+  [ "${#lines[@]}" -eq 6 ]
   [ "${lines[0]}" = "setup-state.json" ]
   [ "${lines[1]}" = "cache/shared" ]
   [ "${lines[2]}" = "audit" ]
   [ "${lines[3]}" = "telemetry" ]
   [ "${lines[4]}" = "debt" ]
+  [ "${lines[5]}" = "harden" ]
 }
 
 # ========== gaia_registry_main_only_dirs ==========
@@ -336,7 +337,7 @@ run_in_repo() {
     "worthiness-ledger/worthiness.jsonl:per-tree"
     "forensics/2026-07-23-x.md:per-tree"
     "handoff/HANDOFF-2026-07-23-x.md:per-tree"
-    "harden/declines.json:per-tree"
+    "harden/declines.json:shared"
     "specs/ledger.json:main-only"
     "plans/ledger.json:main-only"
     "cache/gh-artifact-pr.treeA.json:main-only"

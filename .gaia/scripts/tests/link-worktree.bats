@@ -67,6 +67,7 @@ run_in() {
   [ -L "$LINKED/.gaia/local/audit" ]
   [ -L "$LINKED/.gaia/local/telemetry" ]
   [ -L "$LINKED/.gaia/local/debt" ]
+  [ -L "$LINKED/.gaia/local/harden" ]
 
   # Targets are absolute paths into MAIN.
   [ "$(readlink "$LINKED/.gaia/local/setup-state.json")" = "$MAIN/.gaia/local/setup-state.json" ]
@@ -74,6 +75,7 @@ run_in() {
   [ "$(readlink "$LINKED/.gaia/local/audit")" = "$MAIN/.gaia/local/audit" ]
   [ "$(readlink "$LINKED/.gaia/local/telemetry")" = "$MAIN/.gaia/local/telemetry" ]
   [ "$(readlink "$LINKED/.gaia/local/debt")" = "$MAIN/.gaia/local/debt" ]
+  [ "$(readlink "$LINKED/.gaia/local/harden")" = "$MAIN/.gaia/local/harden" ]
 
   # Each "linked:" log appears once on stderr.
   [[ "$output" == *"linked: $LINKED/.gaia/local/setup-state.json"* ]]
@@ -81,6 +83,7 @@ run_in() {
   [[ "$output" == *"linked: $LINKED/.gaia/local/audit"* ]]
   [[ "$output" == *"linked: $LINKED/.gaia/local/telemetry"* ]]
   [[ "$output" == *"linked: $LINKED/.gaia/local/debt"* ]]
+  [[ "$output" == *"linked: $LINKED/.gaia/local/harden"* ]]
 }
 
 # ---------- 1b. UAT-008: no config for the removed feature ----------
@@ -88,12 +91,13 @@ run_in() {
   run run_in "$LINKED"
   [ "$status" -eq 0 ]
 
-  # Exhaustive: exactly the five expected shared-state entries land under
-  # .gaia/local/. A sixth, retired file entry never appears, symlink or not.
+  # Exhaustive: exactly the six expected shared-state entries land under
+  # .gaia/local/. A seventh, retired file entry never appears, symlink or not.
   entries="$(find "$LINKED/.gaia/local" -maxdepth 1 -mindepth 1 | sort)"
   expected="$LINKED/.gaia/local/audit
 $LINKED/.gaia/local/cache
 $LINKED/.gaia/local/debt
+$LINKED/.gaia/local/harden
 $LINKED/.gaia/local/setup-state.json
 $LINKED/.gaia/local/telemetry"
   [ "$entries" = "$expected" ]
@@ -223,6 +227,7 @@ $LINKED/.gaia/local/telemetry"
   [ -d "$MAIN/.gaia/local/telemetry" ]
   [ -d "$MAIN/.gaia/local/cache/shared" ]
   [ -d "$MAIN/.gaia/local/debt" ]
+  [ -d "$MAIN/.gaia/local/harden" ]
 
   # Symlinks resolve (no dangling).
   [ -L "$LINKED/.gaia/local/cache/shared" ]
@@ -233,6 +238,8 @@ $LINKED/.gaia/local/telemetry"
   [ -d "$LINKED/.gaia/local/telemetry" ]
   [ -L "$LINKED/.gaia/local/debt" ]
   [ -d "$LINKED/.gaia/local/debt" ]
+  [ -L "$LINKED/.gaia/local/harden" ]
+  [ -d "$LINKED/.gaia/local/harden" ]
 }
 
 # ---------- 7. Symlink-permission failure (simulated) ----------
@@ -286,6 +293,23 @@ FAKE
   [ "$(cat "$MAIN/.gaia/local/telemetry/cost.jsonl")" = '{"action":"execute","total":42}' ]
 }
 
+# ---------- 9b. Harden decline ledger durability (write-through to main) ----------
+@test "harden declines: a decline written on the worktree side lands in the main checkout" {
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+
+  # The harden dir is a symlink into MAIN.
+  [ -L "$LINKED/.gaia/local/harden" ]
+  [ "$(readlink "$LINKED/.gaia/local/harden")" = "$MAIN/.gaia/local/harden" ]
+
+  # A decline written on the worktree side is visible in the main checkout, so
+  # an operator decline made in a linked worktree suppresses the candidate
+  # everywhere and survives the worktree's removal.
+  printf '%s\n' '{"version":1,"declines":[{"finding_class":"x"}]}' > "$LINKED/.gaia/local/harden/declines.json"
+  [ -f "$MAIN/.gaia/local/harden/declines.json" ]
+  [ "$(cat "$MAIN/.gaia/local/harden/declines.json")" = '{"version":1,"declines":[{"finding_class":"x"}]}' ]
+}
+
 # ---------- 10. Fresh worktree shares root .env files, skips .env.example ----------
 @test "env files: fresh worktree shares .env and .env.local, skips .env.example" {
   printf 'ENV_VAR=main' > "$MAIN/.env"
@@ -319,6 +343,7 @@ FAKE
   [ -L "$LINKED/.gaia/local/audit" ]
   [ -L "$LINKED/.gaia/local/telemetry" ]
   [ -L "$LINKED/.gaia/local/debt" ]
+  [ -L "$LINKED/.gaia/local/harden" ]
 }
 
 # ---------- 12. Idempotent re-run: env symlink logs "already-linked" ----------
@@ -402,7 +427,8 @@ FAKE
 cache/shared
 audit
 telemetry
-debt"
+debt
+harden"
 
   [ "$linked_joined" = "$registry_paths" ]
   [ "$registry_paths" = "$expected" ]
