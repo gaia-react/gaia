@@ -164,7 +164,7 @@ mis-scoped.
 |---|---|---|---|---|
 | **C5-01** | the statusline renders in a worktree | direct | 5.1 statusline | Run from worktree B (with B's `workspace.current_dir`), the statusline renders B's per-tree segment and is not blanket-suppressed; the right side is not dark, and no segment shows main's or another tree's state. (Name changed and mechanism re-pointed at the shipped resolver — see [Published assertion changes](#published-assertion-changes).) |
 | **C5-02** | wiki hooks are live in a worktree | direct | 5.2 wiki hooks | Each of the four `[ -d .git ]` wiki hooks, fired from inside a worktree, either fires correctly or refuses out loud — none is silently dead (the `[ -d .git ]` guard no longer reads a linked worktree as "no repo"). |
-| **C5-03** | main-only flows refuse out loud from a worktree | proxy | 5.3 loud-refusal | A main-only flow triggered from a worktree refuses out loud with a named reason, rather than running against the wrong tree or dying silently. A correct loud refusal is a pass. The shipped refusal helper is **driven live** from a real linked worktree and must refuse non-zero while naming the tree it refused from, the main checkout to use instead, and the command to get there; a main-only entry point must also invoke it, so that refusal is reachable rather than orphaned. **Proxy:** only the calling flow is proxied — the release/audit/wiki flows are network + `gh` + multi-agent and impractical to drive in a fixture — never the refusal itself. (Assertion rewritten — see [Published assertion changes](#published-assertion-changes).) |
+| **C5-03** | main-only flows refuse out loud from a worktree | proxy | 5.3 loud-refusal | A main-only flow triggered from a worktree refuses out loud with a named reason, rather than running against the wrong tree or dying silently. A correct loud refusal is a pass. The shipped refusal helper is **driven live** from a real linked worktree and must refuse non-zero while naming the tree it refused from, the main checkout to use instead, and the command to get there; a main-only entry point must also invoke it, so that refusal is reachable rather than orphaned. **Proxy:** only the calling flow is proxied, the release/audit/wiki flows are network + `gh` + multi-agent and impractical to drive in a fixture, never the refusal itself. (Assertion rewritten, see [Published assertion changes](#published-assertion-changes).) |
 | **C5-04** | a machine-scoped nudge is not mis-scoped | direct | 5.3 / 5.4 nudges | A machine-scoped nudge fires once for the machine, not once per worktree; firing from every worktree is the mis-scoped defect and fails the scenario. |
 
 ### Tranche 6 — LIFECYCLE (green at harness-native creation + session-start provisioning)
@@ -200,14 +200,14 @@ never moves for a repair** — a scenario is repaired, never subtracted. It move
 
 **The frozen assertion could not be satisfied by a correct implementation of the task it
 gated.** It grepped three entry-point paths for the literal string `gaia_is_linked_worktree`.
-Task 5.3's correct shape is **one shared refusal helper** — `gaia_refuse_if_worktree` in
-`.gaia/scripts/main-only-lib.sh` — that every main-only flow calls instead of each one
+Task 5.3's correct shape is **one shared refusal helper**, `gaia_refuse_if_worktree` in
+`.gaia/scripts/main-only-lib.sh`, that every main-only flow calls instead of each one
 open-coding the predicate. Under that design no entry point names the predicate: they name the
 helper, and the helper names the predicate. So the only ways to turn the old assertion green
 were to decline to share the helper, or to write a sentence of documentation containing the
 symbol. **The second is what happened first, and it was caught here rather than shipped:** the
-scenario was green, and rewording one prose sentence — touching no code and changing no
-behavior — turned it red. An assertion a documentation edit can flip is measuring the
+scenario was green, and rewording one prose sentence, touching no code and changing no
+behavior, turned it red. An assertion a documentation edit can flip is measuring the
 documentation.
 
 **What it measures now, in two parts.** The shipped helper is **driven live** from a real
@@ -218,14 +218,14 @@ cannot satisfy it and only a call can. Part 1 proves the refusal is real and lou
 proves it is reachable rather than orphaned.
 
 **The proxy shrank, which is the other reason this is a repair and not a rewrite.** The
-scenario still cannot drive `/gaia-release` end to end — it is network + `gh` + multi-agent.
+scenario still cannot drive `/gaia-release` end to end, it is network + `gh` + multi-agent.
 But the refusal is no longer proxied at all, only the flow that calls it. The old version
 proxied the entire thing with a grep.
 
 **Non-vacuity, proven by three independent mutations of the SHIPPED code**, each reverted and
 each file verified byte-identical by checksum afterwards. Deleting only the call line from
 `.claude/commands/gaia-release.md` **while leaving the prose mention of the helper's name in
-place** reds it — the direct proof that the hole this repair closes is closed. Making the
+place** reds it, the direct proof that the hole this repair closes is closed. Making the
 helper omit the "Main checkout:" line reds it. Making the helper allow instead of refuse reds
 it.
 
