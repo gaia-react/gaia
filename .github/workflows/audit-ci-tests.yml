@@ -111,6 +111,14 @@ jobs:
               # job having run the suite zero times.
               - '.husky/**'
               - '.gaia/scripts/**'
+              # check-main-root-derivation.bats (.gaia/scripts/tests/) scans
+              # tracked source for a hand-rolled main-checkout derivation, and
+              # settings.json is one of the files that scan reads: hook commands
+              # live there as inline shell. It matches no other pattern here, so
+              # without this line a change that inlines a derivation into
+              # settings.json alone would skip every bats step and green the job
+              # having run that scan zero times.
+              - '.claude/settings.json'
               # shell-lint.bats (.gaia/scripts/tests/) asserts the wiring of the
               # local shell gate .gaia/tests/shell-lint.sh -- its .husky/*
               # discovery pass and its lint-hook-array-guard.sh invocation. The
