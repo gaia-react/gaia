@@ -151,6 +151,7 @@ After a new GAIA release is announced (watch releases on `gaia-react/gaia`). Cad
 ## See also
 
 - [[Quality Gate]]: run the gate after the `update-gaia` skill finishes and before committing.
+- [[Worktrees]]: the shared-state model `.gaia/local/cache/shared/update-gaia/` follows.
 
 ## Communications Guidance (User-Facing Docs)
 

@@ -26,18 +26,18 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `audit/KNOWLEDGE-*.md` | [[GAIA Audit]] | ephemeral | self-pruned by the next applied run |
 | `worthiness-ledger/worthiness.jsonl` | worthiness check | live | append-only |
 | `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |
-| `debt/` | debt sentinel | live | symlinked to the main worktree's copy so a debt fix merged from a linked worktree arms the main checkout's count cache and sentinel; recomputed |
+| `debt/` | debt sentinel | live | one copy shared by every tree, so a debt fix merged from a linked worktree arms the main checkout's count cache and sentinel; recomputed |
 | `cache/` | [[GAIA Spec]] / gate sessions | ephemeral | reaped on SPEC merge/close and the merged-SPEC age reap; stale entries age-swept |
-| `cache/shared/` | release / statusline (`update-gaia`, `check-updates.sh`) | live | symlinked to the main worktree's copy so every linked worktree shares one copy; self-pruned by its owners (tarball prune on update) |
+| `cache/shared/` | release / statusline (`update-gaia`, `check-updates.sh`) | live | one copy every linked worktree reads; self-pruned by its owners (tarball prune on update) |
 | `specs/` | [[GAIA Spec]] | live | a merged or abandoned folder is kept at merge/abandonment; age-reaped after the retention window either way |
 | `specs/ledger.json` | [[GAIA Spec]] | live | per-machine number cache |
 | `plans/PLAN-NNN/` | [[GAIA Plan]] | live | a merged folder is kept at merge (reduced to `SUMMARY.md` + `cost.json`, `RUNNING` cleared); an abandoned folder is kept as-is at abandonment; both age-reaped after the retention window |
 | `plans/ledger.json` | [[GAIA Plan]] | live | per-machine number cache |
 | `handoff/`, `forensics/` | [[GAIA Handoff]] / [[Forensics]] | live | drop zones |
 | `telemetry/` | [[Cost Data Contract]] | live | an append-only cost ledger (`cost.jsonl`) |
-| `harden/declines.json` | `/gaia-harden` | live | symlinked to the main worktree's copy so an operator decline made in a linked worktree suppresses the candidate everywhere and survives the worktree's removal |
+| `harden/declines.json` | `/gaia-harden` | live | one copy shared by every tree, so an operator decline made in a linked worktree suppresses the candidate everywhere and survives the worktree's removal |
 
-Worktree creation symlinks exactly six `.gaia/local/` paths out of a linked worktree and into the main checkout, so that state is shared rather than forked: `setup-state.json`, `cache/shared/`, `audit/`, `telemetry/`, `debt/`, and `harden/`. It also symlinks a second, disjoint set: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't rows in the table above.
+A linked worktree's `.gaia/local` is a single symlink to the main checkout's `.gaia/local`, so every path in the table above resolves to one copy rather than forking per tree. `.gaia/state-registry.json` declares each entry's scope, and an entry that has to stay private to one tree gets that isolation from a tree key in its own path rather than from a directory of its own; see [[Worktrees]]. The same linking covers a second, disjoint set: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't rows in the table above.
 
 A **live** entry is load-bearing state that tooling reads. An **ephemeral** entry is consumed once and then orphaned; its owner is meant to prune it, and the janitor backstops what the owner misses.
 

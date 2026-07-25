@@ -313,3 +313,5 @@ Add a project-specific check class by appending a new numbered section under [Ch
 ## See also
 
 [[Wiki Management]]: `gaia wiki dead-paths`, `gaia wiki orphans`, and the other primitives the wiki-fitness category invokes.
+
+[[Worktrees]]: the per-tree identity model behind the `WorktreeCreate`/`WorktreeRemove` hook events and GAIA's own worktree provisioning, which rides `SessionStart`/`PostToolUse` instead.

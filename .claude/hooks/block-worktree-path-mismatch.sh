@@ -86,14 +86,6 @@ source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
 # shellcheck source=/dev/null
 source "$gaia_scripts/state-registry-lib.sh" 2>/dev/null || exit 0
 
-# git with the three repository-discovery overrides stripped, so every answer
-# here is derived from on-disk layout alone (mirrors the resolver's own
-# _gaia_git). An ambient GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR from a calling git
-# hook would otherwise stand in for the checkout's own layout.
-_wg_git() {
-  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR git "$@"
-}
-
 # The acting agent's working directory: the payload cwd when it is absolute and
 # resolves to a checkout, the hook's process cwd otherwise. The absolute check is
 # the load-bearing gate (a leading dash would option-parse inside `git -C`'s and
@@ -101,7 +93,7 @@ _wg_git() {
 # (e.g. /tmp) to the fallback rather than adopting it as a tree.
 payload_cwd=$(jq -r '.cwd // empty' <<<"$payload")
 source_cwd="$PWD"
-if [[ "$payload_cwd" == /* ]] && _wg_git -C "$payload_cwd" rev-parse --show-toplevel >/dev/null 2>&1; then
+if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
   source_cwd="$payload_cwd"
 fi
 
@@ -123,8 +115,7 @@ main_root="$(gaia_resolve_main_root "$source_cwd")" || exit 0
 # against. It is resolved physically, as main_root and file_root already are, so
 # the roots stay on the same footing and a symlinked path cannot make a same-tree
 # write look cross-tree or the reverse.
-current_root="$(_wg_git -C "$source_cwd" rev-parse --show-toplevel 2>/dev/null)" || exit 0
-current_root="$(CDPATH='' cd "$current_root" 2>/dev/null && pwd -P)" || exit 0
+current_root="$(gaia_resolve_tree_root "$source_cwd")" || exit 0
 [[ -n "$current_root" ]] || exit 0
 
 target_dir=$(dirname -- "$file_path")
@@ -202,9 +193,7 @@ esac
 # The target's own checkout, physically resolved so the comparison against the
 # physically-resolved current_root is symmetric: a symlinked path cannot make a
 # same-tree write look cross-tree, or the reverse.
-file_root="$(_wg_git -C "$target_dir" rev-parse --show-toplevel 2>/dev/null)" || exit 0
-[[ -n "$file_root" ]] || exit 0
-file_root="$(CDPATH='' cd "$file_root" 2>/dev/null && pwd -P)" || exit 0
+file_root="$(gaia_resolve_tree_root "$target_dir")" || exit 0
 [[ -n "$file_root" ]] || exit 0
 
 # The target resolves into a checkout other than the acting tree: the main

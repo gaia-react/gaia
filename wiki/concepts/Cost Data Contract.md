@@ -11,7 +11,7 @@ tags: [concept, cost, data-contract, audit]
 
 `.gaia/local/telemetry/cost.jsonl` is a versioned, self-describing cost ledger: one JSON record per `/gaia-spec` run, `/gaia-plan` run, KICKOFF-execution run, or maintenance-command run (`/gaia-audit`, `/gaia-debt`, `/gaia-fitness`, `/gaia-forensics`, `/gaia-harden`, `/gaia-wiki`), durable enough for an external dashboard to read directly. `.gaia/scripts/token-tally.sh` is the single source of truth for the emitted schema, this page documents what it builds, not the other way around; when the two disagree, the script wins.
 
-The ledger lives at `.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout (never a linked worktree's own `.gaia/local/`) by `.gaia/scripts/ledger-path-lib.sh`'s `gaia_resolve_ledger_path`, so a worktree-run tally still appends to the one ledger the rest of the project's history lives in. It is gitignored, machine-local, and append-only.
+The ledger lives at `.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout by `.gaia/scripts/ledger-path-lib.sh`'s `gaia_resolve_ledger_path`, which calls the one shared main-checkout resolver rather than deriving the root itself (see [[Worktrees]]), so a worktree-run tally still appends to the one ledger the rest of the project's history lives in. It is gitignored, machine-local, and append-only.
 
 ## Record fields (schema_version 1)
 
@@ -65,7 +65,7 @@ Each of the six maintenance commands (`/gaia-audit`, `/gaia-debt`, `/gaia-fitnes
 
 The five prose commands and the `/gaia-wiki` chain pass the artifact through directly: each reads the URL its own creation command printed and hands the type, number, and repo straight to the tally. A record therefore names the artifact **that run** produced, never one produced by a manually run command, a sibling session, or an interleaved plan execution. `/gaia-forensics` is the one command whose pass-through can name an issue rather than a pull request (`type: "issue"`, sourced from the issue reference it already persists to its own report); the other five commands, and plan execution's breadcrumb below, only ever produce `type: "pr"`.
 
-Plan execution is the one surface with no agent in the loop, because its rows come from a `PreToolUse` hook on `git commit` / `git push`. A `PostToolUse` hook on `gh pr create` writes a breadcrumb keyed by session, branch, and creation time, under the main checkout's cache (resolved through the git common directory, so a run inside a linked worktree still finds it). The execute tally reads the breadcrumb without consuming it, so every cumulative commit on the branch re-reads the same file and the terminal (`final: true`) row carries the pull request. No network call is added to the commit path.
+Plan execution is the one surface with no agent in the loop, because its rows come from a `PreToolUse` hook on `git commit` / `git push`. A `PostToolUse` hook on `gh pr create` writes a breadcrumb keyed by session, branch, and creation time, under the main checkout's cache (located through the shared main-checkout resolver, so a run inside a linked worktree still finds it). The execute tally reads the breadcrumb without consuming it, so every cumulative commit on the branch re-reads the same file and the terminal (`final: true`) row carries the pull request. No network call is added to the commit path.
 
 Two preconditions are **limits on this, not guarantees**:
 

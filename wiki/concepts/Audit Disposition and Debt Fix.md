@@ -188,3 +188,4 @@ The following are intentionally out of scope for the current implementation and 
 - [[Code Review Audit Agent]]: the producer; classifies scope, disposes out-of-scope findings, and writes the disposition-ledger sidecar.
 - [[PR Merge Workflow]]: the disposition gate is the fourth marker precondition; the backstop hook gates `gh pr merge`.
 - [[Policy-Memory Loop]]: the sibling `finding_class` consumer; hardens recurring forms while `/gaia-debt` fixes concrete instances.
+- [[Worktrees]]: the per-tree/shared state model that `.gaia/local/debt/`'s shared scope and the worktree-mode fix mechanics both follow.
