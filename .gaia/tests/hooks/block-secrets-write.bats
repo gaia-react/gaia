@@ -124,6 +124,28 @@ assert_allowed() {
   assert_denied
 }
 
+# --- The other allowlist arms mean "wholly" too ---
+#
+# The command-substitution arm is not the only one that has to resist a splice.
+# `<…>` had the identical defect (`.` matches `>`), and the `your-` / `example`
+# arms matched a prefix with nothing anchoring the tail, so any value merely
+# *starting* like a placeholder was allowed whatever followed it.
+
+@test "a literal value between two angle-bracket placeholders is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<a>sk-live-9f3a1c4e8b7d2064<b>')"
+  assert_denied
+}
+
+@test "a literal value carrying an example- placeholder prefix is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example-sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a literal value carrying a your- placeholder prefix is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'your-key-sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
 # --- The existing allowlist arms still allow ---
 
 @test "an empty value is allowed" {
@@ -149,6 +171,57 @@ assert_allowed() {
 @test "content with no secret shape at all is allowed" {
   run_hook_write "export function add(a, b) { return a + b }"
   assert_allowed
+}
+
+# The tightened arms have to stay usable: these are the placeholder values the
+# arms exist to admit, and the ones a too-eager anchor would take down with the
+# splices above.
+
+@test "an angle-bracket placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<your-key-here>')"
+  assert_allowed
+}
+
+@test "a your- placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'your-api-key-here')"
+  assert_allowed
+}
+
+@test "a bare example placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example')"
+  assert_allowed
+}
+
+@test "an example domain placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example.com')"
+  assert_allowed
+}
+
+# The placeholder arms require a separator BETWEEN segments. Making it optional
+# would let one unbroken run be read as several short ones, which is the bound
+# defeating itself.
+
+@test "an unbroken run behind a placeholder prefix cannot be read as segments" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'example550e8400e29b41d4a716446655440000')"
+  assert_denied
+}
+
+# Segmented placeholders pass at any length; an unbroken run does not. A length
+# cap gets both of these backwards, which is why the arms bound the segment.
+
+@test "a long but segmented your- placeholder is allowed" {
+  run_hook_write "$(printf 'GITHUB_TOKEN=%s\n' 'your-github-personal-access-token')"
+  assert_allowed
+}
+
+@test "an underscore-segmented your_ placeholder is allowed" {
+  run_hook_write "$(printf 'SUPABASE_ANON_KEY=%s\n' 'your_supabase_anon_key_here')"
+  assert_allowed
+}
+
+@test "a short unbroken run behind a placeholder prefix is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' 'your-aB3xK9pQ7zR2wL5t')"
+  assert_denied
 }
 
 # --- A computed value is allowed: the source line holds no literal secret ---
