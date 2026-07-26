@@ -212,12 +212,29 @@ fi
 # a member's own content digest, computed next.
 tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
 
-# The audited working root, resolved to the MAIN checkout: every marker
-# clearance_member_cleared builds a path for is main-anchored shared state
-# (.gaia/state-registry.json scope=shared, the symlinked audit/ store), not
-# a property of whichever tree this hook happens to run in. Sourced from
-# this hook's own on-disk location, matching the sibling lib-loads above.
-# Falls back to a bare toplevel query, then pwd, when the resolver is
+# TWO roots, because this gate spans two different questions and one root
+# cannot answer both.
+#
+#   root       WHERE a clearance lives. Resolved to the MAIN checkout: every
+#              marker clearance_member_cleared builds a path for is
+#              main-anchored shared state (.gaia/state-registry.json
+#              scope=shared, the symlinked audit/ store), not a property of
+#              whichever tree this hook happens to run in. Sourced from this
+#              hook's own on-disk location, matching the sibling lib-loads
+#              above.
+#   tree_root  WHAT a clearance attests to. The ACTING tree: the content
+#              being merged is this tree's HEAD, not main's. Every writer
+#              agrees -- the five agent definitions pass
+#              `--root "$(git rev-parse --show-toplevel)"` to
+#              audit-write-clearance.sh, and resolve-audit-spawn.sh and
+#              audit-stamp-trailer.sh derive the same way -- so digesting
+#              main's HEAD here would compare a marker against content
+#              nobody is merging. From a linked worktree the two trees
+#              differ, no marker could ever match, and the gate's own remedy
+#              text ("re-spawn the agents") would rewrite the same
+#              non-matching marker forever.
+#
+# Both fall back to a bare toplevel query, then pwd, when the resolver is
 # unavailable or fails -- the same fail-open direction the original
 # CWD-anchored derivation had.
 root=""
@@ -226,13 +243,15 @@ if command -v gaia_resolve_main_root >/dev/null 2>&1; then
 fi
 [ -n "$root" ] || root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+tree_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
 # Parse the roster ONCE per run (never once per path); the classifier module
 # was sourced above. audit_digests_all below re-inits the same state
 # internally (its own single-walk contract), so this call is redundant with
 # it in effect but kept explicit: check_out_of_scope_pr() and
 # check_self_mod_only_update_pr() run before any digest-dependent path in a
 # future edit would still find the roster parsed.
-audit_scope_init "$root"
+audit_scope_init "$tree_root"
 
 # Compute every roster member's content digest in ONE walk (directive
 # PERF-001): audit_digests_all parses the roster, walks the tree once, and
@@ -243,7 +262,7 @@ audit_scope_init "$root"
 # same tool-degradation fail-closed posture already applied to an unloadable
 # classifier above), and this gate must never proceed with a partial or empty
 # digest set.
-_digest_batch="$(audit_digests_all "$root" 2>/dev/null)" || _digest_batch=""
+_digest_batch="$(audit_digests_all "$tree_root" 2>/dev/null)" || _digest_batch=""
 if [ -z "$_digest_batch" ]; then
   jq -n --arg r "PR merge gate: cannot derive per-member content digests for HEAD ${sha:0:12} (audit_digests_all failed or returned nothing). This usually means a missing sha256 tool (sha256sum / shasum -a 256), a git failure, or a corrupted checkout. Every Code Audit Team marker is keyed to a member's content digest, so this gate denies rather than match against an empty or partial digest. Restore the missing tool/checkout and retry." '{
     hookSpecificOutput: {

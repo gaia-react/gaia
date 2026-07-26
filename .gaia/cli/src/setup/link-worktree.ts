@@ -339,10 +339,10 @@ const resolveWorktreeRoots = (
 
   try {
     mainRoot = resolveMainWorktreeRoot(canonicalCwd);
-  } catch {
+  } catch (error) {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia setup link-worktree must run inside a git repository',
+      message: `gaia setup link-worktree must run inside a git repository: ${error instanceof Error ? error.message : String(error)}`,
       subcommand: 'setup link-worktree',
     });
 
@@ -357,10 +357,10 @@ const resolveWorktreeRoots = (
     const worktreeRoot = resolveRepoRoot(canonicalCwd);
 
     return {mainRoot, worktreeRoot};
-  } catch {
+  } catch (error) {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia setup link-worktree must run inside a git repository',
+      message: `gaia setup link-worktree must run inside a git repository: ${error instanceof Error ? error.message : String(error)}`,
       subcommand: 'setup link-worktree',
     });
 

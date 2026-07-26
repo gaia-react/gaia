@@ -472,10 +472,10 @@ const runApply = (
 
   try {
     repoRoot = resolveMainWorktreeRoot(cwd);
-  } catch {
+  } catch (error) {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia sandbox apply must run inside a git repository',
+      message: `gaia sandbox apply must run inside a git repository: ${error instanceof Error ? error.message : String(error)}`,
       subcommand: 'sandbox apply',
     });
 
@@ -546,10 +546,10 @@ const runRecord = (
 
   try {
     repoRoot = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
-  } catch {
+  } catch (error) {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia sandbox record must run inside a git repository',
+      message: `gaia sandbox record must run inside a git repository: ${error instanceof Error ? error.message : String(error)}`,
       subcommand: 'sandbox record',
     });
 
@@ -620,10 +620,10 @@ const runStatus = (
 
   try {
     repoRoot = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
-  } catch {
+  } catch (error) {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia sandbox status must run inside a git repository',
+      message: `gaia sandbox status must run inside a git repository: ${error instanceof Error ? error.message : String(error)}`,
       subcommand: 'sandbox status',
     });
 

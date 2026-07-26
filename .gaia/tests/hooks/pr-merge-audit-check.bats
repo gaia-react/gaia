@@ -849,3 +849,108 @@ assert_not_in_set() {
   run_merge_hook
   assert_denied
 }
+
+# --- Linked-worktree anchoring (regression) ---------------------------------
+#
+# The gate spans two roots that are the SAME path in a plain checkout and
+# DIFFERENT paths in a linked worktree, which is why a single-root derivation
+# passes every test above and still deadlocks a real worktree merge:
+#
+#   store root  WHERE a clearance lives -- main-anchored (state registry
+#               `audit-clearance-markers`, scope shared; provisioning
+#               symlinks <worktree>/.gaia/local at main's).
+#   tree root   WHAT the clearance attests to -- the ACTING tree, because the
+#               content being merged is the worktree's HEAD, not main's.
+#
+# Every clearance writer keys on the acting tree (the agent definitions pass
+# `--root "$(git rev-parse --show-toplevel)"`, and resolve-audit-spawn.sh and
+# audit-stamp-trailer.sh derive the same way). Digesting main's HEAD in the
+# gate would compare a marker against content nobody is merging: no marker
+# could ever match, and the deny message's own remedy ("re-spawn the agents")
+# rewrites the same non-matching marker forever.
+
+# MEMBER's real content digest at an ARBITRARY root's HEAD, via the real
+# digest engine. member_digest_for is the same call pinned to $REPO.
+member_digest_at() {
+  local root="$1" member="$2"
+  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$LIB_DIR/audit-digest.sh" "$root" "$member"
+}
+
+# Provision a linked worktree of REPO on its own branch, carrying its own
+# in-scope change, so its content digest necessarily differs from main's.
+# Mirrors real provisioning: .gaia/local is a SYMLINK to main's, so a marker
+# written from the worktree lands in main's shared store.
+setup_linked_worktree() {
+  WT=$(mktemp -d -t pr-merge-wt-XXXXXX)
+  rm -rf "$WT"
+  git -C "$REPO" worktree add --quiet -b wt "$WT" main
+  mkdir -p "$WT/app"
+  printf 'export const y = 2\n' > "$WT/app/y.ts"
+  git -C "$WT" add app/y.ts
+  git -C "$WT" commit --quiet -m "worktree change"
+
+  # The dispatch resolver is invoked relative to cwd, and REPO's copy is
+  # untracked so it does not appear in the worktree. Copy it in, as the real
+  # repo always has it.
+  mkdir -p "$WT/.gaia/scripts"
+  cp "$RESOLVER_ABS" "$WT/.gaia/scripts/resolve-audit-members.sh"
+  chmod +x "$WT/.gaia/scripts/resolve-audit-members.sh"
+
+  mkdir -p "$REPO/.gaia/local"
+  rm -rf "$WT/.gaia/local"
+  ln -s "$REPO/.gaia/local" "$WT/.gaia/local"
+}
+
+run_merge_hook_in_worktree() {
+  local cmd="gh pr merge 30 --squash --delete-branch"
+  local json
+  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
+  run bash -c "cd '$WT' && printf '%s' '$json' | bash '$HOOK_ABS'"
+}
+
+teardown_linked_worktree() {
+  [ -n "${WT:-}" ] && git -C "$REPO" worktree remove --force "$WT" 2>/dev/null
+  return 0
+}
+
+@test "linked worktree: a marker keyed to the WORKTREE's own content allows the merge" {
+  commit_files "app/x.ts" "export const x = 1"
+  setup_linked_worktree
+
+  local digest
+  digest="$(member_digest_at "$WT" code-audit-frontend)"
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{"version":"1.4.0","schema":4,"member":"code-audit-frontend","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true,"dispositions_sidecar":true}\n' \
+    "$digest" "$(git -C "$WT" rev-parse 'HEAD^{tree}')" "$(git -C "$WT" rev-parse HEAD)" \
+    > "$REPO/.gaia/local/audit/${digest}.ok"
+  printf '{"schema":1,"backend":"absent","findings":[]}\n' \
+    > "$REPO/.gaia/local/audit/${digest}.dispositions.json"
+
+  run_merge_hook_in_worktree
+  teardown_linked_worktree
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'"permissionDecision": "deny"'* ]]
+}
+
+@test "linked worktree: a marker keyed to MAIN's content does NOT clear the worktree's merge" {
+  commit_files "app/x.ts" "export const x = 1"
+  setup_linked_worktree
+
+  # Deliberately key the marker to the MAIN checkout's digest, the shape a
+  # main-anchored gate would compute. The two digests must genuinely differ,
+  # or this test would pass for the wrong reason.
+  local main_digest wt_digest
+  main_digest="$(member_digest_at "$REPO" code-audit-frontend)"
+  wt_digest="$(member_digest_at "$WT" code-audit-frontend)"
+  [ "$main_digest" != "$wt_digest" ]
+
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{"version":"1.4.0","schema":4,"member":"code-audit-frontend","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true,"dispositions_sidecar":true}\n' \
+    "$main_digest" "$(git -C "$REPO" rev-parse 'HEAD^{tree}')" "$(git -C "$REPO" rev-parse HEAD)" \
+    > "$REPO/.gaia/local/audit/${main_digest}.ok"
+
+  run_merge_hook_in_worktree
+  teardown_linked_worktree
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}

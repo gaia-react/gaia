@@ -675,8 +675,8 @@ SH
   filtered_path="$PATH"
   if [ -n "$pnpm_path" ]; then
     pnpm_dir="$(dirname "$pnpm_path")"
-    filtered_path="${filtered_path//$pnpm_dir:/}"
-    filtered_path="${filtered_path%:$pnpm_dir}"
+    filtered_path="${filtered_path//"$pnpm_dir":/}"
+    filtered_path="${filtered_path%:"$pnpm_dir"}"
   fi
 
   PATH="$filtered_path" run bash "$HOOK_ABS" "$WT"

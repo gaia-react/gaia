@@ -156,21 +156,36 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 0
 fi
 
-# Resolved to the MAIN checkout: every clearance marker this script reads or
-# posts about is main-anchored shared state (.gaia/state-registry.json
-# scope=shared, the symlinked audit/ store), not a property of whichever tree
-# this script happens to run in. Falls back to a bare toplevel query when the
-# resolver is unavailable or fails -- the same fail-open direction the
-# original CWD-anchored derivation had.
-repo_root=""
-if command -v gaia_resolve_main_root >/dev/null 2>&1; then
-  repo_root="$(gaia_resolve_main_root 2>/dev/null)" || repo_root=""
-fi
-[ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+# TWO roots, mirroring pr-merge-audit-check.sh, because this script spans two
+# different questions and one root cannot answer both.
+#
+#   repo_root   The ACTING tree. Everything this script measures is a property
+#               of the tree being audited and pushed: the .gaia/VERSION it
+#               stamps into the status description, the content digests it
+#               derives, the HEAD/upstream/tree shas it compares against the
+#               PR head, and the roster resolver it runs. Main-anchoring these
+#               reads main's HEAD tree while head_sha comes from the acting
+#               tree's PR, so from a linked worktree the "audited tree not on
+#               pushed head" guard below declines on every run and the
+#               GAIA-Audit status can never post -- leaving branch protection
+#               blocked with no way to clear it.
+#   store_root  WHERE a clearance lives. Resolved to the MAIN checkout: marker
+#               state is main-anchored shared state (.gaia/state-registry.json
+#               scope=shared, the symlinked audit/ store), not a property of
+#               whichever tree this script happens to run in. Falls back to
+#               repo_root when the resolver is unavailable or fails -- the same
+#               fail-open direction the original CWD-anchored derivation had.
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
 if [ -z "$repo_root" ]; then
   emit_decline "repo slug unresolved"
   exit 0
 fi
+
+store_root=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  store_root="$(gaia_resolve_main_root 2>/dev/null)" || store_root=""
+fi
+[ -n "$store_root" ] || store_root="$repo_root"
 
 version_file="${repo_root}/.gaia/VERSION"
 if [ ! -f "$version_file" ]; then
@@ -244,7 +259,7 @@ if [ -x "$resolver" ]; then
     else
       member_digest="$(audit_member_digest "$repo_root" "$m" 2>/dev/null || true)"
     fi
-    if [ -z "$member_digest" ] || ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
+    if [ -z "$member_digest" ] || ! clearance_member_cleared "$store_root" "$member_digest" "$m"; then
       pending="${pending}${pending:+ }${m}"
     fi
   done <<< "$members"

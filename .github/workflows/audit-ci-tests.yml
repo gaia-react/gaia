@@ -10,12 +10,14 @@ name: Audit CI Tests
 # Mirrors cli-tests.yml's narrow-surface, paths-filtered, step-gated shape.
 #
 # The last step is the odd one and is deliberate: the INV-7 concurrency meter
-# (.gaia/tests/concurrency/) is a red-by-design suite whose reds belong to
-# phases that have not run yet, so it is gated through meter-gate.sh against a
-# checked-in expected-status manifest rather than on its own exit status. A
+# (.gaia/tests/concurrency/) admits scenarios that are red by design, belonging
+# to phases that have not run yet, so it is gated through meter-gate.sh against
+# a checked-in expected-status manifest rather than on its own exit status. A
 # green here means every scenario did exactly what the manifest says it does --
 # an expected-pass going red AND an expected-red going green both fail the
-# build. See .gaia/tests/concurrency/README.md.
+# build. The manifest, not this comment, is the authority on which scenarios
+# are which, and how many of each there are at any moment.
+# See .gaia/tests/concurrency/README.md.
 #
 # Pinned action SHAs match .github/workflows/cli-tests.yml:
 #   actions/checkout    @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
@@ -67,7 +69,11 @@ jobs:
     # required context ABSENT on the self-heal HEAD rather than merely red: the
     # exact wedge the dispatch lane exists to prevent. Cap well under that
     # window so a hung `apt-get` fails fast instead of inheriting the 6-hour
-    # runner default. The real runtime is a couple of minutes.
+    # runner default. The cap is derived from that 25-minute poller window, not
+    # from an observed runtime: this job also does two full dependency installs
+    # and a concurrency suite that creates real git worktrees, so do not treat
+    # any figure quoted here as a measurement. Issue #1030 tracks machine-
+    # checking these caps against real run durations.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -242,6 +248,14 @@ jobs:
               #     live path in this repo (/update-deps runs on its own
               #     cadence), so without them a bump could red the meter and
               #     the next unrelated PR would be the first to notice.
+              #   both workspace files  same argument as the lockfiles, same
+              #     installs: pnpm-workspace.yaml governs `allowBuilds`,
+              #     `trustPolicyExclude` and `minimumReleaseAge` for the very
+              #     `pnpm install --frozen-lockfile` runs the meter depends on,
+              #     and each is edited standalone. .gaia/cli/pnpm-workspace.yaml
+              #     documents ERR_PNPM_IGNORED_BUILDS in its own header, so a
+              #     missing allowBuilds entry breaking the install is observed
+              #     behavior here, not a hypothetical.
               - '.gaia/tests/concurrency/**'
               - '.gaia/state-registry.json'
               - '.gaia/state-registry.schema.json'
@@ -249,6 +263,16 @@ jobs:
               - '.claude/commands/gaia-release.md'
               - 'pnpm-lock.yaml'
               - '.gaia/cli/pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.gaia/cli/pnpm-workspace.yaml'
+              # The remaining two install inputs. No sibling workflow lists
+              # .node-version, but this job is the one that reads it
+              # (node-version-file below) AND is judged by a scenario count, so
+              # a toolchain edit silently skipping the meter is the same hazard
+              # as a lockfile edit doing so. package.json pins packageManager
+              # for pnpm/action-setup.
+              - '.node-version'
+              - 'package.json'
       # python3-yaml pins the parser lint-yaml.bats' require_yaml_parser needs
       # (python3+pyyaml), so its parser-backed negative tests run explicitly
       # rather than resting on whatever the runner image happens to preinstall.
@@ -288,9 +312,17 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run .gaia/tests/statusline bats suites
         run: bats .gaia/tests/statusline/
-      # Everything below arms the INV-7 concurrency meter. Node comes first
-      # because three of its scenarios drive real node code, and none of them
-      # can borrow the escape hatch the five sibling suites under
+      # Everything below arms the INV-7 concurrency meter. Note what that
+      # changes about this job's posture, as a deliberate choice rather than a
+      # side effect: a job that previously ran only bats on a lean box now
+      # executes dependency install scripts from a `pull_request` head on every
+      # armed run. Accepted because the exposure is bounded the same way
+      # tests.yml's already is -- a read-only GITHUB_TOKEN, no secrets in
+      # scope, and lifecycle scripts gated by `allowBuilds` in both
+      # pnpm-workspace.yaml files (which is why both are in the path filter
+      # above). Node comes first because three of its scenarios drive real node
+      # code, and none of them can borrow the escape hatch the five sibling
+      # suites under
       # .gaia/tests/hooks/ use: those guard the same `typescript` dependency
       # with `|| skip "typescript not installed"`, and the meter BANS `skip` in
       # its own header on the grounds that a skip reports green, which is the
@@ -309,19 +341,12 @@ jobs:
       # of an npm install, which would read as a regression in the number this
       # program is judged by rather than as the environment gap it is.
       #
-      # The two version markers below sit on their own lines rather than
-      # trailing their `uses:` values, which is how the other 30-odd pinned
-      # actions in .github/workflows/ write them. GAIA's own YAML write-guard
-      # rejects a NEW ` # ...` trailing a plain scalar, so the established form
-      # is unavailable to a new line; filed for GAIA, not worked around here.
-      # pnpm/action-setup v6.0.5:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Install pnpm
-        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d
-      # actions/setup-node v5.0.0:
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Install Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
@@ -337,11 +362,11 @@ jobs:
         name: Install .gaia/cli dependencies (C3-05 runs the CLI's own tsx)
         run: pnpm -C .gaia/cli install --frozen-lockfile
       # Runs the WHOLE suite and adjudicates every scenario against
-      # .gaia/tests/concurrency/expected-status.txt, so the five scenarios that
-      # are red by design do not wedge this required check while still counting
-      # in the reading. A `bats --filter` over the armed tranches was the
-      # alternative and is worse: it hides the reds and makes a newly added
-      # scenario invisible by default.
+      # .gaia/tests/concurrency/expected-status.txt, so any scenario the
+      # manifest marks red by design does not wedge this required check while
+      # still counting in the reading. A `bats --filter` over the armed
+      # tranches was the alternative and is worse: it hides the reds and makes
+      # a newly added scenario invisible by default.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run the INV-7 concurrency meter (gated on its expected-status manifest)
         run: bash .gaia/tests/concurrency/meter-gate.sh

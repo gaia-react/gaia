@@ -70,6 +70,8 @@ Used by multiple steps below. Defined once here to keep step-level prose tight.
 
 Every ledger and lock library this skill invokes (`spec-session-lock.sh`, `spec-reconcile.sh`, the `spec-archive-*` / `spec-abandon-empty` sweeps, `spec-allocator.sh`, `ledger-update.sh`) takes the current tree as its `$PWD` operand and resolves the main checkout itself before touching `.gaia/local/specs`, so `$PWD` honestly names the running tree and the caller never resolves main for these calls. The SPEC-folder paths this skill builds for itself are the exception, on both sides: step 2's cold-consolidation sweep and its resume-point comparison read them, and step 7d, step 9, and step 9.2's cost read write and read them. Each of those builds a `.gaia/local/specs` path directly rather than handing it to a library, so each anchors to main explicitly.
 
+`bash .gaia/scripts/main-root-lib.sh` is the resolver every one of those sites calls, and it fails closed: it prints nothing and exits non-zero when it cannot resolve a main checkout. **This contract governs every `MAIN_ROOT` site below, and is stated only here.** At each of them an empty `MAIN_ROOT` stops the step and is surfaced; it never falls back to a relative path. That fallback is not a cosmetic concern: from a linked worktree a relative path names a tree that holds no SPECs, so a read silently finds nothing, and an unguarded `mkdir -p "${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"` expands to `mkdir -p /.gaia/local/specs/...` and attempts a write at the filesystem root.
+
 ### Session-shape cache (`spec-session-<spec_id>.json`)
 
 Tracks `start_at` and `question_count` across the multi-step flow. `question_count` enforces the Socratic question ceiling across a pause and resume, the sole counter for that ceiling. The file lives at `.gaia/local/cache/spec-session-<spec_id>.json`. Schema:
@@ -136,7 +138,7 @@ The self-review (step 6) and adversarial audit (step 7) route their finding, ver
 
 Per-lens and per-finding-plus-lens filenames avoid write collisions in the parallel fan-out: each agent owns exactly one path, so many agents write the cache concurrently without contending.
 
-**Delegated fold.** At a delegated fold checkpoint the fold is performed by a single-writer subagent, not by main; it replaces an in-main fold at that checkpoint. Main dispatches a `general-purpose` Agent (the **applier**) with four inputs: the draft path (`.gaia/local/cache/draft-<spec_id>.md`), the audit-cache directory (`.gaia/local/cache/audit-<spec_id>/`), the main-anchored SPEC folder `${SPEC_DIR}` that main resolved for it (7d), and the thin **decision list**:
+**Delegated fold.** At a delegated fold checkpoint the fold is performed by a single-writer subagent, not by main; it replaces an in-main fold at that checkpoint. Main dispatches a `general-purpose` Agent (the **applier**) with four inputs: the draft path (`.gaia/local/cache/draft-<spec_id>.md`), the audit-cache directory (`.gaia/local/cache/audit-<spec_id>/`), the main-anchored SPEC folder `${SPEC_DIR}` that main resolved for it (7c), and the thin **decision list**:
 
     [ { "id": "<finding-id>", "action": "apply"|"keep"|"revise", "revision": "<free text, optional>" } ]
 
@@ -271,9 +273,9 @@ else
 fi
 ```
 
-The ledger and the SPEC folders are main-anchored state (state registry `specs-main`), so this sweep resolves the main checkout before reading either; from a linked worktree a relative path names a tree that holds no SPECs, and the sweep would report nothing while the work sits in main. The resolver fails closed, printing nothing when it cannot resolve a main checkout, so an unresolved root skips the pass **out loud** rather than falling back to a relative path and silently finding nothing.
+The ledger and the SPEC folders are main-anchored state (state registry `specs-main`), so this sweep resolves the main checkout before reading either (see Operational primitives for the resolver's fail-closed contract; the `else` arm above is that contract applied here).
 
-For each candidate id, run a cold consolidation (agent synthesis, not a script) against that candidate's main-anchored folder, `${MAIN_ROOT}/.gaia/local/specs/<id>/` (`MAIN_ROOT` from the resolver in the block above): read the layers in precedence `SPEC.md` → `AUDIT.md` → plan `PROGRESS.md` (top wins), grounded in the merged code and passing tests, and write `${MAIN_ROOT}/.gaia/local/specs/<id>/SUMMARY.md` in the pinned shape (present-tense body, `wiki_promote_default` + `wiki_promote_targets` frontmatter, non-empty H1, optional `## Divergence`). Then gate the layer removal on the verify script: `bash .gaia/scripts/summary-verify.sh ${MAIN_ROOT}/.gaia/local/specs/<id>/SUMMARY.md`; on exit 0, `rm ${MAIN_ROOT}/.gaia/local/specs/<id>/SPEC.md ${MAIN_ROOT}/.gaia/local/specs/<id>/AUDIT.md`; on exit 1, leave the layers in place and move to the next candidate. This pass never destroys a layer it failed to replace, and a candidate whose synthesis or verify fails is simply left for a future pass, never blocking this prompt.
+For each candidate id, let `SPEC_FOLDER="${MAIN_ROOT}/.gaia/local/specs/<id>"` (`MAIN_ROOT` from the resolver in the block above), then run a cold consolidation (agent synthesis, not a script) against it: read the layers in precedence `SPEC.md` → `AUDIT.md` → plan `PROGRESS.md` (top wins), grounded in the merged code and passing tests, and write `${SPEC_FOLDER}/SUMMARY.md` in the pinned shape (present-tense body, `wiki_promote_default` + `wiki_promote_targets` frontmatter, non-empty H1, optional `## Divergence`). Then gate the layer removal on the verify script: `bash .gaia/scripts/summary-verify.sh ${SPEC_FOLDER}/SUMMARY.md`; on exit 0, `rm ${SPEC_FOLDER}/SPEC.md ${SPEC_FOLDER}/AUDIT.md`; on exit 1, leave the layers in place and move to the next candidate. This pass never destroys a layer it failed to replace, and a candidate whose synthesis or verify fails is simply left for a future pass, never blocking this prompt.
 
 Then delete any merged SPEC folder that is past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days), whose layers are consolidated (the pass above), and whose cost is fully represented in `cost.jsonl`, the safety net for a PR that merged out-of-band or a close that never ran (an unparseable or unrepresented cost sidecar phase blocks that folder's deletion rather than risking an unrecoverable loss; a folder still within the window is kept regardless of representation). Delete any SPEC folder already at `abandoned` status past the same retention window and cost-represented too, no consolidation gate applies since nothing about an abandoned draft is ever promoted. Then sweep any never-authored draft older than the guard age to the terminal `abandoned` status, so a ghost allocation (no SPEC.md, no draft cache, no gate-1 snapshot) stops re-surfacing on this very prompt. All three passes are best-effort and fail-open:
 
@@ -309,7 +311,7 @@ else
 fi
 ```
 
-The two halves of that comparison live in different trees on purpose: the canonical artifact is main-anchored (state registry `specs-main`), so `SPEC_PATH` resolves main, while the working draft is per-tree and stays in the acting worktree where the authoring session wrote it. If `MAIN_ROOT` comes back empty the resolver could not find a main checkout; stop and surface that rather than comparing against a relative path, which from a linked worktree names a file that is never there and would silently make the draft look newer.
+The two halves of that comparison live in different trees on purpose: the canonical artifact is main-anchored (state registry `specs-main`), so `SPEC_PATH` resolves main, while the working draft is per-tree and stays in the acting worktree where the authoring session wrote it. The Operational-primitives contract applies here as everywhere: an empty `MAIN_ROOT` stops this step, because comparing against a relative path would silently make the draft look newer.
 
 Before presenting the resume choice, check whether the draft is being authored live in another session right now (interactive only; auto mode already skips this entire resume prompt per the exception above, so it never computes `LOCK_STATUS`):
 
@@ -737,6 +739,15 @@ Its bodies never flow into main.
 
 #### 7c. Disposition routing + apply
 
+Resolve the main-anchored SPEC folder first, before any dispatch below consumes it. The SPEC folder is main-anchored state (state registry `specs-main`), so the report lands beside the artifact the ledger row indexes rather than in a second specs tree inside a linked worktree. The `mkdir -p` keeps this self-sufficient: step 3 creates the same folder from another file under another agent, and this step writes into it either way.
+
+```bash
+MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+SPEC_DIR="${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"
+mkdir -p "$SPEC_DIR"
+AUDIT_MD="${SPEC_DIR}/AUDIT.md"
+```
+
 Route each surviving finding by its `disposition`, read from the **thin verdict lines** (main never opens the verdict files):
 
 - **Plan-time directive** (the SPEC's contract is already satisfied; the fix is an implementation instruction). No change folds into the draft — it stays byte-identical — but the finding gains a plan-time-directive entry in `AUDIT.md` (7d) so `/gaia-plan` and the implementer honor it.
@@ -746,22 +757,13 @@ Route each surviving finding by its `disposition`, read from the **thin verdict 
 
 **Auto-mode per rule 12.** No reads; **no finding body reaches main**. The transcript carries ids, severities, titles, verdicts, and dispositions only. Unambiguous spec-defect ids apply (added to the decision list as `apply`); a defect with more than one defensible repair becomes a deferred-clarification note in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` and is not applied. Never revert intentional clarify-loop evolution.
 
-**Fold through the delegated applier.** Dispatch the applier (see "Audit cache + delegated fold") with the draft path, the audit-cache directory, the main-anchored SPEC folder `${SPEC_DIR}` (7d), and the decision list. It reads the draft plus every findings and verdict file plus the decision list, folds every spec-defect fix in **one Write**, and **writes `AUDIT.md` itself** (7d) at the folder path it was handed, from the on-disk findings and verdicts — main never loads a finding body to produce `AUDIT.md`. **Fallback:** if subagent dispatch is unavailable, main folds inline as today, writing `AUDIT.md` at that same resolved path.
+**Fold through the delegated applier.** Dispatch the applier (see "Audit cache + delegated fold") with the draft path, the audit-cache directory, the main-anchored SPEC folder `${SPEC_DIR}` (7c), and the decision list. It reads the draft plus every findings and verdict file plus the decision list, folds every spec-defect fix in **one Write**, and **writes `AUDIT.md` itself** (7d) at the folder path it was handed, from the on-disk findings and verdicts — main never loads a finding body to produce `AUDIT.md`. **Fallback:** if subagent dispatch is unavailable, main folds inline as today, writing `AUDIT.md` at that same resolved path.
 
-**No-op guard (site #6).** This is a **mutating unit**: the applier's draft-cache write pre-exists, so a no-op is judged on its returned summary's shape, not on file-absence. Before dispatching, snapshot the live draft to `.gaia/local/cache/draft-<spec_id>.pre-7c.md`, and finalize `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`, one thin JSON-Lines record per in-scope dispatch resolved so far, `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }`, carrying no finding body (this is the applier's data source for `## Coverage` in 7d; the findings/verdict files cannot encode a disposition). Capture the applier's returned summary to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape applier-summary --path <summary_file>` (add `--audit-md "${AUDIT_MD}"`, the report path resolved in 7d, at the 7c-with-directives dispatch, when the fold routes any finding to a plan-time directive, so AUDIT.md presence is also required; exit 0 = real, exit 1 = no-op). On a no-op: restore the live draft from `draft-<spec_id>.pre-7c.md` first, then re-dispatch the applier **exactly one** time with the hardened retry prefix (`<target>` = the audit-cache directory). A second no-op runs the **inline fallback**, which reuses the pre-existing applier inline-fold above (main folds inline as today), recorded degraded. Delete `draft-<spec_id>.pre-7c.md` once the unit resolves.
+**No-op guard (site #6).** This is a **mutating unit**: the applier's draft-cache write pre-exists, so a no-op is judged on its returned summary's shape, not on file-absence. Before dispatching, snapshot the live draft to `.gaia/local/cache/draft-<spec_id>.pre-7c.md`, and finalize `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`, one thin JSON-Lines record per in-scope dispatch resolved so far, `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }`, carrying no finding body (this is the applier's data source for `## Coverage` in 7d; the findings/verdict files cannot encode a disposition). Capture the applier's returned summary to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape applier-summary --path <summary_file>` (add `--audit-md "${AUDIT_MD}"`, the report path resolved at the top of this step, at the 7c-with-directives dispatch, when the fold routes any finding to a plan-time directive, so AUDIT.md presence is also required; exit 0 = real, exit 1 = no-op). On a no-op: restore the live draft from `draft-<spec_id>.pre-7c.md` first, then re-dispatch the applier **exactly one** time with the hardened retry prefix (`<target>` = the audit-cache directory). A second no-op runs the **inline fallback**, which reuses the pre-existing applier inline-fold above (main folds inline as today), recorded degraded. Delete `draft-<spec_id>.pre-7c.md` once the unit resolves.
 
 #### 7d. Persist AUDIT.md
 
-Resolve the SPEC folder in the main checkout and create it, so the report lands beside the artifact the ledger row indexes rather than in a second specs tree inside a linked worktree (the SPEC folder is main-anchored state, state registry `specs-main`):
-
-```bash
-MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
-SPEC_DIR="${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"
-mkdir -p "$SPEC_DIR"
-AUDIT_MD="${SPEC_DIR}/AUDIT.md"
-```
-
-The resolver fails closed: it prints nothing and exits non-zero when it cannot resolve a main checkout. If `MAIN_ROOT` comes back empty, stop and surface that; never fall back to a relative path. The `mkdir -p` keeps this step self-sufficient: step 3 creates the same folder from another file under another agent, and this step writes into it either way.
+`${SPEC_DIR}` and `${AUDIT_MD}` are already resolved at the top of 7c, which is where the applier dispatch consumes them; this step writes the report, it resolves no path of its own.
 
 The **applier** writes a sibling report at `${AUDIT_MD}`, the folder path main hands it, from the on-disk findings and verdicts (it already holds the complete record, so main never loads a finding body to produce it). `${SPEC_DIR}` sits inside the `.gaia/local/specs/**` write-surface allowlist entry. Keep it lean:
 
@@ -847,12 +849,19 @@ Only after gate-2 confirmation may you proceed to step 9.
 
 Create the SPEC folder in the main checkout, then write the confirmed draft to its canonical inner file (using the `spec_id` allocated in step 3). The SPEC folder is main-anchored state (state registry `specs-main`), so a session inside a linked worktree writes the artifact where the ledger row (written to main by the anchored ledger libraries) indexes it:
 
+Resolve once here, guarded per the Operational-primitives contract, and reuse `SPEC_FOLDER` for every path this step builds (the read-back and the cost sidecar below both use it, rather than re-resolving):
+
 ```bash
 MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
-mkdir -p "${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"
+if [ -z "$MAIN_ROOT" ]; then
+  echo "gaia-spec: cannot resolve the main checkout; refusing to save the SPEC" >&2
+  exit 1
+fi
+SPEC_FOLDER="${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"
+mkdir -p "$SPEC_FOLDER"
 ```
 
-Write the confirmed draft to `SPEC.md` inside that folder, `${MAIN_ROOT}/.gaia/local/specs/SPEC-NNN/SPEC.md` (`MAIN_ROOT` from the resolver above). This is the canonical save location, never anywhere else, never duplicate copies. The folder is the archival unit; sibling artifacts live beside `SPEC.md` in the same folder. A sibling's filename is the uppercased remainder of its flat form (`SPEC-NNN-<rest>.md` → `SPEC-NNN/<REST>.md`); any `SPEC-NNN-*` file is a sibling. `lib/spec-folderize.sh` applies this mapping for any legacy flat files.
+Write the confirmed draft to `SPEC.md` inside that folder, `${SPEC_FOLDER}/SPEC.md`. This is the canonical save location, never anywhere else, never duplicate copies. The folder is the archival unit; sibling artifacts live beside `SPEC.md` in the same folder. A sibling's filename is the uppercased remainder of its flat form (`SPEC-NNN-<rest>.md` → `SPEC-NNN/<REST>.md`); any `SPEC-NNN-*` file is a sibling. `lib/spec-folderize.sh` applies this mapping for any legacy flat files.
 
 Update the frontmatter `updated` field to today's date.
 
@@ -862,11 +871,11 @@ After the canonical write succeeds:
 2. **Update the ledger row:** flip the row in `.gaia/local/specs/ledger.json` from `status: draft` to `status: ready` and stamp the intent (the SPEC's `intent` field reduced to a full first sentence, or a word-safe bounded prefix + `...` when the first sentence runs long, via the shared title-normalize rule) for at-a-glance scanning. This is the finalize transition: the SPEC artifact is now frozen, so the authoring session is done and the allocator stops reporting it for resume-vs-start-new. Downstream (plan → implement → merge) owns the feature from here; the ledger's `merged` transition is reconciled from git by `spec-reconcile.sh`, not set here. Failure is non-blocking, log to stderr and continue. The remote `spec/*` tags are the cross-team allocation authority; `.gaia/local/specs/ledger.json` is a per-machine local cache; the SPEC artifact and git history remain authoritative.
 
 ```bash
-# SPEC.md lives in the main checkout (saved above); read it back from there.
+# SPEC.md lives in the main checkout (saved above); read it back from there,
+# reusing the guarded $SPEC_FOLDER resolved at the top of this step.
 # ledger-update.sh below keeps its $PWD operand: it resolves main itself (see
 # Operational primitives), so only this directly-built read path anchors to main.
-MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
-SPEC_PATH="${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}/SPEC.md"
+SPEC_PATH="${SPEC_FOLDER}/SPEC.md"
 INTENT_RAW=$(awk '
   /^intent:[[:space:]]*\|/ { in_block=1; next }
   /^intent:[[:space:]]*[^|[:space:]]/ {
@@ -891,12 +900,12 @@ bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
 ```bash
 # cost.json is the SPEC folder's sidecar, so --out-dir must be the main-anchored
 # folder (token-tally writes the sidecar to --out-dir verbatim; only its ledger
-# resolves main on its own).
-MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+# resolves main on its own). Reuses the guarded $SPEC_FOLDER from the top of
+# this step rather than re-resolving.
 bash .gaia/scripts/token-tally.sh \
   --action spec \
   --spec-id "$SPEC_ID" \
-  --out-dir "${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}" || true
+  --out-dir "$SPEC_FOLDER" || true
 ```
 
 The helper reads `CLAUDE_CODE_SESSION_ID` from the environment, sums `message.usage` across the main transcript and every sub-agent sidecar (deduped to ground truth), appends one record keyed to `SPEC_ID` to the durable ledger (`.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout so a worktree run still records there), writes the `cost.json` sidecar (the `spec` record) into the SPEC folder, and prints the four-bucket tally, total, and elapsed time. The dollar cost it computes lands in the ledger and the `cost.json` sidecar, not in that printed block. Do not restate the four-bucket block to the user; instead report the cost as exactly one line: `Cost: ~<total> tokens, $<dollars>, <elapsed>`. Take `<total>` (the total token count abbreviated to millions with one decimal and a `~` prefix, e.g. `~2.4M`) and `<elapsed>` (the helper's own `<N>h<M>m<S>s` figure) from the printed tally, and read `<dollars>` (formatted `$X.XX`) from the `dollars` field of the `spec` record in `${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}/cost.json` (`MAIN_ROOT` from the resolver in the block above, the same value `--out-dir` was given, so this reads back the sidecar that call just wrote). Never fabricate: if `dollars` is null or unpriced write `cost unavailable` in its place; if elapsed is unavailable drop that term; if the figure is a partial lower bound append ` (partial: lower bound)`. This line reads identically to the `/gaia-plan` cost line (plan reference, step 5) and the orchestrator's full-cycle line; keep the three in sync. This same call reads and deletes the step-7 audit-window breadcrumb (`.gaia/local/cache/audit-window-<spec_id>.json`) if present, nesting an `audit.adversarial` annotation into this `spec` record when the window resolves; the step-9.1 `rm -rf .gaia/local/cache/audit-<spec_id>/` above does not touch this breadcrumb, since it lives outside that directory.

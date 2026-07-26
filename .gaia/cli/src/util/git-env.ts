@@ -21,6 +21,13 @@ export const execGaiaGit = (args: string[], cwd: string): string => {
     cwd,
     encoding: 'utf8',
     env,
+    // Node's 1 MiB default throws ENOBUFS on a large-output git command
+    // (`git log` over a long history). Matches `runGit` in wiki/util/git.ts,
+    // whose callers already hit that ceiling. Today's callers here are
+    // short-output `rev-parse` forms, but the docblock above declares this
+    // the one chokepoint every git-shelling resolver routes through, so the
+    // ceiling belongs here rather than at the next caller to need it.
+    maxBuffer: 64 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
 };

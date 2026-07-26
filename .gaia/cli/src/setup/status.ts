@@ -97,10 +97,10 @@ export const run = (
 
   try {
     repoRoot = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
-  } catch {
+  } catch (error) {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia setup status must run inside a git repository',
+      message: `gaia setup status must run inside a git repository: ${error instanceof Error ? error.message : String(error)}`,
       subcommand: 'setup status',
     });
 

@@ -27,6 +27,15 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .claude/hooks/lib/audit-clearance.sh
 .gaia/scripts/audit-write-clearance.sh
 .gaia/scripts/audit-write-findings.sh
+# main-root-lib.sh decides WHERE the gate looks for a clearance
+# (pr-merge-audit-check.sh, audit-disposition-check.sh, post-audit-status.sh
+# all resolve their store root through it), and audit-key-lib.sh decides the
+# key every findings sidecar and re-run ledger is written and read under.
+# Both sit squarely inside the generating rule above; without them a change
+# to the file that selects the gate's own root rotates only the shell
+# member's digest and leaves the other four markers standing.
+.gaia/scripts/main-root-lib.sh
+.gaia/scripts/audit-key-lib.sh
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-machinery-complete.sh
 .claude/hooks/lib/audit-dispositions.sh

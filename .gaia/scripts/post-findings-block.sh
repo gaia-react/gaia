@@ -112,12 +112,10 @@
 #   post-audit-status.sh operates only on the single marker path an agent
 #   hands it as an argument; pr-merge-audit-check.sh and
 #   audit-disposition-check.sh read only their own single exact digest-keyed
-#   path. local-janitor.sh DOES glob the directory, but its glob list
-#   (*.ok, *.refused, *.carried, *.dispositions.json, *.progress.log,
-#   *.rerun.json) has no `*.findings.json` arm, so it neither reaps nor
-#   misidentifies a findings sidecar; it also means a findings sidecar is
-#   never swept, a named follow-up (see this task's return to the
-#   orchestrator).
+#   path. local-janitor.sh DOES glob the directory, and it does sweep
+#   findings sidecars (its own `*.findings.json` arm, aged off plain file
+#   mtime), but every arm it runs selects by an exact suffix, so no arm can
+#   reap or misidentify a sidecar as a marker or a marker as a sidecar.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`s. jq required (fails
 # closed, matching every other digest/clearance script in this directory).
