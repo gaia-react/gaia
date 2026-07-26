@@ -434,3 +434,43 @@ assert_allowed() {
   run_hook_write "$(printf 'export API_KEY=%s\n' '"sk-live-9f3a1c4e8b7d2064" # from vault')"
   assert_denied
 }
+
+# The tail comes off the value but is never discarded unread. A placeholder on
+# the left with the real key parked in the comment is the plausible accident;
+# a second assignment after `;` is worse in kind, because the discarded text is
+# executable. Without these the tail-strip trades a false positive for a hole.
+
+@test "a secret parked in a trailing comment is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$MY_VAR # sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a secret parked beside an empty value is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '  # sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a secret parked behind a placeholder is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<paste> # sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a second assignment after a statement separator is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '"" ; API_TOKEN=sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+# Ordinary prose in a comment is not secret-shaped, so the tail check has to
+# stay quiet for it or it re-creates the false positive it was added beside.
+
+@test "ordinary prose in a trailing comment is allowed" {
+  run_hook_write "$(printf 'export GITHUB_TOKEN=%s\n' '"$GH_PAT" # authentication for the gh cli')"
+  assert_allowed
+}
+
+# `typeset` is bash's synonym for `declare`, so it belongs with the other three.
+
+@test "a secret behind typeset -r is denied" {
+  run_hook_write "$(printf 'typeset -r API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
