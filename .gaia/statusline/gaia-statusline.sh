@@ -112,7 +112,35 @@ DEBT_REFRESH_SCRIPT="$STATE_ROOT/.gaia/scripts/debt-count-refresh.sh"
 # /gaia-init finishes (which deletes that file). Suppress all right-side
 # indicators during that window.
 right=""
+mid_init=0
 if [ -f "$STATE_ROOT/.claude/commands/gaia-init.md" ]; then
+  mid_init=1
+fi
+# gaia:maintainer-only:start
+# Except in GAIA's own source repo, where that command file is a tracked
+# product artifact: it ships to adopters, so it always exists here and
+# /gaia-init never runs to delete it. Without the exception below, the gate
+# above suppresses this repo's right side permanently and the maintainer sees
+# none of their own nudges.
+#
+# The discriminator is `.gaia/cli/src`, the CLI's TypeScript source. It is
+# release-excluded, so no adopter machine has it, mid-init or otherwise, and it
+# is already the marker `.claude/rules/gaia-folder.md` uses for "this repo is
+# GAIA itself". Tracked-ness cannot serve: create-gaia commits the whole
+# scaffold before it launches /gaia-init, so the command file is tracked
+# mid-init too.
+#
+# Anchored on STATE_ROOT like the gate file above it, so the question it asks
+# is "is the MAIN checkout the source repo", which is the same answer from
+# every linked worktree.
+#
+# The release tarball strips this block, so an adopter's copy carries the plain
+# gate above and nothing else.
+if [ -d "$STATE_ROOT/.gaia/cli/src" ]; then
+  mid_init=0
+fi
+# gaia:maintainer-only:end
+if [ "$mid_init" -eq 1 ]; then
   : # /gaia-init in progress, no right-side indicators
 else
   SETUP_STATE_FILE="$STATE_ROOT/.gaia/local/setup-state.json"

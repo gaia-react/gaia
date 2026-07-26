@@ -59,11 +59,26 @@ teardown() {
   return 0
 }
 
+# Run the copy of the script at $1 with a payload whose current_dir is $2.
+run_statusline_from() {
+  local script="$1" cur="$2" json
+  json=$(jq -n --arg d "$cur" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$script'"
+}
+
 # Run MAIN's copy of the script with a payload whose current_dir is $1.
 run_statusline() {
-  local cur="$1" json
-  json=$(jq -n --arg d "$cur" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  run_statusline_from "$MAIN/.gaia/statusline/gaia-statusline.sh" "$1"
+}
+
+# Write a copy of MAIN's script with every maintainer-only block removed, the
+# same inclusive line range `gaia-maintainer release scrub` strips at bundle
+# time, and print its path. This is what an adopter actually runs.
+stripped_copy() {
+  local dst="$MAIN/.gaia/statusline/gaia-statusline-stripped.sh"
+  sed '/# gaia:maintainer-only:start/,/# gaia:maintainer-only:end/d' \
+    "$MAIN/.gaia/statusline/gaia-statusline.sh" > "$dst"
+  printf '%s' "$dst"
 }
 
 @test "right-side indicators render when the session is on main" {
@@ -137,4 +152,62 @@ run_statusline() {
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output"
   rm -rf "$NOGIT"
+}
+
+# --- The source repo the mid-init gate must not fire in ----------------------
+#
+# `.claude/commands/gaia-init.md`, the gate file the test above stages, means
+# "fresh create-gaia project, /gaia-init has not finished" everywhere except
+# GAIA's own source repo, where the same file is a tracked product artifact
+# that ships to adopters and is therefore never deleted. The discriminator is
+# `.gaia/cli/src`: release-excluded, so no adopter machine has it, scaffolded
+# or not.
+#
+# Tracked-ness cannot serve as the discriminator, which is why no test here
+# stages the command file: create-gaia commits the whole scaffold before it
+# launches /gaia-init, so the file is tracked mid-init too.
+
+@test "the source repo renders from any tree: its command file is an artifact" {
+  # Both halves anchor on STATE_ROOT, so a worktree session asks the same
+  # question of the same checkout and gets the same answer.
+  mkdir -p "$MAIN/.claude/commands" "$MAIN/.gaia/cli/src"
+  printf 'x\n' > "$MAIN/.claude/commands/gaia-init.md"
+
+  run_statusline "$MAIN"
+  [ "$status" -eq 0 ]
+  grep -qF -- "update-deps" <<<"$output"
+
+  run_statusline "$WT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "update-deps" <<<"$output"
+}
+
+@test "an adopter's stripped copy suppresses even with the marker dir present" {
+  # The escape hatch lives inside maintainer-only markers, so the tarball does
+  # not carry it. An adopter who somehow has a .gaia/cli/src directory must
+  # still get the plain mid-init gate -- and the stripped script must still be
+  # valid bash, which running it end-to-end is what proves.
+  mkdir -p "$MAIN/.claude/commands" "$MAIN/.gaia/cli/src"
+  printf 'x\n' > "$MAIN/.claude/commands/gaia-init.md"
+
+  run_statusline_from "$(stripped_copy)" "$MAIN"
+  [ "$status" -eq 0 ]
+  grep -qF -- "update-deps" <<<"$output" && return 1
+  return 0
+}
+
+@test "the stripped copy still renders when no gate file is present" {
+  run_statusline_from "$(stripped_copy)" "$MAIN"
+  [ "$status" -eq 0 ]
+  grep -qF -- "update-deps" <<<"$output"
+}
+
+@test "this checkout matches the source-repo case the tests above simulate" {
+  # Binds the sandbox simulation to the real repo. If either half of the
+  # discriminator moves -- the command file stops shipping, or the CLI source
+  # moves out of .gaia/cli/src -- the escape hatch goes quietly dead and the
+  # maintainer's own nudges disappear again with nothing to say so.
+  REPO_ROOT="$(git -C "$BATS_TEST_DIRNAME" rev-parse --show-toplevel)"
+  [ -f "$REPO_ROOT/.claude/commands/gaia-init.md" ]
+  [ -d "$REPO_ROOT/.gaia/cli/src" ]
 }
