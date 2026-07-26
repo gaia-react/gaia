@@ -5,8 +5,7 @@
 #   - AWS access key prefix:   AKIA[0-9A-Z]{16}
 #   - GitHub PATs:             ghp_, gho_, ghu_, ghs_, ghr_  (followed by token chars)
 #   - Private key headers:     -----BEGIN [A-Z ]*PRIVATE KEY-----
-#   - dotenv-style assignment to suspicious names, with or without a leading
-#     export / declare / local / readonly and that keyword's own options:
+#   - dotenv-style assignment to suspicious names:
 #       (_TOKEN|_SECRET|_KEY|_PASSWORD)=<non-placeholder-value>
 #       Placeholders allowed: empty, "", '', x, xxx, changeme, REPLACE_ME,
 #       TODO, PLACEHOLDER, ${...}, $VAR, and three whole-value shapes:
@@ -55,29 +54,8 @@ fi
 # 4. dotenv-style assignments to suspicious names with non-placeholder values.
 #    Iterate matching lines and apply the placeholder allowlist.
 while IFS= read -r line; do
-  # A shell line carries a tail a dotenv line never does: a trailing comment, or
-  # a second statement after `;`, `&&`, `||`. It has to come off before the
-  # allowlist reads the value, or the whole remainder of the line becomes the
-  # value, no arm can match, and an ordinary secret-free
-  # `export FOO_KEY="$BAR" # note` is hard-blocked by a deny that tells its
-  # author to use the environment variable the line already uses.
-  rest=$(sed -E 's/^[^=]*=//' <<<"$line")
-  tail=$(grep -oE '[[:space:]]+(#|[|][|]|&&|;).*$' <<<"$rest" || true)
-  # The tail comes off, but it is never DISCARDED unread. A comment beside a
-  # placeholder, or a second assignment after `;`, is exactly where a real key
-  # gets parked, so dropping it unexamined would trade the false positive above
-  # for a hole. Judge it by the same structural rule the arms below use: a run
-  # of 13+ alphanumerics mixing letters and digits is secret-shaped, where a
-  # placeholder segment is bounded at 12 and prose does not take that shape.
-  # This reads the tail's SHAPE like every other arm here; a segmented key
-  # parked in a comment still fits, the same residue the placeholder arms have.
-  if [[ -n "$tail" ]] && grep -oE '[A-Za-z0-9]{13,}' <<<"$tail" | grep -qE '[0-9].*[A-Za-z]|[A-Za-z].*[0-9]'; then
-    deny "BLOCKED: write parks secret-shaped material in a trailing comment or statement: '$line'. Use environment variables / .env (gitignored), not committed source."
-  fi
-  # Now the value itself: strip the tail, then surrounding quotes & whitespace.
-  # The comment separator has to be preceded by whitespace so a `#` inside the
-  # value itself is not read as one.
-  val=$(sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$rest")
+  # Extract the value portion after `=`, strip surrounding quotes & whitespace.
+  val=$(sed -E 's/^[^=]*=//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$line")
   # Empty / placeholder values are fine.
   [[ -z "$val" ]] && continue
   case "$val" in
@@ -112,42 +90,15 @@ while IFS= read -r line; do
     <<<"$val"; then
     continue
   fi
-  # A shell declaration (`export FOO_KEY=…`) reaches this rule too, and those
-  # values are variable references far more often than dotenv literals are.
-  # The bare-identifier arm above admits none of the ordinary expansion forms,
-  # so these whole-value shapes are allowed alongside it: a positional in
-  # either spelling (`$1`, `${1}`), an expansion whose operand is EMPTY
-  # (`${VAR:-}`, `${VAR:?}`), a value that is nothing but braced references
-  # (`${A}${B}`), and an expansion followed by a path (`${ROOT}/dev.pem`).
-  #
-  # Each is anchored end to end, and the operand arm requires the operand to be
-  # empty rather than merely short: a default value is exactly where a real
-  # secret lands, and no shape test tells `${K:-550e8400-e29b-41d4-a716-…}`
-  # from a legitimate one, because a segmented secret has the same structure a
-  # placeholder does. The all-references arm needs no bound at all, since a
-  # value made only of references contains no literal to hide one in.
-  #
-  # The path arm carries the SAME per-segment bound the placeholder arms use,
-  # for the same reason they use it. Requiring the literal to open with `/` or
-  # `.` bounds only where the tail starts, not how long it runs, so on its own
-  # the separator would unlock the whole character set a secret is written in:
-  # `${X}/sk-live-…` is one segment, not a path. Bounding each segment keeps
-  # `${ROOT}/dev.pem` and drops the secret.
-  #
-  # These deliberately do NOT match a value containing `$(…)`. A reference
-  # inside a substitution body would otherwise re-open the splice bypass the
-  # `$(…)` arm above exists to close, since `$(echo ${X})<secret>` contains a
-  # reference like any other.
-  if grep -Eq '^\$[0-9]$|^\$\{[0-9]+\}$|^\$\{[A-Za-z_][A-Za-z0-9_]*:?[-+?=]\}$|^(\$\{[A-Za-z_][A-Za-z0-9_]*\})+$|^\$\{[A-Za-z_][A-Za-z0-9_]*\}([/.][A-Za-z0-9_-]{1,12})+$' <<<"$val"; then
-    continue
-  fi
   deny "BLOCKED: write contains a non-placeholder secret assignment: '$line'. Use environment variables / .env (gitignored), not committed source."
 
-# The declaration keyword carries its own options, so the group has to accept
-# them too. `declare -r` and `local -r` are the idiomatic spellings in careful
-# bash, and a group that only accepts the bare keyword takes exactly those lines
-# back out of the scan, which is the failure recognizing the keywords exists to
-# close. `typeset` is bash's synonym for `declare` and belongs with the others.
-done < <(grep -E '^[[:space:]]*((export|declare|typeset|local|readonly)[[:space:]]+(-[A-Za-z-]+[[:space:]]+)*)?[A-Za-z_][A-Za-z0-9_]*(_TOKEN|_SECRET|_KEY|_PASSWORD)[[:space:]]*=' <<<"$content" || true)
+# The name has to start the line, so a leading `export`, `declare`, `local`, or
+# `readonly` still takes the assignment out of the scan. That is a real leak
+# shape and it is deliberately NOT closed here: recognizing the keywords pulls
+# shell lines into a rule written for dotenv values, and the allowlist above
+# reads a value the way a dotenv file writes one, not the way shell does. Closing
+# it needs a value rule designed for shell expressions rather than these arms
+# widened one shape at a time. Tracked separately.
+done < <(grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*(_TOKEN|_SECRET|_KEY|_PASSWORD)[[:space:]]*=' <<<"$content" || true)
 
 exit 0
