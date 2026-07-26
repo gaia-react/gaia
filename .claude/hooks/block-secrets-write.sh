@@ -55,15 +55,29 @@ fi
 # 4. dotenv-style assignments to suspicious names with non-placeholder values.
 #    Iterate matching lines and apply the placeholder allowlist.
 while IFS= read -r line; do
-  # Extract the value portion after `=`, drop a trailing shell comment or
-  # operator clause, then strip surrounding quotes & whitespace. A shell line
-  # carries a tail a dotenv line never does, and without dropping it the whole
-  # remainder of the line becomes the value: no arm can match, so an ordinary
-  # secret-free `export FOO_KEY="$BAR" # note` is hard-blocked and the deny
-  # tells its author to use the environment variable the line already uses.
+  # A shell line carries a tail a dotenv line never does: a trailing comment, or
+  # a second statement after `;`, `&&`, `||`. It has to come off before the
+  # allowlist reads the value, or the whole remainder of the line becomes the
+  # value, no arm can match, and an ordinary secret-free
+  # `export FOO_KEY="$BAR" # note` is hard-blocked by a deny that tells its
+  # author to use the environment variable the line already uses.
+  rest=$(sed -E 's/^[^=]*=//' <<<"$line")
+  tail=$(grep -oE '[[:space:]]+(#|[|][|]|&&|;).*$' <<<"$rest" || true)
+  # The tail comes off, but it is never DISCARDED unread. A comment beside a
+  # placeholder, or a second assignment after `;`, is exactly where a real key
+  # gets parked, so dropping it unexamined would trade the false positive above
+  # for a hole. Judge it by the same structural rule the arms below use: a run
+  # of 13+ alphanumerics mixing letters and digits is secret-shaped, where a
+  # placeholder segment is bounded at 12 and prose does not take that shape.
+  # This reads the tail's SHAPE like every other arm here; a segmented key
+  # parked in a comment still fits, the same residue the placeholder arms have.
+  if [[ -n "$tail" ]] && grep -oE '[A-Za-z0-9]{13,}' <<<"$tail" | grep -qE '[0-9].*[A-Za-z]|[A-Za-z].*[0-9]'; then
+    deny "BLOCKED: write parks secret-shaped material in a trailing comment or statement: '$line'. Use environment variables / .env (gitignored), not committed source."
+  fi
+  # Now the value itself: strip the tail, then surrounding quotes & whitespace.
   # The comment separator has to be preceded by whitespace so a `#` inside the
   # value itself is not read as one.
-  val=$(sed -E 's/^[^=]*=//; s/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$line")
+  val=$(sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$rest")
   # Empty / placeholder values are fine.
   [[ -z "$val" ]] && continue
   case "$val" in
@@ -133,7 +147,7 @@ while IFS= read -r line; do
 # them too. `declare -r` and `local -r` are the idiomatic spellings in careful
 # bash, and a group that only accepts the bare keyword takes exactly those lines
 # back out of the scan, which is the failure recognizing the keywords exists to
-# close.
-done < <(grep -E '^[[:space:]]*((export|declare|local|readonly)[[:space:]]+(-[A-Za-z-]+[[:space:]]+)*)?[A-Za-z_][A-Za-z0-9_]*(_TOKEN|_SECRET|_KEY|_PASSWORD)[[:space:]]*=' <<<"$content" || true)
+# close. `typeset` is bash's synonym for `declare` and belongs with the others.
+done < <(grep -E '^[[:space:]]*((export|declare|typeset|local|readonly)[[:space:]]+(-[A-Za-z-]+[[:space:]]+)*)?[A-Za-z_][A-Za-z0-9_]*(_TOKEN|_SECRET|_KEY|_PASSWORD)[[:space:]]*=' <<<"$content" || true)
 
 exit 0
