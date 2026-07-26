@@ -59,6 +59,8 @@
 .gaia/scripts/check-registry-completeness.sh
 .gaia/scripts/check-registry-source-literals.sh
 .gaia/scripts/check-resolver-singleton.sh
+# Task 7.3's check asserts this repository still qualifies for git's merge refusal on the tracked wiki state file; its only runner (audit-ci-tests.yml and its bats suite) is already maintainer-only, and an adopter cannot act on the failure.
+.gaia/scripts/check-wiki-state-collision.sh
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that
