@@ -13,13 +13,19 @@
  * into an adopter's project id and canonicalizing it would rotate every
  * existing adopter's identity.
  */
-import {execFileSync} from 'node:child_process';
 import {mkdtempSync, realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {execGaiaGit} from './git-env.js';
 
+// Routes through execGaiaGit like every other git-shelling site in this tree,
+// rather than shelling git directly. Under an ambient GIT_DIR a bare
+// execFileSync would point `git init` at $GIT_DIR and let the follow-on
+// `git worktree add` leave a stray branch in the real checkout -- and this is
+// the one fixture whose sibling test asserts the resolver ignores exactly
+// that override.
 const git = (cwd: string, args: string[]): void => {
-  execFileSync('git', args, {cwd, stdio: ['ignore', 'ignore', 'pipe']});
+  execGaiaGit(args, cwd);
 };
 
 /** @param prefix - `mkdtemp` prefix; distinguishes callers' temp dirs. */

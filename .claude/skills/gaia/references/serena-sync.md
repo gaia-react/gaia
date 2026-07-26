@@ -84,15 +84,11 @@ bash .gaia/scripts/lib/serena-lang.sh append .serena/project.yml <tok1> [tok2 ..
   **Then clear the stale statusline nudge (loop closure).** The statusline reads `serenaLangDrift` from the TTL-cached `.gaia/local/cache/shared/update-check.json`, which does not recompute on the 6h TTL early-exit. Without this step the nudge persists for up to 6h after the adopter has already synced. Recompute drift and rewrite just that one field, preserving every other cache field, when the cache file exists:
 
   ```bash
-  CACHE_ROOT="$ROOT"
-  if [ -f "$ROOT/.gaia/scripts/main-root-lib.sh" ]; then
-    # shellcheck disable=SC1091
-    . "$ROOT/.gaia/scripts/main-root-lib.sh"
-  fi
-  if command -v gaia_resolve_main_root >/dev/null 2>&1; then
-    main_root="$(gaia_resolve_main_root "$ROOT" 2>/dev/null || true)"
-    [ -n "$main_root" ] && CACHE_ROOT="$main_root"
-  fi
+  # The resolver's executable entry propagates the function's status: it
+  # prints the main root and exits 0, or prints nothing and exits non-zero. A
+  # missing lib fails the same way, so one `||` covers both degradations and
+  # the cache falls back to this tree.
+  CACHE_ROOT="$(bash "$ROOT/.gaia/scripts/main-root-lib.sh" "$ROOT" 2>/dev/null || echo "$ROOT")"
   CACHE="$CACHE_ROOT/.gaia/local/cache/shared/update-check.json"
   if [ -f "$CACHE" ] && command -v jq >/dev/null 2>&1; then
     NEW_DRIFT="$(bash .gaia/scripts/lib/serena-lang.sh drift "$ROOT")"   # now [] (or any remaining set)

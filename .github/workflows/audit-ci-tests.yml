@@ -273,6 +273,7 @@ jobs:
               # for pnpm/action-setup.
               - '.node-version'
               - 'package.json'
+              - '.npmrc'
       # python3-yaml pins the parser lint-yaml.bats' require_yaml_parser needs
       # (python3+pyyaml), so its parser-backed negative tests run explicitly
       # rather than resting on whatever the runner image happens to preinstall.

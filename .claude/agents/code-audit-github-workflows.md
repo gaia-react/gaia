@@ -23,10 +23,17 @@ At the start of every run, resolve the diff base the same way the dispatch resol
 ```bash
 default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"
-base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null || git merge-base HEAD "${default_branch}" 2>/dev/null || true)
+# BASE_SHA, not a lowercase local: every handshake invocation below passes
+# `--base "$BASE_SHA"`, and shell state does NOT persist between an agent's
+# Bash calls, so each of those calls re-runs this snippet. A name mismatch
+# here makes --base expand empty, which audit-write-findings.sh rejects
+# outright (the report of record is never written) and which
+# audit-write-clearance.sh accepts while silently skipping the re-run ledger,
+# leaving a refusal that briefs nothing.
+BASE_SHA=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null || git merge-base HEAD "${default_branch}" 2>/dev/null || true)
 . .gaia/scripts/audit-key-lib.sh
-audit_key="$(gaia_audit_key "$base")" || audit_key=""
-changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null || true)
+audit_key="$(gaia_audit_key "$BASE_SHA")" || audit_key=""
+changed=$(git diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
 ```
 
 **If none match, skip cleanly**: write no marker (there is nothing to gate), do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, and return a one-line note that no changed file fell in your remit.

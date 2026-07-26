@@ -113,10 +113,19 @@ _anchor_line() {
 }
 
 # Text between two fixed-string anchors in a file: [start_anchor, end_anchor).
+#
+# Both anchors are checked before use. Without the guards a prose reflow that
+# moves an anchor makes `$e` empty, `$((e - 1))` becomes -1, and sed aborts
+# with `expected context address` BEFORE any assertion in the caller runs --
+# so the test fails for a reason that names neither the anchor nor the file,
+# and every assertion downstream of the extraction is silently not evaluated.
+# Six call sites route through here, so the diagnosis is worth the four lines.
 range_between() {
   local file="$1" start_pat="$2" end_pat="$3" s e
   s="$(_anchor_line "$file" "$start_pat")"
   e="$(_anchor_line "$file" "$end_pat")"
+  [ -n "$s" ] || { printf 'start anchor not found in %s: %s\n' "$file" "$start_pat" >&2; return 1; }
+  [ -n "$e" ] || { printf 'end anchor not found in %s: %s\n' "$file" "$end_pat" >&2; return 1; }
   sed -n "${s},$((e - 1))p" "$file"
 }
 
@@ -162,10 +171,14 @@ range_between() {
   true
 }
 
-@test "S2: 7d's AUDIT.md path resolves into main, not the worktree" {
-  block="$(range_between "$SPEC_MD" '#### 7d. Persist AUDIT.md' '### 8. Gate 2')"
+@test "S2: 7c's AUDIT.md path resolves into main, not the worktree" {
+  # The AUDIT.md path is built at the top of 7c, where the applier dispatch
+  # that consumes ${SPEC_DIR}/${AUDIT_MD} first needs it; 7d writes the report
+  # and resolves no path of its own. Anchor on the step that does the
+  # resolving, not the step that does the writing.
+  block="$(range_between "$SPEC_MD" '#### 7c. Disposition routing + apply' '#### 7d. Persist AUDIT.md')"
 
-  # 7d carries more than one ```bash fence: the audit-window breadcrumb writer
+  # The range can carry more than one ```bash fence: the audit-window breadcrumb writer
   # sources `.gaia/scripts/audit-window-lib.sh` and calls its writer, neither
   # of which this fixture holds. Select ONLY the fence that constructs the
   # AUDIT.md path, so this test runs the block it measures and its status
@@ -238,7 +251,12 @@ seed_decoy() {
 }
 
 @test "R1: step 2's cold-consolidation sweep reads the ledger and folders from main" {
-  block="$(range_between "$SPEC_MD" 'Then, for any merged row whose folder still holds' 'For each candidate id, run a cold consolidation')"
+  # End anchor is the retention-sweep paragraph, not the "For each candidate
+  # id" one: the latter's wording is prose that names the per-candidate folder
+  # variable and is free to change, while this heading-like sentence opens the
+  # next distinct pass. The intervening paragraph carries no ```bash fence, so
+  # widening the range does not change which fence bash_fence_of selects.
+  block="$(range_between "$SPEC_MD" 'Then, for any merged row whose folder still holds' 'Then delete any merged SPEC folder')"
   fence="$(bash_fence_of "$block")"
 
   if ! printf '%s\n' "$fence" | grep -qF 'ledger.json'; then
@@ -338,6 +356,12 @@ seed_decoy() {
 
 @test "negative space: no bare relative .gaia/local/specs/ write survives at the three converted sites" {
   s1="$(range_between "$PRESET_MD" '3. Create the SPEC folder' '4. Stamp GAIA frontmatter')"
+  # s3 (7c) is where the AUDIT.md path is actually constructed, so it is the
+  # range this negative check earns its keep on; the positive assertion in S2
+  # anchors there too. s2 (7d) is retained as a genuine no-regression range:
+  # 7d writes the report at the path it was handed and must never grow a path
+  # construct of its own, relative or otherwise. Do not read s2 passing as
+  # evidence the write site is covered -- s3 and S2 are what cover it.
   s2="$(range_between "$SPEC_MD" '#### 7d. Persist AUDIT.md' '### 8. Gate 2')"
   s3="$(range_between "$SPEC_MD" '#### 7c. Disposition routing + apply' '#### 7d. Persist AUDIT.md')"
 
