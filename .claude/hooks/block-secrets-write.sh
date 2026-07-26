@@ -9,8 +9,8 @@
 #       (_TOKEN|_SECRET|_KEY|_PASSWORD)=<non-placeholder-value>
 #       Placeholders allowed: empty, "", '', x, xxx, changeme, REPLACE_ME,
 #       TODO, PLACEHOLDER, ${...}, $VAR, and three whole-value shapes:
-#       $(...) unnested, <...> with no inner `>`, and a short your-* /
-#       example* placeholder (case-insensitive).
+#       $(...) unnested, <...> with no inner `>`, and a your-* / example*
+#       placeholder whose every SEGMENT is short (case-insensitive).
 set -euo pipefail
 
 payload=$(cat)
@@ -86,7 +86,7 @@ while IFS= read -r line; do
   # are the same shape, so the arm admits both; separating them needs reading
   # the command, and this allowlist does not claim to.
   if grep -Eqi \
-    '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\([^)]+\)$|^<[^>]+>$|^(your|fake|dummy)[-_][A-Za-z0-9]{1,12}([-_.][A-Za-z0-9]{1,12})*$|^example([-_.][A-Za-z0-9]{1,12})*$' \
+    '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\([^)]+\)$|^<[^>]+>$|^your[-_][A-Za-z0-9]{1,12}([-_.][A-Za-z0-9]{1,12})*$|^example([-_.][A-Za-z0-9]{1,12})*$' \
     <<<"$val"; then
     continue
   fi
