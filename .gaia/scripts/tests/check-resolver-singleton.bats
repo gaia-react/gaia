@@ -90,10 +90,10 @@ make_fixture_repo() {
   grep -qF "shell resolver (gaia_resolve_main_root) definitions found: 1" <<<"$output" || return 1
 }
 
-@test "real repo: exactly one TypeScript resolver definition exists (state-file.ts)" {
+@test "real repo: exactly one TypeScript resolver definition exists (util/main-root.ts)" {
   run gaia_check_resolver_singleton "$REPO_ROOT"
   [ "$status" -eq 0 ]
-  grep -qF "state-file.ts" <<<"$output" || return 1
+  grep -qF "util/main-root.ts" <<<"$output" || return 1
   grep -qF "typescript resolver (resolveMainWorktreeRoot) definitions found: 1" <<<"$output" || return 1
 }
 
