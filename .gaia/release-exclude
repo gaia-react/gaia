@@ -44,6 +44,21 @@
 .gaia/scripts/verify-required-checks.sh
 # Maintainer-only distribution pre-flight; drives the release-excluded gaia-maintainer binary and would mislead adopter-side agents about a manifest their clone does not have
 .claude/hooks/distribution-preflight-check.sh
+# The four worktree-program build checks assert invariants that are true of
+# GAIA's own source and of nothing else: that each language has exactly one
+# main-root resolver (Check A) and no hand-rolled re-derivation of it (Check
+# B), that .gaia/state-registry.json covers every state directory, and that no
+# shipped source hardcodes a path the registry already answers. An adopter does
+# not write GAIA's resolvers or its registry, and every runner of these four is
+# already maintainer-only (the .gaia/scripts/tests/ bats suites and
+# audit-ci-tests.yml, both release-excluded), so today they ship a check no
+# adopter can trigger and could not act on. Withholding them is also what stops
+# their scan lists and their sibling-suite citations naming .gaia/cli/src/,
+# .gaia/cli/gaia-maintainer and .gaia/scripts/tests/ inside an adopter bundle.
+.gaia/scripts/check-main-root-derivation.sh
+.gaia/scripts/check-registry-completeness.sh
+.gaia/scripts/check-registry-source-literals.sh
+.gaia/scripts/check-resolver-singleton.sh
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that

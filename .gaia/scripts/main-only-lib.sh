@@ -14,9 +14,9 @@
 # re-deriving anything.
 #
 # Deliberately NOT a resolver. This file sources main-root-lib.sh (the one
-# canonical resolver, see check-resolver-singleton.sh) and calls its
-# functions; it performs no root derivation of its own, so it cannot count
-# as a second resolver definition.
+# canonical resolver) and calls its functions; it performs no root
+# derivation of its own, so it cannot count as a second resolver
+# definition.
 #
 # gaia_refuse_if_worktree <flow-name> [state_line_fn]
 #   <flow-name>: the slash command's own name as the caller wants it printed

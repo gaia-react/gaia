@@ -34,16 +34,9 @@
 #                  declaration cannot silently go stale when a hook later
 #                  grows a state access.
 #
-# Reuses check-registry-source-literals.sh's comment-line classifier rather
-# than writing a second one (assertion 3/4's "skip comment lines" logic).
-#
 # Dual-mode, mirroring the repo's other check/lib scripts: source it for the
 # four functions below, or run it directly (see "Executable entry" at the
 # bottom).
-
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-source "$SELF_DIR/check-registry-source-literals.sh"
 
 GAIA_HOOKCHECK_MANIFEST_REL=".gaia/hook-scopes.json"
 GAIA_HOOKCHECK_SCHEMA_REL=".gaia/hook-scopes.schema.json"
@@ -66,9 +59,9 @@ GAIA_HOOKCHECK_RESOLVER_LIBS=(
 
 # _gaia_hookcheck_is_comment_line <line>: true when <line>, trimmed of
 # leading whitespace, is a bash comment line. Every hook here is shell, so
-# this is the "sh" arm of check-registry-source-literals.sh's own
-# per-tier classifier, factored out rather than re-sourcing that function
-# under a new name.
+# this is a shell-only classifier rather than the per-tier one the registry
+# checks need, and it is defined here rather than sourced so this check
+# stands alone.
 _gaia_hookcheck_is_comment_line() {
   local line="$1" trimmed
   trimmed="${line#"${line%%[![:space:]]*}"}"

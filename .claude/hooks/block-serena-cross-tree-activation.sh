@@ -98,7 +98,7 @@ source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
 # repository-discovery overrides internally, so an ambient
 # GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR from a calling git hook cannot stand in
 # for a checkout's own layout, and neither answer is a second hand-written
-# derivation for check-main-root-derivation.sh to find.
+# derivation of the main-checkout root.
 #
 # Two trees belong to the same clone exactly when they resolve to the same main
 # checkout, which is what makes a sibling worktree distinguishable from an

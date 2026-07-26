@@ -22,9 +22,9 @@
 # Altitude: BASE SUBTREE, not full glob. The enumeration hazard is
 # subtree-level (settings.json independently listing .gaia/local areas), so
 # recognizing the base (e.g. "cache" for "cache/*") is the check that
-# matters. Finer glob-vs-entry conformance is Check B's job over runtime
-# writers (check-registry-source-literals.sh); duplicating it here is scope
-# this task does not own.
+# matters. Finer glob-vs-entry conformance belongs to the registry-literals
+# check over runtime writers; duplicating it here is scope this task does
+# not own.
 #
 # Dual-mode: source it for the function below, or run it directly (see
 # "Executable entry" at the bottom).

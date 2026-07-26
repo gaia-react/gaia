@@ -32,7 +32,7 @@
 #      one), which is why both run independently rather than one implying
 #      the other.
 #
-# Dual-mode, mirroring check-resolver-singleton.sh: source it for
+# Dual-mode, like the repo's other check scripts: source it for
 # gaia_check_audit_key_callers, or run it directly as a script (see
 # "Executable entry" at the bottom).
 #
@@ -42,9 +42,9 @@
 #   agent's own subdirectory). Prints every match line, then one verdict line
 #   per assertion. Returns 0 when BOTH assertions hold, 1 otherwise.
 #   <repo_root> is a required parameter -- this check never derives it
-#   itself (mirrors check-resolver-singleton.sh: a CI caller passes the plain
-#   checkout root, a bats fixture passes a temp repo, so "would this literal
-#   fail the check" is testable without touching real tracked source).
+#   itself: a CI caller passes the plain checkout root, a bats fixture
+#   passes a temp repo, so "would this literal fail the check" is testable
+#   without touching real tracked source.
 #
 # GREEN against this repo's real `.claude/agents/`: all five Code Audit Team
 # definitions derive their sidecar and ledger paths through `gaia_audit_key`.

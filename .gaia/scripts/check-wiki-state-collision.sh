@@ -59,16 +59,15 @@
 #   attribute, so config alone changes nothing, and the attribute scan is
 #   the seam that matters.
 #
-# Dual-mode, mirroring check-main-root-derivation.sh: source it for
+# Dual-mode, like the repo's other check scripts: source it for
 # gaia_check_wiki_state_collision, or run it directly as a script (see
 # "Executable entry" at the bottom).
 #
 # gaia_check_wiki_state_collision <repo_root>
 #   Runs both scans. Prints one verdict line per scan. Returns 0 when both
 #   are clean, 1 otherwise. <repo_root> is a required parameter -- this
-#   check never derives it itself (mirrors check-main-root-derivation.sh: a
-#   CI caller passes the plain checkout root, a bats fixture passes a temp
-#   repo).
+#   check never derives it itself: a CI caller passes the plain checkout
+#   root, a bats fixture passes a temp repo.
 
 # The one path this check guards. A rename is a deliberate change to the
 # thing being guarded, so the check fails until it is updated with it.
