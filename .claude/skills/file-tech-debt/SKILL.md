@@ -137,10 +137,11 @@ Worked boundary, easy versus medium. A swallowed error the issue text says to re
 As the last step of this recipe, touch the sentinel so the statusline's debt count recomputes on its next tick:
 
 ```bash
-mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested
+debt_root="$(bash .gaia/scripts/main-root-lib.sh)" || debt_root="."
+mkdir -p "$debt_root/.gaia/local/debt" && : > "$debt_root/.gaia/local/debt/refresh-requested"
 ```
 
-Create the parent directory first. On a fresh clone, or in CI, no statusline tick has run yet, so `.gaia/local/debt/` may not exist, a bare `touch` against a missing directory fails silently and leaves the sentinel unset. This step is best-effort: never let a failure here block or fail the caller's flow.
+Create the parent directory first. On a fresh clone, or in CI, no statusline tick has run yet, so `.gaia/local/debt/` may not exist, a bare `touch` against a missing directory fails silently and leaves the sentinel unset. The write is anchored on the main checkout because the sentinel is shared state, one copy for the clone: `debt/count.json|debt/refresh-requested` is registry scope `shared`, so every tree reads the same physical copy through the resolver. This step is best-effort: never let a failure here block or fail the caller's flow, which is why the fallback is `.` rather than an exit.
 
 ## Contract-preserve note
 

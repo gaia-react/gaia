@@ -5,12 +5,13 @@
 #
 # The render is a thin consumer of the cache field serenaLangDrift: it
 # comma-joins the array via `jq '(.serenaLangDrift // []) | join(", ")'` and
-# emits `Run /gaia-serena-sync (Serena missing: <langs>)`, gated identically to
-# the peer nudges: until per-clone setup completes, and no further. There is no
-# worktree gate -- the cache is shared state read from the resolved main root,
-# so the segment renders the same from every tree. These tests inject the cache
-# directly (no drift computation) and assert the rendered right side, covering
-# UAT-013..017.
+# emits `Run /gaia-serena-sync (Serena missing: <langs>)`. The gate is two
+# conditions, not one: per-clone setup complete, and the session sits on the
+# main checkout. The cache itself is shared state read from the resolved main
+# root, one fact about the clone -- but that fact alone does not make the
+# segment render from every tree, only from the tree that can act on it.
+# These tests inject the cache directly (no drift computation) and assert the
+# rendered right side, covering UAT-013..017.
 #
 # Hermeticity: each fixture PROJECT_ROOT lives under a per-test mktemp -d with a
 # fake $HOME (so the left-side delegation never reads the real
@@ -147,14 +148,13 @@ render() {
   refute_contains "$SEGMENT"
 }
 
-@test "UAT-016 statusline: non-empty drift renders from a linked git worktree too" {
-  # This case asserted the opposite until task 5.1: a linked worktree used to
-  # blanket-suppress the whole right side, so the drift the developer needed to
-  # see was hidden from every tree but main. The drift cache is shared state
-  # living under main, so it is one fact about the clone and it renders wherever
-  # the session sits. The worktree is left UNPROVISIONED (no symlinks back to
-  # main) and the cache is written only under main, so the segment can render
-  # only if the statusline resolved main for itself.
+@test "UAT-016 statusline: non-empty drift is suppressed from a linked git worktree" {
+  # The Serena segment is nudge 7: it renders only from the main checkout, even
+  # though the drift cache it reads is shared state living under main. The
+  # worktree is left UNPROVISIONED (no symlinks back to main) and the cache is
+  # written only under main, so a render here that showed the segment could
+  # only come from a main-anchored read that ignored the worktree gate -- the
+  # case this test rules out.
   MAIN="$TMPROOT/main"
   mkdir -p "$MAIN"
   git -C "$MAIN" init -q
@@ -167,6 +167,13 @@ render() {
   write_cache "$MAIN" '["go"]'
   write_setup "$MAIN" complete
   render "$LINKED"
+  [ "$status" -eq 0 ]
+  refute_contains 'Run /gaia-serena-sync (Serena missing: go)'
+
+  # Mirror: the identical cache and setup state still renders from main.
+  # Without this, the refutation above would stay green even if the segment
+  # stopped rendering anywhere at all.
+  render "$MAIN"
   [ "$status" -eq 0 ]
   assert_contains 'Run /gaia-serena-sync (Serena missing: go)'
 }

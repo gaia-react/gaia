@@ -1,14 +1,19 @@
 #!/usr/bin/env bats
 
-# Tests for .gaia/statusline/gaia-statusline.sh state anchoring across trees.
+# Tests for .gaia/statusline/gaia-statusline.sh state anchoring and the
+# worktree gate across trees.
 #
 # Every right-side segment reads SHARED state: the update-check cache, the debt
 # count, and the setup marker are all scope "shared" in
 # .gaia/state-registry.json, which means one physical copy under the MAIN
-# checkout's .gaia/local. So there is no worktree gate. Each segment renders the
-# same from every tree, because the state it reads IS the same. A flow that must
-# run on the main checkout refuses out loud when it is invoked, which is where
-# that belongs -- the statusline going dark cannot tell a developer anything.
+# checkout's .gaia/local. The setup nudge renders from every tree: it is the
+# one blocking, per-clone precondition, and a worktree session has no other way
+# to learn it is owed. Every other segment, and the two background refreshers
+# that keep the cache warm, are a task queue for the main checkout, so a linked
+# worktree is gated out of all of it. Failure direction on the gate itself is
+# render: an unresolvable or indeterminate worktree answer degrades to "not a
+# worktree". A flow that must run on the main checkout refuses out loud when it
+# is invoked, which is where the harder guarantee belongs.
 #
 # What each test varies is the SESSION's directory (the status payload's
 # .workspace.current_dir), never the script's install path. Every test runs
@@ -81,33 +86,50 @@ stripped_copy() {
   printf '%s' "$dst"
 }
 
+# Poll for up to 2 seconds for file $1 to exist. Both refreshers are
+# backgrounded through `nohup`, so a bare check races the fork.
+wait_for_file() {
+  local f="$1" waited=0
+  while [ ! -f "$f" ] && [ "$waited" -lt 20 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+}
+
 @test "right-side indicators render when the session is on main" {
   run_statusline "$MAIN"
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output"
 }
 
-@test "right-side indicators render when the session is in a linked worktree" {
+@test "right-side indicators are suppressed when the session is in a linked worktree" {
   run_statusline "$WT"
   [ "$status" -eq 0 ]
-  grep -qF -- "update-deps" <<<"$output"
-  grep -qF -- "gaia-debt" <<<"$output"
+  grep -qF -- "update-deps" <<<"$output" && return 1
+  grep -qF -- "gaia-debt" <<<"$output" && return 1
+  return 0
 }
 
-@test "a worktree session reads main's shared state, not its own copy" {
-  # The unprovisioned worktree grows its own .gaia/local holding DIFFERENT
-  # numbers. Only a main-anchored read can still report main's.
+@test "a worktree session reads main's shared setup marker, not its own copy" {
+  # The unprovisioned worktree grows its own .gaia/local holding a COMPLETE
+  # setup marker and different update-check/debt numbers. Only a main-anchored
+  # read can still report main's INCOMPLETE marker; the setup nudge is the
+  # only segment that still renders from a worktree, so it is the one that can
+  # prove the read is main-anchored rather than local.
   mkdir -p "$WT/.gaia/local/cache/shared" "$WT/.gaia/local/debt"
   printf '{"outdatedCount":99}' > "$WT/.gaia/local/cache/shared/update-check.json"
   printf '{"openCount":77}' > "$WT/.gaia/local/debt/count.json"
   printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$WT/.gaia/local/setup-state.json"
 
+  printf '{"completed_at":null}' > "$MAIN/.gaia/local/setup-state.json"
+
   run_statusline "$WT"
   [ "$status" -eq 0 ]
-  grep -qF -- "(3 outdated)" <<<"$output"
-  grep -qF -- "(5 issues)" <<<"$output"
+  grep -qF -- "setup-gaia" <<<"$output"
   grep -qF -- "99 outdated" <<<"$output" && return 1
   grep -qF -- "77 issues" <<<"$output" && return 1
+  grep -qF -- "3 outdated" <<<"$output" && return 1
+  grep -qF -- "5 issues" <<<"$output" && return 1
   return 0
 }
 
@@ -128,9 +150,16 @@ stripped_copy() {
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output" && return 1
 
+  # The worktree gate alone would also suppress update-deps here, so asserting
+  # only its absence no longer discriminates the mid-init gate from the
+  # worktree gate: this half would stay green with the mid-init gate deleted.
+  # Set main's setup marker incomplete so setup-gaia is the nudge the worktree
+  # gate would otherwise keep; only the mid-init gate suppresses it too.
+  printf '{"completed_at":null}' > "$MAIN/.gaia/local/setup-state.json"
   run_statusline "$WT"
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output" && return 1
+  grep -qF -- "setup-gaia" <<<"$output" && return 1
   return 0
 }
 
@@ -177,9 +206,16 @@ stripped_copy() {
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output"
 
+  # The worktree gate would suppress every indicator here regardless of
+  # whether the mid-init gate fired, so a complete setup marker cannot
+  # distinguish the two. Flip main's setup marker incomplete: only the
+  # mid-init gate produces an empty right side under that condition, and the
+  # worktree gate keeps the setup-gaia nudge, so its presence here proves the
+  # mid-init gate did not fire.
+  printf '{"completed_at":null}' > "$MAIN/.gaia/local/setup-state.json"
   run_statusline "$WT"
   [ "$status" -eq 0 ]
-  grep -qF -- "update-deps" <<<"$output"
+  grep -qF -- "setup-gaia" <<<"$output"
 }
 
 @test "an adopter's stripped copy suppresses even with the marker dir present" {
@@ -198,6 +234,139 @@ stripped_copy() {
 
 @test "the stripped copy still renders when no gate file is present" {
   run_statusline_from "$(stripped_copy)" "$MAIN"
+  [ "$status" -eq 0 ]
+  grep -qF -- "update-deps" <<<"$output"
+}
+
+# --- The worktree gate, exercised against every FC-1 row -------------------
+
+@test "an incomplete setup on main shows setup-gaia alone and the refreshers still fire" {
+  printf '{"completed_at":null}' > "$MAIN/.gaia/local/setup-state.json"
+
+  local check_marker="$BATS_TEST_TMPDIR/row1-check-ran"
+  local debt_marker="$BATS_TEST_TMPDIR/row1-debt-ran"
+  printf '#!/bin/bash\necho ran >> "%s"\n' "$check_marker" > "$MAIN/.gaia/scripts/check-updates.sh"
+  chmod +x "$MAIN/.gaia/scripts/check-updates.sh"
+  printf '#!/bin/bash\necho ran >> "%s"\n' "$debt_marker" > "$MAIN/.gaia/scripts/debt-count-refresh.sh"
+  chmod +x "$MAIN/.gaia/scripts/debt-count-refresh.sh"
+
+  run_statusline "$MAIN"
+  [ "$status" -eq 0 ]
+  grep -qF -- "setup-gaia" <<<"$output"
+  grep -qF -- "update-deps" <<<"$output" && return 1
+  grep -qF -- "gaia-debt" <<<"$output" && return 1
+  wait_for_file "$check_marker"
+  wait_for_file "$debt_marker"
+  [ -f "$check_marker" ]
+  [ -f "$debt_marker" ]
+}
+
+@test "the seven suppressed nudges render from main, none from a worktree" {
+  cat > "$MAIN/.gaia/local/cache/shared/update-check.json" <<'JSON'
+{
+  "gaiaHasUpdate": true,
+  "gaiaLatest": "9.9.9",
+  "outdatedCount": 3,
+  "hardenCandidateCount": 2,
+  "hardenUnclassifiedCount": 1,
+  "auditNudge": true,
+  "auditNudgeReason": "stale",
+  "serenaLangDrift": ["go"]
+}
+JSON
+
+  # Positive first: the fully populated cache renders every suppressed nudge
+  # from main, so their absence from the worktree below is attributable to
+  # the gate rather than to an empty cache.
+  run_statusline "$MAIN"
+  [ "$status" -eq 0 ]
+  grep -qF -- "update-gaia" <<<"$output"
+  grep -qF -- "update-deps" <<<"$output"
+  grep -qF -- "gaia-harden" <<<"$output"
+  grep -qF -- "gaia-audit" <<<"$output"
+  grep -qF -- "gaia-serena-sync" <<<"$output"
+  grep -qF -- "gaia-debt" <<<"$output"
+
+  run_statusline "$WT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "update-gaia" <<<"$output" && return 1
+  grep -qF -- "update-deps" <<<"$output" && return 1
+  grep -qF -- "gaia-harden" <<<"$output" && return 1
+  grep -qF -- "gaia-audit" <<<"$output" && return 1
+  grep -qF -- "gaia-serena-sync" <<<"$output" && return 1
+  grep -qF -- "gaia-debt" <<<"$output" && return 1
+  return 0
+}
+
+@test "the update-check and debt refreshers fire from main, not from a worktree" {
+  local check_marker="$BATS_TEST_TMPDIR/check-ran"
+  local debt_marker="$BATS_TEST_TMPDIR/debt-ran"
+  printf '#!/bin/bash\necho ran >> "%s"\n' "$check_marker" > "$MAIN/.gaia/scripts/check-updates.sh"
+  chmod +x "$MAIN/.gaia/scripts/check-updates.sh"
+  printf '#!/bin/bash\necho ran >> "%s"\n' "$debt_marker" > "$MAIN/.gaia/scripts/debt-count-refresh.sh"
+  chmod +x "$MAIN/.gaia/scripts/debt-count-refresh.sh"
+
+  # Positive first: both stubs run from main, proving the harness can see
+  # them. A negative-only test greens when the stub itself is broken.
+  run_statusline "$MAIN"
+  [ "$status" -eq 0 ]
+  wait_for_file "$check_marker"
+  wait_for_file "$debt_marker"
+  [ -f "$check_marker" ]
+  [ -f "$debt_marker" ]
+
+  # Negative: clear the markers, render from the worktree, wait the same
+  # bound, neither fires.
+  rm -f "$check_marker" "$debt_marker"
+  run_statusline "$WT"
+  [ "$status" -eq 0 ]
+  sleep 2
+  [ ! -f "$check_marker" ]
+  [ ! -f "$debt_marker" ]
+}
+
+@test "under mid-init, main's refreshers fire and the worktree's do not" {
+  mkdir -p "$MAIN/.claude/commands"
+  printf 'x\n' > "$MAIN/.claude/commands/gaia-init.md"
+
+  local check_marker="$BATS_TEST_TMPDIR/mid-check-ran"
+  local debt_marker="$BATS_TEST_TMPDIR/mid-debt-ran"
+  printf '#!/bin/bash\necho ran >> "%s"\n' "$check_marker" > "$MAIN/.gaia/scripts/check-updates.sh"
+  chmod +x "$MAIN/.gaia/scripts/check-updates.sh"
+  printf '#!/bin/bash\necho ran >> "%s"\n' "$debt_marker" > "$MAIN/.gaia/scripts/debt-count-refresh.sh"
+  chmod +x "$MAIN/.gaia/scripts/debt-count-refresh.sh"
+
+  # Main: right side is empty (mid-init suppresses it) but both refreshers
+  # still fire -- the mid-init if/else does not gate them, only the worktree
+  # gate does, and this session is not a worktree.
+  run_statusline "$MAIN"
+  [ "$status" -eq 0 ]
+  grep -qF -- "Run /" <<<"$output" && return 1
+  wait_for_file "$check_marker"
+  wait_for_file "$debt_marker"
+  [ -f "$check_marker" ]
+  [ -f "$debt_marker" ]
+
+  # Worktree: right side is empty too, for the same mid-init reason, but
+  # neither refresher fires. Without this test the two rows are
+  # indistinguishable from every other assertion in this suite.
+  rm -f "$check_marker" "$debt_marker"
+  run_statusline "$WT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "Run /" <<<"$output" && return 1
+  sleep 2
+  [ ! -f "$check_marker" ]
+  [ ! -f "$debt_marker" ]
+  return 0
+}
+
+@test "the worktree gate fails open when main-root-lib.sh is missing" {
+  # gaia_is_linked_worktree is unresolvable when the library was never
+  # sourced: the command -v guard fails, the predicate stays "false", and the
+  # segments render. This is the documented fail-open disposition, mirroring
+  # the no-git sibling test above for the STATE_ROOT resolver.
+  rm -f "$MAIN/.gaia/scripts/main-root-lib.sh"
+  run_statusline "$WT"
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output"
 }

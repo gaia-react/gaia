@@ -11,6 +11,19 @@ Translate one version's CHANGELOG entries into adopter-facing release notes. The
 
 **It never edits `CHANGELOG.md`.** The changelog stays technical and precise, that's its job. This skill only _reads_ it.
 
+## Pre-flight: Worktree check
+
+This skill writes into the sibling website checkout, resolved relative to the main checkout. If invoked from a linked worktree, reject hard: `gaia_refuse_if_worktree` (`.gaia/scripts/main-only-lib.sh`) asks the shared resolver which tree this is and refuses out loud, naming the main checkout, when the answer is a worktree.
+
+Detection (run this first, before anything else):
+
+```bash
+. .gaia/scripts/main-only-lib.sh
+gaia_refuse_if_worktree "/release-notes" || exit 1
+```
+
+If the detection does not fire, fall through to `## Inputs` below.
+
 ## Inputs
 
 Invocation carries a target version, e.g. `release-notes 1.4.0` (no leading `v`). Resolve which CHANGELOG block to translate, and where the date comes from, by that version:
