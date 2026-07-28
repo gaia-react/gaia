@@ -600,6 +600,20 @@ assert_allowed() {
   assert_allowed
 }
 
+# The same line, long enough that the flag pass's reader is still writing when
+# its `grep -q` leaves on the first match. Written as a bare pipeline the flag
+# pass then takes SIGPIPE, reports 141 under `pipefail`, drops the flag on a
+# tail that plainly carries an assignment, and denies. Only length exposes it,
+# so the fixture has to outrun grep's read buffer; the short twin above passes
+# either way.
+
+@test "a long tail whose assignment sits in a substitution is allowed" {
+  local filler
+  filler=$(head -c 40000 < /dev/zero | tr '\0' 'a')
+  run_hook_write "$(printf 'export API_KEY=%s\n' "\$X ; OUT=\$(cd repo ; export GH_TOKEN=\$T ; echo ${filler} ; git checkout 3ea35f1756b5375b0691436907e14ee8d2dbc43b)")"
+  assert_allowed
+}
+
 # ...and the shape backstop survives that split. A tail carrying no watched
 # assignment at all still reaches the shape rule, masked substitution or not.
 

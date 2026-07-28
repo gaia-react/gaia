@@ -22,11 +22,15 @@
 #     Only then does a trailing comment or ; && || clause come off, and it is
 #     read rather than discarded. The allowlist judges it only where an
 #     EXECUTABLE tail's assignment LEADS its fragment, and a `$(…)` in that
-#     assignment's value is kept whole the way the primary value's is. A comment
-#     tail, and an assignment sitting behind a `{`, a `(`, or a pipe, fall back
-#     to shape, a 13+ alphanumeric run mixing letters and digits, as does any
-#     tail carrying no assignment. That shape bound is the honest limit, an
-#     all-letter or under-13 secret parked in one of those positions clears it.
+#     assignment's value is kept whole the way the primary value's is. Leading a
+#     fragment is a property of the SEPARATORS, not of the surrounding syntax:
+#     an assignment behind a bare `{`, `(`, or pipe does not lead one and falls
+#     back to shape, while the same assignment after a separator INSIDE that
+#     group does lead one and is allowlist-judged. One inside a `$(…)` body is
+#     judged by neither, since the mask erases the body. A comment tail, and any
+#     tail carrying no assignment, fall back to shape too, a 13+ alphanumeric
+#     run mixing letters and digits. That shape bound is the honest limit, an
+#     all-letter or under-13 secret parked where shape is what runs clears it.
 set -euo pipefail
 
 payload=$(cat)
@@ -208,9 +212,13 @@ while IFS= read -r line; do
       # The grammar is tested per FRAGMENT, never against the whole tail: it is
       # anchored at `^`, and the tail still opens with its own separator, so a
       # whole-tail test can never match and would silently downgrade every one
-      # of these to the shape rule. That anchor is also what bounds the reach:
-      # an assignment behind a `{`, a `(`, or a pipe does not lead its fragment,
-      # so it falls back to shape like any other unstructured tail.
+      # of these to the shape rule. That anchor is also what bounds the reach,
+      # and the bound is about separators rather than syntax: an assignment
+      # behind a BARE `{`, `(`, or pipe does not lead its fragment and falls
+      # back to shape, while the same assignment placed after a separator INSIDE
+      # that group does lead one and is judged right here. One sitting inside a
+      # `$(…)` body is judged in neither place, because the mask erases the body
+      # before the split ever sees it.
       #
       # A separator can sit INSIDE a parked value exactly as it can inside the
       # primary one, and the split is a `tr`, not a parser. So an unnested
@@ -247,9 +255,8 @@ while IFS= read -r line; do
       # denied in both positions rather than in the primary alone. A greedy body
       # would run to the LAST `)` on the line and swallow an assignment parked
       # between two substitutions, which is the one thing the split still has to
-      # see. Masking and collapsing are independent, since
-      # the collapse touches no `$`, `(`, or `)`; only running both before the
-      # `tr` matters.
+      # see. Masking and collapsing are independent, since the collapse touches
+      # no `$`, `(`, or `)`; only running both before the `tr` matters.
       #
       # The operators collapse to `;` so the split needs only `tr`, which keeps
       # this portable to BSD `sed` (no `\n` in a replacement). The loop is fed
@@ -276,7 +283,15 @@ while IFS= read -r line; do
       # the very material the mask claimed to remove and denies a line holding
       # no literal. Splitting the two inputs keeps the mask one-directional: it
       # can turn a deny into an allow, never the reverse.
-      if sed -E 's/[|][|]/;/g; s/&&/;/g' <<<"$tail" | tr ';' '\n' | grep -Eq "$name_re"; then
+      # `grep` is fed by process substitution rather than sitting at the end of
+      # a pipeline, for the same reason the loop above is, and the reason bites
+      # harder here. Under `pipefail` the `if` reads the WHOLE pipeline's
+      # status, and `grep -q` exits on its first match: on a tail long enough
+      # that `tr` is still writing, `tr` takes SIGPIPE, the pipeline reports
+      # 141, the flag stays 0 on a tail that plainly carries an assignment, and
+      # the shape rule denies. A short tail never shows it, because `tr` is done
+      # before `grep` leaves.
+      if grep -Eq "$name_re" < <(sed -E 's/[|][|]/;/g; s/&&/;/g' <<<"$tail" | tr ';' '\n'); then
         tail_has_assignment=1
       fi
     fi
