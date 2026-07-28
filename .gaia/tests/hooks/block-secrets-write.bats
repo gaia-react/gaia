@@ -28,6 +28,14 @@
 # to any single test, and it masks no genuine signal: SC2317 cannot reason about
 # an indirectly-invoked bats suite at all.
 
+# shellcheck disable=SC2016
+# SC2016 (expressions don't expand in single quotes) fires on every fixture that
+# carries a `$`, which is most of them. Not expanding is the entire point: the
+# fixture has to reach the hook as the literal text a real edit would contain,
+# so `printf` takes it as an unexpanded argument. The directive is file-wide for
+# the same reason the one above is, the fixtures are the file, and leaving it off
+# buries the oracle's real output under a warning that is correct for every hit.
+
 setup() {
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-secrets-write.sh"
@@ -146,6 +154,27 @@ assert_allowed() {
   assert_denied
 }
 
+# --- A shell declaration keyword does not hide the assignment ---
+#
+# The name grep anchors the suspicious name to the start of the line, so a
+# declaration keyword in front of it took the line out of the scan entirely,
+# and no allowlist arm was ever consulted.
+
+@test "an exported literal value is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a local-declared literal value is denied" {
+  run_hook_write "$(printf 'local API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a readonly-declared literal value is denied through Edit too" {
+  run_hook_edit "$(printf 'readonly DB_PASSWORD=%s\n' 'hunter2-not-a-placeholder')"
+  assert_denied
+}
+
 # --- The existing allowlist arms still allow ---
 
 @test "an empty value is allowed" {
@@ -195,6 +224,92 @@ assert_allowed() {
 @test "an example domain placeholder is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' 'example.com')"
   assert_allowed
+}
+
+@test "an exported \$VAR value is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$MY_API_KEY')"
+  assert_allowed
+}
+
+# Recognizing the declaration keywords pulls shell lines into a rule written for
+# dotenv files, and a shell value references a variable far more often than a
+# dotenv value does. These are the shapes that carry no literal secret but that
+# the bare-identifier `${VAR}` arm alone would deny.
+
+@test "an expansion carrying a default operator is allowed" {
+  run_hook_write "$(printf 'export GITHUB_TOKEN=%s\n' '"${GITHUB_TOKEN:-}"')"
+  assert_allowed
+}
+
+@test "a positional expansion is allowed" {
+  run_hook_write "$(printf 'local CACHE_KEY=%s\n' '"${1}"')"
+  assert_allowed
+}
+
+@test "an expansion followed by a literal path is allowed" {
+  run_hook_write "$(printf 'readonly SIGNING_KEY=%s\n' '"${REPO_ROOT}/dev.pem"')"
+  assert_allowed
+}
+
+@test "a named fake placeholder is allowed" {
+  run_hook_write "$(printf 'export GH_TOKEN=%s\n' '"fake-token"')"
+  assert_allowed
+}
+
+# The expansion allowance is bounded by the same segment rule as the placeholder
+# arms: a secret does not stop being a secret for sitting inside a default.
+
+@test "a literal secret inside an expansion default is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${API_KEY:-sk-live-9f3a1c4e8b7d2064}')"
+  assert_denied
+}
+
+@test "a literal secret concatenated onto an expansion is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '"${PREFIX}sk-live-9f3a1c4e8b7d2064"')"
+  assert_denied
+}
+
+# A segmented secret has the same structure a placeholder does, so the operand
+# arm requires an EMPTY operand rather than a short one: a default value is
+# exactly where a real secret lands, and a UUID clears any per-segment bound.
+
+@test "a segmented secret inside an expansion default is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${API_KEY:-550e8400-e29b-41d4-a716-446655440000}')"
+  assert_denied
+}
+
+@test "an expansion followed by a non-path literal is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${X}550e8400-e29b-41d4-a716-446655440000')"
+  assert_denied
+}
+
+# The path arm bounds each segment the way the placeholder arms do, so the
+# separator buys a path suffix and not an unbounded tail. Without these three
+# the arm's allow direction is pinned and its failure mode is not: a secret
+# behind the separator is exactly what the separator must not admit.
+
+@test "a literal secret behind a slash separator is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${X}/sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a literal secret behind a dot separator is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '${X}.sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a segmented secret behind a path separator is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '"${VAULT}/550e8400-e29b-41d4-a716-446655440000"')"
+  assert_denied
+}
+
+# A variable reference inside a command-substitution body must not buy the
+# value an expansion arm: that would re-open the very splice the `$(…)` arm
+# exists to close.
+
+@test "a substitution whose body references a variable is still spliced, so denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$(echo ${X})550e8400-e29b-41d4-a716-446655440000')"
+  assert_denied
 }
 
 # The placeholder arms require a separator BETWEEN segments. Making it optional
@@ -249,5 +364,159 @@ assert_allowed() {
 
 @test "a command substitution is allowed through Edit too" {
   run_hook_edit "$(printf 'AUDIT_KEY="%s"\n' '$(gaia_audit_key "$BASE_SHA")')"
+  assert_allowed
+}
+
+# --- The declaration keyword carries its options ---
+#
+# `declare -r` and `local -r` are the idiomatic spellings in careful bash, so a
+# keyword group that only accepts the bare keyword takes the very lines it was
+# widened for back out of the scan. The flags are part of the declaration, not
+# part of the name.
+
+@test "a secret behind declare -r is denied" {
+  run_hook_write "$(printf 'declare -r API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a secret behind local -r is denied" {
+  run_hook_write "$(printf 'local -r API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a secret behind readonly -g is denied" {
+  run_hook_write "$(printf 'readonly -g API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a secret behind an end-of-options marker is denied" {
+  run_hook_write "$(printf 'export -- API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a secret behind two declaration flags is denied" {
+  run_hook_write "$(printf 'declare -r -x API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+# --- Ordinary secret-free shell lines stay allowed ---
+#
+# Pulling shell lines into a rule written for dotenv files means the rule now
+# sees shapes a dotenv file never carries: a trailing comment, a trailing
+# operator, an unbraced positional, two references concatenated. None of them
+# holds a literal, and denying them is a hard block whose stated remedy ("use
+# environment variables") is what the line already does.
+
+@test "a trailing comment does not defeat the value extraction" {
+  run_hook_write "$(printf 'export GITHUB_TOKEN=%s\n' '"$GH_PAT" # for gh cli')"
+  assert_allowed
+}
+
+@test "a trailing or-clause does not defeat the value extraction" {
+  run_hook_write "$(printf 'local API_KEY=%s\n' '"$1" || true')"
+  assert_allowed
+}
+
+@test "an unbraced positional is allowed" {
+  run_hook_write "$(printf 'local API_KEY=%s\n' '"$1"')"
+  assert_allowed
+}
+
+@test "two concatenated references are allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '"${A}${B}"')"
+  assert_allowed
+}
+
+# A trailing comment strips the comment, not the scan: a literal secret ahead of
+# one is still the value, and still denied.
+
+@test "a literal secret ahead of a trailing comment is still denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '"sk-live-9f3a1c4e8b7d2064" # from vault')"
+  assert_denied
+}
+
+# The tail comes off the value but is never discarded unread. A placeholder on
+# the left with the real key parked in the comment is the plausible accident;
+# a second assignment after `;` is worse in kind, because the discarded text is
+# executable. Without these the tail-strip trades a false positive for a hole.
+
+@test "a secret parked in a trailing comment is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$MY_VAR # sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a secret parked beside an empty value is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '  # sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a secret parked behind a placeholder is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<paste> # sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a second assignment after a statement separator is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '"" ; API_TOKEN=sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+# Ordinary prose in a comment is not secret-shaped, so the tail check has to
+# stay quiet for it or it re-creates the false positive it was added beside.
+
+@test "ordinary prose in a trailing comment is allowed" {
+  run_hook_write "$(printf 'export GITHUB_TOKEN=%s\n' '"$GH_PAT" # authentication for the gh cli')"
+  assert_allowed
+}
+
+# `typeset` is bash's synonym for `declare`, so it belongs with the other three.
+
+@test "a secret behind typeset -r is denied" {
+  run_hook_write "$(printf 'typeset -r API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+# A `;`, `&&`, or `||` can sit INSIDE the value rather than after it, and the
+# tail strip is a regex with no quoting or substitution context, so it cannot
+# tell the two apart on its own. Judging the untrimmed value FIRST is what
+# bounds the strip to turning a deny into an allow and never the reverse. The
+# guarded-substitution idiom below is how this repo's own audit scripts write a
+# fallible command substitution, so getting the order wrong hard-blocks them.
+
+@test "an or-separator inside a command substitution is allowed" {
+  run_hook_write "$(printf 'AUDIT_KEY=%s\n' '"$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"')"
+  assert_allowed
+}
+
+@test "an and-separator inside a command substitution is allowed" {
+  run_hook_write "$(printf 'GH_TOKEN=%s\n' '$(gh auth token 2>/dev/null && :)')"
+  assert_allowed
+}
+
+@test "a separator inside an angle-bracket placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<paste || generate>')"
+  assert_allowed
+}
+
+# The tail's shape rule only sees a run of 13+ alphanumerics mixing letters and
+# digits, so an assignment parked after a separator clears it whenever the value
+# is shorter than that or carries no digit. The feeder grep is line-anchored and
+# never re-reads the fragment, so shape alone leaves the hole open; an executable
+# tail carrying an assignment is judged by the assignment rule instead.
+
+@test "a short second assignment after a separator is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '"" ; API_TOKEN=abc123xyz')"
+  assert_denied
+}
+
+@test "an all-letter second assignment after a separator is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<paste> ; REAL_KEY=correcthorsebattery')"
+  assert_denied
+}
+
+# The rescan reuses the value allowlist rather than denying on the name alone,
+# so a parked assignment whose value is an ordinary reference stays allowed.
+
+@test "an allowed assignment in an executable tail is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$X ; OTHER_TOKEN=${Y}')"
   assert_allowed
 }
