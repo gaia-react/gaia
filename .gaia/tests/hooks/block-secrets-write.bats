@@ -556,6 +556,28 @@ assert_allowed() {
   assert_denied
 }
 
+# ...and it has to be global. Mask only the first substitution and a second
+# guarded one keeps its `||`, which collapses to a separator and truncates that
+# fragment, false-denying a tail carrying no literal at all. The deny case above
+# cannot observe this: it asserts a deny, so a mutation that only adds denies
+# leaves it green.
+
+@test "two guarded substitutions in one tail are allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$(gh auth token 2>/dev/null || true) ; B_TOKEN=$(id -u 2>/dev/null || true)')"
+  assert_allowed
+}
+
+# The mask reaches no verdict the primary value does not already reach, but it
+# is not verdict-preserving against the old split: an assignment between a `$(`
+# and its first `)` goes away with the body. That widening is deliberate, so it
+# is pinned rather than left incidental. The identical value in the primary
+# position is allowed either way, which is the alignment being bought.
+
+@test "an assignment inside a substitution body in a tail is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$(foo ; B_KEY=hunter2xyz123 )')"
+  assert_allowed
+}
+
 # The fragment loop is fed by process substitution rather than a pipe so it runs
 # in this shell and `tail_has_assignment` survives it. A pipe-fed rewrite is
 # invisible until the tail is BOTH assignment-carrying and secret-shaped: only
