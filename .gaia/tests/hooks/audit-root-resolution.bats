@@ -139,7 +139,7 @@ setup() {
   git -C "$WT" add -A
   git -C "$WT" commit --quiet -m "worktree change: diverge every roster member's owned file"
 
-  cd "$OUTSIDE"
+  cd "$OUTSIDE" || return 1
 }
 
 teardown() {
@@ -322,6 +322,13 @@ write_merge_payload() {
 # own text, never a hand-maintained copy that can drift from it. Deliberately
 # a separate, small extractor rather than importing main-only-lib.bats's
 # helper across suites (different anchor text, different file set).
+#
+# The anchor is any first-column assignment to AUDIT_ROOT, deliberately wider
+# than the shipped `${AUDIT_ROOT:-` shape: stage 8's non-vacuity mutation
+# rewrites the derivation into its ambient-cwd form, and an anchor tied to the
+# shipped shape stops matching the moment that mutation lands. The extraction
+# then returns nothing, run_audit_root_block runs a script with no derivation
+# in it, and the control measures an empty block instead of a mutated one.
 extract_audit_root_block() {
   awk '
     /^```/ {
@@ -335,7 +342,7 @@ extract_audit_root_block() {
     }
     in_block {
       buf = buf $0 "\n"
-      if ($0 ~ /AUDIT_ROOT="\$\{AUDIT_ROOT:-/) found = 1
+      if ($0 ~ /^AUDIT_ROOT=/) found = 1
     }
   ' "$1"
 }
@@ -345,8 +352,18 @@ extract_audit_root_block() {
 # resulting $AUDIT_ROOT. Writing the block to a temp file sidesteps the
 # quoting hazard of nesting the block's own double quotes inside a `bash -c`
 # string.
+#
+# An empty block is refused rather than run. The script would then be the
+# trailing printf alone, which echoes the supplied AUDIT_ROOT straight back
+# without deriving anything, and every caller here compares that output
+# against a root it supplied itself. That is a passing answer produced by no
+# derivation at all, so it fails closed and names itself.
 run_audit_root_block() {
   local audit_root_env="$1" cwd="$2" block="$3" script
+  if [ -z "$block" ]; then
+    echo "run_audit_root_block: empty block; refusing to echo AUDIT_ROOT back as if a derivation produced it" >&2
+    return 2
+  fi
   script="$(mktemp "$BATS_TEST_TMPDIR/audit-root-block-XXXXXX")"
   {
     printf '%s\n' "$block"
@@ -928,6 +945,11 @@ run_audit_root_block() {
   fi
 
   block="$(extract_audit_root_block "$AGENT_MD")"
+  if [ -z "$block" ]; then
+    echo "the mutated derivation is not extractable; this control would measure an empty block rather than a mutation" >&2
+    restore_file "$AGENT_MD" "$orig_sum"
+    return 1
+  fi
   run run_audit_root_block "$WT" "$OUTSIDE" "$block"
   { [ "$status" -eq 0 ] && [ "$output" = "$wt_phys" ]; } || went_red=1
 
