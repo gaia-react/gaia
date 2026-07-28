@@ -22,7 +22,7 @@ AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
 AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
 ```
 
-Shell state does NOT persist between an agent's Bash calls, the same rule the `BASE_SHA` comment below states for its own value, so every later call that uses `$AUDIT_ROOT` re-runs those two lines first. A call that skips them sees an empty value, and the two consumers fail in opposite directions: `--root "$AUDIT_ROOT"` expands to `--root ""` and fails closed loudly, while `cd "$AUDIT_ROOT" && ...` fails open in silence, because `cd ""` returns 0 and leaves the command running against whatever tree the session happens to sit in.
+Shell state does NOT persist between an agent's Bash calls, the same rule the `BASE_SHA` comment below states for its own value, so every later call that uses `$AUDIT_ROOT` re-runs those two lines first, re-issuing the dispatched `AUDIT_ROOT=` assignment ahead of them when the orchestrator supplied one: in a fresh shell `AUDIT_ROOT` is unset, so the first line's fallback fires and reproduces the ambient tree, not the supplied root. A call that skips them sees an empty value, and the two consumers fail in opposite directions: `--root "$AUDIT_ROOT"` expands to `--root ""` and fails closed loudly, while `cd "$AUDIT_ROOT" && ...` fails open in silence, because `cd ""` returns 0 and leaves the command running against whatever tree the session happens to sit in.
 
 At the start of every run, resolve the diff base the same way the dispatch resolver does, then list the changed files:
 
@@ -170,7 +170,7 @@ findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
   --findings /path/to/findings.json)"
 ```
 
-Pass the same `BASE_SHA` you already resolved at run start, never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${audit_key}.code-audit-maintainer-prose.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable. `--findings -` reads the array from stdin when you would rather not stage a temp file.
+Pass the same `BASE_SHA` you already resolved at run start, never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-maintainer-prose.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable. `--findings -` reads the array from stdin when you would rather not stage a temp file.
 
 Shape (one entry per finding; the writer rejects the write and names the offending index if any required field is missing):
 

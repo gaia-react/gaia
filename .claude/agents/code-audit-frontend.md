@@ -36,7 +36,7 @@ AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
 AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
 ```
 
-Shell state does NOT persist between an agent's Bash calls, so every later call that uses `$AUDIT_ROOT` re-runs those two lines first. A call that skips them sees an empty value, and the two consumers fail in opposite directions: `--root "$AUDIT_ROOT"` expands to `--root ""` and fails closed loudly, while `cd "$AUDIT_ROOT" && ...` fails open in silence, because `cd ""` returns 0 and leaves the command running against whatever tree the session happens to sit in.
+Shell state does NOT persist between an agent's Bash calls, so every later call that uses `$AUDIT_ROOT` re-runs those two lines first, re-issuing the dispatched `AUDIT_ROOT=` assignment ahead of them when the orchestrator supplied one: in a fresh shell `AUDIT_ROOT` is unset, so the first line's fallback fires and reproduces the ambient tree, not the supplied root. A call that skips them sees an empty value, and the two consumers fail in opposite directions: `--root "$AUDIT_ROOT"` expands to `--root ""` and fails closed loudly, while `cd "$AUDIT_ROOT" && ...` fails open in silence, because `cd ""` returns 0 and leaves the command running against whatever tree the session happens to sit in.
 
 Do not re-derive that set by hand. On a **local** run, at the start of every review, ask the dispatch oracle whether this diff dispatches you, with `--no-carry-forward`:
 
@@ -278,7 +278,7 @@ This decision runs **after** section B's security classification and **before** 
 
 Promote a non-security out-of-scope finding into the self-heal path, repaired in place rather than filed, **if and only if all five** of these hold:
 
-1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `git diff --name-only "$(.github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'` set the audit already resolves. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
+1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `git -C "$AUDIT_ROOT" diff --name-only "$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'` set the audit already resolves. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
 2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out, because `block-selfheal-paths.sh` would hard-deny the edit and leave the finding with no disposition at all.
 3. The file is in **your own remit** (your declared globs, see "Remit and self-skip", evaluated at the second precedence tier), not a cross-remit file a claimant member owns.
 4. The finding is **non-security** per section B's classification, read as section B's own flag, bound on **every repo including a confirmed PRIVATE one**. Never re-derive "non-security" from the `finding_class` tag or a fresh screen.
@@ -652,7 +652,7 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 1. **Identify changed files** against the incremental base:
    - Resolve the base: if the invoking context provides one (CI passes `<base>...HEAD` in the agent prompt), use it; otherwise run `.github/audit/resolve-audit-base.sh`. It returns the most recent ancestor that already passed a clean audit under the current `.gaia/VERSION` (via a GAIA-Audit trailer or commit status), or `origin/main` when none exists.
    - **Derive the re-run ledger path and read it (LOCAL only) as the prior-round briefing.** From the same resolved base, compute `BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "$BASE_REF" HEAD 2>/dev/null || true)"`, then `AUDIT_KEY="$(gaia_audit_key "$BASE_SHA" "$AUDIT_ROOT")" || AUDIT_KEY=""` (`.gaia/scripts/audit-key-lib.sh`) and `LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `AUDIT_KEY` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `BASE_SHA`, `AUDIT_KEY`, and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
-   - List changed files: `git diff --name-only "$(.github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'`. The two-dot form (`<base>`, not `<base>...HEAD`) includes uncommitted working-tree changes, the right scope for a pre-commit/pre-merge review.
+   - List changed files: `git -C "$AUDIT_ROOT" diff --name-only "$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'`. The two-dot form (`<base>`, not `<base>...HEAD`) includes uncommitted working-tree changes, the right scope for a pre-commit/pre-merge review.
    - When the base is an audited ancestor, everything before it was already cleared; only the delta needs review. **For any exported symbol whose signature or contract changed in the delta, grep its importers and check them even if unchanged**, a cleared caller can still break from a delta change.
    - Once the changed-file list is resolved and before dispatching subagents, emit the `scope resolved` breadcrumb (see Progress breadcrumbs).
 2. **Gate each subagent** on file scope, don't spawn a subagent that has nothing to review:
@@ -862,7 +862,7 @@ If a candidate truly does not violate any listed rule, don't report it. If no vi
 At the very start of the review, before any rule-based subagents fire and before any self-heal edits, capture the tree the audit is about to review and initialize the self-heal flag. `AUDIT_TREE_SHA` is passed to the trailer-stamp helper at marker-write time and also keys the progress breadcrumb file (see Progress breadcrumbs), so it must be captured before the first breadcrumb write, not just before the marker.
 
 ```bash
-AUDIT_TREE_SHA="$(git rev-parse HEAD^{tree})"
+AUDIT_TREE_SHA="$(git -C "$AUDIT_ROOT" rev-parse HEAD^{tree})"
 AUDIT_SELF_HEALED="false"
 ```
 
@@ -961,7 +961,7 @@ stamp_line=$(
   AUDIT_TREE_SHA="$AUDIT_TREE_SHA" AUDIT_SELF_HEALED="$AUDIT_SELF_HEALED" \
     .claude/hooks/audit-stamp-trailer.sh
 )
-HEAD_SHA="$(git rev-parse HEAD)"
+HEAD_SHA="$(git -C "$AUDIT_ROOT" rev-parse HEAD)"
 
 # 3. Push the stamp commit, BEFORE the status call, only when the helper
 #    created an empty commit AND HEAD is on an attached tracking branch
@@ -970,16 +970,21 @@ HEAD_SHA="$(git rev-parse HEAD)"
 #    agent's vantage (CI's own commit-and-push step handles propagation).
 #    Pushing here, ahead of step 4, is what makes the remote PR head the
 #    trailer commit, so the status POST lands on the sha branch
-#    protection checks instead of a local-only one.
+#    protection checks instead of a local-only one. Every git call in
+#    this step anchors to $AUDIT_ROOT, because step 2 creates the stamp
+#    commit there: both preconditions are properties of the audited
+#    tree, and an ambient push sends the session tree's own branch to
+#    its own upstream, which leaves the trailer unpushed while
+#    push_status still reads "pushed".
 push_status="not_attempted"
 if [ "$stamp_line" = "stamp: empty commit (created locally)" ]; then
-  head_branch=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
+  head_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || true)
   upstream=""
   if [ -n "$head_branch" ]; then
-    upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+    upstream=$(git -C "$AUDIT_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
   fi
   if [ -n "$head_branch" ] && [ -n "$upstream" ]; then
-    if git push --quiet 2>/dev/null; then
+    if git -C "$AUDIT_ROOT" push --quiet 2>/dev/null; then
       push_status="pushed"
     else
       push_status="push_failed"
@@ -1027,8 +1032,11 @@ fi
 #    base-keyed ledger best-effort. Skip in CI (the ledger is never written
 #    there). See "Re-run carry-forward ledger". This is an additional
 #    best-effort file op; it does not alter the marker / trailer / status /
-#    dispositions-sidecar writes.
-if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ] && [ -n "$AUDIT_KEY" ]; then
+#    dispositions-sidecar writes. The guard names both values the removal
+#    depends on: $LEDGER is the path it removes, and $AUDIT_KEY is the
+#    fail-open arm, because an empty key still interpolates into a
+#    well-formed path that names no ledger.
+if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ] && [ -n "$AUDIT_KEY" ] && [ -n "$LEDGER" ]; then
   rm -f "$LEDGER"
 fi
 ```

@@ -96,7 +96,16 @@ setup() {
   for f in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh; do
     cp "$REPO_ROOT/.claude/hooks/lib/$f" "$MAIN/.claude/hooks/lib/$f"
   done
-  cp "$REPO_ROOT/.claude/agents/code-audit-frontend.md" "$MAIN/.claude/agents/code-audit-frontend.md"
+  ALL_MEMBERS=(code-audit-frontend code-audit-github-workflows code-audit-maintainer-node code-audit-maintainer-prose code-audit-maintainer-shell)
+
+  # Every definition, not just the default member's: stage 8 asserts the
+  # AUDIT_ROOT derivation resolves correctly in all five, so all five have to
+  # be here for the extractor to read. The block is byte-identical across them
+  # (FC-5), which is exactly what driving each one independently proves.
+  local m
+  for m in "${ALL_MEMBERS[@]}"; do
+    cp "$REPO_ROOT/.claude/agents/${m}.md" "$MAIN/.claude/agents/${m}.md"
+  done
 
   SCRIPT_RESOLVE_MEMBERS="$MAIN/.gaia/scripts/resolve-audit-members.sh"
   SCRIPT_RESOLVE_SPAWN="$MAIN/.gaia/scripts/resolve-audit-spawn.sh"
@@ -107,8 +116,6 @@ setup() {
   HOOK_MERGE="$MAIN/.claude/hooks/pr-merge-audit-check.sh"
   AGENT_MD="$MAIN/.claude/agents/code-audit-frontend.md"
   DIGEST_LIB="$MAIN/.claude/hooks/lib/audit-digest.sh"
-
-  ALL_MEMBERS=(code-audit-frontend code-audit-github-workflows code-audit-maintainer-node code-audit-maintainer-prose code-audit-maintainer-shell)
 
   # Roster-owned, non-machinery seed files: one per roster member (per
   # .gaia/audit-ci.yml's globs), none of them listed in
@@ -887,34 +894,43 @@ run_audit_root_block() {
 # -----------------------------------------------------------------------------
 # Stage 8: the extracted agent handshake block (AUDIT_ROOT derivation).
 # Instances 2, 7. The block is byte-identical across all five agent
-# definitions (FC-5); this suite drives the one extracted from
-# code-audit-frontend.md.
+# definitions (FC-5), so the two positive tests drive every one of them
+# rather than pinning the default member's copy and inferring the rest. The
+# mutation control below stays on code-audit-frontend.md alone: it proves the
+# assertion is non-vacuous, which one file establishes, and mutating five
+# would cost five backup/restore cycles for the same signal.
 # -----------------------------------------------------------------------------
 
-@test "stage 8 (flag/anchor: AUDIT_ROOT supplied) from OUTSIDE: resolves to WT, never MAIN" {
-  local block main_phys wt_phys
-  block="$(extract_audit_root_block "$AGENT_MD")"
-  [ -n "$block" ] || { echo "extractor found no fenced block containing the AUDIT_ROOT derivation" >&2; return 1; }
+@test "stage 8 (flag/anchor: AUDIT_ROOT supplied) from OUTSIDE: every definition resolves to WT, never MAIN" {
+  local m block main_phys wt_phys
   wt_phys="$(phys "$WT")"
   main_phys="$(phys "$MAIN")"
 
-  run run_audit_root_block "$WT" "$OUTSIDE" "$block"
-  [ "$status" -eq 0 ]
-  [ "$output" = "$wt_phys" ]
-  [ "$output" != "$main_phys" ]
+  for m in "${ALL_MEMBERS[@]}"; do
+    block="$(extract_audit_root_block "$MAIN/.claude/agents/${m}.md")"
+    [ -n "$block" ] || { echo "$m: extractor found no fenced block containing the AUDIT_ROOT derivation" >&2; return 1; }
+
+    run run_audit_root_block "$WT" "$OUTSIDE" "$block"
+    [ "$status" -eq 0 ] || { echo "$m: the block exited $status" >&2; return 1; }
+    [ "$output" = "$wt_phys" ] || { echo "$m: resolved '$output', expected the supplied root '$wt_phys'" >&2; return 1; }
+    [ "$output" != "$main_phys" ] || { echo "$m: resolved MAIN, so the supplied root lost to the ambient fallback" >&2; return 1; }
+  done
 }
 
-@test "stage 8 (flag/anchor: AUDIT_ROOT fallback) unset, run inside WT: the fallback resolves WT, not MAIN" {
-  local block wt_phys main_phys
-  block="$(extract_audit_root_block "$AGENT_MD")"
-  [ -n "$block" ] || { echo "extractor found no fenced block containing the AUDIT_ROOT derivation" >&2; return 1; }
+@test "stage 8 (flag/anchor: AUDIT_ROOT fallback) unset, run inside WT: every definition's fallback resolves WT, not MAIN" {
+  local m block wt_phys main_phys
   wt_phys="$(phys "$WT")"
   main_phys="$(phys "$MAIN")"
 
-  run run_audit_root_block "" "$WT" "$block"
-  [ "$status" -eq 0 ]
-  [ "$output" = "$wt_phys" ]
-  [ "$output" != "$main_phys" ]
+  for m in "${ALL_MEMBERS[@]}"; do
+    block="$(extract_audit_root_block "$MAIN/.claude/agents/${m}.md")"
+    [ -n "$block" ] || { echo "$m: extractor found no fenced block containing the AUDIT_ROOT derivation" >&2; return 1; }
+
+    run run_audit_root_block "" "$WT" "$block"
+    [ "$status" -eq 0 ] || { echo "$m: the block exited $status" >&2; return 1; }
+    [ "$output" = "$wt_phys" ] || { echo "$m: resolved '$output', expected the ambient tree '$wt_phys'" >&2; return 1; }
+    [ "$output" != "$main_phys" ] || { echo "$m: resolved MAIN from inside WT" >&2; return 1; }
+  done
 }
 
 @test "stage 8 non-vacuity (source mutation): restoring an ambient-cwd derivation in one agent file turns the supplied-AUDIT_ROOT assertion red; byte-identical restore verified" {

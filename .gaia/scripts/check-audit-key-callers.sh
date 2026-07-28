@@ -22,15 +22,28 @@
 #      (conventionally `${AUDIT_KEY}`) is a different token, so a converted
 #      caller never trips this pattern.
 #   2. Every file that NAMES a findings sidecar or the re-run ledger (mentions
-#      `findings.json` or `rerun.json` at all) also calls `gaia_audit_key`
-#      somewhere in that same file. A file matching assertion 1's bad literal
-#      also, by construction, fails to call `gaia_audit_key` for that path --
-#      the two assertions catch the same defect from opposite ends: (1) is
-#      "the wrong shape is absent", (2) is "the right call is present". A
-#      file could in principle satisfy one without the other (e.g. it calls
-#      `gaia_audit_key` for one path but still hand-builds a second, unrelated
-#      one), which is why both run independently rather than one implying
-#      the other.
+#      `findings.json` or `rerun.json` at all) also MENTIONS `gaia_audit_key`
+#      somewhere in that same file. This is a token-presence net over the
+#      whole file, not a call-shape check: the grep is a fixed-string match,
+#      so descriptive prose satisfies it exactly as an executable call does.
+#      That is deliberate. Only `code-audit-frontend.md` derives a path
+#      itself; the other four definitions delegate keying to
+#      `.gaia/scripts/audit-write-findings.sh` and name `gaia_audit_key` only
+#      to say so, so a call-shape check would fail all four for correctly
+#      delegating.
+#
+#      The two assertions are therefore not symmetric. (1) is the one that
+#      bites: it rejects the literal encoding the collision. (2) corroborates:
+#      a file naming the artifact also names the keying mechanism it depends
+#      on, called or delegated. Drift back to a hand-built path trips (1)
+#      outright; (2) catches the weaker case of a file that drops its
+#      reference to the mechanism entirely. Both run independently rather
+#      than one implying the other.
+#
+#      The two verdict lines (2) prints label the condition a `call` for
+#      brevity; read it as the mention described here. That wording is a
+#      pinned output contract, asserted verbatim by
+#      `.gaia/scripts/tests/check-audit-key-callers.bats`.
 #
 # Dual-mode, like the repo's other check scripts: source it for
 # gaia_check_audit_key_callers, or run it directly as a script (see
@@ -46,10 +59,11 @@
 #   passes a temp repo, so "would this literal fail the check" is testable
 #   without touching real tracked source.
 #
-# GREEN against this repo's real `.claude/agents/`: all five Code Audit Team
-# definitions derive their sidecar and ledger paths through `gaia_audit_key`.
-# A red here means a definition has drifted back to hand-building a path from
-# a bare base sha, which is the collision this key exists to remove.
+# GREEN against this repo's real `.claude/agents/`: `code-audit-frontend.md`
+# derives its ledger path through `gaia_audit_key`, and the other four
+# definitions reach the same key by delegating to the sidecar writer. A red
+# here means a definition has drifted back to hand-building a path from a
+# bare base sha, which is the collision this key exists to remove.
 
 # Assertion 1's bad-literal pattern: `${BASE_SHA}.` or `${base}.`, optionally
 # followed by a member-name segment (`code-audit-frontend.`), then the
