@@ -17,9 +17,13 @@
 #     A shell declaration additionally allows the ordinary expansion forms as
 #     whole values: a positional ($1, ${1}), an EMPTY operand (${VAR:-}), a
 #     value that is nothing but braced references (${A}${B}), and ${VAR}
-#     followed by a segment-bounded path. A trailing comment or ; && ||
-#     clause comes off the value and is judged on its own for secret-shaped
-#     material rather than discarded unread.
+#     followed by a segment-bounded path. The value is judged whole FIRST, so a
+#     separator inside it (`$(cmd || true)`) is never mistaken for a tail.
+#     Only then does a trailing comment or ; && || clause come off, and it is
+#     read rather than discarded: a tail carrying an assignment is judged by
+#     the same allowlist, and any other tail by shape, a 13+ alphanumeric run
+#     mixing letters and digits. That shape bound is the honest limit, an
+#     all-letter or under-13 secret parked in a comment clears it.
 set -euo pipefail
 
 payload=$(cat)
@@ -62,63 +66,70 @@ fi
 
 # 4. dotenv-style assignments to suspicious names with non-placeholder values.
 #    Iterate matching lines and apply the placeholder allowlist.
-while IFS= read -r line; do
-  # A shell line carries a tail a dotenv line never does: a trailing comment, or
-  # a second statement after `;`, `&&`, `||`. It has to come off before the
-  # allowlist reads the value, or the whole remainder of the line becomes the
-  # value, no arm can match, and an ordinary secret-free
-  # `export FOO_KEY="$BAR" # note` is hard-blocked by a deny that tells its
-  # author to use the environment variable the line already uses.
-  rest=$(sed -E 's/^[^=]*=//' <<<"$line")
-  tail=$(grep -oE '[[:space:]]+(#|[|][|]|&&|;).*$' <<<"$rest" || true)
-  # The tail comes off, but it is never DISCARDED unread. A comment beside a
-  # placeholder, or a second assignment after `;`, is exactly where a real key
-  # gets parked, so dropping it unexamined would trade the false positive above
-  # for a hole. Judge it by the same structural rule the arms below use: a run
-  # of 13+ alphanumerics mixing letters and digits is secret-shaped, where a
-  # placeholder segment is bounded at 12 and prose does not take that shape.
-  # This reads the tail's SHAPE like every other arm here; a segmented key
-  # parked in a comment still fits, the same residue the placeholder arms have.
-  if [[ -n "$tail" ]] && grep -oE '[A-Za-z0-9]{13,}' <<<"$tail" | grep -qE '[0-9].*[A-Za-z]|[A-Za-z].*[0-9]'; then
-    deny "BLOCKED: write parks secret-shaped material in a trailing comment or statement: '$line'. Use environment variables / .env (gitignored), not committed source."
+
+# The suspicious-name grammar, named once because TWO callers read it: the loop
+# feeder at the bottom, and the executable-tail rescan inside the loop, which
+# has to recognize a second assignment parked after `;` / `&&` / `||` by the
+# same rule that recognized the first one. A private copy in either place is a
+# copy that drifts.
+#
+# The declaration keyword carries its own options, so the group has to accept
+# them too. `declare -r` and `local -r` are the idiomatic spellings in careful
+# bash, and a group that only accepts the bare keyword takes exactly those lines
+# back out of the scan, which is the failure recognizing the keywords exists to
+# close. `typeset` is bash's synonym for `declare` and belongs with the others.
+name_re='^[[:space:]]*((export|declare|typeset|local|readonly)[[:space:]]+(-[A-Za-z-]+[[:space:]]+)*)?[A-Za-z_][A-Za-z0-9_]*(_TOKEN|_SECRET|_KEY|_PASSWORD)[[:space:]]*='
+
+# Strip surrounding whitespace, then one matched pair of surrounding quotes.
+trim_value() {
+  sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$1"
+}
+
+# secret_shaped <text>: 0 when the text carries a run of 13+ alphanumerics
+# mixing letters and digits. A placeholder segment is bounded at 12 and prose
+# does not take that shape, so this is the same structural rule the placeholder
+# arms use, applied to text that is not a value. Its honest limit: an all-letter
+# secret clears it, and so does anything under 13 characters.
+secret_shaped() {
+  grep -oE '[A-Za-z0-9]{13,}' <<<"$1" | grep -qE '[0-9].*[A-Za-z]|[A-Za-z].*[0-9]'
+}
+
+# value_allowed <value>: 0 when the value carries no literal secret. Every arm
+# is a shape heuristic, not a proof, and each has to mean "the value is WHOLLY
+# this shape" rather than "the value starts or ends like it". Two ways an arm
+# loses that meaning, both of which this allowlist has shipped:
+#
+#   - A delimiter class that swallows its own terminator. `$(.+)` and `<.+>`
+#     match `)` / `>` inside the body, so `$(a)<literal>$(b)` and
+#     `<a><literal><b>` satisfy anchors that were supposed to certify a whole
+#     value. Excluding the terminator from the body is the fix, at the cost of
+#     a nested `$(… $(…) …)`, denied, since balanced delimiters need a parser.
+#   - An unanchored tail. `^your[-_]` and `^example` matched a PREFIX, so any
+#     secret rode through behind a placeholder-shaped lead-in.
+#
+# What separates a placeholder from a secret is STRUCTURE, not length: a
+# placeholder is short words joined by -_. while a secret is one unbroken
+# alphanumeric run. So the placeholder arms bound each SEGMENT rather than the
+# whole value, which keeps `your-github-personal-access-token` (long, segmented)
+# and rejects `your-aB3xK9pQ7zR2wL5t` (short, unbroken). A length cap gets both
+# of those backwards.
+#
+# None of these read meaning. `$(mint_key)` and `$(echo <a-literal-secret>)`
+# are the same shape, so the arm admits both; separating them needs reading
+# the command, and this allowlist does not claim to.
+value_allowed() {
+  local v="$1"
+  if [ -z "$v" ]; then
+    return 0
   fi
-  # Now the value itself: strip the tail, then surrounding quotes & whitespace.
-  # The comment separator has to be preceded by whitespace so a `#` inside the
-  # value itself is not read as one.
-  val=$(sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$rest")
-  # Empty / placeholder values are fine.
-  [[ -z "$val" ]] && continue
-  case "$val" in
+  case "$v" in
     x|xx|xxx|xxxx|changeme|CHANGEME|REPLACE_ME|TODO|PLACEHOLDER|placeholder)
-      continue ;;
+      return 0 ;;
   esac
-  # Allow values whose source line carries no literal secret. Every arm below is
-  # a shape heuristic, not a proof, and each has to mean "the value is WHOLLY
-  # this shape" rather than "the value starts or ends like it". Two ways an arm
-  # loses that meaning, both of which this allowlist has shipped:
-  #
-  #   - A delimiter class that swallows its own terminator. `$(.+)` and `<.+>`
-  #     match `)` / `>` inside the body, so `$(a)<literal>$(b)` and
-  #     `<a><literal><b>` satisfy anchors that were supposed to certify a whole
-  #     value. Excluding the terminator from the body is the fix, at the cost of
-  #     a nested `$(… $(…) …)`, denied, since balanced delimiters need a parser.
-  #   - An unanchored tail. `^your[-_]` and `^example` matched a PREFIX, so any
-  #     secret rode through behind a placeholder-shaped lead-in.
-  #
-  # What separates a placeholder from a secret is STRUCTURE, not length: a
-  # placeholder is short words joined by -_. while a secret is one unbroken
-  # alphanumeric run. So the placeholder arms below bound each SEGMENT rather
-  # than the whole value, which keeps `your-github-personal-access-token` (long,
-  # segmented) and rejects `your-aB3xK9pQ7zR2wL5t` (short, unbroken). A length
-  # cap gets both of those backwards.
-  #
-  # None of these read meaning. `$(mint_key)` and `$(echo <a-literal-secret>)`
-  # are the same shape, so the arm admits both; separating them needs reading
-  # the command, and this allowlist does not claim to.
   if grep -Eqi \
     '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\([^)]+\)$|^<[^>]+>$|^(your|fake|dummy)[-_][A-Za-z0-9]{1,12}([-_.][A-Za-z0-9]{1,12})*$|^example([-_.][A-Za-z0-9]{1,12})*$' \
-    <<<"$val"; then
-    continue
+    <<<"$v"; then
+    return 0
   fi
   # A shell declaration (`export FOO_KEY=…`) reaches this rule too, and those
   # values are variable references far more often than dotenv literals are.
@@ -146,16 +157,83 @@ while IFS= read -r line; do
   # inside a substitution body would otherwise re-open the splice bypass the
   # `$(…)` arm above exists to close, since `$(echo ${X})<secret>` contains a
   # reference like any other.
-  if grep -Eq '^\$[0-9]$|^\$\{[0-9]+\}$|^\$\{[A-Za-z_][A-Za-z0-9_]*:?[-+?=]\}$|^(\$\{[A-Za-z_][A-Za-z0-9_]*\})+$|^\$\{[A-Za-z_][A-Za-z0-9_]*\}([/.][A-Za-z0-9_-]{1,12})+$' <<<"$val"; then
+  if grep -Eq '^\$[0-9]$|^\$\{[0-9]+\}$|^\$\{[A-Za-z_][A-Za-z0-9_]*:?[-+?=]\}$|^(\$\{[A-Za-z_][A-Za-z0-9_]*\})+$|^\$\{[A-Za-z_][A-Za-z0-9_]*\}([/.][A-Za-z0-9_-]{1,12})+$' <<<"$v"; then
+    return 0
+  fi
+  return 1
+}
+
+while IFS= read -r line; do
+  rest=$(sed -E 's/^[^=]*=//' <<<"$line")
+
+  # Judge the value UNTRIMMED first, and only fall through to the tail handling
+  # when nothing matches. A `;`, `&&`, `||`, or `#` can sit INSIDE the value
+  # rather than after it, and the tail strip cannot tell the two apart: it is a
+  # regex, not a parser, so it has no substitution or quoting context.
+  # `$(cmd 2>/dev/null || true)` is the shape that matters, since it is how this
+  # repo's own scripts guard a command substitution, and truncating it at the
+  # `||` leaves a value with no closing paren that no arm can match. Ordering
+  # the untrimmed judgement first is what bounds the strip: it can turn a deny
+  # into an allow, never an allow into a deny.
+  if value_allowed "$(trim_value "$rest")"; then
+    continue
+  fi
+
+  # A shell line carries a tail a dotenv line never does: a trailing comment, or
+  # a second statement after `;`, `&&`, `||`. It has to come off before the
+  # allowlist reads the value, or the whole remainder of the line becomes the
+  # value, no arm can match, and an ordinary secret-free
+  # `export FOO_KEY="$BAR" # note` is hard-blocked by a deny that tells its
+  # author to use the environment variable the line already uses.
+  #
+  # The tail comes off, but it is never DISCARDED unread. A comment beside a
+  # placeholder, or a second assignment after `;`, is exactly where a real key
+  # gets parked, so dropping it unexamined would trade the false positive above
+  # for a hole. How it is read depends on which separator opened it, because the
+  # two tails differ in kind and only one of them has structure worth reusing.
+  tail=$(grep -oE '[[:space:]]+(#|[|][|]|&&|;).*$' <<<"$rest" | head -1 || true)
+  if [ -n "$tail" ]; then
+    sep=$(sed -E 's/^[[:space:]]+//; s/^(#|[|][|]|&&|;).*$/\1/' <<<"$tail")
+    tail_has_assignment=0
+    if [ "$sep" != "#" ]; then
+      # An EXECUTABLE tail carrying an assignment is judged by the assignment
+      # rule, not by shape: split on the separators and run the same name
+      # grammar and the same allowlist over each fragment. Shape alone lets a
+      # parked key through whenever it is under 13 characters or all letters,
+      # and the feeder grep is line-anchored, so it never re-reads a fragment.
+      #
+      # The grammar is tested per FRAGMENT, never against the whole tail: it is
+      # anchored at `^`, and the tail still opens with its own separator, so a
+      # whole-tail test can never match and would silently downgrade every one
+      # of these to the shape rule.
+      #
+      # The operators collapse to `;` first so the split needs only `tr`, which
+      # keeps this portable to BSD `sed` (no `\n` in a replacement). The loop is
+      # fed by process substitution rather than a pipe so it runs in this shell
+      # and its flag survives.
+      while IFS= read -r frag; do
+        [ -n "$frag" ] || continue
+        grep -Eq "$name_re" <<<"$frag" || continue
+        tail_has_assignment=1
+        if ! value_allowed "$(trim_value "$(sed -E 's/^[^=]*=//' <<<"$frag")")"; then
+          deny "BLOCKED: write parks a secret assignment after a shell separator: '$line'. Use environment variables / .env (gitignored), not committed source."
+        fi
+      done < <(sed -E 's/[|][|]/;/g; s/&&/;/g' <<<"$tail" | tr ';' '\n')
+    fi
+    # A comment tail, or an executable tail carrying no assignment at all, has
+    # no structure to reuse, so it falls back to the shape rule.
+    if [ "$tail_has_assignment" -eq 0 ] && secret_shaped "$tail"; then
+      deny "BLOCKED: write parks secret-shaped material in a trailing comment or statement: '$line'. Use environment variables / .env (gitignored), not committed source."
+    fi
+  fi
+
+  # Now the value itself, with the tail off. The comment separator has to be
+  # preceded by whitespace so a `#` inside the value itself is not read as one.
+  val=$(trim_value "$(sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//' <<<"$rest")")
+  if value_allowed "$val"; then
     continue
   fi
   deny "BLOCKED: write contains a non-placeholder secret assignment: '$line'. Use environment variables / .env (gitignored), not committed source."
-
-# The declaration keyword carries its own options, so the group has to accept
-# them too. `declare -r` and `local -r` are the idiomatic spellings in careful
-# bash, and a group that only accepts the bare keyword takes exactly those lines
-# back out of the scan, which is the failure recognizing the keywords exists to
-# close. `typeset` is bash's synonym for `declare` and belongs with the others.
-done < <(grep -E '^[[:space:]]*((export|declare|typeset|local|readonly)[[:space:]]+(-[A-Za-z-]+[[:space:]]+)*)?[A-Za-z_][A-Za-z0-9_]*(_TOKEN|_SECRET|_KEY|_PASSWORD)[[:space:]]*=' <<<"$content" || true)
+done < <(grep -E "$name_re" <<<"$content" || true)
 
 exit 0

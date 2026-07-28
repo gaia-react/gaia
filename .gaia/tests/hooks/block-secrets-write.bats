@@ -474,3 +474,49 @@ assert_allowed() {
   run_hook_write "$(printf 'typeset -r API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
   assert_denied
 }
+
+# A `;`, `&&`, or `||` can sit INSIDE the value rather than after it, and the
+# tail strip is a regex with no quoting or substitution context, so it cannot
+# tell the two apart on its own. Judging the untrimmed value FIRST is what
+# bounds the strip to turning a deny into an allow and never the reverse. The
+# guarded-substitution idiom below is how this repo's own audit scripts write a
+# fallible command substitution, so getting the order wrong hard-blocks them.
+
+@test "an or-separator inside a command substitution is allowed" {
+  run_hook_write "$(printf 'AUDIT_KEY=%s\n' '"$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"')"
+  assert_allowed
+}
+
+@test "an and-separator inside a command substitution is allowed" {
+  run_hook_write "$(printf 'GH_TOKEN=%s\n' '$(gh auth token 2>/dev/null && :)')"
+  assert_allowed
+}
+
+@test "a separator inside an angle-bracket placeholder is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<paste || generate>')"
+  assert_allowed
+}
+
+# The tail's shape rule only sees a run of 13+ alphanumerics mixing letters and
+# digits, so an assignment parked after a separator clears it whenever the value
+# is shorter than that or carries no digit. The feeder grep is line-anchored and
+# never re-reads the fragment, so shape alone leaves the hole open; an executable
+# tail carrying an assignment is judged by the assignment rule instead.
+
+@test "a short second assignment after a separator is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '"" ; API_TOKEN=abc123xyz')"
+  assert_denied
+}
+
+@test "an all-letter second assignment after a separator is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '<paste> ; REAL_KEY=correcthorsebattery')"
+  assert_denied
+}
+
+# The rescan reuses the value allowlist rather than denying on the name alone,
+# so a parked assignment whose value is an ordinary reference stays allowed.
+
+@test "an allowed assignment in an executable tail is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$X ; OTHER_TOKEN=${Y}')"
+  assert_allowed
+}
