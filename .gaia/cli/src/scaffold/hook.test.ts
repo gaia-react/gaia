@@ -1,7 +1,16 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {execGaiaGit} from '../util/git-env.js';
 import {run} from './hook.js';
 
 type Sandbox = {
@@ -351,5 +360,86 @@ describe('gaia scaffold hook', () => {
     };
 
     expect(payload.code).toBe('invalid_flag');
+  });
+});
+
+/**
+ * Root resolution when the caller passes no `repoRoot`. Every test above
+ * supplies one, so the default path -- the only path the shipped binary ever
+ * takes -- had no coverage at all, and a refusal added to it reached the
+ * release harness before anything caught it.
+ */
+describe('gaia scaffold hook root resolution', () => {
+  let cwdBefore: string;
+  let scratch: string[];
+
+  beforeEach(() => {
+    cwdBefore = process.cwd();
+    scratch = [];
+  });
+
+  afterEach(() => {
+    process.chdir(cwdBefore);
+
+    for (const dir of scratch) {
+      rmSync(dir, {force: true, recursive: true});
+    }
+  });
+
+  // `os.tmpdir()` is a symlink on macOS, and `process.cwd()` reports the
+  // physically resolved path, so the expectations below only line up against a
+  // realpath'd root.
+  const newScratchDir = (): string => {
+    const dir = realpathSync(
+      mkdtempSync(path.join(tmpdir(), 'gaia-hook-root-'))
+    );
+    scratch.push(dir);
+
+    return dir;
+  };
+
+  test('scaffolds into the current directory outside a git repository', () => {
+    const root = newScratchDir();
+    const stdout = captureStdout();
+    let code = -1;
+
+    process.chdir(root);
+
+    try {
+      code = run(['useFoo']);
+    } finally {
+      stdout.restore();
+    }
+
+    expect(code).toBe(0);
+    expect(existsSync(path.join(root, 'app/hooks/useFoo.ts'))).toBe(true);
+    expect(existsSync(path.join(root, 'app/hooks/tests/useFoo.test.ts'))).toBe(
+      true
+    );
+  });
+
+  test('scaffolds into the working tree root, not the calling subdirectory', () => {
+    const root = newScratchDir();
+    // Through the chokepoint, not a bare `execFileSync('git', ...)`: an
+    // ambient GIT_DIR would send `git init` at the directory that variable
+    // names, leaving `root` without a `.git` and this assertion measuring
+    // nothing.
+    execGaiaGit(['init', '-q', '-b', 'main'], root);
+    const inner = path.join(root, 'packages', 'inner');
+    mkdirSync(inner, {recursive: true});
+    const stdout = captureStdout();
+    let code = -1;
+
+    process.chdir(inner);
+
+    try {
+      code = run(['useBar']);
+    } finally {
+      stdout.restore();
+    }
+
+    expect(code).toBe(0);
+    expect(existsSync(path.join(root, 'app/hooks/useBar.ts'))).toBe(true);
+    expect(existsSync(path.join(inner, 'app/hooks/useBar.ts'))).toBe(false);
   });
 });

@@ -20382,6 +20382,13 @@ var resolveTemplateFile = (filename) => {
     filename
   );
 };
+var resolveScaffoldRoot = () => {
+  try {
+    return resolveRepoRoot();
+  } catch {
+    return process.cwd();
+  }
+};
 var emitFiles = (options) => {
   const { hookFilePath, name, params, returns, testFilePath } = options;
   const paramsString = formatParamsString(params);
@@ -20457,17 +20464,7 @@ var run28 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot;
-  try {
-    repoRoot = options.repoRoot ?? resolveRepoRoot();
-  } catch {
-    structuredError({
-      code: "not_a_git_repo",
-      message: "gaia scaffold hook must run inside a git repository",
-      subcommand: "scaffold hook"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
+  const repoRoot = options.repoRoot ?? resolveScaffoldRoot();
   const hooksDir = path26.join(repoRoot, "app", "hooks");
   const hookFilePath = path26.join(hooksDir, `${name}.ts`);
   const testFilePath = path26.join(hooksDir, "tests", `${name}.test.ts`);
