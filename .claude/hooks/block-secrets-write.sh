@@ -220,8 +220,8 @@ while IFS= read -r line; do
       # `||` into a fragment with no closing paren that no arm can match.
       #
       # The mask is NOT verdict-preserving, and erasing a body erases whatever
-      # it held. Rather than assert a bound this does not have, two widenings
-      # that follow from it, both verified and both pinned by tests:
+      # it held. Rather than assert a bound this does not have, the consequences
+      # that follow from it, each verified and each pinned by a test:
       #
       #   - An assignment sitting between a `$(` and its first `)` goes away
       #     with the body, so one parked inside a substitution clears where the
@@ -230,16 +230,24 @@ while IFS= read -r line; do
       #     that the `>` used to disqualify (`<$(cmd 2>/dev/null)>`) reads as a
       #     whole placeholder and clears. The PRIMARY value does NOT reach this
       #     one, so here the tail is the more permissive of the two.
+      #   - Erasing an assignment also erases the evidence that the tail HAD
+      #     one, which is why the flag is read separately below, off the
+      #     unmasked tail. Without that split the mask denies where the old
+      #     split allowed.
       #
-      # Neither hands a writer concealment the guard does not already give. An
-      # unwrapped `$(cmd)` is allowed in BOTH positions by the whole-value
-      # substitution arm, so nothing hides behind a `<$(…)>` that does not hide
-      # behind the bare `$(…)` just as well.
+      # None of this hands a writer concealment the guard does not already give,
+      # and the reason is the plain `<…>` arm rather than anything about the
+      # mask: `<hunter2xyz123>` is allowed in BOTH positions by `^<[^>]+>$`
+      # today, so a bracket wrapper already conceals a bare 13+ run wherever it
+      # appears. The mask changes which BODY reaches that arm, not whether the
+      # arm admits a wrapped literal.
       #
-      # The mask carries that arm's own bound, `[^)]*`, so it stops at the first
-      # `)`. A greedy body would run to the LAST `)` on the line and swallow an
-      # assignment parked between two substitutions, which is the one thing the
-      # split still has to see. Masking and collapsing are independent, since
+      # The mask carries the substitution arm's own bound, `[^)]+`, so it stops
+      # at the first `)` and, like the arm, declines an EMPTY body: `$()` is
+      # denied in both positions rather than in the primary alone. A greedy body
+      # would run to the LAST `)` on the line and swallow an assignment parked
+      # between two substitutions, which is the one thing the split still has to
+      # see. Masking and collapsing are independent, since
       # the collapse touches no `$`, `(`, or `)`; only running both before the
       # `tr` matters.
       #
@@ -259,7 +267,18 @@ while IFS= read -r line; do
         if ! value_allowed "$(trim_value "$(sed -E 's/^[^=]*=//' <<<"$frag")")"; then
           deny "BLOCKED: write parks a secret assignment after a shell separator: '$line'. Use environment variables / .env (gitignored), not committed source."
         fi
-      done < <(sed -E 's/\$\([^)]*\)/$(@)/g; s/[|][|]/;/g; s/&&/;/g' <<<"$tail" | tr ';' '\n')
+      done < <(sed -E 's/\$\([^)]+\)/$(@)/g; s/[|][|]/;/g; s/&&/;/g' <<<"$tail" | tr ';' '\n')
+
+      # The mask governs the DENY judgement only; the FLAG is read from the
+      # UNMASKED tail. Erasing a body erases any assignment inside it, so a tail
+      # whose only watched assignment sits in a substitution would otherwise
+      # leave the flag at 0 and fall through to the shape rule, which then reads
+      # the very material the mask claimed to remove and denies a line holding
+      # no literal. Splitting the two inputs keeps the mask one-directional: it
+      # can turn a deny into an allow, never the reverse.
+      if sed -E 's/[|][|]/;/g; s/&&/;/g' <<<"$tail" | tr ';' '\n' | grep -Eq "$name_re"; then
+        tail_has_assignment=1
+      fi
     fi
     # A comment tail, or an executable tail whose assignment never leads a
     # fragment, has no structure the rescan can reuse, so it falls back to the

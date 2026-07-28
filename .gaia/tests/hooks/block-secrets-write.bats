@@ -588,6 +588,34 @@ assert_allowed() {
   assert_allowed
 }
 
+# Erasing a body erases any assignment inside it, so the flag has to come off
+# the UNMASKED tail. Read it off the masked one and a tail whose only watched
+# assignment sits in a substitution falls through to the shape rule, which then
+# denies on the very material the mask claimed to remove. Here that material is
+# an ordinary commit sha and both values are references, so there is no literal
+# anywhere on the line.
+
+@test "an assignment inside a substitution does not expose the tail to the shape rule" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; OUT=$(cd repo ; export GH_TOKEN=$T ; git checkout 3ea35f1756b5375b0691436907e14ee8d2dbc43b)')"
+  assert_allowed
+}
+
+# ...and the shape backstop survives that split. A tail carrying no watched
+# assignment at all still reaches the shape rule, masked substitution or not.
+
+@test "secret-shaped material in a substitution with no assignment is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; OUT=$(echo hunter2xyz123)')"
+  assert_denied
+}
+
+# The mask declines an empty body, matching the substitution arm's own `[^)]+`.
+# With `*` the tail would allow a value the primary position denies.
+
+@test "an empty substitution in a tail is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$()')"
+  assert_denied
+}
+
 # The fragment loop is fed by process substitution rather than a pipe so it runs
 # in this shell and `tail_has_assignment` survives it. A pipe-fed rewrite is
 # invisible until the tail is BOTH assignment-carrying and secret-shaped: only
