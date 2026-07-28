@@ -901,7 +901,7 @@ Decide the disposition entries (section F) at this marker-decision point regardl
 **Seed-forward.** A fresh incremental audit reviews only the delta since the resolved base and does not re-encounter a prior out-of-scope finding, so re-keying the sidecar to a new digest would otherwise silently drop a still-open receipt across the rotation. Before finishing the sidecar write, compute the PRIOR frontend digest at the incremental base (the same `BASE_SHA` resolved for the re-run ledger, see "Re-run carry-forward ledger"):
 
 ```bash
-prev_frontend_digest="$(.gaia/scripts/audit-member-digest.sh \
+prev_frontend_digest="$("$AUDIT_ROOT/.gaia/scripts/audit-member-digest.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --ref "$BASE_SHA" 2>/dev/null || true)"
@@ -911,8 +911,8 @@ then call the shared helper (`disposition_seed_forward`, sourced from `.claude/h
 
 ```bash
 disposition_seed_forward \
-  ".gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
-  ".gaia/local/audit/${new_frontend_digest}.dispositions.json"
+  "$AUDIT_ROOT/.gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
+  "$AUDIT_ROOT/.gaia/local/audit/${new_frontend_digest}.dispositions.json"
 ```
 
 A fresh entry already present in the new sidecar always wins a key collision; a seeded entry only ever adds keys. This is a single deterministic hop, not a search: each digest rotation seeds from its immediate predecessor, so a still-open receipt propagates across an arbitrary run of rotations that never re-encounter the finding, because every hop already carries forward what the hop before it carried. An empty `prev_frontend_digest` (no resolvable base, or the digest engine failed) or an absent prior sidecar is a safe no-op, per the helper's own fail-safe contract.
@@ -1009,16 +1009,16 @@ audit_status_line=$(cd "$AUDIT_ROOT" && .claude/hooks/post-audit-status.sh "$mar
 #    derived key; a newly-filed issue records the freshly-built key it just
 #    wrote into the new issue's body.
 new_frontend_digest="$(basename "$marker" .ok)"
-sidecar=".gaia/local/audit/${new_frontend_digest}.dispositions.json"
+sidecar="$AUDIT_ROOT/.gaia/local/audit/${new_frontend_digest}.dispositions.json"
 # Write the section-F dispositions JSON (decided at the marker-decision
 # point, with "sha":"$HEAD_SHA" as a plain data field) to "$sidecar".
-prev_frontend_digest="$(.gaia/scripts/audit-member-digest.sh \
+prev_frontend_digest="$("$AUDIT_ROOT/.gaia/scripts/audit-member-digest.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --ref "$BASE_SHA" 2>/dev/null || true)"
 if [ -n "$prev_frontend_digest" ]; then
   disposition_seed_forward \
-    ".gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
+    "$AUDIT_ROOT/.gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
     "$sidecar"
 fi
 
@@ -1029,7 +1029,7 @@ fi
 #    best-effort file op; it does not alter the marker / trailer / status /
 #    dispositions-sidecar writes.
 if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ] && [ -n "$AUDIT_KEY" ]; then
-  rm -f ".gaia/local/audit/${AUDIT_KEY}.rerun.json"
+  rm -f "$LEDGER"
 fi
 ```
 
@@ -1099,7 +1099,7 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
 
 The writer records the reversal in the marker body and removes your own refusal. Reach for it **only** after re-auditing this content and finding the blocker actually resolved or explicitly acknowledged by the operator, never to clear a refusal you still stand behind. It applies to unchanged content: repairing the finding edits a file you own, which rotates your digest and retires the refusal with it, so no supersede is needed there.
 
-Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to your **current** frontend digest, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(.gaia/scripts/audit-member-digest.sh --root "$AUDIT_ROOT" --member code-audit-frontend).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same content remains backstop-checkable against a real sidecar.
+Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to your **current** frontend digest, which has not moved because the stamp sequence above did not run: `sidecar="$AUDIT_ROOT/.gaia/local/audit/$("$AUDIT_ROOT/.gaia/scripts/audit-member-digest.sh" --root "$AUDIT_ROOT" --member code-audit-frontend).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same content remains backstop-checkable against a real sidecar.
 
 Also on a non-clean pass (marker NOT written), **write/update the re-run ledger** (LOCAL only, best-effort), the deterministic carry-forward briefing the next re-audit and the fixer read. Skip in CI (`GITHUB_ACTIONS`/`CI` set) and skip when `AUDIT_KEY` is empty. Set `round` to the prior valid same-branch same-base ledger's `round` + 1 (else 1), carrying `first_seen_round` for findings that persist across rounds; populate `remaining` (in-scope open findings: Critical + unaddressed Important + unresolved/escalated Suggestions), `fixed_last_round` (in-scope findings self-healed this round), `head_sha` = current HEAD, `branch`, `base_sha` = `BASE_SHA`, and `updated_at`. Write atomically (temp file + `mv`); a write failure never aborts the audit. This is an additional best-effort file write alongside the disposition sidecar above; it must NOT alter, replace, or reorder the marker / trailer / status / dispositions-sidecar writes. See "Re-run carry-forward ledger".
 
