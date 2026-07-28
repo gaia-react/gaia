@@ -520,3 +520,50 @@ assert_allowed() {
   run_hook_write "$(printf 'API_KEY=%s\n' '$X ; OTHER_TOKEN=${Y}')"
   assert_allowed
 }
+
+# The fragment split is a `tr`, not a parser, so a `||` or `&&` INSIDE a parked
+# assignment's value reads as a separator unless the substitution is taken out of
+# the operators' way first. The guarded-substitution idiom is as ordinary after a
+# `;` as it is before one, and truncating it at the `||` leaves a fragment with
+# no closing paren that no arm can match, which is the same false deny the
+# untrimmed-first ordering fixes for the primary value.
+
+@test "a guarded substitution in a parked assignment is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; export API_TOKEN=$(gh auth token 2>/dev/null || true)')"
+  assert_allowed
+}
+
+@test "an and-guarded substitution in a parked assignment is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; export GH_TOKEN=$(gh auth token 2>/dev/null && :)')"
+  assert_allowed
+}
+
+# ...and the bound runs one way only. A sibling fragment carrying a literal is
+# still denied, so keeping the substitution whole does not hollow out the rescan.
+
+@test "a literal beside a guarded substitution in a tail is still denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; API_TOKEN=hunter2xyz ; GH_TOKEN=$(gh auth token 2>/dev/null || true)')"
+  assert_denied
+}
+
+# The mask has to stop at the first `)`, the same way the allowlist's own
+# substitution arm does. A greedy one spans from the first `$(` to the last `)`,
+# swallowing whatever is parked BETWEEN two substitutions and handing the rescan
+# a tail with nothing left to judge.
+
+@test "a literal parked between two substitutions in a tail is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; GH_TOKEN=$(gh auth token 2>/dev/null || true) ; API_TOKEN=hunter2xyz ; OTHER_KEY=$(id -u || true)')"
+  assert_denied
+}
+
+# The fragment loop is fed by process substitution rather than a pipe so it runs
+# in this shell and `tail_has_assignment` survives it. A pipe-fed rewrite is
+# invisible until the tail is BOTH assignment-carrying and secret-shaped: only
+# then is the lost flag observable, as the shape rule firing on a tail the
+# allowlist has already cleared.
+
+@test "an allowed assignment in a secret-shaped executable tail is allowed" {
+  local ref="LONGVARNAME""1234567"
+  run_hook_write "$(printf 'API_KEY=%s\n' "\$X ; OTHER_TOKEN=\${$ref}")"
+  assert_allowed
+}
