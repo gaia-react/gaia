@@ -44,8 +44,6 @@ default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/H
 # accepts while silently skipping the re-run ledger, leaving a refusal that
 # briefs nothing.
 BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
-. .gaia/scripts/audit-key-lib.sh
-audit_key="$(gaia_audit_key "$BASE_SHA")" || audit_key=""
 changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
 ```
 

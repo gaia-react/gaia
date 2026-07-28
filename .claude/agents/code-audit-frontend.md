@@ -36,7 +36,7 @@ AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
 AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
 ```
 
-Shell state does NOT persist between an agent's Bash calls, the same rule the `BASE_SHA` derivation states for its own value, so every later call that uses `$AUDIT_ROOT` re-runs those two lines first. A call that skips them sees an empty value, and the two consumers fail in opposite directions: `--root "$AUDIT_ROOT"` expands to `--root ""` and fails closed loudly, while `cd "$AUDIT_ROOT" && ...` fails open in silence, because `cd ""` returns 0 and leaves the command running against whatever tree the session happens to sit in.
+Shell state does NOT persist between an agent's Bash calls, so every later call that uses `$AUDIT_ROOT` re-runs those two lines first. A call that skips them sees an empty value, and the two consumers fail in opposite directions: `--root "$AUDIT_ROOT"` expands to `--root ""` and fails closed loudly, while `cd "$AUDIT_ROOT" && ...` fails open in silence, because `cd ""` returns 0 and leaves the command running against whatever tree the session happens to sit in.
 
 Do not re-derive that set by hand. On a **local** run, at the start of every review, ask the dispatch oracle whether this diff dispatches you, with `--no-carry-forward`:
 
@@ -530,11 +530,11 @@ A base-keyed filename therefore survives HEAD moves with no HEAD-chaining logic.
 ```bash
 # Resolve the incremental base the SAME way the audit already resolves scope,
 # then anchor the key to the fork point so it is stable across fix rounds.
-BASE_REF="$(.github/audit/resolve-audit-base.sh)"   # <sha> | origin/main | origin/<base-ref> | main
-BASE_SHA="$(git merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
-. .gaia/scripts/audit-key-lib.sh
-if ! AUDIT_KEY="$(gaia_audit_key "$BASE_SHA")"; then AUDIT_KEY=""; fi
-LEDGER=".gaia/local/audit/${AUDIT_KEY}.rerun.json"
+BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)"   # <sha> | origin/main | origin/<base-ref> | main
+BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
+. "$AUDIT_ROOT/.gaia/scripts/audit-key-lib.sh"
+if ! AUDIT_KEY="$(gaia_audit_key "$BASE_SHA" "$AUDIT_ROOT")"; then AUDIT_KEY=""; fi
+LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"
 ```
 
 If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the ledger entirely (fail-open; behave as today). In CI the agent prompt provides `<base>...HEAD`; use that same base when present, but the ledger is skipped in CI regardless (see "CI gating").
@@ -651,7 +651,7 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 
 1. **Identify changed files** against the incremental base:
    - Resolve the base: if the invoking context provides one (CI passes `<base>...HEAD` in the agent prompt), use it; otherwise run `.github/audit/resolve-audit-base.sh`. It returns the most recent ancestor that already passed a clean audit under the current `.gaia/VERSION` (via a GAIA-Audit trailer or commit status), or `origin/main` when none exists.
-   - **Derive the re-run ledger path and read it (LOCAL only) as the prior-round briefing.** From the same resolved base, compute `BASE_SHA="$(git merge-base "$BASE_REF" HEAD 2>/dev/null || true)"`, then `AUDIT_KEY="$(gaia_audit_key "$BASE_SHA")" || AUDIT_KEY=""` (`.gaia/scripts/audit-key-lib.sh`) and `LEDGER=".gaia/local/audit/${AUDIT_KEY}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `AUDIT_KEY` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `BASE_SHA`, `AUDIT_KEY`, and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
+   - **Derive the re-run ledger path and read it (LOCAL only) as the prior-round briefing.** From the same resolved base, compute `BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "$BASE_REF" HEAD 2>/dev/null || true)"`, then `AUDIT_KEY="$(gaia_audit_key "$BASE_SHA" "$AUDIT_ROOT")" || AUDIT_KEY=""` (`.gaia/scripts/audit-key-lib.sh`) and `LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `AUDIT_KEY` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `BASE_SHA`, `AUDIT_KEY`, and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
    - List changed files: `git diff --name-only "$(.github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'`. The two-dot form (`<base>`, not `<base>...HEAD`) includes uncommitted working-tree changes, the right scope for a pre-commit/pre-merge review.
    - When the base is an audited ancestor, everything before it was already cleared; only the delta needs review. **For any exported symbol whose signature or contract changed in the delta, grep its importers and check them even if unchanged**, a cleared caller can still break from a delta change.
    - Once the changed-file list is resolved and before dispatching subagents, emit the `scope resolved` breadcrumb (see Progress breadcrumbs).
