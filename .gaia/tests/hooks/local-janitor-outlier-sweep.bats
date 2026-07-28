@@ -49,6 +49,7 @@
 
 setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/local-janitor.sh
+  GAIA_DIR_REAL=$(cd "$BATS_TEST_DIRNAME/../.." && pwd)
 }
 
 teardown() {
@@ -141,6 +142,17 @@ write_registry() {
   ]
 }
 JSON
+}
+
+# copy_shipped_registry <gaia_dir>: the repo's OWN .gaia/state-registry.json,
+# copied into <gaia_dir> instead of the fixture stand-in above. Used by the
+# one test whose subject is the shipped self-managing zones themselves: the
+# stand-in deliberately models four families and nothing else, so seven of
+# those eight zones read as unrecognized under it and an assertion about them
+# would be asserting the stand-in's gaps rather than the sweep's behavior.
+copy_shipped_registry() {
+  mkdir -p "$1"
+  cp "$GAIA_DIR_REAL/state-registry.json" "$1/state-registry.json"
 }
 
 # --- REG-001..007: the registry-driven report-not-delete model -------------
@@ -237,19 +249,36 @@ JSON
 
 @test "REG-005: the self-managing top-level zone directories are never recursed into, so nested content beneath them survives" {
   make_repo
+  copy_shipped_registry "$REPO/.gaia"
   local_dir="$REPO/.gaia/local"
   for d in telemetry red-ledger handoff plans specs debt forensics harden; do
     mkdir -p "$local_dir/$d"
     echo x > "$local_dir/$d/junk.txt"
   done
 
+  # The control, and the reason it is here: survival alone is satisfied by a
+  # sweep that never ran, and silence alone is satisfied by a sweep whose
+  # registry probe failed (an unusable registry skips every child before it is
+  # ever classified). An unrecognized top-level file the sweep MUST report
+  # separates a run that walked the zone roots and consulted the registry from
+  # one that did neither.
+  echo x > "$local_dir/off-pattern-control.md"
+
   cd "$REPO"
   GAIA_JANITOR_SWEEP_ONLY=outliers run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
 
+  grep -qF -- "$local_dir/off-pattern-control.md" <<< "$output" || return 1
+
   for d in telemetry red-ledger handoff plans specs debt forensics harden; do
     [ -f "$local_dir/$d/junk.txt" ] || return 1
+    # One prefix match covers both halves of the claim: the zone directory
+    # itself is registry-recognized, so it is kept silently, and nothing
+    # BENEATH it is reported either, because the walk stops at the top-level
+    # child. A report about either would carry this path as a prefix.
+    grep -qF -- "$local_dir/$d" <<< "$output" && return 1
   done
+  return 0
 }
 
 @test "REG-006: jq unavailable degrades to fail-safe -- recognizes everything, reaps and reports nothing" {

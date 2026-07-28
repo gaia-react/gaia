@@ -638,21 +638,31 @@ seed_sidecar() {
 # regardless of retention age -- an unprovable tree is not the same as a dead
 # one, and treating it as dead here would reap a clearance a parallel audit
 # may still need.
-@test "sweep 2: live-tree enumeration failure keeps a genuinely-live marker even past the retention window (fail-safe, not fail-open)" {
+@test "sweep 2: live-tree enumeration failure keeps a marker whose tree it could not prove live, even past the retention window (fail-safe, not fail-open)" {
   make_repo
-  tree=$(head_tree)
-  digest=$(gen_digest "frontend-$tree")
-  seed_marker "$digest" "" ok "$tree" "$(hours_ago 1000)"
+  # A tree no branch tip and no worktree HEAD names, past the retention
+  # window, so neither keep-arm A's live-tree match nor keep-arm B's window
+  # can keep it and the fail-safe is the only thing left that can. HEAD's own
+  # tree is the wrong fixture here: arm A keeps that marker whether the
+  # enumeration ran or not, which is exactly the reading a shim that never
+  # intercepted anything would also produce.
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  digest=$(gen_digest "frontend-$dead_tree")
+  seed_marker "$digest" "" ok "$dead_tree" "$(hours_ago 1000)"
 
   # A PATH-shimmed `git` that fails exactly the two live-tree enumeration
-  # calls and passes everything else through to the real binary.
+  # calls and passes everything else through to the real binary. Each
+  # interception appends to a witness file, so the run proves the shim was
+  # the git the janitor resolved rather than assuming PATH put it there.
   SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIR/intercepted"
   real_git=$(command -v git)
   cat > "$SHIM_DIR/git" <<SHIM
 #!/bin/bash
 case "\$*" in
-  *for-each-ref*refs/heads/*) exit 128 ;;
-  *"worktree list"*) exit 128 ;;
+  *for-each-ref*refs/heads/*) echo "\$*" >> "$witness"; exit 128 ;;
+  *"worktree list"*) echo "\$*" >> "$witness"; exit 128 ;;
 esac
 exec "$real_git" "\$@"
 SHIM
@@ -661,6 +671,7 @@ SHIM
   cd "$REPO"
   PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
+  [ -s "$witness" ] || return 1
   [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
 }
 

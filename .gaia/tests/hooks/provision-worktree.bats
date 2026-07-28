@@ -171,8 +171,11 @@ SH
   [ "$status" -eq 0 ]
 
   # No symlink was created over main's own real directory, and nothing was
-  # logged: the hook returned before acting.
-  [ -L "$MAIN/.gaia/local/audit" ] && return 1
+  # logged: the hook returned before acting. The shape checked is the one a
+  # provisioned tree actually has -- .gaia/local is itself the one symlink --
+  # so main's own real directory is what proves the hook declined.
+  [ -L "$MAIN/.gaia/local" ] && return 1
+  [ -d "$MAIN/.gaia/local" ] || return 1
   grep -qF -- "linked shared state" <<<"$output" && return 1
   return 0
 }
@@ -298,13 +301,45 @@ SH
 # ---------- 12. A relative payload value never reaches `cd` ----------
 # The value reaches a bare `cd`, which would option-parse a leading dash and
 # succeed into the wrong directory, so only an absolute path is honored.
+#
+# Both arguments below RESOLVE from the cwd this test sets: a path that names
+# nothing is refused by the existence check one line past the gate, so it
+# cannot tell "refused for being relative" apart from "refused for naming
+# nothing". Silence is what the assertions read, not the resulting tree shape:
+# every step after the gate logs, so a hook that accepted the value says so
+# out loud even when the work it then attempts fails for its own second
+# reason (a relative linker path stops resolving the moment the hook cds into
+# the tree, which leaves the tree unprovisioned either way).
 @test "a relative tree argument is refused rather than resolved" {
   make_main
   WT="$(add_worktree feat-relative)"
 
-  run bash "$HOOK_ABS" "some/relative/path"
+  cd "$MAIN"
+  run bash "$HOOK_ABS" ".claude/worktrees/feat-relative"
   [ "$status" -eq 0 ]
-  [ -L "$WT/.gaia/local/audit" ] && return 1
+  grep -qF -- "provision-worktree:" <<<"$output" && return 1
+  [ -L "$WT/.gaia/local" ] && return 1
+
+  # The positive control: the SAME tree, from the SAME cwd, named absolutely.
+  # Without it the silence above is also what an unprovisionable fixture would
+  # produce, and the test would pass while proving nothing about the argument
+  # form.
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "linked shared state" <<<"$output" || return 1
+  [ -L "$WT/.gaia/local" ] || return 1
+
+  # The leading-dash shape the gate exists for: `cd -P` option-parses its
+  # argument away and lands somewhere else entirely, so a dash-led value is
+  # refused even when a real linked worktree by that name is sitting right
+  # there for it to name.
+  DASH_WT="$MAIN/-P"
+  git -C "$MAIN" worktree add -q -b feat-dash "$DASH_WT" >/dev/null 2>&1
+  [ -d "$DASH_WT" ] || return 1
+  run bash "$HOOK_ABS" "-P"
+  [ "$status" -eq 0 ]
+  grep -qF -- "provision-worktree:" <<<"$output" && return 1
+  [ -L "$DASH_WT/.gaia/local" ] && return 1
   return 0
 }
 

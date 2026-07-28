@@ -121,8 +121,13 @@ numeral_to_int() {
 
   grep -qF -- 'maxdepth-1' <<< "$section"
 
+  # A floor, not merely non-emptiness: the sweep's paragraph names two
+  # retention knobs (the sweep #2 findings window and the sweep #5 cache
+  # window), so a derivation that silently collapsed to one would still be
+  # non-empty and the loop below would still pass. Same shape as the zone
+  # floor further down, and it moves only when the source paragraph does.
   knobs=$(source_sweep9_knobs)
-  [ -n "$knobs" ]
+  [ "$(wc -l <<< "$knobs" | tr -d ' ')" -ge 2 ]
   while read -r knob; do
     grep -qF -- "$knob" <<< "$section" || return 1
   done <<< "$knobs"
