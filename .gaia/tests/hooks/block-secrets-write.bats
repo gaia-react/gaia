@@ -567,14 +567,24 @@ assert_allowed() {
   assert_allowed
 }
 
-# The mask reaches no verdict the primary value does not already reach, but it
-# is not verdict-preserving against the old split: an assignment between a `$(`
-# and its first `)` goes away with the body. That widening is deliberate, so it
-# is pinned rather than left incidental. The identical value in the primary
-# position is allowed either way, which is the alignment being bought.
+# The mask is not verdict-preserving: erasing a substitution body erases what
+# the body held. Two widenings follow, both deliberate, so both are pinned here
+# rather than left incidental. First, an assignment between a `$(` and its first
+# `)` goes away with the body.
 
 @test "an assignment inside a substitution body in a tail is allowed" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$(foo ; B_KEY=hunter2xyz123 )')"
+  assert_allowed
+}
+
+# Second, the erased body takes an inner `>` with it, so a `<…>` wrapper that
+# the `>` used to disqualify reads as a whole placeholder. The primary value
+# does not reach this one, which makes the tail briefly the more permissive of
+# the two. It conceals nothing an unwrapped `$(…)`, allowed in both positions
+# already, does not conceal too.
+
+@test "a bracket-wrapped substitution carrying a redirect in a tail is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=<$(gh auth token 2>/dev/null)>')"
   assert_allowed
 }
 

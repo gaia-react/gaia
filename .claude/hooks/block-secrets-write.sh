@@ -217,19 +217,24 @@ while IFS= read -r line; do
       # `$(…)` masks to a body-free `$(@)` before the `tr` ever sees the tail.
       # That is the rescan's version of the untrimmed-first bound above: it
       # keeps `$(cmd 2>/dev/null || true)` whole instead of truncating it at the
-      # `||` into a fragment with no closing paren that no arm can match. The
-      # mask reaches no verdict the PRIMARY value does not already reach, since
-      # the allowlist's only substitution arm reads a `$(…)` as a WHOLE value
-      # and never reads the body, and every other arm rejects a value carrying
-      # `$(` outright.
+      # `||` into a fragment with no closing paren that no arm can match.
       #
-      # It is NOT verdict-preserving against the old split, and the one case
-      # that moves is worth naming. An assignment sitting between a `$(` and its
-      # first `)` is masked away with the body, so one parked inside a
-      # substitution now clears where the truncated fragments used to deny. That
-      # is the same alignment and not a new hole: the identical value in the
-      # PRIMARY position clears either way, and the old deny was an artifact of
-      # the truncation this mask exists to remove.
+      # The mask is NOT verdict-preserving, and erasing a body erases whatever
+      # it held. Rather than assert a bound this does not have, two widenings
+      # that follow from it, both verified and both pinned by tests:
+      #
+      #   - An assignment sitting between a `$(` and its first `)` goes away
+      #     with the body, so one parked inside a substitution clears where the
+      #     truncated fragments used to deny.
+      #   - The erased body can take an inner `>` with it, so a `<…>` wrapper
+      #     that the `>` used to disqualify (`<$(cmd 2>/dev/null)>`) reads as a
+      #     whole placeholder and clears. The PRIMARY value does NOT reach this
+      #     one, so here the tail is the more permissive of the two.
+      #
+      # Neither hands a writer concealment the guard does not already give. An
+      # unwrapped `$(cmd)` is allowed in BOTH positions by the whole-value
+      # substitution arm, so nothing hides behind a `<$(…)>` that does not hide
+      # behind the bare `$(…)` just as well.
       #
       # The mask carries that arm's own bound, `[^)]*`, so it stops at the first
       # `)`. A greedy body would run to the LAST `)` on the line and swallow an
