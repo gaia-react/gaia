@@ -6,11 +6,11 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * then ask the handler to classify them since the initial baseline. We
  * snapshot the suggestion + reason for each commit and assert against it.
  */
-import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {COMMIT_TYPES} from '../util/conventional-commit.js';
+import {execGaiaGit} from '../util/git-env.js';
 import {run} from './commit-classify.js';
 import type {CommitClassification} from './commit-classify.js';
 
@@ -21,14 +21,66 @@ type Sandbox = {
   root: string;
 };
 
+/**
+ * What the sandbox actually looked like when a git command failed in it.
+ *
+ * `git commit` reports a broken object store as a bare
+ * `fatal: could not parse HEAD` and nothing else, so a failure that only
+ * appears under CI load leaves no evidence unless the fixture reads the
+ * repository back itself. Every probe is best-effort: this runs on a repo
+ * already known to be unhappy, so a probe that also fails records its own
+ * error rather than replacing the original one.
+ */
+const describeSandbox = (root: string): string => {
+  const probe = (args: string[]): string => {
+    try {
+      return execGaiaGit(args, root).replaceAll('\n', ' ');
+    } catch (error) {
+      return `<${(error instanceof Error ? error.message : String(error)).split('\n', 1)[0]}>`;
+    }
+  };
+
+  return [
+    `  HEAD ref: ${probe(['rev-parse', '--symbolic-full-name', 'HEAD'])}`,
+    `  HEAD sha: ${probe(['rev-parse', 'HEAD'])}`,
+    `  objects:  ${probe(['count-objects', '-v'])}`,
+    `  fsck:     ${probe(['fsck', '--no-progress', '--connectivity-only'])}`,
+  ].join('\n');
+};
+
+/**
+ * Run one git command against the sandbox.
+ *
+ * Routes through `execGaiaGit` rather than a bare `execFileSync('git', ...)`,
+ * for the reason its docblock gives: an ambient `GIT_DIR`, `GIT_WORK_TREE`, or
+ * `GIT_COMMON_DIR` overrides repository discovery for every git subprocess no
+ * matter what `cwd` says, and a sandbox that inherits one silently commits
+ * into whatever repository the variable names instead of into itself.
+ */
+const sandboxGit = (root: string, args: string[]): string => {
+  try {
+    return execGaiaGit(args, root);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+
+    throw new Error(
+      `sandbox git ${args.join(' ')} failed in ${root}\n${detail}\n${describeSandbox(root)}`
+    );
+  }
+};
+
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-classify-'));
-  execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], {
-    cwd: root,
-  });
-  execFileSync('git', ['config', 'user.name', 'Test'], {cwd: root});
-  execFileSync('git', ['config', 'commit.gpgsign', 'false'], {cwd: root});
+  sandboxGit(root, ['init', '-q', '-b', 'main']);
+  sandboxGit(root, ['config', 'user.email', 'test@example.com']);
+  sandboxGit(root, ['config', 'user.name', 'Test']);
+  sandboxGit(root, ['config', 'commit.gpgsign', 'false']);
+  // Every `git commit` otherwise spawns a detached
+  // `git maintenance run --auto --quiet --detach`, so a 25-commit scenario
+  // leaves background git processes running against a sandbox that `afterEach`
+  // deletes out from under them. `gc.auto=0` suppresses the spawn outright
+  // (measured: 3 spawns per commit by default, 0 with this set).
+  sandboxGit(root, ['config', 'gc.auto', '0']);
 
   const commit = (message: string, files: Record<string, string>): string => {
     for (const [relativePath, contents] of Object.entries(files)) {
@@ -36,13 +88,10 @@ const setupSandbox = (): Sandbox => {
       mkdirSync(path.dirname(absPath), {recursive: true});
       writeFileSync(absPath, contents, 'utf8');
     }
-    execFileSync('git', ['add', '-A'], {cwd: root});
-    execFileSync('git', ['commit', '-q', '-m', message], {cwd: root});
+    sandboxGit(root, ['add', '-A']);
+    sandboxGit(root, ['commit', '-q', '-m', message]);
 
-    return execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: root,
-      encoding: 'utf8',
-    }).trim();
+    return sandboxGit(root, ['rev-parse', 'HEAD']);
   };
 
   // Initial baseline commit.
@@ -640,5 +689,40 @@ describe('wiki commit-classify', () => {
       expect(health.worthy_rate).toBe(0);
       expect(health.inert).toBe(false);
     });
+  });
+});
+
+/**
+ * The fixture's own hermeticity. Every scenario above takes it on faith that
+ * the repository it commits into is the one `setupSandbox` created; nothing
+ * asserted it, and a bare `execFileSync('git', ...)` hands that assumption to
+ * whatever `GIT_DIR` the ambient environment happens to be carrying.
+ */
+describe('commit-classify sandbox fixture', () => {
+  test('commits into its own repository under an ambient GIT_DIR', () => {
+    const decoy = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-classify-decoy-'));
+    execGaiaGit(['init', '-q', '-b', 'main'], decoy);
+    execGaiaGit(['config', 'user.email', 'decoy@example.com'], decoy);
+    execGaiaGit(['config', 'user.name', 'Decoy'], decoy);
+    execGaiaGit(
+      ['commit', '-q', '--allow-empty', '-m', 'decoy baseline'],
+      decoy
+    );
+    const decoyHeadBefore = execGaiaGit(['rev-parse', 'HEAD'], decoy);
+    vi.stubEnv('GIT_DIR', path.join(decoy, '.git'));
+
+    let sandbox: Sandbox | undefined;
+
+    try {
+      sandbox = setupSandbox();
+      const sha = sandbox.commit('docs: prose 0', {'notes/thing.md': 'body\n'});
+
+      expect(execGaiaGit(['rev-parse', 'HEAD'], sandbox.root)).toBe(sha);
+      expect(execGaiaGit(['rev-parse', 'HEAD'], decoy)).toBe(decoyHeadBefore);
+    } finally {
+      vi.unstubAllEnvs();
+      sandbox?.cleanup();
+      rmSync(decoy, {force: true, recursive: true});
+    }
   });
 });
