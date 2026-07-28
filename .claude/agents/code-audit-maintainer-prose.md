@@ -15,22 +15,32 @@ You audit GAIA's own instruction prose: the natural-language skill files under `
 Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.
 <!-- gaia:audit-remit:end -->
 
+Resolve the audited root first, before the base and changed-file queries below. The orchestrator dispatches you with a "Working root:" line and an `AUDIT_ROOT` assignment; that value is authoritative. The ambient toplevel is the fallback only when no working root was supplied. It resolves here, ahead of those queries, because they decide what you review: answered from the ambient cwd while your clearance keys to the supplied root, they review one tree and certify another.
+
+```bash
+AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
+AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
+```
+
+Shell state does NOT persist between an agent's Bash calls, the same rule the `BASE_SHA` comment below states for its own value, so every later call that uses `$AUDIT_ROOT` re-runs those two lines first. A call that skips them sees an empty value, and the two consumers fail in opposite directions: `--root "$AUDIT_ROOT"` expands to `--root ""` and fails closed loudly, while `cd "$AUDIT_ROOT" && ...` fails open in silence, because `cd ""` returns 0 and leaves the command running against whatever tree the session happens to sit in.
+
 At the start of every run, resolve the diff base the same way the dispatch resolver does, then list the changed files:
 
 ```bash
-default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"
 # BASE_SHA, not a lowercase local: every handshake invocation below passes
 # `--base "$BASE_SHA"`, and shell state does NOT persist between an agent's
-# Bash calls, so each of those calls re-runs this snippet. A name mismatch
-# here makes --base expand empty, which audit-write-findings.sh rejects
-# outright (the report of record is never written) and which
-# audit-write-clearance.sh accepts while silently skipping the re-run ledger,
-# leaving a refusal that briefs nothing.
-BASE_SHA=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null || git merge-base HEAD "${default_branch}" 2>/dev/null || true)
+# Bash calls, so each of those calls re-runs this snippet, and the AUDIT_ROOT
+# derivation above it that this snippet depends on. A name mismatch here makes
+# --base expand empty, which audit-write-findings.sh rejects outright (the
+# report of record is never written) and which audit-write-clearance.sh
+# accepts while silently skipping the re-run ledger, leaving a refusal that
+# briefs nothing.
+BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
 . .gaia/scripts/audit-key-lib.sh
 audit_key="$(gaia_audit_key "$BASE_SHA")" || audit_key=""
-changed=$(git diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
 ```
 
 **If none match, self-skip cleanly**: write no marker, do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, write no findings sidecar, and return the specific one-line note that no changed file fell in your remit (distinguishable from a crash or an empty return). A mixed diff carrying other framework or app changes is not your concern outside your own glob.
@@ -106,12 +116,7 @@ Never gates your own marker; the orchestrator decides the disposition.
 
 There is no withhold path here; the only "no marker" case is the self-skip above. On ANY in-remit review, run the handshake below in order: sidecar, mark, stamp, status. Even a finding-bearing pass writes the earned marker, the findings are advisory PR comments, not a gate.
 
-Resolve the audited root once, before the first handshake command below. The orchestrator dispatches you with a "Working root:" line and an `AUDIT_ROOT` assignment; that value is authoritative. The ambient toplevel is the fallback only when no working root was supplied.
-
-```bash
-AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
-AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
-```
+Every command below consumes `$AUDIT_ROOT`, and each Bash call re-runs the derivation under "Remit and self-skip" before using it, for the reason stated there: shell state does not persist between calls, and an empty value sends `cd "$AUDIT_ROOT" && ...` against whatever tree the session sits in without saying so.
 
 **0. Sidecar (every LOCAL in-remit pass).** Before the marker, write your findings sidecar with the shared writer (see "Findings sidecar" below for the full field contract). It is your report of record, so it exists before the artifact that attests to it.
 

@@ -29,12 +29,14 @@ Your globs above are a **second precedence tier**: every claimant member's globs
 
 You are the Code Audit Team's **default member**.
 
-Resolve the audited root once, before the first handshake command below. The orchestrator dispatches you with a "Working root:" line and an `AUDIT_ROOT` assignment; that value is authoritative. The ambient toplevel is the fallback only when no working root was supplied.
+Resolve the audited root first, before the dispatch-oracle call below and every later root-consuming command. The orchestrator dispatches you with a "Working root:" line and an `AUDIT_ROOT` assignment; that value is authoritative. The ambient toplevel is the fallback only when no working root was supplied. It resolves here, ahead of the oracle, because that call decides whether you review at all: answered from the ambient cwd while your clearance keys to the supplied root, it reads one tree and certifies another.
 
 ```bash
 AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
 AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
 ```
+
+Shell state does NOT persist between an agent's Bash calls, the same rule the `BASE_SHA` derivation states for its own value, so every later call that uses `$AUDIT_ROOT` re-runs those two lines first. A call that skips them sees an empty value, and the two consumers fail in opposite directions: `--root "$AUDIT_ROOT"` expands to `--root ""` and fails closed loudly, while `cd "$AUDIT_ROOT" && ...` fails open in silence, because `cd ""` returns 0 and leaves the command running against whatever tree the session happens to sit in.
 
 Do not re-derive that set by hand. On a **local** run, at the start of every review, ask the dispatch oracle whether this diff dispatches you, with `--no-carry-forward`:
 
