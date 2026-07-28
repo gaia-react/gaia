@@ -214,7 +214,15 @@ fi
 # On the empty-commit stamp path local HEAD is an un-pushed commit origin has
 # never seen, so a status posted there 422s and never lands (#726). Target the
 # pushed PR head instead (mirrors CI, which posts on pull_request.head.sha).
-head_sha="$(gh pr view --json headRefOid --jq .headRefOid 2>/dev/null || true)"
+#
+# `gh` resolves BOTH the repository and the current branch from its working
+# directory, so it runs anchored on $repo_root. Be precise about what that
+# buys: $repo_root is itself a toplevel query against the ambient cwd, so this
+# normalizes a run from a SUBDIRECTORY up to the checkout root. It cannot
+# repoint the hook at a different tree, because the root it anchors on is
+# derived from the cwd it already had. Choosing which tree this hook answers
+# for is the caller's job, done by invoking the hook from that tree.
+head_sha="$( cd "$repo_root" && gh pr view --json headRefOid --jq .headRefOid 2>/dev/null || true )"
 if [ -z "$head_sha" ]; then
   # No PR resolvable: fall back to the upstream tracking tip, then local HEAD.
   head_sha="$(git -C "$repo_root" rev-parse '@{u}' 2>/dev/null || true)"
@@ -243,14 +251,26 @@ fi
 # Team member's marker, not just the caller's own, before posting success.
 # Otherwise a frontend-only POST on a mixed diff would flip the GAIA-Audit
 # status green (and unlock the github.com merge button) while a co-dispatched
-# maintainer member still withholds over an unresolved finding. Resolver
-# absent/unusable falls back to today's single-marker POST unchanged, a
+# maintainer member still withholds over an unresolved finding. An ABSENT or
+# non-executable resolver falls back to the single-marker POST below, so a
 # partial/early-resume tree is never bricked. Each member is keyed to its OWN
 # digest (owned files + machinery), not the frontend digest or the tree; there
 # is no carried provenance, so every dispatched member's clearance is earned.
+#
+# The resolver derives its own root from cwd, so it runs anchored on
+# $repo_root, the acting tree it measures. A NON-ZERO exit is the third state
+# and it takes neither of the other two paths: the resolver ran and could not
+# answer, so the member set is unknown, and posting success on an unknown
+# member set is the vacuous pass this gate exists to prevent. That arm
+# declines.
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ -x "$resolver" ]; then
-  members="$(bash "$resolver" 2>/dev/null || true)"
+  resolver_rc=0
+  members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
+  if [ "$resolver_rc" -ne 0 ]; then
+    emit_decline "member resolver could not answer"
+    exit 0
+  fi
   pending=""
   while IFS= read -r m; do
     [ -n "$m" ] || continue
@@ -275,7 +295,9 @@ fi
 # carried provenance), so the shape is fixed: no branch, no CLI flag.
 desc="${version} ${frontend_digest} ${tree_sha}"
 
-repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
+# Anchored for the same reason as the `gh pr view` above, and with the same
+# limits: a subdirectory normalization, not a cross-tree guarantee.
+repo=$( cd "$repo_root" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true )
 if [ -z "$repo" ]; then
   emit_decline "repo slug unresolved"
   exit 0

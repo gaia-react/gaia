@@ -29,11 +29,18 @@ Your globs above are a **second precedence tier**: every claimant member's globs
 
 You are the Code Audit Team's **default member**.
 
+Resolve the audited root once, before the first handshake command below. The orchestrator dispatches you with a "Working root:" line and an `AUDIT_ROOT` assignment; that value is authoritative. The ambient toplevel is the fallback only when no working root was supplied.
+
+```bash
+AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
+AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
+```
+
 Do not re-derive that set by hand. On a **local** run, at the start of every review, ask the dispatch oracle whether this diff dispatches you, with `--no-carry-forward`:
 
 ```bash
 if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ]; then
-  spawn_set="$(bash .gaia/scripts/resolve-audit-spawn.sh --no-carry-forward 2>/dev/null || true)"
+  spawn_set="$(cd "$AUDIT_ROOT" && bash .gaia/scripts/resolve-audit-spawn.sh --no-carry-forward 2>/dev/null || true)"
 fi
 ```
 
@@ -307,13 +314,13 @@ Any finding that is not **both** non-security and machinery-pathed routes to the
 
 Probe the issue backend once at the start of the disposition flow:
 
-- **Definitive-absent** → waive: file nothing, the disposition gate waives, out-of-scope findings revert to prose only, the marker writes. Record `backend: "absent"`. Triggers: repo unresolvable, `gh` unauthenticated, Issues disabled (detected by `gh repo view --json hasIssuesEnabled` false **or** a structurally-failing issue-list probe, **never** `gh repo view` resolution alone), or the viewer lacks write permission.
+- **Definitive-absent** → waive: file nothing, the disposition gate waives, out-of-scope findings revert to prose only, the marker writes. Record `backend: "absent"`. Triggers: repo unresolvable, `gh` unauthenticated, Issues disabled (detected by `( cd "$AUDIT_ROOT" && gh repo view --json hasIssuesEnabled )` false **or** a structurally-failing issue-list probe, **never** `gh repo view` resolution alone), or the viewer lacks write permission.
 - **Transient/ambiguous** → do not waive, do not drop: timeout, rate-limit, 5xx. Record `backend: "transient"`; surface the finding and retain it for the next run (dedup makes the retry safe). Never block the merge.
 - **Present** → proceed with dedup / filing / divert. Record `backend: "present"`.
 
 ### D. Security-class divert (fail-safe)
 
-`gh repo view --json visibility` returns `PUBLIC | PRIVATE | INTERNAL`. **Re-read it immediately before each security-relevant write** (TOCTOU); treat any non-confirmed-`PRIVATE` state as divert.
+`( cd "$AUDIT_ROOT" && gh repo view --json visibility )` returns `PUBLIC | PRIVATE | INTERNAL`. **Re-read it immediately before each security-relevant write** (TOCTOU); treat any non-confirmed-`PRIVATE` state as divert.
 
 - security-class on **PUBLIC or INTERNAL** → **divert**, never a public/internal issue:
   - **local run**: write a redacted operator surface to `.gaia/local/audit/security/<HEAD-sha>.md` (gitignored) and surface a redacted pointer, **count only, no detail**, in the report. Surface to the operator and wait; never auto-draft an advisory, never auto-disclose. Record disposition `diverted`.
@@ -893,7 +900,7 @@ Decide the disposition entries (section F) at this marker-decision point regardl
 
 ```bash
 prev_frontend_digest="$(.gaia/scripts/audit-member-digest.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --ref "$BASE_SHA" 2>/dev/null || true)"
 ```
@@ -919,7 +926,7 @@ When the marker is warranted, the write is a mark → stamp → push → status 
 #    or refusal published ahead of its own report is exactly the state an
 #    orchestrator cannot act on. LOCAL only.
 findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --base "$BASE_SHA" \
   --findings /path/to/findings.json)"
@@ -932,7 +939,7 @@ findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
 #    stamp), and prints the marker path. The write is unconditional: it
 #    replaces any marker already on disk for this digest.
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance earned \
   --base "$BASE_SHA")"
@@ -948,6 +955,7 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
 #    sidecar's own "sha" JSON field below as plain data (never the sidecar's
 #    validity key, which is the digest).
 stamp_line=$(
+  cd "$AUDIT_ROOT" &&
   AUDIT_TREE_SHA="$AUDIT_TREE_SHA" AUDIT_SELF_HEALED="$AUDIT_SELF_HEALED" \
     .claude/hooks/audit-stamp-trailer.sh
 )
@@ -985,7 +993,7 @@ fi
 #    marker still clears the Claude merge path, while the github.com
 #    button stays blocked until a success status lands. The status POST
 #    never runs ahead of the marker.
-audit_status_line=$(.claude/hooks/post-audit-status.sh "$marker")
+audit_status_line=$(cd "$AUDIT_ROOT" && .claude/hooks/post-audit-status.sh "$marker")
 
 # 5. Write the disposition-ledger sidecar (section F), keyed to YOUR OWN
 #    frontend digest -- the same digest the marker in step 1 is keyed to,
@@ -1003,7 +1011,7 @@ sidecar=".gaia/local/audit/${new_frontend_digest}.dispositions.json"
 # Write the section-F dispositions JSON (decided at the marker-decision
 # point, with "sha":"$HEAD_SHA" as a plain data field) to "$sidecar".
 prev_frontend_digest="$(.gaia/scripts/audit-member-digest.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --ref "$BASE_SHA" 2>/dev/null || true)"
 if [ -n "$prev_frontend_digest" ]; then
@@ -1066,7 +1074,7 @@ When you withhold the marker after genuinely auditing this exact content (a real
 
 ```bash
 bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance refused \
   --base "$BASE_SHA"
@@ -1080,7 +1088,7 @@ Passing `--base` on the earned write too is what retires your ledger entries: th
 
 ```bash
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance earned \
   --base "$BASE_SHA" \
@@ -1089,7 +1097,7 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
 
 The writer records the reversal in the marker body and removes your own refusal. Reach for it **only** after re-auditing this content and finding the blocker actually resolved or explicitly acknowledged by the operator, never to clear a refusal you still stand behind. It applies to unchanged content: repairing the finding edits a file you own, which rotates your digest and retires the refusal with it, so no supersede is needed there.
 
-Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to your **current** frontend digest, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(.gaia/scripts/audit-member-digest.sh --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same content remains backstop-checkable against a real sidecar.
+Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to your **current** frontend digest, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(.gaia/scripts/audit-member-digest.sh --root "$AUDIT_ROOT" --member code-audit-frontend).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same content remains backstop-checkable against a real sidecar.
 
 Also on a non-clean pass (marker NOT written), **write/update the re-run ledger** (LOCAL only, best-effort), the deterministic carry-forward briefing the next re-audit and the fixer read. Skip in CI (`GITHUB_ACTIONS`/`CI` set) and skip when `AUDIT_KEY` is empty. Set `round` to the prior valid same-branch same-base ledger's `round` + 1 (else 1), carrying `first_seen_round` for findings that persist across rounds; populate `remaining` (in-scope open findings: Critical + unaddressed Important + unresolved/escalated Suggestions), `fixed_last_round` (in-scope findings self-healed this round), `head_sha` = current HEAD, `branch`, `base_sha` = `BASE_SHA`, and `updated_at`. Write atomically (temp file + `mv`); a write failure never aborts the audit. This is an additional best-effort file write alongside the disposition sidecar above; it must NOT alter, replace, or reorder the marker / trailer / status / dispositions-sidecar writes. See "Re-run carry-forward ledger".
 
@@ -1103,7 +1111,7 @@ The finding-recurrence tally reads PR comments for a machine-readable findings b
 
 ```bash
 findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --base "$BASE_SHA" \
   --findings /path/to/findings.json)"

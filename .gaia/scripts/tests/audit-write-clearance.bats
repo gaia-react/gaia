@@ -63,6 +63,20 @@ member_digest() {
   grep -qF "root is required" <<<"$err"
 }
 
+@test "--root naming a subdirectory of a checkout exits 2 and writes no marker" {
+  # The digest, the HEAD tree and the marker store are all derived from --root,
+  # so a subdirectory would mint a marker keyed to content the caller never
+  # named. Assert the marker's ABSENCE on disk, not just the exit code: a
+  # writer that exits 2 after publishing still poisons the gate.
+  sub="$ROOT/app/components"
+  mkdir -p "$sub"
+  run bash "$WRITER" --root "$sub" --member code-audit-frontend --provenance earned
+  [ "$status" -eq 2 ]
+  grep -qF "not a checkout root" <<<"$output" || return 1
+  leftover="$(find "$ROOT" -name '*.ok' 2>/dev/null || true)"
+  [ -z "$leftover" ]
+}
+
 @test "resolves the digest from --root, never the caller's CWD" {
   other="$BATS_TEST_TMPDIR/other"
   mkdir -p "$other"

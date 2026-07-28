@@ -477,6 +477,20 @@ assert_not_in_set() {
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
 }
 
+@test "AND-aggregator: a resolver that CANNOT answer denies instead of falling through to the legacy path" {
+  # A non-zero resolver exit means the audited root did not resolve, which is
+  # never "nothing owed". The diff below is entirely out of scope, so the
+  # legacy single-signal path would ALLOW it: only the unanswerable-query deny
+  # can produce a denial here, which is what makes this test discriminating.
+  printf '#!/usr/bin/env bash\nexit 2\n' > "$REPO/.gaia/scripts/resolve-audit-members.sh"
+  chmod +x "$REPO/.gaia/scripts/resolve-audit-members.sh"
+  commit_files "docs/guide.md" "guide"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<< "$output" || return 1
+  grep -qF 'resolve-audit-members.sh' <<< "$output" || return 1
+}
+
 # The regression digest keying exists for. Every dispatched member audits its
 # own owned-plus-machinery content and writes its marker; code-audit-frontend
 # then stamps the GAIA-Audit trailer, which lands as an EMPTY commit -- HEAD
@@ -889,7 +903,7 @@ setup_linked_worktree() {
   git -C "$WT" add app/y.ts
   git -C "$WT" commit --quiet -m "worktree change"
 
-  # The dispatch resolver is invoked relative to cwd, and REPO's copy is
+  # The dispatch resolver is anchored on the ACTING tree, and REPO's copy is
   # untracked so it does not appear in the worktree. Copy it in, as the real
   # repo always has it.
   mkdir -p "$WT/.gaia/scripts"

@@ -418,15 +418,24 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# 20. Not in a git repo → empty stdout, exit 0
+# 20. Not in a git repo → exit 2, empty stdout, one stderr diagnostic.
+#     An unresolvable root is a query this resolver cannot answer, and empty
+#     stdout is reserved for a real answer ("nothing in this diff is in audit
+#     scope"). A caller that read the unanswerable case as an empty member set
+#     would clear a diff no dispatched member read.
 # ---------------------------------------------------------------------------
 
-@test "not in a git repo exits 0 with empty stdout" {
+@test "not in a git repo exits 2 with empty stdout and a stderr diagnostic" {
   notrepo="$BATS_TEST_TMPDIR/notrepo"
   mkdir -p "$notrepo"
   run bash -c 'cd "$1" && GIT_CEILING_DIRECTORIES="$1" "$2" 2>/dev/null' _ "$notrepo" "$SCRIPT"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
   [ -z "$output" ]
+  # bats `run` merges stderr into `$output`, so prove the diagnostic goes to
+  # stderr specifically by discarding stdout.
+  # shellcheck disable=SC2069
+  err="$( ( cd "$notrepo" && GIT_CEILING_DIRECTORIES="$notrepo" "$SCRIPT" ) 2>&1 1>/dev/null || true )"
+  grep -qF -- "resolve-audit-members" <<<"$err" || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -491,5 +500,52 @@ YAML
   commit "test"
   run run_resolver
   [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# ---------------------------------------------------------------------------
+# 25. --root: authoritative when supplied, validated, fail-closed when it does
+#     not name a git checkout.
+# ---------------------------------------------------------------------------
+
+@test "--root pointing at a non-repository exits 2 with empty stdout" {
+  # cwd is a real repo, so only --root can produce the failure: this pins that
+  # the flag is authoritative and that its failure is not masked by a usable
+  # ambient cwd.
+  notrepo="$BATS_TEST_TMPDIR/notrepo-root"
+  mkdir -p "$notrepo"
+  run bash -c '( cd "$1" && GIT_CEILING_DIRECTORIES="$3" "$2" --root "$3" 2>/dev/null )' \
+    _ "$SANDBOX" "$SCRIPT" "$notrepo"
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+}
+
+@test "--root with an empty value fails closed instead of falling back to cwd" {
+  write_full_roster
+  stage app/x.tsx
+  commit "feat"
+  # Reachable as `--root "$R"` with R unset: the quoted word survives, so the
+  # script sees $#=2 with an empty $2. Read as "no override" that would answer
+  # from a root the caller never named.
+  run bash -c '( cd "$1" && "$2" --root "" 2>/dev/null )' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+}
+
+@test "--root answers for that checkout from an unrelated cwd; bare does not" {
+  write_full_roster
+  stage app/x.tsx
+  commit "feat"
+  outside="$BATS_TEST_TMPDIR/outside"
+  mkdir -p "$outside"
+  run bash -c '( cd "$1" && GIT_CEILING_DIRECTORIES="$1" "$2" --root "$3" 2>/dev/null )' \
+    _ "$outside" "$SCRIPT" "$SANDBOX"
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+  # Same cwd, no --root: the resolver cannot answer at all and says so, rather
+  # than reporting the empty set that means "nothing owed".
+  run bash -c '( cd "$1" && GIT_CEILING_DIRECTORIES="$1" "$2" 2>/dev/null )' \
+    _ "$outside" "$SCRIPT"
+  [ "$status" -eq 2 ]
   [ -z "$output" ]
 }
