@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # GAIA worktree shared-state symlink hook (SPEC-005).
 #
-# Creates symlinks from the current linked worktree into the main checkout:
-# the five fixed .gaia/local/ shared-state paths (setup-state.json, cache/shared/,
-# audit/, telemetry/, debt/) plus any gitignored checkout-root .env / .env.*
-# files (excluding the committed .env.example), so neither diverges
-# per-worktree:
+# A linked worktree's whole .gaia/local is ONE symlink to the main checkout's
+# own .gaia/local, so nothing under it diverges per-worktree: the registry's
+# per-tree entries (red-ledger/, worthiness-ledger/, forensics/, handoff/)
+# address themselves under a subdirectory keyed by gaia_tree_key
+# (.gaia/scripts/main-root-lib.sh) so they stay private to the tree that
+# wrote them even though the physical directory is now shared. Also symlinks
+# any gitignored checkout-root .env / .env.* files (excluding the committed
+# .env.example), so neither diverges per-worktree either:
 #
-#   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
-#   <worktree>/.gaia/local/cache/shared/      -> <main>/.gaia/local/cache/shared/
-#   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
-#   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
-#   <worktree>/.gaia/local/debt/             -> <main>/.gaia/local/debt/
-#   <worktree>/.env, <worktree>/.env.*       -> <main>/.env, <main>/.env.*
+#   <worktree>/.gaia/local -> <main>/.gaia/local
+#   <worktree>/.env, <worktree>/.env.* -> <main>/.env, <main>/.env.*
 #
 # Behavior:
 #   - Idempotent: re-running on an already-linked worktree is a no-op.
-#   - Pre-existing plain files / dirs are moved to <path>.bak.<ts> first.
+#   - A pre-existing plain .gaia/local (file or directory) is moved to
+#     .gaia/local.bak.<ts> first; nothing under it is inspected or merged.
 #   - No-op when invoked from the main checkout (not a linked worktree).
 #   - Always exits 0; a broken hook MUST NOT break worktree creation.
 #     Failures (e.g. Windows symlink permission errors) log to stderr.
@@ -37,22 +37,24 @@ log() {
   printf '%s\n' "$1" >&2
 }
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$script_dir/main-root-lib.sh"
+
 # ---------- detect worktree vs main checkout ----------
-common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-if [ -z "$common_dir" ]; then
+# gaia_resolve_main_root is the one canonical main-root derivation; this hook
+# no longer re-derives it from git-common-dir by hand.
+main_root="$(gaia_resolve_main_root)" || {
   log "not a git repo"
   exit 0
-fi
+}
 
-case "$common_dir" in
-  /*) absolute_common_dir="$common_dir" ;;
-  *)  absolute_common_dir="$(pwd)/$common_dir" ;;
-esac
-
-main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
-current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
-
-if [ -z "$main_root" ] || [ -z "$current_root" ]; then
+# The other half of the same comparison, from the same resolver: its contract
+# prints the acting tree's root in the physical form gaia_resolve_main_root
+# prints, so a symlinked checkout path can never read differently between the
+# two sides of the test below.
+current_root="$(gaia_resolve_tree_root 2>/dev/null)"
+if [ -z "$current_root" ]; then
   log "not a git repo"
   exit 0
 fi
@@ -65,16 +67,8 @@ fi
 worktree_root="$current_root"
 ts="$(date +%Y%m%d-%H%M%S)"
 
-# ---------- ensure main-side targets exist (so symlinks don't dangle) ----------
+# ---------- ensure the main-side target exists (so the symlink doesn't dangle) ----------
 mkdir -p "$main_root/.gaia/local" 2>/dev/null
-mkdir -p "$main_root/.gaia/local/audit" 2>/dev/null
-mkdir -p "$main_root/.gaia/local/telemetry" 2>/dev/null
-mkdir -p "$main_root/.gaia/local/cache/shared" 2>/dev/null
-mkdir -p "$main_root/.gaia/local/debt" 2>/dev/null
-# `setup-state.json` is a file: do NOT pre-create it. If it doesn't exist on
-# main, the symlink will dangle until the main checkout writes it via the
-# normal setup flow; that's fine. Readers gracefully treat missing as "no
-# setup state yet".
 
 # ---------- helper: link one path ----------
 # $1 - relative path (e.g. ".gaia/local/setup-state.json")
@@ -133,11 +127,9 @@ link_one() {
   fi
 }
 
-link_one ".gaia/local/setup-state.json" ".gaia/local"
-link_one ".gaia/local/cache/shared"     ".gaia/local/cache"
-link_one ".gaia/local/audit"            ".gaia/local"
-link_one ".gaia/local/telemetry"        ".gaia/local"
-link_one ".gaia/local/debt"             ".gaia/local"
+# The one shared path: .gaia/local itself. parent_rel is ".gaia" (the parent
+# directory that must exist on the worktree side before the symlink lands).
+link_one ".gaia/local" ".gaia"
 
 # ---------- share gitignored root .env / .env.* files ----------
 # Vite (`pnpm dev`) and Playwright's dotenv `config()` read .env / .env.* from

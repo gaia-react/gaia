@@ -11,10 +11,10 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolveMainWorktreeRoot} from '../util/main-root.js';
 import {
   pendingSteps,
   readStateFile,
-  resolveMainWorktreeRoot,
   writeStateFile,
 } from './util/state-file.js';
 import type {SetupState} from './util/state-file.js';
@@ -63,10 +63,10 @@ export const run = (
 
   try {
     repoRoot = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
-  } catch {
+  } catch (error) {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia setup finalize must run inside a git repository',
+      message: `gaia setup finalize must run inside a git repository: ${error instanceof Error ? error.message : String(error)}`,
       subcommand: 'setup finalize',
     });
 

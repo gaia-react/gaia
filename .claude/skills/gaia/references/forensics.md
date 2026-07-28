@@ -7,7 +7,7 @@ Turn a GAIA workflow misfire into a redacted, classified, filing-ready bug repor
 These four rules are non-negotiable and apply to every code path:
 
 1. **Read-only end-to-end.** The skill inspects state; it never modifies, installs, fetches, or remediates anything.
-2. **Write surface allowlist.** Writes go to exactly two directories: `.gaia/local/forensics/` (the report) and `.gaia/local/telemetry/` (GAIA's local ledger sink, writes non-blocking). No other path is writable.
+2. **Write surface allowlist.** Writes go to exactly two directories: `.gaia/local/forensics/<tree_key>/` (the report; `<tree_key>` resolved in step 7) and `.gaia/local/telemetry/` (GAIA's local ledger sink, writes non-blocking). No other path is writable.
 3. **Uniform redaction.** Every output surface, the local file body and the GH issue body, passes through the same single redaction pass. The two bodies are byte-identical post-redaction. Never re-redact, never partially redact.
 4. **Strict body schema.** Frontmatter fields, section headers, and section order are fixed. Phase-2 automation parses this without LLM fallback; any drift breaks downstream triage.
 
@@ -87,14 +87,22 @@ The body posted to the GH issue is the full body, frontmatter and all sections, 
 
 ### 7. Save
 
-Write the rendered report to `.gaia/local/forensics/<timestamp>-<class>.md` where `<timestamp>` is `YYYYMMDDTHHMMSSZ` (ISO-8601 compact UTC, e.g. `20260508T143022Z`).
+Resolve the tree key first, reused for every `.gaia/local/forensics/` path for the rest of this run:
 
-Create `.gaia/local/forensics/` if it does not exist.
+```bash
+bash .gaia/scripts/main-root-lib.sh --tree-key
+```
+
+This prints 16 lowercase hex characters (`<tree_key>`) on stdout and exits 0, or prints nothing and writes one `GAIA_TREE_KEY_UNRESOLVABLE` line to stderr and exits 1. On failure, stop here: surface the stderr line to the user, write nothing, and never fall back to the unkeyed `.gaia/local/forensics/` path.
+
+Write the rendered report to `.gaia/local/forensics/<tree_key>/<timestamp>-<class>.md` where `<timestamp>` is `YYYYMMDDTHHMMSSZ` (ISO-8601 compact UTC, e.g. `20260508T143022Z`).
+
+Create `.gaia/local/forensics/<tree_key>/` if it does not exist.
 
 Print the saved path immediately after writing:
 
 ```
-Report saved: .gaia/local/forensics/<timestamp>-<class>.md
+Report saved: .gaia/local/forensics/<tree_key>/<timestamp>-<class>.md
 ```
 
 ### 8. Branch on diagnosis
@@ -113,7 +121,7 @@ First, check whether `gh` is installed:
 command -v gh
 ```
 
-- **`gh` not installed (non-zero exit):** print one line, `` `gh` not installed; report saved locally at .gaia/local/forensics/<timestamp>-<class>.md ``, and exit zero. Never reach the `gh issue create` invocation.
+- **`gh` not installed (non-zero exit):** print one line, `` `gh` not installed; report saved locally at .gaia/local/forensics/<tree_key>/<timestamp>-<class>.md ``, and exit zero. Never reach the `gh issue create` invocation.
 
 - **`gh` installed:** offer issue creation via `AskUserQuestion`:
   - question: `"File a GitHub issue for this report?"`
@@ -156,8 +164,8 @@ command -v gh
 
 Record cost (see **Cost record (run end)** below), then print a single confirmation line:
 
-- If GH issue was filed: `Report: .gaia/local/forensics/<timestamp>-<class>.md | Issue: <issue URL>`
-- If locally saved only: `Report: .gaia/local/forensics/<timestamp>-<class>.md`
+- If GH issue was filed: `Report: .gaia/local/forensics/<tree_key>/<timestamp>-<class>.md | Issue: <issue URL>`
+- If locally saved only: `Report: .gaia/local/forensics/<tree_key>/<timestamp>-<class>.md`
 
 If the GH issue was filed but step 8's label verification found `gaia-forensics` absent (silently dropped), print the confirmation line above and then this warning:
 
@@ -230,7 +238,7 @@ These values are baked in and must not be derived at runtime:
 - **Issue target repo:** `gaia-react/gaia`, literal in the `--repo` flag. Never derived from `git remote`.
 - **Issue label:** `gaia-forensics`, must pre-exist on the upstream repo. The skill never auto-creates it.
 - **Issue title format:** `forensics: <class>, <one-line user description>`
-- **Local save path:** `.gaia/local/forensics/<timestamp>-<class>.md` where `<timestamp>` is `YYYYMMDDTHHMMSSZ`.
+- **Local save path:** `.gaia/local/forensics/<tree_key>/<timestamp>-<class>.md` where `<tree_key>` is the tree key resolved in step 7 and `<timestamp>` is `YYYYMMDDTHHMMSSZ`.
 
 ## Required reading
 

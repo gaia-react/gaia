@@ -4,8 +4,8 @@
 # the worthiness audit.
 #
 # The hook denies `gh pr merge` when an emergent test the PR changed has no
-# worthiness-ledger line (.gaia/local/audit/worthiness.jsonl) matching its
-# current content. It scopes to the emergent test files this PR changed (the diff
+# worthiness-ledger line (.gaia/local/worthiness-ledger/<tree-key>/worthiness.jsonl)
+# matching its current content. It scopes to the emergent test files this PR changed (the diff
 # against the merge base with the default branch), decides emergent membership via
 # the determinism classifier, recomputes each test's signal via the shared RED
 # helper, and checks PRESENCE + signal match only, never the verdict. Stale-signal
@@ -47,8 +47,14 @@ setup() {
   mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts"
   ln -s "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$REPO/.claude/hooks/lib/red-ledger.sh"
   ln -s "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
+  ln -s "$HOME_ROOT/.claude/hooks/lib/worthiness-ledger.sh" "$REPO/.claude/hooks/lib/worthiness-ledger.sh"
   ln -s "$HOME_ROOT/.gaia/scripts/red-ledger" "$REPO/.gaia/scripts/red-ledger"
   ln -s "$HOME_ROOT/.gaia/scripts/classifier" "$REPO/.gaia/scripts/classifier"
+  # red_ledger_path and worthiness_ledger_path (inside the symlinked libs
+  # above) each source this relative to THEIR OWN location to reach
+  # gaia_tree_key, so it needs to resolve inside REPO too, not just from the
+  # hook's own BASH_SOURCE.
+  ln -s "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
 
   # Base commit on main with a non-test file so HEAD/merge-base exist. The
   # symlinks are untracked; they never enter the diff.
@@ -81,17 +87,22 @@ signals_for() {
 }
 
 # Append a worthiness-ledger line. Args: file fullName signal verdict [artifact].
+# Writes to the path the shipped worthiness_ledger_path resolves for REPO, so
+# the seed lands exactly where the hook itself will look, rather than a
+# second hardcoded copy of the keyed literal.
 seed_ledger() {
   local file="$1" full="$2" sig="$3" verdict="${4:-keep}" artifact="${5:-}"
-  mkdir -p "$REPO/.gaia/local/audit"
+  local ledger
+  ledger="$( . "$REPO/.claude/hooks/lib/worthiness-ledger.sh" && worthiness_ledger_path "$REPO" )"
+  mkdir -p "$(dirname "$ledger")"
   if [ -n "$artifact" ]; then
     jq -nc --arg f "$file" --arg n "$full" --arg s "$sig" --arg v "$verdict" --arg a "$artifact" \
       '{schema:1, file:$f, fullName:$n, signal:$s, verdict:$v, auditedAt:"2026-06-23T00:00:00Z", artifact:$a}' \
-      >> "$REPO/.gaia/local/audit/worthiness.jsonl"
+      >> "$ledger"
   else
     jq -nc --arg f "$file" --arg n "$full" --arg s "$sig" --arg v "$verdict" \
       '{schema:1, file:$f, fullName:$n, signal:$s, verdict:$v, auditedAt:"2026-06-23T00:00:00Z"}' \
-      >> "$REPO/.gaia/local/audit/worthiness.jsonl"
+      >> "$ledger"
   fi
 }
 

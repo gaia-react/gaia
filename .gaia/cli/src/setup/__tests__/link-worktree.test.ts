@@ -8,6 +8,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  */
 import {execFileSync} from 'node:child_process';
 import {
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -19,7 +20,32 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {run as runLinkWorktree} from '../link-worktree.js';
+
+// The handler reads the shared-path set from this repo's own state registry,
+// via state-registry-lib.sh (which sources its sibling main-root-lib.sh),
+// resolved relative to the sandbox's main root. A sandbox is a throwaway
+// `git init`, not a checkout of this repo, so its main root needs its own
+// copies of these three tracked files to resolve against.
+const REPO_GAIA_DIR = path.join(
+  resolveRepoRootFromImportMeta(import.meta.url),
+  '.gaia'
+);
+const REPO_STATE_REGISTRY_PATH = path.join(
+  REPO_GAIA_DIR,
+  'state-registry.json'
+);
+const REPO_STATE_REGISTRY_LIB_PATH = path.join(
+  REPO_GAIA_DIR,
+  'scripts',
+  'state-registry-lib.sh'
+);
+const REPO_MAIN_ROOT_LIB_PATH = path.join(
+  REPO_GAIA_DIR,
+  'scripts',
+  'main-root-lib.sh'
+);
 
 type MainOnlySandbox = {
   cleanup: () => void;
@@ -57,6 +83,20 @@ const setupWorktreeSandbox = (): WorktreeSandbox => {
     'git',
     ['worktree', 'add', '-q', linkedRoot, '-b', 'feature/test'],
     {cwd: mainRoot, env: {...process.env, ...GIT_IDENTITY_ENV}}
+  );
+
+  mkdirSync(path.join(mainRoot, '.gaia', 'scripts'), {recursive: true});
+  copyFileSync(
+    REPO_STATE_REGISTRY_PATH,
+    path.join(mainRoot, '.gaia', 'state-registry.json')
+  );
+  copyFileSync(
+    REPO_STATE_REGISTRY_LIB_PATH,
+    path.join(mainRoot, '.gaia', 'scripts', 'state-registry-lib.sh')
+  );
+  copyFileSync(
+    REPO_MAIN_ROOT_LIB_PATH,
+    path.join(mainRoot, '.gaia', 'scripts', 'main-root-lib.sh')
   );
 
   // macOS resolves /var -> /private/var; the handler canonicalizes via
@@ -135,7 +175,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     vi.restoreAllMocks();
   });
 
-  test('fresh worktree: creates all five symlinks; --json shape is correct; exit 0', () => {
+  test('fresh worktree: creates the one .gaia/local symlink; --json shape is correct; exit 0', () => {
     const exit = runLinkWorktree(['--json'], {
       cwd: sandbox.linkedRoot,
       now: () => FROZEN_TS,
@@ -153,37 +193,21 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     expect(out.is_worktree).toBe(true);
     expect(out.main_root).toBe(sandbox.mainRoot);
     expect(out.worktree_root).toBe(sandbox.linkedRoot);
-    // UAT-008: a newly linked worktree links no config for the removed
-    // feature. The exact five-entry list below is exhaustive proof: a sixth,
-    // retired entry in the output would fail this equality.
-    expect(out.actions).toHaveLength(5);
-    expect(out.actions.map((action) => action.path)).toEqual([
-      '.gaia/local/setup-state.json',
-      '.gaia/local/cache/shared',
-      '.gaia/local/audit',
-      '.gaia/local/telemetry',
-      '.gaia/local/debt',
-    ]);
+    // Exactly one action: the whole .gaia/local directory, not a per-entry
+    // list. Every registry-declared entry lives under it now.
+    expect(out.actions).toHaveLength(1);
+    expect(out.actions.map((action) => action.path)).toEqual(['.gaia/local']);
+    expect(out.actions[0]?.result).toBe('linked');
 
-    for (const action of out.actions) {
-      expect(action.result).toBe('linked');
-    }
-
-    // On disk, all five are symlinks pointing at the main checkout.
-    for (const rel of [
-      '.gaia/local/setup-state.json',
-      '.gaia/local/cache/shared',
-      '.gaia/local/audit',
-      '.gaia/local/telemetry',
-      '.gaia/local/debt',
-    ]) {
-      const sourcePath = path.join(sandbox.linkedRoot, rel);
-      expect(lstatSync(sourcePath).isSymbolicLink()).toBe(true);
-      expect(readlinkSync(sourcePath)).toBe(path.join(sandbox.mainRoot, rel));
-    }
+    // On disk, .gaia/local is a symlink pointing at the main checkout.
+    const sourcePath = path.join(sandbox.linkedRoot, '.gaia', 'local');
+    expect(lstatSync(sourcePath).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(sourcePath)).toBe(
+      path.join(sandbox.mainRoot, '.gaia', 'local')
+    );
   });
 
-  test('already-linked worktree: re-running is a no-op; all five already-linked; exit 0', () => {
+  test('already-linked worktree: re-running is a no-op; already-linked; exit 0', () => {
     runLinkWorktree([], {cwd: sandbox.linkedRoot, now: () => FROZEN_TS});
     stdio.outputs.length = 0;
     stdio.errors.length = 0;
@@ -204,7 +228,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     }
   });
 
-  test('already-linked human summary reports "All 5 paths already linked."', () => {
+  test('already-linked human summary reports "All 1 paths already linked."', () => {
     runLinkWorktree([], {cwd: sandbox.linkedRoot, now: () => FROZEN_TS});
     stdio.outputs.length = 0;
 
@@ -214,44 +238,14 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     });
     expect(exit).toBe(0);
 
-    expect(stdio.outputs.join('')).toContain('All 5 paths already linked.');
+    expect(stdio.outputs.join('')).toContain('All 1 paths already linked.');
   });
 
-  test('worktree with pre-existing plain files: backed up; backup paths in JSON; exit 0', () => {
-    // Create plain (non-symlink) entries on the worktree side.
-    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local'), {
-      recursive: true,
-    });
-    writeFileSync(
-      path.join(sandbox.linkedRoot, '.gaia', 'local', 'setup-state.json'),
-      '{"stale":true}',
-      'utf8'
-    );
-    mkdirSync(
-      path.join(sandbox.linkedRoot, '.gaia', 'local', 'cache', 'shared'),
-      {recursive: true}
-    );
-    writeFileSync(
-      path.join(
-        sandbox.linkedRoot,
-        '.gaia',
-        'local',
-        'cache',
-        'shared',
-        'update-check.json'
-      ),
-      '{"outdatedCount":99}',
-      'utf8'
-    );
-    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local', 'audit'), {
-      recursive: true,
-    });
-    writeFileSync(
-      path.join(sandbox.linkedRoot, '.gaia', 'local', 'audit', 'sha-marker.ok'),
-      'ok',
-      'utf8'
-    );
-    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local', 'telemetry'), {
+  test('worktree with a pre-existing plain .gaia/local: backed up whole; backup path in JSON; exit 0', () => {
+    // A real (non-symlink) .gaia/local, with content, on the worktree side --
+    // e.g. a worktree used before this cutover, where per-tree entries lived
+    // as real directories under it.
+    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local', 'red-ledger'), {
       recursive: true,
     });
     writeFileSync(
@@ -259,18 +253,10 @@ describe('gaia setup link-worktree (linked worktree)', () => {
         sandbox.linkedRoot,
         '.gaia',
         'local',
-        'telemetry',
-        'cost.jsonl'
+        'red-ledger',
+        'observations.jsonl'
       ),
-      '{}',
-      'utf8'
-    );
-    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local', 'debt'), {
-      recursive: true,
-    });
-    writeFileSync(
-      path.join(sandbox.linkedRoot, '.gaia', 'local', 'debt', 'count.json'),
-      '{"openCount":7}',
+      '{"stale":true}\n',
       'utf8'
     );
 
@@ -284,52 +270,30 @@ describe('gaia setup link-worktree (linked worktree)', () => {
       actions: {backup?: string; path: string; result: string}[];
     };
 
-    for (const action of out.actions) {
-      expect(action.result).toBe('linked-after-backup');
-      expect(action.backup).toBeDefined();
-      expect(action.backup).toContain(FROZEN_TS_PREFIX);
+    expect(out.actions).toHaveLength(1);
+    const action = out.actions[0];
+    expect(action.result).toBe('linked-after-backup');
+    expect(action.backup).toBeDefined();
+    expect(action.backup).toContain(FROZEN_TS_PREFIX);
 
-      const backupAbs = path.join(sandbox.linkedRoot, String(action.backup));
-      expect(existsSync(backupAbs)).toBe(true);
+    const backupAbs = path.join(sandbox.linkedRoot, String(action.backup));
+    expect(existsSync(backupAbs)).toBe(true);
+    expect(
+      existsSync(path.join(backupAbs, 'red-ledger', 'observations.jsonl'))
+    ).toBe(true);
 
-      const sourceAbs = path.join(sandbox.linkedRoot, action.path);
-      expect(lstatSync(sourceAbs).isSymbolicLink()).toBe(true);
-    }
+    const sourceAbs = path.join(sandbox.linkedRoot, action.path);
+    expect(lstatSync(sourceAbs).isSymbolicLink()).toBe(true);
   });
 
-  test('worktree with broken symlinks: backed up and replaced; exit 0', () => {
-    // Create symlinks pointing to nonexistent targets.
-    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local'), {
-      recursive: true,
-    });
-    const bogusTarget = path.join(sandbox.linkedRoot, '.gaia', 'local', 'nope');
+  test('worktree with a broken .gaia/local symlink: backed up and replaced; exit 0', () => {
+    // A symlink pointing at a nonexistent target on the worktree side.
+    mkdirSync(path.join(sandbox.linkedRoot, '.gaia'), {recursive: true});
+    const bogusTarget = path.join(sandbox.linkedRoot, '.gaia', 'nope');
     execFileSync('ln', [
       '-s',
       bogusTarget,
-      path.join(sandbox.linkedRoot, '.gaia', 'local', 'setup-state.json'),
-    ]);
-    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local', 'cache'), {
-      recursive: true,
-    });
-    execFileSync('ln', [
-      '-s',
-      bogusTarget,
-      path.join(sandbox.linkedRoot, '.gaia', 'local', 'cache', 'shared'),
-    ]);
-    execFileSync('ln', [
-      '-s',
-      bogusTarget,
-      path.join(sandbox.linkedRoot, '.gaia', 'local', 'audit'),
-    ]);
-    execFileSync('ln', [
-      '-s',
-      bogusTarget,
-      path.join(sandbox.linkedRoot, '.gaia', 'local', 'telemetry'),
-    ]);
-    execFileSync('ln', [
-      '-s',
-      bogusTarget,
-      path.join(sandbox.linkedRoot, '.gaia', 'local', 'debt'),
+      path.join(sandbox.linkedRoot, '.gaia', 'local'),
     ]);
 
     const exit = runLinkWorktree(['--json'], {
@@ -342,21 +306,15 @@ describe('gaia setup link-worktree (linked worktree)', () => {
       actions: {result: string}[];
     };
 
-    for (const action of out.actions) {
-      expect(action.result).toBe('linked-after-backup');
-    }
+    expect(out.actions).toHaveLength(1);
+    expect(out.actions[0]?.result).toBe('linked-after-backup');
   });
 
-  test('main checkout missing target dirs: creates them first, then symlinks; exit 0', () => {
-    // Sanity: fresh sandbox already has no main-side dirs.
-    expect(
-      existsSync(
-        path.join(sandbox.mainRoot, '.gaia', 'local', 'cache', 'shared')
-      )
-    ).toBe(false);
-    expect(
-      existsSync(path.join(sandbox.mainRoot, '.gaia', 'local', 'audit'))
-    ).toBe(false);
+  test('main checkout missing .gaia/local: creates it first, then symlinks; exit 0', () => {
+    // Sanity: fresh sandbox already has no main-side .gaia/local.
+    expect(existsSync(path.join(sandbox.mainRoot, '.gaia', 'local'))).toBe(
+      false
+    );
 
     const exit = runLinkWorktree([], {
       cwd: sandbox.linkedRoot,
@@ -364,24 +322,13 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     });
     expect(exit).toBe(0);
 
-    // The cache/ and audit/ dirs were created on main; the file entry
-    // (setup-state.json) was NOT pre-created (readers treat missing as
-    // "no state yet").
+    // main's .gaia/local now exists (a real directory; the worktree's own
+    // .gaia/local is the symlink into it).
+    expect(existsSync(path.join(sandbox.mainRoot, '.gaia', 'local'))).toBe(
+      true
+    );
     expect(
-      existsSync(
-        path.join(sandbox.mainRoot, '.gaia', 'local', 'cache', 'shared')
-      )
-    ).toBe(true);
-    expect(
-      existsSync(path.join(sandbox.mainRoot, '.gaia', 'local', 'audit'))
-    ).toBe(true);
-    expect(
-      existsSync(path.join(sandbox.mainRoot, '.gaia', 'local', 'debt'))
-    ).toBe(true);
-    expect(
-      existsSync(
-        path.join(sandbox.mainRoot, '.gaia', 'local', 'setup-state.json')
-      )
+      lstatSync(path.join(sandbox.mainRoot, '.gaia', 'local')).isSymbolicLink()
     ).toBe(false);
   });
 
@@ -427,7 +374,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     expect(exit).toBe(0);
 
     const out = stdio.outputs.join('');
-    expect(out).toContain('Linked 5 paths to');
+    expect(out).toContain('Linked 1 paths to');
     expect(out).toContain(sandbox.mainRoot);
   });
 
@@ -459,7 +406,7 @@ describe('gaia setup link-worktree (env file sharing)', () => {
     vi.restoreAllMocks();
   });
 
-  test('fresh worktree: shares .env and .env.local, skips .env.example; actions still length 5', () => {
+  test('fresh worktree: shares .env and .env.local, skips .env.example; actions still length 1', () => {
     writeFileSync(path.join(sandbox.mainRoot, '.env'), 'A=1', 'utf8');
     writeFileSync(path.join(sandbox.mainRoot, '.env.local'), 'B=2', 'utf8');
     writeFileSync(path.join(sandbox.mainRoot, '.env.example'), 'C=3', 'utf8');
@@ -484,7 +431,7 @@ describe('gaia setup link-worktree (env file sharing)', () => {
       expect(action.result).toBe('linked');
     }
 
-    expect(out.actions).toHaveLength(5);
+    expect(out.actions).toHaveLength(1);
 
     for (const rel of ['.env', '.env.local']) {
       const sourcePath = path.join(sandbox.linkedRoot, rel);

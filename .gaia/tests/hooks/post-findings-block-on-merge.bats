@@ -13,7 +13,8 @@
 # Setup drives the REAL hook (by absolute path, never copied) against a
 # sandbox git repo carrying real copies of the scripts it calls by
 # repo-relative path (read-audit-ci-config.sh, resolve-audit-base.sh,
-# post-findings-block.sh, repo-scope.sh), and a fake `gh` on PATH that
+# post-findings-block.sh, audit-key-lib.sh, repo-scope.sh), and a fake `gh`
+# on PATH that
 # answers the hook's own PR lookups plus the producer's comment-post/patch
 # calls, tracking state in files under $FAKE_GH_STATE so a test can assert
 # on how many times each verb fired and what body was posted.
@@ -29,6 +30,7 @@ setup() {
   CI_CONFIG_RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/read-audit-ci-config.sh
   BASE_RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.github/audit" && pwd)/resolve-audit-base.sh
   PRODUCER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/post-findings-block.sh
+  KEY_LIB_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/audit-key-lib.sh
   REPO_SCOPE_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
   REPO=$(mktemp -d -t post-findings-merge-test-XXXXXX)
 
@@ -51,6 +53,7 @@ setup() {
   cp "$CI_CONFIG_RESOLVER_ABS" "$REPO/.gaia/scripts/read-audit-ci-config.sh"
   cp "$BASE_RESOLVER_ABS" "$REPO/.github/audit/resolve-audit-base.sh"
   cp "$PRODUCER_ABS" "$REPO/.gaia/scripts/post-findings-block.sh"
+  cp "$KEY_LIB_ABS" "$REPO/.gaia/scripts/audit-key-lib.sh"
   cp "$REPO_SCOPE_ABS" "$REPO/.claude/hooks/lib/repo-scope.sh"
   chmod +x "$REPO/.gaia/scripts/read-audit-ci-config.sh" \
     "$REPO/.github/audit/resolve-audit-base.sh" \
@@ -170,8 +173,11 @@ run_merge_hook() {
 }
 
 write_sidecar() {
+  # Keyed to base-sha + branch slug (gaia_audit_key, audit-key-lib.sh); the
+  # sandbox's acting branch is "feature" (checked out in setup()), so the
+  # slug is that name verbatim -- nothing in it needs percent-encoding.
   printf '{"schema":1,"member":"code-audit-frontend","findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]}\n' \
-    > "$REPO/.gaia/local/audit/${BASE_SHA}.code-audit-frontend.findings.json"
+    > "$REPO/.gaia/local/audit/${BASE_SHA}.feature.code-audit-frontend.findings.json"
 }
 
 @test "UAT-005: a registered gh pr merge posts one non-empty findings block with auditor local" {

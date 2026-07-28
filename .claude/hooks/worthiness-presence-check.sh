@@ -101,6 +101,14 @@ type red_ledger_repo_rel >/dev/null 2>&1 || exit 0
 type red_ledger_signals >/dev/null 2>&1 || exit 0
 type red_ledger_signal_script >/dev/null 2>&1 || exit 0
 
+# Shared worthiness-ledger lib: the one definition of where a tree's
+# worthiness verdicts live, also called by the ledger writer
+# (.gaia/scripts/audit-ledger/append-worthiness.mjs) so the two never hand-
+# build the path independently. Without it we cannot locate the ledger, so
+# fail-open.
+[ -f .claude/hooks/lib/worthiness-ledger.sh ] && . .claude/hooks/lib/worthiness-ledger.sh
+type worthiness_ledger_path >/dev/null 2>&1 || exit 0
+
 command -v git >/dev/null 2>&1 || exit 0
 command -v node >/dev/null 2>&1 || exit 0
 
@@ -110,9 +118,32 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 classifier_script=".gaia/scripts/classifier/classify-determinism.mjs"
 [ -f "$classifier_script" ] || exit 0
 
-# Worthiness ledger location (sibling to the RED ledger). A missing ledger means
+# The shared main-root resolver, sourced from this hook's own checkout via
+# BASH_SOURCE (never process cwd): the worthiness ledger is per-tree state,
+# so its root is the ACTING tree, not wherever this hook process happens to
+# sit.
+gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
+gaia_scripts="$gaia_scripts/.gaia/scripts"
+# shellcheck source=/dev/null
+source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
+
+# The acting agent's working directory: the payload cwd when it is absolute
+# and resolves to a checkout, this hook's process cwd otherwise. "Resolves to
+# a checkout" is the resolver's own question, so it is asked by calling it
+# rather than by a raw git call this hook writes itself. Payload cwd is
+# measured, not contracted, and only established on PreToolUse, so the
+# fallback is mandatory.
+payload_cwd=$(echo "$input" | jq -r '.cwd // empty' 2>/dev/null)
+source_cwd="$PWD"
+if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
+  source_cwd="$payload_cwd"
+fi
+tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
+
+# Worthiness ledger location (sibling to the RED ledger), anchored on and
+# keyed to this tree's root via the shared resolver. A missing ledger means
 # zero matches, which denies for the clean case below.
-ledger=".gaia/local/audit/worthiness.jsonl"
+ledger="$(worthiness_ledger_path "$tree_root")" || exit 0
 
 # ---------------------------------------------------------------------------
 # Resolve the PR base, the default branch this work forks from. Prefer the

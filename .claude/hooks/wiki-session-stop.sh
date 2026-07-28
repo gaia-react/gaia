@@ -16,7 +16,6 @@ set -euo pipefail
 trap 'exit 0' ERR
 
 [ -d wiki ] || exit 0
-[ -d .git ] || exit 0
 GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || exit 0
 
 session_marker="$GIT_DIR/claude-session-start"

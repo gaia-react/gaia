@@ -41,7 +41,32 @@ AUDIT_RULE_BUDGET=200
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
-CACHE_DIR="$GAIA_DIR/local/cache/shared"
+
+# cache/shared/ is registry scope `shared`: one physical copy per clone, which
+# the statusline reads by resolving the main checkout. This script's own
+# location answers "which tree am I in", never "where does shared state live",
+# so a copy running inside a worktree must ask the resolver the same question
+# the reader asks. Degrade-to-local rather than fail (D-5.3-c), matching
+# .gaia/statusline/gaia-statusline.sh: with no resolver to ask, the local root
+# is the honest answer and the refresher still refreshes.
+#
+# STATE_ROOT anchors machine-local STATE only. Everything this script measures
+# out of the checkout itself -- wiki/hot.md, CLAUDE.md, .claude/rules/*.md, the
+# Serena language drift, and the two CLI invocations below -- stays on
+# PROJECT_ROOT, because those are tracked files that legitimately differ per
+# branch. Repointing them wholesale would make this refresher report a fact
+# about a tree nobody is in.
+if [ -f "$GAIA_DIR/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$GAIA_DIR/scripts/main-root-lib.sh" 2>/dev/null || true
+fi
+STATE_ROOT=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  STATE_ROOT="$(gaia_resolve_main_root "$PROJECT_ROOT" 2>/dev/null || true)"
+fi
+[ -n "$STATE_ROOT" ] || STATE_ROOT="$PROJECT_ROOT"
+
+CACHE_DIR="$STATE_ROOT/.gaia/local/cache/shared"
 CACHE_FILE="$CACHE_DIR/update-check.json"
 VERSION_FILE="$GAIA_DIR/VERSION"
 
@@ -192,7 +217,14 @@ audit_nudge_reason=""
 
 # (a) Memory entry count proxy: number of *.md files under the machine-local
 # memory dir (same derivation /gaia-audit uses).
-MEMORY_DIR="$HOME/.claude/projects/${PROJECT_ROOT//\//-}/memory"
+#
+# Keyed by the tree's path SPELLING, so unlike everything else under
+# .gaia/local this one is not reached through the worktree's shared-state
+# symlink -- a worktree gets a genuinely different directory, and a freshly
+# created worktree path has almost no memory history. Anchoring it to the main
+# checkout keeps this a fact about the clone, which is what the shared cache it
+# feeds is read as.
+MEMORY_DIR="$HOME/.claude/projects/${STATE_ROOT//\//-}/memory"
 if [ -d "$MEMORY_DIR" ]; then
   mem_count=$(find "$MEMORY_DIR" -type f -name '*.md' 2>/dev/null | wc -l | tr -d '[:space:]')
   case "$mem_count" in
@@ -204,7 +236,7 @@ fi
 # Newest `applied` audit report → its mtime is the last-audit timestamp.
 applied_at=0
 draft_pending=false
-AUDIT_DIR="$PROJECT_ROOT/.gaia/local/audit"
+AUDIT_DIR="$STATE_ROOT/.gaia/local/audit"
 if [ -d "$AUDIT_DIR" ]; then
   while IFS= read -r f; do
     [ -f "$f" ] || continue

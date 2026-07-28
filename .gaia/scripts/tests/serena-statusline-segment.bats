@@ -6,9 +6,11 @@
 # The render is a thin consumer of the cache field serenaLangDrift: it
 # comma-joins the array via `jq '(.serenaLangDrift // []) | join(", ")'` and
 # emits `Run /gaia-serena-sync (Serena missing: <langs>)`, gated identically to
-# the peer nudges (suppressed in linked worktrees and until per-machine setup
-# completes). These tests inject the cache directly (no drift computation) and
-# assert the rendered right side, covering UAT-013..017.
+# the peer nudges: until per-clone setup completes, and no further. There is no
+# worktree gate -- the cache is shared state read from the resolved main root,
+# so the segment renders the same from every tree. These tests inject the cache
+# directly (no drift computation) and assert the rendered right side, covering
+# UAT-013..017.
 #
 # Hermeticity: each fixture PROJECT_ROOT lives under a per-test mktemp -d with a
 # fake $HOME (so the left-side delegation never reads the real
@@ -35,7 +37,9 @@ refute_contains() {
 setup() {
   THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   STATUSLINE_SRC="$THIS_DIR/../../statusline/gaia-statusline.sh"
+  RESOLVER_SRC="$THIS_DIR/../main-root-lib.sh"
   [ -f "$STATUSLINE_SRC" ] || skip "gaia-statusline.sh missing"
+  [ -f "$RESOLVER_SRC" ] || skip "main-root-lib.sh missing"
   command -v jq >/dev/null 2>&1 || skip "jq required"
 
   TMPROOT_RAW="$(mktemp -d "${TMPDIR:-/tmp}/gaia-serena-sl-XXXXXX")"
@@ -67,10 +71,14 @@ teardown() {
 
 # scaffold_root <root> : drop a copy of the statusline script under the root's
 # .gaia/statusline/ and create the .gaia/local/cache/shared and .gaia/local dirs.
+# The resolver library is copied too, so the fixtures exercise the shipped
+# main-root resolution rather than silently taking the no-library fallback.
 scaffold_root() {
   local r="$1"
-  mkdir -p "$r/.gaia/statusline" "$r/.gaia/local/cache/shared" "$r/.gaia/local"
+  mkdir -p "$r/.gaia/statusline" "$r/.gaia/scripts" \
+           "$r/.gaia/local/cache/shared" "$r/.gaia/local"
   cp "$STATUSLINE_SRC" "$r/.gaia/statusline/gaia-statusline.sh"
+  cp "$RESOLVER_SRC" "$r/.gaia/scripts/main-root-lib.sh"
 }
 
 # write_cache <root> <serenaLangDrift-json-or-ABSENT>
@@ -100,7 +108,7 @@ render() {
   run env HOME="$FAKE_HOME" bash -c 'printf "%s" "{}" | bash "$1"' _ "$1/.gaia/statusline/gaia-statusline.sh"
 }
 
-@test "UAT-013 statusline: serenaLangDrift [python, go], setup complete, not worktree -> full segment" {
+@test "UAT-013 statusline: serenaLangDrift [python, go], setup complete -> full segment" {
   local r="$TMPROOT/r013"
   scaffold_root "$r"
   write_cache "$r" '["python","go"]'
@@ -139,7 +147,14 @@ render() {
   refute_contains "$SEGMENT"
 }
 
-@test "UAT-016 statusline: non-empty drift but a linked git worktree -> no segment (worktree gate)" {
+@test "UAT-016 statusline: non-empty drift renders from a linked git worktree too" {
+  # This case asserted the opposite until task 5.1: a linked worktree used to
+  # blanket-suppress the whole right side, so the drift the developer needed to
+  # see was hidden from every tree but main. The drift cache is shared state
+  # living under main, so it is one fact about the clone and it renders wherever
+  # the session sits. The worktree is left UNPROVISIONED (no symlinks back to
+  # main) and the cache is written only under main, so the segment can render
+  # only if the statusline resolved main for itself.
   MAIN="$TMPROOT/main"
   mkdir -p "$MAIN"
   git -C "$MAIN" init -q
@@ -147,12 +162,13 @@ render() {
   LINKED="$TMPROOT/linked"
   git -C "$MAIN" worktree add -q "$LINKED" -b "feat/serena-sl"
 
+  scaffold_root "$MAIN"
   scaffold_root "$LINKED"
-  write_cache "$LINKED" '["go"]'
-  write_setup "$LINKED" complete
+  write_cache "$MAIN" '["go"]'
+  write_setup "$MAIN" complete
   render "$LINKED"
   [ "$status" -eq 0 ]
-  refute_contains "$SEGMENT"
+  assert_contains 'Run /gaia-serena-sync (Serena missing: go)'
 }
 
 @test "UAT-017 statusline: non-empty drift but setup not complete (missing or null) -> no segment" {

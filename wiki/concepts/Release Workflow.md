@@ -220,3 +220,4 @@ A file's presence in the GAIA source tree (`gaia/.claude/commands/`, etc.) does 
 - [[Wiki Sync]]: drift gate at Step 2; release is blocked until `wiki/.state.json` matches HEAD.
 - [[Bundle-time Scrub]]: rationale for marker-strip + leak-check + runtime-deps; what the system catches, what it does not.
 - [[Git Workflow]]: destructive-on-main hook that `/gaia-release` coexists with (the final push is gated behind explicit user confirmation).
+- [[Worktrees]]: the per-tree state model behind `.claude/worktrees/`, generated at runtime and excluded from the release tarball.

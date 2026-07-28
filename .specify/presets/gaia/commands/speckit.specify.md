@@ -43,7 +43,15 @@ After core has written its artifact (typically at `specs/<NNN>-<slug>/spec.md`):
 
    Capture the printed `SPEC-NNN` token. The third argument (`$ARGUMENTS`, the feature description the user typed) is stored verbatim as the immutable one-line annotation on the reserved `spec/NNN` git tag. If `$ARGUMENTS` is empty (a fully-interactive spec run), derive the subject from the just-written artifact's first `# ` title heading and pass that instead; do not leave the argument unset.
 
-3. Create the SPEC folder (`mkdir -p .gaia/local/specs/<SPEC-NNN>`). Copy the core artifact to `.gaia/local/specs/<SPEC-NNN>/SPEC.md`.
+3. Create the SPEC folder in the main checkout. The SPEC folder is main-anchored state (state registry `specs-main`), and a linked worktree carries no copy of it, so a relative write from a worktree session forks a second specs tree inside that worktree instead of landing where the ledger indexes it:
+
+   ```bash
+   MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+   SPEC_DIR="${MAIN_ROOT}/.gaia/local/specs/<SPEC-NNN>"
+   mkdir -p "$SPEC_DIR"
+   ```
+
+   The resolver fails closed: it prints nothing and exits non-zero when it cannot resolve a main checkout. If `MAIN_ROOT` comes back empty, stop and surface that; never fall back to a relative path. Copy the core artifact to `${SPEC_DIR}/SPEC.md`.
 4. Stamp GAIA frontmatter at the top of the relocated file. If the core artifact has no frontmatter (spec-kit's bundled `spec-template.md` does not), prepend a frontmatter block with these required fields:
 
    ```yaml

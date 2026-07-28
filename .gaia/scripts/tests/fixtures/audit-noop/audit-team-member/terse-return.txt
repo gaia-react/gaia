@@ -2,4 +2,4 @@ Audit round 2 for base abc1234 -> HEAD def5678.
 Remaining in-scope: 1 Critical, 0 Important, 0 Suggestion (0 escalated).
 Fixed this round: 2.
 Out-of-scope dispositions: 0.
-Ledger: .gaia/local/audit/abc1234.rerun.json  (removed on a clean pass)
+Ledger: .gaia/local/audit/abc1234.audit-fixes.rerun.json  (removed on a clean pass)

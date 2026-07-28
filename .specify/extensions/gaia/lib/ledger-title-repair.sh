@@ -38,9 +38,24 @@ repo_root="${1%/}"
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./title-normalize.sh
 . "${_lib_dir}/title-normalize.sh"
+# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
-specs_ledger="$repo_root/.gaia/local/specs/ledger.json"
-plans_ledger="$repo_root/.gaia/local/plans/ledger.json"
+# repo_root names the tree this repair runs in; the ledgers and folders it
+# reads are main's, because the state registry declares specs/ and plans/
+# main-only. Best-effort by contract: an unresolvable main is one diagnostic
+# and exit 0, nothing touched.
+if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+  echo "ledger-title-repair: cannot resolve the main checkout for '$repo_root'; nothing repaired" >&2
+  exit 0
+fi
+if ! plans_dir="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_dir" ]; then
+  echo "ledger-title-repair: cannot resolve the main checkout for '$repo_root'; nothing repaired" >&2
+  exit 0
+fi
+
+specs_ledger="$specs_dir/ledger.json"
+plans_ledger="$plans_dir/ledger.json"
 
 # ---------- Part A: specs `intent` repair ----------------------------------
 
@@ -53,9 +68,9 @@ repair_specs_intent() {
   while IFS= read -r id; do
     [ -n "$id" ] || continue
 
-    spec_md="$repo_root/.gaia/local/specs/$id/SPEC.md"
+    spec_md="$specs_dir/$id/SPEC.md"
     if [ ! -f "$spec_md" ]; then
-      spec_md="$repo_root/.gaia/local/specs/archived/$id/SPEC.md"
+      spec_md="$specs_dir/archived/$id/SPEC.md"
       [ -f "$spec_md" ] || continue
     fi
 
@@ -125,11 +140,11 @@ _extract_plan_prose() {
 _recover_plan_source_text() {
   local id="$1" candidate raw
   for candidate in \
-    "$repo_root/.gaia/local/plans/$id/SUMMARY.md" \
-    "$repo_root/.gaia/local/plans/$id/PROGRESS.md" \
-    "$repo_root/.gaia/local/plans/$id/README.md" \
-    "$repo_root/.gaia/local/plans/archived/$id/SUMMARY.md" \
-    "$repo_root/.gaia/local/plans/archived/$id/README.md"; do
+    "$plans_dir/$id/SUMMARY.md" \
+    "$plans_dir/$id/PROGRESS.md" \
+    "$plans_dir/$id/README.md" \
+    "$plans_dir/archived/$id/SUMMARY.md" \
+    "$plans_dir/archived/$id/README.md"; do
     [ -f "$candidate" ] || continue
     raw="$(_extract_plan_prose "$candidate")"
     if [ -n "$raw" ]; then
@@ -196,7 +211,7 @@ repair_plans_status() {
       *) continue ;;
     esac
 
-    archived_dir="$repo_root/.gaia/local/plans/archived/$id"
+    archived_dir="$plans_dir/archived/$id"
     [ -d "$archived_dir" ] || continue
 
     status="$(jq -r --arg id "$id" '.plans[] | select(.id == $id) | .status // ""' "$plans_ledger" 2>/dev/null)"

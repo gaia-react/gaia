@@ -23,9 +23,17 @@ setup() {
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/.gaia/local/audit" "$SANDBOX/bin"
-  git -C "$SANDBOX" init --quiet
+  # Pinned to "main" (unborn HEAD, no commit needed -- `git branch
+  # --show-current` answers "main" immediately) so the sidecar tag this suite
+  # writes is deterministic across machines rather than riding whatever
+  # `init.defaultBranch` the host has configured.
+  git -C "$SANDBOX" init --quiet --initial-branch=main
   AUDIT_DIR="$SANDBOX/.gaia/local/audit"
   BASE="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  # The real tag (gaia_audit_key, audit-key-lib.sh) is base-sha + branch
+  # slug; "main" has nothing to percent-encode, so the slug is the branch
+  # name verbatim.
+  AUDIT_KEY="${BASE}.main"
   GH_LOG="$SANDBOX/gh.log"
 }
 
@@ -33,7 +41,7 @@ setup() {
 write_sidecar() {
   local member="$1" findings="$2"
   printf '{"schema":1,"member":"%s","findings":%s}\n' "$member" "$findings" \
-    > "$AUDIT_DIR/${BASE}.${member}.findings.json"
+    > "$AUDIT_DIR/${AUDIT_KEY}.${member}.findings.json"
 }
 
 # stub_gh <comments-json>: a fake `gh` supporting `auth status` (ok), `pr view`
@@ -85,6 +93,27 @@ STUB
   chmod +x "$SANDBOX/bin/gh"
 }
 
+# stub_jq_merge_fails: a jq that is the real jq for every call EXCEPT the `-s`
+# merge pass, which it fails. Only that one invocation passes `-s`, so the run
+# still validates its sidecars for real and reaches the merge with a legitimate
+# file set in hand, which is the only state where the fallback under test was
+# ever reachable.
+stub_jq_merge_fails() {
+  local real
+  real="$(command -v jq)"
+  cat > "$SANDBOX/bin/jq" <<STUB
+#!/usr/bin/env bash
+for a in "\$@"; do
+  if [ "\$a" = "-s" ]; then
+    echo "jq: error: simulated merge failure" >&2
+    exit 5
+  fi
+done
+exec "$real" "\$@"
+STUB
+  chmod +x "$SANDBOX/bin/jq"
+}
+
 # stub_gh_no_auth: gh is present but `gh auth status` fails.
 stub_gh_no_auth() {
   cat > "$SANDBOX/bin/gh" <<'STUB'
@@ -117,12 +146,13 @@ STUB
 # coreutils (never the host's real PATH), so a tool named in <omit> is
 # genuinely absent, not merely shadowed. Mirrors the no-gh forensics fixture
 # (.gaia/tests/forensics/07-gh-not-installed.bats), extended with the extra
-# tools this script's own body needs (jq, git, mktemp, sort).
+# tools this script's own body needs (jq, git, mktemp, sort, dirname -- the
+# last for sourcing audit-key-lib.sh, .gaia/scripts/audit-key-lib.sh).
 minimal_path() {
   local omit="$1"
   local d="$SANDBOX/minimal-bin-${omit}"
   mkdir -p "$d"
-  for cmd in bash jq git mktemp sort cat head sed rm mkdir printf gh; do
+  for cmd in bash jq git mktemp sort cat head sed rm mkdir printf gh dirname; do
     [ "$cmd" = "$omit" ] && continue
     local real
     real="$(command -v "$cmd" 2>/dev/null || true)"
@@ -205,6 +235,32 @@ extract_payload() {
   [ "$(jq 'has("area_tags")' <<<"$entry")" = "true" ]
 }
 
+@test "a finding's actionable detail stays in the sidecar and is projected OUT of the posted block" {
+  # The sidecar is the report of record and carries file / line / defect /
+  # verification / repair. The PR comment is a published surface whose
+  # visibility follows the repo's, and a finding's text can quote the very hole
+  # it reports, so only the three keys the block contract freezes go out.
+  write_sidecar code-audit-maintainer-shell '[{"finding_class":"holistic/secret-exposure","severity":"warning","area_tags":[".claude/hooks"],"path":".claude/hooks/block-secrets-write.sh","line":113,"title":"the path arm admits arbitrary trailing text","failure_mode":"one separator after the expansion unlocks an unbounded run over the secret character set","verified_by":"fed the hook the braced-expansion fixture: base denies, HEAD allows","suggested_fix":"bound each path segment"}]'
+  stub_gh '[]'
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  payload="$(extract_payload)"
+  entry="$(jq -c '.findings[0]' <<<"$payload")"
+  # The three frozen keys survive, verbatim.
+  [ "$(jq -r '.finding_class' <<<"$entry")" = "holistic/secret-exposure" ]
+  [ "$(jq -r '.severity' <<<"$entry")" = "warning" ]
+  [ "$(jq -r '.area_tags[0]' <<<"$entry")" = ".claude/hooks" ]
+  # Exactly those three, nothing more.
+  [ "$(jq -r '[keys[]] | sort | join(",")' <<<"$entry")" = "area_tags,finding_class,severity" ]
+  # And no detail leaks into the comment body by any other route.
+  grep -qF "block-secrets-write.sh" "$SANDBOX/posted_body.txt" && return 1
+  grep -qF "bound each path segment" "$SANDBOX/posted_body.txt" && return 1
+  # The sidecar itself still holds everything.
+  sidecar="$AUDIT_DIR/${AUDIT_KEY}.code-audit-maintainer-shell.findings.json"
+  [ "$(jq -r '.findings[0].line' "$sidecar")" = "113" ]
+  [ "$(jq -r '.findings[0].suggested_fix' "$sidecar")" = "bound each path segment" ]
+}
+
 # =============================================================================
 # AC3: a second run with the same base updates, never duplicates
 # =============================================================================
@@ -254,7 +310,7 @@ extract_payload() {
 
 @test "a malformed sidecar (invalid JSON) is skipped, named on stderr, and the rest still posts" {
   write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
-  echo 'not json at all' > "$AUDIT_DIR/${BASE}.code-audit-maintainer-shell.findings.json"
+  echo 'not json at all' > "$AUDIT_DIR/${AUDIT_KEY}.code-audit-maintainer-shell.findings.json"
   stub_gh '[]'
   run run_script --base "$BASE"
   [ "$status" -eq 0 ]
@@ -265,7 +321,7 @@ extract_payload() {
 
 @test "a sidecar with a non-array findings field is malformed and skipped" {
   printf '{"schema":1,"member":"code-audit-maintainer-node","findings":"oops"}\n' \
-    > "$AUDIT_DIR/${BASE}.code-audit-maintainer-node.findings.json"
+    > "$AUDIT_DIR/${AUDIT_KEY}.code-audit-maintainer-node.findings.json"
   write_sidecar code-audit-frontend '[]'
   stub_gh '[]'
   run run_script --base "$BASE"
@@ -275,13 +331,32 @@ extract_payload() {
 }
 
 @test "when every matched sidecar is malformed, declines no sidecars (each still named on stderr)" {
-  echo 'not json' > "$AUDIT_DIR/${BASE}.code-audit-frontend.findings.json"
+  echo 'not json' > "$AUDIT_DIR/${AUDIT_KEY}.code-audit-frontend.findings.json"
   stub_gh '[]'
   run run_script --base "$BASE"
   [ "$status" -eq 0 ]
   grep -qF "malformed sidecar" <<<"$output"
   [ "$(tail -n 1 <<<"$output")" = "findings: declined: no sidecars" ]
   [ ! -e "$GH_LOG" ]
+}
+
+@test "a merge that fails declines, and never publishes an empty findings block" {
+  # Every sidecar reaching the merge already parsed with an array `.findings`,
+  # so the merge cannot legitimately come back empty. Falling back to `[]`
+  # would post "the audit found nothing" on a PR when the merge broke, which
+  # is a false statement on a published surface.
+  write_sidecar code-audit-maintainer-shell \
+    '[{"finding_class":"holistic/secret-exposure","severity":"warning","area_tags":[".claude/hooks"],"path":".claude/hooks/guard.sh","line":9,"title":"t","failure_mode":"f","verified_by":"v","suggested_fix":"s"}]'
+  stub_gh '[]'
+  stub_jq_merge_fails
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  grep -qF "cannot merge the findings sidecars" <<<"$output"
+  [ "$(tail -n 1 <<<"$output")" = "findings: declined: post failed" ]
+  # Nothing was posted or edited at all.
+  [ -f "$SANDBOX/posted_body.txt" ] && return 1
+  grep -qE 'gh api .*--method' "$GH_LOG" && return 1
+  return 0
 }
 
 # =============================================================================
@@ -343,7 +418,7 @@ extract_payload() {
   : > "$AUDIT_DIR/${BASE}.ok"
   : > "$AUDIT_DIR/${BASE}.refused"
   : > "$AUDIT_DIR/${BASE}.dispositions.json"
-  : > "$AUDIT_DIR/${BASE}.rerun.json"
+  : > "$AUDIT_DIR/${AUDIT_KEY}.rerun.json"
   write_sidecar code-audit-frontend '[]'
   stub_gh '[]'
   run run_script --base "$BASE"
@@ -352,7 +427,7 @@ extract_payload() {
   grep -qF "${BASE}.ok" <<<"$output" && return 1
   grep -qF "${BASE}.refused" <<<"$output" && return 1
   grep -qF "${BASE}.dispositions.json" <<<"$output" && return 1
-  grep -qF "${BASE}.rerun.json" <<<"$output" && return 1
+  grep -qF "${AUDIT_KEY}.rerun.json" <<<"$output" && return 1
   return 0
 }
 

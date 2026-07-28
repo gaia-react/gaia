@@ -108,14 +108,19 @@ teardown() {
 #          exit non-zero. Tested via a "failing-gh" stub that exits 1.
 # ---------------------------------------------------------------------------
 
+# Synthetic stand-in for `bash .gaia/scripts/main-root-lib.sh --tree-key`'s
+# stdout (16 lowercase hex characters); this surrogate never invokes the real
+# resolver, same as the fixed synthetic $timestamp below.
+TREE_KEY_FIXTURE="deadbeefcafe1234"
+
 invoke_gh_failing_surrogate() {
   local workdir="$1"
   local class="${2:-init}"
   local timestamp="20260508T143022Z"
 
   # Write the local report (always done before gh is called)
-  mkdir -p "$workdir/.gaia/local/forensics"
-  local report_path="$workdir/.gaia/local/forensics/${timestamp}-${class}.md"
+  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  local report_path="$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
   printf '## Symptom\nTest report body.\n' > "$report_path"
 
   # Build a failing gh stub
@@ -149,7 +154,7 @@ invoke_gh_failing_surrogate() {
   # Must exit non-zero
   [[ "$result" -ne 0 ]]
   # Local report must still exist
-  [[ -f "$workdir/.gaia/local/forensics/20260508T143022Z-hook.md" ]]
+  [[ -f "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-hook.md" ]]
 }
 
 @test "UAT-006: gh failure surfaces native error verbatim to stderr" {

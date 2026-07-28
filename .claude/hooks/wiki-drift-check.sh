@@ -12,7 +12,7 @@ set -euo pipefail
 trap 'exit 0' ERR
 
 command -v jq >/dev/null 2>&1 || exit 0
-[ -d .git ] || exit 0
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 [ -f wiki/.state.json ] || exit 0
 
 payload=$(cat)

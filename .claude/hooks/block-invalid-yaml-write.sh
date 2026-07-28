@@ -102,7 +102,20 @@ def yaml_region(file_path, text):
 # Skips quoted/flow/block-scalar values (already immune by construction) and
 # tracks block-scalar bodies by indentation so literal `#` characters inside
 # a `|`/`>` block never false-positive.
-KEY_LINE_RE = re.compile(r"^(?P<indent>[ \t]*)(?:-\s+)?[\w.\-]+:[ \t]+(?P<value>.+?)\s*$")
+#
+# `uses:` is exempt (EXEMPT_KEYS). Its value is a single unquoted
+# `owner/repo@ref` token that can never legitimately contain a space, so a
+# ` #` after it is ALWAYS a deliberate trailing comment and never truncation
+# of meaningful content. The repo pins every action to a full 40-char SHA and
+# annotates the human-readable version in exactly that trailing form
+# (`uses: actions/checkout@<sha> # v5.0.1`), which is the security-relevant
+# convention across .github/workflows/** and the bundled workflow templates.
+# Without this exemption the guard rejects every NEW pin and pushes authors
+# onto an off-convention preceding-comment-line form.
+EXEMPT_KEYS = frozenset({"uses"})
+KEY_LINE_RE = re.compile(
+    r"^(?P<indent>[ \t]*)(?:-\s+)?(?P<key>[\w.\-]+):[ \t]+(?P<value>.+?)\s*$"
+)
 BLOCK_START_RE = re.compile(r":[ \t]*[|>][+-]?\d*[ \t]*$")
 
 
@@ -121,6 +134,8 @@ def find_space_hash_truncations(region):
             continue
         m = KEY_LINE_RE.match(line)
         if not m:
+            continue
+        if m.group("key") in EXEMPT_KEYS:
             continue
         value = m.group("value")
         if value[:1] in ('"', "'", "[", "{", "|", ">"):

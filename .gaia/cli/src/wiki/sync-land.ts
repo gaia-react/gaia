@@ -24,6 +24,7 @@
 import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {
   currentBranch,
   defaultRunner,
@@ -31,7 +32,7 @@ import {
   isProtectedBranch,
 } from './util/branch.js';
 import type {CommandRunner} from './util/branch.js';
-import {resolveRepoRoot, shortSha} from './util/git.js';
+import {shortSha} from './util/git.js';
 import {
   commandSucceeded,
   finalizeMerge,

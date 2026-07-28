@@ -18,6 +18,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {
   applyWithholds,
   parseExcludeCategories,
@@ -35,7 +36,6 @@ import {
   computeMissing,
   resolveExcludePath,
   resolveManifestPath,
-  resolveRepoRoot,
   serialize,
 } from './manifest.js';
 import type {BuildOptions, ManifestClass, ManifestShape} from './manifest.js';

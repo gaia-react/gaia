@@ -76,15 +76,14 @@ session=$(jq -r '.session_id // empty' <<<"$payload" 2>/dev/null) || exit 0
 
 # Resolve the MAIN checkout, not the current worktree: a session can author a
 # SPEC in the main checkout and enter a worktree before planning, and the guard
-# must still hold across that move. --git-common-dir is the main .git for every
-# linked worktree, and is a relative ".git" in the main checkout itself.
-common=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0
-[ -n "$common" ] || exit 0
-case "$common" in
-  /*) ;;
-  *) common="$PWD/$common" ;;
-esac
-root=$(dirname "$common")
+# must still hold across that move. The shared resolver, sourced from this
+# hook's own checkout via BASH_SOURCE (never process cwd), is the one place
+# that answers "where is main".
+gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
+gaia_scripts="$gaia_scripts/.gaia/scripts"
+# shellcheck source=/dev/null
+source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
+root=$(gaia_resolve_main_root 2>/dev/null) || exit 0
 sentinel="$root/.gaia/local/cache/spec-chain-${session}.json"
 
 # --- SessionStart: /clear is the sanctioned reset -----------------------------

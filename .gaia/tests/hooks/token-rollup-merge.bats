@@ -18,6 +18,7 @@ setup() {
   ROLLUP_SRC="$REPO_ROOT/.gaia/scripts/token-rollup.sh"
   LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
   LIB_LEDGER_SRC="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
+  LIB_MAIN_ROOT_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -42,6 +43,7 @@ build_repo() {
   chmod +x "$REPO/.gaia/scripts/token-rollup.sh"
   cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
   cp "$LIB_LEDGER_SRC" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$LIB_MAIN_ROOT_SRC" "$REPO/.gaia/scripts/main-root-lib.sh"
 }
 
 write_running() {

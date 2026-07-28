@@ -19,40 +19,20 @@ This wrapper changes `.gaia/VERSION` and opens a PR, both belong on the main che
 Detection (run this first, before anything else):
 
 ```bash
-common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-if [ -n "$common_dir" ]; then
-  case "$common_dir" in
-    /*) absolute_common_dir="$common_dir" ;;
-    *)  absolute_common_dir="$(pwd)/$common_dir" ;;
-  esac
-  main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
-  current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
-  if [ -n "$main_root" ] && [ -n "$current_root" ] && [ "$main_root" != "$current_root" ]; then
-    cached_line="Cached state unavailable on main; symlinks may be broken, run \`.gaia/cli/gaia setup link-worktree\` to repair."
-    cache_file="$main_root/.gaia/local/cache/shared/update-check.json"
-    if [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1; then
-      gaia_current="$(jq -r '.gaiaCurrent // ""' "$cache_file" 2>/dev/null)"
-      gaia_latest="$(jq -r '.gaiaLatest // ""' "$cache_file" 2>/dev/null)"
-      gaia_has_update="$(jq -r '.gaiaHasUpdate // false' "$cache_file" 2>/dev/null)"
-      if [ -n "$gaia_current" ] && [ -n "$gaia_latest" ]; then
-        update_phrase="not-available"
-        if [ "$gaia_has_update" = "true" ]; then update_phrase="available"; fi
-        cached_line="Cached on main: GAIA $gaia_current installed; latest $gaia_latest (update $update_phrase)."
-      fi
-    fi
-    cat <<EOF
-/update-gaia must run from the main checkout, not a worktree.
-
-Worktree:       $current_root
-Main checkout:  $main_root
-
-$cached_line
-
-Run \`cd $main_root\` then re-invoke /update-gaia.
-EOF
-    exit 1
-  fi
-fi
+. .gaia/scripts/main-only-lib.sh
+gaia_update_gaia_state_line() {
+  local cache_file="$1"
+  [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1 || return 0
+  local gaia_current gaia_latest gaia_has_update
+  gaia_current="$(jq -r '.gaiaCurrent // ""' "$cache_file" 2>/dev/null)"
+  gaia_latest="$(jq -r '.gaiaLatest // ""' "$cache_file" 2>/dev/null)"
+  gaia_has_update="$(jq -r '.gaiaHasUpdate // false' "$cache_file" 2>/dev/null)"
+  [ -n "$gaia_current" ] && [ -n "$gaia_latest" ] || return 0
+  local update_phrase="not-available"
+  [ "$gaia_has_update" = "true" ] && update_phrase="available"
+  printf 'Cached on main: GAIA %s installed; latest %s (update %s).\n' "$gaia_current" "$gaia_latest" "$update_phrase"
+}
+gaia_refuse_if_worktree "/update-gaia" gaia_update_gaia_state_line || exit 1
 ```
 
 If the detection does not fire, fall through to the existing `## Pre-flight: Branch check` section.

@@ -182,6 +182,7 @@ copy_plan_archive_deps() {
   cp "$REPO_ROOT_REAL/.gaia/scripts/plan-archive.sh" "$REPO/.gaia/scripts/plan-archive.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/cost-represented.sh" "$REPO/.gaia/scripts/cost-represented.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
   cp "$REPO_ROOT_REAL/.specify/extensions/gaia/lib/plan-ledger-update.sh" \
     "$REPO/.specify/extensions/gaia/lib/plan-ledger-update.sh"
   cp "$REPO_ROOT_REAL/.specify/extensions/gaia/lib/with-ledger-lock.sh" \
@@ -347,6 +348,7 @@ copy_plan_archive_merged_deps() {
     "$REPO/.specify/extensions/gaia/lib/plan-archive-merged.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/cost-represented.sh" "$REPO/.gaia/scripts/cost-represented.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
 }
 
 # copy_plan_archive_abandoned_deps: mirrors plan-archive-abandoned.sh's own
@@ -359,6 +361,7 @@ copy_plan_archive_abandoned_deps() {
     "$REPO/.specify/extensions/gaia/lib/plan-archive-abandoned.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/cost-represented.sh" "$REPO/.gaia/scripts/cost-represented.sh"
   cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
 }
 
 # days_ago <n>: portable ISO8601 timestamp n days in the past, computed with
@@ -628,6 +631,50 @@ seed_sidecar() {
   [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
 }
 
+# Fail-safe invariant: keep-arm A only fires when the live-tree set was
+# reliably enumerated. When BOTH `git for-each-ref` and `git worktree list`
+# fail (a transient git error, lock contention, a broken checkout), the
+# marker's tree cannot be proven dead OR alive, so the fail-safe must keep it
+# regardless of retention age -- an unprovable tree is not the same as a dead
+# one, and treating it as dead here would reap a clearance a parallel audit
+# may still need.
+@test "sweep 2: live-tree enumeration failure keeps a marker whose tree it could not prove live, even past the retention window (fail-safe, not fail-open)" {
+  make_repo
+  # A tree no branch tip and no worktree HEAD names, past the retention
+  # window, so neither keep-arm A's live-tree match nor keep-arm B's window
+  # can keep it and the fail-safe is the only thing left that can. HEAD's own
+  # tree is the wrong fixture here: arm A keeps that marker whether the
+  # enumeration ran or not, which is exactly the reading a shim that never
+  # intercepted anything would also produce.
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  digest=$(gen_digest "frontend-$dead_tree")
+  seed_marker "$digest" "" ok "$dead_tree" "$(hours_ago 1000)"
+
+  # A PATH-shimmed `git` that fails exactly the two live-tree enumeration
+  # calls and passes everything else through to the real binary. Each
+  # interception appends to a witness file, so the run proves the shim was
+  # the git the janitor resolved rather than assuming PATH put it there.
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIR/intercepted"
+  real_git=$(command -v git)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+case "\$*" in
+  *for-each-ref*refs/heads/*) echo "\$*" >> "$witness"; exit 128 ;;
+  *"worktree list"*) echo "\$*" >> "$witness"; exit 128 ;;
+esac
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git"
+
+  cd "$REPO"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -s "$witness" ] || return 1
+  [ -f "$REPO/.gaia/local/audit/$digest.ok" ]
+}
+
 @test "sweep 2: MIG-005 a sidecar co-keyed with a live marker is kept; an old sha-keyed sidecar is reaped" {
   make_repo
   tree=$(head_tree)
@@ -874,16 +921,23 @@ seed_sidecar() {
 # records: code-audit-frontend deletes it on a clean pass, so one that outlives
 # its branch belongs to a line abandoned before it ever reached clean.
 
-# seed_rerun_ledger <base-sha> <recorded-branch>: writes the ledger the way the
-# audit really names it -- keyed on the base sha, with the audited branch inside.
-# Pass an empty branch to write a ledger with no branch recorded.
+# seed_rerun_ledger <base-sha> <branch> [<body-branch>]: writes the ledger the
+# way the audit really names and shapes it now (gaia_audit_key,
+# .gaia/scripts/audit-key-lib.sh): the filename is base-sha + branch slug, not
+# the bare base sha -- a bare base sha collides across two worktrees cut from
+# the same main tip, which is the defect task 4.1 removes. The body's
+# `.branch` defaults to the same value (the real writer derives both from one
+# `git branch --show-current` call). Pass a third arg to give the body a
+# DIFFERENT (or empty) branch than the filename carries, modeling a ledger
+# whose body is missing `.branch` under an already validly-keyed filename.
 seed_rerun_ledger() {
   mkdir -p "$REPO/.gaia/local/audit"
-  jq -cn --arg branch "$2" --arg base "$1" '
+  local base="$1" filename_branch="$2" body_branch="${3-$2}"
+  jq -cn --arg branch "$body_branch" --arg base "$base" '
     {schema: 1, round: 1, base_sha: $base, head_sha: $base,
      remaining: [], fixed_last_round: [], notes: null}
     | if $branch == "" then . else . + {branch: $branch} end
-  ' > "$REPO/.gaia/local/audit/$1.rerun.json"
+  ' > "$REPO/.gaia/local/audit/${base}.${filename_branch}.rerun.json"
 }
 
 @test "sweep 2b: a ledger whose audited branch is gone is swept, even though its base sha is on main" {
@@ -898,7 +952,7 @@ seed_rerun_ledger() {
   [ -n "$(git -C "$REPO" branch --contains "$base")" ]
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/audit/$base.rerun.json" ]
+  [ ! -e "$REPO/.gaia/local/audit/$base.abandoned-feature.rerun.json" ]
 }
 
 @test "sweep 2b: a ledger whose audited branch still exists is kept" {
@@ -909,17 +963,20 @@ seed_rerun_ledger() {
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$base.rerun.json" ]
+  [ -f "$REPO/.gaia/local/audit/$base.live-feature.rerun.json" ]
 }
 
 @test "sweep 2b: a ledger with no recorded branch is kept (fail-safe: death unprovable)" {
   make_repo
   base=$(git -C "$REPO" rev-parse HEAD)
-  seed_rerun_ledger "$base" ""
+  # A validly-keyed filename (gaia_audit_key never fails open on an
+  # undeterminable branch here -- it just never writes at all in that case)
+  # whose body nonetheless lacks `.branch`, e.g. a pre-4.1 body shape.
+  seed_rerun_ledger "$base" "some-branch" ""
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/audit/$base.rerun.json" ]
+  [ -f "$REPO/.gaia/local/audit/$base.some-branch.rerun.json" ]
 }
 
 @test "sweep 2b: an unparseable ledger is kept (fail-safe: death unprovable)" {
@@ -1119,24 +1176,53 @@ jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
 
 # --- Sweep #4: the telemetry drop-zone split --------------------------------
 #
-# The highest-consequence line in is_drop_zone. `telemetry` is a drop-zone and
-# `telemetry/cloud` is not, and the two halves pull in opposite directions:
+# The highest-consequence entry in the state registry's drop_zones list.
+# `telemetry` is a drop-zone and `telemetry/cloud` is not, and the two halves
+# pull in opposite directions:
 #
 #   telemetry/       holds the token/cost ledger (cost.jsonl). Sweep #4 rmdirs
 #                    any empty dir under .gaia/local that is not a drop-zone, so
-#                    dropping `telemetry` from the arm would delete the directory
-#                    that ledger lives in the moment it is momentarily empty.
+#                    dropping `telemetry` from the registry would delete the
+#                    directory that ledger lives in the moment it is
+#                    momentarily empty.
 #   telemetry/cloud  is dead. Nothing writes it and nothing reads it, so an empty
 #                    one left on disk is exactly what sweep #4 exists to prune.
 #
 # Two janitor passes, because the guard only bites on the second: the first pass
 # sees `telemetry` as non-empty (it still contains `cloud`) and would keep it for
 # that reason alone, which proves nothing. Only once `cloud` is gone is
-# `telemetry` empty at find time, and the drop-zone arm is then the sole thing
-# standing between the ledgers' directory and `rmdir`.
+# `telemetry` empty at find time, and the registry's drop_zones list is then the
+# sole thing standing between the ledgers' directory and `rmdir`.
 
-@test "sweep 4: an empty telemetry/cloud is rmdir'd; the telemetry drop-zone survives even when empty" {
+# write_registry <gaia_dir>: writes a minimal, schema-shaped
+# .gaia/state-registry.json fixture into <gaia_dir> (e.g. "$REPO/.gaia"), with
+# empty entries/residue and a drop_zones array covering exactly the
+# `telemetry` drop-zone this section's fixtures need, plus `red-ledger` and
+# its keyed-child glob row for the keyed-per-tree-dir case below. Not the
+# real registry -- a fixture-local stand-in so gaia_registry_path (which
+# resolves through the fixture repo's own git root) has a real file to read.
+write_registry() {
+  mkdir -p "$1"
+  cat > "$1/state-registry.json" <<'JSON'
+{
+  "$schema": "./state-registry.schema.json",
+  "version": 1,
+  "description": "fixture registry for the sweep-4 empty-dir suite",
+  "entries": [],
+  "residue": [],
+  "drop_zones": [
+    { "path": "telemetry", "match": "exact", "why": "fixture" },
+    { "path": "red-ledger", "match": "exact", "why": "fixture" },
+    { "path": "red-ledger/.tmp", "match": "exact", "why": "fixture" },
+    { "path": "red-ledger/*", "match": "glob", "why": "fixture: keyed per-tree child (red-ledger/<tree_key>/) and its own .tmp scratch subdir" }
+  ]
+}
+JSON
+}
+
+@test "sweep 4: with a registry present, the telemetry drop-zone survives empty while a non-drop-zone empty dir is rmdir'd" {
   make_repo
+  write_registry "$REPO/.gaia"
   mkdir -p "$REPO/.gaia/local/telemetry/cloud"
   cd "$REPO"
 
@@ -1145,11 +1231,52 @@ jq_fork_count() { wc -l < "$JQ_COUNTER" | tr -d ' '; }
   [ -e "$REPO/.gaia/local/telemetry/cloud" ] && return 1
   [ -d "$REPO/.gaia/local/telemetry" ]
 
-  # Second pass, with telemetry now empty at find time: the drop-zone arm is the
-  # only thing keeping the ledgers' directory alive.
+  # Second pass: telemetry is now empty at find time, so the registry's
+  # drop_zones list is the only thing keeping the ledgers' directory alive. A
+  # sibling non-drop-zone empty dir, added in the same pass, proves the sweep
+  # actually consulted the registry and ran -- not skipped, which would have
+  # kept every empty dir, drop-zone or not.
+  mkdir -p "$REPO/.gaia/local/stray-empty"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -d "$REPO/.gaia/local/telemetry" ]
+  [ ! -e "$REPO/.gaia/local/stray-empty" ]
+}
+
+# Fail-safe invariant: sweep #4 only rmdirs an empty dir when it can read the
+# registry's drop_zones list. No registry -> gaia_registry_drop_zones fails ->
+# the sweep skips entirely, so a non-drop-zone empty dir survives right
+# alongside where a real drop-zone would -- an unreadable registry can never
+# classify anything, so nothing gets reaped on its say-so.
+@test "sweep 4: an unreadable registry is a fail-safe skip, not a bare rmdir: a non-drop-zone empty dir is kept" {
+  make_repo
+  mkdir -p "$REPO/.gaia/local/stray-empty"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/stray-empty" ]
+}
+
+# Regression rail: `.gaia/local` entries re-keyed under a per-tree subpath
+# (red-ledger/<tree_key>/, .gaia/state-registry.json's `keyed_by` for the
+# per-tree entries) address themselves one path segment deeper than the bare
+# container. Before the drop-zones matcher understood glob rows, only the
+# bare `red-ledger` and `red-ledger/.tmp` literals survived; a keyed child
+# never exact-matched either and was one empty-dir sweep away from `rmdir`.
+# Two independent dirs, two different tree-key-shaped names, prove both
+# shapes named in the state registry's red-ledger/* row: the keyed container
+# itself, and that container's own atomic-write .tmp scratch subdir.
+@test "sweep 4: a keyed per-tree red-ledger dir, and a keyed dir's own .tmp scratch subdir, both survive empty" {
+  make_repo
+  write_registry "$REPO/.gaia"
+  mkdir -p "$REPO/.gaia/local/red-ledger/3f9c2b1a4e5d6f78"
+  mkdir -p "$REPO/.gaia/local/red-ledger/71a8c4d92e6b0f35/.tmp"
+  cd "$REPO"
+
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/red-ledger/3f9c2b1a4e5d6f78" ]
+  [ -d "$REPO/.gaia/local/red-ledger/71a8c4d92e6b0f35/.tmp" ]
 }
 
 # The janitor's delegation to the one-time cleanup sweep is covered in that

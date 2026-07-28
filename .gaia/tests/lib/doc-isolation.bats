@@ -467,7 +467,7 @@ render_for_policy() {
   [ "$count" = 1 ]
 }
 
-@test "UAT-016: already-inside-a-linked-worktree detection uses --git-common-dir + --show-toplevel and runs first" {
+@test "UAT-016: already-inside-a-linked-worktree detection calls the shared resolver and runs first" {
   already="$(frag_heading_line '### Already inside a linked worktree')"
   nomain="$(frag_heading_line '### HEAD is not on')"
   policy="$(frag_heading_line '### Policy read')"
@@ -478,6 +478,5 @@ render_for_policy() {
   [ "$already" -lt "$nomain" ]
   [ "$already" -lt "$policy" ]
 
-  grep -qF -- '--git-common-dir' "$FRAG" || return 1
-  grep -qF -- '--show-toplevel' "$FRAG" || return 1
+  grep -qF -- 'main-root-lib.sh --is-worktree' "$FRAG" || return 1
 }

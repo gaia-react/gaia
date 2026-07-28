@@ -33,7 +33,7 @@ import {describe, expect, test} from 'vitest';
  */
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {resolveRepoRootFromImportMeta} from './util/repo-root-fixture.js';
 
 // Subcommands reachable only through their router with no external invoker,
 // allowed on purpose. Each entry needs a reason. Wiring or retiring a command
@@ -81,23 +81,6 @@ const TEXT_EXTENSIONS = new Set([
   '.yaml',
   '.yml',
 ]);
-
-const resolveRepoRoot = (): string => {
-  // Walk up from this file's location to the repo root (contains .git).
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-
-  for (let attempts = 0; attempts < 20; attempts += 1) {
-    if (existsSync(path.join(dir, '.git'))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  throw new Error('Could not find repo root (no .git directory found)');
-};
 
 const escapeRegExp = (value: string): string =>
   value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
@@ -205,7 +188,7 @@ const collectText = (absDir: string): string => {
   return parts.join('\n');
 };
 
-const repoRoot = resolveRepoRoot();
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const cliSrc = path.join(repoRoot, '.gaia', 'cli', 'src');
 const routersPresent = existsSync(cliSrc);
 

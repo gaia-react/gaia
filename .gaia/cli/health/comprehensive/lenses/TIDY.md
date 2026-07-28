@@ -27,9 +27,10 @@ by another lens:
   as CLI-distribution surface, `.specify/extensions/gaia/**` as
   distribution surface, and the esbuild bundling config
   (`.gaia/cli/package.json` `bundle:*` scripts).
-- **Yours:** `.gaia/local/**` (specs, plans, cache, telemetry, audit, debt,
-  forensics, handoff, red-ledger layout and lifecycle — the workspace state
-  these directories accumulate, not any script's exit code),
+- **Yours:** `.gaia/local/**` (the state registry, `.gaia/state-registry.json`,
+  is the authoritative inventory of what lives there — every directory it
+  declares is in TIDY's remit whether or not it is named here; layout and
+  lifecycle, not any script's exit code),
   `.gaia/release-exclude`, `.gaia/release-scrub.yml`, `.gaia/statusline/**`,
   `.gaia/templates/**`, `.gaia/tests/**` (layout, not content correctness),
   `.gaia/VERSION`, `.gaia/manifest.json` (as a tidiness artifact — do you

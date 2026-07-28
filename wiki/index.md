@@ -149,6 +149,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[OS Sandbox]]: two-tier sandbox-enablement preference (owner recommends, each machine resolves) and the honest `.env` deny-merge boundary.
 - [[Claude Integration Conventions]]: Conventions for Claude's config surface: extension points, monorepo retrofit, service swaps, domain isolation.
 - [[Local Working State]]: layout and retention of the gitignored `.gaia/local/` working-state folder; the SessionStart janitor that GCs orphaned audit markers, merged plan dirs, and stray empty dirs.
+- [[Worktrees]]: the worktree model a feature author needs: tree identity from the acting event's working directory, the single main-checkout resolver, the single `.gaia/local` symlink, and the state registry's four scopes.
 - [[Claude Skills]]
 - [[Update Workflow]]: `/update-gaia` three-way diff, manifest classes (`owned` / `shared` / `wiki-owned`), `.gaia-merge` sidecar patches.
 - [[Generated Regions]]: marker-delimited spans inside shipped files a shipped command regenerates; the region-aware merge oracle, the regeneration runner, and the trust model they operate inside.

@@ -18,12 +18,8 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {
-  isComplete,
-  pendingSteps,
-  readStateFile,
-  resolveMainWorktreeRoot,
-} from './util/state-file.js';
+import {resolveMainWorktreeRoot} from '../util/main-root.js';
+import {isComplete, pendingSteps, readStateFile} from './util/state-file.js';
 import type {SetupStep} from './util/state-file.js';
 
 const HELP_TEXT = `Usage: gaia setup status [--json]
@@ -101,10 +97,10 @@ export const run = (
 
   try {
     repoRoot = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
-  } catch {
+  } catch (error) {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia setup status must run inside a git repository',
+      message: `gaia setup status must run inside a git repository: ${error instanceof Error ? error.message : String(error)}`,
       subcommand: 'setup status',
     });
 

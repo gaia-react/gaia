@@ -26,17 +26,14 @@ Walk the arms top to bottom and stop at the first one that matches. The order is
 
 ### Already inside a linked worktree
 
-Detect it the way `.gaia/scripts/link-worktree.sh` does, by comparing the current toplevel against the
-directory that holds the common git dir:
+Ask the shared resolver, the one definition of "which checkout am I in", correct in every checkout
+shape (ordinary, submodule, separate-git-dir):
 
 ```bash
-COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null)"
-case "$COMMON_DIR" in /*) ABS="$COMMON_DIR" ;; *) ABS="$PWD/$COMMON_DIR" ;; esac
-MAIN_ROOT="$(cd "$(dirname "$ABS")" 2>/dev/null && pwd)"
-CURRENT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+bash .gaia/scripts/main-root-lib.sh --is-worktree
 ```
 
-If `MAIN_ROOT` and `CURRENT_ROOT` differ, the session is already inside a linked worktree. **Stay in it**:
+If it exits 0, the session is already inside a linked worktree. **Stay in it**:
 do not nest a second worktree inside it, and do not cut a branch. Set `RESOLVED_MODE=worktree` and skip
 every arm below.
 
@@ -149,11 +146,22 @@ Create the worktree with the runtime tool, passing the caller's branch name as t
 EnterWorktree({name: "<branch-name>"})
 ```
 
-The `WorktreeCreate` hook (`.gaia/scripts/create-worktree.sh`) owns creation: it cuts a new branch of that
-name fresh from the remote default branch (`main`), else local HEAD, lands it under
-`.claude/worktrees/<branch-name>/`, and switches the session into it. The branch is already cut, so the
-caller runs no manual `git checkout -b`. Everything the caller does after this point runs from inside the
-worktree.
+The harness owns creation. GAIA registers no hook on it and runs no creation script of its own: the runtime
+cuts the branch, lands the tree under `.claude/worktrees/<name>/`, and switches the session into it. The
+branch is cut fresh from the repository's default base rather than from the current HEAD, which is the
+runtime's own `worktree.baseRef: fresh` default. The branch is already cut, so the caller runs no manual
+`git checkout -b`. Everything the caller does after this point runs from inside the worktree.
+
+**The branch is named `worktree-<name>`, not `<name>`.** A worktree requested as `debt/123-slug` gets a
+branch called `worktree-debt/123-slug`. Nothing downstream depends on that spelling, because every consumer
+reads the current branch from git rather than deriving it from the worktree's name, but it is what appears
+in `git branch` and on the PR.
+
+Provisioning the worktree — the shared-state symlinks and the generated typed routes — is a separate
+concern from creating it, and it runs on entry rather than at creation: `.claude/hooks/provision-worktree.sh`
+fires on session start and on entering a worktree, and repairs whatever it finds. So a worktree whose links
+were broken by hand, and one made with a plain `git worktree add` outside this flow, are both provisioned
+the next time a session works in them. Nothing here needs a manual repair step.
 
 ## Export: `RESOLVED_MODE` and `RESOLVED_ROOT`
 

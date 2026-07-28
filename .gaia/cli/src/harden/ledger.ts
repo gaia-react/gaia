@@ -15,7 +15,10 @@
  * verbs and exit-code semantics below.
  *
  * Ledger file: `.gaia/local/harden/declines.json` (gitignored). Schema and
- * atomic writer in `schemas/decline-ledger.ts`.
+ * atomic writer in `schemas/decline-ledger.ts`. The path is shared across the
+ * clone's worktrees by the state registry's symlink, so a decline recorded
+ * from a linked worktree lands in the main checkout's copy and survives that
+ * worktree's removal.
  */
 import {EXIT_CODES} from '../exit.js';
 import {
@@ -25,7 +28,7 @@ import {
 } from '../schemas/decline-ledger.js';
 import type {DeclineLedger} from '../schemas/decline-ledger.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 
 const HELP_TEXT = `Usage: gaia harden-ledger <subcommand> [args]
 

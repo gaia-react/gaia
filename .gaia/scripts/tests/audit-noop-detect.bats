@@ -377,14 +377,72 @@ _noop_write_clearance() {
   [ "$output" = "real" ]
 }
 
-@test "audit-team-member: a REFUSED marker (no earned .ok) + token-free text is NO-OP" {
+@test "audit-team-member: a REFUSED marker (no earned .ok) + token-free text is REFUSED, not NO-OP" {
   digest="$(_noop_digest)"
-  # Only the refusal artifact exists; the agent's .ok marker path is absent, so
-  # the short-circuit is never handed a writer-produced earned marker.
+  # Only the refusal artifact exists; the agent's .ok marker path is absent,
+  # which is exactly what a member that reviewed fully and withheld clearance
+  # leaves behind. The refusal is proof of life: classifying it NO-OP spends
+  # the protocol's single hardened re-dispatch on a member that was never
+  # broken and reports the wrong diagnosis to the operator.
   _noop_write_clearance "$BATS_TEST_TMPDIR/${digest}.refused" "$digest" refused
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${digest}.ok"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refused" ]
+}
+
+@test "audit-team-member: a specialist's REFUSED marker (<digest>.<member>.refused) is REFUSED" {
+  digest="$(_noop_digest)"
+  printf '{"version":"1.6.1","schema":3,"member":"code-audit-maintainer-shell","provenance":"refused","digest":"%s","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","sha":"deadbeef","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' "$digest" > "$BATS_TEST_TMPDIR/${digest}.code-audit-maintainer-shell.refused"
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${digest}.code-audit-maintainer-shell.ok"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refused" ]
+}
+
+@test "audit-team-member: a refusal attributed to ANOTHER member does not settle this member's run" {
+  digest="$(_noop_digest)"
+  # The body names a different member than the filename does, so it is not a
+  # writer-shaped refusal for THIS dispatch. Identity binding matters here for
+  # the same reason it does on the findings sidecar: one member's artifact must
+  # never vouch for another's.
+  printf '{"version":"1.6.1","schema":3,"member":"code-audit-frontend","provenance":"refused","digest":"%s","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","sha":"deadbeef","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' "$digest" > "$BATS_TEST_TMPDIR/${digest}.code-audit-maintainer-shell.refused"
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${digest}.code-audit-maintainer-shell.ok"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "audit-team-member: a legacy-bodied .refused does not settle the run (existence alone never authorizes)" {
+  digest="$(_noop_digest)"
+  # No .digest / .member / .provenance fields: not writer-shaped, so the
+  # refusal arm declines it and the run falls through to content inspection,
+  # matching what the earned arm already demands of a legacy marker.
+  printf '{"sha":"deadbeef","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","audited_at":"2026-01-01T00:00:00Z"}\n' > "$BATS_TEST_TMPDIR/${digest}.refused"
   run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${digest}.ok"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
+}
+
+@test "audit-team-member: a REFUSED marker with NO findings sidecar is still REFUSED, never retried as a no-op" {
+  digest="$(_noop_digest)"
+  # The lost-report gate deliberately does not apply to a refusal. Re-dispatching
+  # a refusing member returns the identical empty hand, and that loop is the
+  # failure this arm exists to end.
+  _noop_write_clearance "$BATS_TEST_TMPDIR/${digest}.refused" "$digest" refused
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" \
+    --marker "$BATS_TEST_TMPDIR/${digest}.ok" \
+    --findings "$BATS_TEST_TMPDIR/absent.findings.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refused" ]
+}
+
+@test "audit-team-member: a refusal beside a same-digest earned marker classifies REFUSED (refusal-first precedence)" {
+  digest="$(_noop_digest)"
+  # The crash window in the supersede path leaves both markers on disk. The
+  # merge gate checks the refusal family first; this classifier agrees.
+  _noop_write_clearance "$BATS_TEST_TMPDIR/${digest}.ok" "$digest" earned
+  _noop_write_clearance "$BATS_TEST_TMPDIR/${digest}.refused" "$digest" refused
+  run "$SCRIPT" --shape audit-team-member --path "$FIX/shared/reminder-echo.txt" --marker "$BATS_TEST_TMPDIR/${digest}.ok"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refused" ]
 }
 
 @test "audit-team-member: no marker at all + token-free text is NO-OP (unregressed)" {

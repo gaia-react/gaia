@@ -9,9 +9,21 @@ name: Audit CI Tests
 # modify, so the suite only catches regressions from maintainer edits.
 # Mirrors cli-tests.yml's narrow-surface, paths-filtered, step-gated shape.
 #
+# The last step is the odd one and is deliberate: the INV-7 concurrency meter
+# (.gaia/tests/concurrency/) admits scenarios that are red by design, belonging
+# to phases that have not run yet, so it is gated through meter-gate.sh against
+# a checked-in expected-status manifest rather than on its own exit status. A
+# green here means every scenario did exactly what the manifest says it does --
+# an expected-pass going red AND an expected-red going green both fail the
+# build. The manifest, not this comment, is the authority on which scenarios
+# are which, and how many of each there are at any moment.
+# See .gaia/tests/concurrency/README.md.
+#
 # Pinned action SHAs match .github/workflows/cli-tests.yml:
 #   actions/checkout    @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
 #   dorny/paths-filter  @ fbd0ab8f3e69293af611ebaee6363fc25e6d187d (v4.0.1)
+#   pnpm/action-setup   @ 8912a9102ac27614460f54aedde9e1e7f9aec20d (v6.0.5)
+#   actions/setup-node  @ a0853c24544627f65ddf259abe73b1d18a591444 (v5.0.0)
 
 # `workflow_dispatch:` is the CI-mode self-heal lane. A GITHUB_TOKEN-authored
 # self-heal push fires no `pull_request` event, so code-review-audit.yml
@@ -57,7 +69,11 @@ jobs:
     # required context ABSENT on the self-heal HEAD rather than merely red: the
     # exact wedge the dispatch lane exists to prevent. Cap well under that
     # window so a hung `apt-get` fails fast instead of inheriting the 6-hour
-    # runner default. The real runtime is a couple of minutes.
+    # runner default. The cap is derived from that 25-minute poller window, not
+    # from an observed runtime: this job also does two full dependency installs
+    # and a concurrency suite that creates real git worktrees, so do not treat
+    # any figure quoted here as a measurement. Issue #1030 tracks machine-
+    # checking these caps against real run durations.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -101,6 +117,28 @@ jobs:
               # job having run the suite zero times.
               - '.husky/**'
               - '.gaia/scripts/**'
+              # check-main-root-derivation.bats (.gaia/scripts/tests/) scans
+              # tracked source for a hand-rolled main-checkout derivation, and
+              # settings.json is one of the files that scan reads: hook commands
+              # live there as inline shell. It matches no other pattern here, so
+              # without this line a change that inlines a derivation into
+              # settings.json alone would skip every bats step and green the job
+              # having run that scan zero times.
+              - '.claude/settings.json'
+              # check-wiki-state-collision.bats (.gaia/scripts/tests/) asserts
+              # that wiki/.state.json stays tracked and that no merge driver is
+              # bound to it, which is what keeps a cross-branch collision on the
+              # single recorded sha a conflict rather than a silent overwrite.
+              # Those are exactly the two files the check reads, and both match
+              # nothing else here, so without these lines the edits the check
+              # exists to catch -- untracking the state file, or adding a
+              # .gitattributes that resolves it automatically -- would skip every
+              # bats step and green the job having run that scan zero times.
+              # .gitattributes is listed at both depths because git honors a
+              # nested one and a root-level glob would not match it.
+              - 'wiki/.state.json'
+              - '.gitattributes'
+              - '**/.gitattributes'
               # shell-lint.bats (.gaia/scripts/tests/) asserts the wiring of the
               # local shell gate .gaia/tests/shell-lint.sh -- its .husky/*
               # discovery pass and its lint-hook-array-guard.sh invocation. The
@@ -184,6 +222,58 @@ jobs:
               # changes, the same reasoning as the code-audit-*.md glob above.
               - '.github/workflows/**'
               - '.gaia/audit-ci.yml'
+              # check-hook-scope-manifest.bats (.gaia/scripts/tests/) asserts
+              # coverage + conformance of the hook tree-scope manifest; a
+              # manifest-only edit touches neither .claude/hooks/** nor
+              # .gaia/scripts/** above, so without these two lines it would
+              # match no pattern here and skip the very suite that guards it.
+              - '.gaia/hook-scopes.json'
+              - '.gaia/hook-scopes.schema.json'
+              # The INV-7 concurrency meter (.gaia/tests/concurrency/) and the
+              # sources it drives. Most are already listed above -- it copies
+              # .claude/hooks/**, .gaia/scripts/**, .gaia/statusline/** and
+              # .specify/extensions/gaia/lib/** into its fixtures at their real
+              # repo-relative paths -- but these five are not, and each is a
+              # source the meter reads:
+              #   state-registry.json + schema  copied into every fixture, so a
+              #     registry edit changes what the meter observes.
+              #   .gaia/cli/src/**  C3-05 runs the real TypeScript storage
+              #     functions through the CLI's tsx; C5-03's call-site check
+              #     greps the wiki and release command surfaces.
+              #   .claude/commands/gaia-release.md  the other surface C5-03
+              #     greps for a resolver consult.
+              #   both lockfiles  three scenarios resolve `typescript`/`tsx`
+              #     from installed dependencies, and a dependency bump touches
+              #     a lockfile without touching any source dir here. That is a
+              #     live path in this repo (/update-deps runs on its own
+              #     cadence), so without them a bump could red the meter and
+              #     the next unrelated PR would be the first to notice.
+              #   both workspace files  same argument as the lockfiles, same
+              #     installs: pnpm-workspace.yaml governs `allowBuilds`,
+              #     `trustPolicyExclude` and `minimumReleaseAge` for the very
+              #     `pnpm install --frozen-lockfile` runs the meter depends on,
+              #     and each is edited standalone. .gaia/cli/pnpm-workspace.yaml
+              #     documents ERR_PNPM_IGNORED_BUILDS in its own header, so a
+              #     missing allowBuilds entry breaking the install is observed
+              #     behavior here, not a hypothetical.
+              - '.gaia/tests/concurrency/**'
+              - '.gaia/state-registry.json'
+              - '.gaia/state-registry.schema.json'
+              - '.gaia/cli/src/**'
+              - '.claude/commands/gaia-release.md'
+              - 'pnpm-lock.yaml'
+              - '.gaia/cli/pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.gaia/cli/pnpm-workspace.yaml'
+              # The remaining two install inputs. No sibling workflow lists
+              # .node-version, but this job is the one that reads it
+              # (node-version-file below) AND is judged by a scenario count, so
+              # a toolchain edit silently skipping the meter is the same hazard
+              # as a lockfile edit doing so. package.json pins packageManager
+              # for pnpm/action-setup.
+              - '.node-version'
+              - 'package.json'
+              - '.npmrc'
       # python3-yaml pins the parser lint-yaml.bats' require_yaml_parser needs
       # (python3+pyyaml), so its parser-backed negative tests run explicitly
       # rather than resting on whatever the runner image happens to preinstall.
@@ -223,3 +313,61 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run .gaia/tests/statusline bats suites
         run: bats .gaia/tests/statusline/
+      # Everything below arms the INV-7 concurrency meter. Note what that
+      # changes about this job's posture, as a deliberate choice rather than a
+      # side effect: a job that previously ran only bats on a lean box now
+      # executes dependency install scripts from a `pull_request` head on every
+      # armed run. Accepted because the exposure is bounded the same way
+      # tests.yml's already is -- a read-only GITHUB_TOKEN, no secrets in
+      # scope, and lifecycle scripts gated by `allowBuilds` in both
+      # pnpm-workspace.yaml files (which is why both are in the path filter
+      # above). Node comes first because three of its scenarios drive real node
+      # code, and none of them can borrow the escape hatch the five sibling
+      # suites under
+      # .gaia/tests/hooks/ use: those guard the same `typescript` dependency
+      # with `|| skip "typescript not installed"`, and the meter BANS `skip` in
+      # its own header on the grounds that a skip reports green, which is the
+      # opposite of what a red-by-design suite means. meter-gate.sh enforces
+      # that ban, so the suite cannot borrow the hatch -- it has to actually
+      # have the dependency.
+      #
+      # TWO installs, not one, and the reason is structural: .gaia/cli is
+      # deliberately its own isolated pnpm workspace
+      # (.gaia/cli/pnpm-workspace.yaml), so a repo-root install does not reach
+      # it. The root install is what C4-04 and C4-07 need (their node helpers
+      # resolve `typescript` from the repo root); the .gaia/cli install is what
+      # C3-05 needs (it runs the CLI's own tsx binary out of
+      # .gaia/cli/node_modules, which is gitignored and so absent on a fresh
+      # checkout). Skipping either flips a landed, green scenario red for want
+      # of an npm install, which would read as a regression in the number this
+      # program is judged by rather than as the environment gap it is.
+      #
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Install pnpm
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Install Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+          # Both lockfiles: the meter installs both workspaces, so warming the
+          # store on only one leaves the other cold.
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            .gaia/cli/pnpm-lock.yaml
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Install root dependencies (C4-04 and C4-07 resolve typescript here)
+        run: pnpm install --frozen-lockfile
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Install .gaia/cli dependencies (C3-05 runs the CLI's own tsx)
+        run: pnpm -C .gaia/cli install --frozen-lockfile
+      # Runs the WHOLE suite and adjudicates every scenario against
+      # .gaia/tests/concurrency/expected-status.txt, so any scenario the
+      # manifest marks red by design does not wedge this required check while
+      # still counting in the reading. A `bats --filter` over the armed
+      # tranches was the alternative and is worse: it hides the reds and makes
+      # a newly added scenario invisible by default.
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Run the INV-7 concurrency meter (gated on its expected-status manifest)
+        run: bash .gaia/tests/concurrency/meter-gate.sh

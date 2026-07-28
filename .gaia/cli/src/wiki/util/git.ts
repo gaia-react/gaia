@@ -38,10 +38,6 @@ const tryRunGit = (
   }
 };
 
-/** Resolve the repository root (`git rev-parse --show-toplevel`). */
-export const resolveRepoRoot = (cwd: string = process.cwd()): string =>
-  runGit(['rev-parse', '--show-toplevel'], {cwd}).trim();
-
 /** Return the full 40-char SHA for HEAD. */
 export const headSha = (cwd: string): string =>
   runGit(['rev-parse', 'HEAD'], {cwd}).trim();

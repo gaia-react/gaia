@@ -25,11 +25,18 @@ setup() {
 # of mtime.
 #
 # The runbook_surrogate function:
-#   1. Creates the two allowed directories
-#   2. Writes a fake report to .gaia/local/forensics/
+#   1. Creates the two allowed directories (forensics/ nested one level under
+#      a synthetic tree key, mirroring forensics.md step 7's
+#      `bash .gaia/scripts/main-root-lib.sh --tree-key` resolution)
+#   2. Writes a fake report to .gaia/local/forensics/<tree_key>/
 #   3. Optionally writes to .gaia/local/telemetry/ (allowed)
 #   4. Returns; does NOT write to any other path
 # ---------------------------------------------------------------------------
+
+# Synthetic stand-in for `bash .gaia/scripts/main-root-lib.sh --tree-key`'s
+# stdout (16 lowercase hex characters); this surrogate never invokes the real
+# resolver, same as the fixed synthetic $timestamp below.
+TREE_KEY_FIXTURE="deadbeefcafe1234"
 
 runbook_surrogate() {
   local workdir="$1"
@@ -37,11 +44,11 @@ runbook_surrogate() {
   local timestamp="20260508T143022Z"
 
   # Create allowed directories
-  mkdir -p "$workdir/.gaia/local/forensics"
+  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
   mkdir -p "$workdir/.gaia/local/telemetry"
 
   # Write report to allowed path (the only write the runbook may do)
-  local report_path="$workdir/.gaia/local/forensics/${timestamp}-${class}.md"
+  local report_path="$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
   printf '## Symptom\nTest report body.\n' > "$report_path"
 
   # Optionally write to telemetry (also allowed)
@@ -134,8 +141,8 @@ find_write_violations() {
   list_write_surface "$workdir" > "$before"
 
   # Write to the allowed path
-  mkdir -p "$workdir/.gaia/local/forensics"
-  printf 'report\n' > "$workdir/.gaia/local/forensics/20260508T143022Z-init.md"
+  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  printf 'report\n' > "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-init.md"
 
   # Find violations; should be empty because the write is in the allowlist
   local violations

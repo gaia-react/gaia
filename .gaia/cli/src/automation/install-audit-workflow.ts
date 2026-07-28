@@ -12,7 +12,7 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {workflowAuditTemplatePath} from './paths.js';
 
 const HELP_TEXT = `Usage: gaia automation install-audit-workflow --out-dir <path> [--dry-run]

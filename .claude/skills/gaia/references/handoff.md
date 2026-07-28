@@ -14,7 +14,15 @@ Write a self-contained handoff doc so the next session can pick up cold without 
 
 ### 0. Clear prior
 
-Delete any existing handoff before writing: `rm -f .gaia/local/handoff/HANDOFF-*.md`. Only one handoff exists at a time. A new handoff supersedes whatever came before, carrying forward anything still unfinished. Never archive.
+Resolve the tree key first, reused for every `.gaia/local/handoff/` path for the rest of this run, including inside the file this run writes:
+
+```bash
+bash .gaia/scripts/main-root-lib.sh --tree-key
+```
+
+This prints 16 lowercase hex characters (`<tree_key>`) on stdout and exits 0, or prints nothing and writes one `GAIA_TREE_KEY_UNRESOLVABLE` line to stderr and exits 1. On failure, stop here: surface the stderr line to the user, write nothing, and never fall back to the unkeyed `.gaia/local/handoff/` path.
+
+Delete any existing handoff before writing: `rm -f .gaia/local/handoff/<tree_key>/HANDOFF-*.md`. Only one handoff exists at a time. A new handoff supersedes whatever came before, carrying forward anything still unfinished. Never archive.
 
 ### 1. Gather
 
@@ -26,9 +34,9 @@ Run in parallel:
 
 ### 2. Write
 
-Path: `.gaia/local/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`
+Path: `.gaia/local/handoff/<tree_key>/HANDOFF-{YYYY-MM-DD}-{slug}.md`
 
-Derive `{YYYY-MM-DD}` from `date +%F` and the **Date** line's timestamps from `date '+%Y-%m-%d %H:%M'` (shell), never guess the current date/time.
+`<tree_key>` is the value resolved in step 0; substitute it literally, the same as `{YYYY-MM-DD}` and `{slug}`. Derive `{YYYY-MM-DD}` from `date +%F` and the **Date** line's timestamps from `date '+%Y-%m-%d %H:%M'` (shell), never guess the current date/time.
 
 Use the template below. **Omit any section with no real content**, don't leave empty headings. Keep entries factual and concrete (file paths, commit hashes, command invocations). Cross-reference files with `@path/to/file:line` so the next session can jump straight in.
 
@@ -89,7 +97,7 @@ Use the template below. **Omit any section with no real content**, don't leave e
 
 One-and-done. When the Next Actions above are complete and verified (committed or tests green), delete this file. Do not archive:
 
-`rm -f .gaia/local/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`
+`rm -f .gaia/local/handoff/<tree_key>/HANDOFF-{YYYY-MM-DD}-{slug}.md`
 
 If you were interrupted before finishing, leave it. The next `/gaia-pickup` resumes from here.
 ```

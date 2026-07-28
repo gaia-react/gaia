@@ -63,8 +63,10 @@ trap 'rm -rf "$work_dir"' EXIT
 # body ships WITH frontmatter (byte-identical to the local file body).
 # As defense-in-depth the parser stays tolerant of an absent block,
 # deriving `class` from `## Classification` when missing. The local file
-# shape (saved at `.gaia/local/forensics/<timestamp>-<class>.md`) keeps
-# the frontmatter, so the parser still picks up its values when present.
+# shape (saved at `.gaia/local/forensics/<tree_key>/<timestamp>-<class>.md`,
+# `<tree_key>` identifying the working tree that saved it, printed by
+# `bash .gaia/scripts/main-root-lib.sh --tree-key`) keeps the frontmatter, so
+# the parser still picks up its values when present.
 # ---------------------------------------------------------------------------
 
 fm_class=""

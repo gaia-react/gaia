@@ -22,9 +22,9 @@ import type {Dirent} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {parseFrontmatter} from './util/frontmatter.js';
 import type {Frontmatter} from './util/frontmatter.js';
-import {resolveRepoRoot} from './util/git.js';
 import {extractWikilinks} from './util/wikilinks.js';
 
 const HELP_TEXT = `Usage: gaia wiki page-index [--json]

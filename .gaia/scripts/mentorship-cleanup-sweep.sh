@@ -43,11 +43,11 @@
 # gets its own run to drop its own symlink. It sits at the root of .gaia/local/,
 # where the janitor's rmdir-only empty-dir sweep can never reach it.
 #
-# Every real-file deletion targets the MAIN checkout, resolved through
-# --git-common-dir, so a run from inside a linked worktree reaps the real files
-# rather than following a symlink into them. The only path taken relative to the
-# calling checkout is its own mentorship.json symlink, which `rm -f` unlinks
-# without following.
+# Every real-file deletion targets the MAIN checkout, resolved through the
+# shared main-root resolver, so a run from inside a linked worktree reaps the
+# real files rather than following a symlink into them. The only path taken
+# relative to the calling checkout is its own mentorship.json symlink, which
+# `rm -f` unlinks without following.
 #
 # The deletion set is closed. Every path below is a literal, fully derived
 # string: no glob, no `find`, no recursion into anything the list does not name.
@@ -64,6 +64,10 @@ log() {
   printf '%s\n' "$*" >&2
 }
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$script_dir/main-root-lib.sh"
+
 if [ "$#" -ne 1 ]; then
   log "usage: mentorship-cleanup-sweep.sh <repo_root>"
   exit 0
@@ -75,16 +79,11 @@ repo_root="$(cd "${1%/}" 2>/dev/null && pwd -P)" || exit 0
 sentinel="$repo_root/.gaia/local/.mentorship-swept"
 [ -e "$sentinel" ] && exit 0
 
-# Main-checkout root, so a run from inside a linked worktree reaps the real
-# files rather than following a symlink into them. Same derivation as
-# .gaia/scripts/ledger-path-lib.sh and .claude/hooks/lib/gaia-active-plan.sh.
-common_dir="$(git -C "$repo_root" rev-parse --git-common-dir 2>/dev/null)" || exit 0
-case "$common_dir" in
-  /*) abs="$common_dir" ;;
-  *)  abs="$repo_root/$common_dir" ;;
-esac
-main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd -P)" || exit 0
-[ -n "$main_root" ] || exit 0
+# Main-checkout root, resolved through the shared main-root resolver
+# (.gaia/scripts/main-root-lib.sh), so a run from inside a linked worktree
+# reaps the real files rather than following a symlink into them. Same
+# resolver as .gaia/scripts/ledger-path-lib.sh now uses.
+main_root="$(gaia_resolve_main_root "$repo_root")" || exit 0
 
 # The MEMORY.md pointer line, matched as a whole line, exactly. It is the index
 # entry for the display-rule memory file, and it is dead weight the moment that
@@ -168,10 +167,11 @@ rm -rf -- "${main_root:?}/.gaia/local/telemetry/analytics" 2>/dev/null || true
 
 # .gaia/local/cache/shared/coaching-active.txt: orphaned residue. Its former
 # writer (wiki-session-start.sh) and reader (gaia-statusline.sh) are both gone,
-# so nothing else ever reaps it. cache/shared/ is symlinked in a linked
-# worktree back to this same main-checkout path (link-worktree.sh), which is
-# exactly why this targets $main_root rather than $repo_root, matching every
-# other real-file deletion in this sweep.
+# so nothing else ever reaps it. A linked worktree's whole .gaia/local is one
+# symlink to the main checkout's (link-worktree.sh), so every path beneath it
+# resolves to this same main-checkout file, which is exactly why this targets
+# $main_root rather than $repo_root, matching every other real-file deletion in
+# this sweep.
 rm -f -- "$main_root/.gaia/local/cache/shared/coaching-active.txt" 2>/dev/null || true
 
 # --- Sentinel --------------------------------------------------------------

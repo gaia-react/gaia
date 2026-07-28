@@ -9,7 +9,7 @@
 # If on main, the squashed commit is pushed to a wiki/* branch and merged via
 # PR rather than landing directly on main.
 
-[ -d .git ] || exit 0
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
 n=0
 while git log "HEAD~$n" -1 --format='%s' 2>/dev/null | grep -q '^wiki: auto-commit '; do

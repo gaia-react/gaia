@@ -32,6 +32,8 @@ setup() {
   # representation gate sources cost-represented.sh + ledger-path-lib.sh at
   # their fixed repo-relative path, mirrored here the same way so the gate
   # resolves against the sandbox's own cost ledger instead of no-op'ing.
+  # ledger-path-lib.sh now sources its own sibling main-root-lib.sh by
+  # on-disk location, so that sibling is copied alongside it too.
   mkdir -p "$SANDBOX/.specify/extensions/gaia/lib"
   cp "$REPO_ROOT/.specify/extensions/gaia/lib/plan-ledger-update.sh" \
     "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh"
@@ -42,6 +44,8 @@ setup() {
     "$SANDBOX/.gaia/scripts/cost-represented.sh"
   cp "$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh" \
     "$SANDBOX/.gaia/scripts/ledger-path-lib.sh"
+  cp "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" \
+    "$SANDBOX/.gaia/scripts/main-root-lib.sh"
 
   LEDGER="$SANDBOX/.gaia/local/telemetry/cost.jsonl"
   mkdir -p "$(dirname "$LEDGER")"

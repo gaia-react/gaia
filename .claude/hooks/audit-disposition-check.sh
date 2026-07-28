@@ -108,10 +108,40 @@ fi
 # fail-closed posture the digest redesign requires here.
 sha=$(git rev-parse HEAD 2>/dev/null || true)
 
-# The audited working root, CWD-independent for the digest walk. The hook
-# runs with cwd at the repo root, so a bare toplevel query answers it (fall
-# back to pwd only when git cannot, e.g. no git at all).
-root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# TWO roots, mirroring pr-merge-audit-check.sh, because this hook spans two
+# different questions and one root cannot answer both.
+#
+#   root       WHERE the disposition sidecar lives. Resolved to the MAIN
+#              checkout: the sidecar is main-anchored shared state
+#              (.gaia/state-registry.json scope=shared, the same symlinked
+#              audit/ store the frontend digest marker lives in), not a
+#              property of whichever tree this hook happens to run in. The
+#              shared resolver is sourced from this hook's own on-disk
+#              location (never cwd, never $root), matching the sibling
+#              lib-loads below.
+#   tree_root  WHAT the frontend digest is computed over. The ACTING tree,
+#              matching every clearance writer. Digesting main's HEAD would
+#              name a sidecar keyed to content nobody is merging; from a
+#              linked worktree clearance_member_cleared would then never
+#              succeed, the C4 fail-closed arm below would never fire, and
+#              this backstop would silently degrade to an unconditional
+#              no-op.
+#
+# Both fall back to a bare toplevel query, then pwd, when the resolver is
+# unavailable or fails -- the same fail-open direction the original
+# CWD-anchored derivation had.
+_root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_root_lib_dir/.gaia/scripts/main-root-lib.sh"
+fi
+root=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  root="$(gaia_resolve_main_root 2>/dev/null)" || root=""
+fi
+[ -n "$root" ] || root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+tree_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 # Load the shared disposition logic from this hook's OWN on-disk location
 # (never cwd, never $root). The offender collection lives in the lib so this
@@ -174,7 +204,7 @@ deny() {
 # absent digest library).
 frontend_digest=""
 if command -v audit_member_digest >/dev/null 2>&1; then
-  frontend_digest=$(audit_member_digest "$root" "code-audit-frontend" 2>/dev/null || true)
+  frontend_digest=$(audit_member_digest "$tree_root" "code-audit-frontend" 2>/dev/null || true)
 fi
 if [ -z "$frontend_digest" ]; then
   deny "PR merge gate: the frontend content digest could not be derived for HEAD ${sha:0:12}, so the disposition-ledger sidecar cannot be located.
@@ -186,7 +216,7 @@ Likely causes: a missing sha256 tool (sha256sum / shasum), an unloadable ownersh
 See wiki/concepts/Audit Disposition and Debt Fix.md for the full contract."
 fi
 
-sidecar=".gaia/local/audit/${frontend_digest}.dispositions.json"
+sidecar="$root/.gaia/local/audit/${frontend_digest}.dispositions.json"
 
 # New fail-closed arm (C4): a valid frontend earned marker for this exact
 # digest with an ABSENT sidecar. Degrades to a no-op (the arm never fires)

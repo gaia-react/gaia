@@ -22,6 +22,10 @@ setup() {
   # Repo-relative fixture paths (helper + lib expect repo-relative input run
   # from the repo root).
   FIX_REL=".gaia/tests/hooks/fixtures/red-ledger"
+
+  # The ledger path is keyed to the repo's own tree key; ask the shipped
+  # resolver for it rather than hardcoding a second copy of the literal.
+  TREE_KEY=$(bash "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" --tree-key "$REPO_ROOT")
 }
 
 # Run the Node helper from the repo root with a repo-relative fixture path.
@@ -162,10 +166,16 @@ run_lib() {
 
 # --- shell lib: red_ledger_path ---
 
-@test "red_ledger_path echoes the gitignored ledger location" {
+@test "red_ledger_path with an explicit root joins it onto the tree-keyed ledger path" {
+  run_lib "red_ledger_path '$REPO_ROOT'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO_ROOT/.gaia/local/red-ledger/$TREE_KEY/observations.jsonl" ]
+}
+
+@test "red_ledger_path with no root defaults to gaia_resolve_tree_root of the process cwd, keyed the same way" {
   run_lib 'red_ledger_path'
   [ "$status" -eq 0 ]
-  [ "$output" = ".gaia/local/red-ledger/observations.jsonl" ]
+  [ "$output" = "$REPO_ROOT/.gaia/local/red-ledger/$TREE_KEY/observations.jsonl" ]
 }
 
 # --- shell lib: red_ledger_repo_rel ---
@@ -205,7 +215,7 @@ run_lib() {
 # --- double-sourcing is safe ---
 
 @test "sourcing the lib twice is a no-op" {
-  run bash -c "cd '$REPO_ROOT' && set -uo pipefail && . '$LIB' && . '$LIB' && red_ledger_path"
+  run bash -c "cd '$REPO_ROOT' && set -uo pipefail && . '$LIB' && . '$LIB' && red_ledger_path '$REPO_ROOT'"
   [ "$status" -eq 0 ]
-  [ "$output" = ".gaia/local/red-ledger/observations.jsonl" ]
+  [ "$output" = "$REPO_ROOT/.gaia/local/red-ledger/$TREE_KEY/observations.jsonl" ]
 }

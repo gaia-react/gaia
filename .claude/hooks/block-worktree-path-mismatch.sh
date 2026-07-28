@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse Edit/Write/MultiEdit hook: deny a file_path that resolves to a
-# different git worktree than the one this session currently works in.
+# checkout other than the linked git worktree this session works inside -- the
+# main checkout or a sibling worktree.
 #
 # Once a session has switched into a linked worktree (see
 # .claude/skills/gaia/references/isolation.md, "Export: RESOLVED_MODE and
@@ -8,45 +9,47 @@
 # worktree. A stale absolute path from before the switch (e.g. the main
 # checkout's own copy of a file that also exists in the worktree) is a
 # different, equally valid file on disk, so the edit tools apply it with no
-# error: the write silently lands in the wrong checkout.
+# error: the write silently lands in the wrong checkout. This is the
+# silent-wrong-write footgun of tech-debt #841.
 #
-# Detection mirrors isolation.md's own worktree check (same as
-# .gaia/scripts/link-worktree.sh): compare the toplevel that owns the common
-# git dir (the main checkout) against the current toplevel. When they match,
-# this session is not inside a linked worktree at all (feature-branch mode,
-# or a plain checkout) and there is nothing to guard. When they differ, this
-# session is inside a linked worktree, and a target that resolves to the main
-# checkout is denied.
+# Tree identity comes from one shared rule and one shared resolver, so this
+# guard never re-derives "which tree am I in":
 #
-# Whose working directory: the hook reads the calling agent's own cwd from the
-# PreToolUse payload's `cwd` field, falling back to its own process cwd when the
-# payload omits it or names a directory outside this repo. Neither source is
-# contracted, and the payload is not the better-evidenced one: the hooks
-# reference defines `cwd` only as the working directory at invocation and says
-# nothing about per-agent versus shared scoping. It is preferred because it is a
-# declared input describing this call, where the process cwd is ambient state
-# inferred to stand in for one. Reading only the process cwd would let the guard
-# go silently inert if a harness version ever stopped aligning the two, and
-# inertness here is an ALLOW. Both roots the guard compares, main_root and
-# current_root, come from whichever source wins, so neither depends on the hook
-# process happening to sit inside the repo. The payload cwd is honored only when
-# it is absolute and resolves to a checkout that a resolvable process cwd does
-# not contradict; anything else routes to the process cwd. The absolute
-# requirement is load-bearing, because the value reaches a bare `cd` that would
-# otherwise option-parse a leading dash and silently succeed into $HOME. The
-# full case analysis sits with the `case` below that enforces it.
+#   Whose working directory: the payload's `cwd` field names the working
+#   directory Claude Code reports for the agent that issued this call, and it is
+#   authoritative for tree identity whenever it is absolute and resolves to a
+#   checkout. It is honored on its own terms there: no comparison against the
+#   hook's own process cwd. The absolute requirement is load-bearing, because
+#   the value reaches a bare `cd` that would option-parse a leading dash and
+#   succeed into the wrong directory. A payload cwd that is relative, or absolute
+#   but not a checkout, is unusable and routes to the process cwd instead. The
+#   process cwd is the fallback, and it alone would leave the guard inert
+#   whenever the hook process sits outside the repository (tech-debt #940), which
+#   is an ALLOW; reading the payload first is what keeps the guard live.
 #
-# Scope, and why it stops there: the guard adjudicates "does this target resolve
-# to the main checkout", which is #841's own case. `main_root` derives from
-# --git-common-dir, which is identical from every worktree of the repo, so that
-# question is cwd-independent by construction. A write from one linked worktree
-# into another is left to the caller's own RESOLVED_ROOT discipline, per this
-# guard's defense-in-depth role in isolation.md.
+#   Which tree, and where main is: .gaia/scripts/main-root-lib.sh is the one
+#   resolver for both questions. gaia_is_linked_worktree answers whether the
+#   acting cwd sits in a linked worktree at all, and gaia_resolve_main_root
+#   answers the main checkout's root -- both symlink-canonicalized, env-stripped,
+#   and correct in every checkout shape including submodules. Resolving both
+#   roots physically keeps their comparison symmetric, so a checkout reached
+#   through a symlinked path is never mistaken for a different tree.
 #
-# Fail-open, matching the other block-*.sh guards: any ambiguity (neither cwd
-# resolves to a git repo, a target directory that does not exist yet, `git`
-# unavailable) allows the call rather than blocking a legitimate edit on a
-# heuristic miss.
+# Scope: the guard adjudicates "does this target resolve into the acting tree",
+# denying any write whose target lands in a different checkout -- the main
+# checkout (#841's own case) or a sibling linked worktree. The acting tree is the
+# worktree the payload cwd names; the target's own tree is compared against it,
+# so the question is answered from that one authoritative identity, not from main
+# alone. This is the defense-in-depth role isolation.md contracts: deny an
+# Edit/Write/MultiEdit whose file_path resolves to a different worktree than
+# RESOLVED_ROOT.
+#
+# Fail-open, matching the other block-*.sh guards: any ambiguity (identity
+# undeterminable, a target directory that does not exist yet, `git` unavailable,
+# the resolver or registry unreachable) allows the call rather than blocking a
+# legitimate edit on an identity it could not confirm. Blocking a legitimate
+# edit is the cheap-to-notice failure, and this guard is defense-in-depth, not
+# the only line.
 set -euo pipefail
 
 payload=$(cat)
@@ -71,159 +74,145 @@ esac
 file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
 [[ -n "$file_path" ]] || exit 0
 
-# The calling agent's working directory comes from the payload's `cwd`, the
-# value Claude Code reports for the agent that issued this call. The hook's own
-# process cwd is the fallback for an absent, relative, unresolvable, or
-# contradicted payload cwd.
+# The shared resolver and the state-registry reader, sourced from this hook's
+# own checkout via BASH_SOURCE (never from the process cwd): this file and the
+# two libraries ship together, so their location is fixed relative to this file
+# no matter which checkout the hook runs in. If either is unreachable the guard
+# can no longer adjudicate, so it fails open.
+gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
+gaia_scripts="$gaia_scripts/.gaia/scripts"
+# shellcheck source=/dev/null
+source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
+# shellcheck source=/dev/null
+source "$gaia_scripts/state-registry-lib.sh" 2>/dev/null || exit 0
+
+# The acting agent's working directory: the payload cwd when it is absolute and
+# resolves to a checkout, the hook's process cwd otherwise. The absolute check is
+# the load-bearing gate (a leading dash would option-parse inside `git -C`'s and
+# `cd`'s operand); the checkout check is what routes an absolute non-repo value
+# (e.g. /tmp) to the fallback rather than adopting it as a tree.
 payload_cwd=$(jq -r '.cwd // empty' <<<"$payload")
-# Absolute-cwd invariant, established once so every consumer below inherits it:
-# payload_cwd flows into `git -C`, into string-concatenation, and into `cd`, and
-# each option-parses its own operand. `cd` is the sharp edge: `cd -P`, `cd -L`,
-# and `cd -e` parse as an option with NO operand, so cd lands in $HOME and
-# succeeds rather than failing into the `|| payload_main_root=""` fallback, and
-# `cd -` moves to $OLDPWD and prints it. Requiring a leading slash makes every
-# downstream operand provably absolute, which is the same property the
-# process-cwd derivation below guarantees for itself, and unlike a `--`
-# terminator it behaves identically on bash 3.2 and bash 5. An empty value
-# falls through to the `-n` guard below and routes to the process cwd, same as
-# an absent field.
-# `dirname --` and `CDPATH=''` on the payload_main_root line below are
-# belt-and-braces once this holds: with an absolute payload_cwd neither a
-# dash-leading operand nor a CDPATH lookup is reachable there, so they stay only
-# as defense in depth. That covers those two, and nothing else. The
-# identically-shaped guards further down operate on file_path, which no
-# invariant constrains, and they are load-bearing: dropping the CDPATH guard
-# there turns a deny into an allow, because cd resolves a relative file_path
-# through CDPATH into the exempt shared-state tree while git still resolves the
-# write to the main checkout.
-case "$payload_cwd" in
-  /*) ;;
-  *) payload_cwd="" ;;
-esac
-
-# main_root is the toplevel that owns the common git dir,
-# dirname(absolute(--git-common-dir)), derived once per candidate source. The
-# process cwd gets no privileged position in that derivation: asking only it
-# left the guard inert whenever the hook process sat outside the repo, since
-# --git-common-dir failed there and the adjudication ended before any
-# payload-aware logic ran (tech-debt #940).
-process_main_root=""
-common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || common_dir=""
-if [[ -n "$common_dir" ]]; then
-  case "$common_dir" in
-    /*) abs_common_dir="$common_dir" ;;
-    *) abs_common_dir="$PWD/$common_dir" ;;
-  esac
-  process_main_root="$(cd "$(dirname "$abs_common_dir")" 2>/dev/null && pwd -P)" || process_main_root=""
+source_cwd="$PWD"
+if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
+  source_cwd="$payload_cwd"
 fi
 
-payload_main_root=""
-if [[ -n "$payload_cwd" ]]; then
-  payload_common_dir="$(git -C "$payload_cwd" rev-parse --git-common-dir 2>/dev/null)" || payload_common_dir=""
-  case "$payload_common_dir" in
-    '') abs_payload_common_dir='' ;;
-    /*) abs_payload_common_dir="$payload_common_dir" ;;
-    *) abs_payload_common_dir="$payload_cwd/$payload_common_dir" ;;
-  esac
-  if [[ -n "$abs_payload_common_dir" ]]; then
-    payload_main_root="$(CDPATH='' cd "$(dirname -- "$abs_payload_common_dir")" 2>/dev/null && pwd -P)" || payload_main_root=""
-  fi
-fi
+# Not inside a linked worktree (or identity indeterminate): nothing to guard.
+# gaia_is_linked_worktree is the resolver's own linked-worktree predicate, so the
+# "which tree am I in" question is answered in exactly one place. It returns
+# non-zero for the main checkout, a plain checkout, and any case git cannot
+# answer -- each a fail-open ALLOW for this non-destructive guard.
+gaia_is_linked_worktree "$source_cwd" || exit 0
 
-# Which source adjudicates. The payload wins when it resolves to a checkout at
-# all AND does not contradict a process cwd that resolved to one: a payload cwd
-# naming an unrelated repository while the process sits in this one would arm
-# the gate on a comparison between two different repositories and deny a
-# legitimate edit. A process cwd that resolves to nothing contradicts nothing,
-# and taking the payload at its word there cannot produce that false deny
-# anyway, because main_root and current_root then both come from the payload's
-# own repo and a target in a different repo can never equal main_root.
-#
-# Everything else routes to the process cwd, including a payload cwd that
-# answers --git-common-dir but not --show-toplevel (a bare repo, or a .git
-# directory): the pair is always read from one source, never mixed.
-main_root=""
-current_root=""
-if [[ -n "$payload_main_root" && (-z "$process_main_root" || "$payload_main_root" == "$process_main_root") ]]; then
-  main_root="$payload_main_root"
-  current_root="$(git -C "$payload_cwd" rev-parse --show-toplevel 2>/dev/null)" || current_root=""
-fi
-if [[ -z "$current_root" ]]; then
-  main_root="$process_main_root"
-  current_root="$(git rev-parse --show-toplevel 2>/dev/null)" || current_root=""
-fi
-[[ -n "$main_root" && -n "$current_root" ]] || exit 0
+# main_root is the resolved main-checkout root, from the one shared resolver. A
+# resolution failure is undeterminable identity, which this guard treats as
+# fail-open.
+main_root="$(gaia_resolve_main_root "$source_cwd")" || exit 0
+[[ -n "$main_root" ]] || exit 0
 
-# Not inside a linked worktree: nothing to guard.
-[[ "$main_root" != "$current_root" ]] || exit 0
+# current_root is the acting tree's own physically-resolved toplevel: the tree
+# the target must land in, and the value the deny condition compares file_root
+# against. It is resolved physically, as main_root and file_root already are, so
+# the roots stay on the same footing and a symlinked path cannot make a same-tree
+# write look cross-tree or the reverse.
+current_root="$(gaia_resolve_tree_root "$source_cwd")" || exit 0
+[[ -n "$current_root" ]] || exit 0
 
 target_dir=$(dirname -- "$file_path")
 resolved_target_dir="$(CDPATH='' cd "$target_dir" 2>/dev/null && pwd -P)" || exit 0
 [[ -n "$resolved_target_dir" ]] || exit 0
 
-# The symlinked shared-state dirs are exempt. link-worktree.sh symlinks exactly
-# five paths under .gaia/local/ out of every linked worktree and into the main
-# checkout so that state is shared rather than forked: setup-state.json,
-# cache/shared, audit, telemetry, and debt. (It also symlinks gitignored
-# checkout-root .env files, which need no arm here: their target_dir is the
-# worktree root, so the main-checkout test below allows them.) `git -C` resolves a symlink before computing
-# --show-toplevel, so a write to the worktree's own .gaia/local/audit/ reports
-# the MAIN checkout as its toplevel and reads as a wrong-checkout write. That is
-# the intended write, so the four symlinked DIRS are exempt.
+# A linked worktree's whole .gaia/local is one symlink to the main checkout's
+# own .gaia/local (see wiki/concepts/Worktrees.md). `git -C` resolves that
+# symlink before computing --show-toplevel, so a write ANYWHERE under
+# .gaia/local now reports the MAIN checkout as its toplevel and looks like a
+# wrong-checkout write -- true of the whole tree, not a hand-listed subset, so
+# this is ONE registry-driven rule instead of the two hand-listed exempt sets
+# (linkable paths, main-anchored dirs) this guard used to maintain.
 #
-# The exemption stops there deliberately. The rest of .gaia/local/ (handoff/,
-# red-ledger/, forensics/, worktree-locks/, the non-shared cache/ subdirs) is
-# not symlinked, so each worktree owns its own copy and a stale pre-switch path
-# there is exactly the #841 silent-wrong-write this guard exists to catch.
-# plans/ and specs/ are the two exceptions, exempted by the separate case below
-# on a different rationale. setup-state.json needs no arm of its own: it is a
-# symlinked FILE, so its target_dir is the worktree's own real .gaia/local,
-# which never reaches this case and is allowed by the main-checkout test below.
+# gaia_registry_recognizes (with its own ancestor recognition: a container
+# such as debt/ or audit/ is recognized once ANY child under it is a
+# registered entry, even though the bare container is not itself a row) says
+# whether the write targets a real, registry-known part of .gaia/local at
+# all; gaia_registry_classify then says which scope. Every scope except
+# per-tree is main's by construction post-flip and is exempt outright:
+# shared and main-anchored state already had no worktree-side copy worth
+# protecting, and the ephemeral cache entries (spec-session locks,
+# audit-window breadcrumbs, and the rest) never had one either -- denying
+# them would block the sole correct write, not catch a wrong one (tech-debt
+# #934's class). A relpath the registry does not recognize at all (typo,
+# stray, or genuinely unclassified) is NOT exempted here and falls through
+# to the ordinary cross-tree deny below, the same as before the cutover.
 #
-# The trailing slash on both sides keeps each arm a path-segment match, so a
-# sibling such as .gaia/localish/ stays guarded.
-case "$resolved_target_dir/" in
-  "$main_root"/.gaia/local/audit/* | \
-    "$main_root"/.gaia/local/debt/* | \
-    "$main_root"/.gaia/local/telemetry/* | \
-    "$main_root"/.gaia/local/cache/shared/*) exit 0 ;;
+# The one entry that still needs protecting is per-tree state
+# (red-ledger/, worthiness-ledger/, forensics/, handoff/): each addresses
+# itself under a subdirectory named by gaia_tree_key
+# (.gaia/scripts/main-root-lib.sh), the acting tree's own physically-resolved
+# root, hashed. A write whose path carries the ACTING tree's own key is
+# exempt; one carrying a peer tree's key, or the bare unkeyed container, is
+# not, and falls through to the same deny.
+#
+# LOST PROTECTION: pre-cutover this guard told a correct per-tree write from
+# a stale pre-switch one by PHYSICAL location -- a real per-worktree
+# directory versus main's. Post-cutover the tree key in the path is the only
+# signal, and a key is a deterministic hash of a tree's own root, not a
+# secret: this guard can no longer distinguish a write that is genuinely
+# from a live session in the acting tree from an absolute path some other
+# mechanism constructed that merely happens to embed the acting tree's own
+# key. Designing a replacement is a later phase's job; naming the loss here
+# is this one's.
+gaia_local="$main_root/.gaia/local"
+case "$resolved_target_dir" in
+  "$gaia_local" | "$gaia_local"/*)
+    relpath="${resolved_target_dir#"$gaia_local"}"
+    relpath="${relpath#/}"
+    if (cd "$main_root" 2>/dev/null && gaia_registry_recognizes "$relpath" d); then
+      scope="$(cd "$main_root" 2>/dev/null && gaia_registry_classify "$relpath" 2>/dev/null)" || scope=""
+      if [[ "$scope" != "per-tree" ]]; then
+        exit 0
+      fi
+      acting_key="$(gaia_tree_key "$current_root" 2>/dev/null)" || exit 0
+      [[ -n "$acting_key" ]] || exit 0
+      container="${relpath%%/*}"
+      case "$relpath" in
+        "$container/$acting_key" | "$container/$acting_key"/*) exit 0 ;;
+      esac
+      # Both messages name the local-state root through $gaia_local rather than
+      # spelling it out. That is the derive rule this hook is held to (the
+      # manifest's derive arm, check-hook-scope-manifest.sh) applied to prose as
+      # well as to logic, and it makes the advice better: the caller is told the
+      # absolute path to use, not a repo-relative fragment they have to rebuild
+      # from a root the symlink has already moved out from under them.
+      wg_local_reason="'$file_path' is per-tree state under '$container/', which is addressed by the writing tree's own key. This session's tree key is '$acting_key', so the correct path is '$gaia_local/$container/$acting_key/'. The path given carries a different tree's key, or none at all, and every reader looks only under the key -- so this write would be invisible to the tree that made it and could shadow another tree's."
+    else
+      wg_local_reason="'$file_path' is under '$gaia_local', which a linked worktree reaches through one symlink to the main checkout, but no entry in .gaia/state-registry.json recognizes it. Because it is unregistered, this guard cannot tell whether it is state the whole clone shares or state this tree must keep to itself, and re-resolving the repository root will not change the answer -- the symlink resolves to the main checkout either way. Register it in .gaia/state-registry.json with its scope, or write it under an entry that already exists."
+    fi
+    ;;
 esac
 
-# The main-checkout plan and SPEC ledgers are exempt too, on a different
-# rationale than the symlinked trees above: these are not symlinked at all, they
-# simply have no worktree-side copy. .claude/skills/gaia/references/plan.md puts
-# the plan folder in the main checkout by contract ("The plan folder stays in
-# the main checkout") and has the worktree-mode orchestrator write PROGRESS.md
-# back to it after every phase, plus the consolidated SUMMARY.md one directory
-# up. A linked worktree's own .gaia/local/plans/ and .gaia/local/specs/ are
-# empty, which the same reference states directly when it warns that "$PWD"
-# there "resolves a nonexistent ledger".
-#
-# That absence is what makes this the intended write rather than the #841
-# footgun. #841 is a SILENT wrong write: it needs a valid twin in both
-# checkouts, so that the stale path and the correct path are both real files and
-# nothing distinguishes them at the moment of the write. These two trees have no
-# twin by construction, so the main-checkout path is the only path that resolves
-# to a real ledger. Denying it does not catch a wrong write, it blocks the only
-# correct one, costing every worktree-mode /gaia-plan run its phase-findings
-# ledger and the resume point .gaia/scripts/plan-resume-point.sh reads from it
-# (tech-debt #934).
-#
-# The exemption stops at these two, and is deliberately NOT the whole
-# non-symlinked remainder: handoff/, red-ledger/, forensics/, worktree-locks/,
-# and the non-shared cache/ subdirs do each have a real worktree-side copy, so a
-# stale pre-switch path into the main checkout's copy is a genuine #841 write
-# and stays denied.
-case "$resolved_target_dir/" in
-  "$main_root"/.gaia/local/plans/* | \
-    "$main_root"/.gaia/local/specs/*) exit 0 ;;
-esac
-
-file_root="$(git -C "$target_dir" rev-parse --show-toplevel 2>/dev/null)" || exit 0
+# The target's own checkout, physically resolved so the comparison against the
+# physically-resolved current_root is symmetric: a symlinked path cannot make a
+# same-tree write look cross-tree, or the reverse.
+file_root="$(gaia_resolve_tree_root "$target_dir")" || exit 0
 [[ -n "$file_root" ]] || exit 0
 
-if [[ "$file_root" == "$main_root" ]]; then
-  deny "BLOCKED: '$file_path' resolves to the main checkout ('$main_root') while this session works inside a linked worktree ('$current_root'). This is the silent-wrong-write footgun from tech-debt #841: a stale pre-switch absolute path is a real, valid file in another checkout, so the edit tools would apply it with no error. Resolve RESOLVED_ROOT fresh (git rev-parse --show-toplevel) and prefix file_path with it."
+# The target resolves into a checkout other than the acting tree: the main
+# checkout or a sibling worktree, both the #841 silent-wrong-write. The exempt
+# shared and main-anchored paths have already returned above, so a cross-tree
+# target reaching here is a real wrong-write, not a legitimate write-through to
+# main.
+if [[ "$file_root" != "$current_root" ]]; then
+  # A .gaia/local target reaching here has a more useful thing to say than the
+  # generic stale-path advice, and saying the generic thing would be actively
+  # wrong: re-resolving the repository root does not move a path that reaches
+  # main through the one .gaia/local symlink, so the caller would be sent round
+  # a loop it cannot exit. The branch above sets the specific reason; the
+  # generic one still covers every path outside .gaia/local, where the stale
+  # pre-switch absolute path really is the cause.
+  if [[ -n "${wg_local_reason:-}" ]]; then
+    deny "BLOCKED: $wg_local_reason"
+  fi
+  deny "BLOCKED: '$file_path' resolves to a different checkout ('$file_root') than the linked worktree this session works inside ('$current_root'). This is the silent-wrong-write footgun from tech-debt #841: a stale pre-switch absolute path is a real, valid file in another checkout (the main checkout or a sibling worktree), so the edit tools would apply it with no error. Resolve RESOLVED_ROOT fresh (git rev-parse --show-toplevel) and prefix file_path with it."
 fi
 
 exit 0

@@ -13,7 +13,7 @@
 import {EXIT_CODES} from '../exit.js';
 import {readLocalAutomation} from '../schemas/local-automation.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {writeLocalAutomation} from './util/local-automation-write.js';
 
 const HELP_TEXT = `Usage: gaia setup-ci dismiss-personal

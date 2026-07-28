@@ -5,8 +5,8 @@
 # The hook is the OBSERVE-AND-RECORD half of the RED-verification gate. On a
 # `(pnpm|npm) test --run [scope]` PostToolUse, it re-invokes vitest with the
 # json reporter, reads the per-test results, and appends every genuinely-failing
-# test to the ledger (.gaia/local/red-ledger/observations.jsonl). It only
-# observes; it never blocks and always exits 0.
+# test to the ledger (.gaia/local/red-ledger/<tree-key>/observations.jsonl). It
+# only observes; it never blocks and always exits 0.
 #
 # vitest's config `include` glob is `./app/**/*.test.{ts,tsx}`, so the fixture
 # test files under .gaia/tests/hooks/fixtures/red-ledger/ cannot be run by a
@@ -17,11 +17,11 @@
 # negative/robustness cases exercise the real (no-override) code path: they bail
 # before vitest ever runs, so they stay fast and offline.
 #
-# The hook hard-codes the ledger at .gaia/local/red-ledger/observations.jsonl
-# relative to pwd, so the suite runs from the repo root (like
-# red-ledger-lib.bats) and asserts on that gitignored path. setup/teardown
-# stash and restore any pre-existing local ledger so a developer's scratch
-# ledger is never clobbered.
+# The hook resolves the ledger via the shared red_ledger_path (tree-keyed,
+# under .gaia/local/red-ledger/), so the suite runs from the repo root (like
+# red-ledger-lib.bats) and asserts on that same resolved, gitignored path.
+# setup/teardown stash and restore any pre-existing local ledger so a
+# developer's scratch ledger is never clobbered.
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
@@ -32,8 +32,9 @@ setup() {
   HOOK="$REPO_ROOT/.claude/hooks/capture-red-observations.sh"
   FIX_REL=".gaia/tests/hooks/fixtures/red-ledger"
   JSON_REL="$FIX_REL/json"
-  LEDGER_REL=".gaia/local/red-ledger/observations.jsonl"
-  LEDGER_ABS="$REPO_ROOT/$LEDGER_REL"
+  # Ask the shipped lib where the ledger belongs (tree-keyed) rather than
+  # hardcoding a second copy of the keyed literal.
+  LEDGER_ABS="$( . "$REPO_ROOT/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$REPO_ROOT" )"
 
   # Stash any pre-existing local ledger; restore in teardown.
   STASH=""
@@ -179,7 +180,9 @@ ledger_lines() {
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 0 ]
   # No temp vitest json was produced (the skip happens before the mktemp).
-  run bash -c "ls '$REPO_ROOT/.gaia/local/red-ledger/.tmp'/vitest-*.json 2>/dev/null | wc -l | tr -d ' '"
+  local ledger_dir
+  ledger_dir=$(dirname "$LEDGER_ABS")
+  run bash -c "ls '$ledger_dir/.tmp'/vitest-*.json 2>/dev/null | wc -l | tr -d ' '"
   [ "$output" = "0" ]
 }
 

@@ -58,8 +58,6 @@ fi
 
 repo_root="${1%/}"
 filter_id="${2:-}"
-ledger_path="${repo_root}/.gaia/local/specs/ledger.json"
-specs_dir="${repo_root}/.gaia/local/specs"
 
 # Retention knob, shared with spec-archive-merged.sh: a non-numeric override
 # falls back to the default.
@@ -80,6 +78,24 @@ _age_past_window() {
   [ "$age_days" -ge "$retention_days" ] && return 0 || return 1
 }
 
+# Source the shared ledger-path lib from this script's own directory, never
+# through repo_root: repo_root is the value whose trustworthiness is in
+# question here, so loading a library by it would decide correctness with the
+# input under test.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+
+# repo_root names the tree this sweep runs in; the ledger and folders it
+# sweeps are main's, because the state registry declares specs/ main-only.
+# Best-effort by contract: an unresolvable main is one diagnostic and exit 0,
+# nothing touched.
+if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+  echo "spec-archive-abandoned: cannot resolve the main checkout for '$repo_root'; nothing swept" >&2
+  exit 0
+fi
+ledger_path="${specs_dir}/ledger.json"
+
 # No ledger or no jq → nothing to do. (No git needed for the delete itself:
 # specs are local/gitignored, so it is a plain filesystem rm, never a git op.)
 [ -f "$ledger_path" ] || exit 0
@@ -87,8 +103,6 @@ command -v jq >/dev/null 2>&1 || exit 0
 
 # shellcheck source=../../../../.gaia/scripts/cost-represented.sh
 . "${repo_root}/.gaia/scripts/cost-represented.sh" 2>/dev/null || true
-# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${repo_root}/.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
 # Resolve the main-checkout cost ledger from repo_root's own git identity,
 # never the caller's cwd (a subshell cd keeps this script's cwd unchanged).

@@ -30,15 +30,6 @@ const deriveProjectId = (repoRootPath: string): string => {
 };
 
 /**
- * Recover the repo root from a `projectIdPath`. The path always has the
- * shape `<repoRoot>/.gaia/local/.project-id`, so the root is three
- * directory levels up. `path.dirname` handles both `/` and `\` separators,
- * so this is cross-platform (a regex on `/` would break on Windows).
- */
-export const repoRootFromProjectIdPath = (projectIdPath: string): string =>
-  path.dirname(path.dirname(path.dirname(projectIdPath)));
-
-/**
  * Read or generate `.gaia/local/.project-id` at the repo root.
  * UUIDv4 derived from sha256(repo_root_path); take first 16 bytes; format per RFC 4122.
  * Mode 644.
@@ -62,11 +53,10 @@ export const readOrCreateProjectId = (roots: StorageRoots): string => {
     mkdirSync(parent, {mode: 0o755, recursive: true});
   }
 
-  // The repoRoot the projectIdPath was resolved from is the only stable input
-  // for the derivation. Recover it from the path; projectIdPath ends in
-  // `<repoRoot>/.gaia/local/.project-id`, so the root is three levels up.
-  const repoRoot = repoRootFromProjectIdPath(filePath);
-  const id = deriveProjectId(repoRoot);
+  // `roots.mainRoot` is the same main-worktree root `resolveStorageRoots`
+  // already resolved to build `projectIdPath`; hash it directly rather than
+  // reconstructing it from the path.
+  const id = deriveProjectId(roots.mainRoot);
   writeFileSync(filePath, `${id}\n`, {mode: 0o644});
 
   return id;

@@ -106,7 +106,7 @@ Things audits keep re-discovering that are not findings:
 
 **A bare `Bash(cmd)` permission entry alongside `Bash(cmd:*)`.** Not a shadowed-permission finding; they match different invocations (no-args vs. with-args). See the permission-glob semantics note under [Settings hygiene](#5-settings-hygiene) for the strict-subset rule that governs this check.
 
-**A `WorktreeCreate` hook entry.** Not an unknown-event finding; `WorktreeCreate` is in the canonical event list under [Hook integrity](#1-hook-integrity); projects wire it to a worktree-link script. `WorktreeRemove` is its registered teardown pair, also in the canonical list, wired to replace the harness's native worktree removal. (If worktree symlink-handoff is demonstrably broken, that is a separate concern, not a fitness finding.)
+**A `WorktreeCreate` or `WorktreeRemove` hook entry.** Not an unknown-event finding; both are in the canonical event list under [Hook integrity](#1-hook-integrity), so a project that registers either is wiring a real event and the auditor says nothing about it. GAIA registers neither: the harness creates and removes worktrees natively, and GAIA's own worktree work is provisioning, which rides `SessionStart` and `PostToolUse` on the `EnterWorktree` matcher instead. Their *absence* is therefore also not a finding. (If worktree symlink-handoff is demonstrably broken, that is a separate concern, not a fitness finding.)
 
 **A skill directory with no `SKILL.md` that is a shared-reference bucket.** Not a frontmatter finding. The frontmatter category checks `*/SKILL.md` under `.claude/skills/`, but a directory whose files are individually tracked in `.gaia/manifest.json` and Read by path from command surfaces (rather than invoked by name) is a deliberate reference bucket, not a discoverable skill; a `SKILL.md` would be redundant. Surface a missing one as, at most, `info`, and do not escalate to a blocking finding. (`.claude/skills/gaia/` is the canonical case: its `references/` files are dispatched directly by the gaia-* commands.)
 
@@ -313,3 +313,5 @@ Add a project-specific check class by appending a new numbered section under [Ch
 ## See also
 
 [[Wiki Management]]: `gaia wiki dead-paths`, `gaia wiki orphans`, and the other primitives the wiki-fitness category invokes.
+
+[[Worktrees]]: the per-tree identity model behind the `WorktreeCreate`/`WorktreeRemove` hook events and GAIA's own worktree provisioning, which rides `SessionStart`/`PostToolUse` instead.

@@ -104,36 +104,90 @@
 #      it), so this delegation currently has no candidates to act on.
 #   8. orphaned GAIA worktrees under .claude/worktrees/ whose branch upstream
 #      is [gone] (the same provable-death signal sweep #1 uses for
-#      wiki-sync/* branches) and whose working tree is clean. A crashed or
-#      abandoned session leaves the worktree dir behind after its PR
-#      squash-merges, and nothing else reclaims it. Never age-reap: there is
+#      wiki-sync/* branches), whose working tree is clean, AND whose branch
+#      is not named by a live RUNNING plan sentinel. The sentinel is
+#      gitignored, so it is invisible to both git-level checks above it; a
+#      crashed session with an in-flight plan can otherwise read as
+#      provably dead. Checked in both the worktree's own .gaia/local/ and
+#      main's: for a properly linked worktree these are the same physical
+#      directory (.gaia/local is one symlink to main's) and this is a
+#      harmless double read, but a worktree nobody has linked -- provisioning
+#      failed, or never ran -- still has its own real, unconnected
+#      .gaia/local, and only the worktree-side scan sees a live plan sentinel
+#      written there. A crashed or abandoned session leaves the worktree dir
+#      behind after its PR squash-merges, and nothing else reclaims it.
+#      Never age-reap: there is
 #      no session-liveness signal, so an old worktree may still be a live
-#      long-running session. Teardown delegates to the WorktreeRemove hook's
-#      own remove-worktree.sh so remove + branch-delete + parent-prune stays
-#      defined in one place.
-#   9. off-pattern outlier residue: anything NOT on an explicit per-root
-#      allowlist, at the top level of .gaia/local plus the direct children
-#      (maxdepth-1, mindepth-1, no deeper) of audit/ and cache/, once its
-#      mtime clears GAIA_OUTLIER_RETENTION_DAYS (default 7, floor 2); OS junk
-#      (.DS_Store, Thumbs.db, ._*) is reaped at any age. It never recurses
-#      below maxdepth-1 to delete and never enters the ledger / self-managing
-#      zones (telemetry/, red-ledger/, handoff/, plans/, specs/, debt/,
-#      forensics/, and the audit/archived, audit/security, and
-#      audit/comprehensive subtrees), nor follows a symlinked scope root from
-#      a linked worktree. Two off-pattern writers get their own dedicated arms
-#      instead of the blanket allowlist reap, each on its own floored knob:
+#      long-running session. Teardown runs inline: the harness owns worktree
+#      creation and removal for a live session, but this sweep reaps worktrees
+#      no session is in, so there is no session-scoped hook to delegate to,
+#      and the janitor does its own remove + branch-delete + parent-prune.
+#   9. off-pattern outlier residue: at the top level of .gaia/local plus the
+#      direct children (maxdepth-1, mindepth-1, no deeper) of audit/ and
+#      cache/, every child is put to the state registry
+#      (.gaia/state-registry.json, read through gaia_registry_recognizes in
+#      .gaia/scripts/state-registry-lib.sh): a child the registry recognizes
+#      (a live entry or a named residue path) is kept, silently; a child the
+#      registry does NOT recognize is left in place and reported on stderr,
+#      never deleted -- the registry is the single answer to "may I reap
+#      this?", not a hardcoded allowlist. OS junk (.DS_Store, Thumbs.db,
+#      ._*) is the one exception, reaped at any age regardless of the
+#      registry. The sweep never recurses below maxdepth-1 -- the three
+#      zones it walks never include telemetry/, red-ledger/, handoff/,
+#      plans/, specs/, debt/, forensics/, or harden/ -- and
+#      never follows a symlinked scope root from a linked worktree. Two
+#      off-pattern writers still get their own dedicated reap arms
+#      elsewhere, unrelated to this sweep's registry consultation:
 #      audit/*.findings.json attached to sweep #2
 #      (GAIA_AUDIT_FINDINGS_RETENTION_HOURS, default 72, floor 24) and
-#      cache/gh-artifact-pr.json attached to sweep #5
-#      (GAIA_CACHE_ARTIFACT_RETENTION_DAYS, default 2, floor 1).
+#      cache/gh-artifact-pr*.json attached to sweep #5
+#      (GAIA_CACHE_ARTIFACT_RETENTION_DAYS, default 2, floor 1; the glob also
+#      covers the pre-4.2 unkeyed cache/gh-artifact-pr.json some machines
+#      may still carry -- see sweep #5's own comment for why).
 #
 # Fail-safe by construction: any inability to PROVE death (no git, unreadable
 # HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
 # always exits 0 so it cannot block a session start.
 set -uo pipefail
 
+# --- Two questions, not one: which tree am I, and where is main ------------
+# `root` answers "which tree is invoking this run" -- the physically resolved
+# git toplevel of the CURRENT checkout. Sweep #1's `current` branch-protect
+# below, and every worktree-teardown git call in sweep #8, need exactly this:
+# the tree actually running right now, never main's.
+#
+# `main_root` answers "where does .gaia/local actually live". A linked
+# worktree's .gaia/local is one symlink to main's (D-011), so the sweeps that
+# walk .gaia/local below are conceptually always asking for main's tree, not
+# the invoking one. Resolved via the shared resolver
+# (.gaia/scripts/main-root-lib.sh), sourced beside this file via BASH_SOURCE
+# the same way the ~14 other hooks that already depend on it do, rather than
+# re-deriving "where is main" a fifteenth time by hand.
+#
+# Repointing `root` itself at `gaia_resolve_main_root` was considered and
+# rejected: sweep #1's `current` guard exists to protect the INVOKING tree's
+# branch, and swapping `root` wholesale would silently make it protect main's
+# branch instead on every worktree-invoked run. The two questions get two
+# variables, not one repointed one.
+#
+# Degrades to $root on any resolver failure or a missing sibling library --
+# the same shape gaia-statusline.sh's STATE_ROOT fallback uses: an
+# unresolvable main is not grounds to skip every sweep, it just means this
+# tree answers for itself (true for a fresh, not-yet-`git init` checkout, and
+# for main's own run, where root already IS main).
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -n "$root" ] || exit 0
+
+main_root_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)/.gaia/scripts/main-root-lib.sh"
+if [ -f "$main_root_lib" ]; then
+  # shellcheck disable=SC1091
+  . "$main_root_lib" 2>/dev/null || true
+fi
+main_root=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  main_root="$(gaia_resolve_main_root "$root" 2>/dev/null || true)"
+fi
+[ -n "$main_root" ] || main_root="$root"
 
 # --- 1. Merged-and-gone wiki-sync branches ---------------------------------
 # Git-scoped: independent of .gaia/local, so it runs before that guard (a fresh
@@ -165,92 +219,56 @@ fi
 local_dir="$root/.gaia/local"
 [ -d "$local_dir" ] || exit 0
 
-# --- Sweep #9 allowlists (single source of truth) ---------------------------
+# --- Sweep #9's reap predicate: the state registry, not a hardcoded list ---
 #
-# The completed per-writer census: every subsystem known to write to these
-# three roots. Each array holds the exact names / globs a root's children
-# must NOT be reaped for; a directory-typed entry carries a trailing "/"
-# (matched only against a directory child, slash stripped before the glob
-# compare) so one shared matcher (janitor_outlier_kept below) can read
-# straight off these arrays with no parallel type list to drift out of sync.
-# The disjoint-owner guard test reads these same arrays from source, so they
-# are the single frozen source of truth for both what sweep #9 keeps and what
-# the guard checks -- never re-derive them here.
-JANITOR_OUTLIER_ALLOW_TOPLEVEL=(
-  maintainer-statusline.sh .patched-statusline.sh .project-id
-  .mentorship-swept setup-state.json declined-updates.json
-  automation.json sandbox.json dep-audit-baseline.json setup-in-progress
-  audit/ cache/ debt/ forensics/ handoff/ plans/ red-ledger/ specs/ telemetry/
-  worktree-locks/ harden/
-)
-JANITOR_OUTLIER_ALLOW_AUDIT=(
-  '*.ok' '*.refused' '*.carried' '*.dispositions.json' '*.progress.log'
-  '*.rerun.json' '*.findings.json' worthiness.jsonl 'KNOWLEDGE-*.md'
-  archived/ security/ comprehensive/
-)
-JANITOR_OUTLIER_ALLOW_CACHE=(
-  'gate1-*.json' 'draft-*.md' draft.md 'spec-session-*.json' 'spec-session-*.lock'
-  'spec-chain-*.json'
-  gh-artifact-pr.json version-check.lock v2-update-notes.md
-  'audit-*/' wiki-promote/ uat-write/ shared/
-)
+# "May I reap this off-pattern child?" is answered by the state registry
+# (.gaia/state-registry.json) through gaia_registry_recognizes, the one
+# consumer-facing predicate .gaia/scripts/state-registry-lib.sh exposes for
+# exactly this question. Sourced from THIS file's own sibling .gaia/scripts/
+# (via BASH_SOURCE), never from $root: $root is whatever checkout the janitor
+# happens to be running against (a bats fixture, a linked worktree), while
+# this file and .gaia/scripts/state-registry-lib.sh ship together, so the
+# library is always found beside the janitor regardless of which tree's
+# .gaia/local it is sweeping. The library locates the registry itself, via
+# the resolver, independent of where it was sourced from.
+#
+# Fail-safe by the library's own contract: jq unavailable or the registry
+# unreadable makes gaia_registry_recognizes return "recognized" (exit 0), so
+# a broken registry degrades to "sweep #9 reaps and reports nothing", never
+# to "sweep #9 reaps everything it cannot classify" -- see
+# state-registry-lib.sh's own header for the fail-safe contract.
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.gaia/scripts/state-registry-lib.sh"
 
-# janitor_outlier_kept <name> <type: f|d> <allow-entries...>: exit 0 iff
-# <name> (a file/dotfile when <type> is f, a directory when <type> is d)
-# matches one of the given allowlist entries for its own type. See the array
-# comment above for the trailing-"/" directory-entry convention.
-janitor_outlier_kept() {
-  local name="$1" etype="$2"
-  shift 2
-  local entry pattern
-  for entry in "$@"; do
-    case "$entry" in
-      */)
-        [ "$etype" = d ] || continue
-        pattern="${entry%/}"
-        ;;
-      *)
-        [ "$etype" = f ] || continue
-        pattern="$entry"
-        ;;
-    esac
-    # Deliberate glob match: $pattern holds an allowlist entry (e.g.
-    # 'KNOWLEDGE-*.md'), never a literal to compare byte-for-byte.
-    # shellcheck disable=SC2254
-    case "$name" in
-      $pattern) return 0 ;;
-    esac
-  done
-  return 1
-}
-
-# janitor_outlier_is_old <path> <days>: exit 0 iff <path>'s own mtime is older
-# than <days>. `-maxdepth 0` bounds `find` to the path itself, so a
-# directory's age is judged as one unit, never by its contents.
-janitor_outlier_is_old() {
-  [ -n "$(find "$1" -maxdepth 0 -mtime "+$2" 2>/dev/null)" ]
-}
-
-# janitor_sweep_outliers <local_dir>: the allowlist-based ninth sweep. Walks
-# exactly three scope roots (top level of <local_dir>, its audit/, its
-# cache/), each at maxdepth-1/mindepth-1, and reaps any child not on that
-# root's allowlist once older than GAIA_OUTLIER_RETENTION_DAYS (OS junk at any
-# age). Self-contained: reads its own knob, computes its own cutoff, resolves
-# real directories only (never follows a symlinked scope root, so a run from
-# a linked worktree never deletes another checkout's state, and never reaps a
-# symlinked entry), and never recurses below maxdepth-1 to
-# delete -- the one exception, a bounded one-level peek for a `renders.json`
-# child, only ever KEEPS. No stdout; deletes in place; always returns 0.
+# janitor_sweep_outliers <local_dir>: the ninth sweep. Walks exactly three
+# scope roots (top level of <local_dir>, its audit/, its cache/), each at
+# maxdepth-1/mindepth-1, and for every child asks the state registry whether
+# it is recognized (a live entry or a named residue path). A recognized child
+# is kept, silently; an unrecognized child is reported on stderr and left in
+# place -- report, never reap. OS junk is the one exception, reaped at any
+# age regardless of the registry. Self-contained: resolves real directories
+# only (never follows a symlinked scope root, so a run from a linked worktree
+# never touches another checkout's state, and never reaps a symlinked entry),
+# and never recurses below maxdepth-1 -- the one exception, a bounded
+# one-level peek for a `renders.json` child, only ever KEEPS. No stdout;
+# deletes only OS junk; always returns 0.
 janitor_sweep_outliers() {
   local scope_root="$1"
   [ -n "$scope_root" ] && [ -d "$scope_root" ] || return 0
 
-  local outlier_days
-  outlier_days="${GAIA_OUTLIER_RETENTION_DAYS:-7}"
-  case "$outlier_days" in '' | *[!0-9]*) outlier_days=7 ;; esac
-  [ "$outlier_days" -lt 2 ] && outlier_days=2
+  # Probe the registry ONCE per invocation, not once per child: each
+  # gaia_registry_path resolution forks git several times (through the
+  # main-root resolver), so asking gaia_registry_recognizes per child would
+  # scale git-fork cost with the number of children in .gaia/local. When the
+  # registry is unusable (no jq, no registry file, unresolvable root) the
+  # fail-safe answer is "recognized" for every child regardless of which
+  # child is asked, so one probe answers it for the whole sweep. A usable
+  # registry still asks gaia_registry_recognizes per child below, since only
+  # it knows a given child's own match.
+  local registry_usable=1
+  gaia_registry_path >/dev/null 2>&1 || registry_usable=0
 
-  local zone sroot child base etype candidate
+  local zone sroot child base etype relpath
   for zone in toplevel audit cache; do
     case "$zone" in
       toplevel) sroot="$scope_root" ;;
@@ -267,7 +285,7 @@ janitor_sweep_outliers() {
       base=${child##*/}
       if [ -d "$child" ]; then etype=d; else etype=f; fi
 
-      # OS junk: reaped at any age, the only age-independent case.
+      # OS junk: reaped at any age, the only case the registry never governs.
       case "$base" in
         .DS_Store | Thumbs.db | ._*)
           rm -rf -- "$child"
@@ -275,33 +293,31 @@ janitor_sweep_outliers() {
           ;;
       esac
 
-      candidate=1
-      case "$zone" in
-        toplevel)
-          janitor_outlier_kept "$base" "$etype" ${JANITOR_OUTLIER_ALLOW_TOPLEVEL[@]+"${JANITOR_OUTLIER_ALLOW_TOPLEVEL[@]}"} && candidate=0
-          ;;
-        audit)
-          janitor_outlier_kept "$base" "$etype" ${JANITOR_OUTLIER_ALLOW_AUDIT[@]+"${JANITOR_OUTLIER_ALLOW_AUDIT[@]}"} && candidate=0
-          ;;
-        cache)
-          janitor_outlier_kept "$base" "$etype" ${JANITOR_OUTLIER_ALLOW_CACHE[@]+"${JANITOR_OUTLIER_ALLOW_CACHE[@]}"} && candidate=0
-          # Bounded one-level renders.json protection: a not-otherwise-
-          # allowlisted cache/ child directory still keeps if it
-          # directly holds a renders.json file (a react-perf run dir, whose
-          # own name is arbitrary). Only ever KEEPS, never reaps.
-          if [ "$candidate" -eq 1 ] && [ "$etype" = d ] && [ -f "$child/renders.json" ]; then
-            candidate=0
-          fi
-          ;;
-      esac
-      [ "$candidate" -eq 1 ] || continue
-
-      janitor_outlier_is_old "$child" "$outlier_days" || continue
-      if [ "$etype" = d ]; then
-        rm -rf -- "$child"
-      else
-        rm -f -- "$child"
+      if [ "$registry_usable" -eq 0 ]; then
+        continue   # registry unusable: fail-safe recognizes everything
       fi
+
+      case "$zone" in
+        toplevel) relpath="$base" ;;
+        audit)    relpath="audit/$base" ;;
+        cache)    relpath="cache/$base" ;;
+      esac
+
+      if gaia_registry_recognizes "$relpath" "$etype"; then
+        continue   # recognized (live or residue): kept, silently
+      fi
+
+      # Bounded one-level renders.json protection: a not-otherwise-recognized
+      # cache/ child directory still keeps if it directly holds a
+      # renders.json file (a react-perf run dir, whose own name is arbitrary
+      # and never itself a registry entry). Only ever KEEPS.
+      if [ "$zone" = cache ] && [ "$etype" = d ] && [ -f "$child/renders.json" ]; then
+        continue
+      fi
+
+      # Unrecognized: report, never reap.
+      printf 'local-janitor: sweep #9: unrecognized %s not in the state registry, left in place: %s\n' \
+        "$etype" "$child" >&2
     done
   done
   return 0
@@ -378,21 +394,36 @@ sweep="$root/.gaia/scripts/mentorship-cleanup-sweep.sh"
 # call and no digest recompute happens inside the per-marker loop.
 
 # The live tree set: every tree an audit could still be merging. Local refs are
-# shared across linked worktrees, and the audit drop-zone is symlinked into each
-# of them, so a sweep launched from one worktree judges every worktree's
-# markers. Collect the branch tips AND each worktree's HEAD (which covers a
+# shared across linked worktrees, and a linked worktree's whole .gaia/local is
+# one symlink to the main checkout's, so the audit drop-zone is literally the
+# same directory in every tree and a sweep launched from one worktree judges
+# every worktree's markers. Collect the branch tips AND each worktree's HEAD (which covers a
 # detached checkout no branch names) so a sweep here never reaps a live marker
 # belonging to a parallel audit over there.
-live_trees=$(
-  {
-    git -C "$root" for-each-ref --format='%(objectname)' refs/heads/ 2>/dev/null || true
-    git -C "$root" worktree list --porcelain 2>/dev/null \
-      | awk '$1 == "HEAD" { print $2 }' || true
-  } | sort -u | while IFS= read -r commit; do
-    [ -n "$commit" ] || continue
-    git -C "$root" rev-parse "${commit}^{tree}" 2>/dev/null || true
-  done
-)
+#
+# Reliability, not just contents: the two enumeration commands are captured with
+# their exit status, not swallowed by `|| true`. An empty live_trees set is an
+# inability to prove LIFE, which the marker loop must never read as proof of
+# death. When either enumeration fails (a transient git error, lock contention,
+# a broken checkout), live_trees_reliable is 0 and keep-arm A below keeps every
+# new-scheme marker rather than reap a clearance whose tree it could not check.
+live_trees_reliable=1
+refs_raw=$(git -C "$root" for-each-ref --format='%(objectname)' refs/heads/ 2>/dev/null) \
+  || live_trees_reliable=0
+wt_raw=$(git -C "$root" worktree list --porcelain 2>/dev/null) \
+  || live_trees_reliable=0
+live_trees=""
+if [ "$live_trees_reliable" -eq 1 ]; then
+  live_trees=$(
+    {
+      printf '%s\n' "$refs_raw"
+      printf '%s\n' "$wt_raw" | awk '$1 == "HEAD" { print $2 }'
+    } | sort -u | while IFS= read -r commit; do
+      [ -n "$commit" ] || continue
+      git -C "$root" rev-parse "${commit}^{tree}" 2>/dev/null || true
+    done
+  )
+fi
 
 # Retention window: computed ONCE here, never once per marker. A non-numeric
 # override falls back to the default rather than disabling the window.
@@ -492,7 +523,11 @@ if [ -d "$audit_dir" ]; then
             body_tree=${fields%%$'\t'*}
             body_epoch=${fields#*$'\t'}
 
-            # Keep-arm A: the marker's own tree is a live branch/worktree tip.
+            # Keep-arm A: the marker's own tree is a live branch/worktree tip,
+            # OR the live-tree set could not be reliably enumerated this run
+            # (git failed), in which case the tree cannot be proven dead and
+            # the fail-safe keeps the marker rather than reap a clearance a
+            # parallel audit may still need.
             #
             # Match with a herestring, never `printf ... | grep -q`. Under
             # `pipefail`, `grep -q` exits the instant it matches, `printf`
@@ -500,9 +535,13 @@ if [ -d "$audit_dir" ]; then
             # would read as a miss and this reaps the live marker it just
             # found. The herestring has no pipe, so grep's own status is the
             # answer.
-            if [ -n "$body_tree" ] && [ -n "$live_trees" ] \
-               && grep -qxF -- "$body_tree" <<< "$live_trees"; then
-              keep=1
+            if [ -n "$body_tree" ]; then
+              if [ "$live_trees_reliable" -eq 0 ]; then
+                keep=1
+              elif [ -n "$live_trees" ] \
+                 && grep -qxF -- "$body_tree" <<< "$live_trees"; then
+                keep=1
+              fi
             fi
             # Keep-arm B: within the retention window of its own audited_at.
             if [ "$keep" -eq 0 ] && [ -n "$body_epoch" ]; then
@@ -653,24 +692,35 @@ for running in "$root/.gaia/local/plans"/*/RUNNING "$root/.gaia/local/specs"/*/p
 done
 
 # --- 4. Stray empty dirs (keep the structural drop-zones) ------------------
-is_drop_zone() {
-  case "$1" in
-    audit | audit/archived | cache | debt | forensics | handoff | plans \
-      | plans/archived | red-ledger | red-ledger/.tmp | specs | specs/archived \
-      | telemetry) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-empties=$(find "$local_dir" -mindepth 1 -type d -empty 2>/dev/null | sort -r)
-if [ -n "$empties" ]; then
-  while IFS= read -r d; do
-    [ -n "$d" ] || continue
-    rel=${d#"$local_dir"/}
-    is_drop_zone "$rel" && continue
-    rmdir "$d" 2>/dev/null
-  done <<EOF
+# The structural drop-zones -- directories GAIA tooling expects to find and
+# writes into, kept even when momentarily empty -- are declared in the state
+# registry (.gaia/state-registry.json) and read here via gaia_registry_drop_zones
+# (from the state-registry lib sourced above) as `path<TAB>match` rows, each
+# tested against an empty dir's relpath via _gaia_registry_pattern_matches --
+# the same matcher gaia_registry_recognizes/gaia_registry_classify use, never a
+# hand-rolled literal-string test. This is what lets a keyed per-tree subdir
+# (e.g. red-ledger/<tree_key>/, declared as a glob row) survive alongside a
+# bare literal container. Fail-safe: an unreadable or empty drop-zone list
+# skips the sweep, so a run that cannot classify the skeleton keeps every
+# empty dir rather than rmdir a structural one it could not identify.
+drop_zones="$(gaia_registry_drop_zones 2>/dev/null)" || drop_zones=""
+if [ -n "$drop_zones" ]; then
+  empties=$(find "$local_dir" -mindepth 1 -type d -empty 2>/dev/null | sort -r)
+  if [ -n "$empties" ]; then
+    while IFS= read -r d; do
+      [ -n "$d" ] || continue
+      rel=${d#"$local_dir"/}
+      is_drop_zone=0
+      while IFS="$(printf '\t')" read -r dz_path dz_match; do
+        [ -n "$dz_path" ] || continue
+        _gaia_registry_pattern_matches "$rel" "$dz_path" "$dz_match" && { is_drop_zone=1; break; }
+      done <<<"$drop_zones"
+      [ "$is_drop_zone" -eq 1 ] && continue
+      rmdir "$d" 2>/dev/null
+    done <<EOF
 $empties
 EOF
+  fi
 fi
 
 # --- 5. Stale cache artifacts (age-gated; generous window so paused authoring survives) ---
@@ -681,7 +731,7 @@ cache_dir="$local_dir/cache"
 if [ -d "$cache_dir" ]; then
   find "$cache_dir" -maxdepth 1 \( \
       -name 'gate1-*.json' -o -name 'draft-*.md' -o -name 'spec-session-*.json' \
-      -o -name 'spec-session-*.lock' -o -name 'spec-chain-*.json' \
+      -o -name 'spec-session-*.lock' \
     \) -type f -mtime +14 -delete 2>/dev/null
   find "$cache_dir" -maxdepth 1 -type d -name 'audit-*' -mtime +14 -exec rm -rf {} + 2>/dev/null
   # react-perf run dumps: a dir at cache root containing renders.json. `dirname`
@@ -690,15 +740,44 @@ if [ -d "$cache_dir" ]; then
     while IFS= read -r hit; do
       rm -rf -- "$(dirname "$hit")"
     done
+fi
 
-  # cache/gh-artifact-pr.json: mtime-only, on its own floor-clamped knob
-  # (default 2d, floor 1d). It records a branch and session_id, but a
-  # gh-artifact PR cache this old is stale regardless of which branch or
-  # session produced it, so staleness alone is the reap signal.
+# --- 5b. Main-only cache globs, swept at MAIN's cache, never the invoking tree's ---
+# cache/spec-chain-*.json and cache/gh-artifact-pr*.json are both registry
+# main-only (spec-chain-guard / gh-artifact-pr-cache in
+# .gaia/state-registry.json): their sole writers (block-spec-plan-chain.sh,
+# gh-artifact-lib.sh's gaia_gh_artifact_cache_dir) always resolve MAIN's root
+# before writing, so a worktree-invoked sweep has to target
+# $main_root/.gaia/local/cache too -- never $cache_dir above, which is this
+# INVOKING tree's own .gaia/local/cache, empty for these two files on every
+# tree but main. Split out of the tree-scoped glob above rather than folded
+# in: the rest of that glob (gate1/draft/spec-session) is registry ephemeral
+# and genuinely IS the writing tree's own working state, so it stays where it
+# is written.
+main_cache_dir="$main_root/.gaia/local/cache"
+if [ -d "$main_cache_dir" ]; then
+  find "$main_cache_dir" -maxdepth 1 -type f -name 'spec-chain-*.json' \
+    -mtime +14 -delete 2>/dev/null
+
+  # cache/gh-artifact-pr*.json: mtime-only, on its own floor-clamped knob
+  # (default 2d, floor 1d). The glob is the family pattern for "every
+  # gh-artifact breadcrumb", not a special case bolted on for migration: it
+  # covers the current per-branch filename (cache/gh-artifact-pr.<branch
+  # -slug>.json) AND the pre-4.2 unkeyed cache/gh-artifact-pr.json some
+  # machines may still carry from before this file was keyed. Sweep #9
+  # (off-pattern outlier residue, above) reports an unrecognized cache/ child
+  # on stderr and never reaps it -- report-not-delete, by design -- so an old
+  # unkeyed file left outside this arm's reach would nag on every session
+  # start with nothing able to clear it; folding it into this arm's own glob
+  # is the difference between an orphan that ages out in a couple of days
+  # and one that lives forever. Each matched file records a branch and
+  # session_id, but a gh-artifact PR cache this old is stale regardless of
+  # which branch or session produced it, so staleness alone is the reap
+  # signal.
   cache_artifact_days="${GAIA_CACHE_ARTIFACT_RETENTION_DAYS:-2}"
   case "$cache_artifact_days" in '' | *[!0-9]*) cache_artifact_days=2 ;; esac
   [ "$cache_artifact_days" -lt 1 ] && cache_artifact_days=1
-  find "$cache_dir" -maxdepth 1 -type f -name 'gh-artifact-pr.json' \
+  find "$main_cache_dir" -maxdepth 1 -type f -name 'gh-artifact-pr*.json' \
     -mtime +"$cache_artifact_days" -delete 2>/dev/null
 fi
 
@@ -734,60 +813,125 @@ fi
 # abandoned after the merge but before ExitWorktree leaves the worktree dir
 # behind, and nothing else reclaims it. Reap only such provably-dead worktrees:
 # never age-reap (an old worktree may be a live long-running session, and there
-# is no session-liveness signal to tell them apart). Teardown is delegated to
-# the WorktreeRemove hook's own script so remove + branch-delete + parent-prune
-# stays defined in one place.
+# is no session-liveness signal to tell them apart). Teardown runs inline here:
+# the harness owns worktree creation and removal for a live session, but this
+# sweep reaps worktrees no session is in, so there is no session-scoped hook to
+# delegate to, and the janitor does its own remove + branch-delete +
+# parent-prune.
 #
-# Resolve the MAIN checkout: worktrees register there and physically live under
-# <main>/.claude/worktrees/, and this janitor may itself run from inside a
-# worktree, so `root` is not necessarily main.
-wt_common="$(git -C "$root" rev-parse --git-common-dir 2>/dev/null || true)"
-if [ -n "$wt_common" ]; then
-  case "$wt_common" in
-    /*) wt_main_git="$wt_common" ;;
-    *)  wt_main_git="$root/$wt_common" ;;
-  esac
-  wt_main="$(cd "$(dirname "$wt_main_git")" 2>/dev/null && pwd -P || true)"
-  wt_reaper="$wt_main/.gaia/scripts/remove-worktree.sh"
-  wt_current="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
-  wt_current="$(cd "$wt_current" 2>/dev/null && pwd -P || printf '%s' "$wt_current")"
-  wt_base="$wt_main/.claude/worktrees"
-  if [ -n "$wt_main" ] && [ -f "$wt_reaper" ] && [ -d "$wt_base" ]; then
-    # Enumerate worktrees from the main checkout: porcelain emits `worktree
-    # <path>` then (for an attached checkout) `branch refs/heads/<name>`, or
-    # `detached`. Emit `<path>\t<branch>` per worktree; a detached worktree
-    # yields an empty branch and is skipped (no branch to test for [gone]).
-    while IFS="$(printf '\t')" read -r wt_path wt_branch; do
-      [ -n "$wt_path" ] || continue
-      # Only GAIA worktrees under the main checkout's .claude/worktrees/.
-      case "$wt_path" in "$wt_base"/*) ;; *) continue ;; esac
-      # Never the current checkout (also protects a janitor run from inside one).
-      [ "$wt_path" != "$wt_current" ] || continue
-      # Detached HEAD has no branch to prove [gone] on: leave it.
-      [ -n "$wt_branch" ] || continue
-      # Provable death: upstream-track is exactly [gone].
-      wt_track="$(git -C "$wt_main" for-each-ref \
-        --format='%(upstream:track)' "refs/heads/$wt_branch" 2>/dev/null || true)"
-      [ "$wt_track" = "[gone]" ] || continue
-      # Never discard uncommitted working-tree changes.
-      [ -z "$(git -C "$wt_path" status --porcelain 2>/dev/null)" ] || continue
-      # Reap via the WorktreeRemove hook's own teardown script (remove + branch
-      # -D [never main/master] + empty parent-dir prune, all in one place).
-      # jq-built, not printf-interpolated: a path containing `"` or `\` could
-      # otherwise produce malformed or injected JSON.
-      jq -nc --arg p "$wt_path" '{worktree_path:$p}' \
-        | bash "$wt_reaper" >/dev/null 2>&1 || true
-    done < <(
-      # `worktree` line: substr, not $2 -- porcelain does not quote the path,
-      # so a $2 split would truncate at the first space in the path.
-      git -C "$wt_main" worktree list --porcelain 2>/dev/null | awk '
-        $1=="worktree"{ p=substr($0,10); b="" }
-        $1=="branch"{b=$2; sub(/^refs\/heads\//,"",b)}
-        $1==""{ if(p!="") print p "\t" b; p=""; b="" }
-        END{ if(p!="") print p "\t" b }
-      '
-    )
-  fi
+# Resolve the MAIN checkout via the shared resolver: worktrees register there
+# and physically live under <main>/.claude/worktrees/, and this janitor may
+# itself run from inside a worktree, so `root` is not necessarily main. An
+# unresolvable main root skips this sweep outright rather than guessing --
+# unlike the file-level `main_root` above (which degrades to `root`), reaping
+# a worktree against a wrongly-assumed root is destructive, so this sweep has
+# nothing safe to fall back to.
+wt_main=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  wt_main="$(gaia_resolve_main_root "$root" 2>/dev/null || true)"
+fi
+wt_current="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+wt_current="$(cd "$wt_current" 2>/dev/null && pwd -P || printf '%s' "$wt_current")"
+wt_base="$wt_main/.claude/worktrees"
+if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
+  # Enumerate worktrees from the main checkout: porcelain emits `worktree
+  # <path>` then (for an attached checkout) `branch refs/heads/<name>`, or
+  # `detached`. Emit `<path>\t<branch>` per worktree; a detached worktree
+  # yields an empty branch and is skipped (no branch to test for [gone]).
+  while IFS="$(printf '\t')" read -r wt_path wt_branch; do
+    [ -n "$wt_path" ] || continue
+    # Only GAIA worktrees under the main checkout's .claude/worktrees/.
+    case "$wt_path" in "$wt_base"/*) ;; *) continue ;; esac
+    # Never the current checkout (also protects a janitor run from inside one).
+    [ "$wt_path" != "$wt_current" ] || continue
+    # Detached HEAD has no branch to prove [gone] on: leave it.
+    [ -n "$wt_branch" ] || continue
+    # Provable death: upstream-track is exactly [gone].
+    wt_track="$(git -C "$wt_main" for-each-ref \
+      --format='%(upstream:track)' "refs/heads/$wt_branch" 2>/dev/null || true)"
+    [ "$wt_track" = "[gone]" ] || continue
+    # Never discard uncommitted working-tree changes.
+    [ -z "$(git -C "$wt_path" status --porcelain 2>/dev/null)" ] || continue
+    # Never reap a branch named by a live RUNNING plan sentinel. The
+    # sentinel is gitignored, so it is invisible to both git checks above:
+    # a plan can be genuinely in-flight on a branch that reads [gone] +
+    # clean. Scanned in both the worktree's own .gaia/local/ and main's.
+    # For a PROPERLY LINKED worktree these are the same physical directory
+    # (.gaia/local is one symlink to main's, D-011) and this is a harmless
+    # double read. They are genuinely different directories for a worktree
+    # that is not yet linked -- provisioning failed or has not run, or (as
+    # this candidate itself may be, mid-teardown-evaluation) a worktree
+    # nobody ever linked -- whose .gaia/local is still its own real,
+    # unconnected directory. Scanning only main's would miss a live plan
+    # sentinel written there and reap a session's whole worktree out from
+    # under it, so both locations are scanned regardless of which state
+    # this candidate is in. Same parse idiom as sweep #3.
+    wt_live=0
+    for wt_running in "$wt_path/.gaia/local/plans"/*/RUNNING \
+      "$wt_path/.gaia/local/specs"/*/plan/RUNNING \
+      "$wt_path/.gaia/local/specs"/*/plan-*/RUNNING \
+      "$wt_main/.gaia/local/plans"/*/RUNNING \
+      "$wt_main/.gaia/local/specs"/*/plan/RUNNING \
+      "$wt_main/.gaia/local/specs"/*/plan-*/RUNNING; do
+      [ -f "$wt_running" ] || continue
+      wt_running_branch=$(sed -nE 's/^branch:[[:space:]]*([^[:space:]]+).*/\1/p' \
+        "$wt_running" 2>/dev/null | head -1)
+      if [ "$wt_running_branch" = "$wt_branch" ]; then
+        wt_live=1
+        break
+      fi
+      # An unparseable sentinel under the worktree's OWN tree names no
+      # branch but still proves something is running there -- this guard
+      # fails toward sparing, since a false "dead" reading deletes
+      # someone's work. The same case under main's tree names no worktree
+      # either, so it cannot be attributed to this one; that gap is real
+      # and left uncovered rather than papered over.
+      case "$wt_running" in
+        "$wt_path"/*) [ -z "$wt_running_branch" ] && { wt_live=1; break; } ;;
+      esac
+    done
+    [ "$wt_live" -eq 0 ] || continue
+    # Tear down inline: remove the worktree, delete its now-detached branch,
+    # and prune the empty parent dirs a slashed name leaves behind. $wt_branch
+    # is already in hand from the porcelain parse above, so there is no
+    # branch re-read here, and the current-checkout guard above already rules
+    # out git's own "refuses to remove the tree it is standing in" case.
+    #
+    # git also refuses a SINGLE --force against a worktree its own lock still
+    # marks `locked ... initializing` -- what a session killed mid-`git
+    # worktree add` leaves behind. Only a double --force clears that lock, so
+    # step 1 retries with one before falling back to prune: a reaper that
+    # cannot clear a wedged entry is a reaper that silently stops reaping it,
+    # forever.
+    if ! git -C "$wt_main" worktree remove --force "$wt_path" >/dev/null 2>&1; then
+      git -C "$wt_main" worktree remove --force --force "$wt_path" >/dev/null 2>&1 || true
+      if [ -e "$wt_path" ]; then
+        git -C "$wt_main" worktree prune >/dev/null 2>&1 || true
+        # Idempotent: an already-gone path is success; anything else is left
+        # alone rather than force-deleted.
+        [ -e "$wt_path" ] && continue
+      fi
+    fi
+    # Never the default branch.
+    if [ "$wt_branch" != "main" ] && [ "$wt_branch" != "master" ]; then
+      git -C "$wt_main" branch -D "$wt_branch" >/dev/null 2>&1 || true
+    fi
+    # Walk up only within $wt_base, stopping at the first non-empty dir.
+    wt_parent="$(dirname "$wt_path")"
+    while [ "$wt_parent" != "$wt_base" ] && [ "${wt_parent#"$wt_base"/}" != "$wt_parent" ]; do
+      rmdir "$wt_parent" 2>/dev/null || break
+      wt_parent="$(dirname "$wt_parent")"
+    done
+  done < <(
+    # `worktree` line: substr, not $2 -- porcelain does not quote the path,
+    # so a $2 split would truncate at the first space in the path.
+    git -C "$wt_main" worktree list --porcelain 2>/dev/null | awk '
+      $1=="worktree"{ p=substr($0,10); b="" }
+      $1=="branch"{b=$2; sub(/^refs\/heads\//,"",b)}
+      $1==""{ if(p!="") print p "\t" b; p=""; b="" }
+      END{ if(p!="") print p "\t" b }
+    '
+  )
 fi
 
 # --- 9. Off-pattern outlier residue ----------------------------------------

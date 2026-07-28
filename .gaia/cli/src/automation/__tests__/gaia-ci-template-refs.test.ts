@@ -1,8 +1,8 @@
 import {describe, expect, test} from 'vitest';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 import type {ToolId} from '../../schemas/automation-config.js';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {workflowTemplatePath} from '../paths.js';
 /**
  * Maintainer drift-guard for the outbound references in the four
@@ -65,23 +65,6 @@ const TEMPLATE_CONTRACT: Readonly<Record<ToolId, TemplateContract>> = {
   'stale-branches': {cli: [], skills: []},
   'update-deps': {cli: ['update-deps run'], skills: ['update-deps']},
   wiki: {cli: ['wiki sync land'], skills: ['gaia-wiki']},
-};
-
-const resolveRepoRoot = (): string => {
-  // Walk up from this file's location to the repo root (contains .git).
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-
-  for (let attempts = 0; attempts < 20; attempts += 1) {
-    if (existsSync(path.join(dir, '.git'))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  throw new Error('Could not find repo root (no .git directory found)');
 };
 
 const escapeRegExp = (value: string): string =>
@@ -153,7 +136,7 @@ const extractSkillRefs = (templateText: string): Set<string> => {
   return refs;
 };
 
-const repoRoot = resolveRepoRoot();
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const templatesDir = path.dirname(workflowTemplatePath('wiki'));
 const cliSrc = path.join(repoRoot, '.gaia', 'cli', 'src');
 const ready = existsSync(templatesDir) && existsSync(cliSrc);

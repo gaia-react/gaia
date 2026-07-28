@@ -32,7 +32,7 @@ A record whose attribution fails omits `by_model` entirely rather than writing a
 
 ## The rate table
 
-Rates live in a **committed** table at `.gaia/scripts/token-rates.json`, so they ship to adopters and version with the code. Both scripts locate it the same way, via `git rev-parse --show-toplevel`, which resolves the table from inside a linked worktree as well as the main checkout (no override needed; a `--rate-table` flag on either script's CLI substitutes a path directly, for tests).
+Rates live in a **committed** table at `.gaia/scripts/token-rates.json`, so they ship to adopters and version with the code. Both scripts locate it the same way, via `git rev-parse --show-toplevel`: the table is committed, so it sits in whichever tree the script runs in, and asking for that tree's own root is the right question here rather than asking where the main checkout is (see [[Worktrees]]). No override is needed; a `--rate-table` flag on either script's CLI substitutes a path directly, for tests.
 
 This file is a **public read contract**: any reader pricing token usage, GAIA's own scripts or an external re-implementation, parses this exact shape rather than reverse-engineering shell internals.
 

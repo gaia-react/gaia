@@ -30,19 +30,24 @@ teardown() {
 #   - Does NOT print user-config remediation
 # ---------------------------------------------------------------------------
 
+# Synthetic stand-in for `bash .gaia/scripts/main-root-lib.sh --tree-key`'s
+# stdout (16 lowercase hex characters); this surrogate never invokes the real
+# resolver, same as the fixed synthetic $timestamp below.
+TREE_KEY_FIXTURE="deadbeefcafe1234"
+
 other_class_surrogate() {
   local workdir="$1"
   local class="other"
   local timestamp="20260508T143022Z"
 
-  mkdir -p "$workdir/.gaia/local/forensics"
-  local report_path="$workdir/.gaia/local/forensics/${timestamp}-${class}.md"
+  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  local report_path="$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
   printf '%s\n' "$(cat "$FIXTURES/golden-other-class.md")" > "$report_path"
 
   # Print the classification decision (no user-config remediation)
   printf 'class: other\n'
   printf 'evidence: no taxonomy class matched\n'
-  printf 'Report saved: .gaia/local/forensics/%s-%s.md\n' "$timestamp" "$class"
+  printf 'Report saved: .gaia/local/forensics/%s/%s-%s.md\n' "$TREE_KEY_FIXTURE" "$timestamp" "$class"
   printf 'Offering GH issue creation (probable bug).\n'
   # No "Remediation:" line
 }
@@ -77,7 +82,7 @@ other_class_surrogate() {
 
 @test "UAT-011: other-class surrogate saves report locally" {
   other_class_surrogate "$WORKDIR"
-  local report="$WORKDIR/.gaia/local/forensics/20260508T143022Z-other.md"
+  local report="$WORKDIR/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-other.md"
   [[ -f "$report" ]]
 }
 

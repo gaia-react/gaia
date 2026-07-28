@@ -1,0 +1,1448 @@
+#!/usr/bin/env bats
+#
+# The INV-7 concurrency meter suite (see README.md, frozen). One @test per
+# scenario id; each drives the real GAIA code for its named defect and
+# asserts the TARGET (post-fix) isolation property, so it fails today because
+# the fix is absent -- not because it is stubbed. `skip` is banned in this
+# suite (it reports green, the opposite of red-by-design).
+#
+# Run: .gaia/scripts/bats5.sh .gaia/tests/concurrency/
+#
+# Assertion style note: per .claude/rules/bats-assertions.md, a non-final
+# absence check uses a positive match for the bad case plus an explicit
+# `return 1`, never `!`-negation; POSIX `[ ]` throughout.
+
+setup() {
+  # shellcheck disable=SC1091
+  source "$BATS_TEST_DIRNAME/lib/concurrency-harness.sh"
+}
+
+teardown() {
+  gaia_teardown
+}
+
+# count_autocommits <dir>: how many consecutive `wiki: auto-commit *` commits
+# sit at <dir>'s current HEAD. Used by C5-02's squash-hook check.
+count_autocommits() {
+  local dir="$1" n=0
+  while git -C "$dir" log "HEAD~$n" -1 --format=%s 2>/dev/null | grep -q '^wiki: auto-commit '; do
+    n=$((n + 1))
+  done
+  printf '%s' "$n"
+}
+
+# ---------------------------------------------------------------------------
+# Tranche 3 -- CONVERT
+# ---------------------------------------------------------------------------
+
+@test "C3-01: janitor spares a live peer tree" {
+  MAIN="$(gaia_new_main gaia-c301-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .gaia/scripts/link-worktree.sh \
+    .claude/hooks/local-janitor.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add janitor deps"
+
+  ORIGIN="$(gaia_mk_tmp gaia-c301-origin)"
+  git init -q --bare "$ORIGIN"
+  git -C "$MAIN" remote add origin "$ORIGIN"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  # treeB's branch upstream is pushed then deleted remotely: the same
+  # provable-death signal the reaper uses for wiki-sync/* branches. treeB is
+  # otherwise LIVE: it carries an active plan RUNNING sentinel, GAIA's own
+  # in-progress marker, in its own (gitignored, per-tree) .gaia/local.
+  git -C "$B" push -q -u origin treeB
+  git -C "$B" push -q origin --delete treeB
+  git -C "$B" fetch -q --prune
+
+  mkdir -p "$B/.gaia/local/plans/PLAN-999"
+  {
+    printf 'branch: treeB\n'
+    printf 'status: RUNNING\n'
+  } > "$B/.gaia/local/plans/PLAN-999/RUNNING"
+
+  # treeA needs its own .gaia/local present (a real worktree gets one from
+  # link-worktree.sh at creation), or the janitor's own local_dir guard exits
+  # before ever reaching the worktree-reap sweep.
+  gaia_link_worktree "$A"
+
+  run run_in "$A" -- bash "$MAIN/.claude/hooks/local-janitor.sh"
+  [ "$status" -eq 0 ]
+
+  # Target: treeB, a live peer (a RUNNING plan in flight), survives a
+  # session-start janitor run fired from treeA -- the live_trees set the
+  # reaper's own liveness test relies on covers every live worktree, and no
+  # live tree's state is swept. Today the reaper's only liveness test is
+  # git-level ([gone] upstream + a clean working tree; a RUNNING sentinel is
+  # gitignored and invisible to `git status`), so it deletes treeB's whole
+  # worktree -- including the RUNNING plan -- out from under the live session.
+  [ -d "$B" ] || return 1
+  [ -f "$B/.gaia/local/plans/PLAN-999/RUNNING" ]
+}
+
+@test "C3-02: write-guard attributes by payload cwd" {
+  MAIN="$(gaia_new_main gaia-c302-main)"
+  gaia_copy_real "$MAIN" \
+    .claude/hooks/block-worktree-path-mismatch.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add write-guard"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  # A subagent in worktree B, delivered with B's own payload cwd, edits a file
+  # that physically resolves inside worktree A -- a DIFFERENT linked worktree,
+  # not main. The payload cwd correctly names B (the true acting tree); the
+  # guard's job is to attribute the write by that payload cwd and deny a
+  # target naming a different tree.
+  json="$(jq -n --arg c "$B" --arg p "$A/README.md" \
+    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
+  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$MAIN/.claude/hooks/block-worktree-path-mismatch.sh"
+  [ "$status" -eq 0 ]
+
+  # Target: denied (payload cwd names B, target resolves to a different real
+  # tree, A). Today this hook only ever checks the target against MAIN's root
+  # ("Scope, and why it stops there" in its own header) -- a write from one
+  # linked worktree into another sibling worktree is explicitly left
+  # unguarded, so this is allowed.
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
+}
+
+@test "C3-03: tree identity is the payload cwd, and the target is judged against it" {
+  MAIN="$(gaia_new_main gaia-c303-main)"
+  gaia_copy_real "$MAIN" \
+    .claude/hooks/block-worktree-path-mismatch.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add write-guard"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  guard="$MAIN/.claude/hooks/block-worktree-path-mismatch.sh"
+  outside="$(gaia_mk_tmp gaia-c303-outside)"
+
+  # The REAL acting process sits in treeB throughout (every run_in below), while
+  # the payload names treeA -- a well-shaped, absolute cwd resolving to a
+  # DIFFERENT real checkout of the same repo, not a garbage value. Identity is
+  # decided by the payload, so treeA is the acting tree in cases 1 and 2.
+
+  # (1) ADOPTED. Payload names treeA, target lands in treeA: judged against
+  # treeA and allowed, even though the hook process runs in treeB.
+  json="$(jq -n --arg c "$A" --arg p "$A/README.md" \
+    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output" && return 1
+
+  # (2) ADJUDICATED AGAINST THE NAMED TREE -- the half that separates this
+  # design from a process-cwd one. Payload names treeA, target lands in treeB,
+  # the tree the hook process itself sits in: denied. A guard taking identity
+  # from its own process cwd would see treeB writing into treeB and allow it.
+  json="$(jq -n --arg c "$A" --arg p "$B/README.md" \
+    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output" || return 1
+
+  # (3) FALLBACK, LIVE NOT INERT. An unusable payload cwd -- absolute but not a
+  # checkout (a relative one routes the same way) -- is not adopted, so identity
+  # falls back to the process cwd, treeB, and a target in treeA is denied.
+  json="$(jq -n --arg c "$outside" --arg p "$A/README.md" \
+    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output" || return 1
+
+  # (4) FAIL-OPEN ON AN UNDETERMINABLE IDENTITY. Neither the payload cwd nor the
+  # process cwd names a checkout, so the guard cannot attribute the write and
+  # allows it -- emitting no decision at all -- rather than blocking an edit on
+  # an identity it could not confirm. The contract every block-*.sh guard shares.
+  json="$(jq -n --arg c "$outside" --arg p "$A/README.md" \
+    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
+  run run_in "$outside" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "C3-04: main-anchored ledgers resolve to main from a worktree" {
+  MAIN="$(gaia_new_main gaia-c304-main)"
+  gaia_copy_real "$MAIN" \
+    .specify/extensions/gaia/lib/plan-allocator.sh \
+    .specify/extensions/gaia/lib/with-ledger-lock.sh \
+    .specify/extensions/gaia/lib/title-normalize.sh \
+    .gaia/scripts/ledger-path-lib.sh \
+    .gaia/scripts/main-root-lib.sh
+  gaia_commit_all "$MAIN" "add plan allocator"
+
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  # Mirrors the real invocation in .claude/skills/gaia/references/plan.md:
+  # ROOT="$(git rev-parse --show-toplevel)"; plan-allocator.sh next "$ROOT".
+  root_b="$(run_in "$B" -- git rev-parse --show-toplevel)"
+  run bash "$MAIN/.specify/extensions/gaia/lib/plan-allocator.sh" next "$root_b" "feature from B"
+  [ "$status" -eq 0 ]
+
+  # Target: the write lands in the main checkout's one ledger, because the
+  # resolver -- not $PWD/$ROOT -- supplies the path. Today $ROOT resolves to
+  # B's own toplevel (plans/ is not among link-worktree.sh's five shared
+  # paths), so the row lands in a forked per-tree copy at
+  # B/.gaia/local/plans/ledger.json and main's ledger is never created.
+  [ -f "$MAIN/.gaia/local/plans/ledger.json" ]
+}
+
+@test "C3-05: the project id is one value per clone" {
+  MAIN="$(gaia_new_main gaia-c305-main)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  # Drives the real production functions directly (readOrCreateProjectId /
+  # resolveStorageRoots) via tsx against the real source: the module resolves
+  # through node_modules, not a relative `source`, so a throwaway fixture
+  # cannot carry a working copy the way a bash script can.
+  storage_dir="$GAIA_REPO_ROOT_REAL/.gaia/cli/src/storage"
+  tsx="$GAIA_REPO_ROOT_REAL/.gaia/cli/node_modules/.bin/tsx"
+
+  read_id() {
+    local repo_root="$1"
+    "$tsx" --eval "
+      import {readOrCreateProjectId, resolveStorageRoots} from '$storage_dir/index.ts';
+      process.stdout.write(readOrCreateProjectId(resolveStorageRoots({repoRoot: '$repo_root'})));
+    "
+  }
+
+  main_id="$(read_id "$MAIN")"
+  [ -n "$main_id" ]
+
+  # Mirrors the real caller (ping/send.ts's postPing): cwd defaults to
+  # process.cwd(), which for a session running in B is B's own directory.
+  b_id="$(read_id "$B")"
+
+  # Target: reading .project-id "from" B yields main's id. Today B mints its
+  # own separate id (sha256 of B's own root path) -- a second identity for
+  # one clone.
+  [ "$b_id" = "$main_id" ]
+}
+
+# ---------------------------------------------------------------------------
+# Tranche 4 -- KEYS
+# ---------------------------------------------------------------------------
+
+# Shared by C4-01 / C4-02: a main checkout plus two real linked worktrees with
+# link-worktree.sh's real symlinks live, each carrying its own new commit off
+# the same base, so both compute the identical BASE_SHA the real documented
+# recipe uses (`git merge-base "$BASE_REF" HEAD`, per
+# .claude/agents/code-audit-frontend.md). Sets MAIN, A, B, BASE_SHA_A,
+# BASE_SHA_B, KEY_A, KEY_B.
+#
+# KEY_A/KEY_B come from the SHIPPED writer, `gaia_audit_key`
+# (.gaia/scripts/audit-key-lib.sh), run inside each tree -- the same function
+# every Code Audit Team member's definition now derives its sidecar and ledger
+# paths through. Before task 4.1 these two scenarios hand-built today's
+# colliding `<base-sha>`-only path inside the test, because the fixed writer did
+# not exist yet; asking the real function where to write is what makes a green
+# here a measurement of GAIA rather than of the fixture. See the meter README's
+# "Published assertion changes".
+setup_c4_base_sha_pair() {
+  MAIN="$(gaia_new_main "$1")"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .gaia/scripts/link-worktree.sh \
+    .gaia/scripts/audit-key-lib.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add link-worktree deps"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$A"
+  gaia_link_worktree "$B"
+
+  echo a > "$A/a.txt"
+  git -C "$A" add a.txt
+  git -C "$A" commit -q -m "a work"
+  echo b > "$B/b.txt"
+  git -C "$B" add b.txt
+  git -C "$B" commit -q -m "b work"
+
+  BASE_SHA_A="$(run_in "$A" -- git merge-base main HEAD)"
+  BASE_SHA_B="$(run_in "$B" -- git merge-base main HEAD)"
+
+  KEY_A="$(run_in "$A" -- bash -c '. .gaia/scripts/audit-key-lib.sh; gaia_audit_key "$1"' _ "$BASE_SHA_A")"
+  KEY_B="$(run_in "$B" -- bash -c '. .gaia/scripts/audit-key-lib.sh; gaia_audit_key "$1"' _ "$BASE_SHA_B")"
+}
+
+@test "C4-01: findings sidecar isolated across worktrees" {
+  setup_c4_base_sha_pair gaia-c401-main
+  # The collision precondition, measured rather than assumed: two trees cut
+  # from one main tip compute the SAME base sha.
+  [ "$BASE_SHA_A" = "$BASE_SHA_B" ]
+  # A key the writer could not determine would make both paths identical and
+  # produce a confusing red; assert the writer answered before relying on it.
+  [ -n "$KEY_A" ]
+  [ -n "$KEY_B" ]
+
+  sidecar_a="$A/.gaia/local/audit/${KEY_A}.code-audit-frontend.findings.json"
+  sidecar_b="$B/.gaia/local/audit/${KEY_B}.code-audit-frontend.findings.json"
+
+  # The fixture creates its own parent, the way the real writers do
+  # (audit-write-findings.sh:238, audit-write-clearance.sh:323). Before the
+  # single-symlink cutover it did not have to: the per-entry linker created
+  # main's audit/ as its symlink's target, and the fixture inherited that. The
+  # cutover removed that side effect deliberately -- a worktree now creates
+  # directories exactly when and how the main checkout does -- so a fixture that
+  # still leaned on it was testing the linker's housekeeping, not this scenario.
+  mkdir -p "$(dirname "$sidecar_a")" "$(dirname "$sidecar_b")"
+
+  jq -n '{schema: 1, member: "frontend", tree: "treeA", findings: ["A-only finding"]}' > "$sidecar_a"
+  jq -n '{schema: 1, member: "frontend", tree: "treeB", findings: ["B-only finding"]}' > "$sidecar_b"
+
+  # The frozen assertion, both halves: tree A's findings never overwrite, and
+  # never appear in, tree B's sidecar. audit/ is symlinked to main from every
+  # worktree, so the two writes land on one physical file unless the KEY
+  # partitions them.
+  run jq -r '.tree' "$sidecar_a"
+  [ "$status" -eq 0 ]
+  [ "$output" = "treeA" ]
+
+  run jq -r '.tree' "$sidecar_b"
+  [ "$status" -eq 0 ]
+  [ "$output" = "treeB" ]
+}
+
+@test "C4-02: rerun ledger isolated across worktrees" {
+  setup_c4_base_sha_pair gaia-c402-main
+  [ "$BASE_SHA_A" = "$BASE_SHA_B" ]
+  [ -n "$KEY_A" ]
+  [ -n "$KEY_B" ]
+
+  ledger_a="$A/.gaia/local/audit/${KEY_A}.rerun.json"
+  ledger_b="$B/.gaia/local/audit/${KEY_B}.rerun.json"
+
+  # Its own parent, as the real writers do and as C4-01 explains.
+  mkdir -p "$(dirname "$ledger_a")" "$(dirname "$ledger_b")"
+
+  jq -n --arg br treeA --arg base "$BASE_SHA_A" '{schema: 1, branch: $br, base_sha: $base, round: 1}' > "$ledger_a"
+  jq -n --arg br treeB --arg base "$BASE_SHA_B" '{schema: 1, branch: $br, base_sha: $base, round: 1}' > "$ledger_b"
+
+  # The frozen assertion: the ledger is partitioned by base-sha plus branch, so
+  # one tree's rerun record never overwrites the other's.
+  run jq -r '.branch' "$ledger_a"
+  [ "$status" -eq 0 ]
+  [ "$output" = "treeA" ]
+
+  run jq -r '.branch' "$ledger_b"
+  [ "$status" -eq 0 ]
+  [ "$output" = "treeB" ]
+}
+
+@test "C4-03: PR-artifact capture is per branch (simulated)" {
+  # Simulated: the GitHub PR/merge round-trip is stood in by a fixture; only
+  # the real capture/read library (gh-artifact-lib.sh) is driven for real.
+  MAIN="$(gaia_new_main gaia-c403-main)"
+  gaia_copy_real "$MAIN" .gaia/scripts/gh-artifact-lib.sh .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/audit-key-lib.sh
+  gaia_commit_all "$MAIN" "add gh-artifact lib"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  # Tree A's session opens PR #100 for its own branch...
+  run run_in "$A" -- bash -c '
+    . .gaia/scripts/gh-artifact-lib.sh
+    cache_dir="$(gaia_gh_artifact_cache_dir)"
+    path="$(gaia_gh_artifact_path "$cache_dir" treeA)"
+    gaia_gh_artifact_write "$path" 100 owner/repo treeA sessA
+  '
+  [ "$status" -eq 0 ]
+
+  # ...then tree B's session, concurrently, opens PR #200 for ITS branch.
+  run run_in "$B" -- bash -c '
+    . .gaia/scripts/gh-artifact-lib.sh
+    cache_dir="$(gaia_gh_artifact_cache_dir)"
+    path="$(gaia_gh_artifact_path "$cache_dir" treeB)"
+    gaia_gh_artifact_write "$path" 200 owner/repo treeB sessB
+  '
+  [ "$status" -eq 0 ]
+
+  # Tree A's own reader then asks for its own artifact back.
+  run run_in "$A" -- bash -c '
+    . .gaia/scripts/gh-artifact-lib.sh
+    cache_dir="$(gaia_gh_artifact_cache_dir)"
+    path="$(gaia_gh_artifact_path "$cache_dir" treeA)"
+    gaia_gh_artifact_read "$path" sessA treeA
+  '
+  [ "$status" -eq 0 ]
+
+  # Target: A's own record is still readable (per-branch keying). Today the
+  # cache is one file, resolved to main regardless of which tree calls it
+  # ("One file, PR artifacts only ... Last writer wins" per the lib's own
+  # header) -- B's later write overwrote A's record entirely, so A's read
+  # returns nothing.
+  [ -n "$output" ] || return 1
+  printf '%s' "$output" | jq -e '.number == 100' >/dev/null
+}
+
+@test "C4-04: worthiness ledger is per tree" {
+  MAIN="$(gaia_new_main gaia-c404-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .gaia/scripts/link-worktree.sh \
+    .claude/hooks/lib/worthiness-ledger.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add link-worktree deps"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$A"
+  gaia_link_worktree "$B"
+
+  mkdir -p "$A/test" "$B/test"
+  cat > "$A/test/a.test.ts" <<'JS'
+import { test, expect } from 'vitest';
+test('a only test', () => {
+  expect(1).toBe(1);
+});
+JS
+  cat > "$B/test/b.test.ts" <<'JS'
+import { test, expect } from 'vitest';
+test('b only test', () => {
+  expect(2).toBe(2);
+});
+JS
+
+  append_script="$GAIA_REPO_ROOT_REAL/.gaia/scripts/audit-ledger/append-worthiness.mjs"
+  run run_in "$A" -- node "$append_script" test/a.test.ts "a only test" keep
+  [ "$status" -eq 0 ]
+  run run_in "$B" -- node "$append_script" test/b.test.ts "b only test" keep
+  [ "$status" -eq 0 ]
+
+  # Target: each tree's own ledger, at worthiness-ledger/ (scope "per-tree",
+  # never symlinked -- link-worktree.sh only symlinks scope:"shared" entries,
+  # exactly like its RED-ledger sibling), holds only its own observation.
+  # worthiness-ledger/ sits outside the audit/ directory that link-worktree.sh
+  # symlinks WHOLESALE into main (audit/ carries four other scope:"shared"
+  # entries), which is what made the two trees' appends land in the SAME
+  # physical file before this fix.
+  #
+  # The shipped path function decides where each tree's ledger lives -- the
+  # writer and the presence check both address it through this one function --
+  # so the fixture asks GAIA where the ledger is instead of hand-building a
+  # path. Hand-building it would re-state the tree-keyed subpath the function
+  # owns, and a fixture carrying its own copy of that shape is the same defect
+  # one layer along.
+  #
+  # Four things must all hold, so a writer that silently wrote nothing cannot
+  # pass vacuously (a single "B doesn't contain A's entry" check would also
+  # be true of an empty or missing ledger): (a) A's own ledger exists and
+  # contains A's observation; (b) B's own ledger exists and contains B's
+  # observation; (c) neither ledger contains the other tree's observation
+  # (both directions); (d) the old shared location under audit/ is written in
+  # neither tree.
+  A_LEDGER="$(run_in "$A" -- bash -c '. .claude/hooks/lib/worthiness-ledger.sh; worthiness_ledger_path')"
+  B_LEDGER="$(run_in "$B" -- bash -c '. .claude/hooks/lib/worthiness-ledger.sh; worthiness_ledger_path')"
+  [ -n "$A_LEDGER" ]
+  [ -n "$B_LEDGER" ]
+
+  [ -f "$A_LEDGER" ]
+  grep -qF '"a only test"' "$A_LEDGER"
+  [ -f "$B_LEDGER" ]
+  grep -qF '"b only test"' "$B_LEDGER"
+
+  if grep -qF '"b only test"' "$A_LEDGER"; then
+    echo "tree A's ledger contains tree B's observation" >&2
+    return 1
+  fi
+  if grep -qF '"a only test"' "$B_LEDGER"; then
+    echo "tree B's ledger contains tree A's observation" >&2
+    return 1
+  fi
+  if [ -e "$A/.gaia/local/audit/worthiness.jsonl" ]; then
+    echo "the old shared worthiness path was written in tree A" >&2
+    return 1
+  fi
+  if [ -e "$B/.gaia/local/audit/worthiness.jsonl" ]; then
+    echo "the old shared worthiness path was written in tree B" >&2
+    return 1
+  fi
+}
+
+@test "C4-05: SPEC/plan locks serialize across worktrees" {
+  MAIN="$(gaia_new_main gaia-c405-main)"
+  gaia_copy_real "$MAIN" \
+    .specify/extensions/gaia/lib/plan-allocator.sh \
+    .specify/extensions/gaia/lib/with-ledger-lock.sh \
+    .specify/extensions/gaia/lib/title-normalize.sh \
+    .gaia/scripts/ledger-path-lib.sh \
+    .gaia/scripts/main-root-lib.sh
+  gaia_commit_all "$MAIN" "add plan allocator"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  root_a="$(run_in "$A" -- git rev-parse --show-toplevel)"
+  root_b="$(run_in "$B" -- git rev-parse --show-toplevel)"
+
+  id_a="$(bash "$MAIN/.specify/extensions/gaia/lib/plan-allocator.sh" next "$root_a" "feature A")"
+  id_b="$(bash "$MAIN/.specify/extensions/gaia/lib/plan-allocator.sh" next "$root_b" "feature B")"
+
+  # Target: concurrent number allocations never both mint the same id -- the
+  # lock (and the ledger it guards) is anchored to main, so the second waits
+  # and reads the first's row. Today plan-allocator.sh is handed
+  # $ROOT = each tree's own toplevel (see C3-04), so each locks and numbers a
+  # SEPARATE, disconnected per-tree ledger, and both mint PLAN-001.
+  [ "$id_a" != "$id_b" ]
+}
+
+@test "C4-06: per-tree state survives the cutover" {
+  MAIN="$(gaia_new_main gaia-c406-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .gaia/scripts/link-worktree.sh \
+    .claude/hooks/lib/red-ledger.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add link-worktree deps"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$A"
+  gaia_link_worktree "$B"
+
+  # WHY the RED ledger is not symlinked, asked of the shipped code rather than
+  # asserted by hand: the registry classifies it per-tree, and the linker's own
+  # shared-set function is the single thing that decides what gets a symlink. A
+  # registry entry that started calling it shared -- the precise Phase-6
+  # cutover risk this scenario guards -- fails here rather than silently
+  # sharing the ledger.
+  classify="$(run_in "$A" -- bash -c \
+    '. .gaia/scripts/state-registry-lib.sh; gaia_registry_classify red-ledger/observations.jsonl' 2>/dev/null)"
+  [ "$classify" = "per-tree" ]
+
+  linkable="$(run_in "$A" -- bash -c \
+    '. .gaia/scripts/state-registry-lib.sh; gaia_registry_linkable_paths' 2>/dev/null)"
+  [ -n "$linkable" ]
+  grep -qxF red-ledger <<<"$linkable" && return 1
+
+  # Positive control on the linker itself. link-worktree.sh always exits 0 by
+  # contract (a broken hook must not break worktree creation), so a run that
+  # linked NOTHING -- unreadable registry, no symlink permission -- would leave
+  # red-ledger/ unlinked too and every isolation check below would pass for the
+  # wrong reason. Assert that shared state really is shared, by resolution
+  # rather than by "is a symlink".
+  #
+  # RESTATED AT THE CUTOVER (see README, Published assertion changes). It used
+  # to hunt for the first entry the registry names shared that already existed
+  # as a directory under main, because before the flip "shared" meant six
+  # individually-symlinked entries and the per-entry linker created each one in
+  # main as its symlink's target. The flip removes both the per-entry links and
+  # that side effect: a worktree now creates directories exactly when and how
+  # the main checkout does, through the one parent symlink. So the control asks
+  # the parent, which is simpler and strictly stronger -- it holds for all six
+  # shared entries at once instead of whichever one happened to be pre-created.
+  # It fails, as it must, on a linker that linked nothing: .gaia/local would
+  # then be each tree's own real directory and resolve somewhere else.
+  MAIN_LOCAL="$(cd "$MAIN/.gaia/local" && pwd -P)"
+  [ "$(cd "$A/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
+  [ "$(cd "$B/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
+
+  # No shared-state symlink exists for the per-tree entry in either tree. This
+  # is the mechanism check for TODAY's per-entry linking; the physical-path
+  # checks further down are what carry the guarantee across the cutover.
+  [ -L "$A/.gaia/local/red-ledger" ] && return 1
+  [ -L "$B/.gaia/local/red-ledger" ] && return 1
+
+  # The shipped path function decides where each tree's ledger lives -- the
+  # capture hook and the commit gate both address it through this one function
+  # -- so the fixture asks GAIA where to write instead of hand-building a path.
+  LEDGER_A="$(run_in "$A" -- bash -c '. .claude/hooks/lib/red-ledger.sh; red_ledger_path')"
+  LEDGER_B="$(run_in "$B" -- bash -c '. .claude/hooks/lib/red-ledger.sh; red_ledger_path')"
+  [ -n "$LEDGER_A" ]
+  [ -n "$LEDGER_B" ]
+
+  mkdir -p "$(dirname "$LEDGER_A")" "$(dirname "$LEDGER_B")"
+  printf '%s\n' '{"tree":"treeA","observation":"red-a"}' > "$LEDGER_A"
+  printf '%s\n' '{"tree":"treeB","observation":"red-b"}' > "$LEDGER_B"
+
+  # The half that still holds AFTER the cutover, and the reason this scenario
+  # is the named cutover guard. Once .gaia/local is ITSELF one symlink to main,
+  # red-ledger/ stays a plain directory while resolving inside main, so the -L
+  # checks above stop being sufficient on their own. Physical resolution is
+  # what catches that: the two ledgers must sit in different real directories,
+  # and neither in main's.
+  PHYS_A="$(cd "$(dirname "$LEDGER_A")" && pwd -P)"
+  PHYS_B="$(cd "$(dirname "$LEDGER_B")" && pwd -P)"
+  [ "$PHYS_A" != "$PHYS_B" ]
+  [ "$PHYS_A" != "$MAIN/.gaia/local/red-ledger" ]
+  [ "$PHYS_B" != "$MAIN/.gaia/local/red-ledger" ]
+
+  # Each tree's own observation is still there (a write that landed elsewhere,
+  # or that the peer overwrote, fails here -- an absence check alone would pass
+  # vacuously over an empty file), and neither ledger carries the other's.
+  grep -qF red-a "$LEDGER_A"
+  grep -qF red-b "$LEDGER_B"
+  grep -qF red-b "$LEDGER_A" && return 1
+  grep -qF red-a "$LEDGER_B" && return 1
+
+  if [ -e "$MAIN/.gaia/local/red-ledger/observations.jsonl" ]; then
+    echo "a per-tree RED observation resolved into main's copy" >&2
+    return 1
+  fi
+}
+
+@test "C4-07: one tree's RED never satisfies another tree's commit gate" {
+  MAIN="$(gaia_new_main gaia-c407-main)"
+  gaia_copy_real "$MAIN" \
+    .claude/hooks/red-verify-commit-check.sh \
+    .claude/hooks/capture-red-observations.sh \
+    .claude/hooks/lib/red-ledger.sh \
+    .claude/hooks/lib/repo-scope.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .gaia/scripts/link-worktree.sh
+  gaia_copy_registry "$MAIN"
+
+  # Both node helpers the gate calls (the signal extractor and the determinism
+  # classifier) resolve `typescript` via createRequire(import.meta.url), which
+  # is anchored to THEIR OWN on-disk file, not the caller's cwd. A plain
+  # gaia_copy_real copy would carry no node_modules of its own and could never
+  # resolve `typescript`; a symlink's realpath instead lands back in the real
+  # repo, where `typescript` is actually installed, so both helpers resolve it
+  # exactly as they do in production. Linked in MAIN, before the commit below,
+  # so treeA and treeB check out the IDENTICAL symlink (a git blob is just the
+  # target-path string) rather than two independently-constructed ones.
+  gaia_link_real "$MAIN" .gaia/scripts/red-ledger .gaia/scripts/classifier
+
+  gaia_commit_all "$MAIN" "add RED-verify gate deps"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$A"
+  gaia_link_worktree "$B"
+
+  # A test under app/utils/** so the determinism classifier (scoped to
+  # app/utils, app/services, app/hooks, and .ts under app/components) returns
+  # "strict" for it rather than "emergent" -- an emergent verdict would make
+  # the check hook skip the file outright, and the deny in check 2 below would
+  # never fire, for a reason that has nothing to do with tree isolation.
+  test_rel="app/utils/c407/index.test.ts"
+  full_name="adds two numbers c407"
+  test_body='import {expect, test} from "vitest";
+test("adds two numbers c407", () => {
+  expect(1 + 1).toBe(2);
+});
+'
+  mkdir -p "$A/app/utils/c407" "$B/app/utils/c407"
+  # Both trees write the IDENTICAL body: same fullName, same content signal.
+  # That identity is the whole point -- it is what makes tree A's observation
+  # a candidate to satisfy tree B's gate for a test B never ran.
+  printf '%s' "$test_body" > "$A/$test_rel"
+  printf '%s' "$test_body" > "$B/$test_rel"
+
+  canned="$(gaia_mk_tmp gaia-c407-json)/canned.json"
+  jq -nc --arg name "$test_rel" --arg full "$full_name" '{
+    numTotalTestSuites: 1, numFailedTests: 1, numPassedTests: 0,
+    numTotalTests: 1, success: false,
+    testResults: [{
+      name: $name, status: "failed", message: "",
+      assertionResults: [
+        {title: $full, fullName: $full, status: "failed",
+         failureMessages: ["AssertionError: expected 1 to be 2"]}
+      ]
+    }]
+  }' > "$canned"
+
+  # Drive the REAL capture hook FROM <tree>'s OWN checkout, feeding the canned
+  # vitest json above through its documented RED_CAPTURE_JSON_OVERRIDE seam (a
+  # real vitest run in bats is impractical -- see red-verify-e2e.bats). The
+  # SIGNAL is NOT canned: the hook recomputes it from the staged file's real
+  # on-disk body via the (symlinked) signal helper, so what gets recorded is a
+  # genuine per-tree observation, not a fixture fiction. pwd and the payload's
+  # own .cwd both name <tree>, matching how the check hook below resolves the
+  # acting tree.
+  capture_in() {
+    local tree="$1"
+    local payload
+    payload=$(jq -nc --arg c "pnpm test --run $test_rel" --arg d "$tree" \
+      '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d, tool_response:{stdout:"", stderr:"", interrupted:false}}')
+    run bash -c "cd '$tree' && export RED_CAPTURE_JSON_OVERRIDE='$canned'; printf '%s' '$payload' | bash '$tree/.claude/hooks/capture-red-observations.sh'"
+  }
+
+  # Drive the REAL check hook for a `git commit` PreToolUse, FROM <tree>'s OWN
+  # checkout -- never the real repo's copy, because the check hook derives its
+  # lib paths from BASH_SOURCE, so in production each worktree enforces with
+  # its own on-disk copy of the hook.
+  check_in() {
+    local tree="$1"
+    local payload
+    payload=$(jq -nc --arg c "git commit -m change" --arg d "$tree" \
+      '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}')
+    run bash -c "cd '$tree' && printf '%s' '$payload' | bash '$tree/.claude/hooks/red-verify-commit-check.sh'"
+  }
+
+  # ---------------------------------------------------------------------------
+  # Check 1 -- the handshake works (positive control). Tree A records its own
+  # RED via the real capture hook, then stages the test; the real check hook
+  # run from A allows. Without this, a deny anywhere below could just as
+  # easily be this fixture never producing an allow at all.
+  # ---------------------------------------------------------------------------
+  capture_in "$A"
+  [ "$status" -eq 0 ]
+
+  git -C "$A" add "$test_rel"
+  check_in "$A"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+
+  # ---------------------------------------------------------------------------
+  # Check 2 -- the assertion. Tree B stages the IDENTICAL test; the RED exists
+  # ONLY in tree A's ledger, never in B's. The real check hook run from B
+  # denies: tree A's observation of the test failing is not tree B's
+  # observation of the test failing. This is the INVERSE of C4-06's "never
+  # blocks tree B's commit" clause -- C4-06 guards against one tree's state
+  # wrongly BLOCKING a peer's commit; this guards against one tree's state
+  # wrongly CLEARING a peer's gate. A gate that never falsely blocks can still
+  # falsely pass, and no assertion shaped like C4-06's catches that, so this
+  # is a distinct scenario, not a variant folded into it.
+  # ---------------------------------------------------------------------------
+  git -C "$B" add "$test_rel"
+  check_in "$B"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
+
+  # ---------------------------------------------------------------------------
+  # Check 3 -- the deny is caused by the missing per-tree observation, and
+  # nothing else. Record a RED in tree B too (the real capture hook, the same
+  # canned failure, the same on-disk body), then re-run the SAME check from
+  # the SAME tree: it now allows. Without this, check 2's deny could be
+  # produced by any fixture defect unrelated to isolation (a wrong staged
+  # path, a body the helper cannot parse, a missing node/typescript) and the
+  # scenario would still show a deny -- a vacuous "pass". Closing that
+  # vacuity is exactly what C4-06 was repaired for; omitting it here would
+  # reintroduce the same hole this suite exists to catch.
+  # ---------------------------------------------------------------------------
+  capture_in "$B"
+  [ "$status" -eq 0 ]
+
+  check_in "$B"
+  [ "$status" -eq 0 ]
+  # Not the assertion's final statement: a `grep ... && return 1` whose good
+  # case is grep failing (nothing found) would otherwise hand grep's own
+  # non-zero status back as the TEST's exit code when it is the function's
+  # last command, per .claude/rules/bats-assertions.md's "custom checks end
+  # the failing branch with an explicit return 1" note -- the same hazard in
+  # its final-statement form.
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  return 0
+}
+
+@test "C4-08: one tree's handoff and forensics reports are not another tree's to clear" {
+  MAIN="$(gaia_new_main gaia-c408-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .gaia/scripts/link-worktree.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add link-worktree deps"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$A"
+  gaia_link_worktree "$B"
+
+  # WHY this scenario exists and why it is not folded into C4-06 or C4-04:
+  # those two guard the RED ledger and the worthiness ledger, each of which is
+  # addressed by a shipped shell function. `forensics/` and `handoff/` have no
+  # function and no script at all -- they are instruction prose an agent
+  # executes, which PROGRAM.md section 6 calls a fifth execution surface. Until
+  # the cutover their separation came free from each worktree owning a separate
+  # physical .gaia/local, so nothing had to be right for it to hold. After the
+  # cutover their separation IS the tree key, resolved by an agent following
+  # written instructions, and nothing else. That is the least-guarded mechanism
+  # in the riskiest change in the program.
+
+  # The mechanism the prose depends on, asked of the shipped code exactly as
+  # the prose asks for it: `bash .gaia/scripts/main-root-lib.sh --tree-key`,
+  # run from inside the tree. Not sourced -- the executable entry is what
+  # forensics.md step 7 and handoff.md step 0 actually invoke, so a regression
+  # in the CLI dispatch (as opposed to the function) is a real break for these
+  # two surfaces and must fail here.
+  run run_in "$A" -- bash .gaia/scripts/main-root-lib.sh --tree-key
+  [ "$status" -eq 0 ]
+  KEY_A="$output"
+  run run_in "$B" -- bash .gaia/scripts/main-root-lib.sh --tree-key
+  [ "$status" -eq 0 ]
+  KEY_B="$output"
+
+  # The contract the prose relies on literally ("16 lowercase hex characters"),
+  # and the property without which everything below is decoration.
+  printf '%s' "$KEY_A" | grep -qE '^[0-9a-f]{16}$' || return 1
+  printf '%s' "$KEY_B" | grep -qE '^[0-9a-f]{16}$' || return 1
+  [ "$KEY_A" != "$KEY_B" ]
+
+  # Mechanism check for TODAY's per-entry linking, mirroring C4-06: the
+  # registry classifies both entries per-tree and the linker's own shared-set
+  # function names neither, so neither is symlinked into main. A registry edit
+  # that started calling either one shared -- the precise cutover risk -- fails
+  # here rather than silently merging two trees' reports.
+  for entry in forensics handoff; do
+    classify="$(run_in "$A" -- bash -c \
+      ". .gaia/scripts/state-registry-lib.sh; gaia_registry_classify $entry/x.md" 2>/dev/null)"
+    [ "$classify" = "per-tree" ]
+  done
+
+  linkable="$(run_in "$A" -- bash -c \
+    '. .gaia/scripts/state-registry-lib.sh; gaia_registry_linkable_paths' 2>/dev/null)"
+  [ -n "$linkable" ]
+  grep -qxF forensics <<<"$linkable" && return 1
+  grep -qxF handoff <<<"$linkable" && return 1
+
+  # Positive control on the linker, in the same form C4-06 uses and for the
+  # same reason: link-worktree.sh always exits 0 by contract, so a run that
+  # linked NOTHING would leave forensics/ and handoff/ unlinked too and every
+  # isolation check below would pass for the wrong reason. Stated as resolution
+  # rather than as "is a symlink", and asked of `.gaia/local` itself, which is
+  # what the cutover made the shared thing -- the same restatement C4-06
+  # carries, for the same reason and with the same non-vacuity: a linker that
+  # linked nothing leaves each tree its own real directory, resolving elsewhere.
+  MAIN_LOCAL="$(cd "$MAIN/.gaia/local" && pwd -P)"
+  [ "$(cd "$A/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
+  [ "$(cd "$B/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
+
+  # Both trees do what the prose tells an agent to do: resolve the key, then
+  # write under it. The paths are built from the key the SHIPPED code just
+  # returned, never from a literal the fixture invented -- a fixture that
+  # hand-built the keyed shape would be re-stating the thing under test, which
+  # is the defect M-1 was written to remove from C4-06.
+  HANDOFF_A="$A/.gaia/local/handoff/$KEY_A/HANDOFF-2026-07-25-treeA.md"
+  HANDOFF_B="$B/.gaia/local/handoff/$KEY_B/HANDOFF-2026-07-25-treeB.md"
+  FORENSICS_A="$A/.gaia/local/forensics/$KEY_A/20260725T120000Z-hook-misfire.md"
+  FORENSICS_B="$B/.gaia/local/forensics/$KEY_B/20260725T120000Z-hook-misfire.md"
+  mkdir -p "$(dirname "$HANDOFF_A")" "$(dirname "$HANDOFF_B")" \
+    "$(dirname "$FORENSICS_A")" "$(dirname "$FORENSICS_B")"
+  printf '%s\n' 'handoff-body-treeA' > "$HANDOFF_A"
+  printf '%s\n' 'handoff-body-treeB' > "$HANDOFF_B"
+  printf '%s\n' 'forensics-body-treeA' > "$FORENSICS_A"
+  printf '%s\n' 'forensics-body-treeB' > "$FORENSICS_B"
+
+  # The half that still holds AFTER the cutover, and the reason this scenario
+  # is a cutover guard rather than a test of today's directory layout. Once
+  # .gaia/local is ITSELF one symlink to main, both trees' keyed directories
+  # resolve inside main and any "is it under my own tree" check reads green
+  # through the very flip it guards. Physical resolution is what catches a lost
+  # key: the two trees' directories must be different real directories, and
+  # neither may be the unkeyed parent that the pre-cutover prose named.
+  PHYS_HANDOFF_A="$(cd "$(dirname "$HANDOFF_A")" && pwd -P)"
+  PHYS_HANDOFF_B="$(cd "$(dirname "$HANDOFF_B")" && pwd -P)"
+  PHYS_FOR_A="$(cd "$(dirname "$FORENSICS_A")" && pwd -P)"
+  PHYS_FOR_B="$(cd "$(dirname "$FORENSICS_B")" && pwd -P)"
+  [ "$PHYS_HANDOFF_A" != "$PHYS_HANDOFF_B" ]
+  [ "$PHYS_FOR_A" != "$PHYS_FOR_B" ]
+  [ "$PHYS_HANDOFF_A" != "$MAIN/.gaia/local/handoff" ]
+  [ "$PHYS_HANDOFF_B" != "$MAIN/.gaia/local/handoff" ]
+  [ "$PHYS_FOR_A" != "$MAIN/.gaia/local/forensics" ]
+  [ "$PHYS_FOR_B" != "$MAIN/.gaia/local/forensics" ]
+
+  # ---------------------------------------------------------------------------
+  # The harm, driven rather than described. handoff.md step 0 is a DELETE:
+  # "Delete any existing handoff before writing: rm -f
+  # .gaia/local/handoff/<tree_key>/HANDOFF-*.md", and settings.json carries a
+  # permission entry for exactly that glob. It is the one instruction in either
+  # prose surface that destroys data, so it is the one whose blast radius has
+  # to be bounded to the acting tree. Run it from A, with A's key, and B's
+  # handoff must survive untouched. If a future change drops the key segment
+  # from that line -- or from the permission glob, which would push an agent
+  # toward the unkeyed form -- this is what reds.
+  # ---------------------------------------------------------------------------
+  run run_in "$A" -- bash -c "rm -f .gaia/local/handoff/$KEY_A/HANDOFF-*.md"
+  [ "$status" -eq 0 ]
+
+  if [ -e "$HANDOFF_A" ]; then
+    echo "the documented clear-prior step did not delete the acting tree's own handoff" >&2
+    return 1
+  fi
+  [ -f "$HANDOFF_B" ]
+  grep -qF handoff-body-treeB "$HANDOFF_B"
+
+  # Neither tree can read the other's report through its own keyed path, and
+  # the unkeyed parent -- the path both prose surfaces used before the
+  # re-keying, and the one an agent falls back to if the key step is skipped --
+  # holds nothing in either tree.
+  grep -qF forensics-body-treeB "$FORENSICS_A" && return 1
+  grep -qF forensics-body-treeA "$FORENSICS_B" && return 1
+  for tree in "$A" "$B" "$MAIN"; do
+    if find "$tree/.gaia/local/forensics" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -q .; then
+      echo "a forensics report landed at the unkeyed path in $tree" >&2
+      return 1
+    fi
+    if find "$tree/.gaia/local/handoff" -maxdepth 1 -type f -name 'HANDOFF-*.md' 2>/dev/null | grep -q .; then
+      echo "a handoff landed at the unkeyed path in $tree" >&2
+      return 1
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Tranche 5 -- SURFACE
+# ---------------------------------------------------------------------------
+
+@test "C5-01: the statusline renders in a worktree" {
+  MAIN="$(gaia_new_main gaia-c501-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/statusline/gaia-statusline.sh \
+    .gaia/scripts/main-root-lib.sh
+  gaia_commit_all "$MAIN" "add statusline + resolver"
+
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  # The debt count and the setup marker are registry scope "shared", so they
+  # live under MAIN's .gaia/local -- one physical copy for every tree. B is
+  # left deliberately UNPROVISIONED (no symlinks back to main), so the segment
+  # can only render if the statusline resolved main for itself.
+  mkdir -p "$MAIN/.gaia/local/debt"
+  jq -n '{schema: 1, openCount: 3, computedAt: 0}' > "$MAIN/.gaia/local/debt/count.json"
+  jq -n '{completed_at: "2026-01-01T00:00:00Z"}' > "$MAIN/.gaia/local/setup-state.json"
+
+  home_dir="$(gaia_mk_tmp gaia-c501-home)"
+  json="$(jq -n --arg d "$B" '{workspace: {current_dir: $d}}')"
+  run env HOME="$home_dir" bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$B/.gaia/statusline/gaia-statusline.sh"
+  [ "$status" -eq 0 ]
+
+  # Target: the right side renders the clone's segment (e.g. the debt nudge)
+  # from a worktree session, not blanket-suppressed; no segment shows a fact
+  # true of one tree and false of this one.
+  # Before task 5.1, ANY session inside a linked worktree blanket-suppressed
+  # the whole right side ("if [ "$is_worktree" -eq 0 ]" gated everything from
+  # the debt segment down to setup completion), so the right side was dark
+  # regardless of what the (correctly shared) cache held.
+  grep -qF 'gaia-debt' <<< "$output"
+}
+
+@test "C5-02: wiki hooks are live in a worktree" {
+  MAIN="$(gaia_new_main gaia-c502-main)"
+  gaia_copy_real "$MAIN" \
+    .claude/hooks/wiki-drift-check.sh \
+    .claude/hooks/wiki-commit-nudge.sh \
+    .claude/hooks/wiki-session-stop.sh \
+    .claude/hooks/wiki-squash-autocommits.sh
+  mkdir -p "$MAIN/wiki"
+  jq -n --arg sha "$(git -C "$MAIN" rev-parse HEAD)" \
+    '{version: 1, last_evaluated_sha: $sha, last_evaluated_at: "2026-01-01T00:00:00Z"}' \
+    > "$MAIN/wiki/.state.json"
+  gaia_commit_all "$MAIN" "add wiki hooks"
+
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  # Advance treeB past its recorded last_evaluated_sha so real drift exists,
+  # and remember this point as the session-start marker for hook 3 below.
+  echo more >> "$B/README.md"
+  git -C "$B" add README.md
+  git -C "$B" commit -q -m "drift commit"
+  session_start_sha="$(git -C "$B" rev-parse HEAD)"
+
+  dead=""
+
+  # 1. wiki-drift-check.sh: real drift exists; a live hook prints the
+  # reminder and stamps its own marker.
+  json="$(jq -n '{session_id: "S1"}')"
+  out="$(run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$MAIN/.claude/hooks/wiki-drift-check.sh")"
+  grep -qF '[wiki state]' <<< "$out" || dead="$dead wiki-drift-check"
+
+  # 2. wiki-commit-nudge.sh: fires on a Bash `git commit` PostToolUse call.
+  json="$(jq -n --arg c 'git commit -m "x"' '{tool_name: "Bash", tool_input: {command: $c}}')"
+  out="$(run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$MAIN/.claude/hooks/wiki-commit-nudge.sh")"
+  grep -qF '[wiki nudge]' <<< "$out" || dead="$dead wiki-commit-nudge"
+
+  # 3. wiki-session-stop.sh: a session-start marker recording HEAD before a
+  # commit that touched wiki/ was made; a live hook nudges to refresh hot.md.
+  git_dir_b="$(run_in "$B" -- git rev-parse --git-dir)"
+  echo "$session_start_sha" > "$git_dir_b/claude-session-start"
+  echo page > "$B/wiki/page.md"
+  git -C "$B" add wiki/page.md
+  git -C "$B" commit -q -m "wiki page"
+  json="$(jq -n '{session_id: "S1"}')"
+  out="$(run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$MAIN/.claude/hooks/wiki-session-stop.sh")"
+  grep -qF 'WIKI_CHANGED' <<< "$out" || dead="$dead wiki-session-stop"
+
+  # 4. wiki-squash-autocommits.sh: two consecutive `wiki: auto-commit` commits
+  # at HEAD; a live hook squashes them into one.
+  echo a1 > "$B/wiki/auto.md"
+  git -C "$B" add wiki/auto.md
+  git -C "$B" commit -q -m "wiki: auto-commit 1"
+  echo a2 >> "$B/wiki/auto.md"
+  git -C "$B" add wiki/auto.md
+  git -C "$B" commit -q -m "wiki: auto-commit 2"
+  before_n="$(count_autocommits "$B")"
+  run_in "$B" -- bash "$MAIN/.claude/hooks/wiki-squash-autocommits.sh" >/dev/null 2>&1
+  after_n="$(count_autocommits "$B")"
+  [ "$before_n" -eq 2 ]
+  [ "$after_n" -eq 1 ] || dead="$dead wiki-squash-autocommits"
+
+  # Target: none silently dead -- each either fires correctly or refuses out
+  # loud. A hook that still gated repository detection on a bare
+  # `[ -d .git ]` test would die here, since a linked worktree's .git is a
+  # FILE, not a directory.
+  if [ -n "$dead" ]; then
+    echo "silently dead in a worktree:$dead" >&2
+    return 1
+  fi
+}
+
+@test "C5-03: main-only flows refuse out loud from a worktree" {
+  # Proxy note: the release/audit/wiki flows are CLI/skill-driven (network,
+  # gh, multi-agent orchestration) and impractical to run live in a bats
+  # fixture. What IS run live is the shipped refusal itself, against a real
+  # linked worktree -- the helper is the whole refusal, so the only thing
+  # proxied here is the flow that calls it, not the message it prints.
+  MAIN="$(gaia_new_main gaia-c503-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/main-only-lib.sh
+  gaia_commit_all "$MAIN" "add resolver + refusal helper"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  # The fixture really is a linked worktree, before anything is asserted about
+  # what a flow does from inside one.
+  run run_in "$B" -- bash "$MAIN/.gaia/scripts/main-root-lib.sh" --is-worktree
+  [ "$status" -eq 0 ]
+
+  # Target, part 1 -- the refusal is real and it is LOUD. It refuses (non-zero),
+  # names the tree it refused from AND the main checkout to use instead, and
+  # hands back the command to get there. A refusal that does not say where to go
+  # is the silent-death shape this tranche exists to reject.
+  run run_in "$B" -- bash -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
+  [ "$status" -eq 1 ]
+  grep -qxF -- "/gaia-release must run from the main checkout, not a worktree." <<<"$output"
+  grep -qxF -- "Worktree:       $B" <<<"$output"
+  grep -qxF -- "Main checkout:  $MAIN" <<<"$output"
+  grep -qxF -- "Run \`cd $MAIN\` then re-invoke /gaia-release." <<<"$output"
+
+  # Target, part 2 -- a main-only entry point actually CALLS it, so part 1's
+  # refusal is reachable rather than orphaned. Anchored to the start of a line:
+  # a prose mention of the helper's name cannot satisfy this, only an
+  # invocation can.
+  run grep -rlE '^[[:space:]]*gaia_refuse_if_worktree "' \
+    "$GAIA_REPO_ROOT_REAL/.gaia/cli/src/wiki" \
+    "$GAIA_REPO_ROOT_REAL/.gaia/cli/src/release" \
+    "$GAIA_REPO_ROOT_REAL/.claude/commands/gaia-release.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "C5-04: a machine-scoped nudge is not mis-scoped" {
+  MAIN="$(gaia_new_main gaia-c504-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .gaia/scripts/link-worktree.sh \
+    .gaia/scripts/debt-count-refresh.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add debt refresher + link-worktree deps"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$A"
+  gaia_link_worktree "$B"
+
+  # debt/ is a state-registry "shared" path, so both A's and B's own copy of
+  # the refresher resolve the SAME physical cache through their own symlink.
+  # The fixture creates the directory the way the real writers do
+  # (debt-sentinel-touch.sh:93, debt-count-refresh.sh:114); before the
+  # single-symlink cutover the per-entry linker created it as a symlink target
+  # and the fixture inherited that, which the cutover deliberately removed.
+  mkdir -p "$MAIN/.gaia/local/debt"
+  jq -n --argjson t "$(date +%s)" '{schema: 1, openCount: 2, computedAt: $t}' \
+    > "$MAIN/.gaia/local/debt/count.json"
+  computed_before="$(jq -r '.computedAt' "$MAIN/.gaia/local/debt/count.json")"
+
+  # Every open worktree's own statusline tick fires its own instance of this
+  # refresher; simulate two such ticks landing back-to-back, one per tree.
+  run_in "$A" -- bash .gaia/scripts/debt-count-refresh.sh
+  run_in "$B" -- bash .gaia/scripts/debt-count-refresh.sh
+
+  computed_after="$(jq -r '.computedAt' "$MAIN/.gaia/local/debt/count.json")"
+
+  # Target -- and today's already-satisfied result: within the TTL, a tick
+  # from EITHER worktree sees the shared cache is fresh and skips
+  # recomputing, so the nudge fires once for the machine's TTL window, not
+  # once per worktree per tick. A machine-scoped nudge firing from every
+  # worktree unconditionally is the mis-scoped defect this guards against.
+  [ "$computed_before" = "$computed_after" ]
+}
+
+# ---------------------------------------------------------------------------
+# Tranche 6 -- LIFECYCLE
+# ---------------------------------------------------------------------------
+
+@test "C6-01: a name collision deletes no peer" {
+  # RESTATED AT THE MOVE TO HARNESS-NATIVE CREATION (see README, Published
+  # assertion changes). This drove GAIA's own create-worktree.sh twice on one
+  # name and watched the peer. That creator is gone, so the harm it guarded
+  # moved rather than disappeared, and this scenario follows it to where it
+  # now lives. Both halves below are hermetic and both can regress; the
+  # harness's own collision behaviour is NOT asserted here, because a bats
+  # fixture cannot drive it -- that half is the phase gate's live trial, run
+  # and recorded, and the README says so rather than implying this row covers
+  # it.
+
+  # ---- half 1: GAIA does not interpose a creator that could delete a peer.
+  # The shipped settings register no WorktreeCreate and no WorktreeRemove, so
+  # no GAIA code adjudicates a collision at all. This is the half that can
+  # silently come back: re-registering either hook restores exactly the class
+  # of defect the deletion removed, and nothing else in the suite would notice.
+  # Read from the REAL settings.json, not a fixture, because the claim is about
+  # what GAIA ships.
+  settings="$GAIA_REPO_ROOT_REAL/.claude/settings.json"
+  [ -f "$settings" ]
+  [ "$(jq -r 'has("hooks") and (.hooks | has("WorktreeCreate"))' "$settings")" = "false" ]
+  [ "$(jq -r 'has("hooks") and (.hooks | has("WorktreeRemove"))' "$settings")" = "false" ]
+
+  # ---- half 2: the one place GAIA still removes a worktree spares a peer's
+  # uncommitted work. The janitor's reap sweep owns teardown now, so it is the
+  # only shipped code left that can delete someone's tree, and this task is
+  # what moved that teardown into it. C3-01 covers the sweep's OTHER spare-arm
+  # (a live RUNNING plan sentinel); this covers the arm that carries the
+  # original harm -- irreplaceable uncommitted work destroyed by a reaper that
+  # judged the tree dead.
+  MAIN="$(gaia_new_main gaia-c601-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/link-worktree.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .claude/hooks/local-janitor.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add janitor deps"
+
+  ORIGIN="$(gaia_mk_tmp gaia-c601-origin)"
+  git init -q --bare "$ORIGIN"
+  git -C "$MAIN" remote add origin "$ORIGIN"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" "debt/collide" "worktree-debt/collide")"
+
+  # treeB reads provably dead to every git-level signal the reaper has: its
+  # upstream is pushed then deleted remotely, so the branch tracks [gone].
+  git -C "$B" push -q -u origin "worktree-debt/collide"
+  git -C "$B" push -q origin --delete "worktree-debt/collide"
+  git -C "$B" fetch -q --prune
+
+  # ...and it holds real, valuable, uncommitted work. That is the ONLY thing
+  # standing between it and the reaper.
+  echo irreplaceable > "$B/uncommitted.txt"
+  git -C "$B" add -A
+
+  # treeA needs its own .gaia/local present or the janitor's local_dir guard
+  # exits before the worktree-reap sweep is ever reached (same as C3-01).
+  gaia_link_worktree "$A"
+
+  run run_in "$A" -- bash "$MAIN/.claude/hooks/local-janitor.sh"
+  [ "$status" -eq 0 ]
+
+  # Target: the peer, and its uncommitted work, survive.
+  [ -d "$B" ] || return 1
+  [ -f "$B/uncommitted.txt" ] || return 1
+  grep -qxF irreplaceable "$B/uncommitted.txt"
+}
+
+@test "C6-02: provisioning self-heals on re-entry" {
+  MAIN="$(gaia_new_main gaia-c602-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/link-worktree.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .claude/hooks/provision-worktree.sh
+  gaia_copy_registry "$MAIN"
+  gaia_commit_all "$MAIN" "add link-worktree deps"
+
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$B"
+
+  # RESTATED AT THE CUTOVER (see README, Published assertion changes). This
+  # asserted `-L` on .gaia/local/audit, which was one of six individually
+  # symlinked shared entries. After the flip there is ONE symlink -- .gaia/local
+  # itself -- and audit/ is a plain directory reached through it, so the old
+  # assertion is structurally false however correctly provisioning behaves. The
+  # scenario is unchanged in what it claims (provisioning repairs a broken
+  # worktree on re-entry, with no manual step); only the thing that can be
+  # broken has moved up one level, because that is now the only thing there is
+  # to break. Breaking audit/ instead would reach through the symlink and
+  # damage the main checkout's own state, which is not what this measures.
+  [ -L "$B/.gaia/local" ]
+
+  # Deliberately break the shared-state symlink: replace it with a plain dir
+  # holding content that belongs to nobody, which is what a hand-broken link or
+  # a plain `git worktree add` leaves behind.
+  rm -f "$B/.gaia/local"
+  mkdir -p "$B/.gaia/local/audit"
+  echo orphaned > "$B/.gaia/local/audit/orphan.txt"
+
+  # Re-entry, driven through the real provisioning hook rather than through the
+  # linker it delegates to: entering a worktree is a PostToolUse EnterWorktree
+  # event, and the payload shape below is the one the harness emits (its cwd is
+  # already the worktree and its tool_response names the path outright). The
+  # hook is run from the worktree's own on-disk copy, as it is in production,
+  # where settings.json names it by a path relative to the session's cwd.
+  reentry_payload="$(jq -nc --arg p "$B" \
+    '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
+  ( cd "$B" && printf '%s' "$reentry_payload" | bash "$B/.claude/hooks/provision-worktree.sh" ) >/dev/null 2>&1
+
+  # Target: repaired to a correct symlink at main's real .gaia/local, on
+  # re-entry, without manual intervention.
+  [ -L "$B/.gaia/local" ] || return 1
+  target_real="$(cd "$B/.gaia/local" && pwd -P)"
+  main_real="$(cd "$MAIN/.gaia/local" && pwd -P)"
+  [ "$target_real" = "$main_real" ]
+}
+
+@test "C6-03: generated types are present in a fresh worktree" {
+  MAIN="$(gaia_new_main gaia-c603-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/link-worktree.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .claude/hooks/provision-worktree.sh
+  gaia_copy_registry "$MAIN"
+
+  # A stand-in react-router CLI: provisioning borrows the resolved main
+  # checkout's own installed binary rather than installing one per worktree,
+  # so a fixture-local stub at the same borrowed path is a faithful proxy for
+  # the real typegen call.
+  mkdir -p "$MAIN/node_modules/.bin"
+  cat > "$MAIN/node_modules/.bin/react-router" <<'SH'
+#!/bin/sh
+if [ "$1" = "typegen" ]; then
+  mkdir -p .react-router/types
+  echo generated > .react-router/types/.stamp
+fi
+SH
+  chmod +x "$MAIN/node_modules/.bin/react-router"
+  gaia_commit_all "$MAIN" "add provisioning deps + stub CLI"
+
+  # RESTATED AT THE MOVE TO HARNESS-NATIVE CREATION (see README, Published
+  # assertion changes). This drove GAIA's own create-worktree.sh, which called
+  # typegen itself at the end of creation. The harness creates worktrees now, so
+  # a fixture that drives GAIA's creator would be measuring a thing that no
+  # longer runs. What the scenario CLAIMS is unchanged -- a fresh worktree has
+  # its generated build types before first use -- and it is now measured against
+  # the mechanism that really holds it.
+  #
+  # The worktree is made the way the harness makes one: a plain `git worktree
+  # add` under .claude/worktrees/, on the harness's own branch spelling
+  # (worktree-<name>), with nothing GAIA-specific done to it at creation time.
+  # That is also what a hand-rolled `git worktree add` leaves behind, so this
+  # covers the tree nobody's tooling created as well as the one the harness did.
+  wt="$(gaia_add_worktree "$MAIN" "feat/types" "worktree-feat/types")"
+
+  # Entering the tree is what provisions it, so the property is asserted after
+  # the event that has to hold it. Same payload shape as C6-02: the one the
+  # harness emits on PostToolUse/EnterWorktree, whose cwd is already the
+  # worktree and whose tool_response names the path outright.
+  entry_payload="$(jq -nc --arg p "$wt" \
+    '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
+  ( cd "$wt" && printf '%s' "$entry_payload" | bash "$wt/.claude/hooks/provision-worktree.sh" ) >/dev/null 2>&1
+
+  # Target: generated build types are present and current before first use.
+  [ -f "$wt/.react-router/types/.stamp" ]
+}
+
+# ---------------------------------------------------------------------------
+# Step-7 carve-out candidates -- the hard three
+# ---------------------------------------------------------------------------
+
+@test "C7-01: Serena answers the acting tree or refuses" {
+  # Claude Code spawns one Serena MCP process PER SESSION (measured: two live
+  # processes for two sessions), so there is no single shared process for a
+  # later activation to collide inside. The real silent-wrong-tree path is a
+  # bare project NAME resolving through Serena's own machine-global registry
+  # to whichever checkout registered it, which .serena/project.yml (tracked,
+  # identical in every linked worktree) makes the main checkout. This drives
+  # the shipped activation guard that denies it.
+  MAIN="$(gaia_new_main gaia-c701-main)"
+  mkdir -p "$MAIN/.serena"
+  printf 'project_name: "gaia"\n' > "$MAIN/.serena/project.yml"
+  gaia_copy_real "$MAIN" \
+    .claude/hooks/block-serena-cross-tree-activation.sh \
+    .gaia/scripts/main-root-lib.sh
+  gaia_commit_all "$MAIN" "add serena activation guard"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  guard="$MAIN/.claude/hooks/block-serena-cross-tree-activation.sh"
+
+  # (1) NAME ARM. B's own .serena/project.yml (checked out from the same
+  # tracked file main carries) names "gaia", exactly the name the registry
+  # would resolve to main. Denied, naming B's own root as the correct value.
+  json="$(jq -n --arg c "$B" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: "gaia"}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
+  grep -qF -- "$B" <<< "$output"
+
+  # (2) PATH ARM, the main checkout. The same silent-wrong-tree shape by
+  # absolute path instead of by name.
+  json="$(jq -n --arg c "$B" --arg p "$MAIN" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
+  grep -qF -- "$B" <<< "$output"
+
+  # (3) PATH ARM, a sibling worktree -- the case the original simulated
+  # scenario named (tree A, not only main).
+  json="$(jq -n --arg c "$B" --arg p "$A" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
+
+  # (4) PATH ARM, B's own root: the correct activation, allowed.
+  json="$(jq -n --arg c "$B" --arg p "$B" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
+  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<< "$output" && return 1
+  return 0
+}
+
+@test "C7-02: tests use the acting tree's dependencies" {
+  MAIN="$(gaia_new_main gaia-c702-main)"
+  gaia_copy_real "$MAIN" \
+    .gaia/scripts/link-worktree.sh \
+    .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/state-registry-lib.sh \
+    .claude/hooks/provision-worktree.sh
+  gaia_copy_registry "$MAIN"
+
+  jq -n '{name: "fixture", dependencies: {"left-pad": "1.0.0"}}' > "$MAIN/package.json"
+  # A placeholder is enough: provisioning gates the install step on the
+  # lockfile's PRESENCE only, and the stub pnpm below reads the manifest, not
+  # the lockfile's content.
+  echo lockfile > "$MAIN/pnpm-lock.yaml"
+  gaia_commit_all "$MAIN" "add provisioning deps + package.json + lockfile"
+
+  # node_modules is gitignored and never shared/re-installed per worktree in
+  # real GAIA; created directly on disk AFTER the commit, so it never becomes
+  # a tracked path a worktree would check out. This is main's own installed
+  # copy -- the divergence the worktree must not silently resolve against.
+  mkdir -p "$MAIN/node_modules/left-pad"
+  echo '{"name":"left-pad","version":"1.0.0"}' > "$MAIN/node_modules/left-pad/package.json"
+  echo "module.exports = '1.0.0';" > "$MAIN/node_modules/left-pad/index.js"
+
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  # Tree B's branch commits a real divergence: not a dropped dependency but a
+  # different pinned version. It never gets its own node_modules except
+  # through the provisioning hook fired below.
+  jq '.dependencies = {"left-pad": "2.0.0"}' "$B/package.json" > "$B/package.json.tmp"
+  mv "$B/package.json.tmp" "$B/package.json"
+  git -C "$B" add package.json
+  git -C "$B" commit -q -m "pin left-pad 2.0.0"
+  [ ! -e "$B/node_modules" ]
+
+  # A pnpm stand-in: reads the CURRENT directory's own package.json (the tree
+  # the hook cd'd into before invoking it) and materializes node_modules/<dep>
+  # for each declared dependency at the declared version -- what a package
+  # manager does to the on-disk tree, and nothing more; no registry, no real
+  # install. It does not fake the property under test: if the hook never runs
+  # this in B, B gets no node_modules of its own, exactly as a real install's
+  # absence would leave it.
+  stub_dir="$(gaia_mk_tmp gaia-c702-pnpm-stub)"
+  cat > "$stub_dir/pnpm" <<'SH'
+#!/bin/sh
+if [ "$1" = "install" ]; then
+  jq -r '.dependencies // {} | to_entries[] | "\(.key) \(.value)"' package.json |
+    while IFS=' ' read -r name version; do
+      mkdir -p "node_modules/$name"
+      printf '{"name":"%s","version":"%s"}' "$name" "$version" > "node_modules/$name/package.json"
+      printf 'module.exports = "%s";\n' "$version" > "node_modules/$name/index.js"
+    done
+fi
+SH
+  chmod +x "$stub_dir/pnpm"
+
+  # Fire the real EnterWorktree provisioning payload against B -- same
+  # payload shape as C6-02 and C6-03: cwd already switched, tool_response
+  # naming the path -- with the stub pnpm on PATH for the hook's own install
+  # step.
+  entry_payload="$(jq -nc --arg p "$B" \
+    '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
+  ( cd "$B" && printf '%s' "$entry_payload" | PATH="$stub_dir:$PATH" bash "$B/.claude/hooks/provision-worktree.sh" ) >/dev/null 2>&1
+
+  # Target: a test run inside B resolves its dependencies from B's own tree,
+  # never silently against main's when they differ. A bare "resolution
+  # fails" assertion is the wrong shape here: B is nested UNDER main, so
+  # Node's own upward node_modules search reaches main's copy regardless of
+  # whether B has one of its own -- it resolves and succeeds either way. The
+  # property that matters is WHICH tree answers, so the assertion reads the
+  # resolved path and the resolved version rather than the exit status alone.
+  run run_in "$B" -- node -e "console.log(require.resolve('left-pad')); console.log(require('left-pad/package.json').version);"
+  [ "$status" -eq 0 ] || return 1
+
+  case "${lines[0]}" in
+    "$B"/node_modules/*) ;;
+    *) return 1 ;;
+  esac
+  [ "${lines[1]}" = "2.0.0" ]
+}
+
+@test "C7-03: the wiki state value is not cross-clobbered" {
+  MAIN="$(gaia_new_main gaia-c703-main)"
+  mkdir -p "$MAIN/wiki"
+  jq -n --arg sha "$(git -C "$MAIN" rev-parse HEAD)" \
+    '{version: 1, last_evaluated_sha: $sha, last_evaluated_at: "2026-01-01T00:00:00Z"}' \
+    > "$MAIN/wiki/.state.json"
+  gaia_commit_all "$MAIN" "add wiki state"
+
+  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+
+  echo "a work" > "$A/a.txt"
+  git -C "$A" add a.txt
+  git -C "$A" commit -q -m "a work"
+  a_sha="$(git -C "$A" rev-parse HEAD)"
+  jq --arg sha "$a_sha" '.last_evaluated_sha = $sha' "$A/wiki/.state.json" > "$A/wiki/.state.json.tmp"
+  mv "$A/wiki/.state.json.tmp" "$A/wiki/.state.json"
+  git -C "$A" add wiki/.state.json
+  git -C "$A" commit -q -m "wiki: bump state to a"
+
+  echo "b work" > "$B/b.txt"
+  git -C "$B" add b.txt
+  git -C "$B" commit -q -m "b work"
+  b_sha="$(git -C "$B" rev-parse HEAD)"
+  jq --arg sha "$b_sha" '.last_evaluated_sha = $sha' "$B/wiki/.state.json" > "$B/wiki/.state.json.tmp"
+  mv "$B/wiki/.state.json.tmp" "$B/wiki/.state.json"
+  git -C "$B" add wiki/.state.json
+  git -C "$B" commit -q -m "wiki: bump state to b"
+
+  # Tree A's session lands first.
+  git -C "$MAIN" merge -q --no-ff treeA -m "merge A"
+  after_a="$(jq -r '.last_evaluated_sha' "$MAIN/wiki/.state.json")"
+  [ "$after_a" = "$a_sha" ]
+
+  # Tree B's session, cut from the ORIGINAL base and unaware of A's landing,
+  # then attempts to land too.
+  run git -C "$MAIN" merge --no-ff treeB -m "merge B"
+
+  # Target -- and today's already-satisfied result on this tracked-file path:
+  # git's own three-way merge sees BOTH sides change the same scalar field
+  # and refuses the merge outright (a real conflict), rather than silently
+  # letting whichever session lands second clobber the other's value with no
+  # signal -- never a last-writer-wins race across trees.
+  #
+  # This fixture builds its own repository, so it proves the behavior but not
+  # that the real repository still qualifies for it: git refuses only while
+  # the state file is tracked and no merge driver is bound to its path, and a
+  # fixture cannot see either. .gaia/scripts/check-wiki-state-collision.sh
+  # asserts both against the real tree, so the two halves together are the
+  # coverage; this one alone is not.
+  if [ "$status" -eq 0 ]; then
+    final_sha="$(jq -r '.last_evaluated_sha' "$MAIN/wiki/.state.json")"
+    [ "$final_sha" = "$a_sha" ] && return 1
+    [ "$final_sha" = "$b_sha" ] && return 1
+    return 1
+  fi
+  grep -qF 'CONFLICT' <<< "$output"
+}

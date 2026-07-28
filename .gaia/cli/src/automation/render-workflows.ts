@@ -16,7 +16,7 @@ import {
 } from '../schemas/automation-config.js';
 import type {AutomationConfig, ToolId} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {workflowPartialsDirectory, workflowTemplatePath} from './paths.js';
 import {renderWorkflowTemplate} from './render.js';
 import {buildWorkflowVars} from './workflow-vars.js';

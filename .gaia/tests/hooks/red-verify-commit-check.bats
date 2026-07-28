@@ -4,7 +4,7 @@
 # mechanical TDD RED-verification.
 #
 # The hook denies `git commit` when a new-at-HEAD test that now passes has no
-# matching valid RED on record in .gaia/local/red-ledger/observations.jsonl.
+# matching valid RED on record in .gaia/local/red-ledger/<tree-key>/observations.jsonl.
 # Edits/renames/refactors of tests already present at HEAD are out of scope and
 # never demand a RED. The hook never re-runs tests; it is a ledger lookup plus
 # a signal recompute via the shared helper.
@@ -45,6 +45,10 @@ setup() {
   ln -s "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$REPO/.claude/hooks/lib/red-ledger.sh"
   ln -s "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
   ln -s "$HOME_ROOT/.gaia/scripts/red-ledger" "$REPO/.gaia/scripts/red-ledger"
+  # red_ledger_path (inside the symlinked red-ledger.sh above) sources this
+  # relative to ITS OWN location to reach gaia_tree_key, so it needs to
+  # resolve inside REPO too, not just from the hook's own BASH_SOURCE.
+  ln -s "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
   # The determinism carve-out classifies the test file via this helper; symlink
   # it so the hook resolves it from pwd exactly as in production. The symlinked
   # helper resolves `typescript` from the home repo's node_modules.
@@ -87,13 +91,18 @@ signals_for() {
   ( cd "$REPO" && node "$HELPER" "$rel" )
 }
 
-# Append a ledger line. Args: file fullName signal [failureKind].
+# Append a ledger line. Args: file fullName signal [failureKind]. Writes to
+# the path the shipped red_ledger_path resolves for REPO, so the seed lands
+# exactly where the hook itself will look, rather than a second hardcoded
+# copy of the keyed literal.
 seed_ledger() {
   local file="$1" full="$2" sig="$3" kind="${4:-assertion}"
-  mkdir -p "$REPO/.gaia/local/red-ledger"
+  local ledger
+  ledger="$( . "$REPO/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$REPO" )"
+  mkdir -p "$(dirname "$ledger")"
   jq -nc --arg f "$file" --arg n "$full" --arg s "$sig" --arg k "$kind" \
     '{schema:1, file:$f, fullName:$n, signal:$s, failureKind:$k, observedAt:"2026-06-04T00:00:00Z"}' \
-    >> "$REPO/.gaia/local/red-ledger/observations.jsonl"
+    >> "$ledger"
 }
 
 # Seed a matching valid RED for one test of a staged file (computes the real
@@ -363,13 +372,14 @@ test("mixed assertions", () => {
 @test "ignores a ledger line with an unrecognized schema version" {
   stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   # Compute the real current signal but record it under schema 2 (unknown).
-  local ndjson sig
+  local ndjson sig ledger
   ndjson=$(signals_for "app/utils/x/index.test.ts")
   sig=$(printf '%s\n' "$ndjson" | jq -r 'select(.fullName=="adds two numbers") | .signal' | head -1)
-  mkdir -p "$REPO/.gaia/local/red-ledger"
+  ledger="$( . "$REPO/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$REPO" )"
+  mkdir -p "$(dirname "$ledger")"
   jq -nc --arg s "$sig" \
     '{schema:2, file:"app/utils/x/index.test.ts", fullName:"adds two numbers", signal:$s, failureKind:"assertion", observedAt:"2026-06-04T00:00:00Z"}' \
-    >> "$REPO/.gaia/local/red-ledger/observations.jsonl"
+    >> "$ledger"
   run_commit_hook
   [ "$status" -eq 0 ]
   denied

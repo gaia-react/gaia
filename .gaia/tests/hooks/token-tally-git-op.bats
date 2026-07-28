@@ -22,6 +22,7 @@ setup() {
   TALLY_SRC="$REPO_ROOT/.gaia/scripts/token-tally.sh"
   LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
   LIB_LEDGER_PATH_SRC="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
+  LIB_MAIN_ROOT_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
   LIB_AUDIT_WINDOW_SRC="$REPO_ROOT/.gaia/scripts/audit-window-lib.sh"
   ANCHOR="$REPO_ROOT/.gaia/scripts/tests/fixtures/token-tally/projects"
   SESSION="fixturesession0001"
@@ -51,6 +52,7 @@ build_repo() {
   chmod +x "$REPO/.gaia/scripts/token-tally.sh"
   cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
   cp "$LIB_LEDGER_PATH_SRC" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$LIB_MAIN_ROOT_SRC" "$REPO/.gaia/scripts/main-root-lib.sh"
   cp "$LIB_AUDIT_WINDOW_SRC" "$REPO/.gaia/scripts/audit-window-lib.sh"
 }
 
@@ -420,10 +422,9 @@ run_hook() {
 }
 
 # ---------- 10. Worktree run: the plan folder lives ONLY in the main checkout ----------
-# create-worktree.sh symlinks only shared state (cache/shared, audit, telemetry,
-# setup-state.json) into a linked worktree; it does NOT symlink
-# .gaia/local/specs or .gaia/local/plans. So the RUNNING sentinel exists only in
-# the main checkout and is invisible from a cwd-relative glob run in the worktree.
+# The fixture's worktree is deliberately never linked, so it has no .gaia/local of
+# its own at all. The RUNNING sentinel therefore exists only in the main checkout
+# and is invisible to a cwd-relative glob run in the worktree.
 # The hook must anchor its plan search to the main checkout, or a plan executed in
 # a worktree (the common /gaia-plan + orchestration path) records ZERO execute
 # cost. Both the ledger and cost.json land in the surviving main checkout.
@@ -447,6 +448,7 @@ run_hook() {
   chmod +x "$WT/.gaia/scripts/token-tally.sh"
   cp "$LIB_PRICING_SRC" "$WT/.gaia/scripts/token-pricing-lib.sh"
   cp "$LIB_LEDGER_PATH_SRC" "$WT/.gaia/scripts/ledger-path-lib.sh"
+  cp "$LIB_MAIN_ROOT_SRC" "$WT/.gaia/scripts/main-root-lib.sh"
 
   # The plan folder + RUNNING sentinel live ONLY in the main checkout, keyed to
   # the worktree's branch (which is what a real worktree plan run looks like).

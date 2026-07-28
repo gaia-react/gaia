@@ -24,6 +24,7 @@ import {z} from 'zod';
 import {execFileSync} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {hasRejectedExcludeMetacharacter} from './manifest-answers.js';
 import {scanRegionDeclarations} from './region-scan.js';
 import type {RegionDeclaration} from './region-scan.js';
@@ -232,13 +233,6 @@ export type BuildOptions = {
 };
 
 export type ManifestShape = z.infer<typeof ManifestSchema>;
-
-export const resolveRepoRoot = (cwd: string): string =>
-  execFileSync('git', ['rev-parse', '--show-toplevel'], {
-    cwd,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
 
 export const resolveExcludePath = (repoRoot: string): string =>
   path.resolve(repoRoot, '.gaia/release-exclude');

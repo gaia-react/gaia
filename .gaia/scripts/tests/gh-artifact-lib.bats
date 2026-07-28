@@ -46,7 +46,11 @@ setup() {
   repo="$BATS_TEST_TMPDIR/repo3"
   mkdir -p "$repo"
   git init -q "$repo"
-  repo_abs="$(cd "$repo" && pwd)"
+  # pwd -P: the resolver behind this function physically resolves (mirrors the
+  # worktree-safe test below); $BATS_TEST_TMPDIR itself can sit under a
+  # symlinked component (e.g. macOS /var -> private/var), so the comparison
+  # side must canonicalize too or this drifts from the resolver's own answer.
+  repo_abs="$(cd "$repo" && pwd -P)"
   out="$(cd "$repo" && gaia_gh_artifact_cache_dir)"
   [ "$out" = "$repo_abs/.gaia/local/cache" ]
 }
@@ -61,7 +65,7 @@ setup() {
   git -C "$main" worktree add -q -b feat-wt "$linked" >/dev/null
   # pwd -P: macOS resolves /var -> /private/var inside `git rev-parse`, and
   # the function's output comes back through that canonical form, so the
-  # comparison side must canonicalize too (mirrors create-worktree.bats).
+  # comparison side must canonicalize too.
   main_abs="$(cd "$main" && pwd -P)"
   wt_abs="$(cd "$linked" && pwd -P)"
   out="$(cd "$linked" && gaia_gh_artifact_cache_dir)"
@@ -70,12 +74,103 @@ setup() {
 }
 
 # ---------- 5 ----------
-@test "gaia_gh_artifact_cache_dir: outside any git repo, echoes nothing and returns 0" {
+@test "gaia_gh_artifact_cache_dir: outside any git repo, echoes nothing on stdout and returns 0" {
   plain="$BATS_TEST_TMPDIR/no-git"
   mkdir -p "$plain"
-  run bash -c "cd '$plain' && source '$LIB' && gaia_gh_artifact_cache_dir"
+  # The shared resolver behind this function writes one diagnostic to STDERR
+  # on failure (by design, unlike the old silent-on-both-streams derivation);
+  # this function's own contract is stdout-silence only, so the inner stderr
+  # is redirected away rather than merged into $output.
+  run bash -c "cd '$plain' && source '$LIB' && gaia_gh_artifact_cache_dir 2>/dev/null"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+# ========== gaia_gh_artifact_path ==========
+
+# ---------- 5b ----------
+@test "gaia_gh_artifact_path: cache_dir and branch both present yields the keyed filename" {
+  run gaia_gh_artifact_path "/x/y" "some-branch"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/x/y/gh-artifact-pr.some-branch.json" ]
+}
+
+# ---------- 5c ----------
+@test "gaia_gh_artifact_path: a branch containing / and a branch containing . both percent-encode into the filename" {
+  run gaia_gh_artifact_path "/x/y" "feat/thing"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/x/y/gh-artifact-pr.feat%2Fthing.json" ]
+
+  run gaia_gh_artifact_path "/x/y" "release/1.2"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/x/y/gh-artifact-pr.release%2F1%2E2.json" ]
+}
+
+# ---------- 5d ----------
+@test "gaia_gh_artifact_path: an empty cache_dir OR an empty branch echoes nothing and returns 0" {
+  run gaia_gh_artifact_path "" "some-branch"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run gaia_gh_artifact_path "/x/y" ""
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run gaia_gh_artifact_path "" ""
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# A failing slug is the third way this path is undeterminable, alongside an
+# empty cache_dir and an empty branch, and it takes the same empty-output exit.
+# The slug is captured and checked rather than interpolated into the printf,
+# because a command substitution discards its own status: an unchecked failure
+# would echo "gh-artifact-pr..json", the unkeyed shared path this function's
+# contract promises never to invent, and both callers would then treat it as a
+# real path because it is non-empty.
+#
+# The stub is a sibling file rather than a function override: the function
+# sources audit-key-lib.sh from beside ITSELF at call time, so an override in
+# this test body would be clobbered by that source. Copying the real lib next
+# to a stub slug exercises the real resolution path.
+@test "gaia_gh_artifact_path: a failing slug echoes nothing, never an unkeyed shared path" {
+  local scratch="$BATS_TEST_TMPDIR/failing-slug"
+  mkdir -p "$scratch"
+  cp "$LIB" "$scratch/gh-artifact-lib.sh"
+  printf 'gaia_key_slug() { return 1; }\n' >"$scratch/audit-key-lib.sh"
+
+  run bash -c "source '$scratch/gh-artifact-lib.sh'; gaia_gh_artifact_path '/x/y' 'some-branch'"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  grep -qF 'gh-artifact-pr..json' <<<"$output" && return 1
+  return 0
+}
+
+# ---------- 5e ----------
+@test "gaia_gh_artifact_path: two different branches under the same cache_dir yield two different paths" {
+  path_a="$(gaia_gh_artifact_path "/x/y" "branch-a")"
+  path_b="$(gaia_gh_artifact_path "/x/y" "branch-b")"
+  [ -n "$path_a" ]
+  [ -n "$path_b" ]
+  [ "$path_a" != "$path_b" ]
+}
+
+# ---------- 5f ----------
+@test "gaia_gh_artifact_path: end-to-end -- tree A's write-then-read survives a same-cache_dir write from tree B" {
+  cache_dir="$BATS_TEST_TMPDIR/shared-cache"
+  mkdir -p "$cache_dir"
+
+  path_a="$(gaia_gh_artifact_path "$cache_dir" "tree-a")"
+  path_b="$(gaia_gh_artifact_path "$cache_dir" "tree-b")"
+  [ "$path_a" != "$path_b" ]
+
+  gaia_gh_artifact_write "$path_a" 100 "gaia-react/gaia" "tree-a" "sess-a"
+  gaia_gh_artifact_write "$path_b" 200 "gaia-react/gaia" "tree-b" "sess-b"
+
+  run gaia_gh_artifact_read "$path_a" "sess-a" "tree-a"
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [ "$(jq -r '.number' <<<"$output")" -eq 100 ]
 }
 
 # ========== gaia_gh_artifact_parse_url ==========

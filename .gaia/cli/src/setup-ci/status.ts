@@ -33,7 +33,7 @@ import type {
 import {readLocalAutomation} from '../schemas/local-automation.js';
 import type {ReadLocalAutomationResult} from '../schemas/local-automation.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 
 const HELP_TEXT = `Usage: gaia setup-ci status [--json]
 

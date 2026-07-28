@@ -21,38 +21,77 @@
 #
 # There is no consume function: the reader never deletes the file, because
 # every cumulative commit-triggered row on an execution branch must re-read
-# the same breadcrumb. One file, PR artifacts only:
-# <main_root>/.gaia/local/cache/gh-artifact-pr.json. Last writer wins, a
-# second `gh pr create` overwrites it.
+# the same breadcrumb. The filename is keyed by branch:
+# <main_root>/.gaia/local/cache/gh-artifact-pr.<branch-slug>.json (the slug
+# from .gaia/scripts/audit-key-lib.sh's gaia_key_slug). <main_root> is one
+# checkout every worktree resolves to alike, so an unkeyed shared file would
+# let two worktrees' concurrent `gh pr create` runs collide: the second write
+# would destroy the first, and the read-side session/branch guard below would
+# then correctly refuse the survivor's record and return nothing -- a lost
+# breadcrumb, not a wrong one. Keying the filename by the same branch already
+# threaded through gaia_gh_artifact_write/_read closes that gap: each tree's
+# session reads back only the record its own branch wrote, and a second
+# `gh pr create` on the SAME branch still overwrites in place (last writer
+# wins within one branch, which is correct: one branch has one open PR).
 
 # gaia_gh_artifact_cache_dir
-# Echoes <main_root>/.gaia/local/cache, or nothing when git cannot resolve the
-# common dir. Honors $GAIA_GH_ARTIFACT_CACHE_DIR when set (test seam). Always
-# returns 0.
+# Echoes <main_root>/.gaia/local/cache, or nothing when the shared main-root
+# resolver (.gaia/scripts/main-root-lib.sh) cannot resolve a main checkout.
+# Honors $GAIA_GH_ARTIFACT_CACHE_DIR when set (test seam). Always returns 0.
 gaia_gh_artifact_cache_dir() {
   if [[ -n "${GAIA_GH_ARTIFACT_CACHE_DIR:-}" ]]; then
     printf '%s' "$GAIA_GH_ARTIFACT_CACHE_DIR"
     return 0
   fi
-  local common_dir abs main_root
-  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
-  [[ -z "$common_dir" ]] && return 0
-  case "$common_dir" in
-    /*) abs="$common_dir" ;;
-    *)  abs="$PWD/$common_dir" ;;
-  esac
-  main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)" || return 0
-  [[ -n "$main_root" ]] && printf '%s' "$main_root/.gaia/local/cache"
+  local script_dir main_root
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck disable=SC1091
+  source "$script_dir/main-root-lib.sh"
+  main_root="$(gaia_resolve_main_root)" || return 0
+  printf '%s' "$main_root/.gaia/local/cache"
   return 0
 }
 
-# gaia_gh_artifact_path <cache_dir>
-# Echoes "<cache_dir>/gh-artifact-pr.json"; echoes nothing when <cache_dir> is
-# empty. Always returns 0.
+# gaia_gh_artifact_path <cache_dir> <branch>
+# Echoes "<cache_dir>/gh-artifact-pr.<gaia_key_slug branch>.json"; echoes
+# nothing when EITHER <cache_dir> or <branch> is empty, or when the slug
+# itself fails. Always returns 0.
+# Sources .gaia/scripts/audit-key-lib.sh from beside itself via BASH_SOURCE,
+# the same idiom gaia_gh_artifact_cache_dir above already uses for
+# main-root-lib.sh.
+#
+# The branch is an explicit argument, never derived here: gaia_audit_key
+# derives its own branch from a directory, but this function must not,
+# because both of its callers already resolve a branch and pass it straight
+# to gaia_gh_artifact_write / gaia_gh_artifact_read. A second internal
+# derivation here could disagree with the one the caller passes, keying the
+# FILENAME off one value while the body gets stamped with another -- a
+# breadcrumb no reader could ever claim. One derivation per call site,
+# threaded into all three functions, is the only shape in which writer and
+# reader provably agree.
+#
+# Empty branch echoes nothing rather than falling back to an unkeyed shared
+# path: the same fail-open rule this function already applies to an empty
+# cache_dir extends verbatim to an empty branch, and it composes with
+# gaia_gh_artifact_write's own refusal to write an unclaimable breadcrumb --
+# a caller that cannot name its branch skips its write, it never invents a
+# shared key.
 gaia_gh_artifact_path() {
-  local cache_dir="${1:-}"
-  [[ -z "$cache_dir" ]] && return 0
-  printf '%s' "$cache_dir/gh-artifact-pr.json"
+  local cache_dir="${1:-}" branch="${2:-}"
+  [[ -z "$cache_dir" || -z "$branch" ]] && return 0
+  local self_dir
+  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck disable=SC1091
+  source "$self_dir/audit-key-lib.sh"
+  # The slug is captured and checked, not interpolated into the printf: a
+  # command substitution discards its own status, so a failing slug inside the
+  # format arguments would print "gh-artifact-pr..json" -- the unkeyed shared
+  # path this function's contract promises never to invent. A failing slug
+  # takes the same empty-output exit as an empty cache_dir or branch, which
+  # both callers already handle by skipping.
+  local slug
+  slug="$(gaia_key_slug "$branch")" || return 0
+  printf '%s' "$cache_dir/gh-artifact-pr.$slug.json"
   return 0
 }
 

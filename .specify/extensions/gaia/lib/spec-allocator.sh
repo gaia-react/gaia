@@ -67,8 +67,6 @@ fi
 mode="$1"
 repo_root="$2"
 subject_arg="${3:-}"
-specs_dir="${repo_root%/}/.gaia/local/specs"
-ledger_path="${repo_root%/}/.gaia/local/specs/ledger.json"
 
 EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 remote_timeout="${GAIA_SPEC_REMOTE_TIMEOUT_SECS:-5}"
@@ -83,12 +81,17 @@ export GIT_TERMINAL_PROMPT=0
 _remote_state=""
 _remote_tags_raw=""
 
-# Source the shared ledger mutex from this script's own directory so it
-# resolves identically from the speckit preset and from test copies of the
-# lib dir (no hardcoded repo path, template-distributed, repo-relative).
+# Source the shared libs from this script's own directory so they resolve
+# identically from the speckit preset and from test copies of the lib dir (no
+# hardcoded repo path, template-distributed, repo-relative). The ledger-path
+# lib is reached by the same own-directory hop rather than through repo_root:
+# repo_root is the value whose trustworthiness is in question here, so loading
+# a library by it would decide correctness with the input under test.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 . "${_lib_dir}/with-ledger-lock.sh"
+# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
 require_git() {
   if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
@@ -96,6 +99,21 @@ require_git() {
     exit 3
   fi
 }
+
+# repo_root names the tree this allocation runs in; the ledger it feeds is
+# main's, because the state registry declares specs/ main-only. Resolve rather
+# than trust: from a linked worktree the operand is that worktree's own root,
+# and using it forks the ledger and points the mutex at a directory no peer
+# tree locks. A non-git operand is refused first with the existing "not a git
+# repository" contract (exit 3); the resolver then anchors to main and refuses
+# (exit 4) only when the operand is a repo whose main checkout is unresolvable
+# -- the same stance this script already takes on a lock it cannot acquire.
+require_git
+if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+  echo "spec-allocator: cannot resolve the main checkout for '$repo_root'; refuse to allocate (would risk duplicate SPEC ids across worktrees)" >&2
+  exit 4
+fi
+ledger_path="${specs_dir}/ledger.json"
 
 # Emit one bare integer per known SPEC number, one per line, unsorted.
 # Sources (all deterministic LOCAL markers; no free-text scanning, no network):
@@ -557,12 +575,12 @@ case "$mode" in
     # C1 lock-dir precondition: the dir must exist before with_ledger_lock.
     # ensure_ledger already mkdir -p's it via the ledger parent, but make the
     # precondition explicit and independent of ledger-init ordering.
-    mkdir -p "${repo_root%/}/.gaia/local/specs"
+    mkdir -p "$specs_dir"
     # Capture rc directly, NOT `if ! with_ledger_lock …; then rc=$?`: after a
     # `!`-negated command, $? is the negation's status (0), masking the real
     # rc. `|| rc=$?` preserves the helper's actual exit code under set -e.
     rc=0
-    with_ledger_lock "${repo_root%/}/.gaia/local/specs" allocate_next "$subject_arg" || rc=$?
+    with_ledger_lock "$specs_dir" allocate_next "$subject_arg" || rc=$?
     if [ "$rc" -ne 0 ]; then
       if [ "$rc" -eq 75 ]; then
         echo "spec-allocator: could not acquire ledger lock; refuse to allocate (would risk duplicate SPEC ids)" >&2
@@ -574,10 +592,10 @@ case "$mode" in
   reserve_pending)
     require_git
     ensure_ledger
-    mkdir -p "${repo_root%/}/.gaia/local/specs"
+    mkdir -p "$specs_dir"
     # Fail-open: process deferred reservations under the mutex, but always exit 0
     # (a lock timeout or reconcile snag must never fail a caller's /gaia-spec).
-    with_ledger_lock "${repo_root%/}/.gaia/local/specs" _reserve_pending_locked || true
+    with_ledger_lock "$specs_dir" _reserve_pending_locked || true
     exit 0
     ;;
   highest)

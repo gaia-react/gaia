@@ -11,7 +11,7 @@ import {EXIT_CODES} from '../exit.js';
 import {readAutomationConfigRaw} from '../schemas/automation-config.js';
 import type {AutomationConfig} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {writeAutomationConfig} from './util/automation-write.js';
 
 const HELP_TEXT = `Usage: gaia setup-ci finalize

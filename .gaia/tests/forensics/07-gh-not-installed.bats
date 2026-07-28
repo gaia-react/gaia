@@ -16,19 +16,24 @@
 #   - Returns zero (never errors)
 # ---------------------------------------------------------------------------
 
+# Synthetic stand-in for `bash .gaia/scripts/main-root-lib.sh --tree-key`'s
+# stdout (16 lowercase hex characters); this surrogate never invokes the real
+# resolver, same as the fixed synthetic $timestamp below.
+TREE_KEY_FIXTURE="deadbeefcafe1234"
+
 no_gh_surrogate() {
   local workdir="$1"
   local class="${2:-init}"
   local timestamp="20260508T143022Z"
 
-  mkdir -p "$workdir/.gaia/local/forensics"
-  local report_path="$workdir/.gaia/local/forensics/${timestamp}-${class}.md"
+  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  local report_path="$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
   printf '## Symptom\nTest report body.\n' > "$report_path"
 
   # Check if gh is on PATH (in production this gates the branch)
   if ! command -v gh >/dev/null 2>&1; then
-    printf '`gh` not installed; report saved locally at .gaia/local/forensics/%s-%s.md\n' \
-      "$timestamp" "$class"
+    printf '`gh` not installed; report saved locally at .gaia/local/forensics/%s/%s-%s.md\n' \
+      "$TREE_KEY_FIXTURE" "$timestamp" "$class"
     return 0
   fi
 
@@ -72,7 +77,7 @@ teardown() {
 
 @test "UAT-013: with gh not on PATH, report is saved locally" {
   PATH="$NO_GH_PATH" no_gh_surrogate "$WORKDIR" "hook"
-  local report="$WORKDIR/.gaia/local/forensics/20260508T143022Z-hook.md"
+  local report="$WORKDIR/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-hook.md"
   [[ -f "$report" ]]
 }
 

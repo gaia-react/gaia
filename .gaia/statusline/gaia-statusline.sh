@@ -10,32 +10,42 @@
 #      (so the adopter's existing global statusline appears unchanged).
 #   2. Fallback → bare "Claude Code" label.
 #
-# Right side suppression in linked worktrees: the right-side indicators
-# (`Run /setup-gaia`, `Run /update-deps`, `Run /update-gaia`) all prod the
-# user toward maintenance flows that belong on the main checkout. Inside a
-# linked worktree the right side is empty; the worktree is detected by
-# comparing the session's checkout root against the shared main root
-# (`dirname(git rev-parse --git-common-dir) != git rev-parse --show-toplevel`
-# for the session dir). The background refresher still fires from worktrees
-# so the canonical cache (which the worktree's `.gaia/local/cache/shared/`
-# symlinks to) keeps updating.
+# Right side in linked worktrees: it renders, in full, exactly as it does on
+# the main checkout. There is no worktree gate. Every right-side segment reads
+# SHARED state -- the update-check cache, the debt count and the setup marker
+# are all scope "shared" in `.gaia/state-registry.json`, one physical copy
+# under the main checkout's `.gaia/local` -- so the answer is the same wherever
+# it is read, and a statusline that goes dark cannot tell a developer anything.
+# A flow that genuinely must run on the main checkout refuses out loud when it
+# is invoked, which is where that belongs.
 #
-# The hot path stays fast (target <50ms): no network calls, no `pnpm` calls.
-# The worktree-detection adds up to two `git rev-parse` forks (one for
-# `--git-common-dir`, one for `--show-toplevel`).
+# So this script resolves the MAIN checkout root from the SESSION's directory
+# and reads shared state there, rather than from its own install path: a
+# maintainer wrapper execs this script from the main checkout while the session
+# runs in a linked worktree, so the install path answers for the wrong checkout.
+#
+# The hot path stays no-network: no network calls, no `pnpm` calls. It is no
+# longer under 50ms, and that target is retired rather than quietly missed.
+# Measured on an M-series Mac under bash 3.2, 20 runs: 31ms before, 56ms after,
+# of which one `gaia_resolve_main_root` call is ~38ms (it runs five `git`
+# invocations behind an env scrub, where the two hand-rolled `git rev-parse`
+# forks it replaces cost ~9ms together). That is the price of one canonical
+# answer to "where is main" instead of a seventeenth hand-rolled derivation of
+# it, paid once per render, and it is the right trade at this size. Making the
+# resolver itself cheaper would return most of it and is worth doing, but it is
+# the resolver library's change to make, not this consumer's.
 # A background refresher (.gaia/scripts/check-updates.sh) writes the cache.
 #
 # Partial failures are silent; a broken statusline disappears in Claude Code,
 # which is the worst UX. Do NOT add `set -e`.
 
-# Resolve script directory so cache lookups work regardless of caller cwd.
+# Resolve script directory so the resolver library is found regardless of
+# caller cwd. This is the script's INSTALL path, which is not necessarily the
+# session's checkout (see the wrapper case above); the state paths below are
+# anchored on the resolved main root instead.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
-CACHE_FILE="$GAIA_DIR/local/cache/shared/update-check.json"
-CHECK_SCRIPT="$PROJECT_ROOT/.gaia/scripts/check-updates.sh"
-DEBT_CACHE="$PROJECT_ROOT/.gaia/local/debt/count.json"
-DEBT_REFRESH_SCRIPT="$PROJECT_ROOT/.gaia/scripts/debt-count-refresh.sh"
 
 # Read JSON input once.
 input=$(cat)
@@ -58,139 +68,175 @@ fi
 
 [ -z "$left" ] && left="Claude Code"
 
-# ---------- Worktree detection ----------
-# The right side prods toward maintenance flows that belong on the main
-# checkout. Linked worktrees skip the cache read entirely so no indicators
-# emit there. Detection keys off the SESSION's directory (from the status
-# payload), not this script's install path: a maintainer wrapper can exec the
-# script from the main checkout while the session runs in a linked worktree,
-# so PROJECT_ROOT is an unreliable signal. Compares the session's checkout
-# root against the shared main root; falls through (treats as main checkout)
-# silently when git or the session dir is unavailable.
+# ---------- Where this session's state lives ----------
+# Every path below is anchored on the MAIN checkout, resolved from the
+# SESSION's directory (carried on the StatusLine payload) through the one
+# canonical resolver. Not from this script's install path: a maintainer
+# wrapper execs the shipped script from the main checkout while the session
+# runs in a linked worktree, so the install path answers for the wrong
+# checkout. All three state files are registry scope "shared", so main is
+# where they physically live for every tree, provisioned or not.
+#
+# Resolver failure degrades silently, this consumer's documented disposition:
+# fall back to this script's own checkout. A tree git cannot resolve has no
+# linked worktrees either, so the install path is the only checkout there --
+# which keeps a scaffolded-but-not-yet-`git init` project rendering.
 session_dir="$(printf '%s' "$input" | jq -r '.workspace.current_dir // .cwd // empty' 2>/dev/null)"
 [ -n "$session_dir" ] || session_dir="$PROJECT_ROOT"
 
-is_worktree=0
-common_dir="$(git -C "$session_dir" rev-parse --git-common-dir 2>/dev/null)"
-if [ -n "$common_dir" ]; then
-  case "$common_dir" in
-    /*) absolute_common_dir="$common_dir" ;;
-    *)  absolute_common_dir="$session_dir/$common_dir" ;;
-  esac
-  # Resolve both roots to physical paths (pwd -P) so a symlinked checkout path
-  # does not read as a worktree through mismatched symlink resolution (git
-  # returns physical paths; a bare `pwd` would stay logical).
-  main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd -P)"
-  session_top="$(git -C "$session_dir" rev-parse --show-toplevel 2>/dev/null)"
-  session_root="$(cd "$session_top" 2>/dev/null && pwd -P)"
-  if [ -n "$main_root" ] && [ -n "$session_root" ] && [ "$main_root" != "$session_root" ]; then
-    is_worktree=1
-  fi
+if [ -f "$GAIA_DIR/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$GAIA_DIR/scripts/main-root-lib.sh" 2>/dev/null || true
 fi
+STATE_ROOT=""
+if command -v gaia_resolve_main_root >/dev/null 2>&1; then
+  STATE_ROOT="$(gaia_resolve_main_root "$session_dir" 2>/dev/null || true)"
+fi
+[ -n "$STATE_ROOT" ] || STATE_ROOT="$PROJECT_ROOT"
+
+CACHE_FILE="$STATE_ROOT/.gaia/local/cache/shared/update-check.json"
+DEBT_CACHE="$STATE_ROOT/.gaia/local/debt/count.json"
+CHECK_SCRIPT="$STATE_ROOT/.gaia/scripts/check-updates.sh"
+DEBT_REFRESH_SCRIPT="$STATE_ROOT/.gaia/scripts/debt-count-refresh.sh"
 
 # ---------- Right side from cache ----------
-# Per-machine setup gate: when .gaia/local/setup-state.json is missing or
-# its completed_at is null, the right side shows ONLY `Run /setup-gaia`;
-# the other indicators are suppressed until the developer has run through
-# the per-clone setup at least once. The setup file is gitignored, so each
-# clone gets its own state.
+# Per-clone setup gate: when .gaia/local/setup-state.json is missing or its
+# completed_at is null, the right side shows ONLY `Run /setup-gaia`; the other
+# indicators are suppressed until the developer has run through the per-clone
+# setup at least once. The setup file is gitignored and shared across the
+# clone's trees, so an unset-up clone reads as unset-up from every one of them
+# -- which is correct: it is a blocking condition wherever the session sits.
 #
 # Exception: when .claude/commands/gaia-init.md exists, this is a fresh
 # create-gaia project mid-init. /setup-gaia is not applicable until
 # /gaia-init finishes (which deletes that file). Suppress all right-side
 # indicators during that window.
 right=""
-if [ "$is_worktree" -eq 0 ]; then
-  if [ -f "$PROJECT_ROOT/.claude/commands/gaia-init.md" ]; then
-    : # /gaia-init in progress, no right-side indicators
-  else
-    SETUP_STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"
-    setup_complete="false"
-    if [ -f "$SETUP_STATE_FILE" ]; then
-      if command -v jq >/dev/null 2>&1; then
-        if [ "$(jq -r '.completed_at // "null"' "$SETUP_STATE_FILE" 2>/dev/null)" != "null" ]; then
-          setup_complete="true"
-        fi
-      else
-        # Fallback: a complete state has a non-null completed_at value.
-        if grep -q '"completed_at"[[:space:]]*:[[:space:]]*"' "$SETUP_STATE_FILE" 2>/dev/null; then
-          setup_complete="true"
-        fi
+mid_init=0
+if [ -f "$STATE_ROOT/.claude/commands/gaia-init.md" ]; then
+  mid_init=1
+fi
+# gaia:maintainer-only:start
+# Except in GAIA's own source repo, where that command file is a tracked
+# product artifact: it ships to adopters, so it always exists here and
+# /gaia-init never runs to delete it. Without the exception below, the gate
+# above suppresses this repo's right side permanently and the maintainer sees
+# none of their own nudges.
+#
+# The discriminator is `.gaia/cli/src`, the CLI's TypeScript source. It is
+# release-excluded, so no adopter machine has it, mid-init or otherwise, and it
+# is already the marker `.claude/rules/gaia-folder.md` uses for "this repo is
+# GAIA itself". Tracked-ness cannot serve: create-gaia commits the whole
+# scaffold before it launches /gaia-init, so the command file is tracked
+# mid-init too.
+#
+# Anchored on STATE_ROOT like the gate file above it, so the question it asks
+# is "is the MAIN checkout the source repo", which is the same answer from
+# every linked worktree.
+#
+# The release tarball strips this block, so an adopter's copy carries the plain
+# gate above and nothing else.
+if [ -d "$STATE_ROOT/.gaia/cli/src" ]; then
+  mid_init=0
+fi
+# gaia:maintainer-only:end
+if [ "$mid_init" -eq 1 ]; then
+  : # /gaia-init in progress, no right-side indicators
+else
+  SETUP_STATE_FILE="$STATE_ROOT/.gaia/local/setup-state.json"
+  setup_complete="false"
+  if [ -f "$SETUP_STATE_FILE" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      if [ "$(jq -r '.completed_at // "null"' "$SETUP_STATE_FILE" 2>/dev/null)" != "null" ]; then
+        setup_complete="true"
+      fi
+    else
+      # Fallback: a complete state has a non-null completed_at value.
+      if grep -q '"completed_at"[[:space:]]*:[[:space:]]*"' "$SETUP_STATE_FILE" 2>/dev/null; then
+        setup_complete="true"
       fi
     fi
+  fi
 
-    if [ "$setup_complete" != "true" ]; then
-      right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
-    else
-      # Declare the segment array once for the whole setup-complete path. The
-      # update-check-derived segments stay gated on $CACHE_FILE; the debt
-      # segment is gated independently on $DEBT_CACHE, so it still renders when
-      # update-check.json is absent. The join runs once after both blocks.
-      segments=()
-      if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
-        outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
-        gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
-        gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
-        harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
-        harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
-        audit_nudge=$(jq -r '.auditNudge // false' "$CACHE_FILE" 2>/dev/null)
-        audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
-        serena_drift=$(jq -r '(.serenaLangDrift // []) | join(", ")' "$CACHE_FILE" 2>/dev/null)
+  if [ "$setup_complete" != "true" ]; then
+    right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
+  else
+    # Declare the segment array once for the whole setup-complete path. The
+    # update-check-derived segments stay gated on $CACHE_FILE; the debt
+    # segment is gated independently on $DEBT_CACHE, so it still renders when
+    # update-check.json is absent. The join runs once after both blocks.
+    segments=()
+    if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
+      outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
+      gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
+      gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
+      harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+      harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
+      audit_nudge=$(jq -r '.auditNudge // false' "$CACHE_FILE" 2>/dev/null)
+      audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
+      serena_drift=$(jq -r '(.serenaLangDrift // []) | join(", ")' "$CACHE_FILE" 2>/dev/null)
 
-        if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
-          segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
-        fi
-        if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
-          segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
-        fi
-        if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
-          harden_noun="recurring patterns"
-          [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
-          segments+=("$(printf '\033[01;35mRun /gaia-harden (%d %s)\033[00m' "$harden_count" "$harden_noun")")
-        fi
-        if [ -n "$harden_unclassified" ] && [ "$harden_unclassified" -gt 0 ] 2>/dev/null; then
-          segments+=("$(printf '\033[01;35mRun /gaia-harden (%d unclassified recurring)\033[00m' "$harden_unclassified")")
-        fi
-        if [ "$audit_nudge" = "true" ]; then
-          if [ -n "$audit_reason" ]; then
-            segments+=("$(printf '\033[01;32mRun /gaia-audit (%s)\033[00m' "$audit_reason")")
-          else
-            segments+=("$(printf '\033[01;32mRun /gaia-audit\033[00m')")
-          fi
-        fi
-        if [ -n "$serena_drift" ]; then
-          segments+=("$(printf '\033[01;31mRun /gaia-serena-sync (Serena missing: %s)\033[00m' "$serena_drift")")
+      if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
+        segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
+      fi
+      if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
+        segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
+      fi
+      if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
+        harden_noun="recurring patterns"
+        [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
+        segments+=("$(printf '\033[01;35mRun /gaia-harden (%d %s)\033[00m' "$harden_count" "$harden_noun")")
+      fi
+      if [ -n "$harden_unclassified" ] && [ "$harden_unclassified" -gt 0 ] 2>/dev/null; then
+        segments+=("$(printf '\033[01;35mRun /gaia-harden (%d unclassified recurring)\033[00m' "$harden_unclassified")")
+      fi
+      if [ "$audit_nudge" = "true" ]; then
+        if [ -n "$audit_reason" ]; then
+          segments+=("$(printf '\033[01;32mRun /gaia-audit (%s)\033[00m' "$audit_reason")")
+        else
+          segments+=("$(printf '\033[01;32mRun /gaia-audit\033[00m')")
         fi
       fi
-      # Debt-backlog nudge, read from the pinned debt cache. Independent of
-      # update-check.json so it renders whenever an open tech-debt count exists.
-      if [ -f "$DEBT_CACHE" ] && command -v jq >/dev/null 2>&1; then
-        debt_count=$(jq -r '.openCount // 0' "$DEBT_CACHE" 2>/dev/null)
-        if [ -n "$debt_count" ] && [ "$debt_count" -gt 0 ] 2>/dev/null; then
-          debt_noun="issues"
-          [ "$debt_count" -eq 1 ] && debt_noun="issue"
-          segments+=("$(printf '\033[01;34mRun /gaia-debt (%d %s)\033[00m' "$debt_count" "$debt_noun")")
-        fi
+      if [ -n "$serena_drift" ]; then
+        segments+=("$(printf '\033[01;31mRun /gaia-serena-sync (Serena missing: %s)\033[00m' "$serena_drift")")
       fi
-      if [ "${#segments[@]}" -gt 0 ]; then
-        right="${segments[0]}"
-        for ((i=1; i<${#segments[@]}; i++)); do
-          right="${right}  ${segments[$i]}"
-        done
+    fi
+    # Debt-backlog nudge, read from the pinned debt cache. Independent of
+    # update-check.json so it renders whenever an open tech-debt count exists.
+    if [ -f "$DEBT_CACHE" ] && command -v jq >/dev/null 2>&1; then
+      debt_count=$(jq -r '.openCount // 0' "$DEBT_CACHE" 2>/dev/null)
+      if [ -n "$debt_count" ] && [ "$debt_count" -gt 0 ] 2>/dev/null; then
+        debt_noun="issues"
+        [ "$debt_count" -eq 1 ] && debt_noun="issue"
+        segments+=("$(printf '\033[01;34mRun /gaia-debt (%d %s)\033[00m' "$debt_count" "$debt_noun")")
       fi
+    fi
+    if [ "${#segments[@]}" -gt 0 ]; then
+      right="${segments[0]}"
+      for ((i=1; i<${#segments[@]}; i++)); do
+        right="${right}  ${segments[$i]}"
+      done
     fi
   fi
 fi
 
-# Fire the background refresher; never block.
+# Fire the background refreshers; never block. Both are run from the MAIN
+# checkout's copy, so both write the one shared cache this script has just
+# read. Firing a worktree's own copy would refresh a cache nobody reads: each
+# refresher derives its paths from its own install path, so the worktree's
+# copy writes the worktree's `.gaia/local` -- and a segment fed by a cache that
+# never refreshes is the silent death this script's shape exists to end, one
+# hop further along.
+
+# The update-check refresher.
 if [ -x "$CHECK_SCRIPT" ]; then
-  (cd "$PROJECT_ROOT" && nohup bash "$CHECK_SCRIPT" >/dev/null 2>&1 &) >/dev/null 2>&1
+  (cd "$STATE_ROOT" && nohup bash "$CHECK_SCRIPT" >/dev/null 2>&1 &) >/dev/null 2>&1
 fi
 
-# Fire the independent debt-count refresher; never block. Detached so the hot
-# path stays no-network (the count above is read from the pinned cache only).
+# The independent debt-count refresher. Detached so the hot path stays
+# no-network (the count above is read from the pinned cache only).
 if [ -x "$DEBT_REFRESH_SCRIPT" ]; then
-  (cd "$PROJECT_ROOT" && nohup bash "$DEBT_REFRESH_SCRIPT" >/dev/null 2>&1 &) >/dev/null 2>&1
+  (cd "$STATE_ROOT" && nohup bash "$DEBT_REFRESH_SCRIPT" >/dev/null 2>&1 &) >/dev/null 2>&1
 fi
 
 # ---------- Compose with right-alignment ----------

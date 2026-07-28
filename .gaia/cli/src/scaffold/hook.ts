@@ -14,11 +14,11 @@
  * Re-running is idempotent: identical files are reported in `skipped`,
  * differing files cause `writeFileIfAbsent` to throw to protect customizations.
  */
-import {execSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {writeFileIfAbsent} from './fs.js';
 import {renderTemplate} from './template.js';
 import type {ScaffoldResult} from './types.js';
@@ -125,14 +125,22 @@ const resolveTemplateFile = (filename: string): string => {
   );
 };
 
-const resolveRepoRoot = (): string => {
+/**
+ * Resolve the tree to scaffold into.
+ *
+ * Prefers the calling working tree's root, so `gaia scaffold hook` run from a
+ * subdirectory writes `<repo>/app/hooks/` rather than `<subdir>/app/hooks/`.
+ * Falls back to the current directory when git cannot answer, because git is
+ * not a precondition for scaffolding a hook: `component`, `route`, and
+ * `service` resolve straight off `process.cwd()` and never shell git at all,
+ * an adopter may scaffold into a project that is not a repository yet, and the
+ * release harness drives the shipped binary against a staged tree in a temp
+ * directory. Refusing is the one answer that is neither git's nor the
+ * caller's, and it takes away work this command already did.
+ */
+const resolveScaffoldRoot = (): string => {
   try {
-    const out = execSync('git rev-parse --show-toplevel', {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-
-    return out.length > 0 ? out : process.cwd();
+    return resolveRepoRoot();
   } catch {
     return process.cwd();
   }
@@ -200,7 +208,7 @@ const printResult = (result: ScaffoldResult, jsonMode: boolean): void => {
 };
 
 type HandlerOptions = {
-  /** Absolute path to the repo root; defaults to `git rev-parse --show-toplevel`. */
+  /** Absolute path to the repo root; defaults to `resolveScaffoldRoot()`. */
   repoRoot?: string;
 };
 
@@ -244,7 +252,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const repoRoot = options.repoRoot ?? resolveRepoRoot();
+  const repoRoot = options.repoRoot ?? resolveScaffoldRoot();
   const hooksDir = path.join(repoRoot, 'app', 'hooks');
   const hookFilePath = path.join(hooksDir, `${name}.ts`);
   const testFilePath = path.join(hooksDir, 'tests', `${name}.test.ts`);

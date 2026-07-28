@@ -10,7 +10,11 @@
 # Usage:
 #   spec-folderize.sh [--dry-run] [<repo_root>]
 #
-#   <repo_root>   defaults to `git rev-parse --show-toplevel`
+#   <repo_root>   any directory inside the repository; defaults to the
+#                 process working directory. Either way the SPEC directory
+#                 migrated is always the main checkout's (.gaia/scripts/
+#                 ledger-path-lib.sh resolves it), since the state registry
+#                 declares specs/ main-only.
 #   --dry-run     print the planned moves to stdout, change nothing
 #
 # Behavior:
@@ -65,25 +69,42 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ -z "$repo_root" ]; then
-  if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
-    echo "spec-folderize: cannot resolve repo root (not in a git work tree); pass <repo_root>" >&2
+if [ -n "$repo_root" ]; then
+  if [ ! -d "$repo_root" ]; then
+    echo "spec-folderize: repo root '$repo_root' is not a directory" >&2
     exit 3
   fi
+  repo_root="${repo_root%/}"
 fi
 
-if [ ! -d "$repo_root" ]; then
-  echo "spec-folderize: repo root '$repo_root' is not a directory" >&2
+# Source the shared ledger-path lib from this script's own directory, never
+# through repo_root: repo_root is the value whose trustworthiness is in
+# question here, so loading a library by it would decide correctness with the
+# input under test.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+
+# repo_root names the tree this migration runs in; the specs dir it migrates
+# is main's, because the state registry declares specs/ main-only. Resolve
+# rather than trust: the resolver's no-operand default (process cwd -> main)
+# already covers the case where no <repo_root> was passed, so the old
+# show-toplevel fallback is deleted here rather than converted. Refuse
+# rather than fall back to the unresolved operand for a main-only path.
+if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+  echo "spec-folderize: cannot resolve the main checkout for '${repo_root:-$PWD}'; refuse to migrate (would fork SPEC folders across worktrees)" >&2
   exit 3
 fi
+# main_root: the checkout that physically owns specs_dir, derived from the
+# resolver's own contract (<main_root>/.gaia/local/specs) rather than a second
+# resolution. The git ops below touch paths under specs_dir, so they must run
+# against the repo that contains them, not the raw repo_root operand.
+main_root="${specs_dir%/.gaia/local/specs}"
 
-repo_root="${repo_root%/}"
-specs_dir="${repo_root}/.gaia/local/specs"
-
-# Resolve once whether we are inside a git work tree rooted at (or above)
-# repo_root; only then is per-file tracked detection / `git mv` meaningful.
+# Resolve once whether main_root is inside a git work tree; only then is
+# per-file tracked detection / `git mv` meaningful.
 in_git_tree=0
-if git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+if git -C "$main_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   in_git_tree=1
 fi
 
@@ -135,8 +156,8 @@ folderize_dir() {
     fi
 
     mkdir -p "$folder"
-    if [ "$in_git_tree" -eq 1 ] && git -C "$repo_root" ls-files --error-unmatch "$flat" >/dev/null 2>&1; then
-      git -C "$repo_root" mv "$flat" "$target"
+    if [ "$in_git_tree" -eq 1 ] && git -C "$main_root" ls-files --error-unmatch "$flat" >/dev/null 2>&1; then
+      git -C "$main_root" mv "$flat" "$target"
     else
       mv "$flat" "$target"
     fi

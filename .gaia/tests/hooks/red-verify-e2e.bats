@@ -35,7 +35,6 @@ setup() {
   CAPTURE_HOOK="$HOME_ROOT/.claude/hooks/capture-red-observations.sh"
   CHECK_HOOK="$HOME_ROOT/.claude/hooks/red-verify-commit-check.sh"
   BARE_TEST_HOOK="$HOME_ROOT/.claude/hooks/block-bare-test.sh"
-  LEDGER_REL=".gaia/local/red-ledger/observations.jsonl"
 
   REPO=$(mktemp -d -t red-e2e-XXXXXX)
   git -C "$REPO" init --quiet --initial-branch=main
@@ -48,6 +47,10 @@ setup() {
   ln -s "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$REPO/.claude/hooks/lib/red-ledger.sh"
   ln -s "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
   ln -s "$HOME_ROOT/.gaia/scripts/red-ledger" "$REPO/.gaia/scripts/red-ledger"
+  # red_ledger_path (inside the symlinked red-ledger.sh above) sources this
+  # relative to ITS OWN location to reach gaia_tree_key, so it needs to
+  # resolve inside REPO too, not just from the hooks' own BASH_SOURCE.
+  ln -s "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
   # The check hook's determinism carve-out classifies the test file via this
   # helper; symlink it so the carve-out resolves it as in production. The
   # fixtures live on the strict surface (app/utils/**), so the carve-out leaves
@@ -58,6 +61,11 @@ setup() {
   echo "# readme" > "$REPO/README.md"
   git -C "$REPO" add README.md
   git -C "$REPO" commit --quiet -m "init"
+
+  # The ledger path is keyed to REPO's own tree key; ask the shipped resolver
+  # for it (the real main-root-lib.sh in HOME_ROOT, not a second hardcoded
+  # copy of the keyed literal) now that REPO is a valid work tree.
+  LEDGER_REL=".gaia/local/red-ledger/$(bash "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" --tree-key "$REPO")/observations.jsonl"
 }
 
 teardown() {

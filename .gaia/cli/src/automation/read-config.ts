@@ -11,7 +11,7 @@ import {EXIT_CODES} from '../exit.js';
 import {readAutomationConfig} from '../schemas/automation-config.js';
 import type {ToolConfig} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 
 const HELP_TEXT = `Usage: gaia automation read-config [--json]
 

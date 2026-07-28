@@ -3,7 +3,7 @@
  *
  * Every helper takes an explicit `repoRoot` argument; these primitives
  * never call `process.cwd()` themselves. Callers resolve the root via
- * `resolveRepoRoot` from `wiki/util/git.ts`, matching the wiki
+ * `resolveRepoRoot` from `util/repo-root.ts`, matching the wiki
  * primitives' pattern.
  *
  * Slice 3 adds workflow-tree path helpers (`workflowTemplatePath`,

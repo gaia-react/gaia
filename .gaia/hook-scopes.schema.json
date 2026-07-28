@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GAIA hook tree-scope manifest",
+  "description": "Constrains .gaia/hook-scopes.json: the one declaration of every .claude/hooks/**/*.sh script's tree scope (INV-5). A malformed edit fails this cheap validation before check-hook-scope-manifest.bats runs its conformance assertions (coverage, the derive arm, and any-honesty).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "hooks"],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "hooks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/hookEntry" }
+    }
+  },
+  "$defs": {
+    "hookEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hook", "scope", "state", "why"],
+      "properties": {
+        "hook": {
+          "type": "string",
+          "pattern": "^\\.claude/hooks/.+\\.sh$",
+          "description": "Repo-relative path to the hook script. Unique across the manifest."
+        },
+        "scope": {
+          "enum": ["main-only", "per-tree", "any"],
+          "description": "main-only: anchors on the main checkout root (gaia_resolve_main_root); covers registry scope main-only AND shared (shared state physically lives under main's .gaia/local, SPEC-061). per-tree: anchors on the current tree root (gaia_resolve_tree_root, payload-cwd-anchored); covers registry scope per-tree. any: touches no root-anchored .gaia/local state, exempt from the derive arm."
+        },
+        "state": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^([a-z0-9]+(-[a-z0-9]+)*|path:.+)$"
+          },
+          "description": "State-registry entry ids (.gaia/state-registry.json) the hook touches, or a path:<repo-relative-path> token for a tracked per-checkout working file with no registry entry (e.g. wiki/hot.md, a .claude/* session marker). Empty for scope: any."
+        },
+        "why": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plain-language reason this hook carries this scope: what it does, why that scope is correct, or (for a not-yet-converted hook) which phase owns its conversion."
+        }
+      }
+    }
+  }
+}

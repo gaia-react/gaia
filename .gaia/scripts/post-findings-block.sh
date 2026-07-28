@@ -16,13 +16,15 @@
 #
 # Usage
 #   post-findings-block.sh --base <sha> [--pr <N>]
-#     --base <sha>  REQUIRED. The incremental audit base; keys the sidecar
-#                   glob (.gaia/local/audit/<sha>.*.findings.json). Callers
-#                   resolve this the same way the audited member(s) already
-#                   do (.github/audit/resolve-audit-base.sh + merge-base, or
-#                   the plain merge-base a specialized member computes for
-#                   its own remit filter); this script invents no base of
-#                   its own.
+#     --base <sha>  REQUIRED. The incremental audit base; combined with this
+#                   tree's own branch (gaia_audit_key, audit-key-lib.sh) into
+#                   the key that globs the sidecars
+#                   (.gaia/local/audit/<sha>.<branch-slug>.*.findings.json).
+#                   Callers resolve <sha> the same way the audited member(s)
+#                   already do (.github/audit/resolve-audit-base.sh +
+#                   merge-base, or the plain merge-base a specialized member
+#                   computes for its own remit filter); this script invents
+#                   no base of its own.
 #     --pr <N>      PR number. Default: resolved from the current branch via
 #                   `gh pr view --json number`.
 #     --help | -h   Usage, exit 0.
@@ -51,14 +53,35 @@
 #   one carrying only the locally-dispatched members' findings. See
 #   wiki/concepts/PR Merge Workflow.md.
 #
-# Sidecar shape (frozen; each Code Audit Team member's own contract)
-#   .gaia/local/audit/<base-sha>.<member>.findings.json
+# Sidecar shape (each Code Audit Team member's own contract; written by
+# .gaia/scripts/audit-write-findings.sh)
+#   .gaia/local/audit/<base-sha>.<branch-slug>.<member>.findings.json, the
+#   key gaia_audit_key computes (audit-key-lib.sh): base-sha alone collides
+#   between two worktrees cut from the same main tip, so the acting tree's
+#   own branch is the discriminator.
 #   {"schema":1,"member":"<name>","findings":[
-#     {"finding_class":"...","severity":"error|warning|suggestion","area_tags":["..."]}
+#     {"finding_class":"...","severity":"error|warning|suggestion",
+#      "area_tags":["..."],"path":"...","line":N,"title":"...",
+#      "failure_mode":"...","verified_by":"...","suggested_fix":"..."}
 #   ]}
 #   "findings":[] is a valid, meaningful sidecar (the member ran and found
 #   nothing countable); an ABSENT sidecar is not the same thing, and this
 #   script never fabricates one.
+#
+# Projection to the block (load-bearing)
+#   The sidecar is the member's full report of record: it carries the file,
+#   line, defect, verification, and recommended repair a fix needs. The PR
+#   comment block does NOT. Each finding is projected to exactly
+#   finding_class / severity / area_tags on the way out, for two reasons. The
+#   block's contract is frozen at those three keys (parse-findings-block.ts
+#   reads only them, and the recurrence tally counts distinct PRs per
+#   finding_class), so anything else is dead weight in a comment nobody reads
+#   by hand. And a PR comment is a published surface whose visibility follows
+#   the repo's, while a finding's text can quote the very secret or hole it
+#   reports; the local sidecar is the right home for that, and the
+#   security-class disposition rules exist precisely because publishing such a
+#   finding is not always safe. Extending the sidecar therefore never widens
+#   what this script publishes.
 #
 # Rendered block shape (frozen, matches parse-findings-block.ts)
 #   <!-- gaia-harden:findings:start -->
@@ -82,29 +105,31 @@
 # Filename collision with a clearance marker: PROVABLY NONE
 #   A clearance marker/refusal/dispositions-sidecar is keyed to a member's
 #   CONTENT DIGEST, a 64-hex sha256 (audit-digest.sh). A findings sidecar is
-#   keyed to <base-sha>, a 40-hex git commit sha. The two key spaces never
-#   collide on length, so a findings sidecar can never be mistaken for, or
-#   glob-matched as, a marker by VALUE. Direction two: no marker reader globs
-#   the audit directory for `.ok`/`.refused` files by pattern.
+#   keyed to <base-sha>.<branch-slug> (gaia_audit_key), never a bare 64-hex
+#   value, so a findings sidecar can never be mistaken for, or glob-matched
+#   as, a marker by VALUE. Direction two: no marker reader globs the audit
+#   directory for `.ok`/`.refused` files by pattern.
 #   post-audit-status.sh operates only on the single marker path an agent
 #   hands it as an argument; pr-merge-audit-check.sh and
 #   audit-disposition-check.sh read only their own single exact digest-keyed
-#   path. local-janitor.sh DOES glob the directory, but its glob list
-#   (*.ok, *.refused, *.carried, *.dispositions.json, *.progress.log,
-#   *.rerun.json) has no `*.findings.json` arm, so it neither reaps nor
-#   misidentifies a findings sidecar; it also means a findings sidecar is
-#   never swept, a named follow-up (see this task's return to the
-#   orchestrator).
+#   path. local-janitor.sh DOES glob the directory, and it does sweep
+#   findings sidecars (its own `*.findings.json` arm, aged off plain file
+#   mtime), but every arm it runs selects by an exact suffix, so no arm can
+#   reap or misidentify a sidecar as a marker or a marker as a sidecar.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`s. jq required (fails
 # closed, matching every other digest/clearance script in this directory).
 
 set -uo pipefail
 
+# shellcheck source=/dev/null
+. "$(dirname "${BASH_SOURCE[0]}")/audit-key-lib.sh"
+
 usage() {
   cat <<'EOF' >&2
 usage: post-findings-block.sh --base <sha> [--pr <N>]
-  --base <sha>  the incremental audit base; keys the sidecar glob.
+  --base <sha>  the incremental audit base; combined with this tree's own
+                branch into the key that globs the sidecars.
   --pr <N>      PR number. Default: resolved from the current branch via gh.
   --help | -h   usage, exit 0.
 EOF
@@ -158,16 +183,27 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$repo_root" ] || repo_root="."
 audit_dir="${repo_root}/.gaia/local/audit"
 
+# AUDIT_KEY combines --base with THIS tree's own branch (gaia_audit_key,
+# audit-key-lib.sh): a base sha alone collides between two worktrees cut
+# from the same main tip, since both compute the identical merge-base. Empty
+# when the branch is undeterminable (detached HEAD) -- the glob below then
+# matches nothing, which declines "no sidecars" below, the same fail-open
+# rule an empty --base already gets.
+AUDIT_KEY=""
+AUDIT_KEY="$(gaia_audit_key "$BASE" "$repo_root" 2>/dev/null || true)"
+
 # -----------------------------------------------------------------------------
-# 1. Glob sidecars for this base, sorted LC_ALL=C for a deterministic merge
-#    order (matches the dispatch resolver's own sort discipline).
+# 1. Glob sidecars for this tree's tag, sorted LC_ALL=C for a deterministic
+#    merge order (matches the dispatch resolver's own sort discipline).
 # -----------------------------------------------------------------------------
 
 sidecars=()
-for f in "${audit_dir}"/"${BASE}".*.findings.json; do
-  [ -e "$f" ] || continue
-  sidecars+=("$f")
-done
+if [ -n "$AUDIT_KEY" ]; then
+  for f in "${audit_dir}"/"${AUDIT_KEY}".*.findings.json; do
+    [ -e "$f" ] || continue
+    sidecars+=("$f")
+  done
+fi
 
 if [ "${#sidecars[@]}" -gt 0 ]; then
   sorted_list="$(printf '%s\n' ${sidecars[@]+"${sidecars[@]}"} | LC_ALL=C sort)"
@@ -238,9 +274,17 @@ fi
 #    so it never renders (matches parse-findings-block.ts:5-20).
 # -----------------------------------------------------------------------------
 
-merged_findings="$(jq -s '[.[] | .findings[]?]' ${valid_files[@]+"${valid_files[@]}"} 2>/dev/null || true)"
-if [ -z "$merged_findings" ]; then
-  merged_findings="[]"
+#    jq's STATUS is checked, not its emptiness. Every file left in valid_files
+#    already parsed with an array `.findings`, so this pass cannot come back
+#    empty on data grounds: an empty result means the merge itself failed.
+#    Defaulting that to `[]` would publish "the audit found nothing" on a PR
+#    when what happened is "the merge broke", which is the one wrong answer
+#    here, so a merge failure declines exactly as the render failure below
+#    does. Its stderr is captured rather than discarded for the same reason.
+if ! merged_findings="$(jq -s '[.[] | .findings[]? | {finding_class, severity, area_tags}]' ${valid_files[@]+"${valid_files[@]}"} 2>&1)"; then
+  emit_error "cannot merge the findings sidecars: $merged_findings"
+  emit_decline "post failed"
+  exit 0
 fi
 n="$(printf '%s' "$merged_findings" | jq 'length' 2>/dev/null || echo 0)"
 m="${#valid_files[@]}"

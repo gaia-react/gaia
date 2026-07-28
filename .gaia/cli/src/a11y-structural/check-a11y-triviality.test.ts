@@ -23,28 +23,12 @@ import {afterEach, describe, expect, test} from 'vitest';
  * `--stories <path>`.
  */
 import {execFileSync} from 'node:child_process';
-import {existsSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 
-const resolveRepoRoot = (): string => {
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-
-  for (let attempts = 0; attempts < 20; attempts += 1) {
-    if (existsSync(path.join(dir, '.git'))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  throw new Error('Could not find repo root (no .git directory found)');
-};
-
-const REPO_ROOT = resolveRepoRoot();
+const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const HELPER = path.join(
   REPO_ROOT,
   '.gaia/scripts/a11y-structural/check-a11y-triviality.mjs'

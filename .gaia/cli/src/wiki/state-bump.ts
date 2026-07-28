@@ -14,7 +14,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
-import {resolveRepoRoot} from './util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 
 const HELP_TEXT = `Usage: gaia wiki state-bump <field> <value>
 

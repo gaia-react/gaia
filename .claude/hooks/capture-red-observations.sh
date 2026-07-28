@@ -4,9 +4,11 @@
 # When the agent runs a one-shot vitest run (`pnpm test --run [scope]`), this
 # hook re-invokes vitest with the json reporter on the same scope, reads the
 # per-test results, and appends every GENUINELY-FAILING test to the
-# RED-observation ledger (.gaia/local/red-ledger/observations.jsonl). The
-# companion check hook (red-verify-commit-check.sh) later reads that ledger to
-# decide whether a `git commit` introducing a now-passing new test may land.
+# RED-observation ledger (.gaia/local/red-ledger/<tree_key>/observations.jsonl;
+# <tree_key> identifies the working tree, printed by
+# `bash .gaia/scripts/main-root-lib.sh --tree-key`). The companion check hook
+# (red-verify-commit-check.sh) later reads that ledger to decide whether a
+# `git commit` introducing a now-passing new test may land.
 #
 # This hook ONLY observes. It never blocks, never emits a deny, and ALWAYS
 # exits 0, a missing capture only means the check may later deny, which is the
@@ -62,7 +64,28 @@ done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
 [ -f .claude/hooks/lib/red-ledger.sh ] && . .claude/hooks/lib/red-ledger.sh
 type red_ledger_path >/dev/null 2>&1 || exit 0
 
-ledger=$(red_ledger_path)
+# The shared main-root resolver, sourced from this hook's own checkout via
+# BASH_SOURCE (never process cwd): the RED ledger is per-tree state, so its
+# root is the ACTING tree, not wherever this hook process happens to sit.
+gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
+gaia_scripts="$gaia_scripts/.gaia/scripts"
+# shellcheck source=/dev/null
+source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
+
+# The acting agent's working directory: the payload cwd when it is absolute
+# and resolves to a checkout, this hook's process cwd otherwise. "Resolves to
+# a checkout" is the resolver's own question, so it is asked by calling it
+# rather than by a raw git call this hook writes itself. Payload cwd is
+# measured, not contracted, and only established on PreToolUse/PostToolUse,
+# so the fallback is mandatory.
+payload_cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || echo "")
+source_cwd="$PWD"
+if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
+  source_cwd="$payload_cwd"
+fi
+tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
+
+ledger=$(red_ledger_path "$tree_root") || exit 0
 ledger_dir=$(dirname "$ledger")
 tmp_dir="${ledger_dir}/.tmp"
 

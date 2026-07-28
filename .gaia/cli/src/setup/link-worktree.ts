@@ -1,29 +1,33 @@
 /**
  * `gaia setup link-worktree [--json]` handler.
  *
- * Idempotently creates the five SPEC-005 shared-state symlinks from the
- * current linked worktree into the main checkout:
+ * Idempotently symlinks the current linked worktree's whole `.gaia/local`
+ * to the main checkout's own `.gaia/local`:
  *
- *   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
- *   <worktree>/.gaia/local/cache/shared/     -> <main>/.gaia/local/cache/shared/
- *   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
- *   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
- *   <worktree>/.gaia/local/debt/             -> <main>/.gaia/local/debt/
+ *   <worktree>/.gaia/local -> <main>/.gaia/local
+ *
+ * Every registry-declared entry (`.gaia/state-registry.json`) lives under
+ * that one shared directory now; the per-tree entries (red-ledger/,
+ * worthiness-ledger/, forensics/, handoff/) address themselves under a
+ * subdirectory keyed by the acting tree's own `gaia_tree_key`
+ * (`.gaia/scripts/main-root-lib.sh`), so they stay private to the tree that
+ * wrote them even though the physical directory is shared.
  *
  * Also links gitignored checkout-root `.env` / `.env.*` files (excluding the
  * committed `.env.example`) from the main checkout, one symlink per file,
- * reported separately in the `env_actions` field so the frozen five-entry
+ * reported separately in the `env_actions` field so the frozen single-entry
  * `actions` contract above is untouched.
  *
- * No-op on a main checkout (not a linked worktree). Pre-existing plain
- * files / dirs are moved to <path>.bak.<timestamp> before the symlink is
- * created. Exits 1 on any `failed` action; the user explicitly invoked
- * the CLI, so surfacing the error is correct (the script counterpart
- * always exits 0 because it must not break worktree creation).
+ * No-op on a main checkout (not a linked worktree). A pre-existing plain
+ * `.gaia/local` (file or directory) is moved to
+ * `.gaia/local.bak.<timestamp>` before the symlink is created; nothing
+ * under it is inspected or merged. Exits 1 on any `failed` action; the
+ * user explicitly invoked the CLI, so surfacing the error is correct (the
+ * script counterpart always exits 0 because it must not break worktree
+ * creation).
  *
  * Frozen JSON shape; see SPEC-005 plan README.md for the contract.
  */
-import {execFileSync} from 'node:child_process';
 import {
   existsSync,
   lstatSync,
@@ -37,16 +41,17 @@ import {
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {resolveMainWorktreeRoot} from './util/state-file.js';
+import {resolveMainWorktreeRoot} from '../util/main-root.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 
 const HELP_TEXT = `Usage: gaia setup link-worktree [--json]
 
-  Idempotently create the five worktree shared-state symlinks pointing at
-  the main checkout. Also links gitignored checkout-root .env / .env.*
-  files (excluding .env.example) from the main checkout. Backs up
-  pre-existing plain files to <path>.bak.<ts>. No-op on a main checkout
-  (not a linked worktree); exits 0 with a one-line "not a linked worktree"
-  message.
+  Idempotently symlink the worktree's whole .gaia/local to the main
+  checkout's own .gaia/local. Also links gitignored checkout-root .env /
+  .env.* files (excluding .env.example) from the main checkout. Backs up
+  a pre-existing plain .gaia/local to .gaia/local.bak.<ts>. No-op on a main
+  checkout (not a linked worktree); exits 0 with a one-line "not a linked
+  worktree" message.
 
   --json   Print a single JSON line describing the result instead of the
            human-readable summary.
@@ -87,30 +92,24 @@ type RunOptions = {
 type SharedPathSpec = {
   /**
    * Whether the main-side target should be ensured (created if missing) as
-   * a directory before the symlink is made. `setup-state.json` is a file
-   * and is intentionally NOT pre-created; the symlink dangles until the
-   * normal setup flow writes it; readers treat missing as "no state yet".
+   * a directory before the symlink is made. `.gaia/local` is always a
+   * directory.
    */
   ensureTargetDir: boolean;
   relativePath: string;
 };
 
-/**
- * Frozen path set; five entries, in this order, always present in the
- * output `actions` array regardless of result. See SPEC-005 plan README.
- *
- * `debt/` holds the `/gaia-debt` count cache and its `refresh-requested`
- * sentinel. Sharing it means a tech-debt fix merged from inside a linked
- * worktree arms the main checkout's sentinel, so the statusline debt nudge
- * recomputes instead of freezing on its TTL until the backlog empties.
- */
-const SHARED_PATHS: readonly SharedPathSpec[] = [
-  {ensureTargetDir: false, relativePath: '.gaia/local/setup-state.json'},
-  {ensureTargetDir: true, relativePath: '.gaia/local/cache/shared'},
-  {ensureTargetDir: true, relativePath: '.gaia/local/audit'},
-  {ensureTargetDir: true, relativePath: '.gaia/local/telemetry'},
-  {ensureTargetDir: true, relativePath: '.gaia/local/debt'},
-];
+// The one shared path every linked worktree gets: its whole `.gaia/local`,
+// symlinked wholesale to the main checkout's own `.gaia/local`. Every
+// registry-declared entry (`.gaia/state-registry.json`) lives under that one
+// directory now; a per-tree entry addresses itself under a subdirectory
+// keyed by the acting tree's own `gaia_tree_key`
+// (`.gaia/scripts/main-root-lib.sh`), so it stays private to the tree that
+// wrote it even though the physical directory is shared.
+const GAIA_LOCAL_SPEC: SharedPathSpec = {
+  ensureTargetDir: true,
+  relativePath: path.join('.gaia', 'local'),
+};
 
 // Shareable env-file basename set: `.env` and any `.env.*` variant under the
 // checkout root, except the committed `.env.example`. Mirrors .gitignore's
@@ -340,10 +339,10 @@ const resolveWorktreeRoots = (
 
   try {
     mainRoot = resolveMainWorktreeRoot(canonicalCwd);
-  } catch {
+  } catch (error) {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia setup link-worktree must run inside a git repository',
+      message: `gaia setup link-worktree must run inside a git repository: ${error instanceof Error ? error.message : String(error)}`,
       subcommand: 'setup link-worktree',
     });
 
@@ -355,17 +354,13 @@ const resolveWorktreeRoots = (
   // succeeded above, this fork is essentially guaranteed to succeed too, but
   // guard for the unlikely case anyway.
   try {
-    const worktreeRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      cwd: canonicalCwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
+    const worktreeRoot = resolveRepoRoot(canonicalCwd);
 
     return {mainRoot, worktreeRoot};
-  } catch {
+  } catch (error) {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia setup link-worktree must run inside a git repository',
+      message: `gaia setup link-worktree must run inside a git repository: ${error instanceof Error ? error.message : String(error)}`,
       subcommand: 'setup link-worktree',
     });
 
@@ -428,14 +423,20 @@ export const run = (
   const timestamp = formatTimestamp(nowDate);
   const symlink = options.symlink ?? symlinkSync;
 
-  const actions = SHARED_PATHS.map((spec) =>
-    linkOne({mainRoot, spec, symlink, timestamp, worktreeRoot})
-  );
+  const actions = [
+    linkOne({
+      mainRoot,
+      spec: GAIA_LOCAL_SPEC,
+      symlink,
+      timestamp,
+      worktreeRoot,
+    }),
+  ];
 
   // Env files are a separate, discovered (not fixed) set: every gitignored
   // `.env` / `.env.*` under the main checkout root except `.env.example`.
-  // Reported in the new `env_actions` field; the frozen five-entry `actions`
-  // array above is untouched.
+  // Reported in the new `env_actions` field; the frozen single-entry
+  // `actions` array above is untouched.
   const envSpecs: SharedPathSpec[] = readdirSync(mainRoot)
     .filter((name) => isShareableEnvironmentFile(name))
     .toSorted((a, b) => a.localeCompare(b))

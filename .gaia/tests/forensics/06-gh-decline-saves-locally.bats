@@ -17,16 +17,21 @@ LIB="$HERE/lib"
 #   - Does NOT invoke gh
 # ---------------------------------------------------------------------------
 
+# Synthetic stand-in for `bash .gaia/scripts/main-root-lib.sh --tree-key`'s
+# stdout (16 lowercase hex characters); this surrogate never invokes the real
+# resolver, same as the fixed synthetic $timestamp below.
+TREE_KEY_FIXTURE="deadbeefcafe1234"
+
 decline_surrogate() {
   local workdir="$1"
   local class="${2:-init}"
   local timestamp="20260508T143022Z"
 
-  mkdir -p "$workdir/.gaia/local/forensics"
-  local report_path="$workdir/.gaia/local/forensics/${timestamp}-${class}.md"
+  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  local report_path="$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
   printf '## Symptom\nTest report body.\n' > "$report_path"
 
-  printf 'Report: .gaia/local/forensics/%s-%s.md\n' "$timestamp" "$class"
+  printf 'Report: .gaia/local/forensics/%s/%s-%s.md\n' "$TREE_KEY_FIXTURE" "$timestamp" "$class"
   # No gh invocation here; this is the decline branch
 }
 
@@ -46,7 +51,7 @@ teardown() {
 @test "UAT-005: declining issue creation saves the report file locally" {
   decline_surrogate "$WORKDIR" "init"
   local report
-  report="$WORKDIR/.gaia/local/forensics/20260508T143022Z-init.md"
+  report="$WORKDIR/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-init.md"
   [[ -f "$report" ]]
 }
 
@@ -75,7 +80,7 @@ teardown() {
 
 @test "UAT-005: local file exists and is non-empty after decline" {
   decline_surrogate "$WORKDIR" "wiki-sync"
-  local report="$WORKDIR/.gaia/local/forensics/20260508T143022Z-wiki-sync.md"
+  local report="$WORKDIR/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-wiki-sync.md"
   [[ -f "$report" ]]
   [[ -s "$report" ]]
 }
@@ -83,13 +88,13 @@ teardown() {
 @test "UAT-005: report path uses correct timestamp-class filename pattern" {
   local class="quality-gate"
   decline_surrogate "$WORKDIR" "$class"
-  local expected_path="$WORKDIR/.gaia/local/forensics/20260508T143022Z-${class}.md"
+  local expected_path="$WORKDIR/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-${class}.md"
   [[ -f "$expected_path" ]]
 }
 
 @test "UAT-005: report survives after surrogate exits (file is not cleaned up)" {
   decline_surrogate "$WORKDIR" "scaffold"
-  local report="$WORKDIR/.gaia/local/forensics/20260508T143022Z-scaffold.md"
+  local report="$WORKDIR/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-scaffold.md"
   # File must still be present after surrogate returns
   [[ -f "$report" ]]
 }

@@ -22,7 +22,7 @@ import type {
   ToolId,
 } from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 
 type CronDecision = {
   decision: 'run' | 'skip';

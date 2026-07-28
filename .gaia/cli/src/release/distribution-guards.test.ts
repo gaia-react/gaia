@@ -1,7 +1,7 @@
 import {describe, expect, test} from 'vitest';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 
 /**
  * Static text-scan guards for the maintainer-side ship-or-withhold command.
@@ -19,24 +19,7 @@ import {fileURLToPath} from 'node:url';
  * against it.
  */
 
-const resolveRepoRoot = (): string => {
-  // Walk up from this file's location to the repo root (contains .git).
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-
-  for (let attempts = 0; attempts < 20; attempts += 1) {
-    if (existsSync(path.join(dir, '.git'))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  throw new Error('Could not find repo root (no .git directory found)');
-};
-
-const repoRoot = resolveRepoRoot();
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const commandPath = path.join(
   repoRoot,
   '.claude',

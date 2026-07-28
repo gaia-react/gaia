@@ -25,11 +25,24 @@ fi
 repo_root="$1"
 spec_id="$2"
 patch="$3"
-ledger_path="${repo_root%/}/.gaia/local/specs/ledger.json"
 
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 . "${_lib_dir}/with-ledger-lock.sh"
+# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+
+# repo_root names the tree this write runs in; the ledger it writes is
+# main's, because the state registry declares specs/ main-only. Resolve
+# rather than trust: from a linked worktree the operand is that worktree's
+# own root, and using it would fork the ledger. Refuse when main is
+# unresolvable, mapped to this file's own ledger-missing code: a ledger this
+# script cannot locate is indistinguishable from one that is missing.
+if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+  echo "ledger-update: cannot resolve the main checkout for '$repo_root'; refuse to write (would fork the ledger across worktrees)" >&2
+  exit 4
+fi
+ledger_path="${specs_dir}/ledger.json"
 
 if [ ! -f "$ledger_path" ]; then
   echo "ledger-update: ledger not found at $ledger_path" >&2
@@ -76,7 +89,7 @@ apply_patch() {
 }
 
 rc=0
-with_ledger_lock "${repo_root%/}/.gaia/local/specs" apply_patch || rc=$?
+with_ledger_lock "$specs_dir" apply_patch || rc=$?
 if [ "$rc" -ne 0 ]; then
   if [ "$rc" -eq 75 ]; then
     echo "ledger-update: could not acquire ledger lock; patch not applied" >&2

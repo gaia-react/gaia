@@ -26,29 +26,51 @@
 // so the signal byte-matches what the RED ledger and the presence-gate
 // recompute produce. It does NOT reinvent the identity primitive.
 //
-// Ledger path: .gaia/local/audit/worthiness.jsonl (append-only,
-// gitignored, grows-forever, sibling to the RED ledger). Override with
-// WORTHINESS_LEDGER_PATH (the test seam; production leaves it unset).
+// Ledger path: .gaia/local/worthiness-ledger/<tree-key>/worthiness.jsonl
+// (append-only, gitignored, grows-forever), a directory sibling to the RED
+// ledger's .gaia/local/red-ledger/<tree-key>/. Both the tree-key subpath and
+// the anchoring on the ACTING tree's own root (never a repo-relative literal)
+// are resolved by shelling out to the one canonical definition,
+// .claude/hooks/lib/worthiness-ledger.sh, so this writer and its reader
+// (.claude/hooks/worthiness-presence-check.sh) never hand-build the path
+// independently. Override with WORTHINESS_LEDGER_PATH (the test seam;
+// production leaves it unset).
 //
 // Exit 0 on a successful append. Exit non-zero with a one-line stderr message
 // on a bad argument, an unknown verdict, a missing artifact for a non-keep, an
-// unreadable file, a signal-helper failure, or a fullName the file does not
-// contain. The evaluator edits no files; this writer only ever appends to the
-// gitignored ledger.
+// unreadable file, a signal-helper failure, a fullName the file does not
+// contain, an unresolvable tree root, or an unwritable ledger. The evaluator
+// edits no files; this writer only ever appends to the gitignored ledger.
 
 import {execFileSync} from 'node:child_process';
 import {appendFileSync, mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+
 const SIGNAL_HELPER = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
+  SCRIPTS_DIR,
   '..',
   'red-ledger',
   'extract-test-signals.mjs',
 );
 
-const DEFAULT_LEDGER = '.gaia/local/audit/worthiness.jsonl';
+// The one canonical worthiness-ledger path resolver (see
+// .claude/hooks/lib/worthiness-ledger.sh's own header). Shelled out to
+// rather than reimplemented, so this writer never becomes a second,
+// independently-drifting copy of the tree-keyed path literal.
+const WORTHINESS_LEDGER_LIB = path.join(
+  SCRIPTS_DIR,
+  '..',
+  '..',
+  '..',
+  '.claude',
+  'hooks',
+  'lib',
+  'worthiness-ledger.sh',
+);
+
 const VERDICTS = new Set(['keep', 'fix', 'delete']);
 
 const fail = (message, code) => {
@@ -113,7 +135,27 @@ if (artifact) {
   record.artifact = artifact;
 }
 
-const ledgerPath = process.env.WORTHINESS_LEDGER_PATH || DEFAULT_LEDGER;
+// Resolve the default ledger path via the shared resolver, anchored on the
+// ACTING tree's own root and keyed to it, not a cwd-relative literal, so
+// this writer and its reader (.claude/hooks/worthiness-presence-check.sh)
+// agree on where a given tree's observations live. Skipped entirely when the
+// test seam overrides the path.
+let ledgerPath = process.env.WORTHINESS_LEDGER_PATH;
+if (!ledgerPath) {
+  try {
+    ledgerPath = execFileSync('bash', [WORTHINESS_LEDGER_LIB], {
+      encoding: 'utf8',
+    }).trim();
+  } catch (err) {
+    fail(`cannot resolve the worthiness ledger path: ${err.message}`, 8);
+  }
+  if (!ledgerPath) {
+    fail(
+      'cannot resolve the worthiness ledger path: worthiness-ledger.sh returned no path',
+      8,
+    );
+  }
+}
 
 try {
   mkdirSync(path.dirname(ledgerPath), {recursive: true});

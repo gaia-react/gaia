@@ -43,7 +43,7 @@
       "Bash(pnpm test:ci:*)",
       "Bash(pnpm typecheck:*)",
       "Bash(rm -f .gaia/local/cache/*)",
-      "Bash(rm -f .gaia/local/handoff/HANDOFF-*.md)",
+      "Bash(rm -f .gaia/local/handoff/*/HANDOFF-*.md)",
       "Bash(rm -rf .gaia/cache)",
       "Bash(rm -rf .gaia/local/cache/*)",
       "Bash(rm -rf .gaia/local/plans/*)",
@@ -85,6 +85,10 @@
       {
         "matcher": "startup|resume",
         "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/provision-worktree.sh"
+          },
           {
             "type": "command",
             "command": ".claude/hooks/wiki-session-start.sh"
@@ -146,28 +150,6 @@
           {
             "type": "command",
             "command": ".claude/hooks/wiki-recompact-sentinel.sh"
-          }
-        ]
-      }
-    ],
-    "WorktreeCreate": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .gaia/scripts/create-worktree.sh"
-          }
-        ]
-      }
-    ],
-    "WorktreeRemove": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash -c 'root=\"$(dirname \"$(git rev-parse --git-common-dir)\")\"; exec bash \"$root/.gaia/scripts/remove-worktree.sh\"'"
           }
         ]
       }
@@ -344,9 +326,28 @@
             "statusMessage": "Checking distribution manifest pre-flight…"
           }
         ]
+      },
+      {
+        "matcher": "mcp__serena__activate_project",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-serena-cross-tree-activation.sh",
+            "statusMessage": "Checking Serena activation tree guard…"
+          }
+        ]
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/provision-worktree.sh"
+          }
+        ]
+      },
       {
         "matcher": "Bash",
         "hooks": [
