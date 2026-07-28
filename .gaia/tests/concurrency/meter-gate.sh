@@ -5,9 +5,12 @@
 #
 # NOT the same contract as .gaia/tests/forensics/run-all.sh, despite the
 # sibling shape: that script exits non-zero when any test fails. This one
-# exits ZERO with scenarios failing, because the meter is red by design and
-# its reds belong to phases that have not run yet. What it fails on is a
-# DEVIATION from the recorded expectation, in either direction:
+# adjudicates every scenario's OBSERVED result against expected-status.txt
+# and exits on a DEVIATION from the recorded expectation, in either
+# direction, rather than on a raw pass/fail count. Every row in
+# expected-status.txt reads `pass` today, so a red scenario is a regression,
+# not an accepted state; the PROGRESS arm below stays live as the guard for
+# the day the manifest again carries an expected-fail row, not as dead code:
 #
 #   regression  an expected-pass scenario went red
 #   progress    an expected-red scenario went green -- a real advance, and it

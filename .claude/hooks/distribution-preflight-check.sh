@@ -180,6 +180,17 @@ maintainer_bin=".gaia/cli/gaia-maintainer"
 
 command -v git >/dev/null 2>&1 || exit 0
 
+# The audited root: the checkout whose branch this pre-flight measures. Derived
+# once, so the three git queries below all read one tree instead of each
+# answering from wherever the hook happened to be invoked. The anchor is a
+# subdirectory normalization, not a cross-tree guarantee: it is itself a
+# toplevel query against the ambient cwd, so it cannot repoint this hook at
+# another tree. Which tree the hook answers for is the caller's, decided by the
+# directory it invokes from. An unresolvable root falls open, matching every
+# other uncertainty in this hook.
+audited_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+[ -n "$audited_root" ] || exit 0
+
 deny() {
   jq -n --arg r "$1" '{
     hookSpecificOutput: {
@@ -236,14 +247,14 @@ if [ -n "$base_ref" ]; then
   base_ref="${base_ref#\'}"
 fi
 if [ -z "$base_ref" ]; then
-  base_ref=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null \
+  base_ref=$( cd "$audited_root" && git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null \
     | sed 's#^origin/##' || true)
 fi
 [ -n "$base_ref" ] || base_ref="main"
 
 base_rev=""
 for candidate in "origin/${base_ref}" "$base_ref"; do
-  if git rev-parse --verify --quiet "$candidate" >/dev/null 2>&1; then
+  if ( cd "$audited_root" && git rev-parse --verify --quiet "$candidate" >/dev/null 2>&1 ); then
     base_rev="$candidate"
     break
   fi
@@ -256,7 +267,7 @@ done
 # Deletions are excluded; even if one slipped through it could never intersect
 # `missing`, which is built from a git ls-files walk of the head tree. Matches
 # distribution-audit-pr.yml exactly so the two gates never disagree.
-changed=$(git diff --name-only --diff-filter=ACMR "${base_rev}...HEAD" 2>/dev/null \
+changed=$( cd "$audited_root" && git diff --name-only --diff-filter=ACMR "${base_rev}...HEAD" 2>/dev/null \
   | LC_ALL=C sort -u || true)
 [ -n "$changed" ] || exit 0
 

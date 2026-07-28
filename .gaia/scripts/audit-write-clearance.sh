@@ -10,11 +10,13 @@
 #                            [--supersede-refusal <reason>] \
 #                            [--help|-h]
 #
-#   --root         REQUIRED. The audited working root. The member's content
-#                  digest is derived from it (never from the caller's CWD)
-#                  via the digest engine (.claude/hooks/lib/audit-digest.sh),
-#                  which bounds a worktree run from stamping a marker keyed to
-#                  another worktree's content.
+#   --root         REQUIRED, and validated: it must be a checkout ROOT, not a
+#                  subdirectory of one and not a path a worktree used to
+#                  occupy. The member's content digest is derived from it
+#                  (never from the caller's CWD) via the digest engine
+#                  (.claude/hooks/lib/audit-digest.sh), which bounds a worktree
+#                  run from stamping a marker keyed to another worktree's
+#                  content.
 #   --member       REQUIRED. The Code Audit Team member writing the clearance.
 #   --provenance   REQUIRED. earned | refused.
 #   --supersede-refusal <reason>
@@ -190,6 +192,26 @@ if [ -z "$ROOT" ]; then
   usage
   exit 2
 fi
+
+# --root must BE a checkout root, not a subdirectory of one and not a path a
+# worktree used to occupy. The content digest, the HEAD tree and the marker
+# store below are all derived from it, so a path that merely SITS INSIDE a
+# checkout mints a marker attesting to content the caller never named. Compare
+# physically resolved paths, via `cd <path> && pwd -P` rather than `realpath`
+# (not guaranteed present on macOS -- see .gaia/scripts/main-root-lib.sh's
+# header), so a symlinked checkout path passes a comparison it should pass.
+_root_toplevel="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$_root_toplevel" ]; then
+  err "--root '$ROOT' is not a git checkout"
+  exit 2
+fi
+_root_phys="$(cd "$ROOT" 2>/dev/null && pwd -P)" || _root_phys=""
+_toplevel_phys="$(cd "$_root_toplevel" 2>/dev/null && pwd -P)" || _toplevel_phys=""
+if [ -z "$_root_phys" ] || [ "$_root_phys" != "$_toplevel_phys" ]; then
+  err "--root '$ROOT' is not a checkout root (its checkout root is '$_root_toplevel')"
+  exit 2
+fi
+
 if [ -z "$MEMBER" ]; then
   err "--member is required"
   usage

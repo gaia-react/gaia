@@ -201,7 +201,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
             Task(
               subagent_type="<member-name>",
-              prompt="Working root: <RESOLVED_ROOT>, the absolute path of the checkout under review; the orchestrator substitutes the value it resolved from the isolation reference at dispatch time. Expected HEAD tree: <EXPECTED_TREE>, the tree captured immediately before this dispatch wave.
+              prompt="Working root: <RESOLVED_ROOT>, the absolute path of the checkout under review; the orchestrator substitutes the value it resolved from the isolation reference at dispatch time. Before running any handshake command, set AUDIT_ROOT=<RESOLVED_ROOT>. Expected HEAD tree: <EXPECTED_TREE>, the tree captured immediately before this dispatch wave.
               MANDATORY FIRST ACTION, before any review: run `git -C <RESOLVED_ROOT> rev-parse HEAD^{tree}` and compare it to <EXPECTED_TREE>. If that command errors (missing path, git unavailable) OR the value does not match exactly, STOP, do not review, do not write a marker, and return only the mismatch or error as your entire output.
               Only on an exact match, review all changes in <RESOLVED_ROOT>'s current branch compared to main, scoping every git command to `git -C <RESOLVED_ROOT>`. Identify security vulnerabilities, performance issues, code smells, anti-patterns, and refactoring opportunities."
             )

@@ -9,7 +9,10 @@
 # merge until BOTH clear.
 #
 # Usage:
-#   resolve-audit-members.sh [--base <ref>]
+#   resolve-audit-members.sh [--root <path>] [--base <ref>]
+#     --root <path> The audited working root. Authoritative when supplied, and
+#                   validated as a git checkout. Without it the root comes from
+#                   the current working directory.
 #     --base <ref>  Diff base override. Without it, the base is resolved the
 #                   same way pr-merge-audit-check.sh does: the remote default
 #                   branch (origin/HEAD, fallback main), then the merge-base of
@@ -19,8 +22,15 @@
 # Output contract:
 #   One dispatched member name per line on stdout, deduped and lexically
 #   sorted. EMPTY stdout means zero-match: the entire diff is out of audit
-#   scope. Exit code is 0 on EVERY path (empty diff, unresolvable base, not in
-#   a git repo, unknown flag) so consumers can parse stdout unconditionally.
+#   scope.
+#
+#   Exit 0 covers every ANSWERABLE query, including an empty diff, an
+#   unresolvable diff base, and an unknown flag, so consumers can parse stdout
+#   unconditionally there. Exit 2 means the query is UNANSWERABLE: the audited
+#   root does not resolve, from --root or from cwd. Nothing lands on stdout and
+#   one diagnostic line lands on stderr. A caller must never read a non-zero
+#   exit as an empty member set: "I could not answer" is not "nobody is owed",
+#   and a gate that conflates them clears a diff no dispatched member read.
 #
 # Dispatch algorithm, per changed file, in two precedence tiers (owned by
 # audit-scope.sh, sourced below):
@@ -66,17 +76,34 @@ set -euo pipefail
 # --- Parse arguments ----------------------------------------------------------
 
 BASE_OVERRIDE=""
+ROOT_OVERRIDE=""
 
 print_usage() {
   cat <<'USAGE'
-Usage: resolve-audit-members.sh [--base <ref>]
+Usage: resolve-audit-members.sh [--root <path>] [--base <ref>]
   Emits the dispatched auditor member set (one name per line, sorted) for the
-  current branch's diff. Empty output = entire diff out of scope. Exit 0 always.
+  current branch's diff. Empty output = entire diff out of scope. Exit 0 on
+  every answerable query; exit 2 when the audited root does not resolve.
 USAGE
 }
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --root)
+      # `[ -z "$2" ]` is not redundant with the arity check, and the asymmetry
+      # with `--base` below is deliberate. `--root "$R"` with R unset (QUOTED,
+      # so the word survives) arrives as $#=2 with an empty $2; read as "no
+      # override" it would answer from a root the caller never named, which is
+      # the mangled-query shape resolve-audit-spawn.sh:147-166 also fails
+      # closed on. The root decides WHICH TREE the answer describes, so a
+      # mangled one is unanswerable, not a fallback.
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+        echo "resolve-audit-members: --root requires a <path> argument" >&2
+        exit 2
+      fi
+      ROOT_OVERRIDE="$2"
+      shift 2
+      ;;
     --base)
       if [ "$#" -lt 2 ]; then
         echo "resolve-audit-members: --base requires a <ref> argument" >&2
@@ -99,10 +126,26 @@ done
 
 # --- Resolve the repo root -----------------------------------------------
 #
-# Not in a git repo -> nothing to diff; emit nothing and exit 0.
+# --root is authoritative when supplied and is validated here; otherwise the
+# root comes from cwd. Either way, a root that does not resolve makes the whole
+# query unanswerable, so it fails closed: nothing on stdout, one line on
+# stderr, exit 2. Empty stdout is reserved for the real answer "nothing in this
+# diff is in audit scope", and the member-aware gates read an empty set as
+# "nobody is owed a clearance".
 
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-[ -n "$repo_root" ] || exit 0
+if [ -n "$ROOT_OVERRIDE" ]; then
+  repo_root="$(git -C "$ROOT_OVERRIDE" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -z "$repo_root" ]; then
+    echo "resolve-audit-members: --root '$ROOT_OVERRIDE' is not a git repository" >&2
+    exit 2
+  fi
+else
+  repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -z "$repo_root" ]; then
+    echo "resolve-audit-members: the working directory is not a git repository; pass --root <path>" >&2
+    exit 2
+  fi
+fi
 
 # --- Load the shared ownership classifier ------------------------------------
 #

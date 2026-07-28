@@ -893,7 +893,7 @@ test("adds two numbers c407", () => {
 # Tranche 5 -- SURFACE
 # ---------------------------------------------------------------------------
 
-@test "C5-01: the statusline renders in a worktree" {
+@test "C5-01: the statusline scopes its task queue to main" {
   MAIN="$(gaia_new_main gaia-c501-main)"
   gaia_copy_real "$MAIN" \
     .gaia/statusline/gaia-statusline.sh \
@@ -902,27 +902,35 @@ test("adds two numbers c407", () => {
 
   B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
-  # The debt count and the setup marker are registry scope "shared", so they
-  # live under MAIN's .gaia/local -- one physical copy for every tree. B is
-  # left deliberately UNPROVISIONED (no symlinks back to main), so the segment
-  # can only render if the statusline resolved main for itself.
-  mkdir -p "$MAIN/.gaia/local/debt"
-  jq -n '{schema: 1, openCount: 3, computedAt: 0}' > "$MAIN/.gaia/local/debt/count.json"
-  jq -n '{completed_at: "2026-01-01T00:00:00Z"}' > "$MAIN/.gaia/local/setup-state.json"
-
+  # The setup marker, the debt count and the update-check cache are registry
+  # scope "shared", so they live under MAIN's .gaia/local -- one physical copy
+  # for every tree. B is left deliberately UNPROVISIONED (no symlinks back to
+  # main), so a segment can only render if the statusline resolved main for
+  # itself.
   home_dir="$(gaia_mk_tmp gaia-c501-home)"
   json="$(jq -n --arg d "$B" '{workspace: {current_dir: $d}}')"
+
+  # Target: the one blocking per-clone precondition, setup, renders from B
+  # regardless; everything else is a main-checkout task queue and stays dark
+  # from B, whether or not the shared cache holds a nudge to show.
+
+  # Half A, the kept nudge.
+  mkdir -p "$MAIN/.gaia/local"
+  jq -n '{completed_at: null}' > "$MAIN/.gaia/local/setup-state.json"
   run env HOME="$home_dir" bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$B/.gaia/statusline/gaia-statusline.sh"
   [ "$status" -eq 0 ]
+  grep -qF 'setup-gaia' <<< "$output"
 
-  # Target: the right side renders the clone's segment (e.g. the debt nudge)
-  # from a worktree session, not blanket-suppressed; no segment shows a fact
-  # true of one tree and false of this one.
-  # Before task 5.1, ANY session inside a linked worktree blanket-suppressed
-  # the whole right side ("if [ "$is_worktree" -eq 0 ]" gated everything from
-  # the debt segment down to setup completion), so the right side was dark
-  # regardless of what the (correctly shared) cache held.
-  grep -qF 'gaia-debt' <<< "$output"
+  # Half B, the suppression.
+  mkdir -p "$MAIN/.gaia/local/debt" "$MAIN/.gaia/local/cache/shared"
+  jq -n '{completed_at: "2026-01-01T00:00:00Z"}' > "$MAIN/.gaia/local/setup-state.json"
+  jq -n '{schema: 1, openCount: 3, computedAt: 0}' > "$MAIN/.gaia/local/debt/count.json"
+  jq -n '{outdatedCount: 3}' > "$MAIN/.gaia/local/cache/shared/update-check.json"
+  run env HOME="$home_dir" bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$B/.gaia/statusline/gaia-statusline.sh"
+  [ "$status" -eq 0 ]
+  grep -qF 'gaia-debt' <<< "$output" && return 1
+  grep -qF 'update-deps' <<< "$output" && return 1
+  return 0
 }
 
 @test "C5-02: wiki hooks are live in a worktree" {
@@ -1061,8 +1069,11 @@ test("adds two numbers c407", () => {
     > "$MAIN/.gaia/local/debt/count.json"
   computed_before="$(jq -r '.computedAt' "$MAIN/.gaia/local/debt/count.json")"
 
-  # Every open worktree's own statusline tick fires its own instance of this
-  # refresher; simulate two such ticks landing back-to-back, one per tree.
+  # The refresher is reachable from concurrent invocations on the main
+  # checkout's own ticks across concurrent sessions, and from any direct
+  # invocation; simulate two such invocations landing back-to-back, one per
+  # tree, driving the refresher directly rather than through a statusline
+  # render.
   run_in "$A" -- bash .gaia/scripts/debt-count-refresh.sh
   run_in "$B" -- bash .gaia/scripts/debt-count-refresh.sh
 

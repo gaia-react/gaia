@@ -122,11 +122,18 @@ Never gates your own marker; the orchestrator decides the disposition (see "Cros
 
 On a clean pass, no Critical finding, run the handshake below in order: sidecar, mark, stamp, status.
 
+Resolve the audited root once, before the first handshake command below. The orchestrator dispatches you with a "Working root:" line and an `AUDIT_ROOT` assignment; that value is authoritative. The ambient toplevel is the fallback only when no working root was supplied.
+
+```bash
+AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
+AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
+```
+
 **0. Sidecar (every LOCAL pass, clean or withheld).** Before any clearance artifact, write your findings sidecar with the shared writer (see "Findings sidecar" below for the full field contract). It is your report of record, so it exists before the artifact that gates on it: a marker or refusal published ahead of its own report is exactly the state an orchestrator cannot act on.
 
 ```bash
 findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-node \
   --base "$BASE_SHA" \
   --findings /path/to/findings.json)"
@@ -138,7 +145,7 @@ The marker is keyed to your own content digest, not HEAD's commit sha or tree: a
 
 ```bash
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-node \
   --provenance earned \
   --base "$BASE_SHA")"
@@ -150,7 +157,7 @@ Withhold the marker on any unresolved Critical finding; withholding it holds the
 
 ```bash
 bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-node \
   --provenance refused \
   --base "$BASE_SHA"
@@ -164,7 +171,7 @@ Passing `--base` on the earned write too is what retires your ledger entries: th
 
 ```bash
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-node \
   --provenance earned \
   --base "$BASE_SHA" \
@@ -176,7 +183,7 @@ The writer records the reversal in the marker body and removes your own refusal.
 **2. Stamp.** On a written marker, call the trailer stamp:
 
 ```bash
-stamp_line=$(.claude/hooks/audit-stamp-trailer.sh)
+stamp_line=$(cd "$AUDIT_ROOT" && .claude/hooks/audit-stamp-trailer.sh)
 ```
 
 It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this content, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. You never push, here or anywhere else: the trailer commit this call may create is a content-preserving local commit the local merge gate does not need pushed (it reads digest-keyed markers), and the member-aware status call in step 3 clears independently via the remote head. Surface the returned `stamp_line` in your report. Because the stamp is a content-preserving empty commit, it rotates no digest, so the marker you wrote in step 1 stays valid after it: there is nothing to re-write.
@@ -186,7 +193,7 @@ You write **only** your own marker. Never write the frontend member's `.gaia/loc
 **3. Status.** Immediately after the stamp step (never on a withheld marker), call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
 
 ```bash
-.claude/hooks/post-audit-status.sh "$marker"
+( cd "$AUDIT_ROOT" && .claude/hooks/post-audit-status.sh "$marker" )
 ```
 
 This call is best-effort and guarded; you are not deciding whether the status posts, the helper resolves the full dispatched member set and declines until every member's marker exists. Surface its one-line output (`status: posted GAIA-Audit success <sha>` or `status: declined: <reason>`) in your report.
@@ -203,7 +210,7 @@ The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments
 
 ```bash
 findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-node \
   --base "$BASE_SHA" \
   --findings /path/to/findings.json)"

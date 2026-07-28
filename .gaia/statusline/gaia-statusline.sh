@@ -10,14 +10,17 @@
 #      (so the adopter's existing global statusline appears unchanged).
 #   2. Fallback → bare "Claude Code" label.
 #
-# Right side in linked worktrees: it renders, in full, exactly as it does on
-# the main checkout. There is no worktree gate. Every right-side segment reads
+# Right side in linked worktrees: the one blocking, per-clone nudge
+# (`/setup-gaia`) still renders from every tree, so the statusline does not go
+# dark on the case this comment used to worry about. The rest of the right
+# side is a task queue for the main checkout, and a linked worktree cannot act
+# on any of it, so it is gated out there. Every right-side segment still reads
 # SHARED state -- the update-check cache, the debt count and the setup marker
 # are all scope "shared" in `.gaia/state-registry.json`, one physical copy
-# under the main checkout's `.gaia/local` -- so the answer is the same wherever
-# it is read, and a statusline that goes dark cannot tell a developer anything.
+# under the main checkout's `.gaia/local` -- which is exactly why the setup
+# nudge is correct from a worktree: the answer it reads is main's answer.
 # A flow that genuinely must run on the main checkout refuses out loud when it
-# is invoked, which is where that belongs.
+# is invoked, which is where the harder guarantee belongs.
 #
 # So this script resolves the MAIN checkout root from the SESSION's directory
 # and reads shared state there, rather than from its own install path: a
@@ -94,6 +97,17 @@ if command -v gaia_resolve_main_root >/dev/null 2>&1; then
 fi
 [ -n "$STATE_ROOT" ] || STATE_ROOT="$PROJECT_ROOT"
 
+# Whether this session is on a linked worktree, resolved once. Failure
+# direction: render. "No" and "indeterminate" (git unavailable, predicate
+# unresolvable) both read "false", and an unsourced library fails the
+# command -v guard -- all three keep the right side rendering, same as today.
+IS_WORKTREE="false"
+if command -v gaia_is_linked_worktree >/dev/null 2>&1; then
+  if gaia_is_linked_worktree "$session_dir"; then
+    IS_WORKTREE="true"
+  fi
+fi
+
 CACHE_FILE="$STATE_ROOT/.gaia/local/cache/shared/update-check.json"
 DEBT_CACHE="$STATE_ROOT/.gaia/local/debt/count.json"
 CHECK_SCRIPT="$STATE_ROOT/.gaia/scripts/check-updates.sh"
@@ -160,6 +174,10 @@ else
 
   if [ "$setup_complete" != "true" ]; then
     right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
+  elif [ "$IS_WORKTREE" = "true" ]; then
+    : # linked worktree, setup complete: the rest is a main-checkout task
+      # queue, nothing to build; right stays empty and falls through to the
+      # left-side-only path below.
   else
     # Declare the segment array once for the whole setup-complete path. The
     # update-check-derived segments stay gated on $CACHE_FILE; the debt
@@ -227,15 +245,20 @@ fi
 # copy writes the worktree's `.gaia/local` -- and a segment fed by a cache that
 # never refreshes is the silent death this script's shape exists to end, one
 # hop further along.
+#
+# Gated on IS_WORKTREE independently of the mid-init if/else above (that
+# block's outermost fi already closed): a linked worktree cannot act on
+# either refresher's output, so neither fires from one. Main's own next
+# render fires both past the TTL; no compensating fire is needed.
 
 # The update-check refresher.
-if [ -x "$CHECK_SCRIPT" ]; then
+if [ -x "$CHECK_SCRIPT" ] && [ "$IS_WORKTREE" != "true" ]; then
   (cd "$STATE_ROOT" && nohup bash "$CHECK_SCRIPT" >/dev/null 2>&1 &) >/dev/null 2>&1
 fi
 
 # The independent debt-count refresher. Detached so the hot path stays
 # no-network (the count above is read from the pinned cache only).
-if [ -x "$DEBT_REFRESH_SCRIPT" ]; then
+if [ -x "$DEBT_REFRESH_SCRIPT" ] && [ "$IS_WORKTREE" != "true" ]; then
   (cd "$STATE_ROOT" && nohup bash "$DEBT_REFRESH_SCRIPT" >/dev/null 2>&1 &) >/dev/null 2>&1
 fi
 

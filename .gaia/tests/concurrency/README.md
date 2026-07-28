@@ -188,7 +188,7 @@ mis-scoped.
 
 | id | scenario | exec | owning task | frozen assertion |
 |---|---|---|---|---|
-| **C5-01** | the statusline renders in a worktree | direct | 5.1 statusline | Run from worktree B (with B's `workspace.current_dir`), the statusline renders B's per-tree segment and is not blanket-suppressed; the right side is not dark, and no segment shows main's or another tree's state. (Name changed and mechanism re-pointed at the shipped resolver — see [Published assertion changes](#published-assertion-changes).) |
+| **C5-01** | the statusline scopes its task queue to main | direct | 5.1 statusline | Run from worktree B, the statusline surfaces the one blocking per-clone precondition and suppresses the main-checkout task queue: with setup incomplete on main, `Run /setup-gaia` renders from B; with setup complete on main and a non-zero debt count and a populated update-check cache, B's right side is dark. Neither state ever shows a fact true of one tree and false of B. (Name changed and assertion rewritten for the worktree-suppression ruling, see [Published assertion changes](#published-assertion-changes).) |
 | **C5-02** | wiki hooks are live in a worktree | direct | 5.2 wiki hooks | Each of the four `[ -d .git ]` wiki hooks, fired from inside a worktree, either fires correctly or refuses out loud — none is silently dead (the `[ -d .git ]` guard no longer reads a linked worktree as "no repo"). |
 | **C5-03** | main-only flows refuse out loud from a worktree | proxy | 5.3 loud-refusal | A main-only flow triggered from a worktree refuses out loud with a named reason, rather than running against the wrong tree or dying silently. A correct loud refusal is a pass. The shipped refusal helper is **driven live** from a real linked worktree and must refuse non-zero while naming the tree it refused from, the main checkout to use instead, and the command to get there; a main-only entry point must also invoke it, so that refusal is reachable rather than orphaned. **Proxy:** only the calling flow is proxied, the release/audit/wiki flows are network + `gh` + multi-agent and impractical to drive in a fixture, never the refusal itself. (Assertion rewritten, see [Published assertion changes](#published-assertion-changes).) |
 | **C5-04** | a machine-scoped nudge is not mis-scoped | direct | 5.3 / 5.4 nudges | A machine-scoped nudge fires once for the machine, not once per worktree; firing from every worktree is the mis-scoped defect and fails the scenario. |
@@ -554,43 +554,55 @@ vacuous. Every source was restored byte-identical (checksum-verified) after each
 the four sibling suites under `.gaia/tests/hooks/` that own these hooks stay green (27 of 27).
 No other scenario moved.
 
-### C5-01 — the name changed, the assertion did not, and the fixture now drives the real resolver
+### C5-01: the ruling reverses, and this time the assertion text changes too
 
-**The assertion text above is untouched.** What changed is the scenario's *name* and what
-the fixture actually exercises.
+**The target does not move: 23 before, 23 after.** This is a repair to the scenario, not
+an added one, and the scenario's own result stays `pass`.
 
-**The name said something the delivered design contradicts.** "Statusline renders the
-worktree's own segment" presumes a per-tree segment. There is none, and there should not
-be: all three state files the statusline reads — the update-check cache, the debt count,
-the setup marker — are registry scope `shared`, meaning one physical copy under main for
-the whole clone. Every segment states a fact about the clone, so the honest claim is that
-the statusline *renders in a worktree*, not that it renders something the worktree owns.
-Leaving the old name would have left the meter advertising a mechanism GAIA does not have,
-which is the defect `C3-03`'s repair removed rather than one to reintroduce.
+**The assertion text changes, and this is the other case the standing rule allows.**
+Rewriting a frozen assertion so it tracks the fix that satisfied it is how an assertion
+stops being frozen, and that rule is intact here. This is not that: the design ruling
+moved, not the fix. The statusline's right side is now scoped to the main checkout for
+every nudge except the one blocking per-clone precondition, and the assertion is rewritten
+to state the ruling that decision reflects, not to track whatever the code already
+happened to do.
 
-**The second clause of the assertion is kept, and read as it must be to mean anything.**
-"No segment shows main's or another tree's state" guards cross-tree contamination: a
-segment true of one tree and false of the tree you are in. It cannot mean "never read a
-file that physically sits under main", because every segment reads exactly such a file —
-under that reading no code could satisfy the scenario at all while also leaving the right
-side lit, which is the unwinnable shape `C3-03` was repaired out of. Shared state is the
-clone's state, and reporting it from any tree is correct.
+**The suppressed nudges are correctly scoped, not silently dead.** Tranche 5's own pass
+condition names a fourth outcome distinct from fires-correctly, refuses-out-loud, and
+silently-dead: a machine-scoped nudge firing from every worktree unconditionally is
+mis-scoped, and mis-scoped fails the tranche. Every nudge this ruling suppresses reads one
+value for the whole clone, held under the main checkout: the debt count, the update-check
+cache, the harden and audit and serena-drift flags. A machine-scoped value firing from
+every worktree is exactly the mis-scoped shape the tranche guards against, so suppressing
+it in a tree that cannot act on it argues for the ruling under the tranche's own
+definition, not against it. The one nudge that still renders from B, setup, is a
+per-clone blocking precondition rather than a task queue entry, which is why it is the one
+exception rather than a hole in the suppression.
 
-**The fixture was measuring the fallback, not the fix.** It copied in only the statusline
-and seeded the state under worktree B, so the script found no resolver library, fell back
-to its own install path, and read B's own files — green through the no-resolver path
-rather than through the shipped one. It now copies `main-root-lib.sh` alongside the
-statusline and seeds the state under **main**, where shared state actually lives, with B
-left deliberately unprovisioned. The segment can therefore only render if the statusline
-resolved main for itself. That is the standing rule that a conversion repairs the fixture
-whose dependency set it changes, in the same change.
+**Non-vacuity, proven by two independent mutations of the SHIPPED code**, each reverted
+and the source verified byte-identical by checksum afterward.
 
-**The reading moves 17 / 22 → 18 / 22, and this one is a fix, not a measurement.**
-Non-vacuity proven by mutation, not argued: restoring the blanket worktree gate turns it
-red, and anchoring the state paths on the session tree instead of main turns it red as
-well, so the green is attributable to the gate's removal *and* to main-anchoring, not to
-either alone. The statusline source was restored byte-identical (checksum-verified) after
-both. No other scenario moved; the four still red stayed red for their own reasons.
+- Deleting the worktree gate (the `elif [ "$IS_WORKTREE" = "true" ]` branch and both
+  refresher guards) reds the suppression half: `gaia-debt` and `update-deps` both render
+  from B once the gate is gone, while the kept-nudge half (`setup-gaia` from B with setup
+  incomplete on main) stays green, unaffected because that branch's own condition is
+  untouched by this mutation. Checksum before and after:
+  `122090a70d2b1a71c714b2402696287b038a70a053d4df51c61ba82e1244471b`.
+- Extending the gate to also cover the `setup_complete != "true"` branch (adding
+  `&& [ "$IS_WORKTREE" != "true" ]` to that condition) reds the kept-nudge half:
+  `setup-gaia` no longer renders from B with setup incomplete on main, while the
+  suppression half stays green, unaffected because it exercises the other branch of the
+  same `if`/`elif`, which this mutation does not touch. Checksum before and after:
+  `122090a70d2b1a71c714b2402696287b038a70a053d4df51c61ba82e1244471b`.
+
+Both checksums match the pre-mutation source in both directions, so both mutations are
+attributable to the change they claim and neither is the trivial inverse of the other: the
+first removes the gate outright, the second widens it to a branch the ruling deliberately
+exempts.
+
+**The reading does not move: 23 / 23, and the target stays 23.** `C5-01` was `pass` before
+this change and is `pass` after it; this is a repair to what the scenario asserts, not a
+scenario turning.
 
 ### C4-07 — an added scenario, and the first movement in the target
 

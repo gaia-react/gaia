@@ -640,9 +640,54 @@ See wiki/concepts/PR Merge Workflow.md for the full contract."
 }
 
 # --- Dispatch: resolve the Code Audit Team member set for this diff ---------
+#
+# Anchored on $tree_root, the ACTING tree: who must clear is a property of the
+# content being merged. $root stays main-anchored, via gaia_resolve_main_root,
+# for WHERE a clearance lives; the two roots answer different questions and
+# neither substitutes for the other. Anchoring here never collapses that split,
+# because it only pins the acting-tree half harder. Both the existence test and
+# the invocation are anchored, since a cwd-relative path reports the resolver
+# absent from any directory that is not the checkout root. The `cd` lives
+# inside a command substitution, so it never persists into the rest of the hook
+# chain (.claude/rules/shell-cwd.md).
+#
+# The exit status is captured separately from the output. Non-zero means the
+# resolver could not answer, which is never "nothing owed": folding it into the
+# empty-set branch below hands the legacy single-signal gate a diff whose
+# dispatched members are unknown.
 members=""
-if [ -x .gaia/scripts/resolve-audit-members.sh ]; then
-  members="$(bash .gaia/scripts/resolve-audit-members.sh 2>/dev/null || true)"
+resolver_rc=0
+if [ -x "${tree_root}/.gaia/scripts/resolve-audit-members.sh" ]; then
+  members="$( cd "$tree_root" && bash .gaia/scripts/resolve-audit-members.sh 2>/dev/null )" \
+    || resolver_rc=$?
+fi
+
+if [ "$resolver_rc" -ne 0 ]; then
+  reason="PR merge gate: the Code Audit Team member resolver cannot answer for HEAD ${sha:0:12}.
+
+.gaia/scripts/resolve-audit-members.sh exited ${resolver_rc} for the tree at
+${tree_root}, so which members this diff dispatches is unknown. An unanswerable
+member query is not an empty member set, and this gate denies rather than fall
+back to the single-signal path and clear a diff a required auditor may never
+have read.
+
+To unblock:
+  1. Run \`bash .gaia/scripts/resolve-audit-members.sh\` from the tree above and
+     read its stderr; it names what it could not resolve.
+  2. Fix what it names (an unreadable or non-checkout root, a broken git).
+  3. Retry gh pr merge.
+
+See wiki/concepts/PR Merge Workflow.md for the full contract."
+
+  jq -n --arg r "$reason" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+
+  exit 0
 fi
 
 if [ -z "$members" ]; then

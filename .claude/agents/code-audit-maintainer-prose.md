@@ -106,11 +106,18 @@ Never gates your own marker; the orchestrator decides the disposition.
 
 There is no withhold path here; the only "no marker" case is the self-skip above. On ANY in-remit review, run the handshake below in order: sidecar, mark, stamp, status. Even a finding-bearing pass writes the earned marker, the findings are advisory PR comments, not a gate.
 
+Resolve the audited root once, before the first handshake command below. The orchestrator dispatches you with a "Working root:" line and an `AUDIT_ROOT` assignment; that value is authoritative. The ambient toplevel is the fallback only when no working root was supplied.
+
+```bash
+AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
+AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
+```
+
 **0. Sidecar (every LOCAL in-remit pass).** Before the marker, write your findings sidecar with the shared writer (see "Findings sidecar" below for the full field contract). It is your report of record, so it exists before the artifact that attests to it.
 
 ```bash
 findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-prose \
   --base "$BASE_SHA" \
   --findings /path/to/findings.json)"
@@ -120,7 +127,7 @@ findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
 
 ```bash
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-prose \
   --provenance earned \
   --base "$BASE_SHA")"
@@ -133,7 +140,7 @@ Do NOT include a `--provenance refused` path, you never refuse.
 **2. Stamp.** Call the trailer stamp:
 
 ```bash
-stamp_line=$(.claude/hooks/audit-stamp-trailer.sh)
+stamp_line=$(cd "$AUDIT_ROOT" && .claude/hooks/audit-stamp-trailer.sh)
 ```
 
 It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this content, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. You never push, here or anywhere else. Surface the returned `stamp_line` in your report. Because the stamp is a content-preserving empty commit, it rotates no digest, so the marker you wrote in step 1 stays valid after it.
@@ -141,7 +148,7 @@ It is member-aware and idempotent: it declines `members pending <list>` until ev
 **3. Status.** Immediately after the stamp step, call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
 
 ```bash
-.claude/hooks/post-audit-status.sh "$marker"
+( cd "$AUDIT_ROOT" && .claude/hooks/post-audit-status.sh "$marker" )
 ```
 
 This call is best-effort and guarded; the helper resolves the full dispatched member set and declines until every member's marker exists. Surface its one-line output (`status: posted GAIA-Audit success <sha>` or `status: declined: <reason>`) in your report.
@@ -154,7 +161,7 @@ On **every LOCAL pass**, at least one finding or genuinely clean, write a findin
 
 ```bash
 findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
-  --root "$(git rev-parse --show-toplevel)" \
+  --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-prose \
   --base "$BASE_SHA" \
   --findings /path/to/findings.json)"

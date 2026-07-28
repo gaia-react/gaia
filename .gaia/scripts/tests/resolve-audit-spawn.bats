@@ -393,21 +393,49 @@ code-audit-maintainer-shell"
 }
 
 # ---------------------------------------------------------------------------
-# 13. not in a git repo -> exit 0, stdout EMPTY
+# 13. not in a git repo -> exit 0, stdout is exactly code-audit-frontend
+#     (fail-closed), diagnostic on stderr. The merge deny-hook denies when its
+#     own member query cannot be answered, so answering "nobody owed" here
+#     would name a spawn set that gate rejects.
 # ---------------------------------------------------------------------------
 
-@test "not in a git repo exits 0 with empty stdout" {
+@test "not in a git repo fails closed to code-audit-frontend" {
   notrepo="$BATS_TEST_TMPDIR/notrepo"
   mkdir -p "$notrepo"
   run bash -c 'cd "$1" && GIT_CEILING_DIRECTORIES="$1" "$2" 2>/dev/null' _ "$notrepo" "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ -z "$output" ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+@test "not in a git repo prints a diagnostic to stderr" {
+  notrepo="$BATS_TEST_TMPDIR/notrepo"
+  mkdir -p "$notrepo"
+  # SC2069: deliberate; capture stderr, discard stdout (2>&1 then 1>/dev/null).
+  # shellcheck disable=SC2069
+  stderr_out="$( ( cd "$notrepo" && GIT_CEILING_DIRECTORIES="$notrepo" "$SCRIPT" ) 2>&1 1>/dev/null )"
+  grep -qF -- "resolve-audit-spawn" <<<"$stderr_out" || return 1
 }
 
 # ---------------------------------------------------------------------------
 # 14. resolver removed from the sandbox, diff is app/x.tsx -> ownerless
 #     probe fires -> code-audit-frontend
 # ---------------------------------------------------------------------------
+
+@test "a dispatch resolver that CANNOT answer fails closed to code-audit-frontend" {
+  # Absent and failed are different states. Absent falls to the ownerless
+  # probe (next test); a non-zero exit means the resolver could not resolve the
+  # audited root, so the probe would answer from the same root it declined on.
+  # The diff below is entirely out of scope, so the probe would print NOTHING:
+  # only the fail-closed arm can produce the default member here.
+  write_full_roster
+  printf '#!/usr/bin/env bash\nexit 2\n' > "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
+  chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
+  stage wiki/x.md
+  commit "docs"
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
 
 @test "resolver absent falls to the ownerless probe (in-scope path)" {
   write_full_roster

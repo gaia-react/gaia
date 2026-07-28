@@ -22,7 +22,7 @@ bash .gaia/scripts/main-root-lib.sh --tree-key
 
 This prints 16 lowercase hex characters (`<tree_key>`) on stdout and exits 0, or prints nothing and writes one `GAIA_TREE_KEY_UNRESOLVABLE` line to stderr and exits 1. On failure, stop here: surface the stderr line to the user, write nothing, and never fall back to the unkeyed `.gaia/local/handoff/` path.
 
-Delete any existing handoff before writing: `rm -f .gaia/local/handoff/<tree_key>/HANDOFF-*.md`. Only one handoff exists at a time. A new handoff supersedes whatever came before, carrying forward anything still unfinished. Never archive.
+Delete any existing handoff before writing: `rm -f .gaia/local/handoff/<tree_key>/HANDOFF-*.md`. Only one handoff exists at a time. A new handoff supersedes whatever came before, carrying forward anything still unfinished. Never archive. The delete is scoped to this tree's own key, so it only ever removes a handoff written from this same tree, and when that handoff names a different branch, the replacement silently discards the record of that other work.
 
 ### 1. Gather
 

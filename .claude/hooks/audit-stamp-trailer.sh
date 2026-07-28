@@ -229,12 +229,28 @@ fi
 # gate in .claude/hooks/post-audit-status.sh. Each member is keyed to its OWN
 # digest (owned files + machinery), not the frontend digest or the tree.
 # Resolver absent/non-executable, or the clearance lib unavailable, falls back
-# to the caller's own clean judgment (today's behavior) so a partial or
-# early-resume tree is never bricked (never a fail-closed deadlock).
+# to the caller's own clean judgment so a partial or early-resume tree is never
+# bricked (never a fail-closed deadlock). ABSENT and FAILED are two different
+# states and only the first gets that fallback: a resolver that runs and exits
+# non-zero could not resolve the audited root, so the member set is unknown,
+# and stamping a trailer that certifies an unknown set is the vacuous pass this
+# gate exists to prevent. That arm declines.
+#
+# The invocation is anchored on $repo_root, the acting tree this hook measures,
+# because the resolver derives its own root from cwd. $repo_root is itself a
+# toplevel query against the ambient cwd, so the anchor normalizes a run from a
+# SUBDIRECTORY up to the checkout root; it cannot repoint the hook at another
+# tree. Selecting the tree is the caller's job, done by invoking the hook from
+# it.
 # -----------------------------------------------------------------------------
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ -x "$resolver" ] && command -v clearance_member_cleared >/dev/null 2>&1; then
-  members="$(bash "$resolver" 2>/dev/null || true)"
+  resolver_rc=0
+  members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
+  if [ "$resolver_rc" -ne 0 ]; then
+    emit_decline "member resolver could not answer"
+    exit 0
+  fi
   pending=""
   while IFS= read -r m; do
     [ -n "$m" ] || continue

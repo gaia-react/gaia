@@ -279,7 +279,7 @@ jobs:
       # rather than resting on whatever the runner image happens to preinstall.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Install bats and YAML parser
-        run: sudo apt-get update && sudo apt-get install -y bats python3-yaml
+        run: sudo apt-get update && sudo apt-get install -y bats python3-yaml zsh
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run .github/audit bats suites
         run: bats .github/audit/tests/

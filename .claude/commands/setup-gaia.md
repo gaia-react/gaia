@@ -15,6 +15,19 @@ It is safe for **any developer** to run at any time. A plain (no-flag) re-run on
 
 The slash command name intentionally does NOT start with `gaia-` so it does not pollute the `/gaia` autocomplete namespace (those are reserved for the four user-invoked GAIA workflows).
 
+## Pre-flight: Worktree check
+
+This command does per-machine and per-clone provisioning, writes `.gaia/local/setup-state.json`, and provisions the GitHub repository. If invoked from a linked worktree, reject hard: `gaia_refuse_if_worktree` (`.gaia/scripts/main-only-lib.sh`) asks the shared resolver which tree this is and refuses out loud, naming the main checkout, when the answer is a worktree.
+
+Detection (run this first, before anything else):
+
+```bash
+. .gaia/scripts/main-only-lib.sh
+gaia_refuse_if_worktree "/setup-gaia" || exit 1
+```
+
+If the detection does not fire, fall through to `## Argument parse` below.
+
 ## Argument parse
 
 Parse `$ARGUMENTS` for the `--reconfigure` flag. Cache the boolean as `RECONFIGURE`.

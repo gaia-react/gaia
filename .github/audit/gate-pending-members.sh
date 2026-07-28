@@ -40,11 +40,30 @@
 #   Both local consumers already resolve over full PR scope
 #   (post-audit-status.sh, pr-merge-audit-check.sh); this keeps CI in agreement.
 #
-# Fail-open
+# Fail-open, and why it diverges from the local merge gate
 #   An absent or unusable resolver yields EMPTY stdout (no members pending) and a
-#   stderr note, matching the local producer's documented fallback: a broken
-#   resolver must not brick the merge path. The note is what tells an operator a
-#   disarmed gate apart from a genuinely clean one -- never fail open silently.
+#   stderr note. The local merge gate (.claude/hooks/pr-merge-audit-check.sh)
+#   takes the opposite direction on the same input: an unanswerable member query
+#   there DENIES the merge. The asymmetry is deliberate, and it is a property of
+#   where each one sits rather than a disagreement about the risk.
+#
+#   This script cannot deny anything. Its whole output space is "post pending"
+#   and "post nothing more"; the layer that actually stops a merge is the local
+#   gate, which resolves membership on the same diff and denies on its own. So a
+#   fail-open here costs a status greened on the frontend's clearance alone,
+#   with the local gate still shut, while every OTHER unusable-input arm in this
+#   file (unknown flag, empty --base, unresolvable base, unreadable resolver,
+#   not a git repo) already fails open for the same reason. One arm inverted is
+#   an incoherent policy, not a tighter one.
+#
+#   The resolver's own unanswerable-root exit is excluded before it can arrive:
+#   the resolver derives its root from the same cwd the repo-root check below
+#   already resolved, so a root that answers here answers there. What remains is
+#   a resolver that crashes, which is a CI-shaped fault the local gate catches
+#   independently.
+#
+#   The note is what tells an operator a disarmed gate apart from a genuinely
+#   clean one -- never fail open silently.
 #
 # Bash 3.2 compatible (macOS default). No `cd` (per .claude/rules/shell-cwd.md);
 # the repo root is resolved via git rev-parse.

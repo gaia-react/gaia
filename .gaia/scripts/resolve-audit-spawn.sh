@@ -52,10 +52,13 @@
 #                                      "nobody owed". Empty stdout is a real
 #                                      answer here ("no member is owed"), never
 #                                      an error channel.
-#   not in a git repo               -> nothing, exit 0. The merge deny-hook
-#                                      also exits permissively when it cannot
-#                                      resolve a SHA, so there is nothing to
-#                                      mirror here.
+#   not in a git repo               -> same fail-closed answer as an unknown
+#                                      flag, and for the same reason: the query
+#                                      is unanswerable, so it must not answer
+#                                      "nobody owed". The merge deny-hook
+#                                      DENIES when its own member query cannot
+#                                      be answered, so a spawn set of nobody
+#                                      here names a set that gate rejects.
 #   dispatch resolver is executable
 #     and names >=1 member          -> that output, filtered by the
 #                                      digest-marker-presence check below
@@ -72,6 +75,11 @@
 #                                      where the merge gate requires only its
 #                                      legacy-gate clearance, spawning a
 #                                      member no gate requires.
+#   resolver exits non-zero         -> same fail-closed answer as an unknown
+#                                      flag. A non-zero exit from the dispatch
+#                                      resolver means it could not resolve the
+#                                      audited root, so it does not know who is
+#                                      owed; that is not an empty set.
 #   resolver names nobody           -> run the ownerless probe.
 #
 # The ownerless probe (mirrors check_out_of_scope_pr in
@@ -182,10 +190,18 @@ done
 
 # --- Resolve the repo root -------------------------------------------------
 #
-# Not in a git repo -> nothing to diff; emit nothing and exit 0.
+# Not in a git repo -> there is no diff to classify, so the query is
+# unanswerable and it fails closed to the default member, in the shape the
+# --base and unknown-flag arms above use: a stderr line, the member on stdout,
+# exit 0. The stdout lines ARE the spawn set, so a non-zero exit here would be
+# a new contract rather than a fail-closed answer.
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-[ -n "$repo_root" ] || exit 0
+if [ -z "$repo_root" ]; then
+  echo "resolve-audit-spawn: not in a git repository, failing closed to code-audit-frontend" >&2
+  echo "code-audit-frontend"
+  exit 0
+fi
 
 # --- Freshness advisory: HEAD behind origin/main ---------------------------
 #
@@ -375,7 +391,20 @@ if [ -x "$resolver" ]; then
   # spawned?" with no signal at all: a malformed `auditors:` block in
   # .gaia/audit-ci.yml makes the resolver warn and return an empty set, and this
   # script would then quietly fall through to the ownerless probe.
-  members="$(bash "$resolver" "$@" || true)"
+  resolver_rc=0
+  members="$(bash "$resolver" "$@")" || resolver_rc=$?
+
+  # A NON-ZERO exit is not an empty set: the resolver could not resolve the
+  # audited root, so it does not know who is owed. Fail closed to the default
+  # member, the answer every other unanswerable query here gets. Falling to the
+  # ownerless probe instead would re-derive the diff from the same root the
+  # resolver just failed on, and answer with the same confidence it declined to
+  # have.
+  if [ "$resolver_rc" -ne 0 ]; then
+    echo "resolve-audit-spawn: the dispatch resolver could not answer (exit ${resolver_rc}), failing closed to code-audit-frontend" >&2
+    echo "code-audit-frontend"
+    exit 0
+  fi
 
   # Branch the three states on whether the RESOLVER named anyone, captured
   # BEFORE the digest-marker-presence filter, never on the post-filter list.

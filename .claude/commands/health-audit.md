@@ -7,6 +7,19 @@ description: Maintainer-only autonomous health audit + auto-heal loop. Runs N=3 
 
 Maintainer-only. You are the **Orchestrator** for a GAIA health audit.
 
+## Pre-flight: Worktree check
+
+This command runs fresh-team audit-fix cycles that commit against the clone. If invoked from a linked worktree, reject hard: `gaia_refuse_if_worktree` (`.gaia/scripts/main-only-lib.sh`) asks the shared resolver which tree this is and refuses out loud, naming the main checkout, when the answer is a worktree.
+
+Detection (run this first, before anything else):
+
+```bash
+. .gaia/scripts/main-only-lib.sh
+gaia_refuse_if_worktree "/health-audit" || exit 1
+```
+
+If the detection does not fire, fall through to `## Step 1, Read the runbook` below.
+
 ## Step 1, Read the runbook
 
 Read `.gaia/cli/health/runbook.md` end-to-end before doing anything else. The runbook codifies role structure, bucket definitions, fixer lane mapping, model selection, circuit breakers, and escalation criteria. Do not improvise around it.
