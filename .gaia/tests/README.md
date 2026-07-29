@@ -16,7 +16,7 @@ defect this repository has actually shipped.
 | `lib/` | CI, `audit-ci-tests.yml` | bats suite for the SPEC-ledger machinery under `.specify/extensions/gaia/lib/`. See `lib/README.md`. |
 | `forensics/` | CI, `audit-ci-tests.yml` | redaction and capture harness, via `forensics/run-all.sh`. |
 | `statusline/` | CI, `audit-ci-tests.yml` | bats tests for the shipped statusline script. |
-| `sandbox/` | CI, `audit-ci-tests.yml` | sandbox-enablement conformance greps, via `sandbox/run-all.sh`. Two tests self-skip in CI by design; both run by hand. |
+| `sandbox/` | CI, `audit-ci-tests.yml` | sandbox-enablement conformance greps, via `sandbox/run-all.sh`. Two tests self-skip in CI by design. A hand run recovers the docs-link check; the OS-level enforcement test needs `GAIA_SANDBOX_CAPABLE=1` and a repo-root `.env` on top of that, or it skips there too. |
 | `concurrency/` | CI, `audit-ci-tests.yml` | the INV-7 concurrency meter. Admits scenarios that are red by design, so it is adjudicated against `expected-status.txt` by `meter-gate.sh` rather than on its own exit status. See `concurrency/README.md`. |
 | `distribution/` | CI, `release.yml` + `distribution.yml` + `cli-tests.yml` | validation of the post-scrub GAIA tarball. Docker-gated. See `distribution/README.md`. |
 | `smoke/` | by hand, billable | release-gate harnesses with PASS/FAIL semantics. Subdirs: `wiki-sync/`, `wiki-promote/`, `uat-write/`. Routing rule: `.claude/rules/maintainers/smoke.md`. See `smoke/README.md`. |

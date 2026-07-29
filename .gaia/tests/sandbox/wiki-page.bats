@@ -26,10 +26,12 @@ setup() {
   # breaks nothing at runtime. The check still runs by hand via
   # `pnpm test:sandbox`, which is where a stale link gets caught.
   #
-  # Written `!=` + `|| skip`, not `= ... && skip`: bats runs each @test under
-  # set -e, and a leading `[ ... ] && skip` returns the test's status from a
-  # false `[ ]`, aborting the test instead of continuing. See
-  # .claude/rules/bats-assertions.md.
+  # Written `!=` + `|| skip` because that form is position-independent. An
+  # `[ cond ] && skip` guard is safe here too, where assertions follow it, but
+  # it breaks as a test's LAST line: the AND-OR list's status becomes the
+  # test's, so a false condition fails the test rather than running it. The
+  # `|| skip` form stays correct in either position, so it is the one to reach
+  # for by default.
   [ "${CI:-}" != "true" ] || skip "network-dependent; runs locally via pnpm test:sandbox"
 
   command -v curl >/dev/null 2>&1 || skip "curl not available on this runner"

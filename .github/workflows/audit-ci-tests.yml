@@ -281,8 +281,19 @@ jobs:
             # it is those four globs and nothing narrower. Folding them into
             # `code:` would arm this job's two pnpm installs and the INV-7
             # concurrency meter on very nearly every pull request. As its own
-            # output it arms only the bats step below, which needs no toolchain
-            # beyond the apt install every other step here already shares.
+            # output it arms only the bats step below, plus the apt install that
+            # step needs.
+            #
+            # Be honest about what that still costs, because it is a real change
+            # in this job's posture rather than a free addition. Those four globs
+            # match most tracked files, so `sandbox` is true on very nearly every
+            # pull request, and a PR that arms `sandbox` alone (a wiki-only or
+            # app-only change, which previously ran no step at all) now runs
+            # `apt-get update`. That is the flakiest operation in this job, and
+            # this is a declared-required context, so a mirror hash-sum mismatch
+            # can now red a required check on a docs-only PR. The broad read set
+            # is still the honest one and narrowing it would only trade a visible
+            # cost for a silent gap; the exposure is bounded to an apt install.
             sandbox:
               - '.gaia/tests/sandbox/**'
               # doc-setup-gaia.bats greps the sandbox-decision block of the
@@ -323,10 +334,12 @@ jobs:
       # python3-yaml pins the parser lint-yaml.bats' require_yaml_parser needs
       # (python3+pyyaml), so its parser-backed negative tests run explicitly
       # rather than resting on whatever the runner image happens to preinstall.
-      # Admits `sandbox` as well as `code`: the sandbox step below is gated on
-      # its own filter output, so a PR that arms only that output still needs
-      # bats on the box. Without this the sandbox step would run `bats` on a
-      # runner that never installed it.
+      # Admits `sandbox` as well as `code`, so a PR that arms only that output
+      # still gets bats on the box. The warrant is cost, not correctness: the
+      # sandbox step runs through run-all.sh, which falls back to
+      # `npx -y bats-core@latest` when bats is absent, and ubuntu-latest ships
+      # node. Without this line that step would still pass, just paying an npm
+      # download on every armed run.
       - if: steps.filter.outputs.code == 'true' || steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch'
         name: Install bats and YAML parser
         run: sudo apt-get update && sudo apt-get install -y bats python3-yaml zsh

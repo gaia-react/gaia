@@ -12,8 +12,11 @@
 # CI: wired into .github/workflows/audit-ci-tests.yml, gated on that workflow's
 # `sandbox` paths-filter output. Two tests self-skip there by design: UAT-016
 # needs a sandbox-capable runner, and the docs-link reachability check skips
-# under CI so a third-party outage cannot red a declared-required context. Run
-# by hand with `pnpm test:sandbox`, which exercises both.
+# under CI so a third-party outage cannot red a declared-required context.
+# `pnpm test:sandbox` recovers the docs-link check and nothing else. UAT-016
+# additionally needs GAIA_SANDBOX_CAPABLE=1 and a repo-root .env, so a plain
+# hand run still skips it; a green run here is not evidence that the OS-level
+# enforcement path was exercised.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
