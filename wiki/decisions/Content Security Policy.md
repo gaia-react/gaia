@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-05-21
 created: 2026-05-21
-updated: 2026-06-02
+updated: 2026-07-29
 tags: [decision, security, csp]
 ---
 
@@ -22,8 +22,12 @@ server-rendered and streamed script carries the per-request nonce, React
 Router's single-fetch stream scripts and post-shell chunks included, so
 enforcement does not block hydration. App-authored inline scripts read the
 nonce through `useNonce()`: the `window.process` ENV bootstrap in
-`app/root.tsx`, and the dark-mode probe plus `ScrollRestoration` / `Scripts` in
-`app/components/Document`.
+`app/root.tsx`, and the dark-mode probe plus `ScrollRestoration` / `Scripts` /
+`Links` in `app/components/Document`. Every React Router component that emits
+a nonced element takes the nonce explicitly rather than reading it ambiently:
+the browser blanks a nonce attribute after parsing, so an element rendered
+without the explicit prop mismatches between the server's real value and the
+client's `undefined` default on hydration.
 
 ## Trade-offs
 

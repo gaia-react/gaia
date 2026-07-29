@@ -11,6 +11,50 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-29 59fdf396 WORTHY - .env.example exempted from the assignment rule's placeholder allowlist, judged by shape only → wiki/concepts/Claude Hooks.md
+- 2026-07-29 1b568c10 SKIP - SIGPIPE fail-open bug fix in the shape backstop; internal correctness fix, no documented behavior change
+- 2026-07-29 00f9d1e6 SKIP - tail-rescan substitution-masking bug fix; internal correctness fix, wiki's guard description remains accurate at its stated level of detail
+- 2026-07-29 3593b06f WORTHY - secret guard now reads shell declarations, not just dotenv lines → wiki/concepts/Claude Hooks.md, wiki/modules/Claude Integration.md
+- 2026-07-29 3ea35f17 SKIP - frontend member's ambient-cwd ledger/git-sites fix; same bug class as 237922f3, no documented contract change
+- 2026-07-29 237922f3 SKIP - each audit member's AUDIT_ROOT derivation fix (latent worktree-vs-cwd bug); doesn't change the documented dispatch contract
+- 2026-07-29 da4833f0 WORTHY - merge-path dispatch template now supplies AUDIT_ROOT → wiki/concepts/PR Merge Workflow.md
+- 2026-07-29 bebcfe23 WORTHY - worktree program Phase 2: main-only refusal, statusline scoping, audit-root resolution → wiki/concepts/Worktrees.md, Audit Disposition and Debt Fix.md, modules/Claude Integration.md
+- 2026-07-29 219bf7bc WORTHY - worktree program: one main-checkout resolver, per-tree state keys → wiki/concepts/Worktrees.md (new) and 20 other pages
+- 2026-07-29 2b7efcb5 WORTHY - placeholder allowlist means whole-value match, not prefix → wiki/concepts/Claude Hooks.md, wiki/modules/Claude Integration.md
+- 2026-07-29 82b411e4 WORTHY - secret guard allows a value that is wholly a command substitution → wiki/concepts/Claude Hooks.md
+- 2026-07-29 aabffb80 WORTHY - @gaia-react/lint bumped to 2.0.0, reactRouter relaxations split into an opt-in group → wiki/dependencies/gaia-lint.md
+- 2026-07-29 7fecde9f WORTHY - region-aware merge for machine-generated file regions → wiki/concepts/Generated Regions.md (new), wiki/concepts/Update Workflow.md, wiki/index.md
+- 2026-07-29 58c9a936 WORTHY - required-check reachability made deterministic → wiki/concepts/Code Review Audit CI.md
+- 2026-07-29 11ad1561 SKIP - test-infra default value (npm_package_version in Vitest setup); no documented behavior change
+- 2026-07-29 45e4f034 SKIP - CI path-filter fix for a test/source pairing; internal wiring, no documented concept change
+- 2026-07-29 d70f579f SKIP - husky pre-commit lint + diff-filter alignment; internal CI wiring
+- 2026-07-29 73fc1920 SKIP - maintainer-repo-specific required-check/ruleset detail; wiki/concepts/Release Workflow.md already documents the drift-check mechanism at the right generality
+- 2026-07-29 d23fb116 SKIP - storybook preview env config pinned to clientSchema; internal build config, no documented concept change
+- 2026-07-29 19e85e50 WORTHY - husky commit hooks given a Code Audit Team owner → wiki/decisions/Code Audit Team.md
+- 2026-07-29 7f721e69 SKIP - grab-bag debt drain (storybook shim, workflow permissions, guard docs), each already covered at existing wiki abstraction level
+- 2026-07-29 a243a320 SKIP - fail-open stderr advisory for a stale branch; doesn't change any documented dispatch/clearance behavior
+- 2026-07-29 af3be8a0 SKIP - self-heal guard exec-position-bypass hardening; implementation detail below the wiki's conceptual description
+- 2026-07-29 32d0be50 SKIP - CI/husky gate-scope fix (.playwright-only commits); internal wiring, no documented concept change
+- 2026-07-29 8addda77 WORTHY - debt sentinel clears only the entry the refresher answered → wiki/concepts/Audit Disposition and Debt Fix.md
+- 2026-07-29 34877bbe SKIP - create-worktree.sh hook-root derivation fix; script later deleted/replaced by provision-worktree.sh (219bf7bc)
+- 2026-07-29 0a49bf64 SKIP - CI-only secret hygiene (Storybook Chromatic workflow), no documented behavior change
+- 2026-07-29 a4ee4b81 WORTHY - lint .playwright and .storybook trees → wiki/dependencies/gaia-lint.md
+- 2026-07-29 c36fc2ef SKIP - create-worktree.sh typed-route generation; script later deleted/replaced by provision-worktree.sh (219bf7bc), current behavior already documented in wiki/modules/Claude Integration.md
+- 2026-07-29 aa40aaa1 SKIP - tests-only (remit writer's region-body emptiness guard)
+- 2026-07-29 fdae862d WORTHY - a Suggestion finding reframed as hypothesis not spec → wiki/concepts/PR Merge Workflow.md
+- 2026-07-29 00183193 WORTHY - Code Audit Team remits now derive from the roster → wiki/decisions/Registering a Code Audit Team Member.md, wiki/decisions/Code Audit Team.md
+- 2026-07-29 c549bd24 SKIP - self-heal refusal-set widened to playwright/storybook trees; wiki's self-heal-boundary description stays conceptual and accurate
+- 2026-07-29 a0c9e35e WORTHY - release leak scan drops truncated glob fragments → wiki/decisions/Bundle-time Scrub.md
+- 2026-07-29 1493e6bb SKIP - docs: prose-only (playwright error-collector guidance)
+- 2026-07-29 399bf535 WORTHY - Links now takes the request nonce explicitly for hydration parity → wiki/decisions/Content Security Policy.md
+- 2026-07-29 ace37b69 SKIP - docs: prose-only (bippy pin rationale)
+- 2026-07-29 08f086ae WORTHY - typescript ungrouped from update-deps grouping, held at 6.0 → wiki/decisions/TypeScript 7 Readiness.md
+- 2026-07-29 5c5606bc SKIP - chore(deps): version bump only
+- 2026-07-29 c8c13ddd WORTHY - shell member's remit reconciled with the ownerless-by-design template artifact → wiki/decisions/Code Audit Team.md
+- 2026-07-29 8f21b1da WORTHY - audit refusal retirement + lost-member-report detection → wiki/concepts/PR Merge Workflow.md
+- 2026-07-29 517856d8 SKIP - prose de-dup only in file-tech-debt SKILL.md, no new fact
+- 2026-07-29 91f4cdb8 WORTHY - debt-grading rule generalized beyond the two audit routes → wiki/concepts/Audit Disposition and Debt Fix.md
+- 2026-07-29 364f5744 WORTHY - previous wiki maintenance chain (sync/consolidate/lint) squash-merged; pages already updated by that chain
 - 2026-07-21 883cfe6f SKIP - machinery_waived + same-PR-suggestion-economics policies already documented via the PR's own inline edits; health-check quota policy is a maintainer-only runbook constant with no dedicated wiki page
 - 2026-07-21 b27ec1d2 WORTHY - excluded-titles fence-pair tracking fix folded into the same Bundle-time Scrub.md description
 - 2026-07-21 8995a19f WORTHY - new excluded-titles leak-check → wiki/decisions/Bundle-time Scrub.md
