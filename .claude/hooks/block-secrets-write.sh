@@ -7,7 +7,10 @@
 #   - Private key headers:     -----BEGIN [A-Z ]*PRIVATE KEY-----
 #   - dotenv-style assignment to suspicious names, with or without a leading
 #     export / declare / typeset / local / readonly and that keyword's own
-#     options:
+#     options. In a write whose destination is named `.env.example`, this rule
+#     alone drops its placeholder allowlist and judges the value by SHAPE only,
+#     the way both sibling env guards already special-case that file; the three
+#     rules above still run on it:
 #       (_TOKEN|_SECRET|_KEY|_PASSWORD)=<non-placeholder-value>
 #       Placeholders allowed: empty, "", '', x, xxx, changeme, REPLACE_ME,
 #       TODO, PLACEHOLDER, ${...}, $VAR, and three whole-value shapes:
@@ -29,11 +32,18 @@
 #     group does lead one and is allowlist-judged. One inside a `$(…)` body is
 #     judged by neither, since the mask erases the body. A comment tail, and any
 #     tail carrying no assignment, fall back to shape too, a 13+ alphanumeric
-#     run mixing letters and digits. That shape bound is the honest limit, an
-#     all-letter or under-13 secret parked where shape is what runs clears it.
+#     run mixing letters and digits. That bound is on the RUN, not the value, so
+#     the honest limit where shape is what runs is that a value whose every
+#     alphanumeric run is under 13 or unmixed clears, a segmented secret
+#     included.
 set -euo pipefail
 
 payload=$(cat)
+
+# The destination, read for the one path-scoped exemption in rule 4 below. Every
+# tool on this matcher (Edit, Write, MultiEdit) carries it; a payload without one
+# resolves to empty, matches no exemption, and is scanned in full.
+file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
 
 # Pull whichever field carries the new content (Edit uses new_string, Write uses content,
 # MultiEdit uses edits[].new_string). Concatenate so a single pattern scan covers all.
@@ -95,8 +105,13 @@ trim_value() {
 # secret_shaped <text>: 0 when the text carries a run of 13+ alphanumerics
 # mixing letters and digits. A placeholder segment is bounded at 12 and prose
 # does not take that shape, so this is the same structural rule the placeholder
-# arms use, applied to text that is not a value. Its honest limit: an all-letter
-# secret clears it, and so does anything under 13 characters.
+# arms use, applied to text that is not a value. The bound is on the RUN, not on
+# the whole text, and that is its honest limit: text clears whenever every
+# alphanumeric run in it is under 13 or unmixed, however long the text itself
+# runs. A separator is what breaks a run, so a segmented secret clears however
+# much material it carries: a UUID-format key, whose longest run is 12 and all
+# digits, and a base64 secret broken by `/` or `+`, are both read as not
+# secret-shaped.
 #
 # The consumer is fed by process substitution rather than sitting at the end of
 # a pipe, because under `pipefail` the pipeline's status IS this function's
@@ -177,6 +192,56 @@ value_allowed() {
   fi
   return 1
 }
+
+# `.env.example` is judged by SHAPE alone, skipping the placeholder allowlist
+# below. It is a committed file whose entire purpose is to carry placeholder
+# assignments, and both sibling guards already treat it that way:
+# `block-env-read.sh` exempts it while denying the rest of the dotenv family,
+# and `block-env-write.sh` exempts it by this same basename on this same
+# matcher. This rule was the holdout, so the one file that exists to hold
+# placeholders was the one file whose assignments could not be edited, and the
+# deny told its author to use a gitignored `.env` instead, which is backwards
+# for exactly this file. Its own `SESSION_SECRET` line is the worked example:
+# five letters, so it clears no placeholder arm at all.
+#
+# Dropping the allowlist is not the same as dropping the rule, and the
+# difference is what keeps a committed file from becoming the soft spot. The
+# allowlist asks "is this value a recognized placeholder", which every honest
+# `.env.example` value fails: `local`, `development`, `3001`, a localhost URL.
+# Shape asks "is this an unbroken 13+ alphanumeric run mixing letters and
+# digits", which every one of those passes and a pasted `sk-live-…`, JWT, or
+# bare API key does not. So the file's real content writes freely while the
+# paste that actually matters is still refused, alongside the three
+# high-confidence pattern rules above, which run here as everywhere.
+#
+# Its honest limit is the shape rule's own, stated where that rule is defined:
+# the bound is on the RUN, so a value whose every alphanumeric run is under 13
+# or unmixed clears. The segmented case is what that admits furthest past the
+# allowlist it replaces, and it is the one worth naming here: a UUID-format key,
+# or a base64 secret broken by `/` or `+`, writes into this tracked file while
+# the same value stays denied at every other path. The cost runs the other way
+# too, and is accepted rather than hidden: an ordinary value carrying a 13+
+# mixed run, say a hostname like `myapp123456789.example.com`, is refused here.
+#
+# Dropping the allowlist drops the executable-tail rescan with it, since that
+# rescan exists to allowlist-judge a SECOND assignment parked after `;`, `&&`,
+# or `||`. Here the whole post-`=` remainder is shape-tested as one string, so a
+# tail assignment carrying a weak value clears where the general path denies it,
+# and one carrying a secret-shaped value is refused the same as the first. That
+# follows from the shape-only rule rather than qualifying it, but it inverts
+# what the general path's own tests pin, so the suite pins it here too.
+#
+# The match is this exact basename, so `.env`, `.env.local`, and
+# `.env.example.local` reach the full allowlist below as before. `basename --`
+# because a path may begin with a dash, matching `block-env-read.sh`.
+if [ "$(basename -- "${file_path:-}")" = ".env.example" ]; then
+  while IFS= read -r line; do
+    if secret_shaped "$(trim_value "$(sed -E 's/^[^=]*=//' <<<"$line")")"; then
+      deny "BLOCKED: write assigns secret-shaped material in .env.example: '$line'. That file carries placeholders; keep the real value in a gitignored .env."
+    fi
+  done < <(grep -E "$name_re" <<<"$content" || true)
+  exit 0
+fi
 
 while IFS= read -r line; do
   rest=$(sed -E 's/^[^=]*=//' <<<"$line")

@@ -58,6 +58,40 @@ run_hook_edit() {
   run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
 }
 
+# The two above carry no file_path, which is what every test written before the
+# guard read one relies on. These carry one, for the path-scoped exemption.
+run_hook_write_path() {
+  local path="$1"
+  local body="$2"
+  local json
+  json=$(jq -n --arg p "$path" --arg c "$body" \
+    '{tool_name: "Write", tool_input: {file_path: $p, content: $c}}')
+  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+}
+
+run_hook_edit_path() {
+  local path="$1"
+  local body="$2"
+  local json
+  json=$(jq -n --arg p "$path" --arg s "$body" \
+    '{tool_name: "Edit", tool_input: {file_path: $p, new_string: $s}}')
+  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+}
+
+# MultiEdit sits on the same `Edit|Write|MultiEdit` matcher as the two above and
+# carries the content in a third place, `edits[].new_string`. It gets its own
+# helper because the path-scoped branch is the first to read `file_path`, so the
+# tool that reads BOTH fields differently is the one a change to either read is
+# likeliest to break silently.
+run_hook_multiedit_path() {
+  local path="$1"
+  local body="$2"
+  local json
+  json=$(jq -n --arg p "$path" --arg s "$body" \
+    '{tool_name: "MultiEdit", tool_input: {file_path: $p, edits: [{new_string: $s}]}}')
+  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+}
+
 assert_denied() {
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output"
@@ -656,5 +690,205 @@ assert_allowed() {
   local runs
   runs=$(yes 'hunter2xyz123' | head -n 4000 | tr '\n' ' ')
   run_hook_write "$(printf 'export API_KEY=%s\n' "\$X # ${runs}")"
+  assert_denied
+}
+
+# --- `.env.example` drops the ALLOWLIST, not the rule ---
+#
+# `.env.example` is a committed file whose entire purpose is to carry
+# placeholder assignments, and both sibling guards already say so: the read
+# guard exempts it while denying the rest of the dotenv family, and the env
+# write guard exempts it by the same basename on this very matcher. The
+# assignment rule was the one holdout, so the file that exists to hold
+# placeholders could not be edited, and its deny told the author to use a
+# gitignored `.env`, which is backwards for exactly this file. Its own tracked
+# `SESSION_SECRET` line is the worked example: five letters, so it clears no
+# placeholder arm at all.
+#
+# What replaces the allowlist there is the shape rule, not nothing. The
+# allowlist asks "is this a recognized placeholder", which every honest
+# `.env.example` value fails; shape asks "is this an unbroken 13+ alphanumeric
+# run mixing letters and digits", which every one of them passes and a pasted
+# key does not. The three pattern rules run there as everywhere.
+
+@test "a short placeholder assignment in .env.example is allowed" {
+  run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_allowed
+}
+
+@test "the tracked .env.example content is allowed whole" {
+  run_hook_write_path '.env.example' "$(printf '%s\n%s\n%s\n' \
+    'SITE_URL=http://localhost:5173' 'SESSION_SECRET=local' 'MSW_ENABLED=true')"
+  assert_allowed
+}
+
+# The values the ALLOWLIST would refuse and shape accepts. These are the whole
+# point of dropping the allowlist for this file.
+
+@test "an all-letter word in .env.example is allowed" {
+  run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'development')"
+  assert_allowed
+}
+
+@test "a localhost URL in .env.example is allowed" {
+  run_hook_write_path '.env.example' "$(printf 'API_KEY=%s\n' 'http://localhost:3001/api/')"
+  assert_allowed
+}
+
+@test "a quoted short value in .env.example is allowed" {
+  run_hook_edit_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' '"local"')"
+  assert_allowed
+}
+
+@test "a short value in .env.example is allowed through MultiEdit too" {
+  run_hook_multiedit_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_allowed
+}
+
+@test "a nested .env.example is matched by basename" {
+  run_hook_write_path 'packages/api/.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_allowed
+}
+
+# ...and the values shape still refuses there. A committed file is the worst
+# place for a real key, so dropping the allowlist must not drop the backstop.
+
+@test "a secret-shaped literal in .env.example is denied" {
+  run_hook_write_path '.env.example' "$(printf 'API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a secret-shaped literal in .env.example is denied through Edit too" {
+  run_hook_edit_path '.env.example' "$(printf 'API_KEY=%s\n' 'aB3xK9pQ7zR2wL5t')"
+  assert_denied
+}
+
+@test "a secret-shaped literal in .env.example is denied through MultiEdit too" {
+  run_hook_multiedit_path '.env.example' "$(printf 'API_KEY=%s\n' 'aB3xK9pQ7zR2wL5t')"
+  assert_denied
+}
+
+@test "a secret parked in a comment in .env.example is denied" {
+  run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local # real: sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+# Where the shape backstop stops, pinned so the limit is enforced-as-documented
+# rather than latent. The bound is on the RUN, not the value, so a segmented
+# secret clears however much material it carries: every run in a UUID-format key
+# is under 13 or all digits, and a `/` breaks a base64 secret the same way. That
+# is the accepted cost of judging this one file by shape, and these tests fail
+# the moment someone narrows or widens it without saying so.
+
+@test "a segmented UUID-format value in .env.example is allowed" {
+  run_hook_write_path '.env.example' \
+    "$(printf 'API_KEY=%s\n' '550e8400-e29b-41d4-a716-446655440000')"
+  assert_allowed
+}
+
+@test "the same UUID-format value outside .env.example is denied" {
+  run_hook_write_path 'app/config.ts' \
+    "$(printf 'API_KEY=%s\n' '550e8400-e29b-41d4-a716-446655440000')"
+  assert_denied
+}
+
+@test "a slash-broken value in .env.example is allowed" {
+  run_hook_write_path '.env.example' \
+    "$(printf 'API_KEY=%s\n' 'aB3xK9pQ7zR2/wL5tN8mV4cX/pQ7zR2wL5tN')"
+  assert_allowed
+}
+
+# Dropping the allowlist drops the executable-tail rescan with it: the whole
+# post-`=` remainder is shape-tested as one string here, so a second assignment
+# parked after a separator is judged by shape rather than allowlist-rescanned.
+# That inverts what the general path's own tail tests pin, which is exactly why
+# it is pinned here rather than left to be rediscovered.
+#
+# The SPACE before each `;` is load-bearing. The tail extractor requires
+# `[[:space:]]+` ahead of the separator, so `local;` opens no tail at all and
+# the general-path deny would arrive from the primary-value allowlist instead,
+# leaving these tests naming a rescan they never reach. The middle test asserts
+# the rescan's own message for that reason: it fails if the space is ever
+# dropped, rather than passing on the wrong arm.
+
+@test "an executable tail in .env.example is judged by shape, not the rescan" {
+  run_hook_write_path '.env.example' \
+    "$(printf 'SESSION_SECRET=%s ; API_KEY=%s\n' 'local' 'abcd')"
+  assert_allowed
+}
+
+@test "the same executable tail outside .env.example is denied by the rescan" {
+  run_hook_write_path 'app/config.ts' \
+    "$(printf 'SESSION_SECRET=%s ; API_KEY=%s\n' 'local' 'abcd')"
+  grep -qF -- 'parks a secret assignment after a shell separator' <<<"$output"
+  assert_denied
+}
+
+@test "an executable tail carrying secret-shaped material in .env.example is denied" {
+  run_hook_write_path '.env.example' \
+    "$(printf 'SESSION_SECRET=%s ; API_KEY=%s\n' 'local' 'aB3xK9pQ7zR2wL5t')"
+  assert_denied
+}
+
+# A dash-leading path must not be read as a basename option. The verdict is safe
+# either way (no exemption, full scan), but `basename --` keeps the usage error
+# off the hook's stderr, matching block-env-read.sh.
+
+# The needle has to cover BOTH basename flavors, because the VERDICT does not
+# move when `--` is dropped: an empty basename matches no exemption and the file
+# is scanned in full, so `assert_denied` passes either way and these two lines
+# are the only thing standing between the mutant and a green run. BSD says
+# `illegal option`, GNU says `invalid option` and points at `basename --help`,
+# so a BSD-only needle is inert on the ubuntu runner, which is the authoritative
+# gate (see .claude/rules/bats-assertions.md).
+@test "a dash-leading path is scanned without a basename usage error" {
+  run_hook_write_path '-.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  grep -qiE -- 'illegal option|invalid option|usage: basename|basename --help' <<<"$output" && return 1
+  assert_denied
+}
+
+# The three pattern rules do not care which file they are writing into.
+
+@test "an AWS access-key id in .env.example is still denied" {
+  local aws_id="AKIA""IOSFODNN7EXAMPLE"
+  run_hook_write_path '.env.example' "$(printf 'AWS_ACCESS_KEY_ID=%s\n' "$aws_id")"
+  assert_denied
+}
+
+@test "a GitHub PAT in .env.example is still denied" {
+  local pat="ghp""_0123456789abcdefghij"
+  run_hook_write_path '.env.example' "$(printf 'GH_TOKEN=%s\n' "$pat")"
+  assert_denied
+}
+
+@test "a PEM private-key header in .env.example is still denied" {
+  local pem="-----BEGIN RSA PRIVATE ""KEY-----"
+  run_hook_write_path '.env.example' "$pem"
+  assert_denied
+}
+
+# The exemption is scoped to that one basename, and nothing near it.
+
+@test "the same short value outside .env.example is still denied" {
+  run_hook_write_path 'app/config.ts' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_denied
+}
+
+@test "a real dotenv file is not exempt" {
+  run_hook_write_path '.env' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_denied
+}
+
+@test "a name merely starting with .env.example is not exempt" {
+  run_hook_write_path '.env.example.local' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_denied
+}
+
+# A payload carrying no file_path cannot be exempted, so it is scanned. This is
+# what keeps every test written before the guard read a path meaningful, and it
+# is the fail-closed direction.
+
+@test "a payload with no file_path is still scanned" {
+  run_hook_write "$(printf 'SESSION_SECRET=%s\n' 'local')"
   assert_denied
 }

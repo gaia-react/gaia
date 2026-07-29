@@ -77,7 +77,7 @@
       "hook": ".claude/hooks/block-secrets-write.sh",
       "scope": "any",
       "state": [],
-      "why": "Pattern-matches an Edit/Write payload for secret-shaped content only; touches no tree-scoped state."
+      "why": "Pattern-matches an Edit/Write payload's content, and compares its file_path basename against one literal name; reads no file and touches no tree-scoped state."
     },
     {
       "hook": ".claude/hooks/block-selfheal-paths.sh",
