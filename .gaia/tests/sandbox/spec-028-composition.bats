@@ -11,8 +11,15 @@ setup() {
 @test "UAT-015: settings.json deny array still contains all SPEC-028 read-side entries" {
   [ -f "$SETTINGS" ]
   grep -qF '"Read(.env)"' "$SETTINGS"
+  # Edit(.env) is the entire write-side entry, and no Write(.env) belongs beside
+  # it. Claude Code's file permission checks match only Read(path) and
+  # Edit(path) rules; Edit covers every file-editing tool (Write, Edit,
+  # MultiEdit, NotebookEdit), while a Write(path) rule is accepted and then
+  # never matched. The harness warns at startup for each unmatched rule, so
+  # adding one to satisfy an assertion costs every session a warning and buys no
+  # enforcement. .gaia/tests/hooks/block-env-read.bats pins this from the hook
+  # side; keep the two suites agreeing.
   grep -qF '"Edit(.env)"' "$SETTINGS"
-  grep -qF '"Write(.env)"' "$SETTINGS"
   grep -qF '"Read(**/*.key)"' "$SETTINGS"
   grep -qF '"Read(**/*.pem)"' "$SETTINGS"
   grep -qF '"Read(**/*credential*)"' "$SETTINGS"
