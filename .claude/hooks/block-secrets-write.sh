@@ -103,7 +103,12 @@ trim_value() {
 }
 
 # The run of `x` every mask body is filled from, grown on demand and reused
-# across bodies and across calls. Its own length is the only state it carries.
+# across the bodies of ONE call. The sole call site is a command substitution, so
+# the growth is discarded when that subshell exits and the next call rebuilds
+# from scratch, which is O(n) against a walk already O(n) per substitution. That
+# per-call reset is also why no call can observe another's state, and the
+# unconditional initializer is what keeps an inherited environment variable of
+# the same name from ever being read as a run.
 mask_xrun=x
 
 # mask_subs <text>: a SAME-LENGTH copy of <text> whose every unnested `$(…)`
@@ -141,9 +146,16 @@ mask_xrun=x
 #
 # That second axis is bounded by the length cap instead, since no pure-bash walk
 # avoids it. Above the cap the mask is the IDENTITY, so the cut is located on the
-# raw value and this rule behaves exactly as it does without the mask at all: a
-# false deny on a pathological line, which is the fail-CLOSED direction and the
-# same direction the rule already errs in everywhere else.
+# raw value and this rule behaves exactly as it does without the mask at all.
+#
+# For every arm but one that is a false deny on a pathological line, the
+# fail-CLOSED direction the rule already errs in everywhere else. The exception
+# is `^<[^>]+>$`, and it follows from the same asymmetry the call site describes:
+# reverting to the earlier cut also reverts that arm's allow-to-deny movement, so
+# a truncated prefix satisfies it above the cap where the whole value fails it
+# below. That admits nothing the rule does not already admit with no mask at all,
+# but the cap is not fail-closed in one uniform direction, and lowering it on
+# cost grounds means widening that one arm's reach.
 #
 # SC2016 fires on the `'$('` operands. Not expanding is the whole point, the
 # same way it is for the tail mask below: `$(` is the literal two-character

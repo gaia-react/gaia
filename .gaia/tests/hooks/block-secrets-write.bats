@@ -595,7 +595,7 @@ assert_allowed() {
 # a stall rather than as a silent regression.
 
 @test "a guarded substitution in a long value under the cap is allowed" {
-  long=$(printf '%*s' 1000 '' | tr ' ' 'a')
+  long=$(printf '%*s' 4000 '' | tr ' ' 'a')
   run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
   assert_allowed
 }
