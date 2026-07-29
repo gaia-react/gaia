@@ -78,6 +78,20 @@ run_hook_edit_path() {
   run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
 }
 
+# MultiEdit sits on the same `Edit|Write|MultiEdit` matcher as the two above and
+# carries the content in a third place, `edits[].new_string`. It gets its own
+# helper because the path-scoped branch is the first to read `file_path`, so the
+# tool that reads BOTH fields differently is the one a change to either read is
+# likeliest to break silently.
+run_hook_multiedit_path() {
+  local path="$1"
+  local body="$2"
+  local json
+  json=$(jq -n --arg p "$path" --arg s "$body" \
+    '{tool_name: "MultiEdit", tool_input: {file_path: $p, edits: [{new_string: $s}]}}')
+  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+}
+
 assert_denied() {
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output"
@@ -726,6 +740,11 @@ assert_allowed() {
   assert_allowed
 }
 
+@test "a quoted short value in .env.example is allowed through MultiEdit too" {
+  run_hook_multiedit_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_allowed
+}
+
 @test "a nested .env.example is matched by basename" {
   run_hook_write_path 'packages/api/.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
   assert_allowed
@@ -744,9 +763,39 @@ assert_allowed() {
   assert_denied
 }
 
+@test "a secret-shaped literal in .env.example is denied through MultiEdit too" {
+  run_hook_multiedit_path '.env.example' "$(printf 'API_KEY=%s\n' 'aB3xK9pQ7zR2wL5t')"
+  assert_denied
+}
+
 @test "a secret parked in a comment in .env.example is denied" {
   run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local # real: sk-live-9f3a1c4e8b7d2064')"
   assert_denied
+}
+
+# Where the shape backstop stops, pinned so the limit is enforced-as-documented
+# rather than latent. The bound is on the RUN, not the value, so a segmented
+# secret clears however much material it carries: every run in a UUID-format key
+# is under 13 or all digits, and a `/` breaks a base64 secret the same way. That
+# is the accepted cost of judging this one file by shape, and these tests fail
+# the moment someone narrows or widens it without saying so.
+
+@test "a segmented UUID-format value in .env.example is allowed" {
+  run_hook_write_path '.env.example' \
+    "$(printf 'API_KEY=%s\n' '550e8400-e29b-41d4-a716-446655440000')"
+  assert_allowed
+}
+
+@test "the same UUID-format value outside .env.example is denied" {
+  run_hook_write_path 'app/config.ts' \
+    "$(printf 'API_KEY=%s\n' '550e8400-e29b-41d4-a716-446655440000')"
+  assert_denied
+}
+
+@test "a slash-broken value in .env.example is allowed" {
+  run_hook_write_path '.env.example' \
+    "$(printf 'API_KEY=%s\n' 'aB3xK9pQ7zR2/wL5tN8mV4cX/pQ7zR2wL5tN')"
+  assert_allowed
 }
 
 # A dash-leading path must not be read as a basename option. The verdict is safe

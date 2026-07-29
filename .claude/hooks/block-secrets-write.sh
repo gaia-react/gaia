@@ -32,8 +32,10 @@
 #     group does lead one and is allowlist-judged. One inside a `$(…)` body is
 #     judged by neither, since the mask erases the body. A comment tail, and any
 #     tail carrying no assignment, fall back to shape too, a 13+ alphanumeric
-#     run mixing letters and digits. That shape bound is the honest limit, an
-#     all-letter or under-13 secret parked where shape is what runs clears it.
+#     run mixing letters and digits. That bound is on the RUN, not the value, so
+#     the honest limit where shape is what runs is that a value whose every
+#     alphanumeric run is under 13 or unmixed clears, a segmented secret
+#     included.
 set -euo pipefail
 
 payload=$(cat)
@@ -103,8 +105,13 @@ trim_value() {
 # secret_shaped <text>: 0 when the text carries a run of 13+ alphanumerics
 # mixing letters and digits. A placeholder segment is bounded at 12 and prose
 # does not take that shape, so this is the same structural rule the placeholder
-# arms use, applied to text that is not a value. Its honest limit: an all-letter
-# secret clears it, and so does anything under 13 characters.
+# arms use, applied to text that is not a value. The bound is on the RUN, not on
+# the whole text, and that is its honest limit: text clears whenever every
+# alphanumeric run in it is under 13 or unmixed, however long the text itself
+# runs. A separator is what breaks a run, so a segmented secret clears however
+# much material it carries: a UUID-format key, whose longest run is 12 and all
+# digits, and a base64 secret broken by `/` or `+`, are both read as not
+# secret-shaped.
 #
 # The consumer is fed by process substitution rather than sitting at the end of
 # a pipe, because under `pipefail` the pipeline's status IS this function's
@@ -208,8 +215,12 @@ value_allowed() {
 # high-confidence pattern rules above, which run here as everywhere.
 #
 # Its honest limit is the shape rule's own, stated where that rule is defined:
-# an all-letter or under-13 secret parked here clears. The cost runs the other
-# way too, and is accepted rather than hidden: an ordinary value carrying a 13+
+# the bound is on the RUN, so a value whose every alphanumeric run is under 13
+# or unmixed clears. The segmented case is what that admits furthest past the
+# allowlist it replaces, and it is the one worth naming here: a UUID-format key,
+# or a base64 secret broken by `/` or `+`, writes into this tracked file while
+# the same value stays denied at every other path. The cost runs the other way
+# too, and is accepted rather than hidden: an ordinary value carrying a 13+
 # mixed run, say a hostname like `myapp123456789.example.com`, is refused here.
 #
 # The match is this exact basename, so `.env`, `.env.local`, and
