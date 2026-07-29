@@ -11,6 +11,10 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-29 a13b6be9 SKIP - wiki's own prior sync/consolidate/lint maintenance-chain commit, no new edit needed
+- 2026-07-29 7755d3c9 SKIP - chore: generic chore, comment/naming cleanup only, no behavior change
+- 2026-07-29 3bd0f9af WORTHY - secret guard mask-based tail cut fix → wiki/concepts/Claude Hooks.md
+- 2026-07-29 cda69f07 WORTHY - sandbox suite fix corrected the stale Write(.env) fact already in-commit → wiki/modules/Claude Integration.md
 - 2026-07-29 59fdf396 WORTHY - .env.example exempted from the assignment rule's placeholder allowlist, judged by shape only → wiki/concepts/Claude Hooks.md
 - 2026-07-29 1b568c10 SKIP - SIGPIPE fail-open bug fix in the shape backstop; internal correctness fix, no documented behavior change
 - 2026-07-29 00f9d1e6 SKIP - tail-rescan substitution-masking bug fix; internal correctness fix, wiki's guard description remains accurate at its stated level of detail
