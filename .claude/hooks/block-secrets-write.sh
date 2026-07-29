@@ -97,9 +97,7 @@ fi
 # close. `typeset` is bash's synonym for `declare` and belongs with the others.
 name_re='^[[:space:]]*((export|declare|typeset|local|readonly)[[:space:]]+(-[A-Za-z-]+[[:space:]]+)*)?[A-Za-z_][A-Za-z0-9_]*(_TOKEN|_SECRET|_KEY|_PASSWORD)[[:space:]]*='
 
-# Strip surrounding whitespace, then surrounding quotes: the double- and
-# single-quote strips run in sequence over the same value, so a doubly-wrapped
-# one loses both pairs.
+# Strip surrounding whitespace, then surrounding quotes.
 trim_value() {
   sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$1"
 }
