@@ -17,14 +17,19 @@ setup() {
   # MultiEdit, NotebookEdit), while a Write(path) rule is accepted and then
   # never matched. The harness warns at startup for each unmatched rule, so
   # adding one buys no enforcement and costs every session a warning.
-  # .gaia/tests/hooks/block-env-read.bats pins this from the hook side.
+  # .gaia/tests/hooks/block-env-read.bats pins the Read(.env) and Edit(.env)
+  # presence from the hook side; the absence below is pinned only here.
   grep -qF '"Edit(.env)"' "$SETTINGS"
-  # Pin the absence rather than only describing it, so re-adding the entry reds
-  # this suite instead of relying on a reader honoring the comment above. The
-  # bad case is written as a positive match ending in an explicit return, per
+  # Pin the absence rather than only describing it, so re-adding the rule reds
+  # this suite instead of relying on a reader honoring the comment above. Match
+  # the rule FORM rather than one literal, because Write(**/.env), Write(.env*)
+  # and every other spelling is the same no-op. A bare "Write" rule carries no
+  # path, matches the tool everywhere, and warns about nothing, so the open
+  # paren is what separates the broken form from the legal one. Written as a
+  # positive match ending in an explicit return, per
   # .claude/rules/bats-assertions.md: a `!`-negated grep would never fail here,
   # because set -e exempts an inverted status and this is not the final line.
-  grep -qF '"Write(.env)"' "$SETTINGS" && return 1
+  grep -qF '"Write(' "$SETTINGS" && return 1
   grep -qF '"Read(**/*.key)"' "$SETTINGS"
   grep -qF '"Read(**/*.pem)"' "$SETTINGS"
   grep -qF '"Read(**/*credential*)"' "$SETTINGS"
