@@ -92,9 +92,30 @@ run_hook_multiedit_path() {
   run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
 }
 
+# A deny fixture that grows past one of rule 4's scan caps keeps passing while no
+# longer reaching the rule it exists to exercise: the cap denies first, the
+# assertion sees a deny, and the test greens on the wrong rule. Prose per fixture
+# does not scale to the 70-odd deny sites, so the hazard is enforced here
+# instead. Every fixture whose deny is SUPPOSED to come from a cap says so with
+# `assert_denied_cap`; for all the others a cap deny is now a red test.
+#
+# The cap check goes ahead of the deny check rather than after it because the
+# bad-case form is `<condition> && return 1`, whose status is 1 when the
+# condition is FALSE. As a function's last command that inverts the whole
+# assertion, so it can only ever sit before one.
 assert_denied() {
   [ "$status" -eq 0 ]
+  grep -qF -- 'this guard judges in one write' <<<"$output" && return 1
   grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+}
+
+# The opt-in variant, for the fixtures that cross a cap on purpose. Callers
+# follow it with a grep for the specific cap, since this one only pins that some
+# cap fired.
+assert_denied_cap() {
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+  grep -qF -- 'this guard judges in one write' <<<"$output"
 }
 
 assert_allowed() {
@@ -1046,7 +1067,7 @@ assert_allowed() {
 @test "a write over the matching-line cap is denied" {
   many=$(for i in $(seq 1 201); do printf 'A%d_KEY=${FOO}\n' "$i"; done)
   run_hook_write "$many"
-  assert_denied
+  assert_denied_cap
   grep -qF -- 'over the 200 this guard judges in one write' <<<"$output"
 }
 
@@ -1057,7 +1078,7 @@ assert_allowed() {
 @test "a .env.example write over the matching-line cap is denied" {
   many=$(for i in $(seq 1 201); do printf 'A%d_KEY=%d\n' "$i" "$i"; done)
   run_hook_write_path '.env.example' "$many"
-  assert_denied
+  assert_denied_cap
   grep -qF -- 'over the 200 this guard judges in one write' <<<"$output"
 }
 
@@ -1066,9 +1087,18 @@ assert_allowed() {
 # happens, so a long file is unaffected however long it runs. The content here
 # is far over the size cap while the material that reaches a loop is two lines;
 # measuring either cap against the whole content turns this red.
+#
+# The fixture has a ceiling as well as a floor, and the ceiling is the platform's
+# rather than this guard's. `run_hook_write` hands the whole payload to
+# `bash -c` as ONE argv element, and Linux caps a single element at 128 KiB
+# (MAX_ARG_STRLEN) where macOS caps only the total. Past that, `execve` fails
+# with E2BIG and the helper exits 126 on the CI runner while every local run
+# stays green. 2500 lines is 86392 characters of content, well over the 65536
+# size cap, against an argv payload of 93958 bytes, well under the 131072 limit.
+# Enlarging this fixture spends the second margin, not the first.
 
 @test "a large write carrying few matching lines is allowed" {
-  bulk=$(for i in $(seq 1 5000); do printf 'const value%d = "ordinary line";\n' "$i"; done)
+  bulk=$(for i in $(seq 1 2500); do printf 'const value%d = "ordinary line";\n' "$i"; done)
   run_hook_write "$bulk$(printf '\nA_KEY=${FOO}\n')"
   assert_allowed
 }
@@ -1080,7 +1110,7 @@ assert_allowed() {
 @test "a single matching line over the judged-size cap is denied" {
   long=$(printf '%*s' 70000 '' | tr ' ' 'a')
   run_hook_write "$(printf 'A_KEY=%s\n' "$long")"
-  assert_denied
+  assert_denied_cap
   grep -qF -- 'over the 65536 this guard judges in one write' <<<"$output"
 }
 

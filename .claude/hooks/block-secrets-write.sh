@@ -303,25 +303,43 @@ value_allowed() {
 # The SIZE cap is the one that bounds the work. It is measured on the MATCHING
 # material rather than on the content, because what costs is the judging, and
 # the feeder grep skips an ordinary large file before any judging happens. Cost
-# tracks that material's size closely, roughly 0.3 ms per character and 2 ms per
-# tail fragment on bash 3.2, so the size is what the bound has to read. The line
-# cap stays alongside it because it names the ordinary case in the terms its
-# author will recognize.
+# tracks that material's size closely, about 1.4 ms per character on bash 3.2 at
+# the densest shape, so the size is what the bound has to read. The line cap
+# stays alongside it because it names the ordinary case in the terms its author
+# will recognize.
 #
-# The worst payload either cap admits measures about 43 seconds on bash 3.2: one
-# line packed to just under the size cap with the densest tail fragments the
-# grammar allows. That number, not the caps themselves, is what a `timeout` on
-# this registration has to clear, so anything under about a minute is unsafe
-# even now, and it is why the caps have to land before any `timeout` does. This
-# registration carries none, so the runtime's own default is what holds the
-# deadline out of reach today; the caps are what make the worst case a known
-# quantity rather than an open one.
+# The worst payload either cap admits measures about 90 seconds on bash 3.2, and
+# the shape that reaches it is MULTI-line rather than single: 200 lines, exactly
+# at the line cap, each packed with minimal-width `;`-separated fragments to just
+# under the size cap. Roughly fifteen processes of fixed per-line overhead ride
+# on top of the per-fragment cost, so spreading the material across the line cap
+# costs more than concentrating it on one line, which reaches about 77 seconds.
 #
-# The size cap sits where it does because the suite's own fixtures reach for it.
-# One deliberately pathological fixture carries about 60030 characters of
-# matching material to outrun grep's read buffer, so a cap below that would deny
-# it before the code it exercises ever ran. 65536 clears it; lowering this bound
-# means shrinking that fixture and losing what it pins.
+# Seconds are the wrong unit to state that bound in, because they are one
+# machine's. What the caps bound is process SPAWNS, about 40000 of them at the
+# ceiling, roughly 0.6 per judged character; the wall clock is that count times
+# whatever a spawn costs on the host, and a runner slower than a maintainer's
+# laptop multiplies the 90 seconds while leaving the 40000 alone.
+#
+# That ceiling, not the caps themselves, is what a `timeout` on this
+# registration has to clear on the SLOWEST machine the guard runs on. So
+# anything near two minutes is unsafe even now, and that is why the caps have to
+# land before any `timeout` does. This registration carries none, so the
+# runtime's own 600-second default is what holds the deadline out of reach
+# today; the caps are what make the worst case a known quantity rather than an
+# open one.
+#
+# The size cap sits where it does because the suite's own fixtures reach for it,
+# and three of them set the floor. The highest is `a value far over the mask cap
+# is judged without stalling`, which carries about 60030 characters of matching
+# material in order to sit far above the 4096-character cap inside `mask_subs`.
+# Two more outrun grep's read buffer, at about 40119 and 56020. A cap below any
+# of them denies the fixture before the code it exercises ever runs. 65536
+# clears all three; lowering this bound means shrinking them and losing what
+# they pin. Two of the three assert DENY, so a cap deny would satisfy them while
+# no longer reaching the rule they exist for; the suite's own deny assertion
+# refuses a cap deny for exactly that reason, which turns a cap lowered out from
+# under a fixture into a red test rather than a silent retirement.
 #
 # Crossing either DENIES rather than truncating the scan. Judging the first N
 # and passing the rest is a fail-open with extra steps, since the material a
@@ -330,13 +348,17 @@ value_allowed() {
 # rather than hundreds, and a few hundred characters of them rather than tens of
 # thousands. The checks are two greps over content already in memory, so they
 # cannot be what makes a write expensive.
+#
+# The line count is read and judged before the material itself is materialized,
+# so the payload that crosses BOTH caps is rejected without first building a
+# copy of what it is about to reject.
 max_lines=200
 max_judged=65536
 line_count=$(grep -cE "$name_re" <<<"$content" || true)
-matched=$(grep -E "$name_re" <<<"$content" || true)
 if [ "${line_count:-0}" -gt "$max_lines" ]; then
   deny "BLOCKED: write carries $line_count assignments to suspicious names, over the $max_lines this guard judges in one write. Split the write, or keep the values in a gitignored .env."
 fi
+matched=$(grep -E "$name_re" <<<"$content" || true)
 if [ "${#matched}" -gt "$max_judged" ]; then
   deny "BLOCKED: write carries ${#matched} characters of assignments to suspicious names, over the $max_judged this guard judges in one write. Split the write, or keep the values in a gitignored .env."
 fi
