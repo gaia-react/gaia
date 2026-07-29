@@ -11,10 +11,12 @@
 # added today belongs in .gaia/tests/sandbox/ instead: that tree is gated too,
 # on the cheaper `sandbox` output, which arms a bats step without arming this
 # job's two pnpm installs and the concurrency meter. Placing a suite there is
-# only half the wiring: the `sandbox` output arms on the suite's own file, not
-# on the document the suite greps, so every source a new suite reads has to be
-# added to that filter as well or the suite runs on none of the edits it exists
-# to catch.
+# only part of the wiring. That filter ends in four broad globs covering every
+# committed .json, .md, .yml and .yaml, so a suite whose sources are documents
+# of those types is armed by them already. A source of any other type is not:
+# a .ts schema, a .sh hook, a sibling .bats file. Each of those has to be added
+# to the filter by hand, or the suite never runs on the edits it exists to
+# catch.
 #
 # Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
 # where a false non-final bare `[[ ]]` does not fail the test, and a

@@ -34,7 +34,7 @@ if ! command -v bats >/dev/null 2>&1; then
     # Run via npx; replace this process so $? propagates correctly.
     exec npx -y bats@latest "$HERE"/*.bats
   else
-    echo "ERROR: bats not installed and npx not available. Install bats-core first." >&2
+    echo "ERROR: bats not installed and npx not available. Install it with one of the options in this script's header." >&2
     exit 1
   fi
 fi
