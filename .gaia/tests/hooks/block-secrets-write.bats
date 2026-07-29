@@ -584,6 +584,41 @@ assert_allowed() {
   assert_denied
 }
 
+# The mask walks the value in bash, and both of its costs grow faster than the
+# value does: the x-run per body, and the walk per substitution. This hook
+# registration carries no `timeout`, and a hook killed before it reaches its
+# `deny` lets the write through, so an unbounded walk is a fail-open reached by
+# input size rather than by input shape. A length cap bounds it. Above the cap
+# the mask is the identity, so the cut falls back to the raw value and the false
+# positive returns for that one line, which is the fail-closed direction. These
+# pin both sides of the cap, and a return of the old quadratic surfaces here as
+# a stall rather than as a silent regression.
+
+@test "a guarded substitution in a long value under the cap is allowed" {
+  long=$(printf '%*s' 1000 '' | tr ' ' 'a')
+  run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
+  assert_allowed
+}
+
+@test "a value over the mask cap falls back to the raw cut" {
+  long=$(printf '%*s' 5000 '' | tr ' ' 'a')
+  run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
+  assert_denied
+}
+
+@test "a value far over the mask cap is judged without stalling" {
+  long=$(printf '%*s' 60000 '' | tr ' ' 'a')
+  run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
+  assert_denied
+}
+
+@test "a value packed with substitutions at the cap is judged without stalling" {
+  many=''
+  while [ ${#many} -lt 3900 ]; do many="$many\$(a||b)"; done
+  run_hook_write "$(printf 'export API_KEY=%s # note\n' "$many")"
+  assert_denied
+}
+
 # The tail's shape rule only sees a run of 13+ alphanumerics mixing letters and
 # digits, so an assignment parked after a separator clears it whenever the value
 # is shorter than that or carries no digit. The feeder grep is line-anchored and

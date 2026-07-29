@@ -102,6 +102,10 @@ trim_value() {
   sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$1"
 }
 
+# The run of `x` every mask body is filled from, grown on demand and reused
+# across bodies and across calls. Its own length is the only state it carries.
+mask_xrun=x
+
 # mask_subs <text>: a SAME-LENGTH copy of <text> whose every unnested `$(…)`
 # body is overwritten with `x`. Equal length is the whole point of it. The
 # caller locates a cut OFFSET on the copy and applies that offset to the
@@ -118,10 +122,28 @@ trim_value() {
 # leaves an EMPTY body alone, so `$()` and a nested `$(… $(…) …)` are masked the
 # way that arm reads them rather than some other way. An unclosed `$(` ends the
 # walk with the remainder passed through untouched, which leaves the caller's
-# cut exactly where it already was.
+# cut exactly where it already was. That bound is written in three places, here,
+# in `value_allowed`'s substitution arm, and in the tail rescan's own mask; they
+# have to agree, since each reads the same `$(…)` the others do.
 #
-# Parameter expansion rather than `sed`, because no portable BSD/GNU `sed`
-# expression rewrites a body to a run of its own length.
+# The x-run is taken from a doubling cache rather than from `${body//?/x}`.
+# Bash's pattern substitution rescans the whole body per replacement, which is
+# quadratic: on bash 3.2.57 an 8000-character body costs 26 seconds where the
+# cache costs 53 milliseconds. This registration carries no `timeout`, and a
+# hook killed before it reaches its `deny` lets the write through, so that cost
+# is a fail-OPEN and the wrong direction for a guard.
+#
+# `sed 's/./x/g'` also preserves character length, multibyte included, and would
+# fix that axis. The cache is used instead because it spawns nothing: the walk's
+# own cost is quadratic in the NUMBER of substitutions rather than in body
+# length, so a line carrying hundreds of them would pay a process per body on
+# top of a cost the x-run never had.
+#
+# That second axis is bounded by the length cap instead, since no pure-bash walk
+# avoids it. Above the cap the mask is the IDENTITY, so the cut is located on the
+# raw value and this rule behaves exactly as it does without the mask at all: a
+# false deny on a pathological line, which is the fail-CLOSED direction and the
+# same direction the rule already errs in everywhere else.
 #
 # SC2016 fires on the `'$('` operands. Not expanding is the whole point, the
 # same way it is for the tail mask below: `$(` is the literal two-character
@@ -129,7 +151,8 @@ trim_value() {
 # instead of matching one.
 # shellcheck disable=SC2016
 mask_subs() {
-  local s="$1" out="" body
+  local s="$1" out="" body n
+  [ ${#s} -le 4096 ] || { printf '%s' "$s"; return 0; }
   while [[ "$s" == *'$('* ]]; do
     out+="${s%%'$('*}"'$('
     s="${s#*'$('}"
@@ -139,8 +162,10 @@ mask_subs() {
     esac
     body="${s%%')'*}"
     s="${s#*')'}"
-    if [ -n "$body" ]; then
-      out+="${body//?/x})"
+    n=${#body}
+    if [ "$n" -gt 0 ]; then
+      while [ ${#mask_xrun} -lt "$n" ]; do mask_xrun="$mask_xrun$mask_xrun"; done
+      out+="${mask_xrun:0:n})"
     else
       out+=')'
     fi
@@ -443,10 +468,17 @@ while IFS= read -r line; do
   # `value_allowed` still reads the true value, and the untrimmed judgement
   # above still runs first, so the two orderings agree.
   #
-  # The mask writes `x`, so it can only REMOVE a separator, never add one, and
-  # a cut can therefore only move later. This turns a deny into an allow and
-  # never the reverse, and every value it newly admits is one the untrimmed
-  # judgement already admits when the same line carries no tail.
+  # The mask writes `x`, so it can only REMOVE a separator, never add one, and a
+  # cut can therefore only move later. Every value it newly ADMITS is one the
+  # untrimmed judgement above already admits when the same line carries no tail,
+  # so nothing reaches an arm here that could not already reach it there.
+  #
+  # A later cut leaves MORE material in the value, so it can also turn an allow
+  # into a deny, and one arm does: `^<[^>]+>$` can be satisfied by a truncated
+  # prefix that the whole value fails on an inner `>`, as in `<$(a> ; b)>`. Both
+  # of those movements run fail-CLOSED, and for that shape the whole-value read
+  # is the correct one, since it also denies `<$(<a-literal>> ; c)>` where the
+  # truncated prefix cleared it.
   #
   # Its limit is the separator grammar's, not the mask's, and the grammar is
   # unchanged: an executable separator still has to be preceded by whitespace to
