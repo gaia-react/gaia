@@ -58,6 +58,26 @@ run_hook_edit() {
   run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
 }
 
+# The two above carry no file_path, which is what every test written before the
+# guard read one relies on. These carry one, for the path-scoped exemption.
+run_hook_write_path() {
+  local path="$1"
+  local body="$2"
+  local json
+  json=$(jq -n --arg p "$path" --arg c "$body" \
+    '{tool_name: "Write", tool_input: {file_path: $p, content: $c}}')
+  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+}
+
+run_hook_edit_path() {
+  local path="$1"
+  local body="$2"
+  local json
+  json=$(jq -n --arg p "$path" --arg s "$body" \
+    '{tool_name: "Edit", tool_input: {file_path: $p, new_string: $s}}')
+  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+}
+
 assert_denied() {
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output"
@@ -656,5 +676,89 @@ assert_allowed() {
   local runs
   runs=$(yes 'hunter2xyz123' | head -n 4000 | tr '\n' ' ')
   run_hook_write "$(printf 'export API_KEY=%s\n' "\$X # ${runs}")"
+  assert_denied
+}
+
+# --- `.env.example` is exempt from the ASSIGNMENT rule, and only that rule ---
+#
+# `.env.example` is a committed file whose entire purpose is to carry
+# placeholder assignments, and both sibling guards already say so: the read
+# guard exempts it while denying the rest of the dotenv family, and the env
+# write guard exempts it by the same basename on this very matcher. The
+# assignment rule was the one holdout, so the file that exists to hold
+# placeholders could not be edited, and its deny told the author to use a
+# gitignored `.env`, which is backwards for exactly this file. Its own tracked
+# `SESSION_SECRET` line is the worked example: five letters, so it clears no
+# placeholder arm and is not secret-shaped.
+#
+# The exemption is deliberately NOT a bypass of the hook. The three
+# high-confidence pattern rules keep running, so the pastes that actually matter
+# in a committed file are still caught; what it gives up is the generic literal,
+# which is the honest cost of the file being a placeholder file.
+
+@test "a short placeholder assignment in .env.example is allowed" {
+  run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_allowed
+}
+
+@test "the tracked .env.example content is allowed whole" {
+  run_hook_write_path '.env.example' "$(printf '%s\n%s\n%s\n' \
+    'SITE_URL=http://localhost:5173' 'SESSION_SECRET=local' 'MSW_ENABLED=true')"
+  assert_allowed
+}
+
+@test "a literal assignment in .env.example is allowed through Edit too" {
+  run_hook_edit_path '.env.example' "$(printf 'API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_allowed
+}
+
+@test "a nested .env.example is matched by basename" {
+  run_hook_write_path 'packages/api/.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_allowed
+}
+
+# The three pattern rules do not care which file they are writing into.
+
+@test "an AWS access-key id in .env.example is still denied" {
+  local aws_id="AKIA""IOSFODNN7EXAMPLE"
+  run_hook_write_path '.env.example' "$(printf 'AWS_ACCESS_KEY_ID=%s\n' "$aws_id")"
+  assert_denied
+}
+
+@test "a GitHub PAT in .env.example is still denied" {
+  local pat="ghp""_0123456789abcdefghij"
+  run_hook_write_path '.env.example' "$(printf 'GH_TOKEN=%s\n' "$pat")"
+  assert_denied
+}
+
+@test "a PEM private-key header in .env.example is still denied" {
+  local pem="-----BEGIN RSA PRIVATE ""KEY-----"
+  run_hook_write_path '.env.example' "$pem"
+  assert_denied
+}
+
+# The exemption is scoped to that one basename, and nothing near it.
+
+@test "the same short value outside .env.example is still denied" {
+  run_hook_write_path 'app/config.ts' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_denied
+}
+
+@test "a real dotenv file is not exempt" {
+  run_hook_write_path '.env' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_denied
+}
+
+@test "a name merely starting with .env.example is not exempt" {
+  run_hook_write_path '.env.example.local' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  assert_denied
+}
+
+# A payload carrying no file_path cannot be exempted, so it is scanned. This is
+# what keeps every test written before the guard read a path meaningful, and it
+# is the fail-closed direction.
+
+@test "a payload with no file_path is still scanned" {
+  run_hook_write "$(printf 'SESSION_SECRET=%s\n' 'local')"
   assert_denied
 }

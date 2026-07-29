@@ -7,7 +7,9 @@
 #   - Private key headers:     -----BEGIN [A-Z ]*PRIVATE KEY-----
 #   - dotenv-style assignment to suspicious names, with or without a leading
 #     export / declare / typeset / local / readonly and that keyword's own
-#     options:
+#     options. This rule, alone of the four, exempts a write whose destination
+#     is named `.env.example`, the way both sibling env guards already do; the
+#     three above still run on that file:
 #       (_TOKEN|_SECRET|_KEY|_PASSWORD)=<non-placeholder-value>
 #       Placeholders allowed: empty, "", '', x, xxx, changeme, REPLACE_ME,
 #       TODO, PLACEHOLDER, ${...}, $VAR, and three whole-value shapes:
@@ -34,6 +36,11 @@
 set -euo pipefail
 
 payload=$(cat)
+
+# The destination, read for the one path-scoped exemption in rule 4 below. Every
+# tool on this matcher (Edit, Write, MultiEdit) carries it; a payload without one
+# resolves to empty, matches no exemption, and is scanned in full.
+file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
 
 # Pull whichever field carries the new content (Edit uses new_string, Write uses content,
 # MultiEdit uses edits[].new_string). Concatenate so a single pattern scan covers all.
@@ -73,6 +80,29 @@ fi
 
 # 4. dotenv-style assignments to suspicious names with non-placeholder values.
 #    Iterate matching lines and apply the placeholder allowlist.
+
+# `.env.example` is exempt from THIS rule, and from this rule only. It is a
+# committed file whose entire purpose is to carry placeholder assignments, and
+# both sibling guards already treat it that way: `block-env-read.sh` exempts it
+# while denying the rest of the dotenv family, and `block-env-write.sh` exempts
+# it by this same basename on this same matcher. This rule was the holdout, so
+# the one file that exists to hold placeholders was the one file whose
+# assignments could not be edited, and the deny told its author to use a
+# gitignored `.env` instead, which is backwards for exactly this file. Its own
+# `SESSION_SECRET` line is the worked example: five letters, so it clears no
+# placeholder arm and is not secret-shaped either.
+#
+# The exemption is scoped twice over, because a committed file is the worst
+# place for a real secret. It covers only this rule, so the three
+# high-confidence pattern rules above still run on the file and still deny an
+# AWS key id, a GitHub PAT, or a PEM header pasted into it. And it matches only
+# this exact basename, so `.env`, `.env.local`, and `.env.example.local` are
+# scanned as before. What it gives up is the generic literal, a value no pattern
+# recognizes, in this one file: the honest cost of exempting a placeholder file
+# from the rule that judges placeholders.
+if [ "$(basename "${file_path:-}")" = ".env.example" ]; then
+  exit 0
+fi
 
 # The suspicious-name grammar, named once because TWO callers read it: the loop
 # feeder at the bottom, and the executable-tail rescan inside the loop, which
