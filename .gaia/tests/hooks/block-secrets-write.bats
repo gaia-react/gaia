@@ -803,22 +803,30 @@ assert_allowed() {
 # parked after a separator is judged by shape rather than allowlist-rescanned.
 # That inverts what the general path's own tail tests pin, which is exactly why
 # it is pinned here rather than left to be rediscovered.
+#
+# The SPACE before each `;` is load-bearing. The tail extractor requires
+# `[[:space:]]+` ahead of the separator, so `local;` opens no tail at all and
+# the general-path deny would arrive from the primary-value allowlist instead,
+# leaving these tests naming a rescan they never reach. The middle test asserts
+# the rescan's own message for that reason: it fails if the space is ever
+# dropped, rather than passing on the wrong arm.
 
 @test "an executable tail in .env.example is judged by shape, not the rescan" {
   run_hook_write_path '.env.example' \
-    "$(printf 'SESSION_SECRET=%s; API_KEY=%s\n' 'local' 'abcd')"
+    "$(printf 'SESSION_SECRET=%s ; API_KEY=%s\n' 'local' 'abcd')"
   assert_allowed
 }
 
-@test "the same executable tail outside .env.example is denied" {
+@test "the same executable tail outside .env.example is denied by the rescan" {
   run_hook_write_path 'app/config.ts' \
-    "$(printf 'SESSION_SECRET=%s; API_KEY=%s\n' 'local' 'abcd')"
+    "$(printf 'SESSION_SECRET=%s ; API_KEY=%s\n' 'local' 'abcd')"
+  grep -qF -- 'parks a secret assignment after a shell separator' <<<"$output"
   assert_denied
 }
 
 @test "an executable tail carrying secret-shaped material in .env.example is denied" {
   run_hook_write_path '.env.example' \
-    "$(printf 'SESSION_SECRET=%s; API_KEY=%s\n' 'local' 'aB3xK9pQ7zR2wL5t')"
+    "$(printf 'SESSION_SECRET=%s ; API_KEY=%s\n' 'local' 'aB3xK9pQ7zR2wL5t')"
   assert_denied
 }
 
