@@ -531,6 +531,94 @@ assert_allowed() {
   assert_allowed
 }
 
+# A separator inside the value AND a tail on the same line is the case the
+# untrimmed judgement cannot reach: attaching a tail stops the whole value
+# matching any arm, so the strip runs, and a strip located on the raw value cuts
+# at the body's own separator and leaves `$(cmd`. The cut point is located on a
+# length-preserving mask instead, which hides the body's separators from it,
+# while the value the allowlist reads stays the unmasked one.
+
+@test "a guarded substitution ahead of a trailing comment is allowed" {
+  run_hook_write "$(printf 'export GH_TOKEN=%s\n' '$(gh auth token 2>/dev/null || true) # for gh cli')"
+  assert_allowed
+}
+
+@test "a guarded substitution ahead of an executable tail is allowed" {
+  run_hook_write "$(printf 'local API_KEY=%s\n' '$(cat f || true) && echo done')"
+  assert_allowed
+}
+
+@test "a quoted guarded substitution ahead of a comment is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '"$(gaia_audit_key "$B" "$R" 2>/dev/null || true)" # base key')"
+  assert_allowed
+}
+
+# Masking the cut point widens nothing else, because the allowlist still reads
+# the true value. A literal spliced onto the substitution is denied exactly as it
+# is with no tail, and the tail itself is still read rather than discarded.
+
+@test "a literal spliced onto a substitution ahead of a comment is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$(a)sk-live-9f3a1c4e8b7d2064 # note')"
+  assert_denied
+}
+
+@test "a secret parked in a comment behind a guarded substitution is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$(cat f || true) # sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "an assignment parked behind a guarded substitution is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$(cat f || true) ; REAL_TOKEN=correcthorsebattery')"
+  assert_denied
+}
+
+# The remaining limit belongs to the separator grammar, not to the mask. An
+# executable separator has to be preceded by whitespace to open a tail, so a bare
+# `;` behind the substitution is read as part of the value and the line is
+# denied. That grammar stays as it is on purpose: `a;b` is ordinary content in a
+# dotenv value, and widening to bare separators trades this false positive for
+# either a concealed literal or a broader false deny.
+
+@test "a bare separator after a guarded substitution is denied" {
+  run_hook_write "$(printf 'GH_TOKEN=%s; export GH_TOKEN\n' '$(gh auth token 2>/dev/null || true)')"
+  assert_denied
+}
+
+# The mask walks the value in bash, and both of its costs grow faster than the
+# value does: the x-run per body, and the walk per substitution. This hook
+# registration carries no `timeout`, and a hook killed before it reaches its
+# `deny` lets the write through, so an unbounded walk is a fail-open reached by
+# input size rather than by input shape. A length cap bounds it. Above the cap
+# the mask is the identity, so the cut falls back to the raw value and the false
+# positive returns for that one line, which is the fail-closed direction. These
+# pin both sides of the cap, and a return of the old quadratic surfaces here as
+# a stall rather than as a silent regression.
+
+@test "a guarded substitution in a long value under the cap is allowed" {
+  long=$(printf '%*s' 4000 '' | tr ' ' 'a')
+  run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
+  assert_allowed
+}
+
+@test "a value over the mask cap falls back to the raw cut" {
+  long=$(printf '%*s' 5000 '' | tr ' ' 'a')
+  run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
+  assert_denied
+}
+
+@test "a value far over the mask cap is judged without stalling" {
+  long=$(printf '%*s' 60000 '' | tr ' ' 'a')
+  run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
+  assert_denied
+}
+
+@test "a value packed with substitutions at the cap is judged without stalling" {
+  many=''
+  while [ ${#many} -lt 3900 ]; do many="$many\$(a||b)"; done
+  run_hook_write "$(printf 'export API_KEY=%s # note\n' "$many")"
+  assert_denied
+}
+
 # The tail's shape rule only sees a run of 13+ alphanumerics mixing letters and
 # digits, so an assignment parked after a separator clears it whenever the value
 # is shorter than that or carries no digit. The feeder grep is line-anchored and

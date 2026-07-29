@@ -102,6 +102,89 @@ trim_value() {
   sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$1"
 }
 
+# The run of `x` every mask body is filled from, grown on demand and reused
+# across the bodies of ONE call. The sole call site is a command substitution, so
+# the growth is discarded when that subshell exits and the next call rebuilds
+# from scratch, which is O(n) against a walk already O(n) per substitution. That
+# per-call reset is also why no call can observe another's state, and the
+# unconditional initializer is what keeps an inherited environment variable of
+# the same name from ever being read as a run.
+mask_xrun=x
+
+# mask_subs <text>: a SAME-LENGTH copy of <text> whose every unnested `$(…)`
+# body is overwritten with `x`. Equal length is the whole point of it. The
+# caller locates a cut OFFSET on the copy and applies that offset to the
+# original, so the value the allowlist reads is the true one and no arm is ever
+# satisfied by masked material.
+#
+# That is what separates this from the executable tail's own mask below. That
+# one feeds the fragments the allowlist judges, so it collapses a body to `$(@)`
+# and accepts, in the consequences listed there, that erasing a body erases
+# whatever the body held. This one feeds nothing but a position, so it erases
+# nothing from any judgement.
+#
+# It carries the `$(…)` arm's own bound, `[^)]+`: it stops at the first `)` and
+# leaves an EMPTY body alone, so `$()` and a nested `$(… $(…) …)` are masked the
+# way that arm reads them rather than some other way. An unclosed `$(` ends the
+# walk with the remainder passed through untouched, which leaves the caller's
+# cut exactly where it already was. That bound is written in three places, here,
+# in `value_allowed`'s substitution arm, and in the tail rescan's own mask; they
+# have to agree, since each reads the same `$(…)` the others do.
+#
+# The x-run is taken from a doubling cache rather than from `${body//?/x}`.
+# Bash's pattern substitution rescans the whole body per replacement, which is
+# quadratic: on bash 3.2.57 an 8000-character body costs 26 seconds where the
+# cache costs 53 milliseconds. This registration carries no `timeout`, and a
+# hook killed before it reaches its `deny` lets the write through, so that cost
+# is a fail-OPEN and the wrong direction for a guard.
+#
+# `sed 's/./x/g'` also preserves character length, multibyte included, and would
+# fix that axis. The cache is used instead because it spawns nothing: the walk's
+# own cost is quadratic in the NUMBER of substitutions rather than in body
+# length, so a line carrying hundreds of them would pay a process per body on
+# top of a cost the x-run never had.
+#
+# That second axis is bounded by the length cap instead, since no pure-bash walk
+# avoids it. Above the cap the mask is the IDENTITY, so the cut is located on the
+# raw value and this rule behaves exactly as it does without the mask at all.
+#
+# For every arm but one that is a false deny on a pathological line, the
+# fail-CLOSED direction the rule already errs in everywhere else. The exception
+# is `^<[^>]+>$`, and it follows from the same asymmetry the call site describes:
+# reverting to the earlier cut also reverts that arm's allow-to-deny movement, so
+# a truncated prefix satisfies it above the cap where the whole value fails it
+# below. That admits nothing the rule does not already admit with no mask at all,
+# but the cap is not fail-closed in one uniform direction, and lowering it on
+# cost grounds means widening that one arm's reach.
+#
+# SC2016 fires on the `'$('` operands. Not expanding is the whole point, the
+# same way it is for the tail mask below: `$(` is the literal two-character
+# opener being searched for, and letting it expand would run a substitution
+# instead of matching one.
+# shellcheck disable=SC2016
+mask_subs() {
+  local s="$1" out="" body n
+  [ ${#s} -le 4096 ] || { printf '%s' "$s"; return 0; }
+  while [[ "$s" == *'$('* ]]; do
+    out+="${s%%'$('*}"'$('
+    s="${s#*'$('}"
+    case "$s" in
+      *')'*) ;;
+      *) break ;;
+    esac
+    body="${s%%')'*}"
+    s="${s#*')'}"
+    n=${#body}
+    if [ "$n" -gt 0 ]; then
+      while [ ${#mask_xrun} -lt "$n" ]; do mask_xrun="$mask_xrun$mask_xrun"; done
+      out+="${mask_xrun:0:n})"
+    else
+      out+=')'
+    fi
+  done
+  printf '%s' "$out$s"
+}
+
 # secret_shaped <text>: 0 when the text carries a run of 13+ alphanumerics
 # mixing letters and digits. A placeholder segment is bounded at 12 and prose
 # does not take that shape, so this is the same structural rule the placeholder
@@ -386,7 +469,37 @@ while IFS= read -r line; do
 
   # Now the value itself, with the tail off. The comment separator has to be
   # preceded by whitespace so a `#` inside the value itself is not read as one.
-  val=$(trim_value "$(sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//' <<<"$rest")")
+  #
+  # The cut point is located on a length-preserving mask of the value and then
+  # applied to the UNMASKED value by offset, so a separator sitting inside a
+  # `$(…)` body cannot open a tail. Locating it on the raw value instead cuts
+  # `$(cmd 2>/dev/null || true) # note` at the body's own `||` and leaves
+  # `$(cmd`, a fragment with no closing paren that no arm can match, so the deny
+  # tells its author to use an environment variable on a line that already runs
+  # a command to fetch one. Masking only the LOCATOR is what keeps that honest:
+  # `value_allowed` still reads the true value, and the untrimmed judgement
+  # above still runs first, so the two orderings agree.
+  #
+  # The mask writes `x`, so it can only REMOVE a separator, never add one, and a
+  # cut can therefore only move later. Every value it newly ADMITS is one the
+  # untrimmed judgement above already admits when the same line carries no tail,
+  # so nothing reaches an arm here that could not already reach it there.
+  #
+  # A later cut leaves MORE material in the value, so it can also turn an allow
+  # into a deny, and one arm does: `^<[^>]+>$` can be satisfied by a truncated
+  # prefix that the whole value fails on an inner `>`, as in `<$(a> ; b)>`. Both
+  # of those movements run fail-CLOSED, and for that shape the whole-value read
+  # is the correct one, since it also denies `<$(<a-literal>> ; c)>` where the
+  # truncated prefix cleared it.
+  #
+  # Its limit is the separator grammar's, not the mask's, and the grammar is
+  # unchanged: an executable separator still has to be preceded by whitespace to
+  # open a tail. So `FOO_KEY=$(cmd || true); export FOO_KEY` is read as one
+  # value through to the `; export FOO_KEY` and denied. Widening the grammar to
+  # bare separators is what a dotenv value cannot survive, since `a;b` is an
+  # ordinary value in the file this rule exists for.
+  kept=$(sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//' <<<"$(mask_subs "$rest")")
+  val=$(trim_value "${rest:0:${#kept}}")
   if value_allowed "$val"; then
     continue
   fi
