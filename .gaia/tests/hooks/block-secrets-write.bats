@@ -641,3 +641,20 @@ assert_allowed() {
   run_hook_write "$(printf 'API_KEY=%s\n' "\$X ; OTHER_TOKEN=\${$ref}")"
   assert_allowed
 }
+
+# `secret_shaped` is fed by process substitution for the same reason the flag
+# pass is, and it fails in the worse direction. Under `pipefail` the pipeline's
+# status IS the function's return value, and its `grep -q` leaves on the first
+# match; on a tail carrying enough runs that the producer is still writing, the
+# producer takes SIGPIPE and the pipeline reports 141. Written as a bare
+# pipeline the shape backstop then reports NOT secret-shaped on exactly the
+# tails densest with secret-shaped material, so the guard fails OPEN. Only
+# length exposes it, and the short twin above ("a secret parked in a trailing
+# comment is denied") passes either way.
+
+@test "a long secret-shaped comment tail is denied" {
+  local runs
+  runs=$(yes 'hunter2xyz123' | head -n 4000 | tr '\n' ' ')
+  run_hook_write "$(printf 'export API_KEY=%s\n' "\$X # ${runs}")"
+  assert_denied
+}

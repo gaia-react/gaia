@@ -97,8 +97,16 @@ trim_value() {
 # does not take that shape, so this is the same structural rule the placeholder
 # arms use, applied to text that is not a value. Its honest limit: an all-letter
 # secret clears it, and so does anything under 13 characters.
+#
+# The consumer is fed by process substitution rather than sitting at the end of
+# a pipe, because under `pipefail` the pipeline's status IS this function's
+# return value and `grep -q` exits on its first match. On text carrying enough
+# runs that the producer is still writing, the producer takes SIGPIPE, the
+# pipeline reports 141, and the function reports NOT secret-shaped: a fail-OPEN
+# on exactly the densest material, and the wrong direction for a guard. Short
+# text never shows it, since the producer finishes before the consumer leaves.
 secret_shaped() {
-  grep -oE '[A-Za-z0-9]{13,}' <<<"$1" | grep -qE '[0-9].*[A-Za-z]|[A-Za-z].*[0-9]'
+  grep -qE '[0-9].*[A-Za-z]|[A-Za-z].*[0-9]' < <(grep -oE '[A-Za-z0-9]{13,}' <<<"$1")
 }
 
 # value_allowed <value>: 0 when the value carries no literal secret. Every arm
