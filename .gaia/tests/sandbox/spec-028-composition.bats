@@ -8,11 +8,28 @@ setup() {
   SETTINGS="$REPO_ROOT/.claude/settings.json"
 }
 
-@test "UAT-015: settings.json deny array still contains all SPEC-028 read-side entries" {
+@test "UAT-015: settings.json deny array carries every SPEC-028 entry and no no-op Write rule" {
   [ -f "$SETTINGS" ]
   grep -qF '"Read(.env)"' "$SETTINGS"
+  # Edit(.env) is the entire write-side entry, and no Write(.env) belongs beside
+  # it. Claude Code's file permission checks match only Read(path) and
+  # Edit(path) rules; Edit covers every file-editing tool (Write, Edit,
+  # MultiEdit, NotebookEdit), while a Write(path) rule is accepted and then
+  # never matched. The harness warns at startup for each unmatched rule, so
+  # adding one buys no enforcement and costs every session a warning.
+  # .gaia/tests/hooks/block-env-read.bats pins the Read(.env) and Edit(.env)
+  # presence from the hook side; the absence below is pinned only here.
   grep -qF '"Edit(.env)"' "$SETTINGS"
-  grep -qF '"Write(.env)"' "$SETTINGS"
+  # Pin the absence rather than only describing it, so re-adding the rule reds
+  # this suite instead of relying on a reader honoring the comment above. Match
+  # the rule FORM rather than one literal, because Write(**/.env), Write(.env*)
+  # and every other spelling is the same no-op. A bare "Write" rule carries no
+  # path, matches the tool everywhere, and warns about nothing, so the open
+  # paren is what separates the broken form from the legal one. Written as a
+  # positive match ending in an explicit return, per
+  # .claude/rules/bats-assertions.md: a `!`-negated grep would never fail here,
+  # because set -e exempts an inverted status and this is not the final line.
+  grep -qF '"Write(' "$SETTINGS" && return 1
   grep -qF '"Read(**/*.key)"' "$SETTINGS"
   grep -qF '"Read(**/*.pem)"' "$SETTINGS"
   grep -qF '"Read(**/*credential*)"' "$SETTINGS"
