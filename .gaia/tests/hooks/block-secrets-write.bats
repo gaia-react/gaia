@@ -520,3 +520,124 @@ assert_allowed() {
   run_hook_write "$(printf 'API_KEY=%s\n' '$X ; OTHER_TOKEN=${Y}')"
   assert_allowed
 }
+
+# The fragment split is a `tr`, not a parser, so a `||` or `&&` INSIDE a parked
+# assignment's value reads as a separator unless the substitution is taken out of
+# the operators' way first. The guarded-substitution idiom is as ordinary after a
+# `;` as it is before one, and truncating it at the `||` leaves a fragment with
+# no closing paren that no arm can match, which is the same false deny the
+# untrimmed-first ordering fixes for the primary value.
+
+@test "a guarded substitution in a parked assignment is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; export API_TOKEN=$(gh auth token 2>/dev/null || true)')"
+  assert_allowed
+}
+
+@test "an and-guarded substitution in a parked assignment is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; export GH_TOKEN=$(gh auth token 2>/dev/null && :)')"
+  assert_allowed
+}
+
+# ...and the bound runs one way only. A sibling fragment carrying a literal is
+# still denied, so keeping the substitution whole does not hollow out the rescan.
+
+@test "a literal beside a guarded substitution in a tail is still denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; API_TOKEN=hunter2xyz ; GH_TOKEN=$(gh auth token 2>/dev/null || true)')"
+  assert_denied
+}
+
+# The mask has to stop at the first `)`, the same way the allowlist's own
+# substitution arm does. A greedy one spans from the first `$(` to the last `)`,
+# swallowing whatever is parked BETWEEN two substitutions and handing the rescan
+# a tail with nothing left to judge.
+
+@test "a literal parked between two substitutions in a tail is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; GH_TOKEN=$(gh auth token 2>/dev/null || true) ; API_TOKEN=hunter2xyz ; OTHER_KEY=$(id -u || true)')"
+  assert_denied
+}
+
+# ...and it has to be global. Mask only the first substitution and a second
+# guarded one keeps its `||`, which collapses to a separator and truncates that
+# fragment, false-denying a tail carrying no literal at all. The deny case above
+# cannot observe this: it asserts a deny, so a mutation that only adds denies
+# leaves it green.
+
+@test "two guarded substitutions in one tail are allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$(gh auth token 2>/dev/null || true) ; B_TOKEN=$(id -u 2>/dev/null || true)')"
+  assert_allowed
+}
+
+# The mask is not verdict-preserving: erasing a substitution body erases what
+# the body held. Two widenings follow, both deliberate, so both are pinned here
+# rather than left incidental. First, an assignment between a `$(` and its first
+# `)` goes away with the body.
+
+@test "an assignment inside a substitution body in a tail is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$(foo ; B_KEY=hunter2xyz123 )')"
+  assert_allowed
+}
+
+# Second, the erased body takes an inner `>` with it, so a `<…>` wrapper that
+# the `>` used to disqualify reads as a whole placeholder. The primary value
+# does not reach this one, which makes the tail briefly the more permissive of
+# the two. It conceals nothing an unwrapped `$(…)`, allowed in both positions
+# already, does not conceal too.
+
+@test "a bracket-wrapped substitution carrying a redirect in a tail is allowed" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=<$(gh auth token 2>/dev/null)>')"
+  assert_allowed
+}
+
+# Erasing a body erases any assignment inside it, so the flag has to come off
+# the UNMASKED tail. Read it off the masked one and a tail whose only watched
+# assignment sits in a substitution falls through to the shape rule, which then
+# denies on the very material the mask claimed to remove. Here that material is
+# an ordinary commit sha and both values are references, so there is no literal
+# anywhere on the line.
+
+@test "an assignment inside a substitution does not expose the tail to the shape rule" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; OUT=$(cd repo ; export GH_TOKEN=$T ; git checkout 3ea35f1756b5375b0691436907e14ee8d2dbc43b)')"
+  assert_allowed
+}
+
+# The same line, long enough that the flag pass's reader is still writing when
+# its `grep -q` leaves on the first match. Written as a bare pipeline the flag
+# pass then takes SIGPIPE, reports 141 under `pipefail`, drops the flag on a
+# tail that plainly carries an assignment, and denies. Only length exposes it,
+# so the fixture has to outrun grep's read buffer; the short twin above passes
+# either way.
+
+@test "a long tail whose assignment sits in a substitution is allowed" {
+  local filler
+  filler=$(head -c 40000 < /dev/zero | tr '\0' 'a')
+  run_hook_write "$(printf 'export API_KEY=%s\n' "\$X ; OUT=\$(cd repo ; export GH_TOKEN=\$T ; echo ${filler} ; git checkout 3ea35f1756b5375b0691436907e14ee8d2dbc43b)")"
+  assert_allowed
+}
+
+# ...and the shape backstop survives that split. A tail carrying no watched
+# assignment at all still reaches the shape rule, masked substitution or not.
+
+@test "secret-shaped material in a substitution with no assignment is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; OUT=$(echo hunter2xyz123)')"
+  assert_denied
+}
+
+# The mask declines an empty body, matching the substitution arm's own `[^)]+`.
+# With `*` the tail would allow a value the primary position denies.
+
+@test "an empty substitution in a tail is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$()')"
+  assert_denied
+}
+
+# The fragment loop is fed by process substitution rather than a pipe so it runs
+# in this shell and `tail_has_assignment` survives it. A pipe-fed rewrite is
+# invisible until the tail is BOTH assignment-carrying and secret-shaped: only
+# then is the lost flag observable, as the shape rule firing on a tail the
+# allowlist has already cleared.
+
+@test "an allowed assignment in a secret-shaped executable tail is allowed" {
+  local ref="LONGVARNAME""1234567"
+  run_hook_write "$(printf 'API_KEY=%s\n' "\$X ; OTHER_TOKEN=\${$ref}")"
+  assert_allowed
+}

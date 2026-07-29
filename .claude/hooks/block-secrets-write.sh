@@ -20,10 +20,17 @@
 #     followed by a segment-bounded path. The value is judged whole FIRST, so a
 #     separator inside it (`$(cmd || true)`) is never mistaken for a tail.
 #     Only then does a trailing comment or ; && || clause come off, and it is
-#     read rather than discarded: a tail carrying an assignment is judged by
-#     the same allowlist, and any other tail by shape, a 13+ alphanumeric run
-#     mixing letters and digits. That shape bound is the honest limit, an
-#     all-letter or under-13 secret parked in a comment clears it.
+#     read rather than discarded. The allowlist judges it only where an
+#     EXECUTABLE tail's assignment LEADS its fragment, and a `$(…)` in that
+#     assignment's value is kept whole the way the primary value's is. Leading a
+#     fragment is a property of the SEPARATORS, not of the surrounding syntax:
+#     an assignment behind a bare `{`, `(`, or pipe does not lead one and falls
+#     back to shape, while the same assignment after a separator INSIDE that
+#     group does lead one and is allowlist-judged. One inside a `$(…)` body is
+#     judged by neither, since the mask erases the body. A comment tail, and any
+#     tail carrying no assignment, fall back to shape too, a 13+ alphanumeric
+#     run mixing letters and digits. That shape bound is the honest limit, an
+#     all-letter or under-13 secret parked where shape is what runs clears it.
 set -euo pipefail
 
 payload=$(cat)
@@ -196,21 +203,70 @@ while IFS= read -r line; do
     sep=$(sed -E 's/^[[:space:]]+//; s/^(#|[|][|]|&&|;).*$/\1/' <<<"$tail")
     tail_has_assignment=0
     if [ "$sep" != "#" ]; then
-      # An EXECUTABLE tail carrying an assignment is judged by the assignment
-      # rule, not by shape: split on the separators and run the same name
-      # grammar and the same allowlist over each fragment. Shape alone lets a
-      # parked key through whenever it is under 13 characters or all letters,
+      # An EXECUTABLE tail whose assignment LEADS a fragment is judged by the
+      # assignment rule, not by shape: split on the separators and run the same
+      # name grammar and the same allowlist over each fragment. Shape alone lets
+      # a parked key through whenever it is under 13 characters or all letters,
       # and the feeder grep is line-anchored, so it never re-reads a fragment.
       #
       # The grammar is tested per FRAGMENT, never against the whole tail: it is
       # anchored at `^`, and the tail still opens with its own separator, so a
       # whole-tail test can never match and would silently downgrade every one
-      # of these to the shape rule.
+      # of these to the shape rule. That anchor is also what bounds the reach,
+      # and the bound is about separators rather than syntax: an assignment
+      # behind a BARE `{`, `(`, or pipe does not lead its fragment and falls
+      # back to shape, while the same assignment placed after a separator INSIDE
+      # that group does lead one and is judged right here. One sitting inside a
+      # `$(…)` body is judged in neither place, because the mask erases the body
+      # before the split ever sees it.
       #
-      # The operators collapse to `;` first so the split needs only `tr`, which
-      # keeps this portable to BSD `sed` (no `\n` in a replacement). The loop is
-      # fed by process substitution rather than a pipe so it runs in this shell
-      # and its flag survives.
+      # A separator can sit INSIDE a parked value exactly as it can inside the
+      # primary one, and the split is a `tr`, not a parser. So an unnested
+      # `$(…)` masks to a body-free `$(@)` before the `tr` ever sees the tail.
+      # That is the rescan's version of the untrimmed-first bound above: it
+      # keeps `$(cmd 2>/dev/null || true)` whole instead of truncating it at the
+      # `||` into a fragment with no closing paren that no arm can match.
+      #
+      # The mask is NOT verdict-preserving, and erasing a body erases whatever
+      # it held. Rather than assert a bound this does not have, the consequences
+      # that follow from it, each verified and each pinned by a test:
+      #
+      #   - An assignment sitting between a `$(` and its first `)` goes away
+      #     with the body, so one parked inside a substitution clears where the
+      #     truncated fragments used to deny.
+      #   - The erased body can take an inner `>` with it, so a `<…>` wrapper
+      #     that the `>` used to disqualify (`<$(cmd 2>/dev/null)>`) reads as a
+      #     whole placeholder and clears. The PRIMARY value does NOT reach this
+      #     one, so here the tail is the more permissive of the two.
+      #   - Erasing an assignment also erases the evidence that the tail HAD
+      #     one, which is why the flag is read separately below, off the
+      #     unmasked tail. Without that split the mask denies where the old
+      #     split allowed.
+      #
+      # None of this hands a writer concealment the guard does not already give,
+      # and the reason is the plain `<…>` arm rather than anything about the
+      # mask: `<hunter2xyz123>` is allowed in BOTH positions by `^<[^>]+>$`
+      # today, so a bracket wrapper already conceals a bare 13+ run wherever it
+      # appears. The mask changes which BODY reaches that arm, not whether the
+      # arm admits a wrapped literal.
+      #
+      # The mask carries the substitution arm's own bound, `[^)]+`, so it stops
+      # at the first `)` and, like the arm, declines an EMPTY body: `$()` is
+      # denied in both positions rather than in the primary alone. A greedy body
+      # would run to the LAST `)` on the line and swallow an assignment parked
+      # between two substitutions, which is the one thing the split still has to
+      # see. Masking and collapsing are independent, since the collapse touches
+      # no `$`, `(`, or `)`; only running both before the `tr` matters.
+      #
+      # The operators collapse to `;` so the split needs only `tr`, which keeps
+      # this portable to BSD `sed` (no `\n` in a replacement). The loop is fed
+      # by process substitution rather than a pipe so it runs in this shell and
+      # its flag survives.
+      #
+      # SC2016 fires on the mask's `$(@)` replacement. Not expanding is the
+      # whole point: it has to reach `sed` as the literal text the masked value
+      # becomes, and expanding it would run `@` as a command.
+      # shellcheck disable=SC2016
       while IFS= read -r frag; do
         [ -n "$frag" ] || continue
         grep -Eq "$name_re" <<<"$frag" || continue
@@ -218,10 +274,30 @@ while IFS= read -r line; do
         if ! value_allowed "$(trim_value "$(sed -E 's/^[^=]*=//' <<<"$frag")")"; then
           deny "BLOCKED: write parks a secret assignment after a shell separator: '$line'. Use environment variables / .env (gitignored), not committed source."
         fi
-      done < <(sed -E 's/[|][|]/;/g; s/&&/;/g' <<<"$tail" | tr ';' '\n')
+      done < <(sed -E 's/\$\([^)]+\)/$(@)/g; s/[|][|]/;/g; s/&&/;/g' <<<"$tail" | tr ';' '\n')
+
+      # The mask governs the DENY judgement only; the FLAG is read from the
+      # UNMASKED tail. Erasing a body erases any assignment inside it, so a tail
+      # whose only watched assignment sits in a substitution would otherwise
+      # leave the flag at 0 and fall through to the shape rule, which then reads
+      # the very material the mask claimed to remove and denies a line holding
+      # no literal. Splitting the two inputs keeps the mask one-directional: it
+      # can turn a deny into an allow, never the reverse.
+      # `grep` is fed by process substitution rather than sitting at the end of
+      # a pipeline, for the same reason the loop above is, and the reason bites
+      # harder here. Under `pipefail` the `if` reads the WHOLE pipeline's
+      # status, and `grep -q` exits on its first match: on a tail long enough
+      # that `tr` is still writing, `tr` takes SIGPIPE, the pipeline reports
+      # 141, the flag stays 0 on a tail that plainly carries an assignment, and
+      # the shape rule denies. A short tail never shows it, because `tr` is done
+      # before `grep` leaves.
+      if grep -Eq "$name_re" < <(sed -E 's/[|][|]/;/g; s/&&/;/g' <<<"$tail" | tr ';' '\n'); then
+        tail_has_assignment=1
+      fi
     fi
-    # A comment tail, or an executable tail carrying no assignment at all, has
-    # no structure to reuse, so it falls back to the shape rule.
+    # A comment tail, or an executable tail whose assignment never leads a
+    # fragment, has no structure the rescan can reuse, so it falls back to the
+    # shape rule.
     if [ "$tail_has_assignment" -eq 0 ] && secret_shaped "$tail"; then
       deny "BLOCKED: write parks secret-shaped material in a trailing comment or statement: '$line'. Use environment variables / .env (gitignored), not committed source."
     fi
