@@ -97,7 +97,7 @@ fi
 # close. `typeset` is bash's synonym for `declare` and belongs with the others.
 name_re='^[[:space:]]*((export|declare|typeset|local|readonly)[[:space:]]+(-[A-Za-z-]+[[:space:]]+)*)?[A-Za-z_][A-Za-z0-9_]*(_TOKEN|_SECRET|_KEY|_PASSWORD)[[:space:]]*='
 
-# Strip surrounding whitespace, then one matched pair of surrounding quotes.
+# Strip surrounding whitespace, then surrounding quotes.
 trim_value() {
   sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$1"
 }
@@ -236,7 +236,15 @@ value_allowed() {
 # because a path may begin with a dash, matching `block-env-read.sh`.
 if [ "$(basename -- "${file_path:-}")" = ".env.example" ]; then
   while IFS= read -r line; do
-    if secret_shaped "$(trim_value "$(sed -E 's/^[^=]*=//' <<<"$line")")"; then
+    # No `trim_value` here, unlike the general path below, and the asymmetry is
+    # deliberate rather than an oversight. Shape reads `[A-Za-z0-9]{13,}` runs,
+    # while trimming removes only surrounding whitespace and surrounding quotes:
+    # all non-alphanumeric, and all at the ends. So it can neither lengthen a run
+    # nor merge two, and it cannot change this verdict. What carries that is the
+    # removals being non-alphanumeric and at the ends, not how many come off. The
+    # general path needs it because the allowlist's arms anchor on the whole
+    # value.
+    if secret_shaped "$(sed -E 's/^[^=]*=//' <<<"$line")"; then
       deny "BLOCKED: write assigns secret-shaped material in .env.example: '$line'. That file carries placeholders; keep the real value in a gitignored .env."
     fi
   done < <(grep -E "$name_re" <<<"$content" || true)
