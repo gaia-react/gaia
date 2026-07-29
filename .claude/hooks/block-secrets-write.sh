@@ -223,6 +223,14 @@ value_allowed() {
 # too, and is accepted rather than hidden: an ordinary value carrying a 13+
 # mixed run, say a hostname like `myapp123456789.example.com`, is refused here.
 #
+# Dropping the allowlist drops the executable-tail rescan with it, since that
+# rescan exists to allowlist-judge a SECOND assignment parked after `;`, `&&`,
+# or `||`. Here the whole post-`=` remainder is shape-tested as one string, so a
+# tail assignment carrying a weak value clears where the general path denies it,
+# and one carrying a secret-shaped value is refused the same as the first. That
+# follows from the shape-only rule rather than qualifying it, but it inverts
+# what the general path's own tests pin, so the suite pins it here too.
+#
 # The match is this exact basename, so `.env`, `.env.local`, and
 # `.env.example.local` reach the full allowlist below as before. `basename --`
 # because a path may begin with a dash, matching `block-env-read.sh`.

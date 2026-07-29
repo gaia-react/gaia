@@ -740,7 +740,7 @@ assert_allowed() {
   assert_allowed
 }
 
-@test "a quoted short value in .env.example is allowed through MultiEdit too" {
+@test "a short value in .env.example is allowed through MultiEdit too" {
   run_hook_multiedit_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
   assert_allowed
 }
@@ -798,14 +798,44 @@ assert_allowed() {
   assert_allowed
 }
 
+# Dropping the allowlist drops the executable-tail rescan with it: the whole
+# post-`=` remainder is shape-tested as one string here, so a second assignment
+# parked after a separator is judged by shape rather than allowlist-rescanned.
+# That inverts what the general path's own tail tests pin, which is exactly why
+# it is pinned here rather than left to be rediscovered.
+
+@test "an executable tail in .env.example is judged by shape, not the rescan" {
+  run_hook_write_path '.env.example' \
+    "$(printf 'SESSION_SECRET=%s; API_KEY=%s\n' 'local' 'abcd')"
+  assert_allowed
+}
+
+@test "the same executable tail outside .env.example is denied" {
+  run_hook_write_path 'app/config.ts' \
+    "$(printf 'SESSION_SECRET=%s; API_KEY=%s\n' 'local' 'abcd')"
+  assert_denied
+}
+
+@test "an executable tail carrying secret-shaped material in .env.example is denied" {
+  run_hook_write_path '.env.example' \
+    "$(printf 'SESSION_SECRET=%s; API_KEY=%s\n' 'local' 'aB3xK9pQ7zR2wL5t')"
+  assert_denied
+}
+
 # A dash-leading path must not be read as a basename option. The verdict is safe
 # either way (no exemption, full scan), but `basename --` keeps the usage error
 # off the hook's stderr, matching block-env-read.sh.
 
+# The needle has to cover BOTH basename flavors, because the VERDICT does not
+# move when `--` is dropped: an empty basename matches no exemption and the file
+# is scanned in full, so `assert_denied` passes either way and these two lines
+# are the only thing standing between the mutant and a green run. BSD says
+# `illegal option`, GNU says `invalid option` and points at `basename --help`,
+# so a BSD-only needle is inert on the ubuntu runner, which is the authoritative
+# gate (see .claude/rules/bats-assertions.md).
 @test "a dash-leading path is scanned without a basename usage error" {
   run_hook_write_path '-.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
-  grep -qF -- 'illegal option' <<<"$output" && return 1
-  grep -qF -- 'usage: basename' <<<"$output" && return 1
+  grep -qiE -- 'illegal option|invalid option|usage: basename|basename --help' <<<"$output" && return 1
   assert_denied
 }
 
