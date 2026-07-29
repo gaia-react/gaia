@@ -236,7 +236,13 @@ value_allowed() {
 # because a path may begin with a dash, matching `block-env-read.sh`.
 if [ "$(basename -- "${file_path:-}")" = ".env.example" ]; then
   while IFS= read -r line; do
-    if secret_shaped "$(trim_value "$(sed -E 's/^[^=]*=//' <<<"$line")")"; then
+    # No `trim_value` here, unlike the general path below, and the asymmetry is
+    # deliberate rather than an oversight. Shape reads `[A-Za-z0-9]{13,}` runs,
+    # while trimming removes only surrounding whitespace and one matched quote
+    # pair: all non-alphanumeric, and all at the ends. So it can neither lengthen
+    # a run nor merge two, and it cannot change this verdict. The general path
+    # needs it because the allowlist's arms anchor on the whole value.
+    if secret_shaped "$(sed -E 's/^[^=]*=//' <<<"$line")"; then
       deny "BLOCKED: write assigns secret-shaped material in .env.example: '$line'. That file carries placeholders; keep the real value in a gitignored .env."
     fi
   done < <(grep -E "$name_re" <<<"$content" || true)

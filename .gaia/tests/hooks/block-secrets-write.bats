@@ -735,7 +735,7 @@ assert_allowed() {
   assert_allowed
 }
 
-@test "a quoted short value in .env.example is allowed" {
+@test "a short value in .env.example is allowed through Edit too" {
   run_hook_edit_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' '"local"')"
   assert_allowed
 }
