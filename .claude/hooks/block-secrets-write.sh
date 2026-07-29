@@ -37,9 +37,10 @@
 #     alphanumeric run is under 13 or unmixed clears, a segmented secret
 #     included.
 #
-# Rule 4 judges at most 200 matching lines in one write and denies past that, so
-# the scan cannot outrun the hook's own deadline. The rationale sits with the
-# check itself, above the two loops that read the cap.
+# Rule 4 judges at most 200 matching lines, and at most 65536 characters of
+# them, in one write, and denies past either, so the scan cannot outrun the
+# hook's own deadline. Two caps because per-line cost is unbounded as well; the
+# rationale sits with the checks themselves, above the two loops they bound.
 set -euo pipefail
 
 payload=$(cat)
@@ -292,24 +293,52 @@ value_allowed() {
 # input SIZE rather than by input shape, the same axis the length cap inside
 # `mask_subs` bounds for the mask.
 #
-# The cap is what makes that safe by construction rather than by accident. This
-# registration carries no `timeout`, so the runtime's own default is the only
-# thing holding the deadline out of reach, and a shorter `timeout` added to the
-# registration later pulls it back within reach of a single write. Bounding the
-# work here is what keeps the guard whole under any deadline, so the cap has to
-# land before a `timeout` ever does.
+# TWO caps, because there are two axes and a line cap alone bounds neither the
+# work nor the deadline. Per-LINE cost is unbounded in its own right: the
+# executable-tail rescan splits a tail on `;`, `&&`, and `||` and spawns a grep
+# per fragment, so one line carrying thousands of separators costs seconds by
+# itself. Capping line count alone leaves their product free, and the product is
+# what spends a deadline.
 #
-# Crossing it DENIES rather than truncating the scan. Judging the first N lines
-# and passing the rest is a fail-open with extra steps, since the lines a
-# truncated scan drops are exactly where a secret would sit. The bound sits far
-# above any ordinary write: a dotenv-shaped file carries a handful of these
-# lines rather than hundreds, and 200 of the most expensive shape costs about
-# seven seconds. The check itself is one `grep -c` over content already in
-# memory, so it cannot be what makes a write expensive.
+# The SIZE cap is the one that bounds the work. It is measured on the MATCHING
+# material rather than on the content, because what costs is the judging, and
+# the feeder grep skips an ordinary large file before any judging happens. Cost
+# tracks that material's size closely, roughly 0.3 ms per character and 2 ms per
+# tail fragment on bash 3.2, so the size is what the bound has to read. The line
+# cap stays alongside it because it names the ordinary case in the terms its
+# author will recognize.
+#
+# The worst payload either cap admits measures about 43 seconds on bash 3.2: one
+# line packed to just under the size cap with the densest tail fragments the
+# grammar allows. That number, not the caps themselves, is what a `timeout` on
+# this registration has to clear, so anything under about a minute is unsafe
+# even now, and it is why the caps have to land before any `timeout` does. This
+# registration carries none, so the runtime's own default is what holds the
+# deadline out of reach today; the caps are what make the worst case a known
+# quantity rather than an open one.
+#
+# The size cap sits where it does because the suite's own fixtures reach for it.
+# One deliberately pathological fixture carries about 60030 characters of
+# matching material to outrun grep's read buffer, so a cap below that would deny
+# it before the code it exercises ever ran. 65536 clears it; lowering this bound
+# means shrinking that fixture and losing what it pins.
+#
+# Crossing either DENIES rather than truncating the scan. Judging the first N
+# and passing the rest is a fail-open with extra steps, since the material a
+# truncated scan drops is exactly where a secret would sit. Both sit far above
+# any ordinary write: a dotenv-shaped file carries a handful of these lines
+# rather than hundreds, and a few hundred characters of them rather than tens of
+# thousands. The checks are two greps over content already in memory, so they
+# cannot be what makes a write expensive.
 max_lines=200
+max_judged=65536
 line_count=$(grep -cE "$name_re" <<<"$content" || true)
+matched=$(grep -E "$name_re" <<<"$content" || true)
 if [ "${line_count:-0}" -gt "$max_lines" ]; then
   deny "BLOCKED: write carries $line_count assignments to suspicious names, over the $max_lines this guard judges in one write. Split the write, or keep the values in a gitignored .env."
+fi
+if [ "${#matched}" -gt "$max_judged" ]; then
+  deny "BLOCKED: write carries ${#matched} characters of assignments to suspicious names, over the $max_judged this guard judges in one write. Split the write, or keep the values in a gitignored .env."
 fi
 
 # `.env.example` is judged by SHAPE alone, skipping the placeholder allowlist

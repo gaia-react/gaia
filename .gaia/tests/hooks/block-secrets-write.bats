@@ -600,6 +600,13 @@ assert_allowed() {
 # trailing ` # note`, crosses the cap, drops the value to the raw cut, and flips
 # the allowed case to DENY. The failure is loud, but its cause is not visible
 # from the test body without this note.
+#
+# A second ceiling sits above these: rule 4's own 65536-character cap on the
+# matching material it will judge at all. The 60000-character fixture below
+# lands near 60030 and stays under it deliberately. Enlarging that one past the
+# cap does NOT fail loudly, because the size cap denies and the test asserts
+# DENY: it would go on passing while no longer reaching the mask path it exists
+# to exercise. Raise rule 4's cap alongside it, or leave the fixture alone.
 
 @test "a guarded substitution in a long value under the cap is allowed" {
   long=$(printf '%*s' 4000 '' | tr ' ' 'a')
@@ -735,6 +742,12 @@ assert_allowed() {
 # tail that plainly carries an assignment, and denies. Only length exposes it,
 # so the fixture has to outrun grep's read buffer; the short twin above passes
 # either way.
+#
+# The filler is bounded above as well as below: rule 4 judges at most 65536
+# characters of matching material, and this whole line is matching material.
+# Past that the size cap denies before the flag pass ever runs, which reads as
+# this test failing. Both ends are real, so the fixture has a window rather than
+# a floor: large enough to outrun the read buffer, small enough to be judged.
 
 @test "a long tail whose assignment sits in a substitution is allowed" {
   local filler
@@ -988,26 +1001,46 @@ assert_allowed() {
   assert_denied
 }
 
-# --- The matching-line cap ---
+# --- The two scan caps ---
 #
-# Both per-line loops are linear in MATCHING-LINE count and spawn several
-# processes per line, so a single write carrying enough of them runs for
-# minutes. A PreToolUse hook that misses its deadline is CANCELLED rather than
-# denied: it reports no decision at all, and the write then continues through
-# the ordinary permission flow. That makes an unbounded scan a fail-OPEN reached
-# by input SIZE rather than by input shape, the same axis the length cap inside
-# `mask_subs` bounds for the mask.
+# Both per-line loops spawn several processes per matching line, so a write
+# carrying enough of them runs for minutes. A PreToolUse hook that misses its
+# deadline is CANCELLED rather than denied: it reports no decision at all, and
+# the write then continues through the ordinary permission flow. That makes an
+# unbounded scan a fail-OPEN reached by input SIZE rather than by input shape,
+# the same axis the length cap inside `mask_subs` bounds for the mask.
 #
-# Crossing the cap denies rather than truncating the scan, because the lines a
-# truncated scan drops are exactly where a secret would sit. These pin both
-# sides of it, and the deny case asserts the REASON as well: with every fixture
-# value an ordinary reference, a deny that did not name the cap would mean some
-# other rule fired and the test would be passing for the wrong reason.
+# Two caps, because there are two axes. Per-LINE cost is unbounded as well: the
+# executable-tail rescan spawns a grep per `;` / `&&` / `||` fragment, so one
+# line carrying thousands of separators costs seconds by itself, and a cap on
+# line count alone leaves their product free. The SIZE cap is the one that
+# bounds the work; the line cap names the ordinary case.
+#
+# Crossing either denies rather than truncating the scan, because the material a
+# truncated scan drops is exactly where a secret would sit. These pin both sides
+# of both caps, and each deny case asserts the REASON: with every fixture value
+# an ordinary reference, a deny that did not name the cap it was meant to cross
+# would mean some other rule fired and the test would pass for the wrong reason.
 
 @test "a write at the matching-line cap is still judged" {
   many=$(for i in $(seq 1 200); do printf 'A%d_KEY=${FOO}\n' "$i"; done)
   run_hook_write "$many"
   assert_allowed
+}
+
+# The test above passes both when all 200 lines were judged and when a
+# regression short-circuits to allow at the cap without judging any of them, and
+# truncate-then-allow is precisely the fail-open the cap exists to refuse. This
+# one carries a secret on the LAST line under the cap, so it can only deny if
+# the loop ran the whole way.
+
+@test "a write at the matching-line cap is judged to its last line" {
+  many=$(
+    for i in $(seq 1 199); do printf 'A%d_KEY=${FOO}\n' "$i"; done
+    printf 'Z_KEY=%s\n' 'hunter2xyz9876543'
+  )
+  run_hook_write "$many"
+  assert_denied
 }
 
 @test "a write over the matching-line cap is denied" {
@@ -1028,13 +1061,40 @@ assert_allowed() {
   grep -qF -- 'over the 200 this guard judges in one write' <<<"$output"
 }
 
-# The cap counts MATCHING lines, not lines. What it bounds is the number of
-# judgements, so an ordinary large file is unaffected however long it runs: the
-# feeder grep already skipped every line of it. Reducing the check to a size
-# test turns this red.
+# Both caps read MATCHING material, never the content. What they bound is the
+# judging, and the feeder grep skips an ordinary large file before any judging
+# happens, so a long file is unaffected however long it runs. The content here
+# is far over the size cap while the material that reaches a loop is two lines;
+# measuring either cap against the whole content turns this red.
 
 @test "a large write carrying few matching lines is allowed" {
   bulk=$(for i in $(seq 1 5000); do printf 'const value%d = "ordinary line";\n' "$i"; done)
   run_hook_write "$bulk$(printf '\nA_KEY=${FOO}\n')"
   assert_allowed
+}
+
+# The size cap is what bounds the work, since one line can carry unboundedly
+# many tail fragments and each costs its own process. A single matching line is
+# enough to cross it, which is exactly what a line cap alone cannot catch.
+
+@test "a single matching line over the judged-size cap is denied" {
+  long=$(printf '%*s' 70000 '' | tr ' ' 'a')
+  run_hook_write "$(printf 'A_KEY=%s\n' "$long")"
+  assert_denied
+  grep -qF -- 'over the 65536 this guard judges in one write' <<<"$output"
+}
+
+# A fragment-dense line is the shape the size cap exists for: the line count is
+# one, and the work is thousands of judgements. Under the cap it is still judged
+# rather than waved through, so the bound cannot be mistaken for a bypass.
+
+@test "a fragment-dense matching line under the size cap is still judged" {
+  tail=''
+  i=1
+  while [ "$i" -le 200 ]; do
+    tail="$tail ; a$i"
+    i=$((i + 1))
+  done
+  run_hook_write "$(printf 'A_KEY=${FOO}%s ; Z_KEY=%s\n' "$tail" 'hunter2xyz9876543')"
+  assert_denied
 }
