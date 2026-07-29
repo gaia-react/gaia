@@ -36,6 +36,10 @@
 #     the honest limit where shape is what runs is that a value whose every
 #     alphanumeric run is under 13 or unmixed clears, a segmented secret
 #     included.
+#
+# Rule 4 judges at most 200 matching lines in one write and denies past that, so
+# the scan cannot outrun the hook's own deadline. The rationale sits with the
+# check itself, above the two loops that read the cap.
 set -euo pipefail
 
 payload=$(cat)
@@ -148,7 +152,7 @@ mask_xrun=x
 # avoids it. Above the cap the mask is the IDENTITY, so the cut is located on the
 # raw value and this rule behaves exactly as it does without the mask at all.
 #
-# For every arm but one that is a false deny on a pathological line, the
+# For every arm but one, that is a false deny on a pathological line, the
 # fail-CLOSED direction the rule already errs in everywhere else. The exception
 # is `^<[^>]+>$`, and it follows from the same asymmetry the call site describes:
 # reverting to the earlier cut also reverts that arm's allow-to-deny movement, so
@@ -217,6 +221,10 @@ secret_shaped() {
 #     `<a><literal><b>` satisfy anchors that were supposed to certify a whole
 #     value. Excluding the terminator from the body is the fix, at the cost of
 #     a nested `$(… $(…) …)`, denied, since balanced delimiters need a parser.
+#     The `[^)]+` bound that follows from it is written in two more places,
+#     `mask_subs`'s walk and the tail rescan's own mask, because both mask the
+#     same `$(…)` this arm reads. All three have to agree, so a change to the
+#     bound here is a change to all three.
 #   - An unanchored tail. `^your[-_]` and `^example` matched a PREFIX, so any
 #     secret rode through behind a placeholder-shaped lead-in.
 #
@@ -275,6 +283,34 @@ value_allowed() {
   fi
   return 1
 }
+
+# Both loops below are linear in MATCHING-LINE count, and each iteration spawns
+# several processes, so one write carrying enough of them runs for minutes. A
+# PreToolUse hook that misses its deadline is CANCELLED rather than denied: it
+# reports no `permissionDecision` at all, and the write then continues through
+# the ordinary permission flow. So an unbounded scan is a fail-OPEN reached by
+# input SIZE rather than by input shape, the same axis the length cap inside
+# `mask_subs` bounds for the mask.
+#
+# The cap is what makes that safe by construction rather than by accident. This
+# registration carries no `timeout`, so the runtime's own default is the only
+# thing holding the deadline out of reach, and a shorter `timeout` added to the
+# registration later pulls it back within reach of a single write. Bounding the
+# work here is what keeps the guard whole under any deadline, so the cap has to
+# land before a `timeout` ever does.
+#
+# Crossing it DENIES rather than truncating the scan. Judging the first N lines
+# and passing the rest is a fail-open with extra steps, since the lines a
+# truncated scan drops are exactly where a secret would sit. The bound sits far
+# above any ordinary write: a dotenv-shaped file carries a handful of these
+# lines rather than hundreds, and 200 of the most expensive shape costs about
+# seven seconds. The check itself is one `grep -c` over content already in
+# memory, so it cannot be what makes a write expensive.
+max_lines=200
+line_count=$(grep -cE "$name_re" <<<"$content" || true)
+if [ "${line_count:-0}" -gt "$max_lines" ]; then
+  deny "BLOCKED: write carries $line_count assignments to suspicious names, over the $max_lines this guard judges in one write. Split the write, or keep the values in a gitignored .env."
+fi
 
 # `.env.example` is judged by SHAPE alone, skipping the placeholder allowlist
 # below. It is a committed file whose entire purpose is to carry placeholder
