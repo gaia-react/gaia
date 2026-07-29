@@ -52,10 +52,14 @@ bats .gaia/tests/lib/spec-allocator-concurrency.bats
 - `bats-core` on `$PATH`. Install via:
   - macOS: `brew install bats-core`
   - Debian/Ubuntu CI: `apt-get install -y bats`
-  - Any platform: `npx -y bats-core@latest` (the `run-all.sh` entrypoint falls
+  - Any platform: `npx -y bats@latest` (the `run-all.sh` entrypoint falls
     back to this)
 - `jq` on `$PATH`
 - `git` on `$PATH`
+
+The npm package is `bats`, not `bats-core`. The project is bats-core and the
+Homebrew formula is bats-core, but no `bats-core` package is published to npm,
+so that spelling resolves to an E404 rather than to a fallback.
 
 `flock` is optional. On a box without it (e.g. stock macOS) the
 mkdir-fallback is the load-bearing lock path and is exercised by the forced
