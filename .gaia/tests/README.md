@@ -55,7 +55,7 @@ Requires `bats` (`brew install bats-core`). Tests are self-contained; they spin 
 pnpm test:sandbox
 ```
 
-Static conformance greps over the `/setup-gaia` sandbox-decision block, the OS Sandbox wiki page, and the `.env` guard. CI runs the same script, so a local green and a CI green mean the same thing with two documented exceptions: the OS-level enforcement test needs a sandbox-capable session (export `GAIA_SANDBOX_CAPABLE=1` after `gaia sandbox apply` and a restart, or it skips), and the docs-link reachability check skips under `CI` so a third-party outage cannot red a required check. Running it by hand is what exercises both.
+Static conformance greps over the `/setup-gaia` sandbox-decision block, the OS Sandbox wiki page, and the `.env` guard. CI runs the same script, so a local green and a CI green mean the same thing with two documented exceptions. The docs-link reachability check skips under `CI` so a third-party outage cannot red a required check, and a hand run is what recovers it. The OS-level enforcement test skips in both places unless you give it a sandbox-capable session: export `GAIA_SANDBOX_CAPABLE=1` after `gaia sandbox apply` and a restart, and have a repo-root `.env` for it to probe. A plain `pnpm test:sandbox` supplies neither, so a green run here is not evidence that the OS-level path was exercised.
 
 ### Wiki-sync smoke tests (manual, billable)
 

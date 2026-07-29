@@ -10,7 +10,11 @@
 # audit-ci-tests.yml gates on its `code` filter output. A doc-conformance suite
 # added today belongs in .gaia/tests/sandbox/ instead: that tree is gated too,
 # on the cheaper `sandbox` output, which arms a bats step without arming this
-# job's two pnpm installs and the concurrency meter.
+# job's two pnpm installs and the concurrency meter. Placing a suite there is
+# only half the wiring: the `sandbox` output arms on the suite's own file, not
+# on the document the suite greps, so every source a new suite reads has to be
+# added to that filter as well or the suite runs on none of the edits it exists
+# to catch.
 #
 # Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
 # where a false non-final bare `[[ ]]` does not fail the test, and a
