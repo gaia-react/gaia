@@ -102,6 +102,52 @@ trim_value() {
   sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' <<<"$1"
 }
 
+# mask_subs <text>: a SAME-LENGTH copy of <text> whose every unnested `$(…)`
+# body is overwritten with `x`. Equal length is the whole point of it. The
+# caller locates a cut OFFSET on the copy and applies that offset to the
+# original, so the value the allowlist reads is the true one and no arm is ever
+# satisfied by masked material.
+#
+# That is what separates this from the executable tail's own mask below. That
+# one feeds the fragments the allowlist judges, so it collapses a body to `$(@)`
+# and accepts, in the consequences listed there, that erasing a body erases
+# whatever the body held. This one feeds nothing but a position, so it erases
+# nothing from any judgement.
+#
+# It carries the `$(…)` arm's own bound, `[^)]+`: it stops at the first `)` and
+# leaves an EMPTY body alone, so `$()` and a nested `$(… $(…) …)` are masked the
+# way that arm reads them rather than some other way. An unclosed `$(` ends the
+# walk with the remainder passed through untouched, which leaves the caller's
+# cut exactly where it already was.
+#
+# Parameter expansion rather than `sed`, because no portable BSD/GNU `sed`
+# expression rewrites a body to a run of its own length.
+#
+# SC2016 fires on the `'$('` operands. Not expanding is the whole point, the
+# same way it is for the tail mask below: `$(` is the literal two-character
+# opener being searched for, and letting it expand would run a substitution
+# instead of matching one.
+# shellcheck disable=SC2016
+mask_subs() {
+  local s="$1" out="" body
+  while [[ "$s" == *'$('* ]]; do
+    out+="${s%%'$('*}"'$('
+    s="${s#*'$('}"
+    case "$s" in
+      *')'*) ;;
+      *) break ;;
+    esac
+    body="${s%%')'*}"
+    s="${s#*')'}"
+    if [ -n "$body" ]; then
+      out+="${body//?/x})"
+    else
+      out+=')'
+    fi
+  done
+  printf '%s' "$out$s"
+}
+
 # secret_shaped <text>: 0 when the text carries a run of 13+ alphanumerics
 # mixing letters and digits. A placeholder segment is bounded at 12 and prose
 # does not take that shape, so this is the same structural rule the placeholder
@@ -386,7 +432,30 @@ while IFS= read -r line; do
 
   # Now the value itself, with the tail off. The comment separator has to be
   # preceded by whitespace so a `#` inside the value itself is not read as one.
-  val=$(trim_value "$(sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//' <<<"$rest")")
+  #
+  # The cut point is located on a length-preserving mask of the value and then
+  # applied to the UNMASKED value by offset, so a separator sitting inside a
+  # `$(…)` body cannot open a tail. Locating it on the raw value instead cuts
+  # `$(cmd 2>/dev/null || true) # note` at the body's own `||` and leaves
+  # `$(cmd`, a fragment with no closing paren that no arm can match, so the deny
+  # tells its author to use an environment variable on a line that already runs
+  # a command to fetch one. Masking only the LOCATOR is what keeps that honest:
+  # `value_allowed` still reads the true value, and the untrimmed judgement
+  # above still runs first, so the two orderings agree.
+  #
+  # The mask writes `x`, so it can only REMOVE a separator, never add one, and
+  # a cut can therefore only move later. This turns a deny into an allow and
+  # never the reverse, and every value it newly admits is one the untrimmed
+  # judgement already admits when the same line carries no tail.
+  #
+  # Its limit is the separator grammar's, not the mask's, and the grammar is
+  # unchanged: an executable separator still has to be preceded by whitespace to
+  # open a tail. So `FOO_KEY=$(cmd || true); export FOO_KEY` is read as one
+  # value through to the `; export FOO_KEY` and denied. Widening the grammar to
+  # bare separators is what a dotenv value cannot survive, since `a;b` is an
+  # ordinary value in the file this rule exists for.
+  kept=$(sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//' <<<"$(mask_subs "$rest")")
+  val=$(trim_value "${rest:0:${#kept}}")
   if value_allowed "$val"; then
     continue
   fi

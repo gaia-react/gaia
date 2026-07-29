@@ -531,6 +531,59 @@ assert_allowed() {
   assert_allowed
 }
 
+# A separator inside the value AND a tail on the same line is the case the
+# untrimmed judgement cannot reach: attaching a tail stops the whole value
+# matching any arm, so the strip runs, and a strip located on the raw value cuts
+# at the body's own separator and leaves `$(cmd`. The cut point is located on a
+# length-preserving mask instead, which hides the body's separators from it,
+# while the value the allowlist reads stays the unmasked one.
+
+@test "a guarded substitution ahead of a trailing comment is allowed" {
+  run_hook_write "$(printf 'export GH_TOKEN=%s\n' '$(gh auth token 2>/dev/null || true) # for gh cli')"
+  assert_allowed
+}
+
+@test "a guarded substitution ahead of an executable tail is allowed" {
+  run_hook_write "$(printf 'local API_KEY=%s\n' '$(cat f || true) && echo done')"
+  assert_allowed
+}
+
+@test "a quoted guarded substitution ahead of a comment is allowed" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '"$(gaia_audit_key "$B" "$R" 2>/dev/null || true)" # base key')"
+  assert_allowed
+}
+
+# Masking the cut point widens nothing else, because the allowlist still reads
+# the true value. A literal spliced onto the substitution is denied exactly as it
+# is with no tail, and the tail itself is still read rather than discarded.
+
+@test "a literal spliced onto a substitution ahead of a comment is denied" {
+  run_hook_write "$(printf 'export API_KEY=%s\n' '$(a)sk-live-9f3a1c4e8b7d2064 # note')"
+  assert_denied
+}
+
+@test "a secret parked in a comment behind a guarded substitution is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$(cat f || true) # sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "an assignment parked behind a guarded substitution is denied" {
+  run_hook_write "$(printf 'API_KEY=%s\n' '$(cat f || true) ; REAL_TOKEN=correcthorsebattery')"
+  assert_denied
+}
+
+# The remaining limit belongs to the separator grammar, not to the mask. An
+# executable separator has to be preceded by whitespace to open a tail, so a bare
+# `;` behind the substitution is read as part of the value and the line is
+# denied. That grammar stays as it is on purpose: `a;b` is ordinary content in a
+# dotenv value, and widening to bare separators trades this false positive for
+# either a concealed literal or a broader false deny.
+
+@test "a bare separator after a guarded substitution is denied" {
+  run_hook_write "$(printf 'GH_TOKEN=%s; export GH_TOKEN\n' '$(gh auth token 2>/dev/null || true)')"
+  assert_denied
+}
+
 # The tail's shape rule only sees a run of 13+ alphanumerics mixing letters and
 # digits, so an assignment parked after a separator clears it whenever the value
 # is shorter than that or carries no digit. The feeder grep is line-anchored and
