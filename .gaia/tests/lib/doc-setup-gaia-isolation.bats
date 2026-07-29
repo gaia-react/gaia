@@ -6,9 +6,17 @@
 #
 # The clause is extracted by heading bounds (`^## Phase 3\.5` -> `^## Phase 4`)
 # so every check below is scoped to it and cannot false-positive on the file's
-# many other AskUserQuestion prompts. Landed in .gaia/tests/lib/ (not
-# .gaia/tests/sandbox/, which no workflow runs) so audit-ci-tests.yml actually
-# gates it.
+# many other AskUserQuestion prompts. Lives in .gaia/tests/lib/, which
+# audit-ci-tests.yml gates on its `code` filter output. A doc-conformance suite
+# added today belongs in .gaia/tests/sandbox/ instead: that tree is gated too,
+# on the cheaper `sandbox` output, which arms a bats step without arming this
+# job's two pnpm installs and the concurrency meter. Placing a suite there is
+# only part of the wiring. That filter ends in four broad globs covering every
+# committed .json, .md, .yml and .yaml, so a suite whose sources are documents
+# of those types is armed by them already. A source of any other type is not:
+# a .ts schema, a .sh hook, a sibling .bats file. Each of those has to be added
+# to the filter by hand, or the suite never runs on the edits it exists to
+# catch.
 #
 # Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
 # where a false non-final bare `[[ ]]` does not fail the test, and a

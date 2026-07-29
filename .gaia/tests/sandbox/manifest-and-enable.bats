@@ -1,7 +1,6 @@
 #!/usr/bin/env bats
 # UAT-013: no committed file carries a raw sandbox.enabled; the real enable
 # only lands in the gitignored .claude/settings.local.json at runtime.
-# .gaia/manifest.json is release-generated; this feature never touches it.
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
@@ -19,12 +18,11 @@ setup() {
   return 0
 }
 
-@test "UAT-013: .gaia/manifest.json was not touched by this feature's diff vs main" {
-  cd "$REPO_ROOT"
-  local base changed
-  base=$(git merge-base HEAD origin/main)
-  changed=$(git diff --name-only "$base" HEAD)
-
-  printf '%s\n' "$changed" | grep -qF '.gaia/manifest.json' && return 1
-  return 0
-}
+# A second test here asserted that the diff vs main never touched
+# .gaia/manifest.json. It is deliberately gone rather than repaired. It held on
+# the one feature branch that introduced it and nowhere since: the manifest is
+# release-generated and ordinary feature work regenerates it, so the assertion
+# is false as a repo-wide invariant. It also contradicted the Distribution
+# Audit (PR) required check, which instructs the author to commit exactly the
+# regenerated manifest it forbade. The durable half of that intent already has
+# an owner in that workflow; the test above keeps the half this file is for.
