@@ -2,10 +2,10 @@
 type: dependency
 status: active
 package: '@gaia-react/lint'
-version: 1.11.0
+version: 2.0.0
 role: lint-config
 created: 2026-04-27
-updated: 2026-07-22
+updated: 2026-07-29
 tags: [dependency, lint, eslint]
 ---
 
@@ -41,6 +41,7 @@ export default defineConfig([
   ...lint.ignores({extra: ['.gaia/**']}),
   ...lint.base,
   ...lint.react,
+  ...lint.reactRouter,
   ...lint.testing,
   ...lint.storybook,
   ...lint.playwright,
@@ -62,6 +63,7 @@ export default defineConfig([
 |---|---|---|
 | `base` | Standard TS/JS hygiene | — |
 | `react` | React-specific rules including `no-null-render` (autofix: converts `return null` in render context to `return undefined`; does not touch loaders, actions, or utilities) | `no-null-render` added in 1.8.0 |
+| `reactRouter` | React Router relaxations scoped to `**/routes/**/*.tsx`, e.g. `no-empty-pattern` | Split out of `react` into its own opt-in group in 2.0.0, since the path convention it relaxed for is shared with other file-based routers and silently weakened lint for any consumer on a different one |
 | `testing` | D-8 test-honesty: `vitest/prefer-called-with`, `no-restricted-imports` (blocks `*.server` / internals from consumer tests) | Added in 1.6.0 |
 | `storybook` | `eslint-plugin-storybook` recommended, scoped to `*.stories.*` and `.storybook/main.*` | `.storybook/` half reaches files from 1.11.0 |
 | `playwright` | `eslint-plugin-playwright` recommended, scoped to `.playwright/**`; `expect-expect` counts `expect*()` helpers as the assertion, `no-skipped-test` allows the conditional `test.skip(condition, reason)` form | block reaches files from 1.11.0; `allowConditional` added there |
