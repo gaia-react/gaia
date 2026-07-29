@@ -679,7 +679,7 @@ assert_allowed() {
   assert_denied
 }
 
-# --- `.env.example` is exempt from the ASSIGNMENT rule, and only that rule ---
+# --- `.env.example` drops the ALLOWLIST, not the rule ---
 #
 # `.env.example` is a committed file whose entire purpose is to carry
 # placeholder assignments, and both sibling guards already say so: the read
@@ -689,12 +689,13 @@ assert_allowed() {
 # placeholders could not be edited, and its deny told the author to use a
 # gitignored `.env`, which is backwards for exactly this file. Its own tracked
 # `SESSION_SECRET` line is the worked example: five letters, so it clears no
-# placeholder arm and is not secret-shaped.
+# placeholder arm at all.
 #
-# The exemption is deliberately NOT a bypass of the hook. The three
-# high-confidence pattern rules keep running, so the pastes that actually matter
-# in a committed file are still caught; what it gives up is the generic literal,
-# which is the honest cost of the file being a placeholder file.
+# What replaces the allowlist there is the shape rule, not nothing. The
+# allowlist asks "is this a recognized placeholder", which every honest
+# `.env.example` value fails; shape asks "is this an unbroken 13+ alphanumeric
+# run mixing letters and digits", which every one of them passes and a pasted
+# key does not. The three pattern rules run there as everywhere.
 
 @test "a short placeholder assignment in .env.example is allowed" {
   run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
@@ -707,14 +708,56 @@ assert_allowed() {
   assert_allowed
 }
 
-@test "a literal assignment in .env.example is allowed through Edit too" {
-  run_hook_edit_path '.env.example' "$(printf 'API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+# The values the ALLOWLIST would refuse and shape accepts. These are the whole
+# point of dropping the allowlist for this file.
+
+@test "an all-letter word in .env.example is allowed" {
+  run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'development')"
+  assert_allowed
+}
+
+@test "a localhost URL in .env.example is allowed" {
+  run_hook_write_path '.env.example' "$(printf 'API_KEY=%s\n' 'http://localhost:3001/api/')"
+  assert_allowed
+}
+
+@test "a quoted short value in .env.example is allowed" {
+  run_hook_edit_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' '"local"')"
   assert_allowed
 }
 
 @test "a nested .env.example is matched by basename" {
   run_hook_write_path 'packages/api/.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
   assert_allowed
+}
+
+# ...and the values shape still refuses there. A committed file is the worst
+# place for a real key, so dropping the allowlist must not drop the backstop.
+
+@test "a secret-shaped literal in .env.example is denied" {
+  run_hook_write_path '.env.example' "$(printf 'API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+@test "a secret-shaped literal in .env.example is denied through Edit too" {
+  run_hook_edit_path '.env.example' "$(printf 'API_KEY=%s\n' 'aB3xK9pQ7zR2wL5t')"
+  assert_denied
+}
+
+@test "a secret parked in a comment in .env.example is denied" {
+  run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local # real: sk-live-9f3a1c4e8b7d2064')"
+  assert_denied
+}
+
+# A dash-leading path must not be read as a basename option. The verdict is safe
+# either way (no exemption, full scan), but `basename --` keeps the usage error
+# off the hook's stderr, matching block-env-read.sh.
+
+@test "a dash-leading path is scanned without a basename usage error" {
+  run_hook_write_path '-.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
+  grep -qF -- 'illegal option' <<<"$output" && return 1
+  grep -qF -- 'usage: basename' <<<"$output" && return 1
+  assert_denied
 }
 
 # The three pattern rules do not care which file they are writing into.
