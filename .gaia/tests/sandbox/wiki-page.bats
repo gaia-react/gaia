@@ -15,8 +15,22 @@ setup() {
   grep -qF 'code.claude.com/docs/en/sandboxing.md' "$WIKI"
 }
 
-@test "UAT-010: the official sandboxing docs link resolves 2xx/3xx (network-gated, skips with no connectivity)" {
+@test "UAT-010: the official sandboxing docs link resolves 2xx/3xx (network-gated; skips in CI and with no connectivity)" {
   grep -qF 'code.claude.com/docs/en/sandboxing.md' "$WIKI"
+
+  # The literal-presence assertion above is the part worth gating, and it runs
+  # everywhere. Reaching the live host is not: this suite runs inside a
+  # declared-required check, so a third-party docs reorganization returning 404
+  # would block every merge in the repository until someone else fixed it. That
+  # is a disproportionate blast radius for a dead documentation link, which
+  # breaks nothing at runtime. The check still runs by hand via
+  # `pnpm test:sandbox`, which is where a stale link gets caught.
+  #
+  # Written `!=` + `|| skip`, not `= ... && skip`: bats runs each @test under
+  # set -e, and a leading `[ ... ] && skip` returns the test's status from a
+  # false `[ ]`, aborting the test instead of continuing. See
+  # .claude/rules/bats-assertions.md.
+  [ "${CI:-}" != "true" ] || skip "network-dependent; runs locally via pnpm test:sandbox"
 
   command -v curl >/dev/null 2>&1 || skip "curl not available on this runner"
 

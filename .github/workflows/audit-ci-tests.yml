@@ -274,10 +274,60 @@ jobs:
               - '.node-version'
               - 'package.json'
               - '.npmrc'
+            # The .gaia/tests/sandbox/ conformance tree gets its OWN filter
+            # output instead of joining `code:` above, and the reason is cost,
+            # not tidiness. One of its suites git-greps every committed
+            # .json/.md/.yml/.yaml file in the repo, so an honest read set for
+            # it is those four globs and nothing narrower. Folding them into
+            # `code:` would arm this job's two pnpm installs and the INV-7
+            # concurrency meter on very nearly every pull request. As its own
+            # output it arms only the bats step below, which needs no toolchain
+            # beyond the apt install every other step here already shares.
+            sandbox:
+              - '.gaia/tests/sandbox/**'
+              # doc-setup-gaia.bats greps the sandbox-decision block of the
+              # /setup-gaia command doc, and pins its `.sandbox_recommended`
+              # reader literal byte-identical against the schema writer key, so
+              # the schema is a source it guards as much as the doc is.
+              - '.claude/commands/setup-gaia.md'
+              - '.gaia/cli/src/schemas/automation-config.ts'
+              # wiki-page.bats greps the shipped OS Sandbox wiki page. That
+              # path matches nothing else in this file, so without this line the
+              # edit the suite exists to catch -- the honesty phrase or the docs
+              # link leaving that page -- would report `sandbox=false`, skip the
+              # bats step, and green the job having run zero tests.
+              - 'wiki/concepts/OS Sandbox.md'
+              # spec-028-composition.bats asserts the .env deny entries the
+              # settings file carries and the hook that backs them. Both already
+              # appear in `code:` above; they are repeated because a filter
+              # output is evaluated independently of its siblings, so an entry
+              # missing here is missing regardless of what `code:` matches.
+              - '.claude/settings.json'
+              - '.claude/hooks/block-env-read.sh'
+              # manifest-and-enable.bats git-greps EVERY committed file of these
+              # four types for a raw top-level sandbox enable, in both the flat
+              # key form and the nested object form, so its read set is
+              # literally all of them and any narrower glob would be a filter
+              # that omits a path the suite reads. Neither forbidden spelling is
+              # written out here on purpose: this file is a *.yml, so the suite
+              # greps this very comment, and quoting them reds the suite. One
+              # glob per type is the whole set at every depth: dorny/paths-filter
+              # matches with picomatch `{dot: true}` (MatchOptions in its
+              # src/filter.ts, at the SHA pinned above), so `**/` both descends
+              # into .claude/, .gaia/ and .github/ and matches zero segments,
+              # covering root-level package.json and CHANGELOG.md too.
+              - '**/*.json'
+              - '**/*.md'
+              - '**/*.yml'
+              - '**/*.yaml'
       # python3-yaml pins the parser lint-yaml.bats' require_yaml_parser needs
       # (python3+pyyaml), so its parser-backed negative tests run explicitly
       # rather than resting on whatever the runner image happens to preinstall.
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+      # Admits `sandbox` as well as `code`: the sandbox step below is gated on
+      # its own filter output, so a PR that arms only that output still needs
+      # bats on the box. Without this the sandbox step would run `bats` on a
+      # runner that never installed it.
+      - if: steps.filter.outputs.code == 'true' || steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch'
         name: Install bats and YAML parser
         run: sudo apt-get update && sudo apt-get install -y bats python3-yaml zsh
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
@@ -313,6 +363,20 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run .gaia/tests/statusline bats suites
         run: bats .gaia/tests/statusline/
+      # The sandbox-enablement conformance tree. Gated on the `sandbox` filter
+      # output rather than `code`, so a PR touching only a file this tree reads
+      # runs it without arming the two pnpm installs and the concurrency meter
+      # below. Invoked through run-all.sh, matching the forensics step above and
+      # the contract that script documents in its own header.
+      #
+      # Two of its 20 tests self-skip here and both are green outcomes, not
+      # gaps: UAT-016 needs a sandbox-capable runner (bubblewrap/socat, which
+      # ubuntu-latest does not have and its header says so), and the docs-link
+      # reachability check skips under CI so a third-party outage cannot red a
+      # declared-required context. The other 18 run.
+      - if: steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch'
+        name: Run .gaia/tests/sandbox bats suites
+        run: bash .gaia/tests/sandbox/run-all.sh
       # Everything below arms the INV-7 concurrency meter. Note what that
       # changes about this job's posture, as a deliberate choice rather than a
       # side effect: a job that previously ran only bats on a lean box now

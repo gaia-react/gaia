@@ -4,10 +4,30 @@ Internal tests for GAIA's Claude Code hooks, commands, and wiki sync system. Not
 
 ## Layout
 
-- `shell-lint.sh`; shellcheck gate over every tracked `*.sh` and `*.bats` in the repo. Free, deterministic, runs in CI on every PR that touches a shell script or bats suite (`.github/workflows/shell-lint.yml`).
-- `hooks/`; bats tests for shell hooks. Free, deterministic, runs on every commit.
-- `smoke/`; release-gate harnesses with PASS/FAIL semantics. Subdirs: `wiki-sync/`, `wiki-promote/`, `uat-write/`. Routing rule: `.claude/rules/maintainers/smoke.md`. See `smoke/README.md`.
-- `observability/`; measurement tools that watch agent behavior over time and report metrics. NO PASS/FAIL. Subdirs: `serena/`. See `observability/serena/README.md` (no observability tree-level README needed for a single-occupant tree; revisit if a second observability tool lands).
+Read the **Gate** column first. It is the difference between a suite whose red
+blocks a merge and one whose red nobody sees until a reader opens the file: an
+ungated tree can carry a failing assertion on `main` indefinitely, which is a
+defect this repository has actually shipped.
+
+| Tree | Gate | What it is |
+|---|---|---|
+| `shell-lint.sh` | CI, `shell-lint.yml` | shellcheck gate over every tracked `*.sh` and `*.bats`. Free, deterministic. Runs on any PR touching a shell script or bats suite. |
+| `hooks/` | CI, `audit-ci-tests.yml` | bats tests for the shell hooks. Free, deterministic, the largest tree here. |
+| `lib/` | CI, `audit-ci-tests.yml` | bats suite for the SPEC-ledger machinery under `.specify/extensions/gaia/lib/`. See `lib/README.md`. |
+| `forensics/` | CI, `audit-ci-tests.yml` | redaction and capture harness, via `forensics/run-all.sh`. |
+| `statusline/` | CI, `audit-ci-tests.yml` | bats tests for the shipped statusline script. |
+| `sandbox/` | CI, `audit-ci-tests.yml` | sandbox-enablement conformance greps, via `sandbox/run-all.sh`. Two tests self-skip in CI by design; both run by hand. |
+| `concurrency/` | CI, `audit-ci-tests.yml` | the INV-7 concurrency meter. Admits scenarios that are red by design, so it is adjudicated against `expected-status.txt` by `meter-gate.sh` rather than on its own exit status. See `concurrency/README.md`. |
+| `distribution/` | CI, `release.yml` + `distribution.yml` + `cli-tests.yml` | validation of the post-scrub GAIA tarball. Docker-gated. See `distribution/README.md`. |
+| `smoke/` | by hand, billable | release-gate harnesses with PASS/FAIL semantics. Subdirs: `wiki-sync/`, `wiki-promote/`, `uat-write/`. Routing rule: `.claude/rules/maintainers/smoke.md`. See `smoke/README.md`. |
+| `prose-audit/` | by hand, gated | best-effort dry-run for the prose-complexity audit lens. A judgment call, not a deterministic gate. See `prose-audit/README.md`. |
+| `observability/` | by hand | measurement tools that watch agent behavior over time and report metrics. NO PASS/FAIL. Subdirs: `serena/`. See `observability/serena/README.md` (no tree-level README needed for a single occupant; revisit if a second tool lands). |
+
+A CI gate is only as good as its paths filter. `audit-ci-tests.yml` runs each
+tree behind a `dorny/paths-filter` output, and a filter that omits a path a
+suite reads reports `code=false`, skips every bats step, and greens the job
+having run zero tests. When you add a suite, add every source it reads to that
+workflow's filter, and say why in a comment beside it.
 
 ## Running
 
@@ -28,6 +48,14 @@ bats .gaia/tests/hooks/
 ```
 
 Requires `bats` (`brew install bats-core`). Tests are self-contained; they spin up tmp git repos via `helpers/tmp-git-repo.sh` and feed synthetic JSON to hooks via `helpers/mock-hook-input.sh`.
+
+### Sandbox conformance tests (free, fast)
+
+```bash
+pnpm test:sandbox
+```
+
+Static conformance greps over the `/setup-gaia` sandbox-decision block, the OS Sandbox wiki page, and the `.env` guard. CI runs the same script, so a local green and a CI green mean the same thing with two documented exceptions: the OS-level enforcement test needs a sandbox-capable session (export `GAIA_SANDBOX_CAPABLE=1` after `gaia sandbox apply` and a restart, or it skips), and the docs-link reachability check skips under `CI` so a third-party outage cannot red a required check. Running it by hand is what exercises both.
 
 ### Wiki-sync smoke tests (manual, billable)
 

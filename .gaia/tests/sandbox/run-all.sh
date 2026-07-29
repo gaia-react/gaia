@@ -9,8 +9,11 @@
 #     apt-get install -y bats         (Debian/Ubuntu CI)
 #     npx -y bats-core@latest         (fallback, any platform)
 #
-# CI: add the following step before this script in your workflow:
-#   - run: bash .gaia/tests/sandbox/run-all.sh
+# CI: wired into .github/workflows/audit-ci-tests.yml, gated on that workflow's
+# `sandbox` paths-filter output. Two tests self-skip there by design: UAT-016
+# needs a sandbox-capable runner, and the docs-link reachability check skips
+# under CI so a third-party outage cannot red a declared-required context. Run
+# by hand with `pnpm test:sandbox`, which exercises both.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
