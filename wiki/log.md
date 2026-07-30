@@ -11,6 +11,10 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-30 d733abb1 WORTHY - source-bearing path (non-test): block-secrets-write.sh adds a 200-line/65536-char judged-material cap denying past either bound -> wiki/concepts/Claude Hooks.md
+- 2026-07-30 32c7a43c SKIP - corrects npx bats-core->bats package-name typo in test runners; internal test-tooling bugfix, no wiki-tracked surface
+- 2026-07-30 441b47ec SKIP - wires .gaia/tests/sandbox into CI's audit-ci-tests.yml; maintainer-only test-infra plumbing already self-documented in .gaia/tests/README.md, no adopter-facing or cross-cutting pattern to track separately
+- 2026-07-30 4a3463c6 SKIP - wiki's own prior sync commit (through cda69f0), no new edit needed
 - 2026-07-29 a13b6be9 SKIP - wiki's own prior sync/consolidate/lint maintenance-chain commit, no new edit needed
 - 2026-07-29 7755d3c9 SKIP - chore: generic chore, comment/naming cleanup only, no behavior change
 - 2026-07-29 3bd0f9af WORTHY - secret guard mask-based tail cut fix → wiki/concepts/Claude Hooks.md
