@@ -624,7 +624,7 @@ assert_allowed() {
 #
 # A second ceiling sits above these: rule 4's own 65536-character cap on the
 # matching material it will judge at all. The 60000-character fixture below
-# lands near 60030 and stays under it deliberately, and it sets the floor under
+# lands near 60038 and stays under it deliberately, and it sets the floor under
 # that cap. Enlarging it past the cap turns it RED rather than quietly retiring
 # it: the size cap would deny, this test asserts DENY, and `assert_denied`
 # refuses a cap deny for exactly that reason. Raise rule 4's cap alongside it, or

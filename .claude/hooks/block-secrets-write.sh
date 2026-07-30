@@ -334,7 +334,7 @@ value_allowed() {
 #
 # The size cap sits where it does because the suite's own fixtures reach for it,
 # and three of them set the floor. The highest is `a value far over the mask cap
-# is judged without stalling`, which carries about 60030 characters of matching
+# is judged without stalling`, which carries about 60038 characters of matching
 # material in order to sit far above the 4096-character cap inside `mask_subs`.
 # Two more outrun grep's read buffer, at about 40119 and 56020. A cap below any
 # of them denies the fixture before the code it exercises ever runs. 65536
