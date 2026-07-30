@@ -16,6 +16,18 @@ jobs:
   has-chromatic-token:
     name: Check for Chromatic token
     runs-on: ubuntu-latest
+    # One echo into $GITHUB_OUTPUT, with no checkout and no network. The cap is
+    # here because the self-heal poller waits on the RUN, and a run completes
+    # only once every job does, so an uncapped job of any size can hold the
+    # whole run past the poller's window and leave `Run Chromatic` absent on the
+    # self-heal HEAD.
+    #
+    # `chromatic` declares `needs:` on this job, so the two run in sequence and
+    # it is their SUM that has to fit the window, not either cap alone. A chain
+    # also waits in the queue once per hop, and the cap covers execution only,
+    # so this pair is budgeted 2 + 12 against a ceiling that charges the margin
+    # per hop rather than once per run.
+    timeout-minutes: 2
     # Reads a secret's presence and echoes a boolean. No API calls, no token.
     permissions: {}
     outputs:
@@ -30,6 +42,15 @@ jobs:
     name: Run Chromatic
     needs: has-chromatic-token
     if: needs.has-chromatic-token.outputs.present == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    # Same poller bound as tests.yml: a ~25-minute window, with the margin the
+    # cap cannot cover (queue time, since the cap bounds execution only) charged
+    # once per hop, so a job that runs to this cap still lets the run complete in
+    # time to be stamped red rather than left absent. `exitOnceUploaded` keeps the
+    # real work near 2 minutes, so this caps the failure mode that matters here,
+    # an upload that hangs rather than returns. 12 rather than 15 because this job
+    # runs after `has-chromatic-token` and the poller waits on the run: what has
+    # to fit the ceiling is the whole 2 + 12 chain, across two queue waits.
+    timeout-minutes: 12
     runs-on: ubuntu-latest
     # `contents: read` is the complete set, not an under-scoped starting point.
     # Checkout needs it to clone, and paths-filter and setup-node both default

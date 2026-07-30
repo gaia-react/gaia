@@ -15,7 +15,23 @@ jobs:
   tests:
     name: Vitest and Playwright
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 60
+    # Bounded by the self-heal re-trigger poller in code-review-audit.yml, which
+    # waits ~25 minutes for a dispatched run and then stamps nothing, leaving
+    # this required context ABSENT on the self-heal HEAD instead of red. A job
+    # that hits this cap is cancelled and its run still completes, so the poller
+    # stamps a failure: an ordinary red check to re-run rather than a merge
+    # wedged with no signal. The cap bounds execution only, so the ~10 minutes it
+    # leaves under the window are what covers this run's queue wait. A test
+    # derives that ceiling from the poller's own loop and charges the margin once
+    # per job along a `needs:` chain, so this number is checked rather than
+    # asserted here.
+    #
+    # 15 is what every unchained job in a re-dispatched workflow carries; a
+    # chained pair is budgeted lower, against the tighter ceiling its hop count
+    # earns. A full run here is about 4 minutes: typecheck and lint dominate it,
+    # Vitest and Playwright together are under a minute, and the browser install
+    # below fetches one engine rather than every engine Playwright ships.
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -143,9 +159,24 @@ jobs:
         env:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           npm_package_version: ${{ steps.package-version.outputs.current-version}}
+      # Only the engine this suite runs. `playwright install` resolves its browser
+      # set from its arguments alone and reads nothing from playwright.config.ts,
+      # so with none named it adds firefox and webkit on top of what this suite
+      # needs, for a config whose CI project list is chromium alone (its
+      # `otherBrowsers` are gated on `!CI`). Naming chromium still installs the
+      # pair a headless run needs, the browser and chromium-headless-shell, plus
+      # ffmpeg, so this is the whole requirement rather than a trimmed-down one:
+      # firefox and webkit are the entire saving. Adding a CI project for another
+      # engine means naming that engine here too, or the run fails on a missing
+      # browser.
+      #
+      # Caching ~/.cache/ms-playwright is deliberately not done: Playwright's CI
+      # guide advises against it because restoring the cache costs about what
+      # downloading the binaries does, and the apt packages `--with-deps` installs
+      # are not cacheable, so the step stays either way.
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Install Playwright Browsers
-        run: pnpm exec playwright install --with-deps
+        run: pnpm exec playwright install --with-deps chromium
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Run Playwright tests
         run: pnpm exec playwright test --pass-with-no-tests

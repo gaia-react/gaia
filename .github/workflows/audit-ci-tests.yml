@@ -346,9 +346,14 @@ jobs:
               - '**/*.md'
               - '**/*.yml'
               - '**/*.yaml'
-      # python3-yaml pins the parser lint-yaml.bats' require_yaml_parser needs
-      # (python3+pyyaml), so its parser-backed negative tests run explicitly
-      # rather than resting on whatever the runner image happens to preinstall.
+      # python3-yaml pins the parser (python3+pyyaml) that every
+      # `require_yaml_parser` gate on this runner needs. Two suites carry one:
+      # lint-yaml.bats, and retrigger-reachability.bats, which gates 15 of its 21
+      # tests behind it. Both gates `skip`, and a skip reports GREEN, so dropping
+      # this package reds nothing; it silently retires every parser-backed
+      # assertion in both suites, including the whole self-heal reachability
+      # invariant. Pin it here rather than resting on whatever the runner image
+      # happens to preinstall.
       # Admits `sandbox` as well as `code`, so a PR that arms only that output
       # still gets bats on the box. This is what puts bats there deterministically:
       # ubuntu-latest does not preinstall it. run-all.sh does carry an
