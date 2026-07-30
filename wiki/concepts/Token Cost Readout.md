@@ -105,16 +105,18 @@ The roll-up's dollar block is a read-time reprice: it recomputes from the ledger
 
 ## Tally-time degrade markers
 
-`token-tally.sh` degrades the record's `dollars` field to `null` under the same never-block contract as the roll-up, but there is no marker text anywhere, only the raw number or `null`; there is no per-folder file left to render a marker line into.
+`token-tally.sh` degrades the record's `dollars` field to `null` under the same never-block contract as the roll-up. Most of those degrades carry no marker text, only the raw number or `null`, because there is no per-folder file left to render a marker line into.
+
+An unpriced model is the exception, and it is the one degrade whose figure is silently plausible rather than visibly absent: a mixed-model run prices its other models normally and drops the missing one's share, so the total looks like an ordinary number. The tally names every such model in an `unpriced` array on the record (and in the `cost.json` sidecar), and appends `(lower bound: unpriced model(s) <names>)` to whichever stdout shape it printed. The marker keys on the unpriced model, never on a `$0.00` total, so it fires on exactly the mixed runs a total-keyed check would stay quiet about. Because the array names the models on the row itself, a later pass finds the affected rows by field rather than by re-deriving which keys the table was missing then; `.gaia/scripts/cost-reprice.sh` is what re-prices them once the table carries the model.
 
 | Trigger | Record effect |
 | --- | --- |
 | The committed rate table is missing or unparseable | `dollars: null` |
 | The section's `by_model` is empty (no per-model attribution for the session) | `dollars: null` |
-| A `claude-` model in the section's `by_model` is absent from the rate table | `dollars` prices the remaining models and silently omits the unpriced one, a lower bound with no marker recorded |
+| A `claude-` model in the section's `by_model` is absent from the rate table | `dollars` prices the remaining models and omits the absent one's share, a lower bound. The absent models are named in an `unpriced` array on both the record and the sidecar, and the stdout line carries the lower-bound marker |
 | The section's own token render is itself partial | `dollars` prices whatever `by_model` data is available, silently, with no marker recorded (the token partial marker on the bucket totals still renders independently) |
 
-A reader who wants a human-facing description of a degrade, rather than a bare number, reads the roll-up's dollar-block markers above, which cover the same triggers and render as text at read time.
+A reader who wants a human-facing description of any of the other degrades, rather than a bare number, reads the roll-up's dollar-block markers above, which cover the same triggers and render as text at read time.
 
 ## Pairs with
 

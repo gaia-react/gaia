@@ -37,6 +37,11 @@
 #     sonnet row -> opus prices to 0.76 alone (sonnet's tokens are simply
 #     excluded from the sum; the record has no field naming the unpriced model).
 #
+#   fixtures/token-tally-price/rates-missing-both.json (AUTHORED): a well-formed
+#     table naming only claude-haiku-4-5, so BOTH of the multimodel run's models
+#     are unpriced. The two-model case is what pins the join separator; a
+#     one-model list renders identically under any separator.
+#
 #   fixtures/token-tally-price/rates-intro.json / rates-sticker.json
 #     (AUTHORED, UAT-008): each model an array of TWO windows -- an intro row
 #     (double the e2e rate: opus 1000/5000, sonnet 600/3000) followed by a
@@ -60,6 +65,7 @@ setup() {
   LEGACY="$FIX_TALLY/projects"
   RATES_E2E="$FIX_E2E/rates.json"
   RATES_MISSING_SONNET="$FIX_PRICE/rates-missing-sonnet.json"
+  RATES_MISSING_BOTH="$FIX_PRICE/rates-missing-both.json"
   RATES_INTRO="$FIX_PRICE/rates-intro.json"
   RATES_STICKER="$FIX_PRICE/rates-sticker.json"
 
@@ -254,4 +260,22 @@ setup() {
   [ "$status" -eq 0 ]
 
   grep -qF -- '(lower bound: unpriced model(s) claude-sonnet-4-6)' <<<"$output"
+}
+
+# ---------- 11 ----------
+@test "#1088: two unpriced models are joined the way token-rollup.sh joins them" {
+  run bash "$SCRIPT" --action command --command gaia-debt \
+    --session-id fixturemultimodel0001 --projects-root "$MULTIMODEL" \
+    --ledger "$LEDGER" --rate-table "$RATES_MISSING_BOTH"
+  [ "$status" -eq 0 ]
+
+  # ", ", the separator token-rollup.sh:305 joins its own list with. Under a bare
+  # space the pair renders "claude-opus-4-8 claude-sonnet-4-6", which reads as a
+  # single hyphenated name. Order follows by_model's key order via to_entries.
+  grep -qF -- 'unpriced model(s) claude-opus-4-8, claude-sonnet-4-6' <<<"$output"
+
+  # Neither model priced, so the figure really is $0.00 here -- and it is marked
+  # because a MODEL was unpriced, which is the same reason a non-zero mixed run
+  # gets marked. The signal does not come from the total.
+  grep -qF -- '$0.00' <<<"$output"
 }

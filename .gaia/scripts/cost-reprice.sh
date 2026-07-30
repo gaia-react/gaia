@@ -17,22 +17,41 @@
 # after an introductory window has closed still prices each row at the rate that
 # was in force when it was written; no date-freezing logic is involved.
 #
-# Usage: cost-reprice.sh [<repo_root>] [--ledger <path>] [--rate-table <path>] [--dry-run]
+# Usage: cost-reprice.sh [--ledger <path>] [--rate-table <path>] [--dry-run]
+#
+# Both the ledger and the rate table resolve from the CURRENT working directory,
+# so run this from inside the checkout whose ledger you mean to correct. It takes
+# no <repo_root> positional and refuses one rather than accepting an argument it
+# would then ignore.
 #
 # Guarantees:
 #   - A row whose recomputed figure equals its stored one is passed through
 #     BYTE-identical. Only rows that actually change are re-serialized.
 #   - A line that does not parse as JSON is passed through byte-identical. No
 #     row is ever dropped or reordered; the output has the same line count.
-#   - The pre-rewrite ledger is copied to `<ledger>.bak.<epoch>` before the
-#     replace. The ledger is machine-local and gitignored, so this backup is the
-#     only undo that exists.
-#   - The replace is atomic (write temp in the same dir, then mv) and runs under
-#     the shared cost mutex when available, since a rewrite is a genuine
-#     read-modify-write against a file concurrent tallies append to.
+#   - A row whose own `ts` cannot anchor a rate window is passed through
+#     byte-identical too. `priced_row` reports that case as `missing_anchor`
+#     alongside a dollars of 0, which is an "unknown" and not a recomputed zero,
+#     so writing that 0 over the stored figure would destroy it. No current
+#     writer emits such a row; a hand-edited, foreign, or legacy ledger can, and
+#     that is exactly the population this script exists for.
+#   - Classify, back up, and replace all run inside the shared cost mutex as ONE
+#     critical section. The read half has to be in there too: a tally appending
+#     between an unlocked classify and the replace is dropped outright, because
+#     the rewrite emits only the lines classify saw, and a backup taken before
+#     that window would not hold the lost row either. When the mutex helper is
+#     unavailable the same section runs unlocked, which is the pre-existing
+#     fallback, not a second design.
+#   - The pre-rewrite ledger is copied to `<ledger>.bak.<UTC-timestamp>` before
+#     the replace, with a numeric suffix appended if that path is already taken,
+#     so a second run inside the same second cannot clobber the first run's copy.
+#     The ledger is machine-local and gitignored, so this backup is the only undo
+#     that exists.
+#   - The replace is atomic: write a temp file in the same directory, then mv.
 #   - Exit is non-zero on a real failure (unresolvable ledger or table, write
-#     failure). Unlike the advisory cost-backfill.sh this is invoked by hand, so
-#     a silent failure would be read as "nothing needed changing".
+#     failure, lock timeout). An empty ledger is a success with nothing to do.
+#     Unlike the advisory cost-backfill.sh this is invoked by hand, so a silent
+#     failure would be read as "nothing needed changing".
 set -uo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,31 +86,48 @@ rate_table_id() {
 }
 
 # ---------- args ----------
-repo_root=""
 ledger_override=""
 rate_table_override=""
 dry_run=false
+
+usage() { log "Usage: cost-reprice.sh [--ledger <path>] [--rate-table <path>] [--dry-run]"; }
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --ledger)     ledger_override="${2:-}"; shift 2 ;;
-    --rate-table) rate_table_override="${2:-}"; shift 2 ;;
+    # Each option checks its own operand is present before `shift 2`. Without
+    # that check a trailing bare `--ledger` makes `shift 2` fail silently (there
+    # is no `set -e`), leaving `$1` unchanged and the loop re-testing it forever:
+    # a mute, output-free spin at 100% CPU from an ordinary typo.
+    --ledger)
+      [ "$#" -ge 2 ] || { log "cost-reprice: --ledger needs a path"; usage; exit 1; }
+      ledger_override="$2"; shift 2 ;;
+    --rate-table)
+      [ "$#" -ge 2 ] || { log "cost-reprice: --rate-table needs a path"; usage; exit 1; }
+      rate_table_override="$2"; shift 2 ;;
     --dry-run)    dry_run=true; shift ;;
     *)
-      if [ -z "$repo_root" ]; then repo_root="$1"; else log "cost-reprice: ignoring unexpected argument: $1"; fi
-      shift ;;
+      # No positional is accepted. Both resolvers below answer from the process
+      # CWD, so a <repo_root> this script cannot honor gets refused rather than
+      # parsed and dropped: a run that names one checkout, reports success, and
+      # rewrites a different one is the worst outcome on offer, and this is the
+      # single remediation step adopters are told to run by hand.
+      log "cost-reprice: unexpected argument: $1"
+      usage
+      exit 1 ;;
   esac
 done
-
-if [ -z "$repo_root" ]; then
-  repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"
-  [ -n "$repo_root" ] || repo_root="$PWD"
-fi
-repo_root="${repo_root%/}"
 
 ledger="$(gaia_resolve_ledger_path "$ledger_override" 2>/dev/null)"
 if [ -z "$ledger" ] || [ ! -f "$ledger" ]; then
   log "cost-reprice: no readable ledger (${ledger:-unresolved}); nothing to do"
   exit 1
+fi
+if [ ! -s "$ledger" ]; then
+  # Distinct from the classify failure below: an empty ledger is a well-formed
+  # ledger with no rows, so it is a success with nothing to do. Exiting non-zero
+  # here would report "a real failure" for the ordinary fresh-checkout case.
+  printf 'cost-reprice: ledger is empty (%s); nothing to do.\n' "$ledger"
+  exit 0
 fi
 
 rt="$(gaia_resolve_rate_table "$rate_table_override" 2>/dev/null)"
@@ -109,95 +145,117 @@ if [ -z "$rtid" ]; then
   exit 1
 fi
 
-# ---------- classify every line in one pass ----------
-# -R reads each line as a raw string, so a line this pass leaves alone is
-# reproduced from the ORIGINAL bytes rather than re-serialized by jq. A row is a
-# candidate only when it parses, carries attribution, and already holds a
-# numeric dollars; anything else is passed through untouched.
-classified="$(jq -R -c --argjson rates "$rates" --arg rtid "$rtid" \
-  "$GAIA_PRICING_JQ_DEFS"'
-    . as $raw
-    | (try ($raw | fromjson) catch null) as $row
-    | if ($row | type) != "object"
-         or (($row.by_model // {}) | length) == 0
-         or (($row.dollars | type) != "number")
-      then {changed: false, line: $raw}
-      else
-        priced_row($row) as $p
-        | if $p.dollars == $row.dollars and ($row.unpriced // []) == $p.unpriced
-          then {changed: false, line: $raw}
-          else
-            { changed: true,
-              ts: ($row.ts // ""),
-              kind: ($row.kind // "?"),
-              before: $row.dollars,
-              after: $p.dollars,
-              line: ( ($row + {dollars: $p.dollars, rate_table_id: $rtid})
-                      | if ($p.unpriced | length) > 0 then .unpriced = $p.unpriced else del(.unpriced) end
-                      | tojson )
-            }
-          end
-      end
-  ' "$ledger" 2>/dev/null)"
-
-if [ -z "$classified" ]; then
-  log "cost-reprice: could not classify ledger rows; leaving $ledger untouched"
-  exit 1
-fi
-
-changed_count="$(printf '%s\n' "$classified" | jq -s '[.[] | select(.changed)] | length')"
-total_count="$(printf '%s\n' "$classified" | jq -s 'length')"
-
-printf '%s\n' "$classified" \
-  | jq -r 'select(.changed) | "  reprice: \(.ts) \(.kind)  $\(.before) -> $\(.after)"'
-
-if [ "$changed_count" -eq 0 ]; then
-  printf 'cost-reprice: 0 row(s) re-priced (%s scanned); ledger already current.\n' "$total_count"
-  exit 0
-fi
-
-if [ "$dry_run" = "true" ]; then
-  printf 'cost-reprice: %s row(s) would be re-priced of %s scanned (dry run: nothing written).\n' \
-    "$changed_count" "$total_count"
-  exit 0
-fi
-
-# ---------- back up, then replace atomically under the cost mutex ----------
+# ---------- the whole read-modify-write, as one critical section ----------
 telemetry_dir="$(dirname "$ledger")"
-backup="$ledger.bak.$(date -u +%Y%m%dT%H%M%SZ)"
-if ! cp "$ledger" "$backup" 2>/dev/null; then
-  log "cost-reprice: could not write backup $backup; refusing to rewrite"
-  exit 1
-fi
 
-_cost_reprice_write() {
-  local tmp
-  tmp="$(mktemp "$telemetry_dir/.cost-reprice.XXXXXX")" || return 1
+# Classify, report, back up, and replace all live in here, because all four are
+# one read-modify-write against a file concurrent tallies append to.
+#
+# This function emits every message it needs itself and lets only its return code
+# cross back: with_ledger_lock's flock path runs its callback in a SUBSHELL, so a
+# variable assigned in here (the row counts, the backup path) is invisible to the
+# caller. Printing the summary outside would print counts from an unset variable
+# on exactly the platforms that have flock.
+#
+# `-R` reads each line as a raw string, so a line this pass leaves alone is
+# reproduced from the ORIGINAL bytes rather than re-serialized by jq. A row is a
+# candidate only when it parses, carries attribution, already holds a numeric
+# dollars, and can anchor a rate window; anything else passes through untouched.
+_cost_reprice_run() {
+  local classified changed_count total_count backup tmp n
+
+  classified="$(jq -R -c --argjson rates "$rates" --arg rtid "$rtid" \
+    "$GAIA_PRICING_JQ_DEFS"'
+      . as $raw
+      | (try ($raw | fromjson) catch null) as $row
+      | if ($row | type) != "object"
+           or (($row.by_model // {}) | length) == 0
+           or (($row.dollars | type) != "number")
+        then {changed: false, line: $raw}
+        else
+          priced_row($row) as $p
+          | if $p.missing_anchor
+               or ($p.dollars == $row.dollars and ($row.unpriced // []) == $p.unpriced)
+            then {changed: false, line: $raw}
+            else
+              { changed: true,
+                ts: ($row.ts // ""),
+                kind: ($row.kind // "?"),
+                before: $row.dollars,
+                after: $p.dollars,
+                line: ( ($row + {dollars: $p.dollars, rate_table_id: $rtid})
+                        | if ($p.unpriced | length) > 0 then .unpriced = $p.unpriced else del(.unpriced) end
+                        | tojson )
+              }
+            end
+        end
+    ' "$ledger" 2>/dev/null)"
+
+  if [ -z "$classified" ]; then
+    log "cost-reprice: could not classify ledger rows; leaving $ledger untouched"
+    return 1
+  fi
+
+  changed_count="$(printf '%s\n' "$classified" | jq -s '[.[] | select(.changed)] | length')"
+  total_count="$(printf '%s\n' "$classified" | jq -s 'length')"
+
+  printf '%s\n' "$classified" \
+    | jq -r 'select(.changed) | "  reprice: \(.ts) \(.kind)  $\(.before) -> $\(.after)"'
+
+  if [ "$changed_count" -eq 0 ]; then
+    printf 'cost-reprice: 0 row(s) re-priced (%s scanned); ledger already current.\n' "$total_count"
+    return 0
+  fi
+
+  if [ "$dry_run" = "true" ]; then
+    printf 'cost-reprice: %s row(s) would be re-priced of %s scanned (dry run: nothing written).\n' \
+      "$changed_count" "$total_count"
+    return 0
+  fi
+
+  backup="$ledger.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+  if [ -e "$backup" ]; then
+    # Second granularity: two runs inside the same second would otherwise have
+    # the second one overwrite the only copy of the first one's pre-image.
+    n=2
+    while [ -e "$backup.$n" ]; do n=$((n + 1)); done
+    backup="$backup.$n"
+  fi
+  if ! cp "$ledger" "$backup" 2>/dev/null; then
+    log "cost-reprice: could not write backup $backup; refusing to rewrite"
+    return 1
+  fi
+
+  if ! tmp="$(mktemp "$telemetry_dir/.cost-reprice.XXXXXX")"; then
+    log "cost-reprice: could not create a temp file in $telemetry_dir; ledger is intact. Backup at $backup"
+    return 1
+  fi
   if ! printf '%s\n' "$classified" | jq -r '.line' > "$tmp"; then
     rm -f "$tmp"
+    log "cost-reprice: rewrite failed; original ledger is intact. Backup at $backup"
     return 1
   fi
   # Same-directory rename: atomic, so a reader never observes a partial ledger.
-  mv "$tmp" "$ledger" || { rm -f "$tmp"; return 1; }
+  if ! mv "$tmp" "$ledger"; then
+    rm -f "$tmp"
+    log "cost-reprice: replace failed; original ledger is intact. Backup at $backup"
+    return 1
+  fi
+
+  printf 'cost-reprice: %s row(s) re-priced of %s scanned. Backup: %s\n' \
+    "$changed_count" "$total_count" "$backup"
   return 0
 }
 
 rc=0
 if declare -f with_ledger_lock >/dev/null 2>&1; then
-  with_ledger_lock "$telemetry_dir" _cost_reprice_write || rc=$?
+  with_ledger_lock "$telemetry_dir" _cost_reprice_run || rc=$?
   if [ "$rc" -eq 75 ]; then
-    log "cost-reprice: cost lock timed out; refusing to rewrite unlocked. Backup kept at $backup"
+    log "cost-reprice: cost lock timed out; the ledger was neither read nor written."
     exit 1
   fi
 else
-  _cost_reprice_write || rc=$?
+  _cost_reprice_run || rc=$?
 fi
 
-if [ "$rc" -ne 0 ]; then
-  log "cost-reprice: rewrite failed; original ledger is intact. Backup at $backup"
-  exit 1
-fi
-
-printf 'cost-reprice: %s row(s) re-priced of %s scanned. Backup: %s\n' \
-  "$changed_count" "$total_count" "$backup"
-exit 0
+exit "$rc"

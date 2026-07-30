@@ -1200,7 +1200,9 @@ fi
 # $0.00 total: a mixed-model run whose other model priced correctly reports a
 # plausible non-zero figure while silently dropping the unpriced model's share,
 # so a total-keyed check would stay quiet on exactly the rows that most need it.
-UNPRICED_LIST="$(jq -r 'join(" ")' <<<"$UNPRICED_JSON" 2>/dev/null || true)"
+# `", "`, the separator token-rollup.sh:305 joins its own list with. A bare space
+# reads as one hyphenated name per model once two models are unpriced.
+UNPRICED_LIST="$(jq -r 'join(", ")' <<<"$UNPRICED_JSON" 2>/dev/null || true)"
 
 if [[ "$ACTION" == "command" ]]; then
   # Exactly one line, no per-stage breakdown (a command run has one stage), so
