@@ -190,3 +190,68 @@ setup() {
   [ "$(jq -r '.execute.partial' "$sc")" = "true" ]
   [ "$(jq -r '.execute.dollars' "$sc")" = "0.87925" ]
 }
+
+# ================= #1088: unpriced-model surfacing =================
+#
+# `priced_row` already computes an `unpriced` array naming every claude-* model
+# with no row in the rate table, and token-rollup.sh already prints it. The
+# tally read only `.dollars` off the same object and discarded the rest, so the
+# per-run line a maintainer actually reads was the one surface that could report
+# a confidently wrong figure. These four tests pin the record field and both
+# stdout shapes.
+
+# ---------- 7 ----------
+@test "#1088: an unpriced model is named on the record and in cost.json" {
+  run bash "$SCRIPT" --action execute --spec-id SPEC-022 --plan-slug spec-022-dollar-cost \
+    --out-dir "$OUTDIR" --session-id fixturemultimodel0001 \
+    --projects-root "$MULTIMODEL" --ledger "$LEDGER" --rate-table "$RATES_MISSING_SONNET"
+  [ "$status" -eq 0 ]
+
+  # The dollars figure is unchanged (opus-only, 0.76) -- this adds a signal, it
+  # does not alter the arithmetic.
+  sc="$OUTDIR/cost.json"
+  [ "$(jq -r '.execute.dollars' "$sc")" = "0.76" ]
+  [ "$(jq -r '.execute.unpriced | join(",")' "$sc")" = "claude-sonnet-4-6" ]
+
+  # Same field on the central ledger row, so a future audit finds affected rows
+  # by field rather than by re-deriving which keys the table was missing.
+  rec="$(tail -n 1 "$LEDGER")"
+  [ "$(jq -r '.unpriced | join(",")' <<<"$rec")" = "claude-sonnet-4-6" ]
+}
+
+# ---------- 8 ----------
+@test "#1088: a fully priced run carries no unpriced field (no false positive)" {
+  run bash "$SCRIPT" --action execute --spec-id SPEC-022 --plan-slug spec-022-dollar-cost \
+    --out-dir "$OUTDIR" --session-id fixturemultimodel0001 \
+    --projects-root "$MULTIMODEL" --ledger "$LEDGER" --rate-table "$RATES_E2E"
+  [ "$status" -eq 0 ]
+
+  [ "$(jq -r '.execute.dollars' "$OUTDIR/cost.json")" = "0.87925" ]
+  jq -e '.execute | has("unpriced") | not' "$OUTDIR/cost.json" >/dev/null
+
+  rec="$(tail -n 1 "$LEDGER")"
+  jq -e 'has("unpriced") | not' >/dev/null 2>&1 <<<"$rec"
+}
+
+# ---------- 9 ----------
+@test "#1088: --action command's one-line output marks the figure a lower bound" {
+  run bash "$SCRIPT" --action command --command gaia-debt \
+    --session-id fixturemultimodel0001 --projects-root "$MULTIMODEL" \
+    --ledger "$LEDGER" --rate-table "$RATES_MISSING_SONNET"
+  [ "$status" -eq 0 ]
+
+  # The detector keys on an unpriced MODEL, never on a $0.00 total: this run
+  # prices to a plausible non-zero 0.76 and must still be marked.
+  grep -qF -- 'unpriced model(s) claude-sonnet-4-6' <<<"$output"
+  grep -qF -- '$0.76' <<<"$output"
+}
+
+# ---------- 10 ----------
+@test "#1088: the multi-line cost block marks the figure a lower bound" {
+  run bash "$SCRIPT" --action execute --spec-id SPEC-022 --plan-slug spec-022-dollar-cost \
+    --out-dir "$OUTDIR" --session-id fixturemultimodel0001 \
+    --projects-root "$MULTIMODEL" --ledger "$LEDGER" --rate-table "$RATES_MISSING_SONNET"
+  [ "$status" -eq 0 ]
+
+  grep -qF -- '(lower bound: unpriced model(s) claude-sonnet-4-6)' <<<"$output"
+}

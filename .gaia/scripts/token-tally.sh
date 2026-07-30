@@ -780,8 +780,16 @@ TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # downstream reader reproduces this exact historical figure, plus `rate_table_id`
 # (the identity of the rate table that priced it) so it can re-price the raw
 # by_model under a different card. Both are null off the priced path.
+#
+# `unpriced` names every claude-* model the table had no row for. priced_row
+# maps a null rate window to 0 and still returns a well-formed row, so without
+# this field a run priced at zero is indistinguishable from a run that cost
+# nothing, and a mixed-model run reports a plausible figure silently missing one
+# model's share. Persisting it makes an affected row findable by field instead of
+# by re-deriving which keys the table was missing when it was written.
 COST_DOLLARS_RAW="null"       # JSON number on the priced path, else null
 RATE_TABLE_ID=""              # sha256:<16hex> on the priced path, else empty -> null
+UNPRICED_JSON="[]"            # claude-* models with no rate-table row; [] when all priced
 
 if jq -e 'length > 0' >/dev/null 2>&1 <<<"$BY_MODEL"; then
   cost_rates="null"
@@ -809,6 +817,12 @@ if jq -e 'length > 0' >/dev/null 2>&1 <<<"$BY_MODEL"; then
       fi
       # rate_table_id identifies the exact table that priced this row.
       RATE_TABLE_ID="$(rate_table_id "$cost_rt" 2>/dev/null || true)"
+      # Keep the unpriced names only when they arrive as a real array; anything
+      # else degrades to [] rather than a fabricated or malformed field.
+      u="$(jq -c '.unpriced' <<<"$priced" 2>/dev/null)"
+      if printf '%s' "$u" | jq -e 'type=="array"' >/dev/null 2>&1; then
+        UNPRICED_JSON="$u"
+      fi
     fi
     # else: pricing failed unexpectedly -> leave dollars/rate_table_id null,
     # never fabricate.
@@ -1062,6 +1076,7 @@ rec="$(jq -nc \
   --argjson by_agent_type "$BY_AGENT_TYPE" \
   --argjson dollars "$COST_DOLLARS_RAW" \
   --arg rate_table_id "$RATE_TABLE_ID" \
+  --argjson unpriced "$UNPRICED_JSON" \
   --argjson partial "$partial_bool" \
   --arg started "$TMIN" \
   --arg ended "$TMAX" \
@@ -1089,6 +1104,7 @@ rec="$(jq -nc \
     }
     + (if ($by_model | type) == "object" and ($by_model | length) > 0 then {by_model: $by_model} else {} end)
     + (if ($by_agent_type | type) == "object" and ($by_agent_type | length) > 0 then {by_agent_type: $by_agent_type} else {} end)
+    + (if ($unpriced | type) == "array" and ($unpriced | length) > 0 then {unpriced: $unpriced} else {} end)
     + (if $audit_json != "" then {audit: ($audit_json | fromjson)} else {} end)
     + (if $kind == "command" then {command: (if $command_val == "" then null else $command_val end), run_id: $run_id_val} else {} end)
     + (if $github_json != "" then {github: ($github_json | fromjson)} else {} end)
@@ -1179,6 +1195,13 @@ if [[ -n "$OUT_DIR" && -n "$rec" && "$ACTION" != "command" ]]; then
 fi
 
 # ---------- stdout tally block (README C4; FC-7 for --action command) ----------
+# The unpriced-model marker both stdout shapes below append, worded as
+# token-rollup.sh:402 already words it. It keys on an unpriced MODEL, never on a
+# $0.00 total: a mixed-model run whose other model priced correctly reports a
+# plausible non-zero figure while silently dropping the unpriced model's share,
+# so a total-keyed check would stay quiet on exactly the rows that most need it.
+UNPRICED_LIST="$(jq -r 'join(" ")' <<<"$UNPRICED_JSON" 2>/dev/null || true)"
+
 if [[ "$ACTION" == "command" ]]; then
   # Exactly one line, no per-stage breakdown (a command run has one stage), so
   # every command surface relays a byte-identical line. Never bash integer
@@ -1193,6 +1216,7 @@ if [[ "$ACTION" == "command" ]]; then
   line="Cost: ~${t_human}M tokens, ${cost_part}"
   [[ "$DUR_AVAIL" == "true" ]] && line="${line}, ${HUMAN}"
   [[ "$partial" -ne 0 ]] && line="${line} (partial: lower bound)"
+  [[ -n "$UNPRICED_LIST" ]] && line="${line} (lower bound: unpriced model(s) ${UNPRICED_LIST})"
   printf '%s\n' "$line"
 else
   printf 'Cost (%s):\n' "$out_title"
@@ -1208,6 +1232,9 @@ else
   fi
   if [[ "$partial" -ne 0 ]]; then
     printf '  (partial: figures are a lower bound; some inputs were unreadable)\n'
+  fi
+  if [[ -n "$UNPRICED_LIST" ]]; then
+    printf '  (lower bound: unpriced model(s) %s)\n' "$UNPRICED_LIST"
   fi
 fi
 
