@@ -373,7 +373,7 @@ region_json="$("$LATEST_DIR/.gaia/cli/gaia" update merge-region \
 
 1. **A CLI subcommand resolves from `$LATEST_DIR`, never from the working-tree copy of the CLI.** This covers the two region-aware CLI calls: the region oracle above and Step 7d's `regen-regions` runner. An adopter whose installed binary predates the subcommand cannot reach it any other way, and that is the only reason the rule exists.
 2. **A regeneration program named by a declaration's `argv` is the exception, and resolves from the adopter's own tree.** Step 7d passes `--root .` precisely so the runner executes the copy of the program the merge walk just wrote. A region's body is derived from the adopter's post-merge tree, so resolving that program from the release copy would be the defect, not the rule.
-3. **A CLI invocation is never printed as a follow-up command for the adopter, in either form.** The release-resolved form names a cache directory that exists only for the duration of the run, so it is already gone by the time the adopter reads it, and the working-tree form is banned by rule 1. Every follow-up command Step 9 prints is the regeneration program from that entry's `argv`, which the adopter can paste into any shell.
+3. **A CLI invocation is never printed as a follow-up command for the adopter, in either form.** The release-resolved form points into the update cache, which a later run's Step 4b prune removes, so it is not a path the adopter can keep; the working-tree form is banned by rule 1. Every region follow-up command Step 9 prints is the regeneration program from that entry's `argv`, which the adopter can paste into any shell.
 
 Then read `.verdict` and take the matching row:
 
