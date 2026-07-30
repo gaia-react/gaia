@@ -332,17 +332,22 @@ value_allowed() {
 # within 6x of a maintainer laptop, which is every host worth naming. The caps are
 # what make the worst case a known quantity rather than an open one.
 #
-# The size cap sits where it does because the suite's own fixtures reach for it,
-# and three of them set the floor. The highest is `a value far over the mask cap
-# is judged without stalling`, which carries about 60038 characters of matching
-# material in order to sit far above the 4096-character cap inside `mask_subs`.
-# Two more outrun grep's read buffer, at about 40119 and 56020. A cap below any
-# of them denies the fixture before the code it exercises ever runs. 65536
-# clears all three; lowering this bound means shrinking them and losing what
-# they pin. Two of the three assert DENY, so a cap deny would satisfy them while
-# no longer reaching the rule they exist for; the suite's own deny assertion
-# refuses a cap deny for exactly that reason, which turns a cap lowered out from
-# under a fixture into a red test rather than a silent retirement.
+# This exact bound is pinned from both sides. A boundary pair in the suite spends
+# exactly 65536 characters of matching material and asserts ALLOW, then 65537 and
+# asserts DENY, so the number here cannot move in either direction, and the
+# comparison cannot widen to `-ge`, without a red test.
+#
+# Three content fixtures set an independent floor under it, and they are why the
+# bound is this large rather than merely round. The highest is `a value far over
+# the mask cap is judged without stalling`, which carries about 60038 characters
+# of matching material in order to sit far above the 4096-character cap inside
+# `mask_subs`. Two more outrun grep's read buffer, at about 40119 and 56020. A cap
+# below any of them denies the fixture before the code it exercises ever runs, so
+# lowering this bound means shrinking them and losing what they pin. Two of the
+# three assert DENY, so a cap deny would satisfy them while no longer reaching the
+# rule they exist for; the suite's own deny assertion refuses a cap deny for
+# exactly that reason, which turns a cap lowered out from under a fixture into a
+# red test rather than a silent retirement.
 #
 # Crossing either DENIES rather than truncating the scan. Judging the first N
 # and passing the rest is a fail-open with extra steps, since the material a
@@ -359,11 +364,11 @@ max_lines=200
 max_judged=65536
 line_count=$(grep -cE "$name_re" <<<"$content" || true)
 if [ "${line_count:-0}" -gt "$max_lines" ]; then
-  deny "BLOCKED: write carries $line_count assignments to suspicious names, over the $max_lines this guard judges in one write. Split the write, or keep the values in a gitignored .env."
+  deny "BLOCKED: write carries $line_count assignments to suspicious names, over the $max_lines this guard judges in one write. Split the write, or keep the real values in a gitignored .env."
 fi
 matched=$(grep -E "$name_re" <<<"$content" || true)
 if [ "${#matched}" -gt "$max_judged" ]; then
-  deny "BLOCKED: write carries ${#matched} characters of assignments to suspicious names, over the $max_judged this guard judges in one write. Split the write, or keep the values in a gitignored .env."
+  deny "BLOCKED: write carries ${#matched} characters of assignments to suspicious names, over the $max_judged this guard judges in one write. Split the write, or keep the real values in a gitignored .env."
 fi
 
 # `.env.example` is judged by SHAPE alone, skipping the placeholder allowlist

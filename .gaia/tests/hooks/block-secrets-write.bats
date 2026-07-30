@@ -1107,6 +1107,27 @@ assert_allowed() {
 # The size cap is what bounds the work, since one line can carry unboundedly
 # many tail fragments and each costs its own process. A single matching line is
 # enough to cross it, which is exactly what a line cap alone cannot catch.
+#
+# The pair below pins the cap's own boundary, the way the line cap's 200-and-201
+# pair does. The deny side alone leaves the comparison loose: every other fixture
+# in this file tops out at 60038 characters of matching material, so nothing
+# reaches the cap itself and `-gt` could become `-ge` with the suite still green.
+# The admitted case is a single long reference rather than a fragment-dense line
+# because the cap counts characters and this shape spends one judgement on all of
+# them, so pinning the boundary costs the suite no measurable time.
+
+@test "a single matching line at the judged-size cap is still judged" {
+  name=$(printf '%*s' 65527 '' | tr ' ' 'A')
+  run_hook_write "$(printf 'A_KEY=${%s}\n' "$name")"
+  assert_allowed
+}
+
+@test "a single matching line one character over the judged-size cap is denied" {
+  name=$(printf '%*s' 65528 '' | tr ' ' 'A')
+  run_hook_write "$(printf 'A_KEY=${%s}\n' "$name")"
+  assert_denied_cap
+  grep -qF -- 'over the 65536 this guard judges in one write' <<<"$output"
+}
 
 @test "a single matching line over the judged-size cap is denied" {
   long=$(printf '%*s' 70000 '' | tr ' ' 'a')
