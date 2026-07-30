@@ -1131,10 +1131,11 @@ assert_allowed() {
 # The at-cap ALLOW test above, the 65527-character braced reference whose whole
 # line is exactly 65536, passes both when the loop judged all 65536 characters
 # and when a regression waves a cap-sized payload through without judging it,
-# which is the truncate-then-allow this cap refuses. That is the test the pair
-# note above calls load-bearing, so keep it even though an allow-side assertion
-# reads as the weaker of the two. This one carries a literal value at exactly the
-# cap, so it can only deny if the judging ran.
+# which is the truncate-then-allow this cap refuses. Keep it even though an
+# allow-side assertion reads as the weaker of the two: it is the admitted case
+# at the cap, and without one the comparison could widen from `-gt` to `-ge`
+# unnoticed. This one carries a literal value at exactly the cap, so it can
+# only deny if the judging ran.
 
 @test "a write at the judged-size cap is judged rather than waved through" {
   long=$(printf '%*s' 65530 '' | tr ' ' 'a')

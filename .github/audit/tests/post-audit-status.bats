@@ -10,14 +10,14 @@
 # Ownership. Two suites guard this one hook, run by two separate steps of
 # .github/workflows/audit-ci-tests.yml (`bats .github/audit/tests/` and
 # `bats .gaia/tests/hooks/`, both armed by that job's shared `code` path
-# filter). This suite owns
-# the member-aware gate arms and the status-target arms, because only its
-# fixture installs the real resolver (install_resolver) and only its gh mock
-# rejects a status posted to a sha the bare remote does not carry.
-# .gaia/tests/hooks/post-audit-status.bats owns the usage and marker-shape
-# preconditions, the divergence guards enumerated as decline lines, and the
-# head_sha fallback paths (no PR / no upstream, detached HEAD). Add a new arm to
-# whichever suite already owns its family instead of duplicating it in both.
+# filter). This suite owns the member-aware gate arms and the status-target
+# arms, because only its fixture installs the real resolver (install_resolver)
+# and only its gh mock rejects a status posted to a sha the bare remote does
+# not carry. .gaia/tests/hooks/post-audit-status.bats owns the usage and
+# marker-shape preconditions, the divergence guards enumerated as decline
+# lines, and the head_sha fallback paths (no PR / no upstream, detached HEAD).
+# Add a new arm to whichever suite already owns its family instead of
+# duplicating it in both.
 #
 # `gh` is mocked on a prepended PATH. The mock answers `gh auth status` (ok or
 # fail per the test), `gh repo view --json nameWithOwner` (a fixed slug),

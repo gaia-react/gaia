@@ -41,13 +41,13 @@
 # Ownership. Two suites guard this one hook, run by two separate steps of
 # .github/workflows/audit-ci-tests.yml (`bats .gaia/tests/hooks/` and
 # `bats .github/audit/tests/`, both armed by that job's shared `code` path
-# filter). This suite owns
-# the usage and marker-shape preconditions, the divergence guards as enumerated
-# decline lines, and the head_sha fallback paths. Its sibling
-# .github/audit/tests/post-audit-status.bats owns the member-aware gate arms and
-# the status-target arms; it installs the real resolver and its gh mock rejects a
-# status posted to a sha its bare remote does not carry. Add a new arm to
-# whichever suite already owns its family instead of duplicating it in both.
+# filter). This suite owns the usage and marker-shape preconditions, the
+# divergence guards as enumerated decline lines, and the head_sha fallback
+# paths. Its sibling .github/audit/tests/post-audit-status.bats owns the
+# member-aware gate arms and the status-target arms; it installs the real
+# resolver and its gh mock rejects a status posted to a sha its bare remote
+# does not carry. Add a new arm to whichever suite already owns its family
+# instead of duplicating it in both.
 #
 # Scope limit to read the two posting arms honestly. REPO stages only
 # .gaia/VERSION and README.md, so .gaia/scripts/resolve-audit-members.sh is not
