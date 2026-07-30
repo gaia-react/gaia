@@ -21,15 +21,24 @@ setup() {
   TABLE="$SCRIPT_DIR/token-rates.json"
   PRICING_LIB="$SCRIPT_DIR/token-pricing-lib.sh"
 
-  [ -f "$TABLE" ] || skip "shipped rate table not found: $TABLE"
+  # Both files are tracked and non-optional, and this suite is release-excluded
+  # so it only ever runs where they exist. A `skip` here would green the shipped
+  # table's ONLY coverage on a future rename instead of reddening it.
+  [ -f "$TABLE" ] || { echo "shipped rate table not found: $TABLE" >&2; return 1; }
+  [ -f "$PRICING_LIB" ] || { echo "pricing lib not found: $PRICING_LIB" >&2; return 1; }
   # shellcheck source=.gaia/scripts/token-pricing-lib.sh
   . "$PRICING_LIB"
 }
 
 # rate_for <model> <date> -> "<input> <output>" via the REAL rate_window, so a
-# row that exists but is malformed (wrong nesting, string rates) fails here
-# exactly as it would in token-tally.sh, rather than passing a shallow has-key
-# check.
+# row whose window is nested wrongly fails here exactly as it would in
+# token-tally.sh, rather than passing a shallow has-key check.
+#
+# It does NOT catch a string-typed rate: jq renders "\(.input)" identically for
+# `5` and `"5"`, so every equality assertion below passes either way. The rate
+# types are asserted directly in their own test instead. That gap matters because
+# a quoted rate does not degrade one model, it makes `priced_row` yield null for
+# every run against the table, which reads as `cost unavailable` everywhere.
 rate_for() {
   jq -r --arg m "$1" --arg d "$2" --slurpfile t "$TABLE" \
     '$t[0] as $rates | '"$GAIA_PRICING_JQ_DEFS"'
@@ -66,6 +75,16 @@ rate_for() {
   # Verified against two Sonnet-5-only ledger records; #1088 must not disturb it.
   [ "$(rate_for claude-sonnet-5 2026-07-30)" = "2 10" ]
   [ "$(rate_for claude-sonnet-5 2026-09-01)" = "3 15" ]
+}
+
+@test "shipped table: every rate is numeric, not a quoted number" {
+  # The one malformation rate_for is blind to, and the most damaging: a quoted
+  # rate makes every arithmetic branch in priced_row fail, so the table prices
+  # NOTHING and every surface reports `cost unavailable`. The table is
+  # hand-edited, which is exactly how a stray quote gets in.
+  jq -e '.models | to_entries
+         | all(.value[] | (.input | type) == "number" and (.output | type) == "number")' \
+    "$TABLE" >/dev/null
 }
 
 @test "shipped table: cache multipliers are the documented read/write factors" {

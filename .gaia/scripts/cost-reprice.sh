@@ -212,9 +212,16 @@ _cost_reprice_run() {
       # whole change exists to remove. Such a row passes through untouched, its
       # stored figure and original table id intact, exactly like every other row
       # this script cannot fully price.
+      # The `type` test comes first because `//` defaults only on null and false:
+      # a by_model that is a string or an array reaches `keys` as a non-object and
+      # raises a per-input jq error, which the record-count invariant below turns
+      # into a refusal of the WHOLE rewrite. Per-row pass-through is the design,
+      # so one hand-mangled row must not block every other row from re-pricing.
       def fully_priceable($bm):
-        ($bm | keys) as $k
-        | ($k | length) > 0 and (($k | map(select(test("^claude-"))) | length) == ($k | length));
+        ($bm | type) == "object"
+        and (($bm | keys) as $k
+             | ($k | length) > 0
+               and (($k | map(select(test("^claude-"))) | length) == ($k | length)));
 
       . as $raw
       | (try ($raw | fromjson) catch null) as $row

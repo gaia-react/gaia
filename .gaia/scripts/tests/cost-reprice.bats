@@ -47,7 +47,9 @@ setup() {
   FIX_E2E="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-cost-e2e" && pwd)"
   FIX_PRICE="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally-price" && pwd)"
 
-  [ -f "$SCRIPT" ] || skip "cost-reprice.sh not found"
+  # Tracked, non-optional, and this suite is release-excluded so it only runs
+  # where the script exists. A `skip` would green the suite on a rename.
+  [ -f "$SCRIPT" ] || { echo "cost-reprice.sh not found: $SCRIPT" >&2; return 1; }
 
   RATES_FULL="$FIX_E2E/rates.json"
   RATES_MISSING_SONNET="$FIX_PRICE/rates-missing-sonnet.json"
@@ -288,6 +290,25 @@ STUB
   [ "$status" -eq 0 ]
   [ "$(cat "$LEDGER")" = "$before" ]
   grep -qF -- '0 row' <<<"$output"
+}
+
+@test "a non-object by_model passes through without blocking the rest of the ledger" {
+  # `//` defaults only on null and false, so a string by_model would reach jq's
+  # `keys` as a non-object and raise a per-input error -- which the record-count
+  # invariant escalates into refusing the WHOLE rewrite. Per-row pass-through is
+  # the design: one hand-mangled row must not hold every other row hostage.
+  jq -c -n '{schema_version:1, kind:"execute", session_id:"mangled",
+             by_model:"oops", dollars:1.23, ts:"2026-07-28T07:28:15Z"}' >> "$LEDGER"
+  seed_row 0.76 2026-07-28T07:28:15Z
+
+  run run_reprice "$RATES_FULL"
+  [ "$status" -eq 0 ]
+
+  [ "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 2 ]
+  # The mangled row is untouched and the healthy one still re-prices.
+  [ "$(sed -n '1p' "$LEDGER" | jq -r '.by_model')" = "oops" ]
+  [ "$(sed -n '1p' "$LEDGER" | jq -r '.dollars')" = "1.23" ]
+  [ "$(sed -n '2p' "$LEDGER" | jq -r '.dollars')" = "0.87925" ]
 }
 
 @test "a row whose ts cannot anchor a rate window is left byte-identical" {
