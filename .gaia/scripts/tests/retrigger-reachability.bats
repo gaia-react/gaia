@@ -51,9 +51,12 @@ setup() {
   READ_CONFIG="$REPO_ROOT/.gaia/scripts/read-audit-ci-config.sh"
   AUDIT_WORKFLOW="$WORKFLOWS_DIR/code-review-audit.yml"
   # Margin between the poller's window and the highest cap a dispatched job may
-  # declare. `timeout-minutes` bounds a job's EXECUTION, while the poller
-  # measures the run's wall clock, so the margin absorbs queue time plus the
-  # <=90s the poller spends resolving the dispatched run's id.
+  # declare, charged **per hop** of a `needs:` chain. `timeout-minutes` bounds a
+  # job's EXECUTION, while the poller measures the run's wall clock, so the
+  # margin absorbs queue time plus the <=90s the poller spends resolving the
+  # dispatched run's id. A chained job queues once per hop, so one flat margin
+  # per run would price a two-job chain the same as a single job and leave the
+  # second hop's wait uncovered.
   POLLER_MARGIN_MIN=5
   [ -d "$WORKFLOWS_DIR" ] || skip ".github/workflows not present"
   [ -f "$VERIFY" ] || skip "verify-required-checks.sh not present"
@@ -137,32 +140,199 @@ workflow_for_context() {
   return 0
 }
 
-# The job block (job-id line through the line before the next job-id line)
-# containing the `name: <context>` line.
-job_block() {
-  local file="$1" ctx="$2"
-  # `exit` falls through to END, so the wanted block is emitted there and only
-  # there: printing at the job boundary too would duplicate it.
-  awk -v want="    name: ${ctx}" '
-    /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
-      if (has_name) exit
-      block = ""; has_name = 0
-    }
-    { block = block $0 "\n" }
-    $0 == want { has_name = 1 }
-    END { if (has_name) printf "%s", block }
-  ' "$file"
+# ---------------------------------------------------------------------------
+# YAML extraction, python3 + PyYAML.
+#
+# Workflow structure is parsed rather than scraped. Every shape a line-oriented
+# scrape has to be taught one at a time -- a trailing comment on `jobs:` or on a
+# job id, a quoted job id, a `needs:` written as a scalar, an inline list, or a
+# block sequence at either indentation, a folded `if: >-` whose value spans
+# lines -- is a shape a real parser already knows. The scrape surface is
+# unbounded; the parser's is not.
+#
+# What is deliberately NOT parsed this way: `REQUIRED_CONTEXTS` and the poller
+# window are bash and shell, not YAML, and the two extraction-guard tests below
+# depend on a *literal* scrape disagreeing with a shape-independent count.
+# ---------------------------------------------------------------------------
+
+# Gate only the tests that parse YAML, so the REQUIRED_CONTEXTS tests still run
+# where PyYAML is absent. CI installs python3-yaml (audit-ci-tests.yml), so the
+# authoritative gate always parses. Matches .gaia/tests/lib/lint-yaml.bats.
+require_yaml_parser() {
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
+    return 0
+  fi
+  skip "no YAML parser available (python3 + PyYAML)"
 }
 
-# The job block's top-level `if:` expression, flattened onto one line.
-# Empty when the job declares no `if:` (it then runs on every trigger).
+# yaml_workflow <mode> <file> [arg]
+#
+# Reads the file's top-level `jobs:` mapping, which a fixture declares too.
+#
+#   ids                    every job id, one per line
+#   cap <job-id>           that job's integer `timeout-minutes`; empty when it
+#                          declares none, or declares an expression this guard
+#                          cannot evaluate, which the caller reports as no cap
+#   path <margin>          the worst needs-chain as "<minutes> <hops>", chosen by
+#                          minutes + margin x hops (see below)
+#   job-if <job-name>      the job's own `if:`, normalized; empty when unset
+#   filter-gate <job-name> `pull_request` when the job's dorny/paths-filter step
+#                          is gated to that event, `other` for any other gate,
+#                          `none` when the job runs no such step
+#   filter-ifs <job-name>  the `if:` of every step gated on steps.filter.outputs.
+#
+# **Exits 2 when the file will not parse, declares no jobs mapping, or names no
+# such job.** A caller must check the status: reading empty output as an answer
+# is how an unreadable workflow drops out of a loop while the test stays green.
+yaml_workflow() {
+  python3 - "$@" <<'PY'
+import sys
+
+import yaml
+
+mode, path = sys.argv[1], sys.argv[2]
+arg = sys.argv[3] if len(sys.argv) > 3 else ''
+
+
+def die(msg):
+    sys.stderr.write('%s: %s\n' % (path, msg))
+    sys.exit(2)
+
+
+try:
+    with open(path, encoding='utf-8') as handle:
+        doc = yaml.safe_load(handle)
+except (yaml.YAMLError, OSError) as exc:
+    die('unreadable YAML (%s)' % exc.__class__.__name__)
+
+# Strictly the top-level `jobs:` mapping, with no fallback to the document
+# itself. A workflow that declares no `jobs:` is not a workflow, and treating its
+# root as the job list is the very defect a line-oriented scan had: `on:`'s
+# trigger keys sit at the same depth as job ids, so `push`, `pull_request`, and
+# `workflow_dispatch` get read as jobs and reported as phantom missing caps.
+# (`on:` also resolves to the boolean True as a key, so a workflow's keys are
+# never all strings; nothing here may assume otherwise.)
+jobs = doc.get('jobs') if isinstance(doc, dict) else None
+if not isinstance(jobs, dict) or not jobs:
+    die('no jobs mapping')
+
+# Ids round-trip as strings so a `cap` lookup always matches what `ids` emitted:
+# a job id that is a YAML boolean or number (`no:`, `2:`) is a legal GitHub id.
+jobs = {str(k): (v if isinstance(v, dict) else {}) for k, v in jobs.items()}
+
+
+def normalize(expr):
+    """Collapse a gate to one comparable line.
+
+    GitHub accepts `if: <expr>` and `if: ${{ <expr> }}` as the same condition,
+    and a folded scalar arrives already joined but irregularly spaced.
+    """
+    return ' '.join(str(expr).replace('${{', ' ').replace('}}', ' ').split())
+
+
+def named(want):
+    for jid, job in jobs.items():
+        if str(job.get('name', '')) == want:
+            return jid, job
+    return None, None
+
+
+def needs_of(jid):
+    value = jobs[jid].get('needs')
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return []
+
+
+def cap_of(jid):
+    value = jobs[jid].get('timeout-minutes')
+    # bool is an int subclass, and an expression-valued cap arrives as a string.
+    # Neither is a number this guard can hold a job to.
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def chain(jid, seen):
+    """(minutes, hops) of the worst needs-chain ending at jid.
+
+    Unmemoized on purpose: these graphs hold a handful of jobs, and `seen` alone
+    bounds a malformed cyclic `needs:` without a memo that could hand back a
+    result computed under a different cycle guard. An uncapped job contributes 0
+    minutes and still counts as a hop, so the caller's separate no-cap check is
+    what prices it rather than this reading it as free.
+
+    Chains are compared by minutes + margin x hops, not by minutes alone,
+    because the ceiling shrinks as hops grow: a 14-minute three-hop chain can
+    breach a ceiling that a 20-minute one-hop chain clears, so picking the
+    longest chain by minutes would return the safer of the two and miss it.
+    """
+    best = (0, 0)
+    for dep in needs_of(jid):
+        if dep not in jobs or dep in seen:
+            continue
+        candidate = chain(dep, seen | {dep})
+        if weigh(candidate) > weigh(best):
+            best = candidate
+    return (cap_of(jid) or 0) + best[0], best[1] + 1
+
+
+def weigh(pair):
+    return pair[0] + margin * pair[1]
+
+
+def filter_steps(job):
+    return [step for step in job.get('steps') or []
+            if isinstance(step, dict)
+            and 'dorny/paths-filter' in str(step.get('uses', ''))]
+
+
+if mode == 'ids':
+    print('\n'.join(jobs))
+elif mode == 'cap':
+    if arg not in jobs:
+        die('no job id %r' % arg)
+    cap = cap_of(arg)
+    if cap is not None:
+        print(cap)
+elif mode == 'path':
+    try:
+        margin = int(arg)
+    except ValueError:
+        die('margin %r is not a number' % arg)
+    print('%d %d' % max((chain(jid, {jid}) for jid in jobs), key=weigh))
+else:
+    jid, job = named(arg)
+    if jid is None:
+        die('no job named %r' % arg)
+    if mode == 'job-if':
+        if 'if' in job:
+            print(normalize(job['if']))
+    elif mode == 'filter-gate':
+        steps = filter_steps(job)
+        if not steps:
+            print('none')
+        elif normalize(steps[0].get('if', '')) == "github.event_name == 'pull_request'":
+            print('pull_request')
+        else:
+            print('other')
+    elif mode == 'filter-ifs':
+        for step in job.get('steps') or []:
+            gate = str(step.get('if', '')) if isinstance(step, dict) else ''
+            if 'steps.filter.outputs.' in gate:
+                print(normalize(gate))
+    else:
+        die('unknown mode %r' % mode)
+PY
+}
+
+# The job's top-level `if:`, normalized onto one line. Empty when the job
+# declares none (it then runs on every trigger the workflow declares). Non-zero
+# when the workflow will not parse or names no such job.
 job_if_expr() {
-  awk '
-    /^    if:/ { collecting = 1; expr = expr " " $0; next }
-    collecting && /^      [^ ]/ { expr = expr " " $0; next }
-    collecting { collecting = 0 }
-    END { print expr }
-  '
+  yaml_workflow job-if "$1" "$2"
 }
 
 # The workflow names `.gaia/audit-ci.yml` tells the audit to re-dispatch, read
@@ -186,128 +356,39 @@ workflow_for_name() {
   return 0
 }
 
-# Every job id under the workflow's top-level `jobs:` key. Scoped to that block
-# on purpose: `on:`'s trigger keys (`push:`, `pull_request:`, `workflow_dispatch:`)
-# share the two-space bare-key shape, so an unscoped scan reads them as jobs and
-# then reports three phantom missing timeouts per workflow.
+# Every job id under the workflow's top-level `jobs:` key. Scoped to that mapping
+# rather than to a line shape, so `on:`'s trigger keys (`push:`,
+# `pull_request:`, `workflow_dispatch:`) can never be read as jobs.
 #
-# A trailing comment is tolerated on both the `jobs:` key and a job id, because
-# YAML allows one and a scrape that silently emits nothing for a workflow is the
-# worst failure available here: it drops that workflow from the checks below
-# while leaving them green. The caller treats an empty result for a resolved
-# file as a gap for the same reason, so a shape this does not anticipate fails
-# loudly rather than quietly.
+# Non-zero when the workflow will not parse or declares no jobs mapping. The
+# caller turns that into a reported gap: a workflow that silently contributes no
+# jobs is the worst failure available here, because it drops out of every check
+# below while leaving them green.
 workflow_job_ids() {
-  awk '
-    /^jobs:[[:space:]]*(#.*)?$/ { in_jobs = 1; next }
-    in_jobs && /^[A-Za-z]/ { in_jobs = 0 }
-    in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*(#.*)?$/ {
-      id = $0; sub(/[[:space:]]*(#.*)?$/, "", id); sub(/:$/, "", id); sub(/^  /, "", id)
-      print id
-    }
-  ' "$1"
+  yaml_workflow ids "$1"
 }
 
 # A job's declared `timeout-minutes`, or empty when it declares none (in which
-# case the job inherits the runner's 6-hour default). The job-boundary patterns
-# match `workflow_job_ids` above: a scrape that emits an id this one cannot find
-# again reports a false "no cap" for a job that declares one.
+# case the job inherits the runner's 6-hour default). An expression-valued cap
+# reads as empty too: this guard cannot evaluate one, so it reports the job as
+# uncapped rather than trusting a number it never saw.
 job_timeout_minutes() {
-  awk -v want="$2" '
-    /^  [A-Za-z0-9_-]+:[[:space:]]*(#.*)?$/ {
-      id = $0; sub(/[[:space:]]*(#.*)?$/, "", id); sub(/:$/, "", id); sub(/^  /, "", id)
-      if (in_job) exit
-      if (id == want) { in_job = 1 }
-      next
-    }
-    in_job && /^    timeout-minutes:[[:space:]]*[0-9]+[[:space:]]*(#.*)?$/ {
-      v = $0
-      sub(/^    timeout-minutes:[[:space:]]*/, "", v)
-      sub(/[^0-9].*$/, "", v)
-      print v
-      exit
-    }
-  ' "$1"
+  yaml_workflow cap "$1" "$2"
 }
 
-# The longest path through the workflow's `needs:` graph, in minutes, summing
-# each job's declared cap along the way.
+# The worst path through the workflow's `needs:` graph, as "<minutes> <hops>".
 #
 # This, not any single cap, is what has to fit the poller's window: the poller
 # waits on the RUN, and a run completes only once every job does, so two jobs
 # chained by `needs:` contribute the sum of their caps to the run's worst case
 # while two unchained jobs contribute only the larger. Comparing caps one at a
-# time would read a 2 + 18 chain and a lone 18 as equally safe.
+# time would read a 2 + 12 chain and a lone 12 as equally safe.
 #
-# Jobs with no cap contribute 0 here; the caller reports those separately, so a
-# missing cap is never silently priced as free.
-workflow_critical_path_minutes() {
-  awk '
-    /^jobs:[[:space:]]*(#.*)?$/ { in_jobs = 1; next }
-    in_jobs && /^[A-Za-z]/ { in_jobs = 0 }
-    in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*(#.*)?$/ {
-      id = $0; sub(/[[:space:]]*(#.*)?$/, "", id); sub(/:$/, "", id); sub(/^  /, "", id)
-      cur = id; jobs[++n] = id; cap[id] = 0; needs[id] = ""; collecting = 0
-      next
-    }
-    in_jobs && cur != "" && /^    timeout-minutes:[[:space:]]*[0-9]+/ {
-      v = $0; sub(/^    timeout-minutes:[[:space:]]*/, "", v); sub(/[^0-9].*$/, "", v)
-      cap[cur] = v + 0
-      collecting = 0
-      next
-    }
-    # `needs: [a, b]`
-    in_jobs && cur != "" && /^    needs:[[:space:]]*\[/ {
-      v = $0; sub(/^    needs:[[:space:]]*\[/, "", v); sub(/\].*$/, "", v)
-      gsub(/[[:space:]"'"'"']/, "", v)
-      needs[cur] = v
-      collecting = 0
-      next
-    }
-    # `needs:` opening a block sequence
-    in_jobs && cur != "" && /^    needs:[[:space:]]*(#.*)?$/ { collecting = 1; next }
-    # `needs: a`
-    in_jobs && cur != "" && /^    needs:[[:space:]]*[^[:space:]]/ {
-      v = $0; sub(/^    needs:[[:space:]]*/, "", v); sub(/[[:space:]]*(#.*)?$/, "", v)
-      gsub(/["'"'"']/, "", v)
-      needs[cur] = v
-      collecting = 0
-      next
-    }
-    # A sequence item at ANY indentation. YAML permits a block sequence at its
-    # parent key`s own indentation as well as nested under it, and both parse to
-    # the same list, so anchoring on the nested spelling drops the edge and the
-    # helper silently returns the largest single cap instead of the chain sum.
-    # The terminator below therefore has to exclude `-`, or it would read a
-    # same-indentation item as the next key and end collection on it.
-    collecting && /^[[:space:]]+-[[:space:]]*[^[:space:]]/ {
-      v = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); sub(/[[:space:]]*(#.*)?$/, "", v)
-      gsub(/["'"'"']/, "", v)
-      needs[cur] = (needs[cur] == "" ? v : needs[cur] "," v)
-      next
-    }
-    collecting && /^    [^-[:space:]]/ { collecting = 0 }
-    END {
-      if (n == 0) { exit }
-      # Relax to a fixed point. n passes settle any acyclic graph of n nodes,
-      # and the bound is what keeps a malformed cyclic `needs:` from spinning.
-      for (pass = 1; pass <= n; pass++) {
-        for (i = 1; i <= n; i++) {
-          j = jobs[i]; best = 0
-          if (needs[j] != "") {
-            cnt = split(needs[j], dep, ",")
-            for (k = 1; k <= cnt; k++) {
-              if (cost[dep[k]] + 0 > best) best = cost[dep[k]] + 0
-            }
-          }
-          cost[j] = cap[j] + best
-        }
-      }
-      longest = 0
-      for (i = 1; i <= n; i++) if (cost[jobs[i]] > longest) longest = cost[jobs[i]]
-      print longest
-    }
-  ' "$1"
+# The hop count comes back with the minutes because the ceiling depends on it:
+# `timeout-minutes` bounds a job's EXECUTION, while each hop of a chain also
+# waits in the queue, so the margin is charged per hop rather than once per run.
+workflow_critical_path() {
+  yaml_workflow path "$1" "$POLLER_MARGIN_MIN"
 }
 
 # The completion-poll window in code-review-audit.yml's `poll_and_stamp`, in
@@ -365,12 +446,18 @@ poller_window_minutes() {
 
 @test "every declared-required context's job admits workflow_dispatch in its if:" {
   local ctx file expr gaps=""
+  require_yaml_parser
   assert_extraction_intact
   while IFS= read -r ctx; do
     [ -n "$ctx" ] || continue
     file="$(workflow_for_context "$WORKFLOWS_DIR" "$ctx")"
     [ -n "$file" ] || continue
-    expr="$(job_block "$file" "$ctx" | job_if_expr)"
+    # An unreadable workflow is a gap, never a job that quietly leaves this
+    # loop's scope while the test still reports green.
+    if ! expr="$(job_if_expr "$file" "$ctx")"; then
+      gaps="${gaps}${ctx}: could not read the job's if: from $(basename "$file")"$'\n'
+      continue
+    fi
     # No `if:` at all is fine: the job runs on every trigger the workflow declares.
     printf '%s' "$expr" | grep -q '[^[:space:]]' || continue
     # Require the event, and reject a negated mention: a bare token match reads
@@ -399,68 +486,62 @@ poller_window_minutes() {
 #     output on a dispatch and is correctly not subject to this rule.
 # ---------------------------------------------------------------------------
 
-# The step block (a `      - ` list item plus its continuation lines) that runs
-# `dorny/paths-filter`, or nothing when the job has no such step. Same shape as
-# `job_block` above: `exit` at the following item's boundary falls through to
-# END, so the wanted block is emitted there and only there.
-filter_step_block() {
-  printf '%s' "$1" | awk '
-    /^      - / {
-      if (found) exit
-      block = ""
-    }
-    { block = block $0 "\n" }
-    /dorny\/paths-filter/ { found = 1 }
-    END { if (found) printf "%s", block }
-  '
-}
-
-# True when the job gates its `dorny/paths-filter` step to `pull_request`, so the
-# outputs it produces are unset on the dispatch lane.
+# How the job gates its `dorny/paths-filter` step: `pull_request` (so the outputs
+# it produces are unset on the dispatch lane), `other` for any other gate, or
+# `none` when the job runs no such step. Non-zero when the workflow will not
+# parse, which the caller must report rather than read as `none`.
 #
 # The gate is compared after normalizing away the `${{ }}` wrapper and repeated
 # whitespace, because GitHub accepts `if: <expr>` and `if: ${{ <expr> }}` as the
 # same condition. Matching one spelling byte-for-byte would silently drop a job
 # out of the caller's scope the moment someone rewrote its gate to the other,
 # and the caller's loop would then assert nothing about that job's steps while
-# still reporting green.
-job_skips_filter_on_dispatch() {
-  local block gate
-  block="$(filter_step_block "$1")"
-  [ -n "$block" ] || return 1
-  gate="$(printf '%s' "$block" | sed -n 's/^        if:[[:space:]]*//p' | head -n1)"
-  gate="$(printf '%s' "$gate" \
-    | sed -e 's/\${{//g' -e 's/}}//g' \
-          -e 's/[[:space:]][[:space:]]*/ /g' \
-          -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-  [ "$gate" = "github.event_name == 'pull_request'" ]
+# still reporting green. Parsing rather than scraping extends that to a gate
+# written as a folded `if: >-`, whose value a line-oriented read truncates to the
+# literal `>-` and can then match against nothing.
+job_filter_gate() {
+  yaml_workflow filter-gate "$1" "$2"
+}
+
+# The `if:` of every step in the job whose own gate reads `steps.filter.outputs.`.
+# Keyed on the gate rather than on any mention of the output, so a step that
+# merely passes it as an input or an env value is not read as gated on it.
+job_filter_dependent_step_ifs() {
+  yaml_workflow filter-ifs "$1" "$2"
 }
 
 @test "no required-context job step is gated on a dispatch-skipped filter alone" {
-  local ctx file block candidates=0 gaps=""
+  local ctx file gate candidates=0 gaps=""
+  require_yaml_parser
   assert_extraction_intact
   while IFS= read -r ctx; do
     [ -n "$ctx" ] || continue
     file="$(workflow_for_context "$WORKFLOWS_DIR" "$ctx")"
     [ -n "$file" ] || continue
-    block="$(job_block "$file" "$ctx")"
-    [ -n "$(filter_step_block "$block")" ] && candidates=$(( candidates + 1 ))
-    job_skips_filter_on_dispatch "$block" || continue
+    # An unreadable gate is reported, never treated as absent. A job that drops
+    # out of this loop's scope silently is the failure this whole test is built
+    # to avoid, and it looks identical to a job that has no filter step at all.
+    if ! gate="$(job_filter_gate "$file" "$ctx")"; then
+      gaps="${gaps}${ctx}: could not read the paths-filter gate in $(basename "$file")"$'\n'
+      continue
+    fi
+    [ "$gate" = "none" ] || candidates=$(( candidates + 1 ))
+    [ "$gate" = "pull_request" ] || continue
     while IFS= read -r step_if; do
       [ -n "$step_if" ] || continue
       printf '%s' "$step_if" | grep -qF -- "workflow_dispatch" \
         || gaps="${gaps}${ctx}: step gated on the skipped filter alone ->${step_if}"$'\n'
-    done < <(printf '%s' "$block" | grep -F -- "steps.filter.outputs.")
+    done < <(job_filter_dependent_step_ifs "$file" "$ctx")
   done < <(required_job_contexts)
 
   # This test only says something where a required-context job actually runs
-  # `dorny/paths-filter`. If the scrape ever stops finding one, the loop above
+  # `dorny/paths-filter`. If the extraction ever stops finding one, the loop above
   # goes vacuous and reports green having examined nothing, which is the same
   # hollow-guard failure `assert_extraction_intact` exists to prevent one level
   # up.
   #
-  # Counted through `filter_step_block`, the same helper the detector reads, so
-  # a break in that helper shows up here rather than leaving the count at its
+  # Counted through `job_filter_gate`, the same helper the detector reads, so a
+  # break in that helper shows up here rather than leaving the count at its
   # healthy value while nothing is actually located. Deliberately NOT a count of
   # jobs the detector MATCHED: a job whose filter is gated on something else
   # (chromatic.yml gates its on the chore-deps output) is correctly not a match,
@@ -506,15 +587,21 @@ job_skips_filter_on_dispatch() {
 #    the ordinary one.
 #
 #    Two things are checked, because one cap alone does not bound a run: every
-#    job must declare a cap at all, and the longest `needs:` chain must total
-#    under the ceiling. Jobs chained by `needs:` run in sequence and contribute
-#    the SUM of their caps to the run, so a pair capped 5 and 20 is a 25-minute
-#    run even though neither job alone reaches the ceiling.
+#    job must declare a cap at all, and the worst `needs:` chain must total under
+#    the ceiling. Jobs chained by `needs:` run in sequence and contribute the SUM
+#    of their caps to the run, so a pair capped 5 and 20 is a 25-minute run even
+#    though neither job alone reaches the ceiling.
+#
+#    The ceiling is charged per hop, because the cap bounds a job's EXECUTION
+#    while each hop of a chain also waits in the queue. A workflow's own hop
+#    count therefore sets its ceiling: one job clears at 20m under a 25m window,
+#    while a two-job chain has to fit 15m.
 # ---------------------------------------------------------------------------
 
 @test "every retrigger workflow's jobs cap runtime under the self-heal poller window" {
-  local window ceiling names wf file id cap here path checked=0 gaps=""
+  local window names wf file id cap here path minutes hops ceiling checked=0 gaps=""
 
+  require_yaml_parser
   [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
 
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
@@ -522,8 +609,7 @@ job_skips_filter_on_dispatch() {
     echo "could not derive the poll window from $(basename "$AUDIT_WORKFLOW")" >&2
     return 1
   }
-  ceiling=$(( window - POLLER_MARGIN_MIN ))
-  [ "$ceiling" -gt 0 ] || {
+  [ "$(( window - POLLER_MARGIN_MIN ))" -gt 0 ] || {
     echo "poll window ${window}m leaves no room for the ${POLLER_MARGIN_MIN}m margin" >&2
     return 1
   }
@@ -554,15 +640,19 @@ job_skips_filter_on_dispatch() {
     # workflows keep the aggregate `checked` above zero, so the run-wide guard
     # below never notices. Report the per-workflow zero as its own gap.
     if [ "$here" -eq 0 ]; then
-      gaps="${gaps}${wf}: job scrape found no jobs in $(basename "$file")"$'\n'
+      gaps="${gaps}${wf}: found no jobs in $(basename "$file")"$'\n'
       continue
     fi
 
-    path="$(workflow_critical_path_minutes "$file")"
-    if [ -z "$path" ]; then
+    if ! path="$(workflow_critical_path "$file")"; then
       gaps="${gaps}${wf}: could not resolve a critical path through $(basename "$file")"$'\n'
-    elif [ "$path" -gt "$ceiling" ]; then
-      gaps="${gaps}${wf}: longest needs-chain totals ${path}m, past the ${ceiling}m ceiling (${window}m poll window - ${POLLER_MARGIN_MIN}m margin)"$'\n'
+      continue
+    fi
+    minutes="${path% *}"
+    hops="${path#* }"
+    ceiling=$(( window - POLLER_MARGIN_MIN * hops ))
+    if [ "$minutes" -gt "$ceiling" ]; then
+      gaps="${gaps}${wf}: worst needs-chain totals ${minutes}m over ${hops} hop(s), past the ${ceiling}m ceiling (${window}m poll window - ${POLLER_MARGIN_MIN}m margin x ${hops})"$'\n'
     fi
   done < <(printf '%s\n' "$names")
 
@@ -583,6 +673,7 @@ job_skips_filter_on_dispatch() {
 @test "negative: a required context's workflow that cannot be dispatched is caught" {
   local sb="$BATS_TEST_TMPDIR/workflows"
   local ctx="Vitest (.gaia/cli)"
+  require_yaml_parser
   mkdir -p "$sb"
   cp "$WORKFLOWS_DIR"/*.yml "$sb/"
 
@@ -600,11 +691,98 @@ job_skips_filter_on_dispatch() {
 
   # Job `if:` no longer admits a dispatch.
   local expr
-  expr="$(job_block "$subject" "$ctx" | job_if_expr)"
+  expr="$(job_if_expr "$subject" "$ctx")"
   printf '%s' "$expr" | grep -q '[^[:space:]]' || return 1
   printf '%s' "$expr" | grep -qF -- "workflow_dispatch" && return 1
 
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# Negative: a job whose `if:` is a folded scalar. A line-oriented read of the
+# gate returns the literal `>-`, which matches no condition and no event, so the
+# job silently leaves the scope of the two tests that read its gate while both
+# keep reporting green. Parsing is what makes the folded and inline spellings the
+# same condition, so prove they read identically.
+# ---------------------------------------------------------------------------
+
+@test "negative: a folded if: is read as its value, not as the fold marker" {
+  local sb="$BATS_TEST_TMPDIR/folded"
+  local subject inline folded
+  require_yaml_parser
+  mkdir -p "$sb"
+
+  cat > "$sb/inline.yml" <<'YAML'
+jobs:
+  probe:
+    name: Probe
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+YAML
+  cat > "$sb/folded.yml" <<'YAML'
+jobs:
+  probe:
+    name: Probe
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
+YAML
+
+  inline="$(job_if_expr "$sb/inline.yml" "Probe")"
+  folded="$(job_if_expr "$sb/folded.yml" "Probe")"
+
+  # The fold marker must not survive into the value, and both spellings must
+  # yield the same condition, admitting the dispatch the test above requires.
+  printf '%s' "$folded" | grep -qF -- '>-' && return 1
+  [ "$folded" = "$inline" ] || {
+    echo "folded gate read as '${folded}', inline as '${inline}'" >&2
+    return 1
+  }
+  printf '%s' "$folded" | grep -qF -- "workflow_dispatch"
+}
+
+# ---------------------------------------------------------------------------
+# Negative: an unreadable workflow must be loud at every helper that reads one.
+# Returning empty output with a zero status is what lets a malformed workflow
+# drop out of a loop while the test reports green, so every mode has to fail
+# instead. `subject` is valid YAML that is not a workflow, plus a file that does
+# not parse at all.
+# ---------------------------------------------------------------------------
+
+@test "negative: an unparseable or job-less workflow fails every extractor" {
+  local sb="$BATS_TEST_TMPDIR/unreadable"
+  local file
+  require_yaml_parser
+  mkdir -p "$sb"
+
+  # Inconsistent indentation: a parse error, not a shape this guard can read.
+  printf 'jobs:\n  alpha: 1\n bravo: 2\n' > "$sb/malformed.yml"
+  # Parses, but `jobs:` is a scalar rather than a mapping of job ids.
+  printf 'name: Broken\njobs:\n  not-a-job\n' > "$sb/scalar.yml"
+  # Parses, and declares no jobs at all.
+  printf 'name: Empty\non:\n  workflow_dispatch:\n' > "$sb/empty.yml"
+
+  # Every mode, each given an argument it would accept on a healthy workflow, so
+  # a non-zero status can only mean the file itself was unreadable.
+  for file in "$sb/malformed.yml" "$sb/scalar.yml" "$sb/empty.yml"; do
+    run yaml_workflow ids "$file"
+    [ "$status" -ne 0 ] || { echo "ids read $(basename "$file")" >&2; return 1; }
+    run yaml_workflow path "$file" "$POLLER_MARGIN_MIN"
+    [ "$status" -ne 0 ] || { echo "path read $(basename "$file")" >&2; return 1; }
+    run yaml_workflow cap "$file" alpha
+    [ "$status" -ne 0 ] || { echo "cap read $(basename "$file")" >&2; return 1; }
+    run yaml_workflow job-if "$file" Probe
+    [ "$status" -ne 0 ] || { echo "job-if read $(basename "$file")" >&2; return 1; }
+    run yaml_workflow filter-gate "$file" Probe
+    [ "$status" -ne 0 ] || { echo "filter-gate read $(basename "$file")" >&2; return 1; }
+    run yaml_workflow filter-ifs "$file" Probe
+    [ "$status" -ne 0 ] || { echo "filter-ifs read $(basename "$file")" >&2; return 1; }
+  done
+
+  # A workflow that parses fine still fails on a job it does not declare, rather
+  # than reporting the empty output that reads as "declares no cap".
+  printf 'jobs:\n  alpha:\n    timeout-minutes: 3\n' > "$sb/ok.yml"
+  run yaml_workflow cap "$sb/ok.yml" bravo
+  [ "$status" -ne 0 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -712,12 +890,14 @@ job_skips_filter_on_dispatch() {
   local sb="$BATS_TEST_TMPDIR/workflows"
   local window ceiling subject cap
 
+  require_yaml_parser
   [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
   mkdir -p "$sb"
   cp "$WORKFLOWS_DIR"/*.yml "$sb/"
 
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
   [ -n "$window" ] || { echo "could not derive the poll window" >&2; return 1; }
+  # One hop: the ceiling a lone job faces, which is the loosest one available.
   ceiling=$(( window - POLLER_MARGIN_MIN ))
 
   # Capped past the window.
@@ -745,42 +925,203 @@ job_skips_filter_on_dispatch() {
 # Negative: a `needs:` chain whose jobs are each individually under the ceiling
 # but whose SUM is not. Comparing caps one at a time reads this as safe, which
 # is the whole reason the critical path is what gets compared.
+#
+# Run over every spelling of `needs:`, because YAML accepts a scalar, an inline
+# list, and a block sequence at either the parent key's own indentation or nested
+# under it, and all of them parse to the same list. Anchoring on one spelling is
+# what let a chain read as the larger single cap instead of the sum.
 # ---------------------------------------------------------------------------
 
-@test "negative: a needs-chain summing past the ceiling is caught" {
-  local sb="$BATS_TEST_TMPDIR/chain"
-  local subject path
+# A two-job chain, `second` needing `first`, with `needs:` written the named way
+# and each job capped at $2 minutes.
+write_chain_fixture() {
+  local spelling="$1" cap="$2"
+  printf 'name: Chained\non:\n  workflow_dispatch:\njobs:\n'
+  printf '  first:\n    name: First\n    timeout-minutes: %s\n' "$cap"
+  printf '    runs-on: ubuntu-latest\n    steps:\n      - run: echo one\n'
+  printf '  second:\n    name: Second\n'
+  case "$spelling" in
+    scalar)       printf '    needs: first\n' ;;
+    inline)       printf '    needs: [first]\n' ;;
+    inline-quote) printf '    needs: ["first"]\n' ;;
+    block-nested) printf '    needs:\n      - first\n' ;;
+    block-flush)  printf '    needs:\n    - first\n' ;;
+    block-note)   printf '    needs:\n      - first # the gate\n' ;;
+    *) return 1 ;;
+  esac
+  printf '    timeout-minutes: %s\n    runs-on: ubuntu-latest\n' "$cap"
+  printf '    steps:\n      - run: echo two\n'
+}
 
+@test "negative: a needs-chain past the ceiling is caught in every needs: spelling" {
+  local sb="$BATS_TEST_TMPDIR/chain"
+  local spelling subject path minutes hops window ceiling
+
+  require_yaml_parser
+  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
   mkdir -p "$sb"
-  subject="$sb/chained.yml"
+
+  window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
+  [ -n "$window" ] || { echo "could not derive the poll window" >&2; return 1; }
+
+  for spelling in scalar inline inline-quote block-nested block-flush block-note; do
+    subject="$sb/${spelling}.yml"
+    write_chain_fixture "$spelling" 12 > "$subject"
+
+    # Neither job exceeds even the loosest one-hop ceiling on its own.
+    [ "$(job_timeout_minutes "$subject" "first")" -eq 12 ] || return 1
+    [ "$(job_timeout_minutes "$subject" "second")" -eq 12 ] || return 1
+
+    path="$(workflow_critical_path "$subject")" || {
+      echo "${spelling}: could not resolve a critical path" >&2
+      return 1
+    }
+    minutes="${path% *}"
+    hops="${path#* }"
+    [ "$minutes" -eq 24 ] || {
+      echo "${spelling}: expected a 24m chain, got '${minutes}' (from '${path}')" >&2
+      return 1
+    }
+    [ "$hops" -eq 2 ] || {
+      echo "${spelling}: expected 2 hops, got '${hops}' (from '${path}')" >&2
+      return 1
+    }
+
+    ceiling=$(( window - POLLER_MARGIN_MIN * hops ))
+    [ "$minutes" -gt "$ceiling" ] || {
+      echo "${spelling}: ${minutes}m over ${hops} hops cleared the ${ceiling}m ceiling" >&2
+      return 1
+    }
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Negative: the per-hop margin is load-bearing, not decorative. A chain can clear
+# the flat one-margin-per-run ceiling and still overrun the poller, because every
+# hop waits in the queue on its own. Three jobs capped 6 total 18m, inside a flat
+# 20m ceiling, and past the 10m that three hops actually leave.
+# ---------------------------------------------------------------------------
+
+@test "negative: a chain inside the flat ceiling but past its per-hop ceiling is caught" {
+  local sb="$BATS_TEST_TMPDIR/perhop"
+  local subject path minutes hops window flat ceiling
+
+  require_yaml_parser
+  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  mkdir -p "$sb"
+
+  window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
+  [ -n "$window" ] || { echo "could not derive the poll window" >&2; return 1; }
+
+  subject="$sb/three-hop.yml"
   cat > "$subject" <<'YAML'
-name: Chained
+name: ThreeHop
 on:
   workflow_dispatch:
 jobs:
   first:
     name: First
-    timeout-minutes: 12
+    timeout-minutes: 6
     runs-on: ubuntu-latest
     steps:
       - run: echo one
   second:
     name: Second
     needs: first
-    timeout-minutes: 12
+    timeout-minutes: 6
     runs-on: ubuntu-latest
     steps:
       - run: echo two
+  third:
+    name: Third
+    needs: [second]
+    timeout-minutes: 6
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo three
 YAML
 
-  # Neither job exceeds a 20m ceiling on its own.
-  [ "$(job_timeout_minutes "$subject" "first")" -eq 12 ] || return 1
-  [ "$(job_timeout_minutes "$subject" "second")" -eq 12 ] || return 1
+  path="$(workflow_critical_path "$subject")" || {
+    echo "could not resolve a critical path" >&2
+    return 1
+  }
+  minutes="${path% *}"
+  hops="${path#* }"
+  [ "$minutes" -eq 18 ] || { echo "expected an 18m chain, got '${minutes}'" >&2; return 1; }
+  [ "$hops" -eq 3 ] || { echo "expected 3 hops, got '${hops}'" >&2; return 1; }
 
-  # The chain does.
-  path="$(workflow_critical_path_minutes "$subject")"
-  [ "$path" -eq 24 ] || {
-    echo "expected a 24m critical path, got '${path}'" >&2
+  # A flat margin reads this as safe. That is the defect the per-hop term closes,
+  # so if this stops being true the fixture no longer models it.
+  flat=$(( window - POLLER_MARGIN_MIN ))
+  [ "$minutes" -le "$flat" ] || {
+    echo "fixture no longer models the defect: ${minutes}m already breaches the flat ${flat}m ceiling" >&2
+    return 1
+  }
+
+  ceiling=$(( window - POLLER_MARGIN_MIN * hops ))
+  [ "$minutes" -gt "$ceiling" ] || {
+    echo "${minutes}m over ${hops} hops cleared the ${ceiling}m per-hop ceiling" >&2
+    return 1
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Negative: the chain walk has to survive a `needs:` graph that is not a simple
+# line. A diamond must price the longer branch, a `needs:` naming a job the
+# workflow does not declare must not crash or count, and a cyclic `needs:` must
+# terminate rather than spin.
+# ---------------------------------------------------------------------------
+
+@test "negative: diamond, dangling, and cyclic needs graphs are priced sanely" {
+  local sb="$BATS_TEST_TMPDIR/graphs"
+  local path
+
+  require_yaml_parser
+  mkdir -p "$sb"
+
+  # Diamond: fan out to a 3m and a 9m branch, join. The join must price the
+  # longer branch (2 + 9 + 4 = 15m over 3 hops), never the shorter or the sum.
+  cat > "$sb/diamond.yml" <<'YAML'
+jobs:
+  root:
+    timeout-minutes: 2
+  quick:
+    needs: root
+    timeout-minutes: 3
+  slow:
+    needs: root
+    timeout-minutes: 9
+  join:
+    needs: [quick, slow]
+    timeout-minutes: 4
+YAML
+  path="$(workflow_critical_path "$sb/diamond.yml")" || return 1
+  [ "$path" = "15 3" ] || { echo "diamond priced '${path}', want '15 3'" >&2; return 1; }
+
+  # A `needs:` naming an undeclared job contributes nothing rather than crashing.
+  cat > "$sb/dangling.yml" <<'YAML'
+jobs:
+  only:
+    needs: ghost
+    timeout-minutes: 7
+YAML
+  path="$(workflow_critical_path "$sb/dangling.yml")" || return 1
+  [ "$path" = "7 1" ] || { echo "dangling priced '${path}', want '7 1'" >&2; return 1; }
+
+  # A cycle is malformed YAML-as-workflow, not YAML: it parses, so the walk has
+  # to terminate on it. Any answer is acceptable; hanging is not.
+  cat > "$sb/cyclic.yml" <<'YAML'
+jobs:
+  alpha:
+    needs: bravo
+    timeout-minutes: 5
+  bravo:
+    needs: alpha
+    timeout-minutes: 5
+YAML
+  path="$(workflow_critical_path "$sb/cyclic.yml")" || return 1
+  printf '%s' "$path" | grep -qE '^[0-9]+ [0-9]+$' || {
+    echo "cyclic needs did not resolve to a numeric pair: '${path}'" >&2
     return 1
   }
 }
@@ -792,9 +1133,10 @@ YAML
 # uncapped jobs merged under a green test.
 # ---------------------------------------------------------------------------
 
-@test "negative: a workflow whose jobs cannot be scraped is caught" {
+@test "negative: comments and quoting around job ids do not empty the job list" {
   local sb="$BATS_TEST_TMPDIR/commented"
-  local subject
+  local subject ids
+  require_yaml_parser
 
   mkdir -p "$sb"
   subject="$sb/commented.yml"
@@ -802,26 +1144,41 @@ YAML
 name: Commented
 on:
   workflow_dispatch:
-jobs: # the two jobs below
+jobs: # the three jobs below
   alpha: # first
     name: Alpha
     timeout-minutes: 7
     runs-on: ubuntu-latest
     steps:
       - run: echo alpha
+  "bravo":
+    name: Bravo
+    timeout-minutes: 8 # generous
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo bravo
+  charlie:
+    name: Charlie
+    timeout-minutes: ${{ steps.pick.outputs.minutes }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo charlie
 YAML
 
-  # A trailing comment on either key is legal YAML and must not empty the scrape.
-  [ "$(workflow_job_ids "$subject" | grep -c .)" -eq 1 ] || {
-    echo "a trailing comment emptied the job scrape" >&2
+  # A trailing comment on any of these keys, and a quoted job id, are all legal
+  # YAML and must not cost the job list an entry.
+  ids="$(workflow_job_ids "$subject")"
+  [ "$(printf '%s\n' "$ids" | grep -c .)" -eq 3 ] || {
+    echo "comments or quoting emptied the job list: ${ids}" >&2
     return 1
   }
   [ "$(job_timeout_minutes "$subject" "alpha")" -eq 7 ] || return 1
+  [ "$(job_timeout_minutes "$subject" "bravo")" -eq 8 ] || return 1
 
-  # And a shape it still cannot read reports zero jobs, which the caller turns
-  # into a gap rather than silence.
-  printf 'name: Broken\njobs:\n  not-a-job\n' > "$sb/broken.yml"
-  [ "$(workflow_job_ids "$sb/broken.yml" | grep -c .)" -eq 0 ]
+  # An expression-valued cap reads as no cap, because this guard cannot evaluate
+  # one: reporting the job as uncapped is the loud direction, and trusting a
+  # number never seen is the quiet one.
+  [ -z "$(job_timeout_minutes "$subject" "charlie")" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -831,31 +1188,108 @@ YAML
 # filter does run on a dispatch into the caller's scope.
 # ---------------------------------------------------------------------------
 
-@test "negative: both spellings of the filter gate are detected, and others are not" {
-  local plain wrapped other
+# A one-job fixture whose dorny/paths-filter step carries the given `if:` lines,
+# already indented for a step mapping. `-` means the step declares no gate.
+write_filter_fixture() {
+  printf 'jobs:\n  probe:\n    name: Probe\n    runs-on: ubuntu-latest\n    steps:\n'
+  printf '      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1\n'
+  [ "$1" = "-" ] || printf '%s\n' "$1"
+  printf '        id: filter\n'
+}
 
-  plain="$(cat <<'YAML'
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
-        if: github.event_name == 'pull_request'
-        id: filter
-YAML
-)"
-  wrapped="$(cat <<'YAML'
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
-        if: ${{ github.event_name == 'pull_request' }}
-        id: filter
-YAML
-)"
-  other="$(cat <<'YAML'
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
-        if: steps.chore-deps.outputs.skip == 'false'
-        id: filter
-YAML
-)"
+@test "negative: every spelling of the filter gate is detected, and others are not" {
+  local sb="$BATS_TEST_TMPDIR/gates"
+  local case_name gate
+  require_yaml_parser
+  mkdir -p "$sb"
 
-  job_skips_filter_on_dispatch "$plain" \
-    || { echo "the plain spelling is no longer detected" >&2; return 1; }
-  job_skips_filter_on_dispatch "$other" \
-    && { echo "an unrelated gate was read as the pull_request gate" >&2; return 1; }
-  job_skips_filter_on_dispatch "$wrapped"
+  # The same condition, in each spelling GitHub accepts. `folded` is the one a
+  # line-oriented read truncated to the literal `>-`, which matched nothing and
+  # silently dropped the job out of the caller's scope.
+  write_filter_fixture "        if: github.event_name == 'pull_request'" > "$sb/plain.yml"
+  write_filter_fixture "        if: \${{ github.event_name == 'pull_request' }}" > "$sb/wrapped.yml"
+  write_filter_fixture "        if: >-
+          github.event_name ==
+          'pull_request'" > "$sb/folded.yml"
+  write_filter_fixture "        if: \"github.event_name == 'pull_request'\"" > "$sb/quoted.yml"
+
+  for case_name in plain wrapped folded quoted; do
+    gate="$(job_filter_gate "$sb/${case_name}.yml" "Probe")" || {
+      echo "${case_name}: the gate could not be read at all" >&2
+      return 1
+    }
+    [ "$gate" = "pull_request" ] || {
+      echo "${case_name}: read as '${gate}', want 'pull_request'" >&2
+      return 1
+    }
+  done
+
+  # An unrelated gate must NOT match, or the normalization has widened into a
+  # match-anything that pulls jobs whose filter does run on a dispatch into the
+  # caller's scope. A step with no gate at all is likewise not this condition.
+  write_filter_fixture "        if: steps.chore-deps.outputs.skip == 'false'" > "$sb/other.yml"
+  write_filter_fixture "-" > "$sb/ungated.yml"
+  for case_name in other ungated; do
+    gate="$(job_filter_gate "$sb/${case_name}.yml" "Probe")" || return 1
+    [ "$gate" = "other" ] || {
+      echo "${case_name}: read as '${gate}', want 'other'" >&2
+      return 1
+    }
+  done
+
+  # A job that runs no such step is `none`, which the caller must not count as a
+  # candidate and must not confuse with an unreadable gate.
+  printf 'jobs:\n  probe:\n    name: Probe\n    steps:\n      - run: echo hi\n' > "$sb/nofilter.yml"
+  gate="$(job_filter_gate "$sb/nofilter.yml" "Probe")" || return 1
+  [ "$gate" = "none" ]
+}
+
+# ---------------------------------------------------------------------------
+# Negative: a step is "gated on the filter" by its own `if:`, not by mentioning
+# the output anywhere. A step that passes `steps.filter.outputs.*` as an input or
+# an env value runs on a dispatch regardless, so reading it as gated would report
+# a gap that is not one.
+# ---------------------------------------------------------------------------
+
+@test "negative: only a step's own if: counts as gated on the filter output" {
+  local sb="$BATS_TEST_TMPDIR/gated-steps"
+  local ifs_out
+  require_yaml_parser
+  mkdir -p "$sb"
+
+  cat > "$sb/steps.yml" <<'YAML'
+jobs:
+  probe:
+    name: Probe
+    steps:
+      - name: gated
+        if: steps.filter.outputs.code == 'true'
+        run: echo gated
+      - name: gated on both
+        if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        run: echo both
+      - name: merely reads the output
+        env:
+          CODE: ${{ steps.filter.outputs.code }}
+        run: echo env
+      - name: ungated
+        run: echo plain
+YAML
+
+  ifs_out="$(job_filter_dependent_step_ifs "$sb/steps.yml" "Probe")"
+  [ "$(printf '%s\n' "$ifs_out" | grep -c .)" -eq 2 ] || {
+    echo "expected exactly the two if:-gated steps, got: ${ifs_out}" >&2
+    return 1
+  }
+  # The one gated on the filter alone is the reportable shape; the one that also
+  # admits a dispatch is not.
+  printf '%s\n' "$ifs_out" | grep -qF -- "workflow_dispatch" || {
+    echo "lost the step whose gate also admits a dispatch" >&2
+    return 1
+  }
+  printf '%s\n' "$ifs_out" | grep -qF -- "CODE" && {
+    echo "an env reference was read as a gate" >&2
+    return 1
+  }
+  return 0
 }
