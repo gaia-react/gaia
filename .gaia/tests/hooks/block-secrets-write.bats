@@ -1086,7 +1086,7 @@ assert_allowed() {
 # Both caps read MATCHING material, never the content. What they bound is the
 # judging, and the feeder grep skips an ordinary large file before any judging
 # happens, so a long file is unaffected however long it runs. The content here
-# is far over the size cap while the material that reaches a loop is two lines;
+# is far over the size cap while the material that reaches a loop is one line;
 # measuring either cap against the whole content turns this red.
 #
 # The fixture has a ceiling as well as a floor, and the ceiling is the platform's

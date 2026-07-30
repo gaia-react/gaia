@@ -328,9 +328,9 @@ value_allowed() {
 # anything near two minutes is unsafe even now, and that is why the caps have to
 # land before any `timeout` does. This registration carries none, so the
 # runtime's own 600-second default is what holds the deadline out of reach today,
-# and it clears the ceiling by about 7x on spawn cost: it holds on any host within
-# 7x of a maintainer laptop, which is every host worth naming. The caps are what
-# make the worst case a known quantity rather than an open one.
+# and it clears the ceiling by better than 6x on spawn cost: it holds on any host
+# within 6x of a maintainer laptop, which is every host worth naming. The caps are
+# what make the worst case a known quantity rather than an open one.
 #
 # The size cap sits where it does because the suite's own fixtures reach for it,
 # and three of them set the floor. The highest is `a value far over the mask cap
