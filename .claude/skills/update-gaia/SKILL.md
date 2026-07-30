@@ -369,7 +369,11 @@ region_json="$("$LATEST_DIR/.gaia/cli/gaia" update merge-region \
   --json 2>/dev/null)" || region_json=''
 ```
 
-Resolve the subcommand from `$LATEST_DIR`, never from the working-tree copy of the CLI. An adopter whose installed binary predates the subcommand cannot reach it any other way, and that is the only reason the rule exists.
+**Command resolution.** Three facts, stated here once. Step 7d and Step 9 point at this block rather than restating it.
+
+1. **A CLI subcommand resolves from `$LATEST_DIR`, never from the working-tree copy of the CLI.** This covers every `gaia` subcommand the flow invokes: the region oracle above and Step 7d's `regen-regions` runner alike. An adopter whose installed binary predates the subcommand cannot reach it any other way, and that is the only reason the rule exists.
+2. **A regeneration program named by a declaration's `argv` is the exception, and resolves from the adopter's own tree.** Step 7d passes `--root .` precisely so the runner executes the copy of the program the merge walk just wrote. A region's body is derived from the adopter's post-merge tree, so resolving that program from the release copy would be the defect, not the rule.
+3. **A CLI invocation is never printed as a follow-up command for the adopter, in either form.** The release-resolved form names a cache directory that exists only for the duration of the run, so it is already gone by the time the adopter reads it, and the working-tree form is banned by rule 1. Every follow-up command Step 9 prints is the regeneration program from that entry's `argv`, which the adopter can paste into any shell.
 
 Then read `.verdict` and take the matching row:
 
@@ -570,7 +574,7 @@ if [ "$REGION_AWARE" = true ] && [ "$REGION_DECLS" != "[]" ]; then
 fi
 ```
 
-Resolve this subcommand from `$LATEST_DIR` for the same reason the oracle is resolved there. The *regeneration program* is the opposite: `--root .` points the runner at the adopter's working tree, so it runs the copy of the program the merge walk just wrote.
+Both resolutions in that call follow **Command resolution** in Step 7: the `regen-regions` subcommand resolves from `$LATEST_DIR` (rule 1), and `--root .` points the runner at the adopter's own working tree so it runs the copy of the regeneration program the merge walk just wrote (rule 2).
 
 Build the three repeatable flag groups from this run's own lists:
 
@@ -599,7 +603,7 @@ type RegenRegionsReport = {
 };
 ```
 
-Every bucket Step 9 prints a command for carries its own `argv`, because the region id alone cannot be turned back into a command. The one exception is a `kind: 'declaration'` refusal: a declaration too malformed to name an interpreter and an operand has no command, so `argv` is absent and Step 9 says so rather than inventing one.
+Every bucket Step 9 prints a command for carries its own `argv`, because the region id alone cannot be turned back into a command. `refused` declares `argv` optional; Step 9 owns which refusal kind has no command and what to print in its place.
 
 What the step guarantees, and what it does not:
 
@@ -680,7 +684,7 @@ When all three `package.json` counts are zero, render that row as `package.json:
 - Every count zero → `Regions: all declared regions current (no regeneration needed)`.
 - Omit the `Region fallbacks` row and the `Pre-region paths` row individually whenever that row's own count is zero.
 
-**The fallback row counts only `malformed-markers` and `oracle-failed`.** Those two are the paths that genuinely took the unmodified whole-file comparison. An `absent-markers` path **was** normalized per side, so counting it in a row that tells the adopter it was compared whole-file states something false and collapses a distinction that has to stay visible: a wholly absent marker pair is the expected state of a file that has never been regenerated, while a malformed one is a defect somebody has to fix. Absent-marker paths get the separate `Pre-region paths` row, which carries no alarm.
+**The fallback row counts only `malformed-markers` and `oracle-failed`.** Those two are the paths that genuinely took the unmodified whole-file comparison. An `absent-markers` path **was** normalized per side, so counting it in a row that tells the adopter it was compared whole-file states something false and collapses the distinction **Marker anomalies** in Step 7 draws. Absent-marker paths get the separate `Pre-region paths` row, which carries no alarm.
 
 Use `SPECS_MIGRATED` for the `Specs migrated` row. If it is `"conflict"`, emit the row as `Specs migrated: conflict, see action item below` and, after the table, print a blocking action item naming the conflicting ids/paths from `$spec_folderize_out`:
 
@@ -727,7 +731,7 @@ When `adopterActions[]` is non-empty, print a recommendation block after the tab
    **A `kind: 'declaration'` refusal carries no `argv`, and that is correct.** A declaration too malformed to name an interpreter and an operand has no command to hand over. Print the defect, and state plainly that this release's declaration is unusable and there is nothing for the adopter to run: the remedy is upstream, not in their tree. Never fabricate a command for it.
 3. **Skipped regenerations.** Name the region, the reason the runner gave, and the literal command from its `argv`.
 
-   **The follow-up command is always the regeneration program, never a re-run of the CLI's own regeneration subcommand.** `argv` renders as `bash .gaia/scripts/write-audit-remits.sh`, which the adopter can paste into any shell once they have resolved whatever suppressed it. A CLI invocation is unusable as printed text: the release-resolved form names a cache directory that exists only for the duration of the run, and the working-tree form is banned by the release-resolution rule in Step 7. The regeneration program is deliberately exempt from that rule, because it is resolved from the adopter's own tree by design.
+   **The follow-up command is always the regeneration program, never a re-run of the CLI's own regeneration subcommand.** `argv` renders as `bash .gaia/scripts/write-audit-remits.sh`, which the adopter can paste into any shell once they have resolved whatever suppressed it. See **Command resolution** in Step 7, rule 3.
 4. **Un-regenerated regions on otherwise-clean paths.** Report **every** path in `regions.unregeneratedPaths` as carrying an un-regenerated region, rather than as a plain skip, and say what that means: the file's generated block does not match what this adopter's own configuration would produce.
 
    Do not scope this to `skip[]`. Regeneration is region-granular, so one conflicted path suppresses its whole region while a sibling declared path may have been cleanly overwritten with the release copy and now sits in `overwrite[]` or `merge[]`. That sibling carries GAIA's roster-derived region instead of the adopter's, and scoping the warning to `skip[]` is exactly the case where the adopter would be told nothing while their region is stale.
