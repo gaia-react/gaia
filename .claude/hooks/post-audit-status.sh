@@ -57,6 +57,7 @@
 #          frontend digest unavailable
 #          repo slug unresolved
 #          audited tree not on pushed head
+#          stamp not pushed
 #          members pending <list>
 #          post failed
 #   2 , Usage error (no marker path argument). Stderr.
@@ -244,6 +245,22 @@ fi
 target_tree="$(git -C "$repo_root" rev-parse "${head_sha}^{tree}" 2>/dev/null || true)"
 if [ -z "$target_tree" ] || [ "$target_tree" != "$tree_sha" ]; then
   emit_decline "audited tree not on pushed head"
+  exit 0
+fi
+
+# The tree guard above cannot see an un-pushed GAIA-Audit trailer stamp, by
+# construction: the stamp is content-preserving (an empty commit on the pushed
+# path, an amend on the un-pushed one), so every blob stays byte-identical and
+# local HEAD's tree equals the target sha's tree even while the stamp commit
+# exists only locally. Require the COMMIT sha to match too. Without this the
+# status posts on the PRE-STAMP head, the stamp is pushed afterwards, the PR
+# head advances, and the success status is stranded on a sha no reader checks,
+# so a required GAIA-Audit check waits forever. Push the stamp, then post.
+# When no PR and no upstream resolve, head_sha IS local HEAD, so this guard
+# does not fire on that path.
+head_local="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
+if [ "$head_local" != "$head_sha" ]; then
+  emit_decline "stamp not pushed"
   exit 0
 fi
 

@@ -157,7 +157,7 @@ Never gates your own marker; the orchestrator decides the disposition (see "Cros
 
 ## Gate handshake (per-member marker)
 
-On a genuinely clean pass, no Critical finding, every Important finding either fixed in the working tree since the last invocation (verify by re-reading the file, never trust a prior chat claim) or explicitly acknowledged by the operator with a stated reason, and the shellcheck oracle clean or its findings resolved the same way, run the handshake below in order: sidecar, mark, stamp, status.
+On a genuinely clean pass, no Critical finding, every Important finding either fixed in the working tree since the last invocation (verify by re-reading the file, never trust a prior chat claim) or explicitly acknowledged by the operator with a stated reason, and the shellcheck oracle clean or its findings resolved the same way, run the handshake below in order: sidecar, mark, stamp, push, status.
 
 Every command below consumes `$AUDIT_ROOT`, and each Bash call re-runs the derivation under "Remit and self-skip" before using it, for the reason stated there: shell state does not persist between calls, and an empty value sends `cd "$AUDIT_ROOT" && ...` against whatever tree the session sits in without saying so.
 
@@ -218,11 +218,35 @@ The writer records the reversal in the marker body and removes your own refusal.
 stamp_line=$(cd "$AUDIT_ROOT" && .claude/hooks/audit-stamp-trailer.sh)
 ```
 
-It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this content, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. You never push, here or anywhere else: the trailer commit this call may create is a content-preserving local commit the local merge gate does not need pushed (it reads digest-keyed markers), and the member-aware status call in step 3 clears independently via the remote head. Surface the returned `stamp_line` in your report. Because the stamp is a content-preserving empty commit, it rotates no digest, so the marker you wrote in step 1 stays valid after it: there is nothing to re-write.
+It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this content, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. The only push you ever make is the one in step 3 below, and it carries exactly one thing: the stamp commit this call may create. The local merge gate does not need it pushed (it reads digest-keyed markers), but the member-aware status call in step 4 posts against the remote PR head, so the trailer has to sit on that head for the success status to land on the sha branch protection checks. That push is never a repair: you make no commit and no push for a fix of your own, self-heal is refused here (see "Advisory-only: no self-heal") and the repair stays the orchestrator's. Surface the returned `stamp_line` in your report. Because the stamp is a content-preserving empty commit, it rotates no digest, so the marker you wrote in step 1 stays valid after it: there is nothing to re-write.
 
-You write **only** your own marker. Never write the frontend member's `.gaia/local/audit/<digest>.ok`, and never post a `GAIA-Audit` status directly, that belongs to the shared helper in step 3.
+You write **only** your own marker. Never write the frontend member's `.gaia/local/audit/<digest>.ok`, and never post a `GAIA-Audit` status directly, that belongs to the shared helper in step 4.
 
-**3. Status.** Immediately after the stamp step (never on a withheld marker), call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
+**3. Push.** On the empty-commit path only, push the stamp commit before the status call:
+
+```bash
+push_status="not_attempted"
+if [ "$stamp_line" = "stamp: empty commit (created locally)" ]; then
+  head_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || true)
+  upstream=""
+  if [ -n "$head_branch" ]; then
+    upstream=$(git -C "$AUDIT_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+  fi
+  if [ -n "$head_branch" ] && [ -n "$upstream" ]; then
+    if git -C "$AUDIT_ROOT" push --quiet 2>/dev/null; then
+      push_status="pushed"
+    else
+      push_status="push_failed"
+    fi
+  else
+    push_status="detached"
+  fi
+fi
+```
+
+Pushing here, ahead of step 4, is what makes the remote PR head the trailer commit, so the status POST lands on the sha branch protection checks instead of a local-only one. Two preconditions gate it, and both must hold: `stamp_line` is exactly `stamp: empty commit (created locally)`, and HEAD is on an attached branch with an upstream. An amend adds no new commit, so there is nothing to push and the operator's next push carries the trailer; a detached HEAD has no upstream from your vantage, and CI's own commit-and-push step handles propagation there. Every git call anchors to `$AUDIT_ROOT`, because step 2 created the stamp commit there and both preconditions are properties of the audited tree: an ambient push sends the session tree's own branch to its own upstream, which leaves the trailer unpushed while `push_status` still reads `pushed`. Surface `push_status` beside `stamp_line` in your report, and on `push_failed` say the trailer needs a manual push before the merge or CI reruns the audit.
+
+**4. Status.** Immediately after the push step (never on a withheld marker), call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
 
 ```bash
 ( cd "$AUDIT_ROOT" && .claude/hooks/post-audit-status.sh "$marker" )
@@ -269,7 +293,7 @@ Field contract. `severity` maps from your grading: Critical → `error`, Importa
 
 The detail stays local. `post-findings-block.sh` projects each entry down to `finding_class` / `severity` / `area_tags` when it renders the PR-comment block, so extending this sidecar never widens what gets published to a PR.
 
-Best-effort: a write failure never blocks or alters the marker / stamp / status sequence. Best-effort is not optional, though: fix the rejected entry and call the writer again, do not proceed with an unwritten report.
+Best-effort: a write failure never blocks or alters the marker / stamp / push / status sequence. Best-effort is not optional, though: fix the rejected entry and call the writer again, do not proceed with an unwritten report.
 
 ## Methodology
 
@@ -278,4 +302,4 @@ Best-effort: a write failure never blocks or alters the marker / stamp / status 
 3. Run `shellcheck` on each in-remit script.
 4. Apply the hook-contract lens to any file under `.claude/hooks/**/*.sh`, and the bats-suite lens to any `.bats` file.
 5. Collect candidates from both the correctness-core review and the shellcheck oracle; run each through the Finding Proof Gate.
-6. Produce the report; write the findings sidecar; then decide the marker, write it (or withhold it, recording the refusal) and, on a write, stamp the trailer and call `post-audit-status.sh`.
+6. Produce the report; write the findings sidecar; then decide the marker, write it (or withhold it, recording the refusal) and, on a write, stamp the trailer, push the stamp commit, and call `post-audit-status.sh`.

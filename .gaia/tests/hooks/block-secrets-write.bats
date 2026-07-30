@@ -1121,22 +1121,22 @@ assert_allowed() {
   assert_allowed
 }
 
-# The test above passes both when the loop judged all 65536 characters and when
-# a regression waves a cap-sized payload through without judging it, which is the
-# truncate-then-allow this cap refuses. This one carries a literal value at
-# exactly the cap, so it can only deny if the judging ran.
-
-@test "a write at the judged-size cap is judged to its last character" {
-  long=$(printf '%*s' 65530 '' | tr ' ' 'a')
-  run_hook_write "$(printf 'A_KEY=%s\n' "$long")"
-  assert_denied
-}
-
 @test "a single matching line one character over the judged-size cap is denied" {
   name=$(printf '%*s' 65528 '' | tr ' ' 'A')
   run_hook_write "$(printf 'A_KEY=${%s}\n' "$name")"
   assert_denied_cap
   grep -qF -- 'over the 65536 this guard judges in one write' <<<"$output"
+}
+
+# The test above passes both when the loop judged all 65536 characters and when
+# a regression waves a cap-sized payload through without judging it, which is the
+# truncate-then-allow this cap refuses. This one carries a literal value at
+# exactly the cap, so it can only deny if the judging ran.
+
+@test "a write at the judged-size cap is judged rather than waved through" {
+  long=$(printf '%*s' 65530 '' | tr ' ' 'a')
+  run_hook_write "$(printf 'A_KEY=%s\n' "$long")"
+  assert_denied
 }
 
 @test "a single matching line over the judged-size cap is denied" {
