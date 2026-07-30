@@ -310,7 +310,7 @@ value_allowed() {
 #
 # The worst payload either cap admits measures about 90 seconds on bash 3.2, and
 # the shape that reaches it is MULTI-line rather than single: 200 lines, exactly
-# at the line cap, each packed with minimal-width `;`-separated fragments to just
+# at the line cap, together packed with minimal-width `;`-separated fragments to just
 # under the size cap. Roughly fifteen processes of fixed per-line overhead ride
 # on top of the per-fragment cost, so spreading the material across the line cap
 # costs more than concentrating it on one line. The margin is small: the densest

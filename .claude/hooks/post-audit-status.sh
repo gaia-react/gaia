@@ -57,6 +57,7 @@
 #          frontend digest unavailable
 #          repo slug unresolved
 #          audited tree not on pushed head
+#          stamp not pushed
 #          members pending <list>
 #          post failed
 #   2 , Usage error (no marker path argument). Stderr.
@@ -247,6 +248,22 @@ if [ -z "$target_tree" ] || [ "$target_tree" != "$tree_sha" ]; then
   exit 0
 fi
 
+# The tree guard above cannot see an un-pushed GAIA-Audit trailer stamp, by
+# construction: the stamp is content-preserving (an empty commit on the pushed
+# path, an amend on the un-pushed one), so every blob stays byte-identical and
+# local HEAD's tree equals the target sha's tree even while the stamp commit
+# exists only locally. Require the COMMIT sha to match too. Without this the
+# status posts on the PRE-STAMP head, the stamp is pushed afterwards, the PR
+# head advances, and the success status is stranded on a sha no reader checks,
+# so a required GAIA-Audit check waits forever. Push the stamp, then post.
+# When no PR and no upstream resolve, head_sha IS local HEAD, so this guard
+# does not fire on that path.
+head_local="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
+if [ "$head_local" != "$head_sha" ]; then
+  emit_decline "stamp not pushed"
+  exit 0
+fi
+
 # Member-aware gate (blocker COV-001): require EVERY dispatched Code Audit
 # Team member's marker, not just the caller's own, before posting success.
 # Otherwise a frontend-only POST on a mixed diff would flip the GAIA-Audit
@@ -308,10 +325,11 @@ if gh api "repos/${repo}/statuses/${head_sha}" \
   --field state=success \
   --field context=GAIA-Audit \
   --field description="${desc}" >/dev/null 2>&1; then
-  # Surface the sha we POSTed to (the remote PR head), never local HEAD: on the
-  # empty-commit stamp path local HEAD is an un-pushed commit while head_sha is
-  # the pushed PR head, so the two differ. Assert the surfaced short sha
-  # re-resolves to head_sha; on a mismatch surface the full head_sha and warn.
+  # Surface the sha we POSTed to, head_sha, which the sha guard above has already
+  # established IS local HEAD: nothing reaches this POST while the two name
+  # different commits, so the surfaced sha and the POSTed sha are one commit.
+  # Assert the surfaced short sha re-resolves to head_sha; on a mismatch surface
+  # the full head_sha and warn.
   posted_short="$(git -C "$repo_root" rev-parse --short "$head_sha" 2>/dev/null || echo "$head_sha")"
   if [ "$(git -C "$repo_root" rev-parse "$posted_short" 2>/dev/null || true)" != "$(git -C "$repo_root" rev-parse "$head_sha" 2>/dev/null || true)" ]; then
     emit_error "posted-sha mismatch: surfaced ${posted_short} does not resolve to POSTed ${head_sha}"

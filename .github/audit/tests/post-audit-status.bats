@@ -7,6 +7,18 @@
 # The fixture sits here in .github/audit/tests/ so it runs in the same
 # audit-ci-tests.yml suite as the other GAIA-Audit readers/producers.
 #
+# Ownership. Two suites guard this one hook, run by two separate steps of
+# .github/workflows/audit-ci-tests.yml (`bats .github/audit/tests/` and
+# `bats .gaia/tests/hooks/`, both armed by that job's shared `code` path
+# filter). This suite owns the member-aware gate arms and the status-target
+# arms, because only its fixture installs the real resolver (install_resolver)
+# and only its gh mock rejects a status posted to a sha the bare remote does
+# not carry. .gaia/tests/hooks/post-audit-status.bats owns the usage and
+# marker-shape preconditions, the divergence guards enumerated as decline
+# lines, and the head_sha fallback paths (no PR / no upstream, detached HEAD).
+# Add a new arm to whichever suite already owns its family instead of
+# duplicating it in both.
+#
 # `gh` is mocked on a prepended PATH. The mock answers `gh auth status` (ok or
 # fail per the test), `gh repo view --json nameWithOwner` (a fixed slug),
 # `gh pr view --json headRefOid` (the pushed head sha captured by push_branch),
@@ -32,12 +44,12 @@
 #      absent) falls back to the single-marker POST unchanged. There is no
 #      carried provenance, so the description never carries a trailing
 #      "carried" suffix.
-#   4. Status target: posts to the pushed PR head sha, not local HEAD, so an
-#      unpushed empty-commit trailer stamp never orphans the status POST
-#      (#726); declines "audited tree not on pushed head" when local HEAD's
-#      tree genuinely isn't on the pushed head. The surfaced "status: posted"
-#      line carries the short form of the POSTed sha, not local HEAD's short
-#      sha, on this same divergence (#794).
+#   4. Status target: the POST only ever lands on a sha the remote carries, so
+#      an un-pushed content-preserving trailer stamp produces no POST at all and
+#      pushing the stamp first lands the status on the stamped head (#726);
+#      declines "audited tree not on pushed head" when local HEAD's tree
+#      genuinely isn't on the pushed head. The surfaced "status: posted" line's
+#      short sha re-resolves to the sha the POST actually targeted (#794).
 #   5. Frontend digest unavailable (masked sha256 tool) → declines fail-closed,
 #      never posts a status with a missing or empty digest field.
 
@@ -74,7 +86,9 @@ setup() {
 
 # Push SANDBOX's current branch to origin and record the pushed head sha (both
 # in $PUSHED_HEAD and in $PUSHED_HEAD_FILE, which the gh mock's `pr` case reads
-# at run time) -- the sha the retargeted POST must land on.
+# at run time) -- the sha the POST must land on. Callable more than once per
+# test: a later call re-points the mock at the new head, which is how a test
+# pushes a trailer stamp before asserting the POST.
 push_branch() {
   local branch
   branch="$(git -C "$SANDBOX" rev-parse --abbrev-ref HEAD)"
@@ -312,29 +326,35 @@ commit_mixed_diff() {
 # empty commit and writes its own. Keyed to HEAD, the frontend's stamp orphans
 # the sibling's marker and the POST declines "members pending" even though
 # both members audited identical content. Keyed to the content digest (blobs
-# unchanged by an empty commit), the POST goes through.
+# unchanged by an empty commit), the POST goes through. The stamp is pushed
+# before the POST, per the push-then-post ordering the sha guard requires; the
+# marker-survival question this pins is orthogonal to the push state.
 @test "member-aware POST: a sibling's marker survives the trailer stamp's empty commit" {
   install_gh_mock ok
   install_resolver
   commit_mixed_diff
 
   tree=$(current_tree)
+  pre_stamp_head="$PUSHED_HEAD"
   frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
   shell_digest=$(digest_of "$SANDBOX" code-audit-maintainer-shell)
   mkdir -p "$SANDBOX/.gaia/local/audit"
   # The specialized member clears the content first, before the frontend stamps.
   write_body "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
 
-  # Push before the stamp: pushed_head is the fetchable sha the retargeted POST
-  # must land on.
-  push_branch
-  pushed_head="$PUSHED_HEAD"
-
-  # code-audit-frontend stamps the trailer: an empty commit, identical blobs,
-  # left UNPUSHED -- the sha the pre-fix code targeted, which 422s (#726).
+  # code-audit-frontend stamps the trailer: an empty commit, identical blobs, a
+  # fresh sha. Pushed before the POST, so the stamped head is the fetchable sha
+  # the status must land on.
   git -C "$SANDBOX" commit -q --allow-empty -m "chore: code review audit passed"
   [ "$(current_tree)" = "$tree" ]
-  stamped_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  push_branch
+  stamped_sha="$PUSHED_HEAD"
+  [ "$stamped_sha" != "$pre_stamp_head" ]
+
+  # The fixture's discriminating property: the stamp advanced HEAD but rotated
+  # no member's digest, so the sibling's PRE-stamp marker is still the
+  # clearance the member gate reads.
+  [ "$(digest_of "$SANDBOX" code-audit-maintainer-shell)" = "$shell_digest" ]
 
   marker=".gaia/local/audit/${frontend_digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
@@ -342,12 +362,15 @@ commit_mixed_diff() {
   run run_helper "$marker"
   [ "$status" -eq 0 ]
   grep -qF -- "status: posted GAIA-Audit success " <<<"$output" || return 1
+  # The sibling's marker cleared the gate rather than being orphaned by the
+  # stamp; an orphaned marker declines "members pending" here instead.
+  grep -qF -- "members pending" <<<"$output" && return 1
 
-  # The status lands on the pushed (pre-stamp) head, not the unpushed stamp,
+  # The status lands on the pushed stamp, not the pre-stamp head it replaced,
   # carrying the unchanged content.
   [ -f "$POST_LOG" ]
-  grep -q "statuses/${pushed_head}" "$POST_LOG"
-  grep -qF -- "statuses/${stamped_sha}" "$POST_LOG" && return 1
+  grep -q "statuses/${stamped_sha}" "$POST_LOG"
+  grep -qF -- "statuses/${pre_stamp_head}" "$POST_LOG" && return 1
   grep -q "state=success" "$POST_LOG"
   grep -q "description=1.2.3 ${frontend_digest} ${tree}" "$POST_LOG"
 }
@@ -369,8 +392,9 @@ commit_mixed_diff() {
 }
 
 # -----------------------------------------------------------------------------
-# 4. Status target (#726): posts to the pushed PR head sha, not local HEAD, and
-#    declines when the audited tree genuinely isn't on the pushed head.
+# 4. Status target (#726): the POST only ever lands on a sha the remote
+#    carries, and declines when the audited tree genuinely isn't on the pushed
+#    head.
 # -----------------------------------------------------------------------------
 
 @test "local producer: declines when the audited tree is not on the pushed head (unpushed tree-changing work)" {
@@ -393,7 +417,15 @@ commit_mixed_diff() {
   [ ! -f "$POST_LOG" ]
 }
 
-@test "#726: status posts to the pushed head sha, not the unpushed empty-commit stamp" {
+# #726's surviving invariant: a GAIA-Audit status never lands on a sha the
+# remote has never seen. The hook enforces it by DECLINING an un-pushed
+# content-preserving stamp rather than by retargeting to the pre-stamp head, so
+# the un-pushed half of the fixture must produce no POST at all. Pushing the
+# stamp first is the other half of the contract, and this fixture is where it is
+# worth pinning: the gh mock accepts a `statuses/<sha>` target only when the sha
+# is a fetchable commit on the bare remote, the same 422 boundary the real API
+# draws and the gap that let #726 hide.
+@test "#726: an un-pushed stamp produces no POST; the pushed stamp gets the status" {
   install_gh_mock ok
   install_resolver
   commit_mixed_diff
@@ -405,27 +437,48 @@ commit_mixed_diff() {
   write_body "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
   marker=".gaia/local/audit/${frontend_digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
-  pushed_head="$PUSHED_HEAD"
+  pre_stamp_head="$PUSHED_HEAD"
 
-  # The empty-commit trailer stamp: a local, un-pushed commit. Under the
-  # pre-fix code (target local HEAD) the mock rejects this sha as absent from
-  # the remote and no POST is recorded, reproducing #726.
+  # The empty-commit trailer stamp: a local, un-pushed commit, tree identical to
+  # the pushed head's, so the tree guard is blind to it by construction.
   git -C "$SANDBOX" commit -q --allow-empty -m "chore: code review audit passed"
   [ "$(current_tree)" = "$tree" ]
-  unpushed_sha=$(git -C "$SANDBOX" rev-parse HEAD)
-  [ "$unpushed_sha" != "$pushed_head" ]
+  stamp_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  [ "$stamp_sha" != "$pre_stamp_head" ]
+  # The fixture's discriminating property: the remote genuinely lacks this sha,
+  # so a status posted there would 422 exactly as #726 did.
+  git -C "$REMOTE" cat-file -e "${stamp_sha}^{commit}" 2>/dev/null && return 1
 
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: stamp not pushed" ]
+  # No POST on either sha: not the un-pushed stamp, and not the pre-stamp head
+  # the stamp is about to replace.
+  [ ! -f "$POST_LOG" ]
+
+  # Push the stamp, then post: the same marker set now clears, and the status
+  # lands on the stamp sha the remote carries.
+  push_branch
   run run_helper "$marker"
   [ "$status" -eq 0 ]
   grep -qF -- "status: posted GAIA-Audit success " <<<"$output" || return 1
 
   [ -f "$POST_LOG" ]
-  grep -q "statuses/${pushed_head}" "$POST_LOG"
-  grep -qF -- "statuses/${unpushed_sha}" "$POST_LOG" && return 1
+  grep -q "statuses/${stamp_sha}" "$POST_LOG"
+  grep -qF -- "statuses/${pre_stamp_head}" "$POST_LOG" && return 1
   return 0
 }
 
-@test "#794: the posted-status line surfaces the short POSTed sha, not local HEAD's short sha" {
+# #794 narrowed. The surfaced short sha is an identifier a maintainer reads back
+# against the PR, so it must re-resolve to the sha the POST actually targeted,
+# and it must stay abbreviated: the hook falls back to printing the full sha
+# when its own re-resolution check fails, so a 40-hex value on this line means
+# the degraded branch fired. The divergence the test originally drew this
+# distinction against -- local HEAD ahead of the pushed head -- is unreachable,
+# because the sha guard now requires the two to be the same commit before any
+# POST happens. What is left is the round trip, asserted against the sha read
+# back out of the POST log rather than one the test computed for itself.
+@test "#794: the posted-status line's short sha resolves to the sha actually POSTed" {
   install_gh_mock ok
   install_resolver
   commit_mixed_diff
@@ -437,20 +490,27 @@ commit_mixed_diff() {
   write_body "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
   marker=".gaia/local/audit/${frontend_digest}.ok"
   write_body "$SANDBOX/$marker" code-audit-frontend
-  pushed_head="$PUSHED_HEAD"
-  pushed_head_short=$(git -C "$SANDBOX" rev-parse --short "$pushed_head")
 
-  # The empty-commit trailer stamp: a local, un-pushed commit ahead of the
-  # pushed head, tree unchanged so the audited-tree gate still passes. Local
-  # HEAD's short sha now diverges from the pushed head's short sha.
+  # Stamp and push it, so the sha on the surfaced line is a real stamped PR head
+  # rather than the branch tip the fixture started on.
   git -C "$SANDBOX" commit -q --allow-empty -m "chore: code review audit passed"
   [ "$(current_tree)" = "$tree" ]
-  local_head_short=$(git -C "$SANDBOX" rev-parse --short HEAD)
-  [ "$local_head_short" != "$pushed_head_short" ]
+  push_branch
 
   run run_helper "$marker"
   [ "$status" -eq 0 ]
-  [ "$output" = "status: posted GAIA-Audit success ${pushed_head_short}" ]
+  surfaced="${output##* }"
+  # Single line, expected prefix, and the trailing field is what `surfaced` holds.
+  [ "$output" = "status: posted GAIA-Audit success ${surfaced}" ]
+  # Abbreviated, not the full-sha degraded fallback.
+  [ "${#surfaced}" -lt 40 ]
+
+  # Read the POSTed sha back out of the recorded invocation, then re-resolve the
+  # surfaced short form against it.
+  posted_field=$(grep -oE 'statuses/[0-9a-f]{40}' "$POST_LOG" | head -1)
+  posted_sha="${posted_field#statuses/}"
+  [ -n "$posted_sha" ]
+  [ "$(git -C "$SANDBOX" rev-parse "$surfaced")" = "$posted_sha" ]
 }
 
 # -----------------------------------------------------------------------------

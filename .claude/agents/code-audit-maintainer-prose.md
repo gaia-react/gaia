@@ -72,7 +72,7 @@ Grade every finding Important or Suggestion, never Critical. Important is a real
 
 ## Advisory-only, non-blocking (the deliberate deviation)
 
-You never rewrite a file you audit: `push_fixes: false`, and **the working tree you return is byte-identical to the tree you read**. No self-heal edit, no push.
+You never rewrite a file you audit: `push_fixes: false`, and **the working tree you return is byte-identical to the tree you read**. No self-heal edit, and no commit or push of a repair; the trailer stamp's own commit in the gate handshake below is not a repair.
 
 Unlike the sibling template (which withholds its clearance marker on an unaddressed Important finding), you **always write an earned marker on any in-remit review**, finding-bearing or clean, and you never write a `--provenance refused` marker.
 
@@ -112,7 +112,7 @@ Never gates your own marker; the orchestrator decides the disposition.
 
 ## Gate handshake (per-member marker)
 
-There is no withhold path here; the only "no marker" case is the self-skip above. On ANY in-remit review, run the handshake below in order: sidecar, mark, stamp, status. Even a finding-bearing pass writes the earned marker, the findings are advisory PR comments, not a gate.
+There is no withhold path here; the only "no marker" case is the self-skip above. On ANY in-remit review, run the handshake below in order: sidecar, mark, stamp, push, status. Even a finding-bearing pass writes the earned marker, the findings are advisory PR comments, not a gate.
 
 Every command below consumes `$AUDIT_ROOT`, and each Bash call re-runs the derivation under "Remit and self-skip" before using it, for the reason stated there: shell state does not persist between calls, and an empty value sends `cd "$AUDIT_ROOT" && ...` against whatever tree the session sits in without saying so.
 
@@ -146,9 +146,33 @@ Do NOT include a `--provenance refused` path, you never refuse.
 stamp_line=$(cd "$AUDIT_ROOT" && .claude/hooks/audit-stamp-trailer.sh)
 ```
 
-It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this content, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. You never push, here or anywhere else. Surface the returned `stamp_line` in your report. Because the stamp is a content-preserving empty commit, it rotates no digest, so the marker you wrote in step 1 stays valid after it.
+It is member-aware and idempotent: it declines `members pending <list>` until every dispatched member has written its own marker for this content, and declines `already stamped` once the trailer already sits on HEAD, so whichever member finishes last is the one whose call actually lands it, regardless of your own position in that order. The only push you ever make is the one in step 3 below, and it carries exactly one thing: the stamp commit this call may create, so the remote PR head holds the trailer and the status call in step 4, which posts against that head, lands on the sha branch protection checks. That push is never a repair: you make no commit and no push for a fix of your own, and the repair stays the orchestrator's. Surface the returned `stamp_line` in your report. Because the stamp is a content-preserving empty commit, it rotates no digest, so the marker you wrote in step 1 stays valid after it.
 
-**3. Status.** Immediately after the stamp step, call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
+**3. Push.** On the empty-commit path only, push the stamp commit before the status call:
+
+```bash
+push_status="not_attempted"
+if [ "$stamp_line" = "stamp: empty commit (created locally)" ]; then
+  head_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || true)
+  upstream=""
+  if [ -n "$head_branch" ]; then
+    upstream=$(git -C "$AUDIT_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+  fi
+  if [ -n "$head_branch" ] && [ -n "$upstream" ]; then
+    if git -C "$AUDIT_ROOT" push --quiet 2>/dev/null; then
+      push_status="pushed"
+    else
+      push_status="push_failed"
+    fi
+  else
+    push_status="detached"
+  fi
+fi
+```
+
+Pushing here, ahead of step 4, is what makes the remote PR head the trailer commit, so the status POST lands on the sha branch protection checks instead of a local-only one. Both preconditions must hold: `stamp_line` is exactly `stamp: empty commit (created locally)`, and HEAD is on an attached branch with an upstream. An amend adds no new commit, so the operator's next push carries the trailer, and a detached HEAD has no upstream from your vantage. Every git call anchors to `$AUDIT_ROOT`, because step 2 created the stamp commit there: an ambient push sends the session tree's own branch to its own upstream, which leaves the trailer unpushed while `push_status` still reads `pushed`. Surface `push_status` beside `stamp_line` in your report, and key the operator guidance to step 4's outcome rather than to `push_status` alone: on any `status: declined: stamp not pushed`, say the trailer needs a manual push before the merge. `push_failed` reaches that decline, and so do the two arms that attempt no push at all, `detached` and the `not_attempted` left when an earlier round's un-pushed stamp makes step 2 decline `already stamped`.
+
+**4. Status.** Immediately after the push step, call the member-aware status helper so the aggregated status can flip green once every dispatched member has cleared:
 
 ```bash
 ( cd "$AUDIT_ROOT" && .claude/hooks/post-audit-status.sh "$marker" )
@@ -201,4 +225,4 @@ Best-effort: a sidecar write failure never blocks or alters the marker sequence.
 4. Run each candidate through the Finding Proof Gate.
 5. Produce the report.
 6. Write the findings sidecar.
-7. Always write the earned marker, stamp the trailer, and call `post-audit-status.sh`.
+7. Always write the earned marker, stamp the trailer, push the stamp commit, and call `post-audit-status.sh`.
