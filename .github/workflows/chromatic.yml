@@ -21,7 +21,12 @@ jobs:
     # only once every job does, so an uncapped job of any size can hold the
     # whole run past the poller's window and leave `Run Chromatic` absent on the
     # self-heal HEAD.
-    timeout-minutes: 5
+    #
+    # `chromatic` declares `needs:` on this job, so the two run in sequence and
+    # it is their SUM that has to fit the window, not either cap alone. This
+    # pair is budgeted 2 + 18 to land on the same 20-minute ceiling a single
+    # job gets.
+    timeout-minutes: 2
     # Reads a secret's presence and echoes a boolean. No API calls, no token.
     permissions: {}
     outputs:
@@ -40,8 +45,10 @@ jobs:
     # for queue time, so a job that runs to this cap still lets the run complete
     # in time to be stamped red rather than left absent. `exitOnceUploaded`
     # keeps the real work near 2 minutes, so this caps the failure mode that
-    # matters here, an upload that hangs rather than returns.
-    timeout-minutes: 20
+    # matters here, an upload that hangs rather than returns. 18 rather than 20
+    # because this job runs after `has-chromatic-token`, and the poller waits on
+    # the run: what must fit the ceiling is the whole 2 + 18 chain.
+    timeout-minutes: 18
     runs-on: ubuntu-latest
     # `contents: read` is the complete set, not an under-scoped starting point.
     # Checkout needs it to clone, and paths-filter and setup-node both default

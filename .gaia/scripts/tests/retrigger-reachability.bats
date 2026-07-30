@@ -33,6 +33,15 @@
 #
 # Assertion style (.claude/rules/bats-assertions.md): non-final checks use
 # POSIX `[ ]`, `grep -q`, or an explicit `return 1`, never a bare `[[ ]]`.
+#
+# The negative tests below point `VERIFY` at a doctored copy and restore it on
+# every exit path. bats runs each `@test` body in its own subshell and re-runs
+# `setup()` before each one, so the reassignment cannot leak between tests. The
+# checker sees only the subshell and reports the cross-test leak it implies,
+# hence the file-wide suppression on the next line. Keep that line last in this
+# block: a following comment opening with the checker's own name parses as a
+# second, malformed directive (SC1073) and fails the lint outright.
+# shellcheck disable=SC2030,SC2031
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -67,14 +76,20 @@ declared_contexts() {
 # so the continuation comment lines inside the array (the rationale after
 # `Vitest (.gaia/cli)`) contribute nothing.
 #
-# Counting quoted TOKENS rather than lines is load-bearing. Two entries sharing
-# one line (`  "A" "B"`) is one line but two entries, and the scrape above emits
+# Counting TOKENS rather than lines is load-bearing. Two entries sharing one
+# line (`  "A" "B"`) is one line but two entries, and the scrape above emits
 # only the first of them, so a line count agrees with the partial scrape at 1
 # and the guard passes while the second entry goes unguarded by every loop
-# below. Both quote styles count, which keeps this shape-independent: the
-# single-quote reformat the negative test applies still reports entries here
-# while the double-quote scrape empties, which is the disagreement that test
-# requires.
+# below.
+#
+# All three token shapes count, which is what keeps this shape-independent, the
+# property the whole guard rests on. Both quote styles, so the single-quote
+# reformat the negative test applies still reports entries here while the
+# double-quote scrape empties, which is the disagreement that test requires.
+# And bare, unquoted tokens: an unquoted element is valid bash and plausible for
+# a single-word context name, and it is invisible to the scrape above, so
+# counting only quoted tokens would make the two agree and pass blind on
+# exactly the entry no loop below is covering.
 #
 # `|| true` keeps a zero count a reported failure rather than an opaque one:
 # `grep -c` exits 1 on no match, and bats runs each test under `set -e`, so
@@ -84,7 +99,7 @@ declared_entry_count() {
   sed -n '/^REQUIRED_CONTEXTS=(/,/^)/p' "$VERIFY" \
     | sed '1d;$d' \
     | sed 's/#.*$//' \
-    | grep -oE "\"[^\"]*\"|'[^']*'" \
+    | grep -oE "\"[^\"]*\"|'[^']*'|[^\"'[:space:]]+" \
     | grep -c . || true
 }
 
@@ -175,28 +190,116 @@ workflow_for_name() {
 # on purpose: `on:`'s trigger keys (`push:`, `pull_request:`, `workflow_dispatch:`)
 # share the two-space bare-key shape, so an unscoped scan reads them as jobs and
 # then reports three phantom missing timeouts per workflow.
+#
+# A trailing comment is tolerated on both the `jobs:` key and a job id, because
+# YAML allows one and a scrape that silently emits nothing for a workflow is the
+# worst failure available here: it drops that workflow from the checks below
+# while leaving them green. The caller treats an empty result for a resolved
+# file as a gap for the same reason, so a shape this does not anticipate fails
+# loudly rather than quietly.
 workflow_job_ids() {
   awk '
-    /^jobs:[[:space:]]*$/ { in_jobs = 1; next }
+    /^jobs:[[:space:]]*(#.*)?$/ { in_jobs = 1; next }
     in_jobs && /^[A-Za-z]/ { in_jobs = 0 }
-    in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
-      id = $0; sub(/:[[:space:]]*$/, "", id); sub(/^  /, "", id); print id
+    in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*(#.*)?$/ {
+      id = $0; sub(/[[:space:]]*(#.*)?$/, "", id); sub(/:$/, "", id); sub(/^  /, "", id)
+      print id
     }
   ' "$1"
 }
 
 # A job's declared `timeout-minutes`, or empty when it declares none (in which
-# case the job inherits the runner's 6-hour default).
+# case the job inherits the runner's 6-hour default). The job-boundary patterns
+# match `workflow_job_ids` above: a scrape that emits an id this one cannot find
+# again reports a false "no cap" for a job that declares one.
 job_timeout_minutes() {
-  awk -v want="  $2:" '
-    $0 == want { in_job = 1; next }
-    in_job && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { exit }
-    in_job && /^    timeout-minutes:[[:space:]]*[0-9]+[[:space:]]*$/ {
+  awk -v want="$2" '
+    /^  [A-Za-z0-9_-]+:[[:space:]]*(#.*)?$/ {
+      id = $0; sub(/[[:space:]]*(#.*)?$/, "", id); sub(/:$/, "", id); sub(/^  /, "", id)
+      if (in_job) exit
+      if (id == want) { in_job = 1 }
+      next
+    }
+    in_job && /^    timeout-minutes:[[:space:]]*[0-9]+[[:space:]]*(#.*)?$/ {
       v = $0
       sub(/^    timeout-minutes:[[:space:]]*/, "", v)
-      sub(/[[:space:]]*$/, "", v)
+      sub(/[^0-9].*$/, "", v)
       print v
       exit
+    }
+  ' "$1"
+}
+
+# The longest path through the workflow's `needs:` graph, in minutes, summing
+# each job's declared cap along the way.
+#
+# This, not any single cap, is what has to fit the poller's window: the poller
+# waits on the RUN, and a run completes only once every job does, so two jobs
+# chained by `needs:` contribute the sum of their caps to the run's worst case
+# while two unchained jobs contribute only the larger. Comparing caps one at a
+# time would read a 2 + 18 chain and a lone 18 as equally safe.
+#
+# Jobs with no cap contribute 0 here; the caller reports those separately, so a
+# missing cap is never silently priced as free.
+workflow_critical_path_minutes() {
+  awk '
+    /^jobs:[[:space:]]*(#.*)?$/ { in_jobs = 1; next }
+    in_jobs && /^[A-Za-z]/ { in_jobs = 0 }
+    in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*(#.*)?$/ {
+      id = $0; sub(/[[:space:]]*(#.*)?$/, "", id); sub(/:$/, "", id); sub(/^  /, "", id)
+      cur = id; jobs[++n] = id; cap[id] = 0; needs[id] = ""; collecting = 0
+      next
+    }
+    in_jobs && cur != "" && /^    timeout-minutes:[[:space:]]*[0-9]+/ {
+      v = $0; sub(/^    timeout-minutes:[[:space:]]*/, "", v); sub(/[^0-9].*$/, "", v)
+      cap[cur] = v + 0
+      collecting = 0
+      next
+    }
+    # `needs: [a, b]`
+    in_jobs && cur != "" && /^    needs:[[:space:]]*\[/ {
+      v = $0; sub(/^    needs:[[:space:]]*\[/, "", v); sub(/\].*$/, "", v)
+      gsub(/[[:space:]"'"'"']/, "", v)
+      needs[cur] = v
+      collecting = 0
+      next
+    }
+    # `needs:` opening a block sequence
+    in_jobs && cur != "" && /^    needs:[[:space:]]*(#.*)?$/ { collecting = 1; next }
+    # `needs: a`
+    in_jobs && cur != "" && /^    needs:[[:space:]]*[^[:space:]]/ {
+      v = $0; sub(/^    needs:[[:space:]]*/, "", v); sub(/[[:space:]]*(#.*)?$/, "", v)
+      gsub(/["'"'"']/, "", v)
+      needs[cur] = v
+      collecting = 0
+      next
+    }
+    collecting && /^      -[[:space:]]*[^[:space:]]/ {
+      v = $0; sub(/^      -[[:space:]]*/, "", v); sub(/[[:space:]]*(#.*)?$/, "", v)
+      gsub(/["'"'"']/, "", v)
+      needs[cur] = (needs[cur] == "" ? v : needs[cur] "," v)
+      next
+    }
+    collecting && /^    [^[:space:]]/ { collecting = 0 }
+    END {
+      if (n == 0) { exit }
+      # Relax to a fixed point. n passes settle any acyclic graph of n nodes,
+      # and the bound is what keeps a malformed cyclic `needs:` from spinning.
+      for (pass = 1; pass <= n; pass++) {
+        for (i = 1; i <= n; i++) {
+          j = jobs[i]; best = 0
+          if (needs[j] != "") {
+            cnt = split(needs[j], dep, ",")
+            for (k = 1; k <= cnt; k++) {
+              if (cost[dep[k]] + 0 > best) best = cost[dep[k]] + 0
+            }
+          }
+          cost[j] = cap[j] + best
+        }
+      }
+      longest = 0
+      for (i = 1; i <= n; i++) if (cost[jobs[i]] > longest) longest = cost[jobs[i]]
+      print longest
     }
   ' "$1"
 }
@@ -335,8 +438,7 @@ job_skips_filter_on_dispatch() {
     file="$(workflow_for_context "$WORKFLOWS_DIR" "$ctx")"
     [ -n "$file" ] || continue
     block="$(job_block "$file" "$ctx")"
-    printf '%s' "$block" | grep -qF -- "dorny/paths-filter" \
-      && candidates=$(( candidates + 1 ))
+    [ -n "$(filter_step_block "$block")" ] && candidates=$(( candidates + 1 ))
     job_skips_filter_on_dispatch "$block" || continue
     while IFS= read -r step_if; do
       [ -n "$step_if" ] || continue
@@ -349,12 +451,16 @@ job_skips_filter_on_dispatch() {
   # `dorny/paths-filter`. If the scrape ever stops finding one, the loop above
   # goes vacuous and reports green having examined nothing, which is the same
   # hollow-guard failure `assert_extraction_intact` exists to prevent one level
-  # up. Deliberately not a count of jobs the detector MATCHED: a job whose
-  # filter is gated on something else (chromatic.yml gates its on the
-  # chore-deps output) is correctly not a match, so requiring one would fail on
-  # a healthy repo.
+  # up.
+  #
+  # Counted through `filter_step_block`, the same helper the detector reads, so
+  # a break in that helper shows up here rather than leaving the count at its
+  # healthy value while nothing is actually located. Deliberately NOT a count of
+  # jobs the detector MATCHED: a job whose filter is gated on something else
+  # (chromatic.yml gates its on the chore-deps output) is correctly not a match,
+  # so requiring one would fail on a healthy repo.
   [ "$candidates" -gt 0 ] || {
-    echo "no required-context job runs dorny/paths-filter; this test asserted nothing" >&2
+    echo "no required-context job's dorny/paths-filter step was located; this test asserted nothing" >&2
     return 1
   }
   [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
@@ -384,18 +490,24 @@ job_skips_filter_on_dispatch() {
 }
 
 # ---------------------------------------------------------------------------
-# 4. Every job in a dispatched workflow finishes inside the poller's window.
-#    The poller waits on the RUN, and a run completes only when all of its jobs
-#    do, so one uncapped job holds the whole run past the window: the poller
-#    logs `did not complete within`, stamps nothing, and every context that run
-#    would have supplied is absent on the self-heal HEAD. Absent is strictly
-#    worse than red -- a red check is an ordinary failure to re-run, an absent
-#    one wedges the merge with no signal -- so the cap is what converts the
-#    worse outcome into the ordinary one.
+# 4. Every dispatched workflow finishes inside the poller's window. The poller
+#    waits on the RUN, and a run completes only when all of its jobs do, so one
+#    uncapped job holds the whole run past the window: the poller logs `did not
+#    complete within`, stamps nothing, and every context that run would have
+#    supplied is absent on the self-heal HEAD. Absent is strictly worse than red
+#    -- a red check is an ordinary failure to re-run, an absent one wedges the
+#    merge with no signal -- so the cap is what converts the worse outcome into
+#    the ordinary one.
+#
+#    Two things are checked, because one cap alone does not bound a run: every
+#    job must declare a cap at all, and the longest `needs:` chain must total
+#    under the ceiling. Jobs chained by `needs:` run in sequence and contribute
+#    the SUM of their caps to the run, so a pair capped 5 and 20 is a 25-minute
+#    run even though neither job alone reaches the ceiling.
 # ---------------------------------------------------------------------------
 
 @test "every retrigger workflow's jobs cap runtime under the self-heal poller window" {
-  local window ceiling names wf file id cap checked=0 gaps=""
+  local window ceiling names wf file id cap here path checked=0 gaps=""
 
   [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
 
@@ -420,16 +532,32 @@ job_skips_filter_on_dispatch() {
       gaps="${gaps}${wf}: no workflow file declares this name"$'\n'
       continue
     }
+    here=0
     while IFS= read -r id; do
       [ -n "$id" ] || continue
+      here=$(( here + 1 ))
       checked=$(( checked + 1 ))
       cap="$(job_timeout_minutes "$file" "$id")"
       if [ -z "$cap" ]; then
         gaps="${gaps}${wf} / ${id}: no timeout-minutes; inherits the 6-hour runner default"$'\n'
-      elif [ "$cap" -gt "$ceiling" ]; then
-        gaps="${gaps}${wf} / ${id}: timeout-minutes ${cap} exceeds the ${ceiling}m ceiling (${window}m poll window - ${POLLER_MARGIN_MIN}m margin)"$'\n'
       fi
     done < <(workflow_job_ids "$file")
+
+    # A resolved workflow that yields no jobs is the quietest way this test can
+    # stop covering something: it contributes nothing to `gaps`, and the other
+    # workflows keep the aggregate `checked` above zero, so the run-wide guard
+    # below never notices. Report the per-workflow zero as its own gap.
+    if [ "$here" -eq 0 ]; then
+      gaps="${gaps}${wf}: job scrape found no jobs in $(basename "$file")"$'\n'
+      continue
+    fi
+
+    path="$(workflow_critical_path_minutes "$file")"
+    if [ -z "$path" ]; then
+      gaps="${gaps}${wf}: could not resolve a critical path through $(basename "$file")"$'\n'
+    elif [ "$path" -gt "$ceiling" ]; then
+      gaps="${gaps}${wf}: longest needs-chain totals ${path}m, past the ${ceiling}m ceiling (${window}m poll window - ${POLLER_MARGIN_MIN}m margin)"$'\n'
+    fi
   done < <(printf '%s\n' "$names")
 
   # Same hollowness concern as everywhere else in this suite: a job scrape that
@@ -503,7 +631,12 @@ job_skips_filter_on_dispatch() {
 # ---------------------------------------------------------------------------
 
 @test "negative: two REQUIRED_CONTEXTS entries on one line are caught" {
-  local original="$VERIFY"
+  local original="$VERIFY" want
+
+  # Derived, not hardcoded: adding a required context is a legitimate change and
+  # must not fail this test.
+  want="$(declared_entry_count)"
+  [ "$want" -gt 1 ] || { echo "need 2+ entries to collapse a pair" >&2; return 1; }
 
   VERIFY="$BATS_TEST_TMPDIR/verify-collapsed.sh"
   awk '
@@ -512,9 +645,51 @@ job_skips_filter_on_dispatch() {
     { print }
   ' "$original" > "$VERIFY"
 
-  # The doctored array still declares both entries, and the scrape sees one.
-  [ "$(declared_entry_count)" -eq 6 ] || { VERIFY="$original"; return 1; }
-  [ "$(declared_contexts | grep -c .)" -eq 5 ] || { VERIFY="$original"; return 1; }
+  # The doctored array still declares every entry, and the scrape loses one to
+  # the shared line. That disagreement is the whole signal.
+  [ "$(declared_entry_count)" -eq "$want" ] || {
+    VERIFY="$original"
+    echo "collapsing a pair changed the token count; the fixture no longer models the defect" >&2
+    return 1
+  }
+  [ "$(declared_contexts | grep -c .)" -eq $(( want - 1 )) ] || {
+    VERIFY="$original"
+    echo "the scrape did not lose exactly one entry to the shared line" >&2
+    return 1
+  }
+
+  run assert_extraction_intact
+  VERIFY="$original"
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Negative: an unquoted entry. Valid bash, and invisible to the scrape's `^  "`
+# anchor, so a counter that only recognized quoted tokens would agree with the
+# partial scrape and pass while that context went unchecked by every loop above.
+# ---------------------------------------------------------------------------
+
+@test "negative: an unquoted REQUIRED_CONTEXTS entry is caught" {
+  local original="$VERIFY" want
+
+  want="$(declared_entry_count)"
+  [ "$want" -gt 0 ] || { echo "no entries to unquote" >&2; return 1; }
+
+  # Same entries, one of them stripped of its quotes.
+  VERIFY="$BATS_TEST_TMPDIR/verify-unquoted.sh"
+  sed 's/^  "Distribution Audit"/  Distribution-Audit/' "$original" > "$VERIFY"
+
+  # The entry still counts, and the scrape no longer sees it.
+  [ "$(declared_entry_count)" -eq "$want" ] || {
+    VERIFY="$original"
+    echo "unquoting an entry changed the token count; it is no longer counted" >&2
+    return 1
+  }
+  [ "$(declared_contexts | grep -c .)" -eq $(( want - 1 )) ] || {
+    VERIFY="$original"
+    echo "the scrape did not lose exactly the unquoted entry" >&2
+    return 1
+  }
 
   run assert_extraction_intact
   VERIFY="$original"
@@ -558,6 +733,89 @@ job_skips_filter_on_dispatch() {
   grep -v '^    timeout-minutes:' "$subject" > "$subject.doctored"
   mv "$subject.doctored" "$subject"
   [ -z "$(job_timeout_minutes "$subject" "chromatic")" ]
+}
+
+# ---------------------------------------------------------------------------
+# Negative: a `needs:` chain whose jobs are each individually under the ceiling
+# but whose SUM is not. Comparing caps one at a time reads this as safe, which
+# is the whole reason the critical path is what gets compared.
+# ---------------------------------------------------------------------------
+
+@test "negative: a needs-chain summing past the ceiling is caught" {
+  local sb="$BATS_TEST_TMPDIR/chain"
+  local subject path
+
+  mkdir -p "$sb"
+  subject="$sb/chained.yml"
+  cat > "$subject" <<'YAML'
+name: Chained
+on:
+  workflow_dispatch:
+jobs:
+  first:
+    name: First
+    timeout-minutes: 12
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo one
+  second:
+    name: Second
+    needs: first
+    timeout-minutes: 12
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo two
+YAML
+
+  # Neither job exceeds a 20m ceiling on its own.
+  [ "$(job_timeout_minutes "$subject" "first")" -eq 12 ] || return 1
+  [ "$(job_timeout_minutes "$subject" "second")" -eq 12 ] || return 1
+
+  # The chain does.
+  path="$(workflow_critical_path_minutes "$subject")"
+  [ "$path" -eq 24 ] || {
+    echo "expected a 24m critical path, got '${path}'" >&2
+    return 1
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Negative: an unparsed workflow must be loud. A trailing comment on `jobs:`
+# used to empty the scrape for that one file, which contributed nothing to the
+# gap list while the other workflows kept the run-wide counter above zero, so
+# uncapped jobs merged under a green test.
+# ---------------------------------------------------------------------------
+
+@test "negative: a workflow whose jobs cannot be scraped is caught" {
+  local sb="$BATS_TEST_TMPDIR/commented"
+  local subject
+
+  mkdir -p "$sb"
+  subject="$sb/commented.yml"
+  cat > "$subject" <<'YAML'
+name: Commented
+on:
+  workflow_dispatch:
+jobs: # the two jobs below
+  alpha: # first
+    name: Alpha
+    timeout-minutes: 7
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo alpha
+YAML
+
+  # A trailing comment on either key is legal YAML and must not empty the scrape.
+  [ "$(workflow_job_ids "$subject" | grep -c .)" -eq 1 ] || {
+    echo "a trailing comment emptied the job scrape" >&2
+    return 1
+  }
+  [ "$(job_timeout_minutes "$subject" "alpha")" -eq 7 ] || return 1
+
+  # And a shape it still cannot read reports zero jobs, which the caller turns
+  # into a gap rather than silence.
+  printf 'name: Broken\njobs:\n  not-a-job\n' > "$sb/broken.yml"
+  [ "$(workflow_job_ids "$sb/broken.yml" | grep -c .)" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
