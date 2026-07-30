@@ -213,6 +213,7 @@
     ".gaia/scripts/classifier/classify-determinism.mjs": "owned",
     ".gaia/scripts/cost-backfill.sh": "owned",
     ".gaia/scripts/cost-represented.sh": "owned",
+    ".gaia/scripts/cost-reprice.sh": "owned",
     ".gaia/scripts/debt-count-refresh.sh": "owned",
     ".gaia/scripts/gh-artifact-lib.sh": "owned",
     ".gaia/scripts/ledger-path-lib.sh": "owned",
@@ -636,7 +637,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-26T05:24:35.593Z",
+  "generated": "2026-07-30T10:29:49.265Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
