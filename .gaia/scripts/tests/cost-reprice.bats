@@ -188,23 +188,106 @@ run_deadline() {
   # The stamp has second granularity, so two quick runs collide on the path. The
   # first run's copy is the only pre-image of the original ledger; losing it to
   # an overwrite would leave no undo for the very rows the first run rewrote.
+  #
+  # `date` is shadowed to a FIXED stamp for the one format the script asks for,
+  # so the collision is forced rather than left to whether two runs happen to
+  # land in the same wall-clock second. Everything else passes through to the
+  # real date, which with_ledger_lock still needs for its own timing.
+  mkdir -p "$SANDBOX/bin"
+  cat > "$SANDBOX/bin/date" <<'STUB'
+#!/bin/sh
+case "$*" in
+  *"+%Y%m%dT%H%M%SZ"*) echo "20260101T000000Z" ;;
+  *) exec /bin/date "$@" ;;
+esac
+STUB
+  chmod +x "$SANDBOX/bin/date"
+
   seed_row 0.76 2026-07-28T07:28:15Z
   original="$(cat "$LEDGER")"
 
-  run run_reprice "$RATES_FULL"
+  run env PATH="$SANDBOX/bin:$PATH" bash "$SCRIPT" \
+    --ledger "$LEDGER" --rate-table "$RATES_FULL"
   [ "$status" -eq 0 ]
 
-  # Re-dirty the ledger so the second run has something to change (and so it
-  # takes a backup at all), then run again immediately.
+  # Re-dirty the ledger so the second run has something to change, and therefore
+  # takes a backup at all.
   : > "$LEDGER"
   seed_row 0.76 2026-07-28T07:28:15Z
-  run run_reprice "$RATES_FULL"
+  run env PATH="$SANDBOX/bin:$PATH" bash "$SCRIPT" \
+    --ledger "$LEDGER" --rate-table "$RATES_FULL"
   [ "$status" -eq 0 ]
 
-  # Two runs, two distinct backups, and the first still holds the first pre-image.
-  [ "$(find "$(dirname "$LEDGER")" -name 'cost.jsonl.bak.*' | wc -l | tr -d ' ')" -eq 2 ]
-  matches="$(grep -lF -- "$original" "$(dirname "$LEDGER")"/cost.jsonl.bak.* | wc -l | tr -d ' ')"
-  [ "$matches" -ge 1 ]
+  # Both paths named exactly: the unsuffixed one from run 1 and the `.2` the
+  # collision path must produce. Asserting only "two backups exist" would pass
+  # even if the suffix logic never ran.
+  d="$(dirname "$LEDGER")"
+  [ -f "$d/cost.jsonl.bak.20260101T000000Z" ]
+  [ -f "$d/cost.jsonl.bak.20260101T000000Z.2" ]
+  # Run 1's copy still holds run 1's pre-image, unclobbered.
+  [ "$(cat "$d/cost.jsonl.bak.20260101T000000Z")" = "$original" ]
+}
+
+@test "a row jq cannot process refuses the whole rewrite instead of dropping it" {
+  # jq does not abort on a per-input runtime error: it reports it on stderr,
+  # emits nothing for that input, continues, and still exits 0. So a mixed
+  # ledger produced a classified stream one entry short, and the rewrite deleted
+  # that row while the summary (counted from the same short stream) reported a
+  # clean success. A quoted number in a bucket is enough to trigger it.
+  seed_row 0.76 2026-07-28T07:28:15Z
+  jq -c -n '{schema_version:1, kind:"execute", session_id:"MIDDLE-BAD",
+             by_model:{"claude-opus-4-8":{fresh_input:300, cache_write_5m:40,
+               cache_write_1h:360, cache_read:3000, output:"30"}},
+             dollars:0.76, ts:"2026-07-28T07:28:15Z"}' >> "$LEDGER"
+  seed_row 0.76 2026-07-28T07:28:15Z
+  before="$(cat "$LEDGER")"
+
+  run run_reprice "$RATES_FULL"
+  [ "$status" -ne 0 ]
+
+  # Nothing written, nothing dropped, and the refusal says so rather than
+  # reporting a plausible-looking partial success.
+  [ "$(cat "$LEDGER")" = "$before" ]
+  [ "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 3 ]
+  [ "$(find "$(dirname "$LEDGER")" -name 'cost.jsonl.bak.*' | wc -l | tr -d ' ')" -eq 0 ]
+  grep -qF -- 'would drop 1 row' <<<"$output"
+}
+
+@test "a row whose by_model holds only non-claude models is left byte-identical" {
+  # priced_row keeps only `^claude-` buckets, so this row prices to 0 with
+  # `unpriced: []` -- an assertion of completeness it has not got. Rewriting it
+  # would store that 0 over a real figure and stamp the current rate_table_id on
+  # it, which is exactly the confidently-wrong row this change exists to remove.
+  jq -c -n '{schema_version:1, kind:"execute", session_id:"only-nonclaude",
+             by_model:{"gpt-4o":{fresh_input:300, cache_write_5m:0,
+               cache_write_1h:0, cache_read:0, output:30}},
+             dollars:1.23, rate_table_id:"sha256:stale00000000000",
+             ts:"2026-07-28T07:28:15Z"}' >> "$LEDGER"
+  before="$(cat "$LEDGER")"
+
+  run run_reprice "$RATES_FULL"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$LEDGER")" = "$before" ]
+  grep -qF -- '0 row' <<<"$output"
+}
+
+@test "a row mixing claude and non-claude models is left byte-identical" {
+  # The dangerous half of the same case: the claude bucket prices fine, so the
+  # figure looks recomputed, while the non-claude bucket share is dropped and
+  # `unpriced` stays absent. Partial recomputation loses more than it fixes, so
+  # the stored figure and its original table id are left alone.
+  jq -c -n --argjson bm "$BY_MODEL" \
+    '{schema_version:1, kind:"execute", session_id:"mixed",
+      by_model:($bm + {"gpt-4o":{fresh_input:9999, cache_write_5m:0,
+        cache_write_1h:0, cache_read:0, output:9999}}),
+      dollars:5.00, rate_table_id:"sha256:stale00000000000",
+      ts:"2026-07-28T07:28:15Z"}' >> "$LEDGER"
+  before="$(cat "$LEDGER")"
+
+  run run_reprice "$RATES_FULL"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$LEDGER")" = "$before" ]
+  grep -qF -- '0 row' <<<"$output"
 }
 
 @test "a row whose ts cannot anchor a rate window is left byte-identical" {

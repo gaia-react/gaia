@@ -28,13 +28,23 @@
 #   - A row whose recomputed figure equals its stored one is passed through
 #     BYTE-identical. Only rows that actually change are re-serialized.
 #   - A line that does not parse as JSON is passed through byte-identical. No
-#     row is ever dropped or reordered; the output has the same line count.
-#   - A row whose own `ts` cannot anchor a rate window is passed through
-#     byte-identical too. `priced_row` reports that case as `missing_anchor`
-#     alongside a dollars of 0, which is an "unknown" and not a recomputed zero,
-#     so writing that 0 over the stored figure would destroy it. No current
-#     writer emits such a row; a hand-edited, foreign, or legacy ledger can, and
-#     that is exactly the population this script exists for.
+#     row is ever dropped or reordered; the output has the same line count, and
+#     that count is CHECKED rather than assumed. jq reports a per-input runtime
+#     error on stderr, emits nothing for that input, and still exits 0, so one
+#     malformed bucket value would otherwise delete its row and report success.
+#     A record count that disagrees with the ledger's line count refuses the
+#     whole rewrite and prints what jq said.
+#   - Two kinds of row that cannot be fully recomputed are passed through
+#     byte-identical rather than rewritten, both because a partial recomputation
+#     would overwrite a real stored figure with a confident-looking wrong one:
+#       * a row whose own `ts` cannot anchor a rate window. `priced_row` reports
+#         it as `missing_anchor` with a dollars of 0, which is an "unknown" and
+#         not a recomputed zero.
+#       * a row carrying any non-`claude-` bucket in `by_model`. `priced_row`
+#         silently discards those buckets and still returns `unpriced: []`,
+#         asserting a completeness it does not have.
+#     No current writer emits either shape; a hand-edited, foreign, or legacy
+#     ledger can, and that is exactly the population this script exists for.
 #   - Classify, back up, and replace all run inside the shared cost mutex as ONE
 #     critical section. The read half has to be in there too: a tally appending
 #     between an unlocked classify and the replace is dropped outright, because
@@ -161,15 +171,55 @@ telemetry_dir="$(dirname "$ledger")"
 # reproduced from the ORIGINAL bytes rather than re-serialized by jq. A row is a
 # candidate only when it parses, carries attribution, already holds a numeric
 # dollars, and can anchor a rate window; anything else passes through untouched.
+# Surfaces the diagnostic jq wrote about a row it could not process. Without it
+# the only trace of a dropped row is a record count that looks self-consistent.
+_cost_reprice_report_jq_err() {
+  local err="$1" total
+  [ -s "$err" ] || return 0
+  total="$(awk 'END{print NR}' "$err")"
+  log "cost-reprice: jq reported $total diagnostic line(s), first 10:"
+  head -n 10 "$err" >&2
+  return 0
+}
+
 _cost_reprice_run() {
-  local classified changed_count total_count backup tmp n
+  local classified changed_count total_count expected_lines jq_err backup tmp n
+
+  # The record count is an INVARIANT here, not a statistic. jq does not abort on
+  # a runtime error raised for a single input: it reports the error on stderr,
+  # emits nothing for that input, moves to the next one, and still exits 0. One
+  # row whose by_model holds a quoted number is enough, and the resulting stream
+  # is one entry short. A rewrite from that stream deletes the row outright,
+  # while the summary, counted from the same short stream, reads as a clean
+  # success. Checking jq's exit status cannot catch this; comparing the record
+  # count against the ledger's own line count can. `awk END{print NR}` is the
+  # right counter because it counts a final line with no trailing newline, which
+  # is exactly what `jq -R` also reads as an input.
+  expected_lines="$(awk 'END{print NR}' "$ledger")"
+
+  if ! jq_err="$(mktemp "$telemetry_dir/.cost-reprice-err.XXXXXX")"; then
+    log "cost-reprice: could not create a temp file in $telemetry_dir"
+    return 1
+  fi
 
   classified="$(jq -R -c --argjson rates "$rates" --arg rtid "$rtid" \
     "$GAIA_PRICING_JQ_DEFS"'
+      # priced_row keeps only the `^claude-` buckets and neither prices nor
+      # reports the rest: it returns `unpriced: []`, asserting completeness. So a
+      # row carrying any non-claude bucket cannot be fully recomputed, and
+      # re-pricing it would drop that bucket share while stamping the row with
+      # the current rate_table_id, which is the silently-plausible figure this
+      # whole change exists to remove. Such a row passes through untouched, its
+      # stored figure and original table id intact, exactly like every other row
+      # this script cannot fully price.
+      def fully_priceable($bm):
+        ($bm | keys) as $k
+        | ($k | length) > 0 and (($k | map(select(test("^claude-"))) | length) == ($k | length));
+
       . as $raw
       | (try ($raw | fromjson) catch null) as $row
       | if ($row | type) != "object"
-           or (($row.by_model // {}) | length) == 0
+           or (fully_priceable($row.by_model // {}) | not)
            or (($row.dollars | type) != "number")
         then {changed: false, line: $raw}
         else
@@ -189,15 +239,26 @@ _cost_reprice_run() {
               }
             end
         end
-    ' "$ledger" 2>/dev/null)"
+    ' "$ledger" 2>"$jq_err")"
 
   if [ -z "$classified" ]; then
     log "cost-reprice: could not classify ledger rows; leaving $ledger untouched"
+    _cost_reprice_report_jq_err "$jq_err"
+    rm -f "$jq_err"
     return 1
   fi
 
-  changed_count="$(printf '%s\n' "$classified" | jq -s '[.[] | select(.changed)] | length')"
   total_count="$(printf '%s\n' "$classified" | jq -s 'length')"
+  if [ "$total_count" -ne "$expected_lines" ]; then
+    log "cost-reprice: classify returned $total_count record(s) for $expected_lines ledger line(s)."
+    log "cost-reprice: refusing to rewrite, which would drop $((expected_lines - total_count)) row(s). $ledger is untouched."
+    _cost_reprice_report_jq_err "$jq_err"
+    rm -f "$jq_err"
+    return 1
+  fi
+  rm -f "$jq_err"
+
+  changed_count="$(printf '%s\n' "$classified" | jq -s '[.[] | select(.changed)] | length')"
 
   printf '%s\n' "$classified" \
     | jq -r 'select(.changed) | "  reprice: \(.ts) \(.kind)  $\(.before) -> $\(.after)"'
