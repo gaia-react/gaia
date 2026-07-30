@@ -624,7 +624,7 @@ assert_allowed() {
 #
 # A second ceiling sits above these: rule 4's own 65536-character cap on the
 # matching material it will judge at all. The 60000-character fixture below
-# lands near 60038 and stays under it deliberately, and it sets the floor under
+# lands near 60038 and stays under it deliberately, and it sets a floor under
 # that cap. Enlarging it past the cap turns it RED rather than quietly retiring
 # it: the size cap would deny, this test asserts DENY, and `assert_denied`
 # refuses a cap deny for exactly that reason. Raise rule 4's cap alongside it, or
@@ -1040,9 +1040,9 @@ assert_allowed() {
 #
 # Crossing either denies rather than truncating the scan, because the material a
 # truncated scan drops is exactly where a secret would sit. These pin both sides
-# of both caps, and each deny case asserts the REASON: with every fixture value
-# an ordinary reference, a deny that did not name the cap it was meant to cross
-# would mean some other rule fired and the test would pass for the wrong reason.
+# of both caps, and each deny case asserts the REASON: a deny that did not name
+# the cap it was meant to cross would mean some other rule fired and the test
+# would pass for the wrong reason.
 
 @test "a write at the matching-line cap is still judged" {
   many=$(for i in $(seq 1 200); do printf 'A%d_KEY=${FOO}\n' "$i"; done)
@@ -1109,9 +1109,8 @@ assert_allowed() {
 # enough to cross it, which is exactly what a line cap alone cannot catch.
 #
 # The pair below pins the cap's own boundary, the way the line cap's 200-and-201
-# pair does. The deny side alone leaves the comparison loose: every other fixture
-# in this file tops out at 60038 characters of matching material, so nothing
-# reaches the cap itself and `-gt` could become `-ge` with the suite still green.
+# pair does. A deny side alone leaves the comparison loose: with no admitted case
+# at the cap, `-gt` could widen to `-ge` with the suite still green.
 # The admitted case is a single long reference rather than a fragment-dense line
 # because the cap counts characters and this shape spends one judgement on all of
 # them, so pinning the boundary costs the suite no measurable time.
@@ -1120,6 +1119,17 @@ assert_allowed() {
   name=$(printf '%*s' 65527 '' | tr ' ' 'A')
   run_hook_write "$(printf 'A_KEY=${%s}\n' "$name")"
   assert_allowed
+}
+
+# The test above passes both when the loop judged all 65536 characters and when
+# a regression waves a cap-sized payload through without judging it, which is the
+# truncate-then-allow this cap refuses. This one carries a literal value at
+# exactly the cap, so it can only deny if the judging ran.
+
+@test "a write at the judged-size cap is judged to its last character" {
+  long=$(printf '%*s' 65530 '' | tr ' ' 'a')
+  run_hook_write "$(printf 'A_KEY=%s\n' "$long")"
+  assert_denied
 }
 
 @test "a single matching line one character over the judged-size cap is denied" {
