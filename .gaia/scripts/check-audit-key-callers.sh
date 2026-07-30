@@ -41,9 +41,11 @@
 #      than one implying the other.
 #
 #      The two verdict lines (2) prints label the condition a `call` for
-#      brevity; read it as the mention described here. That wording is a
-#      pinned output contract, asserted verbatim by
+#      brevity; read it as the mention described here.
+# gaia:maintainer-only:start
+#      That wording is a pinned output contract, asserted verbatim by
 #      `.gaia/scripts/tests/check-audit-key-callers.bats`.
+# gaia:maintainer-only:end
 #
 # Dual-mode, like the repo's other check scripts: source it for
 # gaia_check_audit_key_callers, or run it directly as a script (see
