@@ -9,7 +9,8 @@
 #
 # Ownership. Two suites guard this one hook, run by two separate steps of
 # .github/workflows/audit-ci-tests.yml (`bats .github/audit/tests/` and
-# `bats .gaia/tests/hooks/`, each behind its own path filter). This suite owns
+# `bats .gaia/tests/hooks/`, both armed by that job's shared `code` path
+# filter). This suite owns
 # the member-aware gate arms and the status-target arms, because only its
 # fixture installs the real resolver (install_resolver) and only its gh mock
 # rejects a status posted to a sha the bare remote does not carry.

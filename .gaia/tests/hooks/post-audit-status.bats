@@ -40,7 +40,8 @@
 #
 # Ownership. Two suites guard this one hook, run by two separate steps of
 # .github/workflows/audit-ci-tests.yml (`bats .gaia/tests/hooks/` and
-# `bats .github/audit/tests/`, each behind its own path filter). This suite owns
+# `bats .github/audit/tests/`, both armed by that job's shared `code` path
+# filter). This suite owns
 # the usage and marker-shape preconditions, the divergence guards as enumerated
 # decline lines, and the head_sha fallback paths. Its sibling
 # .github/audit/tests/post-audit-status.bats owns the member-aware gate arms and
