@@ -48,7 +48,10 @@ require_yaml_parser() {
     return 0
   fi
   if [ -n "${GITHUB_ACTIONS:-}" ]; then
-    echo "::error::no YAML parser (python3+pyyaml or yq) on a CI runner; the parse-fail tests here would skip to green. Check the apt install in .github/workflows/audit-ci-tests.yml." >&2
+    # No `::error::` prefix: bats prints a test's stderr prefixed with `# `, and
+    # Actions parses a workflow command only at column 0, so the annotation that
+    # spelling promises would never render. The `return 1` is what gates.
+    echo "no YAML parser (python3+pyyaml or yq) on a CI runner; the parse-fail tests here would skip to green. Check the apt install in .github/workflows/audit-ci-tests.yml." >&2
     return 1
   fi
   skip "no YAML parser available (python3+pyyaml or yq); lint.sh skips the parse check"
