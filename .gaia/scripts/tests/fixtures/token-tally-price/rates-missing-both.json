@@ -1,0 +1,6 @@
+{
+  "cache_multipliers": { "read": 0.1, "write_5m": 1.25, "write_1h": 2.0 },
+  "models": {
+    "claude-haiku-4-5": [ { "input": 100, "output": 500 } ]
+  }
+}
