@@ -74,6 +74,21 @@ Spawning the local agent when CI has already stamped the marker is redundant; sk
 
 ### 1. Spawn the dispatched Code Audit Team members
 
+#### Before the first dispatch: verify your own work
+
+The gate is the most expensive feedback in the workflow, and it is a **merge** gate. Every dispatched member reads its whole owned surface, so a round costs 60-110k tokens per member and several minutes. Spending one to learn something a local check would have reported is a straight loss: it consumes the round that should be finding what the author cannot see, and each repair moves HEAD, rotating the digest and buying another full round.
+
+The failure shape is specific and worth naming, because it does not look like a mistake while it is happening. New parsing, matching, or extraction logic is written; it handles the shapes the author thought of; a member finds a shape it mishandles; the fix ships; the next round finds another. Each round is individually productive, so the loop feels like progress while it is really a debugging session billed at audit rates. Three rounds to converge on one hand-rolled parser is the canonical case.
+
+So before the first dispatch, not after the first refusal:
+
+- **Run the deterministic checks that cover the change.** The bats suites for the paths touched, `bash .gaia/tests/shell-lint.sh` for shell, the [[Quality Gate]] when its skip logic says it applies, and any suite that consumes what changed. Green locally is the entry condition for dispatch, not an outcome of it.
+- **Write the adversarial fixtures a reviewer would ask for.** One per shape the logic might mishandle, chosen by asking what the input space actually contains rather than what the implementation happens to read. For anything that parses a real format, that space is unbounded: prefer the format's own parser over a hand-rolled scrape, and treat "I will teach it the next shape when something finds one" as the decision to pay for those rounds.
+- **Prove a guard can fail.** A guard whose assertions cannot be made to fire asserts nothing, and it reports green in exactly the case it exists to catch. Break the thing it watches on purpose, confirm it fails, restore. A guard that has never been observed failing is unverified regardless of how it reads.
+- **Treat "the audit will tell me if this is wrong" as an instruction.** That thought is a precise description of a test that has not been written yet. Write it instead.
+
+None of this substitutes for the gate. It changes what the gate is spent on: the cross-cutting and adversarial findings a member is uniquely positioned to make, rather than defects already visible from the author's own chair.
+
 <!-- gaia:maintainer-only:start -->
 When this PR newly ships files, run `/distribution-audit` and land its manifest-answer commit first, before this step. The manifest answer commits `.gaia/manifest.json` and any `.gaia/release-exclude` change; neither path is an audit-machinery digest input nor a reviewed member surface, so the commit rotates no member's content digest and invalidates no marker already earned. It does move HEAD, and the `GAIA-Audit` commit status is keyed to HEAD's sha, so a manifest commit that lands after the handshake strands the just-posted status on the old HEAD and forces an extra status re-post on the new one. Landing the distribution-audit answer first is what leaves the handshake as the last thing to move HEAD: the handshake's own stamp commit is pushed before the status posts, so the status lands on the final PR head and stays put.
 <!-- gaia:maintainer-only:end -->
