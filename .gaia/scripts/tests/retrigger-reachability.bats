@@ -154,15 +154,16 @@ workflow_for_context() {
 # window are bash and shell, not YAML, and the two extraction-guard tests below
 # depend on a *literal* scrape disagreeing with a shape-independent count.
 #
-# Three reads of YAML stay line-oriented as well, and the reason is the same one
+# Four reads of YAML stay line-oriented as well, and the reason is the same one
 # that makes the parser worth it everywhere else. `workflow_for_context` matches
 # a job's `    name: <ctx>` at exactly four spaces; `workflow_for_name` and the
-# retrigger-listing test read a workflow's top-level `name:` with sed. A quoted
-# or differently-indented spelling defeats all three. Each fails CLOSED: the
-# lookup returns empty and its caller reports a named gap rather than skipping
-# the workflow, so a narrow scrape costs a false alarm here, never the false
-# green a silent drop-out would cost. Parsing buys nothing these three do not
-# already have.
+# retrigger-listing test read a workflow's top-level `name:` with sed; and the
+# dispatch-trigger test greps `^  workflow_dispatch:`. A quoted, inline-list, or
+# differently-indented spelling defeats each of them. All four fail CLOSED: the
+# read comes back empty or unmatched and its caller reports a named gap rather
+# than skipping the workflow, so a narrow scrape costs a false alarm here, never
+# the false green a silent drop-out would cost. Parsing buys nothing these four
+# do not already have.
 # ---------------------------------------------------------------------------
 
 # Gate only the tests that parse YAML, so the REQUIRED_CONTEXTS tests still run
@@ -662,6 +663,13 @@ workflow_timeout_gaps() {
   # A resolved workflow that yields no jobs is the quietest way this check stops
   # covering something: it contributes nothing to the gap list while every other
   # workflow keeps the run looking healthy. Report the per-workflow zero itself.
+  #
+  # The critical-path arm below cannot fire today, and is kept rather than
+  # dropped: reaching it requires `here` above zero, which means `ids` already
+  # parsed this file, and `path` re-reads it behind the same parse and
+  # jobs-mapping guards. It is the arm that starts reporting if those two modes
+  # ever stop agreeing, and its absence would leave `path` unset in that case.
+  # Being unreachable is also why no negative drives it.
   if [ "$here" -eq 0 ]; then
     gaps="${gaps}${wf}: found no jobs in $(basename "$file")"$'\n'
   elif ! path="$(workflow_critical_path "$file")"; then
@@ -1005,7 +1013,9 @@ YAML
 # the real repo, where every branch it takes is the healthy one, so each decision
 # there can be neutered with the whole suite still green. Drive every gap shape
 # here instead, and require a clean workflow to report none, or a reporter that
-# returns a constant would satisfy the other four.
+# returns a constant would satisfy the other four. Four of the five arms, not
+# all five: the critical-path arm cannot be reached while `ids` and `path` read
+# the same file behind the same guards, which the helper's own comment states.
 # ---------------------------------------------------------------------------
 
 @test "negative: every timeout gap shape is reported, and a clean workflow reports none" {
