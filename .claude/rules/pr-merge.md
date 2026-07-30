@@ -6,10 +6,10 @@
 
 Before dispatching any member: run the deterministic checks covering what you changed (the relevant test suites, the linters for the languages you touched, the Quality Gate when it applies), and write the adversarial fixtures an auditor would ask for. For new parsing or matching logic, one fixture per shape it might mishandle. Reach for a real parser rather than hand-rolling one for a format that has one.
 <!-- gaia:maintainer-only:start -->
-In this repo that means the bats suites for the paths touched and `bash .gaia/tests/shell-lint.sh`; run bats through `bash .gaia/scripts/bats5.sh` so local matches CI's bash 5.
+In this repo that means the bats suites for the paths touched and `bash .gaia/tests/shell-lint.sh`; run bats the way `.claude/rules/bats-assertions.md` prescribes, so local matches CI's bash 5.
 <!-- gaia:maintainer-only:end -->
 
-**For a guard, prove it can fail.** A guard whose assertions cannot be made to fire reports green in exactly the case it exists to catch. Break what it watches on purpose, confirm the failure, restore. This is per mechanism, not per file: a suite that goes red when you loosen one threshold says nothing about a second mechanism added in the same change, so mutate each one separately. An assertion that recomputes the logic under test in its own body is testing its own arithmetic, not the code.
+**For a guard, prove it can fail.** A guard whose assertions cannot be made to fire reports green in exactly the case it exists to catch. Mutate the guard's own logic, not only the thing it watches: drop a term from its formula, weaken a comparison, confirm a test goes red, restore. Doctoring the subject proves the fixture; mutating the guard proves the assertion. This is per mechanism, not per file: a suite that goes red when you loosen one threshold says nothing about a second mechanism added in the same change, so mutate each one separately. An assertion that recomputes the logic under test in its own body is testing its own arithmetic, not the code.
 
 Green locally is the entry condition for dispatch, not a milestone you pass once. Re-run it after the last edit, including edits made to prose or docs after the suites went green.
 

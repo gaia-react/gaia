@@ -153,6 +153,16 @@ workflow_for_context() {
 # What is deliberately NOT parsed this way: `REQUIRED_CONTEXTS` and the poller
 # window are bash and shell, not YAML, and the two extraction-guard tests below
 # depend on a *literal* scrape disagreeing with a shape-independent count.
+#
+# Three reads of YAML stay line-oriented as well, and the reason is the same one
+# that makes the parser worth it everywhere else. `workflow_for_context` matches
+# a job's `    name: <ctx>` at exactly four spaces; `workflow_for_name` and the
+# retrigger-listing test read a workflow's top-level `name:` with sed. A quoted
+# or differently-indented spelling defeats all three. Each fails CLOSED: the
+# lookup returns empty and its caller reports a named gap rather than skipping
+# the workflow, so a narrow scrape costs a false alarm here, never the false
+# green a silent drop-out would cost. Parsing buys nothing these three do not
+# already have.
 # ---------------------------------------------------------------------------
 
 # Gate only the tests that parse YAML, so the REQUIRED_CONTEXTS tests still run
@@ -417,15 +427,23 @@ workflow_critical_path() {
 # file holds a second, shorter poll loop (run-id resolution) whose own warning
 # text differs, and anchoring on the message keeps the two from being confused
 # if either moves.
+#
+# The sleep is bound to its own loop: each `seq` clears the pending cadence and
+# the FIRST bare `sleep` after it supplies the new one. Reading whichever sleep
+# happened to come last before the warning lets an unrelated sleep placed after
+# the loop set the cadence, and that is the one mis-derivation that is silent --
+# it inflates the window, so every ceiling loosens and the guard reports nothing.
+# Every other mis-derivation leaves the cadence unset and this returns empty,
+# which the caller reports as a failure to derive the window at all.
 poller_window_minutes() {
   awk '
     /seq 1 [0-9]+/ {
       v = $0; sub(/.*seq 1 /, "", v); sub(/[^0-9].*$/, "", v)
-      if (v != "") iters = v
+      if (v != "") { iters = v; slp = "" }
     }
     /^[[:space:]]*sleep [0-9]+[[:space:]]*$/ {
       v = $0; sub(/^[[:space:]]*sleep /, "", v); sub(/[^0-9].*$/, "", v)
-      if (v != "") slp = v
+      if (v != "" && slp == "") slp = v
     }
     /did not complete within/ {
       if (iters != "" && slp != "") { printf "%d\n", (iters * slp) / 60 }
@@ -615,8 +633,52 @@ job_filter_dependent_step_ifs() {
 #    while a two-job chain has to fit 15m.
 # ---------------------------------------------------------------------------
 
+# Every timeout gap the workflow named <workflow-name> presents under a
+# <window>-minute poll window, one line per gap, empty when it has none.
+#
+# The decisions live here rather than inline in the test body because bats cannot
+# call one test's body from another. A predicate written inline is executed only
+# against the healthy repo, where every branch it can take is the passing one, so
+# neutering any of them leaves the suite green; from a helper a negative can
+# drive each gap shape against a sandbox that actually has it.
+workflow_timeout_gaps() {
+  local dir="$1" wf="$2" window="$3"
+  local file id cap path minutes hops ceiling here=0 gaps=""
+
+  file="$(workflow_for_name "$dir" "$wf")"
+  if [ -z "$file" ]; then
+    printf '%s: no workflow file declares this name\n' "$wf"
+    return 0
+  fi
+
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    here=$(( here + 1 ))
+    cap="$(job_timeout_minutes "$file" "$id")"
+    [ -n "$cap" ] \
+      || gaps="${gaps}${wf} / ${id}: no timeout-minutes; inherits the 6-hour runner default"$'\n'
+  done < <(workflow_job_ids "$file")
+
+  # A resolved workflow that yields no jobs is the quietest way this check stops
+  # covering something: it contributes nothing to the gap list while every other
+  # workflow keeps the run looking healthy. Report the per-workflow zero itself.
+  if [ "$here" -eq 0 ]; then
+    gaps="${gaps}${wf}: found no jobs in $(basename "$file")"$'\n'
+  elif ! path="$(workflow_critical_path "$file")"; then
+    gaps="${gaps}${wf}: could not resolve a critical path through $(basename "$file")"$'\n'
+  else
+    minutes="${path% *}"
+    hops="${path#* }"
+    ceiling="$(chain_ceiling "$window" "$hops")"
+    [ "$minutes" -le "$ceiling" ] \
+      || gaps="${gaps}${wf}: worst needs-chain totals ${minutes}m over ${hops} hop(s), past the ${ceiling}m ceiling (${window}m poll window - ${POLLER_MARGIN_MIN}m margin x ${hops})"$'\n'
+  fi
+
+  printf '%s' "$gaps"
+}
+
 @test "every retrigger workflow's jobs cap runtime under the self-heal poller window" {
-  local window names wf file id cap here path minutes hops ceiling checked=0 gaps=""
+  local window names wf gaps
 
   require_yaml_parser
   [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
@@ -634,49 +696,18 @@ job_filter_dependent_step_ifs() {
   names="$(retrigger_workflow_names)"
   [ -n "$names" ] || { echo "retrigger_workflows resolved empty" >&2; return 1; }
 
-  while IFS= read -r wf; do
-    [ -n "$wf" ] || continue
-    file="$(workflow_for_name "$WORKFLOWS_DIR" "$wf")"
-    [ -n "$file" ] || {
-      gaps="${gaps}${wf}: no workflow file declares this name"$'\n'
-      continue
-    }
-    here=0
-    while IFS= read -r id; do
-      [ -n "$id" ] || continue
-      here=$(( here + 1 ))
-      checked=$(( checked + 1 ))
-      cap="$(job_timeout_minutes "$file" "$id")"
-      if [ -z "$cap" ]; then
-        gaps="${gaps}${wf} / ${id}: no timeout-minutes; inherits the 6-hour runner default"$'\n'
-      fi
-    done < <(workflow_job_ids "$file")
+  gaps="$(
+    while IFS= read -r wf; do
+      [ -n "$wf" ] || continue
+      workflow_timeout_gaps "$WORKFLOWS_DIR" "$wf" "$window"
+    done < <(printf '%s\n' "$names")
+  )"
 
-    # A resolved workflow that yields no jobs is the quietest way this test can
-    # stop covering something: it contributes nothing to `gaps`, and the other
-    # workflows keep the aggregate `checked` above zero, so the run-wide guard
-    # below never notices. Report the per-workflow zero as its own gap.
-    if [ "$here" -eq 0 ]; then
-      gaps="${gaps}${wf}: found no jobs in $(basename "$file")"$'\n'
-      continue
-    fi
-
-    if ! path="$(workflow_critical_path "$file")"; then
-      gaps="${gaps}${wf}: could not resolve a critical path through $(basename "$file")"$'\n'
-      continue
-    fi
-    minutes="${path% *}"
-    hops="${path#* }"
-    ceiling="$(chain_ceiling "$window" "$hops")"
-    if [ "$minutes" -gt "$ceiling" ]; then
-      gaps="${gaps}${wf}: worst needs-chain totals ${minutes}m over ${hops} hop(s), past the ${ceiling}m ceiling (${window}m poll window - ${POLLER_MARGIN_MIN}m margin x ${hops})"$'\n'
-    fi
-  done < <(printf '%s\n' "$names")
-
-  # Same hollowness concern as everywhere else in this suite: a job scrape that
-  # matches nothing runs the loop zero times and reports green.
-  [ "$checked" -gt 0 ] || { echo "no jobs examined; the job scrape found nothing" >&2; return 1; }
-  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+  # No separate "did anything get examined" counter is needed here. A declared
+  # name that resolves to no file, and a file that yields no jobs, are each a gap
+  # of their own, so an empty result already means every name resolved and every
+  # job was priced. A hollow run cannot look like a clean one.
+  [ -z "$gaps" ] || { printf '%s\n' "$gaps" >&2; return 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -832,12 +863,25 @@ YAML
 # ---------------------------------------------------------------------------
 
 @test "negative: two REQUIRED_CONTEXTS entries on one line are caught" {
-  local original="$VERIFY" want
+  local original="$VERIFY" want ctx
 
   # Derived, not hardcoded: adding a required context is a legitimate change and
   # must not fail this test.
   want="$(declared_entry_count)"
   [ "$want" -gt 1 ] || { echo "need 2+ entries to collapse a pair" >&2; return 1; }
+
+  # The pair the collapse targets has to still be there. Deriving these two by
+  # position instead would couple the fixture to array order, which is no better
+  # than coupling it to names; what the names cost is a bad diagnostic, so pay
+  # for that directly. Without this, renaming either entry makes the collapse a
+  # no-op and the failure below blames `declared_contexts` for a regression it
+  # does not have.
+  for ctx in "Audit CI Tests" "Run Chromatic"; do
+    declared_contexts | grep -qxF -- "$ctx" || {
+      echo "fixture target '${ctx}' is no longer a declared context; pick another entry" >&2
+      return 1
+    }
+  done
 
   VERIFY="$BATS_TEST_TMPDIR/verify-collapsed.sh"
   awk '
@@ -875,6 +919,14 @@ YAML
 
   want="$(declared_entry_count)"
   [ "$want" -gt 0 ] || { echo "no entries to unquote" >&2; return 1; }
+
+  # Same reason as the collapse test above: without this, renaming the entry
+  # makes the sed a no-op and the failure blames the scrape instead of naming the
+  # fixture target that moved.
+  declared_contexts | grep -qxF -- "Distribution Audit" || {
+    echo "fixture target 'Distribution Audit' is no longer a declared context; pick another entry" >&2
+    return 1
+  }
 
   # Same entries, one of them stripped of its quotes.
   VERIFY="$BATS_TEST_TMPDIR/verify-unquoted.sh"
@@ -935,7 +987,173 @@ YAML
   [ -n "$subject" ] || { echo "sandbox lost the Chromatic workflow" >&2; return 1; }
   grep -v '^    timeout-minutes:' "$subject" > "$subject.doctored"
   mv "$subject.doctored" "$subject"
-  [ -z "$(job_timeout_minutes "$subject" "chromatic")" ]
+  # Status first, emptiness second. `cap` mode exits non-zero with EMPTY stdout
+  # when the file names no such job, so reading the substitution alone cannot
+  # tell "this job declares no cap" (the shape being asserted) from "there is no
+  # such job" (a state that must be rejected). Renaming chromatic.yml's job id
+  # would otherwise leave this, the only negative covering the no-cap shape,
+  # green while asserting nothing.
+  cap="$(job_timeout_minutes "$subject" "chromatic")" || {
+    echo "sandbox Chromatic declares no 'chromatic' job id; the fixture no longer models the defect" >&2
+    return 1
+  }
+  [ -z "$cap" ]
+}
+
+# ---------------------------------------------------------------------------
+# Negative: `workflow_timeout_gaps`'s own decisions. Its only other caller reads
+# the real repo, where every branch it takes is the healthy one, so each decision
+# there can be neutered with the whole suite still green. Drive every gap shape
+# here instead, and require a clean workflow to report none, or a reporter that
+# returns a constant would satisfy the other four.
+# ---------------------------------------------------------------------------
+
+@test "negative: every timeout gap shape is reported, and a clean workflow reports none" {
+  local sb="$BATS_TEST_TMPDIR/gapshapes"
+  local window=25 gaps
+
+  require_yaml_parser
+  mkdir -p "$sb"
+
+  # A fixed window rather than the derived one: these fixtures assert exact
+  # ceiling arithmetic, and deriving the window would make them move with the
+  # poller. The derivation has its own negative below.
+  cat > "$sb/uncapped.yml" <<'YAML'
+name: Uncapped
+jobs:
+  capped:
+    timeout-minutes: 4
+  naked:
+    runs-on: ubuntu-latest
+YAML
+  cat > "$sb/chained.yml" <<'YAML'
+name: Chained
+jobs:
+  first:
+    timeout-minutes: 12
+  second:
+    needs: first
+    timeout-minutes: 12
+YAML
+  cat > "$sb/jobless.yml" <<'YAML'
+name: Jobless
+on:
+  workflow_dispatch:
+YAML
+  cat > "$sb/clean.yml" <<'YAML'
+name: Clean
+jobs:
+  only:
+    timeout-minutes: 8
+YAML
+
+  # The uncapped job is named; the capped one beside it is not, or the branch is
+  # reporting every job rather than the ones that inherit the 6-hour default.
+  gaps="$(workflow_timeout_gaps "$sb" "Uncapped" "$window")"
+  printf '%s' "$gaps" | grep -qF -- "Uncapped / naked: no timeout-minutes" || {
+    echo "the uncapped job went unreported: '${gaps}'" >&2
+    return 1
+  }
+  printf '%s' "$gaps" | grep -qF -- "Uncapped / capped" && {
+    echo "a capped job was reported as a gap: '${gaps}'" >&2
+    return 1
+  }
+
+  # 12 + 12 over two hops, against the 15m that two hops leave of a 25m window.
+  # Neither job breaches the 20m a lone job would face, which is why the chain,
+  # not any single cap, is what gets compared.
+  gaps="$(workflow_timeout_gaps "$sb" "Chained" "$window")"
+  printf '%s' "$gaps" \
+    | grep -qF -- "Chained: worst needs-chain totals 24m over 2 hop(s), past the 15m ceiling" || {
+    echo "the over-ceiling chain went unreported: '${gaps}'" >&2
+    return 1
+  }
+
+  # A workflow that declares no jobs drops out of every loop while contributing
+  # nothing to the gap list, so it has to report itself.
+  gaps="$(workflow_timeout_gaps "$sb" "Jobless" "$window")"
+  printf '%s' "$gaps" | grep -qF -- "Jobless: found no jobs in jobless.yml" || {
+    echo "a job-less workflow went unreported: '${gaps}'" >&2
+    return 1
+  }
+
+  # Same for a declared name no file carries: dispatched by name, so an
+  # unresolvable one means the retrigger cannot reach it at all.
+  gaps="$(workflow_timeout_gaps "$sb" "Absent" "$window")"
+  printf '%s' "$gaps" | grep -qF -- "Absent: no workflow file declares this name" || {
+    echo "an unresolvable workflow name went unreported: '${gaps}'" >&2
+    return 1
+  }
+
+  gaps="$(workflow_timeout_gaps "$sb" "Clean" "$window")"
+  [ -z "$gaps" ]
+}
+
+# ---------------------------------------------------------------------------
+# Negative: the poll window is derived from the poller, not restated. Nothing
+# else executes that derivation against a known input, so replacing it with the
+# number it happens to produce today would pass every other test in the suite
+# while the ceiling stopped tracking the poller it is meant to follow.
+# ---------------------------------------------------------------------------
+
+# A stub in the shape `poller_window_minutes` reads: a short run-id loop, then
+# the completion loop whose cadence is the answer, then the warning the
+# derivation anchors on. 120 x 10s is 20 minutes, deliberately NOT the real
+# workflow's 25, so a derivation replaced by a literal fails here.
+write_poller_fixture() {
+  local variant="$1"
+  printf 'poll_and_stamp() {\n  run_id=""\n'
+  printf "  for _ in \$(seq 1 18); do\n"
+  printf '    if [ -n "$run_id" ]; then break; fi\n    sleep 5\n  done\n'
+  printf "  for _ in \$(seq 1 120); do\n"
+  printf '    if [ "$status" = completed ]; then break; fi\n'
+  if [ "$variant" = "commented-sleep" ]; then
+    printf '    sleep 10 # be patient\n'
+  else
+    printf '    sleep 10\n'
+  fi
+  printf '  done\n'
+  [ "$variant" != "trailing-sleep" ] || printf '  sleep 60\n'
+  if [ "$variant" = "reworded-warning" ]; then
+    printf '  echo "WARN: run timed out; not stamping" >&2\n'
+  else
+    printf '  echo "WARN: run did not complete within 20 min; not stamping" >&2\n'
+  fi
+  printf '}\n'
+}
+
+@test "negative: the poll window is derived from the completion loop, not restated" {
+  local sb="$BATS_TEST_TMPDIR/poller"
+  local got
+
+  mkdir -p "$sb"
+
+  # The run-id loop comes first and is the wrong one to read: its cadence would
+  # answer 10 and its iteration count 1, neither of which is 20.
+  write_poller_fixture plain > "$sb/plain.sh"
+  got="$(poller_window_minutes "$sb/plain.sh")"
+  [ "$got" = "20" ] || { echo "derived '${got}' from the stub poller, want 20" >&2; return 1; }
+
+  # A sleep AFTER the completion loop is not that loop's cadence. Reading
+  # whichever sleep came last before the warning derives 150 here: a ceiling six
+  # times too loose, which reports nothing and is the one silent direction.
+  write_poller_fixture trailing-sleep > "$sb/trailing.sh"
+  got="$(poller_window_minutes "$sb/trailing.sh")"
+  [ "$got" = "20" ] || {
+    echo "a sleep after the loop moved the window to '${got}'; want 20" >&2
+    return 1
+  }
+
+  # The remaining mis-derivations fail closed. An unrecognized sleep line leaves
+  # the cadence unset, and a reworded anchor never reaches the arithmetic; both
+  # return empty and the caller reports that it could not derive the window,
+  # rather than enforcing a wrong one.
+  write_poller_fixture commented-sleep > "$sb/commented.sh"
+  got="$(poller_window_minutes "$sb/commented.sh")"
+  [ -z "$got" ] || { echo "a commented sleep still derived '${got}'" >&2; return 1; }
+
+  write_poller_fixture reworded-warning > "$sb/reworded.sh"
+  [ -z "$(poller_window_minutes "$sb/reworded.sh")" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -1327,6 +1545,33 @@ write_filter_fixture() {
       return 1
     }
   done
+
+  # The gate counts wherever it sits, not only on the job's first paths-filter
+  # step. Reading `steps[0]` alone answers `other` for this shape, the caller
+  # skips the job outright, and the job leaves the test's scope with nothing to
+  # report it -- the silent scope-drop this whole test exists to prevent. No
+  # workflow in the repo runs two paths-filter steps in one job today, so this
+  # fixture is the only thing holding the reader to every step.
+  cat > "$sb/two-step.yml" <<'YAML'
+jobs:
+  probe:
+    name: Probe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: prefilter
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        if: github.event_name == 'pull_request'
+        id: filter
+YAML
+  gate="$(job_filter_gate "$sb/two-step.yml" "Probe")" || {
+    echo "two-step: the gate could not be read at all" >&2
+    return 1
+  }
+  [ "$gate" = "pull_request" ] || {
+    echo "two-step: a gate on the second paths-filter step read as '${gate}'" >&2
+    return 1
+  }
 
   # An unrelated gate must NOT match, or the normalization has widened into a
   # match-anything that pulls jobs whose filter does run on a dispatch into the
