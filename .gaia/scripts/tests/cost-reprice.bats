@@ -150,6 +150,27 @@ run_deadline() {
   [ "$(sed -n '3p' "$LEDGER" | jq -r '.dollars')" = "0.87925" ]
 }
 
+@test "a null-dollars row with intact attribution is re-priced, not skipped" {
+  # token-tally.sh writes exactly this on its own degrade path: the rate table was
+  # unresolvable when the row was written, so dollars and rate_table_id are null
+  # while by_model and ts survive. It is the shape most in need of a later pass,
+  # and null is unknown rather than known-zero, so recomputing only adds
+  # information. Skipping it reported "already current" for a row this whole
+  # remediation exists to fix.
+  jq -c -n --argjson bm "$BY_MODEL" \
+    '{schema_version:1, kind:"execute", session_id:"tally-degraded", by_model:$bm,
+      dollars:null, rate_table_id:null, ts:"2026-07-28T07:28:15Z", final:true}' \
+    >> "$LEDGER"
+
+  run run_reprice "$RATES_FULL"
+  [ "$status" -eq 0 ]
+
+  [ "$(jq -r '.dollars' "$LEDGER")" = "0.87925" ]
+  [ "$(jq -r '.rate_table_id' "$LEDGER")" != "null" ]
+  # The report renders an unknown prior figure as "unpriced", not as "$null".
+  grep -qF -- 'unpriced -> $0.87925' <<<"$output"
+}
+
 @test "a row with no by_model attribution is left byte-identical" {
   jq -c -n '{schema_version:1, kind:"execute", session_id:"legacy",
              dollars:null, ts:"2026-07-28T07:28:15Z"}' >> "$LEDGER"
@@ -380,8 +401,13 @@ STUB
   git -C "$repo" add -A
   git -C "$repo" -c user.email=t@example.com -c user.name=T commit --quiet -m init
 
+  # A hard failure, not a skip. `worktree add` has shipped since git 2.5, so a
+  # failure here means the fixture is broken, and skipping would silently retire
+  # the only coverage of the no-arg path. The `command -v git` check above is the
+  # genuine precondition; this is not one.
   wt="$SANDBOX/wt"
-  git -C "$repo" worktree add --quiet -b wt-branch "$wt" >/dev/null 2>&1 || skip "git worktree add unavailable"
+  git -C "$repo" worktree add -b wt-branch "$wt" \
+    || { echo "worktree add failed" >&2; return 1; }
 
   before="$(cat "$repo/.gaia/local/telemetry/cost.jsonl")"
   run env -u GAIA_MAIN_ROOT bash -c "cd '$wt' && bash .gaia/scripts/cost-reprice.sh"

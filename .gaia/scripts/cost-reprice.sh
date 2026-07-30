@@ -47,6 +47,11 @@
 #     malformed bucket value would otherwise delete its row and report success.
 #     A record count that disagrees with the ledger's line count refuses the
 #     whole rewrite and prints what jq said.
+#   - A row whose `dollars` is null but whose `by_model` and `ts` are intact IS
+#     re-priced. token-tally.sh writes that shape on its own degrade path, when
+#     the rate table could not be resolved as the row was written, so it is the
+#     shape most in need of a later pass. Null means unknown rather than known-
+#     zero, so recomputing it can only add information.
 #   - Two kinds of row that cannot be fully recomputed are passed through
 #     byte-identical rather than rewritten, both because a partial recomputation
 #     would overwrite a real stored figure with a confident-looking wrong one:
@@ -261,11 +266,18 @@ _cost_reprice_run() {
              | ($k | length) > 0
                and (($k | map(select(test("^claude-"))) | length) == ($k | length)));
 
+      # A null `dollars` IS a candidate, not a skip. token-tally.sh writes exactly
+      # that on its own documented degrade, the rate table being unresolvable when
+      # the row was written, leaving by_model and ts intact. Null means unknown, so
+      # recomputing it strictly adds information; that is the opposite of the two
+      # pass-through classes above and below, where a partial recompute would
+      # overwrite a figure that is actually known. Skipping it would report
+      # "already current" for rows the remediation exists to fix.
       . as $raw
       | (try ($raw | fromjson) catch null) as $row
       | if ($row | type) != "object"
            or (fully_priceable($row.by_model // {}) | not)
-           or (($row.dollars | type) != "number")
+           or (($row.dollars | type) | . != "number" and . != "null")
         then {changed: false, line: $raw}
         else
           priced_row($row) as $p
@@ -310,10 +322,20 @@ _cost_reprice_run() {
   fi
   rm -f "$jq_err"
 
+  # Digit-guarded like the other two counts. No live failure mode (it reads the
+  # same string a successful jq -s already parsed), but a count this script acts
+  # on should not be the one that is trusted unchecked.
   changed_count="$(printf '%s\n' "$classified" | jq -s '[.[] | select(.changed)] | length')"
+  case "$changed_count" in
+    '' | *[!0-9]*)
+      log "cost-reprice: could not count the changed records (got '${changed_count}'); refusing to rewrite"
+      return 1 ;;
+  esac
 
   printf '%s\n' "$classified" \
-    | jq -r 'select(.changed) | "  reprice: \(.ts) \(.kind)  $\(.before) -> $\(.after)"'
+    | jq -r 'select(.changed)
+             | (if .before == null then "unpriced" else "$" + (.before | tostring) end) as $b
+             | "  reprice: \(.ts) \(.kind)  \($b) -> $\(.after)"'
 
   if [ "$changed_count" -eq 0 ]; then
     printf 'cost-reprice: 0 row(s) re-priced (%s scanned); ledger already current.\n' "$total_count"
