@@ -15,7 +15,21 @@ jobs:
   tests:
     name: Vitest and Playwright
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 60
+    # Bounded by the self-heal re-trigger poller in code-review-audit.yml, which
+    # waits ~25 minutes for a dispatched run and then stamps nothing, leaving
+    # this required context ABSENT on the self-heal HEAD instead of red. A job
+    # that hits this cap is cancelled and its run still completes, so the poller
+    # stamps a failure: an ordinary red check to re-run rather than a merge
+    # wedged with no signal. 20 keeps ~5 minutes under that window for queue
+    # time, which the cap does not cover because it bounds execution only.
+    #
+    # The suite itself is nowhere near this: a full run is about 5 minutes, of
+    # which Vitest and Playwright together are under a minute. The long tail is
+    # `Install Playwright Browsers`, a browser and apt download that normally
+    # takes ~2 minutes and is bounded by the mirror rather than by anything in
+    # this repo. That tail, not the test count, is why the sibling jobs' 15 does
+    # not settle this job.
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     permissions:
       contents: read

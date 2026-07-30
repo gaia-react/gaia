@@ -16,6 +16,12 @@ jobs:
   has-chromatic-token:
     name: Check for Chromatic token
     runs-on: ubuntu-latest
+    # One echo into $GITHUB_OUTPUT, with no checkout and no network. The cap is
+    # here because the self-heal poller waits on the RUN, and a run completes
+    # only once every job does, so an uncapped job of any size can hold the
+    # whole run past the poller's window and leave `Run Chromatic` absent on the
+    # self-heal HEAD.
+    timeout-minutes: 5
     # Reads a secret's presence and echoes a boolean. No API calls, no token.
     permissions: {}
     outputs:
@@ -30,6 +36,12 @@ jobs:
     name: Run Chromatic
     needs: has-chromatic-token
     if: needs.has-chromatic-token.outputs.present == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    # Same poller bound as tests.yml: ~25-minute window, ~5 minutes of margin
+    # for queue time, so a job that runs to this cap still lets the run complete
+    # in time to be stamped red rather than left absent. `exitOnceUploaded`
+    # keeps the real work near 2 minutes, so this caps the failure mode that
+    # matters here, an upload that hangs rather than returns.
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     # `contents: read` is the complete set, not an under-scoped starting point.
     # Checkout needs it to clone, and paths-filter and setup-node both default

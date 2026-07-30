@@ -16,7 +16,13 @@
 #   2. its job's `if:` admits `workflow_dispatch`, or the job skips and the
 #      stamp records `skipped`, which does not satisfy a required check;
 #   3. its workflow's display name is listed in `retrigger_workflows`, or
-#      nothing dispatches it in the first place.
+#      nothing dispatches it in the first place;
+#   4. every job in a dispatched workflow finishes inside the poller's window,
+#      or the poller gives up, stamps nothing, and the context is ABSENT on the
+#      self-heal HEAD rather than red. A job that hits its own
+#      `timeout-minutes` is cancelled and its run still completes, so the
+#      poller stamps a failure; a job with no cap inherits the 6-hour runner
+#      default and can outlive the poller instead.
 #
 # Break any one and a self-heal commit wedges the PR permanently. This is
 # latent while the repo runs `default_mode: local`, so nothing else in the PR
@@ -34,6 +40,12 @@ setup() {
   WORKFLOWS_DIR="$REPO_ROOT/.github/workflows"
   VERIFY="$REPO_ROOT/.gaia/scripts/verify-required-checks.sh"
   READ_CONFIG="$REPO_ROOT/.gaia/scripts/read-audit-ci-config.sh"
+  AUDIT_WORKFLOW="$WORKFLOWS_DIR/code-review-audit.yml"
+  # Margin between the poller's window and the highest cap a dispatched job may
+  # declare. `timeout-minutes` bounds a job's EXECUTION, while the poller
+  # measures the run's wall clock, so the margin absorbs queue time plus the
+  # <=90s the poller spends resolving the dispatched run's id.
+  POLLER_MARGIN_MIN=5
   [ -d "$WORKFLOWS_DIR" ] || skip ".github/workflows not present"
   [ -f "$VERIFY" ] || skip "verify-required-checks.sh not present"
   [ -f "$READ_CONFIG" ] || skip "read-audit-ci-config.sh not present"
@@ -51,12 +63,29 @@ declared_contexts() {
 }
 
 # How many entries the array declares, counted without depending on the quoting
-# or indentation the scrape above keys on. Continuation comment lines inside the
-# array (the rationale after `Vitest (.gaia/cli)`) start with `#` and are excluded.
+# or indentation the scrape above keys on. Trailing comments are stripped first,
+# so the continuation comment lines inside the array (the rationale after
+# `Vitest (.gaia/cli)`) contribute nothing.
+#
+# Counting quoted TOKENS rather than lines is load-bearing. Two entries sharing
+# one line (`  "A" "B"`) is one line but two entries, and the scrape above emits
+# only the first of them, so a line count agrees with the partial scrape at 1
+# and the guard passes while the second entry goes unguarded by every loop
+# below. Both quote styles count, which keeps this shape-independent: the
+# single-quote reformat the negative test applies still reports entries here
+# while the double-quote scrape empties, which is the disagreement that test
+# requires.
+#
+# `|| true` keeps a zero count a reported failure rather than an opaque one:
+# `grep -c` exits 1 on no match, and bats runs each test under `set -e`, so
+# without it the caller's assignment aborts the test before it can reach the
+# `declares no entries` branch that exists to explain exactly this.
 declared_entry_count() {
   sed -n '/^REQUIRED_CONTEXTS=(/,/^)/p' "$VERIFY" \
     | sed '1d;$d' \
-    | grep -cE '^[[:space:]]*[^#[:space:]]'
+    | sed 's/#.*$//' \
+    | grep -oE "\"[^\"]*\"|'[^']*'" \
+    | grep -c . || true
 }
 
 # Guard the scrape before any assertion loops over it. A cosmetic edit to
@@ -129,6 +158,75 @@ retrigger_workflow_names() {
     | sed '1d;$d'
 }
 
+# The workflow file whose top-level `name:` is <workflow-name>. The retrigger
+# knob names workflows by display name, where `workflow_for_context` above
+# resolves a JOB's display name.
+workflow_for_name() {
+  local dir="$1" want="$2" f
+  for f in "$dir"/*.yml "$dir"/*.yaml; do
+    [ -f "$f" ] || continue
+    [ "$(sed -n 's/^name:[[:space:]]*//p' "$f" | head -n1)" = "$want" ] \
+      && { printf '%s' "$f"; return 0; }
+  done
+  return 0
+}
+
+# Every job id under the workflow's top-level `jobs:` key. Scoped to that block
+# on purpose: `on:`'s trigger keys (`push:`, `pull_request:`, `workflow_dispatch:`)
+# share the two-space bare-key shape, so an unscoped scan reads them as jobs and
+# then reports three phantom missing timeouts per workflow.
+workflow_job_ids() {
+  awk '
+    /^jobs:[[:space:]]*$/ { in_jobs = 1; next }
+    in_jobs && /^[A-Za-z]/ { in_jobs = 0 }
+    in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
+      id = $0; sub(/:[[:space:]]*$/, "", id); sub(/^  /, "", id); print id
+    }
+  ' "$1"
+}
+
+# A job's declared `timeout-minutes`, or empty when it declares none (in which
+# case the job inherits the runner's 6-hour default).
+job_timeout_minutes() {
+  awk -v want="  $2:" '
+    $0 == want { in_job = 1; next }
+    in_job && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { exit }
+    in_job && /^    timeout-minutes:[[:space:]]*[0-9]+[[:space:]]*$/ {
+      v = $0
+      sub(/^    timeout-minutes:[[:space:]]*/, "", v)
+      sub(/[[:space:]]*$/, "", v)
+      print v
+      exit
+    }
+  ' "$1"
+}
+
+# The completion-poll window in code-review-audit.yml's `poll_and_stamp`, in
+# minutes: iterations x sleep seconds. Derived from the workflow rather than
+# restated here so that changing the poller re-derives the ceiling below instead
+# of leaving this guard enforcing a number the poller no longer honors.
+#
+# The loop is identified by the warning it guards, not by position: the same
+# file holds a second, shorter poll loop (run-id resolution) whose own warning
+# text differs, and anchoring on the message keeps the two from being confused
+# if either moves.
+poller_window_minutes() {
+  awk '
+    /seq 1 [0-9]+/ {
+      v = $0; sub(/.*seq 1 /, "", v); sub(/[^0-9].*$/, "", v)
+      if (v != "") iters = v
+    }
+    /^[[:space:]]*sleep [0-9]+[[:space:]]*$/ {
+      v = $0; sub(/^[[:space:]]*sleep /, "", v); sub(/[^0-9].*$/, "", v)
+      if (v != "") slp = v
+    }
+    /did not complete within/ {
+      if (iters != "" && slp != "") { printf "%d\n", (iters * slp) / 60 }
+      exit
+    }
+  ' "$1"
+}
+
 # ---------------------------------------------------------------------------
 # 1. Every declared-required context's workflow can be dispatched at all.
 # ---------------------------------------------------------------------------
@@ -192,22 +290,53 @@ retrigger_workflow_names() {
 #     output on a dispatch and is correctly not subject to this rule.
 # ---------------------------------------------------------------------------
 
-# True when the job gates a `dorny/paths-filter` step to `pull_request`, so the
+# The step block (a `      - ` list item plus its continuation lines) that runs
+# `dorny/paths-filter`, or nothing when the job has no such step. Same shape as
+# `job_block` above: `exit` at the following item's boundary falls through to
+# END, so the wanted block is emitted there and only there.
+filter_step_block() {
+  printf '%s' "$1" | awk '
+    /^      - / {
+      if (found) exit
+      block = ""
+    }
+    { block = block $0 "\n" }
+    /dorny\/paths-filter/ { found = 1 }
+    END { if (found) printf "%s", block }
+  '
+}
+
+# True when the job gates its `dorny/paths-filter` step to `pull_request`, so the
 # outputs it produces are unset on the dispatch lane.
+#
+# The gate is compared after normalizing away the `${{ }}` wrapper and repeated
+# whitespace, because GitHub accepts `if: <expr>` and `if: ${{ <expr> }}` as the
+# same condition. Matching one spelling byte-for-byte would silently drop a job
+# out of the caller's scope the moment someone rewrote its gate to the other,
+# and the caller's loop would then assert nothing about that job's steps while
+# still reporting green.
 job_skips_filter_on_dispatch() {
-  local block="$1"
-  printf '%s' "$block" | grep -qF -- "dorny/paths-filter" || return 1
-  printf '%s' "$block" | grep -qxF -- "        if: github.event_name == 'pull_request'"
+  local block gate
+  block="$(filter_step_block "$1")"
+  [ -n "$block" ] || return 1
+  gate="$(printf '%s' "$block" | sed -n 's/^        if:[[:space:]]*//p' | head -n1)"
+  gate="$(printf '%s' "$gate" \
+    | sed -e 's/\${{//g' -e 's/}}//g' \
+          -e 's/[[:space:]][[:space:]]*/ /g' \
+          -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  [ "$gate" = "github.event_name == 'pull_request'" ]
 }
 
 @test "no required-context job step is gated on a dispatch-skipped filter alone" {
-  local ctx file block gaps=""
+  local ctx file block candidates=0 gaps=""
   assert_extraction_intact
   while IFS= read -r ctx; do
     [ -n "$ctx" ] || continue
     file="$(workflow_for_context "$WORKFLOWS_DIR" "$ctx")"
     [ -n "$file" ] || continue
     block="$(job_block "$file" "$ctx")"
+    printf '%s' "$block" | grep -qF -- "dorny/paths-filter" \
+      && candidates=$(( candidates + 1 ))
     job_skips_filter_on_dispatch "$block" || continue
     while IFS= read -r step_if; do
       [ -n "$step_if" ] || continue
@@ -216,6 +345,18 @@ job_skips_filter_on_dispatch() {
     done < <(printf '%s' "$block" | grep -F -- "steps.filter.outputs.")
   done < <(required_job_contexts)
 
+  # This test only says something where a required-context job actually runs
+  # `dorny/paths-filter`. If the scrape ever stops finding one, the loop above
+  # goes vacuous and reports green having examined nothing, which is the same
+  # hollow-guard failure `assert_extraction_intact` exists to prevent one level
+  # up. Deliberately not a count of jobs the detector MATCHED: a job whose
+  # filter is gated on something else (chromatic.yml gates its on the
+  # chore-deps output) is correctly not a match, so requiring one would fail on
+  # a healthy repo.
+  [ "$candidates" -gt 0 ] || {
+    echo "no required-context job runs dorny/paths-filter; this test asserted nothing" >&2
+    return 1
+  }
   [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
 }
 
@@ -239,6 +380,61 @@ job_skips_filter_on_dispatch() {
       || gaps="${gaps}${ctx}: workflow '${wf_name}' absent from retrigger_workflows"$'\n'
   done < <(required_job_contexts)
 
+  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# 4. Every job in a dispatched workflow finishes inside the poller's window.
+#    The poller waits on the RUN, and a run completes only when all of its jobs
+#    do, so one uncapped job holds the whole run past the window: the poller
+#    logs `did not complete within`, stamps nothing, and every context that run
+#    would have supplied is absent on the self-heal HEAD. Absent is strictly
+#    worse than red -- a red check is an ordinary failure to re-run, an absent
+#    one wedges the merge with no signal -- so the cap is what converts the
+#    worse outcome into the ordinary one.
+# ---------------------------------------------------------------------------
+
+@test "every retrigger workflow's jobs cap runtime under the self-heal poller window" {
+  local window ceiling names wf file id cap checked=0 gaps=""
+
+  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+
+  window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
+  [ -n "$window" ] || {
+    echo "could not derive the poll window from $(basename "$AUDIT_WORKFLOW")" >&2
+    return 1
+  }
+  ceiling=$(( window - POLLER_MARGIN_MIN ))
+  [ "$ceiling" -gt 0 ] || {
+    echo "poll window ${window}m leaves no room for the ${POLLER_MARGIN_MIN}m margin" >&2
+    return 1
+  }
+
+  names="$(retrigger_workflow_names)"
+  [ -n "$names" ] || { echo "retrigger_workflows resolved empty" >&2; return 1; }
+
+  while IFS= read -r wf; do
+    [ -n "$wf" ] || continue
+    file="$(workflow_for_name "$WORKFLOWS_DIR" "$wf")"
+    [ -n "$file" ] || {
+      gaps="${gaps}${wf}: no workflow file declares this name"$'\n'
+      continue
+    }
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      checked=$(( checked + 1 ))
+      cap="$(job_timeout_minutes "$file" "$id")"
+      if [ -z "$cap" ]; then
+        gaps="${gaps}${wf} / ${id}: no timeout-minutes; inherits the 6-hour runner default"$'\n'
+      elif [ "$cap" -gt "$ceiling" ]; then
+        gaps="${gaps}${wf} / ${id}: timeout-minutes ${cap} exceeds the ${ceiling}m ceiling (${window}m poll window - ${POLLER_MARGIN_MIN}m margin)"$'\n'
+      fi
+    done < <(workflow_job_ids "$file")
+  done < <(printf '%s\n' "$names")
+
+  # Same hollowness concern as everywhere else in this suite: a job scrape that
+  # matches nothing runs the loop zero times and reports green.
+  [ "$checked" -gt 0 ] || { echo "no jobs examined; the job scrape found nothing" >&2; return 1; }
   [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
 }
 
@@ -297,4 +493,105 @@ job_skips_filter_on_dispatch() {
   run assert_extraction_intact
   VERIFY="$original"
   [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Negative: two entries sharing one line. The scrape emits only the first of
+# them, so every loop above silently stops covering the second. A line-based
+# count agrees with that partial scrape and the guard passes; counting quoted
+# tokens is what makes the two disagree.
+# ---------------------------------------------------------------------------
+
+@test "negative: two REQUIRED_CONTEXTS entries on one line are caught" {
+  local original="$VERIFY"
+
+  VERIFY="$BATS_TEST_TMPDIR/verify-collapsed.sh"
+  awk '
+    /^  "Audit CI Tests"/ { pending = 1; next }
+    pending && /^  "Run Chromatic"/ { print "  \"Audit CI Tests\" \"Run Chromatic\""; pending = 0; next }
+    { print }
+  ' "$original" > "$VERIFY"
+
+  # The doctored array still declares both entries, and the scrape sees one.
+  [ "$(declared_entry_count)" -eq 6 ] || { VERIFY="$original"; return 1; }
+  [ "$(declared_contexts | grep -c .)" -eq 5 ] || { VERIFY="$original"; return 1; }
+
+  run assert_extraction_intact
+  VERIFY="$original"
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Negative: both shapes the timeout assertion exists to catch. A job capped past
+# the poller window and a job with no cap at all both leave the poller stamping
+# nothing, so prove the scrape reports each rather than reading them as capped.
+# ---------------------------------------------------------------------------
+
+@test "negative: a dispatched job with no cap, or one past the window, is caught" {
+  local sb="$BATS_TEST_TMPDIR/workflows"
+  local window ceiling subject cap
+
+  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  mkdir -p "$sb"
+  cp "$WORKFLOWS_DIR"/*.yml "$sb/"
+
+  window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
+  [ -n "$window" ] || { echo "could not derive the poll window" >&2; return 1; }
+  ceiling=$(( window - POLLER_MARGIN_MIN ))
+
+  # Capped past the window.
+  subject="$(workflow_for_name "$sb" "Tests")"
+  [ -n "$subject" ] || { echo "sandbox lost the Tests workflow" >&2; return 1; }
+  sed "s/^    timeout-minutes: [0-9][0-9]*$/    timeout-minutes: $(( ceiling + 40 ))/" \
+    "$subject" > "$subject.doctored"
+  mv "$subject.doctored" "$subject"
+  cap="$(job_timeout_minutes "$subject" "tests")"
+  [ -n "$cap" ] || { echo "doctored Tests lost its timeout-minutes" >&2; return 1; }
+  [ "$cap" -gt "$ceiling" ] || {
+    echo "over-cap job not caught: ${cap} is within the ${ceiling}m ceiling" >&2
+    return 1
+  }
+
+  # No cap at all.
+  subject="$(workflow_for_name "$sb" "Chromatic")"
+  [ -n "$subject" ] || { echo "sandbox lost the Chromatic workflow" >&2; return 1; }
+  grep -v '^    timeout-minutes:' "$subject" > "$subject.doctored"
+  mv "$subject.doctored" "$subject"
+  [ -z "$(job_timeout_minutes "$subject" "chromatic")" ]
+}
+
+# ---------------------------------------------------------------------------
+# Negative: the filter-gate detector reads a condition, not one spelling of it.
+# Both forms GitHub accepts must match, and an unrelated gate must not, or the
+# normalization has widened into a match-anything that would pull jobs whose
+# filter does run on a dispatch into the caller's scope.
+# ---------------------------------------------------------------------------
+
+@test "negative: both spellings of the filter gate are detected, and others are not" {
+  local plain wrapped other
+
+  plain="$(cat <<'YAML'
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        if: github.event_name == 'pull_request'
+        id: filter
+YAML
+)"
+  wrapped="$(cat <<'YAML'
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        if: ${{ github.event_name == 'pull_request' }}
+        id: filter
+YAML
+)"
+  other="$(cat <<'YAML'
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        if: steps.chore-deps.outputs.skip == 'false'
+        id: filter
+YAML
+)"
+
+  job_skips_filter_on_dispatch "$plain" \
+    || { echo "the plain spelling is no longer detected" >&2; return 1; }
+  job_skips_filter_on_dispatch "$other" \
+    && { echo "an unrelated gate was read as the pull_request gate" >&2; return 1; }
+  job_skips_filter_on_dispatch "$wrapped"
 }
