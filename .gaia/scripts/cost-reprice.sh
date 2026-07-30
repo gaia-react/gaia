@@ -19,10 +19,23 @@
 #
 # Usage: cost-reprice.sh [--ledger <path>] [--rate-table <path>] [--dry-run]
 #
-# Both the ledger and the rate table resolve from the CURRENT working directory,
-# so run this from inside the checkout whose ledger you mean to correct. It takes
-# no <repo_root> positional and refuses one rather than accepting an argument it
-# would then ignore.
+# The two resolvers this pairs do NOT answer about the same tree, which is why
+# the run refuses a linked worktree outright:
+#   - `gaia_resolve_ledger_path` goes through `gaia_resolve_main_root`, so it
+#     always returns the MAIN checkout's cost.jsonl. There is one ledger; no
+#     checkout has its own.
+#   - `gaia_resolve_rate_table` is a bare `git rev-parse --show-toplevel`, so it
+#     returns the CURRENT tree's token-rates.json.
+# From a worktree those disagree, and the run would rewrite main's shared ledger
+# under a table main is not on. A worktree branch predating a rate addition would
+# re-price the corrected rows straight back down, stamp its own table id, and
+# report success. So the guard is a refusal rather than a re-resolution: pricing
+# against a table the operator is not looking at is the thing to avoid, not a
+# detail to paper over.
+#
+# It takes no <repo_root> positional and refuses one rather than accepting an
+# argument it would then ignore. Both paths are overridable for tests and for a
+# deliberate run against another table (`--ledger`, `--rate-table`).
 #
 # Guarantees:
 #   - A row whose recomputed figure equals its stored one is passed through
@@ -71,6 +84,8 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SELF_DIR/ledger-path-lib.sh" 2>/dev/null || true
 # shellcheck source=.specify/extensions/gaia/lib/with-ledger-lock.sh
 . "$SELF_DIR/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" 2>/dev/null || true
+# shellcheck source=.gaia/scripts/main-only-lib.sh
+. "$SELF_DIR/main-only-lib.sh" 2>/dev/null || true
 
 log() { printf '%s\n' "$*" >&2; }
 
@@ -116,16 +131,28 @@ while [ "$#" -gt 0 ]; do
       rate_table_override="$2"; shift 2 ;;
     --dry-run)    dry_run=true; shift ;;
     *)
-      # No positional is accepted. Both resolvers below answer from the process
-      # CWD, so a <repo_root> this script cannot honor gets refused rather than
-      # parsed and dropped: a run that names one checkout, reports success, and
-      # rewrites a different one is the worst outcome on offer, and this is the
-      # single remediation step adopters are told to run by hand.
+      # No positional is accepted. Neither resolver below takes a root argument,
+      # so a <repo_root> this script cannot honor gets refused rather than parsed
+      # and dropped: a run that names one checkout, reports success, and rewrites
+      # a different one is the worst outcome on offer, and this is the single
+      # remediation step adopters are told to run by hand.
       log "cost-reprice: unexpected argument: $1"
       usage
       exit 1 ;;
   esac
 done
+
+# Main-checkout-only, for the resolver asymmetry the header describes: the ledger
+# always resolves to the main checkout while the rate table resolves to whatever
+# tree this is, so from a worktree the run would price main's shared ledger with a
+# table main is not on. Skipped when both paths are given explicitly, since then
+# neither resolver runs and there is no asymmetry to guard. Fails open on an
+# unresolvable main root, which is the shared helper's own documented posture.
+if [ -z "$ledger_override" ] || [ -z "$rate_table_override" ]; then
+  if declare -f gaia_refuse_if_worktree >/dev/null 2>&1; then
+    gaia_refuse_if_worktree "cost-reprice.sh" || exit 1
+  fi
+fi
 
 ledger="$(gaia_resolve_ledger_path "$ledger_override" 2>/dev/null)"
 if [ -z "$ledger" ] || [ ! -f "$ledger" ]; then
@@ -195,7 +222,18 @@ _cost_reprice_run() {
   # count against the ledger's own line count can. `awk END{print NR}` is the
   # right counter because it counts a final line with no trailing newline, which
   # is exactly what `jq -R` also reads as an input.
+  #
+  # Both counts are validated as digits before being compared. `[ x -ne y ]` on a
+  # non-numeric operand does not fail the comparison, it errors and returns 2,
+  # which `if` reads as false and falls straight through to the rewrite with no
+  # count check at all. Every other guard in this script defaults to refusing, and
+  # the one guarding against dropped rows must not be the exception.
   expected_lines="$(awk 'END{print NR}' "$ledger")"
+  case "$expected_lines" in
+    '' | *[!0-9]*)
+      log "cost-reprice: could not count $ledger's lines (got '${expected_lines}'); refusing to rewrite"
+      return 1 ;;
+  esac
 
   if ! jq_err="$(mktemp "$telemetry_dir/.cost-reprice-err.XXXXXX")"; then
     log "cost-reprice: could not create a temp file in $telemetry_dir"
@@ -256,6 +294,13 @@ _cost_reprice_run() {
   fi
 
   total_count="$(printf '%s\n' "$classified" | jq -s 'length')"
+  case "$total_count" in
+    '' | *[!0-9]*)
+      log "cost-reprice: could not count the classified records (got '${total_count}'); refusing to rewrite"
+      _cost_reprice_report_jq_err "$jq_err"
+      rm -f "$jq_err"
+      return 1 ;;
+  esac
   if [ "$total_count" -ne "$expected_lines" ]; then
     log "cost-reprice: classify returned $total_count record(s) for $expected_lines ledger line(s)."
     log "cost-reprice: refusing to rewrite, which would drop $((expected_lines - total_count)) row(s). $ledger is untouched."

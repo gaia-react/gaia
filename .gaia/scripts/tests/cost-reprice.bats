@@ -360,6 +360,38 @@ STUB
   grep -qF -- 'unexpected argument' <<<"$output"
 }
 
+@test "the no-arg path refuses to run from a linked worktree" {
+  # The two resolvers disagree about which tree they answer for: the ledger always
+  # resolves to the MAIN checkout, the rate table to whatever tree this is. From a
+  # worktree the run would rewrite main's shared ledger under a table main is not
+  # on, so a branch predating a rate addition would re-price the corrected rows
+  # back down and report success. This is the only coverage of the no-argument
+  # invocation, which is the one adopters are told to run.
+  command -v git >/dev/null 2>&1 || skip "git unavailable"
+
+  repo="$SANDBOX/main"
+  mkdir -p "$repo/.gaia/scripts" "$repo/.gaia/local/telemetry"
+  git -C "$repo" init --quiet
+  cp "$SCRIPT_DIR/cost-reprice.sh" "$SCRIPT_DIR/token-pricing-lib.sh" \
+     "$SCRIPT_DIR/ledger-path-lib.sh" "$SCRIPT_DIR/main-root-lib.sh" \
+     "$SCRIPT_DIR/main-only-lib.sh" "$repo/.gaia/scripts/"
+  cp "$RATES_FULL" "$repo/.gaia/scripts/token-rates.json"
+  LEDGER="$repo/.gaia/local/telemetry/cost.jsonl" seed_row 0.76 2026-07-28T07:28:15Z
+  git -C "$repo" add -A
+  git -C "$repo" -c user.email=t@example.com -c user.name=T commit --quiet -m init
+
+  wt="$SANDBOX/wt"
+  git -C "$repo" worktree add --quiet -b wt-branch "$wt" >/dev/null 2>&1 || skip "git worktree add unavailable"
+
+  before="$(cat "$repo/.gaia/local/telemetry/cost.jsonl")"
+  run env -u GAIA_MAIN_ROOT bash -c "cd '$wt' && bash .gaia/scripts/cost-reprice.sh"
+  [ "$status" -ne 0 ]
+
+  # Refused by name, pointing at the main checkout, and main's ledger untouched.
+  grep -qF -- 'must run from the main checkout' <<<"$output"
+  [ "$(cat "$repo/.gaia/local/telemetry/cost.jsonl")" = "$before" ]
+}
+
 @test "an empty ledger is a success with nothing to do, not a failure" {
   # setup() leaves the ledger existing and empty. Exit 0: the header promises
   # non-zero means a real failure, and a fresh checkout is not one.

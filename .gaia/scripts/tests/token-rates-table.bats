@@ -77,6 +77,25 @@ rate_for() {
   [ "$(rate_for claude-sonnet-5 2026-09-01)" = "3 15" ]
 }
 
+@test "shipped table: the model key set is exactly this, and every window array is non-empty" {
+  # As a SET, not a roll call: the per-model tests below name four keys, so
+  # deleting any of the other six passed every test. Adding a model to the table
+  # now fails here until it is acknowledged, which is the point of a suite whose
+  # job is guarding the shipped table.
+  jq -e '.models | keys == [
+           "claude-fable-5", "claude-haiku-4-5", "claude-haiku-4-5-20251001",
+           "claude-mythos-5", "claude-opus-4-6", "claude-opus-4-7",
+           "claude-opus-4-8", "claude-opus-5", "claude-sonnet-4-6",
+           "claude-sonnet-5"
+         ]' "$TABLE" >/dev/null
+
+  # A window array emptied to [] makes rate_window yield null, which prices that
+  # model at zero: the #1088 failure with the key still present. The type test
+  # below iterates `.value[]`, so an empty array is vacuously true there.
+  jq -e '.models | to_entries
+         | all(.value | type == "array" and length > 0)' "$TABLE" >/dev/null
+}
+
 @test "shipped table: every rate is numeric, not a quoted number" {
   # The one malformation rate_for is blind to, and the most damaging: a quoted
   # rate makes every arithmetic branch in priced_row fail, so the table prices
