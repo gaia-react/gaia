@@ -313,7 +313,9 @@ value_allowed() {
 # at the line cap, each packed with minimal-width `;`-separated fragments to just
 # under the size cap. Roughly fifteen processes of fixed per-line overhead ride
 # on top of the per-fragment cost, so spreading the material across the line cap
-# costs more than concentrating it on one line, which reaches about 77 seconds.
+# costs more than concentrating it on one line. The margin is small: the densest
+# SINGLE line reaches about 84 seconds, so the line cap is what the last few
+# seconds come from, not most of the cost.
 #
 # Seconds are the wrong unit to state that bound in, because they are one
 # machine's. What the caps bound is process SPAWNS, about 40000 of them at the
@@ -325,9 +327,10 @@ value_allowed() {
 # registration has to clear on the SLOWEST machine the guard runs on. So
 # anything near two minutes is unsafe even now, and that is why the caps have to
 # land before any `timeout` does. This registration carries none, so the
-# runtime's own 600-second default is what holds the deadline out of reach
-# today; the caps are what make the worst case a known quantity rather than an
-# open one.
+# runtime's own 600-second default is what holds the deadline out of reach today,
+# and it clears the ceiling by about 7x on spawn cost: it holds on any host within
+# 7x of a maintainer laptop, which is every host worth naming. The caps are what
+# make the worst case a known quantity rather than an open one.
 #
 # The size cap sits where it does because the suite's own fixtures reach for it,
 # and three of them set the floor. The highest is `a value far over the mask cap

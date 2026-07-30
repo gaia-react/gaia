@@ -624,10 +624,11 @@ assert_allowed() {
 #
 # A second ceiling sits above these: rule 4's own 65536-character cap on the
 # matching material it will judge at all. The 60000-character fixture below
-# lands near 60030 and stays under it deliberately. Enlarging that one past the
-# cap does NOT fail loudly, because the size cap denies and the test asserts
-# DENY: it would go on passing while no longer reaching the mask path it exists
-# to exercise. Raise rule 4's cap alongside it, or leave the fixture alone.
+# lands near 60030 and stays under it deliberately, and it sets the floor under
+# that cap. Enlarging it past the cap turns it RED rather than quietly retiring
+# it: the size cap would deny, this test asserts DENY, and `assert_denied`
+# refuses a cap deny for exactly that reason. Raise rule 4's cap alongside it, or
+# leave the fixture alone.
 
 @test "a guarded substitution in a long value under the cap is allowed" {
   long=$(printf '%*s' 4000 '' | tr ' ' 'a')
@@ -1093,8 +1094,8 @@ assert_allowed() {
 # `bash -c` as ONE argv element, and Linux caps a single element at 128 KiB
 # (MAX_ARG_STRLEN) where macOS caps only the total. Past that, `execve` fails
 # with E2BIG and the helper exits 126 on the CI runner while every local run
-# stays green. 2500 lines is 86392 characters of content, well over the 65536
-# size cap, against an argv payload of 93958 bytes, well under the 131072 limit.
+# stays green. 2500 lines is 86405 characters of content, well over the 65536
+# size cap, against an argv payload of 93972 bytes, 37100 under the 131072 limit.
 # Enlarging this fixture spends the second margin, not the first.
 
 @test "a large write carrying few matching lines is allowed" {
