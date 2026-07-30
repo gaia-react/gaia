@@ -190,19 +190,6 @@ fi
 # ---------- the whole read-modify-write, as one critical section ----------
 telemetry_dir="$(dirname "$ledger")"
 
-# Classify, report, back up, and replace all live in here, because all four are
-# one read-modify-write against a file concurrent tallies append to.
-#
-# This function emits every message it needs itself and lets only its return code
-# cross back: with_ledger_lock's flock path runs its callback in a SUBSHELL, so a
-# variable assigned in here (the row counts, the backup path) is invisible to the
-# caller. Printing the summary outside would print counts from an unset variable
-# on exactly the platforms that have flock.
-#
-# `-R` reads each line as a raw string, so a line this pass leaves alone is
-# reproduced from the ORIGINAL bytes rather than re-serialized by jq. A row is a
-# candidate only when it parses, carries attribution, already holds a numeric
-# dollars, and can anchor a rate window; anything else passes through untouched.
 # Surfaces the diagnostic jq wrote about a row it could not process. Without it
 # the only trace of a dropped row is a record count that looks self-consistent.
 _cost_reprice_report_jq_err() {
@@ -214,6 +201,21 @@ _cost_reprice_report_jq_err() {
   return 0
 }
 
+# Classify, report, back up, and replace all live in here, because all four are
+# one read-modify-write against a file concurrent tallies append to.
+#
+# This function emits every message it needs itself and lets only its return code
+# cross back: with_ledger_lock's flock path runs its callback in a SUBSHELL, so a
+# variable assigned in here (the row counts, the backup path) is invisible to the
+# caller. Printing the summary outside would print counts from an unset variable
+# on exactly the platforms that have flock.
+#
+# `-R` reads each line as a raw string, so a line this pass leaves alone is
+# reproduced from the ORIGINAL bytes rather than re-serialized by jq. A row is a
+# candidate only when it parses, carries attribution, can anchor a rate window,
+# and holds a `dollars` that is either a number or null: null is unknown rather
+# than known-zero, so recomputing it adds information instead of destroying it.
+# Anything else passes through untouched.
 _cost_reprice_run() {
   local classified changed_count total_count expected_lines jq_err backup tmp n
 
