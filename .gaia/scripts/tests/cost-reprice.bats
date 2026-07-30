@@ -418,6 +418,45 @@ STUB
   [ "$(cat "$repo/.gaia/local/telemetry/cost.jsonl")" = "$before" ]
 }
 
+@test "a missing main-only lib still refuses the worktree, it does not fail open" {
+  # Every lib is sourced with `|| true`, so an absent one leaves its functions
+  # undefined. Guarding the refusal behind `declare -f` made that case skip the
+  # guard in SILENCE and rewrite main's shared ledger from the worktree. Called
+  # bare, an undefined function is a non-zero command-not-found and the `|| exit 1`
+  # refuses. The other three libs already fail closed because their return values
+  # are checked; this one had nothing checking it.
+  command -v git >/dev/null 2>&1 || skip "git unavailable"
+
+  repo="$SANDBOX/main2"
+  mkdir -p "$repo/.gaia/scripts" "$repo/.gaia/local/telemetry"
+  git -C "$repo" init --quiet
+  # Every lib EXCEPT main-only-lib.sh, which is the whole point of the case.
+  cp "$SCRIPT_DIR/cost-reprice.sh" "$SCRIPT_DIR/token-pricing-lib.sh" \
+     "$SCRIPT_DIR/ledger-path-lib.sh" "$SCRIPT_DIR/main-root-lib.sh" \
+     "$repo/.gaia/scripts/"
+  cp "$RATES_FULL" "$repo/.gaia/scripts/token-rates.json"
+  LEDGER="$repo/.gaia/local/telemetry/cost.jsonl" seed_row 0.76 2026-07-28T07:28:15Z
+  git -C "$repo" add -A
+  git -C "$repo" -c user.email=t@example.com -c user.name=T commit --quiet -m init
+
+  wt="$SANDBOX/wt2"
+  git -C "$repo" worktree add -b wt-branch2 "$wt" \
+    || { echo "worktree add failed" >&2; return 1; }
+
+  before="$(cat "$repo/.gaia/local/telemetry/cost.jsonl")"
+  run env -u GAIA_MAIN_ROOT bash -c "cd '$wt' && bash .gaia/scripts/cost-reprice.sh"
+  [ "$status" -ne 0 ]
+
+  # No report line claiming a rewrite, and no summary line.
+  grep -qF -- '->' <<<"$output" && return 1
+  grep -qF -- 'row(s) re-priced' <<<"$output" && return 1
+  # Main's ledger byte-unchanged, asserted LAST on purpose: an absence check
+  # written as `grep … && return 1` returns non-zero when the needle is correctly
+  # absent, so as a test's final line it would fail the good case. Per
+  # .claude/rules/bats-assertions.md, the last line must be a positive assertion.
+  [ "$(cat "$repo/.gaia/local/telemetry/cost.jsonl")" = "$before" ]
+}
+
 @test "an empty ledger is a success with nothing to do, not a failure" {
   # setup() leaves the ledger existing and empty. Exit 0: the header promises
   # non-zero means a real failure, and a fresh checkout is not one.

@@ -151,12 +151,19 @@ done
 # always resolves to the main checkout while the rate table resolves to whatever
 # tree this is, so from a worktree the run would price main's shared ledger with a
 # table main is not on. Skipped when both paths are given explicitly, since then
-# neither resolver runs and there is no asymmetry to guard. Fails open on an
-# unresolvable main root, which is the shared helper's own documented posture.
+# neither resolver runs and there is no asymmetry to guard.
+#
+# Called bare, exactly as the other call sites of this helper call it, and NOT
+# wrapped in a `declare -f` existence test. The wrapper looks defensive and is the
+# opposite: when main-only-lib.sh is missing or unsourceable the test is simply
+# false, the guard is skipped in silence, and the worktree run this exists to stop
+# proceeds to rewrite main's shared ledger. Called bare, an undefined function is
+# a non-zero command-not-found that `|| exit 1` turns into a refusal, which is the
+# direction a destructive rewrite has to fail. The helper still fails open on an
+# unresolvable main ROOT, which is its own documented posture and a different
+# thing from the helper being absent.
 if [ -z "$ledger_override" ] || [ -z "$rate_table_override" ]; then
-  if declare -f gaia_refuse_if_worktree >/dev/null 2>&1; then
-    gaia_refuse_if_worktree "cost-reprice.sh" || exit 1
-  fi
+  gaia_refuse_if_worktree "cost-reprice.sh" || exit 1
 fi
 
 ledger="$(gaia_resolve_ledger_path "$ledger_override" 2>/dev/null)"

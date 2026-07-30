@@ -819,9 +819,9 @@ if jq -e 'length > 0' >/dev/null 2>&1 <<<"$BY_MODEL"; then
       RATE_TABLE_ID="$(rate_table_id "$cost_rt" 2>/dev/null || true)"
       # Keep the unpriced names only when they arrive as a real array; anything
       # else degrades to [] rather than a fabricated or malformed field.
-      u="$(jq -c '.unpriced' <<<"$priced" 2>/dev/null)"
-      if printf '%s' "$u" | jq -e 'type=="array"' >/dev/null 2>&1; then
-        UNPRICED_JSON="$u"
+      unpriced_raw="$(jq -c '.unpriced' <<<"$priced" 2>/dev/null)"
+      if printf '%s' "$unpriced_raw" | jq -e 'type=="array"' >/dev/null 2>&1; then
+        UNPRICED_JSON="$unpriced_raw"
       fi
     fi
     # else: pricing failed unexpectedly -> leave dollars/rate_table_id null,
