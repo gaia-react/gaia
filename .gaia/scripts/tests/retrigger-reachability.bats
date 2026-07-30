@@ -274,13 +274,19 @@ workflow_critical_path_minutes() {
       collecting = 0
       next
     }
-    collecting && /^      -[[:space:]]*[^[:space:]]/ {
-      v = $0; sub(/^      -[[:space:]]*/, "", v); sub(/[[:space:]]*(#.*)?$/, "", v)
+    # A sequence item at ANY indentation. YAML permits a block sequence at its
+    # parent key`s own indentation as well as nested under it, and both parse to
+    # the same list, so anchoring on the nested spelling drops the edge and the
+    # helper silently returns the largest single cap instead of the chain sum.
+    # The terminator below therefore has to exclude `-`, or it would read a
+    # same-indentation item as the next key and end collection on it.
+    collecting && /^[[:space:]]+-[[:space:]]*[^[:space:]]/ {
+      v = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); sub(/[[:space:]]*(#.*)?$/, "", v)
       gsub(/["'"'"']/, "", v)
       needs[cur] = (needs[cur] == "" ? v : needs[cur] "," v)
       next
     }
-    collecting && /^    [^[:space:]]/ { collecting = 0 }
+    collecting && /^    [^-[:space:]]/ { collecting = 0 }
     END {
       if (n == 0) { exit }
       # Relax to a fixed point. n passes settle any acyclic graph of n nodes,
