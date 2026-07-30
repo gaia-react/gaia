@@ -158,20 +158,34 @@ workflow_for_context() {
 # that makes the parser worth it everywhere else. `workflow_for_context` matches
 # a job's `    name: <ctx>` at exactly four spaces; `workflow_for_name` and the
 # retrigger-listing test read a workflow's top-level `name:` with sed; and the
-# dispatch-trigger test greps `^  workflow_dispatch:`. A quoted, inline-list, or
-# differently-indented spelling defeats each of them. All four fail CLOSED: the
-# read comes back empty or unmatched and its caller reports a named gap rather
-# than skipping the workflow, so a narrow scrape costs a false alarm here, never
-# the false green a silent drop-out would cost. Parsing buys nothing these four
-# do not already have.
+# dispatch-trigger test greps `^  workflow_dispatch:`. A quoted or
+# differently-indented spelling defeats the three `name:` reads, whose value is a
+# scalar in every legal YAML shape, so no flow sequence reaches them; an inline
+# `on: [push, workflow_dispatch]` is what defeats the trigger grep. All four fail
+# CLOSED: the read comes back empty or unmatched, and the context is named as a
+# gap by the test that owns that report. For `workflow_for_context` that is the
+# dispatch-trigger test in section 1 below; its other three loops `continue` past
+# an unresolved context precisely because section 1 already reports it. So a
+# narrow scrape costs a false alarm here, never the false green a silent drop-out
+# would cost. Parsing buys nothing these four do not already have.
 # ---------------------------------------------------------------------------
 
 # Gate only the tests that parse YAML, so the REQUIRED_CONTEXTS tests still run
-# where PyYAML is absent. CI installs python3-yaml (audit-ci-tests.yml), so the
-# authoritative gate always parses. Matches .gaia/tests/lib/lint-yaml.bats.
+# where PyYAML is absent. On CI the parser is a precondition rather than a maybe:
+# audit-ci-tests.yml installs python3-yaml in the same job that runs this suite.
+# So the CI branch FAILS instead of skipping. A skip reports `ok ... # skip` and
+# greens the job, so a runner that lost that install would retire the 15
+# parser-gated tests below in silence -- the hollow-guard failure the rest of
+# this file exists to catch, turned on the file itself. Section 0 below proves
+# this branch fires. Matches .gaia/tests/lib/lint-yaml.bats, whose own gate also
+# accepts a `yq` fallback this one has no equivalent of.
 require_yaml_parser() {
   if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
     return 0
+  fi
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    echo "::error::no YAML parser (python3 + PyYAML) on a CI runner; the parser-gated tests here would skip to green. Check the apt install in .github/workflows/audit-ci-tests.yml." >&2
+    return 1
   fi
   skip "no YAML parser available (python3 + PyYAML)"
 }
@@ -451,6 +465,46 @@ poller_window_minutes() {
       exit
     }
   ' "$1"
+}
+
+# ---------------------------------------------------------------------------
+# 0. The parser gate itself. Every parsing test below routes through
+#    `require_yaml_parser`, which makes that one function the single point where
+#    all 15 of them can be turned off at once. On a CI runner it has to FAIL
+#    rather than skip, and nothing else in this file would notice if it stopped:
+#    weakening it back to a skip would red nothing, and a runner that lost its
+#    python3-yaml install would report `ok ... # skip` fifteen times and green
+#    the job. This test is what makes that weakening red. It is deliberately not
+#    parser-gated itself.
+# ---------------------------------------------------------------------------
+
+@test "the parser gate fails on a CI runner and still skips off CI" {
+  local shim="$BATS_TMPDIR/retrigger-no-parser" rc
+  mkdir -p "$shim"
+  # python3 present, but its `import yaml` fails: the shape a runner takes when
+  # python3-yaml is dropped from the apt line, not one where python3 is missing
+  # outright. The shebang is absolute so the stripped PATH below cannot affect it.
+  printf '#!/bin/sh\nexit 1\n' > "$shim/python3"
+  chmod +x "$shim/python3"
+
+  # The shim ALONE is a sufficient PATH: the gate runs no command other than
+  # `command -v python3` and that python3. Calling the gate in a subshell is what
+  # keeps its `skip` arm from marking this test skipped -- bats' `skip` exits 0,
+  # so the subshell's status is exactly the discriminator wanted here: non-zero
+  # is the CI failure, 0 is the off-CI skip.
+  rc=0
+  ( PATH="$shim" GITHUB_ACTIONS=true; require_yaml_parser ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "the gate skipped on a CI runner with no YAML parser; 15 tests would report green" >&2
+    return 1
+  }
+
+  rc=0
+  ( PATH="$shim"; unset GITHUB_ACTIONS; require_yaml_parser ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || {
+    echo "the gate failed off CI, where a missing parser must still skip" >&2
+    return 1
+  }
 }
 
 # ---------------------------------------------------------------------------
