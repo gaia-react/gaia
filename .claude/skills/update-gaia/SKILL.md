@@ -369,9 +369,9 @@ region_json="$("$LATEST_DIR/.gaia/cli/gaia" update merge-region \
   --json 2>/dev/null)" || region_json=''
 ```
 
-**Command resolution.** Three facts, stated here once. Step 7d and Step 9 point at this block rather than restating it.
+**Command resolution.** Three facts, stated here once. Step 7d restates the rules it applies; Step 9 points here for the reason.
 
-1. **A CLI subcommand resolves from `$LATEST_DIR`, never from the working-tree copy of the CLI.** This covers every `gaia` subcommand the flow invokes: the region oracle above and Step 7d's `regen-regions` runner alike. An adopter whose installed binary predates the subcommand cannot reach it any other way, and that is the only reason the rule exists.
+1. **A CLI subcommand resolves from `$LATEST_DIR`, never from the working-tree copy of the CLI.** This covers the two region-aware CLI calls: the region oracle above and Step 7d's `regen-regions` runner. An adopter whose installed binary predates the subcommand cannot reach it any other way, and that is the only reason the rule exists.
 2. **A regeneration program named by a declaration's `argv` is the exception, and resolves from the adopter's own tree.** Step 7d passes `--root .` precisely so the runner executes the copy of the program the merge walk just wrote. A region's body is derived from the adopter's post-merge tree, so resolving that program from the release copy would be the defect, not the rule.
 3. **A CLI invocation is never printed as a follow-up command for the adopter, in either form.** The release-resolved form names a cache directory that exists only for the duration of the run, so it is already gone by the time the adopter reads it, and the working-tree form is banned by rule 1. Every follow-up command Step 9 prints is the regeneration program from that entry's `argv`, which the adopter can paste into any shell.
 
@@ -603,7 +603,7 @@ type RegenRegionsReport = {
 };
 ```
 
-Every bucket Step 9 prints a command for carries its own `argv`, because the region id alone cannot be turned back into a command. `refused` declares `argv` optional; Step 9 owns which refusal kind has no command and what to print in its place.
+Every bucket Step 9 prints a command for carries its own `argv`, because the region id alone cannot be turned back into a command. `refused` declares `argv` optional because a `kind: 'declaration'` refusal has none; Step 9 owns what to print in its place.
 
 What the step guarantees, and what it does not:
 
