@@ -26,10 +26,11 @@ jobs:
     # per job along a `needs:` chain, so this number is checked rather than
     # asserted here.
     #
-    # 15 is what every other job in a re-dispatched workflow carries, and a full
-    # run is about 4 minutes: typecheck and lint dominate it, Vitest and
-    # Playwright together are under a minute, and the browser install below
-    # fetches one engine rather than every engine Playwright ships.
+    # 15 is what every unchained job in a re-dispatched workflow carries; a
+    # chained pair is budgeted lower, against the tighter ceiling its hop count
+    # earns. A full run here is about 4 minutes: typecheck and lint dominate it,
+    # Vitest and Playwright together are under a minute, and the browser install
+    # below fetches one engine rather than every engine Playwright ships.
     timeout-minutes: 15
     runs-on: ubuntu-latest
     permissions:
@@ -158,14 +159,16 @@ jobs:
         env:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           npm_package_version: ${{ steps.package-version.outputs.current-version}}
-      # Only the engine this suite runs. `playwright install` with no browser named
-      # reads nothing from playwright.config.ts: it fetches chromium, firefox and
-      # webkit plus ffmpeg, several times the bytes needed by a config whose CI
-      # project list is chromium alone (its `otherBrowsers` are gated on `!CI`).
-      # Naming chromium also brings chromium-headless-shell, which is what a
-      # headless run launches, so this is the whole requirement rather than a
-      # trimmed-down one. Adding a CI project for another engine means naming that
-      # engine here too, or the run fails on a missing browser.
+      # Only the engine this suite runs. `playwright install` resolves its browser
+      # set from its arguments alone and reads nothing from playwright.config.ts,
+      # so with none named it adds firefox and webkit on top of what this suite
+      # needs, for a config whose CI project list is chromium alone (its
+      # `otherBrowsers` are gated on `!CI`). Naming chromium still installs the
+      # pair a headless run needs, the browser and chromium-headless-shell, plus
+      # ffmpeg, so this is the whole requirement rather than a trimmed-down one:
+      # firefox and webkit are the entire saving. Adding a CI project for another
+      # engine means naming that engine here too, or the run fails on a missing
+      # browser.
       #
       # Caching ~/.cache/ms-playwright is deliberately not done: Playwright's CI
       # guide advises against it because restoring the cache costs about what

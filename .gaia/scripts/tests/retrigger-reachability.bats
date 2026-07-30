@@ -312,9 +312,15 @@ else:
             print(normalize(job['if']))
     elif mode == 'filter-gate':
         steps = filter_steps(job)
+        # ANY such step gated to the event, not merely the first. A job whose
+        # second paths-filter step carries the gate would otherwise read `other`
+        # and the caller would skip the job outright, which is the silent
+        # scope-drop this whole test exists to prevent. Failing toward
+        # inspecting the job is the safe direction.
         if not steps:
             print('none')
-        elif normalize(steps[0].get('if', '')) == "github.event_name == 'pull_request'":
+        elif any(normalize(step.get('if', '')) == "github.event_name == 'pull_request'"
+                 for step in steps):
             print('pull_request')
         else:
             print('other')
@@ -374,6 +380,17 @@ workflow_job_ids() {
 # uncapped rather than trusting a number it never saw.
 job_timeout_minutes() {
   yaml_workflow cap "$1" "$2"
+}
+
+# The ceiling a chain of <hops> hops faces under a <window>-minute poll window.
+#
+# One definition, called by the assertion AND by the negatives that prove it
+# bites. A test that recomputes this arithmetic in its own body asserts only that
+# it can do the arithmetic: the production term can be dropped and that test stays
+# green, which is exactly what a mutation of the per-hop term found.
+chain_ceiling() {
+  local window="$1" hops="$2"
+  printf '%s' "$(( window - POLLER_MARGIN_MIN * hops ))"
 }
 
 # The worst path through the workflow's `needs:` graph, as "<minutes> <hops>".
@@ -511,7 +528,7 @@ job_filter_dependent_step_ifs() {
 }
 
 @test "no required-context job step is gated on a dispatch-skipped filter alone" {
-  local ctx file gate candidates=0 gaps=""
+  local ctx file gate step_if candidates=0 gaps=""
   require_yaml_parser
   assert_extraction_intact
   while IFS= read -r ctx; do
@@ -650,7 +667,7 @@ job_filter_dependent_step_ifs() {
     fi
     minutes="${path% *}"
     hops="${path#* }"
-    ceiling=$(( window - POLLER_MARGIN_MIN * hops ))
+    ceiling="$(chain_ceiling "$window" "$hops")"
     if [ "$minutes" -gt "$ceiling" ]; then
       gaps="${gaps}${wf}: worst needs-chain totals ${minutes}m over ${hops} hop(s), past the ${ceiling}m ceiling (${window}m poll window - ${POLLER_MARGIN_MIN}m margin x ${hops})"$'\n'
     fi
@@ -898,7 +915,7 @@ YAML
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
   [ -n "$window" ] || { echo "could not derive the poll window" >&2; return 1; }
   # One hop: the ceiling a lone job faces, which is the loosest one available.
-  ceiling=$(( window - POLLER_MARGIN_MIN ))
+  ceiling="$(chain_ceiling "$window" 1)"
 
   # Capped past the window.
   subject="$(workflow_for_name "$sb" "Tests")"
@@ -987,7 +1004,7 @@ write_chain_fixture() {
       return 1
     }
 
-    ceiling=$(( window - POLLER_MARGIN_MIN * hops ))
+    ceiling="$(chain_ceiling "$window" "$hops")"
     [ "$minutes" -gt "$ceiling" ] || {
       echo "${spelling}: ${minutes}m over ${hops} hops cleared the ${ceiling}m ceiling" >&2
       return 1
@@ -1058,9 +1075,96 @@ YAML
     return 1
   }
 
-  ceiling=$(( window - POLLER_MARGIN_MIN * hops ))
+  ceiling="$(chain_ceiling "$window" "$hops")"
   [ "$minutes" -gt "$ceiling" ] || {
     echo "${minutes}m over ${hops} hops cleared the ${ceiling}m per-hop ceiling" >&2
+    return 1
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Negative: the worst chain is selected by minutes + margin x hops, not by
+# minutes alone. This is the ONLY fixture in the suite where those two rules
+# disagree, and without it the selection rule is unguarded: every other fixture
+# is a straight line, or a diamond whose longest-in-minutes branch is also its
+# longest-in-hops, so both rules return the identical pair on all of them and on
+# all five real retrigger workflows. Dropping the margin term from the metric
+# then leaves the suite green while a real poller breach goes unreported.
+#
+# A fan-out is what separates them: a fat 14m single job beside a 3 x 4m chain.
+# Selecting by minutes returns `14 1`, which clears a one-hop 20m ceiling and
+# reports nothing. Selecting by minutes + margin x hops returns `12 3`, which
+# breaches the 10m a three-hop chain actually leaves.
+# ---------------------------------------------------------------------------
+
+@test "negative: the worst chain is chosen by per-hop weight, not by minutes alone" {
+  local sb="$BATS_TEST_TMPDIR/fanout"
+  local subject path minutes hops window ceiling
+
+  require_yaml_parser
+  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  mkdir -p "$sb"
+
+  window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
+  [ -n "$window" ] || { echo "could not derive the poll window" >&2; return 1; }
+
+  subject="$sb/fanout.yml"
+  cat > "$subject" <<'YAML'
+name: FanOut
+on:
+  workflow_dispatch:
+jobs:
+  fat:
+    name: Fat
+    timeout-minutes: 14
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo fat
+  a:
+    name: A
+    timeout-minutes: 4
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo a
+  b:
+    name: B
+    needs: a
+    timeout-minutes: 4
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo b
+  c:
+    name: C
+    needs: b
+    timeout-minutes: 4
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo c
+YAML
+
+  path="$(workflow_critical_path "$subject")" || {
+    echo "could not resolve a critical path" >&2
+    return 1
+  }
+  minutes="${path% *}"
+  hops="${path#* }"
+
+  # `14 1` is the minutes-only answer. Asserting the pair, not just the breach,
+  # is what makes a metric regression fail here rather than pass quietly.
+  [ "$path" = "12 3" ] || {
+    echo "worst chain priced '${path}', want '12 3' (minutes-only would say '14 1')" >&2
+    return 1
+  }
+
+  # The chain the weight selected breaches its ceiling; the fat job would not
+  # have. That asymmetry is the whole reason the weight carries the margin term.
+  ceiling="$(chain_ceiling "$window" "$hops")"
+  [ "$minutes" -gt "$ceiling" ] || {
+    echo "${minutes}m over ${hops} hops cleared the ${ceiling}m ceiling" >&2
+    return 1
+  }
+  [ 14 -le "$(chain_ceiling "$window" 1)" ] || {
+    echo "fixture no longer models the defect: the fat job breaches its own one-hop ceiling" >&2
     return 1
   }
 }
