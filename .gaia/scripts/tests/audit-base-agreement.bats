@@ -16,8 +16,10 @@
 # stamped clean round. A member whose prose drifts to a private derivation
 # reds here.
 #
-# Three probes:
+# Four probes:
 #   1. base + key agreement across all five members
+#   1b. the reviewed range is HEAD's content, not the working tree's, and the
+#       fork point rather than an advanced ref tip
 #   2. post-findings-block.sh reads a specialist's sidecar
 #   3. the self-skip deadlock: a machinery-only increment with the
 #      classifier libs unloadable
@@ -35,8 +37,8 @@
 # jq is a precondition on CI, not a maybe: audit-ci-tests.yml runs this suite
 # on ubuntu-latest, where jq is preinstalled, so an absent jq there means the
 # runner image or the job moved under this file. A bats `skip` reports
-# `ok ... # skip` and greens the required check, which would retire all four
-# probes -- the entire base-agreement guarantee -- with nothing anywhere
+# `ok ... # skip` and greens the required check, which would retire every
+# probe -- the entire base-agreement guarantee -- with nothing anywhere
 # saying it did not run. The CI branch therefore FAILS instead of skipping.
 # Off CI the skip stands: a workstation without jq is not the environment
 # this suite makes a claim about. Same fail-closed shape as
@@ -48,7 +50,7 @@ require_jq() {
     # No `::error::` prefix: bats prefixes a test's stderr with `# `, and
     # Actions parses a workflow command only at column 0, so the annotation
     # that spelling promises would never render. The `return 1` is what gates.
-    echo "jq not present on a CI runner; all four probes here would report green. Check the runner image and the job's install step." >&2
+    echo "jq not present on a CI runner; every probe here would report green. Check the runner image and the job's install step." >&2
     return 1
   fi
   skip "jq required"
@@ -96,7 +98,7 @@ setup() {
   rc=0
   ( PATH="$shim" GITHUB_ACTIONS=true; require_jq ) >/dev/null 2>&1 || rc=$?
   [ "$rc" -ne 0 ] || {
-    echo "the gate skipped on a CI runner with no jq; all four probes would report green" >&2
+    echo "the gate skipped on a CI runner with no jq; every probe would report green" >&2
     return 1
   }
 
@@ -316,6 +318,105 @@ owners_of() {
       return 1
     fi
   done
+}
+
+# ---------- probe 1b: the review scope is HEAD, not the working tree ---------
+#
+# A member's clearance digest is computed over `git ls-tree HEAD`
+# (.claude/hooks/lib/audit-digest.sh), so its review scope has to be HEAD's
+# content or the marker attests to bytes the member never read. Two spellings
+# diverge on exactly one input, a dirty tree:
+#
+#   git diff <base> -- <paths>          base vs the WORKING TREE (two-dot)
+#   git diff <base>...HEAD -- <paths>   the fork point vs the HEAD COMMIT
+#
+# Both directions are wrong under two-dot, and each is probed below. A change
+# committed and then reverted in the working tree VANISHES from the list while
+# the marker still covers the committed version; an uncommitted edit ENTERS the
+# list while no marker covers it and the dispatch oracle never saw it.
+#
+# The frontend is the member probed because it is the one whose scope is a
+# TS/TSX pathspec; the four specialists' identical form is already covered by
+# probe 1's shared BASE_SHA and by their own fences here.
+
+@test "the frontend's changed-file list is HEAD's content, not the working tree's" {
+  local repo changed
+  repo="$(make_repo worktree-scope)"
+  git -C "$repo" checkout -q -b feat
+
+  # Both probe files must be TRACKED at the base. `git diff` compares tracked
+  # content only, so an untracked path appears under neither spelling and an
+  # assertion written against one could never fire: the dirty-file direction
+  # has to be a modification to a tracked file, not a new file.
+  mkdir -p "$repo/app"
+  printf 'export const before = 1\n' > "$repo/app/reverted.ts"
+  printf 'export const clean = 1\n' > "$repo/app/dirty.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "baseline for both probe files"
+  stamp_clean_round "$repo"
+
+  # Committed, then reverted in the working tree. Two-dot drops it; three-dot
+  # keeps it, which is the arm that matches the digest.
+  printf 'export const after = 2\n' > "$repo/app/reverted.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "commit a change to reverted.ts"
+  printf 'export const before = 1\n' > "$repo/app/reverted.ts"
+
+  # Modified in the working tree and never committed. Three-dot excludes it;
+  # two-dot pulls it in, where no marker can cover it.
+  printf 'export const scratch = 3\n' > "$repo/app/dirty.ts"
+
+  changed="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
+
+  grep -qF 'app/reverted.ts' <<<"$changed" || {
+    printf 'a file changed in HEAD but reverted in the working tree fell out of review scope, while the marker still covers it: %s\n' "$changed" >&2
+    return 1
+  }
+  grep -qF 'app/dirty.ts' <<<"$changed" && {
+    printf 'an uncommitted working-tree edit entered review scope, where no marker can cover it: %s\n' "$changed" >&2
+    return 1
+  }
+  return 0
+}
+
+@test "the frontend's review scope is the fork point, not an advanced ref tip" {
+  local repo changed
+  repo="$(make_repo forkpoint-scope)"
+
+  # The second failure direction, reachable only when the base is a REF whose
+  # tip has advanced past this branch's fork point: the resolver's own
+  # no-audited-ancestor fallback. It discriminates against the retired
+  # two-dot-on-the-resolver-output shape specifically, which is the one that
+  # combines both terms. It stays green under a two-dot form anchored on
+  # BASE_SHA, correctly: a sha at the fork point cannot advance, so only the
+  # sibling probe above catches that one. Three-dot resolves its own merge
+  # base, so the current form is immune whichever the base turns out to be.
+  git -C "$repo" checkout -q -b feat
+  mkdir -p "$repo/app"
+  printf 'export const mine = 1\n' > "$repo/app/pr-touched.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "the only file this PR touches"
+
+  # `app/` only exists on feat, so checking out main removes the directory
+  # along with the file that made it; recreate it before writing.
+  git -C "$repo" checkout -q main
+  mkdir -p "$repo/app"
+  printf 'export const theirs = 1\n' > "$repo/app/main-only.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "main advances with an unrelated file"
+  git -C "$repo" checkout -q feat
+
+  changed="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
+
+  grep -qF 'app/pr-touched.ts' <<<"$changed" || {
+    printf 'the file this PR actually changed is missing from review scope: %s\n' "$changed" >&2
+    return 1
+  }
+  grep -qF 'app/main-only.ts' <<<"$changed" && {
+    printf 'a file only the default branch touched entered review scope: %s\n' "$changed" >&2
+    return 1
+  }
+  return 0
 }
 
 # ---------- probe 2: the consolidated findings block sees a specialist -------

@@ -66,10 +66,11 @@ BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || tr
 ```
 '
 
-# The unbraced `"$BASE_REF"` spelling, inside a markdown code span rather
-# than a fence, which is how code-audit-frontend.md carries its second
-# derivation. `$` is the character that has to clear the left-edge boundary
-# here, where the fenced form above clears it on `{`.
+# The unbraced `"$BASE_REF"` spelling, inside a markdown code span rather than
+# a fence. Both shapes are reachable in an agent definition, which is prose
+# carrying code, so the exemption has to hold for either. `$` is the character
+# that has to clear the left-edge boundary here, where the fenced form above
+# clears it on `{`.
 BASE_REF_UNBRACED='Agent prose, per .github/audit/resolve-audit-base.sh.
 From the same resolved base, compute `BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "$BASE_REF" HEAD 2>/dev/null || true)"`, then the key.
 '
@@ -368,6 +369,277 @@ The retired form was BASE_SHA=$(git merge-base HEAD main)BASE_REF and nothing el
   return 0
 }
 
+# ---------- assertion 3: no diff consumes an un-anchored base ----------
+#
+# Assertions 1 and 2 police how the base is DERIVED. This one polices what is
+# then handed to `git diff`, an independent failure: a file can derive
+# BASE_SHA correctly and scope its review off the raw ref one line later.
+
+DIFF_ANCHORED_OK='Agent prose.
+```bash
+BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)"
+BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
+```
+'
+
+# The resolver piped straight into the diff, with no merge-base between them.
+# `resolve-audit-base.sh` can return a REF, so this scopes the review off a tip
+# that may have advanced past the fork point.
+DIFF_RESOLVER_DIRECT='Agent prose.
+```bash
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)")
+```
+'
+
+# The same defect one variable removed: BASE_REF holds the resolver output, so
+# consuming it directly is the identical un-anchored diff.
+DIFF_BASE_REF_DIRECT='Agent prose.
+```bash
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "$BASE_REF")
+```
+'
+
+# The three-dot requirement binds the CORRECT variable too. A two-dot diff on
+# BASE_SHA compares the base to the working tree exactly as one on BASE_REF
+# does, so keying the rule to the raw-base spellings alone would let the
+# likelier drift through: the member names the right value and still reviews
+# the wrong thing.
+DIFF_BASE_SHA_TWO_DOT='Agent prose, per .github/audit/resolve-audit-base.sh.
+```bash
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}" -- "*.ts")
+```
+'
+
+# The same two-dot defect written as a markdown code span rather than a fence,
+# which is how a definition restates its scope in prose. A restatement that
+# drifts from the fence is still an instruction a model can follow.
+DIFF_BASE_SHA_TWO_DOT_SPAN='The set is the exact `git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}" -- "*.ts"` list the audit resolved, per .github/audit/resolve-audit-base.sh.
+'
+
+# A three-dot range on BASE_REF narrows correctly, since git resolves the merge
+# base inside `...`. This assertion is about the range, not about which
+# spelling reached it, so this passes.
+DIFF_BASE_REF_THREE_DOT_OK='Agent prose.
+```bash
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_REF}...HEAD")
+```
+'
+
+# A correct call whose trailing comment happens to name BASE_REF. The `...`
+# already precedes the token here, so this passes on the range test alone; the
+# two fixtures below are the ones that isolate the walls.
+DIFF_TRAILING_COMMENT_OK='Agent prose.
+```bash
+BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)"
+BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD")   # never BASE_REF here
+```
+'
+
+# Ordinary prose naming the command and a base in one sentence, which
+# .claude/agents/worthiness-evaluator.md really does. No target token follows
+# at all, so this passes without either wall.
+DIFF_PROSE_MENTION_OK='This agent takes its file list from the orchestrator (or resolves it from `git diff --name-only` against the audit base).
+'
+
+# The backtick wall, isolated. The code span CLOSES and the surrounding
+# sentence then names BASE_REF, with no `...` anywhere on the line, so the
+# range test cannot exempt it and only the wall can. Remove the wall and this
+# reads as a raw-base diff, condemning a line that runs no diff at all.
+DIFF_SPAN_CLOSES_BEFORE_TARGET_OK='Run `git diff --name-only` yourself only when the orchestrator supplied no list; otherwise the value you want is already in BASE_REF.
+'
+
+# The `#` wall, isolated. A legitimate two-dot call on an unrelated revset
+# (the staged index), with a trailing comment naming BASE_REF and no `...` on
+# the line. Same shape as above on the shell side.
+DIFF_TRAILING_COMMENT_NO_RANGE_OK='Agent prose.
+```bash
+staged=$(git -C "$AUDIT_ROOT" diff --name-only --cached)   # not BASE_REF, deliberately
+```
+'
+
+# A two-dot call sharing its LINE with a correct three-dot one. The window has
+# to end at the NEXT call, or the later call's `...` satisfies the range test
+# for the earlier one and the bad call escapes. Bad call FIRST is the ordering
+# that requires the wall; the reverse is caught by the walk alone.
+TWO_DIFFS_ONE_LINE='Agent prose, per .github/audit/resolve-audit-base.sh.
+```bash
+changed=$(git diff --name-only "$BASE_SHA") ; full_changed=$(git diff --name-only "${FULL_BASE}...HEAD")
+```
+'
+
+# The self-skip diff, correctly ranged.
+DIFF_FULL_BASE_OK='Agent prose.
+```bash
+FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || true)
+full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
+```
+'
+
+# The self-skip diff gone two-dot. FULL_BASE is exempt from assertion 1 (it is
+# the legitimate bare merge-base) but nothing exempts it here: a working-tree
+# comparison decides membership as wrongly as it decides review scope, and a
+# member that self-skips on a bad list writes no marker the gate still demands.
+DIFF_FULL_BASE_TWO_DOT='Agent prose.
+```bash
+FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || true)
+full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null || true)
+```
+'
+
+@test "fixture: a diff anchored on the resolver-derived BASE_SHA passes assertion 3" {
+  local repo
+  repo="$(make_fixture_repo diff-anchored-ok)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_ANCHORED_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+@test "fixture: the resolver piped straight into a diff fails assertion 3" {
+  local repo
+  repo="$(make_fixture_repo diff-resolver-direct)"
+  write_agent_file "$repo" code-audit-frontend.md "$DIFF_RESOLVER_DIRECT"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "code-audit-frontend.md" <<<"$output" || return 1
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+  # Assertions 1 and 2 are both satisfied here (no bare merge-base, and the
+  # file never names BASE_SHA), so this red is assertion 3's alone.
+  grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
+  grep -qF "agent files naming BASE_SHA without naming resolve-audit-base.sh: 0" <<<"$output" || return 1
+}
+
+@test "fixture: BASE_REF consumed directly by a diff fails assertion 3" {
+  local repo
+  repo="$(make_fixture_repo diff-base-ref-direct)"
+  write_agent_file "$repo" code-audit-maintainer-node.md "$DIFF_BASE_REF_DIRECT"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+}
+
+@test "fixture: a two-dot diff on the CORRECT variable still fails assertion 3" {
+  local repo
+  repo="$(make_fixture_repo diff-base-sha-two-dot)"
+  write_agent_file "$repo" code-audit-frontend.md "$DIFF_BASE_SHA_TWO_DOT"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+}
+
+@test "fixture: a two-dot diff restated in a code span fails assertion 3 too" {
+  local repo
+  repo="$(make_fixture_repo diff-base-sha-two-dot-span)"
+  write_agent_file "$repo" code-audit-frontend.md "$DIFF_BASE_SHA_TWO_DOT_SPAN"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+}
+
+@test "fixture: a three-dot range anchored on BASE_REF narrows correctly and passes" {
+  local repo
+  repo="$(make_fixture_repo diff-base-ref-three-dot)"
+  write_agent_file "$repo" code-audit-maintainer-node.md "$DIFF_BASE_REF_THREE_DOT_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a trailing comment naming BASE_REF does not condemn a correct diff" {
+  local repo
+  repo="$(make_fixture_repo diff-trailing-comment)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_TRAILING_COMMENT_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+@test "fixture: prose naming the command and a base in one sentence is not a call" {
+  local repo
+  repo="$(make_fixture_repo diff-prose-mention)"
+  write_agent_file "$repo" code-audit-maintainer-prose.md "$DIFF_PROSE_MENTION_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a target named after the code span closes does not condemn the line" {
+  local repo
+  repo="$(make_fixture_repo diff-span-closes)"
+  write_agent_file "$repo" code-audit-maintainer-node.md "$DIFF_SPAN_CLOSES_BEFORE_TARGET_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a target named in a trailing comment does not condemn a rangeless call" {
+  local repo
+  repo="$(make_fixture_repo diff-comment-no-range)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_TRAILING_COMMENT_NO_RANGE_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a two-dot call is not vouched for by a later call's range" {
+  local repo
+  repo="$(make_fixture_repo diff-two-calls-one-line)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$TWO_DIFFS_ONE_LINE"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+}
+
+@test "fixture: assertion 3 scans only the code-audit-* roster" {
+  # An agent that takes its file list from the orchestrator has no review base,
+  # so it is outside this assertion's claim. Pinned because the scan pathspec
+  # is narrower than assertions 1 and 2's, which is easy to widen back by
+  # accident when adding a fourth.
+  local repo
+  repo="$(make_fixture_repo diff-non-roster-agent)"
+  write_agent_file "$repo" worthiness-evaluator.md "$DIFF_BASE_SHA_TWO_DOT"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+@test "fixture: the correctly-ranged FULL_BASE self-skip diff passes assertion 3" {
+  local repo
+  repo="$(make_fixture_repo diff-full-base)"
+  write_agent_file "$repo" code-audit-maintainer-prose.md "$DIFF_FULL_BASE_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a two-dot FULL_BASE self-skip diff fails assertion 3" {
+  local repo
+  repo="$(make_fixture_repo diff-full-base-two-dot)"
+  write_agent_file "$repo" code-audit-maintainer-prose.md "$DIFF_FULL_BASE_TWO_DOT"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+  # Assertion 1 still exempts the FULL_BASE derivation itself; the two
+  # assertions decide independently about the same variable.
+  grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
+}
+
 # ---------- real repo: the standing guarantee ----------
 
 @test "real repo: every Code Audit Team definition resolves its review base through the resolver" {
@@ -375,6 +647,24 @@ The retired form was BASE_SHA=$(git merge-base HEAD main)BASE_REF and nothing el
   [ "$status" -eq 0 ]
   grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
   grep -qF "agent files naming BASE_SHA without naming resolve-audit-base.sh: 0" <<<"$output" || return 1
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+@test "real repo: every changed-file diff in the roster is a three-dot range" {
+  # Assertion 3 states the rule negatively (count of violations), so this
+  # pins the positive form directly: every `diff --name-only` the five
+  # definitions carry inside a fence resolves `<something>...HEAD`. A
+  # definition that drops to two-dot reds here as well as on the check.
+  run git -C "$REPO_ROOT" grep -hIE '^[a-z_]+=\$\(git .*diff --name-only' -- '.claude/agents/'
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    grep -qF '...HEAD' <<<"$line" || {
+      printf 'changed-file diff is not a three-dot range: %s\n' "$line"
+      return 1
+    }
+  done <<< "$output"
 }
 
 @test "real repo: the guarantee above is not vacuous -- definitions do name BASE_SHA and do keep a FULL_BASE" {
