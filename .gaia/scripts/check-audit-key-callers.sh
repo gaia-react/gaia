@@ -55,7 +55,8 @@
 #   Runs `git -C <repo_root> grep` for both patterns across `.claude/agents/`
 #   (recursive: the check names no exemption for a reference doc under an
 #   agent's own subdirectory). Prints every match line, then one verdict line
-#   per assertion. Returns 0 when BOTH assertions hold, 1 otherwise.
+#   per assertion. Returns 0 when BOTH assertions hold, 1 otherwise, and 2
+#   when <repo_root> is not a git repository root and nothing was scanned.
 #   <repo_root> is a required parameter -- this check never derives it
 #   itself: a CI caller passes the plain checkout root, a bats fixture
 #   passes a temp repo, so "would this literal fail the check" is testable
@@ -82,6 +83,42 @@ GAIA_AUDIT_ARTIFACT_NAME_PATTERN='findings\.json|rerun\.json'
 gaia_check_audit_key_callers() {
   local repo_root="${1:?gaia_check_audit_key_callers requires a repo_root argument}"
   local literal_failed=0 caller_failed=0
+
+  # A `git grep` that cannot run returns nothing, which is byte-identical to
+  # "scanned it, found no violations". Both assertions would then print 0 and
+  # the function would report a clean tree it never read. The no-argument
+  # path at the bottom of this file fails closed on exactly that silence; an
+  # explicit argument pointing outside a repository needs this guard to do
+  # the same.
+  # Exit 2, distinct from assertion failure (1), so a caller can tell "the
+  # check says no" from "the check could not run".
+  # --show-prefix, not --git-dir: --git-dir succeeds from any path INSIDE a
+  # repo, so a subdirectory passed as repo_root would clear the guard and
+  # then scan a `.claude/agents/` that does not exist beneath it, returning
+  # the same unscanned-tree 0/0 this guard exists to stop.
+  #
+  # --show-prefix answers both questions in one call and needs no `cd`
+  # (.claude/rules/shell-cwd.md): it fails outright outside a repository, and
+  # inside one it prints the path from the repo root down to the directory,
+  # which is empty exactly at the root. Comparing paths textually would need
+  # a subshell `cd` to resolve symlinks on both sides; this does not.
+  # --is-inside-work-tree as well: --show-prefix exits 0 with empty output
+  # inside a BARE repository and inside a `.git` directory, so either would
+  # clear a prefix-only guard as a work-tree root, and the `git grep` below
+  # would then fail for want of a work tree with its diagnostic swallowed by
+  # the same 2>/dev/null -- the identical unscanned-tree 0/0. It reports
+  # false for both shapes and true for a root, a linked worktree root, and a
+  # symlink to one.
+  #
+  # The sibling gate script .gaia/scripts/check-audit-base-derivation.sh
+  # carries the same guard over the same `.claude/agents/` scan; the two are
+  # deliberately identical.
+  local prefix
+  if ! prefix="$(git -C "$repo_root" rev-parse --show-prefix 2>/dev/null)" || [ -n "$prefix" ] \
+    || [ "$(git -C "$repo_root" rev-parse --is-inside-work-tree 2>/dev/null)" != true ]; then
+    printf 'check-audit-key-callers: %s is not a git repository root; nothing was scanned\n' "$repo_root" >&2
+    return 2
+  fi
 
   # ---------- assertion 1: no bare literal survives ----------
   local literal_matches literal_count=0
