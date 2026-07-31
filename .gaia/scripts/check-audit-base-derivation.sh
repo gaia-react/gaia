@@ -184,7 +184,7 @@
 # its prose. The member has nonetheless reverted fully to the pre-fix bare
 # derivation, and the charter sentence at the top of this file ("The review
 # base must come from `.github/audit/resolve-audit-base.sh`") promises more
-# than the assertion delivers.
+# than the assertion delivers. Neither gap is closed statically.
 # gaia:maintainer-only:start
 #
 # The behavioural suite next door covers both, by executing the real fences.

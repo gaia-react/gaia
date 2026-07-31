@@ -56,10 +56,13 @@ fi
 
 # Count runs of consecutive bare `#` comment lines (a blank comment line is
 # the paragraph separator in a `#`-comment header). Every line after the
-# first in a run counts, so three in a row report 2.
+# first in a run counts, so three in a row report 2. Whitespace is stripped
+# from BOTH ends before the comparison: a separator carrying a trailing
+# space is the same artifact to a reader, and matching only the exact byte
+# `#` would let one evade the count.
 count_bare_pairs() {
   awk '
-    { line = $0; sub(/^[ \t]+/, "", line) }
+    { line = $0; sub(/^[ \t]+/, "", line); sub(/[ \t]+$/, "", line) }
     line == "#" { if (prev) n++; prev = 1; next }
     { prev = 0 }
     END { print n + 0 }
@@ -99,12 +102,18 @@ while IFS= read -r rel; do
   # bare `#` on the next line, inside the markers), so exactly one survives
   # and deleting the block leaves the surrounding prose correctly separated.
   # Only the `#`-marker files are in scope; markdown's separator is a blank
-  # line, where a double is invisible once rendered. Compared against the
-  # source count so a deliberately authored double is not attributed here.
+  # line, where a double is invisible once rendered.
+  #
+  # The STAGED count is what gates, not a staged-vs-source delta. An adopter
+  # reads the same artifact whether the strip introduced it or a header
+  # authored it, and a delta nets a strip-introduced double in one part of a
+  # file against an authored one removed from another, so the shape this
+  # exists to catch can hide inside an equal total. The source count rides
+  # along in the report only, to say which of the two a failure is.
   grep -q '^[[:space:]]*# gaia:maintainer-only:start' "$src" || continue
   src_pairs=$(count_bare_pairs "$src")
   staged_pairs=$(count_bare_pairs "$staged")
-  if [ "$staged_pairs" -gt "$src_pairs" ]; then
+  if [ "$staged_pairs" -gt 0 ]; then
     DOUBLED_SEPARATOR+=("$rel: src=$src_pairs staged=$staged_pairs")
   fi
 done < "$INCLUDE"
@@ -131,4 +140,4 @@ if [ "${#DOUBLED_SEPARATOR[@]}" -gt 0 ]; then
   exit 1
 fi
 
-pass "marker-strip transform verified; all marker-bearing files shrunk"
+pass "marker-strip transform verified; all marker-bearing files shrunk, no doubled separators"
