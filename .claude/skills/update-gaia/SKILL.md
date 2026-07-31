@@ -5,7 +5,7 @@ description: Pull the latest GAIA release into this project without clobbering c
 
 Pull the latest GAIA release into this project without clobbering customizations. Does a three-way comparison per file (adopter / baseline / latest) and respects explicit classes in `.gaia/manifest.json`:
 
-- **`owned`**: GAIA controls fully. Overwrites silently if unchanged from baseline; prompts if drifted.
+- **`owned`**: GAIA controls fully. Overwrites silently if unchanged from baseline; emits a `.gaia-merge/` patch for manual resolution on drift, the same as `shared`.
 - **`shared`**: GAIA seeds, you customize. Emits a `.gaia-merge/` patch for manual resolution on drift.
 - **`wiki-owned`**: GAIA-seeded concept/decision/module wiki pages. Same drift handling as `shared`.
 - **adopter-owned (implicit)**: anything not in the manifest, plus sentinels like `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, `.gaia/VERSION`, `.gaia/manifest.json`. Never touched.

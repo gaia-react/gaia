@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-06-25
+updated: 2026-07-31
 tags: [release, claude, adopter, drift]
 ---
 
@@ -19,7 +19,7 @@ How `/update-gaia` pulls a newer GAIA release into an initialized project withou
 | `.gaia/manifest.json` | Ships with every release. Maps each file in the release to a class.                                                 |
 | `.gaia/local/cache/shared/update-gaia/` | Gitignored, shared across worktrees. Holds downloaded baseline + latest tarballs for the 3-way comparison. Pruned to the baseline tarball (plus `update-check.json`, which lives one level up at `.gaia/local/cache/shared/`) at the start of each confirmed update; other cached tag dirs are removed. |
 | `.gaia-merge/`        | Gitignored. Sidecar `.patch` files emitted for files the update can't safely auto-merge. Adopter resolves manually. Removed at the start of an update only when empty; a populated dir is kept and its leftover patches flagged. |
-| `.gaia-backup/`       | Gitignored. Per-timestamp backups of any file the adopter agreed to overwrite. Prior runs' backups are pruned at the start of each confirmed update; once an update is committed git history is the durable recovery. |
+| `.gaia-backup/`       | Gitignored. Per-timestamp backups of every file the walk overwrites. Prior runs' backups are pruned at the start of each confirmed update; once an update is committed git history is the durable recovery. |
 
 ## File classes
 
@@ -27,10 +27,12 @@ The manifest assigns each shipped file exactly one class. Anything **not** in th
 
 | Class        | Meaning                                                                                                                                    | Drift handling                                                                                                                                                                         |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `owned`      | GAIA controls fully: skills, commands, rules, hooks, config files.                                                                         | Pristine → overwrite silently. Drifted → prompt: skip / overwrite / backup+overwrite.                                                                                                  |
+| `owned`      | GAIA controls fully: skills, commands, rules, hooks, config files.                                                                         | Pristine → overwrite silently. Drifted → write `.gaia-merge/<path>.patch`, skip, let adopter resolve.                                                                                  |
 | `shared`     | GAIA seeds; adopter customizes: `package.json`, `CLAUDE.md`, `README.md`, `.claude/settings.json`, `.github/workflows/*`, `wiki/index.md`. | Pristine → overwrite silently. Drifted → write `.gaia-merge/<path>.patch`, skip, let adopter resolve. `package.json` is the exception, merged field-aware (see below), not whole-file. |
 | `wiki-owned` | GAIA-seeded wiki pages adopter may edit: concepts, decisions, modules, flows, dependencies.                                                | Same as `shared`.                                                                                                                                                                      |
 | _(implicit)_ | Adopter-owned. `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, and any file the adopter created.                                             | Never touched by `/update-gaia`.                                                                                                                                                       |
+
+**Drift handling is identical across all three classes**: a drifted file the release also changed gets a sidecar patch and the working tree is left alone. No class prompts on drift. The class decides two other things: which summary bucket a clean overwrite reports under (`owned` → overwritten, `shared` / `wiki-owned` → merged), and what happens when the release newly owns a path the adopter already has, where `owned` backs the file up and overwrites it while the other two emit a patch.
 
 Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, `.gaia/VERSION`, `.gaia/manifest.json`.
 
@@ -48,24 +50,24 @@ Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.m
 
 ## Decision table
 
-For every file `P` in the latest manifest:
+For every file `P` in the latest manifest. **Rows match in declared order; the first matching row wins**, which is what keeps a file the release never touched from being overwritten or patched:
 
 | Condition                                                 | Action                                                                 |
 | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Not in adopter, not in baseline                           | **New file**: add (default yes).                                       |
+| Not in adopter, not in baseline                           | **New file**: added, no prompt.                                        |
 | Not in adopter, present in baseline                       | Adopter deleted: **skip** (respect intent).                            |
-| `adopter[P] == baseline[P]`                               | **Overwrite** with latest (any class).                                 |
-| Adopter drifted, latest unchanged from baseline           | **Skip** (no upstream change).                                         |
-| Adopter drifted, latest changed, `owned`                  | Show diff, prompt `skip` (default) / `overwrite` / `backup+overwrite`. |
-| Adopter drifted, latest changed, `shared` or `wiki-owned` | Write `.gaia-merge/<path>.patch`. Adopter resolves.                    |
+| Not in baseline, `owned`, adopter has the path            | Release newly owns it: back up, then **overwrite** with latest.        |
+| `baseline[P] == latest[P]`                                | **Skip** (no upstream change), drifted or not.                          |
+| `adopter[P] == baseline[P]`                               | Back up, then **overwrite** with latest (any class).                   |
+| `adopter[P] == latest[P]`                                 | **Skip** (already at latest).                                          |
+| Adopter drifted, latest changed (any class)               | Write `.gaia-merge/<path>.patch`. Adopter resolves. No prompt.         |
 
 Files deleted upstream (in baseline, not in latest):
 
-| Condition                   | Action                              |
-| --------------------------- | ----------------------------------- |
-| Not in adopter              | Already gone. Skip.                 |
-| `adopter[P] == baseline[P]` | Prompt `delete` (default) / `keep`. |
-| Adopter drifted             | Prompt `keep` (default) / `delete`. |
+| Condition                   | Action                                                          |
+| --------------------------- | ---------------------------------------------------------------- |
+| Not in adopter              | Already gone. Counted as reconciled, no prompt.                 |
+| Present in adopter          | Ask before removing. Never auto-deleted, drifted or not.        |
 
 ## Generated regions
 
@@ -117,7 +119,7 @@ Re-rendering the workflow makes the update PR self-modifying, so [[Code Review A
 ## Safety invariants
 
 - **Never touch adopter-owned paths.** Anything not in the manifest is invisible.
-- **Never auto-clobber drift.** `owned` drift prompts; `shared` / `wiki-owned` drift writes a patch.
+- **Never auto-clobber drift.** Drift in any class writes a `.gaia-merge/<path>.patch` and leaves the working tree alone; the adopter resolves it by hand. Nothing about drift prompts.
 - **Atomic version marker.** `.gaia/VERSION` flips to latest only after the summary prints (Step 8). Abort during the walk → version stays at baseline, and a re-run resumes cleanly because the merge walk is idempotent (already-merged files match latest and skip). Any already-overwritten files live in `.gaia-backup/`. If the version was bumped but not committed (e.g. an interrupted Step 8), Step 3 detects the mismatch and surfaces it.
 - **No auto-commit.** `/update-gaia` leaves the working tree dirty; the adopter reviews + commits.
 
