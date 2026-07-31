@@ -27803,8 +27803,10 @@ import {
   mkdirSync as mkdirSync17,
   readdirSync as readdirSync3,
   readFileSync as readFileSync31,
+  readlinkSync as readlinkSync2,
   realpathSync as realpathSync3,
   rmSync as rmSync4,
+  symlinkSync as symlinkSync2,
   writeFileSync as writeFileSync12
 } from "node:fs";
 import path41 from "node:path";
@@ -28081,6 +28083,13 @@ var performBackup = (inputs) => {
 };
 var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path41.posix.dirname(declPath)));
 var digestOf = (entry) => entry?.kind === "file" ? entry.digest : void 0;
+var isUntouched = (before, after) => {
+  if (after === void 0) return false;
+  if (before.kind === "symlink")
+    return after.kind === "symlink" && after.target === before.target;
+  return after.kind === "file" && after.digest === before.digest;
+};
+var permissionsOf = (mode) => mode % 4096;
 var collectScopeDigests = (root, scopeDirs) => {
   const digests = /* @__PURE__ */ new Map();
   scopeDirs.forEach((dir) => {
@@ -28102,7 +28111,13 @@ var collectScopeDigests = (root, scopeDirs) => {
       }
       const repoRelative = path41.relative(root, abs).split(path41.sep).join("/");
       if (stat.isSymbolicLink()) {
-        digests.set(repoRelative, { kind: "symlink" });
+        try {
+          digests.set(repoRelative, {
+            kind: "symlink",
+            target: readlinkSync2(abs, "utf8")
+          });
+        } catch {
+        }
         return;
       }
       if (!stat.isFile()) return;
@@ -28128,14 +28143,18 @@ var sweepScope = (inputs) => {
   const confined = [];
   before.forEach((beforeEntry, relPath) => {
     if (declaredSet.has(relPath)) return;
-    if (beforeEntry.kind !== "file") return;
-    if (digestOf(after.get(relPath)) === beforeEntry.digest) return;
+    if (isUntouched(beforeEntry, after.get(relPath))) return;
     try {
       const abs = path41.resolve(root, relPath);
       mkdirSync17(path41.dirname(abs), { recursive: true });
       rmSync4(abs, { force: true });
-      writeFileSync12(abs, beforeEntry.content);
-      chmodSync(abs, beforeEntry.mode);
+      if (beforeEntry.kind === "symlink") {
+        symlinkSync2(beforeEntry.target, abs);
+      } else {
+        const permissions = permissionsOf(beforeEntry.mode);
+        writeFileSync12(abs, beforeEntry.content, { mode: permissions });
+        chmodSync(abs, permissions);
+      }
       confined.push({ action: "restored", path: relPath, regionId });
     } catch {
       confined.push({ action: "reported", path: relPath, regionId });

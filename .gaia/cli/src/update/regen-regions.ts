@@ -46,8 +46,10 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
@@ -590,10 +592,31 @@ type Snapshot = ReadonlyMap<string, SnapshotEntry>;
  */
 type SnapshotEntry =
   | {content: Buffer; digest: string; kind: 'file'; mode: number}
-  | {kind: 'symlink'};
+  | {kind: 'symlink'; target: string};
 
 const digestOf = (entry: SnapshotEntry | undefined): string | undefined =>
   entry?.kind === 'file' ? entry.digest : undefined;
+
+/**
+ * Whether the spawn left this path as it found it. A link is compared by the
+ * target string it holds, a file by its content hash: the two kinds are never
+ * equal to each other, so replacing one with the other always counts as a
+ * change.
+ */
+const isUntouched = (
+  before: SnapshotEntry,
+  after: SnapshotEntry | undefined
+): boolean => {
+  if (after === undefined) return false;
+
+  if (before.kind === 'symlink')
+    return after.kind === 'symlink' && after.target === before.target;
+
+  return after.kind === 'file' && after.digest === before.digest;
+};
+
+/** Permission bits alone; `lstat` mode also carries the file-type bits. */
+const permissionsOf = (mode: number): number => mode % 0o1_0000;
 
 /**
  * Step 5 / re-used for step 7-8: SHA-256 (plus raw content, for restoring)
@@ -636,12 +659,22 @@ const collectScopeDigests = (
 
       const repoRelative = path.relative(root, abs).split(path.sep).join('/');
 
-      // Recorded as present, never as content: nothing about a symlink can be
-      // written back, but it still has to be visible to the sweep, or one the
-      // spawn created is neither reverted nor reported and an undeclared path
-      // survives a run that calls itself confined.
+      // A link's pre-image is the target string it holds, which is the whole
+      // of it: recording that makes a link restorable in its own right, so the
+      // confinement guarantee covers every shape a link can be left in
+      // (deleted, retargeted, replaced by a file) rather than only the created
+      // one. Reading it never follows the link, and a dangling one reads fine.
       if (stat.isSymbolicLink()) {
-        digests.set(repoRelative, {kind: 'symlink'});
+        try {
+          digests.set(repoRelative, {
+            kind: 'symlink',
+            target: readlinkSync(abs, 'utf8'),
+          });
+        } catch {
+          // Unreadable link: skip it, like the unreadable file below. Recording
+          // it with no target would make the sweep think it can put back
+          // something it cannot.
+        }
 
         return;
       }
@@ -684,10 +717,10 @@ type SweepInputs = {
 /**
  * Step 7: revert anything in the snapshot scope that the spawn touched
  * outside the region's declared paths. Every such path that has a pre-image
- * is restored to it, whether the spawn rewrote it or deleted it; a file the
- * spawn created has no pre-image, so it is removed instead. That is the
- * confinement guarantee as stated: reverted when a pre-image exists,
- * reported when it does not.
+ * is restored to it, whether the spawn rewrote it, retargeted it, replaced it
+ * with the other kind, or deleted it; a path the spawn created has no
+ * pre-image, so it is removed instead. That is the confinement guarantee as
+ * stated: reverted when a pre-image exists, reported when it does not.
  */
 const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   const {after, before, declaredPaths, regionId, root} = inputs;
@@ -697,17 +730,11 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   before.forEach((beforeEntry, relPath) => {
     if (declaredSet.has(relPath)) return;
 
-    // A symlink pre-image carries nothing to write back, so the sweep makes no
-    // claim about one rather than a false one: restoring it would mean
-    // materializing a regular file holding its target's bytes.
-    if (beforeEntry.kind !== 'file') return;
-
     // Untouched: nothing to undo. Anything else is an out-of-scope write with
     // a pre-image, and a deletion is one of those: it is absent from `after`
-    // rather than merely different, so the lookup yields `undefined`, which no
-    // digest equals. Either way the content to put back is the same `before`
-    // entry.
-    if (digestOf(after.get(relPath)) === beforeEntry.digest) return;
+    // rather than merely different. Either way the thing to put back is the
+    // same `before` entry.
+    if (isUntouched(beforeEntry, after.get(relPath))) return;
 
     try {
       const abs = path.resolve(root, relPath);
@@ -715,16 +742,28 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
       // A deletion may have taken the parent directory with it.
       mkdirSync(path.dirname(abs), {recursive: true});
       // Unlink first, never write onto whatever is sitting there. If the spawn
-      // replaced this file with a symlink, writing would FOLLOW the link and
+      // replaced this path with a symlink, writing would FOLLOW the link and
       // put the pre-image into its target, which can live anywhere in or
       // outside the tree: the confinement mechanism writing outside the scope
       // it exists to enforce, while the path itself stays a link and the
       // report claims it was restored.
       rmSync(abs, {force: true});
-      writeFileSync(abs, beforeEntry.content);
-      // `restored` has to mean restored. Recreating content under the process
-      // umask hands back an executable the adopter can no longer run.
-      chmodSync(abs, beforeEntry.mode);
+
+      if (beforeEntry.kind === 'symlink') {
+        // Recreating the link writes no content and follows nothing, so
+        // whatever it points at is untouched, exactly as when it was made.
+        symlinkSync(beforeEntry.target, abs);
+      } else {
+        const permissions = permissionsOf(beforeEntry.mode);
+
+        // `restored` has to mean restored. Recreating content under the process
+        // umask hands back an executable the adopter can no longer run, and
+        // creating it at its own permissions keeps a private pre-image from
+        // existing world-readable even briefly.
+        writeFileSync(abs, beforeEntry.content, {mode: permissions});
+        chmodSync(abs, permissions);
+      }
+
       confined.push({action: 'restored', path: relPath, regionId});
     } catch {
       // The revert itself failed. Surface the write rather than throwing:

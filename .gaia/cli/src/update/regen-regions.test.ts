@@ -18,6 +18,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -760,7 +761,7 @@ describe('update regen-regions: behavior coverage', () => {
     expect(existsSync(path.join(root, DECLARED_PATHS[1]))).toBe(false);
   });
 
-  test('12d. a symlink the program deletes in scope is not materialized as a regular file', () => {
+  test('12d. a symlink the program deletes in scope is restored as a symlink, never as a regular file', () => {
     const root = buildRoot();
 
     writeDeclaredFiles(root, 'original');
@@ -778,14 +779,64 @@ describe('update regen-regions: behavior coverage', () => {
 
     const {report} = runCapturing(baseArgv(manifestPath, root));
 
-    // The snapshot cannot faithfully hold a symlink (it hashes the target's
-    // bytes), so restoring one would write a REGULAR file carrying content
-    // that may have lived entirely outside the region. Never do that, and
-    // never claim `restored` for it.
-    expect(report.confined).toEqual([]);
-    expect(existsSync(path.join(root, '.claude/agents/link.md'))).toBe(false);
+    // A deletion outside the declared set is reverted from its pre-image, and
+    // a link's pre-image is the target string it held. Putting the LINK back
+    // is the faithful revert; writing a regular file carrying the target's
+    // bytes would be the mechanism inventing content that lived outside the
+    // region, which is the one thing it must never do.
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(
+      lstatSync(path.join(root, '.claude/agents/link.md')).isSymbolicLink()
+    ).toBe(true);
+    expect(readlinkSync(path.join(root, '.claude/agents/link.md'))).toBe(
+      '../../outside/target.txt'
+    );
     expect(readFileSync(path.join(root, 'outside/target.txt'), 'utf8')).toBe(
       'TARGET CONTENT\n'
+    );
+  });
+
+  test('12d-i. a symlink the program retargets in scope is put back on its original target', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    writeFileSync(path.join(root, 'outside/other.txt'), 'OTHER CONTENT\n');
+    symlinkSync(
+      '../../outside/target.txt',
+      path.join(root, '.claude/agents/link.md')
+    );
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'rm .claude/agents/link.md',
+        'ln -s ../../outside/other.txt .claude/agents/link.md',
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // Same path, same kind, different target: comparing links by presence
+    // alone would call this untouched and leave the region pointing an
+    // undeclared path somewhere it chose.
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(readlinkSync(path.join(root, '.claude/agents/link.md'))).toBe(
+      '../../outside/target.txt'
     );
   });
 
@@ -811,15 +862,27 @@ describe('update regen-regions: behavior coverage', () => {
 
     const {report} = runCapturing(baseArgv(manifestPath, root));
 
-    // This is the shape the symlink pre-image skip actually guards. The path
-    // is present in BOTH snapshots, so the deleted-symlink case's accidental
-    // cover (nothing on either side to compare) does not apply: without the
-    // skip the sweep reaches a restore with no content to write and turns a
-    // link it never recorded into a spurious `reported`.
-    expect(report.confined).toEqual([]);
+    // Swapping a link for a regular file is an out-of-scope write like any
+    // other, and the link's own pre-image is its target string, so it is put
+    // back as a link. Reporting nothing here would let the program's own
+    // undeclared content survive at the path under a clean confinement result.
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
     expect(
-      readFileSync(path.join(root, '.claude/agents/link.md'), 'utf8')
-    ).toBe('now a real file\n');
+      lstatSync(path.join(root, '.claude/agents/link.md')).isSymbolicLink()
+    ).toBe(true);
+    expect(readlinkSync(path.join(root, '.claude/agents/link.md'))).toBe(
+      '../../outside/target.txt'
+    );
+    // Restoring a link writes no content, so the target is untouched.
+    expect(readFileSync(path.join(root, 'outside/target.txt'), 'utf8')).toBe(
+      'TARGET CONTENT\n'
+    );
   });
 
   test('12e. a symlink the program creates in scope is removed, like any other undeclared creation', () => {
