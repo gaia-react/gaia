@@ -21042,7 +21042,7 @@ var lintScanScopes = (manifestFiles, maintainerPathsScope) => {
   }
   return [...gapsByDir.entries()].map(([dir, missingFrom]) => ({ dir, missingFrom: [...missingFrom] })).toSorted((a, b) => a.dir.localeCompare(b.dir));
 };
-var lookupClass = (files, file2) => files[file2];
+var lookupClass = (files, file2) => Object.hasOwn(files, file2) ? files[file2] : void 0;
 var computeMissingEntries = (expected, actual) => Object.entries(expected.files).filter(([file2]) => lookupClass(actual.files, file2) === void 0).map(([file2, expectedClass]) => ({ expected: expectedClass, file: file2 })).toSorted((a, b) => a.file.localeCompare(b.file));
 var computeMissing = (expected, actual) => computeMissingEntries(expected, actual).map((entry) => entry.file);
 var pathSymmetricDiff = (actualPaths, expectedPaths) => {
@@ -27399,7 +27399,7 @@ var VALUE_FLAGS4 = {
   "--current": "current",
   "--latest": "latest"
 };
-var lookupValueFlag3 = (token) => VALUE_FLAGS4[token];
+var lookupValueFlag3 = (token) => Object.hasOwn(VALUE_FLAGS4, token) ? VALUE_FLAGS4[token] : void 0;
 var parseFlags20 = (argv) => {
   const collected = {};
   let json2 = false;

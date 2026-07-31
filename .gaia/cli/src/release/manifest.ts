@@ -489,15 +489,17 @@ export type ManifestDrift = {
   versionDrift: undefined | {actual: string; expected: string};
 };
 
-// `Record<string, T>` indexing types as `T`, never `undefined`, without
-// `noUncheckedIndexedAccess` — but a file present on one side of the diff
-// genuinely may be absent on the other, so this local widening keeps that
-// runtime possibility honest instead of narrowing a real "missing" case away.
+// A file present on one side of the diff genuinely may be absent on the other,
+// and that absence is exactly what marks it missing. The own-property guard is
+// load-bearing: a bare index reaches `Object.prototype`, so a manifest path
+// named `constructor` or `toString` (both legal POSIX filenames) returns a
+// truthy inherited value and drops out of the missing set the drift report and
+// the distribution-answer gate share.
 const lookupClass = (
   files: Record<string, ManifestClass>,
   file: string
 ): ManifestClass | undefined =>
-  (files as Record<string, ManifestClass | undefined>)[file];
+  Object.hasOwn(files, file) ? files[file] : undefined;
 
 export type LintResults = {
   classifierOverlaps: readonly ClassifierOverlap[];

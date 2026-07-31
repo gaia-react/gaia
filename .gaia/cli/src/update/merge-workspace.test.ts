@@ -424,6 +424,41 @@ describe('update merge-workspace', () => {
     expect(stdio.outputs.join('')).toContain('merge-workspace');
   });
 
+  test('an unknown flag exits non-zero with invalid_arguments', () => {
+    sandbox.write('baseline', 'minimumReleaseAge: 10080\n');
+    sandbox.write('latest', 'minimumReleaseAge: 20160\n');
+    sandbox.write('current', 'minimumReleaseAge: 10080\n');
+
+    const exit = run([...argv(sandbox), '--nope']);
+
+    expect(exit).not.toBe(0);
+    expect(stdio.errors.join('')).toContain('invalid_arguments');
+  });
+
+  test.each([
+    'constructor',
+    'toString',
+    'valueOf',
+    '__proto__',
+    'hasOwnProperty',
+  ])(
+    'an unknown flag named after an Object.prototype key (%s) exits non-zero with invalid_arguments',
+    (token) => {
+      // A bare VALUE_FLAGS index returns the inherited value for these tokens,
+      // which would skip the unknown-flag branch and silently consume the NEXT
+      // argv element as the flag's value. The three real flags are already
+      // satisfied, so the malformed invocation would report a clean merge.
+      sandbox.write('baseline', 'minimumReleaseAge: 10080\n');
+      sandbox.write('latest', 'minimumReleaseAge: 20160\n');
+      sandbox.write('current', 'minimumReleaseAge: 10080\n');
+
+      const exit = run([...argv(sandbox), token, 'swallowed']);
+
+      expect(exit).not.toBe(0);
+      expect(stdio.errors.join('')).toContain('invalid_arguments');
+    }
+  );
+
   test('the module source carries no raw NUL byte', () => {
     // A raw NUL inside the first 8000 bytes makes git classify the whole file
     // as binary, which drops it out of `git grep` and every plain-text diff.
