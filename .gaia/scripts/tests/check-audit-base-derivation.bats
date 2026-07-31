@@ -143,6 +143,14 @@ BASE_SHA=$(git merge-base HEAD "origin/${default_branch}")  # was BASE_REF, simp
 The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
 '
 
+# A drifted call whose `$( )` has already CLOSED before BASE_REF appears.
+# The stop set has to end the argument list at `)`, not just at a command or
+# comment boundary: prose describing the retired form mentions BASE_REF after
+# the call, and the file IS the instruction, so the line still reds.
+DRIFT_BASE_REF_AFTER_CLOSE='Agent prose.
+The retired form was BASE_SHA=$(git merge-base HEAD main), now BASE_REF.
+'
+
 # ---------- assertion 1: no bare-merge-base review derivation ----------
 
 @test "fixture: a converted file (FULL_BASE plus a resolver-derived BASE_SHA) passes clean" {
@@ -225,6 +233,16 @@ The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
   local repo
   repo="$(make_fixture_repo drift-base-ref-comment)"
   write_agent_file "$repo" code-audit-maintainer-prose.md "$DRIFT_WITH_BASE_REF_COMMENT"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+}
+
+@test "fixture: a BASE_REF named after the call closes does not exempt it" {
+  local repo
+  repo="$(make_fixture_repo drift-base-ref-after-close)"
+  write_agent_file "$repo" code-audit-github-workflows.md "$DRIFT_BASE_REF_AFTER_CLOSE"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]
@@ -329,6 +347,24 @@ The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
   # that separates "is in a repo" from "is a repo root". The scan would find
   # no .claude/agents/ beneath a subdirectory and report the same clean 0/0.
   run gaia_check_audit_base_derivation "$REPO_ROOT/.gaia/scripts"
+  [ "$status" -eq 2 ]
+  grep -qF "is not a git repository root; nothing was scanned" <<<"$output" || return 1
+}
+
+@test "a bare repository and a .git directory both report 2, never a clean 0" {
+  # --show-prefix alone clears both (exit 0, empty output). The work-tree
+  # check is what separates "has a prefix of empty" from "has a work tree",
+  # and without it `git grep` fails below with its diagnostic swallowed.
+  local bare="$BATS_TEST_TMPDIR/bare.git"
+  git init -q --bare "$bare"
+  run gaia_check_audit_base_derivation "$bare"
+  [ "$status" -eq 2 ]
+
+  local live
+  live="$(make_fixture_repo gitdir-probe)"
+  write_agent_file "$live" some-agent.md "$UNRELATED_FILE"
+  commit_fixture_repo "$live"
+  run gaia_check_audit_base_derivation "$live/.git"
   [ "$status" -eq 2 ]
   grep -qF "is not a git repository root; nothing was scanned" <<<"$output" || return 1
 }

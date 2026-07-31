@@ -114,9 +114,11 @@ GAIA_AUDIT_BASE_RESOLVER='resolve-audit-base.sh'
 # grep's -n format) and keeps only the lines that are actually violations,
 # applying the two discriminations the ERE cannot express. A line survives
 # when it carries at least one `merge-base` call that neither takes BASE_REF
-# as an argument (the resolver-derived shape this check requires) nor is
-# owned by FULL_BASE (the self-skip base, deliberately exempt). Both tests
-# are per CALL, never per line.
+# inside its own argument list (the resolver-derived shape this check
+# requires) nor is owned by FULL_BASE (the self-skip base, deliberately
+# exempt). Both tests are per CALL, never per line: "its own argument list"
+# ends at the `)` that closes the call, so a BASE_REF named anywhere after
+# that vouches for nothing.
 #
 # `sub` on a copy removes only the FIRST two colon-delimited fields, so a
 # colon inside the content itself never shifts the boundary. The owning
@@ -146,14 +148,22 @@ _gaia_drop_full_base_matches() {
         # check REQUIRES. That is what lets the ERE above stay a wide
         # `merge-base` net without every correct line becoming a violation.
         #
-        # Scoped to THIS call'"'"'s own argument list, not the whole line. A
-        # line-wide test is unsound for the same reason the occurrence walk
-        # below exists: `BASE_REF=... ; BASE_SHA=$(git merge-base HEAD
-        # origin/main)` would clear on the mention alone, and so would a
-        # trailing `# was BASE_REF` comment. The stop set ends the argument
-        # list at a command or comment boundary.
+        # Scoped to THIS call'"'"'s own argument list, not the whole line and
+        # not merely the text after it. A line-wide test is unsound for the
+        # same reason the occurrence walk below exists: `BASE_REF=... ;
+        # BASE_SHA=$(git merge-base HEAD origin/main)` would clear on the
+        # mention alone, and so would a trailing `# was BASE_REF` comment.
+        #
+        # The stop set has to close the argument list, and `)` is what
+        # actually does that: the call lives inside a `$( )`, so a BASE_REF
+        # occurring AFTER the substitution ends is not an argument to it.
+        # Without `)` a prose line like "was BASE_SHA=$(git merge-base HEAD
+        # main), now BASE_REF" exempts itself. The backtick closes a markdown
+        # code span, the same escape one sentence later. Neither character
+        # can precede BASE_REF inside the canonical
+        # `merge-base "${BASE_REF}" HEAD`.
         right = substr(content, consumed + pos + 10)
-        if (right ~ /^[^|;&#]*BASE_REF/) {
+        if (right ~ /^[^|;&#)`]*BASE_REF/) {
           consumed += pos + 9
           rest = substr(content, consumed + 1)
           continue
@@ -193,8 +203,16 @@ gaia_check_audit_base_derivation() {
   # inside one it prints the path from the repo root down to the directory,
   # which is empty exactly at the root. Comparing paths textually would need
   # a subshell `cd` to resolve symlinks on both sides; this does not.
+  # --is-inside-work-tree as well: --show-prefix exits 0 with empty output
+  # inside a BARE repository and inside a `.git` directory, so either would
+  # clear a prefix-only guard as a work-tree root, and the `git grep` below
+  # would then fail for want of a work tree with its diagnostic swallowed by
+  # the same 2>/dev/null -- the identical unscanned-tree 0/0. It reports
+  # false for both shapes and true for a root, a linked worktree root, and a
+  # symlink to one.
   local prefix
-  if ! prefix="$(git -C "$repo_root" rev-parse --show-prefix 2>/dev/null)" || [ -n "$prefix" ]; then
+  if ! prefix="$(git -C "$repo_root" rev-parse --show-prefix 2>/dev/null)" || [ -n "$prefix" ] \
+    || [ "$(git -C "$repo_root" rev-parse --is-inside-work-tree 2>/dev/null)" != true ]; then
     printf 'check-audit-base-derivation: %s is not a git repository root; nothing was scanned\n' "$repo_root" >&2
     return 2
   fi
