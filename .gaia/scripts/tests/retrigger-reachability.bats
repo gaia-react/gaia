@@ -514,10 +514,15 @@ poller_window_minutes() {
 #    affected tests would report `ok ... # skip` and green the job. These two
 #    tests are what make that weakening red. Neither is parser-gated itself.
 #
-#    `require_yaml_parser` gates the 15 parsing tests; `require_repo_path` gates
-#    setup(), so every test in the file. That second one covers a gate its own
+#    `require_yaml_parser` gates the 15 parsing tests. `require_repo_path` gates
+#    setup(), so every test in the file, and the five tests that additionally read
+#    code-review-audit.yml call it again for that path. It covers a gate its own
 #    test cannot escape, since setup() runs first here as it does everywhere: what
 #    the test catches is the weakening, not the condition.
+#
+#    Between them these two are the only place this file stands a test down. A
+#    bare `skip` anywhere else would be a third gate reporting `ok ... # skip`
+#    with nothing watching it.
 # ---------------------------------------------------------------------------
 
 @test "the parser gate fails on a CI runner and still skips off CI" {
@@ -824,7 +829,7 @@ workflow_timeout_gaps() {
   local window names wf gaps
 
   require_yaml_parser
-  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  require_repo_path -f "$AUDIT_WORKFLOW" "code-review-audit.yml" || return 1
 
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
   [ -n "$window" ] || {
@@ -1103,7 +1108,7 @@ YAML
   local window ceiling subject cap
 
   require_yaml_parser
-  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  require_repo_path -f "$AUDIT_WORKFLOW" "code-review-audit.yml" || return 1
   mkdir -p "$sb"
   cp "$WORKFLOWS_DIR"/*.yml "$sb/"
 
@@ -1338,7 +1343,7 @@ write_chain_fixture() {
   local spelling subject path minutes hops window ceiling
 
   require_yaml_parser
-  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  require_repo_path -f "$AUDIT_WORKFLOW" "code-review-audit.yml" || return 1
   mkdir -p "$sb"
 
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
@@ -1387,7 +1392,7 @@ write_chain_fixture() {
   local subject path minutes hops window flat ceiling
 
   require_yaml_parser
-  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  require_repo_path -f "$AUDIT_WORKFLOW" "code-review-audit.yml" || return 1
   mkdir -p "$sb"
 
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
@@ -1465,7 +1470,7 @@ YAML
   local subject path minutes hops window ceiling
 
   require_yaml_parser
-  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  require_repo_path -f "$AUDIT_WORKFLOW" "code-review-audit.yml" || return 1
   mkdir -p "$sb"
 
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
