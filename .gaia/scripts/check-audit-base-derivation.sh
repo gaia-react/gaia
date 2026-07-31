@@ -180,18 +180,27 @@ _gaia_drop_full_base_matches() {
         # as a bare substring it is satisfied by the TAIL of a longer name, so
         # a drift routed through an alias exempts itself: `merge-base HEAD
         # "$GITHUB_BASE_REF"` names a branch, and that is an ordinary CI
-        # variable rather than an invented one. The `[^A-Za-z0-9_]` closing
-        # the prefix group is that boundary; `"${BASE_REF}"` and `"$BASE_REF"`
-        # clear it on their `{` and `$`. The group is optional only so a token
-        # at position 0 still matches.
+        # variable rather than an invented one. The class closing the prefix
+        # group is that boundary; `"${BASE_REF}"` and `"$BASE_REF"` clear it
+        # on their `{` and `$`. The group is optional only so a token at
+        # position 0 still matches.
         #
-        # The mirrored RIGHT edge (`${BASE_REF_OLD}`) is knowingly left open.
-        # A trailing `[^A-Za-z0-9_]` also reds a line whose last characters
-        # are the token itself, so closing that side soundly needs an
-        # end-of-string alternative inside the class, and no drift spelling
-        # reaches for a name built by SUFFIXING the token.
+        # That boundary class subtracts the stop set as well, which is not
+        # redundant with the run before it. A bare `[^A-Za-z0-9_]` is a
+        # SUPERSET of the stop set, so the group could end ON a stop character
+        # and hand the exemption straight back: `merge-base HEAD main)BASE_REF`
+        # would clear on the `)` that closes the call, the one character the
+        # stop set exists to treat as a wall. All six behave that way, so the
+        # boundary atom excludes them too.
+        #
+        # The mirrored RIGHT edge (`${BASE_REF_OLD}`) is knowingly left open,
+        # and not for want of a construct: `BASE_REF([^A-Za-z0-9_]|$)` is
+        # plain ERE, and the alternation keeps a line that ENDS at the token
+        # exempt. It is unused because no drift spelling builds a name by
+        # SUFFIXING the token, where `GITHUB_BASE_REF` makes the prefix side
+        # live, so the assertion would guard nothing.
         right = substr(content, consumed + pos + 10)
-        if (right ~ /^([^|;&#)`]*[^A-Za-z0-9_])?BASE_REF/) {
+        if (right ~ /^([^|;&#)`]*[^A-Za-z0-9_|;&#)`])?BASE_REF/) {
           consumed += pos + 9
           rest = substr(content, consumed + 1)
           continue

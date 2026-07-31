@@ -172,6 +172,15 @@ BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/$GITHUB_BASE_REF" 2>/dev
 The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
 '
 
+# A drifted call whose exemption token abuts the `)` that closes it. The
+# left-edge boundary has to subtract the stop set, not merely require a
+# non-identifier character: a bare non-identifier class is a SUPERSET of the
+# stop set, so it is satisfied BY that `)` and hands the exemption back on the
+# very character the stop set exists to treat as a wall.
+DRIFT_BASE_REF_ABUTTING_CLOSE='Agent prose.
+The retired form was BASE_SHA=$(git merge-base HEAD main)BASE_REF and nothing else.
+'
+
 # ---------- assertion 1: no bare-merge-base review derivation ----------
 
 @test "fixture: a converted file (FULL_BASE plus a resolver-derived BASE_SHA) passes clean" {
@@ -281,6 +290,16 @@ The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
   # Assertion 2 is satisfied (the prose names the resolver), so the exemption
   # boundary is the only thing this red can be coming from.
   grep -qF "agent files naming BASE_SHA without naming resolve-audit-base.sh: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a boundary landing on the call-closing paren does not exempt it" {
+  local repo
+  repo="$(make_fixture_repo drift-base-ref-abutting-close)"
+  write_agent_file "$repo" code-audit-github-workflows.md "$DRIFT_BASE_REF_ABUTTING_CLOSE"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
 }
 
 @test "fixture: the canonical resolver-derived call is still exempt on both spellings" {
