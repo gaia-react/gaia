@@ -13,12 +13,16 @@
 # That is the false-green shape this check exists to end -- nothing about it
 # is visible in a passing run.
 #
-# The behavioral suite (.gaia/scripts/tests/audit-base-agreement.bats)
-# proves the five agree TODAY by executing their real derivation snippets.
-# It cannot stop tomorrow's edit from reintroducing a private derivation in
-# a definition it does not happen to exercise. This static check closes that
-# gap the way check-audit-key-callers.sh closes the matching one for the
+# Executing the five real derivation snippets proves they agree TODAY. It
+# cannot stop tomorrow's edit from reintroducing a private derivation in a
+# definition the run does not happen to exercise. This static check closes
+# that gap the way check-audit-key-callers.sh closes the matching one for the
 # key itself.
+#
+# gaia:maintainer-only:start
+# The behavioral suite that executes them is
+# .gaia/scripts/tests/audit-base-agreement.bats.
+# gaia:maintainer-only:end
 #
 # Over `.claude/agents/`, THREE assertions:
 #
@@ -300,14 +304,19 @@ _gaia_drop_full_base_matches() {
 # measured from the call, never line-wide: a line may legitimately carry a
 # correct diff and, further along, prose naming the resolver.
 #
-# The call's text ends at the first `#` or backtick after it. Those two
-# characters are the walls that matter here and nothing else is: `#` opens a
-# shell comment, a backtick closes a markdown code span, and past either the
-# text is no longer part of the command. `|` and `;` are deliberately NOT
-# walls, unlike the ownership walk above -- a pathspec or a redirect routinely
-# follows the revision argument, and `2>/dev/null || true` closes almost every
-# real call, so treating `|` as a wall would cut the window before the tokens
-# this assertion is looking for.
+# The call's text ends at the first `#`, backtick, or `;` after it. Those
+# three characters are the walls that matter here: `#` opens a shell comment,
+# a backtick closes a markdown code span, `;` ends the command outright, and
+# past any of them the text is no longer part of this call. `;` is a wall for
+# the same reason the ownership walk above treats it as one -- nothing in a
+# real call's argument list contains one, so a `;` can only introduce a
+# SEPARATE command, whose range must never vouch for this one.
+#
+# `|` is deliberately NOT a wall, which is where this walk and the ownership
+# walk part company: a pathspec or a redirect routinely follows the revision
+# argument, and `2>/dev/null || true` closes almost every real call, so
+# treating `|` as a wall would cut the window before the tokens this assertion
+# is looking for.
 #
 # `sub` on a copy removes only the FIRST two colon-delimited fields, so a colon
 # inside the content itself never shifts the boundary -- the same framing the
@@ -322,12 +331,18 @@ _gaia_keep_unanchored_diff_matches() {
       rest = content
       while ((pos = index(rest, call)) > 0) {
         # The call window: everything after this occurrence, cut at the first
-        # wall. THREE walls, and the first is what makes "per call" true rather
+        # wall. FOUR walls, and the first is what makes "per call" true rather
         # than merely claimed: without it the window runs to end of line, so a
         # two-dot call followed on the same line by a correct three-dot one is
-        # vouched for by the dots belonging to that LATER call.
+        # vouched for by the dots belonging to that LATER call. The `;` wall
+        # closes the same hole for a later command that is not a diff call at
+        # all, which the first wall cannot see.
         # _gaia_drop_full_base_matches bounds its own scan at the closing paren
         # for the same reason.
+        #
+        # Each cut applies to the already-shortened window, so the walls
+        # compose to the EARLIEST of the four and their order here is
+        # immaterial.
         #
         # No apostrophe anywhere in this program: it is a single-quoted shell
         # string, so one would end it and hand the rest to bash as source.
@@ -335,6 +350,7 @@ _gaia_keep_unanchored_diff_matches() {
         if ((w = index(window, call)) > 0)  window = substr(window, 1, w - 1)
         if ((w = index(window, "#")) > 0)   window = substr(window, 1, w - 1)
         if ((w = index(window, "`")) > 0)   window = substr(window, 1, w - 1)
+        if ((w = index(window, ";")) > 0)   window = substr(window, 1, w - 1)
 
         # Does this call consume the review base at all? Every spelling of it
         # counts, before and after merge-base alike: the defect is the TWO-DOT
