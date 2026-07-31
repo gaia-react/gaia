@@ -27623,6 +27623,7 @@ var run45 = (argv, options = {}) => {
 import { execFileSync as execFileSync4 } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   copyFileSync as copyFileSync2,
   existsSync as existsSync29,
   lstatSync as lstatSync2,
@@ -27649,6 +27650,11 @@ var HELP_TEXT45 = `Usage: gaia update regen-regions --manifest <path> --root <di
 
   Read the manifest's regions from a RELEASE copy, never the adopter's stale
   working-tree copy: pass $LATEST_DIR/.gaia/manifest.json as --manifest.
+
+  Each regeneration program gets 5 minutes and 32 MiB of output before it is
+  killed. A program stopped by either bound is reported as killed with the
+  bound named, so a command that legitimately needs more is told what stopped
+  it rather than left looking like one that never started.
 
   Exit codes:
     0  success, including every refusal, skip, spawn failure, or non-zero
@@ -27901,6 +27907,7 @@ var performBackup = (inputs) => {
   return backedUp;
 };
 var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path39.posix.dirname(declPath)));
+var digestOf = (entry) => entry?.kind === "file" ? entry.digest : void 0;
 var collectScopeDigests = (root, scopeDirs) => {
   const digests = /* @__PURE__ */ new Map();
   scopeDirs.forEach((dir) => {
@@ -27920,8 +27927,12 @@ var collectScopeDigests = (root, scopeDirs) => {
       } catch {
         return;
       }
-      if (!stat.isFile()) return;
       const repoRelative = path39.relative(root, abs).split(path39.sep).join("/");
+      if (stat.isSymbolicLink()) {
+        digests.set(repoRelative, { kind: "symlink" });
+        return;
+      }
+      if (!stat.isFile()) return;
       let content;
       try {
         content = readFileSync34(abs);
@@ -27930,7 +27941,9 @@ var collectScopeDigests = (root, scopeDirs) => {
       }
       digests.set(repoRelative, {
         content,
-        digest: createHash("sha256").update(content).digest("hex")
+        digest: createHash("sha256").update(content).digest("hex"),
+        kind: "file",
+        mode: stat.mode
       });
     });
   });
@@ -27942,11 +27955,14 @@ var sweepScope = (inputs) => {
   const confined = [];
   before.forEach((beforeEntry, relPath) => {
     if (declaredSet.has(relPath)) return;
-    if (after.get(relPath)?.digest === beforeEntry.digest) return;
+    if (beforeEntry.kind !== "file") return;
+    if (digestOf(after.get(relPath)) === beforeEntry.digest) return;
     try {
       const abs = path39.resolve(root, relPath);
       mkdirSync12(path39.dirname(abs), { recursive: true });
+      rmSync3(abs, { force: true });
       writeFileSync9(abs, beforeEntry.content);
+      chmodSync(abs, beforeEntry.mode);
       confined.push({ action: "restored", path: relPath, regionId });
     } catch {
       confined.push({ action: "reported", path: relPath, regionId });
@@ -27980,12 +27996,31 @@ var gitStatusPaths = (root) => {
       expectOriginPath = /[CR]/u.test(record2.slice(0, 2));
       paths.push(record2.slice(3));
     });
-    return paths;
+    const prefix = execGaiaGitRaw(["rev-parse", "--show-prefix"], root).replace(
+      /\r?\n$/u,
+      ""
+    );
+    if (prefix === "") return { inside: paths, outside: [] };
+    const inside = [];
+    const outside = [];
+    paths.forEach((changedPath) => {
+      if (changedPath.startsWith(prefix)) {
+        inside.push(changedPath.slice(prefix.length));
+        return;
+      }
+      outside.push(changedPath);
+    });
+    return { inside, outside };
   } catch {
     return null;
   }
 };
 var errorField = (error51, key) => isPlainObject2(error51) ? error51[key] : void 0;
+var spawnFailureCause = (code) => {
+  if (code === "ETIMEDOUT") return "timeout";
+  if (code === "ENOBUFS") return "maxBuffer";
+  return "external";
+};
 var SPAWN_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 var SPAWN_TIMEOUT_MS = 5 * 60 * 1e3;
 var trySpawn = (decl, root) => {
@@ -28011,7 +28046,13 @@ var trySpawn = (decl, root) => {
     if (typeof status === "number")
       return { kind: "exit", message, ok: false, status };
     const signal = errorField(error51, "signal");
-    return typeof signal === "string" ? { kind: "killed", message, ok: false, signal } : { kind: "spawn", message, ok: false };
+    return typeof signal === "string" ? {
+      cause: spawnFailureCause(errorField(error51, "code")),
+      kind: "killed",
+      message,
+      ok: false,
+      signal
+    } : { kind: "spawn", message, ok: false };
   }
 };
 var reportOutOfScopeWrites = (inputs) => {
@@ -28025,9 +28066,9 @@ var reportOutOfScopeWrites = (inputs) => {
     });
     return;
   }
-  const beforeSet = new Set(beforeStatus);
+  const beforeSet = new Set(beforeStatus.inside);
   const declaredSet = new Set(decl.paths);
-  afterStatus.forEach((changedPath) => {
+  afterStatus.inside.forEach((changedPath) => {
     if (beforeSet.has(changedPath) || declaredSet.has(changedPath) || isInsideScope(changedPath, scopeDirs))
       return;
     report.confined.push({
@@ -28035,6 +28076,17 @@ var reportOutOfScopeWrites = (inputs) => {
       path: changedPath,
       regionId: decl.id
     });
+  });
+  const beforeOutside = new Set(beforeStatus.outside);
+  const newOutside = afterStatus.outside.filter(
+    (changedPath) => !beforeOutside.has(changedPath)
+  );
+  if (newOutside.length === 0) return;
+  structuredError({
+    code: "region_regen_git_delta_out_of_root",
+    message: `region '${decl.id}' changed ${newOutside.length} path(s) above the run's root, reported here because they have no root-relative form: ${newOutside.join(", ")}`,
+    regionId: decl.id,
+    subcommand: "update regen-regions"
   });
 };
 var runRegeneration = (decl, commandArgv, context) => {
@@ -28070,12 +28122,13 @@ var runRegeneration = (decl, commandArgv, context) => {
   });
   if (spawnResult.ok) {
     const rewrote = decl.paths.filter(
-      (declPath) => before.get(declPath)?.digest !== after.get(declPath)?.digest
+      (declPath) => digestOf(before.get(declPath)) !== digestOf(after.get(declPath))
     );
     report.ran.push({ argv: commandArgv, regionId: decl.id, rewrote });
   } else {
     report.failed.push({
       argv: commandArgv,
+      cause: spawnResult.kind === "killed" ? spawnResult.cause : void 0,
       kind: spawnResult.kind,
       message: spawnResult.message,
       regionId: decl.id,

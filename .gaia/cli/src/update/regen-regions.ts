@@ -39,6 +39,7 @@
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   lstatSync,
@@ -70,6 +71,11 @@ const HELP_TEXT = `Usage: gaia update regen-regions --manifest <path> --root <di
   Read the manifest's regions from a RELEASE copy, never the adopter's stale
   working-tree copy: pass $LATEST_DIR/.gaia/manifest.json as --manifest.
 
+  Each regeneration program gets 5 minutes and 32 MiB of output before it is
+  killed. A program stopped by either bound is reported as killed with the
+  bound named, so a command that legitimately needs more is told what stopped
+  it rather than left looking like one that never started.
+
   Exit codes:
     0  success, including every refusal, skip, spawn failure, or non-zero
        program exit
@@ -96,6 +102,8 @@ type ConfinedEntry = {
 
 type FailedEntry = {
   argv: string[];
+  /** `killed` only: which bound, or none of them, ended the program. */
+  cause?: KilledCause;
   kind: 'exit' | 'killed' | 'spawn';
   message: string;
   regionId: string;
@@ -572,7 +580,20 @@ const scopeDirsFor = (paths: readonly string[]): ReadonlySet<string> =>
   new Set(paths.map((declPath) => path.posix.dirname(declPath)));
 
 type Snapshot = ReadonlyMap<string, SnapshotEntry>;
-type SnapshotEntry = {content: Buffer; digest: string};
+/**
+ * A symlink is recorded by its PRESENCE alone, with no content and no digest.
+ * The two questions the sweep asks are different, and the kind is what keeps
+ * them apart: "can this be restored" (only a regular file can, so a symlink
+ * carries nothing to write back) and "did the spawn create this" (a symlink
+ * can be created like anything else, so it has to be in the map to be seen as
+ * present-in-`after`-only, and to keep a pre-existing one from reading as new).
+ */
+type SnapshotEntry =
+  | {content: Buffer; digest: string; kind: 'file'; mode: number}
+  | {kind: 'symlink'};
+
+const digestOf = (entry: SnapshotEntry | undefined): string | undefined =>
+  entry?.kind === 'file' ? entry.digest : undefined;
 
 /**
  * Step 5 / re-used for step 7-8: SHA-256 (plus raw content, for restoring)
@@ -603,22 +624,30 @@ const collectScopeDigests = (
       let stat;
 
       try {
-        // `lstat`, not `stat`: a symlink must not be followed here. The
-        // snapshot's whole contract is content it can hash and later write
-        // back, and a symlink is neither. Followed, it would be buffered as
-        // its TARGET's bytes, and the sweep would then restore it as a plain
-        // regular file holding a copy of content that may have lived wholly
-        // outside the region, or write through the link and rewrite a target
-        // outside the snapshot scope entirely. Excluding it makes the sweep
-        // make no claim about symlinks rather than a false one.
+        // `lstat`, not `stat`: a symlink must not be followed here. Followed,
+        // it would be buffered as its TARGET's bytes, and the sweep would then
+        // restore it as a plain regular file holding a copy of content that may
+        // have lived wholly outside the region, or write through the link and
+        // rewrite a target outside the snapshot scope entirely.
         stat = lstatSync(abs);
       } catch {
         return;
       }
 
+      const repoRelative = path.relative(root, abs).split(path.sep).join('/');
+
+      // Recorded as present, never as content: nothing about a symlink can be
+      // written back, but it still has to be visible to the sweep, or one the
+      // spawn created is neither reverted nor reported and an undeclared path
+      // survives a run that calls itself confined.
+      if (stat.isSymbolicLink()) {
+        digests.set(repoRelative, {kind: 'symlink'});
+
+        return;
+      }
+
       if (!stat.isFile()) return;
 
-      const repoRelative = path.relative(root, abs).split(path.sep).join('/');
       let content;
 
       try {
@@ -635,6 +664,8 @@ const collectScopeDigests = (
       digests.set(repoRelative, {
         content,
         digest: createHash('sha256').update(content).digest('hex'),
+        kind: 'file',
+        mode: stat.mode,
       });
     });
   });
@@ -666,19 +697,34 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   before.forEach((beforeEntry, relPath) => {
     if (declaredSet.has(relPath)) return;
 
+    // A symlink pre-image carries nothing to write back, so the sweep makes no
+    // claim about one rather than a false one: restoring it would mean
+    // materializing a regular file holding its target's bytes.
+    if (beforeEntry.kind !== 'file') return;
+
     // Untouched: nothing to undo. Anything else is an out-of-scope write with
     // a pre-image, and a deletion is one of those: it is absent from `after`
-    // rather than merely different, so the optional chain yields `undefined`,
-    // which no digest equals. Either way the content to put back is the same
-    // `before` entry.
-    if (after.get(relPath)?.digest === beforeEntry.digest) return;
+    // rather than merely different, so the lookup yields `undefined`, which no
+    // digest equals. Either way the content to put back is the same `before`
+    // entry.
+    if (digestOf(after.get(relPath)) === beforeEntry.digest) return;
 
     try {
       const abs = path.resolve(root, relPath);
 
       // A deletion may have taken the parent directory with it.
       mkdirSync(path.dirname(abs), {recursive: true});
+      // Unlink first, never write onto whatever is sitting there. If the spawn
+      // replaced this file with a symlink, writing would FOLLOW the link and
+      // put the pre-image into its target, which can live anywhere in or
+      // outside the tree: the confinement mechanism writing outside the scope
+      // it exists to enforce, while the path itself stays a link and the
+      // report claims it was restored.
+      rmSync(abs, {force: true});
       writeFileSync(abs, beforeEntry.content);
+      // `restored` has to mean restored. Recreating content under the process
+      // umask hands back an executable the adopter can no longer run.
+      chmodSync(abs, beforeEntry.mode);
       confined.push({action: 'restored', path: relPath, regionId});
     } catch {
       // The revert itself failed. Surface the write rather than throwing:
@@ -694,6 +740,8 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
 
     try {
+      // `rmSync` unlinks a symlink rather than following it, so removing one
+      // the spawn created never touches what it pointed at.
       rmSync(path.resolve(root, relPath), {force: true});
       confined.push({action: 'removed', path: relPath, regionId});
     } catch {
@@ -712,6 +760,13 @@ const isInsideScope = (
     (dir) => relPath === dir || relPath.startsWith(`${dir}/`)
   );
 
+type GitStatus = {
+  /** Root-relative, the same frame every other path in the report uses. */
+  inside: string[];
+  /** Changed paths that lie above `root`, kept in top-level frame. */
+  outside: string[];
+};
+
 /**
  * Whole-root `git status --porcelain -z` path list. `null` when git is
  * unavailable or `root` is not a repository, so the caller can degrade
@@ -724,8 +779,15 @@ const isInsideScope = (
  * cannot be split on ` -> ` without corrupting a name that contains it.
  * Under `-z` git never quotes, and a rename gets its own trailing record for
  * the origin path, so both hazards disappear rather than being unescaped.
+ *
+ * Every record git returns is relative to the repository TOP LEVEL, never to
+ * `root`, and the two differ whenever a GAIA project sits inside a larger
+ * repository. Rebasing them onto `root` is what keeps the caller's comparisons
+ * against the declared paths and the snapshot scope, both root-relative,
+ * meaningful; without it every one of the region's own legitimate writes fails
+ * to match and is reported to the adopter as an out-of-scope write.
  */
-const gitStatusPaths = (root: string): null | string[] => {
+const gitStatusPaths = (root: string): GitStatus | null => {
   try {
     // Raw, never trimmed: the ` M path` shape's leading space is a status
     // column, and trimming it shifts the 3-character prefix slice below.
@@ -753,21 +815,72 @@ const gitStatusPaths = (root: string): null | string[] => {
         paths.push(record.slice(3));
       });
 
-    return paths;
+    // `--show-prefix` is `root`'s own path relative to the top level, with a
+    // trailing slash, and empty when the two coincide (the ordinary case, and
+    // the only one `--root .` at a repository root produces).
+    const prefix = execGaiaGitRaw(['rev-parse', '--show-prefix'], root).replace(
+      /\r?\n$/u,
+      ''
+    );
+
+    if (prefix === '') return {inside: paths, outside: []};
+
+    const inside: string[] = [];
+    const outside: string[] = [];
+
+    paths.forEach((changedPath) => {
+      if (changedPath.startsWith(prefix)) {
+        inside.push(changedPath.slice(prefix.length));
+
+        return;
+      }
+
+      outside.push(changedPath);
+    });
+
+    return {inside, outside};
   } catch {
     return null;
   }
 };
 
 type SpawnOutcome =
+  | {
+      cause: KilledCause;
+      kind: 'killed';
+      message: string;
+      ok: false;
+      signal: string;
+    }
   | {kind: 'exit'; message: string; ok: false; status: number}
-  | {kind: 'killed'; message: string; ok: false; signal: string}
   | {kind: 'spawn'; message: string; ok: false}
   | {ok: true};
 
 /** Reads one field off a thrown value without asserting its shape. */
 const errorField = (error: unknown, key: string): unknown =>
   isPlainObject(error) ? error[key] : undefined;
+
+export type KilledCause = 'external' | 'maxBuffer' | 'timeout';
+
+/**
+ * Which of the three ways a killed child died. All three arrive identically
+ * otherwise, `signal: 'SIGTERM'` and no status, so without this an adopter
+ * whose program legitimately runs past the time bound, one that legitimately
+ * says more than the output bound, and one an operator killed by hand all read
+ * the same and none of them names GAIA's own ceiling as the reason.
+ *
+ * The codes are Node's, observed on the sync spawn path: a `timeout` kill
+ * surfaces `ETIMEDOUT` and a `maxBuffer` overflow `ENOBUFS`, each on both the
+ * thrown error and its nested `error`. Anything else came from outside this
+ * process's own bounds.
+ */
+export const spawnFailureCause = (code: unknown): KilledCause => {
+  if (code === 'ETIMEDOUT') return 'timeout';
+
+  if (code === 'ENOBUFS') return 'maxBuffer';
+
+  return 'external';
+};
 
 /**
  * Runaway guards on the regeneration program, not a performance budget.
@@ -816,14 +929,20 @@ const trySpawn = (decl: ParsedDeclaration, root: string): SpawnOutcome => {
     // never happened when in fact it ran and was cut short, so the signal,
     // which only the killed case carries, is what separates them.
     return typeof signal === 'string' ?
-        {kind: 'killed', message, ok: false, signal}
+        {
+          cause: spawnFailureCause(errorField(error, 'code')),
+          kind: 'killed',
+          message,
+          ok: false,
+          signal,
+        }
       : {kind: 'spawn', message, ok: false};
   }
 };
 
 type OutOfScopeInputs = {
-  afterStatus: null | string[];
-  beforeStatus: null | string[];
+  afterStatus: GitStatus | null;
+  beforeStatus: GitStatus | null;
   decl: ParsedDeclaration;
   report: RegenRegionsReport;
   scopeDirs: ReadonlySet<string>;
@@ -851,10 +970,10 @@ const reportOutOfScopeWrites = (inputs: OutOfScopeInputs): void => {
     return;
   }
 
-  const beforeSet = new Set(beforeStatus);
+  const beforeSet = new Set(beforeStatus.inside);
   const declaredSet = new Set(decl.paths);
 
-  afterStatus.forEach((changedPath) => {
+  afterStatus.inside.forEach((changedPath) => {
     if (
       beforeSet.has(changedPath) ||
       declaredSet.has(changedPath) ||
@@ -867,6 +986,24 @@ const reportOutOfScopeWrites = (inputs: OutOfScopeInputs): void => {
       path: changedPath,
       regionId: decl.id,
     });
+  });
+
+  const beforeOutside = new Set(beforeStatus.outside);
+  const newOutside = afterStatus.outside.filter(
+    (changedPath) => !beforeOutside.has(changedPath)
+  );
+
+  if (newOutside.length === 0) return;
+
+  // Above the run's own root, so it has no root-relative form and cannot join
+  // `confined[]`, whose paths are root-relative by contract. It is still a
+  // real write the region made, so it leaves by the same non-fatal channel
+  // the git-unavailable case uses rather than being dropped.
+  structuredError({
+    code: 'region_regen_git_delta_out_of_root',
+    message: `region '${decl.id}' changed ${newOutside.length} path(s) above the run's root, reported here because they have no root-relative form: ${newOutside.join(', ')}`,
+    regionId: decl.id,
+    subcommand: 'update regen-regions',
   });
 };
 
@@ -927,13 +1064,15 @@ const runRegeneration = (
 
   if (spawnResult.ok) {
     const rewrote = decl.paths.filter(
-      (declPath) => before.get(declPath)?.digest !== after.get(declPath)?.digest
+      (declPath) =>
+        digestOf(before.get(declPath)) !== digestOf(after.get(declPath))
     );
 
     report.ran.push({argv: commandArgv, regionId: decl.id, rewrote});
   } else {
     report.failed.push({
       argv: commandArgv,
+      cause: spawnResult.kind === 'killed' ? spawnResult.cause : undefined,
       kind: spawnResult.kind,
       message: spawnResult.message,
       regionId: decl.id,
