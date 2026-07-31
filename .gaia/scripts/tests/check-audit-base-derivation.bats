@@ -691,7 +691,15 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null 
   # roster still passes it and the shrink is reported nowhere. A roster change
   # that moves this number is a deliberate update to the number, never a reason
   # to relax the assertion back to non-emptiness.
-  [ "$(grep -c . <<<"$output")" -eq 9 ]
+  # The pin and the message it prints read ONE constant, so an update to the
+  # number cannot leave the failure text claiming a different expectation.
+  expected_lines=9
+  net_lines="$(grep -c . <<<"$output")"
+  [ "$net_lines" -eq "$expected_lines" ] || {
+    printf 'roster diff-line net covered %s lines, expected %s\n' \
+      "$net_lines" "$expected_lines"
+    return 1
+  }
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     grep -qF '...HEAD' <<<"$line" || {

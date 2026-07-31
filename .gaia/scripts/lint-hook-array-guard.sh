@@ -4,8 +4,8 @@
 # bodies in .claude/hooks and every script under .gaia/scripts. Exit 1 with a
 # file:line report on any hit, exit 0 when clean. Run it directly from the repo
 # root: `bash .gaia/scripts/lint-hook-array-guard.sh`.
-#
 # gaia:maintainer-only:start
+#
 # Enforced by the sibling bats suite
 # .gaia/scripts/tests/lint-hook-array-guard.bats, which the `Audit CI Tests`
 # CI job runs on every push touching .claude/hooks/** or .gaia/scripts/**. The

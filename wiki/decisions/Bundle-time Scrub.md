@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-05-08
 created: 2026-05-08
-updated: 2026-07-03
+updated: 2026-08-01
 tags: [decision, release, maintainer, distribution-boundary]
 ---
 
@@ -56,6 +56,8 @@ Anything else is a runtime-dependency leak, a shipped caller pointing at a relea
 Single-developer marker discipline is acceptable for now. The maintainer wraps maintainer-only blocks; the maintainer wraps consistently. If the project grows multiple maintainers, the cost is an additional convention to enforce in review, flagged as a future revisit, not a present blocker.
 
 The markers are HTML comments to keep them invisible in rendered Markdown (Obsidian, GitHub previews) while remaining trivially line-grep-able.
+
+In a `#`-comment file the paragraph separator is a bare `#` line, and a block placed between two of them strips to both, so the adopter copy carries a doubled separator where a block it cannot see used to be. **The block owns the separator that introduces it**: the start marker comes first and the bare `#` sits on the next line, inside the markers. Exactly one separator survives, and deleting the block leaves the surrounding prose correctly separated, which is what the strip does. A block already sitting mid-paragraph or mid-list introduces nothing and needs no separator of its own. `.gaia/tests/distribution/03-marker-strip.sh` asserts this against the staged tree by comparing each source file's doubled-separator count to its staged counterpart's, so only a strip-introduced double fails the build.
 
 ## What it does NOT catch
 

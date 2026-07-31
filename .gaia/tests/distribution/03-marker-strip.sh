@@ -8,6 +8,7 @@
 #      counterpart (file-size delta > 0).
 #   3. No staged counterpart shrunk to zero bytes (would indicate the
 #      whole file was inside a marker block; almost certainly wrong).
+#   4. No `#`-marker strip left a doubled bare `#` separator behind.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
@@ -53,8 +54,21 @@ else
   cp "$ALL_TRACKED" "$INCLUDE"
 fi
 
+# Count runs of consecutive bare `#` comment lines (a blank comment line is
+# the paragraph separator in a `#`-comment header). Every line after the
+# first in a run counts, so three in a row report 2.
+count_bare_pairs() {
+  awk '
+    { line = $0; sub(/^[ \t]+/, "", line) }
+    line == "#" { if (prev) n++; prev = 1; next }
+    { prev = 0 }
+    END { print n + 0 }
+  ' "$1"
+}
+
 MISSING_DELTA=()
 ZERO_BYTE=()
+DOUBLED_SEPARATOR=()
 while IFS= read -r rel; do
   src="$PROJECT_ROOT/$rel"
   staged="$STAGING/$rel"
@@ -77,6 +91,22 @@ while IFS= read -r rel; do
     ZERO_BYTE+=("$rel")
     continue
   fi
+
+  # A `#`-comment marker block sitting between two bare `#` separators
+  # strips to BOTH of them, so the adopter copy carries a doubled separator
+  # where a block it cannot see used to be. The convention that avoids it:
+  # the block owns the separator that introduces it (start marker first,
+  # bare `#` on the next line, inside the markers), so exactly one survives
+  # and deleting the block leaves the surrounding prose correctly separated.
+  # Only the `#`-marker files are in scope; markdown's separator is a blank
+  # line, where a double is invisible once rendered. Compared against the
+  # source count so a deliberately authored double is not attributed here.
+  grep -q '^[[:space:]]*# gaia:maintainer-only:start' "$src" || continue
+  src_pairs=$(count_bare_pairs "$src")
+  staged_pairs=$(count_bare_pairs "$staged")
+  if [ "$staged_pairs" -gt "$src_pairs" ]; then
+    DOUBLED_SEPARATOR+=("$rel: src=$src_pairs staged=$staged_pairs")
+  fi
 done < "$INCLUDE"
 
 if [ "${#MISSING_DELTA[@]}" -gt 0 ]; then
@@ -90,6 +120,14 @@ if [ "${#ZERO_BYTE[@]}" -gt 0 ]; then
   log "Files reduced to zero bytes by marker strip; likely whole-file blocks:"
   for entry in "${ZERO_BYTE[@]}"; do log "  $entry"; done
   fail "${#ZERO_BYTE[@]} file(s) became empty after strip"
+  exit 1
+fi
+
+if [ "${#DOUBLED_SEPARATOR[@]}" -gt 0 ]; then
+  log "Marker strip left a doubled bare '#' separator in staging; pull the"
+  log "introducing separator inside the markers so exactly one survives:"
+  for entry in "${DOUBLED_SEPARATOR[@]}"; do log "  $entry"; done
+  fail "${#DOUBLED_SEPARATOR[@]} file(s) gained a doubled separator"
   exit 1
 fi
 

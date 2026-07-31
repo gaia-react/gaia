@@ -18,8 +18,8 @@
 # definition the run does not happen to exercise. This static check closes
 # that gap the way check-audit-key-callers.sh closes the matching one for the
 # key itself.
-#
 # gaia:maintainer-only:start
+#
 # The behavioral suite that executes them is
 # .gaia/scripts/tests/audit-base-agreement.bats.
 # gaia:maintainer-only:end
@@ -120,8 +120,11 @@
 #      What it does NOT see, deliberately, is the multi-line form: a fence
 #      assigning `changed=$(git diff --name-only "$X" ...)` where `X` took the
 #      resolver's output on an earlier line. Line-scoped, like every assertion
-#      here. The behavioural suite next door executes the real fences and
-#      compares the resulting file lists, which is what covers that shape.
+#      here.
+# gaia:maintainer-only:start
+#      The behavioural suite next door executes the real fences and compares
+#      the resulting file lists, which is what covers that shape.
+# gaia:maintainer-only:end
 #
 # Comment lines are NOT stripped from either scan, unlike
 # check-main-root-derivation.sh, which scans executable source where a
@@ -182,8 +185,10 @@
 # derivation, and the charter sentence at the top of this file ("The review
 # base must come from `.github/audit/resolve-audit-base.sh`") promises more
 # than the assertion delivers.
+# gaia:maintainer-only:start
 #
 # The behavioural suite next door covers both, by executing the real fences.
+# gaia:maintainer-only:end
 GAIA_AUDIT_BARE_MERGE_BASE_PATTERN='[A-Za-z_][A-Za-z0-9_]*=.*merge-base'
 
 # Assertion 2's two fixed strings.
