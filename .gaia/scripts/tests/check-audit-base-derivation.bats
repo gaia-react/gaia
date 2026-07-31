@@ -469,6 +469,19 @@ changed=$(git diff --name-only "$BASE_SHA") ; full_changed=$(git diff --name-onl
 ```
 '
 
+# A `;`-joined line whose trailing command is not a diff call at all and
+# carries a `...` of its own. None of the other three walls closes the leading
+# call: there is no second `diff --name-only`, no `#`, and no backtick. Without
+# a `;` wall the window runs to end of line and the LATER command's range
+# vouches for a two-dot call, so the check reports 0 in exactly the case it
+# exists to catch. The fixture above needs the call wall; this one needs the
+# `;` wall and nothing else can save it.
+DIFF_SEMICOLON_LATER_RANGE='Agent prose, per .github/audit/resolve-audit-base.sh.
+```bash
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "$BASE_SHA") ; echo "${BASE_REF}...HEAD"
+```
+'
+
 # The self-skip diff, correctly ranged.
 DIFF_FULL_BASE_OK='Agent prose.
 ```bash
@@ -603,6 +616,17 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null 
   grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
 }
 
+@test "fixture: a later command on a ;-joined line does not vouch for a two-dot call" {
+  local repo
+  repo="$(make_fixture_repo diff-semicolon-later-range)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_SEMICOLON_LATER_RANGE"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "code-audit-maintainer-shell.md" <<<"$output" || return 1
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+}
+
 @test "fixture: assertion 3 scans only the code-audit-* roster" {
   # An agent that takes its file list from the orchestrator has no review base,
   # so it is outside this assertion's claim. Pinned because the scan pathspec
@@ -655,9 +679,19 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null 
   # pins the positive form directly: every `diff --name-only` the five
   # definitions carry inside a fence resolves `<something>...HEAD`. A
   # definition that drops to two-dot reds here as well as on the check.
-  run git -C "$REPO_ROOT" grep -hIE '^[a-z_]+=\$\(git .*diff --name-only' -- '.claude/agents/'
+  #
+  # The `"?` accepts both spellings of the assignment. Requiring `$(` to sit
+  # immediately after the `=` matches the unquoted form alone, so a definition
+  # normalized to `changed="$(git ...)"` drops out of the net entirely.
+  run git -C "$REPO_ROOT" grep -hIE '^[a-z_]+="?\$\(git .*diff --name-only' -- '.claude/agents/'
   [ "$status" -eq 0 ]
   [ -n "$output" ]
+  # Pin the breadth, not just non-emptiness. `[ -n "$output" ]` is satisfied by
+  # any ONE surviving line, so a net that quietly stops covering most of the
+  # roster still passes it and the shrink is reported nowhere. A roster change
+  # that moves this number is a deliberate update to the number, never a reason
+  # to relax the assertion back to non-emptiness.
+  [ "$(grep -c . <<<"$output")" -eq 9 ]
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     grep -qF '...HEAD' <<<"$line" || {
