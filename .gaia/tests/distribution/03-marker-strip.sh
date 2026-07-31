@@ -8,7 +8,7 @@
 #      counterpart (file-size delta > 0).
 #   3. No staged counterpart shrunk to zero bytes (would indicate the
 #      whole file was inside a marker block; almost certainly wrong).
-#   4. No `#`-marker strip left a doubled bare `#` separator behind.
+#   4. No staged `#`-marker file carries a doubled bare `#` separator.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
@@ -133,10 +133,11 @@ if [ "${#ZERO_BYTE[@]}" -gt 0 ]; then
 fi
 
 if [ "${#DOUBLED_SEPARATOR[@]}" -gt 0 ]; then
-  log "Marker strip left a doubled bare '#' separator in staging; pull the"
-  log "introducing separator inside the markers so exactly one survives:"
+  log "Staged '#'-marker file(s) carry a doubled bare '#' separator. The block"
+  log "owns the separator that introduces it, so exactly one survives the strip."
+  log "src=0 means the strip produced it; src>0 means the header authored it:"
   for entry in "${DOUBLED_SEPARATOR[@]}"; do log "  $entry"; done
-  fail "${#DOUBLED_SEPARATOR[@]} file(s) gained a doubled separator"
+  fail "${#DOUBLED_SEPARATOR[@]} staged file(s) carry a doubled separator"
   exit 1
 fi
 
