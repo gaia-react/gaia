@@ -93,12 +93,25 @@
 #      This assertion says nothing about WHICH spelling a call should use; the
 #      three-dot range is the whole requirement.
 #
-#      Scoped per CALL and walled at `#` or a backtick, the two characters that
-#      end a shell line's code and close a markdown code span. Without that
-#      wall a correct `"${BASE_SHA}...HEAD"` diff carrying a trailing
-#      `# was BASE_REF` comment would report itself, and so would ordinary
-#      prose mentioning `git diff --name-only` and a base in one sentence
-#      (.claude/agents/worthiness-evaluator.md does exactly that).
+#      Scoped per CALL by three walls: the next `diff --name-only` (without
+#      which the window runs to end of line and a two-dot call is vouched for
+#      by a LATER correct call's dots), `#`, and a backtick. The latter two end
+#      a shell line's code and close a markdown code span; without them a
+#      correct call carrying a trailing `# was BASE_REF` comment would report
+#      itself, and so would prose naming the command and a base in one
+#      sentence.
+#
+#      This assertion scans `.claude/agents/code-audit-*.md`, NOT the whole
+#      directory that (1) and (2) range over. Only a Code Audit Team member HAS
+#      a review base; an agent that takes its file list from the orchestrator
+#      (.claude/agents/worthiness-evaluator.md) has nothing for this rule to be
+#      about, and scanning it buys only a false-positive surface, since its
+#      prose stays clean on the backtick wall alone and a rewording could red
+#      the check for a file with no base at all. The `code-audit-` prefix is
+#      the same convention the roster globs in .gaia/audit-ci.yml, the CI
+#      paths filter in audit-ci-tests.yml, and block-selfheal-paths.sh all
+#      already key on, so this narrows to what the rest of the system treats
+#      as the member set rather than inventing a second one.
 #
 #      What it does NOT see, deliberately, is the multi-line form: a fence
 #      assigning `changed=$(git diff --name-only "$X" ...)` where `X` took the
@@ -177,9 +190,9 @@ GAIA_AUDIT_BASE_RESOLVER='resolve-audit-base.sh'
 # A fixed string, not an ERE, for the same reason assertion 2's are: the set of
 # ways to spell a wrong consumer is open, so the awk below identifies the one
 # shape that is right instead of enumerating the ones that are not.
-# The awk below restates this literal (and its length) rather than reading the
-# variable, the same split assertion 1 already has between its ERE and the
-# `merge-base` literal in _gaia_drop_full_base_matches. Change one, change both.
+# The awk below receives this via -v and measures it with length(), so the grep
+# net and the scan cannot disagree about what a call looks like. (Assertion 1
+# predates that and still restates its `merge-base` literal by hand.)
 GAIA_AUDIT_DIFF_CALL='diff --name-only'
 
 # _gaia_drop_full_base_matches: reads `file:line:content` lines on stdin (git
@@ -300,18 +313,28 @@ _gaia_drop_full_base_matches() {
 # inside the content itself never shifts the boundary -- the same framing the
 # ownership walk uses.
 _gaia_keep_unanchored_diff_matches() {
-  awk '
+  awk -v call="$GAIA_AUDIT_DIFF_CALL" '
+    BEGIN { calllen = length(call) }
     {
       content = $0
       sub(/^[^:]*:[^:]*:/, "", content)
       consumed = 0
       rest = content
-      while ((pos = index(rest, "diff --name-only")) > 0) {
+      while ((pos = index(rest, call)) > 0) {
         # The call window: everything after this occurrence, cut at the first
-        # comment or code-span wall.
-        window = substr(content, consumed + pos + 16)
-        if ((w = index(window, "#")) > 0)  window = substr(window, 1, w - 1)
-        if ((w = index(window, "`")) > 0)  window = substr(window, 1, w - 1)
+        # wall. THREE walls, and the first is what makes "per call" true rather
+        # than merely claimed: without it the window runs to end of line, so a
+        # two-dot call followed on the same line by a correct three-dot one is
+        # vouched for by the dots belonging to that LATER call.
+        # _gaia_drop_full_base_matches bounds its own scan at the closing paren
+        # for the same reason.
+        #
+        # No apostrophe anywhere in this program: it is a single-quoted shell
+        # string, so one would end it and hand the rest to bash as source.
+        window = substr(content, consumed + pos + calllen)
+        if ((w = index(window, call)) > 0)  window = substr(window, 1, w - 1)
+        if ((w = index(window, "#")) > 0)   window = substr(window, 1, w - 1)
+        if ((w = index(window, "`")) > 0)   window = substr(window, 1, w - 1)
 
         # Does this call consume the review base at all? Every spelling of it
         # counts, before and after merge-base alike: the defect is the TWO-DOT
@@ -330,7 +353,7 @@ _gaia_keep_unanchored_diff_matches() {
         # after, a pathspec-first variant before), and a rule that pinned the
         # side would reject a correct call to reject a stylistic one.
         if (consumes && index(window, "...") == 0) { print; next }
-        consumed += pos + 15
+        consumed += pos + calllen - 1
         rest = substr(content, consumed + 1)
       }
     }
@@ -403,7 +426,7 @@ gaia_check_audit_base_derivation() {
 
   # ---------- assertion 3: no diff consumes an un-anchored base ----------
   local diff_candidates diff_matches diff_count=0
-  diff_candidates="$(git -C "$repo_root" grep -nIF "$GAIA_AUDIT_DIFF_CALL" -- '.claude/agents/' 2>/dev/null)"
+  diff_candidates="$(git -C "$repo_root" grep -nIF "$GAIA_AUDIT_DIFF_CALL" -- '.claude/agents/code-audit-*.md' 2>/dev/null)"
   diff_matches="$(printf '%s\n' "$diff_candidates" | _gaia_keep_unanchored_diff_matches)"
   if [ -n "$diff_matches" ]; then
     printf '%s\n' "$diff_matches"

@@ -16,8 +16,10 @@
 # stamped clean round. A member whose prose drifts to a private derivation
 # reds here.
 #
-# Three probes:
+# Four probes:
 #   1. base + key agreement across all five members
+#   1b. the reviewed range is HEAD's content, not the working tree's, and the
+#       fork point rather than an advanced ref tip
 #   2. post-findings-block.sh reads a specialist's sidecar
 #   3. the self-skip deadlock: a machinery-only increment with the
 #      classifier libs unloadable
@@ -35,8 +37,8 @@
 # jq is a precondition on CI, not a maybe: audit-ci-tests.yml runs this suite
 # on ubuntu-latest, where jq is preinstalled, so an absent jq there means the
 # runner image or the job moved under this file. A bats `skip` reports
-# `ok ... # skip` and greens the required check, which would retire all four
-# probes -- the entire base-agreement guarantee -- with nothing anywhere
+# `ok ... # skip` and greens the required check, which would retire every
+# probe -- the entire base-agreement guarantee -- with nothing anywhere
 # saying it did not run. The CI branch therefore FAILS instead of skipping.
 # Off CI the skip stands: a workstation without jq is not the environment
 # this suite makes a claim about. Same fail-closed shape as
@@ -48,7 +50,7 @@ require_jq() {
     # No `::error::` prefix: bats prefixes a test's stderr with `# `, and
     # Actions parses a workflow command only at column 0, so the annotation
     # that spelling promises would never render. The `return 1` is what gates.
-    echo "jq not present on a CI runner; all four probes here would report green. Check the runner image and the job's install step." >&2
+    echo "jq not present on a CI runner; every probe here would report green. Check the runner image and the job's install step." >&2
     return 1
   fi
   skip "jq required"
@@ -96,7 +98,7 @@ setup() {
   rc=0
   ( PATH="$shim" GITHUB_ACTIONS=true; require_jq ) >/dev/null 2>&1 || rc=$?
   [ "$rc" -ne 0 ] || {
-    echo "the gate skipped on a CI runner with no jq; all four probes would report green" >&2
+    echo "the gate skipped on a CI runner with no jq; every probe would report green" >&2
     return 1
   }
 
@@ -342,20 +344,27 @@ owners_of() {
   repo="$(make_repo worktree-scope)"
   git -C "$repo" checkout -q -b feat
 
-  # Committed, then reverted in the working tree. Two-dot drops it; three-dot
-  # keeps it, which is the arm that matches the digest.
+  # Both probe files must be TRACKED at the base. `git diff` compares tracked
+  # content only, so an untracked path appears under neither spelling and an
+  # assertion written against one could never fire: the dirty-file direction
+  # has to be a modification to a tracked file, not a new file.
   mkdir -p "$repo/app"
   printf 'export const before = 1\n' > "$repo/app/reverted.ts"
+  printf 'export const clean = 1\n' > "$repo/app/dirty.ts"
   git -C "$repo" add -A
-  git -C "$repo" commit -q -m "baseline for the reverted file"
+  git -C "$repo" commit -q -m "baseline for both probe files"
   stamp_clean_round "$repo"
+
+  # Committed, then reverted in the working tree. Two-dot drops it; three-dot
+  # keeps it, which is the arm that matches the digest.
   printf 'export const after = 2\n' > "$repo/app/reverted.ts"
   git -C "$repo" add -A
   git -C "$repo" commit -q -m "commit a change to reverted.ts"
   printf 'export const before = 1\n' > "$repo/app/reverted.ts"
 
-  # Never committed at all. Three-dot excludes it; two-dot pulls it in.
-  printf 'export const scratch = 3\n' > "$repo/app/uncommitted.ts"
+  # Modified in the working tree and never committed. Three-dot excludes it;
+  # two-dot pulls it in, where no marker can cover it.
+  printf 'export const scratch = 3\n' > "$repo/app/dirty.ts"
 
   changed="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
 
@@ -363,8 +372,8 @@ owners_of() {
     printf 'a file changed in HEAD but reverted in the working tree fell out of review scope, while the marker still covers it: %s\n' "$changed" >&2
     return 1
   }
-  grep -qF 'app/uncommitted.ts' <<<"$changed" && {
-    printf 'an uncommitted file entered review scope, where no marker can cover it: %s\n' "$changed" >&2
+  grep -qF 'app/dirty.ts' <<<"$changed" && {
+    printf 'an uncommitted working-tree edit entered review scope, where no marker can cover it: %s\n' "$changed" >&2
     return 1
   }
   return 0

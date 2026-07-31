@@ -459,6 +459,16 @@ staged=$(git -C "$AUDIT_ROOT" diff --name-only --cached)   # not BASE_REF, delib
 ```
 '
 
+# A two-dot call sharing its LINE with a correct three-dot one. The window has
+# to end at the NEXT call, or the later call's `...` satisfies the range test
+# for the earlier one and the bad call escapes. Bad call FIRST is the ordering
+# that requires the wall; the reverse is caught by the walk alone.
+TWO_DIFFS_ONE_LINE='Agent prose, per .github/audit/resolve-audit-base.sh.
+```bash
+changed=$(git diff --name-only "$BASE_SHA") ; full_changed=$(git diff --name-only "${FULL_BASE}...HEAD")
+```
+'
+
 # The self-skip diff, correctly ranged.
 DIFF_FULL_BASE_OK='Agent prose.
 ```bash
@@ -556,7 +566,7 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null 
 @test "fixture: prose naming the command and a base in one sentence is not a call" {
   local repo
   repo="$(make_fixture_repo diff-prose-mention)"
-  write_agent_file "$repo" worthiness-evaluator.md "$DIFF_PROSE_MENTION_OK"
+  write_agent_file "$repo" code-audit-maintainer-prose.md "$DIFF_PROSE_MENTION_OK"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 0 ]
@@ -566,7 +576,7 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null 
 @test "fixture: a target named after the code span closes does not condemn the line" {
   local repo
   repo="$(make_fixture_repo diff-span-closes)"
-  write_agent_file "$repo" worthiness-evaluator.md "$DIFF_SPAN_CLOSES_BEFORE_TARGET_OK"
+  write_agent_file "$repo" code-audit-maintainer-node.md "$DIFF_SPAN_CLOSES_BEFORE_TARGET_OK"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 0 ]
@@ -577,6 +587,30 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null 
   local repo
   repo="$(make_fixture_repo diff-comment-no-range)"
   write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_TRAILING_COMMENT_NO_RANGE_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a two-dot call is not vouched for by a later call's range" {
+  local repo
+  repo="$(make_fixture_repo diff-two-calls-one-line)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$TWO_DIFFS_ONE_LINE"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+}
+
+@test "fixture: assertion 3 scans only the code-audit-* roster" {
+  # An agent that takes its file list from the orchestrator has no review base,
+  # so it is outside this assertion's claim. Pinned because the scan pathspec
+  # is narrower than assertions 1 and 2's, which is easy to widen back by
+  # accident when adding a fourth.
+  local repo
+  repo="$(make_fixture_repo diff-non-roster-agent)"
+  write_agent_file "$repo" worthiness-evaluator.md "$DIFF_BASE_SHA_TWO_DOT"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 0 ]

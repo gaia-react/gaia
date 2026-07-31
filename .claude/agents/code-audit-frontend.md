@@ -527,12 +527,14 @@ A base-keyed filename therefore survives HEAD moves with no HEAD-chaining logic.
 
 ### Path derivation (identical for every consumer)
 
-`BASE_REF` and `BASE_SHA` are **consumed** here, never re-derived. There is exactly one derivation of them in this file, in "Rules-Based Audit" → "How to run" step 1, and it is the same one that scopes the review. That single origin is what makes this heading's claim true: the ledger's base and the reviewed base cannot drift apart if only one line produces either.
+`BASE_REF` and `BASE_SHA` have exactly one derivation in this file, the scope-resolution block under "Rules-Based Audit" → "How to run", and it is the same one that scopes the review. That single origin is what makes this heading's claim true: the ledger's base and the reviewed base cannot drift apart if only one block produces either.
+
+**Re-run that block first, in this same Bash call.** Shell state does NOT persist between an agent's Bash calls, so `BASE_SHA` is unset in a fresh shell no matter how many earlier calls set it, and this snippet is not self-contained without it. Consuming an empty `BASE_SHA` fails quietly in two different ways: `gaia_audit_key ""` returns non-zero, so `AUDIT_KEY` empties and the ledger is skipped on its documented fail-open path, while `--base ""` is rejected outright by `audit-write-findings.sh` and the report of record never lands. Prepending the derivation is what every consumer below does, and it is why the derivation is the one thing in this file written to be re-run rather than referenced.
 
 ```bash
-# BASE_SHA (the fork point, resolved in "How to run" step 1) is already set.
-# The key anchors on it rather than on HEAD, so it survives the HEAD moves
-# each fix commit produces.
+# The scope-resolution block from "How to run" runs FIRST, in this same call,
+# so BASE_SHA is set. The key anchors on it rather than on HEAD, so it
+# survives the HEAD moves each fix commit produces.
 . "$AUDIT_ROOT/.gaia/scripts/audit-key-lib.sh"
 if ! AUDIT_KEY="$(gaia_audit_key "$BASE_SHA" "$AUDIT_ROOT")"; then AUDIT_KEY=""; fi
 LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"
