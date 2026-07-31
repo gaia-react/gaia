@@ -27937,15 +27937,14 @@ var sweepScope = (inputs) => {
   const confined = [];
   before.forEach((beforeEntry, relPath) => {
     if (declaredSet.has(relPath)) return;
-    const afterEntry = after.get(relPath);
-    if (afterEntry === void 0) return;
-    if (afterEntry.digest !== beforeEntry.digest) {
-      try {
-        writeFileSync9(path39.resolve(root, relPath), beforeEntry.content);
-        confined.push({ action: "restored", path: relPath, regionId });
-      } catch {
-        confined.push({ action: "reported", path: relPath, regionId });
-      }
+    if (after.get(relPath)?.digest === beforeEntry.digest) return;
+    try {
+      const abs = path39.resolve(root, relPath);
+      mkdirSync12(path39.dirname(abs), { recursive: true });
+      writeFileSync9(abs, beforeEntry.content);
+      confined.push({ action: "restored", path: relPath, regionId });
+    } catch {
+      confined.push({ action: "reported", path: relPath, regionId });
     }
   });
   [...after.keys()].forEach((relPath) => {
@@ -27964,40 +27963,50 @@ var isInsideScope = (relPath, scopeDirs) => [...scopeDirs].some(
 );
 var gitStatusPaths = (root) => {
   try {
-    const out = execFileSync4("git", ["-C", root, "status", "--porcelain"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"]
+    const out = execGaiaGit(["status", "--porcelain", "-z"], root);
+    const paths = [];
+    let expectOriginPath = false;
+    out.split("\0").filter((record2) => record2.length > 0).forEach((record2) => {
+      if (expectOriginPath) {
+        expectOriginPath = false;
+        paths.push(record2);
+        return;
+      }
+      expectOriginPath = /[CR]/u.test(record2.slice(0, 2));
+      paths.push(record2.slice(3));
     });
-    return out.split("\n").flatMap((rawLine) => {
-      const line = rawLine.replace(/\r$/u, "");
-      if (line.length === 0) return [];
-      const rawPayload = line.slice(3);
-      const payload = rawPayload.startsWith('"') && rawPayload.endsWith('"') ? rawPayload.slice(1, -1) : rawPayload;
-      const renameSplit = payload.indexOf(" -> ");
-      return renameSplit === -1 ? [payload] : [payload.slice(0, renameSplit), payload.slice(renameSplit + 4)];
-    });
+    return paths;
   } catch {
     return null;
   }
 };
-var extractStatus = (error51) => {
-  if (typeof error51 !== "object" || error51 === null || !("status" in error51))
-    return void 0;
-  const { status } = error51;
-  return typeof status === "number" ? status : void 0;
-};
+var errorField = (error51, key) => isPlainObject2(error51) ? error51[key] : void 0;
+var SPAWN_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
+var SPAWN_TIMEOUT_MS = 5 * 60 * 1e3;
 var trySpawn = (decl, root) => {
   try {
     execFileSync4(
       decl.interpreter,
       [path39.resolve(root, decl.operand), ...decl.args],
-      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+      {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: SPAWN_MAX_BUFFER_BYTES,
+        // The child's stdout is never read, so discarding it outright leaves
+        // stderr as the only stream that can reach the buffer bound at all,
+        // and stderr is what carries the diagnostic this reports on failure.
+        stdio: ["ignore", "ignore", "pipe"],
+        timeout: SPAWN_TIMEOUT_MS
+      }
     );
     return { ok: true };
   } catch (error51) {
     const message = error51 instanceof Error ? error51.message : String(error51);
-    const status = extractStatus(error51);
-    return status === void 0 ? { kind: "spawn", message, ok: false } : { kind: "exit", message, ok: false, status };
+    const status = errorField(error51, "status");
+    if (typeof status === "number")
+      return { kind: "exit", message, ok: false, status };
+    const signal = errorField(error51, "signal");
+    return typeof signal === "string" ? { kind: "killed", message, ok: false, signal } : { kind: "spawn", message, ok: false };
   }
 };
 var reportOutOfScopeWrites = (inputs) => {
@@ -28065,6 +28074,7 @@ var runRegeneration = (decl, commandArgv, context) => {
       kind: spawnResult.kind,
       message: spawnResult.message,
       regionId: decl.id,
+      signal: spawnResult.kind === "killed" ? spawnResult.signal : void 0,
       status: spawnResult.kind === "exit" ? spawnResult.status : void 0
     });
   }
@@ -28211,7 +28221,9 @@ var run46 = (argv, options = {}) => {
   const loaded = loadRunInputs(cwd, parsed.flags);
   if (!loaded.ok) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   const { backupDir, manifestRecord, realRoot, root } = loaded.value;
-  const rawRegions = Array.isArray(manifestRecord.regions) ? manifestRecord.regions : [];
+  const regionsValue = manifestRecord.regions;
+  const regionsAreArray = Array.isArray(regionsValue);
+  const rawRegions = regionsAreArray ? regionsValue : [];
   const filesMap = isPlainObject2(manifestRecord.files) ? manifestRecord.files : {};
   const shippedKeys = new Set(Object.keys(filesMap));
   const context = {
@@ -28232,6 +28244,12 @@ var run46 = (argv, options = {}) => {
     shippedKeys,
     skipRegionSet: new Set(parsed.flags.skipRegions)
   };
+  if (regionsValue !== void 0 && !regionsAreArray)
+    context.report.refused.push({
+      kind: "manifest",
+      reason: `regions is present but is not an array: ${regionsValue === null ? "null" : typeof regionsValue}`,
+      regionId: "(manifest)"
+    });
   rawRegions.forEach((raw, index) => {
     processRegion(raw, index, context);
   });
