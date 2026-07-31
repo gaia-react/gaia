@@ -11,6 +11,7 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-31 1a9a812 WORTHY - all five Code Audit Team members resolve the review base through resolve-audit-base.sh, with the whole-PR fork point kept as FULL_BASE for the self-skip arm alone; wiki/concepts/Code Review Audit Agent.md, wiki/concepts/PR Merge Workflow.md, wiki/concepts/Incremental CI Skipping.md updated in-commit
 - 2026-07-31 43e4bb7 SKIP - PyYAML precondition gate now fails instead of skips on CI; maintainer-only test-infra hardening below the level PR Merge Workflow.md's guard description tracks
 - 2026-07-31 119d14e WORTHY - self-heal retrigger jobs capped inside the poller window, Playwright installs one browser engine; wiki/concepts/PR Merge Workflow.md updated in-commit (verify-before-dispatch section)
 - 2026-07-31 8150745 WORTHY - rate table prices Opus 5/Mythos 5, unpriced-model lower-bound marker + cost-reprice.sh; wiki/concepts/Cost Data Contract.md, wiki/concepts/Token Cost Readout.md updated in-commit

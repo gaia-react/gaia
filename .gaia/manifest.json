@@ -205,6 +205,7 @@
     ".gaia/scripts/audit-write-clearance.sh": "owned",
     ".gaia/scripts/audit-write-findings.sh": "owned",
     ".gaia/scripts/bats5.sh": "owned",
+    ".gaia/scripts/check-audit-base-derivation.sh": "owned",
     ".gaia/scripts/check-audit-key-callers.sh": "owned",
     ".gaia/scripts/check-hook-scope-manifest.sh": "owned",
     ".gaia/scripts/check-registry-runtime.sh": "owned",
@@ -637,7 +638,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-30T10:29:49.265Z",
+  "generated": "2026-07-31T05:38:33.015Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
