@@ -840,7 +840,7 @@ describe('update regen-regions: behavior coverage', () => {
     );
   });
 
-  test('12d-ii. a symlink the program replaces with a regular file draws no claim either', () => {
+  test('12d-ii. a symlink the program replaces with a regular file is put back as a link', () => {
     const root = buildRoot();
 
     writeDeclaredFiles(root, 'original');
@@ -885,6 +885,39 @@ describe('update regen-regions: behavior coverage', () => {
     );
   });
 
+  test('12d-iii. a link whose target is not valid UTF-8 is restored byte-for-byte', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // A symlink target is an arbitrary byte string on both Linux and macOS.
+    // Decoding one as UTF-8 does not throw on an invalid byte, it silently
+    // substitutes U+FFFD, so a target read that way and written back points
+    // somewhere else entirely while the report claims it was restored, and
+    // the true pre-image is gone by then.
+    const rawTarget = Buffer.from([
+      0x2e, 0x2e, 0x2f, 0xff, 0x2e, 0x74, 0x78, 0x74,
+    ]);
+    const linkAbs = path.join(root, '.claude/agents/link.md');
+
+    symlinkSync(rawTarget, linkAbs);
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'rm .claude/agents/link.md'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(readlinkSync(linkAbs, 'buffer').equals(rawTarget)).toBe(true);
+  });
+
   test('12e. a symlink the program creates in scope is removed, like any other undeclared creation', () => {
     const root = buildRoot();
 
@@ -902,11 +935,10 @@ describe('update regen-regions: behavior coverage', () => {
 
     const {report} = runCapturing(baseArgv(manifestPath, root));
 
-    // Excluding symlinks from the snapshot is about what can be RESTORED, not
-    // about what counts as a write. A link the spawn created is an undeclared
-    // creation with no pre-image, so it is removed exactly as a regular file
-    // would be; letting it survive would leave the confinement guarantee
-    // claiming a clean run while an undeclared path persists.
+    // A link the spawn created is an undeclared creation with no pre-image, so
+    // it is removed exactly as a regular file would be; letting it survive
+    // would leave the confinement guarantee claiming a clean run while an
+    // undeclared path persists. Unlinking never touches what it pointed at.
     expect(report.confined).toEqual([
       {
         action: 'removed',

@@ -583,19 +583,20 @@ const scopeDirsFor = (paths: readonly string[]): ReadonlySet<string> =>
 
 type Snapshot = ReadonlyMap<string, SnapshotEntry>;
 /**
- * A symlink is recorded by its PRESENCE alone, with no content and no digest.
- * The two questions the sweep asks are different, and the kind is what keeps
- * them apart: "can this be restored" (only a regular file can, so a symlink
- * carries nothing to write back) and "did the spawn create this" (a symlink
- * can be created like anything else, so it has to be in the map to be seen as
- * present-in-`after`-only, and to keep a pre-existing one from reading as new).
+ * Both kinds carry their whole pre-image, so the sweep's two questions ("did
+ * the spawn touch this" and "what do I put back") are answered per kind rather
+ * than only for regular files. A file's pre-image is its bytes; a link's is the
+ * target it holds, which is all a link is.
+ *
+ * That target is a `Buffer`, not a string, deliberately. A symlink target is an
+ * arbitrary byte string on POSIX, and decoding one as UTF-8 does not fail on an
+ * invalid byte, it substitutes U+FFFD. Writing that back would point the link
+ * somewhere else while the report claimed it was restored, and the real target
+ * is gone by then. Bytes in, bytes out, no decode in between.
  */
 type SnapshotEntry =
   | {content: Buffer; digest: string; kind: 'file'; mode: number}
-  | {kind: 'symlink'; target: string};
-
-const digestOf = (entry: SnapshotEntry | undefined): string | undefined =>
-  entry?.kind === 'file' ? entry.digest : undefined;
+  | {kind: 'symlink'; target: Buffer};
 
 /**
  * Whether the spawn left this path as it found it. A link is compared by the
@@ -610,7 +611,7 @@ const isUntouched = (
   if (after === undefined) return false;
 
   if (before.kind === 'symlink')
-    return after.kind === 'symlink' && after.target === before.target;
+    return after.kind === 'symlink' && after.target.equals(before.target);
 
   return after.kind === 'file' && after.digest === before.digest;
 };
@@ -659,16 +660,17 @@ const collectScopeDigests = (
 
       const repoRelative = path.relative(root, abs).split(path.sep).join('/');
 
-      // A link's pre-image is the target string it holds, which is the whole
-      // of it: recording that makes a link restorable in its own right, so the
+      // A link's pre-image is the target it holds, which is the whole of it:
+      // recording that makes a link restorable in its own right, so the
       // confinement guarantee covers every shape a link can be left in
       // (deleted, retargeted, replaced by a file) rather than only the created
       // one. Reading it never follows the link, and a dangling one reads fine.
+      // `'buffer'`, never `'utf8'`: see SnapshotEntry.
       if (stat.isSymbolicLink()) {
         try {
           digests.set(repoRelative, {
             kind: 'symlink',
-            target: readlinkSync(abs, 'utf8'),
+            target: readlinkSync(abs, 'buffer'),
           });
         } catch {
           // Unreadable link: skip it, like the unreadable file below. Recording
@@ -1102,10 +1104,16 @@ const runRegeneration = (
   });
 
   if (spawnResult.ok) {
-    const rewrote = decl.paths.filter(
-      (declPath) =>
-        digestOf(before.get(declPath)) !== digestOf(after.get(declPath))
-    );
+    // Same question the sweep asks, so it takes the same answer. Comparing
+    // digests alone called a declared path that is a link unchanged however
+    // the spawn repointed it, because neither side has a digest to differ on.
+    const rewrote = decl.paths.filter((declPath) => {
+      const beforeEntry = before.get(declPath);
+
+      return beforeEntry === undefined ?
+          after.has(declPath)
+        : !isUntouched(beforeEntry, after.get(declPath));
+    });
 
     report.ran.push({argv: commandArgv, regionId: decl.id, rewrote});
   } else {

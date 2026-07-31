@@ -28082,11 +28082,10 @@ var performBackup = (inputs) => {
   return backedUp;
 };
 var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path41.posix.dirname(declPath)));
-var digestOf = (entry) => entry?.kind === "file" ? entry.digest : void 0;
 var isUntouched = (before, after) => {
   if (after === void 0) return false;
   if (before.kind === "symlink")
-    return after.kind === "symlink" && after.target === before.target;
+    return after.kind === "symlink" && after.target.equals(before.target);
   return after.kind === "file" && after.digest === before.digest;
 };
 var permissionsOf = (mode) => mode % 4096;
@@ -28114,7 +28113,7 @@ var collectScopeDigests = (root, scopeDirs) => {
         try {
           digests.set(repoRelative, {
             kind: "symlink",
-            target: readlinkSync2(abs, "utf8")
+            target: readlinkSync2(abs, "buffer")
           });
         } catch {
         }
@@ -28313,9 +28312,10 @@ var runRegeneration = (decl, commandArgv, context) => {
     scopeDirs
   });
   if (spawnResult.ok) {
-    const rewrote = decl.paths.filter(
-      (declPath) => digestOf(before.get(declPath)) !== digestOf(after.get(declPath))
-    );
+    const rewrote = decl.paths.filter((declPath) => {
+      const beforeEntry = before.get(declPath);
+      return beforeEntry === void 0 ? after.has(declPath) : !isUntouched(beforeEntry, after.get(declPath));
+    });
     report.ran.push({ argv: commandArgv, regionId: decl.id, rewrote });
   } else {
     report.failed.push({
