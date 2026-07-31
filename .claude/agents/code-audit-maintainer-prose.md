@@ -34,6 +34,18 @@ default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/H
 # because membership is resolved over the whole PR diff
 # (.gaia/scripts/resolve-audit-members.sh), never over the review increment.
 FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+# An empty FULL_BASE is the more dangerous of the two empty bases, so it
+# is checked rather than merely announced. The diff below does not fail
+# on one: git resolves the empty left side to HEAD, so `full_changed`
+# comes back empty at status 0 and reads exactly like a PR that touched
+# nothing you own. That routes into the self-skip arm, which writes no
+# marker at all -- the one outcome FULL_BASE exists to prevent. An
+# unresolved base is NOT a clean skip: say so and stop, rather than
+# returning a claim about a remit you never computed.
+if [ -z "$FULL_BASE" ]; then
+  printf 'no merge-base against %s: membership scope is unresolvable, do NOT self-skip\n' "$default_branch" >&2
+  exit 1
+fi
 full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
 # BASE_SHA, not a lowercase local: every handshake invocation below passes
 # `--base "$BASE_SHA"`, and shell state does NOT persist between an agent's
@@ -66,7 +78,7 @@ Two lists, two jobs. `full_changed` decides **whether you run at all**: filter i
 
 They cannot be collapsed back into one value. Your marker is invalid at HEAD exactly when your content digest rotated, and a digest rotates on a change to a file you own or to shared gate machinery. The owned-file case is safe on the increment alone, since an owned file that changed after the last clean round is in it. The machinery case usually is too, because the resolver resets to full scope when machinery moved between the cleared commit and HEAD. But that reset **fails open** when the classifier libs will not load, and then the increment carries the machinery file and nothing else. When that file is outside your globs, self-skipping on `changed` writes no marker while membership, resolved over the whole PR diff, still demands one, and the merge deadlocks with nothing left that can clear it. `full_changed` is what closes that hole.
 
-**If no `full_changed` path matches, self-skip cleanly**: write no marker, do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, write no findings sidecar, and return the specific one-line note that no changed file fell in your remit (distinguishable from a crash or an empty return). A mixed diff carrying other framework or app changes is not your concern outside your own glob.
+**If no `full_changed` path matches, self-skip cleanly**: write no marker, do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, write no findings sidecar, and return the specific one-line note that no changed file fell in your remit (distinguishable from a crash or an empty return). A mixed diff carrying other framework or app changes is not your concern outside your own glob. This arm requires a resolved `FULL_BASE`. An empty one makes `full_changed` empty too, at status 0, so an unresolvable membership scope is indistinguishable here from a genuine no-match; the guard in the snippet above stops before this point rather than letting that read as a clean skip. Skip only on an empty `full_changed` that a real base produced.
 
 A narrower `changed` shifts one risk onto you: it can begin after a commit this PR already cleared, so a file that depends on the prose in front of you may be absent from the delta. Instruction files address one another by path and by section title, and nothing resolves those references until an agent is already midway through following one. When a changed skill renames a heading, renumbers a step, splits a reference file, or drops a target outright, `git grep` its path and the old heading across `.claude/` and `wiki/`, and read every file that points at it. This is one of your own dimensions seen from the other side: a pointer into a section that no longer exists still reads as a complete instruction, so the reader omits the step instead of stopping to ask.
 

@@ -103,6 +103,17 @@ BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null 
 The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
 '
 
+# The same drift again, naming the branch as a bare literal. This is the form
+# that defeats enumerating bad shapes in the ERE: `main` occurs in ordinary
+# English inside these files, so a pattern carrying it reds a correct tree.
+# Only the positive BASE_REF rule catches this one.
+DRIFTED_BARE_LITERAL_BRANCH='Agent prose.
+```bash
+BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD main 2>/dev/null || true)
+```
+The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
+'
+
 # FULL_BASE owns the FIRST merge-base on the line and a drifted BASE_SHA owns
 # the SECOND. An ownership rule reading only the first occurrence clears the
 # whole line on FULL_BASE'"'"'s exemption and never sees the second call.
@@ -165,6 +176,16 @@ Derived per .github/audit/resolve-audit-base.sh.
   local repo
   repo="$(make_fixture_repo two-calls-one-line)"
   write_agent_file "$repo" code-audit-maintainer-prose.md "$TWO_CALLS_ONE_LINE"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+}
+
+@test "fixture: a bare literal branch name in the merge-base fails assertion 1" {
+  local repo
+  repo="$(make_fixture_repo drifted-bare-literal)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DRIFTED_BARE_LITERAL_BRANCH"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]
@@ -248,6 +269,21 @@ Derived per .github/audit/resolve-audit-base.sh.
 }
 
 # ---------- structural ----------
+
+@test "a repo_root that is not a git repository reports 2, never a clean 0" {
+  local outside="$BATS_TEST_TMPDIR/not-a-repo"
+  mkdir -p "$outside"
+  run gaia_check_audit_base_derivation "$outside"
+  # 2, not 1: "the check could not run" is a different answer from "the check
+  # says no", and neither is the 0 an unscanned tree used to report.
+  [ "$status" -eq 2 ]
+  grep -qF "is not a git repository; nothing was scanned" <<<"$output" || return 1
+  grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" && {
+    echo "printed a clean verdict for a tree it never scanned" >&2
+    return 1
+  }
+  return 0
+}
 
 @test "structural: check-audit-base-derivation.sh is executable" {
   [ -x "$CHECK" ]

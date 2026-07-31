@@ -81,37 +81,42 @@
 # resolve their review base through the resolver, and the only bare
 # merge-base left is each specialist's `FULL_BASE`.
 
-# Assertion 1's candidate shape: an assignment whose value reaches a
-# `merge-base` call naming the default branch, in EITHER form the real
-# snippet carries -- `origin/${default_branch}` and the bare
-# `"${default_branch}"` fallback beside it. Both alternatives are load
-# bearing: a literal `merge-base HEAD origin/main` names no
-# `default_branch`, and the bare fallback names no `origin/`, so a pattern
-# carrying only one of them lets a drift to the other through uncounted.
+# Assertion 1's candidate shape: any assignment whose value reaches a
+# `merge-base` call. Deliberately a wide net -- BOTH discriminations that
+# narrow it run in awk below, where they are expressible and an ERE's are
+# not.
 #
-# The resolver-derived shape this check exists to REQUIRE
-# (`merge-base "${BASE_REF}" HEAD`) names neither alternative, which is what
-# keeps it off the candidate list. Widening this ERE to a bare `merge-base`
-# would make every correct BASE_SHA line a candidate, and the FULL_BASE
-# exemption below would not save them -- the check would red on a tree that
-# is exactly right.
+# Enumerating the bad shapes here does not work, because the set is open.
+# `origin/${default_branch}`, the bare `"${default_branch}"` fallback, and a
+# literal `merge-base HEAD main` are three spellings of one drift, and the
+# third defeats a branch-name literal in the pattern: `main` appears in the
+# ordinary English of these files (`main-thread-authored` at
+# code-audit-frontend.md:654), so an ERE carrying it reds a correct tree.
 #
-# Deliberately loose beyond that: the ownership test that decides which
-# assignment a call belongs to runs in awk below, where a "nearest
-# identifier to the left" rule is expressible and an ERE's is not.
-GAIA_AUDIT_BARE_MERGE_BASE_PATTERN='[A-Za-z_][A-Za-z0-9_]*=.*merge-base.*(origin/|default_branch)'
+# So the check identifies the ONE shape that is right instead. A review base
+# derived through the resolver always names BASE_REF on its own line; every
+# drifted spelling names a branch instead, and FULL_BASE names neither. That
+# single positive rule subsumes every drift form, present and future,
+# without naming any of them.
+GAIA_AUDIT_BARE_MERGE_BASE_PATTERN='[A-Za-z_][A-Za-z0-9_]*=.*merge-base'
 
 # Assertion 2's two fixed strings.
 GAIA_AUDIT_BASE_VAR='BASE_SHA'
 GAIA_AUDIT_BASE_RESOLVER='resolve-audit-base.sh'
 
 # _gaia_drop_full_base_matches: reads `file:line:content` lines on stdin (git
-# grep's -n format) and keeps only those carrying at least one `merge-base`
-# call owned by an assignment OTHER than FULL_BASE. `sub` on a copy removes
-# only the FIRST two colon-delimited fields, so a colon inside the content
-# itself never shifts the boundary. The owning assignment is the LAST
-# `IDENT=` occurring before that call, which is what "nearest to the left"
-# means on one line.
+# grep's -n format) and keeps only the lines that are actually violations,
+# applying the two discriminations the ERE cannot express. A line survives
+# when it neither names BASE_REF (the resolver-derived shape this check
+# requires) nor has every one of its `merge-base` calls owned by FULL_BASE
+# (the self-skip base, deliberately exempt).
+#
+# `sub` on a copy removes only the FIRST two colon-delimited fields, so a
+# colon inside the content itself never shifts the boundary. The owning
+# assignment is the LAST `IDENT=` occurring before a call, which is what
+# "nearest to the left" means on one line.
+#
+# The name is narrower than the job: it predates the BASE_REF rule.
 #
 # EVERY `merge-base` on the line is tested, not just the first. The real
 # FULL_BASE assignment already puts two on one line (the `origin/` form and
@@ -123,6 +128,11 @@ _gaia_drop_full_base_matches() {
     {
       content = $0
       sub(/^[^:]*:[^:]*:/, "", content)
+      # Discrimination 1, the positive rule: a line naming BASE_REF derives
+      # its base through the resolver, which is the shape this check
+      # REQUIRES. Dropping it here is what lets the ERE above stay a wide
+      # `merge-base` net without every correct line becoming a violation.
+      if (content ~ /BASE_REF/) next
       # `consumed` is how much of content `rest` starts past, so the prefix
       # handed to the ownership walk is always measured from column 1 of the
       # real line rather than from the current search window.
@@ -146,6 +156,18 @@ _gaia_drop_full_base_matches() {
 gaia_check_audit_base_derivation() {
   local repo_root="${1:?gaia_check_audit_base_derivation requires a repo_root argument}"
   local bare_failed=0 resolver_failed=0
+
+  # A `git grep` that cannot run returns nothing, which is byte-identical to
+  # "scanned it, found no violations". Both assertions would then print 0 and
+  # the function would report a clean tree it never read. The no-argument
+  # path at the bottom of this file already fails closed on this; an explicit
+  # argument pointing outside a repository reached the same silence.
+  # Exit 2, distinct from assertion failure (1), so a caller can tell "the
+  # check says no" from "the check could not run".
+  if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
+    printf 'check-audit-base-derivation: %s is not a git repository; nothing was scanned\n' "$repo_root" >&2
+    return 2
+  fi
 
   # ---------- assertion 1: no bare-merge-base review derivation ----------
   local candidates bare_matches bare_count=0

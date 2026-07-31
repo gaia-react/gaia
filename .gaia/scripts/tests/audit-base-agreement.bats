@@ -108,6 +108,62 @@ setup() {
   }
 }
 
+# --- unresolvable FULL_BASE --------------------------------------------------
+#
+# A repo whose branch is not `main` and which has no `origin` remote. The
+# default-branch probe finds no `refs/remotes/origin/HEAD`, falls back to the
+# literal `main`, and neither `origin/main` nor `main` exists, so both
+# merge-base arms fail and FULL_BASE comes back empty. This is a reachable
+# adopter shape, not a contrivance: `git init` + `git remote add` creates no
+# `origin/HEAD` symref.
+make_no_base_repo() {
+  local dir="$BATS_TEST_TMPDIR/no-base"
+  mkdir -p "$dir/.gaia/scripts"
+  git -C "$dir" init -q --initial-branch=master
+  git -C "$dir" config user.email t@example.com
+  git -C "$dir" config user.name T
+  git -C "$dir" config commit.gpgsign false
+  printf 'x\n' > "$dir/.gaia/scripts/thing.sh"
+  git -C "$dir" add -A
+  git -C "$dir" commit -q -m init
+  printf '%s' "$dir"
+}
+
+@test "every specialist stops instead of self-skipping when FULL_BASE cannot resolve" {
+  local repo member fence rc out
+  repo="$(make_no_base_repo)"
+  for member in "${SPECIALISTS[@]}"; do
+    fence="$(extract_base_fence "$AGENTS_DIR/${member}.md")" || return 1
+    rc=0
+    out="$(AUDIT_ROOT="$repo" bash -c "$fence" 2>&1)" || rc=$?
+    # Non-zero is the whole point: an empty FULL_BASE makes `full_changed`
+    # empty at status 0, which the self-skip arm would read as "nothing in my
+    # remit" and answer with no marker at all.
+    [ "$rc" -ne 0 ] || {
+      echo "$member continued with an unresolvable FULL_BASE; its self-skip would write no marker" >&2
+      return 1
+    }
+    grep -qF "do NOT self-skip" <<<"$out" || {
+      echo "$member exited non-zero but never said why" >&2
+      return 1
+    }
+  done
+}
+
+@test "the FULL_BASE guard stays silent when the base does resolve" {
+  local repo member fence out
+  repo="$(make_repo full-base-control)"
+  for member in "${SPECIALISTS[@]}"; do
+    fence="$(extract_base_fence "$AGENTS_DIR/${member}.md")" || return 1
+    out="$(AUDIT_ROOT="$repo" bash -c "$fence" 2>&1)" || return 1
+    grep -qF "do NOT self-skip" <<<"$out" && {
+      echo "$member's guard fired on a repo whose base resolves fine" >&2
+      return 1
+    }
+  done
+  return 0
+}
+
 # --- fence extraction --------------------------------------------------------
 #
 # Prints the one ```bash fence in <agent-file> whose body assigns BASE_SHA at
