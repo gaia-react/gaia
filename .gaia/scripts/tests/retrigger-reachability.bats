@@ -43,6 +43,39 @@
 # second, malformed directive (SC1073) and fails the lint outright.
 # shellcheck disable=SC2030,SC2031
 
+# require_repo_path <test-flag> <path> <label>
+#
+# The three paths this suite reads are preconditions on CI, not maybes: the job
+# that runs it checks the repo out whole, so an absent path there means one of
+# them was renamed and this guard silently stopped guarding, or the job is
+# misconfigured. So the CI branch FAILS instead of skipping, for the same reason
+# `require_yaml_parser` below does: a skip reports `ok ... # skip` and greens the
+# job, which would retire every test in this file including the section-0 gate
+# that exists to stop exactly that. Only one of the three has a backstop that
+# reds loudly on its own (verify-required-checks.yml invokes
+# verify-required-checks.sh by path); this arm is what covers the other two.
+# Off CI the skip stands: a checkout that legitimately lacks these paths is not
+# the environment the guard is making a claim about. Section 0 proves the CI
+# branch fires.
+require_repo_path() {
+  local flag="$1" path="$2" label="$3"
+  # `test` rather than `[ ]`: shellcheck parses a bracket test's operator
+  # statically and rejects one held in a variable (SC1073/SC1072), while the
+  # `test` builtin it does not try to parse resolves the flag at runtime, which
+  # is what lets one helper serve both the -d and the -f preconditions.
+  if test "$flag" "$path"; then
+    return 0
+  fi
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    # No `::error::` prefix: bats prints a test's stderr prefixed with `# `, and
+    # Actions parses a workflow command only at column 0, so the annotation that
+    # spelling promises would never render. The `return 1` is what gates.
+    echo "$label not present on a CI runner; every test here would skip to green. If it moved, update this suite's paths in setup()." >&2
+    return 1
+  fi
+  skip "$label not present"
+}
+
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
@@ -58,9 +91,12 @@ setup() {
   # per run would price a two-job chain the same as a single job and leave the
   # second hop's wait uncovered.
   POLLER_MARGIN_MIN=5
-  [ -d "$WORKFLOWS_DIR" ] || skip ".github/workflows not present"
-  [ -f "$VERIFY" ] || skip "verify-required-checks.sh not present"
-  [ -f "$READ_CONFIG" ] || skip "read-audit-ci-config.sh not present"
+  # `|| return 1` on each: only the last of the three is setup()'s final command,
+  # so the first two would otherwise lean on `set -e` to propagate. The skip arm
+  # exits 0 from inside the helper, so this only ever forwards the CI failure.
+  require_repo_path -d "$WORKFLOWS_DIR" ".github/workflows" || return 1
+  require_repo_path -f "$VERIFY" "verify-required-checks.sh" || return 1
+  require_repo_path -f "$READ_CONFIG" "read-audit-ci-config.sh" || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -471,18 +507,26 @@ poller_window_minutes() {
 }
 
 # ---------------------------------------------------------------------------
-# 0. The parser gate itself. Every parsing test below routes through
-#    `require_yaml_parser`, which makes that one function the single point where
-#    all 15 of them can be turned off at once. On a CI runner it has to FAIL
-#    rather than skip, and nothing else in this file would notice if it stopped:
-#    weakening it back to a skip would red nothing, and a runner that lost its
-#    python3-yaml install would report `ok ... # skip` fifteen times and green
-#    the job. This test is what makes that weakening red. It is deliberately not
-#    parser-gated itself.
+# 0. This suite's own two gates. Each is a single point where a whole population
+#    of tests below can be turned off at once, and on a CI runner each has to
+#    FAIL rather than skip. Nothing else in this file would notice if either
+#    stopped: weakening one back to a bare `skip` would red nothing, and the
+#    affected tests would report `ok ... # skip` and green the job. These two
+#    tests are what make that weakening red. Neither is parser-gated itself.
+#
+#    `require_yaml_parser` gates the 15 parsing tests. `require_repo_path` gates
+#    setup(), so every test in the file, and the five tests that additionally read
+#    code-review-audit.yml call it again for that path. It covers a gate its own
+#    test cannot escape, since setup() runs first here as it does everywhere: what
+#    the test catches is the weakening, not the condition.
+#
+#    Between them these two are the only place this file stands a test down. A
+#    bare `skip` anywhere else would be a third gate reporting `ok ... # skip`
+#    with nothing watching it.
 # ---------------------------------------------------------------------------
 
 @test "the parser gate fails on a CI runner and still skips off CI" {
-  local shim="$BATS_TMPDIR/retrigger-no-parser" rc
+  local shim="$BATS_TEST_TMPDIR/retrigger-no-parser" rc
   mkdir -p "$shim"
   # python3 present, but its `import yaml` fails: the shape a runner takes when
   # python3-yaml is dropped from the apt line, not one where python3 is missing
@@ -508,6 +552,45 @@ poller_window_minutes() {
     echo "the gate failed off CI, where a missing parser must still skip" >&2
     return 1
   }
+}
+
+# Both arms of the gate for one (flag, path) that must not satisfy it. Calling the
+# gate in a subshell is what keeps its `skip` arm from marking the caller skipped --
+# bats' `skip` exits 0, so the subshell's status is exactly the discriminator wanted
+# here: non-zero is the CI failure, 0 is the off-CI skip.
+assert_repo_path_gate() {
+  local flag="$1" path="$2" rc
+
+  rc=0
+  ( GITHUB_ACTIONS=true; require_repo_path "$flag" "$path" "a renamed path" ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "the gate skipped on a CI runner for '$flag $path'; every test here would report green" >&2
+    return 1
+  }
+
+  rc=0
+  ( unset GITHUB_ACTIONS; require_repo_path "$flag" "$path" "a renamed path" ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || {
+    echo "the gate failed off CI for '$flag $path', where an unsatisfied precondition must still skip" >&2
+    return 1
+  }
+}
+
+@test "the path precondition gate fails on a CI runner and still skips off CI" {
+  mkdir -p "$BATS_TEST_TMPDIR/a-dir"
+  : > "$BATS_TEST_TMPDIR/a-file"
+
+  # Absent by construction: $BATS_TEST_TMPDIR is created empty for this test and
+  # nothing puts `renamed-away` in it. Both flags, because setup() gates a
+  # directory with -d and two scripts with -f.
+  assert_repo_path_gate -d "$BATS_TEST_TMPDIR/renamed-away" || return 1
+  assert_repo_path_gate -f "$BATS_TEST_TMPDIR/renamed-away" || return 1
+
+  # Present but the wrong type. This pair is what pins the runtime flag: a gate
+  # that ignored it and asked only whether the path exists would pass both of
+  # these and prove nothing about the -d/-f distinction setup() relies on.
+  assert_repo_path_gate -f "$BATS_TEST_TMPDIR/a-dir" || return 1
+  assert_repo_path_gate -d "$BATS_TEST_TMPDIR/a-file"
 }
 
 # ---------------------------------------------------------------------------
@@ -746,7 +829,7 @@ workflow_timeout_gaps() {
   local window names wf gaps
 
   require_yaml_parser
-  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  require_repo_path -f "$AUDIT_WORKFLOW" "code-review-audit.yml" || return 1
 
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
   [ -n "$window" ] || {
@@ -1025,7 +1108,7 @@ YAML
   local window ceiling subject cap
 
   require_yaml_parser
-  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  require_repo_path -f "$AUDIT_WORKFLOW" "code-review-audit.yml" || return 1
   mkdir -p "$sb"
   cp "$WORKFLOWS_DIR"/*.yml "$sb/"
 
@@ -1260,7 +1343,7 @@ write_chain_fixture() {
   local spelling subject path minutes hops window ceiling
 
   require_yaml_parser
-  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  require_repo_path -f "$AUDIT_WORKFLOW" "code-review-audit.yml" || return 1
   mkdir -p "$sb"
 
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
@@ -1309,7 +1392,7 @@ write_chain_fixture() {
   local subject path minutes hops window flat ceiling
 
   require_yaml_parser
-  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  require_repo_path -f "$AUDIT_WORKFLOW" "code-review-audit.yml" || return 1
   mkdir -p "$sb"
 
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"
@@ -1387,7 +1470,7 @@ YAML
   local subject path minutes hops window ceiling
 
   require_yaml_parser
-  [ -f "$AUDIT_WORKFLOW" ] || skip "code-review-audit.yml not present"
+  require_repo_path -f "$AUDIT_WORKFLOW" "code-review-audit.yml" || return 1
   mkdir -p "$sb"
 
   window="$(poller_window_minutes "$AUDIT_WORKFLOW")"

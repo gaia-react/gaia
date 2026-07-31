@@ -347,15 +347,18 @@ jobs:
               - '**/*.yml'
               - '**/*.yaml'
       # python3-yaml pins the parser (python3+pyyaml) that every
-      # `require_yaml_parser` gate on this runner needs. Two suites carry one:
-      # retrigger-reachability.bats, which gates 15 of its 22 tests behind it and
-      # has no fallback, and lint-yaml.bats, whose gate also accepts `yq`, so on a
-      # runner carrying yq that suite still parses. Both gates FAIL rather than
-      # `skip` when GITHUB_ACTIONS is set, precisely so dropping this package reds
-      # the run here instead of retiring the whole self-heal reachability
-      # invariant behind `ok ... # skip`. Those two gates are what enforce this
-      # line; this comment only explains it. Pin the package here rather than
-      # resting on whatever the runner image happens to preinstall.
+      # `require_yaml_parser` gate on this runner needs. Three suites carry one:
+      # block-invalid-yaml-write.bats, whose gate sits in setup() and so covers
+      # all of its tests with no fallback; retrigger-reachability.bats, which
+      # gates 15 of its tests behind it, also with no fallback; and
+      # lint-yaml.bats, whose gate also accepts `yq`, so on a runner carrying yq
+      # that suite still parses. All three FAIL rather than `skip` when
+      # GITHUB_ACTIONS is set, precisely so dropping this package reds the run
+      # here instead of retiring the whole self-heal reachability invariant, and
+      # the YAML-write hook's coverage, behind `ok ... # skip`. Those gates are
+      # what enforce this line; this comment only explains it. Pin the package
+      # here rather than resting on whatever the runner image happens to
+      # preinstall.
       # Admits `sandbox` as well as `code`, so a PR that arms only that output
       # still gets bats on the box. This is what puts bats there deterministically:
       # ubuntu-latest does not preinstall it. run-all.sh does carry an

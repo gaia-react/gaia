@@ -17,13 +17,37 @@
 # absence checks use a positive match for the bad case plus an explicit
 # `return 1`, never `!`-negation.
 
+# The hook parses YAML with python3 + PyYAML and fails open without it, so every
+# assertion in this file depends on the parser being present. On CI that parser is
+# a precondition rather than a maybe: audit-ci-tests.yml installs python3-yaml in
+# the same job that runs this suite. So the CI branch FAILS instead of skipping. A
+# skip reports `ok ... # skip` and greens the job, so a runner that lost that
+# install would retire every test in this file in silence, the hollow guard this
+# suite exists to prevent on the hook, turned on the suite itself. The gate test in
+# the first section below proves this branch fires. Matches the same-shaped gates in
+# .gaia/scripts/tests/retrigger-reachability.bats and .gaia/tests/lib/lint-yaml.bats.
+require_yaml_parser() {
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    # No `::error::` prefix: bats prints a test's stderr prefixed with `# `, and
+    # Actions parses a workflow command only at column 0, so the annotation that
+    # spelling promises would never render. The `return 1` is what gates.
+    echo "no YAML parser (python3 + PyYAML) on a CI runner; every test here would skip to green. Check the apt install in .github/workflows/audit-ci-tests.yml." >&2
+    return 1
+  fi
+  skip "python3 with pyyaml not available"
+}
+
+# `require_yaml_parser` is setup()'s last command, so its status is setup()'s: the
+# CI branch's `return 1` fails each test individually and attaches its message,
+# rather than aborting the run.
 setup() {
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-invalid-yaml-write.sh"
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
-  if ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import yaml' >/dev/null 2>&1; then
-    skip "python3 with pyyaml not available"
-  fi
+  require_yaml_parser
 }
 
 teardown() {
@@ -69,6 +93,46 @@ assert_allowed() {
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
   return 0
+}
+
+# --- the parser gate itself ---
+#
+# setup() routes every test in this file through `require_yaml_parser`, which makes
+# that one function the single point where all of them can be turned off at once. On
+# a CI runner it has to FAIL rather than skip, and nothing else here would notice if
+# it stopped: weakening it back to a bare `skip` would red nothing, and a runner that
+# lost its python3-yaml install would report `ok ... # skip` for every test and green
+# the job. This test is what makes that weakening red. It runs through setup() like
+# every other test here, so it cannot escape the gate it covers: what it catches is
+# the weakening, not the condition.
+
+@test "the parser gate fails on a CI runner and still skips off CI" {
+  local shim="$BATS_TEST_TMPDIR/yaml-write-no-parser" rc
+  mkdir -p "$shim"
+  # python3 present, but its `import yaml` fails: the shape a runner takes when
+  # python3-yaml is dropped from the apt line, not one where python3 is missing
+  # outright. The shebang is absolute so the stripped PATH below cannot affect it.
+  printf '#!/bin/sh\nexit 1\n' > "$shim/python3"
+  chmod +x "$shim/python3"
+
+  # The shim ALONE is a sufficient PATH: the gate runs no command other than
+  # `command -v python3` and that python3. Calling the gate in a subshell is what
+  # keeps its `skip` arm from marking this test skipped -- bats' `skip` exits 0,
+  # so the subshell's status is exactly the discriminator wanted here: non-zero
+  # is the CI failure, 0 is the off-CI skip.
+  rc=0
+  ( PATH="$shim" GITHUB_ACTIONS=true; require_yaml_parser ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "the gate skipped on a CI runner with no YAML parser; every test here would report green" >&2
+    return 1
+  }
+
+  rc=0
+  ( PATH="$shim"; unset GITHUB_ACTIONS; require_yaml_parser ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || {
+    echo "the gate failed off CI, where a missing parser must still skip" >&2
+    return 1
+  }
 }
 
 # --- denied: Write with a genuine YAML parse error ---
