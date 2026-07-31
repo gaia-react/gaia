@@ -21,8 +21,8 @@
 # accumulate and are reported to stderr; no stdout noise.
 #
 # Deterministic and side-effect-free: no writes, no network, no git.
-#
 # gaia:maintainer-only:start
+#
 # Sibling bats suite: .gaia/scripts/tests/summary-verify.bats.
 # gaia:maintainer-only:end
 set -uo pipefail
