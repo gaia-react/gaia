@@ -278,7 +278,7 @@ This decision runs **after** section B's security classification and **before** 
 
 Promote a non-security out-of-scope finding into the self-heal path, repaired in place rather than filed, **if and only if all five** of these hold:
 
-1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `git -C "$AUDIT_ROOT" diff --name-only "$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'` set the audit already resolves. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
+1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `changed` set the audit already resolved in "Rules-Based Audit" → "How to run" step 1 (`git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx'`). Read that value; do not re-derive it, or this filter and the review can disagree about which files the audit covered. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
 2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out, because `block-selfheal-paths.sh` would hard-deny the edit and leave the finding with no disposition at all.
 3. The file is in **your own remit** (your declared globs, see "Remit and self-skip", evaluated at the second precedence tier), not a cross-remit file a claimant member owns.
 4. The finding is **non-security** per section B's classification, read as section B's own flag, bound on **every repo including a confirmed PRIVATE one**. Never re-derive "non-security" from the `finding_class` tag or a fresh screen.
@@ -527,11 +527,12 @@ A base-keyed filename therefore survives HEAD moves with no HEAD-chaining logic.
 
 ### Path derivation (identical for every consumer)
 
+`BASE_REF` and `BASE_SHA` are **consumed** here, never re-derived. There is exactly one derivation of them in this file, in "Rules-Based Audit" → "How to run" step 1, and it is the same one that scopes the review. That single origin is what makes this heading's claim true: the ledger's base and the reviewed base cannot drift apart if only one line produces either.
+
 ```bash
-# Resolve the incremental base the SAME way the audit already resolves scope,
-# then anchor the key to the fork point so it is stable across fix rounds.
-BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)"   # <sha> | origin/main | origin/<base-ref> | main
-BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
+# BASE_SHA (the fork point, resolved in "How to run" step 1) is already set.
+# The key anchors on it rather than on HEAD, so it survives the HEAD moves
+# each fix commit produces.
 . "$AUDIT_ROOT/.gaia/scripts/audit-key-lib.sh"
 if ! AUDIT_KEY="$(gaia_audit_key "$BASE_SHA" "$AUDIT_ROOT")"; then AUDIT_KEY=""; fi
 LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"
@@ -649,10 +650,45 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 
 ### How to run
 
-1. **Identify changed files** against the incremental base:
-   - Resolve the base: if the invoking context provides one (CI passes `<base>...HEAD` in the agent prompt), use it; otherwise run `.github/audit/resolve-audit-base.sh`. It returns the most recent ancestor that already passed a clean audit under the current `.gaia/VERSION` (via a GAIA-Audit trailer or commit status), or `origin/main` when none exists.
-   - **Derive the re-run ledger path and read it (LOCAL only) as the prior-round briefing.** From the same resolved base, compute `BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "$BASE_REF" HEAD 2>/dev/null || true)"`, then `AUDIT_KEY="$(gaia_audit_key "$BASE_SHA" "$AUDIT_ROOT")" || AUDIT_KEY=""` (`.gaia/scripts/audit-key-lib.sh`) and `LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `AUDIT_KEY` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `BASE_SHA`, `AUDIT_KEY`, and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
-   - List changed files: `git -C "$AUDIT_ROOT" diff --name-only "$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'`. The two-dot form (`<base>`, not `<base>...HEAD`) includes uncommitted working-tree changes, the right scope for a pre-commit/pre-merge review.
+#### Resolve the review scope
+
+**When the invoking context supplies a base, that one wins.** CI passes `<base>...HEAD` in the agent prompt; use it, and read the block below as the definition of the range it names rather than as a second derivation to run beside it.
+
+Otherwise this block is the file's ONE derivation of `BASE_REF`, `BASE_SHA`, and `changed`, and every later consumer, the ledger, the findings sidecar, the handshake's `--base`, re-runs it rather than deriving its own. Nothing about it is conditional on being local: only the ledger READ further down is local-only, never the base it reads from.
+
+```bash
+# BASE_SHA is the INCREMENTAL base: the newest ancestor of HEAD this PR
+# already cleared, resolved by .github/audit/resolve-audit-base.sh. It
+# returns the most recent ancestor carrying a clean-audit signal under the
+# current .gaia/VERSION (a GAIA-Audit trailer or commit status), or
+# origin/main when none exists. Shell state does NOT persist between an
+# agent's Bash calls, so every later call using one of these values re-runs
+# this snippet, and the AUDIT_ROOT derivation it depends on, ahead of itself.
+BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)"   # <sha> | origin/main | origin/<base-ref> | main
+BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
+# merge-base is here for the KEY, not for the diff. BASE_REF can be a ref
+# (origin/main) as well as a sha, and gaia_audit_key needs a stable sha: the
+# audit key, the re-run ledger, the findings sidecar and every --base argument
+# are all keyed off this one value, and a ref that moves under them keys two
+# different files across one run. The three-dot diff below resolves its own
+# merge base internally, so it would narrow correctly either way; passing
+# BASE_SHA is what keeps the reviewed anchor and the keyed anchor one value.
+#
+# An empty BASE_SHA does NOT make the diff below fail: git resolves the
+# empty left side to HEAD, so `changed` comes back empty with status 0 and
+# is indistinguishable from a genuinely empty increment. Say so here, where
+# the silence is created, rather than leaving it to the handshake further
+# down that rejects --base "".
+[ -n "$BASE_SHA" ] || printf 'resolve-audit-base returned no base; review scope is unreliable\n' >&2
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx' 2>/dev/null || true)
+```
+
+**Three-dot, against HEAD, is the whole point.** `changed` names the content your marker will attest to. Your clearance digest is computed over tracked files **at HEAD** (`git ls-tree HEAD`, `.claude/hooks/lib/audit-digest.sh`), so a review scope resolved against anything other than HEAD lets you certify a digest over content you never read. The two-dot form (`<base>`, no `...HEAD`) compares the base to the WORKING TREE, and it fails in three ways at once. A change committed to this PR and then reverted in the working tree drops out of `changed` entirely while your marker still covers the committed version. An uncommitted edit enters `changed` while no marker covers it and the dispatch oracle that decided you run at all never saw it. And when the base is a ref rather than a sha (`origin/main`, the no-audited-ancestor fallback) whose tip has advanced past this branch's fork point, every file the default branch changed enters `changed` too, none of which this PR touched. Three-dot resolves its own merge base, so it is immune to all three. Every other member resolves `${BASE_SHA}...HEAD`; you resolve it identically, and `.gaia/scripts/check-audit-base-derivation.sh` holds all five there.
+
+**What this aligns is the file LIST, and that is the limit of it.** `Read` returns working-tree bytes, so on a dirty tree a file named in `changed` can still hold content HEAD does not, and your marker would again cover bytes you did not read. Reach for the reviewed delta itself (`git -C "$AUDIT_ROOT" diff "${BASE_SHA}...HEAD" -- <file>`) rather than the file's current state whenever that distinction could change a finding.
+
+1. **Identify changed files**: `changed`, from the block above.
+   - **Read the re-run ledger (LOCAL only) as the prior-round briefing.** From the `BASE_SHA` above, compute `AUDIT_KEY="$(gaia_audit_key "$BASE_SHA" "$AUDIT_ROOT")" || AUDIT_KEY=""` (`.gaia/scripts/audit-key-lib.sh`) and `LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `AUDIT_KEY` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `BASE_SHA`, `AUDIT_KEY`, and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
    - When the base is an audited ancestor, everything before it was already cleared; only the delta needs review. **For any exported symbol whose signature or contract changed in the delta, grep its importers and check them even if unchanged**, a cleared caller can still break from a delta change.
    - Once the changed-file list is resolved and before dispatching subagents, emit the `scope resolved` breadcrumb (see Progress breadcrumbs).
 2. **Gate each subagent** on file scope, don't spawn a subagent that has nothing to review:

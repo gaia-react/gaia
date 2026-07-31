@@ -20,7 +20,7 @@
 # gap the way check-audit-key-callers.sh closes the matching one for the
 # key itself.
 #
-# Over `.claude/agents/`, TWO assertions:
+# Over `.claude/agents/`, THREE assertions:
 #
 #   1. No REVIEW base is derived by a bare `merge-base` against a branch.
 #      The review base must come from `.github/audit/resolve-audit-base.sh`,
@@ -57,6 +57,55 @@
 #      base comes from -- prose drift that (1) cannot see because it removes
 #      a line rather than adding one. Both run independently.
 #
+#   3. No `diff --name-only` CONSUMES the base without a three-dot range.
+#      (1) and (2) police how the base is DERIVED; nothing there constrains
+#      what is then handed to `git diff`, and the failures are independent: a
+#      member can derive BASE_SHA correctly through the resolver and still
+#      scope its review off the resolver's output directly one line later,
+#      which is precisely the shape this assertion was added for.
+#
+#      What makes that a defect is the TWO-DOT comparison it performs, not a
+#      missing `merge-base` call. `git diff <rev> -- <paths>` compares <rev> to
+#      the WORKING TREE, while a member's clearance digest is computed over
+#      `git ls-tree HEAD` (.claude/hooks/lib/audit-digest.sh), so a two-dot
+#      scope lets a member certify a digest over content it never read. It
+#      also widens: when the base is a ref whose tip has advanced past the
+#      fork point, every file the default branch changed enters the list.
+#
+#      `git diff <rev>...HEAD` resolves its own merge base internally, so the
+#      three-dot form is correct whether <rev> is a sha or a ref, and no
+#      separate `merge-base` step is needed to make the DIFF right. The
+#      members still derive BASE_SHA through `merge-base` because the audit
+#      key, the ledger, the findings sidecar, and every `--base` argument need
+#      a stable sha; that is a keying requirement, not this assertion's.
+#
+#      Same shape as (1): a wide fixed-string net (`diff --name-only`) narrowed
+#      in awk, where the discriminations are expressible. A call is a violation
+#      when it names ANY spelling of the review base (`resolve-audit-base.sh`,
+#      `BASE_REF`, `BASE_SHA`, `FULL_BASE`) and carries no `...` range.
+#
+#      All four spellings, not only the pre-merge-base ones, because what makes
+#      a call wrong is the two-dot comparison and NOT which variable reached
+#      it: `git diff --name-only "${BASE_SHA}"` compares against the working
+#      tree exactly as `"$BASE_REF"` does. A rule keyed to the raw-base
+#      spellings alone would police a member's choice of variable while
+#      missing a two-dot diff on the correct one, which is the likelier drift.
+#      This assertion says nothing about WHICH spelling a call should use; the
+#      three-dot range is the whole requirement.
+#
+#      Scoped per CALL and walled at `#` or a backtick, the two characters that
+#      end a shell line's code and close a markdown code span. Without that
+#      wall a correct `"${BASE_SHA}...HEAD"` diff carrying a trailing
+#      `# was BASE_REF` comment would report itself, and so would ordinary
+#      prose mentioning `git diff --name-only` and a base in one sentence
+#      (.claude/agents/worthiness-evaluator.md does exactly that).
+#
+#      What it does NOT see, deliberately, is the multi-line form: a fence
+#      assigning `changed=$(git diff --name-only "$X" ...)` where `X` took the
+#      resolver's output on an earlier line. Line-scoped, like every assertion
+#      here. The behavioural suite next door executes the real fences and
+#      compares the resulting file lists, which is what covers that shape.
+#
 # Comment lines are NOT stripped from either scan, unlike
 # check-main-root-derivation.sh, which scans executable source where a
 # commented-out shape cannot run. These are agent definitions: the file IS
@@ -70,16 +119,17 @@
 #
 # gaia_check_audit_base_derivation <repo_root>
 #   Runs `git -C <repo_root> grep` over `.claude/agents/` (recursive) for
-#   both assertions. Prints every match line, then one verdict line per
-#   assertion. Returns 0 when BOTH assertions hold, 1 otherwise.
+#   every assertion. Prints every match line, then one verdict line per
+#   assertion. Returns 0 when ALL THREE hold, 1 otherwise.
 #   <repo_root> is a required parameter -- this check never derives it
 #   itself: a CI caller passes the plain checkout root, a bats fixture
 #   passes a temp repo, so "would this literal fail the check" is testable
 #   without touching real tracked source.
 #
 # GREEN against this repo's real `.claude/agents/`: all five definitions
-# resolve their review base through the resolver, and the only bare
-# merge-base left is each specialist's `FULL_BASE`.
+# resolve their review base through the resolver, the only bare merge-base
+# left is each specialist's `FULL_BASE`, and every changed-file diff is a
+# three-dot range against HEAD.
 
 # Assertion 1's candidate shape: any assignment whose value reaches a
 # `merge-base` call. Deliberately a wide net -- BOTH discriminations that
@@ -122,6 +172,15 @@ GAIA_AUDIT_BARE_MERGE_BASE_PATTERN='[A-Za-z_][A-Za-z0-9_]*=.*merge-base'
 # Assertion 2's two fixed strings.
 GAIA_AUDIT_BASE_VAR='BASE_SHA'
 GAIA_AUDIT_BASE_RESOLVER='resolve-audit-base.sh'
+
+# Assertion 3's candidate net: every `diff --name-only`, correct ones included.
+# A fixed string, not an ERE, for the same reason assertion 2's are: the set of
+# ways to spell a wrong consumer is open, so the awk below identifies the one
+# shape that is right instead of enumerating the ones that are not.
+# The awk below restates this literal (and its length) rather than reading the
+# variable, the same split assertion 1 already has between its ERE and the
+# `merge-base` literal in _gaia_drop_full_base_matches. Change one, change both.
+GAIA_AUDIT_DIFF_CALL='diff --name-only'
 
 # _gaia_drop_full_base_matches: reads `file:line:content` lines on stdin (git
 # grep's -n format) and keeps only the lines that are actually violations,
@@ -219,9 +278,68 @@ _gaia_drop_full_base_matches() {
   '
 }
 
+# _gaia_keep_unanchored_diff_matches: reads `file:line:content` lines on stdin
+# (git grep's -n format) and keeps only the `diff --name-only` calls that
+# consume a base which never reached the fork point.
+#
+# A call survives when, inside its own text, `resolve-audit-base.sh` or
+# `BASE_REF` appears with no `...` range before it. Both tests are per CALL and
+# measured from the call, never line-wide: a line may legitimately carry a
+# correct diff and, further along, prose naming the resolver.
+#
+# The call's text ends at the first `#` or backtick after it. Those two
+# characters are the walls that matter here and nothing else is: `#` opens a
+# shell comment, a backtick closes a markdown code span, and past either the
+# text is no longer part of the command. `|` and `;` are deliberately NOT
+# walls, unlike the ownership walk above -- a pathspec or a redirect routinely
+# follows the revision argument, and `2>/dev/null || true` closes almost every
+# real call, so treating `|` as a wall would cut the window before the tokens
+# this assertion is looking for.
+#
+# `sub` on a copy removes only the FIRST two colon-delimited fields, so a colon
+# inside the content itself never shifts the boundary -- the same framing the
+# ownership walk uses.
+_gaia_keep_unanchored_diff_matches() {
+  awk '
+    {
+      content = $0
+      sub(/^[^:]*:[^:]*:/, "", content)
+      consumed = 0
+      rest = content
+      while ((pos = index(rest, "diff --name-only")) > 0) {
+        # The call window: everything after this occurrence, cut at the first
+        # comment or code-span wall.
+        window = substr(content, consumed + pos + 16)
+        if ((w = index(window, "#")) > 0)  window = substr(window, 1, w - 1)
+        if ((w = index(window, "`")) > 0)  window = substr(window, 1, w - 1)
+
+        # Does this call consume the review base at all? Every spelling of it
+        # counts, before and after merge-base alike: the defect is the TWO-DOT
+        # comparison, and `"${BASE_SHA}"` performs it exactly as
+        # `"$BASE_REF"` does. Keying on the pre-merge-base spellings alone
+        # would police which variable a member names while missing a two-dot
+        # diff on the correct one, which is the likelier drift by far.
+        consumes = index(window, "resolve-audit-base.sh") > 0 \
+                || index(window, "BASE_REF") > 0 \
+                || index(window, "BASE_SHA") > 0 \
+                || index(window, "FULL_BASE") > 0
+
+        # A base-consuming call must carry a `...` range. Position within the
+        # window is deliberately not tested: the correct forms put it on either
+        # side of the token depending on the spelling (`"${BASE_SHA}...HEAD"`
+        # after, a pathspec-first variant before), and a rule that pinned the
+        # side would reject a correct call to reject a stylistic one.
+        if (consumes && index(window, "...") == 0) { print; next }
+        consumed += pos + 15
+        rest = substr(content, consumed + 1)
+      }
+    }
+  '
+}
+
 gaia_check_audit_base_derivation() {
   local repo_root="${1:?gaia_check_audit_base_derivation requires a repo_root argument}"
-  local bare_failed=0 resolver_failed=0
+  local bare_failed=0 resolver_failed=0 consumer_failed=0
 
   # A `git grep` that cannot run returns nothing, which is byte-identical to
   # "scanned it, found no violations". Both assertions would then print 0 and
@@ -283,7 +401,18 @@ gaia_check_audit_base_derivation() {
   fi
   printf 'agent files naming BASE_SHA without naming resolve-audit-base.sh: %s\n' "$missing_count"
 
-  [ "$bare_failed" -eq 0 ] && [ "$resolver_failed" -eq 0 ]
+  # ---------- assertion 3: no diff consumes an un-anchored base ----------
+  local diff_candidates diff_matches diff_count=0
+  diff_candidates="$(git -C "$repo_root" grep -nIF "$GAIA_AUDIT_DIFF_CALL" -- '.claude/agents/' 2>/dev/null)"
+  diff_matches="$(printf '%s\n' "$diff_candidates" | _gaia_keep_unanchored_diff_matches)"
+  if [ -n "$diff_matches" ]; then
+    printf '%s\n' "$diff_matches"
+    diff_count="$(printf '%s\n' "$diff_matches" | wc -l | tr -d ' ')"
+    consumer_failed=1
+  fi
+  printf 'review diffs consuming a base that never reached the fork point: %s\n' "$diff_count"
+
+  [ "$bare_failed" -eq 0 ] && [ "$resolver_failed" -eq 0 ] && [ "$consumer_failed" -eq 0 ]
 }
 
 # Executable entry.

@@ -318,6 +318,98 @@ owners_of() {
   done
 }
 
+# ---------- probe 1b: the review scope is HEAD, not the working tree ---------
+#
+# A member's clearance digest is computed over `git ls-tree HEAD`
+# (.claude/hooks/lib/audit-digest.sh), so its review scope has to be HEAD's
+# content or the marker attests to bytes the member never read. Two spellings
+# diverge on exactly one input, a dirty tree:
+#
+#   git diff <base> -- <paths>          base vs the WORKING TREE (two-dot)
+#   git diff <base>...HEAD -- <paths>   the fork point vs the HEAD COMMIT
+#
+# Both directions are wrong under two-dot, and each is probed below. A change
+# committed and then reverted in the working tree VANISHES from the list while
+# the marker still covers the committed version; an uncommitted edit ENTERS the
+# list while no marker covers it and the dispatch oracle never saw it.
+#
+# The frontend is the member probed because it is the one whose scope is a
+# TS/TSX pathspec; the four specialists' identical form is already covered by
+# probe 1's shared BASE_SHA and by their own fences here.
+
+@test "the frontend's changed-file list is HEAD's content, not the working tree's" {
+  local repo changed
+  repo="$(make_repo worktree-scope)"
+  git -C "$repo" checkout -q -b feat
+
+  # Committed, then reverted in the working tree. Two-dot drops it; three-dot
+  # keeps it, which is the arm that matches the digest.
+  mkdir -p "$repo/app"
+  printf 'export const before = 1\n' > "$repo/app/reverted.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "baseline for the reverted file"
+  stamp_clean_round "$repo"
+  printf 'export const after = 2\n' > "$repo/app/reverted.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "commit a change to reverted.ts"
+  printf 'export const before = 1\n' > "$repo/app/reverted.ts"
+
+  # Never committed at all. Three-dot excludes it; two-dot pulls it in.
+  printf 'export const scratch = 3\n' > "$repo/app/uncommitted.ts"
+
+  changed="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
+
+  grep -qF 'app/reverted.ts' <<<"$changed" || {
+    printf 'a file changed in HEAD but reverted in the working tree fell out of review scope, while the marker still covers it: %s\n' "$changed" >&2
+    return 1
+  }
+  grep -qF 'app/uncommitted.ts' <<<"$changed" && {
+    printf 'an uncommitted file entered review scope, where no marker can cover it: %s\n' "$changed" >&2
+    return 1
+  }
+  return 0
+}
+
+@test "the frontend's review scope is the fork point, not an advanced ref tip" {
+  local repo changed
+  repo="$(make_repo forkpoint-scope)"
+
+  # The second failure direction, reachable only when the base is a REF whose
+  # tip has advanced past this branch's fork point: the resolver's own
+  # no-audited-ancestor fallback. It discriminates against the retired
+  # two-dot-on-the-resolver-output shape specifically, which is the one that
+  # combines both terms. It stays green under a two-dot form anchored on
+  # BASE_SHA, correctly: a sha at the fork point cannot advance, so only the
+  # sibling probe above catches that one. Three-dot resolves its own merge
+  # base, so the current form is immune whichever the base turns out to be.
+  git -C "$repo" checkout -q -b feat
+  mkdir -p "$repo/app"
+  printf 'export const mine = 1\n' > "$repo/app/pr-touched.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "the only file this PR touches"
+
+  # `app/` only exists on feat, so checking out main removes the directory
+  # along with the file that made it; recreate it before writing.
+  git -C "$repo" checkout -q main
+  mkdir -p "$repo/app"
+  printf 'export const theirs = 1\n' > "$repo/app/main-only.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "main advances with an unrelated file"
+  git -C "$repo" checkout -q feat
+
+  changed="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
+
+  grep -qF 'app/pr-touched.ts' <<<"$changed" || {
+    printf 'the file this PR actually changed is missing from review scope: %s\n' "$changed" >&2
+    return 1
+  }
+  grep -qF 'app/main-only.ts' <<<"$changed" && {
+    printf 'a file only the default branch touched entered review scope: %s\n' "$changed" >&2
+    return 1
+  }
+  return 0
+}
+
 # ---------- probe 2: the consolidated findings block sees a specialist -------
 
 @test "post-findings-block.sh finds a specialist's sidecar under the resolver-derived key" {
