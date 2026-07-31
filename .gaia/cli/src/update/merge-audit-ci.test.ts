@@ -526,4 +526,32 @@ describe('update merge-audit-ci', () => {
     expect(exit).not.toBe(0);
     expect(stdio.errors.join('')).toContain('audit_ci_file_missing');
   });
+
+  test('an unknown flag exits non-zero with invalid_arguments', () => {
+    sandbox.write('baseline', 'default_mode: ci\n');
+    sandbox.write('latest', 'default_mode: ci\n');
+    sandbox.write('current', 'default_mode: ci\n');
+
+    const exit = run([...argv(sandbox), '--nope']);
+
+    expect(exit).not.toBe(0);
+    expect(stdio.errors.join('')).toContain('invalid_arguments');
+  });
+
+  test.each(['constructor', 'toString', 'valueOf', '__proto__'])(
+    'an unknown flag named after an Object.prototype key (%s) exits non-zero with invalid_arguments',
+    (token) => {
+      // A bare VALUE_FLAGS index returns the inherited value for these tokens,
+      // which would skip the unknown-flag branch and silently consume the
+      // NEXT argv element as the flag's value.
+      sandbox.write('baseline', 'default_mode: ci\n');
+      sandbox.write('latest', 'default_mode: ci\n');
+      sandbox.write('current', 'default_mode: ci\n');
+
+      const exit = run([...argv(sandbox), token, 'swallowed']);
+
+      expect(exit).not.toBe(0);
+      expect(stdio.errors.join('')).toContain('invalid_arguments');
+    }
+  );
 });
