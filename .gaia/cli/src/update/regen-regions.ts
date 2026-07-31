@@ -41,18 +41,18 @@ import {createHash} from 'node:crypto';
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {execGaiaGit} from '../util/git-env.js';
+import {execGaiaGitRaw} from '../util/git-env.js';
 
 const HELP_TEXT = `Usage: gaia update regen-regions --manifest <path> --root <dir> [--backup-dir <dir>]
                                   [--conflicted <repo-relative-path>]...
@@ -255,6 +255,17 @@ const isStringArray = (value: unknown): value is string[] =>
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Names a parsed-JSON value's shape for a refusal reason. `null` and arrays
+ * are spelled out because `typeof` calls both `'object'`, which would report
+ * them identically to the plain object this exists to tell them apart from.
+ */
+const describeJsonShape = (value: unknown): string => {
+  if (value === null) return 'null';
+
+  return Array.isArray(value) ? 'array' : typeof value;
+};
 
 /** Strips a leading `./`, collapses separators, converts to POSIX. */
 const normalizeRepoPath = (value: string): string => {
@@ -592,7 +603,15 @@ const collectScopeDigests = (
       let stat;
 
       try {
-        stat = statSync(abs);
+        // `lstat`, not `stat`: a symlink must not be followed here. The
+        // snapshot's whole contract is content it can hash and later write
+        // back, and a symlink is neither. Followed, it would be buffered as
+        // its TARGET's bytes, and the sweep would then restore it as a plain
+        // regular file holding a copy of content that may have lived wholly
+        // outside the region, or write through the link and rewrite a target
+        // outside the snapshot scope entirely. Excluding it makes the sweep
+        // make no claim about symlinks rather than a false one.
+        stat = lstatSync(abs);
       } catch {
         return;
       }
@@ -708,7 +727,9 @@ const isInsideScope = (
  */
 const gitStatusPaths = (root: string): null | string[] => {
   try {
-    const out = execGaiaGit(['status', '--porcelain', '-z'], root);
+    // Raw, never trimmed: the ` M path` shape's leading space is a status
+    // column, and trimming it shifts the 3-character prefix slice below.
+    const out = execGaiaGitRaw(['status', '--porcelain', '-z'], root);
     const paths: string[] = [];
     // A rename/copy record is followed by a bare origin-path record carrying
     // no `XY ` status prefix, so the stream needs a one-record lookahead. The
@@ -994,6 +1015,8 @@ const resolvePath = (cwd: string, value: string): string =>
 type LoadedInputs = {
   backupDir: string | undefined;
   manifestRecord: Record<string, unknown>;
+  /** `null` when the manifest is a plain object; else its shape name. */
+  manifestShape: null | string;
   realRoot: string;
   root: string;
 };
@@ -1085,11 +1108,29 @@ const loadRunInputs = (cwd: string, flags: Flags): LoadResult => {
     return {ok: false};
   }
 
+  // Two returns rather than one, so the type guard narrows `manifestParsed`
+  // for `manifestRecord` on the arm that keeps it.
+  if (isPlainObject(manifestParsed))
+    return {
+      ok: true,
+      value: {
+        backupDir,
+        manifestRecord: manifestParsed,
+        manifestShape: null,
+        realRoot,
+        root,
+      },
+    };
+
+  // A manifest that parsed but is not an object has no `regions` key to be
+  // wrong-typed, so without a shape name it would reach the caller as an
+  // empty record and read exactly like a release predating the mechanism.
   return {
     ok: true,
     value: {
       backupDir,
-      manifestRecord: isPlainObject(manifestParsed) ? manifestParsed : {},
+      manifestRecord: {},
+      manifestShape: describeJsonShape(manifestParsed),
       realRoot,
       root,
     },
@@ -1137,7 +1178,8 @@ export const run = (
 
   if (!loaded.ok) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
-  const {backupDir, manifestRecord, realRoot, root} = loaded.value;
+  const {backupDir, manifestRecord, manifestShape, realRoot, root} =
+    loaded.value;
   const regionsValue = manifestRecord.regions;
   const regionsAreArray = Array.isArray(regionsValue);
   const rawRegions = regionsAreArray ? regionsValue : [];
@@ -1172,12 +1214,21 @@ export const run = (
   //
   // `(manifest)` names the manifest itself rather than a region: the refusal
   // is run-level, and the parentheses keep it clear of a real declared id,
-  // which `parseDeclaration` requires to be a non-empty string. `typeof null`
-  // is `'object'`, so null is spelled out rather than folded in with `{}`.
-  if (regionsValue !== undefined && !regionsAreArray)
+  // which `parseDeclaration` requires to be a non-empty string.
+  //
+  // Two shapes reach the same refusal. A manifest that is not an object at
+  // all has no `regions` key to inspect, so it is caught by shape; a manifest
+  // that is an object carrying a wrong-typed `regions` is caught by the key.
+  if (manifestShape !== null)
     context.report.refused.push({
       kind: 'manifest',
-      reason: `regions is present but is not an array: ${regionsValue === null ? 'null' : typeof regionsValue}`,
+      reason: `manifest top level is not an object: ${manifestShape}`,
+      regionId: '(manifest)',
+    });
+  else if (regionsValue !== undefined && !regionsAreArray)
+    context.report.refused.push({
+      kind: 'manifest',
+      reason: `regions is present but is not an array: ${describeJsonShape(regionsValue)}`,
       regionId: '(manifest)',
     });
 

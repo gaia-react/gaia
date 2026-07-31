@@ -14657,7 +14657,7 @@ var readAutomationConfig = (repoRoot) => {
 
 // src/util/git-env.ts
 import { execFileSync } from "node:child_process";
-var execGaiaGit = (args, cwd) => {
+var execGaiaGitRaw = (args, cwd) => {
   const env = { ...process.env };
   delete env.GIT_DIR;
   delete env.GIT_WORK_TREE;
@@ -14667,15 +14667,16 @@ var execGaiaGit = (args, cwd) => {
     encoding: "utf8",
     env,
     // Node's 1 MiB default throws ENOBUFS on a large-output git command
-    // (`git log` over a long history). Matches `runGit` in wiki/util/git.ts,
-    // whose callers already hit that ceiling. Today's callers here are
-    // short-output `rev-parse` forms, but the docblock above declares this
-    // the one chokepoint every git-shelling resolver routes through, so the
-    // ceiling belongs here rather than at the next caller to need it.
+    // (`git log` over a long history, `git status` on a very dirty tree).
+    // Matches `runGit` in wiki/util/git.ts, whose callers already hit that
+    // ceiling. The docblock above declares this the one chokepoint every
+    // git-shelling resolver routes through, so the ceiling belongs here
+    // rather than at the next caller to need it.
     maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"]
-  }).trim();
+  });
 };
+var execGaiaGit = (args, cwd) => execGaiaGitRaw(args, cwd).trim();
 
 // src/util/repo-root.ts
 var resolveRepoRoot = (cwd = process.cwd()) => execGaiaGit(["rev-parse", "--show-toplevel"], cwd);
@@ -27624,12 +27625,12 @@ import { createHash } from "node:crypto";
 import {
   copyFileSync as copyFileSync2,
   existsSync as existsSync29,
+  lstatSync as lstatSync2,
   mkdirSync as mkdirSync12,
   readdirSync as readdirSync5,
   readFileSync as readFileSync34,
   realpathSync as realpathSync3,
   rmSync as rmSync3,
-  statSync as statSync5,
   writeFileSync as writeFileSync9
 } from "node:fs";
 import path39 from "node:path";
@@ -27735,6 +27736,10 @@ var parseFlags21 = (argv) => {
 var isNonEmptyString = (value) => typeof value === "string" && value.trim() !== "";
 var isStringArray2 = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
 var isPlainObject2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var describeJsonShape = (value) => {
+  if (value === null) return "null";
+  return Array.isArray(value) ? "array" : typeof value;
+};
 var normalizeRepoPath = (value) => {
   const posix = value.replaceAll("\\", "/").replaceAll(/\/{2,}/gu, "/");
   return posix.startsWith("./") ? posix.slice(2) : posix;
@@ -27911,7 +27916,7 @@ var collectScopeDigests = (root, scopeDirs) => {
       const abs = path39.join(absDir, rel);
       let stat;
       try {
-        stat = statSync5(abs);
+        stat = lstatSync2(abs);
       } catch {
         return;
       }
@@ -27963,7 +27968,7 @@ var isInsideScope = (relPath, scopeDirs) => [...scopeDirs].some(
 );
 var gitStatusPaths = (root) => {
   try {
-    const out = execGaiaGit(["status", "--porcelain", "-z"], root);
+    const out = execGaiaGitRaw(["status", "--porcelain", "-z"], root);
     const paths = [];
     let expectOriginPath = false;
     out.split("\0").filter((record2) => record2.length > 0).forEach((record2) => {
@@ -28180,11 +28185,23 @@ var loadRunInputs = (cwd, flags) => {
     });
     return { ok: false };
   }
+  if (isPlainObject2(manifestParsed))
+    return {
+      ok: true,
+      value: {
+        backupDir,
+        manifestRecord: manifestParsed,
+        manifestShape: null,
+        realRoot,
+        root
+      }
+    };
   return {
     ok: true,
     value: {
       backupDir,
-      manifestRecord: isPlainObject2(manifestParsed) ? manifestParsed : {},
+      manifestRecord: {},
+      manifestShape: describeJsonShape(manifestParsed),
       realRoot,
       root
     }
@@ -28220,7 +28237,7 @@ var run46 = (argv, options = {}) => {
   const cwd = options.cwd ?? process.cwd();
   const loaded = loadRunInputs(cwd, parsed.flags);
   if (!loaded.ok) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  const { backupDir, manifestRecord, realRoot, root } = loaded.value;
+  const { backupDir, manifestRecord, manifestShape, realRoot, root } = loaded.value;
   const regionsValue = manifestRecord.regions;
   const regionsAreArray = Array.isArray(regionsValue);
   const rawRegions = regionsAreArray ? regionsValue : [];
@@ -28244,10 +28261,16 @@ var run46 = (argv, options = {}) => {
     shippedKeys,
     skipRegionSet: new Set(parsed.flags.skipRegions)
   };
-  if (regionsValue !== void 0 && !regionsAreArray)
+  if (manifestShape !== null)
     context.report.refused.push({
       kind: "manifest",
-      reason: `regions is present but is not an array: ${regionsValue === null ? "null" : typeof regionsValue}`,
+      reason: `manifest top level is not an object: ${manifestShape}`,
+      regionId: "(manifest)"
+    });
+  else if (regionsValue !== void 0 && !regionsAreArray)
+    context.report.refused.push({
+      kind: "manifest",
+      reason: `regions is present but is not an array: ${describeJsonShape(regionsValue)}`,
       regionId: "(manifest)"
     });
   rawRegions.forEach((raw, index) => {
@@ -29115,7 +29138,7 @@ var run49 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readdirSync as readdirSync6, readFileSync as readFileSync36, statSync as statSync6 } from "node:fs";
+import { readdirSync as readdirSync6, readFileSync as readFileSync36, statSync as statSync5 } from "node:fs";
 import path41 from "node:path";
 var HELP_TEXT49 = `Usage: gaia wiki dead-paths [--json]
 
@@ -29172,7 +29195,7 @@ var walkMarkdown = (root, dir) => {
 };
 var pathExists = (root, candidate) => {
   try {
-    statSync6(path41.join(root, candidate));
+    statSync5(path41.join(root, candidate));
     return true;
   } catch {
     return false;
@@ -29200,7 +29223,7 @@ var collectDeadPathsInFile = (ctx) => {
 var findDeadPaths = (cwd) => {
   const wikiDir = path41.join(cwd, "wiki");
   try {
-    statSync6(wikiDir);
+    statSync5(wikiDir);
   } catch {
     return [];
   }
@@ -29462,7 +29485,7 @@ var run51 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync37, statSync as statSync7 } from "node:fs";
+import { readdirSync as readdirSync7, readFileSync as readFileSync37, statSync as statSync6 } from "node:fs";
 import path42 from "node:path";
 
 // src/wiki/util/frontmatter.ts
@@ -29599,7 +29622,7 @@ var findInBody = (body, bodyLineOffset, relPath) => {
 var findEmptySections = (cwd) => {
   const wikiDir = path42.join(cwd, "wiki");
   try {
-    statSync7(wikiDir);
+    statSync6(wikiDir);
   } catch {
     return [];
   }
@@ -29660,7 +29683,7 @@ var run52 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readdirSync as readdirSync8, readFileSync as readFileSync38, statSync as statSync8 } from "node:fs";
+import { readdirSync as readdirSync8, readFileSync as readFileSync38, statSync as statSync7 } from "node:fs";
 import path43 from "node:path";
 var HELP_TEXT52 = `Usage: gaia wiki frontmatter [--json]
 
@@ -29690,7 +29713,7 @@ var hasField = (frontmatter, field) => Object.hasOwn(frontmatter, field) && fron
 var findFrontmatterGaps = (cwd) => {
   const wikiDir = path43.join(cwd, "wiki");
   try {
-    statSync8(wikiDir);
+    statSync7(wikiDir);
   } catch {
     return [];
   }
@@ -29900,7 +29923,7 @@ var run54 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync32, readdirSync as readdirSync9, statSync as statSync9 } from "node:fs";
+import { existsSync as existsSync32, readdirSync as readdirSync9, statSync as statSync8 } from "node:fs";
 import path45 from "node:path";
 var HELP_TEXT54 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
@@ -29948,7 +29971,7 @@ var levenshtein = (a, b) => {
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => {
   const domainDir = path45.join(wikiRoot, domain2);
-  if (!existsSync32(domainDir) || !statSync9(domainDir).isDirectory()) {
+  if (!existsSync32(domainDir) || !statSync8(domainDir).isDirectory()) {
     return [];
   }
   const entries = readdirSync9(domainDir, { withFileTypes: true });
@@ -30050,7 +30073,7 @@ var run55 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync33, readdirSync as readdirSync10, readFileSync as readFileSync40, statSync as statSync10 } from "node:fs";
+import { existsSync as existsSync33, readdirSync as readdirSync10, readFileSync as readFileSync40, statSync as statSync9 } from "node:fs";
 import path46 from "node:path";
 var HELP_TEXT55 = `Usage: gaia wiki page-index [--json]
 
@@ -30115,7 +30138,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
 };
 var collectDomainPages = (wikiRoot, domain2) => {
   const domainDir = path46.join(wikiRoot, domain2);
-  if (!existsSync33(domainDir) || !statSync10(domainDir).isDirectory()) return [];
+  if (!existsSync33(domainDir) || !statSync9(domainDir).isDirectory()) return [];
   const entries = readdirSync10(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };

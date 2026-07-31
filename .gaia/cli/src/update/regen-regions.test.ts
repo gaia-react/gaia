@@ -724,6 +724,35 @@ describe('update regen-regions: behavior coverage', () => {
     expect(existsSync(path.join(root, DECLARED_PATHS[1]))).toBe(false);
   });
 
+  test('12d. a symlink the program deletes in scope is not materialized as a regular file', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    symlinkSync(
+      '../../outside/target.txt',
+      path.join(root, '.claude/agents/link.md')
+    );
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'rm .claude/agents/link.md'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // The snapshot cannot faithfully hold a symlink (it hashes the target's
+    // bytes), so restoring one would write a REGULAR file carrying content
+    // that may have lived entirely outside the region. Never do that, and
+    // never claim `restored` for it.
+    expect(report.confined).toEqual([]);
+    expect(existsSync(path.join(root, '.claude/agents/link.md'))).toBe(false);
+    expect(readFileSync(path.join(root, 'outside/target.txt'), 'utf8')).toBe(
+      'TARGET CONTENT\n'
+    );
+  });
+
   test('13. a file created outside the declared set but inside the snapshot scope is removed', () => {
     const root = buildRoot();
 
@@ -867,6 +896,32 @@ describe('update regen-regions: behavior coverage', () => {
     expect(report.confined.every((entry) => entry.action === 'reported')).toBe(
       true
     );
+  });
+
+  test('13e. a fully committed tree, whose first status record is a worktree modification, loses no leading character', () => {
+    const root = buildGitRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // Commit everything BEFORE the run. This is the ordinary adopter shape,
+    // and it is the one that exercises git's leading status column: a
+    // worktree-only modification reports as ` M <path>`, whose first byte is
+    // a SPACE. A parser that trims the payload before slicing the 3-char
+    // `XY ` prefix eats the path's own first character, and the truncated
+    // path then matches neither the declared set nor the snapshot scope, so
+    // the region's own legitimate rewrite is reported as an out-of-scope
+    // write. `.claude/…` sorts first, so the declared path is the record
+    // that lands in position one.
+    execFileSync('git', ['add', '-A'], {cwd: root});
+    execFileSync('git', ['commit', '-q', '-m', 'fixture'], {cwd: root});
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.confined).toEqual([]);
+    expect(report.ran).toHaveLength(1);
+    expect(readDeclared(root, 0)).toBe('regenerated one\n');
   });
 
   test('14. --backup-dir copies a declared path not yet backed up', () => {
@@ -1068,6 +1123,32 @@ describe('update regen-regions: behavior coverage', () => {
         {
           kind: 'manifest',
           reason: `regions is present but is not an array: ${shape}`,
+          regionId: '(manifest)',
+        },
+      ]);
+      expect(report.ran).toEqual([]);
+    }
+  );
+
+  test.each([
+    [['not', 'an', 'object'], 'array'],
+    ['a string manifest', 'string'],
+    [42, 'number'],
+  ])(
+    '19b. a manifest whose top level is not an object (%p) is refused, not read as a release that ships no regions',
+    (manifest, shape) => {
+      const root = buildRoot();
+      const manifestPath = path.join(root, 'manifest.json');
+
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+
+      const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+      expect(exit).toBe(0);
+      expect(report.refused).toEqual([
+        {
+          kind: 'manifest',
+          reason: `manifest top level is not an object: ${shape}`,
           regionId: '(manifest)',
         },
       ]);
