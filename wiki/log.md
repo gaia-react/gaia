@@ -11,6 +11,12 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-31 43e4bb7 SKIP - PyYAML precondition gate now fails instead of skips on CI; maintainer-only test-infra hardening below the level PR Merge Workflow.md's guard description tracks
+- 2026-07-31 119d14e WORTHY - self-heal retrigger jobs capped inside the poller window, Playwright installs one browser engine; wiki/concepts/PR Merge Workflow.md updated in-commit (verify-before-dispatch section)
+- 2026-07-31 8150745 WORTHY - rate table prices Opus 5/Mythos 5, unpriced-model lower-bound marker + cost-reprice.sh; wiki/concepts/Cost Data Contract.md, wiki/concepts/Token Cost Readout.md updated in-commit
+- 2026-07-31 191236e SKIP - update-gaia SKILL.md command-resolution rule deduplicated to one site; instruction-prose consolidation, behavior-preserving, no wiki-tracked fact changed
+- 2026-07-31 86f7a7c WORTHY - audit-status stamp/push/post ordering fix, all five members push before posting; wiki/concepts/PR Merge Workflow.md, wiki/concepts/Registering a Code Audit Team Member.md, wiki/decisions/Code Audit Team.md updated in-commit
+- 2026-07-31 e2f6029 SKIP - self-referential prior wiki-sync commit (wiki: sync through d733abb), no further wiki action
 - 2026-07-30 d733abb1 WORTHY - source-bearing path (non-test): block-secrets-write.sh adds a 200-line/65536-char judged-material cap denying past either bound -> wiki/concepts/Claude Hooks.md
 - 2026-07-30 32c7a43c SKIP - corrects npx bats-core->bats package-name typo in test runners; internal test-tooling bugfix, no wiki-tracked surface
 - 2026-07-30 441b47ec SKIP - wires .gaia/tests/sandbox into CI's audit-ci-tests.yml; maintainer-only test-infra plumbing already self-documented in .gaia/tests/README.md, no adopter-facing or cross-cutting pattern to track separately
