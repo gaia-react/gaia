@@ -5,10 +5,12 @@ description: Pull the latest GAIA release into this project without clobbering c
 
 Pull the latest GAIA release into this project without clobbering customizations. Does a three-way comparison per file (adopter / baseline / latest) and respects explicit classes in `.gaia/manifest.json`:
 
-- **`owned`**: GAIA controls fully. Overwrites silently if unchanged from baseline; emits a `.gaia-merge/` patch for manual resolution on drift, the same as `shared`.
-- **`shared`**: GAIA seeds, you customize. Emits a `.gaia-merge/` patch for manual resolution on drift.
-- **`wiki-owned`**: GAIA-seeded concept/decision/module wiki pages. Same drift handling as `shared`.
+- **`owned`**: GAIA controls fully.
+- **`shared`**: GAIA seeds, you customize.
+- **`wiki-owned`**: GAIA-seeded concept/decision/module wiki pages.
 - **adopter-owned (implicit)**: anything not in the manifest, plus sentinels like `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, `.gaia/VERSION`, `.gaia/manifest.json`. Never touched.
+
+The first three behave identically on drift (a `.gaia-merge/` patch, working tree untouched) and on a pristine file (backed up, then overwritten with the release copy). The class decides only which summary bucket a clean overwrite reports under (`owned` → `overwrite[]`, the other two → `merge[]`) and what happens when the release newly owns a path the adopter already has (`owned` backs up and overwrites, the other two emit a patch). Step 7 is authoritative.
 
 Backups land in `.gaia-backup/<timestamp>/`. Conflict patches land in `.gaia-merge/`.
 
