@@ -91,7 +91,9 @@ full scope.
 
 - Generic last-green resolver: `.github/audit/resolve-check-base.sh` (tests +
   any future check).
-- Version-aware audit resolver: `.github/audit/resolve-audit-base.sh`.
+- Version-aware audit resolver: `.github/audit/resolve-audit-base.sh`. It serves
+  two consumers: this job-level gate, and the review scope every Code Audit Team
+  member resolves for itself (see [[Code Review Audit Agent]]).
 
 ## See also
 

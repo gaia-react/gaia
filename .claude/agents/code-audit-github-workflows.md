@@ -27,11 +27,17 @@ AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
 
 Shell state does NOT persist between an agent's Bash calls, the same rule the `BASE_SHA` comment below states for its own value, so every later call that uses `$AUDIT_ROOT` re-runs those two lines first, re-issuing the dispatched `AUDIT_ROOT=` assignment ahead of them when the orchestrator supplied one: in a fresh shell `AUDIT_ROOT` is unset, so the first line's fallback fires and reproduces the ambient tree, not the supplied root. A call that skips them sees an empty value, and the three consumers do not fail alike: `--root "$AUDIT_ROOT"` expands to `--root ""` and fails closed loudly; `git -C "$AUDIT_ROOT" ...` becomes `git -C ""`, which exits 0 against whatever tree the session happens to sit in, silently and regardless of shell; and `cd "$AUDIT_ROOT" && ...` is shell-dependent, since `cd ""` returns 0 on bash 3.2 and runs the chain ambiently, while bash 5 prints `cd: null directory` and returns 1 so the chain never runs. Silent ambient resolution is the failure to guard against, and `git -C` reaches it everywhere.
 
-At the start of every run, resolve the diff base the same way the dispatch resolver does, then list the changed files:
+At the start of every run, resolve two diff bases and the changed-file list each one yields:
 
 ```bash
 default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"
+# FULL_BASE is the whole-PR fork point, and it decides exactly one thing: the
+# self-skip arm below. It stays a bare merge-base against the default branch
+# because membership is resolved over the whole PR diff
+# (.gaia/scripts/resolve-audit-members.sh), never over the review increment.
+FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
 # BASE_SHA, not a lowercase local: every handshake invocation below passes
 # `--base "$BASE_SHA"`, and shell state does NOT persist between an agent's
 # Bash calls, so each of those calls re-runs this snippet, and the AUDIT_ROOT
@@ -40,11 +46,26 @@ default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/H
 # report of record is never written) and which audit-write-clearance.sh
 # accepts while silently skipping the re-run ledger, leaving a refusal that
 # briefs nothing.
-BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+#
+# BASE_SHA is the INCREMENTAL base: the newest ancestor of HEAD this PR
+# already cleared, resolved by .github/audit/resolve-audit-base.sh. It scopes
+# your review, and it keys your findings sidecar and the shared re-run ledger,
+# so every co-dispatched member and every reader of those artifacts has to
+# reach it through this same call or they key two different ledgers. The
+# self-skip arm uses FULL_BASE instead; the paragraph below this block is why
+# the two cannot be one value.
+BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)"
+BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
 changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
 ```
 
-**If none match, skip cleanly**: write no marker (there is nothing to gate), do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, and return a one-line note that no changed file fell in your remit.
+Two lists, two jobs. `full_changed` decides **whether you run at all**: filter it against your remit globs, and self-skip when nothing matches. `changed` decides **what you review**: filter it the same way and review only what it names. The two lists differ once this PR has passed a clean round, because `BASE_SHA` then starts at that round's commit while `FULL_BASE` stays at the fork point.
+
+They cannot be collapsed back into one value. Your marker is invalid at HEAD exactly when your content digest rotated, and a digest rotates on a change to a file you own or to shared gate machinery. The owned-file case is safe on the increment alone, since an owned file that changed after the last clean round is in it. The machinery case usually is too, because the resolver resets to full scope when machinery moved between the cleared commit and HEAD. But that reset **fails open** when the classifier libs will not load, and then the increment carries the machinery file and nothing else. When that file is outside your globs, self-skipping on `changed` writes no marker while membership, resolved over the whole PR diff, still demands one, and the merge deadlocks with nothing left that can clear it. `full_changed` is what closes that hole.
+
+**If no `full_changed` path matches, skip cleanly**: write no marker (there is nothing to gate), do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, and return a one-line note that no changed file fell in your remit.
+
+A narrower `changed` shifts one risk onto you: it can begin after a commit this PR already cleared, so a caller your delta breaks may be absent from the delta. A composite action under `.github/actions/` and a job's `outputs:` block are both published interfaces whose callers live in other files: when either changes, `git grep` the action's path for `uses:` references and the output's name for `needs.<job>.outputs.<name>` reads, then check every caller against the new interface whether or not it changed. Neither break is loud. A `uses:` passing a `with:` key the action no longer declares is only rejected when that workflow next runs, and a read of a deleted output expands to the empty string rather than failing, so the first symptom is a downstream `if:` silently taking the wrong branch.
 
 ## Why this member exists
 
@@ -264,7 +285,7 @@ Best-effort: a write failure never blocks or alters the marker / stamp / push / 
 
 ## Methodology
 
-1. Resolve the diff base and changed-file list; filter to your remit; self-skip cleanly if empty.
+1. Resolve both diff bases and their changed-file lists; self-skip on `full_changed` filtered to your remit; review `changed` filtered the same way.
 2. Read every in-remit changed file, plus its callers and any test it needs for context.
 3. Apply the review dimensions above.
 4. Run each candidate through the Finding Proof Gate.

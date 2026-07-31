@@ -270,7 +270,7 @@ The ledger is local-flow-only. In CI each audit runs in a fresh ephemeral job, s
 
 #### Findings block
 
-The PreToolUse hook `post-findings-block-on-merge.sh` posts one consolidated findings block to the PR on every `gh pr merge` invocation whose resolved audit mode is `local`, deterministically, no hand-run step required. It resolves the incremental audit base the same way the audited member(s) do and calls the existing producer:
+The PreToolUse hook `post-findings-block-on-merge.sh` posts one consolidated findings block to the PR on every `gh pr merge` invocation whose resolved audit mode is `local`, deterministically, no hand-run step required. It resolves the incremental audit base the same way the audited member(s) do and calls the existing producer. Every dispatched member reaches that base through `.github/audit/resolve-audit-base.sh`, which is what lets one key serve the whole dispatched set: a member resolving a base of its own writes its sidecar under a key this reader never globs, so its findings leave the block with no error anywhere. `.gaia/scripts/check-audit-base-derivation.sh` is the standing check on that (see [[Code Review Audit Agent#Incremental scope]]).
 
 ```bash
 BASE_REF="$(.github/audit/resolve-audit-base.sh)"
