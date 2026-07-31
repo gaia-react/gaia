@@ -23,6 +23,7 @@ import {
   buildManifest,
   classifyPath,
   computeDrift,
+  computeMissing,
   lintClassifierSets,
   lintScanScopes,
   ManifestSchema,
@@ -382,6 +383,42 @@ const regionDrift = (
 ): ReturnType<typeof computeDrift>['regionDrift'] =>
   computeDrift(expected, actual, {classifierOverlaps: [], scanScopeGaps: []})
     .regionDrift;
+
+const manifestWithFiles = (files: ManifestShape['files']): ManifestShape => ({
+  files,
+  generated: '2026-05-07T00:00:00.000Z',
+  regions: [],
+  version: '1.0.0',
+});
+
+describe('computeMissing: paths named after Object.prototype keys', () => {
+  test.each([
+    'constructor',
+    'toString',
+    'valueOf',
+    '__proto__',
+    'hasOwnProperty',
+  ])(
+    'a classified file named %s that the committed manifest has never acknowledged is reported missing',
+    (file) => {
+      // These are all legal POSIX filenames. A bare `actual.files[file]` index
+      // reaches Object.prototype and returns a truthy inherited value, which
+      // reads as "already acknowledged" and drops a genuinely missing entry
+      // from the set the drift report and the answer gate both consume.
+      const expected = manifestWithFiles({[file]: 'owned'});
+      const actual = manifestWithFiles({});
+
+      expect(computeMissing(expected, actual)).toEqual([file]);
+    }
+  );
+
+  test('a path the committed manifest does acknowledge is not reported missing', () => {
+    const expected = manifestWithFiles({'app/root.tsx': 'owned'});
+    const actual = manifestWithFiles({'app/root.tsx': 'owned'});
+
+    expect(computeMissing(expected, actual)).toEqual([]);
+  });
+});
 
 describe('computeDrift: regionDrift', () => {
   const region = {

@@ -27572,7 +27572,7 @@ var VALUE_FLAGS3 = {
   "--current": "current",
   "--latest": "latest"
 };
-var lookupValueFlag3 = (token) => VALUE_FLAGS3[token];
+var lookupValueFlag3 = (token) => Object.hasOwn(VALUE_FLAGS3, token) ? VALUE_FLAGS3[token] : void 0;
 var parseFlags13 = (argv) => {
   const collected = {};
   let json2 = false;
