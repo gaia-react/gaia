@@ -82,36 +82,63 @@
 # merge-base left is each specialist's `FULL_BASE`.
 
 # Assertion 1's candidate shape: an assignment whose value reaches a
-# `merge-base` call naming `origin/`. Deliberately loose -- the ownership
-# test that decides which assignment it belongs to runs in awk below, where
-# a "nearest identifier to the left" rule is expressible and an ERE's is
-# not.
-GAIA_AUDIT_BARE_MERGE_BASE_PATTERN='[A-Za-z_][A-Za-z0-9_]*=.*merge-base.*origin/'
+# `merge-base` call naming the default branch, in EITHER form the real
+# snippet carries -- `origin/${default_branch}` and the bare
+# `"${default_branch}"` fallback beside it. Both alternatives are load
+# bearing: a literal `merge-base HEAD origin/main` names no
+# `default_branch`, and the bare fallback names no `origin/`, so a pattern
+# carrying only one of them lets a drift to the other through uncounted.
+#
+# The resolver-derived shape this check exists to REQUIRE
+# (`merge-base "${BASE_REF}" HEAD`) names neither alternative, which is what
+# keeps it off the candidate list. Widening this ERE to a bare `merge-base`
+# would make every correct BASE_SHA line a candidate, and the FULL_BASE
+# exemption below would not save them -- the check would red on a tree that
+# is exactly right.
+#
+# Deliberately loose beyond that: the ownership test that decides which
+# assignment a call belongs to runs in awk below, where a "nearest
+# identifier to the left" rule is expressible and an ERE's is not.
+GAIA_AUDIT_BARE_MERGE_BASE_PATTERN='[A-Za-z_][A-Za-z0-9_]*=.*merge-base.*(origin/|default_branch)'
 
 # Assertion 2's two fixed strings.
 GAIA_AUDIT_BASE_VAR='BASE_SHA'
 GAIA_AUDIT_BASE_RESOLVER='resolve-audit-base.sh'
 
 # _gaia_drop_full_base_matches: reads `file:line:content` lines on stdin (git
-# grep's -n format) and keeps only those whose `merge-base` call is owned by
-# an assignment OTHER than FULL_BASE. `sub` on a copy removes only the FIRST
-# two colon-delimited fields, so a colon inside the content itself never
-# shifts the boundary. The owning assignment is the LAST `IDENT=` occurring
-# before `merge-base`, which is what "nearest to the left" means on one line.
+# grep's -n format) and keeps only those carrying at least one `merge-base`
+# call owned by an assignment OTHER than FULL_BASE. `sub` on a copy removes
+# only the FIRST two colon-delimited fields, so a colon inside the content
+# itself never shifts the boundary. The owning assignment is the LAST
+# `IDENT=` occurring before that call, which is what "nearest to the left"
+# means on one line.
+#
+# EVERY `merge-base` on the line is tested, not just the first. The real
+# FULL_BASE assignment already puts two on one line (the `origin/` form and
+# its bare fallback, joined by `||`), so a rule keyed to the first
+# occurrence alone would clear a whole line whose first call belongs to
+# FULL_BASE and whose second belongs to something else.
 _gaia_drop_full_base_matches() {
   awk '
     {
       content = $0
       sub(/^[^:]*:[^:]*:/, "", content)
-      pos = index(content, "merge-base")
-      if (pos == 0) next
-      left = substr(content, 1, pos - 1)
-      name = ""
-      while (match(left, /[A-Za-z_][A-Za-z0-9_]*=/)) {
-        name = substr(left, RSTART, RLENGTH - 1)
-        left = substr(left, RSTART + RLENGTH)
+      # `consumed` is how much of content `rest` starts past, so the prefix
+      # handed to the ownership walk is always measured from column 1 of the
+      # real line rather than from the current search window.
+      consumed = 0
+      rest = content
+      while ((pos = index(rest, "merge-base")) > 0) {
+        left = substr(content, 1, consumed + pos - 1)
+        name = ""
+        while (match(left, /[A-Za-z_][A-Za-z0-9_]*=/)) {
+          name = substr(left, RSTART, RLENGTH - 1)
+          left = substr(left, RSTART + RLENGTH)
+        }
+        if (name != "FULL_BASE") { print; next }
+        consumed += pos + 9
+        rest = substr(content, consumed + 1)
       }
-      if (name != "FULL_BASE") print
     }
   '
 }

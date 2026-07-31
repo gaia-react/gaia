@@ -27,17 +27,13 @@ setup() {
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   # shellcheck source=.gaia/scripts/check-audit-base-derivation.sh
   source "$CHECK"
-  FIXTURE_REPOS=()
 }
 
-teardown() {
-  local d
-  for d in "${FIXTURE_REPOS[@]:-}"; do
-    [ -n "$d" ] && rm -rf "$d"
-  done
-  return 0
-}
-
+# Fixtures live under $BATS_TEST_TMPDIR, which bats removes after each test,
+# so this file keeps no cleanup bookkeeping of its own (the sibling
+# audit-base-agreement.bats does the same). A tracked list would not work
+# here anyway: every call site is a command substitution, so an append made
+# inside this function lands in a subshell copy and never reaches teardown.
 make_fixture_repo() {
   local name="$1"
   local dir="$BATS_TEST_TMPDIR/$name"
@@ -46,7 +42,6 @@ make_fixture_repo() {
   git -C "$dir" config user.email t@example.com
   git -C "$dir" config user.name T
   git -C "$dir" config commit.gpgsign false
-  FIXTURE_REPOS+=("$dir")
   printf '%s' "$dir"
 }
 
@@ -96,6 +91,28 @@ FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/d
 ```
 '
 
+# The same drift as DRIFTED_BARE_MERGE_BASE, in the NON-origin form the real
+# FULL_BASE line already carries as its own fallback arm. A pattern keyed to
+# `origin/` alone matches nothing here, so the drift goes uncounted while
+# assertion 2 still passes (the prose does name the resolver) and the check
+# reports a clean tree.
+DRIFTED_BARE_MERGE_BASE_NO_ORIGIN='Agent prose.
+```bash
+BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+```
+The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
+'
+
+# FULL_BASE owns the FIRST merge-base on the line and a drifted BASE_SHA owns
+# the SECOND. An ownership rule reading only the first occurrence clears the
+# whole line on FULL_BASE'"'"'s exemption and never sees the second call.
+TWO_CALLS_ONE_LINE='Agent prose.
+```bash
+FULL_BASE=$(git merge-base HEAD "origin/${default_branch}") ; BASE_SHA=$(git merge-base HEAD "${default_branch}")
+```
+Derived per .github/audit/resolve-audit-base.sh.
+'
+
 # ---------- assertion 1: no bare-merge-base review derivation ----------
 
 @test "fixture: a converted file (FULL_BASE plus a resolver-derived BASE_SHA) passes clean" {
@@ -127,6 +144,27 @@ FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/d
   local repo
   repo="$(make_fixture_repo drifted-alias)"
   write_agent_file "$repo" code-audit-maintainer-prose.md "$DRIFTED_LOWERCASE_ALIAS"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+}
+
+@test "fixture: the non-origin bare merge-base form fails assertion 1 too" {
+  local repo
+  repo="$(make_fixture_repo drifted-bare-no-origin)"
+  write_agent_file "$repo" code-audit-maintainer-node.md "$DRIFTED_BARE_MERGE_BASE_NO_ORIGIN"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "code-audit-maintainer-node.md" <<<"$output" || return 1
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+}
+
+@test "fixture: a drifted BASE_SHA sharing a line with FULL_BASE is still counted" {
+  local repo
+  repo="$(make_fixture_repo two-calls-one-line)"
+  write_agent_file "$repo" code-audit-maintainer-prose.md "$TWO_CALLS_ONE_LINE"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]

@@ -30,11 +30,35 @@
 # for equality/status, `grep -qF` for substrings, explicit `return 1`
 # branches, never a non-final `!`-negation.
 
+# require_jq
+#
+# jq is a precondition on CI, not a maybe: audit-ci-tests.yml runs this suite
+# on ubuntu-latest, where jq is preinstalled, so an absent jq there means the
+# runner image or the job moved under this file. A bats `skip` reports
+# `ok ... # skip` and greens the required check, which would retire all four
+# probes -- the entire base-agreement guarantee -- with nothing anywhere
+# saying it did not run. The CI branch therefore FAILS instead of skipping.
+# Off CI the skip stands: a workstation without jq is not the environment
+# this suite makes a claim about. Same fail-closed shape as
+# .gaia/scripts/tests/retrigger-reachability.bats' own precondition gates.
+# Section 0 below proves the CI branch fires.
+require_jq() {
+  command -v jq >/dev/null 2>&1 && return 0
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    # No `::error::` prefix: bats prefixes a test's stderr with `# `, and
+    # Actions parses a workflow command only at column 0, so the annotation
+    # that spelling promises would never render. The `return 1` is what gates.
+    echo "jq not present on a CI runner; all four probes here would report green. Check the runner image and the job's install step." >&2
+    return 1
+  fi
+  skip "jq required"
+}
+
 setup() {
   THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   REPO_ROOT="$(git -C "$THIS_DIR" rev-parse --show-toplevel)"
   AGENTS_DIR="$REPO_ROOT/.claude/agents"
-  command -v jq >/dev/null 2>&1 || skip "jq required"
+  require_jq
 
   MEMBERS=(
     code-audit-frontend
@@ -49,6 +73,39 @@ setup() {
     code-audit-maintainer-node
     code-audit-maintainer-prose
   )
+}
+
+# --- section 0: the gate itself ----------------------------------------------
+#
+# setup() stands every test in this file down when jq is absent, so it is the
+# single place a weakening would silently retire the whole suite. This test is
+# what makes that weakening red: revert require_jq to a bare `skip` and the CI
+# arm below stops failing. It cannot escape the gate it guards (setup() runs
+# first here as everywhere), so what it catches is the weakening, not the
+# condition.
+
+@test "the jq gate fails on a CI runner and still skips off CI" {
+  local shim="$BATS_TEST_TMPDIR/no-jq" rc
+  mkdir -p "$shim"
+
+  # An empty directory is a sufficient PATH: the gate runs no command other
+  # than `command -v jq`. Calling the gate in a subshell is what keeps its
+  # `skip` arm from marking THIS test skipped -- bats' `skip` exits 0, so the
+  # subshell's status is exactly the discriminator wanted here: non-zero is
+  # the CI failure, 0 is the off-CI skip.
+  rc=0
+  ( PATH="$shim" GITHUB_ACTIONS=true; require_jq ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "the gate skipped on a CI runner with no jq; all four probes would report green" >&2
+    return 1
+  }
+
+  rc=0
+  ( PATH="$shim"; unset GITHUB_ACTIONS; require_jq ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || {
+    echo "the gate failed off CI, where an absent jq must still skip" >&2
+    return 1
+  }
 }
 
 # --- fence extraction --------------------------------------------------------
