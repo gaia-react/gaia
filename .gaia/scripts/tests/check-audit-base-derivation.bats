@@ -124,6 +124,25 @@ FULL_BASE=$(git merge-base HEAD "origin/${default_branch}") ; BASE_SHA=$(git mer
 Derived per .github/audit/resolve-audit-base.sh.
 '
 
+# A drifted call sharing its LINE with a legitimate BASE_REF assignment. The
+# BASE_REF exemption has to bind to a call's own argument list: a line-wide
+# test clears this whole line on the mention alone, which is the same
+# unsoundness TWO_CALLS_ONE_LINE pins for the FULL_BASE exemption.
+DRIFT_BESIDE_BASE_REF='Agent prose.
+```bash
+BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)" ; BASE_SHA=$(git merge-base HEAD "origin/${default_branch}")
+```
+'
+
+# The same escape via a trailing comment rather than a second command. The
+# stop set is what keeps `# was BASE_REF` from vouching for the call.
+DRIFT_WITH_BASE_REF_COMMENT='Agent prose.
+```bash
+BASE_SHA=$(git merge-base HEAD "origin/${default_branch}")  # was BASE_REF, simplified
+```
+The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
+'
+
 # ---------- assertion 1: no bare-merge-base review derivation ----------
 
 @test "fixture: a converted file (FULL_BASE plus a resolver-derived BASE_SHA) passes clean" {
@@ -186,6 +205,26 @@ Derived per .github/audit/resolve-audit-base.sh.
   local repo
   repo="$(make_fixture_repo drifted-bare-literal)"
   write_agent_file "$repo" code-audit-maintainer-shell.md "$DRIFTED_BARE_LITERAL_BRANCH"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+}
+
+@test "fixture: a drifted call sharing a line with BASE_REF is still counted" {
+  local repo
+  repo="$(make_fixture_repo drift-beside-base-ref)"
+  write_agent_file "$repo" code-audit-maintainer-node.md "$DRIFT_BESIDE_BASE_REF"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+}
+
+@test "fixture: a trailing BASE_REF comment does not vouch for a drifted call" {
+  local repo
+  repo="$(make_fixture_repo drift-base-ref-comment)"
+  write_agent_file "$repo" code-audit-maintainer-prose.md "$DRIFT_WITH_BASE_REF_COMMENT"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]
@@ -277,12 +316,21 @@ Derived per .github/audit/resolve-audit-base.sh.
   # 2, not 1: "the check could not run" is a different answer from "the check
   # says no", and neither is the 0 an unscanned tree used to report.
   [ "$status" -eq 2 ]
-  grep -qF "is not a git repository; nothing was scanned" <<<"$output" || return 1
+  grep -qF "is not a git repository root; nothing was scanned" <<<"$output" || return 1
   grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" && {
     echo "printed a clean verdict for a tree it never scanned" >&2
     return 1
   }
   return 0
+}
+
+@test "a repo_root that is a subdirectory of a repo reports 2, never a clean 0" {
+  # --git-dir alone succeeds from anywhere inside a repo, so this is the case
+  # that separates "is in a repo" from "is a repo root". The scan would find
+  # no .claude/agents/ beneath a subdirectory and report the same clean 0/0.
+  run gaia_check_audit_base_derivation "$REPO_ROOT/.gaia/scripts"
+  [ "$status" -eq 2 ]
+  grep -qF "is not a git repository root; nothing was scanned" <<<"$output" || return 1
 }
 
 @test "structural: check-audit-base-derivation.sh is executable" {

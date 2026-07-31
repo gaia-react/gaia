@@ -22,8 +22,8 @@
 #
 # Over `.claude/agents/`, TWO assertions:
 #
-#   1. No REVIEW base is derived by a bare `merge-base ... origin/...`. The
-#      review base must come from `.github/audit/resolve-audit-base.sh`,
+#   1. No REVIEW base is derived by a bare `merge-base` against a branch.
+#      The review base must come from `.github/audit/resolve-audit-base.sh`,
 #      which anchors on the newest ancestor carrying a clean audit signal
 #      under the current .gaia/VERSION and resets to full scope on a
 #      machinery change. A bare merge-base against the default branch is the
@@ -41,8 +41,8 @@
 #      one, deadlocking the merge. So the exemption is not a loophole in
 #      this check; it is the other half of the design, and the variable name
 #      is what tells the two apart. The assignment that owns a `merge-base`
-#      call is the nearest `IDENT=` to its left, and only `FULL_BASE` is
-#      allowed to own one that names `origin/`.
+#      call is the nearest `IDENT=` to its left, and `FULL_BASE` is the only
+#      name allowed to own a call that does not pass `BASE_REF`.
 #
 #   2. Every file that NAMES `BASE_SHA` also names `resolve-audit-base.sh`.
 #      A token-presence net over the whole file, not a call-shape check: the
@@ -94,10 +94,16 @@
 # code-audit-frontend.md:654), so an ERE carrying it reds a correct tree.
 #
 # So the check identifies the ONE shape that is right instead. A review base
-# derived through the resolver always names BASE_REF on its own line; every
-# drifted spelling names a branch instead, and FULL_BASE names neither. That
-# single positive rule subsumes every drift form, present and future,
-# without naming any of them.
+# derived through the resolver always passes BASE_REF to its own merge-base
+# call; every drifted spelling names a branch instead, and FULL_BASE names
+# neither. That single positive rule covers every drift SPELLING without
+# naming any of them, which is what the open set above defeats.
+#
+# It is not unconditional. The candidate net still requires the literal
+# `merge-base`, so a base derived some other way entirely
+# (`BASE_SHA=$(git rev-parse "origin/${default_branch}")`) is never a
+# candidate and this check does not see it. The behavioural suite next door
+# is what covers that, by executing the real fences.
 GAIA_AUDIT_BARE_MERGE_BASE_PATTERN='[A-Za-z_][A-Za-z0-9_]*=.*merge-base'
 
 # Assertion 2's two fixed strings.
@@ -107,9 +113,10 @@ GAIA_AUDIT_BASE_RESOLVER='resolve-audit-base.sh'
 # _gaia_drop_full_base_matches: reads `file:line:content` lines on stdin (git
 # grep's -n format) and keeps only the lines that are actually violations,
 # applying the two discriminations the ERE cannot express. A line survives
-# when it neither names BASE_REF (the resolver-derived shape this check
-# requires) nor has every one of its `merge-base` calls owned by FULL_BASE
-# (the self-skip base, deliberately exempt).
+# when it carries at least one `merge-base` call that neither takes BASE_REF
+# as an argument (the resolver-derived shape this check requires) nor is
+# owned by FULL_BASE (the self-skip base, deliberately exempt). Both tests
+# are per CALL, never per line.
 #
 # `sub` on a copy removes only the FIRST two colon-delimited fields, so a
 # colon inside the content itself never shifts the boundary. The owning
@@ -128,17 +135,29 @@ _gaia_drop_full_base_matches() {
     {
       content = $0
       sub(/^[^:]*:[^:]*:/, "", content)
-      # Discrimination 1, the positive rule: a line naming BASE_REF derives
-      # its base through the resolver, which is the shape this check
-      # REQUIRES. Dropping it here is what lets the ERE above stay a wide
-      # `merge-base` net without every correct line becoming a violation.
-      if (content ~ /BASE_REF/) next
       # `consumed` is how much of content `rest` starts past, so the prefix
       # handed to the ownership walk is always measured from column 1 of the
       # real line rather than from the current search window.
       consumed = 0
       rest = content
       while ((pos = index(rest, "merge-base")) > 0) {
+        # Discrimination 1, the positive rule: a call taking BASE_REF as an
+        # argument derives its base through the resolver, the shape this
+        # check REQUIRES. That is what lets the ERE above stay a wide
+        # `merge-base` net without every correct line becoming a violation.
+        #
+        # Scoped to THIS call'"'"'s own argument list, not the whole line. A
+        # line-wide test is unsound for the same reason the occurrence walk
+        # below exists: `BASE_REF=... ; BASE_SHA=$(git merge-base HEAD
+        # origin/main)` would clear on the mention alone, and so would a
+        # trailing `# was BASE_REF` comment. The stop set ends the argument
+        # list at a command or comment boundary.
+        right = substr(content, consumed + pos + 10)
+        if (right ~ /^[^|;&#]*BASE_REF/) {
+          consumed += pos + 9
+          rest = substr(content, consumed + 1)
+          continue
+        }
         left = substr(content, 1, consumed + pos - 1)
         name = ""
         while (match(left, /[A-Za-z_][A-Za-z0-9_]*=/)) {
@@ -164,8 +183,19 @@ gaia_check_audit_base_derivation() {
   # argument pointing outside a repository reached the same silence.
   # Exit 2, distinct from assertion failure (1), so a caller can tell "the
   # check says no" from "the check could not run".
-  if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
-    printf 'check-audit-base-derivation: %s is not a git repository; nothing was scanned\n' "$repo_root" >&2
+  # --show-prefix, not --git-dir: --git-dir succeeds from any path INSIDE a
+  # repo, so a subdirectory passed as repo_root would clear the guard and
+  # then scan a `.claude/agents/` that does not exist beneath it, returning
+  # the same unscanned-tree 0/0 this guard exists to stop.
+  #
+  # --show-prefix answers both questions in one call and needs no `cd`
+  # (.claude/rules/shell-cwd.md): it fails outright outside a repository, and
+  # inside one it prints the path from the repo root down to the directory,
+  # which is empty exactly at the root. Comparing paths textually would need
+  # a subshell `cd` to resolve symlinks on both sides; this does not.
+  local prefix
+  if ! prefix="$(git -C "$repo_root" rev-parse --show-prefix 2>/dev/null)" || [ -n "$prefix" ]; then
+    printf 'check-audit-base-derivation: %s is not a git repository root; nothing was scanned\n' "$repo_root" >&2
     return 2
   fi
 
