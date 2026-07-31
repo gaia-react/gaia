@@ -66,6 +66,14 @@ BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || tr
 ```
 '
 
+# The unbraced `"$BASE_REF"` spelling, inside a markdown code span rather
+# than a fence, which is how code-audit-frontend.md carries its second
+# derivation. `$` is the character that has to clear the left-edge boundary
+# here, where the fenced form above clears it on `{`.
+BASE_REF_UNBRACED='Agent prose, per .github/audit/resolve-audit-base.sh.
+From the same resolved base, compute `BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "$BASE_REF" HEAD 2>/dev/null || true)"`, then the key.
+'
+
 DRIFTED_BARE_MERGE_BASE='Agent prose.
 ```bash
 BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || true)
@@ -149,6 +157,19 @@ The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
 # the call, and the file IS the instruction, so the line still reds.
 DRIFT_BASE_REF_AFTER_CLOSE='Agent prose.
 The retired form was BASE_SHA=$(git merge-base HEAD main), now BASE_REF.
+'
+
+# A drifted call routed through a variable whose name merely ENDS in
+# BASE_REF. The exemption is a rule about the token identity, not its
+# presence, so a bare-substring test accepts the tail of a longer identifier
+# and clears exactly the derivation it exists to reject. `GITHUB_BASE_REF` is
+# the live spelling of this: an ordinary CI variable naming a branch, not an
+# invented one.
+DRIFT_ALIASED_BASE_REF_SUFFIX='Agent prose.
+```bash
+BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/$GITHUB_BASE_REF" 2>/dev/null || true)
+```
+The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
 '
 
 # ---------- assertion 1: no bare-merge-base review derivation ----------
@@ -247,6 +268,33 @@ The retired form was BASE_SHA=$(git merge-base HEAD main), now BASE_REF.
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]
   grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+}
+
+@test "fixture: an alias whose name ends in BASE_REF does not exempt a drifted call" {
+  local repo
+  repo="$(make_fixture_repo drift-aliased-base-ref-suffix)"
+  write_agent_file "$repo" code-audit-maintainer-node.md "$DRIFT_ALIASED_BASE_REF_SUFFIX"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+  # Assertion 2 is satisfied (the prose names the resolver), so the exemption
+  # boundary is the only thing this red can be coming from.
+  grep -qF "agent files naming BASE_SHA without naming resolve-audit-base.sh: 0" <<<"$output" || return 1
+}
+
+@test "fixture: the canonical resolver-derived call is still exempt on both spellings" {
+  # The other half of the boundary. A left-edge rule that reds the alias above
+  # but also reds `"${BASE_REF}"` or `"$BASE_REF"` would have closed the
+  # escape by retiring the exemption, which is a different check.
+  local repo
+  repo="$(make_fixture_repo base-ref-both-spellings)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$CONVERTED_OK"
+  write_agent_file "$repo" code-audit-frontend.md "$BASE_REF_UNBRACED"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
 }
 
 @test "fixture: the FULL_BASE self-skip derivation is exempt and never counted" {

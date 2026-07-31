@@ -99,11 +99,24 @@
 # neither. That single positive rule covers every drift SPELLING without
 # naming any of them, which is what the open set above defeats.
 #
-# It is not unconditional. The candidate net still requires the literal
-# `merge-base`, so a base derived some other way entirely
-# (`BASE_SHA=$(git rev-parse "origin/${default_branch}")`) is never a
-# candidate and this check does not see it. The behavioural suite next door
-# is what covers that, by executing the real fences.
+# It is not unconditional, in two ways.
+#
+# The candidate net still requires the literal `merge-base`, so a base
+# derived some other way entirely (`BASE_SHA=$(git rev-parse
+# "origin/${default_branch}")`) is never a candidate and this check does not
+# see it.
+#
+# Nearer, and likelier: the two-step resolver shape survives verbatim while
+# only BASE_REF's SOURCE changes, `BASE_REF="origin/${default_branch}"`
+# feeding the same `merge-base "${BASE_REF}" HEAD`. Assertion 1 exempts that
+# call correctly by its own rule, because BASE_REF genuinely is an argument
+# to it; assertion 2 passes, because the file still names the resolver in
+# its prose. The member has nonetheless reverted fully to the pre-fix bare
+# derivation, and the charter sentence at the top of this file ("The review
+# base must come from `.github/audit/resolve-audit-base.sh`") promises more
+# than the assertion delivers.
+#
+# The behavioural suite next door covers both, by executing the real fences.
 GAIA_AUDIT_BARE_MERGE_BASE_PATTERN='[A-Za-z_][A-Za-z0-9_]*=.*merge-base'
 
 # Assertion 2's two fixed strings.
@@ -162,8 +175,23 @@ _gaia_drop_full_base_matches() {
         # code span, the same escape one sentence later. Neither character
         # can precede BASE_REF inside the canonical
         # `merge-base "${BASE_REF}" HEAD`.
+        #
+        # BASE_REF also has to be a WHOLE identifier on its LEFT edge. Matched
+        # as a bare substring it is satisfied by the TAIL of a longer name, so
+        # a drift routed through an alias exempts itself: `merge-base HEAD
+        # "$GITHUB_BASE_REF"` names a branch, and that is an ordinary CI
+        # variable rather than an invented one. The `[^A-Za-z0-9_]` closing
+        # the prefix group is that boundary; `"${BASE_REF}"` and `"$BASE_REF"`
+        # clear it on their `{` and `$`. The group is optional only so a token
+        # at position 0 still matches.
+        #
+        # The mirrored RIGHT edge (`${BASE_REF_OLD}`) is knowingly left open.
+        # A trailing `[^A-Za-z0-9_]` also reds a line whose last characters
+        # are the token itself, so closing that side soundly needs an
+        # end-of-string alternative inside the class, and no drift spelling
+        # reaches for a name built by SUFFIXING the token.
         right = substr(content, consumed + pos + 10)
-        if (right ~ /^[^|;&#)`]*BASE_REF/) {
+        if (right ~ /^([^|;&#)`]*[^A-Za-z0-9_])?BASE_REF/) {
           consumed += pos + 9
           rest = substr(content, consumed + 1)
           continue
