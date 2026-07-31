@@ -24,13 +24,14 @@
  * **Write confinement.** A region's regeneration command legitimately rewrites
  * every path it owns, but nothing else. Before the spawn, this command hashes
  * every file under the union of the declared paths' parent directories
- * (the "snapshot scope"); after the spawn, anything in scope that changed or
- * was newly created and is not one of the region's declared paths is reverted
- * or deleted. A `git status --porcelain` before/after pair also catches a
- * write anywhere else in the tree; that has no pre-image to restore from, so
- * it is only reported, never reverted. The spawn never runs through a shell
- * and never takes a shell-interpreted string: it is always `execFileSync`
- * with a fixed argv array.
+ * (the "snapshot scope"); after the spawn, anything in scope that is not one
+ * of the region's declared paths and no longer matches its pre-image is put
+ * back, whether the spawn rewrote it or deleted it, and anything in scope the
+ * spawn newly created is removed. A `git status --porcelain -z` before/after
+ * pair also catches a write anywhere else in the tree; that has no pre-image
+ * to restore from, so it is only reported, never reverted. The spawn never
+ * runs through a shell and never takes a shell-interpreted string: it is
+ * always a fixed argv array, and it is bounded in both output and runtime.
  *
  * Exit codes: 0 for every refusal, skip, spawn failure, or non-zero program
  * exit; 1 only when the flags or `--manifest` itself are unusable.
@@ -38,19 +39,23 @@
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
-  statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {execGaiaGitRaw} from '../util/git-env.js';
 
 const HELP_TEXT = `Usage: gaia update regen-regions --manifest <path> --root <dir> [--backup-dir <dir>]
                                   [--conflicted <repo-relative-path>]...
@@ -67,6 +72,11 @@ const HELP_TEXT = `Usage: gaia update regen-regions --manifest <path> --root <di
 
   Read the manifest's regions from a RELEASE copy, never the adopter's stale
   working-tree copy: pass $LATEST_DIR/.gaia/manifest.json as --manifest.
+
+  Each regeneration program gets 5 minutes and 32 MiB of output before it is
+  killed. A program stopped by either bound is reported as killed with the
+  bound named, so a command that legitimately needs more is told what stopped
+  it rather than left looking like one that never started.
 
   Exit codes:
     0  success, including every refusal, skip, spawn failure, or non-zero
@@ -94,9 +104,12 @@ type ConfinedEntry = {
 
 type FailedEntry = {
   argv: string[];
-  kind: 'exit' | 'spawn';
+  /** `killed` only: which bound, or none of them, ended the program. */
+  cause?: KilledCause;
+  kind: 'exit' | 'killed' | 'spawn';
   message: string;
   regionId: string;
+  signal?: string;
   status?: number;
 };
 
@@ -117,7 +130,7 @@ type RanEntry = {argv: string[]; regionId: string; rewrote: string[]};
 
 type RefusedEntry = {
   argv?: string[];
-  kind: 'declaration' | 'operand';
+  kind: 'declaration' | 'manifest' | 'operand';
   reason: string;
   regionId: string;
 };
@@ -252,6 +265,17 @@ const isStringArray = (value: unknown): value is string[] =>
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Names a parsed-JSON value's shape for a refusal reason. `null` and arrays
+ * are spelled out because `typeof` calls both `'object'`, which would report
+ * them identically to the plain object this exists to tell them apart from.
+ */
+const describeJsonShape = (value: unknown): string => {
+  if (value === null) return 'null';
+
+  return Array.isArray(value) ? 'array' : typeof value;
+};
 
 /** Strips a leading `./`, collapses separators, converts to POSIX. */
 const normalizeRepoPath = (value: string): string => {
@@ -558,7 +582,42 @@ const scopeDirsFor = (paths: readonly string[]): ReadonlySet<string> =>
   new Set(paths.map((declPath) => path.posix.dirname(declPath)));
 
 type Snapshot = ReadonlyMap<string, SnapshotEntry>;
-type SnapshotEntry = {content: Buffer; digest: string};
+/**
+ * Both kinds carry their whole pre-image, so the sweep's two questions ("did
+ * the spawn touch this" and "what do I put back") are answered per kind rather
+ * than only for regular files. A file's pre-image is its bytes; a link's is the
+ * target it holds, which is all a link is.
+ *
+ * That target is a `Buffer`, not a string, deliberately. A symlink target is an
+ * arbitrary byte string on POSIX, and decoding one as UTF-8 does not fail on an
+ * invalid byte, it substitutes U+FFFD. Writing that back would point the link
+ * somewhere else while the report claimed it was restored, and the real target
+ * is gone by then. Bytes in, bytes out, no decode in between.
+ */
+type SnapshotEntry =
+  | {content: Buffer; digest: string; kind: 'file'; mode: number}
+  | {kind: 'symlink'; target: Buffer};
+
+/**
+ * Whether the spawn left this path as it found it. A link is compared by the
+ * target string it holds, a file by its content hash: the two kinds are never
+ * equal to each other, so replacing one with the other always counts as a
+ * change.
+ */
+const isUntouched = (
+  before: SnapshotEntry,
+  after: SnapshotEntry | undefined
+): boolean => {
+  if (after === undefined) return false;
+
+  if (before.kind === 'symlink')
+    return after.kind === 'symlink' && after.target.equals(before.target);
+
+  return after.kind === 'file' && after.digest === before.digest;
+};
+
+/** Permission bits alone; `lstat` mode also carries the file-type bits. */
+const permissionsOf = (mode: number): number => mode % 0o1_0000;
 
 /**
  * Step 5 / re-used for step 7-8: SHA-256 (plus raw content, for restoring)
@@ -589,14 +648,41 @@ const collectScopeDigests = (
       let stat;
 
       try {
-        stat = statSync(abs);
+        // `lstat`, not `stat`: a symlink must not be followed here. Followed,
+        // it would be buffered as its TARGET's bytes, and the sweep would then
+        // restore it as a plain regular file holding a copy of content that may
+        // have lived wholly outside the region, or write through the link and
+        // rewrite a target outside the snapshot scope entirely.
+        stat = lstatSync(abs);
       } catch {
+        return;
+      }
+
+      const repoRelative = path.relative(root, abs).split(path.sep).join('/');
+
+      // A link's pre-image is the target it holds, which is the whole of it:
+      // recording that makes a link restorable in its own right, so the
+      // confinement guarantee covers every shape a link can be left in
+      // (deleted, retargeted, replaced by a file) rather than only the created
+      // one. Reading it never follows the link, and a dangling one reads fine.
+      // `'buffer'`, never `'utf8'`: see SnapshotEntry.
+      if (stat.isSymbolicLink()) {
+        try {
+          digests.set(repoRelative, {
+            kind: 'symlink',
+            target: readlinkSync(abs, 'buffer'),
+          });
+        } catch {
+          // Unreadable link: skip it, like the unreadable file below. Recording
+          // it with no target would make the sweep think it can put back
+          // something it cannot.
+        }
+
         return;
       }
 
       if (!stat.isFile()) return;
 
-      const repoRelative = path.relative(root, abs).split(path.sep).join('/');
       let content;
 
       try {
@@ -613,6 +699,8 @@ const collectScopeDigests = (
       digests.set(repoRelative, {
         content,
         digest: createHash('sha256').update(content).digest('hex'),
+        kind: 'file',
+        mode: stat.mode,
       });
     });
   });
@@ -630,10 +718,11 @@ type SweepInputs = {
 
 /**
  * Step 7: revert anything in the snapshot scope that the spawn touched
- * outside the region's declared paths. A pre-existing file whose content
- * changed is restored; a file the spawn created is removed. A file the
- * spawn deleted is out of scope for this version: neither resurrected nor
- * reported.
+ * outside the region's declared paths. Every such path that has a pre-image
+ * is restored to it, whether the spawn rewrote it, retargeted it, replaced it
+ * with the other kind, or deleted it; a path the spawn created has no
+ * pre-image, so it is removed instead. That is the confinement guarantee as
+ * stated: reverted when a pre-image exists, reported when it does not.
  */
 const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   const {after, before, declaredPaths, regionId, root} = inputs;
@@ -643,22 +732,48 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   before.forEach((beforeEntry, relPath) => {
     if (declaredSet.has(relPath)) return;
 
-    const afterEntry = after.get(relPath);
+    // Untouched: nothing to undo. Anything else is an out-of-scope write with
+    // a pre-image, and a deletion is one of those: it is absent from `after`
+    // rather than merely different. Either way the thing to put back is the
+    // same `before` entry.
+    if (isUntouched(beforeEntry, after.get(relPath))) return;
 
-    if (afterEntry === undefined) return;
+    try {
+      const abs = path.resolve(root, relPath);
 
-    if (afterEntry.digest !== beforeEntry.digest) {
-      try {
-        writeFileSync(path.resolve(root, relPath), beforeEntry.content);
-        confined.push({action: 'restored', path: relPath, regionId});
-      } catch {
-        // The revert itself failed. Surface the write rather than throwing:
-        // an abandoned sweep would leave every later entry unexamined and
-        // unreported, which is exactly the silent out-of-scope write the
-        // confinement guarantee rules out. `reported` is the contract's term
-        // for a write that is surfaced rather than reverted.
-        confined.push({action: 'reported', path: relPath, regionId});
+      // A deletion may have taken the parent directory with it.
+      mkdirSync(path.dirname(abs), {recursive: true});
+      // Unlink first, never write onto whatever is sitting there. If the spawn
+      // replaced this path with a symlink, writing would FOLLOW the link and
+      // put the pre-image into its target, which can live anywhere in or
+      // outside the tree: the confinement mechanism writing outside the scope
+      // it exists to enforce, while the path itself stays a link and the
+      // report claims it was restored.
+      rmSync(abs, {force: true});
+
+      if (beforeEntry.kind === 'symlink') {
+        // Recreating the link writes no content and follows nothing, so
+        // whatever it points at is untouched, exactly as when it was made.
+        symlinkSync(beforeEntry.target, abs);
+      } else {
+        const permissions = permissionsOf(beforeEntry.mode);
+
+        // `restored` has to mean restored. Recreating content under the process
+        // umask hands back an executable the adopter can no longer run, and
+        // creating it at its own permissions keeps a private pre-image from
+        // existing world-readable even briefly.
+        writeFileSync(abs, beforeEntry.content, {mode: permissions});
+        chmodSync(abs, permissions);
       }
+
+      confined.push({action: 'restored', path: relPath, regionId});
+    } catch {
+      // The revert itself failed. Surface the write rather than throwing:
+      // an abandoned sweep would leave every later entry unexamined and
+      // unreported, which is exactly the silent out-of-scope write the
+      // confinement guarantee rules out. `reported` is the contract's term
+      // for a write that is surfaced rather than reverted.
+      confined.push({action: 'reported', path: relPath, regionId});
     }
   });
 
@@ -666,6 +781,8 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
 
     try {
+      // `rmSync` unlinks a symlink rather than following it, so removing one
+      // the spawn created never touches what it pointed at.
       rmSync(path.resolve(root, relPath), {force: true});
       confined.push({action: 'removed', path: relPath, regionId});
     } catch {
@@ -684,52 +801,137 @@ const isInsideScope = (
     (dir) => relPath === dir || relPath.startsWith(`${dir}/`)
   );
 
+type GitStatus = {
+  /** Root-relative, the same frame every other path in the report uses. */
+  inside: string[];
+  /** Changed paths that lie above `root`, kept in top-level frame. */
+  outside: string[];
+};
+
 /**
- * Whole-root `git status --porcelain` path list. `null` when git is
+ * Whole-root `git status --porcelain -z` path list. `null` when git is
  * unavailable or `root` is not a repository, so the caller can degrade
  * cleanly rather than failing.
+ *
+ * `-z` is load-bearing, not a formatting preference. Without it git applies
+ * C-style quoting (`core.quotePath` is on by default), so a path carrying a
+ * space, a quote, or a non-ASCII byte arrives wrapped in `"` with its bytes
+ * escaped, and a rename arrives as one ambiguous `old -> new` payload that
+ * cannot be split on ` -> ` without corrupting a name that contains it.
+ * Under `-z` git never quotes, and a rename gets its own trailing record for
+ * the origin path, so both hazards disappear rather than being unescaped.
+ *
+ * Every record git returns is relative to the repository TOP LEVEL, never to
+ * `root`, and the two differ whenever a GAIA project sits inside a larger
+ * repository. Rebasing them onto `root` is what keeps the caller's comparisons
+ * against the declared paths and the snapshot scope, both root-relative,
+ * meaningful; without it every one of the region's own legitimate writes fails
+ * to match and is reported to the adopter as an out-of-scope write.
  */
-const gitStatusPaths = (root: string): null | string[] => {
+const gitStatusPaths = (root: string): GitStatus | null => {
   try {
-    const out = execFileSync('git', ['-C', root, 'status', '--porcelain'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+    // Raw, never trimmed: the ` M path` shape's leading space is a status
+    // column, and trimming it shifts the 3-character prefix slice below.
+    const out = execGaiaGitRaw(['status', '--porcelain', '-z'], root);
+    const paths: string[] = [];
+    // A rename/copy record is followed by a bare origin-path record carrying
+    // no `XY ` status prefix, so the stream needs a one-record lookahead. The
+    // flag is cleared before the next record is classified, which is what
+    // keeps an origin path whose own first two characters contain `R` or `C`
+    // (`Config/old`) from being read as a status record.
+    let expectOriginPath = false;
+
+    out
+      .split('\0')
+      .filter((record) => record.length > 0)
+      .forEach((record) => {
+        if (expectOriginPath) {
+          expectOriginPath = false;
+          paths.push(record);
+
+          return;
+        }
+
+        expectOriginPath = /[CR]/u.test(record.slice(0, 2));
+        paths.push(record.slice(3));
+      });
+
+    // `--show-prefix` is `root`'s own path relative to the top level, with a
+    // trailing slash, and empty when the two coincide (the ordinary case, and
+    // the only one `--root .` at a repository root produces).
+    const prefix = execGaiaGitRaw(['rev-parse', '--show-prefix'], root).replace(
+      /\r?\n$/u,
+      ''
+    );
+
+    if (prefix === '') return {inside: paths, outside: []};
+
+    const inside: string[] = [];
+    const outside: string[] = [];
+
+    paths.forEach((changedPath) => {
+      if (changedPath.startsWith(prefix)) {
+        inside.push(changedPath.slice(prefix.length));
+
+        return;
+      }
+
+      outside.push(changedPath);
     });
 
-    return out.split('\n').flatMap((rawLine) => {
-      const line = rawLine.replace(/\r$/u, '');
-
-      if (line.length === 0) return [];
-
-      const rawPayload = line.slice(3);
-      const payload =
-        rawPayload.startsWith('"') && rawPayload.endsWith('"') ?
-          rawPayload.slice(1, -1)
-        : rawPayload;
-      const renameSplit = payload.indexOf(' -> ');
-
-      return renameSplit === -1 ?
-          [payload]
-        : [payload.slice(0, renameSplit), payload.slice(renameSplit + 4)];
-    });
+    return {inside, outside};
   } catch {
     return null;
   }
 };
 
 type SpawnOutcome =
+  | {
+      cause: KilledCause;
+      kind: 'killed';
+      message: string;
+      ok: false;
+      signal: string;
+    }
   | {kind: 'exit'; message: string; ok: false; status: number}
   | {kind: 'spawn'; message: string; ok: false}
   | {ok: true};
 
-const extractStatus = (error: unknown): number | undefined => {
-  if (typeof error !== 'object' || error === null || !('status' in error))
-    return undefined;
+/** Reads one field off a thrown value without asserting its shape. */
+const errorField = (error: unknown, key: string): unknown =>
+  isPlainObject(error) ? error[key] : undefined;
 
-  const {status} = error;
+export type KilledCause = 'external' | 'maxBuffer' | 'timeout';
 
-  return typeof status === 'number' ? status : undefined;
+/**
+ * Which of the three ways a killed child died. All three arrive identically
+ * otherwise, `signal: 'SIGTERM'` and no status, so without this an adopter
+ * whose program legitimately runs past the time bound, one that legitimately
+ * says more than the output bound, and one an operator killed by hand all read
+ * the same and none of them names GAIA's own ceiling as the reason.
+ *
+ * The codes are Node's, observed on the sync spawn path: a `timeout` kill
+ * surfaces `ETIMEDOUT` and a `maxBuffer` overflow `ENOBUFS`, each on both the
+ * thrown error and its nested `error`. Anything else came from outside this
+ * process's own bounds.
+ */
+export const spawnFailureCause = (code: unknown): KilledCause => {
+  if (code === 'ETIMEDOUT') return 'timeout';
+
+  if (code === 'ENOBUFS') return 'maxBuffer';
+
+  return 'external';
 };
+
+/**
+ * Runaway guards on the regeneration program, not a performance budget.
+ * Without them the spawn inherits Node's 1 MiB output buffer and no time
+ * limit, so a program that merely talks a lot is killed mid-run, and one
+ * that hangs hangs the whole update. The one shipped regeneration command is
+ * nearly silent and fast; these bounds exist for adopter-authored ones.
+ */
+const SPAWN_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
+const SPAWN_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Step 6. Never runs through a shell, never a shell-interpreted string, and
@@ -741,23 +943,47 @@ const trySpawn = (decl: ParsedDeclaration, root: string): SpawnOutcome => {
     execFileSync(
       decl.interpreter,
       [path.resolve(root, decl.operand), ...decl.args],
-      {cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}
+      {
+        cwd: root,
+        encoding: 'utf8',
+        maxBuffer: SPAWN_MAX_BUFFER_BYTES,
+        // The child's stdout is never read, so discarding it outright leaves
+        // stderr as the only stream that can reach the buffer bound at all,
+        // and stderr is what carries the diagnostic this reports on failure.
+        stdio: ['ignore', 'ignore', 'pipe'],
+        timeout: SPAWN_TIMEOUT_MS,
+      }
     );
 
     return {ok: true};
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = extractStatus(error);
+    const status = errorField(error, 'status');
 
-    return status === undefined ?
-        {kind: 'spawn', message, ok: false}
-      : {kind: 'exit', message, ok: false, status};
+    if (typeof status === 'number')
+      return {kind: 'exit', message, ok: false, status};
+
+    const signal = errorField(error, 'signal');
+
+    // A killed child and an interpreter that never launched both arrive with
+    // no exit status. Reporting them alike would tell the adopter the spawn
+    // never happened when in fact it ran and was cut short, so the signal,
+    // which only the killed case carries, is what separates them.
+    return typeof signal === 'string' ?
+        {
+          cause: spawnFailureCause(errorField(error, 'code')),
+          kind: 'killed',
+          message,
+          ok: false,
+          signal,
+        }
+      : {kind: 'spawn', message, ok: false};
   }
 };
 
 type OutOfScopeInputs = {
-  afterStatus: null | string[];
-  beforeStatus: null | string[];
+  afterStatus: GitStatus | null;
+  beforeStatus: GitStatus | null;
   decl: ParsedDeclaration;
   report: RegenRegionsReport;
   scopeDirs: ReadonlySet<string>;
@@ -785,10 +1011,10 @@ const reportOutOfScopeWrites = (inputs: OutOfScopeInputs): void => {
     return;
   }
 
-  const beforeSet = new Set(beforeStatus);
+  const beforeSet = new Set(beforeStatus.inside);
   const declaredSet = new Set(decl.paths);
 
-  afterStatus.forEach((changedPath) => {
+  afterStatus.inside.forEach((changedPath) => {
     if (
       beforeSet.has(changedPath) ||
       declaredSet.has(changedPath) ||
@@ -801,6 +1027,24 @@ const reportOutOfScopeWrites = (inputs: OutOfScopeInputs): void => {
       path: changedPath,
       regionId: decl.id,
     });
+  });
+
+  const beforeOutside = new Set(beforeStatus.outside);
+  const newOutside = afterStatus.outside.filter(
+    (changedPath) => !beforeOutside.has(changedPath)
+  );
+
+  if (newOutside.length === 0) return;
+
+  // Above the run's own root, so it has no root-relative form and cannot join
+  // `confined[]`, whose paths are root-relative by contract. It is still a
+  // real write the region made, so it leaves by the same non-fatal channel
+  // the git-unavailable case uses rather than being dropped.
+  structuredError({
+    code: 'region_regen_git_delta_out_of_root',
+    message: `region '${decl.id}' changed ${newOutside.length} path(s) above the run's root, reported here because they have no root-relative form: ${newOutside.join(', ')}`,
+    regionId: decl.id,
+    subcommand: 'update regen-regions',
   });
 };
 
@@ -860,17 +1104,26 @@ const runRegeneration = (
   });
 
   if (spawnResult.ok) {
-    const rewrote = decl.paths.filter(
-      (declPath) => before.get(declPath)?.digest !== after.get(declPath)?.digest
-    );
+    // Same question the sweep asks, so it takes the same answer. Comparing
+    // digests alone called a declared path that is a link unchanged however
+    // the spawn repointed it, because neither side has a digest to differ on.
+    const rewrote = decl.paths.filter((declPath) => {
+      const beforeEntry = before.get(declPath);
+
+      return beforeEntry === undefined ?
+          after.has(declPath)
+        : !isUntouched(beforeEntry, after.get(declPath));
+    });
 
     report.ran.push({argv: commandArgv, regionId: decl.id, rewrote});
   } else {
     report.failed.push({
       argv: commandArgv,
+      cause: spawnResult.kind === 'killed' ? spawnResult.cause : undefined,
       kind: spawnResult.kind,
       message: spawnResult.message,
       regionId: decl.id,
+      signal: spawnResult.kind === 'killed' ? spawnResult.signal : undefined,
       status: spawnResult.kind === 'exit' ? spawnResult.status : undefined,
     });
   }
@@ -948,6 +1201,8 @@ const resolvePath = (cwd: string, value: string): string =>
 type LoadedInputs = {
   backupDir: string | undefined;
   manifestRecord: Record<string, unknown>;
+  /** `null` when the manifest is a plain object; else its shape name. */
+  manifestShape: null | string;
   realRoot: string;
   root: string;
 };
@@ -1039,11 +1294,29 @@ const loadRunInputs = (cwd: string, flags: Flags): LoadResult => {
     return {ok: false};
   }
 
+  // Two returns rather than one, so the type guard narrows `manifestParsed`
+  // for `manifestRecord` on the arm that keeps it.
+  if (isPlainObject(manifestParsed))
+    return {
+      ok: true,
+      value: {
+        backupDir,
+        manifestRecord: manifestParsed,
+        manifestShape: null,
+        realRoot,
+        root,
+      },
+    };
+
+  // A manifest that parsed but is not an object has no `regions` key to be
+  // wrong-typed, so without a shape name it would reach the caller as an
+  // empty record and read exactly like a release predating the mechanism.
   return {
     ok: true,
     value: {
       backupDir,
-      manifestRecord: isPlainObject(manifestParsed) ? manifestParsed : {},
+      manifestRecord: {},
+      manifestShape: describeJsonShape(manifestParsed),
       realRoot,
       root,
     },
@@ -1091,9 +1364,11 @@ export const run = (
 
   if (!loaded.ok) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
-  const {backupDir, manifestRecord, realRoot, root} = loaded.value;
-  const rawRegions =
-    Array.isArray(manifestRecord.regions) ? manifestRecord.regions : [];
+  const {backupDir, manifestRecord, manifestShape, realRoot, root} =
+    loaded.value;
+  const regionsValue = manifestRecord.regions;
+  const regionsAreArray = Array.isArray(regionsValue);
+  const rawRegions = regionsAreArray ? regionsValue : [];
   const filesMap =
     isPlainObject(manifestRecord.files) ? manifestRecord.files : {};
   const shippedKeys = new Set(Object.keys(filesMap));
@@ -1116,6 +1391,32 @@ export const run = (
     shippedKeys,
     skipRegionSet: new Set(parsed.flags.skipRegions),
   };
+
+  // An absent `regions` key is the legitimate "this release predates the
+  // region mechanism" case, and produces an empty report. A present key of
+  // the wrong type is a manifest this command could not read; collapsing it
+  // into the same empty report would tell the adopter the release carries no
+  // regions, with every downstream region guarantee silently not applying.
+  //
+  // `(manifest)` names the manifest itself rather than a region: the refusal
+  // is run-level, and the parentheses keep it clear of a real declared id,
+  // which `parseDeclaration` requires to be a non-empty string.
+  //
+  // Two shapes reach the same refusal. A manifest that is not an object at
+  // all has no `regions` key to inspect, so it is caught by shape; a manifest
+  // that is an object carrying a wrong-typed `regions` is caught by the key.
+  if (manifestShape !== null)
+    context.report.refused.push({
+      kind: 'manifest',
+      reason: `manifest top level is not an object: ${manifestShape}`,
+      regionId: '(manifest)',
+    });
+  else if (regionsValue !== undefined && !regionsAreArray)
+    context.report.refused.push({
+      kind: 'manifest',
+      reason: `regions is present but is not an array: ${describeJsonShape(regionsValue)}`,
+      regionId: '(manifest)',
+    });
 
   rawRegions.forEach((raw, index) => {
     processRegion(raw, index, context);

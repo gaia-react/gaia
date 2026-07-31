@@ -228,15 +228,20 @@ fi
 REGION_DECLS='[]'
 BASELINE_REGION_DECLS='[]'
 if [ "$REGION_AWARE" = true ]; then
-  REGION_DECLS="$(jq -c '.regions // []' "$LATEST_MANIFEST" 2>/dev/null || echo '[]')"
-  BASELINE_REGION_DECLS="$(jq -c '.regions // []' \
+  REGION_DECLS="$(jq -c 'if type == "object" and has("regions") then .regions else [] end' \
+    "$LATEST_MANIFEST" 2>/dev/null || echo '[]')"
+  BASELINE_REGION_DECLS="$(jq -c 'if type == "object" and has("regions") then .regions else [] end' \
     "$BASELINE_DIR/.gaia/manifest.json" 2>/dev/null || echo '[]')"
 fi
 ```
 
+**`has("regions")`, not `.regions // []`.** jq's `//` fires on `false` and `null` as well as on absent, so `"regions": null` and `"regions": false` would collapse to `[]` here, and Step 7d's `[ "$REGION_DECLS" != "[]" ]` gate would then skip the runner entirely, leaving the wrong-typed key to render as `Regions: none declared by this release`. That is precisely the adopter-misleading outcome the `kind: 'manifest'` refusal exists to prevent, and `null` is the likeliest wrong shape a broken generator emits. Testing for the key's presence instead lets every wrong-typed **value of that key** through to the runner, which is the one component that classifies it.
+
+**One manifest shape does not reach the runner.** The `type == "object"` half of the same guard absorbs a manifest whose top level is not an object at all: it yields `[]`, so the Step 7d gate skips the runner and no `kind: 'manifest'` refusal is ever produced for it. That shape is not a region problem in the first place, because the Step 7 merge walk iterates this same manifest's `.files` and finds nothing there either, so the whole update, not just its region rows, is already reading a manifest it cannot use. Do not describe a non-object manifest to the adopter as a refused region; the update itself has failed by then.
+
 Each declaration is `{id, startMarker, endMarker, paths[], regenerate: {interpreter, operand, args[]}}`. Build a lookup of declared path to declaration so the Step 7 walk can test each path in one step, and track the region bucket described in Step 7 as you go.
 
-- **Parse defensively.** There is no manifest validation on the adopter side; this flow reads raw JSON and iterates the file map. A `regions` key that is absent, an empty list, or unparseable all mean the same thing: zero declarations, no oracle call, no regeneration, and every file classified by the unmodified whole-file comparison exactly as it is without region awareness.
+- **Parse defensively.** There is no manifest validation on the adopter side; this flow reads raw JSON and iterates the file map. A `regions` key that is absent or an empty list means the same thing: zero declarations, no oracle call, no regeneration, and every file classified by the unmodified whole-file comparison exactly as it is without region awareness. A key that is **present but not an array** loads zero declarations too but is **not** the same thing: it is a manifest this flow could not read, and Step 7d's runner refuses it by name (`refused[]`, `kind: 'manifest'`). Step 9 owns how that refusal is rendered. A manifest whose top level is not an object takes the separate path described under the Step 6 guard above and never reaches the runner.
 - **Ignore a malformed declaration, do not abort.** A declaration that is not an object, is missing `id` / `startMarker` / `endMarker` / `regenerate` / `paths`, carries an empty or whitespace-only marker, or repeats an `id` already seen, is skipped: its paths take the unmodified whole-file comparison, no regeneration runs for it, and it is recorded for the Step 9 summary. Track these as `regions.malformedDeclarations[]`.
 - **The off switch.** `GAIA_UPDATE_NO_REGIONS=1` set in the environment for one run makes the flow load zero declarations. Step 9 states that region awareness was off, and the update otherwise behaves exactly as it does without it. This is the adopter-facing remedy for a bad declaration or an oracle bug in the field: it needs no edit to the write-blocked `.gaia/manifest.json` and no flag on the command.
 - **Dropped declarations.** Any `id` the **baseline** manifest declared that the latest manifest does not is a dropped declaration. Its paths return to the unmodified whole-file comparison, so a conflict that region awareness had been absorbing comes back. Step 9 must name it, so the return is announced rather than discovered. Track as `regions.droppedDeclarations[]`.
@@ -598,19 +603,27 @@ type RegenRegionsReport = {
     path: string;
     regionId: string;
   }>;
-  failed: Array<{argv: string[]; kind: 'exit' | 'spawn'; message: string; regionId: string; status?: number}>;
+  failed: Array<{argv: string[]; cause?: 'external' | 'maxBuffer' | 'timeout'; kind: 'exit' | 'killed' | 'spawn'; message: string; regionId: string; signal?: string; status?: number}>;
   ran: Array<{argv: string[]; regionId: string; rewrote: string[]}>;
-  refused: Array<{argv?: string[]; kind: 'declaration' | 'operand'; reason: string; regionId: string}>;
+  refused: Array<{argv?: string[]; kind: 'declaration' | 'manifest' | 'operand'; reason: string; regionId: string}>;
   skipped: Array<{argv: string[]; reason: string; regionId: string}>;
 };
 ```
 
-Every bucket Step 9 prints a command for carries its own `argv`, because the region id alone cannot be turned back into a command. `refused` declares `argv` optional because a `kind: 'declaration'` refusal has none; Step 9 owns what to print in its place.
+Every bucket Step 9 prints a command for carries its own `argv`, because the region id alone cannot be turned back into a command. `refused` declares `argv` optional because a `kind: 'declaration'` refusal has none; Step 9 owns what to print in its place. A `kind: 'manifest'` refusal is about the manifest itself rather than any one region, so it likewise has no `argv` and carries the sentinel `regionId` `(manifest)`.
+
+`failed[].kind` has three values, each with its own remedy. `exit` is a program that ran and refused. The other two both arrive without an exit status and must not be conflated: `spawn` is an interpreter that never launched, while `killed` is a program that ran and was cut short by a signal (`signal` names it, e.g. `SIGTERM`). Do not describe a `killed` region to the adopter as one that never ran; its declared paths may hold half-written output.
+
+On a `killed` entry, `cause` says which of the runner's own ceilings ended it: `timeout` (5 minutes) or `maxBuffer` (32 MiB of output), against `external` for a kill from anywhere else. Report it, because the remedies differ and only two of the three are GAIA's doing: an adopter whose regeneration command legitimately needs longer, or legitimately says more, otherwise cannot tell that this flow imposed the limit they just hit.
 
 What the step guarantees, and what it does not:
 
 - **The regeneration is authoritative.** A declared region's body is machine-authored, so regeneration overwrites whatever sits between the markers, including an adopter's hand edits inside them. That is by design. Step 9 names every path whose region this run rewrote, so the overwrite is stated rather than silent.
 - **Writes are confined and backed up.** The runner writes nothing outside a region's declared path set: a write inside the region's own directories is reverted to what it held before the run, and a write anywhere else in the tree, which has no pre-image to restore from, is reported instead. It also copies every declared path it is about to rewrite into `$BACKUP_DIR` first, unless the merge walk already backed that path up.
+
+  **Inside the region's own directories**, where the snapshot exists, every way of leaving an undeclared path different counts as a write, not just overwriting it: a **deletion** is reverted from its pre-image, so only the region's own declared paths may be deleted and stay deleted, and a **creation**, having no pre-image, is removed. Anywhere else in the tree there is no snapshot to compare against, so every write there, creations included, is reported and none of it is undone. Never tell the adopter a file the regeneration created was removed without that distinction; outside those directories it is still sitting where the command put it.
+
+  Symlinks take the same rule rather than an exception to it, because a link's pre-image is the target string it holds: one the command deletes, retargets, or swaps for a regular file is put back as a link on its original target, and one it creates is removed. Restoring a link writes no content and follows nothing, so whatever it pointed at is never touched.
 - **The operand guard is well-formedness, not security.** The runner refuses an operand that is absolute, carries a parent-directory segment, resolves through a symlink out of the repository, or is not an exact key of the same manifest's shipped file map. This guards against a stale, corrupt, or hand-edited declaration. It is **not** a defense against anyone who controls the manifest: the flow already extracts and runs the release tarball's bundled tool, so a manifest that could not be trusted would be the smaller problem. Do not describe it as a security control to the adopter.
 
 ### Step 8: Count trailer invalidations
@@ -682,6 +695,7 @@ When all three `package.json` counts are zero, render that row as `package.json:
 **The three region rows.** Counts come from `regions.regen` (`ran` / `failed` / `skipped` / `refused`) and `regions.fallbacks`. Render them like this:
 
 - `regions.awarenessOff` is true → replace all three rows with the single line `Regions: awareness off for this run (GAIA_UPDATE_NO_REGIONS=1); every declared path used the whole-file comparison`.
+- `regions.regen.refused` carries a `kind: 'manifest'` entry → `Regions: this release's manifest could not be read (<reason>); no region guarantee applied to this run`, and omit the other two rows. **This row outranks the `declarationsLoaded` row below**, and the ordering is the whole point: a `regions` key that is present but not an array loads zero declarations, so evaluated in the other order the adopter is told the release declares no regions when in fact it declares regions this run could not read, with every downstream region guarantee silently not applying.
 - `regions.declarationsLoaded` is 0 and awareness is on → `Regions: none declared by this release`, and omit the other two rows.
 - Every count zero → `Regions: all declared regions current (no regeneration needed)`.
 - Omit the `Region fallbacks` row and the `Pre-region paths` row individually whenever that row's own count is zero.
@@ -728,9 +742,9 @@ When `adopterActions[]` is non-empty, print a recommendation block after the tab
 **Generated regions.** Print each of the following after the table, whenever it applies. Each one reports a state the adopter cannot see any other way, so none may be dropped for brevity.
 
 1. **Rewritten regions.** Name every path in `regions.rewrittenPaths`, and state that those files now **intentionally differ** from the release copy because their region is derived from this adopter's own roster. Anything that later reports them as drifted is describing the intended state.
-2. **Failed or refused regenerations.** One entry per region, carrying the **literal argument vector** to run by hand, rendered from that entry's `argv` (for the region GAIA ships today that renders as `bash .gaia/scripts/write-audit-remits.sh`). Report a spawn failure distinctly from a non-zero exit: a spawn failure means the interpreter itself could not be launched, while a non-zero exit means the program ran and refused, and the two have different remedies. Report per region rather than per path, because one command covers every path in the region, and the shipped writer aggregates per-member failures into a single non-zero exit after rewriting the members that did succeed.
+2. **Failed or refused regenerations.** One entry per region, carrying the **literal argument vector** to run by hand, rendered from that entry's `argv` (for the region GAIA ships today that renders as `bash .gaia/scripts/write-audit-remits.sh`). Report each `failed[].kind` distinctly, because each has a different remedy, and on a `killed` entry report its `cause` as well: `cause`, not `kind`, is what tells the adopter whether a ceiling this flow imposed is what stopped their command, so printing the kind alone strands them. Step 7d's `failed[].kind` paragraph and its `cause` paragraph are the authority on both fields' values and remedies. Report per region rather than per path, because one command covers every path in the region, and the shipped writer aggregates per-member failures into a single non-zero exit after rewriting the members that did succeed.
 
-   **A `kind: 'declaration'` refusal carries no `argv`, and that is correct.** A declaration too malformed to name an interpreter and an operand has no command to hand over. Print the defect, and state plainly that this release's declaration is unusable and there is nothing for the adopter to run: the remedy is upstream, not in their tree. Never fabricate a command for it.
+   **A `kind: 'declaration'` or `kind: 'manifest'` refusal carries no `argv` (7d), and that is correct.** Neither has a command to hand over, so print the defect and state plainly that this release is unusable here and there is nothing for the adopter to run: the remedy is upstream, not in their tree. Never fabricate a command for either. A `manifest` refusal belongs in the summary row rather than this per-region list, since it names no region.
 3. **Skipped regenerations.** Name the region, the reason the runner gave, and the literal command from its `argv`.
 
    **The follow-up command is always the regeneration program, never a re-run of the CLI's own regeneration subcommand.** `argv` renders as `bash .gaia/scripts/write-audit-remits.sh`, which the adopter can paste into any shell once they have resolved whatever suppressed it. See **Command resolution** in Step 7, rule 3.

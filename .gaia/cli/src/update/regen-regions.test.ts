@@ -14,16 +14,19 @@ import {execFileSync} from 'node:child_process';
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {run} from './regen-regions.js';
+import {run, spawnFailureCause} from './regen-regions.js';
 import type {RegenRegionsReport} from './regen-regions.js';
 
 const START_MARKER = '<!-- gaia:test:start -->';
@@ -31,6 +34,9 @@ const END_MARKER = '<!-- gaia:test:end -->';
 const DECLARED_PATHS = ['.claude/agents/one.md', '.claude/agents/two.md'];
 const REGEN_SCRIPT_REL = '.gaia/scripts/write-regions.sh';
 const DEFAULT_FILES: Record<string, unknown> = {[REGEN_SCRIPT_REL]: 'owned'};
+
+/** Shell fragment writing 2 MiB to stdout, twice execFileSync's 1 MiB default. */
+const TWO_MIB = `awk 'BEGIN { while (i++ < 2048) printf "%1024s", "" }'`;
 
 const HAPPY_SCRIPT_BODY = [
   String.raw`printf "regenerated one\n" > .claude/agents/one.md`,
@@ -60,6 +66,16 @@ const buildGitRoot = (): string => {
   return root;
 };
 
+/** Writes a file and commits it, so `git status` can report on it later. */
+const commitFixture = (root: string, relPath: string, body: string): void => {
+  const abs = path.join(root, relPath);
+
+  mkdirSync(path.dirname(abs), {recursive: true});
+  writeFileSync(abs, body);
+  execFileSync('git', ['add', '--', relPath], {cwd: root});
+  execFileSync('git', ['commit', '-q', '-m', 'fixture'], {cwd: root});
+};
+
 const writeDeclaredFiles = (root: string, label: string): void => {
   mkdirSync(path.join(root, '.claude/agents'), {recursive: true});
   writeFileSync(path.join(root, DECLARED_PATHS[0]), `${label} one\n`);
@@ -78,9 +94,11 @@ const writeScript = (
   chmodSync(abs, 0o755);
 };
 
+// `regions` is `unknown`, not `unknown[]`: the wrong-typed-key tests need to
+// write a manifest whose `regions` is not an array at all.
 const writeManifest = (
   root: string,
-  regions: unknown[],
+  regions: unknown,
   files: Record<string, unknown> = DEFAULT_FILES
 ): string => {
   const manifestPath = path.join(root, 'manifest.json');
@@ -524,6 +542,78 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.ran).toEqual([]);
   });
 
+  test('9a. a regeneration program killed by a signal is reported distinctly from an interpreter that never launched', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // The shell signals itself: `status` is null on the thrown error, exactly
+    // as it is when the interpreter could not be launched at all. Only the
+    // signal tells the two apart.
+    writeScript(root, 'kill -TERM $$');
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.failed).toHaveLength(1);
+    expect(report.failed[0]?.kind).toBe('killed');
+    expect(report.failed[0]?.signal).toBe('SIGTERM');
+    // Neither of this command's own bounds ended it, and saying so is what
+    // keeps an operator's own kill from reading as GAIA imposing a ceiling.
+    expect(report.failed[0]?.cause).toBe('external');
+    expect(report.ran).toEqual([]);
+  });
+
+  test('9c. a regeneration program stopped by the output bound names that bound, not a bare signal', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // 33 MiB down stderr, past the command's own 32 MiB ceiling. stdout is
+    // discarded outright, so stderr is the only stream that can reach it.
+    writeScript(
+      root,
+      'awk \'BEGIN { while (i++ < 33792) printf "%1024s", "" }\' >&2'
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.failed).toHaveLength(1);
+    expect(report.failed[0]?.kind).toBe('killed');
+    expect(report.failed[0]?.signal).toBe('SIGTERM');
+    expect(report.failed[0]?.cause).toBe('maxBuffer');
+  });
+
+  test('9d. every kill cause maps from the code Node reports, and an unknown one is external', () => {
+    // The time bound is five minutes, so the timeout arm cannot be driven
+    // end-to-end in a suite. The mapping it shares with the other two is
+    // exercised here directly; 9a and 9c prove the wiring that feeds it.
+    expect(spawnFailureCause('ETIMEDOUT')).toBe('timeout');
+    expect(spawnFailureCause('ENOBUFS')).toBe('maxBuffer');
+    expect(spawnFailureCause('EPIPE')).toBe('external');
+    expect(spawnFailureCause(undefined)).toBe('external');
+  });
+
+  test('9b. a regeneration program that writes more than Node’s default 1 MiB to stdout and stderr is not killed', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(
+      root,
+      // 2 MiB down each stream, twice execFileSync's default maxBuffer.
+      [TWO_MIB, `${TWO_MIB} >&2`, HAPPY_SCRIPT_BODY].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.failed).toEqual([]);
+    expect(report.ran).toHaveLength(1);
+    expect(readDeclared(root, 0)).toBe('regenerated one\n');
+  });
+
   test('10. an interpreter containing a path separator is refused', () => {
     const root = buildRoot();
 
@@ -593,6 +683,349 @@ describe('update regen-regions: behavior coverage', () => {
     ).toBe('extra original\n');
   });
 
+  test('12a. a file DELETED outside the declared set but inside the snapshot scope is restored', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeFileSync(
+      path.join(root, '.claude/agents/extra.md'),
+      'extra original\n'
+    );
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'rm .claude/agents/extra.md'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/extra.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(
+      readFileSync(path.join(root, '.claude/agents/extra.md'), 'utf8')
+    ).toBe('extra original\n');
+  });
+
+  test('12b. a deleted in-scope file whose parent directory the program also removed is still restored', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, '.claude/agents/nested'), {recursive: true});
+    writeFileSync(
+      path.join(root, '.claude/agents/nested/extra.md'),
+      'nested original\n'
+    );
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'rm -rf .claude/agents/nested'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/nested/extra.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(
+      readFileSync(path.join(root, '.claude/agents/nested/extra.md'), 'utf8')
+    ).toBe('nested original\n');
+  });
+
+  test('12c. a declared path the program deletes is left deleted: the declared set owns it', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(
+      root,
+      [
+        String.raw`printf "regenerated one\n" > .claude/agents/one.md`,
+        `rm ${DECLARED_PATHS[1]}`,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.confined).toEqual([]);
+    expect(existsSync(path.join(root, DECLARED_PATHS[1]))).toBe(false);
+  });
+
+  test('12d. a symlink the program deletes in scope is restored as a symlink, never as a regular file', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    symlinkSync(
+      '../../outside/target.txt',
+      path.join(root, '.claude/agents/link.md')
+    );
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'rm .claude/agents/link.md'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // A deletion outside the declared set is reverted from its pre-image, and
+    // a link's pre-image is the target string it held. Putting the LINK back
+    // is the faithful revert; writing a regular file carrying the target's
+    // bytes would be the mechanism inventing content that lived outside the
+    // region, which is the one thing it must never do.
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(
+      lstatSync(path.join(root, '.claude/agents/link.md')).isSymbolicLink()
+    ).toBe(true);
+    expect(readlinkSync(path.join(root, '.claude/agents/link.md'))).toBe(
+      '../../outside/target.txt'
+    );
+    expect(readFileSync(path.join(root, 'outside/target.txt'), 'utf8')).toBe(
+      'TARGET CONTENT\n'
+    );
+  });
+
+  test('12d-i. a symlink the program retargets in scope is put back on its original target', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    writeFileSync(path.join(root, 'outside/other.txt'), 'OTHER CONTENT\n');
+    symlinkSync(
+      '../../outside/target.txt',
+      path.join(root, '.claude/agents/link.md')
+    );
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'rm .claude/agents/link.md',
+        'ln -s ../../outside/other.txt .claude/agents/link.md',
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // Same path, same kind, different target: comparing links by presence
+    // alone would call this untouched and leave the region pointing an
+    // undeclared path somewhere it chose.
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(readlinkSync(path.join(root, '.claude/agents/link.md'))).toBe(
+      '../../outside/target.txt'
+    );
+  });
+
+  test('12d-ii. a symlink the program replaces with a regular file is put back as a link', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    symlinkSync(
+      '../../outside/target.txt',
+      path.join(root, '.claude/agents/link.md')
+    );
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'rm .claude/agents/link.md',
+        String.raw`printf "now a real file\n" > .claude/agents/link.md`,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // Swapping a link for a regular file is an out-of-scope write like any
+    // other, and the link's own pre-image is its target string, so it is put
+    // back as a link. Reporting nothing here would let the program's own
+    // undeclared content survive at the path under a clean confinement result.
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(
+      lstatSync(path.join(root, '.claude/agents/link.md')).isSymbolicLink()
+    ).toBe(true);
+    expect(readlinkSync(path.join(root, '.claude/agents/link.md'))).toBe(
+      '../../outside/target.txt'
+    );
+    // Restoring a link writes no content, so the target is untouched.
+    expect(readFileSync(path.join(root, 'outside/target.txt'), 'utf8')).toBe(
+      'TARGET CONTENT\n'
+    );
+  });
+
+  test('12d-iii. a link whose target is not valid UTF-8 is restored byte-for-byte', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // A symlink target is an arbitrary byte string on both Linux and macOS.
+    // Decoding one as UTF-8 does not throw on an invalid byte, it silently
+    // substitutes U+FFFD, so a target read that way and written back points
+    // somewhere else entirely while the report claims it was restored, and
+    // the true pre-image is gone by then.
+    const rawTarget = Buffer.from([
+      0x2e, 0x2e, 0x2f, 0xff, 0x2e, 0x74, 0x78, 0x74,
+    ]);
+    const linkAbs = path.join(root, '.claude/agents/link.md');
+
+    symlinkSync(rawTarget, linkAbs);
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'rm .claude/agents/link.md'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(readlinkSync(linkAbs, 'buffer').equals(rawTarget)).toBe(true);
+  });
+
+  test('12e. a symlink the program creates in scope is removed, like any other undeclared creation', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'ln -s ../../outside/target.txt .claude/agents/sneak.md',
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // A link the spawn created is an undeclared creation with no pre-image, so
+    // it is removed exactly as a regular file would be; letting it survive
+    // would leave the confinement guarantee claiming a clean run while an
+    // undeclared path persists. Unlinking never touches what it pointed at.
+    expect(report.confined).toEqual([
+      {
+        action: 'removed',
+        path: '.claude/agents/sneak.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(existsSync(path.join(root, '.claude/agents/sneak.md'))).toBe(false);
+    // Removing the link must never touch what it pointed at.
+    expect(readFileSync(path.join(root, 'outside/target.txt'), 'utf8')).toBe(
+      'TARGET CONTENT\n'
+    );
+  });
+
+  test('12f. a symlink the program puts where an in-scope file was is restored without writing through the link', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeFileSync(
+      path.join(root, '.claude/agents/extra.md'),
+      'extra original\n'
+    );
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'rm .claude/agents/extra.md',
+        'ln -s ../../outside/target.txt .claude/agents/extra.md',
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/extra.md',
+        regionId: 'test-region',
+      },
+    ]);
+    // The pre-image goes back at the path itself, which must be a regular file
+    // again. Following the link would write these bytes into the target, which
+    // can live anywhere in or outside the tree: the confinement mechanism
+    // writing outside the scope it exists to enforce.
+    expect(lstatSync(path.join(root, '.claude/agents/extra.md')).isFile()).toBe(
+      true
+    );
+    expect(
+      readFileSync(path.join(root, '.claude/agents/extra.md'), 'utf8')
+    ).toBe('extra original\n');
+    expect(readFileSync(path.join(root, 'outside/target.txt'), 'utf8')).toBe(
+      'TARGET CONTENT\n'
+    );
+  });
+
+  test('12g. an executable the program deletes in scope comes back executable', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    const helperAbs = path.join(root, '.claude/agents/helper.sh');
+
+    writeFileSync(helperAbs, '#!/bin/sh\necho helper\n');
+    chmodSync(helperAbs, 0o755);
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'rm .claude/agents/helper.sh'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/helper.sh',
+        regionId: 'test-region',
+      },
+    ]);
+    // `restored` has to mean restored. Recreating the content under the
+    // process umask hands back a file the adopter can no longer run, while
+    // the report claims it was put back.
+    expect(statSync(helperAbs).mode.toString(8).slice(-3)).toBe('755');
+  });
+
   test('13. a file created outside the declared set but inside the snapshot scope is removed', () => {
     const root = buildRoot();
 
@@ -646,6 +1079,97 @@ describe('update regen-regions: behavior coverage', () => {
     );
   });
 
+  test('13c. a root nested inside the git repository reports nothing on an ordinary run', () => {
+    // `git status --porcelain` always emits paths relative to the repository
+    // TOP LEVEL, never to the process cwd. A GAIA project nested inside a
+    // larger repository therefore gets every record back carrying the
+    // project's own offset, which matches neither the declared set nor the
+    // snapshot scope, so the region's own legitimate writes read as
+    // out-of-scope ones and the adopter is told to investigate all of them.
+    const gitRoot = buildGitRoot();
+    const root = path.join(gitRoot, 'project');
+
+    mkdirSync(root, {recursive: true});
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    execFileSync('git', ['add', '-A'], {cwd: gitRoot});
+    execFileSync('git', ['commit', '-q', '-m', 'fixture'], {cwd: gitRoot});
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.confined).toEqual([]);
+    expect(readFileSync(path.join(root, DECLARED_PATHS[0]), 'utf8')).toBe(
+      'regenerated one\n'
+    );
+  });
+
+  test('13d. a root nested inside the git repository still reports a genuine out-of-scope write', () => {
+    const gitRoot = buildGitRoot();
+    const root = path.join(gitRoot, 'project');
+
+    mkdirSync(root, {recursive: true});
+    writeDeclaredFiles(root, 'original');
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'mkdir -p app',
+        String.raw`printf "out of scope\n" > app/out-of-scope.txt`,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    execFileSync('git', ['add', '-A'], {cwd: gitRoot});
+    execFileSync('git', ['commit', '-q', '-m', 'fixture'], {cwd: gitRoot});
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    // Stripping the offset must not blind the detector: the path is reported
+    // relative to the run's own root, which is what every other path in the
+    // report is relative to.
+    expect(report.confined).toEqual([
+      {action: 'reported', path: 'app/', regionId: 'test-region'},
+    ]);
+  });
+
+  test('13e. a write above the nested root, outside it entirely, is not attributed to the region', () => {
+    const gitRoot = buildGitRoot();
+    const root = path.join(gitRoot, 'project');
+
+    mkdirSync(root, {recursive: true});
+    writeDeclaredFiles(root, 'original');
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, String.raw`printf "sibling\n" > ../sibling.txt`].join(
+        '\n'
+      )
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    execFileSync('git', ['add', '-A'], {cwd: gitRoot});
+    execFileSync('git', ['commit', '-q', '-m', 'fixture'], {cwd: gitRoot});
+
+    const {exit, report, stderrText} = runCapturing(
+      baseArgv(manifestPath, root)
+    );
+
+    expect(exit).toBe(0);
+    // Every path in the report is relative to the run's own root, so a write
+    // above that root has no representation there. It is still a real write
+    // the region made, so it leaves by the same non-fatal stderr channel the
+    // git-unavailable case uses rather than vanishing.
+    expect(report.confined).toEqual([]);
+    expect(stderrText).toContain('region_regen_git_delta_out_of_root');
+    expect(stderrText).toContain('sibling.txt');
+    expect(readFileSync(path.join(gitRoot, 'sibling.txt'), 'utf8')).toBe(
+      'sibling\n'
+    );
+  });
+
   test('13b. with git unavailable, the snapshot-scoped sweep still runs and the run still exits 0', () => {
     // Deliberately NOT a git repository (plain buildRoot()): the whole-root
     // detector degrades, but nothing about the run fails.
@@ -685,6 +1209,83 @@ describe('update regen-regions: behavior coverage', () => {
     // reported nor reverted.
     expect(existsSync(path.join(root, 'app/out-of-scope.txt'))).toBe(true);
     expect(stderrText).toContain('region_regen_git_delta_unavailable');
+  });
+
+  test('13c. an out-of-scope path carrying a space and a non-ASCII byte is reported verbatim, not C-quoted', () => {
+    const root = buildGitRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // `app/` must already be tracked, else git collapses the whole untracked
+    // directory to one `app/` entry and the file name never reaches the parser.
+    commitFixture(root, 'app/keep.txt', 'keep\n');
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        String.raw`printf "out of scope\n" > "app/néw file.txt"`,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.confined).toEqual([
+      {action: 'reported', path: 'app/néw file.txt', regionId: 'test-region'},
+    ]);
+  });
+
+  test('13d. a rename of a non-ASCII out-of-scope path yields both sides unquoted', () => {
+    const root = buildGitRoot();
+
+    writeDeclaredFiles(root, 'original');
+    commitFixture(root, 'app/ünicode old.txt', 'renamed subject\n');
+    // `git mv` stages the rename, so `git status` reports it as a single
+    // rename entry rather than a delete plus an untracked add.
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'git mv "app/ünicode old.txt" "app/ünicode new.txt"',
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(
+      report.confined.map((entry) => entry.path).toSorted(byLocale)
+    ).toEqual(['app/ünicode new.txt', 'app/ünicode old.txt']);
+    expect(report.confined.every((entry) => entry.action === 'reported')).toBe(
+      true
+    );
+  });
+
+  test('13e. a fully committed tree, whose first status record is a worktree modification, loses no leading character', () => {
+    const root = buildGitRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // Commit everything BEFORE the run. This is the ordinary adopter shape,
+    // and it is the one that exercises git's leading status column: a
+    // worktree-only modification reports as ` M <path>`, whose first byte is
+    // a SPACE. A parser that trims the payload before slicing the 3-char
+    // `XY ` prefix eats the path's own first character, and the truncated
+    // path then matches neither the declared set nor the snapshot scope, so
+    // the region's own legitimate rewrite is reported as an out-of-scope
+    // write. `.claude/…` sorts first, so the declared path is the record
+    // that lands in position one.
+    execFileSync('git', ['add', '-A'], {cwd: root});
+    execFileSync('git', ['commit', '-q', '-m', 'fixture'], {cwd: root});
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.confined).toEqual([]);
+    expect(report.ran).toHaveLength(1);
+    expect(readDeclared(root, 0)).toBe('regenerated one\n');
   });
 
   test('14. --backup-dir copies a declared path not yet backed up', () => {
@@ -868,6 +1469,56 @@ describe('update regen-regions: behavior coverage', () => {
     expect(report.ran).toEqual([]);
     expect(report.refused).toEqual([]);
   });
+
+  test.each([
+    [{}, 'object'],
+    [null, 'null'],
+    ['nope', 'string'],
+  ])(
+    '19a. a regions key of the wrong type (%p) is refused by name, not silently erased into the no-regions case',
+    (regions, shape) => {
+      const root = buildRoot();
+      const manifestPath = writeManifest(root, regions, {});
+
+      const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+      expect(exit).toBe(0);
+      expect(report.refused).toEqual([
+        {
+          kind: 'manifest',
+          reason: `regions is present but is not an array: ${shape}`,
+          regionId: '(manifest)',
+        },
+      ]);
+      expect(report.ran).toEqual([]);
+    }
+  );
+
+  test.each([
+    [['not', 'an', 'object'], 'array'],
+    ['a string manifest', 'string'],
+    [42, 'number'],
+  ])(
+    '19b. a manifest whose top level is not an object (%p) is refused, not read as a release that ships no regions',
+    (manifest, shape) => {
+      const root = buildRoot();
+      const manifestPath = path.join(root, 'manifest.json');
+
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+
+      const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+      expect(exit).toBe(0);
+      expect(report.refused).toEqual([
+        {
+          kind: 'manifest',
+          reason: `manifest top level is not an object: ${shape}`,
+          regionId: '(manifest)',
+        },
+      ]);
+      expect(report.ran).toEqual([]);
+    }
+  );
 
   test('20. malformed declarations are refused by name; other declarations still process; exit 0', () => {
     const root = buildRoot();
