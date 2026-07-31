@@ -229,6 +229,54 @@ LEDGER=".gaia/local/audit/${BASE_SHA}.rerun.json"
 
 # ---------- structural ----------
 
+@test "a repo_root that is not a git repository reports 2, never a clean 0" {
+  local outside="$BATS_TEST_TMPDIR/not-a-repo"
+  mkdir -p "$outside"
+  run gaia_check_audit_key_callers "$outside"
+  # 2, not 1: "the check could not run" is a different answer from "the check
+  # says no", and neither is the 0 an unscanned tree used to report.
+  [ "$status" -eq 2 ]
+  grep -qF "is not a git repository root; nothing was scanned" <<<"$output" || return 1
+  # Both verdict lines, not just the first: each one alone reads as a clean
+  # bill of health for a tree that was never read.
+  grep -qF "bare BASE_SHA/base literal sidecar-or-ledger paths found: 0" <<<"$output" && {
+    echo "printed a clean assertion-1 verdict for a tree it never scanned" >&2
+    return 1
+  }
+  grep -qF "agent files naming a sidecar/ledger without a gaia_audit_key call: 0" <<<"$output" && {
+    echo "printed a clean assertion-2 verdict for a tree it never scanned" >&2
+    return 1
+  }
+  return 0
+}
+
+@test "a repo_root that is a subdirectory of a repo reports 2, never a clean 0" {
+  # --git-dir alone succeeds from anywhere inside a repo, so this is the case
+  # that separates "is in a repo" from "is a repo root". The scan would find
+  # no .claude/agents/ beneath a subdirectory and report the same clean 0/0.
+  run gaia_check_audit_key_callers "$REPO_ROOT/.gaia/scripts"
+  [ "$status" -eq 2 ]
+  grep -qF "is not a git repository root; nothing was scanned" <<<"$output" || return 1
+}
+
+@test "a bare repository and a .git directory both report 2, never a clean 0" {
+  # --show-prefix alone clears both (exit 0, empty output). The work-tree
+  # check is what separates "has a prefix of empty" from "has a work tree",
+  # and without it `git grep` fails below with its diagnostic swallowed.
+  local bare="$BATS_TEST_TMPDIR/bare.git"
+  git init -q --bare "$bare"
+  run gaia_check_audit_key_callers "$bare"
+  [ "$status" -eq 2 ]
+
+  local live
+  live="$(make_fixture_repo gitdir-probe)"
+  write_agent_file "$live" some-agent.md "$UNRELATED_FILE"
+  commit_fixture_repo "$live"
+  run gaia_check_audit_key_callers "$live/.git"
+  [ "$status" -eq 2 ]
+  grep -qF "is not a git repository root; nothing was scanned" <<<"$output" || return 1
+}
+
 @test "structural: check-audit-key-callers.sh is executable" {
   [ -x "$CHECK" ]
 }
