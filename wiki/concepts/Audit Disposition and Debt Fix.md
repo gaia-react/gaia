@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-07-20
+updated: 2026-08-01
 tags: [concept, claude, review]
 ---
 
@@ -51,7 +51,7 @@ The disposition is gated by a deterministic **eligibility test** so it cannot be
 
 Either term alone is sufficient, and a gate-machinery finding stays eligible whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, and a finding satisfying neither term files or diverts as usual. Comparison is **exact whole-string equality** against repo-relative POSIX paths, never a prefix, suffix, basename, or substring match; the changed-file enumeration is NUL-delimited so a legitimately quoted path never reads as an offender. A dedup key the path extractor cannot parse is itself an offender, failing closed.
 
-A machinery-waived finding is recorded as a `machinery_waived` entry in the disposition-ledger sidecar (with its dedup key) **and** listed in the PR body under a heading such as `## Out-of-scope machinery findings (recorded, not filed)`. The sidecar is gitignored and janitor-reaped, so the PR body is the durable, human-readable record of what was waived. The disposition enum value `machinery_waived` and the sidecar schema carry no field for the changed-files term; the union lives entirely in how the abuse-check reads the existing `path=`.
+A machinery-waived finding is recorded as a `machinery_waived` entry in the disposition-ledger sidecar (with its dedup key) **and** listed in the PR body under a heading such as `## Out-of-scope machinery findings (recorded, not filed)`. The sidecar is gitignored and janitor-reaped, so the PR body is the durable, human-readable record of what was waived. The PR-body entry carries the same provenance line a filed issue carries, from the same helper, which is what makes the waived listing greppable, since it is otherwise agent prose with no code behind it. The disposition enum value `machinery_waived` and the sidecar schema carry no field for the changed-files term; the union lives entirely in how the abuse-check reads the existing `path=`.
 
 **Binding a waive to its pull request.** The sidecar is named by the default member's content digest, which does not rotate for a diff touching nothing that member owns and no machinery, so one sidecar can be read while judging several consecutive pull requests. A `machinery_waived` entry's changed-files term is therefore evaluated only when the sidecar is **attributable** to the pull request under judgment, by its recorded `sha`: an entry whose sidecar records a sha belonging to another branch's live history is set aside rather than judged against this diff, so it neither clears nor denies, while a sha this branch's own rewrite (an amend, rebase, or force-push) has orphaned is still judged against the rewritten HEAD's diff.
 
@@ -70,6 +70,10 @@ A non-security out-of-scope finding on a present backend files as a `tech-debt` 
 The body is self-contained: the dedup-key line, the `file:line`, a concrete failure mode, a suggested fix, and a handler-class line (`prompt`, `plan`, or `spec`, advisory only). The issue carries exactly one `severity:*` label (mapped from the finding's report tier) plus `tech-debt`; a filing that reads the cited code as it files also carries exactly one `difficulty:*` label, and an issue carrying none is ungraded, a normal case; a deliberately-closed finding carries the GitHub `wontfix` label instead so it is not re-filed.
 
 The `file-tech-debt` skill (`.claude/skills/file-tech-debt/SKILL.md`) is the source of truth for the filing mechanics: key construction, the `--body-file` invocation, idempotent labels, the body schema, and the sentinel touch.
+
+Beside the dedup-key line, every dispositioned finding carries a second HTML-comment line recording the work that surfaced it: the branch under review, a derived work mode, the unit of work being executed, whether the cited path was in the pull request's changed-file set, and the reviewed HEAD. Both lines are HTML comments, so neither appears in the rendered issue. It is diagnostic, not identity: nothing matches on it, nothing gates on it, and a disposition is never blocked, failed, or retried because provenance could not be determined; a field the route cannot determine is recorded as an explicit `unknown` rather than omitted or defaulted to a real-looking value. The line carries no version prefix, because it is not an identity that must match across time and joins none of the dedup key's lockstep consumer set. One shared helper derives every field, so every route resolves the same inputs to the same values; where a route's tool policy forbids running it, its caller runs the helper and passes the resolved values in, rather than a second implementation deriving them. The backlog that predates provenance is marked with a `debt:pre-provenance` label rather than backfilled, so an honest absence is never mistaken for a failure to write: a fail-open `unknown` records what the disposing agent observed, while a backfilled value would record a guess, and the two would sit in the same field indistinguishably.
+
+`.claude/skills/file-tech-debt/SKILL.md` is the source of truth for the field list, the value vocabulary, and the convention table.
 
 ### Idempotent dedup
 

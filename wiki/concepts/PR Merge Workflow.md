@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-07-21
+updated: 2026-08-01
 tags: [concept, ci, review]
 ---
 
@@ -190,6 +190,23 @@ A member can find a genuine defect in a file outside its own declared domain, a 
 - **Out of scope** → a non-security finding is recorded as **waived** (listed in the pull request body, not filed) when its path is either a gate-machinery path or a file this pull request already changes; a finding satisfying neither term, or any security-class finding, is filed as a tech-debt issue exactly as it is today, through `/gaia-debt` and the `file-tech-debt` skill.
 
 Either way the finding is **recorded rather than lost**.
+
+When the out-of-scope arm files a tech-debt issue, the filing carries a `gaia-debt-origin` provenance line beside its dedup key, from the shared helper, so a later reader recovers which work surfaced the finding after the branch is squash-merged and deleted. The orchestrator is on the pull request's own branch with a shell, so it resolves `changed` rather than recording `unknown`. The field vocabulary and the convention table live in `.claude/skills/file-tech-debt/SKILL.md`, referenced rather than restated here. A filing is never blocked, failed, retried, or deferred because provenance is partial or absent.
+
+For `changed`, the orchestrator reuses the whole-PR fork point in the same spelling the audit machinery already computes, adding no derivation of a new shape:
+
+```bash
+default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+  | sed 's@^refs/remotes/origin/@@')
+[ -n "$default_branch" ] || default_branch="main"
+FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
+  || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+pr_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
+origin="$(cd "$AUDIT_ROOT" && bash .gaia/scripts/debt-origin-lib.sh \
+  --changed "<0|1|unknown>" --dir . 2>/dev/null || true)"
+```
+
+Three-dot, no pathspec, and no `if [ -z "$FULL_BASE" ]; then` stop-guard: a finding on any file the pull request touches reads `changed=1`, and an unresolvable `FULL_BASE` makes `changed` the literal `unknown` for every finding in the run rather than stopping the filing, because `0` would assert the work did not touch the file while an unresolvable base asserts nothing.
 
 The waive rule applies to every out-of-scope finding the orchestrator disposes, whichever member surfaced it: `.gaia/cli/src/**`, `.claude/skills/**`, `.gaia/scripts/**`, `.claude/hooks/**`, `.claude/rules/**`, `.gaia/**/*.bats`, and `.github/workflows/**` each belong to a member that files nothing itself. Either eligibility term alone is sufficient: a gate-machinery finding stays eligible whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, with nothing eligible, a finding routes to the normal filing path. The security screen runs first and is unchanged: a security-class finding never waives.
 

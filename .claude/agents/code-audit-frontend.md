@@ -312,7 +312,7 @@ Record a non-security out-of-scope finding as **`machinery_waived`** (not filed)
 For a waived finding:
 
 - Record a `machinery_waived` sidecar entry (section F) carrying the same dedup-key `key` as any other entry (`v1 class=<finding_class> path=<repo-relative-posix-path> line=<int>`), so the abuse-check can read its `path=`. Leave `issue_number` unset; do **not** file a `tech-debt` issue and do **not** touch the debt-count sentinel. The sidecar's existing top-level `sha` field carries the acting tree's HEAD, and that is what binds a waive to the PR it is recorded for: the sidecar is named by a content digest that does not rotate for every PR, so one file can be read while judging several, and both gates set aside an entry whose sidecar records a sha belonging to another branch's live history rather than measuring it against a diff it was never about. This adds no field and changes no schema, it makes an existing field load-bearing, so it has to actually be written.
-- List the finding in the **PR body** under a heading such as **`## Out-of-scope machinery findings (recorded, not filed)`**, one entry per finding (its `file:line`, a one-line failure mode, and its dedup key). The sidecar is gitignored and janitor-reaped, so the PR body is the durable human-readable record of what was waived; keep it complete.
+- List the finding in the **PR body** under a heading such as **`## Out-of-scope machinery findings (recorded, not filed)`**, one entry per finding: its `file:line`, a one-line failure mode, its dedup key, and, on its own line immediately after the dedup key, the provenance line emitted the same way section E emits one (see "Emit the provenance line" under section E), never merged into the dedup-key line. The sidecar entry itself gains **no field** for it. The disposition sidecar is gitignored and janitor-reaped, so the PR body is a waived finding's only durable record; the provenance line is what makes that listing greppable at all, since today it is agent prose with no code behind it.
 
 Any finding that is not **both** non-security and in the union above routes to the existing filing path (sections C/D/E).
 
@@ -353,7 +353,16 @@ Alongside the `finding_class` assignment, assign the finding a difficulty grade,
 
 This assignment has a direct, intended effect on the gaia-harden recurrence tally: an out-of-scope finding that now carries a real seeded class becomes countable there at any severity, because the "Findings sidecar (local run record)" already includes every finding, in-scope or out-of-scope, that carries a `finding_class`, and `compute-tally.ts` routes a valid `finding_class` to the candidate bucket regardless of severity (severity is a ranking signal, not an eligibility gate). A finding that genuinely maps to no seeded member is stamped `holistic/unclassified` instead, and surfaces as the distinct unclassified recurrence signal, never a draftable candidate.
 
-Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`), the source of truth for building the wrapped `gaia-debt-key`, running the dedup query (open + declined-closed + keyless `path:line` fallback, never `gh` full-text search), filing with `gh issue create --body-file` (never `--body <argv>`, which the CI `--verbose` run would echo into the public Actions log), creating the `tech-debt` + `severity:<tier>` + `difficulty:<grade>` labels idempotently, the issue-body schema (dedup-key line + `file:line` + failure mode + suggested fix + `Handler: prompt|plan|spec`, emitting `spec` when the out-of-scope fix must begin with a design SPEC, a new subsystem, a schema or contract decision, or a cross-cutting redesign, the difficulty grade riding beside `Handler:` as a label, never a body line), and touching the debt-count sentinel.
+Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`), the source of truth for building the wrapped `gaia-debt-key`, running the dedup query (open + declined-closed + keyless `path:line` fallback, never `gh` full-text search), filing with `gh issue create --body-file` (never `--body <argv>`, which the CI `--verbose` run would echo into the public Actions log), creating the `tech-debt` + `severity:<tier>` + `difficulty:<grade>` labels idempotently, the issue-body schema (dedup-key line + `file:line` + failure mode + suggested fix + `Handler: prompt|plan|spec`, emitting `spec` when the out-of-scope fix must begin with a design SPEC, a new subsystem, a schema or contract decision, or a cross-cutting redesign, the difficulty grade riding beside `Handler:` as a label, never a body line), the `gaia-debt-origin` provenance line, and touching the debt-count sentinel.
+
+**Emit the provenance line.** For each finding this pipeline files, call the provenance helper anchored to `$AUDIT_ROOT`, never bare: a fresh shell leaves `AUDIT_ROOT` unset, and a bare invocation would resolve the script, and the branch it reports, from whatever tree the session's shell happens to sit in, silently, the same trap "Resolve the audited root first" names for `git -C ""`.
+
+```bash
+origin="$(cd "$AUDIT_ROOT" && bash .gaia/scripts/debt-origin-lib.sh \
+  --changed "$debt_origin_changed" --dir . 2>/dev/null || true)"
+```
+
+`$debt_origin_changed` is resolved once per finding under "Provenance `changed` field" (Rules-Based Audit, "Resolve the review scope"). Place `$origin` on its own line in the issue body, immediately after the `gaia-debt-key` line, never merged into it. If it is empty, omit the line and continue: **never block, fail, retry, or defer a filing because provenance is partial, absent, or malformed.** Provenance is diagnostic, not identity, so it is not a marker precondition, it never enters the disposition gate (section G), and the disposition-ledger sidecar (section F) gains **no field** for it. The field list, the value vocabulary, and the convention table live in `.claude/skills/file-tech-debt/SKILL.md`'s provenance section; this agent restates neither.
 
 **E.7. Record `filed` with `issue_number`** in the disposition-ledger sidecar (section F).
 
@@ -725,6 +734,22 @@ fi
 **Two lists, two jobs.** `changed` is the **review scope** and decides what you review; it stays filtered to `*.ts` / `*.tsx`. `full_changed` is the **eligibility** set and decides only which out-of-scope findings the waive in section B-mw can cover; it is deliberately unfiltered by file type, because the surfaces that waive exists for are shell, markdown, YAML, and bats. Shell state does NOT persist between an agent's Bash calls, so every later call using `full_changed` re-runs this block, and the `AUDIT_ROOT` derivation it depends on, ahead of itself, the same rule the review-scope block states for its own values.
 
 An empty `full_changed` **disengages** the waive rather than opening it: with no eligibility set, an out-of-scope finding on a non-machinery path takes the ordinary filing path (sections C/D/E). One limitation is accepted rather than worked around: a path containing a literal newline splits into two lines inside the variable, so it never matches by whole-string equality, the brake disengages for that path, and the finding is filed. That is the safe direction.
+
+**Provenance `changed` field.** Section E's `gaia-debt-origin` emission needs a third answer, "did this pull request touch the finding's cited path at all", distinct from both `changed` above (the TS/TSX-filtered review scope) and the incremental `BASE_SHA` (the last-cleared-ancestor base, which on a re-audit round covers only the delta since the previous round). `FULL_BASE` and `full_changed` above already resolve exactly that question for the machinery waive: the whole-PR fork point, no pathspec, three-dot against HEAD. <!-- honors AUDIT plan-time directive 2 (reuse the fork-point set, add no third base-derivation site) --> Reuse them rather than deriving a second copy: a second fence assigning `FULL_BASE` at column 0 would fail `.gaia/scripts/tests/audit-base-agreement.bats`'s eligibility-fence extractor, which requires exactly one such fence in this file, and a second, independently-typed derivation of the same fork point is itself the drift `check-audit-base-derivation.sh` exists to catch, whatever name it carries.
+
+For each finding this pipeline files or waives, resolve:
+
+```bash
+if [ -z "$FULL_BASE" ]; then
+  debt_origin_changed="unknown"
+elif grep -qxF "<the finding's repo-relative path>" <<<"$full_changed"; then
+  debt_origin_changed="1"
+else
+  debt_origin_changed="0"
+fi
+```
+
+An unresolvable `FULL_BASE` yields `unknown` for every finding in this run, never `0`: `0` asserts the pull request did not touch the file, and an unresolvable base asserts nothing.
 
 1. **Identify changed files**: `changed`, from the review-scope block above.
    - **Read the re-run ledger (LOCAL only) as the prior-round briefing.** From the `BASE_SHA` above, compute `AUDIT_KEY="$(gaia_audit_key "$BASE_SHA" "$AUDIT_ROOT")" || AUDIT_KEY=""` (`.gaia/scripts/audit-key-lib.sh`) and `LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `AUDIT_KEY` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `BASE_SHA`, `AUDIT_KEY`, and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
