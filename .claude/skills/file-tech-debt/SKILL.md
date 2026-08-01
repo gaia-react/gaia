@@ -116,13 +116,13 @@ Any derived `unit` that comes out empty becomes `unknown`. Row 9 routes `fix/`, 
 
 When `branch` resolves to `unknown` (no explicit branch argument, no head-ref environment variable, and no current branch from git), `mode` and `unit` are also `unknown`, never `adhoc`. `adhoc` means a branch resolved and matched no row, a different fact from no branch resolving at all.
 
-**The derivation.** One shared helper, `.gaia/scripts/debt-origin-lib.sh`, owns the encoding, the classification, and the line assembly. Every route calls it once per finding:
+**The derivation.** One shared helper, `.gaia/scripts/debt-origin-lib.sh`, owns the encoding, the classification, and the line assembly. Each route calls it once per finding, in the spelling its own surface gives. Unanchored:
 
 ```bash
 origin="$(bash .gaia/scripts/debt-origin-lib.sh --changed "<0|1|unknown>" 2>/dev/null || true)"
 ```
 
-It fails open throughout: each field it cannot resolve becomes the literal `unknown`, it exits zero regardless, and a caller never treats its output as a precondition. It always prints the line.
+It fails open throughout: each field it cannot resolve becomes the literal `unknown`, it exits zero regardless, and a caller never treats its output as a precondition.
 
 **The fail-open rule, stated as a rule.** Never block, fail, retry, or defer a filing or a waive because provenance is partial, absent, or malformed. If the helper prints nothing, omit the line and continue. Omitting the line is reserved for a route that predates provenance or for a helper that could not run: a working route must never omit the line as a way of expressing that nothing resolved, because a line of unknowns and no line at all must stay distinguishable.
 

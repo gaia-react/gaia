@@ -349,8 +349,8 @@ jobs:
               > "$out/origin.changed-$c.txt" 2>/dev/null \
               || : > "$out/origin.changed-$c.txt"
           done
-          # Three-dot: it resolves its own merge base, so this is the fork
-          # point rather than a comparison against a base tip that has moved.
+          # Three-dot: it resolves its own merge base rather than diffing the
+          # recorded base tip directly.
           # No pathspec: a finding on a non-TypeScript file this pull request
           # touched must read 1, not 0.
           git diff --name-only "${PR_BASE_SHA}...HEAD" \
@@ -471,14 +471,14 @@ jobs:
             record as machinery-waived in the pull-request body, copy one of
             those lines verbatim onto its own line immediately after the
             `gaia-debt-key` line, never merged into it: `origin.changed-1.txt`
-            when the finding's cited path appears in `pr-changed-files.txt`,
-            `origin.changed-0.txt` when it does not, `origin.changed-unknown.txt`
-            when `pr-changed-files.txt` is missing or empty. If a pre-rendered
-            file is missing or empty, omit the line and continue; never block,
-            fail, retry, or defer a filing or a waive over provenance. The
-            line is an HTML comment, adding nothing to the rendered issue or
-            the public PR comment's visible text, and carries no finding
-            detail, so it does not touch the count-only invariants above:
+            when the finding's cited path appears in `pr-changed-files.txt` as
+            its own complete line, `origin.changed-0.txt` when it does not,
+            `origin.changed-unknown.txt` when `pr-changed-files.txt` is missing
+            or empty. If a pre-rendered file is missing or empty, omit the line
+            and continue; never block, fail, retry, or defer a filing or a waive
+            over provenance. The line is an HTML comment, adding nothing to the
+            rendered issue or the public PR comment's visible text, and carries
+            no finding detail, so it does not touch the count-only invariants above:
             `branch`, `mode`, `unit`, `changed`, and `head` say nothing about
             what the finding is.
 
