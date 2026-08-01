@@ -119,13 +119,19 @@ seed_base_template() {
   git -C "$REPO" checkout --quiet -B feature main
 }
 
-# Run the hook with a `gh pr merge` command, from inside the repo.
-run_merge_hook() {
-  local cmd="${1:-gh pr merge 30 --squash --delete-branch}"
+# Run the hook with a `gh pr merge` command, against an arbitrary ROOT. The
+# root-parameterized twin of run_merge_hook.
+run_merge_hook_at() {
+  local root="$1" cmd="${2:-gh pr merge 30 --squash --delete-branch}"
   local json
   json=$(jq -n --arg c "$cmd" \
     '{tool_name: "Bash", tool_input: {command: $c}}')
-  run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS'"
+  run bash -c "cd '$root' && printf '%s' '$json' | bash '$HOOK_ABS'"
+}
+
+# Run the hook with a `gh pr merge` command, from inside the repo.
+run_merge_hook() {
+  run_merge_hook_at "$REPO" "${1:-gh pr merge 30 --squash --delete-branch}"
 }
 
 # Compute MEMBER's real content digest for REPO's current HEAD, via the real
@@ -137,30 +143,39 @@ member_digest_for() {
 }
 
 # Write a Code Audit Team EARNED clearance marker for MEMBER, keyed to
+# MEMBER's own content digest at ROOT's current HEAD (schema 3). The
+# root-parameterized twin of write_marker, built on member_digest_at.
+#   write_marker_at "$WT" "code-audit-frontend"
+write_marker_at() {
+  local root="$1" member="$2" digest sha tree infix sidecar
+  digest="$(member_digest_at "$root" "$member")"
+  sha=$(git -C "$root" rev-parse HEAD)
+  tree=$(git -C "$root" rev-parse "HEAD^{tree}")
+  if [ "$member" = "code-audit-frontend" ]; then infix=""; sidecar="true"; else infix=".$member"; sidecar="false"; fi
+  mkdir -p "$root/.gaia/local/audit"
+  printf '{"version":"1.4.0","schema":3,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$digest" "$tree" "$sha" "$sidecar" \
+    > "$root/.gaia/local/audit/${digest}${infix}.ok"
+  # The frontend agent always writes a companion disposition sidecar in the
+  # SAME audit run (sidecar:true above records that fact); mirror it here so
+  # an ordinary marker fixture does not trip the C4 fail-closed
+  # absent-sidecar check. The dedicated test for that check removes the
+  # sidecar this writes; write_sidecar_at overwrites it for the offender
+  # tests.
+  if [ "$member" = "code-audit-frontend" ] && [ ! -f "$root/.gaia/local/audit/${digest}.dispositions.json" ]; then
+    printf '{"schema":1,"backend":"absent","findings":[]}\n' \
+      > "$root/.gaia/local/audit/${digest}.dispositions.json"
+  fi
+}
+
+# Write a Code Audit Team EARNED clearance marker for MEMBER, keyed to
 # MEMBER's own content digest at REPO's current HEAD (schema 3). A marker
 # attests that a member audited exactly the files it owns plus gate
 # machinery, so it survives any change outside that set.
 #   write_marker "code-audit-frontend"
 #   write_marker "code-audit-maintainer-shell"
 write_marker() {
-  local member="$1" digest sha tree infix sidecar
-  digest="$(member_digest_for "$member")"
-  sha=$(git -C "$REPO" rev-parse HEAD)
-  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
-  if [ "$member" = "code-audit-frontend" ]; then infix=""; sidecar="true"; else infix=".$member"; sidecar="false"; fi
-  mkdir -p "$REPO/.gaia/local/audit"
-  printf '{"version":"1.4.0","schema":3,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
-    "$member" "$digest" "$tree" "$sha" "$sidecar" \
-    > "$REPO/.gaia/local/audit/${digest}${infix}.ok"
-  # The frontend agent always writes a companion disposition sidecar in the
-  # SAME audit run (sidecar:true above records that fact); mirror it here so
-  # an ordinary marker fixture does not trip the C4 fail-closed
-  # absent-sidecar check. The dedicated test for that check removes the
-  # sidecar this writes; write_sidecar overwrites it for the offender tests.
-  if [ "$member" = "code-audit-frontend" ] && [ ! -f "$REPO/.gaia/local/audit/${digest}.dispositions.json" ]; then
-    printf '{"schema":1,"backend":"absent","findings":[]}\n' \
-      > "$REPO/.gaia/local/audit/${digest}.dispositions.json"
-  fi
+  write_marker_at "$REPO" "$1"
 }
 
 # Write a REFUSAL artifact for MEMBER, keyed to the SAME digest write_marker
@@ -177,14 +192,55 @@ write_refused() {
     > "$REPO/.gaia/local/audit/${digest}${infix}.refused"
 }
 
+# Write a frontend disposition sidecar keyed to the frontend digest AT ROOT's
+# current HEAD. The root-parameterized twin of write_sidecar.
+write_sidecar_at() {
+  local root="$1" findings="${2:-[]}" backend="${3:-absent}" digest
+  digest="$(member_digest_at "$root" code-audit-frontend)"
+  mkdir -p "$root/.gaia/local/audit"
+  printf '{"schema":1,"backend":"%s","findings":%s}\n' "$backend" "$findings" \
+    > "$root/.gaia/local/audit/${digest}.dispositions.json"
+}
+
 # Write a frontend disposition sidecar keyed to the frontend digest AT REPO's
 # current HEAD.
 write_sidecar() {
-  local findings="${1:-[]}" backend="${2:-absent}" digest
-  digest="$(member_digest_for code-audit-frontend)"
-  mkdir -p "$REPO/.gaia/local/audit"
-  printf '{"schema":1,"backend":"%s","findings":%s}\n' "$backend" "$findings" \
-    > "$REPO/.gaia/local/audit/${digest}.dispositions.json"
+  write_sidecar_at "$REPO" "${1:-[]}" "${2:-absent}"
+}
+
+# make_no_base_repo_pr <name>
+#
+# A standalone repo whose branch is not `main`, carries no `origin` remote,
+# and has no `main` branch, so the FULL_BASE-style three-level chain
+# (_disposition_changed_set, mirroring the write-side derivation) cannot
+# resolve. Seeds .gaia/VERSION so the gate's version read succeeds. Asserts,
+# before returning, that neither merge-base arm the derivation tries
+# resolves, so the fixture cannot silently degrade into the resolved path
+# and green.
+make_no_base_repo_pr() {
+  local name="$1" dir
+  dir="$BATS_TEST_TMPDIR/$name"
+  mkdir -p "$dir/.gaia"
+  git -C "$dir" init --quiet --initial-branch=master
+  git -C "$dir" config user.email "test@example.com"
+  git -C "$dir" config user.name "Test"
+  git -C "$dir" config commit.gpgsign false
+  printf '1.4.0\n' > "$dir/.gaia/VERSION"
+  git -C "$dir" add .gaia/VERSION
+  git -C "$dir" commit --quiet -m "init"
+  printf 'second\n' > "$dir/.gaia/second.txt"
+  git -C "$dir" add .gaia/second.txt
+  git -C "$dir" commit --quiet -m "second"
+
+  if git -C "$dir" merge-base HEAD origin/main >/dev/null 2>&1; then
+    echo "make_no_base_repo_pr: origin/main unexpectedly resolved" >&2
+    return 1
+  fi
+  if git -C "$dir" merge-base HEAD main >/dev/null 2>&1; then
+    echo "make_no_base_repo_pr: main unexpectedly resolved" >&2
+    return 1
+  fi
+  printf '%s' "$dir"
 }
 
 # Print the spawn set the oracle resolves for REPO's current diff.
@@ -686,6 +742,147 @@ assert_not_in_set() {
   write_sidecar '[]' "absent"
 
   run_merge_hook
+  assert_allowed
+}
+
+# ---------------------------------------------------------------------------
+# machinery_waived abuse-check at the merge gate: arm (c) of
+# disposition_offenders is the union of the gate-machinery path set and this
+# pull request's own changed-file set. Every case here needs a valid
+# frontend marker AND a sidecar with a non-absent backend (write_marker's
+# auto-seeded "absent" backend short-circuits disposition_offenders before
+# arm (c) ever runs), so each writes the sidecar explicitly.
+# ---------------------------------------------------------------------------
+
+@test "machinery_waived abuse-check: near-miss keys (including a directory-prefix key) all deny at the merge gate" {
+  commit_files "app/x.ts" "export const x = 1" "docs/readme.md" "docs"
+
+  # Advance main past the fork point so a path main gained after the fork is
+  # a real candidate near-miss: present on the tree, absent from THIS
+  # branch's changed-file set.
+  git -C "$REPO" checkout --quiet main
+  mkdir -p "$REPO/unrelated"
+  printf 'only on main\n' > "$REPO/unrelated/only-main.md"
+  git -C "$REPO" add unrelated/only-main.md
+  git -C "$REPO" commit --quiet -m "advance main past the fork point"
+  git -C "$REPO" checkout --quiet feature
+
+  write_marker "code-audit-frontend"
+  # app/y.ts, app/x.tsx, x.ts, vendor/app/x.ts probe the SUFFIX/substring
+  # directions; unrelated/only-main.md probes "on the tree but not in this
+  # branch's diff"; app/x probes the PREFIX direction, a waived path that is
+  # a directory-prefix of the changed app/x.ts, which only an exact
+  # whole-string equality test (never a `case "$_p" in "$want"*)` prefix
+  # match) correctly rejects.
+  write_sidecar '[
+    {"key":"v1 class=x path=app/y.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"},
+    {"key":"v1 class=x path=app/x.tsx line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"},
+    {"key":"v1 class=x path=x.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"},
+    {"key":"v1 class=x path=vendor/app/x.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"},
+    {"key":"v1 class=x path=unrelated/only-main.md line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"},
+    {"key":"v1 class=x path=app/x line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}
+  ]' "github"
+
+  run_merge_hook
+  assert_denied
+  grep -qF "machinery-waived-not-eligible: v1 class=x path=app/y.ts line=1" <<<"$output" || return 1
+  grep -qF "machinery-waived-not-eligible: v1 class=x path=app/x.tsx line=1" <<<"$output" || return 1
+  grep -qF "machinery-waived-not-eligible: v1 class=x path=x.ts line=1" <<<"$output" || return 1
+  grep -qF "machinery-waived-not-eligible: v1 class=x path=vendor/app/x.ts line=1" <<<"$output" || return 1
+  grep -qF "machinery-waived-not-eligible: v1 class=x path=unrelated/only-main.md line=1" <<<"$output" || return 1
+  grep -qF "machinery-waived-not-eligible: v1 class=x path=app/x line=1" <<<"$output" || return 1
+}
+
+@test "machinery_waived abuse-check: a key on a path this branch actually changed clears the merge" {
+  commit_files "app/x.ts" "export const x = 1" "docs/readme.md" "docs"
+  write_marker "code-audit-frontend"
+
+  # First prove the disposition arm is genuinely reached: a sibling offender
+  # in the SAME sidecar must deny, so the eventual "no deny" assertion below
+  # cannot pass on a gate that read nothing.
+  write_sidecar '[
+    {"key":"v1 class=x path=app/y.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"},
+    {"key":"v1 class=x path=app/x.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}
+  ]' "github"
+  run_merge_hook
+  assert_denied
+  grep -qF "machinery-waived-not-eligible: v1 class=x path=app/y.ts line=1" <<<"$output" || return 1
+
+  # Drop the sibling offender; the surviving entry is keyed to app/x.ts, a
+  # path this branch's diff against the fork point genuinely contains.
+  write_sidecar '[{"key":"v1 class=x path=app/x.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}]' "github"
+  run_merge_hook
+  grep -qF '"permissionDecision": "deny"' <<<"$output" && return 1
+  assert_allowed
+}
+
+@test "machinery_waived abuse-check: an unresolvable base still denies a non-machinery key (gate-machinery term, not the git failure)" {
+  local repo
+  repo="$(make_no_base_repo_pr no-base-nonmachinery)"
+  write_marker_at "$repo" "code-audit-frontend"
+  write_sidecar_at "$repo" '[{"key":"v1 class=x path=app/other.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}]' "github"
+
+  run_merge_hook_at "$repo"
+  assert_denied
+  grep -qF "machinery-waived-not-eligible: v1 class=x path=app/other.ts line=1" <<<"$output" || return 1
+}
+
+@test "machinery_waived abuse-check: an unresolvable base still clears a gate-machinery key, with a changed-files-unverified note" {
+  local repo json
+  repo="$(make_no_base_repo_pr no-base-machinery)"
+  write_marker_at "$repo" "code-audit-frontend"
+  write_sidecar_at "$repo" '[{"key":"v1 class=x path=.claude/hooks/lib/audit-machinery.sh line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}]' "github"
+
+  # The note is written to stderr; stdout stays JSON-only (both hooks always
+  # exit 0). Merge stderr into $output explicitly rather than rely on bats'
+  # own stdout/stderr handling, so this assertion is not sensitive to it.
+  json=$(jq -n --arg c "gh pr merge 30 --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $c}}')
+  run bash -c "cd '$repo' && printf '%s' '$json' | bash '$HOOK_ABS' 2>&1"
+
+  # First assert positively that the gate reached the disposition arm, so
+  # this case cannot pass on a gate that returned before reading anything.
+  grep -qF "changed-files-unverified: v1 class=x path=.claude/hooks/lib/audit-machinery.sh line=1" <<<"$output" || return 1
+  grep -qF '"permissionDecision": "deny"' <<<"$output" && return 1
+  assert_allowed
+}
+
+@test "machinery_waived abuse-check: a resolved base with a genuinely empty diff still denies a non-machinery key, with no note" {
+  # setup() leaves feature at the exact same commit as main (no divergence
+  # yet), so merge-base(HEAD, main) resolves to HEAD itself and the
+  # three-dot diff is legitimately empty: a resolved base, not an
+  # unresolved one.
+  write_marker "code-audit-frontend"
+  write_sidecar '[{"key":"v1 class=x path=app/other.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}]' "github"
+
+  local json
+  json=$(jq -n --arg c "gh pr merge 30 --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $c}}')
+  run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS' 2>&1"
+
+  grep -qF "machinery-waived-not-eligible: v1 class=x path=app/other.ts line=1" <<<"$output" || return 1
+  assert_denied
+  grep -qF "changed-files-unverified" <<<"$output" && return 1
+  grep -qF "changed-files-not-attributable" <<<"$output" && return 1
+  return 0
+}
+
+@test "machinery_waived abuse-check: an unresolvable base alone does not block a merge with no machinery_waived entries" {
+  local repo
+  repo="$(make_no_base_repo_pr no-base-empty)"
+  write_marker_at "$repo" "code-audit-frontend"
+
+  # First prove the disposition arm is reached: a pending(definitive) entry
+  # (an arm unconditional on the diff base) must deny.
+  write_sidecar_at "$repo" '[{"key":"v1 class=x path=sibling line=1","severity":"suggestion","security_class":false,"disposition":"pending","pending_reason":"definitive"}]' "github"
+  run_merge_hook_at "$repo"
+  assert_denied
+  grep -qF "pending(definitive): v1 class=x path=sibling line=1" <<<"$output" || return 1
+
+  # With zero findings at all, the unresolvable base by itself must never
+  # deny: nothing depends on it.
+  write_sidecar_at "$repo" '[]' "github"
+  run_merge_hook_at "$repo"
   assert_allowed
 }
 

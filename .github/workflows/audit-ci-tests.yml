@@ -179,6 +179,10 @@ jobs:
               - '.claude/skills/file-tech-debt/SKILL.md'
               - '.claude/skills/gaia/references/audit.md'
               - '.claude/agents/code-audit-*.md'
+              # doc-machinery-waive-prose.bats (.gaia/tests/lib/) greps the
+              # out-of-scope disposition rule on this page; it is a source the
+              # suite guards, and it matches no other pattern here.
+              - 'wiki/concepts/PR Merge Workflow.md'
               # The doc-setup-gaia-isolation and doc-gaia-init-isolation suites
               # (.gaia/tests/lib/) grep the /setup-gaia Phase 3.5 clause and the
               # /gaia-init Step 9 question block; trigger on the two command

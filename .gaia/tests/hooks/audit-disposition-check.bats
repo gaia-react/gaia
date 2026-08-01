@@ -132,7 +132,7 @@ write_sidecar() { printf '%s\n' "$1" > "$SIDECAR"; }
   write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=holistic/x path=app/x.ts line=5","disposition":"machinery_waived"}]}'
   run disposition_offenders "$SIDECAR"
   [ "$status" -eq 0 ]
-  grep -q "machinery-waived-not-machinery: v1 class=holistic/x path=app/x.ts line=5" <<<"$output" || return 1
+  grep -q "machinery-waived-not-eligible: v1 class=holistic/x path=app/x.ts line=5" <<<"$output" || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -331,6 +331,434 @@ assert_denied() {
 }
 
 # ---------------------------------------------------------------------------
+# SPEC-064 fixtures: a pull-request-shaped repository (a base commit on
+# `main`, a `feature` branch with real divergence) for exercising the
+# eligibility union's TRUE branch, which neither seed_repo (single commit,
+# permanently empty diff) nor a bare $SIDECAR-only call (acting_root omitted)
+# can reach.
+# ---------------------------------------------------------------------------
+
+# make_pr_repo <name> [--advance-main <path>] [<committed-path>...]
+#
+# Builds a repo under $BATS_TEST_TMPDIR/<name>: git init on `main`, a base
+# commit, then `git checkout -b feature` and one commit per <committed-path>.
+# --advance-main <path> additionally commits <path> ON MAIN after the fork
+# point and returns to `feature`, giving a fixture a path the default branch
+# changed after the fork that the branch itself did not.
+#
+# ASSERTS the derived changed-file set is non-empty before returning stdout,
+# and fails (returns 1, prints nothing) when it is not: a fixture that
+# silently degrades to the unresolvable-base path would green every positive
+# case while proving nothing. Callers must check:
+# `repo="$(make_pr_repo ...)" || return 1` (a `local` declaration on the same
+# line swallows the command substitution's own exit status).
+make_pr_repo() {
+  local name="$1"; shift
+  local dir="$BATS_TEST_TMPDIR/$name"
+  local advance_main="" p changed_file
+  local paths=()
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --advance-main) advance_main="$2"; shift 2 ;;
+      *) paths[${#paths[@]}]="$1"; shift ;;
+    esac
+  done
+
+  mkdir -p "$dir/app" "$dir/.gaia"
+  git_init "$dir"
+  echo "export const base = 1;" > "$dir/app/base.ts"
+  printf '1.6.1\n' > "$dir/.gaia/VERSION"
+  git -C "$dir" add -A
+  git -C "$dir" commit --quiet -m "base"
+
+  git -C "$dir" checkout --quiet -b feature
+
+  for p in "${paths[@]}"; do
+    mkdir -p "$dir/$(dirname "$p")"
+    printf 'touched\n' > "$dir/$p"
+    git -C "$dir" add "$p"
+    git -C "$dir" commit --quiet -m "add $p"
+  done
+
+  if [ -n "$advance_main" ]; then
+    git -C "$dir" checkout --quiet main
+    mkdir -p "$dir/$(dirname "$advance_main")"
+    printf 'main-only\n' > "$dir/$advance_main"
+    git -C "$dir" add "$advance_main"
+    git -C "$dir" commit --quiet -m "advance main"
+    git -C "$dir" checkout --quiet feature
+  fi
+
+  changed_file="$BATS_TEST_TMPDIR/.${name}.changed-check"
+  _disposition_changed_set "$dir" "$changed_file" || {
+    echo "make_pr_repo($name): the changed-file set's base did not resolve" >&2
+    return 1
+  }
+  [ -s "$changed_file" ] || {
+    echo "make_pr_repo($name): the changed-file set resolved empty; fixture is degraded" >&2
+    rm -f "$changed_file"
+    return 1
+  }
+  rm -f "$changed_file"
+
+  printf '%s' "$dir"
+}
+
+# make_no_base_repo <name>
+#
+# A repo on `master` (never `main`), no origin remote: the default-branch
+# probe finds no refs/remotes/origin/HEAD, falls back to the literal `main`,
+# and neither `origin/main` nor `main` exists, so FULL_BASE cannot resolve.
+# Mirrors .gaia/scripts/tests/audit-base-agreement.bats's make_no_base_repo
+# shape (a reachable adopter shape, not a contrivance), extended with app/ +
+# .gaia/VERSION so the hook tier's digest engine recognizes the fixture.
+make_no_base_repo() {
+  local name="$1"
+  local dir="$BATS_TEST_TMPDIR/$name"
+  mkdir -p "$dir/app" "$dir/.gaia"
+  git -C "$dir" init --quiet --initial-branch=master
+  git -C "$dir" config user.email "test@example.com"
+  git -C "$dir" config user.name "Test"
+  git -C "$dir" config commit.gpgsign false
+  echo "export const x = 1;" > "$dir/app/x.ts"
+  printf '1.6.1\n' > "$dir/.gaia/VERSION"
+  git -C "$dir" add -A
+  git -C "$dir" commit --quiet -m "seed"
+  printf '%s' "$dir"
+}
+
+# commit_on_second_branch <repo> <path>
+#
+# Branches off <repo>'s CURRENT branch, commits <path> on the new branch, and
+# returns to the original branch, leaving the new branch LIVE (a real ref).
+# Prints the new commit's sha. For the not-attributable case: a sha reachable
+# from another live ref, never from the branch under judgment.
+commit_on_second_branch() {
+  local repo="$1" path="$2" cur sha
+  cur="$(git -C "$repo" symbolic-ref --short HEAD)"
+  git -C "$repo" checkout --quiet -b "${cur}-other-pr" "$cur"
+  mkdir -p "$repo/$(dirname "$path")"
+  printf 'other pr content\n' > "$repo/$path"
+  git -C "$repo" add "$path"
+  git -C "$repo" commit --quiet -m "other pr commit"
+  sha="$(git -C "$repo" rev-parse HEAD)"
+  git -C "$repo" checkout --quiet "$cur"
+  printf '%s' "$sha"
+}
+
+# orphan_commit_on_current_branch <repo> <path>
+#
+# Commits <path> on <repo>'s CURRENT branch, then rewinds the branch
+# (`reset --hard HEAD~1`), leaving the commit orphaned: reachable from no ref.
+# Prints the orphaned sha. Simulates an amend/rebase/force-push on the same
+# branch, the case the orphan probe exists to still deny.
+orphan_commit_on_current_branch() {
+  local repo="$1" path="$2" sha
+  mkdir -p "$repo/$(dirname "$path")"
+  printf 'to be orphaned\n' > "$repo/$path"
+  git -C "$repo" add "$path"
+  git -C "$repo" commit --quiet -m "will be orphaned"
+  sha="$(git -C "$repo" rev-parse HEAD)"
+  git -C "$repo" reset --quiet --hard HEAD~1
+  printf '%s' "$sha"
+}
+
+# ---------------------------------------------------------------------------
+# disposition_offenders / disposition_notes: the widened union eligibility
+# (SPEC-064) -- gate-machinery paths UNION this pull request's own
+# changed-file set. Frozen contracts B, C, D, E in README.md.
+# ---------------------------------------------------------------------------
+
+@test "offenders: union -- a non-machinery path the branch changes clears; the same shape absent from the diff denies (one repo, one run)" {
+  local repo
+  repo="$(make_pr_repo case-union app/in-diff.ts)" || return 1
+  write_sidecar '{"schema":1,"backend":"github","findings":[
+    {"key":"v1 class=x path=app/in-diff.ts line=1","disposition":"machinery_waived"},
+    {"key":"v1 class=x path=app/other.ts line=1","disposition":"machinery_waived"}
+  ]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "app/in-diff.ts" <<<"$output" && return 1
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/other.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders/notes: the union is a union, not a replacement -- a machinery path absent from the diff still clears, with no note" {
+  local repo
+  repo="$(make_pr_repo case-union2 app/in-diff.ts)" || return 1
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=.claude/hooks/lib/audit-machinery.sh line=1","disposition":"machinery_waived"}]}'
+
+  local changed_file="$BATS_TEST_TMPDIR/case-union2-changed"
+  _disposition_changed_set "$repo" "$changed_file" || return 1
+  _disposition_set_contains "$changed_file" ".claude/hooks/lib/audit-machinery.sh" && return 1
+
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run disposition_notes "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "offenders: near-miss library-tier cases prove exact whole-string equality, never prefix/suffix/basename/substring in either direction" {
+  local repo
+  repo="$(make_pr_repo case-nearmiss --advance-main app/main-advance.ts app/x.ts docs/readme.md)" || return 1
+  write_sidecar '{"schema":1,"backend":"github","findings":[
+    {"key":"v1 class=x path=app/y.ts line=1","disposition":"machinery_waived"},
+    {"key":"v1 class=x path=app/x.tsx line=1","disposition":"machinery_waived"},
+    {"key":"v1 class=x path=x.ts line=1","disposition":"machinery_waived"},
+    {"key":"v1 class=x path=vendor/app/x.ts line=1","disposition":"machinery_waived"},
+    {"key":"v1 class=x path=app/main-advance.ts line=1","disposition":"machinery_waived"},
+    {"key":"v1 class=x path=app/x line=1","disposition":"machinery_waived"}
+  ]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/y.ts line=1" <<<"$output" || return 1
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/x.tsx line=1" <<<"$output" || return 1
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=x.ts line=1" <<<"$output" || return 1
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=vendor/app/x.ts line=1" <<<"$output" || return 1
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/main-advance.ts line=1" <<<"$output" || return 1
+  # The PREFIX-direction near-miss: `app/x` is a proper prefix of the changed
+  # `app/x.ts`, not an equal string. A `case "$_p" in "$want"*)` mutation of
+  # _disposition_set_contains's equality test clears this one (the changed
+  # path starts with the waived path) while the shipped exact-match code
+  # correctly keeps it an offender.
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/x line=1" <<<"$output" || return 1
+}
+
+@test "offenders: a malformed key on a machinery path still fails closed as an offender (the key-shape check precedes the machinery term)" {
+  # No acting root: the key-shape check runs before any git call, so this
+  # holds regardless of whether a root is passed.
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=.claude/rules/foo","disposition":"machinery_waived"}]}'
+  run disposition_offenders "$SIDECAR"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=.claude/rules/foo" <<<"$output" || return 1
+}
+
+@test "offenders: unresolvable base, non-machinery path -- the offender is grounded in the machinery term, not the git failure" {
+  local repo
+  repo="$(make_no_base_repo case-nobase-offender)"
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=app/y.ts line=1","disposition":"machinery_waived"}]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/y.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders/notes: unresolvable base, machinery path -- not an offender, and disposition_notes says changed-files-unverified" {
+  local repo
+  repo="$(make_no_base_repo case-nobase-clean)"
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=.claude/hooks/lib/audit-machinery.sh line=1","disposition":"machinery_waived"}]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run disposition_notes "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "changed-files-unverified: v1 class=x path=.claude/hooks/lib/audit-machinery.sh line=1" <<<"$output" || return 1
+}
+
+@test "offenders/notes: a resolved base with a genuinely empty diff is still an offender, with no note (not the same state as an unresolved base)" {
+  local repo="$BATS_TEST_TMPDIR/case-empty-diff"
+  mkdir -p "$repo"
+  seed_repo "$repo"
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=app/y.ts line=1","disposition":"machinery_waived"}]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/y.ts line=1" <<<"$output" || return 1
+
+  run disposition_notes "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "offenders: a linked worktree resolves the changed-file set from its OWN root, never an ambient cwd or the sidecar's directory" {
+  local main_repo wt_dir
+  main_repo="$BATS_TEST_TMPDIR/case-worktree-main"
+  mkdir -p "$main_repo/app" "$main_repo/.gaia"
+  git_init "$main_repo"
+  echo "export const base = 1;" > "$main_repo/app/base.ts"
+  printf '1.6.1\n' > "$main_repo/.gaia/VERSION"
+  git -C "$main_repo" add -A
+  git -C "$main_repo" commit --quiet -m "base"
+
+  wt_dir="$BATS_TEST_TMPDIR/case-worktree-wt"
+  git -C "$main_repo" worktree add --quiet -b case-worktree-feature "$wt_dir" main
+  mkdir -p "$wt_dir/app"
+  printf 'export const wt = 1;\n' > "$wt_dir/app/wt-only.ts"
+  git -C "$wt_dir" add "app/wt-only.ts"
+  git -C "$wt_dir" commit --quiet -m "worktree commit"
+
+  # The sidecar lives in the MAIN checkout; the acting root passed to
+  # disposition_offenders below is the WORKTREE. Resolving from the
+  # sidecar's own directory ($main_repo) or an ambient cwd would never see
+  # app/wt-only.ts, so either mistake reds this.
+  local sidecar="$main_repo/head.dispositions.json"
+  printf '%s\n' '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=app/wt-only.ts line=1","disposition":"machinery_waived"}]}' \
+    > "$sidecar"
+
+  run disposition_offenders "$sidecar" "$wt_dir"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "offenders/notes: a sidecar attributed to another live branch's commit is set aside, not silently granted a waive; sha-absent is the control" {
+  local repo other_sha
+  repo="$(make_pr_repo case-attrib app/in-diff.ts)" || return 1
+  other_sha="$(commit_on_second_branch "$repo" app/other-pr-only.ts)"
+
+  write_sidecar "$(printf '{"schema":1,"backend":"github","sha":"%s","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}' "$other_sha")"
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run disposition_notes "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "changed-files-not-attributable: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+
+  # Control: the same key with sha absent DOES produce the offender, proving
+  # this test measures attribution rather than an unconditional pass.
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders: a history-rewrite-orphaned sha on the SAME branch still denies (the force-push case the orphan probe exists for)" {
+  local repo orphaned_sha
+  repo="$(make_pr_repo case-orphan app/in-diff.ts)" || return 1
+  orphaned_sha="$(orphan_commit_on_current_branch "$repo" app/will-be-orphaned.ts)"
+
+  write_sidecar "$(printf '{"schema":1,"backend":"github","sha":"%s","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}' "$orphaned_sha")"
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders: a sha naming no commit is inconclusive and reads as attributable, never set aside on a guess" {
+  local repo
+  repo="$(make_pr_repo case-unknown-sha app/in-diff.ts)" || return 1
+  write_sidecar '{"schema":1,"backend":"github","sha":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders/notes: the machinery classifier being unresolvable fails the WHOLE arm open, never stricter than today" {
+  local repo lib_copy_dir
+  repo="$(make_pr_repo case-noclassifier app/in-diff.ts)" || return 1
+
+  lib_copy_dir="$BATS_TEST_TMPDIR/case-noclassifier-lib"
+  mkdir -p "$lib_copy_dir"
+  cp "$LIB" "$lib_copy_dir/audit-dispositions.sh"
+  # Deliberately no audit-machinery.sh alongside: the lib's lazy BASH_SOURCE-
+  # relative self-source then has nothing to load, and a fresh `bash -c`
+  # subshell never sourced the real one either.
+
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}'
+
+  run bash -c '. "$1"; disposition_offenders "$2" "$3"' \
+    _ "$lib_copy_dir/audit-dispositions.sh" "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run bash -c '. "$1"; disposition_notes "$2" "$3"' \
+    _ "$lib_copy_dir/audit-dispositions.sh" "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-classifier-unavailable: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders: an unparseable dedup key fails closed as an offender, never cleared by a changed-files match it does not name" {
+  local repo
+  repo="$(make_pr_repo case-badkey app/in-diff.ts)" || return 1
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"not a valid key shape","disposition":"machinery_waived"}]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: not a valid key shape" <<<"$output" || return 1
+}
+
+@test "offenders: a non-ASCII path round-trips through the NUL-delimited changed-file set" {
+  local repo real_path
+  # A real UTF-8-encoded filename ("café.ts"), matching what a real
+  # `git diff -z` emits and what a real finding key carries.
+  real_path=$(printf 'app/caf\xc3\xa9.ts')
+  repo="$(make_pr_repo case-nonascii "$real_path")" || return 1
+  write_sidecar "$(printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=%s line=1","disposition":"machinery_waived"}]}' "$real_path")"
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "offenders: a cross-member orchestrator waive on a .gaia/cli/src/ path the branch changes clears the gate, with no filing side effect" {
+  local repo head_sha committed_path=".gaia/cli/src/fixture.ts"
+  repo="$(make_pr_repo case-crossmember "$committed_path")" || return 1
+  head_sha="$(git -C "$repo" rev-parse HEAD)"
+
+  write_sidecar "$(printf '{"schema":1,"sha":"%s","backend":"github","findings":[{"key":"v1 class=x path=%s line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}]}' "$head_sha" "$committed_path")"
+
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  [ "$(jq -r '.findings[0].issue_number // "null"' "$SIDECAR")" = "null" ]
+  [ ! -f "$repo/.gaia/local/debt/refresh-requested" ]
+}
+
+@test "offenders: the same contract-shaped sidecar denies when the .gaia/cli/src/ path is NOT one the branch changes" {
+  local repo head_sha committed_path=".gaia/cli/src/fixture.ts" other_path=".gaia/cli/src/untouched.ts"
+  repo="$(make_pr_repo case-crossmember-neg "$committed_path")" || return 1
+  head_sha="$(git -C "$repo" rev-parse HEAD)"
+
+  write_sidecar "$(printf '{"schema":1,"sha":"%s","backend":"github","findings":[{"key":"v1 class=x path=%s line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}]}' "$head_sha" "$other_path")"
+
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=${other_path} line=1" <<<"$output" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# disposition_notes: silence under its four preconditions. The frozen table
+# (README.md contract B) has exactly three line shapes; none fits "the arm
+# did not run for a reason unrelated to eligibility", so the correct
+# assertion for each of these is silence, not a fourth line shape.
+# ---------------------------------------------------------------------------
+
+@test "notes: absent jq -> silence, not a fourth line shape" {
+  write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=app/x.ts line=1","disposition":"machinery_waived"}]}'
+  mkdir -p "$BATS_TEST_TMPDIR/empty-bin"
+  # PATH is scoped to the child bash -c subshell only, mirroring the
+  # seed-forward jq-unavailable test: replacing PATH in this process would
+  # also strip it from bats-core's own post-test cleanup.
+  run bash -c '
+    PATH="$1"
+    . "$2"
+    disposition_notes "$3"
+  ' _ "$BATS_TEST_TMPDIR/empty-bin" "$LIB" "$SIDECAR"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "notes: no sidecar -> silence" {
+  run disposition_notes "$BATS_TEST_TMPDIR/does-not-exist.json"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "notes: unparseable sidecar -> silence" {
+  write_sidecar 'not json {'
+  run disposition_notes "$SIDECAR"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "notes: backend absent -> silence (even with a machinery_waived entry)" {
+  write_sidecar '{"schema":1,"backend":"absent","findings":[{"key":"v1 class=x path=app/x.ts line=1","disposition":"machinery_waived"}]}'
+  run disposition_notes "$SIDECAR"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# ---------------------------------------------------------------------------
 # Hook: fail-open cases preserved under digest keying
 # ---------------------------------------------------------------------------
 
@@ -381,7 +809,7 @@ assert_denied() {
     > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   run_disposition_hook "$ROOT"
   assert_denied
-  grep -qF -- "machinery-waived-not-machinery: v1 class=holistic/x path=app/x.ts line=1" <<<"$output" || return 1
+  grep -qF -- "machinery-waived-not-eligible: v1 class=holistic/x path=app/x.ts line=1" <<<"$output" || return 1
 }
 
 @test "hook: sidecar present but unparseable -> fail open (allow)" {
@@ -436,6 +864,52 @@ assert_denied() {
   git -C "$ROOT" commit -aqm "rotate"
   run_disposition_hook "$ROOT"
   assert_allowed
+}
+
+# ---------------------------------------------------------------------------
+# Hook: SPEC-064 widened-eligibility mirrors (cases 4, 5, 14). Case 6's hook
+# mirror is the existing "a machinery_waived entry whose path is NOT
+# machinery -> DENY" test above: seed_repo's single-commit fixture already
+# resolves a base equal to HEAD, a genuinely empty diff, not an unresolved
+# one.
+# ---------------------------------------------------------------------------
+
+@test "hook: unresolvable base, non-machinery path -> DENY, grounded in the machinery term" {
+  ROOT="$(make_no_base_repo hooknobase-offender)"
+  digest="$(frontend_digest_of "$ROOT")"
+  [ -n "$digest" ] || skip "could not derive digest"
+  mkdir -p "$ROOT/.gaia/local/audit"
+  printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=app/y.ts line=1","disposition":"machinery_waived"}]}\n' \
+    > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
+  run_disposition_hook "$ROOT"
+  assert_denied
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/y.ts line=1" <<<"$output" || return 1
+}
+
+@test "hook: unresolvable base, machinery path -> allow (positive absence check on the deny string), notes says changed-files-unverified" {
+  ROOT="$(make_no_base_repo hooknobase-clean)"
+  digest="$(frontend_digest_of "$ROOT")"
+  [ -n "$digest" ] || skip "could not derive digest"
+  mkdir -p "$ROOT/.gaia/local/audit"
+  printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=.claude/hooks/lib/audit-machinery.sh line=1","disposition":"machinery_waived"}]}\n' \
+    > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
+  run_disposition_hook "$ROOT"
+  assert_allowed
+  grep -qF -- "changed-files-unverified: v1 class=x path=.claude/hooks/lib/audit-machinery.sh line=1" <<<"$output" || return 1
+}
+
+@test "hook: a cross-member orchestrator waive on a .gaia/cli/src/ path the branch changes -> allow, no filing side effect" {
+  ROOT="$(make_pr_repo hookcrossmember .gaia/cli/src/fixture.ts)" || return 1
+  digest="$(frontend_digest_of "$ROOT")"
+  [ -n "$digest" ] || skip "could not derive digest"
+  head_sha="$(git -C "$ROOT" rev-parse HEAD)"
+  mkdir -p "$ROOT/.gaia/local/audit"
+  printf '{"schema":1,"sha":"%s","backend":"github","findings":[{"key":"v1 class=x path=.gaia/cli/src/fixture.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}]}\n' \
+    "$head_sha" > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
+  run_disposition_hook "$ROOT"
+  assert_allowed
+  [ "$(jq -r '.findings[0].issue_number // "null"' "$ROOT/.gaia/local/audit/${digest}.dispositions.json")" = "null" ]
+  [ ! -f "$ROOT/.gaia/local/debt/refresh-requested" ]
 }
 
 # ---------------------------------------------------------------------------

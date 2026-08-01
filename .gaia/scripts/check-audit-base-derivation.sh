@@ -36,17 +36,22 @@
 #      no other consumer uses.
 #
 #      One bare merge-base is legitimate and is deliberately exempted by
-#      NAME: `FULL_BASE`, the whole-PR fork point each specialist keeps for
-#      its SELF-SKIP arm. Self-skip is a membership decision, and membership
-#      is resolved over the whole PR diff (.gaia/scripts/resolve-audit-members.sh,
+#      NAME: `FULL_BASE`, the whole-PR fork point a member resolves whenever
+#      it needs one that is not a review base. A specialist keeps it for its
+#      SELF-SKIP arm: self-skip is a membership decision, and membership is
+#      resolved over the whole PR diff (.gaia/scripts/resolve-audit-members.sh,
 #      and the "Full-PR scope (load-bearing)" note in
 #      .github/audit/gate-pending-members.sh). A member that self-skipped on
 #      the increment could write no marker while membership still demanded
-#      one, deadlocking the merge. So the exemption is not a loophole in
-#      this check; it is the other half of the design, and the variable name
-#      is what tells the two apart. The assignment that owns a `merge-base`
-#      call is the nearest `IDENT=` to its left, and `FULL_BASE` is the only
-#      name allowed to own a call that does not pass `BASE_REF`.
+#      one, deadlocking the merge. The default member keeps its own
+#      `FULL_BASE` for a different job: the eligibility set the out-of-scope
+#      machinery-waive abuse-check reads (.claude/hooks/lib/audit-dispositions.sh),
+#      never a review base either. So the exemption is not a loophole in this
+#      check; it is the other half of the design, and the variable name is
+#      what tells a legitimate whole-PR base apart from a drifted review base
+#      regardless of which job it serves. The assignment that owns a
+#      `merge-base` call is the nearest `IDENT=` to its left, and `FULL_BASE`
+#      is the only name allowed to own a call that does not pass `BASE_REF`.
 #
 #   2. Every file that NAMES `BASE_SHA` also names `resolve-audit-base.sh`.
 #      A token-presence net over the whole file, not a call-shape check: the
