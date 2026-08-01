@@ -44,13 +44,6 @@
 # task-tests-abuse-check's fixture case asserting a contract-shaped
 # orchestrator waive on a `.gaia/cli/src/` path clears the abuse-check.
 #
-# KNOWN GAP (reported, not silently weakened): the cross-remit section as
-# shipped names neither `audit_path_is_machinery` nor `AUDIT_MACHINERY_PATHS`
-# anywhere in its text, even though the plan's Group 1 requires that
-# assertion of both surfaces (B-mw does name it). The assertion below is
-# written exactly as specified and currently REDS for the cross-remit half;
-# see this suite's own PR / task report rather than a weakened grep.
-#
 # Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is
 # 3.2, where a false non-final bare `[[ ]]` does not fail the test, and a
 # `!`-negated command never fails a non-final line on any bash. Every

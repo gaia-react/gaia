@@ -4,7 +4,7 @@
 #
 # The disposition-ledger sidecar is keyed to the frontend member's content
 # digest (<frontend-digest>.dispositions.json), valid iff the frontend earned
-# marker for that digest is valid. Three functions:
+# marker for that digest is valid. Four functions:
 #
 #   disposition_offenders <sidecar> [<acting-root>]
 #       Prints one offender line per unmet disposition on stdout; empty output
@@ -30,6 +30,12 @@
 #       disposition_offenders and resolves the changed-file set through the same
 #       helper, so there is one eligibility implementation rather than two. It
 #       denies nothing itself; the gates decide what to do with the lines.
+#
+#   disposition_note_block <notes>
+#       Renders disposition_notes' output as the block a gate writes to stderr
+#       and appends to its deny reason. Both gates fire on the same
+#       `gh pr merge` and describe the same conditions, so they render it from
+#       here rather than each carrying a copy that can drift.
 #
 #   disposition_seed_forward <prev-sidecar> <new-sidecar>
 #       Unions every still-open entry (`filed`, or `pending` with
@@ -447,6 +453,46 @@ $mw_keys
 EOF
 
   [ -n "$notes" ] && printf '%s' "$notes"
+  return 0
+}
+
+# --- disposition_note_block <notes> ------------------------------------------
+#
+# Renders disposition_notes' raw output as the operator-visible block a gate
+# writes to stderr, and appends to its deny reason when it also denies. Empty
+# output when <notes> is empty. Never changes an allow/deny decision: a gate
+# that allows still prints it, because "could not verify" has to stay
+# distinguishable from "verified clean".
+#
+# It lives here rather than in either gate because both gates fire on the same
+# `gh pr merge` and describe the same three conditions. Two copies drift into
+# two different explanations of one condition, and which one an operator reads
+# depends on nothing more principled than which gate denies first.
+disposition_note_block() {
+  local notes="$1" block=""
+  [ -n "$notes" ] || return 0
+
+  block="Disposition abuse-check notes for machinery_waived entries whose changed-files verdict could not run:
+
+${notes%$'\n'}"
+
+  if printf '%s\n' "$notes" | grep -q '^machinery-classifier-unavailable:'; then
+    block="${block}
+
+machinery-classifier-unavailable: the machinery path list could not be loaded, so the waive abuse-check did not run at all for this merge."
+  fi
+  if printf '%s\n' "$notes" | grep -q '^changed-files-not-attributable:'; then
+    block="${block}
+
+changed-files-not-attributable: the sidecar was written while judging a different pull request, so its entries were set aside rather than judged against this diff."
+  fi
+  if printf '%s\n' "$notes" | grep -q '^changed-files-unverified:'; then
+    block="${block}
+
+changed-files-unverified: this tree's pull-request diff base could not be resolved, so only the gate-machinery term was evaluated for that entry."
+  fi
+
+  printf '%s' "$block"
   return 0
 }
 

@@ -576,39 +576,6 @@ frontend_cleared() {
   return 1
 }
 
-# _gate_disposition_note_block <notes> -> the operator-visible block for
-# stderr (and the deny reason, when this gate also denies), or empty when
-# <notes> is empty. <notes> is disposition_notes' raw output: one line per
-# machinery_waived entry whose changed-files verdict could not run. Never
-# changes the allow/deny decision -- a gate that allows still prints it,
-# because "could not verify" must stay distinguishable from "verified clean".
-_gate_disposition_note_block() {
-  local notes="$1" block=""
-  [ -n "$notes" ] || return 0
-
-  block="Disposition abuse-check notes for machinery_waived entries whose changed-files verdict could not run:
-
-${notes%$'\n'}"
-
-  if printf '%s\n' "$notes" | grep -q '^machinery-classifier-unavailable:'; then
-    block="${block}
-
-machinery-classifier-unavailable: the machinery path list could not be loaded, so the waive abuse-check did not run at all for this merge."
-  fi
-  if printf '%s\n' "$notes" | grep -q '^changed-files-not-attributable:'; then
-    block="${block}
-
-changed-files-not-attributable: the sidecar was written while judging a different pull request, so its entries were set aside rather than judged against this diff."
-  fi
-  if printf '%s\n' "$notes" | grep -q '^changed-files-unverified:'; then
-    block="${block}
-
-changed-files-unverified: this tree's pull-request diff base could not be resolved, so only the gate-machinery term was evaluated for that entry."
-  fi
-
-  printf '%s' "$block"
-}
-
 # _gate_frontend_disposition_denial: when code-audit-frontend's OWN earned
 # digest marker is valid (regardless of whether a trailer/status/bypass signal
 # is what ultimately clears the merge), re-verify its disposition sidecar.
@@ -652,7 +619,10 @@ See wiki/concepts/PR Merge Workflow.md for the full contract."
   if command -v disposition_notes >/dev/null 2>&1; then
     notes="$(disposition_notes "$sidecar" "$tree_root" 2>/dev/null || true)"
   fi
-  note_block="$(_gate_disposition_note_block "$notes")"
+  note_block=""
+  if [ -n "$notes" ] && command -v disposition_note_block >/dev/null 2>&1; then
+    note_block="$(disposition_note_block "$notes")"
+  fi
   if [ -n "$note_block" ]; then
     printf '%s\n' "$note_block" >&2
   fi
