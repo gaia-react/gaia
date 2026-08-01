@@ -604,6 +604,15 @@ printf '%s\n' \"\$debt_origin_changed\"")"
     echo "the workflow prompt no longer maps a missing or empty pr-changed-files.txt to origin.changed-unknown.txt, so an unresolvable base would file changed=0" >&2
     return 1
   }
+
+  # And that the membership test stays a whole-line one. The local route
+  # matches with `grep -qxF`; read as a substring instead, a finding on an
+  # untouched `app/a.ts` would record changed=1 whenever the pull request
+  # touched `app/a.tsx`, asserting it touched a file it did not.
+  grep -qF -- 'as its own complete line' <<<"$prompt_flat" || {
+    echo "the workflow prompt no longer requires the cited path to appear as its own complete line, so a substring match would file changed=1 for a file the pull request never touched" >&2
+    return 1
+  }
 }
 
 # ========== 8. the rollout command is byte-identical in both homes ==========

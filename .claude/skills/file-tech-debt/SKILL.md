@@ -116,7 +116,7 @@ Any derived `unit` that comes out empty becomes `unknown`. Row 9 routes `fix/`, 
 
 When `branch` resolves to `unknown` (no explicit branch argument, no head-ref environment variable, and no current branch from git), `mode` and `unit` are also `unknown`, never `adhoc`. `adhoc` means a branch resolved and matched no row, a different fact from no branch resolving at all.
 
-**The derivation.** One shared helper, `.gaia/scripts/debt-origin-lib.sh`, owns the encoding, the classification, and the line assembly. Each route calls it once per finding, in the spelling its own surface gives. Unanchored:
+**The derivation.** One shared helper, `.gaia/scripts/debt-origin-lib.sh`, owns the encoding, the classification, and the line assembly. Each route calls it once per finding, in the spelling its own surface gives. Bare:
 
 ```bash
 origin="$(bash .gaia/scripts/debt-origin-lib.sh --changed "<0|1|unknown>" 2>/dev/null || true)"
