@@ -216,6 +216,7 @@
     ".gaia/scripts/cost-represented.sh": "owned",
     ".gaia/scripts/cost-reprice.sh": "owned",
     ".gaia/scripts/debt-count-refresh.sh": "owned",
+    ".gaia/scripts/debt-origin-lib.sh": "owned",
     ".gaia/scripts/gh-artifact-lib.sh": "owned",
     ".gaia/scripts/ledger-path-lib.sh": "owned",
     ".gaia/scripts/ledger-status-migrate.sh": "owned",
@@ -638,7 +639,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-31T05:38:33.015Z",
+  "generated": "2026-08-01T10:19:53.396Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

@@ -273,6 +273,21 @@ extract_step_body() {
   printf '%s' "$out"
 }
 
+# Extract one step's WHOLE block, `- name:` through the line before the next
+# `- name:`, undedented. Unlike extract_step_body above, this keeps the `env:`
+# mapping, which is where a step's payload bindings live rather than in `run:`.
+# Matches the `- name:` line EXACTLY, for the same sibling-collision reason.
+extract_step_block() {
+  local step_name="$1" out="$BATS_TEST_TMPDIR/step-block.txt"
+  awk -v want="      - name: ${step_name}" '
+    !grab && $0 == want { grab=1; print; next }
+    grab && /^      - name: / { exit }
+    grab { print }
+  ' "$WORKFLOW" > "$out"
+  [ -s "$out" ] || return 1
+  printf '%s' "$out"
+}
+
 base_sha() { git -C "$SANDBOX" rev-parse main; }
 
 # app/ + .gaia/cli/src/** -> dispatches code-audit-frontend AND
@@ -488,11 +503,15 @@ run_comment_step() {
     grep -qF 'gate-pending-members.sh --base "${PR_BASE_SHA}"' "$body" || return 1
     # The incremental audit base must never decide membership.
     grep -qF 'gate-pending-members.sh --base "${AUDIT_BASE}"' "$body" && return 1
-  done
 
-  # PR_BASE_SHA is the PR's base sha from the event payload, for all four steps.
-  run grep -cF 'PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}' "$WORKFLOW"
-  [ "$output" -eq 4 ]
+    # PR_BASE_SHA is the PR's base sha from the event payload, asserted in this
+    # step's own block rather than as a whole-file tally. A file-wide count of
+    # the literal would silently encode "no other step may ever bind this
+    # payload value", and other steps legitimately do; scoping it per step
+    # checks the four that must carry it and stays correct as the file grows.
+    block="$(extract_step_block "$step")"
+    grep -qF 'PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}' "$block" || return 1
+  done
 }
 
 @test "the local-mode stand-down and the two skip-path stamps take their sha from the event payload, not git rev-parse HEAD" {

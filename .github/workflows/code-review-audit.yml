@@ -309,6 +309,54 @@ jobs:
           fi
           echo "minutes=$minutes" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve debt provenance
+        id: provenance
+        # Never fail the job over provenance. Enumerating the abort paths does
+        # not hold: every write here redirects into `$out`, so whatever breaks
+        # the primary redirect breaks its `||` fallback too, and `set -e` takes
+        # the step down. A red step here is skipped by the audit and by every
+        # terminal status writer, none of which carries `always()`, so the pull
+        # request would end with no GAIA-Audit status at all. This closes every
+        # arm at once; nothing reads `steps.provenance.*`, so it costs nothing.
+        # Same precedent as the audit step below.
+        continue-on-error: true
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
+          steps.trailer.outputs.skip == 'false'
+        env:
+          # The FULL-PR base, not steps.base.outputs.base (the incremental
+          # audit base). The provenance `changed` field answers "did this pull
+          # request touch the cited file at all", which the whole-PR fork point
+          # answers and the incremental base does not: on a re-audit round the
+          # incremental base covers only the delta since the previous round.
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -eu
+          # The agent's CI tool policy grants no shell for the derivation
+          # helper, so this step runs it and hands the agent finished lines.
+          # Three are pre-rendered rather than one plus an assembly rule,
+          # because assembling the line in the prompt would be a second
+          # implementation of the encoding and could not stay byte-identical
+          # to a local run.
+          out=.gaia/local/audit/provenance
+          mkdir -p "$out"
+          for c in 0 1 unknown; do
+            bash .gaia/scripts/debt-origin-lib.sh \
+              --changed "$c" --branch "${PR_BRANCH:-}" \
+              > "$out/origin.changed-$c.txt" 2>/dev/null \
+              || : > "$out/origin.changed-$c.txt"
+          done
+          # Three-dot: it resolves its own merge base rather than diffing the
+          # recorded base tip directly.
+          # No pathspec: a finding on a non-TypeScript file this pull request
+          # touched must read 1, not 0.
+          git diff --name-only "${PR_BASE_SHA}...HEAD" \
+            > "$out/pr-changed-files.txt" 2>/dev/null \
+            || : > "$out/pr-changed-files.txt"
+
       - name: Run code-review-audit (claude-code-action)
         id: audit
         if: |
@@ -408,6 +456,31 @@ jobs:
                only COUNTS to the public PR comment -- no out-of-scope finding
                detail, no security detail, no file:line. The FINDINGS BLOCK above
                is unchanged (it carries only finding_class / severity / area_tags).
+
+            PROVENANCE (`gaia-debt-origin`): this workflow resolved the
+            provenance line in a step of its own, because the CI tool policy
+            grants no shell for the derivation helper. Derive no provenance
+            field yourself and restate no vocabulary; the contract lives in
+            `.claude/skills/file-tech-debt/SKILL.md`. Using the Read tool (no
+            shell reader is granted for these paths), read
+            `.gaia/local/audit/provenance/pr-changed-files.txt` (the pull
+            request's fork-point changed-file set) and the three pre-rendered
+            lines at `.gaia/local/audit/provenance/origin.changed-0.txt`,
+            `origin.changed-1.txt`, and `origin.changed-unknown.txt`. For each
+            finding you file as a `tech-debt` issue, and for each finding you
+            record as machinery-waived in the pull-request body, copy one of
+            those lines verbatim onto its own line immediately after the
+            `gaia-debt-key` line, never merged into it: `origin.changed-1.txt`
+            when the finding's cited path appears in `pr-changed-files.txt` as
+            its own complete line, `origin.changed-0.txt` when it does not,
+            `origin.changed-unknown.txt` when `pr-changed-files.txt` is missing
+            or empty. If a pre-rendered file is missing or empty, omit the line
+            and continue; never block, fail, retry, or defer a filing or a waive
+            over provenance. The line is an HTML comment, adding nothing to the
+            rendered issue or the public PR comment's visible text, and carries
+            no finding detail, so it does not touch the count-only invariants above:
+            `branch`, `mode`, `unit`, `changed`, and `head` say nothing about
+            what the finding is.
 
             SELF-HEAL CONSTRAINTS: read before making any edits:
             1. Run `git diff --name-only origin/main...HEAD` first. Self-heal edits

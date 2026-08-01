@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-07-21
+updated: 2026-08-01
 tags: [concept, ci, review]
 ---
 
@@ -191,7 +191,31 @@ A member can find a genuine defect in a file outside its own declared domain, a 
 
 Either way the finding is **recorded rather than lost**.
 
-The waive rule applies to every out-of-scope finding the orchestrator disposes, whichever member surfaced it: `.gaia/cli/src/**`, `.claude/skills/**`, `.gaia/scripts/**`, `.claude/hooks/**`, `.claude/rules/**`, `.gaia/**/*.bats`, and `.github/workflows/**` each belong to a member that files nothing itself. Either eligibility term alone is sufficient: a gate-machinery finding stays eligible whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, with nothing eligible, a finding routes to the normal filing path. The security screen runs first and is unchanged: a security-class finding never waives.
+When the out-of-scope arm files a tech-debt issue, the filing carries a `gaia-debt-origin` provenance line beside its dedup key, from the shared helper, so a later reader recovers which work surfaced the finding after the branch is squash-merged and deleted. The orchestrator is on the pull request's own branch with a shell, so it resolves `changed` rather than recording `unknown`. The field vocabulary and the convention table live in `.claude/skills/file-tech-debt/SKILL.md`, referenced rather than restated here. A filing is never blocked, failed, retried, or deferred because provenance is partial or absent.
+
+For `changed`, the orchestrator reuses the whole-PR fork point in the same spelling the audit machinery already computes, adding no derivation of a new shape:
+
+```bash
+AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
+default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+  | sed 's@^refs/remotes/origin/@@')
+[ -n "$default_branch" ] || default_branch="main"
+FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
+  || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+pr_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
+origin="$(cd "${AUDIT_ROOT:-/dev/null/unset}" 2>/dev/null && bash .gaia/scripts/debt-origin-lib.sh \
+  --changed "<0|1|unknown>" --dir . 2>/dev/null || true)"
+```
+
+Three-dot, no pathspec, and no `if [ -z "$FULL_BASE" ]; then` stop-guard: a finding on any file the pull request touches reads `changed=1`, and an unresolvable `FULL_BASE` makes `changed` the literal `unknown` for every finding in the run rather than stopping the filing, because `0` would assert the work did not touch the file while an unresolvable base asserts nothing.
+
+The waive rule applies to every out-of-scope finding the orchestrator disposes, whichever member surfaced it: every specialist surface belongs to a member that files nothing itself, so the orchestrator disposes what they hand it.
+
+<!-- gaia:maintainer-only:start -->
+GAIA maintainers: those surfaces are `.gaia/cli/src/**`, `.claude/skills/**`, `.gaia/scripts/**`, `.claude/hooks/**`, `.claude/rules/**`, `.gaia/**/*.bats`, and `.github/workflows/**`. The list is wrapped because the first glob names a maintainer-only tree that no adopter clone carries, and a shipped page asserting it would be describing a directory the reader does not have.
+<!-- gaia:maintainer-only:end -->
+
+Either eligibility term alone is sufficient: a gate-machinery finding stays eligible whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, with nothing eligible, a finding routes to the normal filing path. The security screen runs first and is unchanged: a security-class finding never waives.
 
 A waive files nothing: no tech-debt issue, no issue number, and no touch of the debt-count staleness sentinel (`.gaia/local/debt/refresh-requested`).
 
