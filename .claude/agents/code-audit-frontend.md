@@ -360,7 +360,7 @@ Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`), 
 **In continuous integration, do not run this call at all.** Your tool policy there grants no rule for it, so the attempt is denied and the line goes missing on the surface that files the most. The workflow resolves provenance in a step of its own ahead of you and leaves the rendered lines on disk; read the one matching the finding's `changed` value and paste it, deriving no field yourself. That prompt names the paths. `.claude/skills/file-tech-debt/SKILL.md` owns why the split exists.
 
 ```bash
-origin="$([ -n "$AUDIT_ROOT" ] && cd "$AUDIT_ROOT" && bash .gaia/scripts/debt-origin-lib.sh \
+origin="$(cd "${AUDIT_ROOT:-/dev/null/unset}" 2>/dev/null && bash .gaia/scripts/debt-origin-lib.sh \
   --changed "$debt_origin_changed" --dir . 2>/dev/null || true)"
 ```
 

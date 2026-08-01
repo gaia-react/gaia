@@ -196,13 +196,14 @@ When the out-of-scope arm files a tech-debt issue, the filing carries a `gaia-de
 For `changed`, the orchestrator reuses the whole-PR fork point in the same spelling the audit machinery already computes, adding no derivation of a new shape:
 
 ```bash
+AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
 default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
   | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"
 FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
   || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
 pr_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
-origin="$([ -n "$AUDIT_ROOT" ] && cd "$AUDIT_ROOT" && bash .gaia/scripts/debt-origin-lib.sh \
+origin="$(cd "${AUDIT_ROOT:-/dev/null/unset}" 2>/dev/null && bash .gaia/scripts/debt-origin-lib.sh \
   --changed "<0|1|unknown>" --dir . 2>/dev/null || true)"
 ```
 
