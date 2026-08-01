@@ -140,8 +140,6 @@ It fails open throughout: each field it cannot resolve becomes the literal `unkn
 | knowledge-audit filing block | `.claude/skills/gaia/references/audit.md` | `unknown` |
 | comprehensive-audit filing offer and direct human invocation | this file | `unknown` |
 
-A filing made by direct human invocation or by the comprehensive-audit filing offer emits the line with `--changed unknown`, because neither holds a reviewed pull-request diff.
-
 Known limitation: on the routes with no reviewed diff, `branch`, `mode`, and `unit` describe the session that filed the finding, which is not always the work that surfaced it. That is still better than nothing and it is honest, because the fields say what the disposing agent observed. A reader must not treat those rows as review attribution.
 
 **What the record does not answer.** It supports attribution, not causation. It says which work a finding was surfaced by; it does not say the work caused the defect, and for a pre-existing defect found during a visit it usually did not. Overreading it is the failure mode to avoid.
@@ -246,7 +244,7 @@ The marker is only accurate when applied at the moment provenance starts writing
 
 The marker changes no displayed number, additive for the same reason the `difficulty:` namespace is (see the Contract-preserve note below).
 
-Do not add `debt:pre-provenance` to step 6's idempotent label-creation loop. Nothing else creates the label, so a step that skipped its creation would fail on its first edit, and adding it to step 6's loop would also make that loop's "all eight labels" comment wrong. The rollout is a one-time per-repository step, not a per-filing one, so the two belong in different places by design.
+Do not add `debt:pre-provenance` to step 6's idempotent label-creation loop: the rollout is a one-time per-repository step, not a per-filing one, and adding it would make that loop's "all eight labels" comment wrong.
 
 ## Brake self-check
 
