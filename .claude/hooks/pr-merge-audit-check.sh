@@ -576,21 +576,54 @@ frontend_cleared() {
   return 1
 }
 
+# _gate_disposition_note_block <notes> -> the operator-visible block for
+# stderr (and the deny reason, when this gate also denies), or empty when
+# <notes> is empty. <notes> is disposition_notes' raw output: one line per
+# machinery_waived entry whose changed-files verdict could not run. Never
+# changes the allow/deny decision -- a gate that allows still prints it,
+# because "could not verify" must stay distinguishable from "verified clean".
+_gate_disposition_note_block() {
+  local notes="$1" block=""
+  [ -n "$notes" ] || return 0
+
+  block="Disposition abuse-check notes for machinery_waived entries whose changed-files verdict could not run:
+
+${notes%$'\n'}"
+
+  if printf '%s\n' "$notes" | grep -q '^machinery-classifier-unavailable:'; then
+    block="${block}
+
+machinery-classifier-unavailable: the machinery path list could not be loaded, so the waive abuse-check did not run at all for this merge."
+  fi
+  if printf '%s\n' "$notes" | grep -q '^changed-files-not-attributable:'; then
+    block="${block}
+
+changed-files-not-attributable: the sidecar was written while judging a different pull request, so its entries were set aside rather than judged against this diff."
+  fi
+  if printf '%s\n' "$notes" | grep -q '^changed-files-unverified:'; then
+    block="${block}
+
+changed-files-unverified: this tree's pull-request diff base could not be resolved, so only the gate-machinery term was evaluated for that entry."
+  fi
+
+  printf '%s' "$block"
+}
+
 # _gate_frontend_disposition_denial: when code-audit-frontend's OWN earned
 # digest marker is valid (regardless of whether a trailer/status/bypass signal
 # is what ultimately clears the merge), re-verify its disposition sidecar.
 # Seed-forward unions a still-open receipt across a digest rotation without
 # re-verifying it against the backend, so this hook is the deterministic
 # backstop: a filed key whose issue no longer exists, a pending(definitive)
-# entry, or a machinery_waived entry recorded against a non-machinery path,
-# denies. Fail closed when the marker is valid but its sidecar is
-# absent (a valid marker proves nothing about dispositions with no sidecar to
-# read). Prints the deny JSON and returns 1 on denial; returns 0 (silent) when
-# there is nothing to deny.
+# entry, or a machinery_waived entry recorded against a path that is neither
+# gate machinery nor a file this pull request changes, denies. Fail closed
+# when the marker is valid but its sidecar is absent (a valid marker proves
+# nothing about dispositions with no sidecar to read). Prints the deny JSON
+# and returns 1 on denial; returns 0 (silent) when there is nothing to deny.
 _gate_frontend_disposition_denial() {
   clearance_member_cleared "$root" "$frontend_digest" code-audit-frontend || return 0
 
-  local sidecar reason offenders offender_list
+  local sidecar reason offenders offender_list notes note_block
   sidecar="$root/.gaia/local/audit/${frontend_digest}.dispositions.json"
 
   if [ ! -f "$sidecar" ]; then
@@ -613,7 +646,17 @@ See wiki/concepts/PR Merge Workflow.md for the full contract."
   fi
 
   command -v disposition_offenders >/dev/null 2>&1 || return 0
-  offenders="$(disposition_offenders "$sidecar" 2>/dev/null || true)"
+  offenders="$(disposition_offenders "$sidecar" "$tree_root" 2>/dev/null || true)"
+
+  notes=""
+  if command -v disposition_notes >/dev/null 2>&1; then
+    notes="$(disposition_notes "$sidecar" "$tree_root" 2>/dev/null || true)"
+  fi
+  note_block="$(_gate_disposition_note_block "$notes")"
+  if [ -n "$note_block" ]; then
+    printf '%s\n' "$note_block" >&2
+  fi
+
   [ -n "$offenders" ] || return 0
 
   offender_list=$(printf '%s' "$offenders" | sed 's/^/  - /')
@@ -624,11 +667,33 @@ Offending finding key(s):
 ${offender_list}
 
 A filed tech-debt issue named in the sidecar no longer exists, a
-pending(definitive) entry remains, or a machinery_waived entry names a path that
-is not gate machinery. Re-spawn the code-audit-frontend agent on this HEAD so it
-re-files the missing disposition, then retry gh pr merge.
+pending(definitive) entry remains, or a machinery-waived-not-eligible entry
+names a path that is neither gate machinery nor a file this pull request
+already changes.
+
+To unblock a filed-but-missing or pending(definitive) offender, re-spawn the
+code-audit-frontend agent on this HEAD so it re-files the missing disposition,
+then retry gh pr merge.
+
+To unblock a machinery-waived-not-eligible offender:
+  1. If the pull request should still be changing that file and a plain revert
+     commit dropped it from the diff, restore the change and retry. The
+     eligibility set is the fork point against HEAD, and HEAD moves.
+  2. Otherwise the finding is ordinary out-of-scope debt and takes its normal
+     filing path: delete the stale entry from ${sidecar} (gitignored working
+     state; no other file records it) and re-run the audit so it is filed as a
+     tech-debt issue.
+  3. Re-running the member with the entry in place reproduces the same waive
+     and the same denial.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
+
+  if [ -n "$note_block" ]; then
+    reason="${reason}
+
+${note_block}"
+  fi
+
   jq -n --arg r "$reason" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
