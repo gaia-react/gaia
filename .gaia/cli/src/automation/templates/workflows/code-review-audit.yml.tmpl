@@ -311,6 +311,15 @@ jobs:
 
       - name: Resolve debt provenance
         id: provenance
+        # Never fail the job over provenance. Enumerating the abort paths does
+        # not hold: every write here redirects into `$out`, so whatever breaks
+        # the primary redirect breaks its `||` fallback too, and `set -e` takes
+        # the step down. A red step here is skipped by the audit and by all four
+        # terminal status writers, none of which carries `always()`, so the pull
+        # request would end with no GAIA-Audit status at all. This closes every
+        # arm at once; nothing reads `steps.provenance.*`, so it costs nothing.
+        # Same precedent as the audit step below.
+        continue-on-error: true
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
@@ -333,13 +342,7 @@ jobs:
           # implementation of the encoding and could not stay byte-identical
           # to a local run.
           out=.gaia/local/audit/provenance
-          # `|| exit 0` because this step must never fail the job over
-          # provenance. It is the only unguarded abort left under `set -eu`,
-          # and a red step here is skipped by the audit and by every status
-          # writer without `always()`, so a filesystem hiccup would cost the
-          # whole review rather than one diagnostic line. Absent artifacts are
-          # already handled: the prompt omits the line.
-          mkdir -p "$out" || exit 0
+          mkdir -p "$out"
           for c in 0 1 unknown; do
             bash .gaia/scripts/debt-origin-lib.sh \
               --changed "$c" --branch "${PR_BRANCH:-}" \
