@@ -199,6 +199,8 @@ Every waived finding is listed in the pull request body under the heading `## Ou
 
 The changed-file set comes from the eligibility derivation block in `.claude/agents/code-audit-frontend.md` (the `FULL_BASE` / `full_changed` fence beside its review-scope block), re-run in the same Bash call because shell state does not persist between calls; it is never the member's TS/TSX-filtered review-scope set, which excludes every surface this rule exists for.
 
+The gate-machinery set is whatever `audit_path_is_machinery` (`.claude/hooks/lib/audit-machinery.sh`) accepts, the same classifier both merge gates apply when they re-verify the waive, so the orchestrator and the gates read one definition of gate machinery rather than two.
+
 **Recording a waive.** The abuse-check both merge gates run reads the disposition-ledger sidecar, so a waive not recorded there is invisible to both gates, and the orchestrator writes it directly. Two roots: the sidecar is main-anchored shared state, and the digest is computed over the acting tree whose HEAD is being merged.
 
 ```bash

@@ -16,13 +16,17 @@
 # stamped clean round. A member whose prose drifts to a private derivation
 # reds here.
 #
-# Four probes:
+# Five probes:
 #   1. base + key agreement across all five members
 #   1b. the reviewed range is HEAD's content, not the working tree's, and the
 #       fork point rather than an advanced ref tip
 #   2. post-findings-block.sh reads a specialist's sidecar
 #   3. the self-skip deadlock: a machinery-only increment with the
 #      classifier libs unloadable
+#   4. the eligibility-widening fence: presence and fork-point resolution,
+#      unfiltered distinctness from the review-scope set, the review-scope
+#      fence staying untouched, no empty-base guard, and write-side/verify-side
+#      agreement across three repository shapes
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real; see
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
@@ -181,6 +185,28 @@ extract_base_fence() {
   ' "$1"
 }
 
+# extract_eligibility_fence <agent-file>
+#
+# Prints the one ```bash fence in <agent-file> whose body assigns FULL_BASE at
+# column 0. Exits 1 when the file carries zero or more than one such fence, so
+# a definition that stops declaring its eligibility base reds here rather than
+# silently contributing an empty snippet.
+#
+# A second extractor rather than a parameter on extract_base_fence: that
+# helper's exactly-one contract is asserted against every member (all five
+# carry a BASE_SHA fence), while this one is asserted against the default
+# member alone (only it carries a FULL_BASE fence). Collapsing them into one
+# parameterized helper would let one member's second fence satisfy another
+# member's requirement, which is exactly the drift this suite exists to catch.
+extract_eligibility_fence() {
+  awk '
+    /^```bash$/ { infence = 1; buf = ""; has = 0; next }
+    /^```$/     { if (infence) { if (has) { printf "%s", buf; found++ } ; infence = 0 } ; next }
+    infence     { buf = buf $0 "\n"; if ($0 ~ /^FULL_BASE=/) has = 1 }
+    END         { if (found != 1) exit 1 }
+  ' "$1"
+}
+
 # --- scratch repo ------------------------------------------------------------
 #
 # A repo carrying the machinery the snippets reach for, at its real
@@ -250,6 +276,16 @@ GAIA-Audit: 2.0.0 ${digest} ${tree}"
 fence_eval() {
   local member="$1" repo="$2" trailer="$3" fence
   fence="$(extract_base_fence "$AGENTS_DIR/${member}.md")" || return 1
+  AUDIT_ROOT="$repo" bash -c "${fence}
+${trailer}"
+}
+
+# elig_eval <member> <repo> <trailer>: the eligibility-fence counterpart to
+# fence_eval, see its header for the `set -u` rationale (deliberately absent
+# here too).
+elig_eval() {
+  local member="$1" repo="$2" trailer="$3" fence
+  fence="$(extract_eligibility_fence "$AGENTS_DIR/${member}.md")" || return 1
   AUDIT_ROOT="$repo" bash -c "${fence}
 ${trailer}"
 }
@@ -581,4 +617,209 @@ probe_deadlock() {
       return 1
     }
   done
+}
+
+# ---------- probe 4: the eligibility-widening fence --------------------------
+#
+# The out-of-scope machinery-waive rule reads an ELIGIBILITY set that is wider
+# than the review scope: the union of the gate-machinery paths and every file
+# this pull request already changes. `full_changed`, assigned by a second
+# ```bash fence in code-audit-frontend.md, is that set's write side; the
+# shared library's `_disposition_changed_set` is its verify side. Four things
+# about the write side are load-bearing and none of them is checked by any
+# other suite in this tree: that the fence exists at all and resolves the
+# fork point, that its set is distinct from the TS/TSX-filtered review-scope
+# set, that it continues rather than exiting when the base cannot resolve,
+# and that it agrees byte for byte with the verify side.
+
+@test "the eligibility derivation is present and resolves the fork point" {
+  local repo expected_base full_base full_changed
+
+  repo="$(make_repo elig-presence)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "app/owned.ts" "a file the default member owns"
+  commit_file "$repo" ".claude/rules/fixture.md" "a file the default member does not own"
+
+  expected_base="$(git -C "$repo" merge-base HEAD main)"
+
+  full_base="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${FULL_BASE:-}"')" || {
+    echo "the eligibility fence failed to run" >&2
+    return 1
+  }
+  [ "$full_base" = "$expected_base" ] || {
+    printf 'FULL_BASE=%s, expected the fork point %s\n' "$full_base" "$expected_base" >&2
+    return 1
+  }
+
+  full_changed="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')"
+  [ -n "$full_changed" ] || {
+    echo "full_changed came back empty" >&2
+    return 1
+  }
+  grep -qxF "app/owned.ts" <<<"$full_changed" || {
+    printf 'full_changed missing app/owned.ts: %s\n' "$full_changed" >&2
+    return 1
+  }
+  grep -qxF ".claude/rules/fixture.md" <<<"$full_changed" || {
+    printf 'full_changed missing .claude/rules/fixture.md: %s\n' "$full_changed" >&2
+    return 1
+  }
+}
+
+@test "the eligibility set is unfiltered and distinct from the review-scope set" {
+  local repo eligibility review
+
+  repo="$(make_repo elig-unfiltered)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "bin/setup.sh" "a shell script"
+  commit_file "$repo" "docs/readme.md" "a markdown file"
+  commit_file "$repo" ".github/workflows/fixture.yml" "a yaml file"
+
+  eligibility="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')"
+  review="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
+
+  grep -qxF "bin/setup.sh" <<<"$eligibility" || {
+    printf 'eligibility set missing bin/setup.sh: %s\n' "$eligibility" >&2
+    return 1
+  }
+  grep -qxF "docs/readme.md" <<<"$eligibility" || {
+    printf 'eligibility set missing docs/readme.md: %s\n' "$eligibility" >&2
+    return 1
+  }
+  grep -qxF ".github/workflows/fixture.yml" <<<"$eligibility" || {
+    printf 'eligibility set missing .github/workflows/fixture.yml: %s\n' "$eligibility" >&2
+    return 1
+  }
+
+  [ -z "$review" ] || {
+    printf 'review-scope set should be empty with no TS/TSX committed, got: %s\n' "$review" >&2
+    return 1
+  }
+}
+
+@test "the review-scope fence is untouched by the eligibility widening" {
+  local repo fence pathspec_count base expected got
+
+  repo="$(make_repo review-scope-untouched)"
+  git -C "$repo" checkout -q -b feat
+  mkdir -p "$repo/app"
+  printf 'export const a = 1\n' > "$repo/app/a.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "add a.ts"
+
+  fence="$(extract_base_fence "$AGENTS_DIR/code-audit-frontend.md")" || {
+    echo "exactly one BASE_SHA-assigning fence no longer resolves" >&2
+    return 1
+  }
+
+  pathspec_count="$(grep -oF -- "'*.ts' '*.tsx'" <<<"$fence" | wc -l | tr -d ' ')"
+  [ "$pathspec_count" -eq 1 ] || {
+    printf "expected exactly one '*.ts' '*.tsx' pathspec in the review-scope fence, found %s\n" "$pathspec_count" >&2
+    return 1
+  }
+
+  base="$(base_sha_for code-audit-frontend "$repo")"
+  [ -n "$base" ]
+  expected="$(git -C "$repo" diff --name-only "${base}...HEAD" -- '*.ts' '*.tsx')"
+  got="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
+  [ "$got" = "$expected" ] || {
+    printf 'review-scope fence produced %s, expected %s\n' "$got" "$expected" >&2
+    return 1
+  }
+}
+
+@test "the eligibility fence carries no empty-base guard" {
+  local repo rc full_changed
+
+  repo="$(make_no_base_repo)"
+
+  rc=0
+  full_changed="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"' 2>&1)" || rc=$?
+  [ "$rc" -eq 0 ] || {
+    printf 'eligibility fence exited %s on an unresolvable base, expected 0: %s\n' "$rc" "$full_changed" >&2
+    return 1
+  }
+  [ -z "$full_changed" ] || {
+    printf 'expected an empty eligibility set on an unresolvable base, got: %s\n' "$full_changed" >&2
+    return 1
+  }
+}
+
+# assert_write_verify_agree <acting-root> <label>
+#
+# Drives the agent's eligibility fence (write side) and the shared library's
+# _disposition_changed_set (verify side) against the SAME acting root and
+# asserts the two changed-file sets are byte-identical. The library is
+# sourced from THIS repo's own copy (never the scratch repo's): it is pure
+# git plumbing parameterized entirely by its <acting-root> argument, and the
+# question here is agreement on that root's diff, not the library's own
+# portability.
+#
+# Normalization, per README.md frozen contract A: the write side holds
+# full_changed in a shell VARIABLE, which cannot carry a NUL, so its
+# `-z`-delimited diff is piped through `tr '\0' '\n'` before the variable is
+# ever assigned. The verify side writes its NUL-delimited set to a file, kept
+# on disk so the NULs survive, and is normalized here with the same `tr`. The
+# two sides agree on paths and order and differ only in delimiter; that
+# normalization is the whole of this helper, not a shortcut around it. A path
+# containing a literal newline is the accepted, named limitation on both
+# sides (see the fence's own comment).
+assert_write_verify_agree() {
+  local root="$1" label="$2" write verify outfile
+
+  write="$(elig_eval code-audit-frontend "$root" 'printf "%s\n" "${full_changed:-}"')" || {
+    echo "$label: the eligibility fence failed to run" >&2
+    return 1
+  }
+
+  outfile="$BATS_TEST_TMPDIR/verify-changed-${label}"
+  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$root" "$outfile" ) || {
+    echo "$label: _disposition_changed_set failed to resolve a base" >&2
+    return 1
+  }
+  verify="$(tr '\0' '\n' < "$outfile")"
+
+  [ "$write" = "$verify" ] || {
+    printf '%s: write side and verify side disagree.\nwrite:\n%s\nverify:\n%s\n' "$label" "$write" "$verify" >&2
+    return 1
+  }
+}
+
+@test "the write side and the verify side agree across three repository shapes" {
+  local repo wt
+
+  repo="$(make_repo elig-agreement)"
+  git -C "$repo" checkout -q -b origin-sim
+  commit_file "$repo" "docs/origin-only.md" "a commit only origin/main will carry"
+  git -C "$repo" checkout -q main
+  commit_file "$repo" "docs/main-advance.md" "advance local main past origin/main"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "docs/note.md" "feat's own commit"
+
+  # Shape 1: refs/remotes/origin/HEAD set, built from a remote-tracking ref
+  # rather than a real remote (origin/HEAD only ever needs to resolve, never
+  # to fetch). origin/main points at origin-sim, which shares no ancestry
+  # with feat's actual fork point (local main) beyond their common root, so
+  # the origin/<name> arm and the bare <name> arm resolve to two DIFFERENT
+  # commits here. Swapping which arm is tried first therefore changes
+  # FULL_BASE, which is exactly what this shape exists to catch.
+  git -C "$repo" update-ref refs/remotes/origin/main refs/heads/origin-sim
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  assert_write_verify_agree "$repo" "origin-head-set"
+
+  # Shape 2: the same repository without it. Removing both the symref and the
+  # tracking ref falls the default-branch probe back to the literal `main`,
+  # and only the bare `<name>` merge-base arm can resolve: no origin/main ref
+  # exists anymore to satisfy the first.
+  git -C "$repo" symbolic-ref -d refs/remotes/origin/HEAD
+  git -C "$repo" update-ref -d refs/remotes/origin/main
+  assert_write_verify_agree "$repo" "no-origin-refs"
+
+  # Shape 3: a linked worktree. The diff belongs to the tree that holds HEAD,
+  # the same acting-tree requirement the gates carry, so both sides read the
+  # worktree's own root, never the main tree's.
+  wt="$BATS_TEST_TMPDIR/elig-agreement-wt"
+  git -C "$repo" worktree add -q -b wt-feat "$wt" main
+  commit_file "$wt" "docs/wt-note.md" "the worktree's own commit"
+  assert_write_verify_agree "$wt" "worktree"
 }
