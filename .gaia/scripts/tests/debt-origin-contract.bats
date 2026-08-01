@@ -498,8 +498,8 @@ printf '%s\n' \"\$debt_origin_changed\"")"
 # continuous-integration filing report `changed=0` for a finding on a
 # non-TypeScript file the pull request did touch, while the identical finding
 # filed locally reports `1`, and the whole suite would stay green.
-@test "7d. the continuous-integration eligibility set carries no pathspec and resolves the fork point" {
-  local wf body repo base moved_tip out p
+@test "7d. the continuous-integration eligibility set carries no pathspec, resolves the fork point, and empties on an unresolvable base" {
+  local wf body repo base moved_tip out actual expected prompt_flat
 
   wf="$REPO_ROOT/.github/workflows/code-review-audit.yml"
   [ -f "$wf" ] || {
@@ -539,7 +539,13 @@ printf '%s\n' \"\$debt_origin_changed\"")"
   # carries the base branch's tip at pull-request time, and a base that never
   # moved makes two-dot and three-dot agree, so a fixture pinned at the fork
   # point cannot tell them apart and would green a two-dot regression.
-  echo moved >"$repo/moved-on-main"
+  #
+  # It MODIFIES a file that already exists at the fork point rather than adding
+  # a new one. A two-dot diff reports main's post-fork add as a deletion, so a
+  # `--diff-filter` dropping D would erase the only two-dot discriminator here
+  # while the set stayed genuinely two-dot; a modification surfaces as M under
+  # every filter that admits a real change.
+  echo moved >"$repo/f"
   git -C "$repo" add -A && git -C "$repo" commit -q -m "main moves on"
   moved_tip="$(git -C "$repo" rev-parse HEAD)"
 
@@ -558,21 +564,46 @@ printf '%s\n' \"\$debt_origin_changed\"")"
     return 1
   }
 
-  # Absence assertion written as a positive match with an explicit `return 1`,
-  # and placed before the loop so it is never the test's final command: as a
-  # final line, `grep && { ... }` returns grep's own non-zero on the passing
-  # case and reds a correct tree (`.claude/rules/bats-assertions.md`).
-  grep -qxF moved-on-main <"$out" && {
-    printf 'CI eligibility set contains moved-on-main, so the diff is two-dot against a base tip that has moved rather than three-dot against the fork point: %s\n' "$(cat "$out")" >&2
+  # Exact set equality against a literal, rather than a pair of contains and
+  # not-contains needles: it catches both directions at once and catches
+  # spellings no named needle anticipates. An entry that should not be there
+  # means the diff is two-dot; a missing entry means something is filtering the
+  # set. Both sides pass through the same `sort` so collation cannot decide it.
+  actual="$(sort <"$out")"
+  expected="$(printf '%s\n' app/a.ts note.md script.sh | sort)"
+  [ "$actual" = "$expected" ] || {
+    printf 'CI eligibility set is [%s], want exactly [app/a.ts note.md script.sh]. An extra entry means the diff is two-dot against a base tip that has moved rather than three-dot against the fork point. A missing entry means a pathspec or a filter is narrowing the set, so a finding on that file would record changed=0 while the same finding filed locally records 1.\n' "$(tr '\n' ' ' <<<"$actual")" >&2
     return 1
   }
 
-  for p in app/a.ts note.md script.sh; do
-    grep -qxF "$p" <"$out" || {
-      printf 'CI eligibility set is missing %s, so a finding on it would record changed=0 while the same finding filed locally records 1. A pathspec is filtering the set: %s\n' "$p" "$(cat "$out")" >&2
-      return 1
-    }
-  done
+  # Second arm: the same promise test 7b pins for the local route, an
+  # unresolvable base yields unknown and never 0, asked of the
+  # continuous-integration route's own implementation of it. The event payload
+  # always carries a base sha, but the runner's object store need not hold it
+  # (a shallow fetch is the ordinary way it does not), so the diff fails and
+  # the step's `|| :` leaves no set. What must not happen is a PARTIAL set: a
+  # finding on a file missing from it would record 0, which asserts the pull
+  # request did not touch that file, and an unresolvable base can assert
+  # nothing. Start from the blank slate a fresh runner has, so a stale file
+  # from the arm above cannot be mistaken for output of this one.
+  rm -rf "$repo/.gaia/local/audit/provenance"
+  ( cd "$repo" && PR_BASE_SHA=0000000000000000000000000000000000000000 PR_BRANCH=feat bash -c "$body" ) >/dev/null 2>&1 || true
+
+  [ ! -s "$out" ] || {
+    printf 'the provenance step produced a non-empty eligibility set from an unresolvable base: [%s]. Anything absent from that set records changed=0, which asserts the pull request did not touch the file.\n' "$(tr '\n' ' ' <"$out")" >&2
+    return 1
+  }
+
+  # And the consumer still reads that empty set as unknown. The arm above
+  # proves the step emits no set; this proves the prompt maps no-set to
+  # unknown rather than to 0. Matched against the whitespace-folded file
+  # because the mapping sentence wraps across lines, and a needle that only
+  # ever sees one physical line is the weakness round 4 already found here.
+  prompt_flat="$(tr '\n' ' ' <"$wf" | tr -s ' ')"
+  grep -qF -- '`origin.changed-unknown.txt` when `pr-changed-files.txt` is missing or empty' <<<"$prompt_flat" || {
+    echo "the workflow prompt no longer maps a missing or empty pr-changed-files.txt to origin.changed-unknown.txt, so an unresolvable base would file changed=0" >&2
+    return 1
+  }
 }
 
 # ========== 8. the rollout command is byte-identical in both homes ==========
