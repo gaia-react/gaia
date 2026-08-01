@@ -187,9 +187,48 @@ This is operator guidance about **in-scope Suggestions and accepted findings**, 
 A member can find a genuine defect in a file outside its own declared domain, a **cross-remit finding**. The member that found it applies no repair, whether or not the file's owner has already cleared it and whether or not the fix looks trivial; it reports the finding to the orchestrator instead. The orchestrator disposes of it one of two ways:
 
 - **In scope for the PR** → the orchestrator applies the repair itself. Its commit rotates the owning member's digest, invalidating that member's marker, so the owner is re-dispatched and reviews the repair made to its own file.
-- **Out of scope** → filed as a tech-debt issue (see `/gaia-debt` and the `file-tech-debt` skill), and the PR carries no change for it.
+- **Out of scope** → a non-security finding is recorded as **waived** (listed in the pull request body, not filed) when its path is either a gate-machinery path or a file this pull request already changes; a finding satisfying neither term, or any security-class finding, is filed as a tech-debt issue exactly as it is today, through `/gaia-debt` and the `file-tech-debt` skill.
 
 Either way the finding is **recorded rather than lost**.
+
+The waive rule applies to every out-of-scope finding the orchestrator disposes, whichever member surfaced it: `.gaia/cli/src/**`, `.claude/skills/**`, `.gaia/scripts/**`, `.claude/hooks/**`, `.claude/rules/**`, `.gaia/**/*.bats`, and `.github/workflows/**` each belong to a member that files nothing itself. Either eligibility term alone is sufficient: a gate-machinery finding stays eligible whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, with nothing eligible, a finding routes to the normal filing path. The security screen runs first and is unchanged: a security-class finding never waives.
+
+A waive files nothing: no tech-debt issue, no issue number, and no touch of the debt-count staleness sentinel (`.gaia/local/debt/refresh-requested`).
+
+Every waived finding is listed in the pull request body under the heading `## Out-of-scope machinery findings (recorded, not filed)`, one entry per finding, each carrying its `file:line`, a one-line failure mode, and its dedup key.
+
+The changed-file set comes from the eligibility derivation block in `.claude/agents/code-audit-frontend.md` (the `FULL_BASE` / `full_changed` fence beside its review-scope block), re-run in the same Bash call because shell state does not persist between calls; it is never the member's TS/TSX-filtered review-scope set, which excludes every surface this rule exists for.
+
+**Recording a waive.** The abuse-check both merge gates run reads the disposition-ledger sidecar, so a waive not recorded there is invisible to both gates, and the orchestrator writes it directly. Two roots: the sidecar is main-anchored shared state, and the digest is computed over the acting tree whose HEAD is being merged.
+
+```bash
+main_root="$(bash .gaia/scripts/main-root-lib.sh)"
+tree_root="$(git rev-parse --show-toplevel)"
+digest="$(bash .gaia/scripts/audit-member-digest.sh --root "$tree_root" --member code-audit-frontend)"
+sidecar="$main_root/.gaia/local/audit/${digest}.dispositions.json"
+```
+
+The orchestrator writes the entry after the final Code Audit Team member clearance and before `gh pr merge`, so the digest it keys to is the one the gates read, and re-applies it after every round in which HEAD moves: a content change rotates the digest, and the seed-forward union carries forward only `filed` and `pending(definitive)` entries, so a `machinery_waived` entry lives exactly one digest and has no re-deriver but the orchestrator.
+
+It is a read-modify-write, never an overwrite. The default member owns this file, and its `filed` receipts and its `backend` field live in it.
+
+- Absent → create `{"schema":1,"sha":"<tree_root HEAD sha>","backend":"present","findings":[]}`.
+- Present → leave `backend` and every existing entry exactly as they are, and set `.sha` to the acting tree's HEAD sha; `.sha` is what binds a waive to the pull request under judgment, so the writer that adds an entry is the writer that stamps it.
+- Append an entry only when no existing entry carries the same `key`; an existing entry always wins.
+- Write atomically: a temp file in the sidecar's own directory, then `mv`.
+
+The entry uses the existing schema, with no new fields:
+
+```json
+{ "key": "v1 class=<finding_class> path=<repo-relative-posix-path> line=<int>",
+  "severity": "critical|important|suggestion",
+  "security_class": false,
+  "disposition": "machinery_waived" }
+```
+
+`issue_number` and `pending_reason` stay unset.
+
+The sidecar is named by the default member's content digest, which does not rotate for a diff that touches nothing that member owns and no gate machinery, so one file can be read while judging several consecutive pull requests. Both gates read the recorded `sha`: an entry whose sidecar records a sha belonging to another branch's live history is set aside rather than judged against a diff it was never about, and the gate says so out loud. That is why the `.sha` stamp above is not optional.
 
 The orchestrator is trusted rather than bounded here, and this is a member-error guard, not a security boundary: it removes members' write access to files outside their own domain and hands that same access to the orchestrator. What makes that reasonable is stated rather than assumed: under local mode a human watches every turn the orchestrator takes, which is not true of a member dispatched inside a CI job. A bad orchestrator repair is caught by human review of the pull request and by nothing else.
 
@@ -254,7 +293,7 @@ When CI self-heals (the audit modifies a file and pushes the fix), the workflow 
 
 A clean pass requires no Critical Issues, every Important Issue addressed, and every Suggestion either auto-fixed or resolved by the operator. Those three preconditions govern **in-scope** findings (defects inside the PR's changed line ranges). A **fourth precondition** governs out-of-scope findings: every out-of-scope finding the audit identifies within its review radius must carry a disposition before the marker writes, a filed `tech-debt` issue, a diverted security advisory or operator surface, or a backend-absent waive. The marker is withheld only on a genuinely-missing disposition (a present, writable backend where a filing definitively failed); backend-absent, transient, and diverted findings all fail open. Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block signal emission. See [[Audit Disposition and Debt Fix]] for the full disposition contract.
 
-The deterministic backstop hook `.claude/hooks/audit-disposition-check.sh` gates `gh pr merge` alongside `pr-merge-audit-check.sh`: it re-reads the disposition-ledger sidecar for the current frontend digest and denies on a present-backend inconsistency (a `filed` entry whose key resolves to no open `tech-debt` issue, or a genuinely-missing disposition) or on a valid frontend marker whose sidecar is absent, failing open on an absent or transient backend (the never-block invariant). A `/gaia-debt` fix PR is an ordinary in-scope change that clears the normal gate.
+The deterministic backstop hook `.claude/hooks/audit-disposition-check.sh` gates `gh pr merge` alongside `pr-merge-audit-check.sh`: it re-reads the disposition-ledger sidecar for the current frontend digest and denies on a present-backend inconsistency (a `filed` entry whose key resolves to no open `tech-debt` issue, or a genuinely-missing disposition) or on a valid frontend marker whose sidecar is absent, failing open on an absent or transient backend (the never-block invariant). It also denies on a `machinery_waived` entry whose key path is neither a gate-machinery path nor a file this pull request changes, and drops only the changed-files term when it cannot resolve a diff base. A `/gaia-debt` fix PR is an ordinary in-scope change that clears the normal gate.
 
 If the local agent declines to write the marker, its report names what remains unaddressed; resolve those, commit, push, re-spawn.
 

@@ -132,7 +132,7 @@ write_sidecar() { printf '%s\n' "$1" > "$SIDECAR"; }
   write_sidecar '{"schema":1,"backend":"github","findings":[{"key":"v1 class=holistic/x path=app/x.ts line=5","disposition":"machinery_waived"}]}'
   run disposition_offenders "$SIDECAR"
   [ "$status" -eq 0 ]
-  grep -q "machinery-waived-not-machinery: v1 class=holistic/x path=app/x.ts line=5" <<<"$output" || return 1
+  grep -q "machinery-waived-not-eligible: v1 class=holistic/x path=app/x.ts line=5" <<<"$output" || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -381,7 +381,7 @@ assert_denied() {
     > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   run_disposition_hook "$ROOT"
   assert_denied
-  grep -qF -- "machinery-waived-not-machinery: v1 class=holistic/x path=app/x.ts line=1" <<<"$output" || return 1
+  grep -qF -- "machinery-waived-not-eligible: v1 class=holistic/x path=app/x.ts line=1" <<<"$output" || return 1
 }
 
 @test "hook: sidecar present but unparseable -> fail open (allow)" {

@@ -160,7 +160,7 @@ Grade every finding Critical / Important / Suggestion, matching the sibling Code
 
 **Cross-remit findings.** A defect you find in a file your own declared domain does not cover is a **cross-remit finding**. Report it to the orchestrator, and apply **no** repair to it. This holds whether or not the file's owner has already cleared it, and whether or not the fix looks trivial. You are not the owner of that file and you do not know what its owner knows.
 
-The orchestrator owns the disposition. It applies the repair when the defect is in scope for the pull request, or files it as a tech-debt issue when it is not, either way the finding is **recorded rather than lost**. Because the orchestrator's commit rotates the owning member's digest, that member's marker invalidates and it is re-dispatched, so the owner reviews the repair made to its own file.
+The orchestrator owns the disposition. It applies the repair when the defect is in scope for the pull request. When it is not, the orchestrator records the finding as waived, listed in the pull request body and not filed, whenever the finding is non-security and its path is either gate machinery or a file this pull request already changes, and files it as a tech-debt issue otherwise. Either way the finding is **recorded rather than lost**. Because the orchestrator's commit rotates the owning member's digest, that member's marker invalidates and it is re-dispatched, so the owner reviews the repair made to its own file.
 
 Cross-remit and out-of-scope are **not the same axis**: out-of-scope means outside the PR's changed line ranges (see "Scope classification and out-of-scope disposition" below); cross-remit means outside **your domain**. A finding can be in-scope for the PR and cross-remit for you. Do not fold one into the other; give a cross-remit finding a named place in your return (see "Cross-remit Findings" under Output Format) so the orchestrator can act on it.
 
@@ -294,23 +294,33 @@ A **security-class** finding (per section B) is **never** a promotion candidate,
 
 ### B-mw. Machinery-path waive (file side)
 
-This decision runs **after** section B's security classification and section B-fix's promotion check, and **before** the backend probe and filing pipeline (C/D/E). Like a promoted finding, a machinery-waived finding never touches the issue backend.
+This decision runs **after** section B's security classification and section B-fix's promotion check, and **before** the backend probe and filing pipeline (C/D/E). Like a promoted finding, a waived finding never touches the issue backend.
 
-When the audit reviews a fix to the **gate machinery itself**, it surfaces out-of-scope findings **about that same machinery**. Filing each one opens a `tech-debt` issue the next machinery PR's audit re-surfaces, a regeneration loop the `filed` disposition cannot escape. The `machinery_waived` disposition breaks the loop: it records the finding **without filing it**, gated by a deterministic path-is-machinery abuse-check so it can never become a universal escape hatch.
+Two out-of-scope populations regenerate their own backlog when they are filed. An audit of a fix to the **gate machinery itself** surfaces out-of-scope findings **about that same machinery**; an audit of any PR surfaces out-of-scope findings in the very files that PR is already editing. Filing either one opens a `tech-debt` issue the next PR over the same file re-surfaces, a regeneration loop the `filed` disposition cannot escape. The `machinery_waived` disposition breaks the loop: it records the finding **without filing it**, gated by a deterministic offline abuse-check on the finding's path so it can never become a universal escape hatch.
+
+**The rule belongs to the orchestrator.** It is stated once, in `wiki/concepts/PR Merge Workflow.md`'s `#### Cross-remit findings` section, because the orchestrator disposes the out-of-scope findings of every Code Audit Team member, not just yours. `machinery_waived` is a disposition the orchestrator records on behalf of any member, never one a single member self-declares. What follows is the member-side statement of that rule; where the two ever read differently, the orchestrator's is the one that holds.
 
 Record a non-security out-of-scope finding as **`machinery_waived`** (not filed) **if and only if both** hold:
 
-1. The finding is **non-security** per section B's classification, read as section B's own flag, never re-derived. A security-class finding is **never** machinery-waived, on any repo including a confirmed PRIVATE one; it takes its section D (divert) or section E (private file) path. Security screens FIRST, exactly as for promotion.
-2. The finding's `path` is a **gate-machinery path**: it matches the `AUDIT_MACHINERY_PATHS` set (`audit_path_is_machinery` in `.claude/hooks/lib/audit-machinery.sh`, exact-or-`/**`-prefix match). That set is the self-referential machinery, the files whose bytes change what a member reviews, who reviews it, where a clearance lands, or whether a clearance is believed.
+1. The finding is **non-security** per section B's classification, read as section B's own flag, never re-derived. A security-class finding is **never** waived, on any repo including a confirmed PRIVATE one; it takes its section D (divert) or section E (private file) path. Security screens FIRST, exactly as for promotion.
+2. The finding's `path` is in the **union** of two sets:
+   - a **gate-machinery path**: it matches the `AUDIT_MACHINERY_PATHS` set (`audit_path_is_machinery` in `.claude/hooks/lib/audit-machinery.sh`, exact-or-`/**`-prefix match). That set is the self-referential machinery, the files whose bytes change what a member reviews, who reviews it, where a clearance lands, or whether a clearance is believed. A machinery path qualifies whether or not this PR touches it.
+   - a path **this PR already changes**: it appears in `full_changed` (see "Resolve the review scope"), compared by **exact whole-string equality** against a repo-relative POSIX path. Never a prefix, suffix, basename, or substring test, and never the TS/TSX-filtered review scope.
 
-For a machinery-waived finding:
+   An empty `full_changed` contributes nothing to the union, which **disengages** the waive rather than opening it: a finding on a non-machinery path then routes to the ordinary filing path.
 
-- Record a `machinery_waived` sidecar entry (section F) carrying the same dedup-key `key` as any other entry (`v1 class=<finding_class> path=<machinery-path> line=<int>`), so the abuse-check can read its `path=`. Leave `issue_number` unset; do **not** file a `tech-debt` issue and do **not** touch the debt-count sentinel.
+For a waived finding:
+
+- Record a `machinery_waived` sidecar entry (section F) carrying the same dedup-key `key` as any other entry (`v1 class=<finding_class> path=<repo-relative-posix-path> line=<int>`), so the abuse-check can read its `path=`. Leave `issue_number` unset; do **not** file a `tech-debt` issue and do **not** touch the debt-count sentinel. The sidecar's existing top-level `sha` field carries the acting tree's HEAD, and that is what binds a waive to the PR it is recorded for: the sidecar is named by a content digest that does not rotate for every PR, so one file can be read while judging several, and both gates set aside an entry whose sidecar records a sha belonging to another branch's live history rather than measuring it against a diff it was never about. This adds no field and changes no schema, it makes an existing field load-bearing, so it has to actually be written.
 - List the finding in the **PR body** under a heading such as **`## Out-of-scope machinery findings (recorded, not filed)`**, one entry per finding (its `file:line`, a one-line failure mode, and its dedup key). The sidecar is gitignored and janitor-reaped, so the PR body is the durable human-readable record of what was waived; keep it complete.
 
-Any finding that is not **both** non-security and machinery-pathed routes to the existing filing path (sections C/D/E) exactly as today.
+Any finding that is not **both** non-security and in the union above routes to the existing filing path (sections C/D/E).
 
-**Abuse-check (offline, deterministic).** The merge gate and the disposition backstop hook re-read the sidecar and DENY the merge for any `machinery_waived` entry whose `path=` is **not** a machinery path (`disposition_offenders` in `.claude/hooks/lib/audit-dispositions.sh`). A `machinery_waived` recorded against a non-machinery path is an unfiled out-of-scope finding wearing a machinery label, so the gate treats it as an offender. Record `machinery_waived` only for a genuine machinery path.
+**Abuse-check (offline, deterministic).** The merge gate and the disposition backstop hook re-read the sidecar and DENY the merge for any `machinery_waived` entry whose `path=` is **neither** a gate-machinery path **nor** a file this PR changes, reporting it as `machinery-waived-not-eligible` (`disposition_offenders` in `.claude/hooks/lib/audit-dispositions.sh`, which re-derives the same union independently rather than trusting anything you record). An entry satisfying neither term is an unfiled out-of-scope finding wearing a waive label, so the gate treats it as an offender.
+
+**The eligibility set moves with HEAD.** It is the diff from the whole-PR fork point to HEAD, and HEAD moves, so a waive recorded honestly re-evaluates as an offender once a revert commit drops that file from the diff. The gates' deny message names that case first, because restoring the change is the remedy that clears it.
+
+**What the abuse-check bounds, and what it does not.** It bounds **where** a waive may be recorded, never **which** findings may be waived. Condition 1's non-security precondition is the wall on that second question and no gate checks it: a security-class finding recorded as `machinery_waived` on an eligible path clears every deterministic check there is. Screen security first, and honestly.
 
 ### C. Backend probe (three outcomes)
 
@@ -378,7 +388,7 @@ Disposition semantics:
 - `filed`, an open `tech-debt` issue carries the key (`issue_number` set). Verified by re-querying open issues for the key before the marker is written.
 - `diverted`, security-class diverted per section D (no public issue).
 - `waived`, backend definitively absent (section C); the finding reverts to prose only.
-- `machinery_waived`, a non-security out-of-scope finding on a gate-machinery path (section B-mw); recorded here and listed in the PR body, not filed. The backstop denies the merge if its `path=` is not a machinery path.
+- `machinery_waived`, a non-security out-of-scope finding whose path is either a gate-machinery path or a file this PR already changes (section B-mw); recorded here and listed in the PR body, not filed. The backstop denies the merge when its `path=` satisfies neither term.
 - `pending` + `pending_reason:"transient"`, a transient `gh` failure; the finding is surfaced and retained for the next idempotent run.
 - `pending` + `pending_reason:"definitive"`, a definitive filing failure on a **present, writable** backend; the disposition is genuinely missing.
 
@@ -389,7 +399,7 @@ Before writing the marker, the disposition gate confirms every identified out-of
 - **Write the marker** when every sidecar entry is `filed`, `diverted`, `waived`, `machinery_waived`, or `pending(transient)`. A transient failure never blocks the merge, so it does not withhold the marker.
 - **Do NOT write the marker** when any entry is `pending(definitive)`, a present, writable backend with a genuinely-missing disposition. This is the **one intended block**; the operator must resolve the filing failure and re-invoke before the marker clears.
 
-`pending(definitive)` is the only disposition that withholds the marker. Backend-absent (`waived`), transient (`pending(transient)`), diversion-failure (`diverted`), and machinery-waive (`machinery_waived`) all fail open and never block the merge. A `machinery_waived` entry recorded against a non-machinery path is caught not here but by the offline abuse-check in the merge gate and backstop hook (section B-mw), which denies the merge.
+`pending(definitive)` is the only disposition that withholds the marker. Backend-absent (`waived`), transient (`pending(transient)`), diversion-failure (`diverted`), and machinery-waive (`machinery_waived`) all fail open and never block the merge. A `machinery_waived` entry recorded against a path that is neither gate machinery nor a file this PR changes is caught not here but by the offline abuse-check in the merge gate and backstop hook (section B-mw), which denies the merge.
 
 ## Output Format
 
@@ -689,7 +699,34 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- '*.ts' '
 
 **What this aligns is the file LIST, and that is the limit of it.** `Read` returns working-tree bytes, so on a dirty tree a file named in `changed` can still hold content HEAD does not, and your marker would again cover bytes you did not read. Reach for the reviewed delta itself (`git -C "$AUDIT_ROOT" diff "${BASE_SHA}...HEAD" -- <file>`) rather than the file's current state whenever that distinction could change a finding.
 
-1. **Identify changed files**: `changed`, from the block above.
+```bash
+# FULL_BASE is the whole-PR fork point, and it decides exactly one thing: the
+# ELIGIBILITY changed-file set the out-of-scope waive rule reads. It is not a
+# review base and never scopes what you review. `changed` above stays the
+# review scope, filtered to TS/TSX, and nothing here touches it.
+default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+[ -n "$default_branch" ] || default_branch="main"
+FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+# An empty FULL_BASE does NOT stop this member. The specialists guard theirs
+# with `exit 1` because an empty base there produces a false self-skip and a
+# deadlocked merge; this member's self-skip is oracle-based, so an empty base
+# costs the waive brake and nothing else, and stopping would convert a lost
+# brake into an aborted audit. Test the BASE, never the diff's emptiness: git
+# resolves an empty left side to HEAD, so an unresolved base and a resolved
+# base with no differences both yield an empty diff, and only one of them
+# means "unknown".
+if [ -n "$FULL_BASE" ]; then
+  full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
+else
+  full_changed=""
+fi
+```
+
+**Two lists, two jobs.** `changed` is the **review scope** and decides what you review; it stays filtered to `*.ts` / `*.tsx`. `full_changed` is the **eligibility** set and decides only which out-of-scope findings the waive in section B-mw can cover; it is deliberately unfiltered by file type, because the surfaces that waive exists for are shell, markdown, YAML, and bats. Shell state does NOT persist between an agent's Bash calls, so every later call using `full_changed` re-runs this block, and the `AUDIT_ROOT` derivation it depends on, ahead of itself, the same rule the review-scope block states for its own values.
+
+An empty `full_changed` **disengages** the waive rather than opening it: with no eligibility set, an out-of-scope finding on a non-machinery path takes the ordinary filing path (sections C/D/E). One limitation is accepted rather than worked around: a path containing a literal newline splits into two lines inside the variable, so it never matches by whole-string equality, the brake disengages for that path, and the finding is filed. That is the safe direction.
+
+1. **Identify changed files**: `changed`, from the review-scope block above.
    - **Read the re-run ledger (LOCAL only) as the prior-round briefing.** From the `BASE_SHA` above, compute `AUDIT_KEY="$(gaia_audit_key "$BASE_SHA" "$AUDIT_ROOT")" || AUDIT_KEY=""` (`.gaia/scripts/audit-key-lib.sh`) and `LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `AUDIT_KEY` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `BASE_SHA`, `AUDIT_KEY`, and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
    - When the base is an audited ancestor, everything before it was already cleared; only the delta needs review. **For any exported symbol whose signature or contract changed in the delta, grep its importers and check them even if unchanged**, a cleared caller can still break from a delta change.
    - Once the changed-file list is resolved and before dispatching subagents, emit the `scope resolved` breadcrumb (see Progress breadcrumbs).
