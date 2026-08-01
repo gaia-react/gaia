@@ -71,11 +71,91 @@ The body-file is scratch, and this recipe is its only owner: nothing else reaps 
 
 **Two tool calls, not one.** A `PreToolUse` hook returns a single allow/deny decision for an entire Bash invocation before any of it reaches the shell, so a hook that denies the cleanup drops the create standing beside it too: no issue filed, and no output naming the cause. Splitting them keeps a denied cleanup from costing you the filing. One consequence for how the second call is written: shell variables do not survive between tool calls, so spell the path literally rather than reusing `$body_file`. Either spelling of it works, relative or absolute, and the destructive-command guard whitelists this directory both ways.
 
+## Provenance line
+
+Beside the dedup-key line, the issue body (or a waived finding's pull-request-body entry) carries a second HTML comment recording which work surfaced the finding, byte-for-byte in this form:
+
+```
+<!-- gaia-debt-key: v1 class=holistic/unclassified path=app/services/foo.ts line=42 -->
+<!-- gaia-debt-origin: branch=debt/1121-marker-sep mode=drain unit=1121 changed=1 head=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2 -->
+```
+
+Both are HTML comments, so neither appears in the rendered issue. Fields are `key=value` pairs separated by single spaces, in the order above. The order is canonical for readability only: the pairs are self-describing, so a reader must not depend on position, and adding or removing a field breaks no reader.
+
+There is no version prefix, ever. The dedup key carries one because it is an identity that must match across time. Provenance matches nothing, so a version would imply a versioned contract and invite the lockstep discipline this design exists to avoid.
+
+The field table:
+
+| field | value | survives branch deletion |
+|---|---|---|
+| `branch` | the raw branch verbatim, or `unknown` | yes |
+| `mode` | one of `drain`, `plan`, `maintenance`, `adhoc`, `unknown` | yes |
+| `unit` | the issue numbers or plan/spec id the work was executing, or `unknown` | yes |
+| `changed` | `0`, `1`, or `unknown` | yes |
+| `head` | the reviewed HEAD sha, or `unknown` | no |
+
+**Reserved characters.** Two are percent-encoded in a value: `>`, because a git branch name may legally contain it and an unencoded one would terminate the HTML comment early and leak the remainder as visible text, and `%` itself, so the encoding is invertible and a reader can recover the exact branch name. `%` is encoded first, then `>`; that order is what makes the round trip exact. "Verbatim" above means the raw name after that reversible encoding, not a normalized or truncated one. This is the same reasoning `gaia_key_slug` applies in `.gaia/scripts/audit-key-lib.sh`, with a far smaller reserved set because this value is read by humans rather than used as a filename.
+
+**Why `head` is carried despite rotting.** While the commit is reachable it makes a cited `path:line` resolvable with `git show <sha>:<path>`, a partial mitigation for the line drift that makes older keys stale. Everything else on the line is a stored conclusion rather than a coordinate, so it stays readable after the branch is gone.
+
+**The convention table.** `branch` is normalized for matching only, the stored `branch` field always keeps the raw name: strip a single leading `worktree-`, then replace every `+` with `/` in what remains, both steps unconditional, in that order. The normalized name is matched against this table, first matching row wins:
+
+| # | normalized branch | `mode` | `unit` |
+|---|---|---|---|
+| 1 | `debt/<members>-batch`, `<members>` matching `^[0-9]+(-[0-9]+)*$` | `drain` | `<members>` |
+| 2 | `debt/<rest>` | `drain` | the leading `[0-9]+` of `<rest>`, else `unknown` |
+| 3 | `spec-<nnn>` or `spec-<nnn>-<rest>`, `<nnn>` matching `^[0-9]+$` | `plan` | `SPEC-<nnn>` |
+| 4 | `plan-<nnn>` or `plan-<nnn>-<rest>`, `<nnn>` matching `^[0-9]+$` | `plan` | `plan-<nnn>` |
+| 5 | `chore/<rest>` or `chore-<rest>` | `maintenance` | `<rest>` |
+| 6 | `harden/<rest>` or `harden-<rest>` | `maintenance` | `<rest>` |
+| 7 | `wiki-sync/<rest>` | `maintenance` | `<rest>` |
+| 8 | `audit-<rest>` | `maintenance` | `<rest>` |
+| 9 | anything else, including `main`, `fix/<rest>`, `docs/<rest>`, `feat/<rest>` | `adhoc` | `unknown` |
+
+Any derived `unit` that comes out empty becomes `unknown`. Row 9 routes `fix/`, `docs/`, and `feat/` to `adhoc` deliberately: those are hand-named human work with no unit encoded in the branch name. The table is keyed on prefix families rather than exact per-command branch names because a table of exact names matches almost no real branch: roughly twenty real `chore/*` and `harden/*` branches would fall through to `adhoc` otherwise. A new branch family that later deserves its own mode is a change to this file, not a new field and not a version bump.
+
+When `branch` resolves to `unknown` (no explicit branch argument, no head-ref environment variable, and no current branch from git), `mode` and `unit` are also `unknown`, never `adhoc`. `adhoc` means a branch resolved and matched no row, a different fact from no branch resolving at all.
+
+**The derivation.** One shared helper, `.gaia/scripts/debt-origin-lib.sh`, owns the encoding, the classification, and the line assembly. Every route calls it once per finding:
+
+```bash
+origin="$(bash .gaia/scripts/debt-origin-lib.sh --changed "<0|1|unknown>" 2>/dev/null || true)"
+```
+
+It fails open throughout: each field it cannot resolve becomes the literal `unknown`, it exits zero regardless, and a caller never treats its output as a precondition. It always prints the line.
+
+**The fail-open rule, stated as a rule.** Never block, fail, retry, or defer a filing or a waive because provenance is partial, absent, or malformed. If the helper prints nothing, omit the line and continue. Omitting the line is reserved for a route that predates provenance or for a helper that could not run: a working route must never omit the line as a way of expressing that nothing resolved, because a line of unknowns and no line at all must stay distinguishable.
+
+**One route cannot call it.** In continuous integration the audit agent's tool policy grants no shell for this helper, so the audit workflow resolves provenance in a step of its own and passes the resolved values into the agent prompt, exactly as it already passes the review base. The agent never re-derives them and carries no prose copy of the rules. One implementation, not two.
+
+**The `changed` field, precisely.** It reports whether the cited path is in the pull request's fork-point changed-file set. Two nearer sets are explicitly wrong: not the filtered review scope (the frontend audit agent's own `changed` variable is pathspec-limited to TypeScript sources, so a finding on a non-TypeScript file the pull request touched would read `0`), and not the incremental audit base (the last cleared ancestor, which on a re-audit covers only the delta since the previous round, while the touched-file waive rule anchors on the whole-PR fork point). A route that does not already hold a fork-point set records `changed=unknown` and derives nothing. When the fork point does not resolve, `changed` is `unknown` and never `0`, because `0` asserts that the work did not touch the file and an unresolvable base asserts nothing.
+
+**The emitting routes:**
+
+| route | instruction surface | `changed` |
+|---|---|---|
+| audit agent disposition pipeline, local | `.claude/agents/code-audit-frontend.md` | resolved |
+| audit agent disposition pipeline, continuous integration | `.github/workflows/code-review-audit.yml` | resolved, by the workflow |
+| pre-merge orchestrator cross-remit disposition | `wiki/concepts/PR Merge Workflow.md` | resolved |
+| knowledge-audit filing block | `.claude/skills/gaia/references/audit.md` | `unknown` |
+| comprehensive-audit filing offer and direct human invocation | this file | `unknown` |
+
+A filing made by direct human invocation or by the comprehensive-audit filing offer emits the line with `--changed unknown`, because neither holds a reviewed pull-request diff. The same fail-open rule applies; the filing completes regardless.
+
+Known limitation: on the routes with no reviewed diff, `branch`, `mode`, and `unit` describe the session that filed the finding, which is not always the work that surfaced it. That is still better than nothing and it is honest, because the fields say what the disposing agent observed. A reader must not treat those rows as review attribution.
+
+**What the record does not answer.** It supports attribution, not causation. It says which work a finding was surfaced by; it does not say the work caused the defect, and for a pre-existing defect found during a visit it usually did not. Overreading it is the failure mode to avoid.
+
+**Waived findings.** A finding recorded as waived rather than filed carries the same line, from the same helper, on its pull-request-body entry beside the dedup key already listed there. That entry is the waived finding's only durable surface: the disposition sidecar is gitignored, janitor-reaped, and dropped on the next digest rotation. The line is an HTML comment, so review-time visibility is unchanged. Note what this does not buy: `changed` does not separate the machinery waive from the touched-file waive, because a pull request fixing gate machinery is normally touching the machinery path it waives, so both arms usually read `changed=1`.
+
+**Ownership.** This file is the contract's sole owner. Every other route references it and restates neither the vocabulary nor the table. `.gaia/scripts/debt-origin-lib.sh` is the implementation of the contract rather than a second statement of it.
+
 ## 5. Issue body schema
 
 Build a self-contained issue body with these parts, in order:
 
 - The dedup-key comment line from step 1, present verbatim.
+- The provenance line (see "Provenance line" above), present verbatim, on its own line immediately after the dedup-key line and never merged into it.
 - The `file:line` location. The cited line must resolve to a real line in the named file, don't cite a location you haven't confirmed.
 - A concrete, non-empty description of the failure mode: what input or state triggers it, and what the bad outcome is. "Could be cleaner" is not a failure mode; "a null `userId` reaches this branch and throws" is.
 - A suggested fix.
@@ -143,6 +223,46 @@ mkdir -p "$debt_root/.gaia/local/debt" && : > "$debt_root/.gaia/local/debt/refre
 
 Create the parent directory first. On a fresh clone, or in CI, no statusline tick has run yet, so `.gaia/local/debt/` may not exist, a bare `touch` against a missing directory fails silently and leaves the sentinel unset. The write is anchored on the main checkout because the sentinel is shared state, one copy for the clone: `debt/count.json|debt/refresh-requested` is registry scope `shared`, so every tree reads the same physical copy through the resolver. This step is best-effort: never let a failure here block or fail the caller's flow, which is why the fallback is `.` rather than an exit.
 
+## Rollout: mark the pre-provenance cohort
+
+The backlog that predates provenance does not get provenance, and this is a prohibition rather than a low priority. The two kinds of absence sit in the same field: a fail-open `unknown` records what the disposing agent observed and is an honest statement, while a backfilled value records what someone guessed, and nothing downstream can tell the two apart. Seeding the record with plausible attributions produces provenance-shaped noise rather than partial provenance.
+
+What ships instead is a one-time cohort marker, per repository:
+
+1. Create the `debt:pre-provenance` label idempotently, exactly as this recipe already creates its own labels in step 6. Nothing else creates it.
+2. Apply it to every open `tech-debt` issue whose body carries no `gaia-debt-origin` line, raising the result limit so the sweep cannot silently stop at a default page size.
+3. Re-running is safe and is the recovery path for a run that failed partway. The body test is what makes it so: a plain "label every open issue" sweep would be idempotent in the trivial sense and still wrong, because a re-run days later would stamp issues filed after provenance landed and destroy the very distinction the marker exists to draw.
+
+```bash
+gh label create debt:pre-provenance --color ededed 2>/dev/null || true
+gh issue list --label tech-debt --state open --limit 1000 --json number,body \
+  --jq '.[] | select(((.body // "") | test("<!-- gaia-debt-origin:")) | not) | .number' \
+| while read -r n; do
+    gh issue edit "$n" --add-label debt:pre-provenance
+  done
+```
+
+The marker is only accurate when applied at the moment provenance starts writing in a given repository, which is why it is a rollout step rather than follow-up work. GAIA reaches adopter clones through its update flow, so that moment falls on a different date in every clone: this is a per-repository step carried to adopters as an action-required release note with its literal command, not a single action performed once. An adopter that skips it loses only the ability to distinguish its own two absence cases; nothing breaks.
+
+The marker changes no displayed number. The open-count refresh excludes exactly the `debt:in-progress` and `debt:spec-pending` claim labels and ignores every other label, the same reasoning that keeps the `difficulty:` namespace outside the lockstep contract (see the Contract-preserve note below).
+
+Do not add `debt:pre-provenance` to step 6's idempotent label-creation loop. Nothing else creates the label, so a step that skipped its creation would fail on its first edit, and adding it to step 6's loop would also make that loop's "all eight labels" comment wrong. Step 6 stays at eight labels; `debt:pre-provenance` creation lives only inside this rollout block, where the `gh label create` line above handles it idempotently. The rollout is a one-time per-repository step, not a per-filing one, so the two belong in different places by design.
+
+## Brake self-check
+
+```bash
+gh issue list --label tech-debt --state open --limit 1000 --json number,body \
+  --jq '[.[]
+         | select((.body // "") | test("<!-- gaia-debt-origin:"))
+         | select((.body // "") | test("(^|[[:space:]])mode=drain([[:space:]]|$)"))
+         | select((.body // "") | test("(^|[[:space:]])changed=1([[:space:]]|$)"))]
+        | map(.number)'
+```
+
+Each field is matched independently rather than as one ordered pattern, because the line's field order is canonical for readability only and no reader may depend on it. The `.body // ""` guard matters: an issue with an empty body would otherwise abort the whole query.
+
+This query is a triage aid, not a gate. Legitimate members of the result set exist, a security-class finding that is never waive-eligible among them, so a non-empty result is a prompt to look rather than proof of a bug. It promises no rate: no baseline exists, and producing one is what this query is for.
+
 ## Contract-preserve note
 
 The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are not just prose here, they are a contract shared with several deterministic, non-LLM consumers and their tests, none of which read this recipe, they hard-code the format instead. Step 2's dedup **matching basis** is `path=`+`line=` (ignoring `class=`), but that only changes which issue this recipe treats as a match, it does not change the wrapped key format (step 1) or any label spelling (step 6), so none of the consumers below need a change on account of it. Change the key format or any label spelling **only in lockstep** with all of these:
@@ -158,5 +278,7 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 The governed set also includes the `debt:in-progress` claim label: `.claude/skills/gaia/references/debt.md` creates and applies it as the `/gaia-debt` in-progress claim, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count. This recipe never creates or applies `debt:in-progress` itself. The same holds for `debt:spec-pending`: `debt.md` creates and applies it as the `/gaia-debt` design-first handoff park label, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count too. This recipe never creates or applies `debt:spec-pending` itself.
 
 The `difficulty:` namespace (step 7) is not part of this lockstep contract. No deterministic non-LLM consumer reads it, verified against all four named above: `.gaia/scripts/debt-count-refresh.sh` filters by excluding two specific label names (`debt:in-progress` and `debt:spec-pending`) and ignores anything else, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the issue body and parses no labels, `.gaia/statusline/gaia-statusline.sh` parses no labels, and `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward. Adding this namespace therefore requires zero changes to any of the four, which is exactly why the grade could be a label at all.
+
+Provenance (the `gaia-debt-origin` line, see "Provenance line" above) is a separate line and joins none of that lockstep set. Adding, removing, or renaming a provenance field requires no change to any deterministic consumer of the dedup key. No consumer reads the issue body positionally, so a second HTML comment beside the dedup key is safe: `.claude/hooks/lib/audit-dispositions.sh` reconstructs the wrapped dedup key and tests it as a substring, and `.claude/skills/gaia/references/debt.md` captures on the literal `<!-- gaia-debt-key: ` prefix; neither reads past it. The keyless `<path>:<line>` fallback cannot false-match a provenance field either, since no provenance field yields a colon followed by digits. The `debt:pre-provenance` label is additive for the same reason the `difficulty:` namespace is: `.gaia/scripts/debt-count-refresh.sh` excludes two specific label names and ignores every other label, and the statusline and the session reconcile parse no labels at all. The helper deliberately inverts `audit-key-lib.sh`'s fail-closed rule, printing `unknown` in a slot it cannot resolve rather than refusing to print a partial line; that inversion is deliberate, not a bug to "fix" into agreement.
 
 If you're only filing an issue, none of the above needs touching, this note exists so a future edit to the key/label shapes doesn't silently break them.
