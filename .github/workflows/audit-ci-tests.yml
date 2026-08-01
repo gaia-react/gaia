@@ -139,6 +139,17 @@ jobs:
               - 'wiki/.state.json'
               - '.gitattributes'
               - '**/.gitattributes'
+              # debt-origin-contract.bats (.gaia/scripts/tests/) asserts the
+              # tech-debt rollout command is byte-identical between its two
+              # homes, one of which is CHANGELOG.md, so that file's CONTENT is a
+              # source this suite guards rather than a file it merely mentions.
+              # It matches nothing else here, so without this line a
+              # CHANGELOG-only edit to that fence -- trimming the entry, dropping
+              # the --limit that keeps the sweep off a default page size -- would
+              # report `code=false`, skip every bats step, and green the job
+              # having run that comparison zero times. Same test-source pairing
+              # as code-review-audit.yml above.
+              - 'CHANGELOG.md'
               # shell-lint.bats (.gaia/scripts/tests/) asserts the wiring of the
               # local shell gate .gaia/tests/shell-lint.sh -- its .husky/*
               # discovery pass and its lint-hook-array-guard.sh invocation. The

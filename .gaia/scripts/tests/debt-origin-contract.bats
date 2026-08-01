@@ -498,8 +498,9 @@ printf '%s\n' \"\$debt_origin_changed\"")"
 # continuous-integration filing report `changed=0` for a finding on a
 # non-TypeScript file the pull request did touch, while the identical finding
 # filed locally reports `1`, and the whole suite would stay green.
-@test "7d. the continuous-integration eligibility diff is three-dot and carries no pathspec" {
-  local wf body diff_line after
+@test "7d. the continuous-integration eligibility set carries no pathspec and resolves the fork point" {
+  local wf body repo base moved_tip out p
+
   wf="$REPO_ROOT/.github/workflows/code-review-audit.yml"
   [ -f "$wf" ] || {
     echo "workflow not found: $wf" >&2
@@ -518,25 +519,60 @@ printf '%s\n' \"\$debt_origin_changed\"")"
     return 1
   }
 
-  diff_line="$(grep -F -- 'git diff --name-only' <<<"$body")"
-  [ -n "$diff_line" ] || {
-    echo "the provenance step no longer derives an eligibility set with git diff --name-only" >&2
+  # EXECUTE the extracted body rather than reading it. A textual scan only ever
+  # sees one physical line, and this command is already spread over four
+  # backslash continuations, so a pathspec appended on a continuation line
+  # reads as clean while genuinely filtering the set. Running it is immune to
+  # that and to any other spelling, and it matches how test 7a checks the local
+  # route, so the two routes are held to one standard instead of the CI one
+  # being textual and weaker.
+  repo="$BATS_TEST_TMPDIR/ci-eligibility"
+  mkdir -p "$repo"
+  git -C "$repo" init -q --initial-branch=main
+  git_identity "$repo"
+  echo init >"$repo/f"
+  git -C "$repo" add -A && git -C "$repo" commit -q -m init
+  base="$(git -C "$repo" rev-parse HEAD)"
+
+  # A later commit on main, and the value handed to the step as PR_BASE_SHA.
+  # It must be this MOVED TIP rather than the fork point: the event payload
+  # carries the base branch's tip at pull-request time, and a base that never
+  # moved makes two-dot and three-dot agree, so a fixture pinned at the fork
+  # point cannot tell them apart and would green a two-dot regression.
+  echo moved >"$repo/moved-on-main"
+  git -C "$repo" add -A && git -C "$repo" commit -q -m "main moves on"
+  moved_tip="$(git -C "$repo" rev-parse HEAD)"
+
+  git -C "$repo" checkout -q -b feat "$base"
+  mkdir -p "$repo/app"
+  echo 'export const a = 1' >"$repo/app/a.ts"
+  echo '# doc' >"$repo/note.md"
+  echo 'echo hi' >"$repo/script.sh"
+  git -C "$repo" add -A && git -C "$repo" commit -q -m "one ts file and two non-ts files"
+
+  ( cd "$repo" && PR_BASE_SHA="$moved_tip" PR_BRANCH=feat bash -c "$body" ) >/dev/null 2>&1 || true
+
+  out="$repo/.gaia/local/audit/provenance/pr-changed-files.txt"
+  [ -f "$out" ] || {
+    echo "the provenance step produced no pr-changed-files.txt" >&2
     return 1
   }
 
-  grep -qF -- '"${PR_BASE_SHA}...HEAD"' <<<"$diff_line" || {
-    echo "the CI eligibility diff is not three-dot against PR_BASE_SHA; two-dot compares a base tip that has moved, not the fork point" >&2
+  # Absence assertion written as a positive match with an explicit `return 1`,
+  # and placed before the loop so it is never the test's final command: as a
+  # final line, `grep && { ... }` returns grep's own non-zero on the passing
+  # case and reds a correct tree (`.claude/rules/bats-assertions.md`).
+  grep -qxF moved-on-main <"$out" && {
+    printf 'CI eligibility set contains moved-on-main, so the diff is two-dot against a base tip that has moved rather than three-dot against the fork point: %s\n' "$(cat "$out")" >&2
     return 1
   }
 
-  # Anything trailing the revision range is a pathspec. Matched by what remains
-  # after the range rather than by scanning the whole line, so the `--` in
-  # `--name-only` cannot false-match.
-  after="$(sed 's/.*\${PR_BASE_SHA}\.\.\.HEAD"//' <<<"$diff_line" | tr -d '[:space:]\\')"
-  [ -z "$after" ] || {
-    echo "the CI eligibility diff carries a trailing pathspec ($after); a finding on a non-TypeScript file the PR touched would read 0 instead of 1" >&2
-    return 1
-  }
+  for p in app/a.ts note.md script.sh; do
+    grep -qxF "$p" <"$out" || {
+      printf 'CI eligibility set is missing %s, so a finding on it would record changed=0 while the same finding filed locally records 1. A pathspec is filtering the set: %s\n' "$p" "$(cat "$out")" >&2
+      return 1
+    }
+  done
 }
 
 # ========== 8. the rollout command is byte-identical in both homes ==========

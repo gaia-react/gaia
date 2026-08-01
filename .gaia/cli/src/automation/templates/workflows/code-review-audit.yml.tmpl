@@ -314,8 +314,8 @@ jobs:
         # Never fail the job over provenance. Enumerating the abort paths does
         # not hold: every write here redirects into `$out`, so whatever breaks
         # the primary redirect breaks its `||` fallback too, and `set -e` takes
-        # the step down. A red step here is skipped by the audit and by all four
-        # terminal status writers, none of which carries `always()`, so the pull
+        # the step down. A red step here is skipped by the audit and by every
+        # terminal status writer, none of which carries `always()`, so the pull
         # request would end with no GAIA-Audit status at all. This closes every
         # arm at once; nothing reads `steps.provenance.*`, so it costs nothing.
         # Same precedent as the audit step below.
