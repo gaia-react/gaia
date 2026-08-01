@@ -137,8 +137,11 @@ _gaia_debt_origin_leading_digits() {
 # _gaia_debt_origin_normalize <raw-branch>
 # Prints the branch normalized FOR MATCHING ONLY: a single leading `worktree-`
 # stripped, then every `+` replaced by `/`. Both steps run unconditionally, in
-# that order. The emitted `branch` field keeps the raw name, so this
-# normalization never reaches the record. It exists because a worktree branch
+# that order. The emitted `branch` field keeps the raw name; the normalization
+# reaches the record only through `unit`, which gaia_debt_origin_classify
+# derives from the normalized string, so `chore-a+b` records `branch=chore-a+b`
+# with `unit=a/b`. That is diagnostic-only and the raw name is never lost.
+# It exists because a worktree branch
 # is the requested name wrapped as `worktree-<name>` with `/` written as `+`,
 # and a wrapped branch has to classify as the work it actually is.
 _gaia_debt_origin_normalize() {

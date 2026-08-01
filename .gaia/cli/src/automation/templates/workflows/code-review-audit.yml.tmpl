@@ -333,7 +333,13 @@ jobs:
           # implementation of the encoding and could not stay byte-identical
           # to a local run.
           out=.gaia/local/audit/provenance
-          mkdir -p "$out"
+          # `|| exit 0` because this step must never fail the job over
+          # provenance. It is the only unguarded abort left under `set -eu`,
+          # and a red step here is skipped by the audit and by every status
+          # writer without `always()`, so a filesystem hiccup would cost the
+          # whole review rather than one diagnostic line. Absent artifacts are
+          # already handled: the prompt omits the line.
+          mkdir -p "$out" || exit 0
           for c in 0 1 unknown; do
             bash .gaia/scripts/debt-origin-lib.sh \
               --changed "$c" --branch "${PR_BRANCH:-}" \

@@ -490,6 +490,55 @@ printf '%s\n' \"\$debt_origin_changed\"")"
   }
 }
 
+# Tests 7a through 7c extract the fence from `.claude/agents/code-audit-frontend.md`,
+# so they guard the LOCAL route only. The continuous-integration route asks the
+# same question of a value the event payload already carries, which is a second
+# implementation of the same two properties. Without this test, adding a
+# pathspec or switching three-dot to two-dot in the workflow would make a
+# continuous-integration filing report `changed=0` for a finding on a
+# non-TypeScript file the pull request did touch, while the identical finding
+# filed locally reports `1`, and the whole suite would stay green.
+@test "7d. the continuous-integration eligibility diff is three-dot and carries no pathspec" {
+  local wf body diff_line after
+  wf="$REPO_ROOT/.github/workflows/code-review-audit.yml"
+  [ -f "$wf" ] || {
+    echo "workflow not found: $wf" >&2
+    return 1
+  }
+
+  # The step's own `run:` body, `- name:` through the line before the next one.
+  body="$(awk '
+    !grab && $0 == "      - name: Resolve debt provenance" { grab=1; next }
+    grab && /^      - name: / { exit }
+    grab && !inrun && /^        run: \|[[:space:]]*$/ { inrun=1; next }
+    inrun { print }
+  ' "$wf")"
+  [ -n "$body" ] || {
+    echo "could not extract the 'Resolve debt provenance' step body; the step was renamed or removed" >&2
+    return 1
+  }
+
+  diff_line="$(grep -F -- 'git diff --name-only' <<<"$body")"
+  [ -n "$diff_line" ] || {
+    echo "the provenance step no longer derives an eligibility set with git diff --name-only" >&2
+    return 1
+  }
+
+  grep -qF -- '"${PR_BASE_SHA}...HEAD"' <<<"$diff_line" || {
+    echo "the CI eligibility diff is not three-dot against PR_BASE_SHA; two-dot compares a base tip that has moved, not the fork point" >&2
+    return 1
+  }
+
+  # Anything trailing the revision range is a pathspec. Matched by what remains
+  # after the range rather than by scanning the whole line, so the `--` in
+  # `--name-only` cannot false-match.
+  after="$(sed 's/.*\${PR_BASE_SHA}\.\.\.HEAD"//' <<<"$diff_line" | tr -d '[:space:]\\')"
+  [ -z "$after" ] || {
+    echo "the CI eligibility diff carries a trailing pathspec ($after); a finding on a non-TypeScript file the PR touched would read 0 instead of 1" >&2
+    return 1
+  }
+}
+
 # ========== 8. the rollout command is byte-identical in both homes ==========
 
 @test "8. the rollout command is byte-identical between SKILL.md and CHANGELOG.md" {
