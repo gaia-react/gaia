@@ -153,9 +153,13 @@ runtime's own `worktree.baseRef: fresh` default. The branch is already cut, so t
 `git checkout -b`. Everything the caller does after this point runs from inside the worktree.
 
 **The branch is named `worktree-<name>`, not `<name>`, and every `/` in `<name>` is written as `+`.** A worktree requested
-as `debt/123-slug` gets a branch called `worktree-debt+123-slug`. Nothing downstream depends on that
-spelling, because every consumer reads the current branch from git rather than deriving it from the
-worktree's name, but it is what appears in `git branch` and on the PR.
+as `debt/123-slug` gets a branch called `worktree-debt+123-slug`. The provenance classifier decodes this spelling: it strips the
+`worktree-` prefix and turns each `+` back into `/` before matching the branch-convention table
+(`.gaia/scripts/debt-origin-lib.sh`, contract in `.claude/skills/file-tech-debt/SKILL.md`). Both the prefix
+and the `+` separator are therefore load-bearing and change only in lockstep with it: a different separator
+makes every worktree branch fall through to the table's catch-all row and record `mode=adhoc unit=unknown`,
+silently. Reading the branch from git rather than deriving it from the worktree's name is what every consumer
+does, and it is what appears in `git branch` and on the PR.
 
 Provisioning the worktree — the shared-state symlinks and the generated typed routes — is a separate
 concern from creating it, and it runs on entry rather than at creation: `.claude/hooks/provision-worktree.sh`

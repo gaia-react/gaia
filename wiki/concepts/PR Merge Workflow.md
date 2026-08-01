@@ -208,7 +208,13 @@ origin="$(cd "$AUDIT_ROOT" && bash .gaia/scripts/debt-origin-lib.sh \
 
 Three-dot, no pathspec, and no `if [ -z "$FULL_BASE" ]; then` stop-guard: a finding on any file the pull request touches reads `changed=1`, and an unresolvable `FULL_BASE` makes `changed` the literal `unknown` for every finding in the run rather than stopping the filing, because `0` would assert the work did not touch the file while an unresolvable base asserts nothing.
 
-The waive rule applies to every out-of-scope finding the orchestrator disposes, whichever member surfaced it: `.gaia/cli/src/**`, `.claude/skills/**`, `.gaia/scripts/**`, `.claude/hooks/**`, `.claude/rules/**`, `.gaia/**/*.bats`, and `.github/workflows/**` each belong to a member that files nothing itself. Either eligibility term alone is sufficient: a gate-machinery finding stays eligible whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, with nothing eligible, a finding routes to the normal filing path. The security screen runs first and is unchanged: a security-class finding never waives.
+The waive rule applies to every out-of-scope finding the orchestrator disposes, whichever member surfaced it: every specialist surface belongs to a member that files nothing itself, so the orchestrator disposes what they hand it.
+
+<!-- gaia:maintainer-only:start -->
+GAIA maintainers: those surfaces are `.gaia/cli/src/**`, `.claude/skills/**`, `.gaia/scripts/**`, `.claude/hooks/**`, `.claude/rules/**`, `.gaia/**/*.bats`, and `.github/workflows/**`. The list is wrapped because the first glob names a maintainer-only tree that no adopter clone carries, and a shipped page asserting it would be describing a directory the reader does not have.
+<!-- gaia:maintainer-only:end -->
+
+Either eligibility term alone is sufficient: a gate-machinery finding stays eligible whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, with nothing eligible, a finding routes to the normal filing path. The security screen runs first and is unchanged: a security-class finding never waives.
 
 A waive files nothing: no tech-debt issue, no issue number, and no touch of the debt-count staleness sentinel (`.gaia/local/debt/refresh-requested`).
 
