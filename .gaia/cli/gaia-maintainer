@@ -27935,26 +27935,27 @@ var performBackup = (inputs) => {
   return backedUp;
 };
 var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path39.posix.dirname(declPath)));
+var isRestorable = (entry) => entry.kind === "file" || entry.target !== void 0;
 var isUntouched = (before, after) => {
   if (after === void 0) return false;
-  if (before.kind === "symlink")
-    return after.kind === "symlink" && after.target.equals(before.target);
+  if (before.kind === "symlink") {
+    const beforeTarget = before.target;
+    return after.kind === "symlink" && beforeTarget !== void 0 && (after.target?.equals(beforeTarget) ?? false);
+  }
   return after.kind === "file" && after.digest === before.digest;
 };
 var permissionsOf = (mode) => mode % 4096;
 var collectScopeDigests = (root, scopeDirs) => {
   const digests = /* @__PURE__ */ new Map();
-  scopeDirs.forEach((dir) => {
-    const absDir = path39.resolve(root, dir);
-    if (!existsSync29(absDir)) return;
-    let entries;
+  const walk = (absDir) => {
+    let names;
     try {
-      entries = readdirSync5(absDir, { recursive: true });
+      names = readdirSync5(absDir);
     } catch {
       return;
     }
-    entries.forEach((rel) => {
-      const abs = path39.join(absDir, rel);
+    names.forEach((name) => {
+      const abs = path39.join(absDir, name);
       let stat;
       try {
         stat = lstatSync2(abs);
@@ -27963,13 +27964,17 @@ var collectScopeDigests = (root, scopeDirs) => {
       }
       const repoRelative = path39.relative(root, abs).split(path39.sep).join("/");
       if (stat.isSymbolicLink()) {
+        let target;
         try {
-          digests.set(repoRelative, {
-            kind: "symlink",
-            target: readlinkSync2(abs, "buffer")
-          });
+          target = readlinkSync2(abs, "buffer");
         } catch {
+          target = void 0;
         }
+        digests.set(repoRelative, { kind: "symlink", target });
+        return;
+      }
+      if (stat.isDirectory()) {
+        walk(abs);
         return;
       }
       if (!stat.isFile()) return;
@@ -27986,6 +27991,17 @@ var collectScopeDigests = (root, scopeDirs) => {
         mode: stat.mode
       });
     });
+  };
+  scopeDirs.forEach((dir) => {
+    const absDir = path39.resolve(root, dir);
+    let stat;
+    try {
+      stat = lstatSync2(absDir);
+    } catch {
+      return;
+    }
+    if (!stat.isDirectory()) return;
+    walk(absDir);
   });
   return digests;
 };
@@ -27993,9 +28009,22 @@ var sweepScope = (inputs) => {
   const { after, before, declaredPaths, regionId, root } = inputs;
   const declaredSet = new Set(declaredPaths);
   const confined = [];
+  [...after.keys()].forEach((relPath) => {
+    if (declaredSet.has(relPath) || before.has(relPath)) return;
+    try {
+      rmSync3(path39.resolve(root, relPath), { force: true });
+      confined.push({ action: "removed", path: relPath, regionId });
+    } catch {
+      confined.push({ action: "reported", path: relPath, regionId });
+    }
+  });
   before.forEach((beforeEntry, relPath) => {
     if (declaredSet.has(relPath)) return;
     if (isUntouched(beforeEntry, after.get(relPath))) return;
+    if (!isRestorable(beforeEntry)) {
+      confined.push({ action: "reported", path: relPath, regionId });
+      return;
+    }
     try {
       const abs = path39.resolve(root, relPath);
       mkdirSync12(path39.dirname(abs), { recursive: true });
@@ -28008,15 +28037,6 @@ var sweepScope = (inputs) => {
         chmodSync(abs, permissions);
       }
       confined.push({ action: "restored", path: relPath, regionId });
-    } catch {
-      confined.push({ action: "reported", path: relPath, regionId });
-    }
-  });
-  [...after.keys()].forEach((relPath) => {
-    if (declaredSet.has(relPath) || before.has(relPath)) return;
-    try {
-      rmSync3(path39.resolve(root, relPath), { force: true });
-      confined.push({ action: "removed", path: relPath, regionId });
     } catch {
       confined.push({ action: "reported", path: relPath, regionId });
     }

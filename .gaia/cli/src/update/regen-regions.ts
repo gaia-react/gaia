@@ -29,9 +29,10 @@
  * region's declared paths and no longer matches its pre-image is put back,
  * whether the spawn rewrote it or deleted it. That order is load-bearing: it
  * is what stops a link the spawn left behind from standing between a lexical
- * snapshot key and the file it names. Neither pass ever traverses a symlink,
- * so no path outside the repository is ever read or written, and a link is
- * snapshotted and restored as itself. A `git status --porcelain -z`
+ * snapshot key and the file it names. Neither pass traverses a symlink inside
+ * the scope: a link is snapshotted and restored as itself, and nothing behind
+ * one is read or written, so a scope key never names one place while the bytes
+ * land in another. A `git status --porcelain -z`
  * before/after pair also catches a write anywhere else in the tree; that has
  * no pre-image to restore from, so it is only reported, never reverted. The
  * spawn never runs through a shell and never takes a shell-interpreted string:
