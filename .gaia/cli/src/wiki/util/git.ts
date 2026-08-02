@@ -6,15 +6,14 @@
  * subcommand handler is responsible for translating to exit codes.
  */
 import {execFileSync} from 'node:child_process';
+import {MAX_GIT_BUFFER_BYTES} from '../../util/git-buffer.js';
 
 type RunOptions = {
   cwd?: string;
 };
 
 // `git log` over a large history easily exceeds the 1 MiB default and
-// throws ENOBUFS; 64 MiB covers any realistic sync window.
-const MAX_GIT_BUFFER_BYTES = 64 * 1024 * 1024;
-
+// throws ENOBUFS; the shared bound covers any realistic sync window.
 const runGit = (args: readonly string[], options: RunOptions = {}): string => {
   const cwd = options.cwd ?? process.cwd();
   const result = execFileSync('git', args, {

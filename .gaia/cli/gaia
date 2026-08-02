@@ -14658,6 +14658,11 @@ var readAutomationConfig = (repoRoot) => {
 
 // src/util/git-env.ts
 import { execFileSync } from "node:child_process";
+
+// src/util/git-buffer.ts
+var MAX_GIT_BUFFER_BYTES = 64 * 1024 * 1024;
+
+// src/util/git-env.ts
 var execGaiaGitRaw = (args, cwd) => {
   const env = { ...process.env };
   delete env.GIT_DIR;
@@ -14669,11 +14674,10 @@ var execGaiaGitRaw = (args, cwd) => {
     env,
     // Node's 1 MiB default throws ENOBUFS on a large-output git command
     // (`git log` over a long history, `git status` on a very dirty tree).
-    // Matches `runGit` in wiki/util/git.ts, whose callers already hit that
-    // ceiling. The docblock above declares this the one chokepoint every
-    // git-shelling resolver routes through, so the ceiling belongs here
-    // rather than at the next caller to need it.
-    maxBuffer: 64 * 1024 * 1024,
+    // The docblock above declares this the one chokepoint every git-shelling
+    // resolver routes through, so the ceiling belongs here rather than at the
+    // next caller to need it.
+    maxBuffer: MAX_GIT_BUFFER_BYTES,
     stdio: ["ignore", "pipe", "pipe"]
   });
 };
@@ -28631,7 +28635,6 @@ var inspectWorkingTree = (cwd, runner = defaultRunner) => {
 
 // src/wiki/util/git.ts
 import { execFileSync as execFileSync5 } from "node:child_process";
-var MAX_GIT_BUFFER_BYTES = 64 * 1024 * 1024;
 var runGit2 = (args, options = {}) => {
   const cwd = options.cwd ?? process.cwd();
   const result = execFileSync5("git", args, {

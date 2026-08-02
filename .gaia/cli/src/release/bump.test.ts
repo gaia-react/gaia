@@ -14,7 +14,14 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {COMMIT_TYPES} from '../util/conventional-commit.js';
-import {aggregateBump, applyBump, classifyCommit, run} from './bump.js';
+import {
+  aggregateBump,
+  applyBump,
+  classifyCommit,
+  collectCommits,
+  defaultRunner,
+  run,
+} from './bump.js';
 import type {CommandRunner} from './bump.js';
 
 const expectedBump = (type: string): null | string => {
@@ -248,6 +255,16 @@ const failResult = (status: number): SpawnSyncReturns<string> => ({
   stdout: '',
 });
 
+const spawnErrorResult = (error: Error): SpawnSyncReturns<string> => ({
+  error,
+  output: ['', '', ''] as never,
+  pid: 0,
+  signal: null,
+  status: null,
+  stderr: '',
+  stdout: '',
+});
+
 const buildLogOutput = (
   commits: {body?: string; subject: string}[]
 ): string => {
@@ -275,6 +292,39 @@ const buildRunner =
 
     return okResult('');
   };
+
+describe('defaultRunner', () => {
+  // Asserted against a child that writes past Node's 1 MiB spawnSync default
+  // rather than against the constant, so the test fails if the bound is
+  // removed by any means.
+  test('reads child stdout past the 1 MiB spawnSync default', () => {
+    const size = 2 * 1024 * 1024;
+
+    const result = defaultRunner(
+      process.execPath,
+      ['-e', `process.stdout.write('x'.repeat(${size}))`],
+      {cwd: process.cwd()}
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.stdout).toHaveLength(size);
+  });
+});
+
+const enobufsRunner: CommandRunner = () =>
+  spawnErrorResult(new Error('spawnSync git ENOBUFS'));
+
+describe('collectCommits', () => {
+  // Pins the fail-closed contract: a spawn failure must block the release
+  // rather than degrade to "no commits", which aggregates to no bump and
+  // would propose the current version as if nothing had landed. The message
+  // shape is expectSuccess's, not changelog.ts's inline result.error check.
+  test('throws with the spawn error rather than returning no commits', () => {
+    expect(() =>
+      collectCommits('/nonexistent', enobufsRunner, 'v1.0.0..HEAD')
+    ).toThrow('git log failed: spawnSync git ENOBUFS');
+  });
+});
 
 describe('release bump CLI', () => {
   let sandbox: Sandbox;

@@ -10,6 +10,7 @@
  * tree routes through here rather than `execFileSync('git', ...)` directly.
  */
 import {execFileSync} from 'node:child_process';
+import {MAX_GIT_BUFFER_BYTES} from './git-buffer.js';
 
 /**
  * The env-stripped call itself, returning git's output **verbatim**.
@@ -33,11 +34,10 @@ export const execGaiaGitRaw = (args: string[], cwd: string): string => {
     env,
     // Node's 1 MiB default throws ENOBUFS on a large-output git command
     // (`git log` over a long history, `git status` on a very dirty tree).
-    // Matches `runGit` in wiki/util/git.ts, whose callers already hit that
-    // ceiling. The docblock above declares this the one chokepoint every
-    // git-shelling resolver routes through, so the ceiling belongs here
-    // rather than at the next caller to need it.
-    maxBuffer: 64 * 1024 * 1024,
+    // The docblock above declares this the one chokepoint every git-shelling
+    // resolver routes through, so the ceiling belongs here rather than at the
+    // next caller to need it.
+    maxBuffer: MAX_GIT_BUFFER_BYTES,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 };
