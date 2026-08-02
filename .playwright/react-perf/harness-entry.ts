@@ -4,12 +4,13 @@
 // is load-bearing). It records per-render attribution to window.__renders and
 // diagnostics to window.__bippyMeta, both serialized to primitives only.
 //
-// Safeguards (bippy-safeguards.md): instrumentation is wrapped in secure() with
-// a non-throwing onError and a 5000ms installCheckTimeout (defuses the
-// window.stop() landmine); it stays on the onCommitFiberRoot chaining path
-// (never injectProfilingHooks/lite); it gates real renders via didFiberRender
-// (traverseRenderedFibers) and keys cross-commit identity by getFiberId; it
-// retains no fibers, DOM nodes, or fiber.type objects.
+// Safeguards (bippy-safeguards.md): a manual canProfile gate (dev-build +
+// minimum React 19 check) plus a non-throwing guard() wrapper stand in for
+// bippy's removed secure() helper, backed by a 5000ms install-check timeout
+// (defuses the window.stop() landmine); it stays on the onCommitFiberRoot
+// chaining path (never injectProfilingHooks/lite); it gates real renders via
+// didFiberRender (traverseRenderedFibers) and keys cross-commit identity by
+// getFiberId; it retains no fibers, DOM nodes, or fiber.type objects.
 
 /* eslint-disable no-underscore-dangle -- window.__renders / __bippyMeta are the
    harness wire contract this file publishes for capture.ts to read. */
@@ -28,8 +29,8 @@ import {
   hasMemoCache,
   instrument,
   isCompositeFiber,
+  isInstrumentationActive,
   MemoComponentTag,
-  secure,
   SimpleMemoComponentTag,
   traverseContexts,
   traverseProps,
@@ -94,7 +95,7 @@ const getFiberKindLabel = (tag: number): string => {
 };
 
 const onRender = (fiber: Fiber, phase: RenderPhase): void => {
-  // Per-fiber isolation: secure() guards the outer commit handler, but one bad
+  // Per-fiber isolation: guard() guards the outer commit handler, but one bad
   // fiber must not abort the rest of the commit's capture.
   try {
     // Only attribute composite (function/class) components; skip host nodes.
@@ -187,7 +188,8 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
 
 // Read renderer.version for self-describing results, and abort the run if any
 // renderer is a production build (actualDuration is 0 in prod → meaningless
-// timings). secure()'s prod-gate is the backstop; this surfaces a clear error.
+// timings). onActive's canProfile gate is the backstop; this surfaces a clear
+// error.
 const inspectRenderers = (): void => {
   try {
     const hook = getRDTHook();
@@ -207,29 +209,45 @@ const inspectRenderers = (): void => {
   }
 };
 
-instrument(
-  secure(
-    {
-      name: 'gaia-react-perf',
-      onActive: () => {
-        meta.installed = true;
-        inspectRenderers();
-      },
-      onCommitFiberRoot: (_rendererID, root) => {
-        meta.commits += 1;
+let canProfile = false;
 
-        try {
-          traverseRenderedFibers(root, onRender);
-        } catch (error) {
-          recordError(error);
-        }
-      },
-    },
-    {
-      dangerouslyRunInProduction: false,
-      installCheckTimeout: 5000,
-      minReactMajorVersion: 19,
-      onError: recordError,
+// bippy's secure() helper was removed in 0.6.0 (upstream confirms this was
+// intentional); this reproduces its production gate, minimum-version check,
+// install-check timeout, and per-commit error isolation by hand.
+const guard =
+  <Arguments extends unknown[]>(handler: (...arguments_: Arguments) => void) =>
+  (...arguments_: Arguments): void => {
+    if (!canProfile) return;
+
+    try {
+      handler(...arguments_);
+    } catch (error) {
+      recordError(error);
     }
-  )
-);
+  };
+
+const installCheckTimeout = window.setTimeout(() => {
+  if (isInstrumentationActive()) return;
+  recordError(new Error('bippy did not attach within 5000ms'));
+  window.stop();
+}, 5000);
+
+instrument({
+  name: 'gaia-react-perf',
+  onActive: () => {
+    window.clearTimeout(installCheckTimeout);
+    canProfile = [...getRDTHook().renderers.values()].every(
+      (renderer) =>
+        Number.parseInt(renderer.version, 10) >= 19 &&
+        detectReactBuildType(renderer) === 'development'
+    );
+    if (!canProfile) return;
+
+    meta.installed = true;
+    inspectRenderers();
+  },
+  onCommitFiberRoot: guard((_rendererID, root) => {
+    meta.commits += 1;
+    traverseRenderedFibers(root, onRender);
+  }),
+});
