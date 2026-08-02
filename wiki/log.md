@@ -11,6 +11,12 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-02 9b62909 WORTHY - gaia/cli's @gaia-react/lint pin aligned to 2.0.0 with a lockstep parity guard test; wiki/dependencies/gaia-lint.md updated
+- 2026-08-02 811fce6 WORTHY - commit-classify now propagates git failures as git_failed instead of resolving to an empty range; wiki/decisions/Wiki Management.md updated
+- 2026-08-02 e81232e SKIP - debt.md dedup-key path capture widened for spaced wiki paths; internal regex correctness fix, wiki's clustering description remains accurate
+- 2026-08-02 e9f46ee WORTHY - EnterWorktree/ExitWorktree resume mechanics and tech-debt milestone-assignment policy folded from memory; wiki/concepts/Task Orchestration.md, Audit Disposition and Debt Fix.md updated in-commit
+- 2026-08-02 6f439e5 WORTHY - chore(deps): bippy 0.6.1 secure()->guard()/canProfile replacement pattern documented in-commit; wiki/concepts/React Perf Diagnostic.md updated in-commit, routine react-router/storybook/testing-library bumps not separately tracked
+- 2026-08-02 c54b987 SKIP - wiki: self-referential prior sync commit (through a7c0878), no further wiki action
 - 2026-08-02 gaia-audit - PROMOTE: resume-worktree-plans-by-entering.md folded into Task Orchestration.md (EnterWorktree/ExitWorktree resume mechanics, crashed-session recovery)
 - 2026-08-02 gaia-audit - PROMOTE: tech-debt-issues-join-milestone.md folded into Audit Disposition and Debt Fix.md (new-issue milestone-assignment policy)
 - 2026-08-02 a7c0878 SKIP - docs: bats-assertions.md absence-check trap and fix documented, comment-only script clarification; instruction-prose and comment fix, no wiki-tracked fact changed

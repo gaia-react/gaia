@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-05-07
 created: 2026-05-07
-updated: 2026-06-24
+updated: 2026-08-02
 tags: [decision, wiki, cli]
 ---
 
@@ -16,7 +16,7 @@ The wiki is critical infrastructure; it decays when drift between code and docum
 
 **`gaia wiki state`**: Outputs current sync state: `head_short` (short HEAD SHA), `state_sha`, `commits_ahead` (drift count), `reachable` (whether recorded SHA is in HEAD's history), and `suggested_base`. When `reachable` is false, `suggested_base` is the newest commit reachable from HEAD at or older than `last_evaluated_at`, a recovery baseline that lets a sync resume the un-evaluated window after a squash- or rebase-merge orphans the recorded SHA, instead of discarding it. It is empty when reachable or when no baseline resolves. Used by hooks and commands to detect when a sync is needed.
 
-**`gaia wiki commit-classify`**: Evaluates commits since a baseline SHA. For each commit, outputs `suggestion` (`WORTHY` or `SKIP`) based on subject and file paths. WORTHY commits warrant deep-read and wiki update; SKIP commits can be logged without wiki edits. The classification is deterministic; same commit always produces the same suggestion.
+**`gaia wiki commit-classify`**: Evaluates commits since a baseline SHA. For each commit, outputs `suggestion` (`WORTHY` or `SKIP`) based on subject and file paths. WORTHY commits warrant deep-read and wiki update; SKIP commits can be logged without wiki edits. The classification is deterministic; same commit always produces the same suggestion. A git failure while reading the range propagates as a `git_failed` error rather than resolving to an empty commit list, so a transient failure is distinguishable from a genuinely empty `<since>..HEAD` range.
 
 **`gaia wiki state-init <sha>`**: Creates `wiki/.state.json` seeded from `<sha>`; refuses if the file already exists. Bootstrap primitive used during repo onboarding before the first `/gaia-wiki sync`.
 
