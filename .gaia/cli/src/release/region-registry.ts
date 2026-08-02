@@ -62,6 +62,22 @@ const causeOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
 /**
+ * A YAML top level that can actually carry an `auditors` key.
+ *
+ * `typeof value === 'object'` is not that test. js-yaml's default schema
+ * resolves a bare top-level timestamp to a `Date` and a `!!binary` to a
+ * `Uint8Array`, both of which are `typeof 'object'` while being exactly as
+ * incapable of carrying a key as the bare scalar beside them.
+ */
+const isPlainMapping = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null) return false;
+
+  const prototype: unknown = Object.getPrototypeOf(value);
+
+  return prototype === Object.prototype || prototype === null;
+};
+
+/**
  * The exact path set `.gaia/scripts/write-audit-remits.sh` rewrites: one
  * agent definition per Code Audit Team roster member. Reads
  * `.gaia/audit-ci.yml` directly (only `auditors[].name` is needed) rather
@@ -80,12 +96,20 @@ const causeOf = (error: unknown): string =>
  * The line between throwing and the empty set runs through what the file *is*,
  * not through whether this reader understood it. A top level that is not a
  * mapping is a broken source and throws: an empty, truncated, or comment-only
- * file parses to nothing, and a bare scalar or a list parses to something that
- * cannot carry an `auditors` key. None of those is a way to say anything about
- * auditors, so treating them as "declares none" reproduces the same
- * misdirection one shape further out. A mapping that carries no `auditors` key,
- * or one that is not a list, does return the empty set: that is a roster
- * present and well-formed enough to read as declaring none.
+ * file parses to nothing, and a bare scalar, timestamp, binary, or list parses
+ * to something that cannot carry an `auditors` key. None of those is a way to
+ * say anything about auditors, so treating them as "declares none" reproduces
+ * the same misdirection one shape further out. A mapping that carries no
+ * `auditors` key, or one that is not a list, does return the empty set: that is
+ * a roster present and well-formed enough to read as declaring none.
+ *
+ * This is deliberately stricter than the bash readers of the same file:
+ * `read-audit-ci-config.sh` answers a comment-only roster with the full default
+ * knob set and exits 0. They resolve tunable settings, each of which has a
+ * defensible default; this resolves which files a region regenerates, which has
+ * none. So the message carries the two remedies that difference implies, delete
+ * the roster or give it a top-level mapping, rather than leaving a maintainer
+ * who emptied it on purpose with a failure and no way out.
  */
 export const rosterAgentPaths = (repoRoot: string): ReadonlySet<string> => {
   const rosterPath = path.join(repoRoot, ROSTER_RELATIVE_PATH);
@@ -112,16 +136,16 @@ export const rosterAgentPaths = (repoRoot: string): ReadonlySet<string> => {
     throw new Error(brokenRosterMessage('is not valid YAML', causeOf(error)));
   }
 
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+  if (!isPlainMapping(parsed)) {
     throw new Error(
       brokenRosterMessage(
         'has no top-level YAML mapping',
-        'An empty, truncated, or comment-only file parses to nothing, and a bare scalar or a top-level list parses to something that cannot carry an auditors key.'
+        'An empty, truncated, or comment-only file parses to nothing, and a bare scalar, timestamp, or list parses to something that cannot carry an auditors key. To declare no auditors, delete the file, or give it a top-level mapping such as "auditors: []".'
       )
     );
   }
 
-  const {auditors} = parsed as {auditors?: unknown};
+  const {auditors} = parsed;
 
   if (!Array.isArray(auditors)) return new Set();
 

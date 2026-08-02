@@ -96,27 +96,32 @@ describe('rosterAgentPaths', () => {
     expect(() => rosterAgentPaths(sandbox.root)).not.toThrow(/valid YAML/);
   });
 
-  test('a roster with no top-level mapping throws rather than declaring no auditors', () => {
-    // js-yaml parses every one of these successfully, so they reach the shape
-    // check rather than the parse arm: an empty, truncated, or comment-only
-    // file yields undefined, and a bare scalar or a top-level list yields
-    // something that cannot carry an `auditors` key. All are broken sources.
-    const {root} = sandbox;
+  // js-yaml parses every one of these successfully, so they reach the shape
+  // check rather than the parse arm. An empty file yields `undefined`, a
+  // whitespace- or comment-only file yields `null`, and the rest yield values
+  // that cannot carry an `auditors` key. A top-level timestamp and a `!!binary`
+  // are the two that are `typeof 'object'` under js-yaml's default schema, so
+  // they are what a bare `typeof` test would wrongly admit.
+  test.each([
+    ['an empty file', ''],
+    ['whitespace only', '   \n\n'],
+    ['comments only', '# comment only\n'],
+    ['a bare scalar', 'garbage text\n'],
+    ['a top-level list', '- a\n- b\n'],
+    ['a top-level timestamp', '2026-08-02\n'],
+    ['top-level binary', '!!binary "aGk="\n'],
+  ])(
+    'a roster that is %s throws rather than declaring no auditors',
+    (_label, contents) => {
+      const {root} = sandbox;
 
-    for (const contents of [
-      '',
-      '   \n\n',
-      '# comment only\n',
-      'garbage text\n',
-      '- a\n- b\n',
-    ]) {
       writeRoster(root, contents);
 
       expect(() => rosterAgentPaths(root)).toThrow(
         /\.gaia\/audit-ci\.yml has no top-level YAML mapping/
       );
     }
-  });
+  );
 
   test('auditors key absent or not a list → empty set', () => {
     writeRoster(sandbox.root, 'gate_label: null\n');
