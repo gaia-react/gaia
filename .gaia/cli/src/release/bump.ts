@@ -38,6 +38,7 @@ import {
   parseConventionalCommitHeader,
 } from '../util/conventional-commit.js';
 import type {CommitType} from '../util/conventional-commit.js';
+import {MAX_GIT_BUFFER_BYTES} from '../util/git-buffer.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release bump [--auto]
 
@@ -62,10 +63,18 @@ export type CommandRunner = (
   options: {cwd: string}
 ) => SpawnSyncReturns<string>;
 
+/**
+ * `collectCommits` asks git for every subject *and body* since the last tag,
+ * so its output grows with the distance from that tag and passes Node's 1 MiB
+ * `spawnSync` default well before a release is due. Bumping is runbook step 5,
+ * one step ahead of the changelog, so an unbounded runner here blocks the
+ * release before `release changelog` is ever reached.
+ */
 export const defaultRunner: CommandRunner = (command, args, options) =>
   spawnSync(command, args as string[], {
     cwd: options.cwd,
     encoding: 'utf8',
+    maxBuffer: MAX_GIT_BUFFER_BYTES,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
