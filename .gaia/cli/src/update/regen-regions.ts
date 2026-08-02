@@ -587,9 +587,10 @@ const scopeDirsFor = (paths: readonly string[]): ReadonlySet<string> =>
   new Set(paths.map((declPath) => path.posix.dirname(declPath)));
 
 /**
- * A snapshot entry that still carries a pre-image, so the sweep can write it
- * back. The one entry that cannot is a link whose target could not be read:
- * it is recorded for presence alone (see `SnapshotEntry`), and asking this
+ * A `SnapshotEntry` (declared below, the sort order puts this first) that still
+ * carries a pre-image, so the sweep can write it back: any file, or a link
+ * whose target was read. The one entry that is not restorable is a link whose
+ * target could not be read, which is recorded for presence alone. Asking this
  * before anything is unlinked is what keeps "was it here" from being answered
  * as "can it be put back".
  */
@@ -671,86 +672,102 @@ const collectScopeDigests = (
   // write outside the repository entirely while the report named a path inside
   // it. `lstat` here refuses to descend, so a link is only ever recorded as
   // itself, at every position rather than only the final one.
-  const walk = (absDir: string): void => {
-    let names: string[];
+  //
+  // The pending list is explicit rather than a recursive call, because the
+  // adopter's own tree sets the depth. `readdirSync`'s recursive option keeps
+  // its worklist on the heap for the same reason, and a deep scope directory
+  // must not turn the confinement sweep into a stack overflow that abandons
+  // every region still to be swept.
+  const walk = (scopeRoot: string): void => {
+    const pending = [scopeRoot];
 
-    try {
-      names = readdirSync(absDir);
-    } catch {
-      return;
-    }
-
-    names.forEach((name) => {
-      const abs = path.join(absDir, name);
-      let stat;
+    for (
+      let absDir = pending.pop();
+      absDir !== undefined;
+      absDir = pending.pop()
+    ) {
+      const parent = absDir;
+      let names: string[] = [];
 
       try {
-        // `lstat`, not `stat`: a symlink must not be followed here. Followed,
-        // it would be buffered as its TARGET's bytes, and the sweep would then
-        // restore it as a plain regular file holding a copy of content that may
-        // have lived wholly outside the region, or write through the link and
-        // rewrite a target outside the snapshot scope entirely.
-        stat = lstatSync(abs);
+        names = readdirSync(parent);
       } catch {
-        return;
+        // Unreadable directory: contribute nothing and keep walking the rest,
+        // the same containment every other IO failure in this walk takes.
       }
 
-      const repoRelative = path.relative(root, abs).split(path.sep).join('/');
-
-      // A link's pre-image is the target it holds, which is the whole of it:
-      // recording that makes a link restorable in its own right, so the
-      // confinement guarantee covers every shape a link can be left in
-      // (deleted, retargeted, replaced by a file) rather than only the created
-      // one. Reading it never follows the link, and a dangling one reads fine.
-      // `'buffer'`, never `'utf8'`: see SnapshotEntry.
-      if (stat.isSymbolicLink()) {
-        let target;
+      names.forEach((name) => {
+        const abs = path.join(parent, name);
+        let stat;
 
         try {
-          target = readlinkSync(abs, 'buffer');
+          // `lstat`, not `stat`: a symlink must not be followed here. Followed,
+          // it would be buffered as its TARGET's bytes, and the sweep would
+          // then restore it as a plain regular file holding a copy of content
+          // that may have lived wholly outside the region, or write through the
+          // link and rewrite a target outside the snapshot scope entirely.
+          stat = lstatSync(abs);
         } catch {
-          // Presence and restorability are different questions, and only the
-          // second one needs the target. Dropping the entry answers the first
-          // with "it was not here before the spawn ran", so the sweep's removal
-          // loop takes an adopter's own link for something the spawn created
-          // and unlinks it, reporting data loss as a stray write cleaned up.
-          // Recorded with no pre-image, it is surfaced instead of restored.
-          target = undefined;
+          return;
         }
 
-        digests.set(repoRelative, {kind: 'symlink', target});
+        const repoRelative = path.relative(root, abs).split(path.sep).join('/');
 
-        return;
-      }
+        // A link's pre-image is the target it holds, which is the whole of it:
+        // recording that makes a link restorable in its own right, so the
+        // confinement guarantee covers every shape a link can be left in
+        // (deleted, retargeted, replaced by a file) rather than only the
+        // created one. Reading it never follows the link, and a dangling one
+        // reads fine. `'buffer'`, never `'utf8'`: see SnapshotEntry.
+        if (stat.isSymbolicLink()) {
+          let target;
 
-      if (stat.isDirectory()) {
-        walk(abs);
+          try {
+            target = readlinkSync(abs, 'buffer');
+          } catch {
+            // Presence and restorability are different questions, and only the
+            // second needs the target. Dropping the entry answers the first
+            // with "it was not here before the spawn ran", so the sweep's
+            // removal loop takes an adopter's own link for something the spawn
+            // created and unlinks it, reporting data loss as a stray write
+            // cleaned up. Recorded with no pre-image, it is surfaced instead.
+            target = undefined;
+          }
 
-        return;
-      }
+          digests.set(repoRelative, {kind: 'symlink', target});
 
-      if (!stat.isFile()) return;
+          return;
+        }
 
-      let content;
+        if (stat.isDirectory()) {
+          pending.push(abs);
 
-      try {
-        content = readFileSync(abs);
-      } catch {
-        // Unreadable file (permissions, a race with the spawn): skip it, the
-        // same way an unstattable entry is skipped above. Throwing here would
-        // abandon the confinement sweep and the report for every remaining
-        // region, which is the one outcome this command promises never to
-        // produce.
-        return;
-      }
+          return;
+        }
 
-      digests.set(repoRelative, {
-        content,
-        digest: createHash('sha256').update(content).digest('hex'),
-        kind: 'file',
-        mode: stat.mode,
+        if (!stat.isFile()) return;
+
+        let content;
+
+        try {
+          content = readFileSync(abs);
+        } catch {
+          // Unreadable file (permissions, a race with the spawn): skip it, the
+          // same way an unstattable entry is skipped above. Throwing here would
+          // abandon the confinement sweep and the report for every remaining
+          // region, which is the one outcome this command promises never to
+          // produce.
+          return;
+        }
+
+        digests.set(repoRelative, {
+          content,
+          digest: createHash('sha256').update(content).digest('hex'),
+          kind: 'file',
+          mode: stat.mode,
+        });
       });
-    });
+    }
   };
 
   scopeDirs.forEach((dir) => {
@@ -784,6 +801,35 @@ type SweepInputs = {
 };
 
 /**
+ * Whether every directory component between the root and this key that exists
+ * today is a real directory rather than a symlink.
+ *
+ * A snapshot key is lexical and the tree it is applied to is the one the spawn
+ * has just finished editing, so the two can disagree. Where they do, resolving
+ * the key lexically names one place while the syscall lands in another, which
+ * is the confinement guarantee inverted: the write leaves the tree while the
+ * report says it stayed. Asked at the write site, this holds whatever else
+ * happened first, rather than only while an earlier pass succeeded.
+ *
+ * A component that does not exist is fine: it is about to be created as a real
+ * directory. Only what is there and is not a directory refuses the write.
+ */
+const hasLexicalParents = (root: string, relPath: string): boolean => {
+  const components = relPath.split('/').slice(0, -1);
+  let current = root;
+
+  return components.every((component) => {
+    current = path.join(current, component);
+
+    try {
+      return lstatSync(current).isDirectory();
+    } catch {
+      return true;
+    }
+  });
+};
+
+/**
  * Step 7: revert anything in the snapshot scope that the spawn touched
  * outside the region's declared paths. Every such path that has a pre-image
  * is restored to it, whether the spawn rewrote it, retargeted it, replaced it
@@ -797,15 +843,20 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   const confined: ConfinedEntry[] = [];
 
   // The spawn's own creations are undone FIRST, before any pre-image goes
-  // back. Every key in either snapshot is lexical, and one of those creations
-  // can be a symlink sitting where a scope subdirectory used to be: a restore
-  // resolved through it lands the pre-image at the link's target, anywhere on
-  // the filesystem, while the report names the repo-relative path the bytes
-  // were supposed to reach and the path itself stays empty. Removing first
-  // leaves every restore below resolving through real directories only, which
-  // is what makes a lexical `path.resolve` safe to trust here.
+  // back. One of those creations can be a symlink sitting where a scope
+  // subdirectory used to be, and undoing it first is what leaves the restores
+  // below with real directories to resolve through, so an ordinary run puts
+  // the pre-image back where it belongs instead of refusing it. The guarantee
+  // itself does not rest on this order, `hasLexicalParents` holds it at each
+  // write; the order is what makes the good outcome the common one.
   [...after.keys()].forEach((relPath) => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
+
+    if (!hasLexicalParents(root, relPath)) {
+      confined.push({action: 'reported', path: relPath, regionId});
+
+      return;
+    }
 
     try {
       // `rmSync` unlinks a symlink rather than following it, so removing one
@@ -832,6 +883,16 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
     // Its presence has already done its one job above, keeping the removal loop
     // from taking an adopter's own link for something the spawn created.
     if (!isRestorable(beforeEntry)) {
+      confined.push({action: 'reported', path: relPath, regionId});
+
+      return;
+    }
+
+    // Something is standing between this key and the file it names, so the
+    // write would leave the tree. Surface it rather than resolve through it,
+    // and ask before `mkdirSync` below, which would otherwise create the
+    // missing components inside whatever the link points at.
+    if (!hasLexicalParents(root, relPath)) {
       confined.push({action: 'reported', path: relPath, regionId});
 
       return;

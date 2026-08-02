@@ -42,7 +42,7 @@ import type {RegenRegionsReport} from './regen-regions.js';
  * on the same parent), so the transient window the snapshot's symlink arm has
  * to survive is reachable only this way.
  */
-const fsControl = vi.hoisted(() => ({failReadlinkOnceFor: ''}));
+const fsControl = vi.hoisted(() => ({failReadlinkOnceFor: '', failRmFor: ''}));
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof nodeFs>();
@@ -50,6 +50,7 @@ vi.mock('node:fs', async (importOriginal) => {
     target: unknown,
     options?: unknown
   ) => unknown;
+  const realRm = actual.rmSync as (target: unknown, options?: unknown) => void;
 
   return {
     ...actual,
@@ -70,6 +71,22 @@ vi.mock('node:fs', async (importOriginal) => {
       }
 
       return realReadlink(target, options);
+    },
+    rmSync: (target: unknown, options?: unknown): void => {
+      if (
+        fsControl.failRmFor !== '' &&
+        String(target).endsWith(fsControl.failRmFor)
+      ) {
+        const error: NodeJS.ErrnoException = new Error(
+          'EACCES: permission denied, unlink'
+        );
+
+        error.code = 'EACCES';
+
+        throw error;
+      }
+
+      realRm(target, options);
     },
   };
 });
@@ -262,6 +279,7 @@ const SORTED_DECLARED_PATHS = declaredPathsCopy.toSorted(byLocale);
 beforeEach(() => {
   cleanupPaths = [];
   fsControl.failReadlinkOnceFor = '';
+  fsControl.failRmFor = '';
 });
 
 afterEach(() => {
@@ -1192,6 +1210,53 @@ describe('update regen-regions: behavior coverage', () => {
     expect(
       lstatSync(path.join(root, '.claude/agents/nested')).isDirectory()
     ).toBe(true);
+  });
+
+  test('12h-ii. when that symlink cannot be removed, the restore refuses rather than resolving through it', () => {
+    const root = buildRoot();
+    const outside = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, '.claude/agents/nested'), {recursive: true});
+    writeFileSync(
+      path.join(root, '.claude/agents/nested/extra.md'),
+      'nested original\n'
+    );
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'rm -rf .claude/agents/nested',
+        `ln -s "${outside}" .claude/agents/nested`,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    // The removal that would clear the spawn's link fails, which is ordinary:
+    // unlinking it needs write permission on the scope directory, while writing
+    // through it needs nothing but a writable target somewhere else.
+    fsControl.failRmFor = '.claude/agents/nested';
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // Both entries are surfaced and neither is written. A `restored` row here
+    // would be the worst available outcome: the bytes outside the tree, the
+    // path inside it still empty, and the report claiming the opposite.
+    const {confined} = report;
+
+    expect(confined.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual([
+      {
+        action: 'reported',
+        path: '.claude/agents/nested',
+        regionId: 'test-region',
+      },
+      {
+        action: 'reported',
+        path: '.claude/agents/nested/extra.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(existsSync(path.join(outside, 'extra.md'))).toBe(false);
   });
 
   test('12i. an in-scope symlink whose target cannot be read is reported, not dropped from the snapshot and then deleted as a creation', () => {
