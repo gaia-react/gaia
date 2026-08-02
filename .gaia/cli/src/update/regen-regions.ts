@@ -27,16 +27,20 @@
  * (the "snapshot scope"); after the spawn, anything in scope the spawn newly
  * created is removed, and then anything in scope that is not one of the
  * region's declared paths and no longer matches its pre-image is put back,
- * whether the spawn rewrote it or deleted it. That order is load-bearing: it
- * is what stops a link the spawn left behind from standing between a lexical
- * snapshot key and the file it names. Neither pass traverses a symlink inside
- * the scope: a link is snapshotted and restored as itself, and nothing behind
- * one is read or written, so a scope key never names one place while the bytes
- * land in another. A `git status --porcelain -z`
- * before/after pair also catches a write anywhere else in the tree; that has
- * no pre-image to restore from, so it is only reported, never reverted. The
- * spawn never runs through a shell and never takes a shell-interpreted string:
- * it is always a fixed argv array, and it is bounded in output and runtime.
+ * whether the spawn rewrote it or deleted it. Undoing the creations first is
+ * what leaves an ordinary run with real directories to resolve through, so a
+ * link the spawn left behind is gone before any pre-image is written near it.
+ * Two rules hold the guarantee whatever order anything happens in: neither
+ * snapshot pass traverses a symlink inside the scope, so a link is recorded
+ * and restored as itself and nothing behind one is read or written; and every
+ * write first asks whether the components between the root and the key are
+ * real directories, reporting rather than resolving through one that is not.
+ * A scope key can therefore never name one place while the bytes land in
+ * another. A `git status --porcelain -z` before/after pair also catches a
+ * write anywhere else in the tree; that has no pre-image to restore from, so
+ * it is only reported, never reverted. The spawn never runs through a shell
+ * and never takes a shell-interpreted string: it is always a fixed argv array,
+ * and it is bounded in output and runtime.
  *
  * Exit codes: 0 for every refusal, skip, spawn failure, or non-zero program
  * exit; 1 only when the flags or `--manifest` itself are unusable.
