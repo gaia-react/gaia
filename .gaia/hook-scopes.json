@@ -239,7 +239,7 @@
       "hook": ".claude/hooks/wiki-session-start.sh",
       "scope": "any",
       "state": [],
-      "why": "Records HEAD under the per-worktree git-dir (git rev-parse --git-dir, correct by construction, oracle G) and delegates to the already-converted local-janitor.sh; touches no .gaia/local state itself."
+      "why": "Records HEAD under the per-worktree git-dir (git rev-parse --git-dir, correct by construction, oracle G) and delegates to the already-converted local-janitor.sh and to audit-respawn-prune.sh (release-excluded, guarded on [ -f ... ] so a clone without it is a no-op); touches no .gaia/local state itself."
     },
     {
       "hook": ".claude/hooks/wiki-session-stop.sh",

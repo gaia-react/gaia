@@ -13,4 +13,10 @@ git rev-parse HEAD > "$GIT_DIR/claude-session-start" 2>/dev/null || true
 # blocks the session. See local-janitor.sh for the provable-death contract.
 [ -f .claude/hooks/local-janitor.sh ] && bash .claude/hooks/local-janitor.sh || true
 
+# Bounded prune of the Code Audit Team re-spawn breadcrumb ledger: age-drops
+# records past the retention window and caps the file's line count. Side-effect
+# only; never blocks the session. Absent on a clone that does not carry the
+# spawn oracle, where the guard makes it a no-op.
+[ -f .gaia/scripts/audit-respawn-prune.sh ] && bash .gaia/scripts/audit-respawn-prune.sh || true
+
 exit 0
