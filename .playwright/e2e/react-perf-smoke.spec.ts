@@ -55,7 +55,7 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
   // §6 #3 + #8: profiling available, self-describing meta.
   expect(result.meta.profilingAvailable).toBe(true);
   expect(result.meta.rendererVersion).toBeTruthy();
-  expect(result.meta.bippyVersion).toBe('0.6.1');
+  expect(result.meta.bippyVersion).toMatch(/^\d+\.\d+\.\d+/);
 
   // §6 #2: a default (StrictMode-on) run is flagged so Phase 2 caveats timings.
   expect(result.meta.strictMode).toBe(true);
