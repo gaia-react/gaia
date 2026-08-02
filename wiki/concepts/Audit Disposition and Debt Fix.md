@@ -85,6 +85,10 @@ Filing is idempotent. Before creating, the audit dedups by **exact local substri
 
 The dedup is re-checked immediately before `gh issue create` to shrink the TOCTOU window for a concurrent CI-plus-local run.
 
+### Milestone assignment
+
+A tech-debt issue filed while draining a milestone joins that same milestone rather than an unmilestoned backlog: fixing one issue routinely turns up another, and that by-product belongs to the same release. When the `file-tech-debt` skill or a manual filing creates an issue during milestone work, set the milestone in the same step: the skill does not do this on its own, so it depends on the filer remembering. The milestone is a live worklist, not a release manifest: set it going forward, but do not backfill already-closed issues into it even when they technically belong to the release. The authoritative release record is `CHANGELOG.md` and git history, which is what release-notes generation reads; the milestone's day-to-day value is showing what is left.
+
 ## Security classification and divert
 
 Security classification runs **before** any filing path, and it screens the finding's **content and severity, never its `finding_class` field**. A finding is **security-class** (fail-safe) if any of these hold, regardless of its `finding_class` tag: it came from the security review dimension, its content reads as a security concern (an exploitable weakness), its severity is Critical, it is secret-shaped, or its `finding_class` field is absent or malformed (a broken finding record, which diverts rather than publishes). Exact-string matching on the seeded security classes alone is insufficient, severity is demotable and several security dimensions have no seeded class, so when in doubt the audit treats a finding as security-class.

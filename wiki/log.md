@@ -11,6 +11,8 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-02 gaia-audit - PROMOTE: resume-worktree-plans-by-entering.md folded into Task Orchestration.md (EnterWorktree/ExitWorktree resume mechanics, crashed-session recovery)
+- 2026-08-02 gaia-audit - PROMOTE: tech-debt-issues-join-milestone.md folded into Audit Disposition and Debt Fix.md (new-issue milestone-assignment policy)
 - 2026-08-02 a7c0878 SKIP - docs: bats-assertions.md absence-check trap and fix documented, comment-only script clarification; instruction-prose and comment fix, no wiki-tracked fact changed
 - 2026-08-02 556a1a8 WORTHY - re-spawn ledger measures peer-merge vs own-change re-dispatch before any re-keying decision; wiki/decisions/Code Audit Team.md, wiki/concepts/Local Working State.md updated in-commit
 - 2026-08-02 eafc3bc WORTHY - every disposition route now stamps a provenance line beside its dedup key; wiki/concepts/Audit Disposition and Debt Fix.md updated in-commit
