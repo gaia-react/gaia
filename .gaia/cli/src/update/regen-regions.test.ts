@@ -1463,6 +1463,40 @@ describe('update regen-regions: behavior coverage', () => {
     expect(readFileSync(insideAbs, 'utf8')).toBe('kept original\n');
   });
 
+  test('12k-ii. a scope directory whose own parent cannot be searched is reported, and its contents are not deleted once the program restores the bit', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeFileSync(path.join(root, '.claude/agents/adopter.md'), 'adopter\n');
+    // The scope root is `.claude/agents`; taking the search bit off `.claude`
+    // makes `lstat` on the scope root itself fail, which is one level above
+    // every arm inside the walk. The scope then contributes nothing at all,
+    // so there is no unreadable directory beneath which its files are
+    // sheltered, and restoring the bit makes all of them look newly created.
+    chmodSync(path.join(root, '.claude'), 0o600);
+    writeScript(root, ['chmod 755 .claude', HAPPY_SCRIPT_BODY].join('\n'));
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+    const {confined} = report;
+
+    expect(confined.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual([
+      {
+        action: 'reported',
+        path: '.claude/agents',
+        regionId: 'test-region',
+      },
+      {
+        action: 'reported',
+        path: '.claude/agents/adopter.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(
+      readFileSync(path.join(root, '.claude/agents/adopter.md'), 'utf8')
+    ).toBe('adopter\n');
+  });
+
   test('12l. an in-scope file whose permissions alone the program changes is restored to them', () => {
     const root = buildRoot();
 

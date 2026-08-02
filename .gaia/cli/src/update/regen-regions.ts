@@ -798,6 +798,13 @@ const collectScopeDigests = (
           // A parent that is readable but not searchable, or a race: the name
           // came back from `readdir`, so something is here, and that is the
           // whole of what is known about it.
+          //
+          // Every errno records here, ENOENT included, unlike the scope-root
+          // gate below, which discriminates. The asymmetry is the point: here
+          // `readdir` has just named this entry, so a vanished one is a race
+          // and presence is the conservative answer, costing one `reported`
+          // row. There, ENOENT is the ordinary "this region has no directory
+          // in this tree" case, which would otherwise report on every run.
           digests.set(repoRelative, {kind: 'unreadable'});
 
           return;
@@ -873,8 +880,24 @@ const collectScopeDigests = (
 
     try {
       stat = lstatSync(absDir);
-    } catch {
-      // Absent scope directory: nothing to snapshot, as before.
+    } catch (error) {
+      // ENOENT alone means there is nothing here to snapshot, the ordinary
+      // case for a region whose directory does not exist in this tree.
+      //
+      // Every other errno means the directory IS here and cannot be examined,
+      // most often because its own parent lost its search bit, and swallowing
+      // that is the same defect the arms inside the walk answer, one level up:
+      // the whole scope reads as absent, so a spawn that does no more than
+      // restore the bit makes every file under it look newly created and the
+      // removal loop empties it. An unexaminable scope root is recorded like
+      // any other unreadable path, and answers for everything beneath it.
+      //
+      // A non-object throw cannot be read for an errno, so it takes the
+      // conservative arm rather than the silent one.
+      if (!isPlainObject(error) || error.code !== 'ENOENT') {
+        digests.set(relativeKey(root, absDir), {kind: 'unreadable'});
+      }
+
       return;
     }
 
