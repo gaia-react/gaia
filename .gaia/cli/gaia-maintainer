@@ -21840,7 +21840,7 @@ var parseChunk = (chunk) => {
 };
 var commitDetails = (sinceSha, cwd) => {
   const recordSeparator = "---END-COMMIT---";
-  const raw = tryRunGit(
+  const raw = runGit(
     [
       "log",
       "--no-merges",
@@ -21851,7 +21851,6 @@ var commitDetails = (sinceSha, cwd) => {
     ],
     { cwd }
   );
-  if (raw === null) return [];
   const chunks = raw.split(recordSeparator);
   const records = [];
   const stats = [];
