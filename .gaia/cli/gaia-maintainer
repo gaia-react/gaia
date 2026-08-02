@@ -27947,50 +27947,53 @@ var isUntouched = (before, after) => {
 var permissionsOf = (mode) => mode % 4096;
 var collectScopeDigests = (root, scopeDirs) => {
   const digests = /* @__PURE__ */ new Map();
-  const walk = (absDir) => {
-    let names;
-    try {
-      names = readdirSync5(absDir);
-    } catch {
-      return;
-    }
-    names.forEach((name) => {
-      const abs = path39.join(absDir, name);
-      let stat;
+  const walk = (scopeRoot) => {
+    const pending = [scopeRoot];
+    for (let absDir = pending.pop(); absDir !== void 0; absDir = pending.pop()) {
+      const parent = absDir;
+      let names = [];
       try {
-        stat = lstatSync2(abs);
+        names = readdirSync5(parent);
       } catch {
-        return;
       }
-      const repoRelative = path39.relative(root, abs).split(path39.sep).join("/");
-      if (stat.isSymbolicLink()) {
-        let target;
+      names.forEach((name) => {
+        const abs = path39.join(parent, name);
+        let stat;
         try {
-          target = readlinkSync2(abs, "buffer");
+          stat = lstatSync2(abs);
         } catch {
-          target = void 0;
+          return;
         }
-        digests.set(repoRelative, { kind: "symlink", target });
-        return;
-      }
-      if (stat.isDirectory()) {
-        walk(abs);
-        return;
-      }
-      if (!stat.isFile()) return;
-      let content;
-      try {
-        content = readFileSync34(abs);
-      } catch {
-        return;
-      }
-      digests.set(repoRelative, {
-        content,
-        digest: createHash("sha256").update(content).digest("hex"),
-        kind: "file",
-        mode: stat.mode
+        const repoRelative = path39.relative(root, abs).split(path39.sep).join("/");
+        if (stat.isSymbolicLink()) {
+          let target;
+          try {
+            target = readlinkSync2(abs, "buffer");
+          } catch {
+            target = void 0;
+          }
+          digests.set(repoRelative, { kind: "symlink", target });
+          return;
+        }
+        if (stat.isDirectory()) {
+          pending.push(abs);
+          return;
+        }
+        if (!stat.isFile()) return;
+        let content;
+        try {
+          content = readFileSync34(abs);
+        } catch {
+          return;
+        }
+        digests.set(repoRelative, {
+          content,
+          digest: createHash("sha256").update(content).digest("hex"),
+          kind: "file",
+          mode: stat.mode
+        });
       });
-    });
+    }
   };
   scopeDirs.forEach((dir) => {
     const absDir = path39.resolve(root, dir);
@@ -28005,12 +28008,28 @@ var collectScopeDigests = (root, scopeDirs) => {
   });
   return digests;
 };
+var hasLexicalParents = (root, relPath) => {
+  const components = relPath.split("/").slice(0, -1);
+  let current = root;
+  return components.every((component) => {
+    current = path39.join(current, component);
+    try {
+      return lstatSync2(current).isDirectory();
+    } catch {
+      return true;
+    }
+  });
+};
 var sweepScope = (inputs) => {
   const { after, before, declaredPaths, regionId, root } = inputs;
   const declaredSet = new Set(declaredPaths);
   const confined = [];
   [...after.keys()].forEach((relPath) => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
+    if (!hasLexicalParents(root, relPath)) {
+      confined.push({ action: "reported", path: relPath, regionId });
+      return;
+    }
     try {
       rmSync3(path39.resolve(root, relPath), { force: true });
       confined.push({ action: "removed", path: relPath, regionId });
@@ -28022,6 +28041,10 @@ var sweepScope = (inputs) => {
     if (declaredSet.has(relPath)) return;
     if (isUntouched(beforeEntry, after.get(relPath))) return;
     if (!isRestorable(beforeEntry)) {
+      confined.push({ action: "reported", path: relPath, regionId });
+      return;
+    }
+    if (!hasLexicalParents(root, relPath)) {
       confined.push({ action: "reported", path: relPath, regionId });
       return;
     }
