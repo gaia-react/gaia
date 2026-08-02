@@ -47,6 +47,20 @@ The spawn set equals the dispatched member set, filtered to drop a member whose 
 
 A member with nothing to audit is never spawned, and if a stale caller spawns it anyway, it self-skips (each member's agent file carries the skip clause).
 
+<!-- gaia:maintainer-only:start -->
+### Re-spawn breadcrumbs
+
+The digest-marker filter above is the one place that already holds both halves of a re-spawn decision: it has called `audit_digests_all` once for the whole roster and is about to read the clearance store. At that point it appends one JSON-Lines record per member it considers to `.gaia/local/telemetry/audit-respawn.jsonl`, so the write costs an append and derives no digest of its own. Each record carries `schema`, `ts`, `branch`, `head`, `merge_base`, `member`, `digest`, and `cleared`; `merge_base` is the merge-base of `refs/remotes/origin/main` and HEAD.
+
+The filter's own degrade path, no clearance reader or no digest batch available, writes nothing, because it derived no digest there either. `--no-carry-forward`, the ownerless probe, and every fail-closed answer above never reach the filter and write nothing for the same reason. The oracle records what it saw and decides nothing: it never classifies a re-spawn, and the breadcrumb never changes which members it names. A failed append leaves the spawn decision, its exit status, and its stdout byte-identical, with nothing on stderr, fail-open exactly like the mints-nothing guarantee above. The instrument reads in one direction only, the marker store, and writes only its own ledger, so a defect in it costs a missing or spurious record and never a false clear. A breadcrumb is not a clearance artifact, and the oracle still mints nothing.
+
+`.gaia/scripts/audit-respawn-report.sh` is the documented query over the accumulated ledger, `--since <days>` (default 30) and `--json`. It groups records by branch and member, orders each group by timestamp, and reads every consecutive pair for whether the digest rotated, whether the merge-base advanced, and whether a clearance was lost. It reports `records`, `transitions`, `peer_merge_respawns`, `own_change_respawns`, and `peer_merge_rotations_upper`; `peer_merge_respawns` is the headline, the single quantity a re-spawn caused by absorbing a peer's merge rather than the branch's own edits. Three caveats travel with it: a run that both absorbs main and lands its own edits counts as peer-merge, so within its class the count is an upper bound; the pairing needs an observation taken while the member was cleared, so the count is a lower bound on total incidence; and attribution is a query over recorded facts, never a judgement the resolver makes.
+
+The ledger is registered in `.gaia/state-registry.json` at `scope: shared` and reaped by `.gaia/scripts/audit-respawn-prune.sh`, delegated from the SessionStart hook. Two arms bound it: an age window (`GAIA_AUDIT_RESPAWN_RETENTION_DAYS`, default 90, floored at 45) and a line cap (`GAIA_AUDIT_RESPAWN_MAX_RECORDS`, default 20000, floored at 1000). The cap trims only records the age window has already dropped, so retention never falls below the window no matter how busy the repository gets; a record the sweep cannot classify is kept, never dropped.
+
+Keying the marker to the reviewed diff instead of the whole owned content is deferred, not rejected. The condition for revisiting it: the attribution query reports `peer_merge_respawns`, measured over at least one month of accumulated records, at a rate the maintainer judges to exceed the cost of the change.
+<!-- gaia:maintainer-only:end -->
+
 ## AND-aggregation at the merge gate
 
 The local merge deny-hook (`.claude/hooks/pr-merge-audit-check.sh`) resolves the dispatched member set, computes every roster member's own content digest in one walk, and requires **every** dispatched member cleared before allowing `gh pr merge`:

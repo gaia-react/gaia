@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-07-01
-updated: 2026-07-20
+updated: 2026-08-02
 tags: [concept, claude, hooks]
 ---
 
@@ -38,6 +38,10 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `harden/declines.json` | `/gaia-harden` | live | one copy shared by every tree, so an operator decline made in a linked worktree suppresses the candidate everywhere and survives the worktree's removal |
 
 A linked worktree's `.gaia/local` is a single symlink to the main checkout's `.gaia/local`, so every path in the table above resolves to one copy rather than forking per tree. `.gaia/state-registry.json` declares each entry's scope, and an entry that has to stay private to one tree gets that isolation from a tree key in its own path rather than from a directory of its own; see [[Worktrees]]. The same linking covers a second, disjoint set: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't rows in the table above.
+
+<!-- gaia:maintainer-only:start -->
+`telemetry/` also holds a second, maintainer-only ledger beside `cost.jsonl`: `telemetry/audit-respawn.jsonl`, the Code Audit Team spawn oracle's append-only re-spawn breadcrumb ledger, one record per member the digest-marker filter considers. It is shared like its `cost.jsonl` sibling, so every tree contributes to one copy, but it is bounded where that sibling is not: a session-start sweep, separate from the nine janitor sweeps below, age-drops records past a retention window and caps the line count, both knobs floor-clamped. It exists only on a clone that carries the spawn oracle.
+<!-- gaia:maintainer-only:end -->
 
 A **live** entry is load-bearing state that tooling reads. An **ephemeral** entry is consumed once and then orphaned; its owner is meant to prune it, and the janitor backstops what the owner misses.
 
