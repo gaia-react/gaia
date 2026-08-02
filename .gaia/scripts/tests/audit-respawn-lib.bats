@@ -158,6 +158,18 @@ a_record() {
   [ "$(echo "$line" | jq -r '.branch')" = 'a"b' ]
 }
 
+@test "criterion 6b: a member containing a double quote still parses and round-trips" {
+  # `member` comes from the hand-authored roster, which no charset guard
+  # constrains. An unescaped quote would emit a line no JSON reader can parse,
+  # and the prune sweep keeps what it cannot classify, so one malformed record
+  # would outlive every retention bound the sweep exists to enforce.
+  local ledger="$BATS_TEST_TMPDIR/l.jsonl" line
+  gaia_respawn_record "$ledger" ts br h m 'a"b' dig true
+  line="$(head -n1 "$ledger")"
+  echo "$line" | jq -e . >/dev/null
+  [ "$(echo "$line" | jq -r '.member')" = 'a"b' ]
+}
+
 # ========== 7. slash round-trip ==========
 
 @test "criterion 7: a branch containing a slash round-trips unchanged" {

@@ -1167,6 +1167,32 @@ code-audit-maintainer-shell"
   [ ! -f "$(ledger_path)" ]
 }
 
+@test "criterion 18: re-spawn lib aborts under set -u while sourcing - stdout and exit status unaffected, no ledger" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  # The fifth defective shape, and the one the `|| true` on the source line
+  # cannot absorb: an unset-variable reference at the lib's top level kills the
+  # shell where it stands, before any later statement runs. The oracle's
+  # contract has to survive it the same way it survives the other four.
+  printf ': "$GAIA_RESPAWN_NO_SUCH_VAR"\n' > "$SANDBOX/.gaia/scripts/audit-respawn-lib.sh"
+  run run_sandbox_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+  [ ! -f "$(ledger_path)" ]
+}
+
+@test "criterion 18: re-spawn lib prints at source time - stdout stays the spawn set alone" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  # The lib is contracted to be side-effect-free at source time. This script's
+  # stdout is its answer, so a stray print would not just add noise, it would
+  # be read back as a member name.
+  printf 'echo stray-source-time-output\n' > "$SANDBOX/.gaia/scripts/audit-respawn-lib.sh"
+  run run_sandbox_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
 @test "criterion 18: re-spawn lib sourceable but gaia_respawn_record is defective - stdout and exit status unaffected, no ledger" {
   write_full_roster
   stage app/x.tsx; commit "feat"

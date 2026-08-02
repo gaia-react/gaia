@@ -279,8 +279,18 @@ fi
 # loaded or redefined lib can never make the oracle abort.
 _respawn_lib="$(dirname "${BASH_SOURCE[0]}")/audit-respawn-lib.sh"
 if [ -f "$_respawn_lib" ]; then
+  # `set -u` is relaxed for the source alone. An unset-variable reference at
+  # the lib's top level aborts the shell where it stands, so neither the
+  # trailing `|| true` nor any guard below would ever be reached. Restored on
+  # the next line, so the oracle's own body still runs under -u.
+  # Source-time output goes nowhere either. The lib is contracted to have no
+  # side effects at source time, and this script's stdout IS its answer, so a
+  # stray print there would corrupt the spawn set itself rather than merely
+  # log noise.
+  set +u
   # shellcheck source=/dev/null
-  . "$_respawn_lib" 2>/dev/null || true
+  . "$_respawn_lib" >/dev/null 2>&1 || true
+  set -u
 fi
 
 # --- Digest batch (parallel arrays; bash 3.2 has no associative arrays) ----

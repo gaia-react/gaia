@@ -171,6 +171,24 @@ mutant_script() {
   return 0
 }
 
+@test "4b: a final line with no trailing newline is judged by its own age, not its predecessor's" {
+  local root ledger
+  root="$(make_root)"; ledger="$(ledger_for "$root")"
+  append_record "$ledger" "$(epoch_ts 1)" "in-first"
+  append_record "$ledger" "$(epoch_ts 200)" "out-middle"
+  # Deliberately unterminated: what a short or interrupted append leaves
+  # behind. Line-numbering schemes disagree on exactly this shape, so the
+  # last record is where an off-by-one shows up.
+  printf '{"schema":1,"ts":"%s","branch":"in-last","head":"aaaa","merge_base":"bbbb","member":"code-audit-frontend","digest":"cccc","cleared":false}' \
+    "$(epoch_ts 2)" >> "$ledger"
+  run bash "$SCRIPT" "$root"
+  [ "$status" -eq 0 ]
+  local survivors; survivors="$(branches_in "$ledger")"
+  [ "$survivors" = "$(printf 'in-first\nin-last')" ]
+  grep -qF '"branch":"out-middle"' "$ledger" && return 1
+  return 0
+}
+
 @test "5: every record out of window leaves a zero-byte file" {
   local root ledger
   root="$(make_root)"; ledger="$(ledger_for "$root")"
@@ -416,6 +434,23 @@ make_hook_sandbox() {
   [ "$status" -eq 0 ]
 }
 
+@test "15e: the hook's prune delegation sits inside maintainer-only markers" {
+  # The prune script is release-excluded, so a shipped hook referencing it
+  # outside the markers is a runtime-dependency leak that fails the release
+  # build long after this PR merges. `release runtime-deps` strips
+  # marker-delimited blocks before extracting path references, so the wrap is
+  # what keeps the reference invisible to the scan.
+  local delegation_line start_line end_line
+  delegation_line="$(grep -n 'bash .gaia/scripts/audit-respawn-prune.sh' "$HOOK_ABS" | head -1 | cut -d: -f1)"
+  [ -n "$delegation_line" ]
+  start_line="$(awk -v n="$delegation_line" 'NR < n && /gaia:maintainer-only:start/ { l = NR } END { print l + 0 }' "$HOOK_ABS")"
+  end_line="$(awk -v n="$delegation_line" 'NR > n && /gaia:maintainer-only:end/ { print NR; exit }' "$HOOK_ABS")"
+  [ "$start_line" -gt 0 ]
+  [ -n "$end_line" ]
+  [ "$start_line" -lt "$delegation_line" ]
+  [ "$end_line" -gt "$delegation_line" ]
+}
+
 @test "15c: the reaped_by literal joins the registry entry to this script" {
   grep -qF 'audit re-spawn ledger prune sweep' "$SCRIPT" || return 1
   local reaped_by
@@ -505,6 +540,28 @@ make_hook_sandbox() {
   # epoch as out-of-window, and with a tiny default-cap fixture the cap arm's
   # budget is 0, so both are dropped.
   [ ! -s "$ledger" ]
+}
+
+@test "mutation: taking the line number from jq's input_line_number turns test 4b red" {
+  local root ledger mutant
+  root="$(make_root)"; ledger="$(ledger_for "$root")"
+  append_record "$ledger" "$(epoch_ts 1)" "in-first"
+  append_record "$ledger" "$(epoch_ts 200)" "out-middle"
+  printf '{"schema":1,"ts":"%s","branch":"in-last","head":"aaaa","merge_base":"bbbb","member":"code-audit-frontend","digest":"cccc","cleared":false}' \
+    "$(epoch_ts 2)" >> "$ledger"
+  # Restore the second numbering scheme wholesale: jq reads the ledger
+  # directly and numbers the rows itself, while the selection pass counts with
+  # awk's FNR. Removing the awk pass is what makes the mutation bite, since
+  # that pass also re-terminates the final line; leaving it in place would hand
+  # jq an already-normalized stream where its own counter is correct.
+  mutant="$(mutant_script 's#awk -v OFS="\$tab" .{ print FNR, \$0 }. "\$ledger"#cat "$ledger"#; s#(\$row\[:\$i\]) as \$n#(input_line_number | tostring) as $n#; s#(\$row\[(\$i + 1):\]) as \$line#$row as $line#')"
+  run bash "$mutant" "$root"
+  [ "$status" -eq 0 ]
+  # Correct behavior (test 4b) keeps in-first and in-last and drops
+  # out-middle. The mutant must NOT reproduce that.
+  local survivors; survivors="$(branches_in "$ledger")"
+  [ "$survivors" = "$(printf 'in-first\nin-last')" ] && return 1
+  return 0
 }
 
 @test "mutation: removing the retention floor clamp (raw env var) turns test 8b red" {

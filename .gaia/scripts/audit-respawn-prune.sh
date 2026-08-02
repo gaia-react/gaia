@@ -113,18 +113,31 @@ tab="$(printf '\t')"
 # ledger byte-identical, never reconstructed from parsed JSON:
 #   "<n>\tK"          in-window (or unparseable): always survives the age arm
 #   "<n>\tD\t<epoch>" out-of-window: a cap-arm candidate, epoch for sorting
-classified="$(jq -R -r --argjson cutoff "$cutoff" '
-  . as $line
-  | (input_line_number) as $n
-  | ((try (fromjson | .ts) catch null) // null) as $ts
+#
+# awk supplies the line number, and the selection pass below re-reads the
+# ledger with the same awk numbering, so exactly ONE scheme decides which
+# record is which. jq's own `input_line_number` is deliberately not used: on a
+# ledger whose final line carries no trailing newline it reports the same
+# number for the last two lines, while awk's FNR counts them separately. The
+# two schemes then disagree by one from that point on, and the age arm inverts,
+# dropping a live in-window record and keeping an expired one. No writer here
+# produces an unterminated ledger, but a short or interrupted append does, and
+# that is exactly when the sweep must not corrupt the measurement.
+classified="$(awk -v OFS="$tab" '{ print FNR, $0 }' "$ledger" \
+  | jq -R -r --argjson cutoff "$cutoff" '
+  . as $row
+  | ($row | index("\t")) as $i
+  | ($row[:$i]) as $n
+  | ($row[($i + 1):]) as $line
+  | ((try ($line | fromjson | .ts) catch null) // null) as $ts
   | (if $ts == null then null
      else (try ($ts | fromdateiso8601) catch null) end) as $epoch
   | if ($epoch == null or $epoch >= $cutoff) then
-      ($n | tostring) + "\tK"
+      $n + "\tK"
     else
-      ($n | tostring) + "\tD\t" + ($epoch | tostring)
+      $n + "\tD\t" + ($epoch | tostring)
     end
-' "$ledger")"
+')"
 jq_status=$?
 [ "$jq_status" -eq 0 ] || exit 0
 
@@ -164,6 +177,10 @@ keep_nums="$(
 )"
 
 tmp="$(mktemp "${ledger}.XXXXXX" 2>/dev/null)" || exit 0
+# Nothing else reaps a stray sibling: the janitor's outlier sweep never enters
+# telemetry/, and the ledger's registry entry matches an exact path. An
+# interrupt between here and the mv would otherwise leave one behind for good.
+trap 'rm -f -- "$tmp"' EXIT INT TERM
 
 write_status=0
 if [ -n "$keep_nums" ]; then

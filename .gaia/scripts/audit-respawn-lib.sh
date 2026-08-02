@@ -133,9 +133,16 @@ gaia_respawn_record() {
   dir="$(dirname -- "$ledger" 2>/dev/null)" || return 0
   mkdir -p -- "$dir" 2>/dev/null || return 0
 
-  # `branch` is the only free-form field; escape the one JSON-significant
-  # character git ref names can carry.
+  # Escape the one JSON-significant character these fields can carry. Git ref
+  # names cannot hold a backslash or a control character, so `"` is all that
+  # `branch` needs. `member` is not ref-shaped at all: it comes from the
+  # hand-authored roster in `.gaia/audit-ci.yml`, which no charset guard
+  # constrains, so it gets the same treatment. An unescaped quote there would
+  # emit a line no JSON reader can parse, and the prune sweep keeps what it
+  # cannot classify, so a single malformed record would live in the ledger
+  # forever, defeating the one bound the sweep exists to enforce.
   branch="${branch//\"/\\\"}"
+  member="${member//\"/\\\"}"
 
   # Grouped so the group's OWN `2>/dev/null` is established before the
   # inner `>>` redirect is attempted: bash evaluates a simple command's
