@@ -311,15 +311,15 @@ describe('defaultRunner', () => {
   });
 });
 
+const enobufsRunner: CommandRunner = () =>
+  spawnErrorResult(new Error('spawnSync git ENOBUFS'));
+
 describe('collectCommits', () => {
   // Pins the fail-closed contract: a spawn failure must block the release
   // rather than degrade to "no commits", which aggregates to no bump and
   // would propose the current version as if nothing had landed. The message
   // shape is expectSuccess's, not changelog.ts's inline result.error check.
   test('throws with the spawn error rather than returning no commits', () => {
-    const enobufsRunner: CommandRunner = () =>
-      spawnErrorResult(new Error('spawnSync git ENOBUFS'));
-
     expect(() =>
       collectCommits('/nonexistent', enobufsRunner, 'v1.0.0..HEAD')
     ).toThrow('git log failed: spawnSync git ENOBUFS');
