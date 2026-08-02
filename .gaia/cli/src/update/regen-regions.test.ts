@@ -1259,6 +1259,46 @@ describe('update regen-regions: behavior coverage', () => {
     expect(existsSync(path.join(outside, 'extra.md'))).toBe(false);
   });
 
+  test('12h-iii. a scope directory reached through a symlinked ancestor is not snapshotted, so nothing behind it is written into the repository', () => {
+    const root = buildRoot();
+    const outside = buildRoot();
+
+    // The adopter keeps `.claude` outside the repository and links to it, which
+    // is self-consistent for as long as the link is there: both snapshot passes
+    // and every write resolve through it and land where they were read.
+    mkdirSync(path.join(outside, 'agents'), {recursive: true});
+    writeFileSync(path.join(outside, 'agents/one.md'), 'original one\n');
+    writeFileSync(path.join(outside, 'agents/two.md'), 'original two\n');
+    writeFileSync(path.join(outside, 'agents/private.env'), 'SECRET=1\n');
+    symlinkSync(outside, path.join(root, '.claude'));
+    // Replacing that link with a real directory is what ends the consistency:
+    // the pre-images were read THROUGH the link, and the restore afterwards
+    // resolves the same keys lexically, into the repository.
+    writeScript(
+      root,
+      ['rm .claude', 'mkdir -p .claude/agents', HAPPY_SCRIPT_BODY].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // `lstat` on the scope directory resolves every component above it, so a
+    // walk that only refuses a link at the last position descends straight
+    // through this one and keys out-of-tree files as though they lived here.
+    // Putting one back then materializes the adopter's private file INSIDE the
+    // repository, at a path that has never held it.
+    expect(existsSync(path.join(root, '.claude/agents/private.env'))).toBe(
+      false
+    );
+    // Nothing in this scope is observable without traversing the link, so
+    // nothing in it is swept. That is the cost of the guarantee rather than a
+    // gap in it, and `sweepScope` states it as a limit.
+    expect(report.confined).toEqual([]);
+    expect(readFileSync(path.join(outside, 'agents/private.env'), 'utf8')).toBe(
+      'SECRET=1\n'
+    );
+  });
+
   test('12i. an in-scope symlink whose target cannot be read is reported, not dropped from the snapshot and then deleted as a creation', () => {
     const root = buildRoot();
 
@@ -1293,6 +1333,99 @@ describe('update regen-regions: behavior coverage', () => {
     ]);
     expect(lstatSync(linkAbs).isSymbolicLink()).toBe(true);
     expect(readlinkSync(linkAbs)).toBe('../../outside/target.txt');
+  });
+
+  test('12j. an in-scope file whose bytes cannot be read is reported, not dropped from the snapshot and then deleted as a creation', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+
+    const privateAbs = path.join(root, '.claude/agents/private.md');
+
+    writeFileSync(privateAbs, 'adopter private\n');
+    // Unreadable on the BEFORE pass, readable on the AFTER pass, with no mock
+    // anywhere: the program's own `chmod` is what opens it, which is the
+    // ordinary shape of this. It needs nothing more exotic than a tool that
+    // relaxes permissions it finds too tight.
+    chmodSync(privateAbs, 0o000);
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'chmod 644 .claude/agents/private.md'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // A swallowed read failure contributes nothing to `before`, so the removal
+    // loop reads the adopter's own file as something the spawn created and
+    // unlinks it, reporting the data loss as a stray write cleaned up. Presence
+    // with no pre-image is what keeps that loop honest, exactly as for the
+    // unreadable link above: the question "was this here" is answered by the
+    // entry existing, not by it carrying bytes.
+    expect(report.confined).toEqual([
+      {
+        action: 'reported',
+        path: '.claude/agents/private.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(readFileSync(privateAbs, 'utf8')).toBe('adopter private\n');
+  });
+
+  test('12k. an in-scope directory that cannot be read is reported, and nothing inside it is deleted once the program makes it readable', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+
+    const vaultAbs = path.join(root, '.claude/agents/vault');
+    const vaultNames = ['a.md', 'b.md', 'c.md'];
+
+    mkdirSync(vaultAbs, {recursive: true});
+    vaultNames.forEach((name) => {
+      writeFileSync(path.join(vaultAbs, name), `${name} original\n`);
+    });
+    chmodSync(vaultAbs, 0o000);
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'chmod 755 .claude/agents/vault'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+    const {confined} = report;
+
+    // The before pass could enumerate nothing inside, so all three appear only
+    // in `after`. Read as absent-then-present they are three creations, and the
+    // removal loop empties the adopter's directory. Recorded present-but-
+    // unreadable, the directory answers for everything beneath it, and the
+    // whole unverifiable subtree is surfaced instead.
+    expect(confined.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual([
+      {
+        action: 'reported',
+        path: '.claude/agents/vault',
+        regionId: 'test-region',
+      },
+      {
+        action: 'reported',
+        path: '.claude/agents/vault/a.md',
+        regionId: 'test-region',
+      },
+      {
+        action: 'reported',
+        path: '.claude/agents/vault/b.md',
+        regionId: 'test-region',
+      },
+      {
+        action: 'reported',
+        path: '.claude/agents/vault/c.md',
+        regionId: 'test-region',
+      },
+    ]);
+    vaultNames.forEach((name) => {
+      expect(readFileSync(path.join(vaultAbs, name), 'utf8')).toBe(
+        `${name} original\n`
+      );
+    });
   });
 
   test('13. a file created outside the declared set but inside the snapshot scope is removed', () => {
