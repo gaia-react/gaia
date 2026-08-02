@@ -55,10 +55,20 @@ export type CommandRunner = (
   options: {cwd: string}
 ) => SpawnSyncReturns<string>;
 
+/**
+ * `collectCommits` asks git for every subject *and body* since the last tag,
+ * so its output grows with the distance from that tag and passes Node's 1 MiB
+ * `spawnSync` default well before a release is due, failing the command
+ * closed with ENOBUFS. Matches the bound `wiki/util/git.ts` and
+ * `util/git-env.ts` already use for git spawns.
+ */
+const MAX_GIT_BUFFER_BYTES = 64 * 1024 * 1024;
+
 export const defaultRunner: CommandRunner = (command, args, options) =>
   spawnSync(command, args as string[], {
     cwd: options.cwd,
     encoding: 'utf8',
+    maxBuffer: MAX_GIT_BUFFER_BYTES,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
