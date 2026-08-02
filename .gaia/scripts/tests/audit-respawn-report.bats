@@ -151,6 +151,27 @@ path_without_jq() {
   [ -n "$(stderr_only --root "$ROOT" --since "")" ]
 }
 
+@test "criterion 5b: a leading-zero --since is read in base 10, not as octal" {
+  # `$(( ))` reads a leading zero as octal, so an un-normalized `030` would
+  # silently report a 24-day window while the text still echoed "030 days",
+  # and `08` is not octal at all: the arithmetic errors, leaves its target
+  # unset, and trips `set -u` with a raw bash diagnostic in place of this
+  # script's own message. The `10#` guard is what prevents both, and without
+  # this test nothing turns red if a future edit drops it.
+  local since_ts expected_ts
+  run "$SCRIPT" --root "$ROOT" --json --since 030
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.window_days' <<<"$output")" = "30" ]
+  since_ts="$(jq -r '.since' <<<"$output")"
+  expected_ts="$(jq -rn --argjson e "$(( $(date -u +%s) - 30 * 86400 ))" '$e | todateiso8601')"
+  # Same day, so a second's clock drift between the two calls cannot flake it.
+  [ "${since_ts%T*}" = "${expected_ts%T*}" ]
+
+  run "$SCRIPT" --root "$ROOT" --json --since 08
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.window_days' <<<"$output")" = "8" ]
+}
+
 @test "criterion 6: jq absent from PATH exits 1, stderr diagnostic, nothing on stdout" {
   local nojq
   nojq="$(path_without_jq)"

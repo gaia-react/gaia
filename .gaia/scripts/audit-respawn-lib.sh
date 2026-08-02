@@ -53,12 +53,17 @@
 #   <branch>, <head>, <merge_base>, and <digest> may each be empty; an empty
 #   value emits an empty JSON string ("") -- never a placeholder.
 #
-#   Escaping: <branch> is the only free-form field. Git ref names cannot
-#   contain a backslash or an ASCII control character, so `"` is the single
-#   JSON-significant character git permits in one, escaped via bash
-#   parameter substitution. No `jq` is required to build a line, and none may
-#   be assumed: the oracle's digest-marker filter can run on a machine with
-#   no `jq`.
+#   Escaping: two fields are free-form, <branch> and <member>, and they are
+#   not escaped alike. Git ref names cannot contain a backslash or an ASCII
+#   control character, so `"` is the single JSON-significant character git
+#   permits in a <branch>. <member> comes from the hand-authored roster, which
+#   constrains no charset, so it takes a backslash pass FIRST and then the
+#   quote pass; reversing that order would re-escape the backslashes the quote
+#   pass just introduced. Do not add a second pass over either field: they are
+#   already fully escaped where the record is built, and escaping twice would
+#   double every backslash. Both use bash parameter substitution, so no `jq` is
+#   required to build a line, and none may be assumed: the oracle's
+#   digest-marker filter can run on a machine with no `jq`.
 #
 #   One `printf` produces the whole line, appended with `>>`: a single small
 #   write() under O_APPEND is what keeps concurrent appends from different
