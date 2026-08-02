@@ -20782,7 +20782,7 @@ var maskRegion = (source, startMarker, endMarker) => {
 import { existsSync as existsSync12, readFileSync as readFileSync14 } from "node:fs";
 import path16 from "node:path";
 var ROSTER_RELATIVE_PATH = ".gaia/audit-ci.yml";
-var brokenRosterMessage = (problem, cause) => `${ROSTER_RELATIVE_PATH} ${problem}. The agent definitions the 'audit-remit' region regenerates are read from that roster, so the release manifest cannot be built until the file itself is fixed; this is not a roster-membership or marker problem. ${cause}`;
+var brokenRosterMessage = (problem, cause) => `${ROSTER_RELATIVE_PATH} ${problem}. The Code Audit Team agent definitions are read from that roster, so the release manifest cannot be built until the file itself is fixed; this is not a roster-membership or marker problem. ${cause}`;
 var causeOf = (error51) => error51 instanceof Error ? error51.message : String(error51);
 var rosterAgentPaths = (repoRoot) => {
   const rosterPath = path16.join(repoRoot, ROSTER_RELATIVE_PATH);

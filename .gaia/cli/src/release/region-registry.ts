@@ -30,6 +30,14 @@ export type RegionRegistryEntry = {
    * Every repo-relative path this region's regeneration command rewrites, for
    * the given repo root. The build refuses to declare a shipped marker-bearing
    * path this set does not contain.
+   *
+   * An implementation **throws** when the source it derives that set from
+   * exists but cannot be read or parsed: the build cannot know what the region
+   * rewrites, and the only caller can do nothing but abort. The empty set is
+   * reserved for a source that is legitimately absent, or present and
+   * recognized as declaring nothing. Returning it for a broken source instead
+   * makes those two indistinguishable, and the caller then blames whichever
+   * marker-bearing file it reaches first.
    */
   rewrites: (repoRoot: string) => ReadonlySet<string>;
   startMarker: string;
@@ -48,7 +56,7 @@ const ROSTER_RELATIVE_PATH = '.gaia/audit-ci.yml';
  * a multi-line source excerpt.
  */
 const brokenRosterMessage = (problem: string, cause: string): string =>
-  `${ROSTER_RELATIVE_PATH} ${problem}. The agent definitions the 'audit-remit' region regenerates are read from that roster, so the release manifest cannot be built until the file itself is fixed; this is not a roster-membership or marker problem. ${cause}`;
+  `${ROSTER_RELATIVE_PATH} ${problem}. The Code Audit Team agent definitions are read from that roster, so the release manifest cannot be built until the file itself is fixed; this is not a roster-membership or marker problem. ${cause}`;
 
 const causeOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
