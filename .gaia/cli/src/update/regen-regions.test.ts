@@ -1428,6 +1428,74 @@ describe('update regen-regions: behavior coverage', () => {
     });
   });
 
+  test('12k-i. an in-scope entry inside a directory that lists but cannot be searched is reported, not deleted as a creation', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+
+    const lockedAbs = path.join(root, '.claude/agents/locked');
+    const insideAbs = path.join(lockedAbs, 'kept.md');
+
+    mkdirSync(lockedAbs, {recursive: true});
+    writeFileSync(insideAbs, 'kept original\n');
+    // Read but no search: `readdir` returns the name and `lstat` on it fails.
+    // This is the one drop arm the mode-000 fixtures above never reach, since
+    // there `readdir` itself is what fails.
+    chmodSync(lockedAbs, 0o444);
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'chmod 755 .claude/agents/locked'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // The name came back from `readdir`, so something is here; that is the
+    // whole of what the before pass knows, and it is enough to keep the
+    // removal loop off it.
+    expect(report.confined).toEqual([
+      {
+        action: 'reported',
+        path: '.claude/agents/locked/kept.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(readFileSync(insideAbs, 'utf8')).toBe('kept original\n');
+  });
+
+  test('12l. an in-scope file whose permissions alone the program changes is restored to them', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+
+    const secretAbs = path.join(root, '.claude/agents/secret.md');
+
+    writeFileSync(secretAbs, 'private\n');
+    chmodSync(secretAbs, 0o600);
+    // Content untouched: the mode is the only thing that moves, and it moves
+    // the one direction that matters, from private to world-readable.
+    writeScript(
+      root,
+      [HAPPY_SCRIPT_BODY, 'chmod 644 .claude/agents/secret.md'].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // Permissions are part of the pre-image, since the restore writes them
+    // back. Comparing content alone judges this untouched and leaves the file
+    // exposed, which is the one change of this kind the command could undo.
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/secret.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(statSync(secretAbs).mode.toString(8).slice(-3)).toBe('600');
+    expect(readFileSync(secretAbs, 'utf8')).toBe('private\n');
+  });
+
   test('13. a file created outside the declared set but inside the snapshot scope is removed', () => {
     const root = buildRoot();
 
