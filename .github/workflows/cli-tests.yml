@@ -70,6 +70,14 @@ jobs:
             code:
               - '.gaia/cli/**'
               - '.github/workflows/cli-tests.yml'
+              # The lint-pin parity guard (src/lint-pin-parity.test.ts) asserts
+              # .gaia/cli/package.json pins the same @gaia-react/lint as the
+              # root workspace. A root-only bump is what causes that drift, and
+              # tests.yml skips its whole suite for the `chore(deps):` title
+              # /update-deps opens, so without this entry nothing evaluates the
+              # guard on the PR that breaks it -- it would first fire on some
+              # later, unrelated .gaia/cli/** change instead (#1051).
+              - 'package.json'
               # The audit-template dogfood drift-guard compares this in-tree
               # workflow against the bundled .tmpl. Editing the .tmpl already
               # lands under .gaia/cli/**; the live workflow is the other side
