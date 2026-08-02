@@ -142,6 +142,11 @@ gaia_respawn_record() {
   # cannot classify, so a single malformed record would live in the ledger
   # forever, defeating the one bound the sweep exists to enforce.
   branch="${branch//\"/\\\"}"
+  # Backslash first, then quote: escaping in the other order would re-escape
+  # the backslashes this line just introduced. `branch` needs no backslash pass
+  # because git ref names cannot carry one; `member` can, since the roster
+  # parser preserves whatever the file holds.
+  member="${member//\\/\\\\}"
   member="${member//\"/\\\"}"
 
   # Grouped so the group's OWN `2>/dev/null` is established before the
@@ -166,6 +171,15 @@ _gaia_respawn_default_then_floor() {
   case "$v" in
     '' | *[!0-9]*) v="$default" ;;
   esac
+  # Normalize the base before anything reads the number. `test` parses base 10
+  # while `$(( ))` reads a leading zero as octal, so an override like `050`
+  # would clear the floor compare below as 50 and then reach a consumer's
+  # arithmetic as 40, shortening the window under the floor the header promises
+  # no override can shorten. `08` and `09` are not octal at all and abort the
+  # consumer outright. `10#` settles it once, here, so the check and every
+  # caller share one base. Safe unconditionally: the case arm above has already
+  # guaranteed a non-empty bare run of digits.
+  v=$((10#$v))
   [ "$v" -lt "$floor" ] && v="$floor"
   printf '%s\n' "$v"
   return 0

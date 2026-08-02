@@ -259,6 +259,29 @@ mutant_script() {
 
 # ========== 9: cap arm, subordinate to the window ==========
 
+@test "8d: a leading-zero override (050) keeps a 47-day record, it does not read as octal 40" {
+  local root ledger
+  root="$(make_root)"; ledger="$(ledger_for "$root")"
+  append_record "$ledger" "$(epoch_ts 47)" "aged-47"
+  GAIA_AUDIT_RESPAWN_RETENTION_DAYS=050 run bash "$SCRIPT" "$root"
+  [ "$status" -eq 0 ]
+  # Read as octal the window is 40 days and this record is dropped, silently
+  # shortening retention below the 45-day floor no override may cross.
+  grep -qF "aged-47" "$ledger" || return 1
+}
+
+@test "8e: a leading-zero cap override does not abort the sweep" {
+  local root ledger
+  root="$(make_root)"; ledger="$(ledger_for "$root")"
+  append_record "$ledger" "$(epoch_ts 1)" "in-1"
+  # 08 and 09 are not valid octal, so an un-normalized value reaches the
+  # arithmetic as an error, leaves its target unset, and trips `set -u`.
+  GAIA_AUDIT_RESPAWN_MAX_RECORDS=08000 run bash "$SCRIPT" "$root"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  grep -qF "in-1" "$ledger" || return 1
+}
+
 @test "9a: 1200 all-in-window records under cap=1000 all survive, byte-identical (cap does not fire)" {
   local root ledger ts before after
   root="$(make_root)"; ledger="$(ledger_for "$root")"

@@ -158,6 +158,17 @@ a_record() {
   [ "$(echo "$line" | jq -r '.branch')" = 'a"b' ]
 }
 
+@test "criterion 6c: a member containing a backslash still parses and round-trips" {
+  # The roster parser preserves a backslash, and a trailing one would escape
+  # the closing quote, emitting a line no reader can parse. The sweep keeps
+  # what it cannot classify, so that record would never be reaped.
+  local ledger="$BATS_TEST_TMPDIR/l.jsonl" line
+  gaia_respawn_record "$ledger" ts br h m 'code-audit-x\' dig true
+  line="$(head -n1 "$ledger")"
+  echo "$line" | jq -e . >/dev/null
+  [ "$(echo "$line" | jq -r '.member')" = 'code-audit-x\' ]
+}
+
 @test "criterion 6b: a member containing a double quote still parses and round-trips" {
   # `member` comes from the hand-authored roster, which no charset guard
   # constrains. An unescaped quote would emit a line no JSON reader can parse,
@@ -258,6 +269,20 @@ a_record() {
   [ "$(gaia_respawn_max_records)" = "20000" ]
   [ "$(GAIA_AUDIT_RESPAWN_MAX_RECORDS=50000 bash -c ". '$LIB'; gaia_respawn_max_records")" = "50000" ]
   [ "$(GAIA_AUDIT_RESPAWN_MAX_RECORDS=10 bash -c ". '$LIB'; gaia_respawn_max_records")" = "1000" ]
+}
+
+@test "criterion 11b: a leading-zero override is read in base 10 by the knob and by its consumers" {
+  # `test` parses base 10 and `$(( ))` reads a leading zero as octal, so an
+  # un-normalized `050` clears the 45-day floor compare as 50 and then reaches
+  # a consumer's arithmetic as 40, shortening the window below the floor. `08`
+  # and `09` are not octal at all and abort the consumer outright.
+  [ "$(GAIA_AUDIT_RESPAWN_RETENTION_DAYS=050 bash -c ". '$LIB'; gaia_respawn_retention_days")" = "50" ]
+  [ "$(GAIA_AUDIT_RESPAWN_RETENTION_DAYS=008 bash -c ". '$LIB'; gaia_respawn_retention_days")" = "45" ]
+  [ "$(GAIA_AUDIT_RESPAWN_MAX_RECORDS=08000 bash -c ". '$LIB'; gaia_respawn_max_records")" = "8000" ]
+  # The printed value must survive a consumer's arithmetic unchanged.
+  local days
+  days="$(GAIA_AUDIT_RESPAWN_RETENTION_DAYS=050 bash -c ". '$LIB'; gaia_respawn_retention_days")"
+  [ "$(bash -c "echo \$(($days * 1))")" = "50" ]
 }
 
 @test "criterion 12: invalid overrides fall through to the default 20000, never the floor" {
