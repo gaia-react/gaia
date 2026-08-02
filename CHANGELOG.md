@@ -39,6 +39,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Added
 
+- maintainer-only measurement of Code Audit Team re-spawns. The spawn oracle now records why each member is dispatched, and a reporting command turns the accumulated records into a count of clearances lost to a peer's merge rather than to a real content change, so the decision to re-key the marker can be made on evidence instead of anecdote.
 - a filed tech-debt issue now records the work that surfaced it, so a triager reading the backlog months later can tell which branch was under review, what that work was doing, and whether the cited file was one the reviewed change had already touched. The record is an HTML comment, so nothing changes in what a human reads on the issue, and it is diagnostic only: nothing matches on it, nothing gates on it, and a filing is never blocked because a field could not be determined. **Action required:** the backlog that predates this record carries no line to distinguish it from a write that failed, so run this once, per repository, at the point this change goes live there:
 
   ```bash

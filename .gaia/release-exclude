@@ -37,6 +37,14 @@
 .claude/commands/distribution-audit.md
 # Maintainer-only Code Audit Team spawn-list optimization; adopters resolve required members via resolve-audit-members.sh and the frontend self-skip is fail-closed on its absence.
 .gaia/scripts/resolve-audit-spawn.sh
+# The re-spawn measurement instrument exists only to serve the maintainer-only
+# spawn oracle above: the shared ledger lib it writes through, the session-start
+# prune that bounds the ledger, and the attribution query that reads it. An
+# adopter clone never runs the oracle, so it never has a ledger for any of the
+# three to act on.
+.gaia/scripts/audit-respawn-lib.sh
+.gaia/scripts/audit-respawn-prune.sh
+.gaia/scripts/audit-respawn-report.sh
 # verify-required-checks.sh declares the required_status_checks the GAIA team's own
 # branch ruleset must enforce (job names like "Audit CI Tests" that only exist
 # on maintainer-only, release-excluded workflows); an adopter clone has no such

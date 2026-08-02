@@ -88,6 +88,18 @@
       "source": "SPEC-061 §shared"
     },
     {
+      "id": "audit-respawn-ledger",
+      "path": "telemetry/audit-respawn.jsonl",
+      "match": "exact",
+      "kind": "file",
+      "scope": "shared",
+      "keyed_by": "singleton append-only store; every row is self-identifying (branch + head + merge_base + member + digest + ts) and each record is one O_APPEND write, so rows written from different trees interleave without a lock and are separated at read time by their branch and member fields",
+      "why": "The Code Audit Team spawn oracle's re-spawn breadcrumb: one record per member considered, written where the oracle already holds every member digest and has already read the clearance store. Shared rather than per-tree because the question it answers, how often a member is re-spawned for a key rotation it did not earn, is a property of the repository's audit history across every branch and every tree, not of one working copy.",
+      "writer": "code",
+      "reaped_by": "audit re-spawn ledger prune sweep",
+      "source": "SPEC-063 §shared"
+    },
+    {
       "id": "debt-count-and-refresh",
       "path": "debt/count.json|debt/refresh-requested",
       "match": "exact",
@@ -471,7 +483,7 @@
     { "path": "red-ledger/*", "match": "glob", "why": "Its keyed per-tree subdir (red-ledger/<tree_key>/) and that subdir's own atomic-write scratch subdir (red-ledger/<tree_key>/.tmp), addressed by the tree key so a tree's observations stay private to it." },
     { "path": "specs", "match": "exact", "why": "The main-checkout SPEC-folder container." },
     { "path": "specs/archived", "match": "exact", "why": "Legacy archived-SPEC destination, preserved for repair and migration tooling." },
-    { "path": "telemetry", "match": "exact", "why": "The append-only cost-ledger container." },
+    { "path": "telemetry", "match": "exact", "why": "Append-only maintainer ledgers: cost telemetry and the audit re-spawn breadcrumb store." },
     { "path": "worthiness-ledger", "match": "exact", "why": "The per-tree worthiness-observation container." },
     { "path": "worthiness-ledger/*", "match": "glob", "why": "Its keyed per-tree subdir (worthiness-ledger/<tree_key>/), addressed by the tree key so a tree's worthiness observations stay private to it." }
   ],

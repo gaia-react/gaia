@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-07-09
 created: 2026-07-09
-updated: 2026-07-20
+updated: 2026-08-02
 tags: [decision, claude, audit, ci]
 ---
 
@@ -33,6 +33,8 @@ A sibling module, `.claude/hooks/lib/audit-machinery.sh`, holds the one list of 
 
 Every member's clearance marker is keyed to a **content digest**, not the whole repository tree: a sha256 over exactly the files that member owns plus this machinery set (plus the in-scope-but-ownerless paths, for the default member; see [[PR Merge Workflow#Marker key]]). The machinery set is what makes a machinery edit rotate **every** member's digest, since it sits in every member's input set by construction, and because the classifier and machinery modules are themselves machinery, a classifier edit rotates every digest too. Machinery-list completeness is therefore load-bearing, not cosmetic: an unlisted gate-machinery file would rotate no member's key, a fail-open. `.gaia/scripts/audit-machinery-complete.sh` asserts every gate-machinery file (the trailer/status producers, the CI parsers, the dispatch resolvers, the noop detector, the disposition gate, among others) is matched by `audit_path_is_machinery`.
 
+The digest functions in `.claude/hooks/lib/audit-digest.sh` (`audit_digests_all`, `audit_member_digest`) take an optional ref argument, defaulting to `HEAD`; production callers pass a base sha through it to derive a prior digest at an incremental base rather than only at HEAD. The constraint that this machinery never resolves a main or tree root, and answers what key a tree writes under rather than where anything is, belongs to `.gaia/scripts/audit-key-lib.sh`, a property of that file, not of the digest lib. That the digest functions accept a ref proves the lib can hash a different tree; it does not mean the lib can scope to a diff between two trees, which would be a new capability, not a parameter already present.
+
 ## Dispatch resolver
 
 `.gaia/scripts/resolve-audit-members.sh` turns the current branch's diff into the **dispatched member set**: the deduped, lexically-sorted list of member names owning at least one changed file. It resolves each changed path's owner through the shared ownership classifier above and collects the unique, non-empty owners; empty stdout means the whole diff is out of audit scope. It is generic over the roster: a new member is a config entry plus an agent file, no resolver edit.
@@ -44,6 +46,20 @@ The gates are reactive: they deny, they never spawn. `.gaia/scripts/resolve-audi
 The spawn set equals the dispatched member set, filtered to drop a member whose valid current-digest marker is already present (the digest analog of the old carry-forward `cf_filter`, a simple presence check with no anchor selection), with one addition: on a zero-match dispatch it names the default member whenever any changed path is in scope but owned by nobody, mirroring the merge gate's legacy fallback (which still requires the default member's clearance there). That makes the spawn set a superset of what the gate can require, so no diff exists where the gate demands a marker nothing was spawned to produce. The oracle writes no clearance artifact on any path; it mints nothing.
 
 A member with nothing to audit is never spawned, and if a stale caller spawns it anyway, it self-skips (each member's agent file carries the skip clause).
+
+<!-- gaia:maintainer-only:start -->
+### Re-spawn breadcrumbs
+
+The digest-marker filter above is the one place that already holds both halves of a re-spawn decision: it has called `audit_digests_all` once for the whole roster and is about to read the clearance store. At that point it appends one JSON-Lines record per member it considers to `.gaia/local/telemetry/audit-respawn.jsonl`, so the write costs an append and derives no digest of its own. Each record carries `schema`, `ts`, `branch`, `head`, `merge_base`, `member`, `digest`, and `cleared`; `merge_base` is the merge-base of `refs/remotes/origin/main` and HEAD.
+
+The filter's own degrade path, no clearance reader or no digest batch available, writes nothing, because it derived no digest there either. `--no-carry-forward`, the ownerless probe, and every fail-closed answer above never reach the filter and write nothing for the same reason. The oracle records what it saw and decides nothing: it never classifies a re-spawn, and the breadcrumb never changes which members it names. A failed append leaves the spawn decision, its exit status, and its stdout byte-identical, with nothing on stderr, fail-open exactly like the mints-nothing guarantee above. The instrument reads in one direction only, the marker store, and writes only its own ledger, so a defect in it costs a missing or spurious record and never a false clear. A breadcrumb is not a clearance artifact, and the oracle still mints nothing.
+
+`.gaia/scripts/audit-respawn-report.sh` is the documented query over the accumulated ledger, `--since <days>` (default 30) and `--json`. It groups records by branch and member, orders each group by timestamp, and reads every consecutive pair for whether the digest rotated, whether the merge-base advanced, and whether a clearance was lost. It reports `records`, `transitions`, `peer_merge_respawns`, `own_change_respawns`, and `peer_merge_rotations_upper`; `peer_merge_respawns` is the headline, the single quantity a re-spawn caused by absorbing a peer's merge rather than the branch's own edits. Three caveats travel with it: a run that both absorbs main and lands its own edits counts as peer-merge, so within its class the count is an upper bound; the pairing needs an observation taken while the member was cleared, so the count is a lower bound on total incidence; and attribution is a query over recorded facts, never a judgement the resolver makes.
+
+The ledger is registered in `.gaia/state-registry.json` at `scope: shared` and reaped by `.gaia/scripts/audit-respawn-prune.sh`, delegated from the SessionStart hook. Two arms bound it: an age window (`GAIA_AUDIT_RESPAWN_RETENTION_DAYS`, default 90, floored at 45) and a line cap (`GAIA_AUDIT_RESPAWN_MAX_RECORDS`, default 20000, floored at 1000). The cap trims only records the age window has already dropped, so retention never falls below the window no matter how busy the repository gets; a record the sweep cannot classify is kept, never dropped.
+
+Keying the marker to the reviewed diff instead of the whole owned content is deferred, not rejected. The condition for revisiting it: the attribution query reports `peer_merge_respawns`, measured over at least one month of accumulated records, at a rate the maintainer judges to exceed the cost of the change.
+<!-- gaia:maintainer-only:end -->
 
 ## AND-aggregation at the merge gate
 
