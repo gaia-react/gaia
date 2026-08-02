@@ -28086,79 +28086,19 @@ var performBackup = (inputs) => {
   return backedUp;
 };
 var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path41.posix.dirname(declPath)));
-var isRestorable = (entry) => entry.kind === "file" || entry.target !== void 0;
+var isRestorable = (entry) => entry.kind !== "unreadable";
+var permissionsOf = (mode) => mode % 4096;
 var isUntouched = (before, after) => {
   if (after === void 0) return false;
   if (before.kind === "symlink") {
-    const beforeTarget = before.target;
-    return after.kind === "symlink" && beforeTarget !== void 0 && (after.target?.equals(beforeTarget) ?? false);
+    return after.kind === "symlink" && after.target.equals(before.target);
   }
-  return after.kind === "file" && after.digest === before.digest;
+  if (before.kind === "file") {
+    return after.kind === "file" && after.digest === before.digest && permissionsOf(after.mode) === permissionsOf(before.mode);
+  }
+  return false;
 };
-var permissionsOf = (mode) => mode % 4096;
-var collectScopeDigests = (root, scopeDirs) => {
-  const digests = /* @__PURE__ */ new Map();
-  const walk = (scopeRoot) => {
-    const pending = [scopeRoot];
-    for (let absDir = pending.pop(); absDir !== void 0; absDir = pending.pop()) {
-      const parent = absDir;
-      let names = [];
-      try {
-        names = readdirSync3(parent);
-      } catch {
-      }
-      names.forEach((name) => {
-        const abs = path41.join(parent, name);
-        let stat;
-        try {
-          stat = lstatSync2(abs);
-        } catch {
-          return;
-        }
-        const repoRelative = path41.relative(root, abs).split(path41.sep).join("/");
-        if (stat.isSymbolicLink()) {
-          let target;
-          try {
-            target = readlinkSync2(abs, "buffer");
-          } catch {
-            target = void 0;
-          }
-          digests.set(repoRelative, { kind: "symlink", target });
-          return;
-        }
-        if (stat.isDirectory()) {
-          pending.push(abs);
-          return;
-        }
-        if (!stat.isFile()) return;
-        let content;
-        try {
-          content = readFileSync31(abs);
-        } catch {
-          return;
-        }
-        digests.set(repoRelative, {
-          content,
-          digest: createHash2("sha256").update(content).digest("hex"),
-          kind: "file",
-          mode: stat.mode
-        });
-      });
-    }
-  };
-  scopeDirs.forEach((dir) => {
-    const absDir = path41.resolve(root, dir);
-    let stat;
-    try {
-      stat = lstatSync2(absDir);
-    } catch {
-      return;
-    }
-    if (!stat.isDirectory()) return;
-    walk(absDir);
-  });
-  return digests;
-};
+var relativeKey = (root, abs) => path41.relative(root, abs).split(path41.sep).join("/");
 var resolvesLexically = (root, relPath) => {
   const components = relPath.split("/").slice(0, -1);
   let current = root;
@@ -28171,12 +28111,92 @@ var resolvesLexically = (root, relPath) => {
     }
   });
 };
+var hasUnreadableAncestor = (before, relPath) => {
+  const components = relPath.split("/").slice(0, -1);
+  let prefix = "";
+  return components.some((component) => {
+    prefix = prefix === "" ? component : `${prefix}/${component}`;
+    return before.get(prefix)?.kind === "unreadable";
+  });
+};
+var collectScopeDigests = (root, scopeDirs) => {
+  const digests = /* @__PURE__ */ new Map();
+  const walk = (scopeRoot) => {
+    const pending = [scopeRoot];
+    for (let absDir = pending.pop(); absDir !== void 0; absDir = pending.pop()) {
+      const parent = absDir;
+      let names = [];
+      try {
+        names = readdirSync3(parent);
+      } catch {
+        digests.set(relativeKey(root, parent), { kind: "unreadable" });
+      }
+      names.forEach((name) => {
+        const abs = path41.join(parent, name);
+        const repoRelative = relativeKey(root, abs);
+        let stat;
+        try {
+          stat = lstatSync2(abs);
+        } catch {
+          digests.set(repoRelative, { kind: "unreadable" });
+          return;
+        }
+        if (stat.isSymbolicLink()) {
+          try {
+            digests.set(repoRelative, {
+              kind: "symlink",
+              target: readlinkSync2(abs, "buffer")
+            });
+          } catch {
+            digests.set(repoRelative, { kind: "unreadable" });
+          }
+          return;
+        }
+        if (stat.isDirectory()) {
+          pending.push(abs);
+          return;
+        }
+        if (!stat.isFile()) return;
+        let content;
+        try {
+          content = readFileSync31(abs);
+        } catch {
+          digests.set(repoRelative, { kind: "unreadable" });
+          return;
+        }
+        digests.set(repoRelative, {
+          content,
+          digest: createHash2("sha256").update(content).digest("hex"),
+          kind: "file",
+          mode: stat.mode
+        });
+      });
+    }
+  };
+  scopeDirs.forEach((dir) => {
+    if (!resolvesLexically(root, dir)) return;
+    const absDir = path41.resolve(root, dir);
+    let stat;
+    try {
+      stat = lstatSync2(absDir);
+    } catch {
+      return;
+    }
+    if (!stat.isDirectory()) return;
+    walk(absDir);
+  });
+  return digests;
+};
 var sweepScope = (inputs) => {
   const { after, before, declaredPaths, regionId, root } = inputs;
   const declaredSet = new Set(declaredPaths);
   const confined = [];
   [...after.keys()].forEach((relPath) => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
+    if (hasUnreadableAncestor(before, relPath)) {
+      confined.push({ action: "reported", path: relPath, regionId });
+      return;
+    }
     if (!resolvesLexically(root, relPath)) {
       confined.push({ action: "reported", path: relPath, regionId });
       return;
