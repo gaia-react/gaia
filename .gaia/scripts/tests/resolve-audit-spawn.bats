@@ -204,6 +204,97 @@ pool_snapshot() {
   ( cd "$dir" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; shasum "$f" 2>/dev/null; done )
 }
 
+# --- Re-spawn breadcrumb ledger fixtures ------------------------------------
+#
+# The ledger the digest-marker filter appends to on its active path
+# (.gaia/local/telemetry/audit-respawn.jsonl), and the fixtures needed to
+# exercise it: a way to control which sibling audit-respawn-lib.sh the
+# oracle sees, and a way to make a peer-merge rotation genuinely rotate a
+# digest rather than reuse main's tree.
+
+# The ledger's path under the sandbox, matching gaia_respawn_ledger_path's
+# own contract.
+ledger_path() {
+  printf '%s/.gaia/local/telemetry/audit-respawn.jsonl' "$SANDBOX"
+}
+
+# The ledger's lines, one per line; empty (prints nothing) when the ledger
+# file does not exist yet.
+ledger_lines() {
+  local f
+  f="$(ledger_path)"
+  [ -f "$f" ] || return 0
+  cat "$f"
+}
+
+# Copies the REAL oracle ($SCRIPT) into the sandbox's OWN .gaia/scripts/ and
+# runs that copy from the sandbox, so its ${BASH_SOURCE[0]}-relative sibling
+# lookups (both _lib_dir and the re-spawn lib) resolve inside the sandbox
+# instead of the real repository. Every other test in this file runs the
+# real repo's oracle via $SCRIPT / run_oracle unmodified: this helper exists
+# only for the lib-absent / lib-defective tests below, the sole cases that
+# need to control the sandbox's own sibling audit-respawn-lib.sh. Do not add
+# a setup() copy of that lib for the general suite; it would be dead weight,
+# since $SCRIPT (real repo path) never resolves siblings from the sandbox.
+run_sandbox_oracle() {
+  cp "$SCRIPT" "$SANDBOX/.gaia/scripts/resolve-audit-spawn.sh"
+  chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-spawn.sh"
+  ( cd "$SANDBOX" && ./.gaia/scripts/resolve-audit-spawn.sh "$@" 2>/dev/null )
+}
+
+# stderr-capturing sibling of run_sandbox_oracle, for the lib-absent /
+# lib-defective tests that need to prove the `command -v gaia_respawn_record`
+# guard is load-bearing: without it, an absent lib makes the oracle attempt
+# to invoke a nonexistent command, which leaks a "command not found"
+# diagnostic onto real stderr even though `|| true` keeps stdout and the
+# exit status untouched. run_sandbox_oracle itself discards stderr, so it
+# cannot see this leak; this helper exists to catch exactly that.
+# SC2069: deliberate capture-stderr / discard-stdout order, mirrors
+# oracle_stderr above.
+# shellcheck disable=SC2069
+run_sandbox_oracle_stderr() {
+  cp "$SCRIPT" "$SANDBOX/.gaia/scripts/resolve-audit-spawn.sh"
+  chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-spawn.sh"
+  ( cd "$SANDBOX" && ./.gaia/scripts/resolve-audit-spawn.sh 2>&1 1>/dev/null )
+}
+
+# A PATH whose dir carries every binary these scripts need EXCEPT a sha256
+# tool (both sha256sum AND shasum absent; jq stays present), so the digest
+# engine's own fail-closed guard fires and the digest batch never loads,
+# while the jq-gated clearance reader stays reachable in principle. This is
+# the "sha256-tool arm" the digest-batch-unavailable criterion needs: the
+# degrade must be reached without deleting any lib.
+path_without_sha256() {
+  local d="$BATS_TEST_TMPDIR/nosha-bin" b p
+  mkdir -p "$d"
+  for b in env bash sh git awk sed grep sort head tail tr cat cut wc dirname basename mktemp date rm mkdir printf test expr jq; do
+    p="$(command -v "$b" 2>/dev/null)" && ln -sf "$p" "$d/$b"
+  done
+  printf '%s' "$d"
+}
+
+# Advances origin/main by ONE commit that actually changes PATH's content to
+# CONTENT: a real content diff on origin/main, not `advance_origin_main`'s
+# reused main^{tree}. Built via a throwaway GIT_INDEX_FILE seeded from
+# main's tree, so the sandbox's real index and its checked-out `feature`
+# working tree are both untouched; only the remote-tracking ref moves, and
+# the caller merges it into `feature` explicitly to make the merge-base move
+# too. Needed because `advance_origin_main` alone rotates no member's
+# digest (its synthetic commits carry no content change) and so cannot, on
+# its own, produce the peer-merge signal this ledger measures.
+advance_origin_main_with_change() {
+  local path="$1" content="$2" parent idx blob new_tree new_commit
+  parent="$(git -C "$SANDBOX" rev-parse main)"
+  idx="$BATS_TEST_TMPDIR/tmp-index-$RANDOM"
+  GIT_INDEX_FILE="$idx" git -C "$SANDBOX" read-tree main
+  blob="$(printf '%s\n' "$content" | git -C "$SANDBOX" hash-object -w --stdin)"
+  GIT_INDEX_FILE="$idx" git -C "$SANDBOX" update-index --add --cacheinfo "100644,${blob},${path}"
+  new_tree="$(GIT_INDEX_FILE="$idx" git -C "$SANDBOX" write-tree)"
+  rm -f "$idx"
+  new_commit="$(git -C "$SANDBOX" commit-tree "$new_tree" -p "$parent" -m "origin change to $path")"
+  git -C "$SANDBOX" update-ref refs/remotes/origin/main "$new_commit"
+}
+
 # ---------------------------------------------------------------------------
 # 1. app-only diff -> code-audit-frontend
 # ---------------------------------------------------------------------------
@@ -760,4 +851,348 @@ code-audit-maintainer-shell"
   err="$(oracle_stderr)"
   grep -qF -- "behind origin/main" <<<"$err" && return 1
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# The re-spawn breadcrumb ledger. The digest-marker filter already computes,
+# per considered member, both halves of the question this ledger measures
+# (the member's content digest and whether a valid current-digest marker
+# cleared it); these tests exercise the append it now performs alongside
+# that decision. The oracle's own dispatch decision, exit status, and stdout
+# must stay exactly as proven by every test above -- these tests add
+# coverage for the ledger's own shape and fail-open behavior, never for a
+# changed dispatch answer.
+# ---------------------------------------------------------------------------
+
+@test "UAT-001: the ledger holds exactly one line per considered member, mixing cleared and uncleared" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  write_marker code-audit-frontend
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+
+  # CONTROL: the whole-branch diff dispatches both members, matching the
+  # UAT-016 fixture this reuses.
+  members="$(resolve_members)"
+  expected_count="$(printf '%s\n' "$members" | grep -c .)"
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+
+  actual_count="$(ledger_lines | grep -c .)"
+  [ "$actual_count" -eq "$expected_count" ]
+
+  actual_members="$(ledger_lines | jq -r .member | LC_ALL=C sort -u)"
+  expected_members="$(printf '%s\n' "$members" | LC_ALL=C sort -u)"
+  [ "$actual_members" = "$expected_members" ]
+
+  grep -qF '"member":"code-audit-frontend"' <<<"$(ledger_lines)" || return 1
+  grep -qF '"member":"code-audit-maintainer-shell"' <<<"$(ledger_lines)" || return 1
+}
+
+@test "each ledger line parses under jq and carries exactly the frozen key order" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  write_marker code-audit-frontend
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+  run run_oracle
+  [ "$status" -eq 0 ]
+
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    printf '%s' "$line" | jq -e . >/dev/null || return 1
+    keys="$(printf '%s' "$line" | jq -r 'keys_unsorted | join(",")')"
+    [ "$keys" = "schema,ts,branch,head,merge_base,member,digest,cleared" ] || return 1
+  done <<<"$(ledger_lines)"
+}
+
+@test "digest in the ledger equals the member's real digest from the digest engine" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  write_marker code-audit-frontend
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+  run run_oracle
+  [ "$status" -eq 0 ]
+
+  frontend_digest="$(member_digest_for code-audit-frontend)"
+  shell_digest="$(member_digest_for code-audit-maintainer-shell)"
+
+  rec_frontend="$(ledger_lines | grep '"member":"code-audit-frontend"')"
+  rec_shell="$(ledger_lines | grep '"member":"code-audit-maintainer-shell"')"
+
+  [ "$(printf '%s' "$rec_frontend" | jq -r .digest)" = "$frontend_digest" ]
+  [ "$(printf '%s' "$rec_shell" | jq -r .digest)" = "$shell_digest" ]
+}
+
+@test "cleared is true for a member holding a valid marker, false for a malformed one" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  write_marker code-audit-frontend
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+  # The shell member's marker file exists but is not writer-shaped (garbage
+  # JSON), the same malformed-marker fixture shape the dispatch tests above
+  # use.
+  shell_digest="$(member_digest_for code-audit-maintainer-shell)"
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  printf 'not json {\n' > "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok"
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+
+  rec_frontend="$(ledger_lines | grep '"member":"code-audit-frontend"')"
+  rec_shell="$(ledger_lines | grep '"member":"code-audit-maintainer-shell"')"
+
+  [ "$(printf '%s' "$rec_frontend" | jq -r .cleared)" = "true" ]
+  [ "$(printf '%s' "$rec_shell" | jq -r .cleared)" = "false" ]
+}
+
+@test "head and branch in the ledger match the fixture's real HEAD and branch name" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  run run_oracle
+  [ "$status" -eq 0 ]
+
+  real_head="$(git -C "$SANDBOX" rev-parse HEAD)"
+  real_branch="$(git -C "$SANDBOX" symbolic-ref --short HEAD)"
+
+  rec="$(ledger_lines | tail -1)"
+  [ "$(printf '%s' "$rec" | jq -r .head)" = "$real_head" ]
+  [ "$(printf '%s' "$rec" | jq -r .branch)" = "$real_branch" ]
+}
+
+@test "UAT-002: peer-merge rotation - merge_base moves, digest rotates, and clearance is lost across the pair" {
+  write_full_roster
+  stage .gaia/scripts/y.sh; commit "chore"
+  write_marker code-audit-maintainer-shell
+  sync_origin_main
+
+  run run_oracle
+  before="$(ledger_lines | tail -1)"
+  before_mb="$(printf '%s' "$before" | jq -r .merge_base)"
+
+  # origin/main gains a REAL content change to a file the shell member owns.
+  advance_origin_main_with_change .gaia/scripts/peer-owned.sh "peer change"
+  git -C "$SANDBOX" merge --quiet --no-edit refs/remotes/origin/main
+  after_mb_check="$(git -C "$SANDBOX" merge-base HEAD refs/remotes/origin/main)"
+  # The merge-base must have actually moved before the record is trusted.
+  [ "$after_mb_check" != "$before_mb" ] || return 1
+
+  run run_oracle
+  after="$(ledger_lines | grep '"member":"code-audit-maintainer-shell"' | tail -1)"
+
+  before_digest="$(printf '%s' "$before" | jq -r .digest)"
+  after_digest="$(printf '%s' "$after" | jq -r .digest)"
+  after_mb="$(printf '%s' "$after" | jq -r .merge_base)"
+  before_cleared="$(printf '%s' "$before" | jq -r .cleared)"
+  after_cleared="$(printf '%s' "$after" | jq -r .cleared)"
+
+  [ -n "$before_mb" ] || return 1
+  [ -n "$after_mb" ] || return 1
+  [ "$before_mb" != "$after_mb" ] || return 1
+  [ "$before_digest" != "$after_digest" ] || return 1
+  [ "$before_cleared" = "true" ] || return 1
+  [ "$after_cleared" = "false" ] || return 1
+}
+
+@test "UAT-003: own-edit rotation - merge_base stays identical while digest and head differ" {
+  write_full_roster
+  stage .gaia/scripts/y.sh; commit "chore"
+  write_marker code-audit-maintainer-shell
+  sync_origin_main
+
+  run run_oracle
+  before="$(ledger_lines | tail -1)"
+
+  # A maintainer edit to a file the shell member owns; origin/main untouched.
+  stage .gaia/scripts/z.sh; commit "more shell"
+
+  run run_oracle
+  after="$(ledger_lines | tail -1)"
+
+  before_mb="$(printf '%s' "$before" | jq -r .merge_base)"
+  after_mb="$(printf '%s' "$after" | jq -r .merge_base)"
+  before_digest="$(printf '%s' "$before" | jq -r .digest)"
+  after_digest="$(printf '%s' "$after" | jq -r .digest)"
+  before_head="$(printf '%s' "$before" | jq -r .head)"
+  after_head="$(printf '%s' "$after" | jq -r .head)"
+
+  [ -n "$before_mb" ] || return 1
+  [ "$before_mb" = "$after_mb" ] || return 1
+  [ "$before_digest" != "$after_digest" ] || return 1
+  [ "$before_head" != "$after_head" ] || return 1
+}
+
+@test "on a detached HEAD, branch is empty in the ledger and the run is otherwise unchanged" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  sha="$(commit_sha)"
+  git -C "$SANDBOX" checkout --quiet "$sha"
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+  rec="$(ledger_lines | tail -1)"
+  [ "$(printf '%s' "$rec" | jq -r .branch)" = "" ]
+}
+
+@test "with no origin/main, merge_base is empty in the ledger and the run is otherwise unchanged" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  git -C "$SANDBOX" rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1 && return 1
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+  rec="$(ledger_lines | tail -1)"
+  [ "$(printf '%s' "$rec" | jq -r .merge_base)" = "" ]
+}
+
+@test "--no-carry-forward writes no ledger file at all (the filter is skipped)" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  run run_oracle --no-carry-forward
+  [ "$status" -eq 0 ]
+  [ ! -f "$(ledger_path)" ]
+}
+
+@test "digest batch unavailable (no sha256 tool) writes no ledger; the degrade path returns before the loop" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  nosha="$(path_without_sha256)"
+  out="$( cd "$SANDBOX" && PATH="$nosha" "$SCRIPT" 2>/dev/null )"
+  # Filter disabled entirely (digest batch never loads) -> unfiltered passthrough.
+  [ "$out" = "code-audit-frontend" ]
+  [ ! -f "$(ledger_path)" ]
+}
+
+@test "jq absent still writes breadcrumbs, all cleared:false" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  write_marker code-audit-frontend
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+
+  nojq="$(path_without_jq)"
+  out="$( cd "$SANDBOX" && PATH="$nojq" "$SCRIPT" 2>/dev/null )"
+  grep -qxF "code-audit-frontend" <<<"$out" || return 1
+  grep -qxF "code-audit-maintainer-shell" <<<"$out" || return 1
+
+  ledger_content="$(ledger_lines)"
+  [ -n "$ledger_content" ] || return 1
+  printf '%s\n' "$ledger_content" | grep -qF '"cleared":true' && return 1
+  count="$(printf '%s\n' "$ledger_content" | grep -c .)"
+  [ "$count" -eq 2 ] || return 1
+}
+
+@test "ledger parent path blocked (a file where the directory should be): stdout, exit status, and stderr are unaffected" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+
+  mkdir -p "$SANDBOX/.gaia/local"
+  printf 'blocked\n' > "$SANDBOX/.gaia/local/telemetry"
+
+  run run_oracle
+  blocked_status="$status"
+  blocked_stdout="$output"
+  blocked_stderr="$(oracle_stderr)"
+
+  [ ! -d "$SANDBOX/.gaia/local/telemetry" ]
+  rm -f "$SANDBOX/.gaia/local/telemetry"
+
+  run run_oracle
+  unblocked_status="$status"
+  unblocked_stdout="$output"
+  unblocked_stderr="$(oracle_stderr)"
+
+  [ "$blocked_status" -eq "$unblocked_status" ]
+  [ "$blocked_stdout" = "$unblocked_stdout" ]
+  [ "$blocked_stderr" = "$unblocked_stderr" ]
+}
+
+@test "ledger file made unwritable (chmod 0444): stdout, exit status, and stderr are unaffected" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+
+  run run_oracle
+  [ -f "$(ledger_path)" ] || return 1
+  chmod 0444 "$(ledger_path)"
+  before_count="$(ledger_lines | grep -c .)"
+
+  run run_oracle
+  locked_status="$status"
+  locked_stdout="$output"
+  locked_stderr="$(oracle_stderr)"
+
+  after_count="$(ledger_lines | grep -c .)"
+  [ "$after_count" -eq "$before_count" ]
+
+  chmod 0644 "$(ledger_path)"
+  run run_oracle
+  unlocked_status="$status"
+  unlocked_stdout="$output"
+  unlocked_stderr="$(oracle_stderr)"
+
+  [ "$locked_status" -eq "$unlocked_status" ]
+  [ "$locked_stdout" = "$unlocked_stdout" ]
+  [ "$locked_stderr" = "$unlocked_stderr" ]
+}
+
+@test "criterion 18: re-spawn lib absent from the sandbox - stdout, exit status, and stderr unaffected, no ledger" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  rm -f "$SANDBOX/.gaia/scripts/audit-respawn-lib.sh"
+  run run_sandbox_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+  [ ! -f "$(ledger_path)" ]
+  # The guard (`command -v gaia_respawn_record`) is what keeps this silent:
+  # without it, the oracle would attempt to invoke the now-undefined
+  # function and leak a "command not found" diagnostic here.
+  [ -z "$(run_sandbox_oracle_stderr)" ]
+}
+
+@test "criterion 18: re-spawn lib present but unsourceable (syntax error) - stdout and exit status unaffected, no ledger" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  printf 'if true\n' > "$SANDBOX/.gaia/scripts/audit-respawn-lib.sh"
+  run run_sandbox_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+  [ ! -f "$(ledger_path)" ]
+}
+
+@test "criterion 18: re-spawn lib present but its top level returns 1 - stdout and exit status unaffected, no ledger" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  printf 'return 1\n' > "$SANDBOX/.gaia/scripts/audit-respawn-lib.sh"
+  run run_sandbox_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+  [ ! -f "$(ledger_path)" ]
+}
+
+@test "criterion 18: re-spawn lib sourceable but gaia_respawn_record is defective - stdout and exit status unaffected, no ledger" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  cat "$THIS_DIR/../audit-respawn-lib.sh" > "$SANDBOX/.gaia/scripts/audit-respawn-lib.sh"
+  printf '\ngaia_respawn_record() { return 1; }\n' >> "$SANDBOX/.gaia/scripts/audit-respawn-lib.sh"
+  run run_sandbox_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+  [ ! -f "$(ledger_path)" ]
+}
+
+@test "the ledger lives outside the audit pool: pool_snapshot stays byte-identical while the ledger gains a line" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  before_pool="$(pool_snapshot)"
+  run run_oracle
+  [ "$status" -eq 0 ]
+  after_pool="$(pool_snapshot)"
+  [ "$before_pool" = "$after_pool" ]
+  [ -f "$(ledger_path)" ]
+}
+
+@test "the oracle runs cleanly under macOS's system /bin/bash (bash 3.2 compatibility)" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  run bash -c 'cd "$1" && /bin/bash "$2"' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
 }

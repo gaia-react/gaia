@@ -32,6 +32,14 @@
 #   spawn). The script writes no clearance artifact on any path (mints
 #   nothing).
 #
+#   Separately, on the digest-marker-presence filter's active path, the
+#   filter appends one re-spawn breadcrumb per considered member to
+#   .gaia/local/telemetry/audit-respawn.jsonl. A breadcrumb is not a
+#   clearance artifact (only an audit member's own review ever writes one of
+#   those), and the append never affects stdout or the exit status: it is
+#   fail-open and silent on every path, exactly like the mints-nothing
+#   guarantee above.
+#
 #   stderr carries advisories only, never part of the answer: the fail-closed
 #   warnings below, the freshness advisory below, and the dispatch resolver's
 #   own diagnostics passed through.
@@ -262,6 +270,19 @@ if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
   . "$_lib_dir/audit-clearance.sh"
 fi
 
+# The re-spawn breadcrumb ledger's shared writer. This one lives BESIDE this
+# script, not under .claude/hooks/lib/ with the digest recipe above, so it is
+# resolved from this script's own on-disk location directly rather than via
+# $_lib_dir. Absent, unsourceable, or defective -> the breadcrumb is disabled
+# and nothing else about the oracle changes; every call against it below is
+# additionally guarded on `command -v gaia_respawn_record`, so a partially
+# loaded or redefined lib can never make the oracle abort.
+_respawn_lib="$(dirname "${BASH_SOURCE[0]}")/audit-respawn-lib.sh"
+if [ -f "$_respawn_lib" ]; then
+  # shellcheck source=/dev/null
+  . "$_respawn_lib" 2>/dev/null || true
+fi
+
 # --- Digest batch (parallel arrays; bash 3.2 has no associative arrays) ----
 
 _DIGEST_MEMBER=()
@@ -301,6 +322,23 @@ _member_digest() {
   return 1
 }
 
+# _respawn_breadcrumb <member> <digest> <cleared>
+#
+# Appends one re-spawn breadcrumb for MEMBER to the ledger. The per-run
+# context (ledger path, ts, branch, head, merge_base) is NOT re-derived here:
+# it reads the plain variables of the same name that digest_marker_filter,
+# its only caller, already resolved once above its member loop -- ordinary
+# bash dynamic scoping, not a second computation. `command -v
+# gaia_respawn_record` guards the write: an absent, unsourceable, or
+# defective ledger lib disables the breadcrumb and changes nothing else.
+# ALWAYS returns 0. The call site still wraps every call in `|| true` so a
+# future edit here can never trip `set -euo pipefail`.
+_respawn_breadcrumb() {
+  command -v gaia_respawn_record >/dev/null 2>&1 || return 0
+  gaia_respawn_record "$ledger" "$ts" "$branch" "$head" "$merge_base" "$1" "$2" "$3" || true
+  return 0
+}
+
 # --- The digest-marker-presence filter (mints nothing) ---------------------
 #
 # Reads a newline-separated member list on $1, prints the members whose valid
@@ -314,17 +352,62 @@ _member_digest() {
 # unchanged, degrading to today's spawn-everyone behavior; matches the old
 # jq-absent degrade the deleted carry-forward filter used.
 digest_marker_filter() {
-  local members="$1" m out="" digest
+  local members="$1" m out="" digest cleared ledger ts branch head merge_base
 
   if ! command -v clearance_member_cleared >/dev/null 2>&1 || ! _load_member_digests; then
     printf '%s' "$members"
     return 0
   fi
 
+  # --- Re-spawn breadcrumb: per-run context, computed once ------------------
+  #
+  # What is recorded, once per considered member below: the member's name,
+  # its content digest from the batch already loaded above, and whether a
+  # valid current-digest earned marker cleared it -- the two facts this
+  # filter already computes to decide whether to spawn the member, not a
+  # second derivation. Alongside them, resolved ONCE here rather than per
+  # member: a UTC timestamp, the branch, HEAD, and the merge-base of HEAD and
+  # origin/main.
+  #
+  # The resolver never classifies. It does not decide whether a re-spawn came
+  # from the branch's own edits or from absorbing a peer's merge; that
+  # question is a query over the accumulated records (comparing merge_base
+  # and digest across consecutive rows for the same branch and member),
+  # answerable later without touching this write path.
+  #
+  # The write sits ONLY here, inside the branch this filter is already
+  # active on, after both `command -v clearance_member_cleared` and
+  # `_load_member_digests` have already succeeded above. Every other path
+  # through this script -- the fail-closed answers, the ownerless probe,
+  # `--no-carry-forward`, and this filter's own degrade branch just above --
+  # writes nothing, because none of them derives a digest and none of them
+  # has anything to record.
+  #
+  # Fail open and silent. Each lookup below is `2>/dev/null || true`-guarded:
+  # a detached HEAD yields an empty branch, an unresolvable origin/main
+  # yields an empty merge_base, and neither disables the breadcrumb.
+  # `merge_base` reads refs/remotes/origin/main literally (matching the
+  # freshness advisory above), never the ownerless probe's origin/HEAD
+  # default-branch resolution, so the field has one meaning wherever it is
+  # read. No `git fetch`: the oracle runs before every dispatch wave and must
+  # stay fast and offline-safe. Nothing here may print to stdout or stderr,
+  # change the member set, or trip `set -euo pipefail`; `_respawn_breadcrumb`
+  # below is called with `|| true` for exactly that reason.
+  ledger="$(gaia_respawn_ledger_path "$repo_root" 2>/dev/null || true)"
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+  branch="$(git -C "$repo_root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  head="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
+  merge_base="$(git -C "$repo_root" merge-base HEAD refs/remotes/origin/main 2>/dev/null || true)"
+
   while IFS= read -r m; do
     [ -n "$m" ] || continue
     digest="$(_member_digest "$m")" || digest=""
+    cleared=false
     if [ -n "$digest" ] && clearance_member_cleared "$repo_root" "$digest" "$m"; then
+      cleared=true
+    fi
+    _respawn_breadcrumb "$m" "$digest" "$cleared" || true
+    if [ "$cleared" = true ]; then
       continue
     fi
     out="${out}${m}

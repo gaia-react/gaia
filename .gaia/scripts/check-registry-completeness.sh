@@ -48,6 +48,7 @@ GAIA_REGISTRY_COMPLETENESS_ENTRY_IDS='
 audit-clearance-markers
 audit-findings-rerun-sidecars
 audit-progress-log
+audit-respawn-ledger
 audit-security-notes
 audit-window-breadcrumb
 audit-worthiness-ledger
