@@ -29,6 +29,50 @@ import path from 'node:path';
 import {run, spawnFailureCause} from './regen-regions.js';
 import type {RegenRegionsReport} from './regen-regions.js';
 
+/**
+ * `vi.mock` is hoisted above every import, so the switch its factory closes
+ * over has to be built by `vi.hoisted` rather than declared as an ordinary
+ * module-level const.
+ *
+ * The factory delegates every call to the real `node:fs`, including
+ * `readlinkSync` itself, until a test arms the one-shot below. It exists for a
+ * single entry: no filesystem state makes a real `readlink` fail while the
+ * `lstat` immediately before it succeeds (both need the same search permission
+ * on the same parent), so the transient window the snapshot's symlink arm has
+ * to survive is reachable only this way.
+ */
+const fsControl = vi.hoisted(() => ({failReadlinkOnceFor: ''}));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  const realReadlink = actual.readlinkSync as (
+    target: unknown,
+    options?: unknown
+  ) => unknown;
+
+  return {
+    ...actual,
+    readlinkSync: (target: unknown, options?: unknown): unknown => {
+      if (
+        fsControl.failReadlinkOnceFor !== '' &&
+        String(target).endsWith(fsControl.failReadlinkOnceFor)
+      ) {
+        fsControl.failReadlinkOnceFor = '';
+
+        const error: NodeJS.ErrnoException = new Error(
+          'EIO: i/o error, readlink'
+        );
+
+        error.code = 'EIO';
+
+        throw error;
+      }
+
+      return realReadlink(target, options);
+    },
+  };
+});
+
 const START_MARKER = '<!-- gaia:test:start -->';
 const END_MARKER = '<!-- gaia:test:end -->';
 const DECLARED_PATHS = ['.claude/agents/one.md', '.claude/agents/two.md'];
@@ -216,6 +260,7 @@ const SORTED_DECLARED_PATHS = declaredPathsCopy.toSorted(byLocale);
 
 beforeEach(() => {
   cleanupPaths = [];
+  fsControl.failReadlinkOnceFor = '';
 });
 
 afterEach(() => {
@@ -651,6 +696,40 @@ describe('update regen-regions: behavior coverage', () => {
     expect(rewrote.toSorted(byLocale)).toEqual(SORTED_DECLARED_PATHS);
   });
 
+  test('11a. a declared path that is a symlink the program repoints is reported as rewritten', () => {
+    const root = buildRoot();
+    const linkDeclPath = '.claude/agents/link.md';
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'targets'), {recursive: true});
+    writeFileSync(path.join(root, 'targets/a.txt'), 'A\n');
+    writeFileSync(path.join(root, 'targets/b.txt'), 'B\n');
+    symlinkSync('../../targets/a.txt', path.join(root, linkDeclPath));
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        `rm ${linkDeclPath}`,
+        `ln -s ../../targets/b.txt ${linkDeclPath}`,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [
+      buildDeclaration({paths: [...DECLARED_PATHS, linkDeclPath]}),
+    ]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // `rewrote` is what Step 9 renders to tell an adopter which files now
+    // intentionally differ from the release copy, so a declared path missing
+    // from it is one they are never told about. Comparing content digests
+    // alone calls this path unchanged however the program repointed it,
+    // because neither side of a link has a digest to differ on.
+    expect(report.ran[0]?.rewrote ?? []).toContain(linkDeclPath);
+    expect(readlinkSync(path.join(root, linkDeclPath))).toBe(
+      '../../targets/b.txt'
+    );
+  });
+
   test('12. a write outside the declared set but inside the snapshot scope is restored', () => {
     const root = buildRoot();
 
@@ -1024,6 +1103,128 @@ describe('update regen-regions: behavior coverage', () => {
     // process umask hands back a file the adopter can no longer run, while
     // the report claims it was put back.
     expect(statSync(helperAbs).mode.toString(8).slice(-3)).toBe('755');
+  });
+
+  test('12h. a scope subdirectory that is a symlink is never descended into, so nothing behind it is snapshotted or written back', () => {
+    const root = buildRoot();
+    const outside = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeFileSync(path.join(outside, 'precious.txt'), 'PRECIOUS\n');
+    symlinkSync(outside, path.join(root, '.claude/agents/linkdir'));
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        String.raw`printf "clobbered\n" > .claude/agents/linkdir/precious.txt`,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // Nothing behind the link is in either snapshot, so the sweep has nothing
+    // to put back there. The spawn's own write stands, and that is the correct
+    // outcome rather than a gap: it landed outside the repository, where this
+    // command has no pre-image and no business writing. Reverting it would be
+    // the confinement mechanism writing outside the very tree it exists to
+    // confine writes to, at a path `report.confined` names repo-relatively
+    // while the bytes land somewhere else entirely.
+    expect(report.confined).toEqual([]);
+    expect(readFileSync(path.join(outside, 'precious.txt'), 'utf8')).toBe(
+      'clobbered\n'
+    );
+    // The link itself is still snapshotted as itself, so the guarantee still
+    // covers every shape the link can be left in.
+    expect(readlinkSync(path.join(root, '.claude/agents/linkdir'))).toBe(
+      outside
+    );
+  });
+
+  test('12h-i. a scope subdirectory the program replaces with a symlink is not a write path out of the repository', () => {
+    const root = buildRoot();
+    const outside = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, '.claude/agents/nested'), {recursive: true});
+    writeFileSync(
+      path.join(root, '.claude/agents/nested/extra.md'),
+      'nested original\n'
+    );
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'rm -rf .claude/agents/nested',
+        `ln -s "${outside}" .claude/agents/nested`,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // Every snapshot key is lexical, and the tree they go back into is the one
+    // the spawn just finished editing. Restoring the deleted file while the
+    // spawn's link still occupies its parent resolves the write inside
+    // `outside`: the pre-image leaves the repository, the report calls it
+    // `restored` at a repo-relative path, and the path itself stays empty.
+    // Undoing the spawn's creations first is what keeps the write lexical.
+    expect(existsSync(path.join(outside, 'extra.md'))).toBe(false);
+
+    const confined = report.confined;
+
+    expect(
+      confined.toSorted((a, b) => a.path.localeCompare(b.path))
+    ).toEqual([
+      {action: 'removed', path: '.claude/agents/nested', regionId: 'test-region'},
+      {
+        action: 'restored',
+        path: '.claude/agents/nested/extra.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(
+      readFileSync(path.join(root, '.claude/agents/nested/extra.md'), 'utf8')
+    ).toBe('nested original\n');
+    expect(
+      lstatSync(path.join(root, '.claude/agents/nested')).isDirectory()
+    ).toBe(true);
+  });
+
+  test('12i. an in-scope symlink whose target cannot be read is reported, not dropped from the snapshot and then deleted as a creation', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    const linkAbs = path.join(root, '.claude/agents/link.md');
+
+    symlinkSync('../../outside/target.txt', linkAbs);
+    // The program never touches the link. The only thing that happens to it is
+    // one transient `readlink` failure on the BEFORE pass, which is the whole
+    // shape of the defect: the AFTER pass reads it fine.
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    fsControl.failReadlinkOnceFor = '.claude/agents/link.md';
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // Presence and restorability are different questions. Dropping the entry
+    // answers "was this here before the spawn ran" with "no", and the removal
+    // loop then unlinks an adopter's pre-existing link and reports it as a
+    // stray write cleaned up. Recording presence with no pre-image keeps that
+    // loop honest and leaves the sweep nothing it can write back, which is
+    // exactly what `reported` means here.
+    expect(report.confined).toEqual([
+      {
+        action: 'reported',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(lstatSync(linkAbs).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(linkAbs)).toBe('../../outside/target.txt');
   });
 
   test('13. a file created outside the declared set but inside the snapshot scope is removed', () => {
