@@ -14,10 +14,20 @@ import {describe, expect, test} from 'vitest';
  * version, then `pnpm -C .gaia/cli install` and `pnpm -C .gaia/cli lint`, and
  * fix what the newly-arrived rules surface.
  *
- * The pin names the RULE SET, which is why parity is asserted on it alone and
- * not on the tool versions beside it (`eslint`, `prettier`, `typescript`,
- * `vitest`, `@types/node`). Those drift on their own schedule without changing
- * what either workspace considers an error.
+ * The pin fixes the preset's own DIRECT plugin set, which is why parity is
+ * asserted on it alone and not on the tool versions beside it (`eslint`,
+ * `prettier`, `typescript`, `vitest`, `@types/node`). Those move without
+ * changing what either workspace considers an error.
+ *
+ * One rule-bearing package escapes this guard by construction, so it narrows
+ * the drift class rather than closing it. `typescript-eslint` is a direct
+ * dependency of neither workspace and is not pinned by the preset; it arrives
+ * transitively through `eslint-config-airbnb-extended`, whose own range for it
+ * is a caret. Each workspace's lockfile therefore freezes it independently, and
+ * the two can sit on different versions with every assertion below green, which
+ * matters because every `@typescript-eslint/*` rule implementation comes from
+ * there. Closing that gap means asserting on the version resolved in each
+ * `pnpm-lock.yaml` importers block, not on the manifest pin.
  *
  * Fires on the pull request that causes the drift: root `package.json` is in
  * the `code` paths filter of `cli-tests.yml`, whose `Vitest (.gaia/cli)` job is
