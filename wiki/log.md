@@ -11,6 +11,22 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-02 a7c0878 SKIP - docs: bats-assertions.md absence-check trap and fix documented, comment-only script clarification; instruction-prose and comment fix, no wiki-tracked fact changed
+- 2026-08-02 556a1a8 WORTHY - re-spawn ledger measures peer-merge vs own-change re-dispatch before any re-keying decision; wiki/decisions/Code Audit Team.md, wiki/concepts/Local Working State.md updated in-commit
+- 2026-08-02 eafc3bc WORTHY - every disposition route now stamps a provenance line beside its dedup key; wiki/concepts/Audit Disposition and Debt Fix.md updated in-commit
+- 2026-08-02 5f96c53 SKIP - machinery-waive eligibility widened to the union of gate-machinery paths and the PR's own changed files; wiki/concepts/Audit Disposition and Debt Fix.md already documents this union rule (verified by .gaia/tests/lib/doc-machinery-waive-prose.bats), no page delta needed
+- 2026-08-02 5fee8d4 WORTHY - marker block owns its own separator, roster pin reports the count it saw; wiki/decisions/Bundle-time Scrub.md updated in-commit
+- 2026-08-02 261178f WORTHY - regen-regions confinement now correctly reverts deletions/creations and symlinks, and distinguishes killed from spawn-failed regeneration → wiki/concepts/Generated Regions.md refined (Regeneration section)
+- 2026-08-02 98e2f64 SKIP - prototype-key lookups fail closed in two more CLI parsers, merge-workspace's sort separator switched to a unicode escape so the file reads as text; internal correctness fixes, no documented behavior change
+- 2026-08-02 08eb04f WORTHY - per-call window closes at ';', suite path ships wrapped; wiki/concepts/Code Review Audit Agent.md updated in-commit
+- 2026-08-02 a8a2d59 SKIP - merge-audit-ci's flag parser now guards Object.prototype key names; internal argv-parsing correctness fix, no prototype pollution and no documented behavior change
+- 2026-08-02 fc1b1a7 WORTHY - update-class table now states what the merge walk does; wiki/concepts/Update Workflow.md, wiki/decisions/Folding Shell Scripts into the CLI Binary.md updated in-commit
+- 2026-08-02 01b0be9 WORTHY - all five audit members review the content their marker covers; wiki/concepts/Code Review Audit Agent.md updated in-commit
+- 2026-08-02 9aa5f0d SKIP - check-audit-key-callers fails closed on a root it cannot scan; closes a latent contract hole in an undocumented internal script
+- 2026-08-02 8101481 SKIP - BASE_REF exemption tightened to a whole-identifier match in the static drift checker; internal correctness fix to undocumented tooling, no wiki-tracked fact changed
+- 2026-08-02 8a63812 WORTHY - all five Code Audit Team members key findings to one review base, FULL_BASE kept for the self-skip arm; wiki/concepts/Code Review Audit Agent.md, PR Merge Workflow.md, Incremental CI Skipping.md updated in-commit
+- 2026-08-02 d21b424 SKIP - two more bats setup() gates fail closed on CI; extends the already-established fail-closed pattern to two more suites, no new doc surface
+- 2026-08-02 daa0ebf SKIP - wiki: self-referential prior sync commit, no further wiki action
 - 2026-07-31 1a9a812 WORTHY - all five Code Audit Team members resolve the review base through resolve-audit-base.sh, with the whole-PR fork point kept as FULL_BASE for the self-skip arm alone; wiki/concepts/Code Review Audit Agent.md, wiki/concepts/PR Merge Workflow.md, wiki/concepts/Incremental CI Skipping.md updated in-commit
 - 2026-07-31 43e4bb7 SKIP - PyYAML precondition gate now fails instead of skips on CI; maintainer-only test-infra hardening below the level PR Merge Workflow.md's guard description tracks
 - 2026-07-31 119d14e WORTHY - self-heal retrigger jobs capped inside the poller window, Playwright installs one browser engine; wiki/concepts/PR Merge Workflow.md updated in-commit (verify-before-dispatch section)

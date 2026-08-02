@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-07-22
-updated: 2026-07-22
+updated: 2026-08-02
 tags: [release, update, claude, drift]
 ---
 
@@ -37,7 +37,9 @@ The verdict itself, `no-upstream-change` / `no-adopter-drift` / `already-latest`
 
 ## Regeneration
 
-`gaia update regen-regions` is the authoritative half: once the oracle confirms a declared region's divergence is confined to its markers, this command re-runs the declaration's own shipped regeneration command against the adopter's post-merge tree, one region at a time. It is confined to the region's own declared paths: every file under those paths is backed up first, and any write the regeneration command makes outside its declared paths is reverted when a pre-image exists to restore, or reported when it does not. A region named by the merge walk's skip or conflict lists, or whose declaration itself is malformed, is refused or skipped rather than regenerated, and neither a refusal nor a regeneration failure ever fails the update. The regeneration command always runs as a fixed argv, interpreter plus operand plus arguments, never through a shell-interpreted string.
+`gaia update regen-regions` is the authoritative half: once the oracle confirms a declared region's divergence is confined to its markers, this command re-runs the declaration's own shipped regeneration command against the adopter's post-merge tree, one region at a time. Every file under the region's declared paths is backed up first. Inside those directories, where the pre-run snapshot exists, any path the regeneration command leaves different from the declared set counts as an undeclared write: a deletion is reverted from its pre-image, and a creation, having none, is removed. Outside the region's declared directories entirely there is no snapshot to compare against, so a write there is reported rather than undone. A symlink follows the same rule by its target string rather than its content: one the command deletes, retargets, or replaces with a regular file is restored to its original target, and one it creates is removed; restoring a link writes no content and follows nothing, so whatever it points at is never touched.
+
+A region named by the merge walk's skip or conflict lists, or whose declaration itself is malformed, is refused or skipped rather than regenerated. A manifest whose `regions` key is present but not an array is refused by name at this same step; a manifest that is not an object at all never reaches this step, since the loader that reads it finds no `regions` key to be wrong-typed and falls back to zero declarations. A regeneration command that exits non-zero, one that never launches, and one that runs but is killed by this runner's own time or output ceiling are reported as three distinct outcomes, since each has a different remedy. Neither a refusal nor a regeneration failure ever fails the update. The regeneration command always runs as a fixed argv, interpreter plus operand plus arguments, never through a shell-interpreted string.
 
 ## The one-release lag
 
