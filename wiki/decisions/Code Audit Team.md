@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-07-09
 created: 2026-07-09
-updated: 2026-07-20
+updated: 2026-08-02
 tags: [decision, claude, audit, ci]
 ---
 
@@ -32,6 +32,8 @@ Roster parsing and per-path ownership live in one shared, sourced module, `.clau
 A sibling module, `.claude/hooks/lib/audit-machinery.sh`, holds the one list of **audit-machinery paths**: every file whose bytes can change what a member reviews, who reviews it, where a clearance lands, or whether a clearance is believed (the roster, the classifier and machinery modules themselves, the clearance writer and reader, the merge gate, the CI workflow and its bundled templates, the agent definitions, among others). A `.bats` suite is deliberately excluded, its bytes decide none of those four things; the suites are covered instead by the roster's own `.bats` globs (see below), which dispatch a real member to review them.
 
 Every member's clearance marker is keyed to a **content digest**, not the whole repository tree: a sha256 over exactly the files that member owns plus this machinery set (plus the in-scope-but-ownerless paths, for the default member; see [[PR Merge Workflow#Marker key]]). The machinery set is what makes a machinery edit rotate **every** member's digest, since it sits in every member's input set by construction, and because the classifier and machinery modules are themselves machinery, a classifier edit rotates every digest too. Machinery-list completeness is therefore load-bearing, not cosmetic: an unlisted gate-machinery file would rotate no member's key, a fail-open. `.gaia/scripts/audit-machinery-complete.sh` asserts every gate-machinery file (the trailer/status producers, the CI parsers, the dispatch resolvers, the noop detector, the disposition gate, among others) is matched by `audit_path_is_machinery`.
+
+The digest functions in `.claude/hooks/lib/audit-digest.sh` (`audit_digests_all`, `audit_member_digest`) take an optional ref argument, defaulting to `HEAD`; production callers pass a base sha through it to derive a prior digest at an incremental base rather than only at HEAD. The constraint that this machinery never resolves a main or tree root, and answers what key a tree writes under rather than where anything is, belongs to `.gaia/scripts/audit-key-lib.sh`, a property of that file, not of the digest lib. That the digest functions accept a ref proves the lib can hash a different tree; it does not mean the lib can scope to a diff between two trees, which would be a new capability, not a parameter already present.
 
 ## Dispatch resolver
 
