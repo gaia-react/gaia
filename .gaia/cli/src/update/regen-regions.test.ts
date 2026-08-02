@@ -1354,6 +1354,104 @@ describe('update regen-regions: behavior coverage', () => {
     ]);
   });
 
+  test('12h-v. content the program moves onto an in-scope symlinked subdirectory is not deleted as a creation', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'real-extras'), {recursive: true});
+    writeFileSync(
+      path.join(root, 'real-extras/keep.md'),
+      'adopter only copy\n'
+    );
+    // Recorded as a link and never descended, so the before pass knows this
+    // path exists and nothing about what is inside it. That is the same state
+    // an unreadable directory leaves, one level inside the scope root.
+    symlinkSync(
+      path.join(root, 'real-extras'),
+      path.join(root, '.claude/agents/extras')
+    );
+    writeScript(
+      root,
+      [
+        'rm .claude/agents/extras',
+        'mv real-extras .claude/agents/extras',
+        HAPPY_SCRIPT_BODY,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(
+      readFileSync(path.join(root, '.claude/agents/extras/keep.md'), 'utf8')
+    ).toBe('adopter only copy\n');
+
+    const {confined} = report;
+
+    // The link itself cannot be put back over a directory, so it is reported;
+    // what matters is that the file that arrived beneath it is reported too
+    // rather than unlinked. `mv` moved the only copy, and backups cover
+    // declared paths alone.
+    expect(confined.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual([
+      {
+        action: 'reported',
+        path: '.claude/agents/extras',
+        regionId: 'test-region',
+      },
+      {
+        action: 'reported',
+        path: '.claude/agents/extras/keep.md',
+        regionId: 'test-region',
+      },
+    ]);
+  });
+
+  test('12h-vi. the same holds when the in-scope path the program replaces is an ordinary file', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'real-extras'), {recursive: true});
+    writeFileSync(
+      path.join(root, 'real-extras/keep.md'),
+      'adopter only copy\n'
+    );
+    // A regular file is recorded too, and equally not enumerated: asking only
+    // whether an ancestor was UNREADABLE misses both this and the link above,
+    // while asking whether the snapshot has an entry at all covers every node
+    // the walk did not look inside.
+    writeFileSync(path.join(root, '.claude/agents/extras'), 'a plain file\n');
+    writeScript(
+      root,
+      [
+        'rm .claude/agents/extras',
+        'mv real-extras .claude/agents/extras',
+        HAPPY_SCRIPT_BODY,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(
+      readFileSync(path.join(root, '.claude/agents/extras/keep.md'), 'utf8')
+    ).toBe('adopter only copy\n');
+
+    const {confined} = report;
+
+    expect(confined.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual([
+      {
+        action: 'reported',
+        path: '.claude/agents/extras',
+        regionId: 'test-region',
+      },
+      {
+        action: 'reported',
+        path: '.claude/agents/extras/keep.md',
+        regionId: 'test-region',
+      },
+    ]);
+  });
+
   test('12i. an in-scope symlink whose target cannot be read is reported, not dropped from the snapshot and then deleted as a creation', () => {
     const root = buildRoot();
 
