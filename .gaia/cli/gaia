@@ -27825,8 +27825,8 @@ var HELP_TEXT55 = `Usage: gaia update regen-regions --manifest <path> --root <di
   fails well-formedness, or an operand that fails the shipped-path / symlink /
   parent-segment guard, is refused before anything is spawned. Writes outside
   a region's declared paths are reverted (inside the region's own directories)
-  or reported (anywhere else); a regular file or symlink is never silently
-  kept.
+  or reported (anywhere else); a regular file or symlink the snapshot could
+  examine is never silently kept.
 
   Read the manifest's regions from a RELEASE copy, never the adopter's stale
   working-tree copy: pass $LATEST_DIR/.gaia/manifest.json as --manifest.
@@ -28112,12 +28112,12 @@ var resolvesLexically = (root, relPath) => {
     }
   });
 };
-var hasUnreadableAncestor = (before, relPath) => {
+var hasUnenumeratedAncestor = (before, relPath) => {
   const components = relPath.split("/").slice(0, -1);
   let prefix = "";
   return components.some((component) => {
     prefix = prefix === "" ? component : `${prefix}/${component}`;
-    return before.get(prefix)?.kind === "unreadable";
+    return before.has(prefix);
   });
 };
 var collectScopeDigests = (root, scopeDirs) => {
@@ -28175,22 +28175,23 @@ var collectScopeDigests = (root, scopeDirs) => {
     }
   };
   scopeDirs.forEach((dir) => {
+    const absDir = path41.resolve(root, dir);
+    const scopeKey = relativeKey(root, absDir);
     if (!resolvesLexically(root, dir)) {
-      digests.set(dir, { kind: "unreadable" });
+      digests.set(scopeKey, { kind: "unreadable" });
       return;
     }
-    const absDir = path41.resolve(root, dir);
     let stat;
     try {
       stat = lstatSync2(absDir);
     } catch (error51) {
       if (!isPlainObject3(error51) || error51.code !== "ENOENT") {
-        digests.set(dir, { kind: "unreadable" });
+        digests.set(scopeKey, { kind: "unreadable" });
       }
       return;
     }
     if (!stat.isDirectory()) {
-      digests.set(dir, { kind: "unreadable" });
+      digests.set(scopeKey, { kind: "unreadable" });
       return;
     }
     walk(absDir);
@@ -28203,7 +28204,7 @@ var sweepScope = (inputs) => {
   const confined = [];
   [...after.keys()].forEach((relPath) => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
-    if (hasUnreadableAncestor(before, relPath)) {
+    if (hasUnenumeratedAncestor(before, relPath)) {
       confined.push({ action: "reported", path: relPath, regionId });
       return;
     }
