@@ -1,7 +1,7 @@
 /**
  * `gaia-maintainer release preflight` handler.
  *
- * Step 1 + Step 2 of the maintainer release runbook codified as exit codes:
+ * Step 1 of the maintainer release runbook codified as exit codes:
  *
  *   1. Branch state check: must be on `main` (or maintainer-designated
  *      release branch) with a clean working tree.

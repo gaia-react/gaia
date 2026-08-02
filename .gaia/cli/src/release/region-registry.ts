@@ -1,4 +1,3 @@
-import {load as parseYaml} from 'js-yaml';
 /**
  * Hand-authored registry of GAIA's generated regions: which shipped files
  * carry a machine-generated, marker-delimited region, and the command that
@@ -13,6 +12,7 @@ import {load as parseYaml} from 'js-yaml';
  * command itself reads, so a hand-maintained path list (the second list that
  * drifts from reality) never exists.
  */
+import {load as parseYaml} from 'js-yaml';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 

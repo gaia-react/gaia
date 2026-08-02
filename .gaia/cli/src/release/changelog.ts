@@ -1,7 +1,7 @@
 /**
  * `gaia-maintainer release changelog [--draft]` handler.
  *
- * Step 7 of the maintainer release runbook. Auto-drafts a Keep-a-Changelog
+ * Step 5 of the maintainer release runbook. Auto-drafts a Keep-a-Changelog
  * block from conventional-commit subjects since the last tag, mapping
  * each commit type to a section heading. With `--draft`, prints the
  * rendered block to stdout (the runbook copies into `CHANGELOG.md`

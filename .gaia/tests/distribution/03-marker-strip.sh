@@ -135,7 +135,8 @@ fi
 if [ "${#DOUBLED_SEPARATOR[@]}" -gt 0 ]; then
   log "Staged '#'-marker file(s) carry a doubled bare '#' separator. The block"
   log "owns the separator that introduces it, so exactly one survives the strip."
-  log "src=0 means the strip produced it; src>0 means the header authored it:"
+  log "staged>src means the strip produced one; src>0 means the header authored"
+  log "one; both can be true of the same file:"
   for entry in "${DOUBLED_SEPARATOR[@]}"; do log "  $entry"; done
   fail "${#DOUBLED_SEPARATOR[@]} staged file(s) carry a doubled separator"
   exit 1
