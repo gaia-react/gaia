@@ -31409,7 +31409,7 @@ var HELP_TEXT72 = `Usage: gaia <subcommand> [args]
   ci-check-subject --subject "<text>"
   ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
   ci-revert open|mark-failed|is-cap-reached
-  update merge-workspace --baseline <file> --latest <file> --current <file>
+  update merge-workspace|merge-audit-ci|merge-region|regen-regions
   update-deps run --emit-updates <path>
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
   setup status|mark-step|finalize|link-worktree
