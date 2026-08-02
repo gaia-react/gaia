@@ -17674,9 +17674,11 @@ var HELP_TEXT20 = `Usage: gaia-maintainer release changelog [--draft] [--version
 `;
 var HELP_TOKENS20 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT10 = 2;
+var MAX_GIT_BUFFER_BYTES = 64 * 1024 * 1024;
 var defaultRunner2 = (command, args, options) => spawnSync2(command, args, {
   cwd: options.cwd,
   encoding: "utf8",
+  maxBuffer: MAX_GIT_BUFFER_BYTES,
   stdio: ["ignore", "pipe", "pipe"]
 });
 var takeValue7 = (argv, index, flag) => {
@@ -21721,13 +21723,13 @@ import path21 from "node:path";
 
 // src/wiki/util/git.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
-var MAX_GIT_BUFFER_BYTES = 64 * 1024 * 1024;
+var MAX_GIT_BUFFER_BYTES2 = 64 * 1024 * 1024;
 var runGit = (args, options = {}) => {
   const cwd = options.cwd ?? process.cwd();
   const result = execFileSync3("git", args, {
     cwd,
     encoding: "utf8",
-    maxBuffer: MAX_GIT_BUFFER_BYTES,
+    maxBuffer: MAX_GIT_BUFFER_BYTES2,
     stdio: ["ignore", "pipe", "pipe"]
   });
   return result.toString();
