@@ -74,7 +74,7 @@ gh issue list --label tech-debt --state open --limit 1000 \
       difficulty: ([.labels[].name]
                    | map(select(startswith("difficulty:")))
                    | .[0] // null),
-      key: (((.body | capture("<!-- gaia-debt-key: v1 class=(?<class>[^ ]+) path=(?<path>[^ ]+) line=(?<line>[0-9]+) -->")) // null)
+      key: (((.body | capture("<!-- gaia-debt-key: v1 class=(?<class>[^ ]+) path=(?<path>.+) line=(?<line>[0-9]+) -->")) // null)
             | if . then (.line |= tonumber) else . end),
       handler: ((.body | capture("(?m)^Handler:[ ]+(?<h>[a-z]+)") | .h) // null)
     })
