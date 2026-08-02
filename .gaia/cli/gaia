@@ -28159,7 +28159,7 @@ var collectScopeDigests = (root, scopeDirs) => {
   });
   return digests;
 };
-var hasLexicalParents = (root, relPath) => {
+var resolvesLexically = (root, relPath) => {
   const components = relPath.split("/").slice(0, -1);
   let current = root;
   return components.every((component) => {
@@ -28177,7 +28177,7 @@ var sweepScope = (inputs) => {
   const confined = [];
   [...after.keys()].forEach((relPath) => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
-    if (!hasLexicalParents(root, relPath)) {
+    if (!resolvesLexically(root, relPath)) {
       confined.push({ action: "reported", path: relPath, regionId });
       return;
     }
@@ -28195,7 +28195,7 @@ var sweepScope = (inputs) => {
       confined.push({ action: "reported", path: relPath, regionId });
       return;
     }
-    if (!hasLexicalParents(root, relPath)) {
+    if (!resolvesLexically(root, relPath)) {
       confined.push({ action: "reported", path: relPath, regionId });
       return;
     }

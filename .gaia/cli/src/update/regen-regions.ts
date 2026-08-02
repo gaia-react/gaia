@@ -805,20 +805,21 @@ type SweepInputs = {
 };
 
 /**
- * Whether every directory component between the root and this key that exists
- * today is a real directory rather than a symlink.
+ * Whether `path.resolve(root, relPath)` names the file this key means: true
+ * when every directory component between the two that exists today is a real
+ * directory rather than a symlink.
  *
  * A snapshot key is lexical and the tree it is applied to is the one the spawn
- * has just finished editing, so the two can disagree. Where they do, resolving
- * the key lexically names one place while the syscall lands in another, which
- * is the confinement guarantee inverted: the write leaves the tree while the
- * report says it stayed. Asked at the write site, this holds whatever else
- * happened first, rather than only while an earlier pass succeeded.
+ * has just finished editing, so the two can disagree. Where they do, the key
+ * names one place while the syscall lands in another, which is the confinement
+ * guarantee inverted: the write leaves the tree while the report says it
+ * stayed. Asked at the write site, this holds whatever else happened first,
+ * rather than only while an earlier pass succeeded.
  *
  * A component that does not exist is fine: it is about to be created as a real
  * directory. Only what is there and is not a directory refuses the write.
  */
-const hasLexicalParents = (root: string, relPath: string): boolean => {
+const resolvesLexically = (root: string, relPath: string): boolean => {
   const components = relPath.split('/').slice(0, -1);
   let current = root;
 
@@ -851,12 +852,12 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   // subdirectory used to be, and undoing it first is what leaves the restores
   // below with real directories to resolve through, so an ordinary run puts
   // the pre-image back where it belongs instead of refusing it. The guarantee
-  // itself does not rest on this order, `hasLexicalParents` holds it at each
+  // itself does not rest on this order, `resolvesLexically` holds it at each
   // write; the order is what makes the good outcome the common one.
   [...after.keys()].forEach((relPath) => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
 
-    if (!hasLexicalParents(root, relPath)) {
+    if (!resolvesLexically(root, relPath)) {
       confined.push({action: 'reported', path: relPath, regionId});
 
       return;
@@ -896,7 +897,7 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
     // write would leave the tree. Surface it rather than resolve through it,
     // and ask before `mkdirSync` below, which would otherwise create the
     // missing components inside whatever the link points at.
-    if (!hasLexicalParents(root, relPath)) {
+    if (!resolvesLexically(root, relPath)) {
       confined.push({action: 'reported', path: relPath, regionId});
 
       return;
