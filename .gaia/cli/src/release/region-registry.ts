@@ -35,29 +35,68 @@ export type RegionRegistryEntry = {
   startMarker: string;
 };
 
+const ROSTER_RELATIVE_PATH = '.gaia/audit-ci.yml';
+
+/**
+ * A roster that exists but cannot be turned into a path set at all.
+ *
+ * Deliberately offers neither of `region-scan.ts`'s `unrewrittenMessage`
+ * remedies. Re-adding a member to the roster, or deleting a region's marker
+ * pair, fixes neither a syntax error nor an IO failure, and being handed one
+ * of those two confident-but-wrong instructions is the misdirection this
+ * message exists to prevent. `cause` goes last because js-yaml's text ends in
+ * a multi-line source excerpt.
+ */
+const brokenRosterMessage = (problem: string, cause: string): string =>
+  `${ROSTER_RELATIVE_PATH} ${problem}. The agent definitions the 'audit-remit' region regenerates are read from that roster, so the release manifest cannot be built until the file itself is fixed; this is not a roster-membership or marker problem. ${cause}`;
+
+const causeOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 /**
  * The exact path set `.gaia/scripts/write-audit-remits.sh` rewrites: one
  * agent definition per Code Audit Team roster member. Reads
  * `.gaia/audit-ci.yml` directly (only `auditors[].name` is needed) rather
  * than going through the bash `--emit-roster` reader.
  *
- * Returns an empty set when the roster is absent, unparseable, or shaped
- * unexpectedly. The caller (`region-scan.ts`'s declare-or-throw check) turns
- * an empty set into a loud build failure for any shipped path that carries
- * the region markers, so a silently-empty set here can never produce a
- * silently-empty declaration.
+ * An **absent** roster returns an empty set: declaring no auditors is a
+ * legitimate state, and `region-scan.ts`'s declare-or-throw check turns the
+ * empty set into a loud failure for any shipped path that carries the region
+ * markers. A roster that **exists and cannot be read** is a different state
+ * and throws instead. Collapsing the two into one empty set makes them
+ * indistinguishable, and an unparseable roster then reaches the maintainer as
+ * `unrewrittenMessage`, whose remedies are to edit roster membership or delete
+ * a marker pair, for a YAML syntax error a few lines up in that same file.
+ * Loud is not the same as correctly directed.
+ *
+ * A roster that parses into a shape this reader does not recognize (no
+ * `auditors` key, or one that is not a list) still returns an empty set. That
+ * is the nearest YAML spelling of "lists no auditors", and making it fatal is
+ * a separate decision from this one.
  */
 export const rosterAgentPaths = (repoRoot: string): ReadonlySet<string> => {
-  const rosterPath = path.join(repoRoot, '.gaia/audit-ci.yml');
+  const rosterPath = path.join(repoRoot, ROSTER_RELATIVE_PATH);
 
   if (!existsSync(rosterPath)) return new Set();
+
+  let contents: string;
+
+  try {
+    contents = readFileSync(rosterPath, 'utf8');
+  } catch (error) {
+    // Read and parse are caught separately because their messages are not
+    // interchangeable: calling an EISDIR or EACCES a syntax error would be a
+    // smaller copy of the misdirection above. EISDIR in particular names no
+    // path of its own, so the prefix has to carry it.
+    throw new Error(brokenRosterMessage('could not be read', causeOf(error)));
+  }
 
   let parsed: unknown;
 
   try {
-    parsed = parseYaml(readFileSync(rosterPath, 'utf8'));
-  } catch {
-    return new Set();
+    parsed = parseYaml(contents);
+  } catch (error) {
+    throw new Error(brokenRosterMessage('is not valid YAML', causeOf(error)));
   }
 
   const auditors =

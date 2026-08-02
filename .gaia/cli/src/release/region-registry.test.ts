@@ -70,9 +70,30 @@ describe('rosterAgentPaths', () => {
     expect(rosterAgentPaths(sandbox.root)).toEqual(new Set());
   });
 
-  test('unparseable YAML → empty set', () => {
+  test('unparseable YAML throws, naming the roster and carrying the parser message', () => {
     writeRoster(sandbox.root, 'auditors: [\n  - unterminated\n');
-    expect(rosterAgentPaths(sandbox.root)).toEqual(new Set());
+
+    expect(() => rosterAgentPaths(sandbox.root)).toThrow(
+      /\.gaia\/audit-ci\.yml is not valid YAML/
+    );
+    // js-yaml's own text, including its (line:column) mark, is what makes the
+    // syntax error findable. Without it the maintainer is sent to edit roster
+    // membership instead.
+    expect(() => rosterAgentPaths(sandbox.root)).toThrow(
+      /missed comma between flow collection entries \(2:3\)/
+    );
+  });
+
+  test('a roster that exists but cannot be read throws, and does not claim a syntax error', () => {
+    // A directory at the roster path passes existsSync and fails readFileSync
+    // with EISDIR, so the read arm is exercised without chmod (which does not
+    // hold as root). EISDIR's own message names no path, hence the prefix.
+    mkdirSync(path.join(sandbox.root, '.gaia/audit-ci.yml'), {recursive: true});
+
+    expect(() => rosterAgentPaths(sandbox.root)).toThrow(
+      /\.gaia\/audit-ci\.yml could not be read/
+    );
+    expect(() => rosterAgentPaths(sandbox.root)).not.toThrow(/valid YAML/);
   });
 
   test('auditors key absent or not a list → empty set', () => {
