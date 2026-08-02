@@ -23,25 +23,26 @@
  *
  * **Write confinement.** A region's regeneration command legitimately rewrites
  * every path it owns, but nothing else. Before the spawn, this command hashes
- * every file under the union of the declared paths' parent directories
- * (the "snapshot scope"); after the spawn, anything in scope the spawn newly
- * created is removed, and then anything in scope that is not one of the
- * region's declared paths and no longer matches its pre-image is put back,
- * whether the spawn rewrote it or deleted it. Undoing the creations first is
- * what leaves an ordinary run with real directories to resolve through, so a
+ * every regular file and symlink under the union of the declared paths' parent
+ * directories (the "snapshot scope"); after the spawn, any such path in scope
+ * the spawn newly created is removed, and then anything in scope that is not
+ * one of the region's declared paths and no longer matches its pre-image is put
+ * back, whether the spawn rewrote it or deleted it. Undoing the creations first
+ * is what leaves an ordinary run with real directories to resolve through, so a
  * link the spawn left behind is gone before any pre-image is written near it.
  * Three rules hold the guarantee whatever order anything happens in. Neither
  * snapshot pass traverses a symlink, inside the scope or above it, so a link
  * is recorded and restored as itself and nothing behind one is read or
- * written; a scope directory only reachable through a link is not snapshotted
- * at all, since reading through a link the writes will not resolve through is
- * what would put an out-of-tree pre-image inside the repository. Every write
- * first asks whether the components between the root and the key are real
- * directories, reporting rather than resolving through one that is not, so a
- * scope key can never name one place while the bytes land in another. And
- * every path the snapshot could not read is recorded as present with no
- * pre-image rather than dropped, so it is reported instead of being taken for
- * a spawn creation and deleted.
+ * written; a scope directory that is a link, or is reached through one, is
+ * recorded but never walked, since reading through a link the writes will not
+ * resolve through is what would put an out-of-tree pre-image inside the
+ * repository. Every write first asks whether the components between the root
+ * and the key are real directories, reporting rather than resolving through one
+ * that is not, so a scope key can never name one place while the bytes land in
+ * another. And every path the snapshot could not examine, at any level down to
+ * the scope root itself, is recorded as present with no pre-image rather than
+ * dropped, so it is reported instead of being taken for a spawn creation and
+ * deleted.
  *
  * A `git status --porcelain -z` before/after pair also catches a
  * write anywhere else in the tree; that has no pre-image to restore from, so
@@ -84,7 +85,8 @@ const HELP_TEXT = `Usage: gaia update regen-regions --manifest <path> --root <di
   fails well-formedness, or an operand that fails the shipped-path / symlink /
   parent-segment guard, is refused before anything is spawned. Writes outside
   a region's declared paths are reverted (inside the region's own directories)
-  or reported (anywhere else); never silently kept.
+  or reported (anywhere else); a regular file or symlink is never silently
+  kept.
 
   Read the manifest's regions from a RELEASE copy, never the adopter's stale
   working-tree copy: pass $LATEST_DIR/.gaia/manifest.json as --manifest.
@@ -871,9 +873,22 @@ const collectScopeDigests = (
     // sweep resolves those keys lexically and writes the out-of-tree
     // pre-images INTO the repository, at paths that never held them.
     //
-    // Refusing the whole scope is what closes that, and the cost is stated
-    // rather than hidden: a scope reached through a link is not swept at all.
-    if (!resolvesLexically(root, dir)) return;
+    // Refusing to WALK the scope is what closes that. Refusing to record it
+    // would reopen the same hole one level out: an unrecorded scope root is an
+    // absent one, so if the spawn de-symlinks the path (a `mv` or `cp -R`,
+    // not a fresh `mkdir`), the content that arrives there is in `after`,
+    // missing from `before`, and unlinked as a creation. That content is the
+    // adopter's, it has just been moved rather than copied, and `performBackup`
+    // covers declared paths only, so there is no second copy anywhere.
+    //
+    // `dir` is already the repo-relative POSIX key every snapshot entry uses:
+    // `scopeDirsFor` takes `path.posix.dirname` of paths `normalizeDeclaredPaths`
+    // has already normalized.
+    if (!resolvesLexically(root, dir)) {
+      digests.set(dir, {kind: 'unreadable'});
+
+      return;
+    }
 
     const absDir = path.resolve(root, dir);
     let stat;
@@ -895,16 +910,21 @@ const collectScopeDigests = (
       // A non-object throw cannot be read for an errno, so it takes the
       // conservative arm rather than the silent one.
       if (!isPlainObject(error) || error.code !== 'ENOENT') {
-        digests.set(relativeKey(root, absDir), {kind: 'unreadable'});
+        digests.set(dir, {kind: 'unreadable'});
       }
 
       return;
     }
 
-    // A scope directory that is ITSELF a link is pruned like any other. Its
-    // contents are not in this repository however its key reads, so there is
-    // nothing here the sweep may write to.
-    if (!stat.isDirectory()) return;
+    // A scope directory that is ITSELF a link is not walked, like any other
+    // link: its contents are not in this repository however its key reads, so
+    // there is nothing here the sweep may write to. It is still RECORDED,
+    // for the de-symlink case described above.
+    if (!stat.isDirectory()) {
+      digests.set(dir, {kind: 'unreadable'});
+
+      return;
+    }
 
     walk(absDir);
   });
@@ -928,8 +948,9 @@ type SweepInputs = {
  * pre-image, so it is removed instead. That is the confinement guarantee as
  * stated: reverted when a pre-image exists, reported when it does not.
  *
- * Three limits on "reverted", each deliberate and each surfacing as `reported`
- * rather than passing silently:
+ * Four limits on "reverted", each deliberate. The first three surface as
+ * `reported`; only the fourth is silent, and it is silent about nothing the
+ * adopter had:
  *
  * - A pre-image the spawn replaced with a DIRECTORY is not restored. `rmSync`
  *   here is deliberately not recursive, and deleting an arbitrary tree the
@@ -938,10 +959,17 @@ type SweepInputs = {
  * - A path whose components are not all real directories is not written
  *   through, since the key would name one place and the syscall land in
  *   another.
- * - A scope directory reached through a symlinked ancestor is never
- *   snapshotted at all (`collectScopeDigests`), so nothing inside it is swept:
- *   there is no pre-image to disagree with, and the sweep is silent there
- *   rather than wrong.
+ * - A scope directory that is a link, or is reached through one, is never
+ *   walked (`collectScopeDigests`), so nothing inside it is reverted: reading
+ *   through a link the writes will not resolve through is what would put an
+ *   out-of-tree pre-image inside the repository. The directory itself is still
+ *   recorded and reported, which is what keeps an unwalked scope from reading
+ *   as an empty one if the spawn later de-symlinks the path.
+ * - A path that is neither a regular file nor a symlink (a FIFO, a socket, a
+ *   device node) and an empty directory are not snapshot entries at all, so
+ *   one the spawn creates is neither removed nor reported. Nothing is lost and
+ *   nothing leaves the tree; a fourth entry kind would buy only the report
+ *   line.
  */
 const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   const {after, before, declaredPaths, regionId, root} = inputs;

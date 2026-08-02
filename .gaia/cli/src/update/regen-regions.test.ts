@@ -1290,13 +1290,68 @@ describe('update regen-regions: behavior coverage', () => {
     expect(existsSync(path.join(root, '.claude/agents/private.env'))).toBe(
       false
     );
-    // Nothing in this scope is observable without traversing the link, so
-    // nothing in it is swept. That is the cost of the guarantee rather than a
-    // gap in it, and `sweepScope` states it as a limit.
-    expect(report.confined).toEqual([]);
+    // Nothing behind the link is enumerated, so nothing in there is reverted.
+    // The scope root itself is still recorded and surfaced: it is a region
+    // directory this run could not examine, and saying so is what keeps the
+    // next pass from reading an absent scope as an empty one.
+    expect(report.confined).toEqual([
+      {action: 'reported', path: '.claude/agents', regionId: 'test-region'},
+    ]);
     expect(readFileSync(path.join(outside, 'agents/private.env'), 'utf8')).toBe(
       'SECRET=1\n'
     );
+  });
+
+  test('12h-iv. content the program moves onto an unexaminable scope path is not deleted as a creation', () => {
+    const root = buildRoot();
+
+    mkdirSync(path.join(root, '.claude'), {recursive: true});
+    mkdirSync(path.join(root, 'real-agents'), {recursive: true});
+    writeFileSync(path.join(root, 'real-agents/one.md'), 'original one\n');
+    writeFileSync(path.join(root, 'real-agents/two.md'), 'original two\n');
+    writeFileSync(
+      path.join(root, 'real-agents/keep.md'),
+      'adopter only copy\n'
+    );
+    // The scope root is a link, so neither pass may enumerate what is behind
+    // it. The snapshot is therefore empty for this scope however the run goes.
+    symlinkSync(
+      path.join(root, 'real-agents'),
+      path.join(root, '.claude/agents')
+    );
+    // De-symlinking with `mv` rather than a fresh `mkdir` is what makes this
+    // dangerous: pre-existing content ARRIVES at the scope path between the two
+    // passes, so it is present in `after`, absent from `before`, and reads as
+    // something the program created. It is the adopter's only copy, and
+    // `--backup-dir` would not have covered it either: backups are declared
+    // paths only.
+    writeScript(
+      root,
+      [
+        'rm .claude/agents',
+        'mv real-agents .claude/agents',
+        HAPPY_SCRIPT_BODY,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(
+      readFileSync(path.join(root, '.claude/agents/keep.md'), 'utf8')
+    ).toBe('adopter only copy\n');
+    // Recorded present-but-unexaminable, the scope root answers for everything
+    // that turns up beneath it, so the arrival is surfaced instead of unlinked.
+    const {confined} = report;
+
+    expect(confined.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual([
+      {action: 'reported', path: '.claude/agents', regionId: 'test-region'},
+      {
+        action: 'reported',
+        path: '.claude/agents/keep.md',
+        regionId: 'test-region',
+      },
+    ]);
   });
 
   test('12i. an in-scope symlink whose target cannot be read is reported, not dropped from the snapshot and then deleted as a creation', () => {
