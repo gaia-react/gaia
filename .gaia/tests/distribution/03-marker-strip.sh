@@ -109,7 +109,9 @@ while IFS= read -r rel; do
   # authored it, and a delta nets a strip-introduced double in one part of a
   # file against an authored one removed from another, so the shape this
   # exists to catch can hide inside an equal total. The source count rides
-  # along in the report only, to say which of the two a failure is.
+  # along in the report only, to say how much of a file's doubled separator
+  # the header already carried, since the strip and the header can each
+  # contribute one to the same file.
   grep -q '^[[:space:]]*# gaia:maintainer-only:start' "$src" || continue
   src_pairs=$(count_bare_pairs "$src")
   staged_pairs=$(count_bare_pairs "$staged")
@@ -135,7 +137,8 @@ fi
 if [ "${#DOUBLED_SEPARATOR[@]}" -gt 0 ]; then
   log "Staged '#'-marker file(s) carry a doubled bare '#' separator. The block"
   log "owns the separator that introduces it, so exactly one survives the strip."
-  log "src=0 means the strip produced it; src>0 means the header authored it:"
+  log "staged>src means the strip produced one; src>0 means the header authored"
+  log "one; both can be true of the same file:"
   for entry in "${DOUBLED_SEPARATOR[@]}"; do log "  $entry"; done
   fail "${#DOUBLED_SEPARATOR[@]} staged file(s) carry a doubled separator"
   exit 1

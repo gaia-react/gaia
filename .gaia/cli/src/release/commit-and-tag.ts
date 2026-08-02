@@ -1,7 +1,7 @@
 /**
  * `gaia-maintainer release commit-and-tag` handler.
  *
- * Codifies Step 11 and Step 13 of the maintainer release runbook:
+ * Codifies Step 8 and Step 12 of the maintainer release runbook:
  *
  *   --commit   Stage the release-related files, commit with the message
  *              `chore(release): vX.Y.Z`, then amend `wiki/.state.json`
@@ -14,7 +14,7 @@
  *              merges and `main` is fast-forwarded.
  *
  * One mode per invocation. The slash command runs `--commit` on the
- * release branch (Step 11) and `--tag` on `main` (Step 13).
+ * release branch (Step 8) and `--tag` on `main` (Step 12).
  *
  * The version is read from `package.json`. Stdout is a one-line summary
  * per mode; stderr explains every refusal.

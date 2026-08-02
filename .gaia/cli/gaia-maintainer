@@ -22646,7 +22646,7 @@ import path23 from "node:path";
 var HELP_TEXT27 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>] [--check]
 
   Overwrite wiki/hot.md and wiki/log.md with release-clean content
-  (Step 8 + Step 9 of the runbook).
+  (Step 6 of the runbook).
 
   Flags:
     --version <X.Y.Z>     Override the new version (default: package.json).
@@ -30902,7 +30902,7 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
   fitness render-card [--cols N]
   automation read-config|cron-decide
-  update merge-workspace|merge-region|regen-regions --baseline <file> --latest <file> --current <file>
+  update merge-workspace|merge-audit-ci|merge-region|regen-regions
   update-deps run --emit-updates <path>
   release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag|exclude-regex
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume

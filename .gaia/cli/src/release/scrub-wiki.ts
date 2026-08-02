@@ -1,7 +1,7 @@
 /**
  * `gaia-maintainer release scrub-wiki` handler.
  *
- * Steps 8 + 9 of the maintainer release runbook. Overwrites
+ * Step 6 of the maintainer release runbook. Overwrites
  * `wiki/hot.md` and `wiki/log.md` with release-clean content. The exact
  * field reset list is codified verbatim from the runbook so adopters
  * who scaffold via `create-gaia` start from a consistent slate.
@@ -17,7 +17,7 @@ import {atomicWriteFileSync} from '../util/atomic-write.js';
 const HELP_TEXT = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>] [--check]
 
   Overwrite wiki/hot.md and wiki/log.md with release-clean content
-  (Step 8 + Step 9 of the runbook).
+  (Step 6 of the runbook).
 
   Flags:
     --version <X.Y.Z>     Override the new version (default: package.json).

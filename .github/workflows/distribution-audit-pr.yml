@@ -12,6 +12,13 @@ name: Distribution Audit (PR)
 # drain. It fails only on the intersection of `missing` with the files this PR
 # touches, so each PR is answerable for exactly the surface it added.
 #
+# A second, independent condition fails the same gate: region-declaration
+# drift. Its scoping is deliberately NOT the per-PR rule above. It is evaluated
+# over the whole symmetric difference between the committed manifest and a
+# fresh scan, so a PR that touches nothing region-shaped can still go red on
+# it. That is intended, not a misfire; the inline comment at the region-drift
+# check carries the reasoning.
+#
 # Maintainer-only: `gaia-maintainer` and the release manifest exist only on the
 # GAIA team's clone; adopters never run GAIA releases. Release-excluded
 # alongside the other maintainer-only workflows (category 9); on an adopter
