@@ -28026,8 +28026,11 @@ var collectScopeDigests = (root, scopeDirs) => {
   scopeDirs.forEach((dir) => {
     const absDir = path39.resolve(root, dir);
     const scopeKey = relativeKey(root, absDir);
+    const recordUnexaminable = () => {
+      if (!digests.has(scopeKey)) digests.set(scopeKey, { kind: "unreadable" });
+    };
     if (!resolvesLexically(root, dir)) {
-      digests.set(scopeKey, { kind: "unreadable" });
+      recordUnexaminable();
       return;
     }
     let stat;
@@ -28035,12 +28038,12 @@ var collectScopeDigests = (root, scopeDirs) => {
       stat = lstatSync2(absDir);
     } catch (error51) {
       if (!isPlainObject2(error51) || error51.code !== "ENOENT") {
-        digests.set(scopeKey, { kind: "unreadable" });
+        recordUnexaminable();
       }
       return;
     }
     if (!stat.isDirectory()) {
-      digests.set(scopeKey, { kind: "unreadable" });
+      recordUnexaminable();
       return;
     }
     walk(absDir);
