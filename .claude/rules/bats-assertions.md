@@ -53,6 +53,8 @@ grep -qF -- "needle" <<<"$output" && return 1   # needle present -> grep 0 -> re
 
 This is the same principle as the custom-check rule above, end the failing branch with an explicit `return 1`, applied to inline absence assertions. A `!`-negated command is only safe as a test's **final** line, where its status becomes the test result. Anywhere earlier, write `<positive-condition-for-the-bad-case> && return 1`.
 
+The mirror image, and the reason the two forms swap places: `&& return 1` is safe anywhere except a test's **final** statement. There, an absent needle leaves grep's own non-zero status as the AND-list's status, which becomes the test's return value, so the test fails in exactly the case it exists to pass. A test whose last statement is such a check ends with an explicit `true`.
+
 ## Backstops, not substitutes
 
 <!-- gaia:maintainer-only:start -->

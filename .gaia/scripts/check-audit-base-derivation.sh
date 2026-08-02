@@ -214,10 +214,10 @@ GAIA_AUDIT_DIFF_CALL='diff --name-only'
 # applying the two discriminations the ERE cannot express. A line survives
 # when it carries at least one `merge-base` call that neither takes BASE_REF
 # inside its own argument list (the resolver-derived shape this check
-# requires) nor is owned by FULL_BASE (the self-skip base, deliberately
-# exempt). Both tests are per CALL, never per line: "its own argument list"
-# ends at the `)` that closes the call, so a BASE_REF named anywhere after
-# that vouches for nothing.
+# requires) nor is owned by FULL_BASE (the self-skip base and the default
+# member's waive-eligibility base, deliberately exempt). Both tests are per
+# CALL, never per line: "its own argument list" ends at the `)` that closes
+# the call, so a BASE_REF named anywhere after that vouches for nothing.
 #
 # `sub` on a copy removes only the FIRST two colon-delimited fields, so a
 # colon inside the content itself never shifts the boundary. The owning
