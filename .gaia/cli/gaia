@@ -28179,7 +28179,10 @@ var collectScopeDigests = (root, scopeDirs) => {
     let stat;
     try {
       stat = lstatSync2(absDir);
-    } catch {
+    } catch (error51) {
+      if (!isPlainObject3(error51) || error51.code !== "ENOENT") {
+        digests.set(relativeKey(root, absDir), { kind: "unreadable" });
+      }
       return;
     }
     if (!stat.isDirectory()) return;
