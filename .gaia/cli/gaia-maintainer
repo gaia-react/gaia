@@ -20799,7 +20799,15 @@ var rosterAgentPaths = (repoRoot) => {
   } catch (error51) {
     throw new Error(brokenRosterMessage("is not valid YAML", causeOf(error51)));
   }
-  const auditors = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed.auditors : void 0;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(
+      brokenRosterMessage(
+        "has no top-level YAML mapping",
+        "An empty, truncated, or comment-only file parses to nothing, and a bare scalar or a top-level list parses to something that cannot carry an auditors key."
+      )
+    );
+  }
+  const { auditors } = parsed;
   if (!Array.isArray(auditors)) return /* @__PURE__ */ new Set();
   const names = auditors.map(
     (entry) => typeof entry === "object" && entry !== null && !Array.isArray(entry) ? entry.name : void 0

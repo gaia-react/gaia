@@ -77,10 +77,15 @@ const causeOf = (error: unknown): string =>
  * a marker pair, for a YAML syntax error a few lines up in that same file.
  * Loud is not the same as correctly directed.
  *
- * A roster that parses into a shape this reader does not recognize (no
- * `auditors` key, or one that is not a list) still returns an empty set. That
- * is the nearest YAML spelling of "lists no auditors", and making it fatal is
- * a separate decision from this one.
+ * The line between throwing and the empty set runs through what the file *is*,
+ * not through whether this reader understood it. A top level that is not a
+ * mapping is a broken source and throws: an empty, truncated, or comment-only
+ * file parses to nothing, and a bare scalar or a list parses to something that
+ * cannot carry an `auditors` key. None of those is a way to say anything about
+ * auditors, so treating them as "declares none" reproduces the same
+ * misdirection one shape further out. A mapping that carries no `auditors` key,
+ * or one that is not a list, does return the empty set: that is a roster
+ * present and well-formed enough to read as declaring none.
  */
 export const rosterAgentPaths = (repoRoot: string): ReadonlySet<string> => {
   const rosterPath = path.join(repoRoot, ROSTER_RELATIVE_PATH);
@@ -107,10 +112,16 @@ export const rosterAgentPaths = (repoRoot: string): ReadonlySet<string> => {
     throw new Error(brokenRosterMessage('is not valid YAML', causeOf(error)));
   }
 
-  const auditors =
-    typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ?
-      (parsed as {auditors?: unknown}).auditors
-    : undefined;
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(
+      brokenRosterMessage(
+        'has no top-level YAML mapping',
+        'An empty, truncated, or comment-only file parses to nothing, and a bare scalar or a top-level list parses to something that cannot carry an auditors key.'
+      )
+    );
+  }
+
+  const {auditors} = parsed as {auditors?: unknown};
 
   if (!Array.isArray(auditors)) return new Set();
 
