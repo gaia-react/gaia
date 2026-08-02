@@ -268,7 +268,11 @@ export const commitDetails = (
   cwd: string
 ): CommitDetail[] => {
   const recordSeparator = '---END-COMMIT---';
-  const raw = tryRunGit(
+  // `runGit`, deliberately not `tryRunGit`: swallowing a failure here returns
+  // `[]`, which is byte-for-byte what a genuinely empty range returns, so the
+  // caller cannot tell "git broke" from "nothing to review" and reports the
+  // second. Throwing reaches the `git_failed` handler in `commit-classify.ts`.
+  const raw = runGit(
     [
       'log',
       '--no-merges',
@@ -279,8 +283,6 @@ export const commitDetails = (
     ],
     {cwd}
   );
-
-  if (raw === null) return [];
 
   const chunks = raw.split(recordSeparator);
   const records: RawRecord[] = [];

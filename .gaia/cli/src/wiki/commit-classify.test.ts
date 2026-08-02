@@ -9,6 +9,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {EXIT_CODES} from '../exit.js';
 import {COMMIT_TYPES} from '../util/conventional-commit.js';
 import {execGaiaGit} from '../util/git-env.js';
 import {run} from './commit-classify.js';
@@ -689,6 +690,32 @@ describe('wiki commit-classify', () => {
       expect(health.worthy_rate).toBe(0);
       expect(health.inert).toBe(false);
     });
+  });
+
+  // Without a propagated failure, git breaking is indistinguishable from the
+  // genuinely empty range the test directly above covers: both answer "there
+  // is nothing to review" with exit 0, so anything downstream of
+  // `/gaia-wiki sync` that trusts a zero count reads a transient git failure
+  // as a clean, up-to-date wiki.
+  test('a failing git log reports git_failed, not an empty range', () => {
+    // Well-formed but absent from the sandbox, so `git log <sha>..HEAD` exits
+    // non-zero rather than resolving. Nothing validates `--since` ahead of the
+    // call, which is what lets a bad revision reach `commitDetails` at all.
+    const absentSha = 'deadbeef'.repeat(5);
+
+    const exit = run(['--since', absentSha, '--json'], {cwd: sandbox.root});
+
+    expect(exit).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+
+    const payload = JSON.parse(stdio.errors.join('').trim()) as {
+      code: string;
+      subcommand: string;
+    };
+    expect(payload.code).toBe('git_failed');
+    expect(payload.subcommand).toBe('wiki commit-classify');
+    // No classification on stdout: a zeroed payload here is the wrong answer
+    // this test exists to keep out.
+    expect(stdio.outputs.join('')).toBe('');
   });
 });
 
