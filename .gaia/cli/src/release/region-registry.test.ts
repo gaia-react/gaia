@@ -137,6 +137,13 @@ describe('rosterAgentPaths', () => {
     // produce a clean empty set would be the same species of confident, wrong
     // instruction this module exists to stop handing out, so it is asserted
     // rather than assumed. The delete arm is covered by the absent-roster test.
+    //
+    // Both halves are asserted, because proving the shape works while nothing
+    // pins the message to that shape lets the advice drift away from the only
+    // shape known to work, silently and with every test still green.
+    writeRoster(sandbox.root, '# comment only\n');
+    expect(() => rosterAgentPaths(sandbox.root)).toThrow('auditors: []');
+
     writeRoster(sandbox.root, 'auditors: []\n');
     expect(rosterAgentPaths(sandbox.root)).toEqual(new Set());
   });
