@@ -20781,16 +20781,38 @@ var maskRegion = (source, startMarker, endMarker) => {
 // src/release/region-registry.ts
 import { existsSync as existsSync12, readFileSync as readFileSync14 } from "node:fs";
 import path16 from "node:path";
+var ROSTER_RELATIVE_PATH = ".gaia/audit-ci.yml";
+var brokenRosterMessage = (problem, cause) => `${ROSTER_RELATIVE_PATH} ${problem}. The Code Audit Team agent definitions are read from that roster, so the release manifest cannot be built until the file itself is fixed; this is not a roster-membership or marker problem. ${cause}`;
+var causeOf = (error51) => error51 instanceof Error ? error51.message : String(error51);
+var isPlainMapping = (value) => {
+  if (typeof value !== "object" || value === null) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
 var rosterAgentPaths = (repoRoot) => {
-  const rosterPath = path16.join(repoRoot, ".gaia/audit-ci.yml");
+  const rosterPath = path16.join(repoRoot, ROSTER_RELATIVE_PATH);
   if (!existsSync12(rosterPath)) return /* @__PURE__ */ new Set();
+  let contents;
+  try {
+    contents = readFileSync14(rosterPath, "utf8");
+  } catch (error51) {
+    throw new Error(brokenRosterMessage("could not be read", causeOf(error51)));
+  }
   let parsed;
   try {
-    parsed = load(readFileSync14(rosterPath, "utf8"));
-  } catch {
-    return /* @__PURE__ */ new Set();
+    parsed = load(contents);
+  } catch (error51) {
+    throw new Error(brokenRosterMessage("is not valid YAML", causeOf(error51)));
   }
-  const auditors = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed.auditors : void 0;
+  if (!isPlainMapping(parsed)) {
+    throw new Error(
+      brokenRosterMessage(
+        "has no top-level YAML mapping",
+        'An empty, truncated, or comment-only file parses to nothing, and a bare scalar, timestamp, or list parses to something that cannot carry an auditors key. To declare no auditors, delete the file, or give it a top-level mapping such as "auditors: []".'
+      )
+    );
+  }
+  const { auditors } = parsed;
   if (!Array.isArray(auditors)) return /* @__PURE__ */ new Set();
   const names = auditors.map(
     (entry) => typeof entry === "object" && entry !== null && !Array.isArray(entry) ? entry.name : void 0
