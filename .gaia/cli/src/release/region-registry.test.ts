@@ -131,6 +131,16 @@ describe('rosterAgentPaths', () => {
     expect(rosterAgentPaths(sandbox.root)).toEqual(new Set());
   });
 
+  test('the remedy the not-a-mapping message advises actually works', () => {
+    // That message tells a maintainer to delete the roster or give it a
+    // top-level mapping such as `auditors: []`. Advice that did not itself
+    // produce a clean empty set would be the same species of confident, wrong
+    // instruction this module exists to stop handing out, so it is asserted
+    // rather than assumed. The delete arm is covered by the absent-roster test.
+    writeRoster(sandbox.root, 'auditors: []\n');
+    expect(rosterAgentPaths(sandbox.root)).toEqual(new Set());
+  });
+
   test('entries with no name, or a non-string name, are skipped rather than crashing', () => {
     writeRoster(
       sandbox.root,
