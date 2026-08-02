@@ -1,7 +1,7 @@
 /**
  * `gaia-maintainer release bump [--auto]` handler.
  *
- * Step 3 of the maintainer release runbook. Scans conventional-commit
+ * Step 2 of the maintainer release runbook. Scans conventional-commit
  * subjects (and bodies) since the last tag, classifies the highest
  * semver bump, and either reports the proposal or applies it to
  * `package.json` and `.gaia/VERSION`.
@@ -66,9 +66,9 @@ export type CommandRunner = (
 /**
  * `collectCommits` asks git for every subject *and body* since the last tag,
  * so its output grows with the distance from that tag and passes Node's 1 MiB
- * `spawnSync` default well before a release is due. Bumping is runbook step 5,
- * one step ahead of the changelog, so an unbounded runner here blocks the
- * release before `release changelog` is ever reached.
+ * `spawnSync` default well before a release is due. Bumping is runbook step 2
+ * and the changelog is step 5, so an unbounded runner here blocks the release
+ * three steps before `release changelog` is ever reached.
  */
 export const defaultRunner: CommandRunner = (command, args, options) =>
   spawnSync(command, args as string[], {
