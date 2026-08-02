@@ -39,11 +39,10 @@
  * repository. Every write first asks whether the components between the root
  * and the key are real directories, reporting rather than resolving through one
  * that is not, so a scope key can never name one place while the bytes land in
- * another. And the snapshot keys every node it does NOT enumerate, at every
- * level down to the scope root itself, so a path is read as a spawn creation
- * only when every directory above it was actually looked inside. Anything else
- * is reported rather than deleted, because it may equally be something the
- * adopter already had that has just arrived at that key.
+ * another. And a path is deleted as a spawn creation only where the snapshot
+ * positively established that nothing was at that key beforehand, which is
+ * `collectScopeDigests`' removal invariant, stated in full there and not
+ * restated here. Anything else is reported rather than deleted.
  *
  * A `git status --porcelain -z` before/after pair also catches a
  * write anywhere else in the tree; that has no pre-image to restore from, so
@@ -720,22 +719,17 @@ const resolvesLexically = (root: string, relPath: string): boolean => {
 
 /**
  * Whether the snapshot holds an entry for any directory above `relPath`, which
- * is exactly the question "did the pass that produced this snapshot ever look
- * INSIDE that directory".
+ * is `collectScopeDigests`' REMOVAL INVARIANT asked at one path. See that
+ * function's docblock for the invariant and for why this is the right test;
+ * do not restate it here.
  *
- * The walk gives a node an entry precisely when it does not enumerate it: an
- * unreadable directory, an unstattable entry, a link recorded and not
- * descended, a regular file. A real directory it walks gets no entry at all,
- * and its children speak for it. So `before.has(ancestor)` is the exact test,
- * and any narrower one leaks: asking only for `unreadable` shelters a
- * directory whose permissions changed and not one the spawn de-symlinked.
- *
- * Absent from `before` may only be read as "the spawn created this" when every
- * directory above it was enumerated. Where one was not, the path may equally be
- * something the adopter already had that has just arrived at this key, and
- * `mv` is the ordinary way that happens: the content is moved rather than
- * copied, and backups cover declared paths only, so unlinking it destroys the
- * one copy while the report calls it a stray write cleaned up.
+ * The one thing worth repeating at the call site is what it buys, because it is
+ * not obvious that anything does: where an ancestor was not enumerated, a path
+ * missing from `before` may equally be something the adopter already had that
+ * has just ARRIVED at this key. `mv` is the ordinary way that happens, and it
+ * moves rather than copies, while backups cover declared paths only, so
+ * unlinking it destroys the one copy while the report calls it a stray write
+ * cleaned up.
  */
 const hasUnenumeratedAncestor = (
   before: Snapshot,
@@ -755,6 +749,31 @@ const hasUnenumeratedAncestor = (
  * Step 5 / re-used for step 7-8: SHA-256 (plus raw content, for restoring)
  * of every existing file under the region's declared paths' parent
  * directories, recursively. Keys are repo-relative, POSIX-separated.
+ *
+ * **The removal invariant. This is the one statement of it; everything else in
+ * this module points here rather than paraphrasing.** The sweep may delete a
+ * path found only in the AFTER snapshot, on the grounds that the spawn created
+ * it, only where this pass POSITIVELY ESTABLISHED that nothing was at that key
+ * before. Anywhere else, a path that appears between the two passes may equally
+ * be something the adopter already had that has just arrived there, and
+ * deleting it destroys the only copy.
+ *
+ * Two things establish it, and the map's shape encodes both:
+ *
+ * 1. **The ancestor was enumerated.** This walk keys a node exactly when it does
+ *    NOT look inside it: an unreadable directory, an unstattable entry, a link
+ *    recorded and not descended, a regular file, and every arm of the scope-root
+ *    gate below. A real directory it walks gets no key of its own, because its
+ *    children speak for it. So "no entry for this ancestor" means "enumerated",
+ *    and `hasUnenumeratedAncestor` is that read.
+ * 2. **The ancestor could not have children.** A FIFO, socket, or device node
+ *    gets no key either, since it is not a regular file, and this pass's silence
+ *    about paths beneath it is a fact rather than ignorance: nothing can resolve
+ *    through one. That is why the missing entry is safe there and not a hole.
+ *
+ * Non-enumeration is therefore a sound proxy for the invariant rather than the
+ * invariant itself, which is worth knowing before moving any arm of this walk:
+ * an arm that stops keying a node that CAN have children breaks it.
  */
 const collectScopeDigests = (
   root: string,
@@ -792,7 +811,7 @@ const collectScopeDigests = (
       } catch {
         // Unreadable directory: nothing inside it can be enumerated, so the
         // directory ITSELF is recorded present-but-unreadable and the walk
-        // carries on with the rest. `hasUnreadableAncestor` reads that one
+        // carries on with the rest. `hasUnenumeratedAncestor` reads that one
         // entry to answer for the whole subtree, which is what stops a spawn
         // that merely makes the directory readable from turning every file the
         // adopter already had inside it into an apparent creation.
@@ -905,8 +924,23 @@ const collectScopeDigests = (
     const absDir = path.resolve(root, dir);
     const scopeKey = relativeKey(root, absDir);
 
+    // The walk and this gate both write to `digests`, and a region may declare
+    // paths whose parent directories nest, so both can key the SAME node: the
+    // outer scope's walk reaches it as an entry, the inner scope's gate reaches
+    // it as its own root. The walk's entry wins, always. It describes the same
+    // node and carries its whole pre-image, so it shelters identically and can
+    // additionally restore, where this one can only report.
+    //
+    // Stated once rather than at each of the three arms below, because the rule
+    // is about the map rather than about any one arm. Without it, reversing two
+    // entries in `paths[]` reverses whether an undeclared path is restored or
+    // merely reported, and declaration order is not a fact about the tree.
+    const recordUnexaminable = (): void => {
+      if (!digests.has(scopeKey)) digests.set(scopeKey, {kind: 'unreadable'});
+    };
+
     if (!resolvesLexically(root, dir)) {
-      digests.set(scopeKey, {kind: 'unreadable'});
+      recordUnexaminable();
 
       return;
     }
@@ -930,7 +964,7 @@ const collectScopeDigests = (
       // A non-object throw cannot be read for an errno, so it takes the
       // conservative arm rather than the silent one.
       if (!isPlainObject(error) || error.code !== 'ENOENT') {
-        digests.set(scopeKey, {kind: 'unreadable'});
+        recordUnexaminable();
       }
 
       return;
@@ -941,7 +975,7 @@ const collectScopeDigests = (
     // there is nothing here the sweep may write to. It is still RECORDED,
     // for the de-symlink case described above.
     if (!stat.isDirectory()) {
-      digests.set(scopeKey, {kind: 'unreadable'});
+      recordUnexaminable();
 
       return;
     }
@@ -969,8 +1003,7 @@ type SweepInputs = {
  * stated: reverted when a pre-image exists, reported when it does not.
  *
  * Five limits on "reverted", each deliberate. The first three surface as
- * `reported`; the last two are silent, and neither is silent about anything
- * that stayed inside this tree:
+ * `reported`; the last two do not, and are noted individually:
  *
  * - A pre-image the spawn replaced with a DIRECTORY is not restored. `rmSync`
  *   here is deliberately not recursive, and deleting an arbitrary tree the
@@ -986,18 +1019,22 @@ type SweepInputs = {
  *   an unwalked node from reading as an empty one if the spawn later replaces
  *   it with a real directory.
  * - A file the spawn writes THROUGH an in-scope symlinked directory is neither
- *   reverted, removed, nor reported, and unlike the cases above there is not
- *   even a row for the directory: the link is untouched, so it matches its own
- *   pre-image and the sweep passes over it. Those bytes landed outside this
- *   tree, where this command has no pre-image and no business writing, and git
- *   does not descend a link either.
- * - A path that is neither a regular file nor a symlink (a FIFO, a socket, a
- *   device node) and an empty directory are not snapshot entries at all, so
- *   one the spawn creates is neither removed nor reported, and one the spawn
- *   replaces with a moved directory shelters nothing beneath it. Nothing is
- *   lost through the first and the second needs an adopter to keep a FIFO
- *   inside a region's own directory; a fourth entry kind would buy only the
- *   report line, at one `reported` row per such path per run.
+ *   reverted nor removed, and unlike the cases above there is not even a row
+ *   for the directory: the link is untouched, so it matches its own pre-image
+ *   and the sweep passes over it. Whether anything reports it depends on where
+ *   the link points. Outside the root, nothing does, and nothing should: the
+ *   bytes landed where this command has no pre-image and no business writing,
+ *   and git does not descend a link either. Inside the root, they land at a
+ *   real in-tree path that matches no scope, and the whole-root `git status`
+ *   half reports them like any other out-of-scope write, unless git is
+ *   unavailable.
+ * - A FIFO, socket, or device node is not a snapshot entry, so one the spawn
+ *   creates in scope is neither removed nor reported. Nothing is lost: it holds
+ *   no content and it leaves the tree alone. It shelters nothing beneath it
+ *   either, and that is correct rather than a gap, because nothing can resolve
+ *   through one; see `collectScopeDigests`' removal invariant. Adding a fourth
+ *   entry kind would buy only the report line, at one `reported` row per such
+ *   path per run.
  */
 const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   const {after, before, declaredPaths, regionId, root} = inputs;

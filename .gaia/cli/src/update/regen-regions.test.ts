@@ -269,6 +269,37 @@ const runFailing = (argv: string[]): {exit: number; stderrText: string} => {
 const readDeclared = (root: string, index: 0 | 1): string =>
   readFileSync(path.join(root, DECLARED_PATHS[index]), 'utf8');
 
+/**
+ * Runs one nested-scope-dir declaration order and returns what the sweep did
+ * to the node BOTH scopes key, so two orders can be compared directly.
+ */
+const runNestedScopeOrder = (
+  paths: string[]
+): {confined: RegenRegionsReport['confined']; content: string} => {
+  const root = buildRoot();
+
+  writeDeclaredFiles(root, 'original');
+  // `.claude/agents/sub` is an undeclared regular file the program
+  // clobbers, and it is ALSO the parent of a declared path, so the outer
+  // scope's walk keys it as an entry while the inner scope's gate keys it
+  // as its own root.
+  writeFileSync(path.join(root, '.claude/agents/sub'), 'adopter bytes\n');
+  writeScript(
+    root,
+    [
+      HAPPY_SCRIPT_BODY,
+      String.raw`printf "spawn bytes\n" > .claude/agents/sub`,
+    ].join('\n')
+  );
+  const manifestPath = writeManifest(root, [buildDeclaration({paths})]);
+  const {report} = runCapturing(baseArgv(manifestPath, root));
+
+  return {
+    confined: report.confined.toSorted((a, b) => a.path.localeCompare(b.path)),
+    content: readFileSync(path.join(root, '.claude/agents/sub'), 'utf8'),
+  };
+};
+
 const byLocale = (a: string, b: string): number => a.localeCompare(b);
 // Bound to a variable before sorting: canonical/no-use-extend-native's
 // proto-method database predates ES2023 and does not recognize `toSorted`
@@ -1681,6 +1712,30 @@ describe('update regen-regions: behavior coverage', () => {
     ]);
     expect(statSync(secretAbs).mode.toString(8).slice(-3)).toBe('600');
     expect(readFileSync(secretAbs, 'utf8')).toBe('private\n');
+  });
+
+  test('12m. a scope directory nested inside another is snapshotted the same way whichever order the region declares them in', () => {
+    const outerFirst = runNestedScopeOrder([
+      '.claude/agents/one.md',
+      '.claude/agents/sub/two.md',
+    ]);
+    const innerFirst = runNestedScopeOrder([
+      '.claude/agents/sub/two.md',
+      '.claude/agents/one.md',
+    ]);
+
+    // The walk holds this node's whole pre-image and the scope-root gate holds
+    // only "unexaminable", so whichever wrote last used to decide whether the
+    // file could be put back at all. Declaration order is not a fact about the
+    // tree, and the adopter's bytes are recoverable in both orders or neither.
+    expect(outerFirst.content).toBe('adopter bytes\n');
+    expect(innerFirst.content).toBe('adopter bytes\n');
+    expect(outerFirst.confined).toEqual(innerFirst.confined);
+    expect(outerFirst.confined).toContainEqual({
+      action: 'restored',
+      path: '.claude/agents/sub',
+      regionId: 'test-region',
+    });
   });
 
   test('13. a file created outside the declared set but inside the snapshot scope is removed', () => {
