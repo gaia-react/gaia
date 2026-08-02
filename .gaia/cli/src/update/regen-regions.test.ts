@@ -24,6 +24,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import type * as nodeFs from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {run, spawnFailureCause} from './regen-regions.js';
@@ -44,7 +45,7 @@ import type {RegenRegionsReport} from './regen-regions.js';
 const fsControl = vi.hoisted(() => ({failReadlinkOnceFor: ''}));
 
 vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
+  const actual = await importOriginal<typeof nodeFs>();
   const realReadlink = actual.readlinkSync as (
     target: unknown,
     options?: unknown
@@ -1171,12 +1172,14 @@ describe('update regen-regions: behavior coverage', () => {
     // Undoing the spawn's creations first is what keeps the write lexical.
     expect(existsSync(path.join(outside, 'extra.md'))).toBe(false);
 
-    const confined = report.confined;
+    const {confined} = report;
 
-    expect(
-      confined.toSorted((a, b) => a.path.localeCompare(b.path))
-    ).toEqual([
-      {action: 'removed', path: '.claude/agents/nested', regionId: 'test-region'},
+    expect(confined.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual([
+      {
+        action: 'removed',
+        path: '.claude/agents/nested',
+        regionId: 'test-region',
+      },
       {
         action: 'restored',
         path: '.claude/agents/nested/extra.md',

@@ -585,7 +585,17 @@ const performBackup = (inputs: BackupInputs): string[] => {
 const scopeDirsFor = (paths: readonly string[]): ReadonlySet<string> =>
   new Set(paths.map((declPath) => path.posix.dirname(declPath)));
 
+/**
+ * A snapshot entry that still carries a pre-image, so the sweep can write it
+ * back. The one entry that cannot is a link whose target could not be read:
+ * it is recorded for presence alone (see `SnapshotEntry`), and asking this
+ * before anything is unlinked is what keeps "was it here" from being answered
+ * as "can it be put back".
+ */
+type RestorableEntry =
+  Extract<SnapshotEntry, {kind: 'file'}> | {kind: 'symlink'; target: Buffer};
 type Snapshot = ReadonlyMap<string, SnapshotEntry>;
+
 /**
  * Both kinds carry their whole pre-image, so the sweep's two questions ("did
  * the spawn touch this" and "what do I put back") are answered per kind rather
@@ -606,17 +616,6 @@ type SnapshotEntry =
   | {content: Buffer; digest: string; kind: 'file'; mode: number}
   | {kind: 'symlink'; target: Buffer | undefined};
 
-/**
- * A snapshot entry that still carries a pre-image, so the sweep can write it
- * back. The one entry that cannot is a link whose target could not be read:
- * it is recorded for presence alone (see `SnapshotEntry`), and asking this
- * before anything is unlinked is what keeps "was it here" from being answered
- * as "can it be put back".
- */
-type RestorableEntry =
-  | Extract<SnapshotEntry, {kind: 'file'}>
-  | {kind: 'symlink'; target: Buffer};
-
 const isRestorable = (entry: SnapshotEntry): entry is RestorableEntry =>
   entry.kind === 'file' || entry.target !== undefined;
 
@@ -636,13 +635,15 @@ const isUntouched = (
 ): boolean => {
   if (after === undefined) return false;
 
-  if (before.kind === 'symlink')
+  if (before.kind === 'symlink') {
+    const beforeTarget = before.target;
+
     return (
       after.kind === 'symlink' &&
-      before.target !== undefined &&
-      after.target !== undefined &&
-      after.target.equals(before.target)
+      beforeTarget !== undefined &&
+      (after.target?.equals(beforeTarget) ?? false)
     );
+  }
 
   return after.kind === 'file' && after.digest === before.digest;
 };
