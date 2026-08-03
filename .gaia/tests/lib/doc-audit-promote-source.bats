@@ -272,19 +272,44 @@ setup() {
   grep -qF -- 'source untouched, do not apply' <<<"$loop"
 }
 
-# `source_before`'s presence is no longer pinned by a promote-specific
-# clause, because it is no longer a special case: the generic verbatim-snippet
-# bullet names `source_before` over `source_path`, and confirming a snippet
-# appears verbatim establishes presence and content in one check. The pairing
-# test above is what guards it now, so the coverage moved rather than lapsed.
+# Two different things are called "presence" here, and conflating them is
+# what briefly cost this suite a real check:
 #
-# `source_after` is deliberately left unchecked, which is symmetry rather than
-# an oversight: `type: replace`'s own `after` is unchecked too, by the same
-# bullet, and has been all along. Making `source_before` the file's sole
-# checked-and-explained exception is what generated a finding in two
-# consecutive rounds. If an unchecked replacement field is a defect it is one
-# this branch did not introduce and holds equally for both, so widening it
-# belongs to whoever takes that on for both.
+#   - presence of the recorded text IN THE SOURCE FILE, which the generic
+#     verbatim-snippet bullet establishes for `source_before`, together with
+#     its content, in one check; and
+#   - presence of the FIELD IN THE ACTION BLOCK, which that bullet cannot
+#     establish at all, because looking for a snippet presupposes having one.
+#
+# Only the first moved to the generic bullet. The second needs its own check
+# and has one, in the promote-only bullet, which is what the test below pins.
+#
+# Uniformity with `type: replace` is not an argument for dropping it, though
+# it looks like one: `replace`'s own `before` has no presence check either.
+# The difference is consequence, not type. A promote is the only action whose
+# mid-apply failure lands after three writes to files other than its target
+# (the wiki page, `wiki/log.md`, `wiki/index.md`), which is exactly why this
+# check is pre-write.
+#
+# `source_after`'s *content* genuinely is unchecked, and that symmetry does
+# hold: there is nothing in the file to verify a replacement against before
+# the edit lands, so it is not a drift signal at all, and `after` is unchecked
+# for the identical reason.
+
+@test "a replace block is checked for both its required fields before any write" {
+  local loop
+  loop="$(scoped '^### Per-action loop' '^### ')"
+  grep -qF -- 'a `replace` carries both `source_before` and `source_after`' <<<"$loop"
+}
+
+@test "the exhaustiveness claim counts only the drift bullets" {
+  # Three bullets follow it, and the third is promote-only. An unscoped "the
+  # two bullets below" makes a reader who counts the third into it read
+  # `source_action` enum validation as generic to every action type.
+  local loop
+  loop="$(scoped '^### Per-action loop' '^### ')"
+  grep -qF -- 'The first two bullets below cover every action type' <<<"$loop"
+}
 
 @test "the wiki page states no blanket expect claim either" {
   # The skill and this page are two committed files, and `audit.md`'s own
