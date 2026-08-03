@@ -112,6 +112,14 @@ normalize_ws() {
 # scoped <start_ERE> <terminator_ERE>
 # extract_section_or_fail + normalize_ws, in the two-step order that keeps
 # the guard's exit status (see its header).
+#
+# A test that pins WHERE something sits must scope to that place, not to the
+# section containing it. `### Per-action loop` spans steps 1 through 4, so a
+# check scoped to it cannot tell step 2 from step 3, and the whole
+# promote-only bullet can be moved verbatim into the apply step with every
+# assertion still green -- which is the exact regression the pre-write
+# placement exists to prevent. Scope placement claims to
+# `^2\. Verify drift signal` .. `^3\. Apply the change`.
 scoped() {
   local out
   out="$(extract_section_or_fail "$AUDIT" "$1" "$2")" || return 1
@@ -200,9 +208,13 @@ setup() {
   grep -qF -- '`source_before` over `source_path`' <<<"$loop"
 }
 
-@test "no promote-specific drift bullet returns" {
-  # The superseded shape, and the one an editor recreates by reflex on
-  # noticing the promote's fields are spelled differently.
+@test "the superseded promote-special-case sentence does not return" {
+  # One exact historical sentence, and the name says so: a PARAPHRASED
+  # special case would pass this needle. What catches the paraphrase is not
+  # here but in the two tests above, which pin the pairings in the generic
+  # bullets and the "first two bullets cover every action type" claim that a
+  # paraphrase would contradict. Naming this test after the sentence rather
+  # than after the shape is the honest scope.
   local loop
   loop="$(scoped '^### Per-action loop' '^### ')"
   grep -qF -- 'so neither bullet above reaches it' <<<"$loop" && return 1
@@ -255,10 +267,10 @@ setup() {
   # A report stays applicable for up to 72h, so a report written against the
   # superseded schema can reach a Stage 2 running this one. Guessing is the
   # one outcome that mutates a source file on an unread instruction.
-  local loop
-  loop="$(scoped '^### Per-action loop' '^### ')"
-  grep -qF -- 'unknown source_action' <<<"$loop"
-  grep -qF -- 'never guess which was meant' <<<"$loop"
+  local step2
+  step2="$(scoped '^2\. Verify drift signal' '^3\. Apply the change')"
+  grep -qF -- 'unknown source_action' <<<"$step2"
+  grep -qF -- 'never guess which was meant' <<<"$step2"
 }
 
 @test "the mode check names its disposition, like every other outcome in the step" {
@@ -267,9 +279,9 @@ setup() {
   # leaves the check stating a verdict with no consequence, which is how a
   # Stage 2 reaches the apply step anyway and half-applies a malformed
   # promote after three wiki writes.
-  local loop
-  loop="$(scoped '^### Per-action loop' '^### ')"
-  grep -qF -- 'source untouched, do not apply' <<<"$loop"
+  local step2
+  step2="$(scoped '^2\. Verify drift signal' '^3\. Apply the change')"
+  grep -qF -- 'source untouched, do not apply' <<<"$step2"
 }
 
 # Two different things are called "presence" here, and conflating them is
@@ -287,9 +299,9 @@ setup() {
 # Uniformity with `type: replace` is not an argument for dropping it, though
 # it looks like one: `replace`'s own `before` has no presence check either.
 # The difference is consequence, not type. A promote is the only action whose
-# mid-apply failure lands after three writes to files other than its target
-# (the wiki page, `wiki/log.md`, `wiki/index.md`), which is exactly why this
-# check is pre-write.
+# mid-apply failure lands after three writes that precede it (the target
+# wiki page, `wiki/log.md`, `wiki/index.md`) before it touches `source_path`
+# at all, which is exactly why this check is pre-write.
 #
 # `source_after`'s *content* genuinely is unchecked, and that symmetry does
 # hold: there is nothing in the file to verify a replacement against before
@@ -297,9 +309,12 @@ setup() {
 # for the identical reason.
 
 @test "a replace block is checked for both its required fields before any write" {
-  local loop
-  loop="$(scoped '^### Per-action loop' '^### ')"
-  grep -qF -- 'a `replace` carries both `source_before` and `source_after`' <<<"$loop"
+  # Scoped to step 2, not to the loop: "before any write" IS the assertion,
+  # and a loop-wide scope still matches after the bullet is relocated into
+  # step 3, where the check would run after three writes.
+  local step2
+  step2="$(scoped '^2\. Verify drift signal' '^3\. Apply the change')"
+  grep -qF -- 'a `replace` carries both `source_before` and `source_after`' <<<"$step2"
 }
 
 @test "the exhaustiveness claim counts only the drift bullets" {
@@ -334,10 +349,10 @@ setup() {
   # log prepend and the index append have all landed, so a malformed action
   # half-applies. The reason is pinned, not just the placement, because the
   # placement alone reads as arbitrary to whoever tidies this next.
-  local loop
-  loop="$(scoped '^### Per-action loop' '^### ')"
-  grep -qF -- 'schema-validity check rather than a drift signal' <<<"$loop"
-  grep -qF -- 'knowable before any write' <<<"$loop"
+  local step2
+  step2="$(scoped '^2\. Verify drift signal' '^3\. Apply the change')"
+  grep -qF -- 'schema-validity check rather than a drift signal' <<<"$step2"
+  grep -qF -- 'knowable before any write' <<<"$step2"
 }
 
 # --- Group 4: post-apply verification covers the source side --------------

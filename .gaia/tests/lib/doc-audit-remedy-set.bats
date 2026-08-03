@@ -205,12 +205,15 @@ setup() {
 
 @test "remedy 1 forbids pairing the promote with a shrink on its own source" {
   # The pair is what `## Ordering` mis-sequences, and the prohibition is what
-  # keeps a Stage 1 from rebuilding it out of habit. It must not decay into a
-  # claim that Stage 2 tidies the pair up, which is the reading that produced
-  # the original defect.
+  # keeps a Stage 1 from rebuilding it out of habit.
+  #
+  # This test used to carry an absence check for `reads that as drift, and
+  # skips` alongside the positive one. That string never appeared in this
+  # file's history (`git log -S` finds no commit adding or removing it), so
+  # it could not fail and read as coverage that was not there. Dropped rather
+  # than re-aimed: the prohibition's decay mode is now guarded positively by
+  # the consequence clause the next test pins.
   grep -qF -- 'Do not pair it with a `shrink` on that same file' <<<"$STEP3"
-  grep -qF -- 'reads that as drift, and skips' <<<"$STEP3" && return 1
-  true
 }
 
 @test "remedy 1 states the consequence of pairing, not just the prohibition" {
