@@ -387,7 +387,7 @@ It runs only when Stage 1 reported ≥1 action; a 0-action report has nothing to
 **The round is a choice, presented once.** When the round is reached (≥1 action) in an interactive context, gauge the report, then ask via `AskUserQuestion` exactly once whether to run it. The recommendation is dynamic:
 
 - **Recommend Run** when the report contains any memory `delete` / `delete-entry`, or any CONFLICT-driven `replace` — those actions are irreversible or carry contradiction risk.
-- **Skip is eligible** (a legitimate recommendation) when the actions are only git-reversible `shrink` / `replace` on in-repo (non-memory) files; the decision gate plus git undo already cover that case.
+- **Skip is eligible** (a legitimate recommendation) only when every action is a git-reversible, non-CONFLICT-driven `shrink` on an in-repo (non-memory) file; the decision gate plus git undo already cover that case. Recommend Run in every other case.
 
 Present the recommended option FIRST, carrying the `(Recommended)` tag:
 
@@ -395,7 +395,7 @@ Present the recommended option FIRST, carrying the `(Recommended)` tag:
 - header: `"Verify"`
 - options (recommended first):
   - `{ label: "Run the round (Recommended)", description: "Three parallel lenses verify the classifications against ground truth; a mis-classified delete is dropped, others corrected. A few agents, a couple of minutes." }`
-  - `{ label: "Skip the round", description: "Proceed straight to the decision gate with the report as Stage 1 wrote it. Best when the actions are only git-reversible shrinks on in-repo files." }`
+  - `{ label: "Skip the round", description: "Proceed straight to the decision gate with the report as Stage 1 wrote it. Best when every action is a git-reversible, non-CONFLICT-driven shrink on an in-repo file." }`
 
 On **Skip**, do not stamp `audit_hardened`; proceed to the decision gate. On **Run**, execute the sub-steps below, stamp `audit_hardened: true`, then proceed to the decision gate.
 
