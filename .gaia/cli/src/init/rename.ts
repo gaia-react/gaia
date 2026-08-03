@@ -5,9 +5,12 @@
  * set of files that carry an identity:
  *
  *   - `package.json` "name" → kebab-case title.
- *   - `CLAUDE.md` "# GAIA React" heading → "# <Title>" (only the first
- *     occurrence, preserves later content).
- *   - `app/languages/en/common.ts` `meta.siteName` → `<Title>`.
+ *   - `CLAUDE.md` first `# ` heading → "# <Title>" (only the first
+ *     occurrence, preserves later content). The heading is a required
+ *     precondition rather than something this step creates: a `CLAUDE.md`
+ *     carrying none fails the step instead of passing silently.
+ *   - `app/languages/en/common.ts` `meta.siteName` → `<Title>` (when the
+ *     key exists).
  *   - `app/languages/en/pages/_index.ts` `meta.title`, `title`, and
  *     `heroTitle` → `<Title>` (when the keys exist).
  *
@@ -34,7 +37,8 @@ const HELP_TEXT = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, no package.json)
+    1  user-correctable error (missing flags, no package.json, no
+       CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
 
@@ -133,21 +137,82 @@ const renamePackageJson = (cwd: string, kebab: string): void => {
   atomicWriteFileSync(target, `${JSON.stringify(parsed, null, 2)}${trailing}`);
 };
 
+const FENCE_LINE = /^\s*(?:```|~~~)/u;
+// Tested against one line at a time, which is what keeps `\s` from reaching
+// across a line ending: over the whole file it matches the newline after a
+// bare `#`, and the rewrite then swallows the blank line below it.
+const H1_LINE = /^#\s/u;
+
+// A CRLF checkout leaves `\r` on every line after splitting on `\n`, where
+// `\s` would match it and read a bare `#` as a heading.
+const withoutCr = (line: string): string =>
+  line.endsWith('\r') ? line.slice(0, -1) : line;
+
+/**
+ * Index of the document's title heading, or `-1`.
+ *
+ * The title is the first `# ` line, and it has to sit above the first fenced
+ * code block. `# ` opens a shell comment as well as a markdown heading, so a
+ * scan that walks into a fence finds one in a shell example, reports a title
+ * where there is none, and rewrites a line of the adopter's own code.
+ *
+ * Stopping at the first fence rather than tracking open and closed ones is
+ * deliberate. Whether a later fence *closes* an earlier one is a CommonMark
+ * question about delimiter character and run length, and answering it wrong
+ * puts the scan back inside a code block; a nested sample, or a `~~~` inside
+ * a backtick block, is enough to do it. Nothing has to close for this rule,
+ * so no nesting can defeat it.
+ */
+const findH1Line = (lines: readonly string[]): number => {
+  for (const [index, line] of lines.entries()) {
+    const text = withoutCr(line);
+
+    if (FENCE_LINE.test(text)) return -1;
+
+    if (H1_LINE.test(text)) return index;
+  }
+
+  return -1;
+};
+
+/**
+ * Whether `CLAUDE.md` content carries a heading `rename` can rewrite.
+ * Exported so the suite asserting the shipped template through the same
+ * predicate the step uses cannot drift from it.
+ */
+export const claudeMdHasH1 = (source: string): boolean =>
+  findH1Line(source.split('\n')) !== -1;
+
+/**
+ * True when `CLAUDE.md` is absent, which is tolerated, or carries a heading.
+ *
+ * The heading is a precondition this step enforces, never one it creates:
+ * every rewrite in this module replaces a value the seed already has, and
+ * choosing where to insert a heading into a file the user may have
+ * restructured is a guess with no right answer. Checked before the first
+ * write so a run that cannot finish has not renamed anything.
+ */
+const claudeMdPreconditionMet = (cwd: string): boolean => {
+  const target = path.join(cwd, CLAUDE_MD);
+
+  return !existsSync(target) || claudeMdHasH1(readFileSync(target, 'utf8'));
+};
+
 const renameClaudeMd = (cwd: string, title: string): void => {
   const target = path.join(cwd, CLAUDE_MD);
 
   if (!existsSync(target)) return;
-  const original = readFileSync(target, 'utf8');
-  // Match the FIRST line that starts with `# ` and replace its body. A
-  // single `\s` (not `\s+`) avoids stacking two adjacent quantifiers with
-  // overlapping character classes (`\s+` and `.*` both match a space),
-  // which sonarjs flags as super-linear; `.*` still absorbs any further
-  // leading whitespace on the line.
-  const next = original.replace(/^#\s.*$/mu, `# ${title}`);
+  const lines = readFileSync(target, 'utf8').split('\n');
+  const index = findH1Line(lines);
 
-  if (next !== original) {
-    atomicWriteFileSync(target, next);
-  }
+  if (index === -1) return;
+  // Carry the line's own ending, so a CRLF file does not come back with one
+  // lone LF line through the middle of it.
+  const heading = lines[index].endsWith('\r') ? `# ${title}\r` : `# ${title}`;
+
+  if (lines[index] === heading) return;
+  lines[index] = heading;
+  atomicWriteFileSync(target, lines.join('\n'));
 };
 
 /**
@@ -269,6 +334,18 @@ export const run = (
   const cwd = options.cwd ?? process.cwd();
 
   try {
+    // Ahead of every write: a knowable precondition should not fail the run
+    // with package.json already renamed.
+    if (!claudeMdPreconditionMet(cwd)) {
+      structuredError({
+        code: 'claude_md_heading_missing',
+        message:
+          'CLAUDE.md has no top-level "# " heading to rewrite; add one above any fenced code block and re-run',
+        subcommand: 'init rename',
+      });
+
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
     renamePackageJson(cwd, parsed.flags.kebab);
     renameClaudeMd(cwd, parsed.flags.title);
     renameCommonTs(cwd, parsed.flags.title);

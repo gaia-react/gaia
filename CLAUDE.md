@@ -1,3 +1,5 @@
+# GAIA React
+
 ## Response style
 
 Terse in conversation: lead with the verdict, telegraphic phrasing welcome, no filler,

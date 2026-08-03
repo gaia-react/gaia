@@ -11,7 +11,8 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {run} from './rename.js';
+import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
+import {claudeMdHasH1, run} from './rename.js';
 import {readState} from './util/state.js';
 
 type Sandbox = {
@@ -241,6 +242,91 @@ describe('init rename', () => {
     expect(page).toContain("title: 'Contact'");
   });
 
+  test.each([
+    ['first heading is an `##`', '## Response style\n\nBody\n'],
+    // `# ` opens a bash comment as well as a heading, so a scan blind to
+    // fences finds one here, reports success with no title written, and
+    // rewrites a line of the adopter's own shell example.
+    [
+      'the only `# ` line is inside a fence',
+      '## Setup\n\n```bash\n# install deps\npnpm install\n```\n',
+    ],
+    // Nested and mismatched fences are why the scan stops at the first fence
+    // instead of pairing openers with closers: a tracker that toggles would
+    // read the inner opener as the outer one's closer and walk back in.
+    [
+      'the `# ` line is inside a nested fence',
+      '## Setup\n\n````md\n```bash\n# install deps\n```\n````\n',
+    ],
+    [
+      'a `~~~` fence opens inside a backtick block',
+      '## Setup\n\n```md\n~~~sh\n# install deps\n~~~\n```\n',
+    ],
+    ['the only heading sits below a fence', '```sh\n# x\n```\n\n# Title\n'],
+    // Scanned per line, so the `\s` after `#` cannot match the line ending
+    // and pull the blank line below into the rewrite.
+    ['a bare `#` with nothing after it', '#\n\nBody\n'],
+    // Same, on a CRLF checkout, where `\s` would otherwise match the `\r`
+    // that survives the split.
+    ['a bare `#` on CRLF', '#\r\n\r\nBody\r\n'],
+  ])('exit 1 when CLAUDE.md has no usable H1: %s', (_label, content) => {
+    sandbox = setupSandbox();
+    writeFileSync(path.join(sandbox.root, 'CLAUDE.md'), content, 'utf8');
+
+    const exit = run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('claude_md_heading_missing');
+    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
+      content
+    );
+    // The precondition is checked before the first write, so nothing else was
+    // renamed either, and the step is not recorded as completed. Recovery is
+    // to add a heading and re-run this command; `gaia init resume` cannot
+    // replay it, because the args it would need are recorded only on success.
+    const pkg = JSON.parse(
+      readFileSync(path.join(sandbox.root, 'package.json'), 'utf8')
+    ) as {name: string};
+    expect(pkg.name).toBe('gaia');
+    expect(readState(sandbox.root).completed_steps).not.toContain('rename');
+  });
+
+  test('rewrites the heading above a fence and leaves the fence alone', () => {
+    sandbox = setupSandbox();
+    const content = '# GAIA React\n\n```sh\n# not a heading\n```\n\nBody\n';
+    writeFileSync(path.join(sandbox.root, 'CLAUDE.md'), content, 'utf8');
+
+    expect(
+      run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      })
+    ).toBe(0);
+
+    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
+      '# Hello World\n\n```sh\n# not a heading\n```\n\nBody\n'
+    );
+  });
+
+  test('keeps CRLF endings on the line it rewrites', () => {
+    sandbox = setupSandbox();
+    writeFileSync(
+      path.join(sandbox.root, 'CLAUDE.md'),
+      '# GAIA React\r\n\r\nBody\r\n',
+      'utf8'
+    );
+
+    expect(
+      run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      })
+    ).toBe(0);
+
+    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
+      '# Hello World\r\n\r\nBody\r\n'
+    );
+  });
+
   test('exit 1 when package.json missing', () => {
     sandbox = setupSandbox();
     rmSync(path.join(sandbox.root, 'package.json'));
@@ -263,5 +349,27 @@ describe('init rename', () => {
     sandbox = setupSandbox();
     expect(run(['--title', 'X'], {cwd: sandbox.root})).toBe(1);
     expect(run(['--kebab', 'x'], {cwd: sandbox.root})).toBe(1);
+  });
+});
+
+/**
+ * `gaia init rename` refuses when `CLAUDE.md` carries no heading, so the
+ * shipped template has to carry one or every adopter scaffold fails the
+ * step. Nothing that runs on a CLAUDE.md-only change asserts that, which is
+ * how the heading was dropped unnoticed.
+ *
+ * Asserted through `claudeMdHasH1`, the predicate the step itself uses, so
+ * tightening the production rule cannot leave this pinning the older, looser
+ * shape.
+ *
+ * Its own `describe`: the suite above tears down a sandbox after every test
+ * and this one allocates none.
+ */
+describe('CLAUDE.md template invariant', () => {
+  test('the shipped CLAUDE.md carries an H1 for rename to rewrite', () => {
+    const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+    const claudeMd = readFileSync(path.join(repoRoot, 'CLAUDE.md'), 'utf8');
+
+    expect(claudeMdHasH1(claudeMd)).toBe(true);
   });
 });
