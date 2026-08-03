@@ -315,9 +315,13 @@ const normalizeRepoPath = (value: string): string => {
     .join('/');
 
   // At most one trailing separator survives the collapse above, so one slice
-  // is enough. A declaration that is nothing but separators and `.` segments
-  // normalizes to the empty string, which the empty-entry guard refuses.
-  return dotless.endsWith('/') ? dotless.slice(0, -1) : dotless;
+  // is enough. A lone `/` keeps it: stripping would leave the empty string,
+  // and the entry would then be refused as empty rather than as the absolute
+  // path it is. A declaration that is nothing but `.` segments does normalize
+  // away, and the empty-entry guard is the right refusal for that one.
+  return dotless.endsWith('/') && dotless.length > 1 ?
+      dotless.slice(0, -1)
+    : dotless;
 };
 
 /**
@@ -608,13 +612,12 @@ const performBackup = (inputs: BackupInputs): string[] => {
 
     if (existsSync(destinationAbs)) return;
 
-    // Refused for every non-regular kind, not only for the FIFO that hangs. A
-    // backup exists to be restored, and nothing else has content a copy could
-    // put back: a device node would read bytes from the device, and a symlink
-    // would be restored as a regular file holding a copy of whatever it points
-    // at. Reporting rather than resolving is the posture the snapshot already
-    // takes for a link.
-    if (!stat.isFile()) {
+    // Refused for a FIFO, a socket, and a device node: none of them has content
+    // a copy could put back, and a device would read bytes from the device.
+    // A symlink is NOT in that set. It is backed up below as a link, because
+    // `sweepScope` skips every declared path in both of its loops, which makes
+    // this the only copy a declared path ever gets.
+    if (!stat.isFile() && !stat.isSymbolicLink()) {
       structuredError({
         code: 'region_regen_backup_failed',
         message: `backup skipped for '${declPath}' in region '${regionId}': not a regular file`,
@@ -631,6 +634,20 @@ const performBackup = (inputs: BackupInputs): string[] => {
     // CLI that predates this subcommand rather than as a backup failure.
     try {
       mkdirSync(path.dirname(destinationAbs), {recursive: true});
+
+      // A link is copied as ITSELF, the same `readlinkSync`/`symlinkSync` pair
+      // the snapshot and the sweep already use. `copyFileSync` would follow it
+      // and store the target's bytes, so restoring would put a regular file
+      // where a link belongs; recording the target instead restores the link.
+      // Reading a link never opens what it points at, so the FIFO hazard above
+      // does not reach here even when the link points at one.
+      if (stat.isSymbolicLink()) {
+        symlinkSync(readlinkSync(srcAbs, 'buffer'), destinationAbs);
+        backedUp.push(declPath);
+
+        return;
+      }
+
       copyFileSync(srcAbs, destinationAbs);
       backedUp.push(declPath);
     } catch (error) {
@@ -808,7 +825,9 @@ const hasUnenumeratedAncestor = (
  * it, only where this pass established that nothing RESTORABLE was at that key
  * before: either it found nothing there, or it found a directory it enumerated,
  * whose pre-image is its children and is written back beneath the key once the
- * node now standing there is gone. Anywhere else, a path that appears between
+ * node now standing there is gone. An EMPTY enumerated directory is where that
+ * costs something: its children are the whole of its pre-image, so there is
+ * nothing to write back and the key is simply gone. Anywhere else, a path that appears between
  * the two passes may equally be something the adopter already had that has just
  * arrived there, and deleting it destroys the only copy.
  *
@@ -986,11 +1005,8 @@ const collectScopeDigests = (
     // covers declared paths only, so there is no second copy anywhere.
     //
     // Keyed through `relativeKey(root, absDir)` rather than from `dir`
-    // directly. `dir` is a declared path's `dirname`, and a declaration can
-    // carry an interior `./` that normalization leaves alone, which would key
-    // this entry somewhere no `after` key can ever match and silently unshelter
-    // the subtree. `path.resolve` settles that before the key is derived, so
-    // this guarantee does not rest on a declaration being well shaped.
+    // directly, so this guarantee rests on the key the snapshot itself derives
+    // rather than on the shape a declaration happened to arrive in.
     const absDir = path.resolve(root, dir);
     const scopeKey = relativeKey(root, absDir);
 
@@ -1410,6 +1426,17 @@ type SpawnBounds = {
 
 const SPAWN_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 const SPAWN_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * An override only ever LOWERS the time bound, which is the whole of what it
+ * is for. A non-positive one is ignored rather than honoured: Node reads
+ * `timeout: 0` as no timeout at all, so the one value that would remove the
+ * guard is the one an option documented as tightening it must not accept.
+ */
+const resolveTimeoutMs = (override: number | undefined): number =>
+  override !== undefined && override > 0 ?
+    Math.min(override, SPAWN_TIMEOUT_MS)
+  : SPAWN_TIMEOUT_MS;
 
 /**
  * Step 6. Never runs through a shell, never a shell-interpreted string, and
@@ -1890,7 +1917,7 @@ export const run = (
     skipRegionSet: new Set(parsed.flags.skipRegions),
     spawnBounds: {
       maxBufferBytes: SPAWN_MAX_BUFFER_BYTES,
-      timeoutMs: options.spawnTimeoutMs ?? SPAWN_TIMEOUT_MS,
+      timeoutMs: resolveTimeoutMs(options.spawnTimeoutMs),
     },
   };
 

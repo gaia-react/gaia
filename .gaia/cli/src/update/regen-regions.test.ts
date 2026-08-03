@@ -401,12 +401,13 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.refused[0]?.reason).toBe('paths carries an empty entry');
   });
 
-  // Every one of these names the root rather than a path under it, and
-  // normalization takes each to the empty string, which the empty-entry guard
-  // refuses. Scoping the snapshot to the whole tree is the outcome being
-  // refused; a legitimate top-level path reaches it too, by the
-  // parent-is-the-root guard instead (test 1f).
-  test.each(['.', './', '/', '././'])(
+  // Every one of these names the root rather than a path under it, and is
+  // nothing but `.` segments, so normalization takes each to the empty string
+  // and the empty-entry guard refuses it. Scoping the snapshot to the whole
+  // tree is the outcome being refused; a legitimate top-level path reaches it
+  // too, by the parent-is-the-root guard instead (test 1f), and a bare `/`
+  // reaches it by the absolute-path guard (test 1j).
+  test.each(['.', './', '././'])(
     '1e. a declared path naming the repository root itself (%p) is refused, so the snapshot never scopes to the whole tree',
     (declPath) => {
       const root = buildRoot();
@@ -518,6 +519,33 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.confined).toHaveLength(0);
     expect(readDeclared(root, 0)).toBe('regenerated one\n');
   });
+
+  test.each(['/', '//'])(
+    '1j. a bare separator (%p) is refused as the absolute path it is, not as an empty entry',
+    (declPath) => {
+      const root = buildRoot();
+
+      writeDeclaredFiles(root, 'original');
+      writeScript(root, HAPPY_SCRIPT_BODY);
+      // Normalization strips a trailing separator, but never the last one: a
+      // lone '/' reduced to the empty string would be refused for the least
+      // descriptive of the four reasons, naming neither what was written nor
+      // why it cannot be declared. `/.` is deliberately not here: it carries a
+      // `.` segment and nothing else, so it normalizes away exactly as `.`
+      // does and 1e's empty-entry refusal is the one it earns.
+      const manifestPath = writeManifest(root, [
+        buildDeclaration({paths: [declPath]}),
+      ]);
+
+      const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+      expect(exit).toBe(0);
+      expect(report.ran).toHaveLength(0);
+      expect(report.refused[0]?.reason).toBe(
+        'paths carries an absolute path: /'
+      );
+    }
+  );
 
   test('1i. a declared path that normalizes onto the repository root is refused, not silently un-matchable', () => {
     const root = buildRoot();
@@ -2241,6 +2269,38 @@ describe('update regen-regions: behavior coverage', () => {
     expect(stderrText).toContain('not a regular file');
     expect(report.ran).toHaveLength(1);
     expect(existsSync(path.join(backupDir, DECLARED_PATHS[0]))).toBe(false);
+  });
+
+  test('14c. a declared path that is a symlink is backed up as a link, not as a copy of its target', () => {
+    const root = buildRoot();
+    const backupDir = buildRoot();
+    const outside = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // `sweepScope` skips every declared path in both of its loops, so this
+    // backup is the only copy this path ever gets. Copying it as its TARGET's
+    // bytes would restore a regular file where a link belongs; refusing it
+    // outright would leave the region's own write following the link to
+    // overwrite an out-of-tree file with nothing held anywhere.
+    const target = path.join(outside, 'target.md');
+
+    writeFileSync(target, 'out of tree\n');
+    rmSync(path.join(root, DECLARED_PATHS[0]));
+    symlinkSync(target, path.join(root, DECLARED_PATHS[0]));
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report, stderrText} = runCapturing(
+      baseArgv(manifestPath, root, ['--backup-dir', backupDir])
+    );
+
+    const backedUpPath = path.join(backupDir, DECLARED_PATHS[0]);
+
+    expect(exit).toBe(0);
+    expect(report.backedUp.toSorted(byLocale)).toEqual(SORTED_DECLARED_PATHS);
+    expect(stderrText).not.toContain('region_regen_backup_failed');
+    expect(lstatSync(backedUpPath).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(backedUpPath)).toBe(target);
   });
 
   test('15. --backup-dir does not overwrite an existing backup', () => {
