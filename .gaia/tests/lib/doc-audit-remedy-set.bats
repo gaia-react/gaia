@@ -97,7 +97,10 @@ extract_section_or_fail() {
     echo "start anchor '${2}' resolved to no line number in ${1}" >&2
     return 1
   }
-  tail -n "+$((start_line + 1))" "$1" | grep -qE -- "$3" || {
+  # Same engine for the terminator, for the same reason: `grep -E` and awk
+  # disagree on an escaped ERE, so validating the boundary with grep can
+  # accept a line the extraction never terminated on.
+  awk -v s="$start_line" -v term="$3" 'NR > s && $0 ~ term { found = 1; exit } END { exit !found }' "$1" || {
     echo "terminator '${3}' matches nothing after line ${start_line} of ${1}; either the section ran to EOF and swallowed the rest of the file, or it is the file's last section, which this helper does not support" >&2
     return 1
   }
