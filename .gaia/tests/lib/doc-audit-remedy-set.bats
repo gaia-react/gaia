@@ -60,6 +60,20 @@ extract_section() {
 # a literal that is not unique file-wide (`per file`, `source_expect_sha256`)
 # could satisfy a scoped assertion from text outside the section while the
 # section itself had lost the sentence.
+#
+# Two constraints on callers, both deliberate:
+#
+#   - **The section must not be the file's last.** A final section has no
+#     terminator after it by construction and running to EOF is the correct
+#     extraction there, but this helper cannot tell that case from a deleted
+#     heading, so it refuses both. Both call sites below scope a section with
+#     content after it. A caller that needs a final section wants a different
+#     helper, not a loosened terminator arm.
+#   - **This guard is local to this suite.** The same helper name in
+#     `doc-difficulty-prose.bats` and `doc-machinery-waive-prose.bats` guards
+#     the start anchor only, and the former's `section_line_range` documents
+#     the opposite convention (fall back to the file's last line). Do not
+#     assume a shared contract across the three; they are separate copies.
 extract_section_or_fail() {
   local out start_line
   out="$(extract_section "$1" "$2" "$3")"
@@ -71,9 +85,20 @@ extract_section_or_fail() {
   # file-wide match proves nothing (`^## ` matches every earlier H2 while
   # this section still runs to EOF), and the start line itself can match the
   # terminator by design, since a `## ` section is bounded by the next `## `.
-  start_line="$(grep -nE -- "$2" "$1" | head -n1 | cut -d: -f1)"
+  #
+  # Locate that line with the SAME engine `extract_section` used. awk's `-v`
+  # consumes one backslash level at assignment time, so an escaped ERE means
+  # different things to awk and to `grep -E`; re-finding the line with grep
+  # would let the two disagree, and an unresolved `start_line` would silently
+  # become `tail -n +1`, degrading this back into the file-wide check the
+  # paragraph above rejects.
+  start_line="$(awk -v start="$2" '$0 ~ start { print NR; exit }' "$1")"
+  [ -n "$start_line" ] || {
+    echo "start anchor '${2}' resolved to no line number in ${1}" >&2
+    return 1
+  }
   tail -n "+$((start_line + 1))" "$1" | grep -qE -- "$3" || {
-    echo "terminator '${3}' matches nothing after line ${start_line} of ${1}; the section ran to EOF and swallowed the rest of the file" >&2
+    echo "terminator '${3}' matches nothing after line ${start_line} of ${1}; either the section ran to EOF and swallowed the rest of the file, or it is the file's last section, which this helper does not support" >&2
     return 1
   }
   printf '%s\n' "$out"
@@ -148,7 +173,16 @@ setup() {
 
 @test "remedy 1 names the same-file drift condition that blocks it" {
   grep -qF -- 'source_expect_sha256' <<<"$STEP3"
-  grep -qF -- "the \`promote\`'s \`source_path\` is also that \`shrink\`'s \`path\`" <<<"$STEP3"
+  grep -qF -- "a \`promote\` whose \`source_path\` is the over-budget file" <<<"$STEP3"
+}
+
+@test "remedy 1 is stated as unavailable outright, not as a live conditional" {
+  # Both of remedy 1's actions name the over-budget file by construction, so
+  # a conditional phrasing ("unavailable whenever source and target are the
+  # same file") is always true and reads as though some other case applies.
+  # A Stage 1 hunting for that case finds none and cannot satisfy the
+  # closing rule that a file is never reported unfixable.
+  grep -qF -- 'unavailable for an over-budget file outright, not conditionally' <<<"$STEP3"
 }
 
 @test "remedy 1 forbids constructing the pair rather than relying on a skip" {
@@ -178,7 +212,7 @@ setup() {
   # something about that section in terms of `replace` sends a reader to a
   # section where the word does not appear. The identity is bound once, at
   # remedy 1's first use.
-  grep -qF -- 'a `shrink` (`type: replace`) on the source' <<<"$STEP3"
+  grep -qF -- 'a `shrink` (`type: replace`) on that same file' <<<"$STEP3"
 }
 
 @test "remedy 3 states that no action type expresses a split" {
@@ -218,7 +252,9 @@ setup() {
   local summary
   summary="$(extract_section_or_fail "$AUDIT" '^### Report template' '^````$')"
   summary="$(printf '%s\n' "$summary" | normalize_ws)"
-  grep -qF -- 'the rules aggregate has none' <<<"$summary"
+  # Names the two rows rather than a category word Step 3 never uses, so the
+  # number is read off the table instead of guessed.
+  grep -qF -- "the sum of Step 3's budgets for wiki/hot.md and root CLAUDE.md; the rules aggregate has none" <<<"$summary"
 }
 
 # --- Group 5: portability -------------------------------------------------
