@@ -15,10 +15,22 @@
 # exists to prevent. Reachable on the ordinary path: a `.claude/rules/*.md`
 # file contradicting its canonical wiki page resolves to exactly that action.
 #
-# Two surfaces state the criterion and both are pinned: the rule itself, and
-# the `description` string of the Skip option, which is what the operator
-# actually reads at the `AskUserQuestion`. A fix landing on one and not the
-# other ships the superseded criterion to the human.
+# THREE surfaces state the criterion and all three are pinned: the rule
+# itself, the `description` string of the Skip option (what the operator
+# actually reads at the `AskUserQuestion`), and the wiki concept page that
+# describes the round. A fix landing on some and not the rest ships the
+# superseded criterion anyway, which is not hypothetical: the first pass of
+# this very fix corrected the two `audit.md` surfaces and left the wiki page
+# stating the criterion it had just rejected. Two audit members found that
+# independently, and the hazard is concrete rather than cosmetic: Step 2
+# classifies a contradiction between two committed files as a project-internal
+# CONFLICT and emits a `replace` on the non-authoritative one, so a later run
+# could find the playbook contradicting the wiki page on this very subject and
+# resolve it in the wrong direction.
+#
+# A fourth surface is a real possibility, so the sweep that found the third is
+# worth repeating rather than trusting this count: `grep -rIn 'git-reversible'
+# --include='*.md'` over the tracked tree.
 #
 # Nothing type-checks a playbook and no runtime assertion fires when a
 # sentence goes missing, so this suite is the mechanism, following
@@ -108,16 +120,25 @@ normalize_ws() {
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   AUDIT="$ROOT/.claude/skills/gaia/references/audit.md"
+  WIKI="$ROOT/wiki/concepts/GAIA Audit.md"
 
   # `-s`, not `-f`: an empty file would satisfy `-f` and then green every
   # absence check below on nothing.
-  [ -s "$AUDIT" ] || {
-    echo "missing or empty $AUDIT" >&2
-    return 1
-  }
+  for f in "$AUDIT" "$WIKI"; do
+    [ -s "$f" ] || {
+      echo "missing or empty $f" >&2
+      return 1
+    }
+  done
 
   GATE="$(extract_section_or_fail "$AUDIT" '^## Classification-verification round' '^### Dispatch the three lenses')"
   GATE="$(printf '%s\n' "$GATE" | normalize_ws)"
+
+  # The wiki page states the criterion in one paragraph rather than a bounded
+  # section, and the page's own headings are not stable anchors for it, so
+  # this one is a whole-file read. The `-s` guard above is what keeps that
+  # from going vacuous.
+  WIKI_TEXT="$(normalize_ws <"$WIKI")"
 }
 
 # --- Group 1: the rule's two bullets partition -----------------------------
@@ -164,5 +185,39 @@ setup() {
 
 @test "the skip option description no longer states the superseded criterion" {
   grep -qF -- 'Best when the actions are only git-reversible shrinks on in-repo files' <<<"$GATE" && return 1
+  true
+}
+
+# The tag is stated once, as a rule, and baked into neither literal. A rule
+# that says "present the recommended option first, carrying the tag" plus a
+# literal carrying it on one branch is two encodings of one instruction, and
+# the second is correct only when Run is the recommendation. The likely miss
+# is the tag rather than the order, which renders `Skip the round` first and
+# `Run the round (Recommended)` second: two contradictory signals in one
+# prompt, which is the same "(Recommended) on no stated basis" failure this
+# gate was rewritten to remove.
+
+@test "the recommended tag is stated as a rule" {
+  grep -qF -- 'Present the recommended option FIRST, carrying the `(Recommended)` tag' <<<"$GATE"
+}
+
+@test "neither option literal bakes the recommended tag into its label" {
+  grep -qE 'label: "[^"]*\(Recommended\)' <<<"$GATE" && return 1
+  true
+}
+
+# --- Group 3: the wiki page states the same criterion ----------------------
+# The third surface. It is the one a maintainer reads to learn what the round
+# does, and it is not covered by either extraction above.
+
+@test "the wiki page states skip eligibility as the narrow carve-out" {
+  grep -qF -- 'skipping it is a legitimate recommendation only when every proposed action is a git-reversible, non-CONFLICT-driven shrink on an in-repo, non-memory file' <<<"$WIKI_TEXT"
+}
+
+@test "the wiki page no longer says a set of git-reversible shrinks may skip" {
+  # The superseded phrasing, verbatim. `shrink` and `replace` are one action
+  # type, so an unqualified "git-reversible shrinks" readmits exactly the
+  # CONFLICT-driven case the rule excludes.
+  grep -qF -- 'a set of git-reversible shrinks may legitimately skip it' <<<"$WIKI_TEXT" && return 1
   true
 }

@@ -394,7 +394,7 @@ Present the recommended option FIRST, carrying the `(Recommended)` tag:
 - question: `"Run the classification-verification round before the decision gate? It verifies Stage 1's classifications against ground truth and drops or corrects any action that would drive a wrong or destructive edit."`
 - header: `"Verify"`
 - options (recommended first):
-  - `{ label: "Run the round (Recommended)", description: "Three parallel lenses verify the classifications against ground truth; a mis-classified delete is dropped, others corrected. A few agents, a couple of minutes." }`
+  - `{ label: "Run the round", description: "Three parallel lenses verify the classifications against ground truth; a mis-classified delete is dropped, others corrected. A few agents, a couple of minutes." }`
   - `{ label: "Skip the round", description: "Proceed straight to the decision gate with the report as Stage 1 wrote it. Best when every action is a git-reversible, non-CONFLICT-driven shrink on an in-repo file." }`
 
 On **Skip**, do not stamp `audit_hardened`; proceed to the decision gate. On **Run**, execute the sub-steps below, stamp `audit_hardened: true`, then proceed to the decision gate.
