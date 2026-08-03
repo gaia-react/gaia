@@ -2320,6 +2320,11 @@ describe('update regen-regions: behavior coverage', () => {
     expect(stderrText).not.toContain('region_regen_backup_failed');
     expect(lstatSync(backedUpPath).isSymbolicLink()).toBe(false);
     expect(readFileSync(backedUpPath, 'utf8')).toBe('out of tree\n');
+    // The premise the copy exists for, asserted rather than assumed: the
+    // spawn's write really does land at the far end of the link, out of tree.
+    // A later change that declined to spawn over a declared link, or that
+    // unlinked instead of truncating, would void it with the copy still green.
+    expect(readFileSync(target, 'utf8')).toBe('regenerated one\n');
   });
 
   test('14d. a link already sitting on a backup key is never written through', () => {
