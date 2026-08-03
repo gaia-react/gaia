@@ -27,7 +27,7 @@ import {
 import type * as nodeFs from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {run, spawnFailureCause} from './regen-regions.js';
+import {resolveTimeoutMs, run, spawnFailureCause} from './regen-regions.js';
 import type {RegenRegionsReport} from './regen-regions.js';
 
 /**
@@ -808,24 +808,22 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.failed[0]?.cause).toBe('timeout');
   });
 
-  test('9f. a non-positive timeout override is ignored, since Node reads timeout: 0 as no timeout at all', () => {
-    const root = buildRoot();
+  test('9f. the time-bound override only ever lowers the bound, and a non-positive one is ignored', () => {
+    // Asserted on the resolver rather than through a run, for the same reason
+    // 9d asserts on `spawnFailureCause`: end to end, `timeout: 0` and the
+    // shipped five minutes are indistinguishable inside a suite, since both
+    // let a fast script finish. Only the resolver can be asked directly, and
+    // an assertion that cannot fail for the reason it exists is worth nothing.
+    const shipped = resolveTimeoutMs(undefined);
 
-    writeDeclaredFiles(root, 'original');
-    writeScript(root, HAPPY_SCRIPT_BODY);
-    const manifestPath = writeManifest(root, [buildDeclaration()]);
-
-    // The one value that would REMOVE the bound, passed to the option that
-    // exists to lower it. The shipped five minutes has to win, which a fast
-    // script proves by completing rather than by being killed at 0ms.
-    const {exit, report} = runCapturing(baseArgv(manifestPath, root), {
-      spawnTimeoutMs: 0,
-    });
-
-    expect(exit).toBe(0);
-    expect(report.failed).toEqual([]);
-    expect(report.ran).toHaveLength(1);
-    expect(readDeclared(root, 0)).toBe('regenerated one\n');
+    // Node reads `timeout: 0` as NO timeout, so the one value that would
+    // remove the guard must not be honoured by the option that lowers it.
+    expect(resolveTimeoutMs(0)).toBe(shipped);
+    expect(resolveTimeoutMs(-1)).toBe(shipped);
+    expect(resolveTimeoutMs(Number.NaN)).toBe(shipped);
+    // Lowering is the whole of what it is for; raising is refused.
+    expect(resolveTimeoutMs(250)).toBe(250);
+    expect(resolveTimeoutMs(shipped + 1)).toBe(shipped);
   });
 
   test('9d. every kill cause maps from the code Node reports, and an unknown one is external', () => {

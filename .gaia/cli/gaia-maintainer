@@ -27924,7 +27924,11 @@ var performBackup = (inputs) => {
       return;
     }
     const destinationAbs = path39.resolve(backupDir, declPath);
-    if (existsSync29(destinationAbs)) return;
+    try {
+      lstatSync2(destinationAbs);
+      return;
+    } catch {
+    }
     if (!stat.isFile() && !stat.isSymbolicLink()) {
       structuredError({
         code: "region_regen_backup_failed",
@@ -27937,8 +27941,15 @@ var performBackup = (inputs) => {
     try {
       mkdirSync12(path39.dirname(destinationAbs), { recursive: true });
       if (stat.isSymbolicLink()) {
-        symlinkSync2(readlinkSync2(srcAbs, "buffer"), destinationAbs);
+        const target = readlinkSync2(srcAbs, "buffer");
+        symlinkSync2(target, destinationAbs);
         backedUp.push(declPath);
+        structuredError({
+          code: "region_regen_declared_symlink",
+          message: `declared path '${declPath}' in region '${regionId}' is a symlink to '${target.toString("utf8")}': the link is backed up, but a write through it is neither reverted nor reported`,
+          regionId,
+          subcommand: "update regen-regions"
+        });
         return;
       }
       copyFileSync2(srcAbs, destinationAbs);

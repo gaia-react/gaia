@@ -1465,7 +1465,7 @@ const SPAWN_TIMEOUT_MS = 5 * 60 * 1000;
  * `timeout: 0` as no timeout at all, so the one value that would remove the
  * guard is the one an option documented as tightening it must not accept.
  */
-const resolveTimeoutMs = (override: number | undefined): number =>
+export const resolveTimeoutMs = (override: number | undefined): number =>
   override !== undefined && override > 0 ?
     Math.min(override, SPAWN_TIMEOUT_MS)
   : SPAWN_TIMEOUT_MS;
