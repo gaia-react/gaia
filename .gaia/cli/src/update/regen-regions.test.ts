@@ -1738,6 +1738,75 @@ describe('update regen-regions: behavior coverage', () => {
     });
   });
 
+  test('12n. content the program moves onto an in-scope FIFO is not deleted as a creation', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'real-extras'), {recursive: true});
+    writeFileSync(
+      path.join(root, 'real-extras/keep.md'),
+      'adopter only copy\n'
+    );
+    // The last node kind the walk meets: not a link, not a directory, not a
+    // regular file. It is childless, so the before pass's silence about paths
+    // beneath it is true while it is still a FIFO, and false the moment the
+    // program replaces it with something that has children. Recording it is
+    // what makes this shape behave like 12h-v and 12h-vi rather than differing
+    // from them by node kind alone.
+    execFileSync('mkfifo', [path.join(root, '.claude/agents/extras')]);
+    writeScript(
+      root,
+      [
+        'rm .claude/agents/extras',
+        'mv real-extras .claude/agents/extras',
+        HAPPY_SCRIPT_BODY,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(
+      readFileSync(path.join(root, '.claude/agents/extras/keep.md'), 'utf8')
+    ).toBe('adopter only copy\n');
+
+    const {confined} = report;
+
+    expect(confined.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual([
+      {
+        action: 'reported',
+        path: '.claude/agents/extras',
+        regionId: 'test-region',
+      },
+      {
+        action: 'reported',
+        path: '.claude/agents/extras/keep.md',
+        regionId: 'test-region',
+      },
+    ]);
+  });
+
+  test('12n-i. a FIFO the program creates in scope is removed, like any other undeclared creation', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(
+      root,
+      ['mkfifo .claude/agents/pipe', HAPPY_SCRIPT_BODY].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // The other side of recording it: a node kind the walk keys is a node kind
+    // the removal loop can take, so the spawn cannot leave one behind
+    // unreported. Nothing here opens the FIFO, which would block on a writer.
+    expect(report.confined).toEqual([
+      {action: 'removed', path: '.claude/agents/pipe', regionId: 'test-region'},
+    ]);
+    expect(existsSync(path.join(root, '.claude/agents/pipe'))).toBe(false);
+  });
+
   test('13. a file created outside the declared set but inside the snapshot scope is removed', () => {
     const root = buildRoot();
 
