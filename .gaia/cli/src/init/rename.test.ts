@@ -390,6 +390,13 @@ describe('init rename', () => {
     expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
       CLAUDE_MD
     );
+    // `renamePackageJson` is the first write `run` performs, so this is what
+    // pins the refusal ahead of it: without it, moving the blank rule below
+    // that call leaves the whole suite green.
+    const pkg = JSON.parse(
+      readFileSync(path.join(sandbox.root, 'package.json'), 'utf8')
+    ) as {name: string};
+    expect(pkg.name).toBe('gaia');
     expect(readState(sandbox.root).completed_steps).not.toContain('rename');
   });
 
