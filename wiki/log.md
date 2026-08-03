@@ -11,6 +11,14 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-03 10c0849e SKIP - regen-regions snapshot walk closes several symlink-escape and unreadable-path defects (#1128, #1130, #1134); wiki/concepts/Generated Regions.md's four-limits confinement description already updated in-commit to final state
+- 2026-08-03 04a20431 SKIP - region-registry roster read/parse failures now throw distinct, named errors instead of silently resolving to an empty auditor set; internal error-message correctness fix, no documented behavior change
+- 2026-08-03 c382413f SKIP - gaia --help update summary now lists merge-audit-ci alongside the other three subcommands; help-text-only fix, wiki's Update Workflow page already documents the commands accurately
+- 2026-08-03 2d4fd4d1 SKIP - five text-only prose/help-string corrections (docblock placement, help summary, workflow header, hint wording, runbook step numbers); wiki/decisions/Bundle-time Scrub.md corrected in-commit, no other wiki impact
+- 2026-08-03 2a920272 SKIP - same 64 MiB git-log buffer bound hoisted to shared util/git-buffer.ts across all four readers; internal robustness fix, no documented behavior change
+- 2026-08-03 f3f4a005 SKIP - wiki/dependencies/gaia-lint.md's CLI pin-parity note wrapped in maintainer-only markers; self-contained wiki fix already applied in-commit
+- 2026-08-03 7de19aed SKIP - release changelog git-log spawn gets a 64 MiB maxBuffer bound to avoid ENOBUFS on large histories; internal robustness fix, no documented behavior change
+- 2026-08-03 1dae29c8 SKIP - wiki: self-referential prior sync commit (through 9b62909), no further wiki action
 - 2026-08-02 9b62909 WORTHY - gaia/cli's @gaia-react/lint pin aligned to 2.0.0 with a lockstep parity guard test; wiki/dependencies/gaia-lint.md updated
 - 2026-08-02 811fce6 WORTHY - commit-classify now propagates git failures as git_failed instead of resolving to an empty range; wiki/decisions/Wiki Management.md updated
 - 2026-08-02 e81232e SKIP - debt.md dedup-key path capture widened for spaced wiki paths; internal regex correctness fix, wiki's clustering description remains accurate
