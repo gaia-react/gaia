@@ -77,27 +77,29 @@ setup() {
 # --- Group 2: the prescribed call reads the array from stdin ---------------
 
 @test "every findings invocation in every spec is the stdin form" {
-  # An invocation is a continuation line inside a fenced command, so it starts
-  # the line; a prose mention of the flag does not, and a spec that explains
-  # itself is not a defect. Prose that hands the writer a path is caught by the
-  # two absence checks below, which are deliberately not anchored.
+  # One rule, stated once: the flag appears only in the pinned form. Every line
+  # mentioning `--findings` must carry `--findings - <<'FINDINGS'` verbatim, so
+  # a staged path (`--findings /tmp/x.json`), a redirect (`--findings - < x`),
+  # an invocation collapsed onto one line, and prose that hands the writer a
+  # path all fail the same way, without a second check enumerating argument
+  # shapes. An earlier form scanned only line-leading occurrences and let a
+  # separate regex reject "any first argument that is not `-`"; both the
+  # collapsed line and the redirect slipped between them.
   #
-  # Every anchored line is compared against the pinned form directly rather
-  # than by counting both populations and comparing the totals. Two counts
-  # invite two scopes: an anchored total against an unanchored one is
-  # satisfiable from prose, so a spec carrying one staged invocation and one
-  # prose copy of the pinned literal would balance and pass. Matching line by
-  # line has no arithmetic to get backwards and names the offending line.
+  # Matching line by line rather than balancing two counts is the other half:
+  # counts invite two scopes, and an anchored total compared against an
+  # unanchored one is satisfiable from prose, so a spec carrying one staged
+  # invocation and one prose copy of the pinned literal balanced and passed.
+  # This has no arithmetic to get backwards and names the offending line.
   for f in "${SPECS[@]}"; do
-    local invocations offenders
-    invocations="$(grep -nE '^[[:space:]]*--findings' "$f" || true)"
-    [ -n "$invocations" ] || {
+    local offenders
+    grep -qF -- "--findings - <<'FINDINGS'" "$f" || {
       echo "$f prescribes no sidecar write at all" >&2
       return 1
     }
-    offenders="$(printf '%s\n' "$invocations" | grep -vF -- "--findings - <<'FINDINGS'" || true)"
+    offenders="$(grep -n -- '--findings' "$f" | grep -vF -- "--findings - <<'FINDINGS'" || true)"
     [ -z "$offenders" ] || {
-      echo "$f: invocation not in the pinned quoted-heredoc form: $offenders" >&2
+      echo "$f: --findings appears outside the pinned quoted-heredoc form: $offenders" >&2
       return 1
     }
   done
@@ -105,19 +107,12 @@ setup() {
 
 @test "no spec still prescribes the shared staging filename" {
   # The original defect, verbatim. Every member handed this same placeholder,
-  # which is what made one filename the filename all of them picked.
+  # which is what made one filename the filename all of them picked. Subsumed
+  # by the rule above and kept anyway: it names the defect this suite exists
+  # for, so a failure reads as the regression it is rather than as generic
+  # drift.
   for f in "${SPECS[@]}"; do
     grep -qF -- '--findings /path/to/findings.json' "$f" && return 1
-  done
-  true
-}
-
-@test "no spec passes a staged path of any shape to --findings" {
-  # The general form, so a per-member or per-key filename does not read as a
-  # fix. `- <<` is the only admitted argument; anything else is a file, and a
-  # file is a name two concurrently dispatched members can both choose.
-  for f in "${SPECS[@]}"; do
-    grep -qE -- '--findings +[^-]' "$f" && return 1
   done
   true
 }
@@ -127,9 +122,16 @@ setup() {
 @test "every findings heredoc is closed" {
   # An unterminated heredoc consumes the rest of the block, so the writer
   # never runs and the member reports a sidecar it did not write.
+  #
+  # The opener count is anchored where the terminator count already is. Counted
+  # unanchored, one spec sentence quoting the whole invocation inline would
+  # inflate `openers` with no terminator to match it and fail a spec holding no
+  # unterminated heredoc at all. That direction fails closed, so it was noise
+  # rather than a hole, but the two counts have to share a scope to mean
+  # anything.
   for f in "${SPECS[@]}"; do
     local openers terminators
-    openers="$(grep -cF -- "--findings - <<'FINDINGS'" "$f" || true)"
+    openers="$(grep -cE -- "^[[:space:]]*--findings - <<'FINDINGS'$" "$f" || true)"
     terminators="$(grep -c '^FINDINGS$' "$f" || true)"
     [ "$openers" -eq "$terminators" ] || {
       echo "$f: $openers findings heredocs opened, $terminators closed" >&2
