@@ -11,6 +11,11 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-03 9744245f SKIP - audit Skip/Run partition fix, wiki/concepts/GAIA Audit.md already updated within this same commit
+- 2026-08-03 c32344dc SKIP - docs: CLAUDE.md prose reword only
+- 2026-08-03 bf6b51e6 SKIP - audit skill Step 3 remedy-independence fix, implementation detail already owned by .claude/skills/gaia/references/audit.md
+- 2026-08-03 efc78170 WORTHY - init rename now fails on missing CLAUDE.md H1 → wiki/concepts/GAIA Init Workflow.md
+- 2026-08-03 f95b8bac SKIP - wiki's own prior sync commit (through 60dd382), no further edit needed
 - 2026-08-03 60dd382d WORTHY - update-gaia summary table gained a Merged row → wiki/concepts/Update Workflow.md
 - 2026-08-03 994af00e WORTHY - sync land moved to shared -z porcelain reader (rename-safe) → wiki/concepts/Wiki Sync.md
 - 2026-08-03 51c77ee6 WORTHY - backup follows declared-path symlinks and refuses non-regular targets → wiki/concepts/Generated Regions.md
