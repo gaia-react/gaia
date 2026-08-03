@@ -17972,6 +17972,15 @@ var takeValue3 = (argv, index, flag) => {
   }
   return { ok: true, value: argv[index] };
 };
+var titleFailure = (title) => {
+  if (/[\n\r]/u.test(title)) {
+    return { message: "--title must be a single line", ok: false };
+  }
+  if (title.trim() === "") {
+    return { message: "--title must not be blank", ok: false };
+  }
+  return void 0;
+};
 var parseFlags4 = (argv) => {
   let title;
   let kebab;
@@ -17997,9 +18006,8 @@ var parseFlags4 = (argv) => {
   if (kebab === void 0) {
     return { message: "--kebab is required", ok: false };
   }
-  if (/[\n\r]/u.test(title)) {
-    return { message: "--title must be a single line", ok: false };
-  }
+  const titleProblem = titleFailure(title);
+  if (titleProblem) return titleProblem;
   if (!/^[a-z][\d a-z-]*$/u.test(kebab)) {
     return { message: "--kebab must be a kebab-case identifier", ok: false };
   }
