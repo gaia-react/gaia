@@ -297,11 +297,29 @@ const describeJsonShape = (value: unknown): string => {
   return Array.isArray(value) ? 'array' : typeof value;
 };
 
-/** Strips a leading `./`, collapses separators, converts to POSIX. */
+/**
+ * Canonicalizes a declared path to the form the snapshot keys take: POSIX
+ * separators, no repeated separator, no `.` segment at any position, and no
+ * trailing separator.
+ *
+ * Hand-rolled rather than `path.posix.normalize`, which also resolves `..`
+ * away and would disarm the parent-segment guard below, since that guard reads
+ * the value this returns. Nothing here rewrites a `..` segment or a leading
+ * empty one, so both that guard and the absolute-path guard still see what the
+ * declaration said.
+ */
 const normalizeRepoPath = (value: string): string => {
-  const posix = value.replaceAll('\\', '/').replaceAll(/\/{2,}/gu, '/');
+  const dotless = value
+    .replaceAll('\\', '/')
+    .replaceAll(/\/{2,}/gu, '/')
+    .split('/')
+    .filter((segment) => segment !== '.')
+    .join('/');
 
-  return posix.startsWith('./') ? posix.slice(2) : posix;
+  // At most one trailing separator survives the collapse above, so one slice
+  // is enough. A declaration that is nothing but separators and `.` segments
+  // normalizes to the empty string, which the empty-entry guard refuses.
+  return dotless.endsWith('/') ? dotless.slice(0, -1) : dotless;
 };
 
 /**

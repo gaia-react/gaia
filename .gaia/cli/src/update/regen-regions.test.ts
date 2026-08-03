@@ -400,28 +400,29 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.refused[0]?.reason).toBe('paths carries an empty entry');
   });
 
-  test('1e. a declared path whose parent is the repository root is refused, so the snapshot never scopes to the whole tree', () => {
+  test('1e. a declared path that names the repository root itself is refused, so the snapshot never scopes to the whole tree', () => {
     const root = buildRoot();
 
     writeDeclaredFiles(root, 'original');
     writeScript(root, HAPPY_SCRIPT_BODY);
-    // A literal '.' passes the empty, absolute, and parent-segment checks,
-    // and so does any legitimate top-level path. Both scope the snapshot to
-    // the root. '.' additionally never equals a snapshot key, so the sweep
-    // reverts the region's own output while reporting the region as run.
-    const manifestPath = writeManifest(root, [
-      buildDeclaration({paths: ['.']}),
-    ]);
+    // Every one of these names the root rather than a path under it, and
+    // normalization takes each to the empty string, which the empty-entry
+    // guard refuses. Scoping the snapshot to the whole tree is the outcome
+    // being refused; a legitimate top-level path reaches it too, by the
+    // parent-is-the-root guard instead (test 1f).
+    ['.', './', '/', '././'].forEach((declPath) => {
+      const manifestPath = writeManifest(root, [
+        buildDeclaration({paths: [declPath]}),
+      ]);
 
-    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+      const {exit, report} = runCapturing(baseArgv(manifestPath, root));
 
-    expect(exit).toBe(0);
-    expect(report.ran).toHaveLength(0);
-    expect(report.confined).toHaveLength(0);
-    expect(report.refused[0]?.kind).toBe('declaration');
-    expect(report.refused[0]?.reason).toBe(
-      'paths carries a path whose parent is the repository root: .'
-    );
+      expect(exit).toBe(0);
+      expect(report.ran).toHaveLength(0);
+      expect(report.confined).toHaveLength(0);
+      expect(report.refused[0]?.kind).toBe('declaration');
+      expect(report.refused[0]?.reason).toBe('paths carries an empty entry');
+    });
   });
 
   test('1f. a top-level declared path is refused for the same reason', () => {
@@ -464,6 +465,79 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.ran).toHaveLength(1);
     expect(report.confined).toHaveLength(0);
     expect(readDeclared(root, 0)).not.toBe('original one\n');
+  });
+
+  test('1g. a declared path written with a trailing slash still matches its own snapshot key', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // 1d's shape one separator over. A trailing slash reaches `declaredSet`
+    // verbatim unless normalization strips it, and no snapshot key can carry
+    // one, so the sweep reads the region's own output as an undeclared write
+    // and reverts it while `ran` still reports the region as run.
+    const manifestPath = writeManifest(root, [
+      buildDeclaration({
+        paths: DECLARED_PATHS.map((declPath) => `${declPath}/`),
+      }),
+    ]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.refused).toHaveLength(0);
+    expect(report.ran).toHaveLength(1);
+    expect(report.confined).toHaveLength(0);
+    expect(readDeclared(root, 0)).toBe('regenerated one\n');
+  });
+
+  test('1h. a declared path carrying an interior "/./" still matches its own snapshot key', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // The third shape of 1d's defect, and the one that reached a second
+    // consumer: `scopeDirsFor` takes the declared path's `dirname`, so an
+    // interior '.' segment also lands in the scope-dir set in a form no
+    // snapshot key can equal.
+    const manifestPath = writeManifest(root, [
+      buildDeclaration({
+        paths: DECLARED_PATHS.map((declPath) =>
+          declPath.replace('/agents/', '/agents/./')
+        ),
+      }),
+    ]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.refused).toHaveLength(0);
+    expect(report.ran).toHaveLength(1);
+    expect(report.confined).toHaveLength(0);
+    expect(readDeclared(root, 0)).toBe('regenerated one\n');
+  });
+
+  test('1i. a declared path that normalizes onto the repository root is refused, not silently un-matchable', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // '.claude/.' names the directory `.claude`, whose parent is the root.
+    // Before normalization reached interior '.' segments this passed every
+    // guard and then matched no snapshot key, which is 1e's failure mode
+    // arriving by a shape 1e does not cover.
+    const manifestPath = writeManifest(root, [
+      buildDeclaration({paths: ['.claude/.']}),
+    ]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.ran).toHaveLength(0);
+    expect(report.confined).toHaveLength(0);
+    expect(report.refused[0]?.reason).toBe(
+      'paths carries a path whose parent is the repository root: .claude'
+    );
   });
 
   test('2. operand carrying a parent-directory segment is refused, even though it resolves to a shipped file', () => {
