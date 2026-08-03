@@ -2185,6 +2185,35 @@ describe('update regen-regions: behavior coverage', () => {
     expect(readDeclared(root, 0)).toBe('regenerated one\n');
   });
 
+  test('14b. a declared path that is a FIFO is reported rather than opened, so the backup cannot hang the run', () => {
+    const root = buildRoot();
+    const backupDir = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // Writes only two.md. Opening a FIFO for WRITING blocks as surely as
+    // opening it for reading, so a regeneration command that wrote to one.md
+    // would hang the spawn instead and this test would sit on the 5-minute
+    // spawn bound rather than on the backup.
+    writeScript(root, String.raw`printf "regenerated two\n" > .claude/agents/two.md`);
+    rmSync(path.join(root, DECLARED_PATHS[0]));
+    execFileSync('mkfifo', [path.join(root, DECLARED_PATHS[0])]);
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report, stderrText} = runCapturing(
+      baseArgv(manifestPath, root, ['--backup-dir', backupDir])
+    );
+
+    // Reaching any assertion at all is most of the point: `copyFileSync` on a
+    // FIFO with no writer never returns, so the pre-fix shape does not fail
+    // here, it never arrives.
+    expect(exit).toBe(0);
+    expect(report.backedUp).toEqual([DECLARED_PATHS[1]]);
+    expect(stderrText).toContain('region_regen_backup_failed');
+    expect(stderrText).toContain('not a regular file');
+    expect(report.ran).toHaveLength(1);
+    expect(existsSync(path.join(backupDir, DECLARED_PATHS[0]))).toBe(false);
+  });
+
   test('15. --backup-dir does not overwrite an existing backup', () => {
     const root = buildRoot();
     const backupDir = buildRoot();

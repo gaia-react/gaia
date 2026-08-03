@@ -588,12 +588,44 @@ const performBackup = (inputs: BackupInputs): string[] => {
 
   paths.forEach((declPath) => {
     const srcAbs = path.resolve(root, declPath);
+    let stat;
 
-    if (!existsSync(srcAbs)) return;
+    try {
+      // `lstat`, never `existsSync`: that answers "is something here" WITHOUT
+      // opening the node, and `copyFileSync` then has to open it. Opening a
+      // FIFO for reading blocks until a writer arrives, which for a path
+      // nothing is writing to never happens, so the copy neither returns nor
+      // throws and the guard below never fires. It also runs before the spawn,
+      // so the spawn's own timeout does not cover it, and the command stops
+      // dead with no report, no stderr, and no exit.
+      stat = lstatSync(srcAbs);
+    } catch {
+      // Nothing at this path, or a parent that cannot be searched. The first
+      // is the ordinary case of a region whose files this tree does not carry
+      // yet; either way there is nothing to copy aside.
+      return;
+    }
 
     const destinationAbs = path.resolve(backupDir, declPath);
 
     if (existsSync(destinationAbs)) return;
+
+    // Refused for every non-regular kind, not only for the FIFO that hangs. A
+    // backup exists to be restored, and nothing else has content a copy could
+    // put back: a device node would read bytes from the device, and a symlink
+    // would be restored as a regular file holding a copy of whatever it points
+    // at. Reporting rather than resolving is the posture the snapshot already
+    // takes for a link.
+    if (!stat.isFile()) {
+      structuredError({
+        code: 'region_regen_backup_failed',
+        message: `backup skipped for '${declPath}' in region '${regionId}': not a regular file`,
+        regionId,
+        subcommand: 'update regen-regions',
+      });
+
+      return;
+    }
 
     // Contained like every other IO call in the region loop. A throw here
     // would discard the whole report, including the confinement records of
