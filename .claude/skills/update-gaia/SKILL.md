@@ -761,7 +761,7 @@ When `adopterActions[]` is non-empty, print a recommendation block after the tab
 
     - A write **outside the snapshot**, where nothing was ever a candidate for reverting. A wholly new untracked directory surfaces here as the directory itself rather than as its individual files.
     - A path **inside the snapshot with no pre-image** to put back: an unreadable file, link, or directory, or a node holding nothing to read, such as a FIFO, socket, or device node. That last kind is not a write and reports on every run, including those the regeneration never touched.
-    - A path **inside the snapshot the runner did not put back**, because it could not establish the write would land where the key names, could not tell the adopter's own file apart from something the regeneration created, or attempted the revert and it failed.
+    - A path **inside the snapshot** the runner did not put back, because it could not establish the write would land at the path the snapshot recorded, could not tell the adopter's own file apart from something the regeneration created, or could not complete the revert it attempted.
 
     A `reported` entry is the one the adopter has to look at.
 
