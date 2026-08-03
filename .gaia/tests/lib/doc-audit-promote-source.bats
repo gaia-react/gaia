@@ -186,18 +186,36 @@ setup() {
 # nothing in the playbook said what Stage 2 checks. That gap is what let the
 # same-file pair's outcome depend on an executor's interpretation.
 
-@test "the apply loop checks the promote's source sha against its source path" {
+@test "the drift bullets name the promote's own fields, not a promote special case" {
+  # The promote's drift fields are spelled differently from every other
+  # type's, and the first fix for that was a third bullet re-deriving the
+  # whole check list for promote plus a rationale for why the generic two
+  # missed it. That special case grew a clause per audit round. The generic
+  # bullets carrying the field-to-file pairings is what dissolves it, so
+  # these pairings are the thing to pin.
   local loop
   loop="$(scoped '^### Per-action loop' '^### ')"
-  grep -qF -- 'compute sha256 of `source_path` against `source_expect_sha256`' <<<"$loop"
+  grep -qF -- '`source_expect_sha256` over `source_path`' <<<"$loop"
+  grep -qF -- '`target_expect` over `target_page`' <<<"$loop"
+  grep -qF -- '`source_before` over `source_path`' <<<"$loop"
 }
 
-@test "the apply loop says why the generic drift bullets do not reach a promote" {
-  # A bare instruction to check these two fields invites an editor to fold it
-  # back into the first bullet, which silently drops the target-side check.
+@test "no promote-specific drift bullet returns" {
+  # The superseded shape, and the one an editor recreates by reflex on
+  # noticing the promote's fields are spelled differently.
   local loop
   loop="$(scoped '^### Per-action loop' '^### ')"
-  grep -qF -- 'so neither bullet above reaches it' <<<"$loop"
+  grep -qF -- 'so neither bullet above reaches it' <<<"$loop" && return 1
+  true
+}
+
+@test "an omitted optional field is stated as unchecked, not as drift" {
+  # This one sentence is what replaced the `unless target_action:
+  # create_new` special case. Without it, a create_new promote (which
+  # carries no `target_expect`) reads as failing the snippet bullet.
+  local loop
+  loop="$(scoped '^### Per-action loop' '^### ')"
+  grep -qF -- 'A field the block omits is not checked' <<<"$loop"
 }
 
 @test "the Actions preamble makes no blanket claim about an expect field" {
@@ -212,12 +230,6 @@ setup() {
   preamble="$(scoped '^## Actions' '^### ')"
   grep -qF -- 'Every block MUST include `expect`' <<<"$preamble" && return 1
   true
-}
-
-@test "the apply loop checks the target snippet except when creating the page" {
-  local loop
-  loop="$(scoped '^### Per-action loop' '^### ')"
-  grep -qF -- 'unless `target_action: create_new`, confirm `target_expect` appears verbatim in `target_page`' <<<"$loop"
 }
 
 # --- Group 3: the apply arm acts on the mode, last, and fails closed -------
@@ -260,16 +272,19 @@ setup() {
   grep -qF -- 'source untouched, do not apply' <<<"$loop"
 }
 
-@test "a replace block is checked for its required fields before any write" {
-  # The sha proves the recorded block still MATCHES; it cannot prove Stage 1
-  # emitted the field at all. Without this, a `replace` missing
-  # `source_before` passes the mode check and reaches `old_string:
-  # source_before` with no value, in the same post-write position the mode
-  # check was moved to escape.
-  local loop
-  loop="$(scoped '^### Per-action loop' '^### ')"
-  grep -qF -- 'a `replace` carries both `source_before` and `source_after`' <<<"$loop"
-}
+# `source_before`'s presence is no longer pinned by a promote-specific
+# clause, because it is no longer a special case: the generic verbatim-snippet
+# bullet names `source_before` over `source_path`, and confirming a snippet
+# appears verbatim establishes presence and content in one check. The pairing
+# test above is what guards it now, so the coverage moved rather than lapsed.
+#
+# `source_after` is deliberately left unchecked, which is symmetry rather than
+# an oversight: `type: replace`'s own `after` is unchecked too, by the same
+# bullet, and has been all along. Making `source_before` the file's sole
+# checked-and-explained exception is what generated a finding in two
+# consecutive rounds. If an unchecked replacement field is a defect it is one
+# this branch did not introduce and holds equally for both, so widening it
+# belongs to whoever takes that on for both.
 
 @test "the wiki page states no blanket expect claim either" {
   # The skill and this page are two committed files, and `audit.md`'s own
@@ -296,7 +311,7 @@ setup() {
   # placement alone reads as arbitrary to whoever tidies this next.
   local loop
   loop="$(scoped '^### Per-action loop' '^### ')"
-  grep -qF -- 'schema-validity check, not a drift signal' <<<"$loop"
+  grep -qF -- 'schema-validity check rather than a drift signal' <<<"$loop"
   grep -qF -- 'knowable before any write' <<<"$loop"
 }
 

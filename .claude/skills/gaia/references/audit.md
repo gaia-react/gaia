@@ -493,15 +493,10 @@ You are executing, not reasoning. Follow this loop exactly.
 For each unchecked action block:
 
 1. Dependency gate (`delete-entry` carrying `depends_on` only; every other action skips this step): look up the `depends_on` action id's checkbox in the report. If it is anything other than `[x]` (skipped `[~]`, failed `[!]`, still unchecked `[ ]`, or the id is not found), mark this delete-entry `[~]` skipped, record reason `paired action {id} not applied`, and move on WITHOUT removing anything. The `## Ordering` guarantees the referenced `promote`/`delete` is already processed by the time this runs, so its checkbox is authoritative.
-2. Verify drift signal:
-   - If the action specifies `expect_sha256`: compute sha256 of the target file. If mismatch → mark `[~]` skipped, record reason `sha drift`, move on.
-   - If the action specifies `before:` or `expect:` snippet: read the file and confirm the snippet appears verbatim. If missing → `[~]` skipped, `snippet drift`.
-   - **A `promote` carries neither `expect_sha256` nor a `before:`/`expect:` snippet, so neither bullet above reaches it. Run all three of these instead:**
-     - compute sha256 of `source_path` against `source_expect_sha256`. Mismatch → `[~]` skipped, `sha drift`, move on.
-     - unless `target_action: create_new`, confirm `target_expect` appears verbatim in `target_page`. Missing → `[~]` skipped, `snippet drift`, move on.
-     - confirm `source_action` is one of `delete` / `replace` / `keep`, and that a `replace` carries both `source_before` and `source_after`. Absent, unrecognized, or missing a required field → `[!]` failed, reason `unknown source_action` or `incomplete source_action`, **source untouched, do not apply**; never guess which was meant.
-
-     The last one is a schema-validity check, not a drift signal, and it runs here because its inputs are knowable before any write: in the apply step it would fail only after the wiki page, `wiki/log.md` and `wiki/index.md` had already been written. `source_before`'s *content* still needs no check of its own, the whole-file sha covers that; what is checked here is that the field is present at all.
+2. Verify drift signal. The two bullets below cover every action type: each names its field-to-file pairings, so a type whose fields are spelled differently is not a separate case. A field the block omits is not checked.
+   - **sha field** (`expect_sha256` over `path`, `source_expect_sha256` over `source_path`): compute sha256 of the named file. Mismatch → `[~]` skipped, `sha drift`, move on.
+   - **verbatim snippet field** (`expect` and `before` over `path`, `target_expect` over `target_page`, `source_before` over `source_path`): confirm the snippet appears verbatim in the named file. Missing → `[~]` skipped, `snippet drift`, move on.
+   - **`promote` only:** confirm `source_action` is one of `delete` / `replace` / `keep`. Absent or unrecognized → `[!]` failed, reason `unknown source_action`, **source untouched, do not apply**; never guess which was meant. This is a schema-validity check rather than a drift signal, and it runs here because its input is knowable before any write: in the apply step it would fail only after the wiki page, `wiki/log.md` and `wiki/index.md` had already been written.
 3. Apply the change using the exact operation:
    - `type: delete` → remove the file
    - `type: delete-entry` → read file, locate the `expect` block, remove it, write back
