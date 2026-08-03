@@ -2289,7 +2289,7 @@ describe('update regen-regions: behavior coverage', () => {
     expect(existsSync(path.join(backupDir, DECLARED_PATHS[0]))).toBe(false);
   });
 
-  test('14c. a declared path that is a symlink is backed up as a link, not as a copy of its target', () => {
+  test('14c. a declared path that is a symlink is copied aside as the bytes it resolves to', () => {
     const root = buildRoot();
     const backupDir = buildRoot();
     const outside = buildRoot();
@@ -2297,10 +2297,11 @@ describe('update regen-regions: behavior coverage', () => {
     writeDeclaredFiles(root, 'original');
     writeScript(root, HAPPY_SCRIPT_BODY);
     // `sweepScope` skips every declared path in both of its loops, so this
-    // backup is the only copy this path ever gets. Copying it as its TARGET's
-    // bytes would restore a regular file where a link belongs; refusing it
-    // outright would leave the region's own write following the link to
-    // overwrite an out-of-tree file with nothing held anywhere.
+    // backup is the only copy this path ever gets, and the spawn's write goes
+    // THROUGH the link to the far end. Holding the target's bytes is therefore
+    // the whole value of the copy: a stat that stopped at the link would read
+    // "not a regular file" and refuse, leaving the bytes the write destroys
+    // held nowhere at all.
     const target = path.join(outside, 'target.md');
 
     writeFileSync(target, 'out of tree\n');
@@ -2317,52 +2318,78 @@ describe('update regen-regions: behavior coverage', () => {
     expect(exit).toBe(0);
     expect(report.backedUp.toSorted(byLocale)).toEqual(SORTED_DECLARED_PATHS);
     expect(stderrText).not.toContain('region_regen_backup_failed');
-    expect(lstatSync(backedUpPath).isSymbolicLink()).toBe(true);
-    expect(readlinkSync(backedUpPath)).toBe(target);
-    // The backup is not the coverage it looks like: what it saved is the link,
-    // and what the spawn's write through that link destroys is the bytes at
-    // the far end, which no other channel in the report can see.
-    expect(stderrText).toContain('region_regen_declared_symlink');
-    expect(stderrText).toContain(target);
+    expect(lstatSync(backedUpPath).isSymbolicLink()).toBe(false);
+    expect(readFileSync(backedUpPath, 'utf8')).toBe('out of tree\n');
   });
 
-  test('14d. a declared path backed up as a link is not backed up a second time, and the second visit writes nothing through it', () => {
+  test('14d. a link already sitting on a backup key is never written through', () => {
     const root = buildRoot();
     const backupDir = buildRoot();
     const outside = buildRoot();
 
     writeDeclaredFiles(root, 'original');
     writeScript(root, HAPPY_SCRIPT_BODY);
-    // A backed-up link is copied verbatim, so a RELATIVE target that resolved
-    // beside the source does not resolve beside the copy. `existsSync` follows
-    // the dangling result and calls the backup absent, which is what made a
-    // second visit to one key either throw EEXIST while reporting the path
-    // unbacked-up, or write through the link and land the bytes at the
-    // target's key. Two regions declaring one path is the reachable trigger.
-    writeFileSync(path.join(outside, 'real.md'), 'out of tree\n');
-    rmSync(path.join(root, DECLARED_PATHS[0]));
-    symlinkSync('real.md', path.join(root, DECLARED_PATHS[0]));
-    const manifestPath = writeManifest(root, [
-      buildDeclaration({id: 'region-a', paths: [DECLARED_PATHS[0]]}),
-      buildDeclaration({id: 'region-b', paths: [DECLARED_PATHS[0]]}),
-    ]);
+    // The backup directory is shared with the merge walk, which writes declared
+    // paths into it, so a link can already hold the key this copy is about to
+    // write. `existsSync` follows a dangling one, calls the backup absent, and
+    // `copyFileSync` then writes THROUGH the link and lands the bytes at the
+    // target's key instead, which for a target outside `backupDir` puts them
+    // somewhere nothing will ever look for them.
+    mkdirSync(path.dirname(path.join(backupDir, DECLARED_PATHS[0])), {
+      recursive: true,
+    });
+    symlinkSync(
+      path.join(outside, 'never-written.md'),
+      path.join(backupDir, DECLARED_PATHS[0])
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
 
     const {exit, report, stderrText} = runCapturing(
       baseArgv(manifestPath, root, ['--backup-dir', backupDir])
     );
 
     expect(exit).toBe(0);
-    // Backed up once, by whichever region reached it first, and not re-reported
-    // as a failure by the second.
-    expect(report.backedUp).toEqual([DECLARED_PATHS[0]]);
+    // The occupied key is left exactly as found, and the OTHER declared path
+    // still backs up, so this is a per-key skip rather than an aborted step.
+    expect(report.backedUp).toEqual([DECLARED_PATHS[1]]);
     expect(stderrText).not.toContain('region_regen_backup_failed');
+    expect(existsSync(path.join(outside, 'never-written.md'))).toBe(false);
     expect(
       lstatSync(path.join(backupDir, DECLARED_PATHS[0])).isSymbolicLink()
     ).toBe(true);
-    // Nothing was ever written through the dangling backup link.
-    expect(existsSync(path.join(backupDir, '.claude/agents/real.md'))).toBe(
-      false
+  });
+
+  test('14e. a declared path that is a symlink to a FIFO is reported rather than opened', () => {
+    const root = buildRoot();
+    const backupDir = buildRoot();
+    const outside = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // Writes only two.md, for the reason 14b states.
+    writeScript(
+      root,
+      String.raw`printf "regenerated two\n" > .claude/agents/two.md`
     );
+    // The hazard reaches the copy through an indirection, so a kind check that
+    // stops at the link sees a symlink, calls it backup-able, and hands
+    // `copyFileSync` a FIFO to open anyway. Only the FOLLOWED kind refuses it.
+    const fifo = path.join(outside, 'pipe');
+
+    execFileSync('mkfifo', [fifo]);
+    rmSync(path.join(root, DECLARED_PATHS[0]));
+    symlinkSync(fifo, path.join(root, DECLARED_PATHS[0]));
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report, stderrText} = runCapturing(
+      baseArgv(manifestPath, root, ['--backup-dir', backupDir])
+    );
+
+    // As in 14b, arriving at an assertion at all is most of the point.
+    expect(exit).toBe(0);
+    expect(report.backedUp).toEqual([DECLARED_PATHS[1]]);
+    expect(stderrText).toContain('region_regen_backup_failed');
+    expect(stderrText).toContain('not a regular file');
+    expect(existsSync(path.join(backupDir, DECLARED_PATHS[0]))).toBe(false);
   });
 
   test('15. --backup-dir does not overwrite an existing backup', () => {

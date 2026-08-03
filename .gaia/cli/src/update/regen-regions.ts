@@ -66,6 +66,7 @@ import {
   readlinkSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -593,32 +594,33 @@ const performBackup = (inputs: BackupInputs): string[] => {
     let stat;
 
     try {
-      // `lstat`, never `existsSync`: that answers "is something here" WITHOUT
-      // opening the node, and `copyFileSync` then has to open it. Opening a
-      // FIFO for reading blocks until a writer arrives, which for a path
-      // nothing is writing to never happens, so the copy neither returns nor
-      // throws and the guard below never fires. It also runs before the spawn,
-      // so the spawn's own timeout does not cover it, and the command stops
-      // dead with no report, no stderr, and no exit.
-      stat = lstatSync(srcAbs);
+      // `stat`, never `existsSync`, and it FOLLOWS the link deliberately: the
+      // question a backup has to answer is not "is something here" but "will
+      // the copy below read bytes from a regular file", and only the followed
+      // kind answers it, a link to a FIFO being as fatal as a FIFO. Statting a
+      // FIFO returns; OPENING one for reading blocks until a writer arrives,
+      // which for a path nothing is writing to never happens, so `copyFileSync`
+      // neither returns nor throws and the guard below never fires. It also
+      // runs before the spawn, so the spawn's own timeout does not cover it,
+      // and the command stops dead with no report, no stderr, and no exit.
+      stat = statSync(srcAbs);
     } catch {
-      // Nothing at this path, or a parent that cannot be searched. The first
-      // is the ordinary case of a region whose files this tree does not carry
-      // yet; either way there is nothing to copy aside.
+      // Nothing at this path, a link pointing at nothing, or a parent that
+      // cannot be searched. The first is the ordinary case of a region whose
+      // files this tree does not carry yet; either way there is nothing to
+      // copy aside.
       return;
     }
 
     const destinationAbs = path.resolve(backupDir, declPath);
 
-    // `lstat`, never `existsSync`, for the same reason the source is stated
-    // above and one more: a backed-up LINK is copied verbatim, so a relative
-    // target that resolved beside the source does not resolve beside the copy,
-    // and the backup dangles. `existsSync` follows it, calls a backup that is
-    // sitting right there absent, and the second visit to that key either
-    // throws EEXIST while reporting the path unbacked-up, or writes THROUGH the
-    // dangling link and lands the bytes at the target's key instead. A second
-    // visit is reachable: two regions can declare one path, and a single
-    // `paths[]` can carry two spellings that normalize to one key.
+    // `lstat` here, where the source above wants the opposite: the question at
+    // the destination is "is any node already on this key", and following a
+    // link is what gets that wrong. The backup directory is shared with the
+    // merge walk that writes declared paths into it, so a link this command
+    // never wrote can be sitting on the key; `existsSync` follows a dangling
+    // one, calls a backup that is right there absent, and the copy below then
+    // writes THROUGH it and lands the bytes at the target's key instead.
     try {
       lstatSync(destinationAbs);
 
@@ -628,12 +630,13 @@ const performBackup = (inputs: BackupInputs): string[] => {
       // and write the backup.
     }
 
-    // Refused for a FIFO, a socket, and a device node: none of them has content
-    // a copy could put back, and a device would read bytes from the device.
-    // A symlink is NOT in that set. It is backed up below as a link, because
-    // `sweepScope` skips every declared path in both of its loops, which makes
-    // this the only copy a declared path ever gets.
-    if (!stat.isFile() && !stat.isSymbolicLink()) {
+    // Refused for a FIFO, a socket, a device node, and a directory, whether the
+    // path names one directly or reaches one through a link: none of them has
+    // content a copy could put back, and a device would read bytes from the
+    // device. A link to a regular file is not in that set and is copied below
+    // exactly as the plain file it resolves to, which is what keeps the bytes
+    // the spawn's write destroys held somewhere.
+    if (!stat.isFile()) {
       structuredError({
         code: 'region_regen_backup_failed',
         message: `backup skipped for '${declPath}' in region '${regionId}': not a regular file`,
@@ -650,36 +653,6 @@ const performBackup = (inputs: BackupInputs): string[] => {
     // CLI that predates this subcommand rather than as a backup failure.
     try {
       mkdirSync(path.dirname(destinationAbs), {recursive: true});
-
-      // A link is copied as ITSELF, the same `readlinkSync`/`symlinkSync` pair
-      // the snapshot and the sweep already use. `copyFileSync` would follow it
-      // and store the target's bytes, so restoring would put a regular file
-      // where a link belongs; recording the target instead restores the link.
-      // Reading a link never opens what it points at, so the FIFO hazard above
-      // does not reach here even when the link points at one.
-      if (stat.isSymbolicLink()) {
-        const target = readlinkSync(srcAbs, 'buffer');
-
-        symlinkSync(target, destinationAbs);
-        backedUp.push(declPath);
-
-        // Said out loud, because the backup is not the coverage it looks like.
-        // What was saved is the link; what the spawn's write destroys is the
-        // bytes at the other end of it, and that write is invisible to every
-        // other channel: the link itself is untouched so `rewrote` omits it,
-        // the sweep skips declared paths so `confined` omits it, and a target
-        // outside the root is not in `git status` either. Without this the run
-        // reports a clean success over a write that left the tree.
-        structuredError({
-          code: 'region_regen_declared_symlink',
-          message: `declared path '${declPath}' in region '${regionId}' is a symlink to '${target.toString('utf8')}': the link is backed up, but a write through it is neither reverted nor reported`,
-          regionId,
-          subcommand: 'update regen-regions',
-        });
-
-        return;
-      }
-
       copyFileSync(srcAbs, destinationAbs);
       backedUp.push(declPath);
     } catch (error) {
