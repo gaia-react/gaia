@@ -24,14 +24,13 @@
  * **Write confinement.** A region's regeneration command legitimately rewrites
  * every path it owns, but nothing else. Before the spawn, this command hashes
  * every regular file and reads every symlink under the union of the declared
- * paths' parent directories (the "snapshot scope"), and records the presence of
- * everything else it finds there without looking inside it; after the spawn, any
- * such path in scope the spawn newly created is removed, and then anything in
- * scope that is not
- * one of the region's declared paths and no longer matches its pre-image is put
- * back, whether the spawn rewrote it or deleted it. Undoing the creations first
- * is what leaves an ordinary run with real directories to resolve through, so a
- * link the spawn left behind is gone before any pre-image is written near it.
+ * paths' parent directories (the "snapshot scope"); after the spawn, any path
+ * in scope the spawn newly created is removed, and then anything in scope that
+ * is not one of the region's declared paths and no longer matches its pre-image
+ * is put back, whether the spawn rewrote it or deleted it. Undoing the
+ * creations first is what leaves an ordinary run with real directories to
+ * resolve through, so a link the spawn left behind is gone before any pre-image
+ * is written near it.
  * Three rules hold the guarantee whatever order anything happens in. Neither
  * snapshot pass traverses a symlink, inside the scope or above it, so a link
  * is recorded and restored as itself and nothing behind one is read or
@@ -41,10 +40,9 @@
  * repository. Every write first asks whether the components between the root
  * and the key are real directories, reporting rather than resolving through one
  * that is not, so a scope key can never name one place while the bytes land in
- * another. And a path is deleted as a spawn creation only where the snapshot
- * positively established that nothing was at that key beforehand, which is
- * `collectScopeDigests`' removal invariant, stated in full there and not
- * restated here. Anything else is reported rather than deleted.
+ * another. And a path is deleted as a spawn creation only where
+ * `collectScopeDigests`' removal invariant permits it, stated in full there and
+ * not restated here. Anything else is reported rather than deleted.
  *
  * A `git status --porcelain -z` before/after pair also catches a
  * write anywhere else in the tree; that has no pre-image to restore from, so
@@ -807,22 +805,21 @@ const hasUnenumeratedAncestor = (
  * **The removal invariant. This is the one statement of it; everything else in
  * this module points here rather than paraphrasing.** The sweep may delete a
  * path found only in the AFTER snapshot, on the grounds that the spawn created
- * it, only where this pass POSITIVELY ESTABLISHED that nothing was at that key
- * before. Anywhere else, a path that appears between the two passes may equally
- * be something the adopter already had that has just arrived there, and
- * deleting it destroys the only copy.
+ * it, only where this pass established that nothing RESTORABLE was at that key
+ * before: either it found nothing there, or it found a directory it enumerated,
+ * whose pre-image is its children and is written back beneath the key once the
+ * node now standing there is gone. Anywhere else, a path that appears between
+ * the two passes may equally be something the adopter already had that has just
+ * arrived there, and deleting it destroys the only copy.
  *
  * The map's shape encodes it: **this walk keys a node exactly when it neither
- * enumerates the node nor establishes its absence.** An unreadable directory, an
- * unstattable entry, a link recorded and not descended, a node that is neither
- * of those nor a directory nor a regular file, a regular file, and the two
- * scope-root gate arms that find something they may not walk all get a key. Two
- * kinds of node get none, and both are positive establishment rather than
- * silence: a real directory the walk descends, whose children speak for it, and
- * a scope root that is not there at all, whose ENOENT establishes the whole
- * subtree absent. So "no entry for this ancestor" means "this pass enumerated it
- * or observed it absent", either of which answers the invariant, which is why
- * `hasUnenumeratedAncestor` reads the invariant itself rather than a proxy.
+ * enumerates the node nor establishes its absence.** Two kinds of node get none,
+ * and both are positive establishment rather than silence: a real directory the
+ * walk descends, whose children speak for it, and a scope root that is not there
+ * at all, whose ENOENT establishes the whole subtree absent. So "no entry for
+ * this ancestor" means "this pass enumerated it or observed it absent", either
+ * of which answers the invariant, which is why `hasUnenumeratedAncestor` reads
+ * the invariant itself rather than a proxy.
  *
  * Preserve that before moving any arm of this walk, and preserve it in the shape
  * stated: an arm that stops keying a node it neither enumerated nor found absent
