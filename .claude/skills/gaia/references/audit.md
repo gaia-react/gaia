@@ -230,7 +230,7 @@ Targets (flag anything over):
 
 There are three remedies for an over-budget file. **Evaluate all three, in this order**, and propose the first that both applies to the file and is expressible as an action. They are independent: one being unavailable says nothing about the next, and a single blocked remedy never makes a file unfixable.
 
-1. **Inline facts → wiki. This remedy is unavailable for an over-budget file outright, not conditionally.** Lifting a section onto a wiki page takes a `promote` whose `source_path` is the over-budget file, plus a `shrink` (`type: replace`) on that same file leaving a wikilink behind, so the two actions always name the one file. `## Ordering` runs every `shrink` before every `promote`, so the recorded `source_expect_sha256` no longer describes the file by the time the `promote` runs, and what Stage 2 then does with the source is not pinned down. **Do not construct that pair.** Record the blocker against this remedy, then evaluate remedy 2.
+1. **Inline facts → wiki.** One action: a `promote` whose `source_path` is the over-budget file, carrying `source_action: replace`, `source_before` the section being lifted, and `source_after` the wikilink left in its place. **Do not pair it with a `shrink` on that same file.** `## Ordering` runs every `shrink` before every `promote`, so a paired shrink would move the file out from under the recorded `source_expect_sha256` and the promote would skip on `sha drift`, leaving a wikilink to a page that was never written. The promote's own `source_action` exists so that pair is never needed.
 2. **Consolidate duplicated sections.** A single `shrink` on one path, which nothing in `## Ordering` blocks.
 3. **Split into narrower files.** Not expressible as an action: no action type creates a new non-wiki file, and `promote` is not one, its target is a wiki page and it also writes `wiki/log.md` and `wiki/index.md`. Record it in `## Out-of-scope findings` instead, naming the section to lift, the sibling file to create, and the line or word counts both sides land at, so Stage 2 files it as tracked work. A split is a remedy only when the extracted section is a self-contained topic that can carry its own `paths:` scope; halving a file into two siblings that always load together satisfies the count while reducing nothing a session loads.
 
@@ -281,7 +281,7 @@ Resolved paths (Stage 2 must match these):
 
 ## Actions
 
-Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips the checkbox from `[ ]` to `[x]` on success, `[~]` on skip, `[!]` on failure. Every block MUST include `expect` (verbatim snippet of current target content) and where applicable `after` (verbatim replacement). Paths MUST be absolute (already expanded, no `$PROJECT_ROOT` placeholders in action bodies).
+Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips the checkbox from `[ ]` to `[x]` on success, `[~]` on skip, `[!]` on failure. Every block MUST carry the drift signals and, where applicable, the verbatim replacement that its own schema below names. Paths MUST be absolute (already expanded, no `$PROJECT_ROOT` placeholders in action bodies).
 
 ### Delete
 
@@ -309,7 +309,9 @@ Set `depends_on` when this delete-entry removes an index/pointer line for a file
   reason: {…}
   ```
 
-### Promote (memory → wiki)
+### Promote (source → wiki)
+
+Within a promote, `source_action` is the only field that touches `source_path`, and it decides what happens to it once the wiki write lands: `delete` removes the whole file (a machine-local memory file lifted onto a wiki page), `replace` swaps one block for another (a section lifted out of a file that stays, leaving a wikilink behind), `keep` leaves it untouched. **A same-file extraction is this one action, never a promote plus a `shrink` on `source_path`**; Step 3's remedy 1 carries the reason.
 
 - [ ] `promote-{nnn}`
   ```yaml
@@ -325,7 +327,11 @@ Set `depends_on` when this delete-entry removes an index/pointer line for a file
     {verbatim content to insert, frontmatter-ready if target_action=create_new}
   index_entry: {one-line addition to wiki/index.md, or null}
   log_entry: {one-line to prepend to wiki/log.md}
-  delete_source_after: true
+  source_action: {delete | replace | keep}
+  source_before: |
+    {verbatim block to remove from source_path, must match byte-for-byte; omit unless source_action=replace}
+  source_after: |
+    {verbatim replacement, typically a wikilink line; omit unless source_action=replace}
   ```
 
 ### Shrink / Convert (replace inline content with a wikilink)
@@ -487,13 +493,14 @@ You are executing, not reasoning. Follow this loop exactly.
 For each unchecked action block:
 
 1. Dependency gate (`delete-entry` carrying `depends_on` only; every other action skips this step): look up the `depends_on` action id's checkbox in the report. If it is anything other than `[x]` (skipped `[~]`, failed `[!]`, still unchecked `[ ]`, or the id is not found), mark this delete-entry `[~]` skipped, record reason `paired action {id} not applied`, and move on WITHOUT removing anything. The `## Ordering` guarantees the referenced `promote`/`delete` is already processed by the time this runs, so its checkbox is authoritative.
-2. Verify drift signal:
-   - If the action specifies `expect_sha256`: compute sha256 of the target file. If mismatch → mark `[~]` skipped, record reason `sha drift`, move on.
-   - If the action specifies `before:` or `expect:` snippet: read the file and confirm the snippet appears verbatim. If missing → `[~]` skipped, `snippet drift`.
+2. Verify drift signal. The first two bullets below cover every action type: each names its field-to-file pairings, so a type whose fields are spelled differently is not a separate case. A field the block omits is not checked.
+   - **sha field** (`expect_sha256` over `path`, `source_expect_sha256` over `source_path`): compute sha256 of the named file. Mismatch → `[~]` skipped, `sha drift`, move on.
+   - **verbatim snippet field** (`expect` and `before` over `path`, `target_expect` over `target_page`, `source_before` over `source_path`): confirm the snippet appears verbatim in the named file. Missing → `[~]` skipped, `snippet drift`, move on.
+   - **`promote` only:** confirm `source_action` is one of `delete` / `replace` / `keep`, and that a `replace` carries both `source_before` and `source_after`. Absent, unrecognized, or missing one of that pair → `[!]` failed, reason `unknown source_action`, **source untouched, do not apply**; never guess which was meant. This is a schema-validity check rather than a drift signal, and it runs here because its input is knowable before any write: in the apply step it would fail only after the wiki page, `wiki/log.md` and `wiki/index.md` had already been written.
 3. Apply the change using the exact operation:
    - `type: delete` → remove the file
    - `type: delete-entry` → read file, locate the `expect` block, remove it, write back
-   - `type: promote` → perform the `target_action` (use Edit or Write as appropriate), then prepend `log_entry` to `wiki/log.md`, then append `index_entry` to the right section of `wiki/index.md`, then delete `source_path` if `delete_source_after: true`
+   - `type: promote` → perform the `target_action` (use Edit or Write as appropriate), then prepend `log_entry` to `wiki/log.md`, then append `index_entry` to the right section of `wiki/index.md`, then act on the source **last**, per `source_action`: `delete` removes `source_path`, `replace` edits it with `old_string: source_before` / `new_string: source_after` (disambiguated the way `type: replace` below disambiguates its `before`), `keep` leaves it alone. The source goes last so a wiki write that fails leaves it intact.
    - `type: replace` → Edit with `old_string: before`, `new_string: after`. If `before` is not unique, prepend additional context from the file until unique.
 4. Flip the checkbox: `[ ]` → `[x]` on success, `[~]` on skip, `[!]` on error. Record the reason inline on the checkbox line.
 
@@ -504,7 +511,7 @@ Before printing the summary, verify each flipped action actually landed. This is
 1. **Every `promote` flipped `[x]`:**
    - If the action's `target_action: create_new`: confirm `target_page` exists and is non-empty (the `body` *is* the new page).
    - Otherwise (`append_section` / `insert_after_heading`): confirm the inserted `body` snippet appears in `target_page`.
-   - Then, if `delete_source_after: true`, confirm `source_path` is gone.
+   - Then verify the source per `source_action`: `delete` → confirm `source_path` is gone; `replace` → confirm `source_after` appears in `source_path` **and** that the file's sha256 now differs from `source_expect_sha256`; `keep` → nothing to verify. The `replace` arm asserts no absence, matching the `body` check above: `source_before` can legitimately survive elsewhere in the file, so asserting its absence would downgrade a correct apply. The sha is what carries the other half, since `source_after` is typically a wikilink the file may already contain, which would pass a bare presence check whether or not the edit landed.
    - On **any** failure, downgrade the checkbox `[x]` → `[!]`, note `promote unverified` on the checkbox line, and the report's terminal `status` is `applied-partial`.
 2. **Every `delete` / `delete-entry` flipped `[x]`:** confirm the path (delete) or the `expect` block (delete-entry) is gone. On failure, downgrade to `[!]`, note `delete unverified`, terminal `status` = `applied-partial`.
 3. **If a `shrink`/`replace` ran on `wiki/hot.md` or root `CLAUDE.md`:** recompute `wc -w`; if still over budget, note `still over budget` (informational only, does NOT downgrade the checkbox or change status).

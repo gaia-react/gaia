@@ -47,7 +47,7 @@ The hardened report carries an `audit_hardened` stamp that the decision gate and
 | `/gaia-audit "<hint>"` | Same, scoped to the hint          | Narrow Stage 1 to named stores or files; a scoped run still applies by default                                   |
 | `/gaia-audit --apply`  | Stage 2 only                      | Retry against the most recent draft or partial report (after drift fix or interrupted apply), within a 72h grace |
 
-Stage 1 (Sonnet) proposes actions (`delete`, `delete-entry`, `promote`, `shrink`), each with verbatim `expect` snippets and sha256 drift signals, written to `.gaia/local/audit/KNOWLEDGE-{timestamp}.md`. Stage 2 (Sonnet) reads the report, verifies drift signals still match, and applies changes verbatim; on mismatch it skips and reports rather than improvising. Drift checks (sha256 + verbatim before/after) carry the safety, so the research stage doesn't need a heavier model. Contradiction findings (CONFLICT research category) emit `replace` or `delete` action types in the report, not a separate action type.
+Stage 1 (Sonnet) proposes actions (`delete`, `delete-entry`, `promote`, `shrink`), each carrying the drift signals its own schema names, written to `.gaia/local/audit/KNOWLEDGE-{timestamp}.md`. Stage 2 (Sonnet) reads the report, verifies drift signals still match, and applies changes verbatim; on mismatch it skips and reports rather than improvising. Drift checks (sha256 + verbatim before/after) carry the safety, so the research stage doesn't need a heavier model. Contradiction findings (CONFLICT research category) emit `replace` or `delete` action types in the report, not a separate action type.
 
 ### Report lifecycle
 
