@@ -591,6 +591,28 @@ const performBackup = (inputs: BackupInputs): string[] => {
 
   paths.forEach((declPath) => {
     const srcAbs = path.resolve(root, declPath);
+    const destinationAbs = path.resolve(backupDir, declPath);
+
+    // The destination is asked first because a key already holding a backup
+    // needs nothing further resolved, and this function's own contract makes
+    // that the expected case rather than a rare one.
+    //
+    // `lstat` here, where the source below wants the opposite: the question at
+    // the destination is "is any node already on this key", and following a
+    // link is what gets that wrong. The backup directory is shared with the
+    // merge walk that writes declared paths into it, so a link this command
+    // never wrote can be sitting on the key; `existsSync` follows a dangling
+    // one, calls a backup that is right there absent, and the copy below then
+    // writes THROUGH it and lands the bytes at the target's key instead.
+    try {
+      lstatSync(destinationAbs);
+
+      return;
+    } catch {
+      // Nothing at the destination, which is the ordinary case: fall through
+      // and write the backup.
+    }
+
     let stat;
 
     try {
@@ -610,24 +632,6 @@ const performBackup = (inputs: BackupInputs): string[] => {
       // files this tree does not carry yet; either way there is nothing to
       // copy aside.
       return;
-    }
-
-    const destinationAbs = path.resolve(backupDir, declPath);
-
-    // `lstat` here, where the source above wants the opposite: the question at
-    // the destination is "is any node already on this key", and following a
-    // link is what gets that wrong. The backup directory is shared with the
-    // merge walk that writes declared paths into it, so a link this command
-    // never wrote can be sitting on the key; `existsSync` follows a dangling
-    // one, calls a backup that is right there absent, and the copy below then
-    // writes THROUGH it and lands the bytes at the target's key instead.
-    try {
-      lstatSync(destinationAbs);
-
-      return;
-    } catch {
-      // Nothing at the destination, which is the ordinary case: fall through
-      // and write the backup.
     }
 
     // Refused for a FIFO, a socket, a device node, and a directory, whether the

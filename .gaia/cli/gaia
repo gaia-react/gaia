@@ -27810,6 +27810,7 @@ import {
   readlinkSync as readlinkSync2,
   realpathSync as realpathSync3,
   rmSync as rmSync4,
+  statSync as statSync3,
   symlinkSync as symlinkSync2,
   writeFileSync as writeFileSync12
 } from "node:fs";
@@ -28068,19 +28069,19 @@ var performBackup = (inputs) => {
   const backedUp = [];
   paths.forEach((declPath) => {
     const srcAbs = path41.resolve(root, declPath);
-    let stat;
-    try {
-      stat = lstatSync2(srcAbs);
-    } catch {
-      return;
-    }
     const destinationAbs = path41.resolve(backupDir, declPath);
     try {
       lstatSync2(destinationAbs);
       return;
     } catch {
     }
-    if (!stat.isFile() && !stat.isSymbolicLink()) {
+    let stat;
+    try {
+      stat = statSync3(srcAbs);
+    } catch {
+      return;
+    }
+    if (!stat.isFile()) {
       structuredError({
         code: "region_regen_backup_failed",
         message: `backup skipped for '${declPath}' in region '${regionId}': not a regular file`,
@@ -28091,18 +28092,6 @@ var performBackup = (inputs) => {
     }
     try {
       mkdirSync17(path41.dirname(destinationAbs), { recursive: true });
-      if (stat.isSymbolicLink()) {
-        const target = readlinkSync2(srcAbs, "buffer");
-        symlinkSync2(target, destinationAbs);
-        backedUp.push(declPath);
-        structuredError({
-          code: "region_regen_declared_symlink",
-          message: `declared path '${declPath}' in region '${regionId}' is a symlink to '${target.toString("utf8")}': the link is backed up, but a write through it is neither reverted nor reported`,
-          regionId,
-          subcommand: "update regen-regions"
-        });
-        return;
-      }
       copyFileSync2(srcAbs, destinationAbs);
       backedUp.push(declPath);
     } catch (error51) {
@@ -29678,7 +29667,7 @@ var run60 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readdirSync as readdirSync4, readFileSync as readFileSync33, statSync as statSync3 } from "node:fs";
+import { readdirSync as readdirSync4, readFileSync as readFileSync33, statSync as statSync4 } from "node:fs";
 import path43 from "node:path";
 var HELP_TEXT59 = `Usage: gaia wiki dead-paths [--json]
 
@@ -29735,7 +29724,7 @@ var walkMarkdown = (root, dir) => {
 };
 var pathExists = (root, candidate) => {
   try {
-    statSync3(path43.join(root, candidate));
+    statSync4(path43.join(root, candidate));
     return true;
   } catch {
     return false;
@@ -29763,7 +29752,7 @@ var collectDeadPathsInFile = (ctx) => {
 var findDeadPaths = (cwd) => {
   const wikiDir = path43.join(cwd, "wiki");
   try {
-    statSync3(wikiDir);
+    statSync4(wikiDir);
   } catch {
     return [];
   }
@@ -30025,7 +30014,7 @@ var run62 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readdirSync as readdirSync5, readFileSync as readFileSync34, statSync as statSync4 } from "node:fs";
+import { readdirSync as readdirSync5, readFileSync as readFileSync34, statSync as statSync5 } from "node:fs";
 import path44 from "node:path";
 
 // src/wiki/util/frontmatter.ts
@@ -30162,7 +30151,7 @@ var findInBody = (body, bodyLineOffset, relPath) => {
 var findEmptySections = (cwd) => {
   const wikiDir = path44.join(cwd, "wiki");
   try {
-    statSync4(wikiDir);
+    statSync5(wikiDir);
   } catch {
     return [];
   }
@@ -30223,7 +30212,7 @@ var run63 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readdirSync as readdirSync6, readFileSync as readFileSync35, statSync as statSync5 } from "node:fs";
+import { readdirSync as readdirSync6, readFileSync as readFileSync35, statSync as statSync6 } from "node:fs";
 import path45 from "node:path";
 var HELP_TEXT62 = `Usage: gaia wiki frontmatter [--json]
 
@@ -30253,7 +30242,7 @@ var hasField = (frontmatter, field) => Object.hasOwn(frontmatter, field) && fron
 var findFrontmatterGaps = (cwd) => {
   const wikiDir = path45.join(cwd, "wiki");
   try {
-    statSync5(wikiDir);
+    statSync6(wikiDir);
   } catch {
     return [];
   }
@@ -30463,7 +30452,7 @@ var run65 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync28, readdirSync as readdirSync7, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync28, readdirSync as readdirSync7, statSync as statSync7 } from "node:fs";
 import path47 from "node:path";
 var HELP_TEXT64 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
@@ -30511,7 +30500,7 @@ var levenshtein = (a, b) => {
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS.flatMap((domain2) => {
   const domainDir = path47.join(wikiRoot, domain2);
-  if (!existsSync28(domainDir) || !statSync6(domainDir).isDirectory()) {
+  if (!existsSync28(domainDir) || !statSync7(domainDir).isDirectory()) {
     return [];
   }
   const entries = readdirSync7(domainDir, { withFileTypes: true });
@@ -30613,7 +30602,7 @@ var run66 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync29, readdirSync as readdirSync8, readFileSync as readFileSync37, statSync as statSync7 } from "node:fs";
+import { existsSync as existsSync29, readdirSync as readdirSync8, readFileSync as readFileSync37, statSync as statSync8 } from "node:fs";
 import path48 from "node:path";
 
 // src/wiki/util/wikilinks.ts
@@ -30697,7 +30686,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
 };
 var collectDomainPages = (wikiRoot, domain2) => {
   const domainDir = path48.join(wikiRoot, domain2);
-  if (!existsSync29(domainDir) || !statSync7(domainDir).isDirectory()) return [];
+  if (!existsSync29(domainDir) || !statSync8(domainDir).isDirectory()) return [];
   const entries = readdirSync8(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
@@ -31079,7 +31068,7 @@ var run70 = (argv, options = {}) => {
 };
 
 // src/wiki/state.ts
-import { existsSync as existsSync32, readdirSync as readdirSync9, readFileSync as readFileSync39, statSync as statSync8 } from "node:fs";
+import { existsSync as existsSync32, readdirSync as readdirSync9, readFileSync as readFileSync39, statSync as statSync9 } from "node:fs";
 import path51 from "node:path";
 var HELP_TEXT69 = `Usage: gaia wiki state [--json]
 `;
@@ -31104,7 +31093,7 @@ var countDomainPages = (wikiRoot) => {
   const counts = {};
   for (const domain2 of DOMAIN_DIRS3) {
     const domainDir = path51.join(wikiRoot, domain2);
-    if (!existsSync32(domainDir) || !statSync8(domainDir).isDirectory()) {
+    if (!existsSync32(domainDir) || !statSync9(domainDir).isDirectory()) {
       counts[domain2] = 0;
     } else {
       const entries = readdirSync9(domainDir, { withFileTypes: true });
