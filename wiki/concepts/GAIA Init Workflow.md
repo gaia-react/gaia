@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-07
-updated: 2026-06-24
+updated: 2026-08-03
 tags: [concept, claude, cli, workflow]
 ---
 
@@ -16,7 +16,7 @@ The `/gaia init` namespace provides subcommands for on-boarding a cloned GAIA te
 
 **`configure-i18n`**: Edits `app/languages/index.ts` (the `LANGUAGES` array and `Language` union) and `app/i18n.ts` (`fallbackLng`) to match the chosen locales when `--strip false`, or removes the i18n scaffolding when `--strip true`. The locale list is recorded in the init state file.
 
-**`rename`**: Changes the project name and title across the files that carry an identity: `package.json` (`name` → kebab slug), the first `# ` heading in `CLAUDE.md`, and the seeded English language files (`app/languages/en/common.ts` `meta.siteName`, and `app/languages/en/pages/_index.ts` `heroTitle` / `title` / `meta.title`).
+**`rename`**: Changes the project name and title across the files that carry an identity: `package.json` (`name` → kebab slug), the first `# ` heading in `CLAUDE.md`, and the seeded English language files (`app/languages/en/common.ts` `meta.siteName`, and `app/languages/en/pages/_index.ts` `heroTitle` / `title` / `meta.title`). The `CLAUDE.md` heading is a precondition, not something this step creates: a `CLAUDE.md` with no top-level `# ` heading above its first fenced code block fails the step outright (`claude_md_heading_missing`, exit 1) before any file is renamed, rather than silently leaving the title-less file in place. Add the missing heading and re-run `rename` directly, since `resume` cannot replay a step that never completed.
 
 **`wire-statusline`**: Inserts the canonical GAIA `statusLine` block at the top level of the chosen Claude settings file (`--mode project` writes `.claude/settings.json`, `global` writes `~/.claude/settings.json`, `skip` is a no-op). The statusline surfaces the per-machine setup gate plus `/update-gaia`, `/update-deps`, `/gaia-harden`, and `/gaia-audit` nudges.
 
