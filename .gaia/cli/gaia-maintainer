@@ -28235,7 +28235,7 @@ var reportOutOfScopeWrites = (inputs) => {
   });
 };
 var runRegeneration = (decl, commandArgv, context) => {
-  const { backupDir, report, repoPrefix, root, spawnBounds } = context;
+  const { backupDir, repoPrefix, report, root, spawnBounds } = context;
   report.backedUp.push(
     ...performBackup({
       backupDir,
@@ -28384,7 +28384,6 @@ var loadRunInputs = (cwd, flags) => {
     });
     return { ok: false };
   }
-  const repoPrefix = resolveRepoPrefix(root);
   if (isPlainObject2(manifestParsed))
     return {
       ok: true,
@@ -28393,7 +28392,6 @@ var loadRunInputs = (cwd, flags) => {
         manifestRecord: manifestParsed,
         manifestShape: null,
         realRoot,
-        repoPrefix,
         root
       }
     };
@@ -28404,7 +28402,6 @@ var loadRunInputs = (cwd, flags) => {
       manifestRecord: {},
       manifestShape: describeJsonShape(manifestParsed),
       realRoot,
-      repoPrefix,
       root
     }
   };
@@ -28439,7 +28436,7 @@ var run46 = (argv, options = {}) => {
   const cwd = options.cwd ?? process.cwd();
   const loaded = loadRunInputs(cwd, parsed.flags);
   if (!loaded.ok) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  const { backupDir, manifestRecord, manifestShape, realRoot, repoPrefix, root } = loaded.value;
+  const { backupDir, manifestRecord, manifestShape, realRoot, root } = loaded.value;
   const regionsValue = manifestRecord.regions;
   const regionsAreArray = Array.isArray(regionsValue);
   const rawRegions = regionsAreArray ? regionsValue : [];
@@ -28450,7 +28447,11 @@ var run46 = (argv, options = {}) => {
     backupDir,
     conflictedSet: new Set(parsed.flags.conflicted),
     realRoot,
-    repoPrefix,
+    // Resolved here, once, rather than at each status call: it is a property
+    // of `--root` alone, so no region can move it. Not resolved at all when
+    // there is no region to process, which is the ordinary shape of a release
+    // predating the region mechanism, and the value is then unreachable.
+    repoPrefix: rawRegions.length > 0 ? resolveRepoPrefix(root) : null,
     report: {
       backedUp: [],
       confined: [],
@@ -28464,7 +28465,7 @@ var run46 = (argv, options = {}) => {
     shippedKeys,
     skipRegionSet: new Set(parsed.flags.skipRegions),
     spawnBounds: {
-      maxBufferBytes: options.spawnMaxBufferBytes ?? SPAWN_MAX_BUFFER_BYTES,
+      maxBufferBytes: SPAWN_MAX_BUFFER_BYTES,
       timeoutMs: options.spawnTimeoutMs ?? SPAWN_TIMEOUT_MS
     }
   };
