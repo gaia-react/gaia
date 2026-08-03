@@ -23,9 +23,11 @@
  *
  * **Write confinement.** A region's regeneration command legitimately rewrites
  * every path it owns, but nothing else. Before the spawn, this command hashes
- * every regular file and symlink under the union of the declared paths' parent
- * directories (the "snapshot scope"); after the spawn, any such path in scope
- * the spawn newly created is removed, and then anything in scope that is not
+ * every regular file and reads every symlink under the union of the declared
+ * paths' parent directories (the "snapshot scope"), and records the presence of
+ * everything else it finds there without looking inside it; after the spawn, any
+ * such path in scope the spawn newly created is removed, and then anything in
+ * scope that is not
  * one of the region's declared paths and no longer matches its pre-image is put
  * back, whether the spawn rewrote it or deleted it. Undoing the creations first
  * is what leaves an ordinary run with real directories to resolve through, so a
@@ -623,11 +625,13 @@ type Snapshot = ReadonlyMap<string, SnapshotEntry>;
  * is gone by then. Bytes in, bytes out, no decode in between.
  *
  * `unreadable` is the third answer and the one that keeps the sweep honest:
- * something was at this path before the spawn ran and none of it could be read.
- * EVERY IO failure in the walk records it rather than dropping the entry,
- * because a dropped entry answers "was this here" with "no", and the removal
- * loop then unlinks the adopter's own file as a spawn creation and reports the
- * data loss as a stray write cleaned up. It carries no pre-image, so it is
+ * something was at this path before the spawn ran and none of it reached this
+ * map. Every IO failure in the walk records it rather than dropping the entry,
+ * and so does the one arm where no read is attempted at all, a node that is
+ * neither file, directory, nor link and so has nothing to read. A dropped entry
+ * would answer "was this here" with "no", and the removal loop would then unlink
+ * the adopter's own file as a spawn creation and report the data loss as a stray
+ * write cleaned up. It carries no pre-image, so it is
  * never restorable and never untouched: surfaced, never written, never deleted.
  */
 type SnapshotEntry =
@@ -758,20 +762,27 @@ const hasUnenumeratedAncestor = (
  * be something the adopter already had that has just arrived there, and
  * deleting it destroys the only copy.
  *
- * The map's shape encodes it exactly: **this walk keys a node exactly when it
- * does not look inside it.** An unreadable directory, an unstattable entry, a
- * link recorded and not descended, a node that is neither of those nor a
- * directory nor a regular file, a regular file, and every arm of the scope-root
- * gate below all get a key. A real directory the walk descends gets none of its
- * own, because its children speak for it. So "no entry for this ancestor" means
- * "this pass enumerated it", the two directions agree, and
- * `hasUnenumeratedAncestor` reads the invariant itself rather than a proxy for
- * it.
+ * The map's shape encodes it: **this walk keys a node exactly when it neither
+ * enumerates the node nor establishes its absence.** An unreadable directory, an
+ * unstattable entry, a link recorded and not descended, a node that is neither
+ * of those nor a directory nor a regular file, a regular file, and the two
+ * scope-root gate arms that find something they may not walk all get a key. Two
+ * kinds of node get none, and both are positive establishment rather than
+ * silence: a real directory the walk descends, whose children speak for it, and
+ * a scope root that is not there at all, whose ENOENT establishes the whole
+ * subtree absent. So "no entry for this ancestor" means "this pass enumerated it
+ * or observed it absent", either of which answers the invariant, which is why
+ * `hasUnenumeratedAncestor` reads the invariant itself rather than a proxy.
  *
- * That biconditional is the thing to preserve before moving any arm of this
- * walk: an arm that stops keying a node it does not enumerate breaks it. Node
- * kind is never the reason to skip one, however plainly childless the kind
- * looks, because what the spawn puts at that path next is a different node.
+ * Preserve that before moving any arm of this walk, and preserve it in the shape
+ * stated: an arm that stops keying a node it neither enumerated nor found absent
+ * breaks it. The converse is equally load-bearing and easier to break by
+ * accident, because it looks like tightening. Keying the ENOENT arm would put an
+ * entry at every not-yet-existing scope root, shelter everything beneath it, and
+ * silently turn the removal loop off for the ordinary case of a region whose
+ * directory this tree does not have yet. Node KIND is never the reason to skip
+ * keying a node that is there, however plainly childless the kind looks, because
+ * what the spawn puts at that path next is a different node.
  */
 const collectScopeDigests = (
   root: string,
@@ -1017,8 +1028,9 @@ type SweepInputs = {
  * pre-image, so it is removed instead. That is the confinement guarantee as
  * stated: reverted when a pre-image exists, reported when it does not.
  *
- * Five limits on "reverted", each deliberate. The first three surface as
- * `reported`; the last two do not, and each names its own arms:
+ * Six limits on "reverted", each deliberate. The first three surface as
+ * `reported`; the last three each name their own arms, and two of those have an
+ * arm that is loud:
  *
  * - A pre-image the spawn replaced with a DIRECTORY is not restored. `rmSync`
  *   here is deliberately not recursive, and deleting an arbitrary tree the
@@ -1046,12 +1058,22 @@ type SweepInputs = {
  *   another SCOPE directory, the snapshot enumerates the landing path itself,
  *   so the file is an undeclared creation at a key of its own and is REMOVED
  *   like any other.
- * - A DIRECTORY the spawn creates in scope is left behind, empty and without a
- *   row. The walk keys no directory it descends, so there is nothing for the
- *   removal loop to take; what the spawn put inside it is keyed and removed,
- *   which is where the content actually is. Removing the directory too would
- *   mean unlinking a node this pass never recorded, on the strength of its
- *   emptiness at one instant.
+ * - A DIRECTORY the spawn creates in scope is left behind, and where the after
+ *   pass can enumerate it, left behind empty and without a row: the walk keys no
+ *   directory it descends, so there is nothing for the removal loop to take,
+ *   while what the spawn put inside it is keyed and removed, which is where the
+ *   content is. Removing the directory itself would mean unlinking a node this
+ *   pass never recorded, on the strength of its emptiness at one instant. Where
+ *   the after pass CANNOT enumerate it, the directory is keyed `unreadable`
+ *   instead and takes a `reported` row of its own, and what is inside it is
+ *   never keyed at all, so that content stays too.
+ * - A node with nothing to read holds a `reported` row for as long as it sits in
+ *   scope. It is recorded present with no pre-image, and an `unreadable` entry
+ *   is never untouched, so an in-scope FIFO, socket, or device node the spawn
+ *   does not touch is reported on every run rather than once. That is the price
+ *   of the removal invariant covering it at all, and it is the right way round:
+ *   the alternative is a fourth entry kind whose only purpose is to compare
+ *   equal to itself, bought at the cost of the one thing this map exists to say.
  */
 const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   const {after, before, declaredPaths, regionId, root} = inputs;
@@ -1105,7 +1127,8 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
     if (isUntouched(beforeEntry, after.get(relPath))) return;
 
     // Present in the snapshot, but with no pre-image: a link whose target, a
-    // file whose bytes, or a directory whose entries could not be read. Nothing
+    // file whose bytes, or a directory whose entries could not be read, or a
+    // node with nothing to read that the walk deliberately never opened. Nothing
     // can be written back without inventing it, so this is surfaced and left
     // alone, and it is asked BEFORE the unlink below. Its presence has already
     // done its one job above, keeping the removal loop from taking what the
