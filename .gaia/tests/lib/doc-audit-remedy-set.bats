@@ -172,35 +172,51 @@ setup() {
   grep -qF -- 'Never report an over-budget file as unfixable, or propose nothing for it, on the strength of one blocked remedy' <<<"$STEP3"
 }
 
-# --- Group 3: each remedy names its action shape and its blocker ----------
+# --- Group 3: each remedy names its action shape ---------------------------
+# Remedy 1 is a single `promote` carrying `source_action: replace`. The
+# promote performs the source-side edit itself, so the extraction is one
+# action and the same-file pair that `## Ordering` mis-sequences is never
+# built. `doc-audit-promote-source.bats` pins the schema and apply-loop half
+# of that contract; this group pins what Step 3 tells a Stage 1 to write.
 
-@test "remedy 1 names the same-file drift condition that blocks it" {
+@test "remedy 1 names the promote and the sha that guards its source edit" {
   grep -qF -- 'source_expect_sha256' <<<"$STEP3"
   grep -qF -- "a \`promote\` whose \`source_path\` is the over-budget file" <<<"$STEP3"
 }
 
-@test "remedy 1 is stated as unavailable outright, not as a live conditional" {
-  # Both of remedy 1's actions name the over-budget file by construction, so
-  # a conditional phrasing ("unavailable whenever source and target are the
-  # same file") is always true and reads as though some other case applies.
-  # A Stage 1 hunting for that case finds none and cannot satisfy the
-  # closing rule that a file is never reported unfixable.
-  grep -qF -- 'unavailable for an over-budget file outright, not conditionally' <<<"$STEP3"
+@test "remedy 1 names the mode that makes the extraction one action" {
+  # Without `source_action: replace` named here, a Stage 1 reading Step 3
+  # alone has no way to know the promote can edit its source and reaches for
+  # the shrink pair, which is the construction the next test forbids.
+  grep -qF -- 'source_action: replace' <<<"$STEP3"
+  grep -qF -- 'One action:' <<<"$STEP3"
 }
 
-@test "remedy 1 forbids constructing the pair rather than relying on a skip" {
-  # `## Ordering` orders the pair, but Step 5's drift bullets name
-  # `expect_sha256` / `before:` / `expect:`, none of which a promote carries,
-  # so nothing in the playbook guarantees Stage 2 skips one. The instruction
-  # not to build the pair is what makes remedy 1's unavailability safe, and
-  # it must not decay back into a claim about what Stage 2 does.
-  grep -qF -- 'Do not construct that pair' <<<"$STEP3"
+@test "remedy 1 is not stated as blocked" {
+  # The superseded contract declared the remedy unavailable by construction
+  # and told Stage 1 to record a blocker and move on. Both sentences must
+  # stay gone: either one returning would strand the promote's own
+  # `source_action` unreachable from the step that needs it, and re-create
+  # the defect where the wiki route is never proposed for any file.
+  grep -qF -- 'unavailable for an over-budget file outright, not conditionally' <<<"$STEP3" && return 1
+  grep -qF -- 'Record the blocker against this remedy, then evaluate remedy 2' <<<"$STEP3" && return 1
+  true
+}
+
+@test "remedy 1 forbids pairing the promote with a shrink on its own source" {
+  # The pair is what `## Ordering` mis-sequences, and the prohibition is what
+  # keeps a Stage 1 from rebuilding it out of habit. It must not decay into a
+  # claim that Stage 2 tidies the pair up, which is the reading that produced
+  # the original defect.
+  grep -qF -- 'Do not pair it with a `shrink` on that same file' <<<"$STEP3"
   grep -qF -- 'reads that as drift, and skips' <<<"$STEP3" && return 1
   true
 }
 
-@test "remedy 1 sends a blocked evaluation on to remedy 2 rather than stopping" {
-  grep -qF -- 'Record the blocker against this remedy, then evaluate remedy 2' <<<"$STEP3"
+@test "remedy 1 states the consequence of pairing, not just the prohibition" {
+  # A bare "do not" is followed; a "do not, because X" survives an editor who
+  # thinks they have found a case X does not cover.
+  grep -qF -- 'leaving a wikilink to a page that was never written' <<<"$STEP3"
 }
 
 @test "remedy 2 is a single shrink and is named as unblocked" {
@@ -213,9 +229,11 @@ setup() {
 @test "the remedies name actions in the vocabulary the Ordering section uses" {
   # `## Ordering` sequences `shrink`, never `replace`, so a remedy asserting
   # something about that section in terms of `replace` sends a reader to a
-  # section where the word does not appear. The identity is bound once, at
-  # remedy 1's first use.
-  grep -qF -- 'a `shrink` (`type: replace`) on that same file' <<<"$STEP3"
+  # section where the word does not appear. Step 3's one reference to that
+  # section is the sentence under test, and it must keep using `shrink`.
+  # `source_action: replace` in remedy 1 is a different field on a different
+  # action type and says nothing about ordering.
+  grep -qF -- '`## Ordering` runs every `shrink` before every `promote`' <<<"$STEP3"
 }
 
 @test "remedy 3 states that no action type expresses a split" {
