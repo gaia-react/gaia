@@ -32,9 +32,12 @@
 # directory: grep for frozen literals, ground-truthed against the source text.
 #
 # The roster comes from the `code-audit-*.md` glob rather than a hardcoded
-# list, so a sixth member joins the guard by existing. `setup()` pins the five
-# known specs as a floor, which is what keeps every per-spec loop below from
-# passing vacuously on an empty glob.
+# list, so a sixth member joins the guard by existing. The **first `@test`**
+# pins the five known specs as a floor, and it is what keeps the rest of the
+# suite honest: `setup()` asserts nothing, it builds the list and skips what it
+# cannot read, so on an empty glob every per-spec loop below iterates zero
+# times and reports `ok`. Do not delete or weaken that test to quiet a roster
+# change; add the new member to it.
 #
 # Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
 # where a false non-final bare `[[ ]]` does not fail the test and a `!`-negated
@@ -88,7 +91,7 @@ setup() {
       return 1
     }
     [ "$all" -eq "$stdin" ] || {
-      echo "$f: $all --findings invocations but only $stdin read from stdin" >&2
+      echo "$f: $all --findings invocations but only $stdin use the pinned quoted-heredoc form" >&2
       return 1
     }
   done
