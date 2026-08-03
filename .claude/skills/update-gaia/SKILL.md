@@ -674,6 +674,7 @@ Print a table:
 GAIA update: v$BASELINE → $LATEST_TAG
 
   Overwritten:  <n>
+  Merged:       <n>  (shared/wiki-owned files updated cleanly; you had no local edits)
   Added:        <n>
   Removed:      <n>  (files you deleted; left absent, deletion respected)
   Skipped:      <n>
