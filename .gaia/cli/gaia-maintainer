@@ -16299,17 +16299,33 @@ var renamePackageJson = (cwd, kebab) => {
   const trailing = raw.endsWith("\n") ? "\n" : "";
   atomicWriteFileSync(target, `${JSON.stringify(parsed, null, 2)}${trailing}`);
 };
-var CLAUDE_MD_H1 = /^#\s.*$/mu;
+var FENCE_LINE = /^\s*(?:```|~~~)/u;
+var H1_LINE = /^#\s/u;
+var findH1Line = (lines) => {
+  let inFence = false;
+  for (const [index, line] of lines.entries()) {
+    if (FENCE_LINE.test(line)) {
+      inFence = !inFence;
+    } else if (!inFence && H1_LINE.test(line)) {
+      return index;
+    }
+  }
+  return -1;
+};
+var claudeMdHasH1 = (source) => findH1Line(source.split("\n")) !== -1;
+var claudeMdPreconditionMet = (cwd) => {
+  const target = path10.join(cwd, CLAUDE_MD);
+  return !existsSync6(target) || claudeMdHasH1(readFileSync7(target, "utf8"));
+};
 var renameClaudeMd = (cwd, title) => {
   const target = path10.join(cwd, CLAUDE_MD);
-  if (!existsSync6(target)) return true;
-  const original = readFileSync7(target, "utf8");
-  if (!CLAUDE_MD_H1.test(original)) return false;
-  const next = original.replace(CLAUDE_MD_H1, `# ${title}`);
-  if (next !== original) {
-    atomicWriteFileSync(target, next);
-  }
-  return true;
+  if (!existsSync6(target)) return;
+  const lines = readFileSync7(target, "utf8").split("\n");
+  const index = findH1Line(lines);
+  const heading = `# ${title}`;
+  if (index === -1 || lines[index] === heading) return;
+  lines[index] = heading;
+  atomicWriteFileSync(target, lines.join("\n"));
 };
 var replaceStringPropertyAll = (source, key, newValue) => {
   const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
@@ -16369,8 +16385,7 @@ var run12 = (argv, options = {}) => {
   }
   const cwd = options.cwd ?? process.cwd();
   try {
-    renamePackageJson(cwd, parsed.flags.kebab);
-    if (!renameClaudeMd(cwd, parsed.flags.title)) {
+    if (!claudeMdPreconditionMet(cwd)) {
       structuredError({
         code: "claude_md_heading_missing",
         message: 'CLAUDE.md has no top-level "# " heading to rewrite; add one and re-run',
@@ -16378,6 +16393,8 @@ var run12 = (argv, options = {}) => {
       });
       return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
+    renamePackageJson(cwd, parsed.flags.kebab);
+    renameClaudeMd(cwd, parsed.flags.title);
     renameCommonTs(cwd, parsed.flags.title);
     renameIndexPage(cwd, parsed.flags.title);
   } catch (error51) {

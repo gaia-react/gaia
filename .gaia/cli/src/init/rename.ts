@@ -137,42 +137,70 @@ const renamePackageJson = (cwd: string, kebab: string): void => {
   atomicWriteFileSync(target, `${JSON.stringify(parsed, null, 2)}${trailing}`);
 };
 
-// Matches the FIRST line that starts with `# `. A single `\s` (not `\s+`)
-// avoids stacking two adjacent quantifiers with overlapping character
-// classes (`\s+` and `.*` both match a space), which sonarjs flags as
-// super-linear; `.*` still absorbs any further leading whitespace on the
-// line. Not global, so `test` does not carry a `lastIndex` between calls.
-const CLAUDE_MD_H1 = /^#\s.*$/mu;
+const FENCE_LINE = /^\s*(?:```|~~~)/u;
+// Tested against one line at a time, which is what keeps `\s` from reaching
+// across a line ending: over the whole file it matches the newline after a
+// bare `#`, and the rewrite then swallows the blank line below it.
+const H1_LINE = /^#\s/u;
 
 /**
- * Rewrites `CLAUDE.md`'s first H1. Returns `false` when the file is present
- * but carries no H1.
+ * Index of the first H1 line outside a fenced code block, or `-1`.
  *
- * The heading is a precondition this function enforces, never one it
- * creates: every rewrite in this module replaces a value the seed already
- * has, and choosing where to insert a heading into a file the user may have
- * restructured is a guess with no right answer. `String.replace` returns the
- * original string on a non-match, so without the check the write is skipped
- * and the step reports success having done nothing, shipping a title-less
- * `CLAUDE.md` to the adopter.
- *
- * A missing file is still tolerated: deleting `CLAUDE.md` outright is an
- * unambiguous choice about a file the adopter owns.
+ * Fence awareness is the whole point: `# ` is a bash comment as well as a
+ * markdown heading, so a scan blind to fences finds the first comment inside
+ * a shell example, reports a title where there is none, and rewrites a line
+ * of the adopter's own code. An unterminated fence swallows the rest of the
+ * file, which fails toward reporting no heading rather than rewriting the
+ * wrong line.
  */
-const renameClaudeMd = (cwd: string, title: string): boolean => {
-  const target = path.join(cwd, CLAUDE_MD);
+const findH1Line = (lines: readonly string[]): number => {
+  let inFence = false;
 
-  if (!existsSync(target)) return true;
-  const original = readFileSync(target, 'utf8');
-
-  if (!CLAUDE_MD_H1.test(original)) return false;
-  const next = original.replace(CLAUDE_MD_H1, `# ${title}`);
-
-  if (next !== original) {
-    atomicWriteFileSync(target, next);
+  for (const [index, line] of lines.entries()) {
+    if (FENCE_LINE.test(line)) {
+      inFence = !inFence;
+    } else if (!inFence && H1_LINE.test(line)) {
+      return index;
+    }
   }
 
-  return true;
+  return -1;
+};
+
+/**
+ * Whether `CLAUDE.md` content carries a heading `rename` can rewrite.
+ * Exported so the suite asserting the shipped template through the same
+ * predicate the step uses cannot drift from it.
+ */
+export const claudeMdHasH1 = (source: string): boolean =>
+  findH1Line(source.split('\n')) !== -1;
+
+/**
+ * True when `CLAUDE.md` is absent, which is tolerated, or carries a heading.
+ *
+ * The heading is a precondition this step enforces, never one it creates:
+ * every rewrite in this module replaces a value the seed already has, and
+ * choosing where to insert a heading into a file the user may have
+ * restructured is a guess with no right answer. Checked before the first
+ * write so a run that cannot finish has not renamed anything.
+ */
+const claudeMdPreconditionMet = (cwd: string): boolean => {
+  const target = path.join(cwd, CLAUDE_MD);
+
+  return !existsSync(target) || claudeMdHasH1(readFileSync(target, 'utf8'));
+};
+
+const renameClaudeMd = (cwd: string, title: string): void => {
+  const target = path.join(cwd, CLAUDE_MD);
+
+  if (!existsSync(target)) return;
+  const lines = readFileSync(target, 'utf8').split('\n');
+  const index = findH1Line(lines);
+  const heading = `# ${title}`;
+
+  if (index === -1 || lines[index] === heading) return;
+  lines[index] = heading;
+  atomicWriteFileSync(target, lines.join('\n'));
 };
 
 /**
@@ -294,9 +322,9 @@ export const run = (
   const cwd = options.cwd ?? process.cwd();
 
   try {
-    renamePackageJson(cwd, parsed.flags.kebab);
-
-    if (!renameClaudeMd(cwd, parsed.flags.title)) {
+    // Ahead of every write: a knowable precondition should not fail the run
+    // with package.json already renamed.
+    if (!claudeMdPreconditionMet(cwd)) {
       structuredError({
         code: 'claude_md_heading_missing',
         message:
@@ -306,6 +334,8 @@ export const run = (
 
       return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
+    renamePackageJson(cwd, parsed.flags.kebab);
+    renameClaudeMd(cwd, parsed.flags.title);
     renameCommonTs(cwd, parsed.flags.title);
     renameIndexPage(cwd, parsed.flags.title);
   } catch (error) {
