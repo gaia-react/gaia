@@ -1396,7 +1396,18 @@ export const spawnFailureCause = (code: unknown): KilledCause => {
  * limit, so a program that merely talks a lot is killed mid-run, and one
  * that hangs hangs the whole update. The one shipped regeneration command is
  * nearly silent and fast; these bounds exist for adopter-authored ones.
+ *
+ * Carried as a value rather than read from the constants at the spawn, so a
+ * caller can lower them. Lowering the time bound is the only way to reach the
+ * `timeout` arm of the killed-cause mapping on the real spawn path: driving it
+ * at the shipped five minutes means a suite that waits five minutes, and the
+ * arm then rests on nothing but a unit test of the string mapping.
  */
+type SpawnBounds = {
+  maxBufferBytes: number;
+  timeoutMs: number;
+};
+
 const SPAWN_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 const SPAWN_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -1405,7 +1416,11 @@ const SPAWN_TIMEOUT_MS = 5 * 60 * 1000;
  * never enables the shell option: the interpreter comes from the
  * declaration, so no shipped script's executable bit is load-bearing.
  */
-const trySpawn = (decl: ParsedDeclaration, root: string): SpawnOutcome => {
+const trySpawn = (
+  decl: ParsedDeclaration,
+  root: string,
+  bounds: SpawnBounds
+): SpawnOutcome => {
   try {
     execFileSync(
       decl.interpreter,
@@ -1413,12 +1428,12 @@ const trySpawn = (decl: ParsedDeclaration, root: string): SpawnOutcome => {
       {
         cwd: root,
         encoding: 'utf8',
-        maxBuffer: SPAWN_MAX_BUFFER_BYTES,
+        maxBuffer: bounds.maxBufferBytes,
         // The child's stdout is never read, so discarding it outright leaves
         // stderr as the only stream that can reach the buffer bound at all,
         // and stderr is what carries the diagnostic this reports on failure.
         stdio: ['ignore', 'ignore', 'pipe'],
-        timeout: SPAWN_TIMEOUT_MS,
+        timeout: bounds.timeoutMs,
       }
     );
 
@@ -1527,6 +1542,8 @@ type RegionContext = {
   seenIds: Set<string>;
   shippedKeys: ReadonlySet<string>;
   skipRegionSet: ReadonlySet<string>;
+  /** Resolved once for the run; see `SpawnBounds`. */
+  spawnBounds: SpawnBounds;
 };
 
 /** Steps 4-8 for one region that passed well-formedness, skip, and operand checks. */
@@ -1535,7 +1552,7 @@ const runRegeneration = (
   commandArgv: string[],
   context: RegionContext
 ): void => {
-  const {backupDir, report, repoPrefix, root} = context;
+  const {backupDir, report, repoPrefix, root, spawnBounds} = context;
 
   report.backedUp.push(
     ...performBackup({
@@ -1550,7 +1567,7 @@ const runRegeneration = (
   const before = collectScopeDigests(root, scopeDirs);
   const beforeStatus = gitStatusPaths(root, repoPrefix);
 
-  const spawnResult = trySpawn(decl, root);
+  const spawnResult = trySpawn(decl, root, spawnBounds);
 
   const after = collectScopeDigests(root, scopeDirs);
 
@@ -1681,6 +1698,12 @@ type LoadResult = {ok: false} | {ok: true; value: LoadedInputs};
 
 type RunOptions = {
   cwd?: string;
+  /**
+   * Runaway-guard overrides. Absent, the shipped bounds apply, so no adopter
+   * invocation moves; see `SpawnBounds`.
+   */
+  spawnMaxBufferBytes?: number;
+  spawnTimeoutMs?: number;
 };
 
 /**
@@ -1867,6 +1890,10 @@ export const run = (
     seenIds: new Set<string>(),
     shippedKeys,
     skipRegionSet: new Set(parsed.flags.skipRegions),
+    spawnBounds: {
+      maxBufferBytes: options.spawnMaxBufferBytes ?? SPAWN_MAX_BUFFER_BYTES,
+      timeoutMs: options.spawnTimeoutMs ?? SPAWN_TIMEOUT_MS,
+    },
   };
 
   // An absent `regions` key is the legitimate "this release predates the

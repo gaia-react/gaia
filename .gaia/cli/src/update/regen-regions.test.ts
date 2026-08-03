@@ -242,10 +242,11 @@ const captureStdio = (): {
 };
 
 const runCapturing = (
-  argv: string[]
+  argv: string[],
+  options: Parameters<typeof run>[1] = {}
 ): {exit: number; report: RegenRegionsReport; stderrText: string} => {
   const stdio = captureStdio();
-  const exit = run(argv);
+  const exit = run(argv, options);
 
   stdio.restore();
 
@@ -754,10 +755,34 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.failed[0]?.cause).toBe('maxBuffer');
   });
 
+  test('9e. a regeneration program stopped by the time bound names that bound, not a bare signal', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // Sleeps 20x the bound this run is given, which is margin enough on a
+    // loaded machine and short enough that a regression costs seconds rather
+    // than the shipped five minutes: nothing can interrupt the synchronous
+    // spawn, so a broken injection point waits out the whole sleep. 9c's twin
+    // on the other arm, both proving a real kill reaches the cause mapping
+    // rather than only the mapping's string handling (9d).
+    writeScript(root, 'sleep 5');
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root), {
+      spawnTimeoutMs: 250,
+    });
+
+    expect(exit).toBe(0);
+    expect(report.failed).toHaveLength(1);
+    expect(report.failed[0]?.kind).toBe('killed');
+    expect(report.failed[0]?.signal).toBe('SIGTERM');
+    expect(report.failed[0]?.cause).toBe('timeout');
+  });
+
   test('9d. every kill cause maps from the code Node reports, and an unknown one is external', () => {
-    // The time bound is five minutes, so the timeout arm cannot be driven
-    // end-to-end in a suite. The mapping it shares with the other two is
-    // exercised here directly; 9a and 9c prove the wiring that feeds it.
+    // The mapping itself, apart from the wiring that feeds it: 9c and 9e drive
+    // the two bounds end-to-end, and this pins the string handling, including
+    // the two shapes no spawn produces.
     expect(spawnFailureCause('ETIMEDOUT')).toBe('timeout');
     expect(spawnFailureCause('ENOBUFS')).toBe('maxBuffer');
     expect(spawnFailureCause('EPIPE')).toBe('external');
