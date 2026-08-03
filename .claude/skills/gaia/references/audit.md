@@ -224,7 +224,17 @@ Targets (flag anything over):
 | Any nested `CLAUDE.md` discovered in Step 1 (monorepo package, subapp, docs, etc.) | ≤400 words | Scoped routing                             |
 | Any single `.claude/rules/*.md`                                                    | ≤200 lines | Focused rule                               |
 
-For each over-budget file, propose one of: inline facts → wiki, consolidate duplicated sections, or split into narrower files.
+**Every budget above is per file, and no aggregate budget exists over `.claude/rules/*.md`.** The `project_drift` signal in `.gaia/scripts/check-updates.sh` that raises the `over budget` nudge this step answers compares each rule file against its own line budget and carries no total. So splitting one over-budget rule into two rules that are each under budget satisfies the budget outright, and the sibling is charged to no separate aggregate.
+
+### Remedies, evaluated independently
+
+There are three remedies for an over-budget file. **Evaluate all three, in this order**, and propose the first that both applies to the file and is expressible as an action. They are independent: one being unavailable says nothing about the next, and a single blocked remedy never makes a file unfixable.
+
+1. **Inline facts → wiki.** A `promote` of the section onto a wiki page, plus a `replace` on the source leaving a wikilink behind. **Blocked whenever the `promote`'s `source_path` is also that `replace`'s `path`**: `## Ordering` runs every `replace` before every `promote`, so the `promote` computes `source_expect_sha256` against a file its own pair has already edited, reads that as drift, and skips. Record the blocker against this remedy, then evaluate remedy 2.
+2. **Consolidate duplicated sections.** A single `replace` on one path, which nothing in `## Ordering` blocks.
+3. **Split into narrower files.** Not expressible as an action: no action type creates a new non-wiki file, and `promote` is not one, its target is a wiki page and it also writes `wiki/log.md` and `wiki/index.md`. Record it in `## Out-of-scope findings` instead, naming the section to lift, the sibling file to create, and the line or word counts both sides land at, so Stage 2 files it as tracked work. A split is a remedy only when the extracted section is a self-contained topic that can carry its own `paths:` scope; halving a file into two siblings that always load together satisfies the count while reducing nothing a session loads.
+
+**Never report an over-budget file as unfixable, or propose nothing for it, on the strength of one blocked remedy.** State each remedy's outcome, so the ones that were never blocked are visible as work rather than absent.
 
 ## Step 4, Report
 
@@ -263,7 +273,7 @@ Resolved paths (Stage 2 must match these):
 - Stores scanned: {N files, M words total}
 - Cross-store duplicates: {X}
 - Auto-load total: {Z words} (budget: {total budget})
-- Over-budget files: {list}
+- Over-budget files: {list; per file, the remedy proposed or, if none, all three remedies with the reason each was rejected}
 - Stale entries: {count}
 - Conflicts: {count}
 - Out-of-scope findings: {count} (filed as tech-debt issues by Stage 2)
