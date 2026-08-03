@@ -345,6 +345,33 @@ describe('init rename', () => {
     expect(stdio.errors.join('')).toContain('--kebab must be');
   });
 
+  // A title carrying a line ending splits the heading in two, and the
+  // idempotency guard then compares only the first of those lines against the
+  // rebuilt heading, so it never matches and every re-run appends again.
+  // Refused in `parseFlags`, ahead of the first write.
+  test.each([
+    ['a newline', 'Bad\nInjected'],
+    ['a carriage return', 'Bad\rInjected'],
+    ['a trailing newline', 'Bad\n'],
+  ])('exit 1 on a multi-line title: %s', (_label, title) => {
+    sandbox = setupSandbox();
+
+    const exit = run(['--title', title, '--kebab', 'hello-world'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('--title must be a single line');
+
+    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
+      CLAUDE_MD
+    );
+    const pkg = JSON.parse(
+      readFileSync(path.join(sandbox.root, 'package.json'), 'utf8')
+    ) as {name: string};
+    expect(pkg.name).toBe('gaia');
+    expect(readState(sandbox.root).completed_steps).not.toContain('rename');
+  });
+
   test('exit 1 on missing flags', () => {
     sandbox = setupSandbox();
     expect(run(['--title', 'X'], {cwd: sandbox.root})).toBe(1);

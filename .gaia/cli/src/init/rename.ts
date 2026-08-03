@@ -110,6 +110,15 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     return {message: '--kebab is required', ok: false};
   }
 
+  // Refuse rather than trim: the title is an identity value this step is
+  // given, not one it may rewrite, which is the convention the `--kebab` arm
+  // below already sets. A line ending also splits the heading in two, and
+  // `renameClaudeMd`'s guard compares only the first of those lines against
+  // the rebuilt heading, so the rewrite re-runs and appends on every call.
+  if (/[\n\r]/u.test(title)) {
+    return {message: '--title must be a single line', ok: false};
+  }
+
   if (!/^[a-z][\d a-z-]*$/u.test(kebab)) {
     return {message: '--kebab must be a kebab-case identifier', ok: false};
   }
