@@ -598,7 +598,7 @@ Persist the parsed report as `regions.regen`, and flatten `ran[].rewrote` into `
 ```ts
 type RegenRegionsReport = {
   backedUp: string[];   // declared paths the runner copied into $BACKUP_DIR itself
-  confined: Array<{     // writes outside a region's declared paths
+  confined: Array<{     // entries outside a region's declared paths; Step 9 item 10 is the authority
     action: 'removed' | 'reported' | 'restored';
     path: string;
     regionId: string;
@@ -612,16 +612,16 @@ type RegenRegionsReport = {
 
 Every bucket Step 9 prints a command for carries its own `argv`, because the region id alone cannot be turned back into a command. `refused` declares `argv` optional because a `kind: 'declaration'` refusal has none; Step 9 owns what to print in its place. A `kind: 'manifest'` refusal is about the manifest itself rather than any one region, so it likewise has no `argv` and carries the sentinel `regionId` `(manifest)`.
 
-`failed[].kind` has three values, each with its own remedy. `exit` is a program that ran and refused. The other two both arrive without an exit status and must not be conflated: `spawn` is an interpreter that never launched, while `killed` is a program that ran and was cut short by a signal (`signal` names it, e.g. `SIGTERM`). Do not describe a `killed` region to the adopter as one that never ran; its declared paths may hold half-written output.
+`failed[].kind` has three values, each with its own remedy. `exit` is a program that ran and refused, and its `message` carries the program's own stderr, so the remedy is to read what the program said and fix what it objected to. The other two both arrive without an exit status and must not be conflated: `spawn` is an interpreter that never launched, so the remedy is to install it or make it executable, while `killed` is a program that ran and was cut short by a signal (`signal` names it, e.g. `SIGTERM`), whose remedy depends on the `cause` below. Do not describe a `killed` region to the adopter as one that never ran; its declared paths may hold half-written output.
 
-On a `killed` entry, `cause` says which of the runner's own ceilings ended it: `timeout` (5 minutes) or `maxBuffer` (32 MiB of output), against `external` for a kill from anywhere else. Report it, because the remedies differ and only two of the three are GAIA's doing: an adopter whose regeneration command legitimately needs longer, or legitimately says more, otherwise cannot tell that this flow imposed the limit they just hit.
+On a `killed` entry, `cause` says which of the runner's own ceilings ended it: `timeout` (5 minutes) or `maxBuffer` (32 MiB of output), against `external` for a kill from anywhere else. Report it, because the remedies differ and only two of the three are GAIA's doing: an adopter whose regeneration command legitimately needs longer, or legitimately says more, otherwise cannot tell that this flow imposed the limit they just hit. Neither ceiling is adjustable from the invocation this flow makes, so for `timeout` and `maxBuffer` the remedy is to make the command finish sooner or say less. For `external` nothing in the update imposed a limit, so the remedy is whatever stopped the command on their machine.
 
 What the step guarantees, and what it does not:
 
 - **The regeneration is authoritative.** A declared region's body is machine-authored, so regeneration overwrites whatever sits between the markers, including an adopter's hand edits inside them. That is by design. Step 9 names every path whose region this run rewrote, so the overwrite is stated rather than silent.
-- **Writes are confined and backed up.** The runner writes nothing outside a region's declared path set: a write inside the region's own directories is reverted to what it held before the run, and a write anywhere else in the tree, which has no pre-image to restore from, is reported instead. It also copies every declared path it is about to rewrite into `$BACKUP_DIR` first, unless the merge walk already backed that path up.
+- **Writes are confined and backed up.** A region's regeneration command legitimately rewrites the paths it declares and nothing else, and **scope is what decides how a write outside them is handled**. Before the spawn the runner records every path under the region's own directories, the run's **snapshot**, in which each path's recorded state is its **pre-image**; anywhere else in the tree it records nothing. A write inside the snapshot is reverted to its pre-image, and a write anywhere else is reported and left where the command put it. Reverting is what the runner attempts inside the snapshot rather than what it always achieves: a path it cannot put back, or cannot establish that putting back would be safe, is reported instead. The runner also copies every declared path it is about to rewrite into `$BACKUP_DIR` first, unless the merge walk already backed that path up.
 
-  **Inside the region's own directories**, where the snapshot exists, every way of leaving an undeclared path different counts as a write, not just overwriting it: a **deletion** is reverted from its pre-image, so only the region's own declared paths may be deleted and stay deleted, and a **creation**, having no pre-image, is removed. Anywhere else in the tree there is no snapshot to compare against, so every write there, creations included, is reported and none of it is undone. Never tell the adopter a file the regeneration created was removed without that distinction; outside those directories it is still sitting where the command put it.
+  **Every way of leaving an undeclared path different counts as a write**, not just overwriting it. Inside the snapshot a **deletion** is reverted from its pre-image, so only the region's own declared paths may be deleted and stay deleted, and a **creation**, which has no pre-image, is removed. Never tell the adopter a file the regeneration created was removed without saying which side of the snapshot it was on: outside it a creation is reported like any other write, and is still sitting where the command put it.
 
   Symlinks take the same rule rather than an exception to it, because a link's pre-image is the target string it holds: one the command deletes, retargets, or swaps for a regular file is put back as a link on its original target, and one it creates is removed. Restoring a link writes no content and follows nothing, so whatever it pointed at is never touched.
 - **The operand guard is well-formedness, not security.** The runner refuses an operand that is absolute, carries a parent-directory segment, resolves through a symlink out of the repository, or is not an exact key of the same manifest's shipped file map. This guards against a stale, corrupt, or hand-edited declaration. It is **not** a defense against anyone who controls the manifest: the flow already extracts and runs the release tarball's bundled tool, so a manifest that could not be trusted would be the smaller problem. Do not describe it as a security control to the adopter.
@@ -674,6 +674,7 @@ Print a table:
 GAIA update: v$BASELINE → $LATEST_TAG
 
   Overwritten:  <n>
+  Merged:       <n>  (shared/wiki-owned files updated cleanly; you had no local edits)
   Added:        <n>
   Removed:      <n>  (files you deleted; left absent, deletion respected)
   Skipped:      <n>
@@ -756,7 +757,13 @@ When `adopterActions[]` is non-empty, print a recommendation block after the tab
 7. **Malformed declarations.** Name each entry in `regions.malformedDeclarations` with its index and reason. The adopter cannot fix these (the declaration ships with the release), so pair them with the off switch: `GAIA_UPDATE_NO_REGIONS=1` disables region awareness for a run if a bad declaration is causing trouble.
 8. **Superseded patches.** Name every entry in `regions.supersededPatches` and say the pre-existing patch is superseded by this run's handling of that path, so the adopter deletes it instead of hand-resolving a region the run already reconciled.
 9. **Audit gate clearance.** The paths carrying a shipped region are audit gate machinery, so a regeneration write on a **resumed** update changes files the gate has already cleared. Clearance markers earned on an earlier push to the same pull request are invalidated, and the dispatched Code Audit Team members have to be re-spawned on the new HEAD.
-10. **Confined writes.** When `regions.regen.confined` is non-empty, name each entry with its action: `restored` and `removed` are writes the regeneration made outside its declared paths and the runner undid, `reported` is a write outside the region's own directories that had no pre-image to restore from and was left in place. A `reported` entry is the one the adopter has to look at, and a wholly new untracked directory surfaces as the directory itself rather than as its individual files.
+10. **Confined writes.** When `regions.regen.confined` is non-empty, name each entry with its action. `restored` and `removed` are writes the regeneration made inside the snapshot (7d), outside the region's declared paths, that the runner undid. `reported` is an entry the runner surfaced and deliberately left alone, and it has three origins:
+
+    - A write **outside the snapshot**, where nothing was ever a candidate for reverting. A wholly new untracked directory surfaces here as the directory itself rather than as its individual files.
+    - A path **inside the snapshot with no pre-image** to put back: an unreadable file, link, or directory, or a node holding nothing to read, such as a FIFO, socket, or device node. That last kind is not a write and reports on every run, including those the regeneration never touched.
+    - A path **inside the snapshot** the runner did not put back, because it could not establish the write would land at the path the snapshot recorded, could not tell the adopter's own file apart from something the regeneration created, or could not complete the revert it attempted.
+
+    A `reported` entry is the one the adopter has to look at.
 
 The merge walk is complete and the summary is recorded, so finalize the version. Write the new version and refresh the manifest:
 
