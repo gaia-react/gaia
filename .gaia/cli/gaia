@@ -27928,7 +27928,7 @@ var describeJsonShape = (value) => {
 };
 var normalizeRepoPath = (value) => {
   const dotless = value.replaceAll("\\", "/").replaceAll(/\/{2,}/gu, "/").split("/").filter((segment) => segment !== ".").join("/");
-  return dotless.endsWith("/") ? dotless.slice(0, -1) : dotless;
+  return dotless.endsWith("/") && dotless.length > 1 ? dotless.slice(0, -1) : dotless;
 };
 var normalizeDeclaredPaths = (paths) => {
   const normalized = [];
@@ -28076,7 +28076,7 @@ var performBackup = (inputs) => {
     }
     const destinationAbs = path41.resolve(backupDir, declPath);
     if (existsSync25(destinationAbs)) return;
-    if (!stat.isFile()) {
+    if (!stat.isFile() && !stat.isSymbolicLink()) {
       structuredError({
         code: "region_regen_backup_failed",
         message: `backup skipped for '${declPath}' in region '${regionId}': not a regular file`,
@@ -28087,6 +28087,11 @@ var performBackup = (inputs) => {
     }
     try {
       mkdirSync17(path41.dirname(destinationAbs), { recursive: true });
+      if (stat.isSymbolicLink()) {
+        symlinkSync2(readlinkSync2(srcAbs, "buffer"), destinationAbs);
+        backedUp.push(declPath);
+        return;
+      }
       copyFileSync2(srcAbs, destinationAbs);
       backedUp.push(declPath);
     } catch (error51) {
@@ -28319,6 +28324,7 @@ var spawnFailureCause = (code) => {
 };
 var SPAWN_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 var SPAWN_TIMEOUT_MS = 5 * 60 * 1e3;
+var resolveTimeoutMs = (override) => override !== void 0 && override > 0 ? Math.min(override, SPAWN_TIMEOUT_MS) : SPAWN_TIMEOUT_MS;
 var trySpawn = (decl, root, bounds) => {
   try {
     execFileSync4(
@@ -28617,7 +28623,7 @@ var run57 = (argv, options = {}) => {
     skipRegionSet: new Set(parsed.flags.skipRegions),
     spawnBounds: {
       maxBufferBytes: SPAWN_MAX_BUFFER_BYTES,
-      timeoutMs: options.spawnTimeoutMs ?? SPAWN_TIMEOUT_MS
+      timeoutMs: resolveTimeoutMs(options.spawnTimeoutMs)
     }
   };
   if (manifestShape !== null)
