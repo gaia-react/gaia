@@ -77,21 +77,27 @@ setup() {
 # --- Group 2: the prescribed call reads the array from stdin ---------------
 
 @test "every findings invocation in every spec is the stdin form" {
-  # Anchored: an invocation is a continuation line inside a fenced command,
-  # so it starts the line. An unanchored count would read a prose mention of
-  # the flag as a call and fail on a spec that merely explains itself. Prose
-  # that hands the writer a path is caught by the two absence checks below,
-  # which are deliberately not anchored.
+  # An invocation is a continuation line inside a fenced command, so it starts
+  # the line; a prose mention of the flag does not, and a spec that explains
+  # itself is not a defect. Prose that hands the writer a path is caught by the
+  # two absence checks below, which are deliberately not anchored.
+  #
+  # Every anchored line is compared against the pinned form directly rather
+  # than by counting both populations and comparing the totals. Two counts
+  # invite two scopes: an anchored total against an unanchored one is
+  # satisfiable from prose, so a spec carrying one staged invocation and one
+  # prose copy of the pinned literal would balance and pass. Matching line by
+  # line has no arithmetic to get backwards and names the offending line.
   for f in "${SPECS[@]}"; do
-    local all stdin
-    all="$(grep -cE '^[[:space:]]*--findings' "$f" || true)"
-    stdin="$(grep -cF -- "--findings - <<'FINDINGS'" "$f" || true)"
-    [ "$all" -ge 1 ] || {
+    local invocations offenders
+    invocations="$(grep -nE '^[[:space:]]*--findings' "$f" || true)"
+    [ -n "$invocations" ] || {
       echo "$f prescribes no sidecar write at all" >&2
       return 1
     }
-    [ "$all" -eq "$stdin" ] || {
-      echo "$f: $all --findings invocations but only $stdin use the pinned quoted-heredoc form" >&2
+    offenders="$(printf '%s\n' "$invocations" | grep -vF -- "--findings - <<'FINDINGS'" || true)"
+    [ -z "$offenders" ] || {
+      echo "$f: invocation not in the pinned quoted-heredoc form: $offenders" >&2
       return 1
     }
   done
