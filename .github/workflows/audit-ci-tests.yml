@@ -194,6 +194,17 @@ jobs:
               # out-of-scope disposition rule on this page; it is a source the
               # suite guards, and it matches no other pattern here.
               - 'wiki/concepts/PR Merge Workflow.md'
+              # doc-audit-verification-gate.bats (.gaia/tests/lib/) greps this
+              # page's description of the classification-verification round.
+              # It is the THIRD surface stating the Run-vs-Skip criterion, and
+              # the one that drifted: a fix landed on the two audit.md surfaces
+              # and left this page asserting the criterion that fix rejected.
+              # Same test-dir/source-dir pairing as the line above, and it
+              # matches no other pattern here, so without it a wiki-only edit
+              # reintroducing the superseded phrasing would report `code=false`,
+              # skip every bats step, and green the job having run the very
+              # assertion written to catch that edit zero times.
+              - 'wiki/concepts/GAIA Audit.md'
               # The doc-setup-gaia-isolation and doc-gaia-init-isolation suites
               # (.gaia/tests/lib/) grep the /setup-gaia Phase 3.5 clause and the
               # /gaia-init Step 9 question block; trigger on the two command
@@ -304,14 +315,11 @@ jobs:
             # match 459 of 1471 tracked files, a bit under a third, but they are
             # the documentation and configuration types, so the PRs that arm
             # `sandbox` alone are the ones that used to run no step at all: a
-            # wiki-only change now runs `apt-get update`. (A CHANGELOG-only
-            # change is no longer in that set: it arms `code:` too, because
-            # that filter lists CHANGELOG.md so the rollout-command comparison
-            # actually runs. Its cost is the full bats matrix, not an apt
-            # install, so the bound below describes the wiki-only case.) That
-            # is the flakiest operation in this job, and this is a declared-
-            # required context, so a mirror hash-sum mismatch can now red a
-            # required check on a docs-only PR. A pure app-only change is not in
+            # wiki-only change now runs `apt-get update`, unless its paths also
+            # match `code:` above, in which case the full bats matrix runs
+            # instead. `apt-get update` is the flakiest operation in this job,
+            # and this is a declared-required context, so a mirror hash-sum
+            # mismatch can now red a required check on a docs-only PR. A pure app-only change is not in
             # that set: app/ is .tsx/.ts/.css and matches neither output, so it
             # still runs nothing. The broad read set is the honest one and
             # narrowing it would trade a visible cost for a silent gap; the
