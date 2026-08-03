@@ -28157,7 +28157,10 @@ var collectScopeDigests = (root, scopeDirs) => {
           pending.push(abs);
           return;
         }
-        if (!stat.isFile()) return;
+        if (!stat.isFile()) {
+          digests.set(repoRelative, { kind: "unreadable" });
+          return;
+        }
         let content;
         try {
           content = readFileSync31(abs);
