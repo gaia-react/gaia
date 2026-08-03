@@ -162,7 +162,10 @@ findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-prose \
   --base "$BASE_SHA" \
-  --findings /path/to/findings.json)"
+  --findings - <<'FINDINGS'
+[ ...the findings array, one object per finding; [] when you found nothing... ]
+FINDINGS
+)"
 ```
 
 **1. Mark.** Write the earned marker with the shared writer, keyed to your own content digest, not HEAD's commit sha or tree: a sha256 over exactly the files you own (`.claude/skills/**/*.md`) plus the shared gate machinery, computed by `.claude/hooks/lib/audit-digest.sh`. It attests that you audited that CONTENT: an out-of-glob change (one that touches neither your owned glob nor a machinery file) rotates nothing in your digest, so your marker keeps validating with zero re-review. A change to a file you own, or to any machinery file, rotates your digest and invalidates your marker, and you must re-audit.
@@ -230,10 +233,15 @@ findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-prose \
   --base "$BASE_SHA" \
-  --findings /path/to/findings.json)"
+  --findings - <<'FINDINGS'
+[ ...the findings array, one object per finding; [] when you found nothing... ]
+FINDINGS
+)"
 ```
 
-Pass the same `BASE_SHA` you already resolved at run start, never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-maintainer-prose.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable. `--findings -` reads the array from stdin when you would rather not stage a temp file.
+Pass the same `BASE_SHA` you already resolved at run start, never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-maintainer-prose.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable.
+
+**Stage nothing: the array goes in through the quoted heredoc above, never through a file.** Members dispatched in one parallel wave share a session scratchpad, so any fixed staging filename is a filename every member picks: one member's array reaches another member's published sidecar under that member's name, and a file left by an earlier round republishes as a fresh report. Neither is visible downstream, because the sidecar is your report of record and the no-op classifier reads it to tell a real pass from a lost one. The audit key does not rotate between rounds, so naming the staging file after it would not close the second case. Keep the delimiter quoted (`<<'FINDINGS'`): that is what holds a `$` or a backtick inside your finding text literal.
 
 Shape (one entry per finding; the writer rejects the write and names the offending index if any required field is missing):
 

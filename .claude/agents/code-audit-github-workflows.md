@@ -174,7 +174,10 @@ findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-github-workflows \
   --base "$BASE_SHA" \
-  --findings /path/to/findings.json)"
+  --findings - <<'FINDINGS'
+[ ...the findings array, one object per finding; [] when you found nothing... ]
+FINDINGS
+)"
 ```
 
 **1. Mark (pre-stamp).** Write the per-member marker:
@@ -275,10 +278,15 @@ findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-github-workflows \
   --base "$BASE_SHA" \
-  --findings /path/to/findings.json)"
+  --findings - <<'FINDINGS'
+[ ...the findings array, one object per finding; [] when you found nothing... ]
+FINDINGS
+)"
 ```
 
-Pass the same `BASE_SHA` you already resolved at the start of the run (see "Remit and self-skip" above), never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-github-workflows.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable, so an unresolvable key skips the write rather than inventing a fallback path no reader looks under. `--findings -` reads the array from stdin when you would rather not stage a temp file.
+Pass the same `BASE_SHA` you already resolved at the start of the run (see "Remit and self-skip" above), never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-github-workflows.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable, so an unresolvable key skips the write rather than inventing a fallback path no reader looks under.
+
+**Stage nothing: the array goes in through the quoted heredoc above, never through a file.** Members dispatched in one parallel wave share a session scratchpad, so any fixed staging filename is a filename every member picks: one member's array reaches another member's published sidecar under that member's name, and a file left by an earlier round republishes as a fresh report. Neither is visible downstream, because the sidecar is your report of record and the no-op classifier reads it to tell a real pass from a lost one. The audit key does not rotate between rounds, so naming the staging file after it would not close the second case. Keep the delimiter quoted (`<<'FINDINGS'`): that is what holds a `$` or a backtick inside your finding text literal.
 
 Shape (one entry per finding; the writer rejects the write and names the offending index if any required field is missing):
 
