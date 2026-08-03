@@ -168,6 +168,17 @@ setup() {
   grep -qF -- 'never a promote plus a `shrink` on `source_path`' <<<"$promote"
 }
 
+@test "the source_action claim is scoped to the promote that carries it" {
+  # Unscoped, "the only thing that touches source_path" contradicts
+  # `## Ordering`'s own rationale that "promotes run before the deletes that
+  # remove their sources", which presupposes a `delete` reaching that same
+  # path. Both cannot be right and nothing would tell a reader which
+  # governs. The scoping qualifier is what keeps the sentence true.
+  local promote
+  promote="$(scoped '^### Promote' '^### ')"
+  grep -qF -- 'Within a promote, `source_action` is the only field' <<<"$promote"
+}
+
 # --- Group 2: the promote's drift check is reachable -----------------------
 # The apply loop's two generic drift bullets name `expect_sha256` and
 # `before:`/`expect:`. A promote carries `source_expect_sha256` and
