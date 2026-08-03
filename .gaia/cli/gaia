@@ -17997,6 +17997,9 @@ var parseFlags4 = (argv) => {
   if (kebab === void 0) {
     return { message: "--kebab is required", ok: false };
   }
+  if (/[\n\r]/u.test(title)) {
+    return { message: "--title must be a single line", ok: false };
+  }
   if (!/^[a-z][\d a-z-]*$/u.test(kebab)) {
     return { message: "--kebab must be a kebab-case identifier", ok: false };
   }
