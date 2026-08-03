@@ -78,6 +78,32 @@ const takeValue = (
   return {ok: true, value: argv[index]};
 };
 
+/**
+ * The shapes `--title` may not take, or `undefined` when it is usable.
+ *
+ * Refuse rather than trim or escape: the title is an identity value this step
+ * is given, not one it may rewrite, which is the convention the `--kebab` arm
+ * already sets. Both rules are checked ahead of the first write, so a rejected
+ * run has renamed nothing.
+ */
+const titleFailure = (title: string): FlagParseFailure | undefined => {
+  // A line ending splits the heading in two, and `renameClaudeMd`'s guard
+  // compares only the first of those lines against the rebuilt heading, so the
+  // rewrite re-runs and appends on every call.
+  if (/[\n\r]/u.test(title)) {
+    return {message: '--title must be a single line', ok: false};
+  }
+
+  // A blank title would write `# ` as the heading, which is a `CLAUDE.md`
+  // carrying no title: the state `claudeMdPreconditionMet` refuses when the
+  // file arrives that way, reached through the flag instead.
+  if (title.trim() === '') {
+    return {message: '--title must not be blank', ok: false};
+  }
+
+  return undefined;
+};
+
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let title: string | undefined;
   let kebab: string | undefined;
@@ -109,6 +135,10 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   if (kebab === undefined) {
     return {message: '--kebab is required', ok: false};
   }
+
+  const titleProblem = titleFailure(title);
+
+  if (titleProblem) return titleProblem;
 
   if (!/^[a-z][\d a-z-]*$/u.test(kebab)) {
     return {message: '--kebab must be a kebab-case identifier', ok: false};
