@@ -46,6 +46,13 @@ extract_section() {
 # extract_section, plus a guard: fails loudly, rather than passing
 # vacuously, when the start anchor matches nothing (a renamed or deleted
 # heading).
+#
+# Never call this on the left of a pipe. A pipeline's exit status is its
+# LAST command's, so `extract_section_or_fail ... | normalize_ws` discards
+# this function's `return 1` and hands back an empty string with status 0,
+# which greens every `&& return 1` absence check in the suite on a section
+# that no longer exists. Capture first, normalize second; both call sites
+# below do.
 extract_section_or_fail() {
   local out
   out="$(extract_section "$1" "$2" "$3")"
@@ -67,12 +74,15 @@ setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   AUDIT="$ROOT/.claude/skills/gaia/references/audit.md"
 
-  [ -f "$AUDIT" ] || {
-    echo "missing $AUDIT" >&2
+  # `-s`, not `-f`: an empty file would satisfy `-f` and then green the
+  # whole-file absence check in Group 5 on nothing.
+  [ -s "$AUDIT" ] || {
+    echo "missing or empty $AUDIT" >&2
     return 1
   }
 
-  STEP3="$(extract_section_or_fail "$AUDIT" '^## Step 3, Auto-load budget' '^## ' | normalize_ws)"
+  STEP3="$(extract_section_or_fail "$AUDIT" '^## Step 3, Auto-load budget' '^## ')"
+  STEP3="$(printf '%s\n' "$STEP3" | normalize_ws)"
 }
 
 # --- Group 1: the budget is per file, with no aggregate over rules ---------
@@ -158,7 +168,8 @@ setup() {
   # `## Summary` line and never reach the line under test. Terminate on the
   # fence close instead, which bounds the assertion to the template itself.
   local summary
-  summary="$(extract_section_or_fail "$AUDIT" '^### Report template' '^````$' | normalize_ws)"
+  summary="$(extract_section_or_fail "$AUDIT" '^### Report template' '^````$')"
+  summary="$(printf '%s\n' "$summary" | normalize_ws)"
   grep -qF -- 'Over-budget files: {list; per file, the remedy proposed or, if none, all three remedies with the reason each was rejected}' <<<"$summary"
 }
 
