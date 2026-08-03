@@ -401,17 +401,18 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.refused[0]?.reason).toBe('paths carries an empty entry');
   });
 
-  test('1e. a declared path that names the repository root itself is refused, so the snapshot never scopes to the whole tree', () => {
-    const root = buildRoot();
+  // Every one of these names the root rather than a path under it, and
+  // normalization takes each to the empty string, which the empty-entry guard
+  // refuses. Scoping the snapshot to the whole tree is the outcome being
+  // refused; a legitimate top-level path reaches it too, by the
+  // parent-is-the-root guard instead (test 1f).
+  test.each(['.', './', '/', '././'])(
+    '1e. a declared path naming the repository root itself (%p) is refused, so the snapshot never scopes to the whole tree',
+    (declPath) => {
+      const root = buildRoot();
 
-    writeDeclaredFiles(root, 'original');
-    writeScript(root, HAPPY_SCRIPT_BODY);
-    // Every one of these names the root rather than a path under it, and
-    // normalization takes each to the empty string, which the empty-entry
-    // guard refuses. Scoping the snapshot to the whole tree is the outcome
-    // being refused; a legitimate top-level path reaches it too, by the
-    // parent-is-the-root guard instead (test 1f).
-    ['.', './', '/', '././'].forEach((declPath) => {
+      writeDeclaredFiles(root, 'original');
+      writeScript(root, HAPPY_SCRIPT_BODY);
       const manifestPath = writeManifest(root, [
         buildDeclaration({paths: [declPath]}),
       ]);
@@ -423,8 +424,8 @@ describe('update regen-regions: hostile-input coverage', () => {
       expect(report.confined).toHaveLength(0);
       expect(report.refused[0]?.kind).toBe('declaration');
       expect(report.refused[0]?.reason).toBe('paths carries an empty entry');
-    });
-  });
+    }
+  );
 
   test('1f. a top-level declared path is refused for the same reason', () => {
     const root = buildRoot();

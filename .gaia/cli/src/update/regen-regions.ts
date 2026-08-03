@@ -1687,7 +1687,6 @@ type LoadedInputs = {
   /** `null` when the manifest is a plain object; else its shape name. */
   manifestShape: null | string;
   realRoot: string;
-  repoPrefix: string | null;
   root: string;
 };
 
@@ -1696,10 +1695,11 @@ type LoadResult = {ok: false} | {ok: true; value: LoadedInputs};
 type RunOptions = {
   cwd?: string;
   /**
-   * Runaway-guard overrides. Absent, the shipped bounds apply, so no adopter
-   * invocation moves; see `SpawnBounds`.
+   * Lowers the spawn's time bound. Absent, the shipped five minutes applies,
+   * so no adopter invocation moves; see `SpawnBounds`. The output bound needs
+   * no override, because a program can be made to breach the shipped one in a
+   * suite and 9c does exactly that.
    */
-  spawnMaxBufferBytes?: number;
   spawnTimeoutMs?: number;
 };
 
@@ -1784,10 +1784,6 @@ const loadRunInputs = (cwd: string, flags: Flags): LoadResult => {
     return {ok: false};
   }
 
-  // Resolved here, once, rather than at each status call: it is a property of
-  // `--root` alone, so no region can move it. See `resolveRepoPrefix`.
-  const repoPrefix = resolveRepoPrefix(root);
-
   // Two returns rather than one, so the type guard narrows `manifestParsed`
   // for `manifestRecord` on the arm that keeps it.
   if (isPlainObject(manifestParsed))
@@ -1798,7 +1794,6 @@ const loadRunInputs = (cwd: string, flags: Flags): LoadResult => {
         manifestRecord: manifestParsed,
         manifestShape: null,
         realRoot,
-        repoPrefix,
         root,
       },
     };
@@ -1813,7 +1808,6 @@ const loadRunInputs = (cwd: string, flags: Flags): LoadResult => {
       manifestRecord: {},
       manifestShape: describeJsonShape(manifestParsed),
       realRoot,
-      repoPrefix,
       root,
     },
   };
@@ -1860,7 +1854,7 @@ export const run = (
 
   if (!loaded.ok) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
-  const {backupDir, manifestRecord, manifestShape, realRoot, repoPrefix, root} =
+  const {backupDir, manifestRecord, manifestShape, realRoot, root} =
     loaded.value;
   const regionsValue = manifestRecord.regions;
   const regionsAreArray = Array.isArray(regionsValue);
@@ -1874,7 +1868,11 @@ export const run = (
     backupDir,
     conflictedSet: new Set(parsed.flags.conflicted),
     realRoot,
-    repoPrefix,
+    // Resolved here, once, rather than at each status call: it is a property
+    // of `--root` alone, so no region can move it. Not resolved at all when
+    // there is no region to process, which is the ordinary shape of a release
+    // predating the region mechanism, and the value is then unreachable.
+    repoPrefix: rawRegions.length > 0 ? resolveRepoPrefix(root) : null,
     report: {
       backedUp: [],
       confined: [],
@@ -1888,7 +1886,7 @@ export const run = (
     shippedKeys,
     skipRegionSet: new Set(parsed.flags.skipRegions),
     spawnBounds: {
-      maxBufferBytes: options.spawnMaxBufferBytes ?? SPAWN_MAX_BUFFER_BYTES,
+      maxBufferBytes: SPAWN_MAX_BUFFER_BYTES,
       timeoutMs: options.spawnTimeoutMs ?? SPAWN_TIMEOUT_MS,
     },
   };
