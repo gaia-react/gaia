@@ -25,6 +25,13 @@ describe('porcelainZPaths', () => {
     ]);
   });
 
+  test('takes a copy origin record whole, exactly as a rename origin', () => {
+    expect(porcelainZPaths('C  app/new.ts\0app/old.ts\0')).toEqual([
+      'app/new.ts',
+      'app/old.ts',
+    ]);
+  });
+
   test('does not read an origin path beginning with R or C as a status record', () => {
     expect(
       porcelainZPaths('R  Config/new\0Config/old\0 M package.json\0')

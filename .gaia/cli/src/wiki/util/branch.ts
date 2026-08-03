@@ -6,13 +6,13 @@
  * `runner` parameter on each function is the indirection point; tests
  * inject a fake `spawnSync` that returns canned `SpawnSyncReturns`.
  *
- * Errors are surfaced two ways:
- *   - For predicate-shaped helpers (`isProtectedBranch`, `isWorkingTreeDirty`)
- *     a non-zero exit on the underlying git call throws an `Error` whose
- *     message includes the failing argv. The handler catches and maps to
- *     exit code 2.
- *   - For value-shaped helpers (`currentBranch`, `stagedAndUnstagedPaths`)
- *     the same convention applies.
+ * Errors are surfaced one way: a helper whose answer depends on git
+ * (`currentBranch`, `inspectWorkingTree`) throws an `Error` naming the failing
+ * argv when that call fails or exits non-zero, and the handler catches it and
+ * maps to exit code 2. Two helpers sit outside that convention on purpose:
+ * `defaultBranch` falls back to `main` rather than throwing, since an unset
+ * `origin/HEAD` is an ordinary state rather than a failure, and
+ * `isProtectedBranch` runs no command at all.
  */
 import {spawnSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
