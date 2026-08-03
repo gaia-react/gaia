@@ -610,7 +610,23 @@ const performBackup = (inputs: BackupInputs): string[] => {
 
     const destinationAbs = path.resolve(backupDir, declPath);
 
-    if (existsSync(destinationAbs)) return;
+    // `lstat`, never `existsSync`, for the same reason the source is stated
+    // above and one more: a backed-up LINK is copied verbatim, so a relative
+    // target that resolved beside the source does not resolve beside the copy,
+    // and the backup dangles. `existsSync` follows it, calls a backup that is
+    // sitting right there absent, and the second visit to that key either
+    // throws EEXIST while reporting the path unbacked-up, or writes THROUGH the
+    // dangling link and lands the bytes at the target's key instead. A second
+    // visit is reachable: two regions can declare one path, and a single
+    // `paths[]` can carry two spellings that normalize to one key.
+    try {
+      lstatSync(destinationAbs);
+
+      return;
+    } catch {
+      // Nothing at the destination, which is the ordinary case: fall through
+      // and write the backup.
+    }
 
     // Refused for a FIFO, a socket, and a device node: none of them has content
     // a copy could put back, and a device would read bytes from the device.
@@ -642,8 +658,24 @@ const performBackup = (inputs: BackupInputs): string[] => {
       // Reading a link never opens what it points at, so the FIFO hazard above
       // does not reach here even when the link points at one.
       if (stat.isSymbolicLink()) {
-        symlinkSync(readlinkSync(srcAbs, 'buffer'), destinationAbs);
+        const target = readlinkSync(srcAbs, 'buffer');
+
+        symlinkSync(target, destinationAbs);
         backedUp.push(declPath);
+
+        // Said out loud, because the backup is not the coverage it looks like.
+        // What was saved is the link; what the spawn's write destroys is the
+        // bytes at the other end of it, and that write is invisible to every
+        // other channel: the link itself is untouched so `rewrote` omits it,
+        // the sweep skips declared paths so `confined` omits it, and a target
+        // outside the root is not in `git status` either. Without this the run
+        // reports a clean success over a write that left the tree.
+        structuredError({
+          code: 'region_regen_declared_symlink',
+          message: `declared path '${declPath}' in region '${regionId}' is a symlink to '${target.toString('utf8')}': the link is backed up, but a write through it is neither reverted nor reported`,
+          regionId,
+          subcommand: 'update regen-regions',
+        });
 
         return;
       }
@@ -827,9 +859,9 @@ const hasUnenumeratedAncestor = (
  * whose pre-image is its children and is written back beneath the key once the
  * node now standing there is gone. An EMPTY enumerated directory is where that
  * costs something: its children are the whole of its pre-image, so there is
- * nothing to write back and the key is simply gone. Anywhere else, a path that appears between
- * the two passes may equally be something the adopter already had that has just
- * arrived there, and deleting it destroys the only copy.
+ * nothing to write back and the key is simply gone. Anywhere else, a path that
+ * appears between the two passes may equally be something the adopter already
+ * had that has just arrived there, and deleting it destroys the only copy.
  *
  * The map's shape encodes it: **this walk keys a node exactly when it neither
  * enumerates the node nor establishes its absence.** Two kinds of node get none,

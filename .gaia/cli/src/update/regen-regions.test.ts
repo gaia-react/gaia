@@ -808,6 +808,26 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.failed[0]?.cause).toBe('timeout');
   });
 
+  test('9f. a non-positive timeout override is ignored, since Node reads timeout: 0 as no timeout at all', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    // The one value that would REMOVE the bound, passed to the option that
+    // exists to lower it. The shipped five minutes has to win, which a fast
+    // script proves by completing rather than by being killed at 0ms.
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root), {
+      spawnTimeoutMs: 0,
+    });
+
+    expect(exit).toBe(0);
+    expect(report.failed).toEqual([]);
+    expect(report.ran).toHaveLength(1);
+    expect(readDeclared(root, 0)).toBe('regenerated one\n');
+  });
+
   test('9d. every kill cause maps from the code Node reports, and an unknown one is external', () => {
     // The mapping itself, apart from the wiring that feeds it: 9c and 9e drive
     // the two bounds end-to-end, and this pins the string handling, including
@@ -2301,6 +2321,50 @@ describe('update regen-regions: behavior coverage', () => {
     expect(stderrText).not.toContain('region_regen_backup_failed');
     expect(lstatSync(backedUpPath).isSymbolicLink()).toBe(true);
     expect(readlinkSync(backedUpPath)).toBe(target);
+    // The backup is not the coverage it looks like: what it saved is the link,
+    // and what the spawn's write through that link destroys is the bytes at
+    // the far end, which no other channel in the report can see.
+    expect(stderrText).toContain('region_regen_declared_symlink');
+    expect(stderrText).toContain(target);
+  });
+
+  test('14d. a declared path backed up as a link is not backed up a second time, and the second visit writes nothing through it', () => {
+    const root = buildRoot();
+    const backupDir = buildRoot();
+    const outside = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // A backed-up link is copied verbatim, so a RELATIVE target that resolved
+    // beside the source does not resolve beside the copy. `existsSync` follows
+    // the dangling result and calls the backup absent, which is what made a
+    // second visit to one key either throw EEXIST while reporting the path
+    // unbacked-up, or write through the link and land the bytes at the
+    // target's key. Two regions declaring one path is the reachable trigger.
+    writeFileSync(path.join(outside, 'real.md'), 'out of tree\n');
+    rmSync(path.join(root, DECLARED_PATHS[0]));
+    symlinkSync('real.md', path.join(root, DECLARED_PATHS[0]));
+    const manifestPath = writeManifest(root, [
+      buildDeclaration({id: 'region-a', paths: [DECLARED_PATHS[0]]}),
+      buildDeclaration({id: 'region-b', paths: [DECLARED_PATHS[0]]}),
+    ]);
+
+    const {exit, report, stderrText} = runCapturing(
+      baseArgv(manifestPath, root, ['--backup-dir', backupDir])
+    );
+
+    expect(exit).toBe(0);
+    // Backed up once, by whichever region reached it first, and not re-reported
+    // as a failure by the second.
+    expect(report.backedUp).toEqual([DECLARED_PATHS[0]]);
+    expect(stderrText).not.toContain('region_regen_backup_failed');
+    expect(
+      lstatSync(path.join(backupDir, DECLARED_PATHS[0])).isSymbolicLink()
+    ).toBe(true);
+    // Nothing was ever written through the dangling backup link.
+    expect(existsSync(path.join(backupDir, '.claude/agents/real.md'))).toBe(
+      false
+    );
   });
 
   test('15. --backup-dir does not overwrite an existing backup', () => {
