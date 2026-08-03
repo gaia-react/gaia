@@ -80,11 +80,13 @@ setup() {
   # One rule, stated once: the flag appears only in the pinned form. Every line
   # mentioning `--findings` must carry `--findings - <<'FINDINGS'` verbatim, so
   # a staged path (`--findings /tmp/x.json`), a redirect (`--findings - < x`),
-  # an invocation collapsed onto one line, and prose that hands the writer a
-  # path all fail the same way, without a second check enumerating argument
-  # shapes. An earlier form scanned only line-leading occurrences and let a
-  # separate regex reject "any first argument that is not `-`"; both the
-  # collapsed line and the redirect slipped between them.
+  # and prose that hands the writer a path all fail the same way, without a
+  # second check enumerating argument shapes. An earlier form scanned only
+  # line-leading occurrences and let a separate regex reject "any first
+  # argument that is not `-`"; the redirect slipped between them. The line
+  # SHAPE is Group 3's, not this rule's: a call collapsed onto one line still
+  # carries the pinned literal and passes here, and the anchored opener count
+  # below is what rejects it.
   #
   # Matching line by line rather than balancing two counts is the other half:
   # counts invite two scopes, and an anchored total compared against an
@@ -131,7 +133,7 @@ setup() {
   # anything.
   for f in "${SPECS[@]}"; do
     local openers terminators
-    openers="$(grep -cE -- "^[[:space:]]*--findings - <<'FINDINGS'$" "$f" || true)"
+    openers="$(grep -cE -- "^[[:space:]]*--findings - <<'FINDINGS'[[:space:]]*$" "$f" || true)"
     terminators="$(grep -c '^FINDINGS$' "$f" || true)"
     [ "$openers" -eq "$terminators" ] || {
       echo "$f: $openers findings heredocs opened, $terminators closed" >&2
