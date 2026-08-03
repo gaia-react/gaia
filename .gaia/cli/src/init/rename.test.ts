@@ -372,6 +372,27 @@ describe('init rename', () => {
     expect(readState(sandbox.root).completed_steps).not.toContain('rename');
   });
 
+  // A blank title writes `# ` as the heading, a CLAUDE.md carrying no title,
+  // which is the state the missing-H1 precondition refuses, reached through the
+  // flag rather than through the file.
+  test.each([
+    ['empty', ''],
+    ['whitespace only', ' '.repeat(3)],
+  ])('exit 1 on a blank title: %s', (_label, title) => {
+    sandbox = setupSandbox();
+
+    const exit = run(['--title', title, '--kebab', 'hello-world'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('--title must not be blank');
+
+    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
+      CLAUDE_MD
+    );
+    expect(readState(sandbox.root).completed_steps).not.toContain('rename');
+  });
+
   test('exit 1 on missing flags', () => {
     sandbox = setupSandbox();
     expect(run(['--title', 'X'], {cwd: sandbox.root})).toBe(1);
