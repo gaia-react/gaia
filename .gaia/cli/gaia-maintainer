@@ -16240,7 +16240,8 @@ var HELP_TEXT12 = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, no package.json)
+    1  user-correctable error (missing flags, no package.json, no
+       CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
 var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -16298,14 +16299,17 @@ var renamePackageJson = (cwd, kebab) => {
   const trailing = raw.endsWith("\n") ? "\n" : "";
   atomicWriteFileSync(target, `${JSON.stringify(parsed, null, 2)}${trailing}`);
 };
+var CLAUDE_MD_H1 = /^#\s.*$/mu;
 var renameClaudeMd = (cwd, title) => {
   const target = path10.join(cwd, CLAUDE_MD);
-  if (!existsSync6(target)) return;
+  if (!existsSync6(target)) return true;
   const original = readFileSync7(target, "utf8");
-  const next = original.replace(/^#\s.*$/mu, `# ${title}`);
+  if (!CLAUDE_MD_H1.test(original)) return false;
+  const next = original.replace(CLAUDE_MD_H1, `# ${title}`);
   if (next !== original) {
     atomicWriteFileSync(target, next);
   }
+  return true;
 };
 var replaceStringPropertyAll = (source, key, newValue) => {
   const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
@@ -16366,7 +16370,14 @@ var run12 = (argv, options = {}) => {
   const cwd = options.cwd ?? process.cwd();
   try {
     renamePackageJson(cwd, parsed.flags.kebab);
-    renameClaudeMd(cwd, parsed.flags.title);
+    if (!renameClaudeMd(cwd, parsed.flags.title)) {
+      structuredError({
+        code: "claude_md_heading_missing",
+        message: 'CLAUDE.md has no top-level "# " heading to rewrite; add one and re-run',
+        subcommand: "init rename"
+      });
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
     renameCommonTs(cwd, parsed.flags.title);
     renameIndexPage(cwd, parsed.flags.title);
   } catch (error51) {

@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {run} from './rename.js';
 import {readState} from './util/state.js';
 
@@ -241,6 +242,28 @@ describe('init rename', () => {
     expect(page).toContain("title: 'Contact'");
   });
 
+  test('exit 1 when CLAUDE.md carries no H1 to rewrite', () => {
+    sandbox = setupSandbox();
+    // A CLAUDE.md whose first heading is an `##`, which is the shape the
+    // template drifted into. `String.replace` returns the original string on
+    // a non-match, so before the guard this run wrote nothing and reported
+    // success.
+    const headingless = '## Response style\n\nBody\n';
+    writeFileSync(path.join(sandbox.root, 'CLAUDE.md'), headingless, 'utf8');
+
+    const exit = run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('claude_md_heading_missing');
+    // Left exactly as it was, and the step is NOT recorded as completed, so
+    // `gaia init resume` replays it once the heading is restored.
+    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
+      headingless
+    );
+    expect(readState(sandbox.root).completed_steps).not.toContain('rename');
+  });
+
   test('exit 1 when package.json missing', () => {
     sandbox = setupSandbox();
     rmSync(path.join(sandbox.root, 'package.json'));
@@ -263,5 +286,23 @@ describe('init rename', () => {
     sandbox = setupSandbox();
     expect(run(['--title', 'X'], {cwd: sandbox.root})).toBe(1);
     expect(run(['--kebab', 'x'], {cwd: sandbox.root})).toBe(1);
+  });
+});
+
+/**
+ * `renameClaudeMd` rewrites the first `# ` line and refuses when there is
+ * none, so the shipped template has to carry one or every adopter scaffold
+ * fails the rename step. Nothing that runs on a CLAUDE.md-only change was
+ * asserting that, which is how the heading was dropped unnoticed.
+ *
+ * Its own `describe`: the suite above tears down a sandbox after every test
+ * and this one allocates none.
+ */
+describe('CLAUDE.md template invariant', () => {
+  test('the shipped CLAUDE.md carries an H1 for rename to rewrite', () => {
+    const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+    const claudeMd = readFileSync(path.join(repoRoot, 'CLAUDE.md'), 'utf8');
+
+    expect(claudeMd).toMatch(/^#\s.+$/mu);
   });
 });

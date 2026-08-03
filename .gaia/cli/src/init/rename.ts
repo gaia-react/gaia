@@ -5,9 +5,12 @@
  * set of files that carry an identity:
  *
  *   - `package.json` "name" → kebab-case title.
- *   - `CLAUDE.md` "# GAIA React" heading → "# <Title>" (only the first
- *     occurrence, preserves later content).
- *   - `app/languages/en/common.ts` `meta.siteName` → `<Title>`.
+ *   - `CLAUDE.md` first `# ` heading → "# <Title>" (only the first
+ *     occurrence, preserves later content). The heading is a required
+ *     precondition rather than something this step creates: a `CLAUDE.md`
+ *     carrying none fails the step instead of passing silently.
+ *   - `app/languages/en/common.ts` `meta.siteName` → `<Title>` (when the
+ *     key exists).
  *   - `app/languages/en/pages/_index.ts` `meta.title`, `title`, and
  *     `heroTitle` → `<Title>` (when the keys exist).
  *
@@ -34,7 +37,8 @@ const HELP_TEXT = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, no package.json)
+    1  user-correctable error (missing flags, no package.json, no
+       CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
 
@@ -133,21 +137,42 @@ const renamePackageJson = (cwd: string, kebab: string): void => {
   atomicWriteFileSync(target, `${JSON.stringify(parsed, null, 2)}${trailing}`);
 };
 
-const renameClaudeMd = (cwd: string, title: string): void => {
+// Matches the FIRST line that starts with `# `. A single `\s` (not `\s+`)
+// avoids stacking two adjacent quantifiers with overlapping character
+// classes (`\s+` and `.*` both match a space), which sonarjs flags as
+// super-linear; `.*` still absorbs any further leading whitespace on the
+// line. Not global, so `test` does not carry a `lastIndex` between calls.
+const CLAUDE_MD_H1 = /^#\s.*$/mu;
+
+/**
+ * Rewrites `CLAUDE.md`'s first H1. Returns `false` when the file is present
+ * but carries no H1.
+ *
+ * The heading is a precondition this function enforces, never one it
+ * creates: every rewrite in this module replaces a value the seed already
+ * has, and choosing where to insert a heading into a file the user may have
+ * restructured is a guess with no right answer. `String.replace` returns the
+ * original string on a non-match, so without the check the write is skipped
+ * and the step reports success having done nothing, shipping a title-less
+ * `CLAUDE.md` to the adopter.
+ *
+ * A missing file is still tolerated: deleting `CLAUDE.md` outright is an
+ * unambiguous choice about a file the adopter owns.
+ */
+const renameClaudeMd = (cwd: string, title: string): boolean => {
   const target = path.join(cwd, CLAUDE_MD);
 
-  if (!existsSync(target)) return;
+  if (!existsSync(target)) return true;
   const original = readFileSync(target, 'utf8');
-  // Match the FIRST line that starts with `# ` and replace its body. A
-  // single `\s` (not `\s+`) avoids stacking two adjacent quantifiers with
-  // overlapping character classes (`\s+` and `.*` both match a space),
-  // which sonarjs flags as super-linear; `.*` still absorbs any further
-  // leading whitespace on the line.
-  const next = original.replace(/^#\s.*$/mu, `# ${title}`);
+
+  if (!CLAUDE_MD_H1.test(original)) return false;
+  const next = original.replace(CLAUDE_MD_H1, `# ${title}`);
 
   if (next !== original) {
     atomicWriteFileSync(target, next);
   }
+
+  return true;
 };
 
 /**
@@ -270,7 +295,17 @@ export const run = (
 
   try {
     renamePackageJson(cwd, parsed.flags.kebab);
-    renameClaudeMd(cwd, parsed.flags.title);
+
+    if (!renameClaudeMd(cwd, parsed.flags.title)) {
+      structuredError({
+        code: 'claude_md_heading_missing',
+        message:
+          'CLAUDE.md has no top-level "# " heading to rewrite; add one and re-run',
+        subcommand: 'init rename',
+      });
+
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
     renameCommonTs(cwd, parsed.flags.title);
     renameIndexPage(cwd, parsed.flags.title);
   } catch (error) {
