@@ -23,15 +23,34 @@
  *
  * **Write confinement.** A region's regeneration command legitimately rewrites
  * every path it owns, but nothing else. Before the spawn, this command hashes
- * every file under the union of the declared paths' parent directories
- * (the "snapshot scope"); after the spawn, anything in scope that is not one
- * of the region's declared paths and no longer matches its pre-image is put
- * back, whether the spawn rewrote it or deleted it, and anything in scope the
- * spawn newly created is removed. A `git status --porcelain -z` before/after
- * pair also catches a write anywhere else in the tree; that has no pre-image
- * to restore from, so it is only reported, never reverted. The spawn never
- * runs through a shell and never takes a shell-interpreted string: it is
- * always a fixed argv array, and it is bounded in both output and runtime.
+ * every regular file and reads every symlink under the union of the declared
+ * paths' parent directories (the "snapshot scope"), and records the presence of
+ * everything else it finds there without looking inside it; after the spawn, any
+ * such path in scope the spawn newly created is removed, and then anything in
+ * scope that is not
+ * one of the region's declared paths and no longer matches its pre-image is put
+ * back, whether the spawn rewrote it or deleted it. Undoing the creations first
+ * is what leaves an ordinary run with real directories to resolve through, so a
+ * link the spawn left behind is gone before any pre-image is written near it.
+ * Three rules hold the guarantee whatever order anything happens in. Neither
+ * snapshot pass traverses a symlink, inside the scope or above it, so a link
+ * is recorded and restored as itself and nothing behind one is read or
+ * written; a scope directory that is a link, or is reached through one, is
+ * recorded but never walked, since reading through a link the writes will not
+ * resolve through is what would put an out-of-tree pre-image inside the
+ * repository. Every write first asks whether the components between the root
+ * and the key are real directories, reporting rather than resolving through one
+ * that is not, so a scope key can never name one place while the bytes land in
+ * another. And a path is deleted as a spawn creation only where the snapshot
+ * positively established that nothing was at that key beforehand, which is
+ * `collectScopeDigests`' removal invariant, stated in full there and not
+ * restated here. Anything else is reported rather than deleted.
+ *
+ * A `git status --porcelain -z` before/after pair also catches a
+ * write anywhere else in the tree; that has no pre-image to restore from, so
+ * it is only reported, never reverted. The spawn never runs through a shell
+ * and never takes a shell-interpreted string: it is always a fixed argv array,
+ * and it is bounded in output and runtime.
  *
  * Exit codes: 0 for every refusal, skip, spawn failure, or non-zero program
  * exit; 1 only when the flags or `--manifest` itself are unusable.
@@ -68,7 +87,8 @@ const HELP_TEXT = `Usage: gaia update regen-regions --manifest <path> --root <di
   fails well-formedness, or an operand that fails the shipped-path / symlink /
   parent-segment guard, is refused before anything is spawned. Writes outside
   a region's declared paths are reverted (inside the region's own directories)
-  or reported (anywhere else); never silently kept.
+  or reported (anywhere else); a regular file or symlink the snapshot could
+  examine is never silently kept.
 
   Read the manifest's regions from a RELEASE copy, never the adopter's stale
   working-tree copy: pass $LATEST_DIR/.gaia/manifest.json as --manifest.
@@ -581,28 +601,65 @@ const performBackup = (inputs: BackupInputs): string[] => {
 const scopeDirsFor = (paths: readonly string[]): ReadonlySet<string> =>
   new Set(paths.map((declPath) => path.posix.dirname(declPath)));
 
-type Snapshot = ReadonlyMap<string, SnapshotEntry>;
 /**
- * Both kinds carry their whole pre-image, so the sweep's two questions ("did
- * the spawn touch this" and "what do I put back") are answered per kind rather
- * than only for regular files. A file's pre-image is its bytes; a link's is the
- * target it holds, which is all a link is.
+ * A `SnapshotEntry` (declared below, the sort order puts this first) that still
+ * carries a pre-image, so the sweep can write it back: a file whose bytes were
+ * read, or a link whose target was read. The one entry that is not restorable
+ * is `unreadable`, recorded for presence alone. Asking this before anything is
+ * unlinked is what keeps "was it here" from being answered as "can it be put
+ * back".
+ */
+type RestorableEntry = Exclude<SnapshotEntry, {kind: 'unreadable'}>;
+type Snapshot = ReadonlyMap<string, SnapshotEntry>;
+
+/**
+ * Both readable kinds carry their whole pre-image, so the sweep's two questions
+ * ("did the spawn touch this" and "what do I put back") are answered per kind
+ * rather than only for regular files. A file's pre-image is its bytes; a link's
+ * is the target it holds, which is all a link is.
  *
  * That target is a `Buffer`, not a string, deliberately. A symlink target is an
  * arbitrary byte string on POSIX, and decoding one as UTF-8 does not fail on an
  * invalid byte, it substitutes U+FFFD. Writing that back would point the link
  * somewhere else while the report claimed it was restored, and the real target
  * is gone by then. Bytes in, bytes out, no decode in between.
+ *
+ * `unreadable` is the third answer and the one that keeps the sweep honest:
+ * something was at this path before the spawn ran and none of it reached this
+ * map. Every IO failure in the walk records it rather than dropping the entry,
+ * and so does the one arm where no read is attempted at all, a node that is
+ * neither file, directory, nor link and so has nothing to read. A dropped entry
+ * would answer "was this here" with "no", and the removal loop would then unlink
+ * the adopter's own file as a spawn creation and report the data loss as a stray
+ * write cleaned up. It carries no pre-image, so it is
+ * never restorable and never untouched: surfaced, never written, never deleted.
  */
 type SnapshotEntry =
   | {content: Buffer; digest: string; kind: 'file'; mode: number}
-  | {kind: 'symlink'; target: Buffer};
+  | {kind: 'symlink'; target: Buffer}
+  | {kind: 'unreadable'};
+
+const isRestorable = (entry: SnapshotEntry): entry is RestorableEntry =>
+  entry.kind !== 'unreadable';
+
+/** Permission bits alone; `lstat` mode also carries the file-type bits. */
+const permissionsOf = (mode: number): number => mode % 0o1_0000;
 
 /**
  * Whether the spawn left this path as it found it. A link is compared by the
- * target string it holds, a file by its content hash: the two kinds are never
- * equal to each other, so replacing one with the other always counts as a
- * change.
+ * target string it holds, a file by its bytes AND its permission bits: the two
+ * kinds are never equal to each other, so replacing one with the other always
+ * counts as a change.
+ *
+ * Permissions are part of the pre-image because the restore writes them back,
+ * so leaving them out of the comparison lets the one change this command can
+ * undo pass as no change at all: a spawn that makes an in-scope private file
+ * world-readable, or strips the execute bit off one, would be judged untouched
+ * and left that way.
+ *
+ * A pre-image that could not be read is not evidence of sameness, so an
+ * `unreadable` entry on either side never answers "untouched". Claiming
+ * otherwise would let a retarget through on the strength of a failed read.
  */
 const isUntouched = (
   before: SnapshotEntry,
@@ -610,19 +667,122 @@ const isUntouched = (
 ): boolean => {
   if (after === undefined) return false;
 
-  if (before.kind === 'symlink')
+  if (before.kind === 'symlink') {
     return after.kind === 'symlink' && after.target.equals(before.target);
+  }
 
-  return after.kind === 'file' && after.digest === before.digest;
+  if (before.kind === 'file') {
+    return (
+      after.kind === 'file' &&
+      after.digest === before.digest &&
+      permissionsOf(after.mode) === permissionsOf(before.mode)
+    );
+  }
+
+  return false;
 };
 
-/** Permission bits alone; `lstat` mode also carries the file-type bits. */
-const permissionsOf = (mode: number): number => mode % 0o1_0000;
+/** Repo-relative and POSIX-separated: the frame every snapshot key is in. */
+const relativeKey = (root: string, abs: string): string =>
+  path.relative(root, abs).split(path.sep).join('/');
+
+/**
+ * Whether `path.resolve(root, relPath)` names the file this key means: true
+ * when every directory component between the two that exists today is a real
+ * directory rather than a symlink.
+ *
+ * A snapshot key is lexical and the tree it is applied to is the one the spawn
+ * has just finished editing, so the two can disagree. Where they do, the key
+ * names one place while the syscall lands in another, which is the confinement
+ * guarantee inverted: the write leaves the tree while the report says it
+ * stayed. Asked at the write site, this holds whatever else happened first,
+ * rather than only while an earlier pass succeeded.
+ *
+ * The snapshot asks the same question of a scope directory before walking it,
+ * which is what keeps the two passes symmetrical: reading through a link the
+ * writes will not resolve through is what turns an out-of-tree pre-image into
+ * a file inside the repository.
+ *
+ * A component that does not exist is fine: it is about to be created as a real
+ * directory. Only what is there and is not a directory refuses the write.
+ */
+const resolvesLexically = (root: string, relPath: string): boolean => {
+  const components = relPath.split('/').slice(0, -1);
+  let current = root;
+
+  return components.every((component) => {
+    current = path.join(current, component);
+
+    try {
+      return lstatSync(current).isDirectory();
+    } catch {
+      return true;
+    }
+  });
+};
+
+/**
+ * Whether the snapshot holds an entry for any directory above `relPath`, which
+ * is `collectScopeDigests`' REMOVAL INVARIANT asked at one path. See that
+ * function's docblock for the invariant and for why this is the right test;
+ * do not restate it here.
+ *
+ * The one thing worth repeating at the call site is what it buys, because it is
+ * not obvious that anything does: where an ancestor was not enumerated, a path
+ * missing from `before` may equally be something the adopter already had that
+ * has just ARRIVED at this key. `mv` is the ordinary way that happens, and it
+ * moves rather than copies, while backups cover declared paths only, so
+ * unlinking it destroys the one copy while the report calls it a stray write
+ * cleaned up.
+ */
+const hasUnenumeratedAncestor = (
+  before: Snapshot,
+  relPath: string
+): boolean => {
+  const components = relPath.split('/').slice(0, -1);
+  let prefix = '';
+
+  return components.some((component) => {
+    prefix = prefix === '' ? component : `${prefix}/${component}`;
+
+    return before.has(prefix);
+  });
+};
 
 /**
  * Step 5 / re-used for step 7-8: SHA-256 (plus raw content, for restoring)
  * of every existing file under the region's declared paths' parent
  * directories, recursively. Keys are repo-relative, POSIX-separated.
+ *
+ * **The removal invariant. This is the one statement of it; everything else in
+ * this module points here rather than paraphrasing.** The sweep may delete a
+ * path found only in the AFTER snapshot, on the grounds that the spawn created
+ * it, only where this pass POSITIVELY ESTABLISHED that nothing was at that key
+ * before. Anywhere else, a path that appears between the two passes may equally
+ * be something the adopter already had that has just arrived there, and
+ * deleting it destroys the only copy.
+ *
+ * The map's shape encodes it: **this walk keys a node exactly when it neither
+ * enumerates the node nor establishes its absence.** An unreadable directory, an
+ * unstattable entry, a link recorded and not descended, a node that is neither
+ * of those nor a directory nor a regular file, a regular file, and the two
+ * scope-root gate arms that find something they may not walk all get a key. Two
+ * kinds of node get none, and both are positive establishment rather than
+ * silence: a real directory the walk descends, whose children speak for it, and
+ * a scope root that is not there at all, whose ENOENT establishes the whole
+ * subtree absent. So "no entry for this ancestor" means "this pass enumerated it
+ * or observed it absent", either of which answers the invariant, which is why
+ * `hasUnenumeratedAncestor` reads the invariant itself rather than a proxy.
+ *
+ * Preserve that before moving any arm of this walk, and preserve it in the shape
+ * stated: an arm that stops keying a node it neither enumerated nor found absent
+ * breaks it. The converse is equally load-bearing and easier to break by
+ * accident, because it looks like tightening. Keying the ENOENT arm would put an
+ * entry at every not-yet-existing scope root, shelter everything beneath it, and
+ * silently turn the removal loop off for the ordinary case of a region whose
+ * directory this tree does not have yet. Node KIND is never the reason to skip
+ * keying a node that is there, however plainly childless the kind looks, because
+ * what the spawn puts at that path next is a different node.
  */
 const collectScopeDigests = (
   root: string,
@@ -630,79 +790,223 @@ const collectScopeDigests = (
 ): Snapshot => {
   const digests = new Map<string, SnapshotEntry>();
 
+  // Walked by hand rather than with `readdirSync`'s `recursive` option, which
+  // decides descent with a FOLLOWING stat and so walks straight through a
+  // symlinked subdirectory. Everything behind such a link would be keyed
+  // lexically (`<scope>/link/file`) while its bytes live wherever the link
+  // points, and the sweep resolves those keys lexically too: it would read and
+  // write outside the repository entirely while the report named a path inside
+  // it. `lstat` here refuses to descend, so a link is only ever recorded as
+  // itself, at every position rather than only the final one.
+  //
+  // The pending list is explicit rather than a recursive call, because the
+  // adopter's own tree sets the depth. `readdirSync`'s recursive option keeps
+  // its worklist on the heap for the same reason, and a deep scope directory
+  // must not turn the confinement sweep into a stack overflow that abandons
+  // every region still to be swept.
+  const walk = (scopeRoot: string): void => {
+    const pending = [scopeRoot];
+
+    for (
+      let absDir = pending.pop();
+      absDir !== undefined;
+      absDir = pending.pop()
+    ) {
+      const parent = absDir;
+      let names: string[] = [];
+
+      try {
+        names = readdirSync(parent);
+      } catch {
+        // Unreadable directory: nothing inside it can be enumerated, so the
+        // directory ITSELF is recorded present-but-unreadable and the walk
+        // carries on with the rest. `hasUnenumeratedAncestor` reads that one
+        // entry to answer for the whole subtree, which is what stops a spawn
+        // that merely makes the directory readable from turning every file the
+        // adopter already had inside it into an apparent creation.
+        digests.set(relativeKey(root, parent), {kind: 'unreadable'});
+      }
+
+      names.forEach((name) => {
+        const abs = path.join(parent, name);
+        const repoRelative = relativeKey(root, abs);
+        let stat;
+
+        try {
+          // `lstat`, not `stat`: a symlink must not be followed here. Followed,
+          // it would be buffered as its TARGET's bytes, and the sweep would
+          // then restore it as a plain regular file holding a copy of content
+          // that may have lived wholly outside the region, or write through the
+          // link and rewrite a target outside the snapshot scope entirely.
+          stat = lstatSync(abs);
+        } catch {
+          // A parent that is readable but not searchable, or a race: the name
+          // came back from `readdir`, so something is here, and that is the
+          // whole of what is known about it.
+          //
+          // Every errno records here, ENOENT included, unlike the scope-root
+          // gate below, which discriminates. The asymmetry is the point: here
+          // `readdir` has just named this entry, so a vanished one is a race
+          // and presence is the conservative answer, costing one `reported`
+          // row. There, ENOENT is the ordinary "this region has no directory
+          // in this tree" case, which would otherwise report on every run.
+          digests.set(repoRelative, {kind: 'unreadable'});
+
+          return;
+        }
+
+        // A link's pre-image is the target it holds, which is the whole of it:
+        // recording that makes a link restorable in its own right, so the
+        // confinement guarantee covers every shape a link can be left in
+        // (deleted, retargeted, replaced by a file) rather than only the
+        // created one. Reading it never follows the link, and a dangling one
+        // reads fine. `'buffer'`, never `'utf8'`: see SnapshotEntry.
+        if (stat.isSymbolicLink()) {
+          try {
+            digests.set(repoRelative, {
+              kind: 'symlink',
+              target: readlinkSync(abs, 'buffer'),
+            });
+          } catch {
+            digests.set(repoRelative, {kind: 'unreadable'});
+          }
+
+          return;
+        }
+
+        if (stat.isDirectory()) {
+          pending.push(abs);
+
+          return;
+        }
+
+        // A FIFO, socket, or device node: present, with nothing to read. It is
+        // never OPENED, which for a FIFO would block until a writer arrives,
+        // and never will here.
+        //
+        // Recorded rather than skipped, for the same reason as every other arm
+        // above: an unrecorded node is an absent one, and it is childless only
+        // for as long as it stays this kind. A spawn that replaces it with
+        // moved-in content (`rm`, then `mv`) puts the adopter's only copy at
+        // keys this pass would otherwise have said nothing about, and the
+        // removal loop takes them.
+        if (!stat.isFile()) {
+          digests.set(repoRelative, {kind: 'unreadable'});
+
+          return;
+        }
+
+        let content;
+
+        try {
+          content = readFileSync(abs);
+        } catch {
+          // Unreadable file (permissions, a race with the spawn): present, with
+          // no pre-image. Throwing here would abandon the confinement sweep and
+          // the report for every remaining region, which is the one outcome
+          // this command promises never to produce.
+          digests.set(repoRelative, {kind: 'unreadable'});
+
+          return;
+        }
+
+        digests.set(repoRelative, {
+          content,
+          digest: createHash('sha256').update(content).digest('hex'),
+          kind: 'file',
+          mode: stat.mode,
+        });
+      });
+    }
+  };
+
   scopeDirs.forEach((dir) => {
+    // Ancestors first, and before the `lstat` below, which resolves every
+    // component of the path except the last: a symlinked directory ABOVE the
+    // scope root is walked straight through, and everything behind it keyed as
+    // though it lived in this repository. Both passes read through the same
+    // link, so the round trip is self-consistent only for as long as the link
+    // is there; the moment the spawn replaces it with a real directory, the
+    // sweep resolves those keys lexically and writes the out-of-tree
+    // pre-images INTO the repository, at paths that never held them.
+    //
+    // Refusing to WALK the scope is what closes that. Refusing to record it
+    // would reopen the same hole one level out: an unrecorded scope root is an
+    // absent one, so if the spawn de-symlinks the path (a `mv` or `cp -R`,
+    // not a fresh `mkdir`), the content that arrives there is in `after`,
+    // missing from `before`, and unlinked as a creation. That content is the
+    // adopter's, it has just been moved rather than copied, and `performBackup`
+    // covers declared paths only, so there is no second copy anywhere.
+    //
+    // Keyed through `relativeKey(root, absDir)` rather than from `dir`
+    // directly. `dir` is a declared path's `dirname`, and a declaration can
+    // carry an interior `./` that normalization leaves alone, which would key
+    // this entry somewhere no `after` key can ever match and silently unshelter
+    // the subtree. `path.resolve` settles that before the key is derived, so
+    // this guarantee does not rest on a declaration being well shaped.
     const absDir = path.resolve(root, dir);
+    const scopeKey = relativeKey(root, absDir);
 
-    if (!existsSync(absDir)) return;
+    // The walk and this gate both write to `digests`, and a region may declare
+    // paths whose parent directories nest, so both can key the SAME node: the
+    // outer scope's walk reaches it as an entry, the inner scope's gate reaches
+    // it as its own root. The walk's entry wins, always, and it is never the
+    // worse of the two for either question the map answers. Both shelter
+    // identically, because shelter asks only whether a key is present. For
+    // restoring, the walk's entry either carries the node's whole pre-image
+    // where this one carries none, or is itself `unreadable`, in which case the
+    // two say the same thing and which one wins does not matter.
+    //
+    // Stated once rather than at each of the three arms below, because the rule
+    // is about the map rather than about any one arm. Without it, reversing two
+    // entries in `paths[]` reverses whether an undeclared path is restored or
+    // merely reported, and declaration order is not a fact about the tree.
+    const recordUnexaminable = (): void => {
+      if (!digests.has(scopeKey)) digests.set(scopeKey, {kind: 'unreadable'});
+    };
 
-    let entries: string[];
+    if (!resolvesLexically(root, dir)) {
+      recordUnexaminable();
 
-    try {
-      entries = readdirSync(absDir, {recursive: true}) as string[];
-    } catch {
       return;
     }
 
-    entries.forEach((rel) => {
-      const abs = path.join(absDir, rel);
-      let stat;
+    let stat;
 
-      try {
-        // `lstat`, not `stat`: a symlink must not be followed here. Followed,
-        // it would be buffered as its TARGET's bytes, and the sweep would then
-        // restore it as a plain regular file holding a copy of content that may
-        // have lived wholly outside the region, or write through the link and
-        // rewrite a target outside the snapshot scope entirely.
-        stat = lstatSync(abs);
-      } catch {
-        return;
+    try {
+      stat = lstatSync(absDir);
+    } catch (error) {
+      // ENOENT alone means there is nothing here to snapshot, the ordinary
+      // case for a region whose directory does not exist in this tree.
+      //
+      // Every other errno means the directory IS here and cannot be examined,
+      // most often because its own parent lost its search bit, and swallowing
+      // that is the same defect the arms inside the walk answer, one level up:
+      // the whole scope reads as absent, so a spawn that does no more than
+      // restore the bit makes every file under it look newly created and the
+      // removal loop empties it. An unexaminable scope root is recorded like
+      // any other unreadable path, and answers for everything beneath it.
+      //
+      // A non-object throw cannot be read for an errno, so it takes the
+      // conservative arm rather than the silent one.
+      if (!isPlainObject(error) || error.code !== 'ENOENT') {
+        recordUnexaminable();
       }
 
-      const repoRelative = path.relative(root, abs).split(path.sep).join('/');
+      return;
+    }
 
-      // A link's pre-image is the target it holds, which is the whole of it:
-      // recording that makes a link restorable in its own right, so the
-      // confinement guarantee covers every shape a link can be left in
-      // (deleted, retargeted, replaced by a file) rather than only the created
-      // one. Reading it never follows the link, and a dangling one reads fine.
-      // `'buffer'`, never `'utf8'`: see SnapshotEntry.
-      if (stat.isSymbolicLink()) {
-        try {
-          digests.set(repoRelative, {
-            kind: 'symlink',
-            target: readlinkSync(abs, 'buffer'),
-          });
-        } catch {
-          // Unreadable link: skip it, like the unreadable file below. Recording
-          // it with no target would make the sweep think it can put back
-          // something it cannot.
-        }
+    // A scope directory that is ITSELF a link is not walked, like any other
+    // link: its contents are not in this repository however its key reads, so
+    // there is nothing here the sweep may write to. It is still RECORDED,
+    // for the de-symlink case described above.
+    if (!stat.isDirectory()) {
+      recordUnexaminable();
 
-        return;
-      }
+      return;
+    }
 
-      if (!stat.isFile()) return;
-
-      let content;
-
-      try {
-        content = readFileSync(abs);
-      } catch {
-        // Unreadable file (permissions, a race with the spawn): skip it, the
-        // same way an unstattable entry is skipped above. Throwing here would
-        // abandon the confinement sweep and the report for every remaining
-        // region, which is the one outcome this command promises never to
-        // produce.
-        return;
-      }
-
-      digests.set(repoRelative, {
-        content,
-        digest: createHash('sha256').update(content).digest('hex'),
-        kind: 'file',
-        mode: stat.mode,
-      });
-    });
+    walk(absDir);
   });
 
   return digests;
@@ -723,11 +1027,95 @@ type SweepInputs = {
  * with the other kind, or deleted it; a path the spawn created has no
  * pre-image, so it is removed instead. That is the confinement guarantee as
  * stated: reverted when a pre-image exists, reported when it does not.
+ *
+ * Six limits on "reverted", each deliberate. The first three surface as
+ * `reported`; the last three each name their own arms, and two of those have an
+ * arm that is loud:
+ *
+ * - A pre-image the spawn replaced with a DIRECTORY is not restored. `rmSync`
+ *   here is deliberately not recursive, and deleting an arbitrary tree the
+ *   adopter may care about in order to put one file back is a wider blast
+ *   radius than this guarantee asks for.
+ * - A path whose components are not all real directories is not written
+ *   through, since the key would name one place and the syscall land in
+ *   another.
+ * - A directory that is a link, or is reached through one, is never walked
+ *   (`collectScopeDigests`), so nothing inside it is reverted: reading through
+ *   a link the writes will not resolve through is what would put an out-of-tree
+ *   pre-image inside the repository. It is still recorded, which is what keeps
+ *   an unwalked node from reading as an empty one if the spawn later replaces
+ *   it with a real directory.
+ * - A file the spawn writes THROUGH an in-scope symlinked directory is not
+ *   reverted, and there is not even a row for the directory: the link is
+ *   untouched, so it matches its own pre-image and the sweep passes over it.
+ *   What reaches the file itself depends on where the link points, and there
+ *   are three answers. Pointing OUTSIDE the root, nothing reports it, and
+ *   nothing should: the bytes landed where this command has no pre-image and no
+ *   business writing, and git does not descend a link either. Pointing inside
+ *   the root but outside every scope, they land at a real in-tree path, and the
+ *   whole-root `git status` half reports them like any other out-of-scope
+ *   write, unless git is unavailable or that path is ignored. Pointing into
+ *   another SCOPE directory, the snapshot enumerates the landing path itself,
+ *   so the file is an undeclared creation at a key of its own and is REMOVED
+ *   like any other.
+ * - A DIRECTORY the spawn creates in scope is left behind, and where the after
+ *   pass can enumerate it, left behind empty and without a row: the walk keys no
+ *   directory it descends, so there is nothing for the removal loop to take,
+ *   while what the spawn put inside it is keyed and removed, which is where the
+ *   content is. Removing the directory itself would mean unlinking a node this
+ *   pass never recorded, on the strength of its emptiness at one instant. Where
+ *   the after pass CANNOT enumerate it, the directory is keyed `unreadable`
+ *   instead and takes a `reported` row of its own, and what is inside it is
+ *   never keyed at all, so that content stays too.
+ * - A node with nothing to read holds a `reported` row for as long as it sits in
+ *   scope. It is recorded present with no pre-image, and an `unreadable` entry
+ *   is never untouched, so an in-scope FIFO, socket, or device node the spawn
+ *   does not touch is reported on every run rather than once. That is the price
+ *   of the removal invariant covering it at all, and it is the right way round:
+ *   the alternative is a fourth entry kind whose only purpose is to compare
+ *   equal to itself, bought at the cost of the one thing this map exists to say.
  */
 const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
   const {after, before, declaredPaths, regionId, root} = inputs;
   const declaredSet = new Set(declaredPaths);
   const confined: ConfinedEntry[] = [];
+
+  // The spawn's own creations are undone FIRST, before any pre-image goes
+  // back. One of those creations can be a symlink sitting where a scope
+  // subdirectory used to be, and undoing it first is what leaves the restores
+  // below with real directories to resolve through, so an ordinary run puts
+  // the pre-image back where it belongs instead of refusing it. The guarantee
+  // itself does not rest on this order, `resolvesLexically` holds it at each
+  // write; the order is what makes the good outcome the common one.
+  [...after.keys()].forEach((relPath) => {
+    if (declaredSet.has(relPath) || before.has(relPath)) return;
+
+    // Absent from `before` is not the same as created by the spawn when the
+    // before pass never looked inside the directory this sits in. Deleting it
+    // would be the sweep destroying what the adopter already had and reporting
+    // it as a stray write cleaned up, so the whole unverifiable subtree is
+    // surfaced instead of guessed at.
+    if (hasUnenumeratedAncestor(before, relPath)) {
+      confined.push({action: 'reported', path: relPath, regionId});
+
+      return;
+    }
+
+    if (!resolvesLexically(root, relPath)) {
+      confined.push({action: 'reported', path: relPath, regionId});
+
+      return;
+    }
+
+    try {
+      // `rmSync` unlinks a symlink rather than following it, so removing one
+      // the spawn created never touches what it pointed at.
+      rmSync(path.resolve(root, relPath), {force: true});
+      confined.push({action: 'removed', path: relPath, regionId});
+    } catch {
+      confined.push({action: 'reported', path: relPath, regionId});
+    }
+  });
 
   before.forEach((beforeEntry, relPath) => {
     if (declaredSet.has(relPath)) return;
@@ -737,6 +1125,29 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
     // rather than merely different. Either way the thing to put back is the
     // same `before` entry.
     if (isUntouched(beforeEntry, after.get(relPath))) return;
+
+    // Present in the snapshot, but with no pre-image: a link whose target, a
+    // file whose bytes, or a directory whose entries could not be read, or a
+    // node with nothing to read that the walk deliberately never opened. Nothing
+    // can be written back without inventing it, so this is surfaced and left
+    // alone, and it is asked BEFORE the unlink below. Its presence has already
+    // done its one job above, keeping the removal loop from taking what the
+    // adopter already had for something the spawn created.
+    if (!isRestorable(beforeEntry)) {
+      confined.push({action: 'reported', path: relPath, regionId});
+
+      return;
+    }
+
+    // Something is standing between this key and the file it names, so the
+    // write would leave the tree. Surface it rather than resolve through it,
+    // and ask before `mkdirSync` below, which would otherwise create the
+    // missing components inside whatever the link points at.
+    if (!resolvesLexically(root, relPath)) {
+      confined.push({action: 'reported', path: relPath, regionId});
+
+      return;
+    }
 
     try {
       const abs = path.resolve(root, relPath);
@@ -773,19 +1184,6 @@ const sweepScope = (inputs: SweepInputs): ConfinedEntry[] => {
       // unreported, which is exactly the silent out-of-scope write the
       // confinement guarantee rules out. `reported` is the contract's term
       // for a write that is surfaced rather than reverted.
-      confined.push({action: 'reported', path: relPath, regionId});
-    }
-  });
-
-  [...after.keys()].forEach((relPath) => {
-    if (declaredSet.has(relPath) || before.has(relPath)) return;
-
-    try {
-      // `rmSync` unlinks a symlink rather than following it, so removing one
-      // the spawn created never touches what it pointed at.
-      rmSync(path.resolve(root, relPath), {force: true});
-      confined.push({action: 'removed', path: relPath, regionId});
-    } catch {
       confined.push({action: 'reported', path: relPath, regionId});
     }
   });

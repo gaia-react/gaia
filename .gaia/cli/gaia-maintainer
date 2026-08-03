@@ -27674,7 +27674,8 @@ var HELP_TEXT45 = `Usage: gaia update regen-regions --manifest <path> --root <di
   fails well-formedness, or an operand that fails the shipped-path / symlink /
   parent-segment guard, is refused before anything is spawned. Writes outside
   a region's declared paths are reverted (inside the region's own directories)
-  or reported (anywhere else); never silently kept.
+  or reported (anywhere else); a regular file or symlink the snapshot could
+  examine is never silently kept.
 
   Read the manifest's regions from a RELEASE copy, never the adopter's stale
   working-tree copy: pass $LATEST_DIR/.gaia/manifest.json as --manifest.
@@ -27935,57 +27936,120 @@ var performBackup = (inputs) => {
   return backedUp;
 };
 var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path39.posix.dirname(declPath)));
+var isRestorable = (entry) => entry.kind !== "unreadable";
+var permissionsOf = (mode) => mode % 4096;
 var isUntouched = (before, after) => {
   if (after === void 0) return false;
-  if (before.kind === "symlink")
+  if (before.kind === "symlink") {
     return after.kind === "symlink" && after.target.equals(before.target);
-  return after.kind === "file" && after.digest === before.digest;
+  }
+  if (before.kind === "file") {
+    return after.kind === "file" && after.digest === before.digest && permissionsOf(after.mode) === permissionsOf(before.mode);
+  }
+  return false;
 };
-var permissionsOf = (mode) => mode % 4096;
+var relativeKey = (root, abs) => path39.relative(root, abs).split(path39.sep).join("/");
+var resolvesLexically = (root, relPath) => {
+  const components = relPath.split("/").slice(0, -1);
+  let current = root;
+  return components.every((component) => {
+    current = path39.join(current, component);
+    try {
+      return lstatSync2(current).isDirectory();
+    } catch {
+      return true;
+    }
+  });
+};
+var hasUnenumeratedAncestor = (before, relPath) => {
+  const components = relPath.split("/").slice(0, -1);
+  let prefix = "";
+  return components.some((component) => {
+    prefix = prefix === "" ? component : `${prefix}/${component}`;
+    return before.has(prefix);
+  });
+};
 var collectScopeDigests = (root, scopeDirs) => {
   const digests = /* @__PURE__ */ new Map();
+  const walk = (scopeRoot) => {
+    const pending = [scopeRoot];
+    for (let absDir = pending.pop(); absDir !== void 0; absDir = pending.pop()) {
+      const parent = absDir;
+      let names = [];
+      try {
+        names = readdirSync5(parent);
+      } catch {
+        digests.set(relativeKey(root, parent), { kind: "unreadable" });
+      }
+      names.forEach((name) => {
+        const abs = path39.join(parent, name);
+        const repoRelative = relativeKey(root, abs);
+        let stat;
+        try {
+          stat = lstatSync2(abs);
+        } catch {
+          digests.set(repoRelative, { kind: "unreadable" });
+          return;
+        }
+        if (stat.isSymbolicLink()) {
+          try {
+            digests.set(repoRelative, {
+              kind: "symlink",
+              target: readlinkSync2(abs, "buffer")
+            });
+          } catch {
+            digests.set(repoRelative, { kind: "unreadable" });
+          }
+          return;
+        }
+        if (stat.isDirectory()) {
+          pending.push(abs);
+          return;
+        }
+        if (!stat.isFile()) {
+          digests.set(repoRelative, { kind: "unreadable" });
+          return;
+        }
+        let content;
+        try {
+          content = readFileSync34(abs);
+        } catch {
+          digests.set(repoRelative, { kind: "unreadable" });
+          return;
+        }
+        digests.set(repoRelative, {
+          content,
+          digest: createHash("sha256").update(content).digest("hex"),
+          kind: "file",
+          mode: stat.mode
+        });
+      });
+    }
+  };
   scopeDirs.forEach((dir) => {
     const absDir = path39.resolve(root, dir);
-    if (!existsSync29(absDir)) return;
-    let entries;
-    try {
-      entries = readdirSync5(absDir, { recursive: true });
-    } catch {
+    const scopeKey = relativeKey(root, absDir);
+    const recordUnexaminable = () => {
+      if (!digests.has(scopeKey)) digests.set(scopeKey, { kind: "unreadable" });
+    };
+    if (!resolvesLexically(root, dir)) {
+      recordUnexaminable();
       return;
     }
-    entries.forEach((rel) => {
-      const abs = path39.join(absDir, rel);
-      let stat;
-      try {
-        stat = lstatSync2(abs);
-      } catch {
-        return;
+    let stat;
+    try {
+      stat = lstatSync2(absDir);
+    } catch (error51) {
+      if (!isPlainObject2(error51) || error51.code !== "ENOENT") {
+        recordUnexaminable();
       }
-      const repoRelative = path39.relative(root, abs).split(path39.sep).join("/");
-      if (stat.isSymbolicLink()) {
-        try {
-          digests.set(repoRelative, {
-            kind: "symlink",
-            target: readlinkSync2(abs, "buffer")
-          });
-        } catch {
-        }
-        return;
-      }
-      if (!stat.isFile()) return;
-      let content;
-      try {
-        content = readFileSync34(abs);
-      } catch {
-        return;
-      }
-      digests.set(repoRelative, {
-        content,
-        digest: createHash("sha256").update(content).digest("hex"),
-        kind: "file",
-        mode: stat.mode
-      });
-    });
+      return;
+    }
+    if (!stat.isDirectory()) {
+      recordUnexaminable();
+      return;
+    }
+    walk(absDir);
   });
   return digests;
 };
@@ -27993,9 +28057,34 @@ var sweepScope = (inputs) => {
   const { after, before, declaredPaths, regionId, root } = inputs;
   const declaredSet = new Set(declaredPaths);
   const confined = [];
+  [...after.keys()].forEach((relPath) => {
+    if (declaredSet.has(relPath) || before.has(relPath)) return;
+    if (hasUnenumeratedAncestor(before, relPath)) {
+      confined.push({ action: "reported", path: relPath, regionId });
+      return;
+    }
+    if (!resolvesLexically(root, relPath)) {
+      confined.push({ action: "reported", path: relPath, regionId });
+      return;
+    }
+    try {
+      rmSync3(path39.resolve(root, relPath), { force: true });
+      confined.push({ action: "removed", path: relPath, regionId });
+    } catch {
+      confined.push({ action: "reported", path: relPath, regionId });
+    }
+  });
   before.forEach((beforeEntry, relPath) => {
     if (declaredSet.has(relPath)) return;
     if (isUntouched(beforeEntry, after.get(relPath))) return;
+    if (!isRestorable(beforeEntry)) {
+      confined.push({ action: "reported", path: relPath, regionId });
+      return;
+    }
+    if (!resolvesLexically(root, relPath)) {
+      confined.push({ action: "reported", path: relPath, regionId });
+      return;
+    }
     try {
       const abs = path39.resolve(root, relPath);
       mkdirSync12(path39.dirname(abs), { recursive: true });
@@ -28008,15 +28097,6 @@ var sweepScope = (inputs) => {
         chmodSync(abs, permissions);
       }
       confined.push({ action: "restored", path: relPath, regionId });
-    } catch {
-      confined.push({ action: "reported", path: relPath, regionId });
-    }
-  });
-  [...after.keys()].forEach((relPath) => {
-    if (declaredSet.has(relPath) || before.has(relPath)) return;
-    try {
-      rmSync3(path39.resolve(root, relPath), { force: true });
-      confined.push({ action: "removed", path: relPath, regionId });
     } catch {
       confined.push({ action: "reported", path: relPath, regionId });
     }
