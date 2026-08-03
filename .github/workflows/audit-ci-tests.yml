@@ -315,11 +315,15 @@ jobs:
             # match 459 of 1471 tracked files, a bit under a third, but they are
             # the documentation and configuration types, so the PRs that arm
             # `sandbox` alone are the ones that used to run no step at all: a
-            # wiki-only change now runs `apt-get update`. (A CHANGELOG-only
-            # change is no longer in that set: it arms `code:` too, because
-            # that filter lists CHANGELOG.md so the rollout-command comparison
-            # actually runs. Its cost is the full bats matrix, not an apt
-            # install, so the bound below describes the wiki-only case.) That
+            # wiki-only change now runs `apt-get update`. (Not every docs-only
+            # change is in that set. Any path `code:` lists individually arms
+            # the full bats matrix instead, which is the much larger cost: that
+            # is CHANGELOG.md, so the rollout-command comparison actually runs,
+            # and the two wiki pages a .gaia/tests/lib/ suite greps,
+            # `wiki/concepts/PR Merge Workflow.md` and
+            # `wiki/concepts/GAIA Audit.md`. Read the filter rather than this
+            # list when judging whether a new doc path is cheap; the bound
+            # below describes only the wiki pages `code:` does NOT list.) That
             # is the flakiest operation in this job, and this is a declared-
             # required context, so a mirror hash-sum mismatch can now red a
             # required check on a docs-only PR. A pure app-only change is not in

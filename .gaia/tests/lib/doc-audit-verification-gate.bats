@@ -38,12 +38,15 @@
 # directory: grep for frozen literals, ground-truthed against the actual
 # source text rather than a paraphrase.
 #
-# Section extraction: every assertion runs against the gate section only,
-# started at its `^## ` heading and terminated on the `^### Dispatch` heading
-# that follows it. The terminator is the H3 rather than the next `^## `
-# because the round owns three H3 subsections whose text discusses the same
-# action names; a `^## ` terminator would pull them in and let an assertion
-# be satisfied from outside the gate.
+# Scoping differs by surface, deliberately. The `audit.md` assertions
+# (Groups 1 and 2) are **section-scoped**: started at the gate's `^## `
+# heading and terminated on the `^### Dispatch` heading that follows it. The
+# terminator is the H3 rather than the next `^## ` because the round owns
+# three H3 subsections whose text discusses the same action names; a `^## `
+# terminator would pull them in and let an assertion be satisfied from
+# outside the gate. The wiki assertions (Group 3) are **whole-file**, because
+# that page states the criterion in a paragraph with no stable heading
+# anchor; see the `setup()` comment for what keeps that non-vacuous.
 #
 # Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
 # where a false non-final bare `[[ ]]` does not fail the test, and a
@@ -136,8 +139,14 @@ setup() {
 
   # The wiki page states the criterion in one paragraph rather than a bounded
   # section, and the page's own headings are not stable anchors for it, so
-  # this one is a whole-file read. The `-s` guard above is what keeps that
-  # from going vacuous.
+  # this one is a whole-file read.
+  #
+  # What keeps it non-vacuous is the **positive/negative pairing**, not the
+  # `-s` guard above. `-s` catches only absent-or-empty; a truncated page of
+  # one byte passes it, leaves `WIKI_TEXT` effectively empty, and greens the
+  # Group 3 absence check on nothing. The paired positive assertion is what
+  # fails there. So any wiki absence check added below must keep a paired
+  # positive, or it is hollow.
   WIKI_TEXT="$(normalize_ws <"$WIKI")"
 }
 
@@ -165,6 +174,18 @@ setup() {
   # A partition needs no gap as well as no overlap. Without this sentence the
   # default for a report of, say, promotes alone is left to inference.
   grep -qF -- 'Recommend Run in every other case' <<<"$GATE"
+}
+
+@test "the gate names how to establish the predicate from the report" {
+  # Without this, the predicate is unresolvable from the artifact and the
+  # failure is fail-OPEN rather than fail-to-Run: a CONFLICT-driven action is
+  # emitted as the same `shrink` block as any other, and Step 2's
+  # project-internal branch requires no contradiction token in `reason`, so an
+  # executor reading reasons forms a confident "non-CONFLICT-driven" and
+  # recommends Skip on exactly the report class the Run bullet exists to
+  # force. The Summary's `Conflicts:` count is the handle that already exists.
+  grep -qF -- 'Establish "non-CONFLICT-driven" from the Summary'"'"'s `Conflicts:` count' <<<"$GATE"
+  grep -qF -- 'only `Conflicts: 0` establishes it' <<<"$GATE"
 }
 
 @test "skip eligibility no longer admits every replace action" {
@@ -201,8 +222,13 @@ setup() {
   grep -qF -- 'Present the recommended option FIRST, carrying the `(Recommended)` tag' <<<"$GATE"
 }
 
-@test "neither option literal bakes the recommended tag into its label" {
-  grep -qE 'label: "[^"]*\(Recommended\)' <<<"$GATE" && return 1
+@test "neither option literal bakes the recommended tag into label or description" {
+  # Both fields, not just `label`: putting the tag in an option's
+  # `description` instead reproduces the identical contradictory-signal
+  # defect, and a `label`-only anchor greens on it. `[^"]*` is bounded by the
+  # closing quote, so the legitimate `(Recommended)` in the rule sentence
+  # cannot satisfy this from across the flattened section.
+  grep -qE '(label|description): "[^"]*\(Recommended\)' <<<"$GATE" && return 1
   true
 }
 

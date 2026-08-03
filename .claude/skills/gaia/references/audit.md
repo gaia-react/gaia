@@ -387,13 +387,13 @@ It runs only when Stage 1 reported ≥1 action; a 0-action report has nothing to
 **The round is a choice, presented once.** When the round is reached (≥1 action) in an interactive context, gauge the report, then ask via `AskUserQuestion` exactly once whether to run it. The recommendation is dynamic:
 
 - **Recommend Run** when the report contains any memory `delete` / `delete-entry`, or any CONFLICT-driven `replace` — those actions are irreversible or carry contradiction risk.
-- **Skip is eligible** (a legitimate recommendation) only when every action is a git-reversible, non-CONFLICT-driven `shrink` on an in-repo (non-memory) file; the decision gate plus git undo already cover that case. Recommend Run in every other case.
+- **Skip is eligible** (a legitimate recommendation) only when every action is a git-reversible, non-CONFLICT-driven `shrink` on an in-repo (non-memory) file; the decision gate plus git undo already cover that case. Recommend Run in every other case. Establish "non-CONFLICT-driven" from the Summary's `Conflicts:` count, not by reading each `reason`: **only `Conflicts: 0` establishes it**, since a CONFLICT-driven action is emitted as the same `shrink` block as any other and a project-internal one need not name a contradiction in its `reason`.
 
 Present the recommended option FIRST, carrying the `(Recommended)` tag:
 
 - question: `"Run the classification-verification round before the decision gate? It verifies Stage 1's classifications against ground truth and drops or corrects any action that would drive a wrong or destructive edit."`
 - header: `"Verify"`
-- options (recommended first):
+- options:
   - `{ label: "Run the round", description: "Three parallel lenses verify the classifications against ground truth; a mis-classified delete is dropped, others corrected. A few agents, a couple of minutes." }`
   - `{ label: "Skip the round", description: "Proceed straight to the decision gate with the report as Stage 1 wrote it. Best when every action is a git-reversible, non-CONFLICT-driven shrink on an in-repo file." }`
 
