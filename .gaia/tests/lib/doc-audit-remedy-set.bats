@@ -53,11 +53,27 @@ extract_section() {
 # which greens every `&& return 1` absence check in the suite on a section
 # that no longer exists. Capture first, normalize second; both call sites
 # below do.
+#
+# Both ends are guarded. An unmatched START anchor yields an empty section,
+# which greens every absence check. An unmatched TERMINATOR is the quieter
+# hazard: awk runs to EOF and the "section" swallows the rest of the file, so
+# a literal that is not unique file-wide (`per file`, `source_expect_sha256`)
+# could satisfy a scoped assertion from text outside the section while the
+# section itself had lost the sentence.
 extract_section_or_fail() {
-  local out
+  local out start_line
   out="$(extract_section "$1" "$2" "$3")"
   [ -n "$out" ] || {
     echo "section anchor '${2}' matched nothing in ${1}; a scoped assertion here would pass vacuously" >&2
+    return 1
+  }
+  # The terminator must match somewhere STRICTLY AFTER the start line. A
+  # file-wide match proves nothing (`^## ` matches every earlier H2 while
+  # this section still runs to EOF), and the start line itself can match the
+  # terminator by design, since a `## ` section is bounded by the next `## `.
+  start_line="$(grep -nE -- "$2" "$1" | head -n1 | cut -d: -f1)"
+  tail -n "+$((start_line + 1))" "$1" | grep -qE -- "$3" || {
+    echo "terminator '${3}' matches nothing after line ${start_line} of ${1}; the section ran to EOF and swallowed the rest of the file" >&2
     return 1
   }
   printf '%s\n' "$out"
@@ -132,15 +148,37 @@ setup() {
 
 @test "remedy 1 names the same-file drift condition that blocks it" {
   grep -qF -- 'source_expect_sha256' <<<"$STEP3"
-  grep -qF -- "the \`promote\`'s \`source_path\` is also that \`replace\`'s \`path\`" <<<"$STEP3"
+  grep -qF -- "the \`promote\`'s \`source_path\` is also that \`shrink\`'s \`path\`" <<<"$STEP3"
+}
+
+@test "remedy 1 forbids constructing the pair rather than relying on a skip" {
+  # `## Ordering` orders the pair, but Step 5's drift bullets name
+  # `expect_sha256` / `before:` / `expect:`, none of which a promote carries,
+  # so nothing in the playbook guarantees Stage 2 skips one. The instruction
+  # not to build the pair is what makes remedy 1's unavailability safe, and
+  # it must not decay back into a claim about what Stage 2 does.
+  grep -qF -- 'Do not construct that pair' <<<"$STEP3"
+  grep -qF -- 'reads that as drift, and skips' <<<"$STEP3" && return 1
+  true
 }
 
 @test "remedy 1 sends a blocked evaluation on to remedy 2 rather than stopping" {
   grep -qF -- 'Record the blocker against this remedy, then evaluate remedy 2' <<<"$STEP3"
 }
 
-@test "remedy 2 is a single replace and is named as unblocked" {
-  grep -qF -- 'A single `replace` on one path, which nothing in `## Ordering` blocks' <<<"$STEP3"
+@test "remedy 2 is a single shrink and is named as unblocked" {
+  grep -qF -- 'A single `shrink` on one path, which nothing in `## Ordering` blocks' <<<"$STEP3"
+}
+
+# No backticks in a test name: bats evaluates the name in a context where a
+# backticked run is command substitution, so the name silently loses the text
+# and, with a different payload, would run it.
+@test "the remedies name actions in the vocabulary the Ordering section uses" {
+  # `## Ordering` sequences `shrink`, never `replace`, so a remedy asserting
+  # something about that section in terms of `replace` sends a reader to a
+  # section where the word does not appear. The identity is bound once, at
+  # remedy 1's first use.
+  grep -qF -- 'a `shrink` (`type: replace`) on the source' <<<"$STEP3"
 }
 
 @test "remedy 3 states that no action type expresses a split" {
@@ -170,7 +208,17 @@ setup() {
   local summary
   summary="$(extract_section_or_fail "$AUDIT" '^### Report template' '^````$')"
   summary="$(printf '%s\n' "$summary" | normalize_ws)"
-  grep -qF -- 'Over-budget files: {list; per file, the remedy proposed or, if none, all three remedies with the reason each was rejected}' <<<"$summary"
+  # The oos slot is load-bearing: remedy 3 is never *proposed*, it is
+  # recorded, so a template admitting only a proposal renders the one case
+  # this contract exists to create as "every remedy rejected".
+  grep -qF -- 'Over-budget files: {list; per file, the remedy proposed or the oos-{nnn} recorded, plus the outcome of every remedy not taken}' <<<"$summary"
+}
+
+@test "the report template does not demand an aggregate budget over the rules" {
+  local summary
+  summary="$(extract_section_or_fail "$AUDIT" '^### Report template' '^````$')"
+  summary="$(printf '%s\n' "$summary" | normalize_ws)"
+  grep -qF -- 'the rules aggregate has none' <<<"$summary"
 }
 
 # --- Group 5: portability -------------------------------------------------

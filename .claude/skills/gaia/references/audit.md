@@ -230,8 +230,8 @@ Targets (flag anything over):
 
 There are three remedies for an over-budget file. **Evaluate all three, in this order**, and propose the first that both applies to the file and is expressible as an action. They are independent: one being unavailable says nothing about the next, and a single blocked remedy never makes a file unfixable.
 
-1. **Inline facts → wiki.** A `promote` of the section onto a wiki page, plus a `replace` on the source leaving a wikilink behind. **Blocked whenever the `promote`'s `source_path` is also that `replace`'s `path`**: `## Ordering` runs every `replace` before every `promote`, so the `promote` computes `source_expect_sha256` against a file its own pair has already edited, reads that as drift, and skips. Record the blocker against this remedy, then evaluate remedy 2.
-2. **Consolidate duplicated sections.** A single `replace` on one path, which nothing in `## Ordering` blocks.
+1. **Inline facts → wiki.** A `promote` of the section onto a wiki page, plus a `shrink` (`type: replace`) on the source leaving a wikilink behind. **Unavailable whenever the `promote`'s `source_path` is also that `shrink`'s `path`**: `## Ordering` runs every `shrink` before every `promote`, so by the time the `promote` runs, its recorded `source_expect_sha256` no longer describes the file, and what Stage 2 then does with the source is not pinned down. **Do not construct that pair.** Record the blocker against this remedy, then evaluate remedy 2.
+2. **Consolidate duplicated sections.** A single `shrink` on one path, which nothing in `## Ordering` blocks.
 3. **Split into narrower files.** Not expressible as an action: no action type creates a new non-wiki file, and `promote` is not one, its target is a wiki page and it also writes `wiki/log.md` and `wiki/index.md`. Record it in `## Out-of-scope findings` instead, naming the section to lift, the sibling file to create, and the line or word counts both sides land at, so Stage 2 files it as tracked work. A split is a remedy only when the extracted section is a self-contained topic that can carry its own `paths:` scope; halving a file into two siblings that always load together satisfies the count while reducing nothing a session loads.
 
 **Never report an over-budget file as unfixable, or propose nothing for it, on the strength of one blocked remedy.** State each remedy's outcome, so the ones that were never blocked are visible as work rather than absent.
@@ -272,8 +272,8 @@ Resolved paths (Stage 2 must match these):
 
 - Stores scanned: {N files, M words total}
 - Cross-store duplicates: {X}
-- Auto-load total: {Z words} (budget: {total budget})
-- Over-budget files: {list; per file, the remedy proposed or, if none, all three remedies with the reason each was rejected}
+- Auto-load total: {Z words} (budget: {sum of the per-file budgets of the unconditional files; the rules aggregate has none, see Step 3})
+- Over-budget files: {list; per file, the remedy proposed or the oos-{nnn} recorded, plus the outcome of every remedy not taken}
 - Stale entries: {count}
 - Conflicts: {count}
 - Out-of-scope findings: {count} (filed as tech-debt issues by Stage 2)
