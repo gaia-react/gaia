@@ -2220,7 +2220,10 @@ describe('update regen-regions: behavior coverage', () => {
     // opening it for reading, so a regeneration command that wrote to one.md
     // would hang the spawn instead and this test would sit on the 5-minute
     // spawn bound rather than on the backup.
-    writeScript(root, String.raw`printf "regenerated two\n" > .claude/agents/two.md`);
+    writeScript(
+      root,
+      String.raw`printf "regenerated two\n" > .claude/agents/two.md`
+    );
     rmSync(path.join(root, DECLARED_PATHS[0]));
     execFileSync('mkfifo', [path.join(root, DECLARED_PATHS[0])]);
     const manifestPath = writeManifest(root, [buildDeclaration()]);

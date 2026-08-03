@@ -1264,7 +1264,7 @@ type GitStatus = {
  * each of the two calls per region spawned a second git process every time for
  * an answer already known.
  */
-const resolveRepoPrefix = (root: string): string | null => {
+const resolveRepoPrefix = (root: string): null | string => {
   try {
     return execGaiaGitRaw(['rev-parse', '--show-prefix'], root).replace(
       /\r?\n$/u,
@@ -1295,7 +1295,10 @@ const resolveRepoPrefix = (root: string): string | null => {
  * meaningful; without it every one of the region's own legitimate writes fails
  * to match and is reported to the adopter as an out-of-scope write.
  */
-const gitStatusPaths = (root: string, prefix: string | null): GitStatus | null => {
+const gitStatusPaths = (
+  root: string,
+  prefix: null | string
+): GitStatus | null => {
   // `null` means git could not answer `--show-prefix` for this root, which is
   // the same condition that stops `git status` answering, so there is nothing
   // to gain by spawning it. The caller reports the delta unavailable.
@@ -1533,7 +1536,7 @@ type RegionContext = {
   conflictedSet: ReadonlySet<string>;
   realRoot: string;
   /** Resolved once for the run; see `resolveRepoPrefix`. */
-  repoPrefix: string | null;
+  repoPrefix: null | string;
   report: RegenRegionsReport;
   root: string;
   seenIds: Set<string>;
@@ -1549,7 +1552,7 @@ const runRegeneration = (
   commandArgv: string[],
   context: RegionContext
 ): void => {
-  const {backupDir, report, repoPrefix, root, spawnBounds} = context;
+  const {backupDir, repoPrefix, report, root, spawnBounds} = context;
 
   report.backedUp.push(
     ...performBackup({
