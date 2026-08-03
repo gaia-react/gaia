@@ -27776,8 +27776,8 @@ var describeJsonShape = (value) => {
   return Array.isArray(value) ? "array" : typeof value;
 };
 var normalizeRepoPath = (value) => {
-  const posix = value.replaceAll("\\", "/").replaceAll(/\/{2,}/gu, "/");
-  return posix.startsWith("./") ? posix.slice(2) : posix;
+  const dotless = value.replaceAll("\\", "/").replaceAll(/\/{2,}/gu, "/").split("/").filter((segment) => segment !== ".").join("/");
+  return dotless.endsWith("/") ? dotless.slice(0, -1) : dotless;
 };
 var normalizeDeclaredPaths = (paths) => {
   const normalized = [];
@@ -27917,9 +27917,23 @@ var performBackup = (inputs) => {
   const backedUp = [];
   paths.forEach((declPath) => {
     const srcAbs = path39.resolve(root, declPath);
-    if (!existsSync29(srcAbs)) return;
+    let stat;
+    try {
+      stat = lstatSync2(srcAbs);
+    } catch {
+      return;
+    }
     const destinationAbs = path39.resolve(backupDir, declPath);
     if (existsSync29(destinationAbs)) return;
+    if (!stat.isFile()) {
+      structuredError({
+        code: "region_regen_backup_failed",
+        message: `backup skipped for '${declPath}' in region '${regionId}': not a regular file`,
+        regionId,
+        subcommand: "update regen-regions"
+      });
+      return;
+    }
     try {
       mkdirSync12(path39.dirname(destinationAbs), { recursive: true });
       copyFileSync2(srcAbs, destinationAbs);
@@ -28106,7 +28120,18 @@ var sweepScope = (inputs) => {
 var isInsideScope = (relPath, scopeDirs) => [...scopeDirs].some(
   (dir) => relPath === dir || relPath.startsWith(`${dir}/`)
 );
-var gitStatusPaths = (root) => {
+var resolveRepoPrefix = (root) => {
+  try {
+    return execGaiaGitRaw(["rev-parse", "--show-prefix"], root).replace(
+      /\r?\n$/u,
+      ""
+    );
+  } catch {
+    return null;
+  }
+};
+var gitStatusPaths = (root, prefix) => {
+  if (prefix === null) return null;
   try {
     const out = execGaiaGitRaw(["status", "--porcelain", "-z"], root);
     const paths = [];
@@ -28120,10 +28145,6 @@ var gitStatusPaths = (root) => {
       expectOriginPath = /[CR]/u.test(record2.slice(0, 2));
       paths.push(record2.slice(3));
     });
-    const prefix = execGaiaGitRaw(["rev-parse", "--show-prefix"], root).replace(
-      /\r?\n$/u,
-      ""
-    );
     if (prefix === "") return { inside: paths, outside: [] };
     const inside = [];
     const outside = [];
@@ -28147,7 +28168,7 @@ var spawnFailureCause = (code) => {
 };
 var SPAWN_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 var SPAWN_TIMEOUT_MS = 5 * 60 * 1e3;
-var trySpawn = (decl, root) => {
+var trySpawn = (decl, root, bounds) => {
   try {
     execFileSync4(
       decl.interpreter,
@@ -28155,12 +28176,12 @@ var trySpawn = (decl, root) => {
       {
         cwd: root,
         encoding: "utf8",
-        maxBuffer: SPAWN_MAX_BUFFER_BYTES,
+        maxBuffer: bounds.maxBufferBytes,
         // The child's stdout is never read, so discarding it outright leaves
         // stderr as the only stream that can reach the buffer bound at all,
         // and stderr is what carries the diagnostic this reports on failure.
         stdio: ["ignore", "ignore", "pipe"],
-        timeout: SPAWN_TIMEOUT_MS
+        timeout: bounds.timeoutMs
       }
     );
     return { ok: true };
@@ -28214,7 +28235,7 @@ var reportOutOfScopeWrites = (inputs) => {
   });
 };
 var runRegeneration = (decl, commandArgv, context) => {
-  const { backupDir, report, root } = context;
+  const { backupDir, report, repoPrefix, root, spawnBounds } = context;
   report.backedUp.push(
     ...performBackup({
       backupDir,
@@ -28225,8 +28246,8 @@ var runRegeneration = (decl, commandArgv, context) => {
   );
   const scopeDirs = scopeDirsFor(decl.paths);
   const before = collectScopeDigests(root, scopeDirs);
-  const beforeStatus = gitStatusPaths(root);
-  const spawnResult = trySpawn(decl, root);
+  const beforeStatus = gitStatusPaths(root, repoPrefix);
+  const spawnResult = trySpawn(decl, root, spawnBounds);
   const after = collectScopeDigests(root, scopeDirs);
   report.confined.push(
     ...sweepScope({
@@ -28238,7 +28259,7 @@ var runRegeneration = (decl, commandArgv, context) => {
     })
   );
   reportOutOfScopeWrites({
-    afterStatus: gitStatusPaths(root),
+    afterStatus: gitStatusPaths(root, repoPrefix),
     beforeStatus,
     decl,
     report,
@@ -28363,6 +28384,7 @@ var loadRunInputs = (cwd, flags) => {
     });
     return { ok: false };
   }
+  const repoPrefix = resolveRepoPrefix(root);
   if (isPlainObject2(manifestParsed))
     return {
       ok: true,
@@ -28371,6 +28393,7 @@ var loadRunInputs = (cwd, flags) => {
         manifestRecord: manifestParsed,
         manifestShape: null,
         realRoot,
+        repoPrefix,
         root
       }
     };
@@ -28381,6 +28404,7 @@ var loadRunInputs = (cwd, flags) => {
       manifestRecord: {},
       manifestShape: describeJsonShape(manifestParsed),
       realRoot,
+      repoPrefix,
       root
     }
   };
@@ -28415,7 +28439,7 @@ var run46 = (argv, options = {}) => {
   const cwd = options.cwd ?? process.cwd();
   const loaded = loadRunInputs(cwd, parsed.flags);
   if (!loaded.ok) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  const { backupDir, manifestRecord, manifestShape, realRoot, root } = loaded.value;
+  const { backupDir, manifestRecord, manifestShape, realRoot, repoPrefix, root } = loaded.value;
   const regionsValue = manifestRecord.regions;
   const regionsAreArray = Array.isArray(regionsValue);
   const rawRegions = regionsAreArray ? regionsValue : [];
@@ -28426,6 +28450,7 @@ var run46 = (argv, options = {}) => {
     backupDir,
     conflictedSet: new Set(parsed.flags.conflicted),
     realRoot,
+    repoPrefix,
     report: {
       backedUp: [],
       confined: [],
@@ -28437,7 +28462,11 @@ var run46 = (argv, options = {}) => {
     root,
     seenIds: /* @__PURE__ */ new Set(),
     shippedKeys,
-    skipRegionSet: new Set(parsed.flags.skipRegions)
+    skipRegionSet: new Set(parsed.flags.skipRegions),
+    spawnBounds: {
+      maxBufferBytes: options.spawnMaxBufferBytes ?? SPAWN_MAX_BUFFER_BYTES,
+      timeoutMs: options.spawnTimeoutMs ?? SPAWN_TIMEOUT_MS
+    }
   };
   if (manifestShape !== null)
     context.report.refused.push({
