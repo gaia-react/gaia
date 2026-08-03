@@ -224,7 +224,17 @@ Targets (flag anything over):
 | Any nested `CLAUDE.md` discovered in Step 1 (monorepo package, subapp, docs, etc.) | ≤400 words | Scoped routing                             |
 | Any single `.claude/rules/*.md`                                                    | ≤200 lines | Focused rule                               |
 
-For each over-budget file, propose one of: inline facts → wiki, consolidate duplicated sections, or split into narrower files.
+**Every budget above is per file, and no aggregate budget exists over `.claude/rules/*.md`.** The `project_drift` signal in `.gaia/scripts/check-updates.sh` that raises the `over budget` nudge this step answers compares each rule file against its own line budget and carries no total. So splitting one over-budget rule into two rules that are each under budget satisfies the budget outright, and the sibling is charged to no separate aggregate.
+
+### Remedies, evaluated independently
+
+There are three remedies for an over-budget file. **Evaluate all three, in this order**, and propose the first that both applies to the file and is expressible as an action. They are independent: one being unavailable says nothing about the next, and a single blocked remedy never makes a file unfixable.
+
+1. **Inline facts → wiki. This remedy is unavailable for an over-budget file outright, not conditionally.** Lifting a section onto a wiki page takes a `promote` whose `source_path` is the over-budget file, plus a `shrink` (`type: replace`) on that same file leaving a wikilink behind, so the two actions always name the one file. `## Ordering` runs every `shrink` before every `promote`, so the recorded `source_expect_sha256` no longer describes the file by the time the `promote` runs, and what Stage 2 then does with the source is not pinned down. **Do not construct that pair.** Record the blocker against this remedy, then evaluate remedy 2.
+2. **Consolidate duplicated sections.** A single `shrink` on one path, which nothing in `## Ordering` blocks.
+3. **Split into narrower files.** Not expressible as an action: no action type creates a new non-wiki file, and `promote` is not one, its target is a wiki page and it also writes `wiki/log.md` and `wiki/index.md`. Record it in `## Out-of-scope findings` instead, naming the section to lift, the sibling file to create, and the line or word counts both sides land at, so Stage 2 files it as tracked work. A split is a remedy only when the extracted section is a self-contained topic that can carry its own `paths:` scope; halving a file into two siblings that always load together satisfies the count while reducing nothing a session loads.
+
+**Never report an over-budget file as unfixable, or propose nothing for it, on the strength of one blocked remedy.** State each remedy's outcome, so the ones that were never blocked are visible as work rather than absent.
 
 ## Step 4, Report
 
@@ -262,8 +272,8 @@ Resolved paths (Stage 2 must match these):
 
 - Stores scanned: {N files, M words total}
 - Cross-store duplicates: {X}
-- Auto-load total: {Z words} (budget: {total budget})
-- Over-budget files: {list}
+- Auto-load total: {Z words, wiki/hot.md + root CLAUDE.md only} (budget: {the sum of Step 3's budgets for wiki/hot.md and root CLAUDE.md; the rules aggregate has none})
+- Over-budget files: {list; per file, the remedy proposed or the oos-{nnn} recorded, plus the outcome of every remedy not taken}
 - Stale entries: {count}
 - Conflicts: {count}
 - Out-of-scope findings: {count} (filed as tech-debt issues by Stage 2)
