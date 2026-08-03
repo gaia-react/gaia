@@ -18020,14 +18020,12 @@ var renamePackageJson = (cwd, kebab) => {
 };
 var FENCE_LINE = /^\s*(?:```|~~~)/u;
 var H1_LINE = /^#\s/u;
+var withoutCr = (line) => line.endsWith("\r") ? line.slice(0, -1) : line;
 var findH1Line = (lines) => {
-  let inFence = false;
   for (const [index, line] of lines.entries()) {
-    if (FENCE_LINE.test(line)) {
-      inFence = !inFence;
-    } else if (!inFence && H1_LINE.test(line)) {
-      return index;
-    }
+    const text = withoutCr(line);
+    if (FENCE_LINE.test(text)) return -1;
+    if (H1_LINE.test(text)) return index;
   }
   return -1;
 };
@@ -18041,8 +18039,9 @@ var renameClaudeMd = (cwd, title) => {
   if (!existsSync8(target)) return;
   const lines = readFileSync10(target, "utf8").split("\n");
   const index = findH1Line(lines);
-  const heading = `# ${title}`;
-  if (index === -1 || lines[index] === heading) return;
+  if (index === -1) return;
+  const heading = lines[index].endsWith("\r") ? `# ${title}\r` : `# ${title}`;
+  if (lines[index] === heading) return;
   lines[index] = heading;
   atomicWriteFileSync(target, lines.join("\n"));
 };
@@ -18107,7 +18106,7 @@ var run18 = (argv, options = {}) => {
     if (!claudeMdPreconditionMet(cwd)) {
       structuredError({
         code: "claude_md_heading_missing",
-        message: 'CLAUDE.md has no top-level "# " heading to rewrite; add one and re-run',
+        message: 'CLAUDE.md has no top-level "# " heading to rewrite; add one above any fenced code block and re-run',
         subcommand: "init rename"
       });
       return EXIT_CODES.UNKNOWN_SUBCOMMAND;

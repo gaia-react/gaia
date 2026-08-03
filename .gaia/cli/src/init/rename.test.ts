@@ -251,9 +251,24 @@ describe('init rename', () => {
       'the only `# ` line is inside a fence',
       '## Setup\n\n```bash\n# install deps\npnpm install\n```\n',
     ],
+    // Nested and mismatched fences are why the scan stops at the first fence
+    // instead of pairing openers with closers: a tracker that toggles would
+    // read the inner opener as the outer one's closer and walk back in.
+    [
+      'the `# ` line is inside a nested fence',
+      '## Setup\n\n````md\n```bash\n# install deps\n```\n````\n',
+    ],
+    [
+      'a `~~~` fence opens inside a backtick block',
+      '## Setup\n\n```md\n~~~sh\n# install deps\n~~~\n```\n',
+    ],
+    ['the only heading sits below a fence', '```sh\n# x\n```\n\n# Title\n'],
     // Scanned per line, so the `\s` after `#` cannot match the line ending
     // and pull the blank line below into the rewrite.
     ['a bare `#` with nothing after it', '#\n\nBody\n'],
+    // Same, on a CRLF checkout, where `\s` would otherwise match the `\r`
+    // that survives the split.
+    ['a bare `#` on CRLF', '#\r\n\r\nBody\r\n'],
   ])('exit 1 when CLAUDE.md has no usable H1: %s', (_label, content) => {
     sandbox = setupSandbox();
     writeFileSync(path.join(sandbox.root, 'CLAUDE.md'), content, 'utf8');
@@ -277,9 +292,9 @@ describe('init rename', () => {
     expect(readState(sandbox.root).completed_steps).not.toContain('rename');
   });
 
-  test('rewrites an H1 that sits below a fenced code block', () => {
+  test('rewrites the heading above a fence and leaves the fence alone', () => {
     sandbox = setupSandbox();
-    const content = '```sh\n# not a heading\n```\n\n# GAIA React\n\nBody\n';
+    const content = '# GAIA React\n\n```sh\n# not a heading\n```\n\nBody\n';
     writeFileSync(path.join(sandbox.root, 'CLAUDE.md'), content, 'utf8');
 
     expect(
@@ -289,7 +304,26 @@ describe('init rename', () => {
     ).toBe(0);
 
     expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
-      '```sh\n# not a heading\n```\n\n# Hello World\n\nBody\n'
+      '# Hello World\n\n```sh\n# not a heading\n```\n\nBody\n'
+    );
+  });
+
+  test('keeps CRLF endings on the line it rewrites', () => {
+    sandbox = setupSandbox();
+    writeFileSync(
+      path.join(sandbox.root, 'CLAUDE.md'),
+      '# GAIA React\r\n\r\nBody\r\n',
+      'utf8'
+    );
+
+    expect(
+      run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      })
+    ).toBe(0);
+
+    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
+      '# Hello World\r\n\r\nBody\r\n'
     );
   });
 

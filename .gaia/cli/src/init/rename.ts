@@ -143,25 +143,33 @@ const FENCE_LINE = /^\s*(?:```|~~~)/u;
 // bare `#`, and the rewrite then swallows the blank line below it.
 const H1_LINE = /^#\s/u;
 
+// A CRLF checkout leaves `\r` on every line after splitting on `\n`, where
+// `\s` would match it and read a bare `#` as a heading.
+const withoutCr = (line: string): string =>
+  line.endsWith('\r') ? line.slice(0, -1) : line;
+
 /**
- * Index of the first H1 line outside a fenced code block, or `-1`.
+ * Index of the document's title heading, or `-1`.
  *
- * Fence awareness is the whole point: `# ` is a bash comment as well as a
- * markdown heading, so a scan blind to fences finds the first comment inside
- * a shell example, reports a title where there is none, and rewrites a line
- * of the adopter's own code. An unterminated fence swallows the rest of the
- * file, which fails toward reporting no heading rather than rewriting the
- * wrong line.
+ * The title is the first `# ` line, and it has to sit above the first fenced
+ * code block. `# ` opens a shell comment as well as a markdown heading, so a
+ * scan that walks into a fence finds one in a shell example, reports a title
+ * where there is none, and rewrites a line of the adopter's own code.
+ *
+ * Stopping at the first fence rather than tracking open and closed ones is
+ * deliberate. Whether a later fence *closes* an earlier one is a CommonMark
+ * question about delimiter character and run length, and answering it wrong
+ * puts the scan back inside a code block; a nested sample, or a `~~~` inside
+ * a backtick block, is enough to do it. Nothing has to close for this rule,
+ * so no nesting can defeat it.
  */
 const findH1Line = (lines: readonly string[]): number => {
-  let inFence = false;
-
   for (const [index, line] of lines.entries()) {
-    if (FENCE_LINE.test(line)) {
-      inFence = !inFence;
-    } else if (!inFence && H1_LINE.test(line)) {
-      return index;
-    }
+    const text = withoutCr(line);
+
+    if (FENCE_LINE.test(text)) return -1;
+
+    if (H1_LINE.test(text)) return index;
   }
 
   return -1;
@@ -196,9 +204,13 @@ const renameClaudeMd = (cwd: string, title: string): void => {
   if (!existsSync(target)) return;
   const lines = readFileSync(target, 'utf8').split('\n');
   const index = findH1Line(lines);
-  const heading = `# ${title}`;
 
-  if (index === -1 || lines[index] === heading) return;
+  if (index === -1) return;
+  // Carry the line's own ending, so a CRLF file does not come back with one
+  // lone LF line through the middle of it.
+  const heading = lines[index].endsWith('\r') ? `# ${title}\r` : `# ${title}`;
+
+  if (lines[index] === heading) return;
   lines[index] = heading;
   atomicWriteFileSync(target, lines.join('\n'));
 };
@@ -328,7 +340,7 @@ export const run = (
       structuredError({
         code: 'claude_md_heading_missing',
         message:
-          'CLAUDE.md has no top-level "# " heading to rewrite; add one and re-run',
+          'CLAUDE.md has no top-level "# " heading to rewrite; add one above any fenced code block and re-run',
         subcommand: 'init rename',
       });
 
