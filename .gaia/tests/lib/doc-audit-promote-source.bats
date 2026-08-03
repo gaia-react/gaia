@@ -189,6 +189,20 @@ setup() {
   grep -qF -- 'so neither bullet above reaches it' <<<"$loop"
 }
 
+@test "the Actions preamble makes no blanket claim about an expect field" {
+  # The preamble used to require `expect` on every block, which is false for
+  # three of the four schemas and became a stated contradiction the moment
+  # the promote bullet above said a promote carries no such field. In a file
+  # whose executor is told not to reason about intent, a Stage 1 satisfying
+  # the blanket rule literally emits a promote with a stray `expect:` key and
+  # the generic snippet bullet then fires on a correct promote. Scoped to the
+  # preamble paragraph, which ends at the first action-type heading.
+  local preamble
+  preamble="$(scoped '^## Actions' '^### ')"
+  grep -qF -- 'Every block MUST include `expect`' <<<"$preamble" && return 1
+  true
+}
+
 @test "the apply loop checks the target snippet except when creating the page" {
   local loop
   loop="$(scoped '^### Per-action loop' '^### ')"
@@ -214,7 +228,7 @@ setup() {
   grep -qF -- 'The source goes last so a wiki write that fails leaves it intact' <<<"$loop"
 }
 
-@test "the apply arm fails closed on a source_action it does not recognize" {
+@test "the loop fails closed on a source_action it does not recognize" {
   # A report stays applicable for up to 72h, so a report written against the
   # superseded schema can reach a Stage 2 running this one. Guessing is the
   # one outcome that mutates a source file on an unread instruction.
@@ -222,6 +236,17 @@ setup() {
   loop="$(scoped '^### Per-action loop' '^### ')"
   grep -qF -- 'unknown source_action' <<<"$loop"
   grep -qF -- 'never guess which was meant' <<<"$loop"
+}
+
+@test "the mode check runs before any write, not in the apply step" {
+  # Schema validity is knowable before the first write. Checked in the apply
+  # step instead, an unrecognized mode fails only after the wiki page, the
+  # log prepend and the index append have all landed, so a malformed action
+  # half-applies. The reason is pinned, not just the placement, because the
+  # placement alone reads as arbitrary to whoever tidies this next.
+  local loop
+  loop="$(scoped '^### Per-action loop' '^### ')"
+  grep -qF -- 'It is a schema-validity check on a value knowable before any write' <<<"$loop"
 }
 
 # --- Group 4: post-apply verification covers the source side --------------
@@ -234,7 +259,7 @@ setup() {
   grep -qF -- '`replace` → confirm `source_after` appears in `source_path`' <<<"$verify"
 }
 
-@test "the replace arm verifies positively only, and says why" {
+@test "the replace arm asserts no absence, and says why" {
   # Asserting `source_before` is absent would downgrade a correct apply
   # whenever that block legitimately survives elsewhere in the file. The
   # reason is pinned because the absence check is the obvious-looking
@@ -243,6 +268,17 @@ setup() {
   local verify
   verify="$(scoped '^### Post-apply verification' '^### ')"
   grep -qF -- 'asserting its absence would downgrade a correct apply' <<<"$verify"
+}
+
+@test "the replace arm proves the edit landed, not just that the link is present" {
+  # The fail-open on the other side of that trade: `source_after` is
+  # typically a wikilink, and a file being thinned may already link the page,
+  # so a bare presence check passes whether or not the Edit ran. The sha
+  # comparison is what carries it, and it does so without asserting any
+  # absence.
+  local verify
+  verify="$(scoped '^### Post-apply verification' '^### ')"
+  grep -qF -- "the file's sha256 now differs from \`source_expect_sha256\`" <<<"$verify"
 }
 
 # --- Group 5: what this design bought, and must keep ----------------------
@@ -260,10 +296,19 @@ setup() {
   # The rejected alternative: run a promote and its paired shrink together,
   # ahead of the general shrink phase. It puts one action type in two phases
   # and makes Stage 2 detect the pairing.
+  #
+  # Three needles, and the width is the whole point. The document backticks
+  # every action type and its word for this concept is *file*, not *path*, so
+  # a `same path` needle alone misses the phrasing the codebase would
+  # actually reach for; and `paired shrink` cannot match ``paired `shrink` ``
+  # at all, because a backtick sits between the two words. `paired` bare is
+  # what survives every backticked variant. All three are absent from the
+  # section today, so each is a live needle rather than a tautology.
   local ordering
   ordering="$(scoped '^## Ordering' '^## ')"
   grep -qF -- 'same path' <<<"$ordering" && return 1
-  grep -qF -- 'paired shrink' <<<"$ordering" && return 1
+  grep -qF -- 'same file' <<<"$ordering" && return 1
+  grep -qF -- 'paired' <<<"$ordering" && return 1
   true
 }
 
