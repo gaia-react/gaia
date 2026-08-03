@@ -74,9 +74,14 @@ setup() {
 # --- Group 2: the prescribed call reads the array from stdin ---------------
 
 @test "every findings invocation in every spec is the stdin form" {
+  # Anchored: an invocation is a continuation line inside a fenced command,
+  # so it starts the line. An unanchored count would read a prose mention of
+  # the flag as a call and fail on a spec that merely explains itself. Prose
+  # that hands the writer a path is caught by the two absence checks below,
+  # which are deliberately not anchored.
   for f in "${SPECS[@]}"; do
     local all stdin
-    all="$(grep -c -- '--findings' "$f" || true)"
+    all="$(grep -cE '^[[:space:]]*--findings' "$f" || true)"
     stdin="$(grep -cF -- "--findings - <<'FINDINGS'" "$f" || true)"
     [ "$all" -ge 1 ] || {
       echo "$f prescribes no sidecar write at all" >&2
