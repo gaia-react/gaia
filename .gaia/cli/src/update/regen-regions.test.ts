@@ -27,7 +27,7 @@ import {
 import type * as nodeFs from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {run, spawnFailureCause} from './regen-regions.js';
+import {resolveTimeoutMs, run, spawnFailureCause} from './regen-regions.js';
 import type {RegenRegionsReport} from './regen-regions.js';
 
 /**
@@ -242,10 +242,11 @@ const captureStdio = (): {
 };
 
 const runCapturing = (
-  argv: string[]
+  argv: string[],
+  options: Parameters<typeof run>[1] = {}
 ): {exit: number; report: RegenRegionsReport; stderrText: string} => {
   const stdio = captureStdio();
-  const exit = run(argv);
+  const exit = run(argv, options);
 
   stdio.restore();
 
@@ -400,29 +401,32 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.refused[0]?.reason).toBe('paths carries an empty entry');
   });
 
-  test('1e. a declared path whose parent is the repository root is refused, so the snapshot never scopes to the whole tree', () => {
-    const root = buildRoot();
+  // Every one of these names the root rather than a path under it, and is
+  // nothing but `.` segments, so normalization takes each to the empty string
+  // and the empty-entry guard refuses it. Scoping the snapshot to the whole
+  // tree is the outcome being refused; a legitimate top-level path reaches it
+  // too, by the parent-is-the-root guard instead (test 1f), and a bare `/`
+  // reaches it by the absolute-path guard (test 1j).
+  test.each(['.', './', '././'])(
+    '1e. a declared path naming the repository root itself (%p) is refused, so the snapshot never scopes to the whole tree',
+    (declPath) => {
+      const root = buildRoot();
 
-    writeDeclaredFiles(root, 'original');
-    writeScript(root, HAPPY_SCRIPT_BODY);
-    // A literal '.' passes the empty, absolute, and parent-segment checks,
-    // and so does any legitimate top-level path. Both scope the snapshot to
-    // the root. '.' additionally never equals a snapshot key, so the sweep
-    // reverts the region's own output while reporting the region as run.
-    const manifestPath = writeManifest(root, [
-      buildDeclaration({paths: ['.']}),
-    ]);
+      writeDeclaredFiles(root, 'original');
+      writeScript(root, HAPPY_SCRIPT_BODY);
+      const manifestPath = writeManifest(root, [
+        buildDeclaration({paths: [declPath]}),
+      ]);
 
-    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+      const {exit, report} = runCapturing(baseArgv(manifestPath, root));
 
-    expect(exit).toBe(0);
-    expect(report.ran).toHaveLength(0);
-    expect(report.confined).toHaveLength(0);
-    expect(report.refused[0]?.kind).toBe('declaration');
-    expect(report.refused[0]?.reason).toBe(
-      'paths carries a path whose parent is the repository root: .'
-    );
-  });
+      expect(exit).toBe(0);
+      expect(report.ran).toHaveLength(0);
+      expect(report.confined).toHaveLength(0);
+      expect(report.refused[0]?.kind).toBe('declaration');
+      expect(report.refused[0]?.reason).toBe('paths carries an empty entry');
+    }
+  );
 
   test('1f. a top-level declared path is refused for the same reason', () => {
     const root = buildRoot();
@@ -464,6 +468,106 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.ran).toHaveLength(1);
     expect(report.confined).toHaveLength(0);
     expect(readDeclared(root, 0)).not.toBe('original one\n');
+  });
+
+  test('1g. a declared path written with a trailing slash still matches its own snapshot key', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // 1d's shape one separator over. A trailing slash reaches `declaredSet`
+    // verbatim unless normalization strips it, and no snapshot key can carry
+    // one, so the sweep reads the region's own output as an undeclared write
+    // and reverts it while `ran` still reports the region as run.
+    const manifestPath = writeManifest(root, [
+      buildDeclaration({
+        paths: DECLARED_PATHS.map((declPath) => `${declPath}/`),
+      }),
+    ]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.refused).toHaveLength(0);
+    expect(report.ran).toHaveLength(1);
+    expect(report.confined).toHaveLength(0);
+    expect(readDeclared(root, 0)).toBe('regenerated one\n');
+  });
+
+  test('1h. a declared path carrying an interior "/./" still matches its own snapshot key', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // The third shape of 1d's defect, and the one that reached a second
+    // consumer: `scopeDirsFor` takes the declared path's `dirname`, so an
+    // interior '.' segment also lands in the scope-dir set in a form no
+    // snapshot key can equal.
+    const manifestPath = writeManifest(root, [
+      buildDeclaration({
+        paths: DECLARED_PATHS.map((declPath) =>
+          declPath.replace('/agents/', '/agents/./')
+        ),
+      }),
+    ]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.refused).toHaveLength(0);
+    expect(report.ran).toHaveLength(1);
+    expect(report.confined).toHaveLength(0);
+    expect(readDeclared(root, 0)).toBe('regenerated one\n');
+  });
+
+  test.each(['/', '//'])(
+    '1j. a bare separator (%p) is refused as the absolute path it is, not as an empty entry',
+    (declPath) => {
+      const root = buildRoot();
+
+      writeDeclaredFiles(root, 'original');
+      writeScript(root, HAPPY_SCRIPT_BODY);
+      // Normalization strips a trailing separator, but never the last one: a
+      // lone '/' reduced to the empty string would be refused for the least
+      // descriptive of the four reasons, naming neither what was written nor
+      // why it cannot be declared. `/.` is deliberately not here: it carries a
+      // `.` segment and nothing else, so it normalizes away exactly as `.`
+      // does and 1e's empty-entry refusal is the one it earns.
+      const manifestPath = writeManifest(root, [
+        buildDeclaration({paths: [declPath]}),
+      ]);
+
+      const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+      expect(exit).toBe(0);
+      expect(report.ran).toHaveLength(0);
+      expect(report.refused[0]?.reason).toBe(
+        'paths carries an absolute path: /'
+      );
+    }
+  );
+
+  test('1i. a declared path that normalizes onto the repository root is refused, not silently un-matchable', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // '.claude/.' names the directory `.claude`, whose parent is the root.
+    // Before normalization reached interior '.' segments this passed every
+    // guard and then matched no snapshot key, which is 1e's failure mode
+    // arriving by a shape 1e does not cover.
+    const manifestPath = writeManifest(root, [
+      buildDeclaration({paths: ['.claude/.']}),
+    ]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(exit).toBe(0);
+    expect(report.ran).toHaveLength(0);
+    expect(report.confined).toHaveLength(0);
+    expect(report.refused[0]?.reason).toBe(
+      'paths carries a path whose parent is the repository root: .claude'
+    );
   });
 
   test('2. operand carrying a parent-directory segment is refused, even though it resolves to a shipped file', () => {
@@ -680,10 +784,52 @@ describe('update regen-regions: hostile-input coverage', () => {
     expect(report.failed[0]?.cause).toBe('maxBuffer');
   });
 
+  test('9e. a regeneration program stopped by the time bound names that bound, not a bare signal', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // Sleeps 20x the bound this run is given, which is margin enough on a
+    // loaded machine and short enough that a regression costs seconds rather
+    // than the shipped five minutes: nothing can interrupt the synchronous
+    // spawn, so a broken injection point waits out the whole sleep. 9c's twin
+    // on the other arm, both proving a real kill reaches the cause mapping
+    // rather than only the mapping's string handling (9d).
+    writeScript(root, 'sleep 5');
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report} = runCapturing(baseArgv(manifestPath, root), {
+      spawnTimeoutMs: 250,
+    });
+
+    expect(exit).toBe(0);
+    expect(report.failed).toHaveLength(1);
+    expect(report.failed[0]?.kind).toBe('killed');
+    expect(report.failed[0]?.signal).toBe('SIGTERM');
+    expect(report.failed[0]?.cause).toBe('timeout');
+  });
+
+  test('9f. the time-bound override only ever lowers the bound, and a non-positive one is ignored', () => {
+    // Asserted on the resolver rather than through a run, for the same reason
+    // 9d asserts on `spawnFailureCause`: end to end, `timeout: 0` and the
+    // shipped five minutes are indistinguishable inside a suite, since both
+    // let a fast script finish. Only the resolver can be asked directly, and
+    // an assertion that cannot fail for the reason it exists is worth nothing.
+    const shipped = resolveTimeoutMs(undefined);
+
+    // Node reads `timeout: 0` as NO timeout, so the one value that would
+    // remove the guard must not be honoured by the option that lowers it.
+    expect(resolveTimeoutMs(0)).toBe(shipped);
+    expect(resolveTimeoutMs(-1)).toBe(shipped);
+    expect(resolveTimeoutMs(Number.NaN)).toBe(shipped);
+    // Lowering is the whole of what it is for; raising is refused.
+    expect(resolveTimeoutMs(250)).toBe(250);
+    expect(resolveTimeoutMs(shipped + 1)).toBe(shipped);
+  });
+
   test('9d. every kill cause maps from the code Node reports, and an unknown one is external', () => {
-    // The time bound is five minutes, so the timeout arm cannot be driven
-    // end-to-end in a suite. The mapping it shares with the other two is
-    // exercised here directly; 9a and 9c prove the wiring that feeds it.
+    // The mapping itself, apart from the wiring that feeds it: 9c and 9e drive
+    // the two bounds end-to-end, and this pins the string handling, including
+    // the two shapes no spawn produces.
     expect(spawnFailureCause('ETIMEDOUT')).toBe('timeout');
     expect(spawnFailureCause('ENOBUFS')).toBe('maxBuffer');
     expect(spawnFailureCause('EPIPE')).toBe('external');
@@ -2109,6 +2255,146 @@ describe('update regen-regions: behavior coverage', () => {
     expect(report.ran).toHaveLength(1);
     expect(stderrText).toContain('region_regen_backup_failed');
     expect(readDeclared(root, 0)).toBe('regenerated one\n');
+  });
+
+  test('14b. a declared path that is a FIFO is reported rather than opened, so the backup cannot hang the run', () => {
+    const root = buildRoot();
+    const backupDir = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // Writes only two.md. Opening a FIFO for WRITING blocks as surely as
+    // opening it for reading, so a regeneration command that wrote to one.md
+    // would hang the spawn instead and this test would sit on the 5-minute
+    // spawn bound rather than on the backup.
+    writeScript(
+      root,
+      String.raw`printf "regenerated two\n" > .claude/agents/two.md`
+    );
+    rmSync(path.join(root, DECLARED_PATHS[0]));
+    execFileSync('mkfifo', [path.join(root, DECLARED_PATHS[0])]);
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report, stderrText} = runCapturing(
+      baseArgv(manifestPath, root, ['--backup-dir', backupDir])
+    );
+
+    // Reaching any assertion at all is most of the point: `copyFileSync` on a
+    // FIFO with no writer never returns, so the pre-fix shape does not fail
+    // here, it never arrives.
+    expect(exit).toBe(0);
+    expect(report.backedUp).toEqual([DECLARED_PATHS[1]]);
+    expect(stderrText).toContain('region_regen_backup_failed');
+    expect(stderrText).toContain('not a regular file');
+    expect(report.ran).toHaveLength(1);
+    expect(existsSync(path.join(backupDir, DECLARED_PATHS[0]))).toBe(false);
+  });
+
+  test('14c. a declared path that is a symlink is copied aside as the bytes it resolves to', () => {
+    const root = buildRoot();
+    const backupDir = buildRoot();
+    const outside = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // `sweepScope` skips every declared path in both of its loops, so this
+    // backup is the only copy this path ever gets, and the spawn's write goes
+    // THROUGH the link to the far end. Holding the target's bytes is therefore
+    // the whole value of the copy: a stat that stopped at the link would read
+    // "not a regular file" and refuse, leaving the bytes the write destroys
+    // held nowhere at all.
+    const target = path.join(outside, 'target.md');
+
+    writeFileSync(target, 'out of tree\n');
+    rmSync(path.join(root, DECLARED_PATHS[0]));
+    symlinkSync(target, path.join(root, DECLARED_PATHS[0]));
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report, stderrText} = runCapturing(
+      baseArgv(manifestPath, root, ['--backup-dir', backupDir])
+    );
+
+    const backedUpPath = path.join(backupDir, DECLARED_PATHS[0]);
+
+    expect(exit).toBe(0);
+    expect(report.backedUp.toSorted(byLocale)).toEqual(SORTED_DECLARED_PATHS);
+    expect(stderrText).not.toContain('region_regen_backup_failed');
+    expect(lstatSync(backedUpPath).isSymbolicLink()).toBe(false);
+    expect(readFileSync(backedUpPath, 'utf8')).toBe('out of tree\n');
+    // The premise the copy exists for, asserted rather than assumed: the
+    // spawn's write really does land at the far end of the link, out of tree.
+    // A later change that declined to spawn over a declared link, or that
+    // unlinked instead of truncating, would void it with the copy still green.
+    expect(readFileSync(target, 'utf8')).toBe('regenerated one\n');
+  });
+
+  test('14d. a link already sitting on a backup key is never written through', () => {
+    const root = buildRoot();
+    const backupDir = buildRoot();
+    const outside = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeScript(root, HAPPY_SCRIPT_BODY);
+    // The backup directory is shared with the merge walk, which writes declared
+    // paths into it, so a link can already hold the key this copy is about to
+    // write. `existsSync` follows a dangling one, calls the backup absent, and
+    // `copyFileSync` then writes THROUGH the link and lands the bytes at the
+    // target's key instead, which for a target outside `backupDir` puts them
+    // somewhere nothing will ever look for them.
+    mkdirSync(path.dirname(path.join(backupDir, DECLARED_PATHS[0])), {
+      recursive: true,
+    });
+    symlinkSync(
+      path.join(outside, 'never-written.md'),
+      path.join(backupDir, DECLARED_PATHS[0])
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report, stderrText} = runCapturing(
+      baseArgv(manifestPath, root, ['--backup-dir', backupDir])
+    );
+
+    expect(exit).toBe(0);
+    // The occupied key is left exactly as found, and the OTHER declared path
+    // still backs up, so this is a per-key skip rather than an aborted step.
+    expect(report.backedUp).toEqual([DECLARED_PATHS[1]]);
+    expect(stderrText).not.toContain('region_regen_backup_failed');
+    expect(existsSync(path.join(outside, 'never-written.md'))).toBe(false);
+    expect(
+      lstatSync(path.join(backupDir, DECLARED_PATHS[0])).isSymbolicLink()
+    ).toBe(true);
+  });
+
+  test('14e. a declared path that is a symlink to a FIFO is reported rather than opened', () => {
+    const root = buildRoot();
+    const backupDir = buildRoot();
+    const outside = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // Writes only two.md, for the reason 14b states.
+    writeScript(
+      root,
+      String.raw`printf "regenerated two\n" > .claude/agents/two.md`
+    );
+    // The hazard reaches the copy through an indirection, so a kind check that
+    // stops at the link sees a symlink, calls it backup-able, and hands
+    // `copyFileSync` a FIFO to open anyway. Only the FOLLOWED kind refuses it.
+    const fifo = path.join(outside, 'pipe');
+
+    execFileSync('mkfifo', [fifo]);
+    rmSync(path.join(root, DECLARED_PATHS[0]));
+    symlinkSync(fifo, path.join(root, DECLARED_PATHS[0]));
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {exit, report, stderrText} = runCapturing(
+      baseArgv(manifestPath, root, ['--backup-dir', backupDir])
+    );
+
+    // As in 14b, arriving at an assertion at all is most of the point.
+    expect(exit).toBe(0);
+    expect(report.backedUp).toEqual([DECLARED_PATHS[1]]);
+    expect(stderrText).toContain('region_regen_backup_failed');
+    expect(stderrText).toContain('not a regular file');
+    expect(existsSync(path.join(backupDir, DECLARED_PATHS[0]))).toBe(false);
   });
 
   test('15. --backup-dir does not overwrite an existing backup', () => {

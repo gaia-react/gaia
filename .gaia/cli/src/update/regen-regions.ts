@@ -24,14 +24,13 @@
  * **Write confinement.** A region's regeneration command legitimately rewrites
  * every path it owns, but nothing else. Before the spawn, this command hashes
  * every regular file and reads every symlink under the union of the declared
- * paths' parent directories (the "snapshot scope"), and records the presence of
- * everything else it finds there without looking inside it; after the spawn, any
- * such path in scope the spawn newly created is removed, and then anything in
- * scope that is not
- * one of the region's declared paths and no longer matches its pre-image is put
- * back, whether the spawn rewrote it or deleted it. Undoing the creations first
- * is what leaves an ordinary run with real directories to resolve through, so a
- * link the spawn left behind is gone before any pre-image is written near it.
+ * paths' parent directories (the "snapshot scope"); after the spawn, any path
+ * in scope the spawn newly created is removed, and then anything in scope that
+ * is not one of the region's declared paths and no longer matches its pre-image
+ * is put back, whether the spawn rewrote it or deleted it. Undoing the
+ * creations first is what leaves an ordinary run with real directories to
+ * resolve through, so a link the spawn left behind is gone before any pre-image
+ * is written near it.
  * Three rules hold the guarantee whatever order anything happens in. Neither
  * snapshot pass traverses a symlink, inside the scope or above it, so a link
  * is recorded and restored as itself and nothing behind one is read or
@@ -41,10 +40,9 @@
  * repository. Every write first asks whether the components between the root
  * and the key are real directories, reporting rather than resolving through one
  * that is not, so a scope key can never name one place while the bytes land in
- * another. And a path is deleted as a spawn creation only where the snapshot
- * positively established that nothing was at that key beforehand, which is
- * `collectScopeDigests`' removal invariant, stated in full there and not
- * restated here. Anything else is reported rather than deleted.
+ * another. And a path is deleted as a spawn creation only where
+ * `collectScopeDigests`' removal invariant permits it, stated in full there and
+ * not restated here. Anything else is reported rather than deleted.
  *
  * A `git status --porcelain -z` before/after pair also catches a
  * write anywhere else in the tree; that has no pre-image to restore from, so
@@ -68,6 +66,7 @@ import {
   readlinkSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -297,11 +296,33 @@ const describeJsonShape = (value: unknown): string => {
   return Array.isArray(value) ? 'array' : typeof value;
 };
 
-/** Strips a leading `./`, collapses separators, converts to POSIX. */
+/**
+ * Canonicalizes a declared path to the form the snapshot keys take: POSIX
+ * separators, no repeated separator, no `.` segment at any position, and no
+ * trailing separator.
+ *
+ * Hand-rolled rather than `path.posix.normalize`, which also resolves `..`
+ * away and would disarm the parent-segment guard below, since that guard reads
+ * the value this returns. Nothing here rewrites a `..` segment or a leading
+ * empty one, so both that guard and the absolute-path guard still see what the
+ * declaration said.
+ */
 const normalizeRepoPath = (value: string): string => {
-  const posix = value.replaceAll('\\', '/').replaceAll(/\/{2,}/gu, '/');
+  const dotless = value
+    .replaceAll('\\', '/')
+    .replaceAll(/\/{2,}/gu, '/')
+    .split('/')
+    .filter((segment) => segment !== '.')
+    .join('/');
 
-  return posix.startsWith('./') ? posix.slice(2) : posix;
+  // At most one trailing separator survives the collapse above, so one slice
+  // is enough. A lone `/` keeps it: stripping would leave the empty string,
+  // and the entry would then be refused as empty rather than as the absolute
+  // path it is. A declaration that is nothing but `.` segments does normalize
+  // away, and the empty-entry guard is the right refusal for that one.
+  return dotless.endsWith('/') && dotless.length > 1 ?
+      dotless.slice(0, -1)
+    : dotless;
 };
 
 /**
@@ -570,12 +591,65 @@ const performBackup = (inputs: BackupInputs): string[] => {
 
   paths.forEach((declPath) => {
     const srcAbs = path.resolve(root, declPath);
-
-    if (!existsSync(srcAbs)) return;
-
     const destinationAbs = path.resolve(backupDir, declPath);
 
-    if (existsSync(destinationAbs)) return;
+    // The destination is asked first because a key already holding a backup
+    // needs nothing further resolved, so the source stat is skipped entirely on
+    // that path.
+    //
+    // `lstat` here, where the source below wants the opposite: the question at
+    // the destination is "is any node already on this key", and following a
+    // link is what gets that wrong. This directory is not exclusively this
+    // command's, so a node it never wrote can be sitting on the key;
+    // `existsSync` follows a dangling one, calls a backup that is right there
+    // absent, and the copy below then writes THROUGH it and lands the bytes at
+    // the target's key instead.
+    try {
+      lstatSync(destinationAbs);
+
+      return;
+    } catch {
+      // Nothing at the destination, which is the ordinary case: fall through
+      // and write the backup.
+    }
+
+    let stat;
+
+    try {
+      // `stat`, never `existsSync`, and it FOLLOWS the link deliberately: the
+      // question a backup has to answer is not "is something here" but "will
+      // the copy below read bytes from a regular file", and only the followed
+      // kind answers it, a link to a FIFO being as fatal as a FIFO. Statting a
+      // FIFO returns; OPENING one for reading blocks until a writer arrives,
+      // which for a path nothing is writing to never happens, so `copyFileSync`
+      // neither returns nor throws and the guard below never fires. It also
+      // runs before the spawn, so the spawn's own timeout does not cover it,
+      // and the command stops dead with no report, no stderr, and no exit.
+      stat = statSync(srcAbs);
+    } catch {
+      // Nothing at this path, a link pointing at nothing, or a parent that
+      // cannot be searched. The first is the ordinary case of a region whose
+      // files this tree does not carry yet; either way there is nothing to
+      // copy aside.
+      return;
+    }
+
+    // Refused for a FIFO, a socket, a device node, and a directory, whether the
+    // path names one directly or reaches one through a link: none of them has
+    // content a copy could put back, and a device would read bytes from the
+    // device. A link to a regular file is not in that set and is copied below
+    // exactly as the plain file it resolves to, which is what keeps the bytes
+    // the spawn's write destroys held somewhere.
+    if (!stat.isFile()) {
+      structuredError({
+        code: 'region_regen_backup_failed',
+        message: `backup skipped for '${declPath}' in region '${regionId}': not a regular file`,
+        regionId,
+        subcommand: 'update regen-regions',
+      });
+
+      return;
+    }
 
     // Contained like every other IO call in the region loop. A throw here
     // would discard the whole report, including the confinement records of
@@ -757,22 +831,23 @@ const hasUnenumeratedAncestor = (
  * **The removal invariant. This is the one statement of it; everything else in
  * this module points here rather than paraphrasing.** The sweep may delete a
  * path found only in the AFTER snapshot, on the grounds that the spawn created
- * it, only where this pass POSITIVELY ESTABLISHED that nothing was at that key
- * before. Anywhere else, a path that appears between the two passes may equally
- * be something the adopter already had that has just arrived there, and
- * deleting it destroys the only copy.
+ * it, only where this pass established that nothing RESTORABLE was at that key
+ * before: either it found nothing there, or it found a directory it enumerated,
+ * whose pre-image is its children and is written back beneath the key once the
+ * node now standing there is gone. An EMPTY enumerated directory is where that
+ * costs something: its children are the whole of its pre-image, so there is
+ * nothing to write back and the key is simply gone. Anywhere else, a path that
+ * appears between the two passes may equally be something the adopter already
+ * had that has just arrived there, and deleting it destroys the only copy.
  *
  * The map's shape encodes it: **this walk keys a node exactly when it neither
- * enumerates the node nor establishes its absence.** An unreadable directory, an
- * unstattable entry, a link recorded and not descended, a node that is neither
- * of those nor a directory nor a regular file, a regular file, and the two
- * scope-root gate arms that find something they may not walk all get a key. Two
- * kinds of node get none, and both are positive establishment rather than
- * silence: a real directory the walk descends, whose children speak for it, and
- * a scope root that is not there at all, whose ENOENT establishes the whole
- * subtree absent. So "no entry for this ancestor" means "this pass enumerated it
- * or observed it absent", either of which answers the invariant, which is why
- * `hasUnenumeratedAncestor` reads the invariant itself rather than a proxy.
+ * enumerates the node nor establishes its absence.** Two kinds of node get none,
+ * and both are positive establishment rather than silence: a real directory the
+ * walk descends, whose children speak for it, and a scope root that is not there
+ * at all, whose ENOENT establishes the whole subtree absent. So "no entry for
+ * this ancestor" means "this pass enumerated it or observed it absent", either
+ * of which answers the invariant, which is why `hasUnenumeratedAncestor` reads
+ * the invariant itself rather than a proxy.
  *
  * Preserve that before moving any arm of this walk, and preserve it in the shape
  * stated: an arm that stops keying a node it neither enumerated nor found absent
@@ -939,11 +1014,8 @@ const collectScopeDigests = (
     // covers declared paths only, so there is no second copy anywhere.
     //
     // Keyed through `relativeKey(root, absDir)` rather than from `dir`
-    // directly. `dir` is a declared path's `dirname`, and a declaration can
-    // carry an interior `./` that normalization leaves alone, which would key
-    // this entry somewhere no `after` key can ever match and silently unshelter
-    // the subtree. `path.resolve` settles that before the key is derived, so
-    // this guarantee does not rest on a declaration being well shaped.
+    // directly, so this guarantee rests on the key the snapshot itself derives
+    // rather than on the shape a declaration happened to arrive in.
     const absDir = path.resolve(root, dir);
     const scopeKey = relativeKey(root, absDir);
 
@@ -1207,6 +1279,28 @@ type GitStatus = {
 };
 
 /**
+ * `root`'s own path relative to the repository top level, with a trailing
+ * slash, and empty when the two coincide (the ordinary case, and the only one
+ * `--root .` at a repository root produces). `null` when git cannot answer.
+ *
+ * Resolved once per run rather than per status call. It is a property of
+ * `--root`, which no region can change: it cannot differ between the before
+ * and after snapshots, and it cannot differ between regions, so deriving it at
+ * each of the two calls per region spawned a second git process every time for
+ * an answer already known.
+ */
+const resolveRepoPrefix = (root: string): null | string => {
+  try {
+    return execGaiaGitRaw(['rev-parse', '--show-prefix'], root).replace(
+      /\r?\n$/u,
+      ''
+    );
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Whole-root `git status --porcelain -z` path list. `null` when git is
  * unavailable or `root` is not a repository, so the caller can degrade
  * cleanly rather than failing.
@@ -1226,7 +1320,15 @@ type GitStatus = {
  * meaningful; without it every one of the region's own legitimate writes fails
  * to match and is reported to the adopter as an out-of-scope write.
  */
-const gitStatusPaths = (root: string): GitStatus | null => {
+const gitStatusPaths = (
+  root: string,
+  prefix: null | string
+): GitStatus | null => {
+  // `null` means git could not answer `--show-prefix` for this root, which is
+  // the same condition that stops `git status` answering, so there is nothing
+  // to gain by spawning it. The caller reports the delta unavailable.
+  if (prefix === null) return null;
+
   try {
     // Raw, never trimmed: the ` M path` shape's leading space is a status
     // column, and trimming it shifts the 3-character prefix slice below.
@@ -1253,14 +1355,6 @@ const gitStatusPaths = (root: string): GitStatus | null => {
         expectOriginPath = /[CR]/u.test(record.slice(0, 2));
         paths.push(record.slice(3));
       });
-
-    // `--show-prefix` is `root`'s own path relative to the top level, with a
-    // trailing slash, and empty when the two coincide (the ordinary case, and
-    // the only one `--root .` at a repository root produces).
-    const prefix = execGaiaGitRaw(['rev-parse', '--show-prefix'], root).replace(
-      /\r?\n$/u,
-      ''
-    );
 
     if (prefix === '') return {inside: paths, outside: []};
 
@@ -1327,16 +1421,42 @@ export const spawnFailureCause = (code: unknown): KilledCause => {
  * limit, so a program that merely talks a lot is killed mid-run, and one
  * that hangs hangs the whole update. The one shipped regeneration command is
  * nearly silent and fast; these bounds exist for adopter-authored ones.
+ *
+ * Carried as a value rather than read from the constants at the spawn, so a
+ * caller can lower them. Lowering the time bound is the only way to reach the
+ * `timeout` arm of the killed-cause mapping on the real spawn path: driving it
+ * at the shipped five minutes means a suite that waits five minutes, and the
+ * arm then rests on nothing but a unit test of the string mapping.
  */
+type SpawnBounds = {
+  maxBufferBytes: number;
+  timeoutMs: number;
+};
+
 const SPAWN_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 const SPAWN_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * An override only ever LOWERS the time bound, which is the whole of what it
+ * is for. A non-positive one is ignored rather than honoured: Node reads
+ * `timeout: 0` as no timeout at all, so the one value that would remove the
+ * guard is the one an option documented as tightening it must not accept.
+ */
+export const resolveTimeoutMs = (override: number | undefined): number =>
+  override !== undefined && override > 0 ?
+    Math.min(override, SPAWN_TIMEOUT_MS)
+  : SPAWN_TIMEOUT_MS;
 
 /**
  * Step 6. Never runs through a shell, never a shell-interpreted string, and
  * never enables the shell option: the interpreter comes from the
  * declaration, so no shipped script's executable bit is load-bearing.
  */
-const trySpawn = (decl: ParsedDeclaration, root: string): SpawnOutcome => {
+const trySpawn = (
+  decl: ParsedDeclaration,
+  root: string,
+  bounds: SpawnBounds
+): SpawnOutcome => {
   try {
     execFileSync(
       decl.interpreter,
@@ -1344,12 +1464,12 @@ const trySpawn = (decl: ParsedDeclaration, root: string): SpawnOutcome => {
       {
         cwd: root,
         encoding: 'utf8',
-        maxBuffer: SPAWN_MAX_BUFFER_BYTES,
+        maxBuffer: bounds.maxBufferBytes,
         // The child's stdout is never read, so discarding it outright leaves
         // stderr as the only stream that can reach the buffer bound at all,
         // and stderr is what carries the diagnostic this reports on failure.
         stdio: ['ignore', 'ignore', 'pipe'],
-        timeout: SPAWN_TIMEOUT_MS,
+        timeout: bounds.timeoutMs,
       }
     );
 
@@ -1451,11 +1571,15 @@ type RegionContext = {
   backupDir: string | undefined;
   conflictedSet: ReadonlySet<string>;
   realRoot: string;
+  /** Resolved once for the run; see `resolveRepoPrefix`. */
+  repoPrefix: null | string;
   report: RegenRegionsReport;
   root: string;
   seenIds: Set<string>;
   shippedKeys: ReadonlySet<string>;
   skipRegionSet: ReadonlySet<string>;
+  /** Resolved once for the run; see `SpawnBounds`. */
+  spawnBounds: SpawnBounds;
 };
 
 /** Steps 4-8 for one region that passed well-formedness, skip, and operand checks. */
@@ -1464,7 +1588,7 @@ const runRegeneration = (
   commandArgv: string[],
   context: RegionContext
 ): void => {
-  const {backupDir, report, root} = context;
+  const {backupDir, repoPrefix, report, root, spawnBounds} = context;
 
   report.backedUp.push(
     ...performBackup({
@@ -1477,9 +1601,9 @@ const runRegeneration = (
 
   const scopeDirs = scopeDirsFor(decl.paths);
   const before = collectScopeDigests(root, scopeDirs);
-  const beforeStatus = gitStatusPaths(root);
+  const beforeStatus = gitStatusPaths(root, repoPrefix);
 
-  const spawnResult = trySpawn(decl, root);
+  const spawnResult = trySpawn(decl, root, spawnBounds);
 
   const after = collectScopeDigests(root, scopeDirs);
 
@@ -1494,7 +1618,7 @@ const runRegeneration = (
   );
 
   reportOutOfScopeWrites({
-    afterStatus: gitStatusPaths(root),
+    afterStatus: gitStatusPaths(root, repoPrefix),
     beforeStatus,
     decl,
     report,
@@ -1609,6 +1733,13 @@ type LoadResult = {ok: false} | {ok: true; value: LoadedInputs};
 
 type RunOptions = {
   cwd?: string;
+  /**
+   * Lowers the spawn's time bound. Absent, the shipped five minutes applies,
+   * so no adopter invocation moves; see `SpawnBounds`. The output bound needs
+   * no override, because a program can be made to breach the shipped one in a
+   * suite and 9c does exactly that.
+   */
+  spawnTimeoutMs?: number;
 };
 
 /**
@@ -1776,6 +1907,11 @@ export const run = (
     backupDir,
     conflictedSet: new Set(parsed.flags.conflicted),
     realRoot,
+    // Resolved here, once, rather than at each status call: it is a property
+    // of `--root` alone, so no region can move it. Not resolved at all when
+    // there is no region to process, which is the ordinary shape of a release
+    // predating the region mechanism, and the value is then unreachable.
+    repoPrefix: rawRegions.length > 0 ? resolveRepoPrefix(root) : null,
     report: {
       backedUp: [],
       confined: [],
@@ -1788,6 +1924,10 @@ export const run = (
     seenIds: new Set<string>(),
     shippedKeys,
     skipRegionSet: new Set(parsed.flags.skipRegions),
+    spawnBounds: {
+      maxBufferBytes: SPAWN_MAX_BUFFER_BYTES,
+      timeoutMs: resolveTimeoutMs(options.spawnTimeoutMs),
+    },
   };
 
   // An absent `regions` key is the legitimate "this release predates the

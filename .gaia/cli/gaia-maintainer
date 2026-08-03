@@ -27659,6 +27659,7 @@ import {
   readlinkSync as readlinkSync2,
   realpathSync as realpathSync3,
   rmSync as rmSync3,
+  statSync as statSync5,
   symlinkSync as symlinkSync2,
   writeFileSync as writeFileSync9
 } from "node:fs";
@@ -27776,8 +27777,8 @@ var describeJsonShape = (value) => {
   return Array.isArray(value) ? "array" : typeof value;
 };
 var normalizeRepoPath = (value) => {
-  const posix = value.replaceAll("\\", "/").replaceAll(/\/{2,}/gu, "/");
-  return posix.startsWith("./") ? posix.slice(2) : posix;
+  const dotless = value.replaceAll("\\", "/").replaceAll(/\/{2,}/gu, "/").split("/").filter((segment) => segment !== ".").join("/");
+  return dotless.endsWith("/") && dotless.length > 1 ? dotless.slice(0, -1) : dotless;
 };
 var normalizeDeclaredPaths = (paths) => {
   const normalized = [];
@@ -27917,9 +27918,27 @@ var performBackup = (inputs) => {
   const backedUp = [];
   paths.forEach((declPath) => {
     const srcAbs = path39.resolve(root, declPath);
-    if (!existsSync29(srcAbs)) return;
     const destinationAbs = path39.resolve(backupDir, declPath);
-    if (existsSync29(destinationAbs)) return;
+    try {
+      lstatSync2(destinationAbs);
+      return;
+    } catch {
+    }
+    let stat;
+    try {
+      stat = statSync5(srcAbs);
+    } catch {
+      return;
+    }
+    if (!stat.isFile()) {
+      structuredError({
+        code: "region_regen_backup_failed",
+        message: `backup skipped for '${declPath}' in region '${regionId}': not a regular file`,
+        regionId,
+        subcommand: "update regen-regions"
+      });
+      return;
+    }
     try {
       mkdirSync12(path39.dirname(destinationAbs), { recursive: true });
       copyFileSync2(srcAbs, destinationAbs);
@@ -28106,7 +28125,18 @@ var sweepScope = (inputs) => {
 var isInsideScope = (relPath, scopeDirs) => [...scopeDirs].some(
   (dir) => relPath === dir || relPath.startsWith(`${dir}/`)
 );
-var gitStatusPaths = (root) => {
+var resolveRepoPrefix = (root) => {
+  try {
+    return execGaiaGitRaw(["rev-parse", "--show-prefix"], root).replace(
+      /\r?\n$/u,
+      ""
+    );
+  } catch {
+    return null;
+  }
+};
+var gitStatusPaths = (root, prefix) => {
+  if (prefix === null) return null;
   try {
     const out = execGaiaGitRaw(["status", "--porcelain", "-z"], root);
     const paths = [];
@@ -28120,10 +28150,6 @@ var gitStatusPaths = (root) => {
       expectOriginPath = /[CR]/u.test(record2.slice(0, 2));
       paths.push(record2.slice(3));
     });
-    const prefix = execGaiaGitRaw(["rev-parse", "--show-prefix"], root).replace(
-      /\r?\n$/u,
-      ""
-    );
     if (prefix === "") return { inside: paths, outside: [] };
     const inside = [];
     const outside = [];
@@ -28147,7 +28173,8 @@ var spawnFailureCause = (code) => {
 };
 var SPAWN_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 var SPAWN_TIMEOUT_MS = 5 * 60 * 1e3;
-var trySpawn = (decl, root) => {
+var resolveTimeoutMs = (override) => override !== void 0 && override > 0 ? Math.min(override, SPAWN_TIMEOUT_MS) : SPAWN_TIMEOUT_MS;
+var trySpawn = (decl, root, bounds) => {
   try {
     execFileSync4(
       decl.interpreter,
@@ -28155,12 +28182,12 @@ var trySpawn = (decl, root) => {
       {
         cwd: root,
         encoding: "utf8",
-        maxBuffer: SPAWN_MAX_BUFFER_BYTES,
+        maxBuffer: bounds.maxBufferBytes,
         // The child's stdout is never read, so discarding it outright leaves
         // stderr as the only stream that can reach the buffer bound at all,
         // and stderr is what carries the diagnostic this reports on failure.
         stdio: ["ignore", "ignore", "pipe"],
-        timeout: SPAWN_TIMEOUT_MS
+        timeout: bounds.timeoutMs
       }
     );
     return { ok: true };
@@ -28214,7 +28241,7 @@ var reportOutOfScopeWrites = (inputs) => {
   });
 };
 var runRegeneration = (decl, commandArgv, context) => {
-  const { backupDir, report, root } = context;
+  const { backupDir, repoPrefix, report, root, spawnBounds } = context;
   report.backedUp.push(
     ...performBackup({
       backupDir,
@@ -28225,8 +28252,8 @@ var runRegeneration = (decl, commandArgv, context) => {
   );
   const scopeDirs = scopeDirsFor(decl.paths);
   const before = collectScopeDigests(root, scopeDirs);
-  const beforeStatus = gitStatusPaths(root);
-  const spawnResult = trySpawn(decl, root);
+  const beforeStatus = gitStatusPaths(root, repoPrefix);
+  const spawnResult = trySpawn(decl, root, spawnBounds);
   const after = collectScopeDigests(root, scopeDirs);
   report.confined.push(
     ...sweepScope({
@@ -28238,7 +28265,7 @@ var runRegeneration = (decl, commandArgv, context) => {
     })
   );
   reportOutOfScopeWrites({
-    afterStatus: gitStatusPaths(root),
+    afterStatus: gitStatusPaths(root, repoPrefix),
     beforeStatus,
     decl,
     report,
@@ -28426,6 +28453,11 @@ var run46 = (argv, options = {}) => {
     backupDir,
     conflictedSet: new Set(parsed.flags.conflicted),
     realRoot,
+    // Resolved here, once, rather than at each status call: it is a property
+    // of `--root` alone, so no region can move it. Not resolved at all when
+    // there is no region to process, which is the ordinary shape of a release
+    // predating the region mechanism, and the value is then unreachable.
+    repoPrefix: rawRegions.length > 0 ? resolveRepoPrefix(root) : null,
     report: {
       backedUp: [],
       confined: [],
@@ -28437,7 +28469,11 @@ var run46 = (argv, options = {}) => {
     root,
     seenIds: /* @__PURE__ */ new Set(),
     shippedKeys,
-    skipRegionSet: new Set(parsed.flags.skipRegions)
+    skipRegionSet: new Set(parsed.flags.skipRegions),
+    spawnBounds: {
+      maxBufferBytes: SPAWN_MAX_BUFFER_BYTES,
+      timeoutMs: resolveTimeoutMs(options.spawnTimeoutMs)
+    }
   };
   if (manifestShape !== null)
     context.report.refused.push({
@@ -29316,7 +29352,7 @@ var run49 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readdirSync as readdirSync6, readFileSync as readFileSync36, statSync as statSync5 } from "node:fs";
+import { readdirSync as readdirSync6, readFileSync as readFileSync36, statSync as statSync6 } from "node:fs";
 import path41 from "node:path";
 var HELP_TEXT49 = `Usage: gaia wiki dead-paths [--json]
 
@@ -29373,7 +29409,7 @@ var walkMarkdown = (root, dir) => {
 };
 var pathExists = (root, candidate) => {
   try {
-    statSync5(path41.join(root, candidate));
+    statSync6(path41.join(root, candidate));
     return true;
   } catch {
     return false;
@@ -29401,7 +29437,7 @@ var collectDeadPathsInFile = (ctx) => {
 var findDeadPaths = (cwd) => {
   const wikiDir = path41.join(cwd, "wiki");
   try {
-    statSync5(wikiDir);
+    statSync6(wikiDir);
   } catch {
     return [];
   }
@@ -29663,7 +29699,7 @@ var run51 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync37, statSync as statSync6 } from "node:fs";
+import { readdirSync as readdirSync7, readFileSync as readFileSync37, statSync as statSync7 } from "node:fs";
 import path42 from "node:path";
 
 // src/wiki/util/frontmatter.ts
@@ -29800,7 +29836,7 @@ var findInBody = (body, bodyLineOffset, relPath) => {
 var findEmptySections = (cwd) => {
   const wikiDir = path42.join(cwd, "wiki");
   try {
-    statSync6(wikiDir);
+    statSync7(wikiDir);
   } catch {
     return [];
   }
@@ -29861,7 +29897,7 @@ var run52 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readdirSync as readdirSync8, readFileSync as readFileSync38, statSync as statSync7 } from "node:fs";
+import { readdirSync as readdirSync8, readFileSync as readFileSync38, statSync as statSync8 } from "node:fs";
 import path43 from "node:path";
 var HELP_TEXT52 = `Usage: gaia wiki frontmatter [--json]
 
@@ -29891,7 +29927,7 @@ var hasField = (frontmatter, field) => Object.hasOwn(frontmatter, field) && fron
 var findFrontmatterGaps = (cwd) => {
   const wikiDir = path43.join(cwd, "wiki");
   try {
-    statSync7(wikiDir);
+    statSync8(wikiDir);
   } catch {
     return [];
   }
@@ -30101,7 +30137,7 @@ var run54 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync32, readdirSync as readdirSync9, statSync as statSync8 } from "node:fs";
+import { existsSync as existsSync32, readdirSync as readdirSync9, statSync as statSync9 } from "node:fs";
 import path45 from "node:path";
 var HELP_TEXT54 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
@@ -30149,7 +30185,7 @@ var levenshtein = (a, b) => {
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => {
   const domainDir = path45.join(wikiRoot, domain2);
-  if (!existsSync32(domainDir) || !statSync8(domainDir).isDirectory()) {
+  if (!existsSync32(domainDir) || !statSync9(domainDir).isDirectory()) {
     return [];
   }
   const entries = readdirSync9(domainDir, { withFileTypes: true });
@@ -30251,7 +30287,7 @@ var run55 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync33, readdirSync as readdirSync10, readFileSync as readFileSync40, statSync as statSync9 } from "node:fs";
+import { existsSync as existsSync33, readdirSync as readdirSync10, readFileSync as readFileSync40, statSync as statSync10 } from "node:fs";
 import path46 from "node:path";
 var HELP_TEXT55 = `Usage: gaia wiki page-index [--json]
 
@@ -30316,7 +30352,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
 };
 var collectDomainPages = (wikiRoot, domain2) => {
   const domainDir = path46.join(wikiRoot, domain2);
-  if (!existsSync33(domainDir) || !statSync9(domainDir).isDirectory()) return [];
+  if (!existsSync33(domainDir) || !statSync10(domainDir).isDirectory()) return [];
   const entries = readdirSync10(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
