@@ -1257,6 +1257,28 @@ type GitStatus = {
 };
 
 /**
+ * `root`'s own path relative to the repository top level, with a trailing
+ * slash, and empty when the two coincide (the ordinary case, and the only one
+ * `--root .` at a repository root produces). `null` when git cannot answer.
+ *
+ * Resolved once per run rather than per status call. It is a property of
+ * `--root`, which no region can change: it cannot differ between the before
+ * and after snapshots, and it cannot differ between regions, so deriving it at
+ * each of the two calls per region spawned a second git process every time for
+ * an answer already known.
+ */
+const resolveRepoPrefix = (root: string): string | null => {
+  try {
+    return execGaiaGitRaw(['rev-parse', '--show-prefix'], root).replace(
+      /\r?\n$/u,
+      ''
+    );
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Whole-root `git status --porcelain -z` path list. `null` when git is
  * unavailable or `root` is not a repository, so the caller can degrade
  * cleanly rather than failing.
@@ -1276,7 +1298,12 @@ type GitStatus = {
  * meaningful; without it every one of the region's own legitimate writes fails
  * to match and is reported to the adopter as an out-of-scope write.
  */
-const gitStatusPaths = (root: string): GitStatus | null => {
+const gitStatusPaths = (root: string, prefix: string | null): GitStatus | null => {
+  // `null` means git could not answer `--show-prefix` for this root, which is
+  // the same condition that stops `git status` answering, so there is nothing
+  // to gain by spawning it. The caller reports the delta unavailable.
+  if (prefix === null) return null;
+
   try {
     // Raw, never trimmed: the ` M path` shape's leading space is a status
     // column, and trimming it shifts the 3-character prefix slice below.
@@ -1303,14 +1330,6 @@ const gitStatusPaths = (root: string): GitStatus | null => {
         expectOriginPath = /[CR]/u.test(record.slice(0, 2));
         paths.push(record.slice(3));
       });
-
-    // `--show-prefix` is `root`'s own path relative to the top level, with a
-    // trailing slash, and empty when the two coincide (the ordinary case, and
-    // the only one `--root .` at a repository root produces).
-    const prefix = execGaiaGitRaw(['rev-parse', '--show-prefix'], root).replace(
-      /\r?\n$/u,
-      ''
-    );
 
     if (prefix === '') return {inside: paths, outside: []};
 
@@ -1501,6 +1520,8 @@ type RegionContext = {
   backupDir: string | undefined;
   conflictedSet: ReadonlySet<string>;
   realRoot: string;
+  /** Resolved once for the run; see `resolveRepoPrefix`. */
+  repoPrefix: string | null;
   report: RegenRegionsReport;
   root: string;
   seenIds: Set<string>;
@@ -1514,7 +1535,7 @@ const runRegeneration = (
   commandArgv: string[],
   context: RegionContext
 ): void => {
-  const {backupDir, report, root} = context;
+  const {backupDir, report, repoPrefix, root} = context;
 
   report.backedUp.push(
     ...performBackup({
@@ -1527,7 +1548,7 @@ const runRegeneration = (
 
   const scopeDirs = scopeDirsFor(decl.paths);
   const before = collectScopeDigests(root, scopeDirs);
-  const beforeStatus = gitStatusPaths(root);
+  const beforeStatus = gitStatusPaths(root, repoPrefix);
 
   const spawnResult = trySpawn(decl, root);
 
@@ -1544,7 +1565,7 @@ const runRegeneration = (
   );
 
   reportOutOfScopeWrites({
-    afterStatus: gitStatusPaths(root),
+    afterStatus: gitStatusPaths(root, repoPrefix),
     beforeStatus,
     decl,
     report,
@@ -1652,6 +1673,7 @@ type LoadedInputs = {
   /** `null` when the manifest is a plain object; else its shape name. */
   manifestShape: null | string;
   realRoot: string;
+  repoPrefix: string | null;
   root: string;
 };
 
@@ -1742,6 +1764,10 @@ const loadRunInputs = (cwd: string, flags: Flags): LoadResult => {
     return {ok: false};
   }
 
+  // Resolved here, once, rather than at each status call: it is a property of
+  // `--root` alone, so no region can move it. See `resolveRepoPrefix`.
+  const repoPrefix = resolveRepoPrefix(root);
+
   // Two returns rather than one, so the type guard narrows `manifestParsed`
   // for `manifestRecord` on the arm that keeps it.
   if (isPlainObject(manifestParsed))
@@ -1752,6 +1778,7 @@ const loadRunInputs = (cwd: string, flags: Flags): LoadResult => {
         manifestRecord: manifestParsed,
         manifestShape: null,
         realRoot,
+        repoPrefix,
         root,
       },
     };
@@ -1766,6 +1793,7 @@ const loadRunInputs = (cwd: string, flags: Flags): LoadResult => {
       manifestRecord: {},
       manifestShape: describeJsonShape(manifestParsed),
       realRoot,
+      repoPrefix,
       root,
     },
   };
@@ -1812,7 +1840,7 @@ export const run = (
 
   if (!loaded.ok) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
-  const {backupDir, manifestRecord, manifestShape, realRoot, root} =
+  const {backupDir, manifestRecord, manifestShape, realRoot, repoPrefix, root} =
     loaded.value;
   const regionsValue = manifestRecord.regions;
   const regionsAreArray = Array.isArray(regionsValue);
@@ -1826,6 +1854,7 @@ export const run = (
     backupDir,
     conflictedSet: new Set(parsed.flags.conflicted),
     realRoot,
+    repoPrefix,
     report: {
       backedUp: [],
       confined: [],
