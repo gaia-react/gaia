@@ -274,8 +274,12 @@ setup() {
 }
 
 @test "the mode check names its disposition, like every other outcome in the step" {
-  # It is the step's only `[!]`, so it is the one outcome a reader cannot
-  # infer from its neighbours. Dropping "source untouched, do not apply"
+  # It is the one outcome in the step a reader cannot infer from its
+  # neighbours. (Its `[!]`-versus-`[~]` tier is deliberately NOT pinned:
+  # `audit.md` maps both to `applied-partial`, the dependency gate treats
+  # every non-`[x]` alike, and post-apply verification skips both, so a
+  # needle on the tier would be brittle with no consequence behind it.)
+  # Dropping "source untouched, do not apply"
   # leaves the check stating a verdict with no consequence, which is how a
   # Stage 2 reaches the apply step anyway and half-applies a malformed
   # promote after three wiki writes.
@@ -351,6 +355,13 @@ setup() {
   # placement alone reads as arbitrary to whoever tidies this next.
   local step2
   step2="$(scoped '^2\. Verify drift signal' '^3\. Apply the change')"
+  # The enum clause itself, not just the rationale for where it sits. Without
+  # this needle the clause alone can be moved into step 3's apply arm, with
+  # the orphaned `unrecognized,` dropped from the disposition sentence, and
+  # the whole suite stays green while step 2 still claims a schema-validity
+  # check runs there. That incoherent partial relocation is the one mutation
+  # the whole-bullet pins do not catch.
+  grep -qF -- 'confirm `source_action` is one of `delete` / `replace` / `keep`' <<<"$step2"
   grep -qF -- 'schema-validity check rather than a drift signal' <<<"$step2"
   grep -qF -- 'knowable before any write' <<<"$step2"
 }
