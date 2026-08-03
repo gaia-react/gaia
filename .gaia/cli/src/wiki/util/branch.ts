@@ -6,16 +6,17 @@
  * `runner` parameter on each function is the indirection point; tests
  * inject a fake `spawnSync` that returns canned `SpawnSyncReturns`.
  *
- * Errors are surfaced two ways:
- *   - For predicate-shaped helpers (`isProtectedBranch`, `isWorkingTreeDirty`)
- *     a non-zero exit on the underlying git call throws an `Error` whose
- *     message includes the failing argv. The handler catches and maps to
- *     exit code 2.
- *   - For value-shaped helpers (`currentBranch`, `stagedAndUnstagedPaths`)
- *     the same convention applies.
+ * Errors are surfaced one way: a helper whose answer depends on git
+ * (`currentBranch`, `inspectWorkingTree`) throws an `Error` naming the failing
+ * argv when that call fails or exits non-zero, and the handler catches it and
+ * maps to exit code 2. Two helpers sit outside that convention on purpose:
+ * `defaultBranch` falls back to `main` rather than throwing, since an unset
+ * `origin/HEAD` is an ordinary state rather than a failure, and
+ * `isProtectedBranch` runs no command at all.
  */
 import {spawnSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
+import {porcelainZPaths} from '../../util/git-status.js';
 
 export type CommandRunner = (
   command: string,
@@ -108,34 +109,22 @@ export type WorkingTreeStatus = {
  * Inspect the working tree (staged + unstaged + untracked) and classify
  * paths by whether they sit under `wiki/`.
  *
- * Uses `git status --porcelain=v1 -uall`. The first two columns are
- * status codes; column 3 onwards is the path. Renames emit `orig -> new`
- * we treat both halves as touched paths.
+ * Uses `git status --porcelain=v1 -z -uall`, parsed by the shared
+ * `porcelainZPaths`. `-uall` lists every untracked file rather than collapsing
+ * a wholly-untracked directory to its name, so a new page under `wiki/` is
+ * classified as itself. `-z` is what makes the classification trustworthy: a
+ * quoted rename splits into a half that starts with `wiki/` and a half that
+ * starts with `"`, which flips `hasNonWikiChanges` on a working tree holding
+ * nothing but a wiki rename, and both callers gate on that flag.
  */
 export const inspectWorkingTree = (
   cwd: string,
   runner: CommandRunner = defaultRunner
 ): WorkingTreeStatus => {
-  const args = ['status', '--porcelain=v1', '-uall'];
-  const out = expectSuccess(runner('git', args, {cwd}), 'git', args);
-  const paths = out.split('\n').flatMap((rawLine) => {
-    const line = rawLine.replace(/\r$/u, '');
-
-    if (line.length === 0) return [];
-
-    // Porcelain v1: 2-char status, space, path. Account for renames.
-    // Git quotes paths that contain spaces or special chars; strip the quotes.
-    const rawPayload = line.slice(3);
-    const payload =
-      rawPayload.startsWith('"') && rawPayload.endsWith('"') ?
-        rawPayload.slice(1, -1)
-      : rawPayload;
-    const renameSplit = payload.indexOf(' -> ');
-
-    return renameSplit === -1 ?
-        [payload]
-      : [payload.slice(0, renameSplit), payload.slice(renameSplit + 4)];
-  });
+  const args = ['status', '--porcelain=v1', '-z', '-uall'];
+  const paths = porcelainZPaths(
+    expectSuccess(runner('git', args, {cwd}), 'git', args)
+  );
 
   let hasWikiChanges = false;
   let hasNonWikiChanges = false;

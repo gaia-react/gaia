@@ -306,8 +306,8 @@ describe('wiki chain', () => {
       const runner = buildRunner(
         [
           {
-            argv: ['status', '--porcelain=v1', '-uall'],
-            result: okResult(' M wiki/log.md\n?? wiki/meta/lint-report.md\n'),
+            argv: ['status', '--porcelain=v1', '-z', '-uall'],
+            result: okResult(' M wiki/log.md\0?? wiki/meta/lint-report.md\0'),
           },
         ],
         recorded
@@ -339,7 +339,7 @@ describe('wiki chain', () => {
       const runner = buildRunner(
         [
           {
-            argv: ['status', '--porcelain=v1', '-uall'],
+            argv: ['status', '--porcelain=v1', '-z', '-uall'],
             result: okResult(''),
           },
         ],
@@ -363,8 +363,8 @@ describe('wiki chain', () => {
       const runner = buildRunner(
         [
           {
-            argv: ['status', '--porcelain=v1', '-uall'],
-            result: okResult(' M app/foo.ts\n M wiki/log.md\n'),
+            argv: ['status', '--porcelain=v1', '-z', '-uall'],
+            result: okResult(' M app/foo.ts\0 M wiki/log.md\0'),
           },
         ],
         recorded
@@ -392,8 +392,8 @@ describe('wiki chain', () => {
       const runner = buildRunner(
         [
           {
-            argv: ['status', '--porcelain=v1', '-uall'],
-            result: okResult(' M wiki/log.md\n'),
+            argv: ['status', '--porcelain=v1', '-z', '-uall'],
+            result: okResult(' M wiki/log.md\0'),
           },
           {argv: ['add', 'wiki'], result: okResult('')},
           {
@@ -421,8 +421,8 @@ describe('wiki chain', () => {
       const committingRunner = buildRunner(
         [
           {
-            argv: ['status', '--porcelain=v1', '-uall'],
-            result: okResult(' M wiki/log.md\n'),
+            argv: ['status', '--porcelain=v1', '-z', '-uall'],
+            result: okResult(' M wiki/log.md\0'),
           },
         ],
         committingRecorded
@@ -438,7 +438,7 @@ describe('wiki chain', () => {
       const noopRunner = buildRunner(
         [
           {
-            argv: ['status', '--porcelain=v1', '-uall'],
+            argv: ['status', '--porcelain=v1', '-z', '-uall'],
             result: okResult(''),
           },
         ],
@@ -669,8 +669,8 @@ describe('wiki chain', () => {
             result: okResult('0\n'),
           },
           {
-            argv: ['status', '--porcelain=v1', '-uall'],
-            result: okResult(' M wiki/log.md\n'),
+            argv: ['status', '--porcelain=v1', '-z', '-uall'],
+            result: okResult(' M wiki/log.md\0'),
           },
         ],
         recorded
@@ -869,8 +869,8 @@ describe('wiki chain', () => {
             result: okResult('0\n'),
           },
           {
-            argv: ['status', '--porcelain=v1', '-uall'],
-            result: okResult(' M wiki/log.md\n'),
+            argv: ['status', '--porcelain=v1', '-z', '-uall'],
+            result: okResult(' M wiki/log.md\0'),
           },
         ],
         recorded
