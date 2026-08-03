@@ -11,6 +11,10 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-03 60dd382d WORTHY - update-gaia summary table gained a Merged row → wiki/concepts/Update Workflow.md
+- 2026-08-03 994af00e WORTHY - sync land moved to shared -z porcelain reader (rename-safe) → wiki/concepts/Wiki Sync.md
+- 2026-08-03 51c77ee6 WORTHY - backup follows declared-path symlinks and refuses non-regular targets → wiki/concepts/Generated Regions.md
+- 2026-08-03 968cdcc2 SKIP - wiki: self-referential
 - 2026-08-03 10c0849e SKIP - regen-regions snapshot walk closes several symlink-escape and unreadable-path defects (#1128, #1130, #1134); wiki/concepts/Generated Regions.md's four-limits confinement description already updated in-commit to final state
 - 2026-08-03 04a20431 SKIP - region-registry roster read/parse failures now throw distinct, named errors instead of silently resolving to an empty auditor set; internal error-message correctness fix, no documented behavior change
 - 2026-08-03 c382413f SKIP - gaia --help update summary now lists merge-audit-ci alongside the other three subcommands; help-text-only fix, wiki's Update Workflow page already documents the commands accurately

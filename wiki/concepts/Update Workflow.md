@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-07-31
+updated: 2026-08-03
 tags: [release, claude, adopter, drift]
 ---
 
@@ -44,7 +44,7 @@ Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.m
 4. Show the adopter the **full baseline-to-latest CHANGELOG range** (every versioned section newer than `$BASELINE`, fetched no-auth from the release tarball) and **confirm** before touching anything. An adopter several versions behind sees every intervening entry, not just the latest tag's body. Step 9 cross-references the Step 7a removal no-op and deletion sweep against `**Action required:**`-anchored entries in the displayed range and surfaces a documented, opt-in cleanup suggestion for any convention-marked entry the merge walk left in place. Never auto-removes a dependency or deletes a file. If on `main`/`master`, create the feature branch only after this confirmation, not before, so an early exit leaves no orphan branch.
 5. Prune prior runs' leftover artifacts before this run creates its own: drop stale `.gaia-backup/` copies and stale `.gaia/local/cache/shared/update-gaia/` tag dirs (keeping the baseline tarball), and remove `.gaia-merge/` only when empty. Then download baseline + latest tarballs to `.gaia/local/cache/shared/update-gaia/`. Stop on any download or extraction failure; do not proceed with a partial cache.
 6. Walk the latest manifest. For each file, apply the decision table below.
-7. Report summary: overwritten / added / removed / skipped / conflicts / deleted / backed up.
+7. Report summary: overwritten / merged / added / removed / skipped / conflicts / deleted / backed up.
 8. Bump `.gaia/VERSION` and replace `.gaia/manifest.json` with the latest version's copy. This happens after the summary prints so that if the walk was aborted mid-way the version stays at baseline and a re-run resumes cleanly.
 9. Remind the adopter to review `.gaia-merge/`, run the [[Quality Gate]], and commit manually.
 

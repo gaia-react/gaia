@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-03
-updated: 2026-07-03
+updated: 2026-08-03
 tags: [concept, claude, workflow, wiki]
 ---
 
@@ -79,7 +79,7 @@ For each commit since `last_evaluated_sha`:
 
 When invoked as part of the no-arg `/gaia-wiki` full chain, `gaia wiki chain begin` pre-cuts the branch before sync runs, so this same step commits in place rather than opening its own PR. `gaia wiki chain finish` opens one PR covering all stage commits (sync, consolidate, lint) at the end of the chain. Standalone `/gaia-wiki sync` is unaffected: it still self-lands via `sync land --branch-aware`.
 
-`sync land` uses `git status --porcelain=v1` to inspect the working tree. Git wraps paths containing spaces or special characters in double quotes; the CLI strips that quoting before classifying paths as wiki or non-wiki changes. Nearly every GAIA wiki page has a space in its filename, so this normalization is required for `sync land` to recognize wiki edits and proceed.
+`sync land` inspects the working tree with `git status --porcelain=v1 -z -uall`, parsed by a shared `-z` record reader (`util/git-status.ts`) also used by the region regeneration runner. `-z` sidesteps quoting entirely: git's default C-style quoting would otherwise wrap any path with a space, a quote, or a non-ASCII byte in `"..."`, and would turn a rename into one ambiguous `old -> new` payload that cannot be split on `" -> "` without corrupting a name containing it. Under `-z`, a rename's origin path arrives as its own trailing record instead, so neither hazard occurs. Nearly every GAIA wiki page has a space in its filename, so this is required for `sync land` to recognize wiki edits and proceed, and it holds equally for a wiki page rename carrying a non-ASCII byte in its path.
 
 The skip-with-reason audit trail is load-bearing: absence of log entries signals the system has stopped running. `/gaia-wiki lint` check #11 surfaces this drift.
 
