@@ -177,8 +177,8 @@ describe('wiki sync land', () => {
           result: okResult('feature/x\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M wiki/log.md\n M wiki/concepts/Foo.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M wiki/log.md\0 M wiki/concepts/Foo.md\0'),
         },
         {
           argv: ['rev-parse', 'HEAD'],
@@ -222,8 +222,8 @@ describe('wiki sync land', () => {
           result: okResult('main\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M wiki/log.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M wiki/log.md\0'),
         },
       ],
       recorded
@@ -249,8 +249,8 @@ describe('wiki sync land', () => {
           result: okResult('main\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M wiki/log.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M wiki/log.md\0'),
         },
         {
           argv: ['rev-parse', 'HEAD'],
@@ -326,8 +326,8 @@ describe('wiki sync land', () => {
           result: okResult('main\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M wiki/log.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M wiki/log.md\0'),
         },
         {
           argv: ['rev-parse', 'HEAD'],
@@ -381,8 +381,8 @@ describe('wiki sync land', () => {
           result: okResult('main\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M wiki/log.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M wiki/log.md\0'),
         },
         {
           argv: ['rev-parse', 'HEAD'],
@@ -441,8 +441,8 @@ describe('wiki sync land', () => {
           result: okResult('main\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M wiki/log.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M wiki/log.md\0'),
         },
         {
           argv: ['rev-parse', 'HEAD'],
@@ -479,8 +479,8 @@ describe('wiki sync land', () => {
           result: okResult('main\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M wiki/log.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M wiki/log.md\0'),
         },
         {
           argv: ['rev-parse', 'HEAD'],
@@ -541,8 +541,8 @@ describe('wiki sync land', () => {
           result: okResult('main\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M wiki/log.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M wiki/log.md\0'),
         },
         {
           argv: ['rev-parse', 'HEAD'],
@@ -598,8 +598,8 @@ describe('wiki sync land', () => {
           result: okResult('feature/x\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M wiki/log.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M wiki/log.md\0'),
         },
         {
           argv: ['rev-parse', 'HEAD'],
@@ -638,8 +638,8 @@ describe('wiki sync land', () => {
           result: okResult('feature/x\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M app/foo.ts\n M wiki/log.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M app/foo.ts\0 M wiki/log.md\0'),
         },
       ],
       recorded
@@ -663,7 +663,7 @@ describe('wiki sync land', () => {
           result: okResult('feature/x\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
           result: okResult(''),
         },
       ],
@@ -703,8 +703,8 @@ describe('wiki sync land', () => {
           result: okResult('master\n'),
         },
         {
-          argv: ['status', '--porcelain=v1', '-uall'],
-          result: okResult(' M wiki/log.md\n'),
+          argv: ['status', '--porcelain=v1', '-z', '-uall'],
+          result: okResult(' M wiki/log.md\0'),
         },
       ],
       recorded

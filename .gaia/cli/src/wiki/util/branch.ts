@@ -16,6 +16,7 @@
  */
 import {spawnSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
+import {porcelainZPaths} from '../../util/git-status.js';
 
 export type CommandRunner = (
   command: string,
@@ -108,34 +109,22 @@ export type WorkingTreeStatus = {
  * Inspect the working tree (staged + unstaged + untracked) and classify
  * paths by whether they sit under `wiki/`.
  *
- * Uses `git status --porcelain=v1 -uall`. The first two columns are
- * status codes; column 3 onwards is the path. Renames emit `orig -> new`
- * we treat both halves as touched paths.
+ * Uses `git status --porcelain=v1 -z -uall`, parsed by the shared
+ * `porcelainZPaths`. `-uall` lists every untracked file rather than collapsing
+ * a wholly-untracked directory to its name, so a new page under `wiki/` is
+ * classified as itself. `-z` is what makes the classification trustworthy: a
+ * quoted rename splits into a half that starts with `wiki/` and a half that
+ * starts with `"`, which flips `hasNonWikiChanges` on a working tree holding
+ * nothing but a wiki rename, and both callers gate on that flag.
  */
 export const inspectWorkingTree = (
   cwd: string,
   runner: CommandRunner = defaultRunner
 ): WorkingTreeStatus => {
-  const args = ['status', '--porcelain=v1', '-uall'];
-  const out = expectSuccess(runner('git', args, {cwd}), 'git', args);
-  const paths = out.split('\n').flatMap((rawLine) => {
-    const line = rawLine.replace(/\r$/u, '');
-
-    if (line.length === 0) return [];
-
-    // Porcelain v1: 2-char status, space, path. Account for renames.
-    // Git quotes paths that contain spaces or special chars; strip the quotes.
-    const rawPayload = line.slice(3);
-    const payload =
-      rawPayload.startsWith('"') && rawPayload.endsWith('"') ?
-        rawPayload.slice(1, -1)
-      : rawPayload;
-    const renameSplit = payload.indexOf(' -> ');
-
-    return renameSplit === -1 ?
-        [payload]
-      : [payload.slice(0, renameSplit), payload.slice(renameSplit + 4)];
-  });
+  const args = ['status', '--porcelain=v1', '-z', '-uall'];
+  const paths = porcelainZPaths(
+    expectSuccess(runner('git', args, {cwd}), 'git', args)
+  );
 
   let hasWikiChanges = false;
   let hasNonWikiChanges = false;

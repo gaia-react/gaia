@@ -74,6 +74,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {execGaiaGitRaw} from '../util/git-env.js';
+import {porcelainZPaths} from '../util/git-status.js';
 
 const HELP_TEXT = `Usage: gaia update regen-regions --manifest <path> --root <dir> [--backup-dir <dir>]
                                   [--conflicted <repo-relative-path>]...
@@ -1305,13 +1306,8 @@ const resolveRepoPrefix = (root: string): null | string => {
  * unavailable or `root` is not a repository, so the caller can degrade
  * cleanly rather than failing.
  *
- * `-z` is load-bearing, not a formatting preference. Without it git applies
- * C-style quoting (`core.quotePath` is on by default), so a path carrying a
- * space, a quote, or a non-ASCII byte arrives wrapped in `"` with its bytes
- * escaped, and a rename arrives as one ambiguous `old -> new` payload that
- * cannot be split on ` -> ` without corrupting a name that contains it.
- * Under `-z` git never quotes, and a rename gets its own trailing record for
- * the origin path, so both hazards disappear rather than being unescaped.
+ * `-z` is load-bearing, not a formatting preference: `porcelainZPaths` states
+ * why, and parsing the records it returns is its job rather than this one's.
  *
  * Every record git returns is relative to the repository TOP LEVEL, never to
  * `root`, and the two differ whenever a GAIA project sits inside a larger
@@ -1330,31 +1326,11 @@ const gitStatusPaths = (
   if (prefix === null) return null;
 
   try {
-    // Raw, never trimmed: the ` M path` shape's leading space is a status
-    // column, and trimming it shifts the 3-character prefix slice below.
-    const out = execGaiaGitRaw(['status', '--porcelain', '-z'], root);
-    const paths: string[] = [];
-    // A rename/copy record is followed by a bare origin-path record carrying
-    // no `XY ` status prefix, so the stream needs a one-record lookahead. The
-    // flag is cleared before the next record is classified, which is what
-    // keeps an origin path whose own first two characters contain `R` or `C`
-    // (`Config/old`) from being read as a status record.
-    let expectOriginPath = false;
-
-    out
-      .split('\0')
-      .filter((record) => record.length > 0)
-      .forEach((record) => {
-        if (expectOriginPath) {
-          expectOriginPath = false;
-          paths.push(record);
-
-          return;
-        }
-
-        expectOriginPath = /[CR]/u.test(record.slice(0, 2));
-        paths.push(record.slice(3));
-      });
+    // Raw, never trimmed: `porcelainZPaths` reads the status columns
+    // positionally, and the ` M path` shape leads with one.
+    const paths = porcelainZPaths(
+      execGaiaGitRaw(['status', '--porcelain', '-z'], root)
+    );
 
     if (prefix === '') return {inside: paths, outside: []};
 

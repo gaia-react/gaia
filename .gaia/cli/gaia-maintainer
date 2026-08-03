@@ -27664,6 +27664,24 @@ import {
   writeFileSync as writeFileSync9
 } from "node:fs";
 import path39 from "node:path";
+
+// src/util/git-status.ts
+var porcelainZPaths = (out) => {
+  const paths = [];
+  let expectOriginPath = false;
+  out.split("\0").filter((record2) => record2.length > 0).forEach((record2) => {
+    if (expectOriginPath) {
+      expectOriginPath = false;
+      paths.push(record2);
+      return;
+    }
+    expectOriginPath = /[CR]/u.test(record2.slice(0, 2));
+    paths.push(record2.slice(3));
+  });
+  return paths;
+};
+
+// src/update/regen-regions.ts
 var HELP_TEXT45 = `Usage: gaia update regen-regions --manifest <path> --root <dir> [--backup-dir <dir>]
                                   [--conflicted <repo-relative-path>]...
                                   [--absent-path <repo-relative-path>]...
@@ -28138,18 +28156,9 @@ var resolveRepoPrefix = (root) => {
 var gitStatusPaths = (root, prefix) => {
   if (prefix === null) return null;
   try {
-    const out = execGaiaGitRaw(["status", "--porcelain", "-z"], root);
-    const paths = [];
-    let expectOriginPath = false;
-    out.split("\0").filter((record2) => record2.length > 0).forEach((record2) => {
-      if (expectOriginPath) {
-        expectOriginPath = false;
-        paths.push(record2);
-        return;
-      }
-      expectOriginPath = /[CR]/u.test(record2.slice(0, 2));
-      paths.push(record2.slice(3));
-    });
+    const paths = porcelainZPaths(
+      execGaiaGitRaw(["status", "--porcelain", "-z"], root)
+    );
     if (prefix === "") return { inside: paths, outside: [] };
     const inside = [];
     const outside = [];
@@ -28576,16 +28585,10 @@ var defaultBranch = (cwd, runner = defaultRunner5) => {
   return stripped.length > 0 ? stripped : "main";
 };
 var inspectWorkingTree = (cwd, runner = defaultRunner5) => {
-  const args = ["status", "--porcelain=v1", "-uall"];
-  const out = expectSuccess3(runner("git", args, { cwd }), "git", args);
-  const paths = out.split("\n").flatMap((rawLine) => {
-    const line = rawLine.replace(/\r$/u, "");
-    if (line.length === 0) return [];
-    const rawPayload = line.slice(3);
-    const payload = rawPayload.startsWith('"') && rawPayload.endsWith('"') ? rawPayload.slice(1, -1) : rawPayload;
-    const renameSplit = payload.indexOf(" -> ");
-    return renameSplit === -1 ? [payload] : [payload.slice(0, renameSplit), payload.slice(renameSplit + 4)];
-  });
+  const args = ["status", "--porcelain=v1", "-z", "-uall"];
+  const paths = porcelainZPaths(
+    expectSuccess3(runner("git", args, { cwd }), "git", args)
+  );
   let hasWikiChanges = false;
   let hasNonWikiChanges = false;
   for (const candidate of paths) {
