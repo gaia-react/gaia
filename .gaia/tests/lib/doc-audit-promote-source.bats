@@ -249,6 +249,45 @@ setup() {
   grep -qF -- 'never guess which was meant' <<<"$loop"
 }
 
+@test "the mode check names its disposition, like every other outcome in the step" {
+  # It is the step's only `[!]`, so it is the one outcome a reader cannot
+  # infer from its neighbours. Dropping "source untouched, do not apply"
+  # leaves the check stating a verdict with no consequence, which is how a
+  # Stage 2 reaches the apply step anyway and half-applies a malformed
+  # promote after three wiki writes.
+  local loop
+  loop="$(scoped '^### Per-action loop' '^### ')"
+  grep -qF -- 'source untouched, do not apply' <<<"$loop"
+}
+
+@test "a replace block is checked for its required fields before any write" {
+  # The sha proves the recorded block still MATCHES; it cannot prove Stage 1
+  # emitted the field at all. Without this, a `replace` missing
+  # `source_before` passes the mode check and reaches `old_string:
+  # source_before` with no value, in the same post-write position the mode
+  # check was moved to escape.
+  local loop
+  loop="$(scoped '^### Per-action loop' '^### ')"
+  grep -qF -- 'a `replace` carries both `source_before` and `source_after`' <<<"$loop"
+}
+
+@test "the wiki page states no blanket expect claim either" {
+  # The skill and this page are two committed files, and `audit.md`'s own
+  # Step 2 classifies a contradiction between two committed files as a
+  # project-internal CONFLICT that emits a `replace` on the one it judges
+  # non-authoritative. So a stale copy of a claim the skill dropped is not
+  # merely stale: a later run can resolve the pair the wrong way and
+  # reinstate it. Pinned here rather than in the skill's own suite because
+  # the drift is cross-surface and only a cross-surface assertion sees it.
+  local page="$ROOT/wiki/concepts/GAIA Audit.md"
+  [ -s "$page" ] || {
+    echo "missing or empty $page" >&2
+    return 1
+  }
+  grep -qF -- 'verbatim `expect` snippets and sha256 drift signals' "$page" && return 1
+  true
+}
+
 @test "the mode check runs before any write, not in the apply step" {
   # Schema validity is knowable before the first write. Checked in the apply
   # step instead, an unrecognized mode fails only after the wiki page, the
@@ -257,7 +296,8 @@ setup() {
   # placement alone reads as arbitrary to whoever tidies this next.
   local loop
   loop="$(scoped '^### Per-action loop' '^### ')"
-  grep -qF -- 'It is a schema-validity check on a value knowable before any write' <<<"$loop"
+  grep -qF -- 'schema-validity check, not a drift signal' <<<"$loop"
+  grep -qF -- 'knowable before any write' <<<"$loop"
 }
 
 # --- Group 4: post-apply verification covers the source side --------------

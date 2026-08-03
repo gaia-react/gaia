@@ -281,7 +281,7 @@ Resolved paths (Stage 2 must match these):
 
 ## Actions
 
-Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips the checkbox from `[ ]` to `[x]` on success, `[~]` on skip, `[!]` on failure. Every block MUST carry the drift signals its own schema below names, and where applicable the verbatim replacement; the four schemas state which fields those are, and Stage 2 parses them. Paths MUST be absolute (already expanded, no `$PROJECT_ROOT` placeholders in action bodies).
+Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips the checkbox from `[ ]` to `[x]` on success, `[~]` on skip, `[!]` on failure. Every block MUST carry the drift signals and, where applicable, the verbatim replacement that its own schema below names. Paths MUST be absolute (already expanded, no `$PROJECT_ROOT` placeholders in action bodies).
 
 ### Delete
 
@@ -496,7 +496,12 @@ For each unchecked action block:
 2. Verify drift signal:
    - If the action specifies `expect_sha256`: compute sha256 of the target file. If mismatch → mark `[~]` skipped, record reason `sha drift`, move on.
    - If the action specifies `before:` or `expect:` snippet: read the file and confirm the snippet appears verbatim. If missing → `[~]` skipped, `snippet drift`.
-   - **A `promote` carries neither `expect_sha256` nor a `before:`/`expect:` snippet, so neither bullet above reaches it. Check it here:** compute sha256 of `source_path` against `source_expect_sha256` (mismatch → `[~]` skipped, `sha drift`), and unless `target_action: create_new`, confirm `target_expect` appears verbatim in `target_page` (missing → `[~]` skipped, `snippet drift`). `source_before` needs no check of its own, the whole-file sha already covers it. Check the mode here too: a `source_action` that is absent or is none of `delete` / `replace` / `keep` → `[!]` failed, reason `unknown source_action`; never guess which was meant. It is a schema-validity check on a value knowable before any write, so it belongs here rather than in the apply step, where it would fail only after the wiki page, `wiki/log.md` and `wiki/index.md` had already been written.
+   - **A `promote` carries neither `expect_sha256` nor a `before:`/`expect:` snippet, so neither bullet above reaches it. Run all three of these instead:**
+     - compute sha256 of `source_path` against `source_expect_sha256`. Mismatch → `[~]` skipped, `sha drift`, move on.
+     - unless `target_action: create_new`, confirm `target_expect` appears verbatim in `target_page`. Missing → `[~]` skipped, `snippet drift`, move on.
+     - confirm `source_action` is one of `delete` / `replace` / `keep`, and that a `replace` carries both `source_before` and `source_after`. Absent, unrecognized, or missing a required field → `[!]` failed, reason `unknown source_action` or `incomplete source_action`, **source untouched, do not apply**; never guess which was meant.
+
+     The last one is a schema-validity check, not a drift signal, and it runs here because its inputs are knowable before any write: in the apply step it would fail only after the wiki page, `wiki/log.md` and `wiki/index.md` had already been written. `source_before`'s *content* still needs no check of its own, the whole-file sha covers that; what is checked here is that the field is present at all.
 3. Apply the change using the exact operation:
    - `type: delete` → remove the file
    - `type: delete-entry` → read file, locate the `expect` block, remove it, write back
