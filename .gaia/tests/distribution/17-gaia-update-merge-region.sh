@@ -57,15 +57,28 @@ PLACEHOLDER='<<<gaia:region>>>'
 # asserts FAILURE, so its diagnostic is expected noise and it keeps its own
 # suppression.
 #
-# CALL ORDER IS LOAD-BEARING: `report_cli_stderr` runs BEFORE `fail`, never
-# after. `fail` returns 1 rather than exiting, and the `{ ...; }` group is the
-# LAST command of its AND-OR list, so `set -e` is NOT suppressed inside it and
-# aborts the script the moment `fail` returns. Anything written after `fail` in
-# one of these branches is dead code that never runs, which is how a diagnostic
-# that looks present prints nothing. (The trailing `exit 1` in each branch is
-# unreachable for the same reason; it predates this comment and is kept as the
-# statement of intent.) Verified by driving a real non-zero exit through
-# scenario 1, not by reading.
+# WHY NOT THE SIBLING IDIOM. Several other scenarios in this directory
+# (07, 08, 10, 11, 12, 13, 14) solve the same problem the other way: keep
+# `2>/dev/null`, and on failure re-run the identical command unsuppressed for a
+# human to read. Capturing to a file is preferred here because it reports the
+# bytes the FAILING run actually emitted, where a re-run reports a second,
+# different execution: it can succeed, or fail differently, and it doubles the
+# work on the one path that is already going wrong. This is also the fix the
+# issue itself names. The cost is honest and worth stating: this directory now
+# holds two mechanisms for one job and neither lives in `lib/lib.sh`, which is
+# filed rather than fixed here, because converging the other seven scenarios is
+# not this change's scope.
+#
+# CALL ORDER IS LOAD-BEARING, which is why `fail_with_stderr` exists rather
+# than an inline group at each site. `report_cli_stderr` runs BEFORE `fail`,
+# never after: `fail` returns 1 rather than exiting, and the `||` right-hand
+# side is the LAST command of its AND-OR list, so `set -e` is NOT suppressed
+# there and aborts the script the moment `fail` returns. Anything sequenced
+# after `fail` is dead code that never runs, which is how a diagnostic that
+# looks present prints nothing. (`fail_with_stderr`'s own trailing `exit 1` is
+# unreachable for that reason and is kept as the statement of intent, matching
+# every other failure branch in this file.) Verified by driving a real non-zero
+# exit through scenario 1, not by reading.
 CLI_STDERR="$FIXTURES/cli-stderr.txt"
 : > "$CLI_STDERR"
 
@@ -77,6 +90,14 @@ report_cli_stderr() {
   else
     printf -- '(gaia wrote nothing to stderr)\n' >&2
   fi
+}
+
+# The one failure branch every success-asserting invocation below uses, so the
+# order above is stated once rather than repeated at eight call sites.
+fail_with_stderr() {
+  report_cli_stderr
+  fail "$1"
+  exit 1
 }
 
 # --- Scenario 1: region-only divergence -----------------------------------
@@ -97,7 +118,7 @@ S1_JSON="$("$GAIA" update merge-region \
   --current "$FIXTURES/s1-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json 2>"$CLI_STDERR")" \
-  || { report_cli_stderr; fail "scenario 1: gaia update merge-region exited non-zero on staged tree"; exit 1; }
+  || fail_with_stderr "scenario 1: gaia update merge-region exited non-zero on staged tree"
 
 printf '%s' "$S1_JSON" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -128,7 +149,7 @@ S2_JSON="$("$GAIA" update merge-region \
   --current "$FIXTURES/s2-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json 2>"$CLI_STDERR")" \
-  || { report_cli_stderr; fail "scenario 2: gaia update merge-region exited non-zero on staged tree"; exit 1; }
+  || fail_with_stderr "scenario 2: gaia update merge-region exited non-zero on staged tree"
 
 printf '%s' "$S2_JSON" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -164,7 +185,7 @@ S3_JSON="$("$GAIA" update merge-region \
   --current "$FIXTURES/s3-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json 2>"$CLI_STDERR")" \
-  || { report_cli_stderr; fail "scenario 3: gaia update merge-region exited non-zero on staged tree"; exit 1; }
+  || fail_with_stderr "scenario 3: gaia update merge-region exited non-zero on staged tree"
 
 # The fixture paths reach node through the ENVIRONMENT, never interpolated by
 # the shell into the JS source. `$FIXTURES` derives from `mktemp -d`, so a
@@ -212,7 +233,7 @@ S4_JSON="$("$GAIA" update merge-region \
   --current "$FIXTURES/s4-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json 2>"$CLI_STDERR")" \
-  || { report_cli_stderr; fail "scenario 4: gaia update merge-region exited non-zero on staged tree"; exit 1; }
+  || fail_with_stderr "scenario 4: gaia update merge-region exited non-zero on staged tree"
 
 printf '%s' "$S4_JSON" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -235,9 +256,9 @@ S5_ARGS=(update merge-region \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json)
 S5_FIRST="$("$GAIA" "${S5_ARGS[@]}" 2>"$CLI_STDERR")" \
-  || { report_cli_stderr; fail "scenario 5: first invocation exited non-zero"; exit 1; }
+  || fail_with_stderr "scenario 5: first invocation exited non-zero"
 S5_SECOND="$("$GAIA" "${S5_ARGS[@]}" 2>"$CLI_STDERR")" \
-  || { report_cli_stderr; fail "scenario 5: second invocation exited non-zero"; exit 1; }
+  || fail_with_stderr "scenario 5: second invocation exited non-zero"
 [ "$S5_FIRST" = "$S5_SECOND" ] \
   || { fail "scenario 5 (idempotence): two invocations on the same inputs produced different output"; exit 1; }
 log "scenario 5 (idempotence): OK"
@@ -256,28 +277,28 @@ log "scenario 5 (idempotence): OK"
 # `already-latest` rather than to scenario 1's `no-adopter-drift`, which is the
 # state every adopter's tree is left in and the one a re-run must recognize.
 #
-# Dedicated `s6-*` fixtures rather than a `cp` over `s1-current.txt`. Mutating a
-# scenario-1 fixture in place is safe only for as long as nothing below this
-# line reads it for its pre-update content: any scenario later inserted above,
-# or any reordering of this file, silently gets post-update content and passes
-# for the wrong reason.
-printf 'outside-A\n%s\nregion-baseline-1\nregion-baseline-2\n%s\noutside-B\n' \
-  "$START_MARKER" "$END_MARKER" > "$FIXTURES/s6-baseline.txt"
-printf 'outside-A-changed\n%s\nregion-baseline-1\nregion-baseline-2\n%s\noutside-B\n' \
-  "$START_MARKER" "$END_MARKER" > "$FIXTURES/s6-latest.txt"
-# The post-update working tree: the adopter's copy IS the release copy.
-cp "$FIXTURES/s6-latest.txt" "$FIXTURES/s6-current.txt"
+# Scenario 1's baseline and latest are READ here, deliberately: the contrast
+# with scenario 1 is the point, same two sides, a different `current`, a
+# different verdict. Reading them is also what scenarios 5 and 7 already do.
+#
+# What this scenario must not do is WRITE one. A `cp` over `s1-current.txt`
+# is safe only for as long as nothing below that line reads it for its
+# pre-update content, so any scenario later inserted above, or any reordering
+# of this file, silently gets post-update content and passes for the wrong
+# reason. The post-update state therefore lands in its own `s6-current.txt`
+# and every `s1-*` file is left exactly as scenario 1 wrote it.
+cp "$FIXTURES/s1-latest.txt" "$FIXTURES/s6-current.txt"
 
 S6_ARGS=(update merge-region \
-  --baseline "$FIXTURES/s6-baseline.txt" \
-  --latest "$FIXTURES/s6-latest.txt" \
+  --baseline "$FIXTURES/s1-baseline.txt" \
+  --latest "$FIXTURES/s1-latest.txt" \
   --current "$FIXTURES/s6-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json)
 S6_FIRST="$("$GAIA" "${S6_ARGS[@]}" 2>"$CLI_STDERR")" \
-  || { report_cli_stderr; fail "scenario 6: first post-update invocation exited non-zero"; exit 1; }
+  || fail_with_stderr "scenario 6: first post-update invocation exited non-zero"
 S6_SECOND="$("$GAIA" "${S6_ARGS[@]}" 2>"$CLI_STDERR")" \
-  || { report_cli_stderr; fail "scenario 6: second post-update invocation exited non-zero"; exit 1; }
+  || fail_with_stderr "scenario 6: second post-update invocation exited non-zero"
 
 printf '%s' "$S6_FIRST" | node -e '
   const r = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
