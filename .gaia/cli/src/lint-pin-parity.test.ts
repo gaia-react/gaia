@@ -275,6 +275,36 @@ describe('supply-chain hardening parity', () => {
     );
   });
 
+  // The floor above establishes what each setting IS; this establishes that it
+  // still applies to anything. pnpm honours glob patterns in these lists, so a
+  // single `'*'` entry exempts every package while leaving both scalars at their
+  // floor, both lists in containment, and all of the above green: the hardening
+  // is fully disabled with nothing red. Measured rather than reasoned — with `'*'`
+  // present, widening the window to 20160 installs clean, where the same widening
+  // without it fails naming 19 entries.
+  //
+  // Both workspace files already state the rule this encodes, "Scope each
+  // exception to the exact version; no-downgrade stays enforced for everything
+  // else", which is the same warrant the containment tests above rest on. `*` is
+  // the measured case; the other glob metacharacters are rejected on the files'
+  // own exact-version rule rather than on a behaviour I verified.
+  const GLOB_METACHARACTERS = /[*?[\]{}]/;
+
+  const inexactEntries = (list: unknown[]): unknown[] =>
+    list.filter(
+      (entry) => typeof entry !== 'string' || GLOB_METACHARACTERS.test(entry)
+    );
+
+  test('every release-age exemption names an exact package, not a pattern', () => {
+    expect(inexactEntries(rootSettings.minimumReleaseAgeExclude)).toEqual([]);
+    expect(inexactEntries(cliSettings.minimumReleaseAgeExclude)).toEqual([]);
+  });
+
+  test('every trust-policy exemption names an exact package, not a pattern', () => {
+    expect(inexactEntries(rootSettings.trustPolicyExclude)).toEqual([]);
+    expect(inexactEntries(cliSettings.trustPolicyExclude)).toEqual([]);
+  });
+
   test('.gaia/cli exempts nothing from the trust policy that root does not', () => {
     expect(rootSettings.trustPolicyExclude).toEqual(
       expect.arrayContaining(cliSettings.trustPolicyExclude)
