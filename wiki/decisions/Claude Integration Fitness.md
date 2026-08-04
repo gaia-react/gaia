@@ -8,9 +8,9 @@ tags: [decision, claude, fitness]
 
 # Claude Integration Fitness
 
-`/gaia-fitness` is a health check + auto-heal that answers one question, "how well-configured and coherent is this project's Claude integration?", and fixes what it can. A single invocation runs three phases: triage (walk the seven graded categories below), heal (lane-aware Fixer subagents auto-apply confident fixes inside a bounded loop with oscillation detection), and verify (re-run the affected checks).
+`/gaia-fitness` is a health check + auto-heal that answers one question, "how well-configured and coherent is this project's Claude integration?", and fixes what it can. A single invocation runs three phases: triage (walk the eight graded categories below), heal (lane-aware Fixer subagents auto-apply confident fixes inside a bounded loop with oscillation detection), and verify (re-run the affected checks).
 
-The protocol is harness-agnostic: `/gaia-fitness` runs it standalone, and it is written so a larger audit harness can run the same protocol over the same seven categories as one bucket of a deeper loop.
+The protocol is harness-agnostic: `/gaia-fitness` runs it standalone, and it is written so a larger audit harness can run the same protocol over the same eight categories as one bucket of a deeper loop.
 
 The `/gaia-fitness` skill's harness layer handles branch / repo-state and publishing: creating a `chore/gaia-fitness-<timestamp>` branch when HEAD is on the default branch and fixes are available, running triage-only when HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, and, after the report, gating on a single publish confirmation that commits the healed changes and drives the PR to merge (commit and push only on a non-default branch). See the `/gaia-fitness` skill reference for the full branching and publish algorithm. That harness layer is not part of the triage/heal protocol described here.
 
@@ -18,7 +18,7 @@ The `/gaia-fitness` skill's harness layer handles branch / repo-state and publis
 
 ## Check Taxonomy
 
-Seven graded categories. Each category produces findings at `error`, `warning`, or `info` severity; the category grade derives from the worst severity found (see Grading Rubric).
+Eight graded categories. Each category produces findings at `error`, `warning`, or `info` severity; the category grade derives from the worst severity found (see Grading Rubric).
 
 ### 1. Hook integrity
 
@@ -90,6 +90,17 @@ Checks wiki health by invoking the existing `gaia wiki` primitives; this categor
 - `gaia wiki dead-paths`: any dead backticked path reference in wiki body prose is one `warning` finding per occurrence.
 - `gaia wiki orphans`: any orphan page (zero inbound links) is one `info` finding per page, recommending `/gaia-wiki sync` to cross-link or archive.
 
+### 8. Cost-rate fitness
+
+Checks that the cost ledger can actually be priced. Haiku: the detection is a script run, not a judgment.
+
+- `.gaia/scripts/cost-unpriced-scan.sh` names every model the ledger carries that the rate card in force has no window for, and counts the rows whose dollar figure is therefore a lower bound. Any unpriced model is one `warning` finding per model, carrying the row count. A newly released model has no rate in the shipped `.gaia/scripts/token-rates.json` until a GAIA release ships one, so this condition recurs on every model launch rather than being a one-off.
+- A model the machine-local overlay is already pricing is **not** a finding. The scan recomputes each row against the card in force, overlay included, so a model the operator has already remedied stops being reported.
+
+The severity is `warning` rather than `info` because the figure is wrong rather than merely absent, and wrong in the direction that hides: of the affected records in the condition's first observed instance, only a third totalled zero, while the rest reported a plausible non-zero figure because their other models priced correctly and only the unpriced model's share was dropped. A `$0.00` total is noticeable; a 30%-light total is not.
+
+This category never proposes a number. See [Rate remedies are human-gated](#rate-remedies-are-human-gated).
+
 ### Decided / not findings
 
 Things audits keep re-discovering that are not findings:
@@ -114,7 +125,7 @@ Things audits keep re-discovering that are not findings:
 
 ## Grading Rubric
 
-Per-category grade is deterministic given the finding set for that category. The overall grade is the floor of the seven category grades (one `D` drags the headline to `D`).
+Per-category grade is deterministic given the finding set for that category. The overall grade is the floor of the eight category grades (one `D` drags the headline to `D`).
 
 ### Per-category bands
 
@@ -138,7 +149,7 @@ The grade keys off the worst severity present, then the count at that severity: 
 
 ### Overall grade
 
-The overall grade equals the floor of the seven category grades. One `D` in any category drags the overall grade to `D`.
+The overall grade equals the floor of the eight category grades. One `D` in any category drags the overall grade to `D`.
 
 ### Ordinal encoding
 
@@ -154,7 +165,7 @@ Every finding carries exactly three fields:
 - **`file`**: repo-relative path, with `:line` appended where the finding is attributable to a specific line.
 - **`remediation`**: one-line description of what to do.
 
-The chat report groups findings by the seven category names above.
+The chat report groups findings by the eight category names above.
 
 ---
 
@@ -170,7 +181,7 @@ When `/gaia-fitness` runs this protocol, the harness is minimal: no Orchestrator
 
 ### Triage phase
 
-The Orchestrator dispatches the seven category checks as **parallel subagents** (or parallel tool calls; the verifiable property is the structured findings artifact, not the dispatch mechanism):
+The Orchestrator dispatches the eight category checks as **parallel subagents** (or parallel tool calls; the verifiable property is the structured findings artifact, not the dispatch mechanism):
 
 | Category                            | Model      | What it does                                                                                                                                        |
 | ----------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -196,8 +207,27 @@ The Orchestrator dispatches **lane-aware Fixer subagents (Sonnet)** in parallel.
 | **`settings`**       | `.claude/settings.json`                                                                                              |
 | **`gitignore`**      | `.gitignore`                                                                                                         |
 | **`manifest`**       | `.gaia/manifest.json`                                                                                                |
+| **`rate-overlay`**   | `.gaia/local/token-rates.local.json` (human-gated, never a subagent; see below)                                      |
 
 Manifest edits must serialize; dispatch only a single Fixer at a time when `.gaia/manifest.json` is touched.
+
+#### Rate remedies are human-gated
+
+The `rate-overlay` lane is the one lane the Orchestrator runs **itself**, in the main thread, and the one lane that asks before it writes. Two independent reasons, and both have to hold or the lane would be ordinary:
+
+**A deterministic process must never invent a rate.** Pricing is not available from the Models API, which returns an id, a display name, capabilities, and token limits, with no pricing field, so a rate is only obtainable from a docs page. A name or tier heuristic is not a substitute and would be actively wrong: it would price a `fable`-tier model at `opus` rates, and it could never produce a time-windowed introductory rate. A confidently wrong rate is worse than a zero, because a zero is noticeable and a plausible wrong number is not, which is the whole reason this category exists. So the Orchestrator resolves each rate through the `claude-api` skill, whose own trigger forbids answering pricing from memory, and proposes the entry rather than writing it.
+
+**The publish gate does not cover this lane.** Every other lane writes a tracked file, so its edit reaches the operator through the Step 7 commit/PR gate, and a Fixer can safely write without asking. `.gaia/local/` is gitignored: an overlay entry never appears in a diff, never reaches a PR, and never gets reviewed. Inheriting the other lanes' "write now, gate at publish" posture would therefore write an unreviewed rate into the operator's pricing with no gate anywhere. The consent has to be at the write.
+
+The lane's outcome is one of three, and the third is not a failure:
+
+| Outcome | When |
+| --- | --- |
+| Entry written | The rate resolved and the operator consented. |
+| Proposed, not written | The rate resolved and the operator declined, or did not answer. The finding is reported unresolved with the proposed entry so it can be pasted by hand. |
+| Not proposed | The rate could not be resolved from a real source. The finding is reported unresolved. **Never fill the gap with a guess**, which is the whole rule. |
+
+A written entry keeps the finding open in spirit: the shipped table is still behind, and the entry is meant to be folded upstream into `token-rates.json` at the next release rather than to live in the overlay forever.
 
 If a single finding's fix straddles multiple lanes, dispatch one Fixer with multi-lane scope (sequential edits inside that Fixer) rather than splitting across Fixers.
 
@@ -223,7 +253,7 @@ Default: **3 cycles** (tunable; adjust the cycle count in this page for your pro
 
 ### Verify phase
 
-After each heal cycle, re-run the affected category checks. Recompute the affected category grades and the overall grade. If the overall grade reaches A+, the loop exits clean. The final verify cycle, the one whose recomputed grade is reported (on a clean A+ exit or at loop exhaustion), re-runs all seven categories rather than only the affected ones, so a fix in one lane that regresses a check in a zero-finding category is caught before the loop reports.
+After each heal cycle, re-run the affected category checks. Recompute the affected category grades and the overall grade. If the overall grade reaches A+, the loop exits clean. The final verify cycle, the one whose recomputed grade is reported (on a clean A+ exit or at loop exhaustion), re-runs all eight categories rather than only the affected ones, so a fix in one lane that regresses a check in a zero-finding category is caught before the loop reports.
 
 ---
 
@@ -251,21 +281,22 @@ After each heal cycle, re-run the affected category checks. Recompute the affect
 
 The report is a single self-sizing ASCII card, emitted as a fenced code block in the chat reply. It has three regions:
 
-- **Header**: the command and the **overall grade** (floor of the seven category grades), right-aligned.
-- **Grades block**: the seven categories sorted alphabetically by name; each row carries a right-aligned severity-count note (`1 warning`, `2 errors, 1 info`) and the category grade.
+- **Header**: the command and the **overall grade** (floor of the eight category grades), right-aligned.
+- **Grades block**: the eight categories sorted alphabetically by name; each row carries a right-aligned severity-count note (`1 warning`, `2 errors, 1 info`) and the category grade.
 - **Findings block**: findings grouped by category, each as `[severity] file` with the `remediation` wrapped beneath. Omitted entirely on a clean run.
 
 The card carries no footer; the `/gaia-fitness` skill prints post-heal instructions as prose below it.
 
 The card width self-sizes: `clamp(longest content line, floor, min(terminal width, 120))`, where `floor` keeps the grades block from colliding. Remediation text wraps to the chosen width, so the card grows to one line per finding on a wide terminal and wraps on a narrow one. `/gaia-fitness` renders it with `gaia fitness render-card`, which takes the findings JSON on stdin and a `--cols` width; the skill's report step builds that JSON from the adjudicated findings and pastes the rendered card into the reply.
 
-Example (overall **B+**, the floor of one `B+` category over six `A`/`A+` categories):
+Example (overall **B+**, the floor of one `B+` category over seven `A`/`A+` categories):
 
 ```text
 +------------------------------------------------------------------------------+
 | /gaia-fitness                                                   OVERALL   B+ |
 +------------------------------------------------------------------------------+
 | CLAUDE.md hygiene                                                1 info   A  |
+| Cost-rate fitness                                                         A+ |
 | GAIA-install fitness                                             1 info   A  |
 | Hook integrity                                                            A+ |
 | Rule hygiene                                                              A+ |
@@ -292,7 +323,7 @@ Example (overall **B+**, the floor of one `B+` category over six `A`/`A+` catego
 +------------------------------------------------------------------------------+
 ```
 
-The overall grade is the floor of the seven category grades: the single `B+` category sets the headline; the six `A`/`A+` categories do not lift it.
+The overall grade is the floor of the eight category grades: the single `B+` category sets the headline; the seven `A`/`A+` categories do not lift it.
 
 ---
 
@@ -301,7 +332,7 @@ The overall grade is the floor of the seven category grades: the single `B+` cat
 Add a project-specific check class by appending a new numbered section under [Check Taxonomy](#check-taxonomy) above. Format:
 
 ```markdown
-### 8. <Category name>
+### 9. <Category name>
 
 <What it checks and how. Describe the model (Haiku or Sonnet) and what the auditor does.>
 ```
@@ -313,5 +344,7 @@ Add a project-specific check class by appending a new numbered section under [Ch
 ## See also
 
 [[Wiki Management]]: `gaia wiki dead-paths`, `gaia wiki orphans`, and the other primitives the wiki-fitness category invokes.
+
+[[Cost Data Contract]]: the ledger the cost-rate category scans, the `unpriced` field it recomputes, and the machine-local rate overlay the `rate-overlay` lane writes.
 
 [[Worktrees]]: the per-tree identity model behind the `WorktreeCreate`/`WorktreeRemove` hook events and GAIA's own worktree provisioning, which rides `SessionStart`/`PostToolUse` instead.

@@ -27,7 +27,7 @@ Read `wiki/decisions/Claude Integration Fitness.md` end-to-end before doing anyt
 
 That page defines:
 
-- The seven graded check categories (hook integrity; skill / command / agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness).
+- The eight graded check categories (hook integrity; skill / command / agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness; cost-rate fitness).
 - The bucket-and-model spec for triage Auditors (Haiku for mechanical checks, Sonnet for judgment-bearing checks and grade synthesis).
 - The Fixer lanes for the heal phase (`claude-surface`, `settings`, `gitignore`, `manifest`).
 - The bounded loop (default 3 cycles) and oscillation detection (fingerprint format: `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`).
@@ -86,7 +86,7 @@ Remember `CURRENT_BRANCH`, `DEFAULT_BRANCH`, and `ON_DEFAULT_BRANCH`, they gover
 
 Run the triage phase from `wiki/decisions/Claude Integration Fitness.md`.
 
-Dispatch the seven category checks per the model assignment in the table below (mirrored from `wiki/decisions/Claude Integration Fitness.md` for context; the wiki page stays canonical, if the two ever diverge the wiki wins). Prefer **parallel subagents** so each Auditor's raw command output stays isolated. The initial triage here runs on clean orchestrator context, so parallel tool calls inline are an acceptable substitute on this first pass, the verifiable property is the structured findings array, not the dispatch mechanism. Every Step 5 verify re-run, by contrast, happens after findings are already in the orchestrator's context, so those **require real subagents**, an inline re-run would fold raw output back in and risk contaminating the next grade.
+Dispatch the eight category checks per the model assignment in the table below (mirrored from `wiki/decisions/Claude Integration Fitness.md` for context; the wiki page stays canonical, if the two ever diverge the wiki wins). Prefer **parallel subagents** so each Auditor's raw command output stays isolated. The initial triage here runs on clean orchestrator context, so parallel tool calls inline are an acceptable substitute on this first pass, the verifiable property is the structured findings array, not the dispatch mechanism. Every Step 5 verify re-run, by contrast, happens after findings are already in the orchestrator's context, so those **require real subagents**, an inline re-run would fold raw output back in and risk contaminating the next grade.
 
 | Category                            | Model  |
 | ----------------------------------- | ------ |
@@ -97,12 +97,15 @@ Dispatch the seven category checks per the model assignment in the table below (
 | Skill / command / agent frontmatter | Sonnet |
 | Rule hygiene                        | Sonnet |
 | `CLAUDE.md` hygiene                 | Sonnet |
+| Cost-rate fitness                   | Haiku  |
 
 Each Auditor returns an array of `{severity, file, remediation, fingerprint}` objects. Raw command output stays in subagent context; only the structured findings array flows back.
 
+The cost-rate Auditor's whole job is one command, `bash .gaia/scripts/cost-unpriced-scan.sh`, whose stdout is a JSON object carrying `unpriced`, `rows_affected`, `overlay_path`, and `overlay_active`. One `warning` finding per name in `unpriced`, filed against `.gaia/scripts/token-rates.json` and naming the row count. An empty `unpriced` is A+ for the category, including when `overlay_active` is non-empty: a model the operator has already remedied locally is priced, not missing. A non-zero exit means the scan could not run and is itself one `warning`; it is never an all-clear.
+
 **Dispatch each Sonnet auditor with an explicit coverage directive** in its prompt: surface every candidate, including uncertain or low-severity ones, and do not filter for importance or confidence; the adjudication step below is the filter. A literal-minded auditor left to self-filter under-reports the borderline judgment calls (frontmatter substantiveness, content-vs-glob coherence, size-vs-guidance) this triage depends on. The canonical directive text lives in the fitness page's Triage phase (`wiki/decisions/Claude Integration Fitness.md`).
 
-Collect the findings arrays. **Adjudicate each finding against the repo before grading**, the auditors are recall-oriented and over-flag (an unfamiliar-but-valid hook event, a permission pair that only looks redundant). Drop a finding only when it matches the wiki page's "Decided / not findings" allowlist; every finding that does not match the allowlist survives to grading regardless of how minor or uncertain it looks. Don't rubber-stamp, and don't drop on a hunch. Then compute the per-category grade and the overall grade (= floor of the seven category grades) over the adjudicated set using the rubric from the wiki page.
+Collect the findings arrays. **Adjudicate each finding against the repo before grading**, the auditors are recall-oriented and over-flag (an unfamiliar-but-valid hook event, a permission pair that only looks redundant). Drop a finding only when it matches the wiki page's "Decided / not findings" allowlist; every finding that does not match the allowlist survives to grading regardless of how minor or uncertain it looks. Don't rubber-stamp, and don't drop on a hunch. Then compute the per-category grade and the overall grade (= floor of the eight category grades) over the adjudicated set using the rubric from the wiki page.
 
 Classify each surviving finding as fixable or unfixable. A finding is fixable when a Fixer can apply it confidently without product context (mechanical edits: add a missing frontmatter field, fix a bad path, update `.gitignore`, etc.). A finding is unfixable when it requires product context or invasive restructuring (e.g. splitting an oversized `CLAUDE.md`, restructuring hook logic, rewriting a rule file's scope).
 
@@ -138,8 +141,17 @@ Dispatch lane-aware Fixer subagents (Sonnet) in parallel per the wiki page's lan
 | `settings`       | `.claude/settings.json`                                                                                              |
 | `gitignore`      | `.gitignore`                                                                                                         |
 | `manifest`       | `.gaia/manifest.json` (serialize, one Fixer at a time)                                                               |
+| `rate-overlay`   | `.gaia/local/token-rates.local.json` (**not a subagent**, see below)                                                 |
 
 The `manifest` Fixer preserves every top-level key it does not own (for example `regions`) and never rewrites `.gaia/manifest.json` wholesale from the `files` map alone.
+
+**The `rate-overlay` lane is not dispatched as a subagent and never writes unasked.** Run it yourself, in the main thread, after the other lanes. Its full rationale is the wiki page's **Rate remedies are human-gated**; the two reasons are that a rate cannot be derived (the Models API carries no pricing field, and a tier heuristic would be confidently wrong), and that `.gaia/local/` is gitignored, so unlike every other lane its edit never reaches the Step 7 publish gate and the consent has to be at the write. Per unpriced model:
+
+1. Load the `claude-api` skill and resolve the model's current input and output rates from it. Its own trigger forbids answering pricing from memory, which is exactly the property this step needs.
+2. If no rate resolves from a real source, **stop for that model**. Report the finding unresolved. Do not guess, do not interpolate from a sibling model, and do not fall back to a tier.
+3. Otherwise put the exact entry to the operator with one `AskUserQuestion`, showing the model, the resolved rates, and the file. On consent, merge it into `.gaia/local/token-rates.local.json` (create the file if absent, preserve every model already there). On a decline, report the finding unresolved with the proposed entry so it can be pasted by hand.
+
+Never register `.gaia/local/token-rates.local.json` in `.gaia/manifest.json`. Being outside the manifest is the entire reason the overlay survives `/update-gaia`.
 
 If a finding's fix straddles multiple lanes, dispatch one Fixer with multi-lane scope.
 
@@ -157,7 +169,7 @@ Run inside the bounded heal loop. The cap and stop conditions below mirror `wiki
 
 ## Step 5, Verify
 
-After each heal cycle, re-dispatch the affected category checks as fresh subagents (the Auditors for the categories that had at least one finding addressed in that cycle; subagents are required here per Step 3, the orchestrator already holds findings). Recompute the affected category grades and the overall grade. If the overall grade reaches A+, the loop exits clean. On the **final** verify cycle, the one whose recomputed grade `/gaia-fitness` reports (the cycle that reaches A+ and exits, or the last cycle before loop-exhaustion reporting), re-dispatch **all seven** categories as fresh subagents, not just the affected ones: a fix in one lane can regress a check in a zero-finding category (a `claude-surface` edit pushing `CLAUDE.md` past its size budget, a `settings` edit breaking `settings.json` JSON validity), and an all-seven re-run catches that before the loop reports A+ instead of letting it escape.
+After each heal cycle, re-dispatch the affected category checks as fresh subagents (the Auditors for the categories that had at least one finding addressed in that cycle; subagents are required here per Step 3, the orchestrator already holds findings). Recompute the affected category grades and the overall grade. If the overall grade reaches A+, the loop exits clean. On the **final** verify cycle, the one whose recomputed grade `/gaia-fitness` reports (the cycle that reaches A+ and exits, or the last cycle before loop-exhaustion reporting), re-dispatch **all eight** categories as fresh subagents, not just the affected ones: a fix in one lane can regress a check in a zero-finding category (a `claude-surface` edit pushing `CLAUDE.md` past its size budget, a `settings` edit breaking `settings.json` JSON validity), and an all-eight re-run catches that before the loop reports A+ instead of letting it escape.
 
 ---
 
@@ -197,12 +209,12 @@ Every run-ending path records here:
 
 Emit the report as a **single ASCII card** rendered by `gaia fitness render-card`, and paste the rendered card directly into your chat reply inside a fenced code block. Do not surface it as a tool result, the harness collapses long tool output; the card must be a first-class part of your message.
 
-Build the report JSON from the adjudicated findings and the computed grades. List all seven categories with the grade you computed (the renderer sorts them alphabetically and derives the per-category note column from the findings, so order and counts are not your job):
+Build the report JSON from the adjudicated findings and the computed grades. List all eight categories with the grade you computed (the renderer sorts them alphabetically and derives the per-category note column from the findings, so order and counts are not your job):
 
 ```json
 {
   "command": "/gaia-fitness",
-  "overall": "<floor of the seven category grades>",
+  "overall": "<floor of the eight category grades>",
   "categories": [
     {"name": "Hook integrity", "grade": "<grade>"},
     {"name": "Skill / command / agent frontmatter", "grade": "<grade>"},

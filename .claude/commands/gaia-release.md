@@ -44,6 +44,20 @@ The CLI surface is the source of truth. The classification rules for `.gaia/mani
 
 Verifies: on `main`, clean working tree, and `wiki/.state.json` is current. The wiki check reads `gaia wiki state --json`: a reachable state passes on `commits_ahead === 0`; an orphaned state (`reachable:false`, the normal post-squash-merge condition, where `commits_ahead` is hardcoded `0`) is re-evaluated over `suggested_base..HEAD` so an un-evaluated window isn't read as a silent zero. Either way, drift that is only wiki-sync squash artifacts passes; substantive drift exits non-zero with an explanation. STOP and report; the maintainer fixes (commit, push, run `/gaia-wiki sync`) and re-runs `/gaia-release`.
 
+### 1b. Fold any local rate overlay upstream
+
+```bash
+bash .gaia/scripts/cost-unpriced-scan.sh
+```
+
+`overlay_active` names the models this machine is pricing from `.gaia/local/token-rates.local.json` rather than from the shipped `.gaia/scripts/token-rates.json`. Every name in it is a rate adopters do **not** get, so the release is the moment to decide whether it belongs in the shipped table.
+
+For each name: if the rate is real and current, add it to `.gaia/scripts/token-rates.json` now, before the bump, so it ships. If it was a local experiment, leave it. Either way the overlay entry stays where it is; it is machine-local and harmless, and removing it would only re-open the gap on this machine until the release lands.
+
+Not a gate. An empty `overlay_active`, or a non-zero exit because there is no ledger yet, is the ordinary case and blocks nothing. This step exists so an overlay entry does not calcify into permanent shadow config that silently diverges from what adopters receive.
+
+`unpriced` in the same output names a model **nothing** can price, shipped table or overlay. That is worth a look at release time for the same reason, but it is not release-blocking either.
+
 ### 2. Apply the bump
 
 Use the maintainer's argument from "Required argument" as `<BUMP>`. The CLI's `release bump` proposal is **informational only**, print it for awareness, then proceed with `<BUMP>` regardless:
