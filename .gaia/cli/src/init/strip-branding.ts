@@ -93,7 +93,6 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     return {message: '--title is required', ok: false};
   }
 
-  // Refused ahead of the first write, so a rejected run has changed nothing.
   const titleProblem = titleFailure(title);
 
   if (titleProblem) return {message: titleProblem, ok: false};

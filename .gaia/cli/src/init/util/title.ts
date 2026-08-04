@@ -22,8 +22,10 @@
 /**
  * The message describing why `title` is unusable, or `undefined` when it is.
  *
- * Returns a message rather than a caller's result type: each command wraps it
- * in its own parse-failure shape.
+ * Returns a message rather than a parse-failure object. The two commands'
+ * failure shapes happen to be identical today, so returning one would compile;
+ * it would also make this module speak a flag parser's protocol, which it does
+ * not own and which either command may extend. Each caller wraps the message.
  */
 export const titleFailure = (title: string): string | undefined => {
   // A line ending splits a one-line value in two. In `rename` it splits the

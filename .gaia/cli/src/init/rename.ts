@@ -111,7 +111,6 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     return {message: '--kebab is required', ok: false};
   }
 
-  // Refused ahead of the first write, so a rejected run has renamed nothing.
   const titleProblem = titleFailure(title);
 
   if (titleProblem) return {message: titleProblem, ok: false};

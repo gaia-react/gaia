@@ -239,7 +239,7 @@ describe('init strip-branding', () => {
   // escaped rather than refused, which is the other half of the policy the two
   // refusal rules above encode.
   test.each([
-    ["an apostrophe", "Steve's App", String.raw`Steve\'s App`],
+    ['an apostrophe', "Steve's App", String.raw`Steve\'s App`],
     ['a backslash', String.raw`A\B`, String.raw`A\\B`],
     ['a dollar token', 'Q1 $1 Report', 'Q1 $1 Report'],
   ])('accepts a title carrying %s', (_label, title, expected) => {
