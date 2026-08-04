@@ -32,6 +32,11 @@ function assertOk(
   }
 }
 
+// The graduated version block: everything from the new dated heading down to
+// the heading of the version before it.
+const blockBetween = (text: string, from: string, to: string): string =>
+  text.slice(text.indexOf(from), text.indexOf(to));
+
 const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
   output: ['', stdout, ''] as never,
   pid: 0,
@@ -177,9 +182,6 @@ describe('graduateChangelog', () => {
 - Old entry
 `;
 
-  const releasedBlockOf = (updated: string): string =>
-    updated.slice(updated.indexOf('## [1.1.0]'), updated.indexOf('## [1.0.0]'));
-
   test('renames the Unreleased heading and opens a fresh empty one above', () => {
     const outcome = graduateChangelog({
       current: TEMPLATE,
@@ -193,9 +195,9 @@ describe('graduateChangelog', () => {
     expect(unreleasedIdx).toBeGreaterThan(-1);
     expect(datedIndex).toBeGreaterThan(unreleasedIdx);
     // The new Unreleased section is empty: nothing between the two headings.
-    expect(
-      outcome.updated.slice(unreleasedIdx, datedIndex).trim()
-    ).toBe('## [Unreleased]');
+    expect(outcome.updated.slice(unreleasedIdx, datedIndex).trim()).toBe(
+      '## [Unreleased]'
+    );
   });
 
   test('the released block carries the hand-written entries exactly once', () => {
@@ -206,7 +208,7 @@ describe('graduateChangelog', () => {
     });
     assertOk(outcome);
 
-    const released = releasedBlockOf(outcome.updated);
+    const released = blockBetween(outcome.updated, '## [1.1.0]', '## [1.0.0]');
     expect(released.match(/^- hand-written entry$/gmu)).toHaveLength(1);
     expect(released.match(/^### Changed$/gmu)).toHaveLength(1);
   });
@@ -395,10 +397,7 @@ describe('release changelog CLI', () => {
     expect(changelog).toContain('## [1.1.0] - 2026-05-07');
     expect(changelog).toContain('## [Unreleased]');
 
-    const released = changelog.slice(
-      changelog.indexOf('## [1.1.0]'),
-      changelog.indexOf('## [1.0.0]')
-    );
+    const released = blockBetween(changelog, '## [1.1.0]', '## [1.0.0]');
     expect(released).toContain('- hand-written entry');
     expect(released.match(/^### Changed$/gmu)).toHaveLength(1);
     expect(changelog).not.toContain('- shiny');

@@ -17858,6 +17858,16 @@ var readVersion = (cwd, override) => {
   return parsed.version;
 };
 var UNRELEASED_HEADING = "## [Unreleased]";
+var GRADUATE_REFUSALS = {
+  "empty-unreleased": {
+    code: "empty_unreleased_section",
+    message: "CHANGELOG.md has an empty `## [Unreleased]` section; write the release entries under it before graduating (`release changelog --draft` renders a starting point)"
+  },
+  "no-unreleased": {
+    code: "no_unreleased_section",
+    message: "CHANGELOG.md has no `## [Unreleased]` heading to graduate"
+  }
+};
 var UNRELEASED_REF_PREFIX = "[Unreleased]:";
 var updateLinkReferences = (body, newVersion) => {
   const lines = body.split("\n");
@@ -17979,18 +17989,9 @@ var run20 = (argv, options = {}) => {
   if (outcome.kind === "duplicate") {
     return EXIT_CODES.OK;
   }
-  if (outcome.kind === "no-unreleased") {
+  if (outcome.kind !== "ok") {
     structuredError({
-      code: "no_unreleased_section",
-      message: "CHANGELOG.md has no `## [Unreleased]` heading to graduate",
-      subcommand: "release changelog"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  if (outcome.kind === "empty-unreleased") {
-    structuredError({
-      code: "empty_unreleased_section",
-      message: "CHANGELOG.md has an empty `## [Unreleased]` section; write the release entries under it before graduating (`release changelog --draft` renders a starting point)",
+      ...GRADUATE_REFUSALS[outcome.kind],
       subcommand: "release changelog"
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;

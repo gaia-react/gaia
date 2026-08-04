@@ -299,6 +299,26 @@ type GraduateOutcome =
   | {kind: 'no-unreleased'}
   | {kind: 'ok'; updated: string};
 
+/**
+ * What the caller reports for each outcome that refuses to graduate. Keyed by
+ * outcome kind, so a new refusal fails to compile here until it has a message.
+ * `duplicate` is absent deliberately: it is the idempotent no-op, not a refusal.
+ */
+const GRADUATE_REFUSALS: Record<
+  Exclude<GraduateOutcome['kind'], 'duplicate' | 'ok'>,
+  {code: string; message: string}
+> = {
+  'empty-unreleased': {
+    code: 'empty_unreleased_section',
+    message:
+      'CHANGELOG.md has an empty `## [Unreleased]` section; write the release entries under it before graduating (`release changelog --draft` renders a starting point)',
+  },
+  'no-unreleased': {
+    code: 'no_unreleased_section',
+    message: 'CHANGELOG.md has no `## [Unreleased]` heading to graduate',
+  },
+};
+
 const UNRELEASED_REF_PREFIX = '[Unreleased]:';
 
 /**
@@ -513,21 +533,9 @@ export const run = (
     return EXIT_CODES.OK;
   }
 
-  if (outcome.kind === 'no-unreleased') {
+  if (outcome.kind !== 'ok') {
     structuredError({
-      code: 'no_unreleased_section',
-      message: 'CHANGELOG.md has no `## [Unreleased]` heading to graduate',
-      subcommand: 'release changelog',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-
-  if (outcome.kind === 'empty-unreleased') {
-    structuredError({
-      code: 'empty_unreleased_section',
-      message:
-        'CHANGELOG.md has an empty `## [Unreleased]` section; write the release entries under it before graduating (`release changelog --draft` renders a starting point)',
+      ...GRADUATE_REFUSALS[outcome.kind],
       subcommand: 'release changelog',
     });
 
