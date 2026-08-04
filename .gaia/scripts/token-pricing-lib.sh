@@ -122,7 +122,25 @@ gaia_apply_rate_overlay() {
     return 0
   fi
 
-  keys="$(jq -r '(.models // {}) | keys_unsorted | join(" ")' <<<"$overlay" 2>/dev/null || true)"
+  # `gaia_load_rate_table` only asserts `has("models")`, so an overlay whose
+  # `models` is a string, or whose model value is not a window array, gets past
+  # it. Both shapes have to be REFUSED here rather than merged:
+  #   - a non-object `models` raises inside jq, and swallowing that with
+  #     `|| true` would drop the overlay down the same silent path an empty one
+  #     takes, contradicting what this function promises two comments up.
+  #   - a model whose value is not an array merges cleanly and is then announced
+  #     as active while pricing nothing, which is a confidently-wrong figure
+  #     wearing an "overlay is working" label.
+  # One shape check covers both, and it runs before the merge so a refusal costs
+  # nothing.
+  if ! jq -e '(.models | type) == "object"
+              and ([.models[] | type] | all(. == "array"))' >/dev/null 2>&1 <<<"$overlay"; then
+    printf 'token-rates: local overlay is malformed (models must be an object of window arrays); pricing from the shipped table alone: %s\n' \
+      "$overlay_path" >&2
+    return 0
+  fi
+
+  keys="$(jq -r '.models | keys_unsorted | join(" ")' <<<"$overlay" 2>/dev/null || true)"
   [[ -z "$keys" ]] && return 0
 
   # A model key replaces that model's WHOLE window array. rate_window takes
@@ -132,7 +150,7 @@ gaia_apply_rate_overlay() {
   # deliberately not merged: it is a global property of the pricing model that a
   # model launch does not move, and a partial override would null out siblings
   # priced_row multiplies by.
-  merged="$(jq -c --argjson o "$overlay" '.models = (.models + ($o.models // {}))' <<<"$shipped" 2>/dev/null || true)"
+  merged="$(jq -c --argjson o "$overlay" '.models = ((.models // {}) + $o.models)' <<<"$shipped" 2>/dev/null || true)"
   if [[ -z "$merged" ]]; then
     printf 'token-rates: could not merge the local overlay; pricing from the shipped table alone: %s\n' \
       "$overlay_path" >&2

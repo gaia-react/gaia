@@ -27,9 +27,9 @@ Read `wiki/decisions/Claude Integration Fitness.md` end-to-end before doing anyt
 
 That page defines:
 
-- The eight graded check categories (hook integrity; skill / command / agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness; cost-rate fitness).
+- The graded check categories.
 - The bucket-and-model spec for triage Auditors (Haiku for mechanical checks, Sonnet for judgment-bearing checks and grade synthesis).
-- The Fixer lanes for the heal phase (`claude-surface`, `settings`, `gitignore`, `manifest`).
+- The Fixer lanes for the heal phase.
 - The bounded loop (default 3 cycles) and oscillation detection (fingerprint format: `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`).
 - The F-to-A+ grading rubric (grade keys off the worst severity present, then the count at that severity).
 - The findings schema (`{severity, file, remediation, fingerprint}`) and chat report format.
@@ -209,20 +209,14 @@ Every run-ending path records here:
 
 Emit the report as a **single ASCII card** rendered by `gaia fitness render-card`, and paste the rendered card directly into your chat reply inside a fenced code block. Do not surface it as a tool result, the harness collapses long tool output; the card must be a first-class part of your message.
 
-Build the report JSON from the adjudicated findings and the computed grades. List all eight categories with the grade you computed (the renderer sorts them alphabetically and derives the per-category note column from the findings, so order and counts are not your job):
+Build the report JSON from the adjudicated findings and the computed grades. `categories` carries **one entry per row of the Step 3 category table**, each with the grade you computed; that table is the roster, and it is not restated here so the two cannot disagree about how many there are. The renderer sorts alphabetically and derives the per-category note column from the findings, so order and counts are not your job:
 
 ```json
 {
   "command": "/gaia-fitness",
-  "overall": "<floor of the eight category grades>",
+  "overall": "<floor of the category grades>",
   "categories": [
-    {"name": "Hook integrity", "grade": "<grade>"},
-    {"name": "Skill / command / agent frontmatter", "grade": "<grade>"},
-    {"name": "Rule hygiene", "grade": "<grade>"},
-    {"name": "CLAUDE.md hygiene", "grade": "<grade>"},
-    {"name": "Settings hygiene", "grade": "<grade>"},
-    {"name": "GAIA-install fitness", "grade": "<grade>"},
-    {"name": "Wiki fitness", "grade": "<grade>"}
+    {"name": "<category name, one entry per Step 3 row>", "grade": "<grade>"}
   ],
   "findings": [
     {"category": "<category name>", "grade": "<category grade>",

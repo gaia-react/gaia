@@ -235,6 +235,56 @@ JSON
   grep -qF -- "token-rates.local.json" "$err"
 }
 
+@test "an overlay whose models is not an object is refused out loud, not dropped silently" {
+  shipped="$(load_shipped)"
+  # `gaia_load_rate_table` only asserts has("models"), so this shape gets past it
+  # and then raises inside jq. Swallowing that would drop the overlay down the
+  # same silent path an empty one takes, which is the one outcome the contract
+  # rules out: the operator hand-wrote this file expecting it to take effect.
+  printf '{"models":"claude-brand-new-1"}\n' > "$OVERLAY"
+
+  cd "$SANDBOX"
+  err="$BATS_TEST_TMPDIR/err.txt"
+  gaia_apply_rate_overlay "$shipped" "" 2>"$err"
+
+  [ "$(price_fresh "$GAIA_EFFECTIVE_RATES" claude-opus-4-8 1000000)" = "5" ]
+  [ -z "$GAIA_RATE_OVERLAY_MODELS" ]
+  grep -qF -- "token-rates.local.json" "$err"
+}
+
+@test "an overlay model whose value is not a window array is refused, never announced active" {
+  shipped="$(load_shipped)"
+  # This shape merges cleanly, so without the check it would be announced as
+  # `(local rate overlay active for: claude-brand-new-1)` while pricing nothing:
+  # a wrong figure wearing an "overlay is working" label, which is worse than no
+  # overlay at all.
+  printf '{"models":{"claude-brand-new-1":"7/35"}}\n' > "$OVERLAY"
+
+  cd "$SANDBOX"
+  err="$BATS_TEST_TMPDIR/err.txt"
+  gaia_apply_rate_overlay "$shipped" "" 2>"$err"
+
+  [ -z "$GAIA_RATE_OVERLAY_MODELS" ]
+  [ "$(price_fresh "$GAIA_EFFECTIVE_RATES" claude-opus-4-8 1000000)" = "5" ]
+  grep -qF -- "token-rates.local.json" "$err"
+}
+
+@test "one bad model refuses the whole overlay rather than half-applying it" {
+  shipped="$(load_shipped)"
+  # A partial apply would be the worst of both: some models repriced, one
+  # silently not, and the active list claiming both.
+  cat > "$OVERLAY" <<'JSON'
+{ "models": { "claude-brand-new-1": [ { "input": 7, "output": 35 } ],
+              "claude-broken-2":    { "input": 9 } } }
+JSON
+
+  cd "$SANDBOX"
+  gaia_apply_rate_overlay "$shipped" "" 2>/dev/null
+
+  [ -z "$GAIA_RATE_OVERLAY_MODELS" ]
+  [ "$(price_fresh "$GAIA_EFFECTIVE_RATES" claude-brand-new-1 1000000)" = "0" ]
+}
+
 @test "an empty overlay is never an empty rate table" {
   shipped="$(load_shipped)"
   : > "$OVERLAY"
@@ -278,6 +328,8 @@ JSON
   gaia_apply_rate_overlay "$shipped" ""
 
   # Sorted so the assertion does not depend on the overlay's key order.
+  # shellcheck disable=SC2086 # the split is the point: the global is a
+  # space-separated list and each model must become its own printf line.
   got="$(printf '%s\n' $GAIA_RATE_OVERLAY_MODELS | sort | tr '\n' ' ')"
   [ "$got" = "claude-brand-new-1 claude-opus-4-8 " ]
   [ "$GAIA_RATE_OVERLAY_PATH" = "$OVERLAY" ]
