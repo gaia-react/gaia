@@ -260,6 +260,19 @@ setup() {
   # edit above the wiki write, which loses the content on a failed write.
   local loop
   loop="$(scoped '^### Per-action loop' '^### ')"
+  # BOTH the operative clause and its rationale, because pinning only the
+  # rationale lets the two come apart. Reordering the arm so the source edit
+  # precedes the wiki writes, while leaving the sentence below in place, keeps
+  # every other assertion in this suite green; what survives is a document that
+  # still explains why something happens where it no longer happens, which is
+  # exactly the incoherent partial edit a reviewer is least likely to catch by
+  # reading. The two coherent variants -- reorder AND rewrite the rationale, or
+  # drop the rationale -- both die on one needle or the other.
+  #
+  # This extends the general rule in `scoped`'s header from pinning WHERE
+  # something sits to pinning WHAT sits there. Both literals occur exactly once
+  # in the target file and in no other suite, so neither is a tautology.
+  grep -qF -- 'then act on the source **last**' <<<"$loop"
   grep -qF -- 'The source goes last so a wiki write that fails leaves it intact' <<<"$loop"
 }
 
@@ -384,6 +397,12 @@ setup() {
   # unverified.
   local verify
   verify="$(scoped '^### Post-apply verification' '^### ')"
+  # Same shape as the apply-arm test above, with a narrower consequence: the
+  # rationale needle alone leaves nothing rejecting the absence check being
+  # ADDED BACK while the sentence explaining why it would be wrong stays put.
+  # The operative clause is what states the arm's actual behaviour, so it is
+  # pinned alongside the reason for it.
+  grep -qF -- 'The `replace` arm asserts no absence' <<<"$verify"
   grep -qF -- 'asserting its absence would downgrade a correct apply' <<<"$verify"
 }
 
