@@ -391,6 +391,15 @@ const manifestWithFiles = (files: ManifestShape['files']): ManifestShape => ({
   version: '1.0.0',
 });
 
+/**
+ * The path a committed manifest actually takes: written by `serialize`, read
+ * back by `JSON.parse`, then validated by the schema. Hand-built
+ * `ManifestShape` objects skip all three, so a case that never calls this
+ * proves nothing about what survives the trip.
+ */
+const roundTrip = (manifest: ManifestShape): ManifestShape =>
+  ManifestSchema.parse(JSON.parse(serialize(manifest)));
+
 describe('computeMissing: paths named after Object.prototype keys', () => {
   test.each([
     'constructor',
@@ -427,23 +436,23 @@ describe('computeMissing: paths named after Object.prototype keys', () => {
   // shape: `ManifestSchema: regions` and `byte-identity vs
   // generate-manifest.mjs` both assert through a real parse.
   //
-  // Every key here is written computed. A bare `{__proto__: 'owned'}` object
+  // Every key below is written computed. A bare `{__proto__: 'owned'}` object
   // literal sets the PROTOTYPE instead of defining an own property, which
   // would make these cases test nothing at all.
-  const roundTrip = (manifest: ManifestShape): ManifestShape =>
-    ManifestSchema.parse(JSON.parse(serialize(manifest)));
-
   test.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty'])(
     'a manifest path named %s survives the real serialize/parse round trip and is still reported missing',
     (file) => {
       const committed = roundTrip(manifestWithFiles({[file]: 'owned'}));
 
       expect(Object.hasOwn(committed.files, file)).toBe(true);
-      expect(computeMissing(manifestWithFiles({[file]: 'owned'}), committed)).toEqual(
-        []
-      );
       expect(
-        computeMissing(manifestWithFiles({[file]: 'owned'}), manifestWithFiles({}))
+        computeMissing(manifestWithFiles({[file]: 'owned'}), committed)
+      ).toEqual([]);
+      expect(
+        computeMissing(
+          manifestWithFiles({[file]: 'owned'}),
+          manifestWithFiles({})
+        )
       ).toEqual([file]);
     }
   );
