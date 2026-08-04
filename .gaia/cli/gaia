@@ -17972,8 +17972,8 @@ var HELP_TEXT17 = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, no package.json, no
-       CLAUDE.md heading)
+    1  user-correctable error (missing flags, invalid title, no
+       package.json, no CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
 var HELP_TOKENS17 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -18175,7 +18175,7 @@ var HELP_TEXT18 = `Usage: gaia init strip-branding --title <T>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flag, missing template)
+    1  user-correctable error (missing flag, invalid title, missing template)
     2  unexpected (filesystem failure)
 `;
 var HELP_TOKENS18 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);

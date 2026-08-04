@@ -38,8 +38,8 @@ const HELP_TEXT = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, no package.json, no
-       CLAUDE.md heading)
+    1  user-correctable error (missing flags, invalid title, no
+       package.json, no CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
 

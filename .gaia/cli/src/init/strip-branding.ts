@@ -33,7 +33,7 @@ const HELP_TEXT = `Usage: gaia init strip-branding --title <T>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flag, missing template)
+    1  user-correctable error (missing flag, invalid title, missing template)
     2  unexpected (filesystem failure)
 `;
 
