@@ -22,6 +22,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {markStepCompleted} from './util/state.js';
+import {titleFailure} from './util/title.js';
 
 const HELP_TEXT = `Usage: gaia init strip-branding --title <T>
 
@@ -91,6 +92,11 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   if (title === undefined) {
     return {message: '--title is required', ok: false};
   }
+
+  // Refused ahead of the first write, so a rejected run has changed nothing.
+  const titleProblem = titleFailure(title);
+
+  if (titleProblem) return {message: titleProblem, ok: false};
 
   return {flags: {title}, ok: true};
 };
