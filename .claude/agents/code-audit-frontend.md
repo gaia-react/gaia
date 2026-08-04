@@ -704,11 +704,20 @@ BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || tr
 # down that rejects --base "".
 [ -n "$BASE_SHA" ] || printf 'resolve-audit-base returned no base; review scope is unreliable\n' >&2
 changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx' 2>/dev/null || true)
+# `Read` returns WORKING-TREE bytes while your clearance attests to a digest
+# over HEAD (`git ls-tree HEAD`, .claude/hooks/lib/audit-digest.sh), so a pass
+# over a dirty tree certifies content it never read. Detect that here, over the
+# set you just resolved rather than the whole tree: a sibling member
+# self-healing in another remit must not refuse your pass, and your own
+# self-heal cannot have run yet at this point in the order.
+dirty_in_scope=$(printf '%s\n' "$changed" | tr '\n' '\0' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain -- 2>/dev/null || true)
 ```
 
 **Three-dot, against HEAD, is the whole point.** `changed` names the content your marker will attest to. Your clearance digest is computed over tracked files **at HEAD** (`git ls-tree HEAD`, `.claude/hooks/lib/audit-digest.sh`), so a review scope resolved against anything other than HEAD lets you certify a digest over content you never read. The two-dot form (`<base>`, no `...HEAD`) compares the base to the WORKING TREE, and it fails in three ways at once. A change committed to this PR and then reverted in the working tree drops out of `changed` entirely while your marker still covers the committed version. An uncommitted edit enters `changed` while no marker covers it and the dispatch oracle that decided you run at all never saw it. And when the base is a ref rather than a sha (`origin/main`, the no-audited-ancestor fallback) whose tip has advanced past this branch's fork point, every file the default branch changed enters `changed` too, none of which this PR touched. Three-dot resolves its own merge base, so it is immune to all three. Every other member resolves `${BASE_SHA}...HEAD`; you resolve it identically, and `.gaia/scripts/check-audit-base-derivation.sh` holds all five there.
 
-**What this aligns is the file LIST, and that is the limit of it.** `Read` returns working-tree bytes, so on a dirty tree a file named in `changed` can still hold content HEAD does not, and your marker would again cover bytes you did not read. Reach for the reviewed delta itself (`git -C "$AUDIT_ROOT" diff "${BASE_SHA}...HEAD" -- <file>`) rather than the file's current state whenever that distinction could change a finding.
+**What this aligns is the file LIST; `dirty_in_scope` is what aligns the BYTES.** `Read` returns working-tree bytes, so on a dirty tree a file named in `changed` can still hold content HEAD does not, and your marker would again cover bytes you did not read. The check above catches that for the files you review, which is why the run order here is: resolve the scope, then refuse the pass when the working tree is dirty within `changed`, before anything is read. It does not reach a file you open for CONTEXT rather than review, a caller or a test that is not itself in `changed`, so reach for the reviewed delta itself (`git -C "$AUDIT_ROOT" diff "${BASE_SHA}...HEAD" -- <file>`) rather than the file's current state whenever that distinction could change a finding.
+
+**A non-empty `dirty_in_scope` REFUSES this pass.** Every path it names holds working-tree bytes that differ from the HEAD bytes your clearance attests to, so reviewing it certifies content nobody read. Apply your own remit filter to the list first: a dirty path you would never have opened cannot make your review disagree with your marker. On anything that survives, write no marker, write the findings sidecar naming each dirty path (a refusal that briefs nothing blocks a merge no one can clear), and report that you must be re-dispatched once the operator commits or reverts them. This is the self-heal rule reaching one case further, a marker only ever attests committed content; the only difference is whose uncommitted edit it is.
 
 ```bash
 # FULL_BASE is the whole-PR fork point, and it decides exactly one thing: the

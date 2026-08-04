@@ -88,7 +88,16 @@ BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || tr
 # three steps down that rejects --base "".
 [ -n "$BASE_SHA" ] || printf 'resolve-audit-base returned no base; review scope is unreliable\n' >&2
 changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
+# `Read` returns WORKING-TREE bytes while your clearance attests to a digest
+# over HEAD (`git ls-tree HEAD`, .claude/hooks/lib/audit-digest.sh), so a pass
+# over a dirty tree certifies content it never read. Detect that here, over the
+# set you just resolved rather than the whole tree: a sibling member
+# self-healing in another remit must not refuse your pass, and your own
+# self-heal cannot have run yet at this point in the order.
+dirty_in_scope=$(printf '%s\n' "$changed" | tr '\n' '\0' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain -- 2>/dev/null || true)
 ```
+
+**A non-empty `dirty_in_scope` REFUSES this pass.** Every path it names holds working-tree bytes that differ from the HEAD bytes your clearance attests to, so reviewing it certifies content nobody read. Apply your own remit filter to the list first: a dirty path you would never have opened cannot make your review disagree with your marker. On anything that survives, write no marker, write the findings sidecar naming each dirty path (a refusal that briefs nothing blocks a merge no one can clear), and report that you must be re-dispatched once the operator commits or reverts them. This is the self-heal rule reaching one case further, a marker only ever attests committed content; the only difference is whose uncommitted edit it is.
 
 Two lists, two jobs. `full_changed` decides **whether you run at all**: filter it against your remit globs, and self-skip when nothing matches. `changed` decides **what you review**: filter it the same way and review only what it names. The two lists differ once this PR has passed a clean round, because `BASE_SHA` then starts at that round's commit while `FULL_BASE` stays at the fork point.
 
@@ -344,7 +353,7 @@ Best-effort: a write failure never blocks or alters the marker / stamp / push / 
 
 ## Methodology
 
-1. Resolve both diff bases and their changed-file lists; self-skip on `full_changed` filtered to your remit; review `changed` filtered the same way.
+1. Resolve both diff bases and their changed-file lists; refuse the pass when the working tree is dirty within `changed`; self-skip on `full_changed` filtered to your remit; review `changed` filtered the same way.
 2. Read every in-remit changed file, plus its callers and any `.bats` tests it needs for context.
 3. Run `shellcheck` on each in-remit script.
 4. Apply the hook-contract lens to any file under `.claude/hooks/**/*.sh`, and the bats-suite lens to any `.bats` file.
