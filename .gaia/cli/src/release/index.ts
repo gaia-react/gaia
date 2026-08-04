@@ -24,7 +24,8 @@ const HELP_TEXT = `Usage: gaia-maintainer release <subcommand> [args]
 
   preflight [--branch <name>]                 Branch + working-tree + wiki state checks.
   bump [--auto]                               Conventional-commit semver bump.
-  changelog [--draft] [--version <X.Y.Z>]     Render / graduate the CHANGELOG block.
+  changelog [--draft] [--version <X.Y.Z>]     Graduate CHANGELOG's [Unreleased] block
+                                              (--draft: render a review block, write nothing).
   scrub-wiki [--version <X.Y.Z>] [--date <D>] [--check]
                                               Reset wiki/hot.md and wiki/log.md
                                               (--check: verify they are fresh, write nothing).
