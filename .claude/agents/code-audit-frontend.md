@@ -278,7 +278,7 @@ This decision runs **after** section B's security classification and **before** 
 
 Promote a non-security out-of-scope finding into the self-heal path, repaired in place rather than filed, **if and only if all five** of these hold:
 
-1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `changed` set the audit already resolved in "Rules-Based Audit" → "How to run" step 1 (`git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx'`). Read that value; do not re-derive it, or this filter and the review can disagree about which files the audit covered. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
+1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `changed` set the audit already resolved in "Rules-Based Audit" → "How to run" step 1 (`git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx'`). Read that value; do not re-derive it, or this filter and the review can disagree about which files the audit covered. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
 2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out, because `block-selfheal-paths.sh` would hard-deny the edit and leave the finding with no disposition at all.
 3. The file is in **your own remit** (your declared globs, see "Remit and self-skip", evaluated at the second precedence tier), not a cross-remit file a claimant member owns.
 4. The finding is **non-security** per section B's classification, read as section B's own flag, bound on **every repo including a confirmed PRIVATE one**. Never re-derive "non-security" from the `finding_class` tag or a fresh screen.
@@ -703,12 +703,31 @@ BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || tr
 # the silence is created, rather than leaving it to the handshake further
 # down that rejects --base "".
 [ -n "$BASE_SHA" ] || printf 'resolve-audit-base returned no base; review scope is unreliable\n' >&2
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx' 2>/dev/null || true)
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx' 2>/dev/null | tr '\0' '\n' || true)
+# `Read` returns WORKING-TREE bytes while your clearance attests to a digest
+# over HEAD (`git ls-tree HEAD`, .claude/hooks/lib/audit-digest.sh), so a pass
+# over a dirty tree certifies content it never read. Check the set you just
+# resolved, never the whole tree; your own remit filter, below, is what keeps a
+# sibling member's legitimate self-heal out of your answer. Your own self-heal
+# cannot have run yet at this point in the order. This FAILS CLOSED: a status
+# that cannot run refuses rather than reading as clean, and the empty-`changed`
+# guard is what stops that from turning an empty review scope into a refusal.
+dirty_in_scope=""
+if [ -n "$changed" ] && ! dirty_in_scope=$(printf '%s\n' "$changed" | tr '\n' '\0' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain --); then
+  printf 'dirty-scope check could not run; refusing rather than assuming a clean tree\n' >&2
+  dirty_in_scope="dirty-scope check failed"
+fi
+# Shell state does not survive between your Bash calls, so a result you do not
+# print is a result you never see. This print is what carries the check into
+# the decision below; without it the block computes an answer and discards it.
+if [ -n "$dirty_in_scope" ]; then printf 'DIRTY IN REVIEW SCOPE:\n%s\n' "$dirty_in_scope" >&2; fi
 ```
 
 **Three-dot, against HEAD, is the whole point.** `changed` names the content your marker will attest to. Your clearance digest is computed over tracked files **at HEAD** (`git ls-tree HEAD`, `.claude/hooks/lib/audit-digest.sh`), so a review scope resolved against anything other than HEAD lets you certify a digest over content you never read. The two-dot form (`<base>`, no `...HEAD`) compares the base to the WORKING TREE, and it fails in three ways at once. A change committed to this PR and then reverted in the working tree drops out of `changed` entirely while your marker still covers the committed version. An uncommitted edit enters `changed` while no marker covers it and the dispatch oracle that decided you run at all never saw it. And when the base is a ref rather than a sha (`origin/main`, the no-audited-ancestor fallback) whose tip has advanced past this branch's fork point, every file the default branch changed enters `changed` too, none of which this PR touched. Three-dot resolves its own merge base, so it is immune to all three. Every other member resolves `${BASE_SHA}...HEAD`; you resolve it identically, and `.gaia/scripts/check-audit-base-derivation.sh` holds all five there.
 
-**What this aligns is the file LIST, and that is the limit of it.** `Read` returns working-tree bytes, so on a dirty tree a file named in `changed` can still hold content HEAD does not, and your marker would again cover bytes you did not read. Reach for the reviewed delta itself (`git -C "$AUDIT_ROOT" diff "${BASE_SHA}...HEAD" -- <file>`) rather than the file's current state whenever that distinction could change a finding.
+**What this aligns is the file LIST; `dirty_in_scope` is what aligns the BYTES.** `Read` returns working-tree bytes, so on a dirty tree a file named in `changed` can still hold content HEAD does not, and your marker would again cover bytes you did not read. The check above catches that for the files you review, which is why the run order here is: resolve the scope, then refuse the pass when the working tree is dirty within `changed`, before anything is read. It does not reach a file you open for CONTEXT rather than review, a caller or a test that is not itself in `changed`, so reach for the reviewed delta itself (`git -C "$AUDIT_ROOT" diff "${BASE_SHA}...HEAD" -- <file>`) rather than the file's current state whenever that distinction could change a finding.
+
+**A non-empty `dirty_in_scope` WITHHOLDS this pass.** Every path it names holds working-tree bytes that differ from the HEAD bytes your clearance attests to, so reviewing it certifies content nobody read. Apply your own remit filter to the list first: a dirty path you would never have opened cannot make your review disagree with your marker. The one value that filter never touches is the literal `dirty-scope check failed`, which is a sentinel rather than a path and withholds unconditionally. On anything that survives, write no marker, write the findings sidecar naming each dirty path (a refusal that briefs nothing blocks a merge no one can clear), and report that you must be re-dispatched once the operator commits or reverts them. **Withhold without writing a `.refused` artifact.** That artifact is keyed to your content digest, an uncommitted edit does not rotate it, and a revert would leave a live refusal still blocking the marker your next clean pass earns. This is the self-heal rule reaching one case further, a marker only ever attests committed content; the only difference is whose uncommitted edit it is.
 
 ```bash
 # FULL_BASE is the whole-PR fork point, and it decides exactly one thing: the

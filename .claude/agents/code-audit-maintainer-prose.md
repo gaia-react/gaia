@@ -71,8 +71,27 @@ BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || tr
 # where the silence is created, rather than leaving it to the handshake
 # three steps down that rejects --base "".
 [ -n "$BASE_SHA" ] || printf 'resolve-audit-base returned no base; review scope is unreliable\n' >&2
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
+# `Read` returns WORKING-TREE bytes while your clearance attests to a digest
+# over HEAD (`git ls-tree HEAD`, .claude/hooks/lib/audit-digest.sh), so a pass
+# over a dirty tree reviews content the merge does not carry. Check the set you
+# just resolved, never the whole tree; your own remit filter is what keeps a
+# sibling member's legitimate self-heal out of your answer. You RECORD this
+# rather than withhold on it, unlike the four gating members, and the paragraph
+# below says why that exemption is deliberate. A status that cannot run is
+# recorded the same way, so an unusable check never reads as a clean tree.
+dirty_in_scope=""
+if [ -n "$changed" ] && ! dirty_in_scope=$(printf '%s\n' "$changed" | tr '\n' '\0' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain --); then
+  printf 'dirty-scope check could not run; recording that rather than assuming a clean tree\n' >&2
+  dirty_in_scope="dirty-scope check failed"
+fi
+# Shell state does not survive between your Bash calls, so a result you do not
+# print is a result you never see. This print is what carries the check into
+# the decision below; without it the block computes an answer and discards it.
+if [ -n "$dirty_in_scope" ]; then printf 'DIRTY IN REVIEW SCOPE:\n%s\n' "$dirty_in_scope" >&2; fi
 ```
+
+**A non-empty `dirty_in_scope` does NOT withhold your pass, and the exemption is deliberate.** Every path it names holds working-tree bytes that differ from the HEAD bytes a clearance attests to, which is exactly why the four gating members withhold on it. You do not, because you **always write an earned marker on any in-remit review** and a judgment call here must never deadlock a merge. The reasoning is not that the divergence matters less to you; it is that a clearance which always clears attests nothing about content in the first place, so withholding would buy no guarantee while costing the non-blocking contract this member exists to keep. Record it instead: write the findings sidecar naming each dirty path, so the divergence is on the record where a reader can act on it, and say in your report that your review read working-tree bytes the merge does not carry. The literal `dirty-scope check failed` is a sentinel rather than a path and is recorded the same way, never remit-filtered away. **Do not reach for a `.refused` artifact here under any reading:** this member never writes one, and it would be keyed to a content digest an uncommitted edit does not rotate, so a revert would strand it blocking a marker nobody could clear.
 
 Two lists, two jobs. `full_changed` decides **whether you run at all**: filter it against your remit globs, and self-skip when nothing matches. `changed` decides **what you review**: filter it the same way and review only what it names. The two lists differ once this PR has passed a clean round, because `BASE_SHA` then starts at that round's commit while `FULL_BASE` stays at the fork point.
 
@@ -266,7 +285,7 @@ Best-effort: a sidecar write failure never blocks or alters the marker sequence.
 
 ## Methodology
 
-1. Resolve both diff bases and their changed-file lists; self-skip on `full_changed` filtered to `.claude/skills/**/*.md`; review `changed` filtered the same way.
+1. Resolve both diff bases and their changed-file lists; record any working-tree dirt within `changed`; self-skip on `full_changed` filtered to `.claude/skills/**/*.md`; review `changed` filtered the same way.
 2. Read every in-remit changed file, and any file it cross-references, to judge indirection.
 3. Apply the four review dimensions above.
 4. Run each candidate through the Finding Proof Gate.
