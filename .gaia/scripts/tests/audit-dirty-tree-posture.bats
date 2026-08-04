@@ -49,8 +49,18 @@ code-audit-maintainer-shell"
   # five subtly different checks.
   CHECK_LINE='if [ -n "$changed" ] && ! dirty_in_scope=$(printf '"'"'%s\n'"'"' "$changed" | tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain --); then'
 
+  # The byte-identical print of the result. Load-bearing rather than cosmetic:
+  # shell state does not survive between an agent's Bash calls, so a check whose
+  # answer is never printed cannot reach any decision the member makes.
+  PRINT_LINE='if [ -n "$dirty_in_scope" ]; then printf '"'"'DIRTY IN REVIEW SCOPE:\n%s\n'"'"' "$dirty_in_scope" >&2; fi'
+
+  # The sentinel the remit filter must never discard, and the artifact rule that
+  # keeps a withheld pass from stranding a digest-keyed refusal across a revert.
+  SENTINEL_CARVEOUT='is a sentinel rather than a path and withholds unconditionally'
+  NO_REFUSAL_ARTIFACT='**Withhold without writing a `.refused` artifact.**'
+
   # The byte-identical refusal contract.
-  REFUSAL='**A non-empty `dirty_in_scope` REFUSES this pass.**'
+  REFUSAL='**A non-empty `dirty_in_scope` WITHHOLDS this pass.**'
 
   # The obligation the refusal owes, pinned separately from the sentence that
   # opens it. A refusal that briefs nothing blocks a merge no one can clear, so
@@ -112,6 +122,33 @@ member_path() {
   for m in $MEMBERS; do
     assert_carries "$(member_path "$m")" "$METHOD_ANCHOR" || {
       echo "run order does not name the refusal: $m" >&2
+      return 1
+    }
+  done
+}
+
+@test "every member prints the result it computed" {
+  for m in $MEMBERS; do
+    assert_carries "$(member_path "$m")" "$PRINT_LINE" || {
+      echo "computes dirty_in_scope and never prints it: $m" >&2
+      return 1
+    }
+  done
+}
+
+@test "every member exempts the failure sentinel from the remit filter" {
+  for m in $MEMBERS; do
+    assert_carries "$(member_path "$m")" "$SENTINEL_CARVEOUT" || {
+      echo "fail-closed sentinel is filterable away: $m" >&2
+      return 1
+    }
+  done
+}
+
+@test "every member withholds without stranding a refusal artifact" {
+  for m in $MEMBERS; do
+    assert_carries "$(member_path "$m")" "$NO_REFUSAL_ARTIFACT" || {
+      echo "does not forbid the digest-keyed refusal artifact: $m" >&2
       return 1
     }
   done
@@ -180,7 +217,19 @@ assert_pin_breaks() {
 }
 
 @test "the refusal pin breaks when the refusal becomes a warning (non-vacuity)" {
-  assert_pin_breaks refusal 's|REFUSES this pass|is worth noting|' "$REFUSAL"
+  assert_pin_breaks refusal 's|WITHHOLDS this pass|is worth noting|' "$REFUSAL"
+}
+
+@test "the print pin breaks when the result stops reaching stderr (non-vacuity)" {
+  assert_pin_breaks print 's|>&2; fi|; fi|' "$PRINT_LINE"
+}
+
+@test "the sentinel pin breaks when the carve-out is softened (non-vacuity)" {
+  assert_pin_breaks sentinel 's|withholds unconditionally|is worth a look|' "$SENTINEL_CARVEOUT"
+}
+
+@test "the artifact pin breaks when the prohibition is softened (non-vacuity)" {
+  assert_pin_breaks artifact 's|Withhold without writing|Consider not writing|' "$NO_REFUSAL_ARTIFACT"
 }
 
 @test "the sidecar pin breaks when the obligation is softened (non-vacuity)" {

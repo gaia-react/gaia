@@ -88,9 +88,13 @@ if [ -n "$changed" ] && ! dirty_in_scope=$(printf '%s\n' "$changed" | tr '\n' '\
   printf 'dirty-scope check could not run; refusing rather than assuming a clean tree\n' >&2
   dirty_in_scope="dirty-scope check failed"
 fi
+# Shell state does not survive between your Bash calls, so a result you do not
+# print is a result you never see. This print is what carries the check into
+# the decision below; without it the block computes an answer and discards it.
+if [ -n "$dirty_in_scope" ]; then printf 'DIRTY IN REVIEW SCOPE:\n%s\n' "$dirty_in_scope" >&2; fi
 ```
 
-**A non-empty `dirty_in_scope` REFUSES this pass.** Every path it names holds working-tree bytes that differ from the HEAD bytes your clearance attests to, so reviewing it certifies content nobody read. Apply your own remit filter to the list first: a dirty path you would never have opened cannot make your review disagree with your marker. On anything that survives, write no marker, write the findings sidecar naming each dirty path (a refusal that briefs nothing blocks a merge no one can clear), and report that you must be re-dispatched once the operator commits or reverts them. This is the self-heal rule reaching one case further, a marker only ever attests committed content; the only difference is whose uncommitted edit it is.
+**A non-empty `dirty_in_scope` WITHHOLDS this pass.** Every path it names holds working-tree bytes that differ from the HEAD bytes your clearance attests to, so reviewing it certifies content nobody read. Apply your own remit filter to the list first: a dirty path you would never have opened cannot make your review disagree with your marker. The one value that filter never touches is the literal `dirty-scope check failed`, which is a sentinel rather than a path and withholds unconditionally. On anything that survives, write no marker, write the findings sidecar naming each dirty path (a refusal that briefs nothing blocks a merge no one can clear), and report that you must be re-dispatched once the operator commits or reverts them. **Withhold without writing a `.refused` artifact.** That artifact is keyed to your content digest, an uncommitted edit does not rotate it, and a revert would leave a live refusal still blocking the marker your next clean pass earns. This is the self-heal rule reaching one case further, a marker only ever attests committed content; the only difference is whose uncommitted edit it is.
 
 Two lists, two jobs. `full_changed` decides **whether you run at all**: filter it against your remit globs, and self-skip when nothing matches. `changed` decides **what you review**: filter it the same way and review only what it names. The two lists differ once this PR has passed a clean round, because `BASE_SHA` then starts at that round's commit while `FULL_BASE` stays at the fork point.
 
