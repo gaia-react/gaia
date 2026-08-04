@@ -17714,11 +17714,14 @@ import { existsSync as existsSync10, readFileSync as readFileSync12 } from "node
 import path14 from "node:path";
 var HELP_TEXT20 = `Usage: gaia-maintainer release changelog [--draft] [--version <X.Y.Z>]
 
-  Render a Keep-a-Changelog block for the new version from
-  conventional-commit subjects since the last tag.
+  Graduate the hand-written \`## [Unreleased]\` block to
+  \`## [X.Y.Z] - YYYY-MM-DD\` and open a fresh empty one above it.
 
   Flags:
-    --draft               Print the rendered block to stdout, do not write.
+    --draft               Render a block from conventional-commit subjects
+                          since the last tag to stdout and write nothing.
+                          A review aid: fold anything it shows that the
+                          Unreleased block is missing in by hand.
     --version <X.Y.Z>     Override the new version (default: package.json).
 
   Exit codes:
@@ -17855,6 +17858,16 @@ var readVersion = (cwd, override) => {
   return parsed.version;
 };
 var UNRELEASED_HEADING = "## [Unreleased]";
+var GRADUATE_REFUSALS = {
+  "empty-unreleased": {
+    code: "empty_unreleased_section",
+    message: "CHANGELOG.md has an empty `## [Unreleased]` section; write the release entries under it before graduating (`release changelog --draft` renders a starting point)"
+  },
+  "no-unreleased": {
+    code: "no_unreleased_section",
+    message: "CHANGELOG.md has no `## [Unreleased]` heading to graduate"
+  }
+};
 var UNRELEASED_REF_PREFIX = "[Unreleased]:";
 var updateLinkReferences = (body, newVersion) => {
   const lines = body.split("\n");
@@ -17878,8 +17891,15 @@ var updateLinkReferences = (body, newVersion) => {
   );
   return lines.join("\n");
 };
+var LINK_DEFINITION = /^\[[^\]]+\]:/u;
+var hasUnreleasedEntries = (lines, unreleasedIndex) => {
+  for (const line of lines.slice(unreleasedIndex + 1)) {
+    if (line.startsWith("## ") || LINK_DEFINITION.test(line)) return false;
+    if (line.trim() !== "") return true;
+  }
+  return false;
+};
 var graduateChangelog = ({
-  block,
   current,
   newVersion,
   today
@@ -17895,28 +17915,11 @@ var graduateChangelog = ({
   if (unreleasedIndex === -1) {
     return { kind: "no-unreleased" };
   }
-  const blockLines = block.split("\n");
-  while (blockLines.length > 0 && (blockLines[0] ?? "").trim() === "") {
-    blockLines.shift();
+  if (!hasUnreleasedEntries(lines, unreleasedIndex)) {
+    return { kind: "empty-unreleased" };
   }
-  while (blockLines.length > 0 && (blockLines.at(-1) ?? "").trim() === "") {
-    blockLines.pop();
-  }
-  const newSection = [
-    UNRELEASED_HEADING,
-    "",
-    versionHeading,
-    "",
-    ...blockLines,
-    ""
-  ];
-  const head = lines.slice(0, unreleasedIndex);
-  const tail = lines.slice(unreleasedIndex + 1);
-  while (tail.length > 0 && (tail[0] ?? "").trim() === "") {
-    tail.shift();
-  }
-  const graduated = [...head, ...newSection, ...tail].join("\n");
-  const updated = updateLinkReferences(graduated, newVersion);
+  lines.splice(unreleasedIndex, 1, UNRELEASED_HEADING, "", versionHeading);
+  const updated = updateLinkReferences(lines.join("\n"), newVersion);
   return { kind: "ok", updated };
 };
 var tryReadVersionOrReport = (cwd, override) => {
@@ -17960,14 +17963,12 @@ var run20 = (argv, options = {}) => {
   const runner = options.runner ?? defaultRunner2;
   const version2 = tryReadVersionOrReport(cwd, parsed.flags.version);
   if (version2 === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  const tag = lastTag2(cwd, runner);
-  const range = tag === null ? "HEAD" : `${tag}..HEAD`;
-  const commits = tryCollectCommitsOrReport2(cwd, runner, range);
-  if (commits === null) return UNEXPECTED_EXIT10;
-  const sections = groupCommits(commits);
-  const block = renderBlock(sections);
   if (parsed.flags.draft) {
-    process.stdout.write(block);
+    const tag = lastTag2(cwd, runner);
+    const range = tag === null ? "HEAD" : `${tag}..HEAD`;
+    const commits = tryCollectCommitsOrReport2(cwd, runner, range);
+    if (commits === null) return UNEXPECTED_EXIT10;
+    process.stdout.write(renderBlock(groupCommits(commits)));
     return EXIT_CODES.OK;
   }
   const changelogPath = path14.join(cwd, "CHANGELOG.md");
@@ -17982,7 +17983,6 @@ var run20 = (argv, options = {}) => {
   const current = readFileSync12(changelogPath, "utf8");
   const today = options.today ?? todayUtc();
   const outcome = graduateChangelog({
-    block,
     current,
     newVersion: version2,
     today
@@ -17990,10 +17990,9 @@ var run20 = (argv, options = {}) => {
   if (outcome.kind === "duplicate") {
     return EXIT_CODES.OK;
   }
-  if (outcome.kind === "no-unreleased") {
+  if (outcome.kind !== "ok") {
     structuredError({
-      code: "no_unreleased_section",
-      message: "CHANGELOG.md has no `## [Unreleased]` heading to graduate",
+      ...GRADUATE_REFUSALS[outcome.kind],
       subcommand: "release changelog"
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -23690,7 +23689,8 @@ var HELP_TEXT29 = `Usage: gaia-maintainer release <subcommand> [args]
 
   preflight [--branch <name>]                 Branch + working-tree + wiki state checks.
   bump [--auto]                               Conventional-commit semver bump.
-  changelog [--draft] [--version <X.Y.Z>]     Render / graduate the CHANGELOG block.
+  changelog [--draft] [--version <X.Y.Z>]     Graduate CHANGELOG's [Unreleased] block
+                                              (--draft: render a review block, write nothing).
   scrub-wiki [--version <X.Y.Z>] [--date <D>] [--check]
                                               Reset wiki/hot.md and wiki/log.md
                                               (--check: verify they are fresh, write nothing).

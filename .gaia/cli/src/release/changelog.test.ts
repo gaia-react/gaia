@@ -32,6 +32,22 @@ function assertOk(
   }
 }
 
+// The graduated version block: everything from the new dated heading down to
+// the heading of the version before it.
+const blockBetween = (text: string, from: string, to: string): string =>
+  text.slice(text.indexOf(from), text.indexOf(to));
+
+// One definition of "nothing to release", shared by the unit and CLI tests so
+// the two cannot drift apart about what an empty Unreleased section looks like.
+const EMPTY_UNRELEASED = `# Changelog
+
+## [Unreleased]
+
+## [1.0.0] - 2026-01-01
+
+- old
+`;
+
 const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
   output: ['', stdout, ''] as never,
   pid: 0,
@@ -161,37 +177,122 @@ describe('renderBlock', () => {
 });
 
 describe('graduateChangelog', () => {
+  // The Unreleased body is POPULATED. Every assertion here used to run against
+  // an empty one, which is what let #1146 stand: with nothing under the
+  // heading there was nothing for a second block to collide with.
   const TEMPLATE = `# Changelog
 
 ## [Unreleased]
+
+### Changed
+
+- hand-written entry
 
 ## [1.0.0] - 2026-01-01
 
 - Old entry
 `;
 
-  test('inserts dated heading and fresh Unreleased above', () => {
-    const block = '### Added\n\n- new thing\n';
+  test('renames the Unreleased heading and opens a fresh empty one above', () => {
     const outcome = graduateChangelog({
-      block,
       current: TEMPLATE,
       newVersion: '1.1.0',
       today: '2026-05-07',
     });
     assertOk(outcome);
 
-    expect(outcome.updated).toContain('## [Unreleased]');
-    expect(outcome.updated).toContain('## [1.1.0] - 2026-05-07');
     const unreleasedIdx = outcome.updated.indexOf('## [Unreleased]');
-    const datedIndex = outcome.updated.indexOf('## [1.1.0]');
-    expect(unreleasedIdx).toBeLessThan(datedIndex);
-    expect(outcome.updated).toContain('- new thing');
+    const datedIndex = outcome.updated.indexOf('## [1.1.0] - 2026-05-07');
+    expect(unreleasedIdx).toBeGreaterThan(-1);
+    expect(datedIndex).toBeGreaterThan(unreleasedIdx);
+    // The new Unreleased section is empty: nothing between the two headings.
+    expect(outcome.updated.slice(unreleasedIdx, datedIndex).trim()).toBe(
+      '## [Unreleased]'
+    );
+  });
+
+  test('the released block carries the hand-written entries exactly once', () => {
+    const outcome = graduateChangelog({
+      current: TEMPLATE,
+      newVersion: '1.1.0',
+      today: '2026-05-07',
+    });
+    assertOk(outcome);
+
+    const released = blockBetween(outcome.updated, '## [1.1.0]', '## [1.0.0]');
+    expect(released.match(/^- hand-written entry$/gmu)).toHaveLength(1);
+    expect(released.match(/^### Changed$/gmu)).toHaveLength(1);
+  });
+
+  test('returns empty-unreleased when the section has no entries', () => {
+    const outcome = graduateChangelog({
+      current: EMPTY_UNRELEASED,
+      newVersion: '1.1.0',
+      today: '2026-05-07',
+    });
+    expect(outcome.kind).toBe('empty-unreleased');
+  });
+
+  test('returns empty-unreleased when only the link block follows', () => {
+    const linksOnly = `# Changelog
+
+## [Unreleased]
+
+[Unreleased]: https://github.com/gaia-react/gaia/compare/v0.9.0...HEAD
+`;
+    const outcome = graduateChangelog({
+      current: linksOnly,
+      newVersion: '1.0.0',
+      today: '2026-05-07',
+    });
+    expect(outcome.kind).toBe('empty-unreleased');
+  });
+
+  test('returns empty-unreleased for a link definition with no space', () => {
+    const tight = `# Changelog
+
+## [Unreleased]
+
+[Unreleased]:https://github.com/gaia-react/gaia/compare/v0.9.0...HEAD
+`;
+    const outcome = graduateChangelog({
+      current: tight,
+      newVersion: '1.0.0',
+      today: '2026-05-07',
+    });
+    expect(outcome.kind).toBe('empty-unreleased');
+  });
+
+  // The positive direction of the same rule: the link block ends the body, it
+  // does not veto entries that precede it. Without this, widening
+  // LINK_DEFINITION could start refusing real releases with the suite green.
+  test('graduates entries that sit directly above the link block', () => {
+    const firstRelease = `# Changelog
+
+## [Unreleased]
+
+### Added
+
+- initial thing
+
+[Unreleased]: https://github.com/gaia-react/gaia/compare/v0.9.0...HEAD
+`;
+    const outcome = graduateChangelog({
+      current: firstRelease,
+      newVersion: '1.0.0',
+      today: '2026-05-07',
+    });
+    assertOk(outcome);
+
+    expect(outcome.updated).toContain('## [1.0.0] - 2026-05-07');
+    expect(outcome.updated).toContain('- initial thing');
+    expect(outcome.updated).toContain(
+      '[1.0.0]: https://github.com/gaia-react/gaia/releases/tag/v1.0.0'
+    );
   });
 
   test('returns duplicate when version already present', () => {
-    const block = '### Added\n\n- foo\n';
     const outcome = graduateChangelog({
-      block,
       current: TEMPLATE,
       newVersion: '1.0.0',
       today: '2026-05-07',
@@ -202,7 +303,6 @@ describe('graduateChangelog', () => {
   test('returns no-unreleased when heading missing', () => {
     const minimal = '# Changelog\n\n## [1.0.0] - 2026-01-01\n';
     const outcome = graduateChangelog({
-      block: '### Added\n- x\n',
       current: minimal,
       newVersion: '1.1.0',
       today: '2026-05-07',
@@ -216,7 +316,6 @@ describe('graduateChangelog', () => {
 [1.0.0]: https://github.com/gaia-react/gaia/releases/tag/v1.0.0
 `;
     const outcome = graduateChangelog({
-      block: '### Added\n\n- new thing\n',
       current: withLinks,
       newVersion: '1.1.0',
       today: '2026-05-07',
@@ -239,7 +338,6 @@ describe('graduateChangelog', () => {
 
   test('leaves the output link-free when the file has no link block', () => {
     const outcome = graduateChangelog({
-      block: '### Added\n\n- new thing\n',
       current: TEMPLATE,
       newVersion: '1.1.0',
       today: '2026-05-07',
@@ -266,7 +364,7 @@ const setupSandbox = (currentVersion: string): Sandbox => {
   );
   writeFileSync(
     path.join(root, 'CHANGELOG.md'),
-    '# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n- old\n',
+    '# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- hand-written entry\n\n## [1.0.0] - 2026-01-01\n\n- old\n',
     'utf8'
   );
 
@@ -350,9 +448,12 @@ describe('release changelog CLI', () => {
     expect(changelog).not.toContain('## [1.1.0]');
   });
 
-  test('without --draft graduates the Unreleased heading', () => {
+  test('without --draft graduates the hand-written block and nothing generated', () => {
     sandbox = setupSandbox('1.1.0');
-    const runner = buildRunner([{subject: 'feat: shiny'}]);
+    // A commit that renders `### Changed` / `- shiny`, the same heading the
+    // hand-written block already carries. #1146: both used to land under the
+    // one dated heading.
+    const runner = buildRunner([{subject: 'refactor: shiny'}]);
 
     const exit = run([], {cwd: sandbox.root, runner, today: '2026-05-07'});
     expect(exit).toBe(0);
@@ -363,7 +464,31 @@ describe('release changelog CLI', () => {
     );
     expect(changelog).toContain('## [1.1.0] - 2026-05-07');
     expect(changelog).toContain('## [Unreleased]');
-    expect(changelog).toContain('- shiny');
+
+    const released = blockBetween(changelog, '## [1.1.0]', '## [1.0.0]');
+    expect(released).toContain('- hand-written entry');
+    expect(released.match(/^### Changed$/gmu)).toHaveLength(1);
+    expect(changelog).not.toContain('- shiny');
+  });
+
+  test('exits 1 when the Unreleased section is empty', () => {
+    sandbox = setupSandbox('1.1.0');
+    writeFileSync(
+      path.join(sandbox.root, 'CHANGELOG.md'),
+      EMPTY_UNRELEASED,
+      'utf8'
+    );
+    const runner = buildRunner([{subject: 'feat: shiny'}]);
+
+    const exit = run([], {cwd: sandbox.root, runner, today: '2026-05-07'});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('empty_unreleased_section');
+
+    const changelog = readFileSync(
+      path.join(sandbox.root, 'CHANGELOG.md'),
+      'utf8'
+    );
+    expect(changelog).not.toContain('## [1.1.0]');
   });
 
   test('idempotent: re-running with the same version is a no-op', () => {

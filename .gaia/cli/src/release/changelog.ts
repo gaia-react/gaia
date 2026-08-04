@@ -1,19 +1,28 @@
 /**
  * `gaia-maintainer release changelog [--draft]` handler.
  *
- * Step 5 of the maintainer release runbook. Auto-drafts a Keep-a-Changelog
- * block from conventional-commit subjects since the last tag, mapping
- * each commit type to a section heading. With `--draft`, prints the
- * rendered block to stdout (the runbook copies into `CHANGELOG.md`
- * after human edit). Without `--draft`, the rendered block is graduated
- * into `CHANGELOG.md`:
+ * Step 5 of the maintainer release runbook. The hand-written
+ * `## [Unreleased]` block is the release content: every merge gates on an
+ * entry there (`.claude/rules/pr-merge.md`), and those entries are
+ * adopter-facing prose a conventional-commit subject cannot stand in for.
  *
- *   1. Find `## [Unreleased]`. Replace with `## [X.Y.Z] - YYYY-MM-DD`.
+ * With `--draft`, renders a Keep-a-Changelog block from conventional-commit
+ * subjects since the last tag, mapping each commit type to a section
+ * heading, and prints it to stdout. That block is a review aid the runbook
+ * shows the maintainer so anything missing can be folded into
+ * `## [Unreleased]` by hand; it is never written to the file.
+ *
+ * Without `--draft`, the hand-written block is graduated in place:
+ *
+ *   1. Find `## [Unreleased]`. Replace with `## [X.Y.Z] - YYYY-MM-DD`,
+ *      leaving the hand-written entries beneath it.
  *   2. Insert a fresh empty `## [Unreleased]` section above.
- *   3. Place the rendered block under the new dated heading.
- *   4. Maintain the Keep-a-Changelog reference-link block: repoint the
+ *   3. Maintain the Keep-a-Changelog reference-link block: repoint the
  *      `[Unreleased]` compare link at the new version and add a `[X.Y.Z]`
  *      release-tag definition. Skipped when the file has no link block.
+ *
+ * An empty `## [Unreleased]` body is refused rather than dated, so a
+ * release cannot ship a version heading with nothing under it.
  *
  * Idempotent: re-running with the same `--version` is a no-op once the
  * version block already exists.
@@ -34,11 +43,14 @@ import {MAX_GIT_BUFFER_BYTES} from '../util/git-buffer.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release changelog [--draft] [--version <X.Y.Z>]
 
-  Render a Keep-a-Changelog block for the new version from
-  conventional-commit subjects since the last tag.
+  Graduate the hand-written \`## [Unreleased]\` block to
+  \`## [X.Y.Z] - YYYY-MM-DD\` and open a fresh empty one above it.
 
   Flags:
-    --draft               Print the rendered block to stdout, do not write.
+    --draft               Render a block from conventional-commit subjects
+                          since the last tag to stdout and write nothing.
+                          A review aid: fold anything it shows that the
+                          Unreleased block is missing in by hand.
     --version <X.Y.Z>     Override the new version (default: package.json).
 
   Exit codes:
@@ -282,7 +294,30 @@ const readVersion = (cwd: string, override: string | undefined): string => {
 const UNRELEASED_HEADING = '## [Unreleased]';
 
 type GraduateOutcome =
-  {kind: 'duplicate'} | {kind: 'no-unreleased'} | {kind: 'ok'; updated: string};
+  | {kind: 'duplicate'}
+  | {kind: 'empty-unreleased'}
+  | {kind: 'no-unreleased'}
+  | {kind: 'ok'; updated: string};
+
+/**
+ * What the caller reports for each outcome that refuses to graduate. Keyed by
+ * outcome kind, so a new refusal fails to compile here until it has a message.
+ * `duplicate` is absent deliberately: it is the idempotent no-op, not a refusal.
+ */
+const GRADUATE_REFUSALS: Record<
+  Exclude<GraduateOutcome['kind'], 'duplicate' | 'ok'>,
+  {code: string; message: string}
+> = {
+  'empty-unreleased': {
+    code: 'empty_unreleased_section',
+    message:
+      'CHANGELOG.md has an empty `## [Unreleased]` section; write the release entries under it before graduating (`release changelog --draft` renders a starting point)',
+  },
+  'no-unreleased': {
+    code: 'no_unreleased_section',
+    message: 'CHANGELOG.md has no `## [Unreleased]` heading to graduate',
+  },
+};
 
 const UNRELEASED_REF_PREFIX = '[Unreleased]:';
 
@@ -324,15 +359,36 @@ const updateLinkReferences = (body: string, newVersion: string): string => {
   return lines.join('\n');
 };
 
+/** A Keep-a-Changelog reference-link definition, e.g. `[1.0.0]: https://…`. */
+const LINK_DEFINITION = /^\[[^\]]+\]:/u;
+
+/**
+ * Does the `## [Unreleased]` section carry anything to release? Its body runs
+ * from the heading to whichever comes first: the next `## ` heading, the
+ * reference-link block, or the end of the file. The link block ends it because
+ * a changelog with no released version yet carries its links directly under
+ * `## [Unreleased]`, where counting them as entries would date an empty
+ * section.
+ */
+const hasUnreleasedEntries = (
+  lines: readonly string[],
+  unreleasedIndex: number
+): boolean => {
+  for (const line of lines.slice(unreleasedIndex + 1)) {
+    if (line.startsWith('## ') || LINK_DEFINITION.test(line)) return false;
+    if (line.trim() !== '') return true;
+  }
+
+  return false;
+};
+
 type GraduateChangelogArgs = {
-  block: string;
   current: string;
   newVersion: string;
   today: string;
 };
 
 export const graduateChangelog = ({
-  block,
   current,
   newVersion,
   today,
@@ -352,44 +408,15 @@ export const graduateChangelog = ({
     return {kind: 'no-unreleased'};
   }
 
-  // Replace the Unreleased heading with the dated heading and insert a
-  // fresh Unreleased section above. Result:
-  //
-  //   ## [Unreleased]
-  //
-  //   ## [vX.Y.Z] - DATE
-  //   <block>
-  const blockLines = block.split('\n');
-
-  // Trim leading/trailing blanks from blockLines for predictable spacing.
-  while (blockLines.length > 0 && (blockLines[0] ?? '').trim() === '') {
-    blockLines.shift();
+  if (!hasUnreleasedEntries(lines, unreleasedIndex)) {
+    return {kind: 'empty-unreleased'};
   }
 
-  while (blockLines.length > 0 && (blockLines.at(-1) ?? '').trim() === '') {
-    blockLines.pop();
-  }
+  // Only the heading is replaced: the hand-written body below it is left where
+  // it is, which is what makes it the released block.
+  lines.splice(unreleasedIndex, 1, UNRELEASED_HEADING, '', versionHeading);
 
-  const newSection = [
-    UNRELEASED_HEADING,
-    '',
-    versionHeading,
-    '',
-    ...blockLines,
-    '',
-  ];
-
-  const head = lines.slice(0, unreleasedIndex);
-  const tail = lines.slice(unreleasedIndex + 1);
-
-  // Strip a single blank line right after the original Unreleased
-  // heading so we don't double-up after replacement.
-  while (tail.length > 0 && (tail[0] ?? '').trim() === '') {
-    tail.shift();
-  }
-
-  const graduated = [...head, ...newSection, ...tail].join('\n');
-  const updated = updateLinkReferences(graduated, newVersion);
+  const updated = updateLinkReferences(lines.join('\n'), newVersion);
 
   return {kind: 'ok', updated};
 };
@@ -467,18 +494,16 @@ export const run = (
 
   if (version === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
-  const tag = lastTag(cwd, runner);
-  const range = tag === null ? 'HEAD' : `${tag}..HEAD`;
-
-  const commits = tryCollectCommitsOrReport(cwd, runner, range);
-
-  if (commits === null) return UNEXPECTED_EXIT;
-
-  const sections = groupCommits(commits);
-  const block = renderBlock(sections);
-
+  // Only the draft path reads git: the graduation moves the hand-written
+  // Unreleased block and never consults commit subjects.
   if (parsed.flags.draft) {
-    process.stdout.write(block);
+    const tag = lastTag(cwd, runner);
+    const range = tag === null ? 'HEAD' : `${tag}..HEAD`;
+    const commits = tryCollectCommitsOrReport(cwd, runner, range);
+
+    if (commits === null) return UNEXPECTED_EXIT;
+
+    process.stdout.write(renderBlock(groupCommits(commits)));
 
     return EXIT_CODES.OK;
   }
@@ -498,7 +523,6 @@ export const run = (
   const current = readFileSync(changelogPath, 'utf8');
   const today = options.today ?? todayUtc();
   const outcome = graduateChangelog({
-    block,
     current,
     newVersion: version,
     today,
@@ -509,10 +533,9 @@ export const run = (
     return EXIT_CODES.OK;
   }
 
-  if (outcome.kind === 'no-unreleased') {
+  if (outcome.kind !== 'ok') {
     structuredError({
-      code: 'no_unreleased_section',
-      message: 'CHANGELOG.md has no `## [Unreleased]` heading to graduate',
+      ...GRADUATE_REFUSALS[outcome.kind],
       subcommand: 'release changelog',
     });
 

@@ -92,13 +92,19 @@ If the branch already exists (a previous attempt aborted), STOP and ask the main
 .gaia/cli/gaia-maintainer release changelog --draft   # render to stdout for human review
 ```
 
-Present the draft to the maintainer. On approval (or "looks good"), apply:
+The draft is a **review aid, not the release content**: it is rendered from commit
+subjects and is never written to the file. Present it to the maintainer alongside the
+hand-written `## [Unreleased]` block and fold anything the block is missing into it by
+hand. On approval (or "looks good"), apply:
 
 ```bash
 .gaia/cli/gaia-maintainer release changelog            # graduate Unreleased → vX.Y.Z
 ```
 
-The graduation is idempotent, re-running with the same version is a no-op.
+That renames `## [Unreleased]` to the dated heading, leaving the hand-written entries
+beneath it, and opens a fresh empty `## [Unreleased]` above. It refuses (exit 1,
+`empty_unreleased_section`) rather than date a section with nothing under it. The
+graduation is idempotent, re-running with the same version is a no-op.
 
 ### 6. Scrub adopter-facing wiki state
 
@@ -302,7 +308,7 @@ Push, own Bash invocation, **literal path inlined** (substitute the path printed
 git -C /abs/path/to/website push origin main
 ```
 
-**GitHub release body (adopter notes).** Step 12's tag fired `release.yml`, which created the GitHub release with the raw `## [<NEW_VERSION>]` CHANGELOG block as a fallback body. That block is contributor-facing (terse, internal, PR-numbered, and can carry duplicated sub-sections); overwrite it with the same adopter notes just generated. `render-release-md.mjs` derives markdown from the committed `<NEW_VERSION>.ts`, so the GitHub release and the website changelog never drift:
+**GitHub release body (adopter notes).** Step 12's tag fired `release.yml`, which created the GitHub release with the raw `## [<NEW_VERSION>]` CHANGELOG block as a fallback body. That block is contributor-facing (terse, internal, PR-numbered); overwrite it with the same adopter notes just generated. `render-release-md.mjs` derives markdown from the committed `<NEW_VERSION>.ts`, so the GitHub release and the website changelog never drift:
 
 ```bash
 node "$WEB/scripts/render-release-md.mjs" <NEW_VERSION> > "/tmp/gh-notes-v<NEW_VERSION>.md"
