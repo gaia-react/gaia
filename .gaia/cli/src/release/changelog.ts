@@ -359,16 +359,23 @@ const updateLinkReferences = (body: string, newVersion: string): string => {
   return lines.join('\n');
 };
 
+/** A Keep-a-Changelog reference-link definition, e.g. `[1.0.0]: https://…`. */
+const LINK_DEFINITION = /^\[[^\]]+\]:\s/u;
+
 /**
  * Does the `## [Unreleased]` section carry anything to release? Its body runs
- * from the heading to the next `## ` heading, or to the end of the file.
+ * from the heading to whichever comes first: the next `## ` heading, the
+ * reference-link block, or the end of the file. The link block ends it because
+ * a changelog with no released version yet carries its links directly under
+ * `## [Unreleased]`, where counting them as entries would date an empty
+ * section.
  */
 const hasUnreleasedEntries = (
   lines: readonly string[],
   unreleasedIndex: number
 ): boolean => {
   for (const line of lines.slice(unreleasedIndex + 1)) {
-    if (line.startsWith('## ')) return false;
+    if (line.startsWith('## ') || LINK_DEFINITION.test(line)) return false;
     if (line.trim() !== '') return true;
   }
 

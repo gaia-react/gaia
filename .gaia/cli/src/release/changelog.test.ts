@@ -233,6 +233,21 @@ describe('graduateChangelog', () => {
     expect(outcome.kind).toBe('empty-unreleased');
   });
 
+  test('returns empty-unreleased when only the link block follows', () => {
+    const linksOnly = `# Changelog
+
+## [Unreleased]
+
+[Unreleased]: https://github.com/gaia-react/gaia/compare/v0.9.0...HEAD
+`;
+    const outcome = graduateChangelog({
+      current: linksOnly,
+      newVersion: '1.0.0',
+      today: '2026-05-07',
+    });
+    expect(outcome.kind).toBe('empty-unreleased');
+  });
+
   test('returns duplicate when version already present', () => {
     const outcome = graduateChangelog({
       current: TEMPLATE,
