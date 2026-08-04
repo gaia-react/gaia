@@ -5,6 +5,45 @@
 # pnpm-workspace.yaml, so this keeps .gaia/cli's own pnpm-lock.yaml and
 # node_modules isolated. Maintainer-only; release-excluded.
 
+# Supply-chain hardening, for parity with the root workspace. This workspace is
+# its own pnpm root (see above), so it inherits none of root's settings and an
+# install here resolved unhardened until #1152. Value is in minutes;
+# 10080 = 7 days. The exposure is at lockfile-write time, when a maintainer
+# bumps a dependency: CI's --frozen-lockfile install does not re-resolve and so
+# inherits whatever the last unhardened resolve committed.
+minimumReleaseAge: 10080
+
+# Fail the install if a package's trust level has decreased vs prior releases.
+trustPolicy: no-downgrade
+
+# Both exclusion lists below are shorter than root's, and deliberately so: each
+# entry earns its place against THIS workspace's closure, which root's is a
+# superset of. Do not sync them by copying.
+
+# Exempt first-party packages from the release-age delay. The 7-day window
+# defends against malicious THIRD-party updates; @gaia-react/lint is authored,
+# reviewed, and published by this project's own maintainer, so the
+# community-vetting rationale does not apply. Same reasoning as root's entry.
+# Root's other entry, bippy@0.5.42, is absent: it is the .playwright/react-perf
+# harness primitive and does not appear in .gaia/cli/pnpm-lock.yaml at all.
+minimumReleaseAgeExclude:
+  - '@gaia-react/lint'
+
+# Acknowledge known-good packages that trip no-downgrade. Each is an old,
+# pre-provenance release that is the correct, required version for its dependent
+# (named per entry). A newer MAJOR line later added npm provenance, so pnpm reads
+# the older unattested release as a trust downgrade. These are not supply-chain
+# regressions. Scope each exception to the exact version; no-downgrade stays
+# enforced for everything else. Both arrive through @gaia-react/lint's plugin set.
+#   - semver@6.3.1: final 6.x release; required by eslint-plugin-import (^6.3.1)
+#   - eslint-import-resolver-typescript@3.10.1: final 3.x release; required by
+#     eslint-plugin-canonical (^3.7.0)
+# Root's third entry, chokidar@4.0.3, is absent: it is @react-router/dev's, and
+# @react-router/dev is not in this closure.
+trustPolicyExclude:
+  - 'semver@6.3.1'
+  - 'eslint-import-resolver-typescript@3.10.1'
+
 # Build-script approval. pnpm 11 replaces the onlyBuiltDependencies allowlist
 # with the allowBuilds map (true = the package may run install/build scripts).
 # esbuild builds a native binary in its postinstall; without this, the
