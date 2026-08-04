@@ -95,11 +95,29 @@ const readPin = (manifestPath: string): string | undefined => {
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-// An absent exclusion list reads as an empty one, which is the truth: exempting
-// nothing is what "no list" means, and it keeps the containment tests below
-// comparing arrays rather than `undefined`.
-const asList = (value: unknown): unknown[] =>
-  Array.isArray(value) ? value : [];
+// An ABSENT exclusion list reads as an empty one, which is the truth: exempting
+// nothing is what "no list" means. Anything present but not a sequence throws, on
+// the same reasoning `readResolvedRuleVersions` throws below, and it is not
+// hypothetical tidiness. pnpm iterates this value with `for..of`, so a scalar
+// string iterates CHARACTER BY CHARACTER: `minimumReleaseAgeExclude: '*'` written
+// without the leading dash yields the single pattern `*`, exempting every package.
+// Collapsing that to `[]` would leave all four list assertions below passing
+// vacuously at once, over a workspace with its hardening switched off.
+const asList = (
+  value: unknown,
+  workspacePath: string,
+  key: string
+): unknown[] => {
+  if (value === undefined) return [];
+
+  if (!Array.isArray(value)) {
+    throw new TypeError(
+      `${workspacePath}: \`${key}\` is present but is not a list; pnpm iterates a scalar character by character, so this may be exempting far more than it names`
+    );
+  }
+
+  return value;
+};
 
 // Read the `packages` map rather than `snapshots`: both list the package, but
 // `snapshots` keys carry a peer-resolution suffix, so a version would have to be
@@ -157,9 +175,17 @@ const readHardeningSettings = (
 
   return {
     minimumReleaseAge: settings.minimumReleaseAge,
-    minimumReleaseAgeExclude: asList(settings.minimumReleaseAgeExclude),
+    minimumReleaseAgeExclude: asList(
+      settings.minimumReleaseAgeExclude,
+      workspacePath,
+      'minimumReleaseAgeExclude'
+    ),
     trustPolicy: settings.trustPolicy,
-    trustPolicyExclude: asList(settings.trustPolicyExclude),
+    trustPolicyExclude: asList(
+      settings.trustPolicyExclude,
+      workspacePath,
+      'trustPolicyExclude'
+    ),
   };
 };
 
@@ -285,14 +311,26 @@ describe('supply-chain hardening parity', () => {
   //
   // Both workspace files already state the rule this encodes, "Scope each
   // exception to the exact version; no-downgrade stays enforced for everything
-  // else", which is the same warrant the containment tests above rest on. `*` is
-  // the measured case; the other glob metacharacters are rejected on the files'
-  // own exact-version rule rather than on a behaviour I verified.
-  const GLOB_METACHARACTERS = /[*?[\]{}]/;
+  // else", which is the same warrant the containment tests above rest on.
+  //
+  // Stated POSITIVELY, as what a legal entry looks like, rather than as a list of
+  // characters to reject. That distinction is the whole point, and it was reached
+  // the hard way: a blacklist can only enumerate the ways in, so each audit round
+  // found one more. `*` was the first. Then `!`, which pnpm's single-pattern
+  // matcher treats as INVERSION, so `'!zzz-not-a-real-package'` matches every
+  // package and exempts everything while reading like a narrow exclusion, which
+  // makes it strictly more dangerous than the wildcard it hides beside. Adding
+  // that second character to a blacklist would only have invited a third.
+  //
+  // An npm specifier is `[@scope/]name[@version]` and npm names are URL-safe, so
+  // no glob metacharacter and no leading `!` can appear in a legitimate entry.
+  // pnpm rejects a malformed version half upstream on its own.
+  const LEGAL_SPECIFIER =
+    /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:@[^\s]+)?$/;
 
   const inexactEntries = (list: unknown[]): unknown[] =>
     list.filter(
-      (entry) => typeof entry !== 'string' || GLOB_METACHARACTERS.test(entry)
+      (entry) => typeof entry !== 'string' || !LEGAL_SPECIFIER.test(entry)
     );
 
   test('every release-age exemption names an exact package, not a pattern', () => {
