@@ -261,7 +261,14 @@ fi
 rates_json="null"
 if [[ "$rate_table_ok" == "true" ]]; then
   if rt_contents="$(gaia_load_rate_table "$RATE_TABLE")"; then
-    rates_json="$rt_contents"
+    # The machine-local overlay merges over the shipped table per model key, so a
+    # model a release has not priced yet can be priced locally instead of
+    # silently zeroed. Bare call, never a command substitution: it assigns to
+    # GAIA_EFFECTIVE_RATES and the overlay globals, which a subshell would drop.
+    # Every degrade inside it lands on the shipped table, so rate_table_ok stays
+    # true either way.
+    gaia_apply_rate_overlay "$rt_contents" "$RATE_TABLE_OVERRIDE"
+    rates_json="$GAIA_EFFECTIVE_RATES"
   else
     log "token-rollup: rate table unreadable: $RATE_TABLE"
     rate_table_ok=false
