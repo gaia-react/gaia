@@ -297,7 +297,7 @@ classify_check() {
 # ---------------------------------------------------------------------------
 
 @test "inverted fixture: all three reject the reversed pair (convergence, not divergence)" {
-  local body ts_dir writer_dir check_dir before after
+  local body ts_dir writer_dir check_dir fixture before
   body="$(fixture_inverted)"
   ts_dir="$(make_sandbox inverted-ts "$body")"
   writer_dir="$(make_sandbox inverted-writer "$body")"
@@ -307,14 +307,21 @@ classify_check() {
   [ "$status" -eq 0 ]
   [ "$output" = "malformed/inverted" ]
 
-  before="$(cat "$writer_dir/.claude/agents/code-audit-fixture.md")"
+  fixture="$writer_dir/.claude/agents/code-audit-fixture.md"
+  before="$BATS_TEST_TMPDIR/inverted-before.md"
+  # The pre-run bytes, copied aside rather than captured into a variable:
+  # `$(cat …)` strips all trailing newlines from both sides, so a writer that
+  # deleted or added exactly a trailing newline would satisfy a
+  # byte-identity claim it had in fact broken.
+  cp "$fixture" "$before"
+
   run classify_writer "$writer_dir"
   [ "$status" -eq 0 ]
   [ "$output" = "fail" ]
   # The writer never deletes bytes outside a pair it can identify: a reversed
-  # pair leaves the file byte-identical to before the run.
-  after="$(cat "$writer_dir/.claude/agents/code-audit-fixture.md")"
-  [ "$before" = "$after" ]
+  # pair leaves the file byte-identical to before the run. `cmp` unsuppressed,
+  # so a regression names the differing byte offset.
+  cmp "$before" "$fixture" || return 1
 
   run classify_check "$check_dir"
   [ "$status" -eq 0 ]

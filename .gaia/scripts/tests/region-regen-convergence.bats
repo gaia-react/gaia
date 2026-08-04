@@ -142,13 +142,31 @@ YAML
   [ "$status" -eq 0 ]
 
   run_check "$sb"
-  # The check's process-wide exit status answers several invariants at once
-  # (default-member-count, machinery registration, glob disjointness, remit
-  # parity for every OTHER member too) and is insensitive to any one
-  # region's content, so a green exit here proves nothing about the
-  # perturbed-then-repaired member specifically. Only the absence of ITS
-  # finding means anything, so the exit status is never asserted.
+  # A floor, before the finding check below. The check's process-wide exit
+  # status cannot be read as a verdict on THIS member: it answers several
+  # invariants at once (default-member-count, machinery registration, glob
+  # disjointness, remit parity for every OTHER member too) and is insensitive
+  # to any one region's content. But having declined it as a verdict, this
+  # test still needs it as a LIVENESS signal, and without one the assertion
+  # below passes on any output that fails to match the parity pattern --
+  # including an early abort that never reached a single invariant. The
+  # stronger the regression, the more reliably it would green.
   #
+  # `verify-audit-roster.sh`'s exit-code vocabulary is what settles which
+  # floor: 0 is ran-and-clean, 1 is ran-and-reported-violations, 2 is every
+  # way of not running (unknown argument, a flag missing its value, an
+  # unresolvable root, a roster that is not there). Pinning 1 therefore
+  # excludes 2, excludes any crash code, and excludes a checker stubbed out to
+  # succeed -- the three shapes an early abort takes -- without saying
+  # anything about WHICH invariants fired.
+  #
+  # 1 is structural here, not incidental: this scratch tree carries no
+  # machinery lists at all, so the registration invariant always fires and the
+  # run always reports. Verified by running it, not assumed. If a later
+  # fixture registers them and the run goes clean, this line fails loudly and
+  # is meant to -- that is a prompt to re-read the floor, not to delete it.
+  [ "$status" -eq 1 ]
+
   # An `&& return 1` as the test body's OWN final line would make the good
   # case (no match, exit 1) become the test's own failing exit status; the
   # `if` form keeps that exit status internal to the condition.
@@ -222,10 +240,20 @@ YAML
 
   # Not a self-comparison: this fails if a bug hardcoded a fixed region body
   # regardless of the roster it was handed.
-  local content_a content_b
-  content_a="$(cat "$sb_a/.claude/agents/code-audit-region-only.md")"
-  content_b="$(cat "$sb_b/.claude/agents/code-audit-region-only.md")"
-  [ "$content_a" != "$content_b" ]
+  #
+  # Compared as FILES, never through `$(cat …)`: command substitution strips
+  # all trailing newlines from both sides, so two bodies differing only there
+  # would compare equal. `-s` because on this side the expected outcome is a
+  # difference, and an unsuppressed `cmp` would print one on every good run.
+  local file_a="$sb_a/.claude/agents/code-audit-region-only.md"
+  local file_b="$sb_b/.claude/agents/code-audit-region-only.md"
+  # The bad case written as a positive match: identical files make `cmp -s`
+  # exit 0 and the test return 1. The trailing `true` is required because this
+  # is the body's FINAL statement -- without it, differing files leave `cmp`'s
+  # own non-zero status as the AND-list's, which would fail the test in exactly
+  # the case it exists to pass.
+  cmp -s "$file_a" "$file_b" && return 1
+  true
 }
 
 # ---------------------------------------------------------------------------
@@ -245,20 +273,30 @@ auditors:
 YAML
   write_agent_stub "$sb" code-audit-region-idem
 
-  run_writer "$sb"
-  [ "$status" -eq 0 ]
-  local first
-  first="$(cat "$sb/.claude/agents/code-audit-region-idem.md")"
+  local agent="$sb/.claude/agents/code-audit-region-idem.md"
+  local first="$BATS_TEST_TMPDIR/first-run.md"
 
   run_writer "$sb"
   [ "$status" -eq 0 ]
-  local second
-  second="$(cat "$sb/.claude/agents/code-audit-region-idem.md")"
+  # The first run's bytes, copied aside rather than captured into a variable.
+  cp "$agent" "$first"
+
+  run_writer "$sb"
+  [ "$status" -eq 0 ]
 
   # Content only, never inode or mtime: the writer's final `mv "$tmp" "$agent"`
   # is unconditional, so both runs always replace the file and an mtime
   # assertion would fail even on a correct implementation.
-  [ "$first" = "$second" ]
+  #
+  # Byte-exact, which is what this test's name promises and what `$(cat …)`
+  # could not deliver: command substitution strips ALL trailing newlines from
+  # both sides, so a writer regression that only gained or dropped one was
+  # invisible to the single test whose name says it would catch exactly that.
+  # A trailing-newline difference inside a marker-delimited generated region is
+  # precisely the drift this suite exists to pin. `cmp` unsuppressed, so a
+  # regression reports the differing byte offset instead of only that the two
+  # runs disagreed.
+  cmp "$first" "$agent"
 }
 
 # ---------------------------------------------------------------------------
