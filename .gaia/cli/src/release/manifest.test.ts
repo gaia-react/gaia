@@ -418,6 +418,54 @@ describe('computeMissing: paths named after Object.prototype keys', () => {
 
     expect(computeMissing(expected, actual)).toEqual([]);
   });
+
+  // The rows above hand-build `ManifestShape` objects, so not one of them
+  // crosses `ManifestSchema`. Read alone they imply all five names are proven
+  // to reach `lookupClass` through the path a committed manifest actually
+  // takes. Only four are, and the two cases below are what make the list say
+  // so rather than merely be true. The surrounding convention settles the
+  // shape: `ManifestSchema: regions` and `byte-identity vs
+  // generate-manifest.mjs` both assert through a real parse.
+  //
+  // Every key here is written computed. A bare `{__proto__: 'owned'}` object
+  // literal sets the PROTOTYPE instead of defining an own property, which
+  // would make these cases test nothing at all.
+  const roundTrip = (manifest: ManifestShape): ManifestShape =>
+    ManifestSchema.parse(JSON.parse(serialize(manifest)));
+
+  test.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty'])(
+    'a manifest path named %s survives the real serialize/parse round trip and is still reported missing',
+    (file) => {
+      const committed = roundTrip(manifestWithFiles({[file]: 'owned'}));
+
+      expect(Object.hasOwn(committed.files, file)).toBe(true);
+      expect(computeMissing(manifestWithFiles({[file]: 'owned'}), committed)).toEqual(
+        []
+      );
+      expect(
+        computeMissing(manifestWithFiles({[file]: 'owned'}), manifestWithFiles({}))
+      ).toEqual([file]);
+    }
+  );
+
+  test('a manifest path named __proto__ does not survive the round trip, so it never reaches the guard', () => {
+    const built = manifestWithFiles({['__proto__']: 'owned'});
+    const committed = roundTrip(built);
+
+    // `serialize` emits the key perfectly well; it is the way back in that
+    // drops it, so the loss is invisible to anyone reading the written file.
+    expect(serialize(built)).toContain('"__proto__"');
+    expect(Object.hasOwn(committed.files, '__proto__')).toBe(false);
+    expect(Object.keys(committed.files)).toEqual([]);
+
+    // The consequence, and why this is a suggestion rather than a bug: the
+    // entry is absent from `actual.files` on EVERY run, so `computeMissing`
+    // reports it missing forever and the drift/answer gate blocks
+    // permanently. That fails closed, never a silent pass. It is also why no
+    // end-to-end row is possible for this name, and why the unit row above is
+    // the whole of the coverage it can have.
+    expect(computeMissing(built, committed)).toEqual(['__proto__']);
+  });
 });
 
 describe('computeDrift: regionDrift', () => {
