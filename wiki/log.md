@@ -11,6 +11,13 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-04 391a449c SKIP - machine-local rate overlay + concurrent re-price, wiki (Cost Data Contract, Token Cost Readout, Claude Integration Fitness) already updated within this same commit
+- 2026-08-04 a1882611 WORTHY - init rename escapes --title into seeded language files via function replacement → wiki/concepts/GAIA Init Workflow.md
+- 2026-08-04 3cc2e4ec WORTHY - init strip-branding refuses a multi-line or blank --title, shared checker → wiki/concepts/GAIA Init Workflow.md
+- 2026-08-04 e9f21e9a WORTHY - audit findings sidecar piped via stdin, not a shared placeholder path → wiki/concepts/Code Review Audit Agent.md
+- 2026-08-04 ec67566e WORTHY - init rename refuses a multi-line --title → wiki/concepts/GAIA Init Workflow.md
+- 2026-08-04 b995d773 SKIP - promote source_action contract fix, implementation detail already owned by .claude/skills/gaia/references/audit.md
+- 2026-08-04 8ee706ec SKIP - wiki's own prior sync commit (through 60dd382), no further edit needed
 - 2026-08-03 9744245f SKIP - audit Skip/Run partition fix, wiki/concepts/GAIA Audit.md already updated within this same commit
 - 2026-08-03 c32344dc SKIP - docs: CLAUDE.md prose reword only
 - 2026-08-03 bf6b51e6 SKIP - audit skill Step 3 remedy-independence fix, implementation detail already owned by .claude/skills/gaia/references/audit.md

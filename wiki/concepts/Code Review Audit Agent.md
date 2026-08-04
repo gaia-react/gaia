@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-07-16
+updated: 2026-08-04
 tags: [concept, claude, agent, review]
 ---
 
@@ -43,6 +43,8 @@ The marker is gated on every out-of-scope finding carrying a disposition (the fo
 The audit does not always review the full `origin/main...HEAD` diff. `.github/audit/resolve-audit-base.sh` resolves a review base, the most recent ancestor of HEAD that already passed a clean audit under the current `.gaia/VERSION`, proven by a GAIA-Audit commit trailer (local stamps) or a GAIA-Audit commit status (CI stamps; see [[PR Merge Workflow]] for the trailer/status handshake). The audit then reviews only `<base>...HEAD`.
 
 **Every dispatched member resolves that base through that one helper.** The base is not only a scope decision. `gaia_audit_key` (`.gaia/scripts/audit-key-lib.sh`) is `<base-sha>.<branch-slug>`, so the base is also half the key each member's findings sidecar and the shared re-run ledger are written under, and the key `post-findings-block.sh` globs to read them back. A member that resolves a base of its own writes under a key no reader looks for, and its findings leave the consolidated block silently.
+
+Every member pipes its findings array into `audit-write-findings.sh --findings -` through a quoted heredoc rather than naming a shared file path. The wave of members runs in parallel against one shared session scratchpad, so a literal placeholder path is the same filename every member would write to: one member's array can land on another's sidecar, and a stale file left by an earlier round can republish as a fresh report. Stdin keys the write to the invoking member's own process instead.
 
 The base is only ever a commit that passed a clean audit. An interrupted, failed, or differently-versioned run leaves no signal to anchor on, so the base falls back to `origin/main` and the full PR diff is reviewed. The scope therefore can never skip uncleared code; worst case it reviews too much. A `.gaia/VERSION` bump invalidates every prior base and forces a full re-audit under the new ruleset.
 
