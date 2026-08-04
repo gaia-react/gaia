@@ -187,6 +187,36 @@ rules: {'no-empty-pattern': 'off'},"
   assert_denied
 }
 
+@test "denies a rule override smuggled past a closed block comment" {
+  # A comment PREFIX does not make a line a comment: `/* x */` closes the block
+  # and everything after it is executable. Confirmed under node that the result
+  # is a live rule override, not a curiosity.
+  run_edit 'eslint.config.mjs' '  ...lint.react,' "  ...lint.react,
+  /* x */ rules: {'no-console': 'off'},"
+  assert_denied
+}
+
+@test "denies a rule override smuggled past a block comment closed on a // line" {
+  # The same vector one prefix over, and the reason the comment arm cannot carve
+  # out `//` as unconditionally safe: inside an open block comment a `//` line
+  # closes it just as well, and the tail is code.
+  run_edit 'eslint.config.mjs' '  ...lint.react,' "  ...lint.react,
+  /*
+  // */ rules: {'no-console': 'off'},"
+  assert_denied
+}
+
+@test "denies an ignores entry smuggled past an empty block comment" {
+  run_edit 'eslint.config.mjs' '  ...lint.guardrails,' "  ...lint.guardrails,
+  /**/ignores: ['app/routes/**'],"
+  assert_denied
+}
+
+@test "allows a whole-line block comment, which closes but continues with nothing" {
+  run_edit 'eslint.config.mjs' '  /* old note */' '  /* new note */'
+  assert_allowed
+}
+
 @test "denies adding a called preset that carries a rule override" {
   # The vector the bare-spread shape exists to exclude: a call is a spread by
   # eye, and it can carry the literal a bare `...lint.group` cannot. This case

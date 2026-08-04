@@ -52,10 +52,24 @@ deny() {
 # neighbour is inserted is not a change, and `R<TAB><line>` for everything else,
 # which must match line for line. Blank and comment lines are emitted as
 # neither, which is what lets them change freely.
+#
+# A comment PREFIX does not make a line a comment. `/* x */ rules: {…}` closes
+# the block and continues with executable code, and so does `// */ rules: {…}`
+# on the line after an unclosed `/*`, since inside a block comment a `//` line
+# closes it like any other. Either one would otherwise be freely changeable and
+# would carry exactly the rule override this guard exists to refuse. So the test
+# is not the prefix: a comment-prefixed line counts as a comment only when it
+# does not close the block and continue with something. One condition covers all
+# three prefixes; carving `//` out as unconditionally safe reopens the second
+# vector.
+#
+# The residual, stated rather than implied: a `*`-prefixed line with no `*/` is
+# taken as a comment. Reaching code that way needs a generator-method shape
+# (`*gen() {}`), which cannot express a rule override.
 classify() {
   awk '
     /^[[:space:]]*$/ { next }
-    /^[[:space:]]*(\/\/|\/\*|\*)/ { next }
+    /^[[:space:]]*(\/\/|\/\*|\*)/ && $0 !~ /\*\/[[:space:]]*[^[:space:]]/ { next }
     /^[[:space:]]*\.\.\.[A-Za-z_$][A-Za-z0-9_$]*\.[A-Za-z_$][A-Za-z0-9_$]*,?[[:space:]]*$/ {
       s = $0
       sub(/^[[:space:]]+/, "", s)
