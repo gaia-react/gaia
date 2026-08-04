@@ -1164,7 +1164,16 @@ if [[ -n "$rec" && -n "$ledger" ]]; then
     if [[ "$lock_rc" -eq 75 ]]; then
       # Lock-acquisition timeout: degrade to the append WITHOUT clear_prior_finals.
       # Never skip the append; never run the rewrite unlocked. The reader's max-seq
-      # fallback copes with the un-cleared prior final, so a timeout never drops a row.
+      # fallback copes with the un-cleared prior final.
+      #
+      # This append is UNLOCKED, so it is visible to a concurrent whole-ledger
+      # rewrite. cost-reprice.sh is the one that performs such a rewrite, and it
+      # re-reads the ledger's tail immediately before its atomic replace and
+      # carries anything that landed. That narrows the loss window to the gap
+      # between that re-read and the rename rather than closing it: a row is only
+      # safe from the rewrite once the rewrite has seen it. Never block the hook
+      # is the invariant this branch keeps; never lose a row is kept on the
+      # rewriting side, where the row can actually be observed.
       log "token-tally: cost lock timed out; appending without clear_prior_finals"
       printf '%s\n' "$rec" >>"$ledger" 2>/dev/null || log "token-tally: degraded append failed: $ledger"
     fi
