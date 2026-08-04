@@ -215,6 +215,7 @@
     ".gaia/scripts/cost-backfill.sh": "owned",
     ".gaia/scripts/cost-represented.sh": "owned",
     ".gaia/scripts/cost-reprice.sh": "owned",
+    ".gaia/scripts/cost-unpriced-scan.sh": "owned",
     ".gaia/scripts/debt-count-refresh.sh": "owned",
     ".gaia/scripts/debt-origin-lib.sh": "owned",
     ".gaia/scripts/gh-artifact-lib.sh": "owned",
@@ -639,7 +640,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-01T10:19:53.396Z",
+  "generated": "2026-08-04T03:28:21.412Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
