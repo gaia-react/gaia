@@ -237,7 +237,8 @@ describe('init strip-branding', () => {
 
   // A title carrying a quote, a backslash or a `$` is an ordinary title and is
   // escaped rather than refused, which is the other half of the policy the two
-  // refusal rules above encode.
+  // refusal rules above encode. Scoped to this command's own sink: these rows
+  // assert what `debrandStorybook` does, and say nothing about any other sink.
   test.each([
     ['an apostrophe', "Steve's App", String.raw`Steve\'s App`],
     ['a backslash', String.raw`A\B`, String.raw`A\\B`],

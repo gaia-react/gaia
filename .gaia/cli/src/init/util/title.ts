@@ -13,10 +13,15 @@
  *     refusing ahead of the first write leaves a rejected run having changed
  *     nothing.
  *   - **Escape at the sink** what is an ordinary title character. `Steve's App`
- *     and `Q1 $1 Report` are titles, and each sink escapes them its own way: a
- *     single-quoted JavaScript literal, a markdown heading, a JSON string, a
- *     `String.replace` replacement. A single canonical escape here would be
- *     wrong for at least one of them, so this checker never rewrites the value.
+ *     and `Q1 $1 Report` are titles, so they reach the sinks, and each sink owes
+ *     them the escaping its own syntax demands: a single-quoted JavaScript
+ *     literal, a markdown heading, a JSON string, a `String.replace`
+ *     replacement. A single canonical escape here would be wrong for at least
+ *     one of them, so this checker never rewrites the value.
+ *
+ * The second bullet states what each sink owes, not what each sink already
+ * does. It is a rule for the sinks to satisfy, and a sink that does not satisfy
+ * it is a defect in that sink rather than a case for refusing the value here.
  */
 
 /**
