@@ -13,7 +13,7 @@ Operational protocol for the autonomous audit + auto-heal loop, invoked by `/hea
 Subagents are leaf nodes: a spawned subagent cannot spawn another subagent (the hard depth-1 limit, independent of its tools config). So the Orchestrator on the main thread owns every spawn; the Auditors, the Adjudicator, and the Fixers are all leaves it dispatches directly. No middle layer spawns workers.
 
 - **Orchestrator**: top-level coordinator, runs on the main thread. Owns the cycle loop, per-cycle directory creation, spawning the Audit buckets, spawning the Adjudicator, the cross-cycle oscillation compare, the circuit breakers, spawning the Fixers, and the final verdict. Stays mechanical (counters, disk reads, `jq`/`comm`, dispatch); it never audits, adjudicates, or fixes in its own context, so session state it inherits cannot bias a grade. Never fixes anything itself.
-- **Auditors**: bucket executors, one fresh `general-purpose` leaf subagent per bucket (A–E), spawned in parallel by the Orchestrator with each bucket's assigned model (see §Model selection). Each follows its bucket spec below verbatim, runs in parallel (not serially), writes raw output to disk under `RUN_DIR/c<N>/<bucket>/` (paths per bucket below; `RUN_DIR` is this run's `.gaia/local/audit/archived/<stamp>/` folder, see §Cycle loop and §Audit artifacts), and returns summary + file path in its report, not raw content. The verifiable property is the artifact, not the dispatch mechanism. This avoids subagent return-budget truncation in dirty cycles. **Bucket E** is spawned the same way; its seven-category fitness protocol produces voluminous raw output, which is exactly why it is its own leaf writing JSON to disk: the Adjudicator reads that JSON, never Bucket E's raw context.
+- **Auditors**: bucket executors, one fresh `general-purpose` leaf subagent per bucket (A–E), spawned in parallel by the Orchestrator with each bucket's assigned model (see §Model selection). Each follows its bucket spec below verbatim, runs in parallel (not serially), writes raw output to disk under `RUN_DIR/c<N>/<bucket>/` (paths per bucket below; `RUN_DIR` is this run's `.gaia/local/audit/archived/<stamp>/` folder, see §Cycle loop and §Audit artifacts), and returns summary + file path in its report, not raw content. The verifiable property is the artifact, not the dispatch mechanism. This avoids subagent return-budget truncation in dirty cycles. **Bucket E** is spawned the same way; its multi-category fitness protocol produces voluminous raw output, which is exactly why it is its own leaf writing JSON to disk: the Adjudicator reads that JSON, never Bucket E's raw context.
 - **Adjudicator** (per cycle): a fresh `general-purpose` leaf subagent the Orchestrator spawns once the buckets return. It reads the cycle's bucket artifacts from disk, classifies findings, updates the taxonomy Issue Classes directly for non-fix cases (circuit-breaker-gated edits route back to the Orchestrator, see §Finding classification), and writes `c<N>/findings.json`. A fresh context per cycle keeps prior-cycle findings from bleeding into this cycle's verification; it never reads a prior cycle's `findings.json` (the Orchestrator owns the cross-cycle compare). It does not spawn anything and does not dispatch Fixers.
 - **Fixers**: fix agents, lane-aware leaf subagents the Orchestrator spawns so multiple run in parallel without merge conflicts.
 
@@ -82,7 +82,7 @@ Human refuses → escalate.
 | Bucket B (source greps)                                                                                           | Haiku  |
 | Bucket C (bundle simulation)                                                                                      | Haiku  |
 | Bucket D (cross-class walk)                                                                                       | Sonnet |
-| Bucket E: Auditor (mechanical: hook integrity, settings hygiene, GAIA-install fitness, wiki fitness)              | Haiku  |
+| Bucket E: Auditor (the wiki page's mechanical categories)                                                        | Haiku  |
 | Bucket E: Auditor (judgment: skill/command/agent frontmatter, rule hygiene, `CLAUDE.md` hygiene, grade synthesis) | Sonnet |
 | Challenger lens: Blind-spot (BS)                                                                                  | Sonnet |
 | Challenger lens: Misclassification (MC)                                                                           | Sonnet |
@@ -252,24 +252,24 @@ Reads: `wiki/decisions/Claude Integration Fitness.md` (the protocol spec).
 
 Every category check is scoped to the current repo root (`git rev-parse --show-toplevel`); `CLAUDE.md` hygiene in particular means the repo-root `CLAUDE.md`, never a parent directory's.
 
-**This bucket runs the triage phase of the protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories.** Do not re-specify the check taxonomy, grading rubric, or Fixer lanes here; reference the page and run it. Any drift from the wiki page's spec is the failure mode this indirection prevents.
+**This bucket runs the triage phase of the protocol defined in `wiki/decisions/Claude Integration Fitness.md` over every fitness category that page defines.** Do not re-specify the check taxonomy, grading rubric, or Fixer lanes here; reference the page and run it. Any drift from the wiki page's spec is the failure mode this indirection prevents.
 
 The wiki page defines:
 
-- The seven categories (hook integrity; skill/command/agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness).
+- The graded check categories.
 - Per-category Auditor model assignments (mechanical on Haiku; judgment on Sonnet); see the wiki page's Triage phase table.
 - The Fixer lanes; fitness findings route to the **existing `claude-surface` lane** (`.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**`) plus the `settings`, `gitignore`, and `manifest` lanes as defined in the wiki page's Heal phase.
 - The F-to-A+ per-category grading rubric (every band; including `A−` and `C−`; reachable; `shared_fitness_grade` may be any of them).
 - The bounded loop (default 3 cycles) with oscillation detection; which the wiki page's own "Composed inside a deeper loop" note hands off to the outer harness when this protocol runs as a bucket. See the loop-nesting rule below.
 
-**Loop nesting.** Bucket E does not run the wiki page's bounded heal loop. The outer `/health-audit` cycle loop _is_ that loop: each outer cycle, Bucket E runs the wiki page's triage phase once (audit the seven categories, grade) and writes its per-category findings JSON plus a `shared_fitness_grade` (F-to-A+, the floor of the seven category grades) to disk; it does not heal or verify on its own. The Adjudicator folds Bucket E's findings into `c<N>/findings.json` alongside the other buckets' findings, so fitness fingerprints participate in the **outer** oscillation guard (no separate inner guard), and tags the fitness fixes for the `claude-surface` Fixer lane (or `settings`/`gitignore`/`manifest` as appropriate); the Orchestrator dispatches them in the outer heal phase. The verify step for a cycle's fitness fixes is the next outer cycle's fresh Bucket E run. No new Fixer lane is introduced, and there is no inner cycle count to tune; the outer `1..3` bound covers fitness too.
+**Loop nesting.** Bucket E does not run the wiki page's bounded heal loop. The outer `/health-audit` cycle loop _is_ that loop: each outer cycle, Bucket E runs the wiki page's triage phase once (audit every category, grade) and writes its per-category findings JSON plus a `shared_fitness_grade` (F-to-A+, the floor of the category grades) to disk; it does not heal or verify on its own. The Adjudicator folds Bucket E's findings into `c<N>/findings.json` alongside the other buckets' findings, so fitness fingerprints participate in the **outer** oscillation guard (no separate inner guard), and tags the fitness fixes for the `claude-surface` Fixer lane (or `settings`/`gitignore`/`manifest` as appropriate); the Orchestrator dispatches them in the outer heal phase. The verify step for a cycle's fitness fixes is the next outer cycle's fresh Bucket E run. No new Fixer lane is introduced, and there is no inner cycle count to tune; the outer `1..3` bound covers fitness too.
 
 **Outputs:** `RUN_DIR/c<N>/bucket-e/`; per-category findings JSON and the per-category + overall fitness grade report, following the same structure as the wiki page's Findings Schema.
 
 ```
 RUN_DIR/c<N>/bucket-e/
   category-grades.json        # per-category grade + finding count
-  shared_fitness_grade.txt    # single letter grade (floor of seven)
+  shared_fitness_grade.txt    # single letter grade (floor of the category grades)
   findings/
     hook-integrity.json
     frontmatter.json
@@ -332,7 +332,7 @@ Announce the fan-out once, naming each dispatched lens in full with its id in pa
 
 Each lens is a parallel `general-purpose` leaf the Orchestrator spawns, handed: the terminal cycle's bucket artifacts (`RUN_DIR/c<N>/bucket-a.txt`, `bucket-b/`, `bucket-c.txt`, `bucket-d.md`, `bucket-e/`), `RUN_DIR/c<N>/findings.json`, and BOTH "Decided / not findings" lists (`.gaia/cli/health/taxonomy.md` § Decided / not findings and `wiki/decisions/Claude Integration Fitness.md` § Decided / not findings) so it does not re-surface settled items. Each returns only the findings JSON (the canonical schema, see §Audit artifacts), no narrative.
 
-- **Blind-spot (id prefix `BS`).** Always runs. Assume a real defect exists that EVERY bucket missed. Attack the UNION of the five bucket scopes (static checks, source greps, bundle simulation, cross-class enforcement walk, the seven fitness categories) and produce the concrete file + pattern that no bucket grep covers. A concrete uncovered file + pattern is a finding.
+- **Blind-spot (id prefix `BS`).** Always runs. Assume a real defect exists that EVERY bucket missed. Attack the UNION of the five bucket scopes (static checks, source greps, bundle simulation, cross-class enforcement walk, the fitness categories) and produce the concrete file + pattern that no bucket grep covers. A concrete uncovered file + pattern is a finding.
 - **Misclassification (id prefix `MC`).** Always runs. For each `decided-not-finding` and `false-positive` in `findings.json`, verify it TRULY matches a taxonomy or fitness "Decided" entry, not a stretched near-match; cite the matched entry's line. A `decided-not-finding` that does not actually match its claimed Decided entry (a real finding dismissed as settled) is a finding.
 - **Grade-honesty (id prefix `GH`).** Always runs. Re-verify Bucket D's "A+ readiness" against each enforcing primitive (scrub check id, runtime-deps, manifest `--check`), and verify the effective-shared-fitness-A+ promotion legitimately applies the residual carve-out (a Bucket E category below A+ SOLELY because of non-blocking residual `info` on a Decided list) rather than masking a `warning`/`error` or an `info` NOT on a Decided list. A grade promoted on a false premise is a finding.
 - **Fix-verification (id prefix `FV`, deep/optional).** Independently re-run the prior cycles' fixed-finding detection against the working tree instead of trusting Fixer self-reports. A prior finding a Fixer reported fixed but that still reproduces is a finding. **Deterministic gate:** include FV in the fan-out only when any prior cycle in this run dispatched a Fixer (there are applied fixes to verify); skip it on a run that reached clean with zero fixes applied (nothing to verify). FV is the lens that covers a failed fix, including a failed fix of an earlier challenger-injected finding.
@@ -380,7 +380,7 @@ RUN_DIR/c<N>/
   bucket-d.md               # cross-class enforcement table + verdict
   bucket-e/
     category-grades.json    # per-category grade + finding count
-    shared_fitness_grade.txt # floor of seven category grades (F-to-A+)
+    shared_fitness_grade.txt # floor of the category grades (F-to-A+)
     findings/               # per-category findings JSON
   findings.json             # canonical findings list (includes shared_fitness_grade, overall_grade)
 ```
@@ -406,7 +406,7 @@ RUN_DIR/c<N>/
 }
 ```
 
-The `verdict` field stores Bucket D's verdict verbatim. It is _not_ a synthesized cycle grade. It reports enforcement-primitive completeness independent of `findings.length` (see §Bucket D). The `shared_fitness_grade` field stores Bucket E's honest grade (the floor of the seven category grades, F-to-A+). The `overall_grade` field is the F-to-A+ floor of: the `verdict` mapped to the same scale ("A+ readiness"→A+, "A"→A, "A−"→A−), the open-findings-count signal (zero open maintainer findings → A+; else degrade per wiki page rubric), and `shared_fitness_grade`. A challenger-injected finding (see §False-clean challenger) carries `action: "real-fix"`, `bucket: "challenger"`, a `lane`, and a `fingerprint`, and participates in the oscillation guard exactly like any other `real-fix`. The Orchestrator's clean-exit signal is `(no unresolved findings with action === "real-fix") AND verdict === "A+ readiness" AND effective shared_fitness_grade === "A+"` per §Termination: non-blocking residuals (`decided-not-finding`) do not count, and a category capped solely by residual `info` is treated as A+ for the effective grade. The `overall_grade` on a clean exit is the honest floor: A+ when there are no findings of any kind, otherwise the floor (residual `info` may cap it at A).
+The `verdict` field stores Bucket D's verdict verbatim. It is _not_ a synthesized cycle grade. It reports enforcement-primitive completeness independent of `findings.length` (see §Bucket D). The `shared_fitness_grade` field stores Bucket E's honest grade (the floor of the category grades, F-to-A+). The `overall_grade` field is the F-to-A+ floor of: the `verdict` mapped to the same scale ("A+ readiness"→A+, "A"→A, "A−"→A−), the open-findings-count signal (zero open maintainer findings → A+; else degrade per wiki page rubric), and `shared_fitness_grade`. A challenger-injected finding (see §False-clean challenger) carries `action: "real-fix"`, `bucket: "challenger"`, a `lane`, and a `fingerprint`, and participates in the oscillation guard exactly like any other `real-fix`. The Orchestrator's clean-exit signal is `(no unresolved findings with action === "real-fix") AND verdict === "A+ readiness" AND effective shared_fitness_grade === "A+"` per §Termination: non-blocking residuals (`decided-not-finding`) do not count, and a category capped solely by residual `info` is treated as A+ for the effective grade. The `overall_grade` on a clean exit is the honest floor: A+ when there are no findings of any kind, otherwise the floor (residual `info` may cap it at A).
 
 Lifecycle:
 
@@ -428,12 +428,12 @@ Fingerprint format: `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`. S
 
 ## Composition
 
-The seven shared Claude-integration fitness categories (hook integrity; skill/command/agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness), their grading rubric, and the triage/heal orchestration protocol are defined in `wiki/decisions/Claude Integration Fitness.md`. Bucket E runs that page's triage phase over those seven categories; its bounded heal loop is subsumed by the outer cycle loop (see §Bucket E: Shared Claude-integration fitness for the loop-nesting rule). Do not re-specify the check classes or the grading rubric here. Cross-references are one-directional: this runbook references the wiki page; the wiki page never references `.gaia/cli/health/` paths.
+The shared Claude-integration fitness categories, their grading rubric, and the triage/heal orchestration protocol are defined in `wiki/decisions/Claude Integration Fitness.md`. Bucket E runs that page's triage phase over every category it defines; its bounded heal loop is subsumed by the outer cycle loop (see §Bucket E: Shared Claude-integration fitness for the loop-nesting rule). Do not re-specify the check classes or the grading rubric here. Cross-references are one-directional: this runbook references the wiki page; the wiki page never references `.gaia/cli/health/` paths.
 
 ## Pointers
 
 - **Taxonomy**: `.gaia/cli/health/taxonomy.md`; Issue classes + Decided / not findings.
-- **Shared fitness**: `wiki/decisions/Claude Integration Fitness.md`; seven fitness categories, F-to-A+ grading rubric, triage/heal orchestration protocol.
+- **Shared fitness**: `wiki/decisions/Claude Integration Fitness.md`; the fitness categories, F-to-A+ grading rubric, triage/heal orchestration protocol.
 - **Scrub config**: `.gaia/release-scrub.yml`; codified leak-checks with allowlists.
 - **ADR**: `wiki/decisions/Bundle-time Scrub.md`; what scrub catches, what it doesn't.
 - **Wiki-style rule**: `.claude/rules/wiki-style.md`; UAT/SPEC narrative-vs-structural triage.

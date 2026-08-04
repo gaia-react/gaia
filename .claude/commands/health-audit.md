@@ -28,7 +28,7 @@ Read `.gaia/cli/health/runbook.md` end-to-end before doing anything else. The ru
 
 Execute the cycle loop defined in the runbook's **§Cycle loop** (max N=3), applying the **§Termination** section's oscillation-threshold definition to detect a stuck fix. Both sections were already read in full at Step 1. **Do not restate the loop or the oscillation definition here.** The runbook is the single source of truth for this control flow.
 
-Bucket E runs the shared Claude-integration fitness protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories. The Bucket E auditor does not re-specify those checks, it reads the wiki page and runs its protocol. Fitness findings route to the existing `claude-surface` Fixer lane.
+Bucket E runs the shared Claude-integration fitness protocol defined in `wiki/decisions/Claude Integration Fitness.md` over every fitness category that page defines. The Bucket E auditor does not re-specify those checks, it reads the wiki page and runs its protocol. Fitness findings route to the existing `claude-surface` Fixer lane.
 
 On the first cycle that meets the clean gate, you spawn a false-clean challenger (BS/MC/GH lenses always, FV when a prior cycle ran a Fixer) before the A+ report and the RUN_DIR deletion; a substantiated finding revokes the clean exit, injected as `real-fix` (non-cycle-3) or escalated `false-clean-refuted` (cycle 3). It runs at most once per run. The runbook's §False-clean challenger is the source of truth.
 
@@ -59,7 +59,7 @@ On clean exit (no open findings remain; the reported grade is the honest floor: 
 ```
 HEALTH AUDIT: <overall grade, A+ or A>
 Overall grade: <A+ | A>
-Shared-fitness grade: <honest floor of seven category grades>
+Shared-fitness grade: <honest floor of the category grades>
 Cycles: <N>
 Findings closed: <count> (per cycle: <breakdown>)
 Non-blocking residuals: <count> (e.g. wiki/.state.json post-sync drift, recorded not blocking)
@@ -72,7 +72,7 @@ On escalation:
 ```
 HEALTH AUDIT: ESCALATED
 Overall grade: <F-to-A+, floor of Bucket D verdict, findings-count signal, shared-fitness grade>
-Shared-fitness grade: <F-to-A+, floor of seven category grades from Bucket E>
+Shared-fitness grade: <F-to-A+, floor of the category grades from Bucket E>
 Reason: <max-loops | oscillation | circuit-breaker | unclassified-finding | fixer-unable-to-fix | false-clean-refuted>
 Outstanding findings: <list with fingerprints>
 Cycles run: <N>
