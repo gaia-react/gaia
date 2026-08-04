@@ -30,9 +30,13 @@
 # answers the question actually being asked: what can this machine not price
 # today.
 #
-# A row that cannot anchor a rate window is not counted. `priced_row` reports it
-# as missing_anchor with a dollars of 0, which is an unknown rather than a
-# missing rate, and no overlay entry would fix it.
+# A row that cannot anchor a rate window is not counted, and this needs no filter
+# here: `priced_row` short-circuits on an empty date BEFORE window selection and
+# returns `unpriced: []`, so such a row contributes nothing to either figure by
+# its own contract. That is the right outcome rather than a lucky one, since a
+# missing anchor is an unknown rather than a missing rate and no overlay entry
+# would fix it. A filter was written for this and removed: no fixture could tell
+# the two apart, which made it an assertion about nothing.
 #
 # Exit 0 whether or not anything is unpriced: this is a report, not a gate. A
 # non-zero exit means the scan itself could not run (no readable ledger or table).
@@ -112,7 +116,6 @@ if [ -s "$ledger" ]; then
       | map(select(type == "object" and ((.by_model // {}) | type) == "object"
                    and ((.by_model // {}) | length) > 0))
       | map(priced_row(.))
-      | map(select(.missing_anchor | not))
       | { unpriced: (map(.unpriced) | flatten | unique | sort),
           rows_affected: (map(select((.unpriced | length) > 0)) | length) }
     ' "$ledger" 2>/dev/null || true)"
