@@ -108,7 +108,16 @@ const asList = (
   workspacePath: string,
   key: string
 ): unknown[] => {
-  if (value === undefined) return [];
+  // `== null` catches BOTH absent and YAML-null, deliberately. js-yaml parses a
+  // present-but-empty key (`minimumReleaseAgeExclude:` with its items deleted, or
+  // an explicit `~`) to `null`, and pnpm reads that exactly as it reads absent:
+  // the length check is falsy, so it builds no exclude policy at all. That
+  // workspace exempts nothing, which is the MOST hardened state there is, so
+  // throwing on it would red a required context over the safest possible config.
+  // The trigger is live rather than theoretical: `.gaia/cli`'s release-age list
+  // carries a single entry, so deleting that exemption and leaving the key behind
+  // is the natural edit.
+  if (value == null) return [];
 
   if (!Array.isArray(value)) {
     throw new TypeError(
@@ -322,11 +331,32 @@ describe('supply-chain hardening parity', () => {
   // makes it strictly more dangerous than the wildcard it hides beside. Adding
   // that second character to a blacklist would only have invited a third.
   //
-  // An npm specifier is `[@scope/]name[@version]` and npm names are URL-safe, so
-  // no glob metacharacter and no leading `!` can appear in a legitimate entry.
-  // pnpm rejects a malformed version half upstream on its own.
+  // An npm specifier is `[@scope/]name[@version-union]`, and npm names are
+  // URL-safe, so neither broadening construct can appear in a legitimate name.
+  //
+  // The version half is deliberately permissive, and that is not a hole: pnpm
+  // runs every version through `semver.valid` and fails the install on anything
+  // that is not exact, so `react@*` and `react@^1.0.0` are accepted here and
+  // rejected loudly there. A permissive version half can only admit an entry pnpm
+  // itself refuses; it can never admit a broad match.
+  //
+  // The `||` union form is accepted WITH surrounding spaces because that is the
+  // spelling **pnpm writes itself**: it merges multiple exemptions for one package
+  // into `name@1.0.0 || 2.0.0` and saves that back into `pnpm-workspace.yaml` on
+  // an ordinary install. Rejecting it would red a required context over a list
+  // pnpm authored, every entry of which is the exact-version exemption this
+  // predicate exists to permit.
+  //
+  // Both character classes allow uppercase. npm has required lowercase only for
+  // names registered since about 2014, and legacy names like `JSONStream` remain
+  // installable and still arrive transitively; exempting one must not fail here.
+  // Breadth is unaffected, since neither broadening construct is a letter.
+  // Each version atom excludes `|` as well as whitespace, so it cannot overlap the
+  // `||` separator beside it. Written the obvious way, with `[^\s]+`, the atom can
+  // swallow the separator, the two alternatives become ambiguous, and the pattern
+  // backtracks exponentially on a long entry.
   const LEGAL_SPECIFIER =
-    /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:@[^\s]+)?$/;
+    /^(?:@[A-Za-z0-9][A-Za-z0-9._-]*\/)?[A-Za-z0-9][A-Za-z0-9._-]*(?:@[^\s|]+(?: *\|\| *[^\s|]+)*)?$/;
 
   const inexactEntries = (list: unknown[]): unknown[] =>
     list.filter(
