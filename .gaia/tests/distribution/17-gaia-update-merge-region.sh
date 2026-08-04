@@ -56,6 +56,16 @@ PLACEHOLDER='<<<gaia:region>>>'
 # The discriminator is what the scenario asserts, not its number: scenario 7
 # asserts FAILURE, so its diagnostic is expected noise and it keeps its own
 # suppression.
+#
+# CALL ORDER IS LOAD-BEARING: `report_cli_stderr` runs BEFORE `fail`, never
+# after. `fail` returns 1 rather than exiting, and the `{ ...; }` group is the
+# LAST command of its AND-OR list, so `set -e` is NOT suppressed inside it and
+# aborts the script the moment `fail` returns. Anything written after `fail` in
+# one of these branches is dead code that never runs, which is how a diagnostic
+# that looks present prints nothing. (The trailing `exit 1` in each branch is
+# unreachable for the same reason; it predates this comment and is kept as the
+# statement of intent.) Verified by driving a real non-zero exit through
+# scenario 1, not by reading.
 CLI_STDERR="$FIXTURES/cli-stderr.txt"
 : > "$CLI_STDERR"
 
@@ -87,7 +97,7 @@ S1_JSON="$("$GAIA" update merge-region \
   --current "$FIXTURES/s1-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json 2>"$CLI_STDERR")" \
-  || { fail "scenario 1: gaia update merge-region exited non-zero on staged tree"; report_cli_stderr; exit 1; }
+  || { report_cli_stderr; fail "scenario 1: gaia update merge-region exited non-zero on staged tree"; exit 1; }
 
 printf '%s' "$S1_JSON" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -118,7 +128,7 @@ S2_JSON="$("$GAIA" update merge-region \
   --current "$FIXTURES/s2-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json 2>"$CLI_STDERR")" \
-  || { fail "scenario 2: gaia update merge-region exited non-zero on staged tree"; report_cli_stderr; exit 1; }
+  || { report_cli_stderr; fail "scenario 2: gaia update merge-region exited non-zero on staged tree"; exit 1; }
 
 printf '%s' "$S2_JSON" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -154,7 +164,7 @@ S3_JSON="$("$GAIA" update merge-region \
   --current "$FIXTURES/s3-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json 2>"$CLI_STDERR")" \
-  || { fail "scenario 3: gaia update merge-region exited non-zero on staged tree"; report_cli_stderr; exit 1; }
+  || { report_cli_stderr; fail "scenario 3: gaia update merge-region exited non-zero on staged tree"; exit 1; }
 
 # The fixture paths reach node through the ENVIRONMENT, never interpolated by
 # the shell into the JS source. `$FIXTURES` derives from `mktemp -d`, so a
@@ -202,7 +212,7 @@ S4_JSON="$("$GAIA" update merge-region \
   --current "$FIXTURES/s4-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json 2>"$CLI_STDERR")" \
-  || { fail "scenario 4: gaia update merge-region exited non-zero on staged tree"; report_cli_stderr; exit 1; }
+  || { report_cli_stderr; fail "scenario 4: gaia update merge-region exited non-zero on staged tree"; exit 1; }
 
 printf '%s' "$S4_JSON" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -225,9 +235,9 @@ S5_ARGS=(update merge-region \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json)
 S5_FIRST="$("$GAIA" "${S5_ARGS[@]}" 2>"$CLI_STDERR")" \
-  || { fail "scenario 5: first invocation exited non-zero"; report_cli_stderr; exit 1; }
+  || { report_cli_stderr; fail "scenario 5: first invocation exited non-zero"; exit 1; }
 S5_SECOND="$("$GAIA" "${S5_ARGS[@]}" 2>"$CLI_STDERR")" \
-  || { fail "scenario 5: second invocation exited non-zero"; report_cli_stderr; exit 1; }
+  || { report_cli_stderr; fail "scenario 5: second invocation exited non-zero"; exit 1; }
 [ "$S5_FIRST" = "$S5_SECOND" ] \
   || { fail "scenario 5 (idempotence): two invocations on the same inputs produced different output"; exit 1; }
 log "scenario 5 (idempotence): OK"
@@ -265,9 +275,9 @@ S6_ARGS=(update merge-region \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json)
 S6_FIRST="$("$GAIA" "${S6_ARGS[@]}" 2>"$CLI_STDERR")" \
-  || { fail "scenario 6: first post-update invocation exited non-zero"; report_cli_stderr; exit 1; }
+  || { report_cli_stderr; fail "scenario 6: first post-update invocation exited non-zero"; exit 1; }
 S6_SECOND="$("$GAIA" "${S6_ARGS[@]}" 2>"$CLI_STDERR")" \
-  || { fail "scenario 6: second post-update invocation exited non-zero"; report_cli_stderr; exit 1; }
+  || { report_cli_stderr; fail "scenario 6: second post-update invocation exited non-zero"; exit 1; }
 
 printf '%s' "$S6_FIRST" | node -e '
   const r = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
