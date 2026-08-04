@@ -95,6 +95,12 @@ const readPin = (manifestPath: string): string | undefined => {
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
+// An absent exclusion list reads as an empty one, which is the truth: exempting
+// nothing is what "no list" means, and it keeps the containment tests below
+// comparing arrays rather than `undefined`.
+const asList = (value: unknown): unknown[] =>
+  Array.isArray(value) ? value : [];
+
 // Read the `packages` map rather than `snapshots`: both list the package, but
 // `snapshots` keys carry a peer-resolution suffix, so a version would have to be
 // cut back out of `typescript-eslint@8.65.0(eslint@…)(typescript@…)`. `packages`
@@ -108,7 +114,11 @@ const readResolvedRuleVersions = (lockfilePath: string): string[] => {
   const lockfile: unknown = parseYaml(readFileSync(lockfilePath, 'utf8'));
   const packages = isMapping(lockfile) ? lockfile.packages : undefined;
 
-  if (!isMapping(packages)) {
+  // `Array.isArray` is not redundant beside `isMapping`: `typeof [] === 'object'`,
+  // so a `packages:` emitted as a YAML sequence would pass the mapping test,
+  // yield array indices from `Object.keys`, and fail two lines down as a bare
+  // length mismatch naming no file. That is the diagnostic this throw promises.
+  if (!isMapping(packages) || Array.isArray(packages)) {
     throw new Error(
       `${lockfilePath}: no \`packages\` map; the pnpm lockfile format has changed and this guard needs updating`
     );
@@ -124,20 +134,32 @@ const readResolvedRuleVersions = (lockfilePath: string): string[] => {
     .map((key) => key.slice(prefix.length));
 };
 
-// The two scalars only. The exclusion lists beside them are deliberately NOT
-// asserted: each is scoped to its own workspace's closure and each file says so,
-// so root carries `bippy` and `chokidar` entries for packages `.gaia/cli` does
-// not install. Asserting those would demand a "shared subset" that neither file
-// declares, and inventing one is a rule that drifts from both.
+// The two scalars are asserted for equality; the two exclusion lists are asserted
+// for CONTAINMENT, not equality, because the files state a containment relation
+// rather than a shared one. Equality would be wrong: root legitimately carries
+// `bippy` and `chokidar` entries for packages `.gaia/cli` does not install. But
+// omitting the lists entirely leaves the escape hatch for the very setting beside
+// them unguarded, so exempting a package in `.gaia/cli` alone would be invisible,
+// which is the likeliest real drift (a maintainer trips the window on a fresh
+// publish and exempts it locally). `.gaia/cli/pnpm-workspace.yaml` states the
+// direction outright: each entry earns its place against that workspace's closure,
+// "which root's is a superset of". So: every `.gaia/cli` entry must appear in root's.
 const readHardeningSettings = (
   workspacePath: string
-): {minimumReleaseAge: unknown; trustPolicy: unknown} => {
+): {
+  minimumReleaseAge: unknown;
+  minimumReleaseAgeExclude: unknown[];
+  trustPolicy: unknown;
+  trustPolicyExclude: unknown[];
+} => {
   const workspace: unknown = parseYaml(readFileSync(workspacePath, 'utf8'));
   const settings = isMapping(workspace) ? workspace : {};
 
   return {
     minimumReleaseAge: settings.minimumReleaseAge,
+    minimumReleaseAgeExclude: asList(settings.minimumReleaseAgeExclude),
     trustPolicy: settings.trustPolicy,
+    trustPolicyExclude: asList(settings.trustPolicyExclude),
   };
 };
 
@@ -204,23 +226,58 @@ describe('supply-chain hardening parity', () => {
   // workspace and both settings exist twice, by hand, with no mechanism holding
   // them together. That is the same shape as the `@gaia-react/lint` pin above,
   // whose two copies drifted two minors and a major before anyone looked (#1051),
-  // so it gets a guard on arrival rather than after the fact.
+  // so it gets a guard on arrival rather than after the fact. Root's own copy is
+  // guarded here too, since a relaxation there is the same defect one file over.
   //
-  // Asserted defined before asserted equal, for the reason the pin tests give:
-  // a renamed or dropped key would otherwise leave this comparing `undefined` to
-  // `undefined`, passing on a workspace that had stopped hardening entirely,
-  // which is precisely the unhardened state #1152 removed.
-  test('package.json workspace defines both hardening settings', () => {
-    expect(rootSettings.minimumReleaseAge).toBeDefined();
-    expect(rootSettings.trustPolicy).toBeDefined();
+  // Each side is asserted against the FLOOR, not merely asserted present, and the
+  // difference is the whole guard. `toBeDefined()` is only `!== undefined`, so it
+  // admits `minimumReleaseAge: 0`, `trustPolicy: none`, and a YAML `null` from
+  // deleting a number and leaving its key, every one of which is the unhardened
+  // state #1152 removed, reached by a one-character edit. Parity cannot catch them
+  // either, because a symmetric weakening keeps both sides equal.
+  //
+  // The literals are duplicated from the two workspace files on purpose. It means
+  // relaxing the window or the policy takes a deliberate test edit that a reviewer
+  // sees, which is the correct friction for a supply-chain floor; tuning it upward
+  // needs no edit, because the assertion is a floor rather than an equality.
+  const FLOOR_MINUTES = 10_080;
+  const TRUST_POLICY = 'no-downgrade';
+
+  test('the root workspace enforces the hardening floor', () => {
+    expect(rootSettings.minimumReleaseAge).toBeGreaterThanOrEqual(
+      FLOOR_MINUTES
+    );
+    expect(rootSettings.trustPolicy).toBe(TRUST_POLICY);
   });
 
-  test('.gaia/cli workspace defines both hardening settings', () => {
-    expect(cliSettings.minimumReleaseAge).toBeDefined();
-    expect(cliSettings.trustPolicy).toBeDefined();
+  test('.gaia/cli enforces the hardening floor', () => {
+    expect(cliSettings.minimumReleaseAge).toBeGreaterThanOrEqual(FLOOR_MINUTES);
+    expect(cliSettings.trustPolicy).toBe(TRUST_POLICY);
   });
 
   test('.gaia/cli hardens on the same terms as the root workspace', () => {
-    expect(cliSettings).toStrictEqual(rootSettings);
+    expect({
+      minimumReleaseAge: cliSettings.minimumReleaseAge,
+      trustPolicy: cliSettings.trustPolicy,
+    }).toStrictEqual({
+      minimumReleaseAge: rootSettings.minimumReleaseAge,
+      trustPolicy: rootSettings.trustPolicy,
+    });
+  });
+
+  // Containment, not equality. Root's lists are supersets by design, so equality
+  // would fail on `bippy` and `chokidar`; but an entry present ONLY in `.gaia/cli`
+  // exempts a package from the setting above it in one workspace and not the other,
+  // which is the asymmetric hardening this describe block exists to catch.
+  test('.gaia/cli exempts nothing from the release-age window that root does not', () => {
+    expect(rootSettings.minimumReleaseAgeExclude).toEqual(
+      expect.arrayContaining(cliSettings.minimumReleaseAgeExclude)
+    );
+  });
+
+  test('.gaia/cli exempts nothing from the trust policy that root does not', () => {
+    expect(rootSettings.trustPolicyExclude).toEqual(
+      expect.arrayContaining(cliSettings.trustPolicyExclude)
+    );
   });
 });
