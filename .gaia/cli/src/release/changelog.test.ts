@@ -37,6 +37,17 @@ function assertOk(
 const blockBetween = (text: string, from: string, to: string): string =>
   text.slice(text.indexOf(from), text.indexOf(to));
 
+// One definition of "nothing to release", shared by the unit and CLI tests so
+// the two cannot drift apart about what an empty Unreleased section looks like.
+const EMPTY_UNRELEASED = `# Changelog
+
+## [Unreleased]
+
+## [1.0.0] - 2026-01-01
+
+- old
+`;
+
 const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
   output: ['', stdout, ''] as never,
   pid: 0,
@@ -214,9 +225,8 @@ describe('graduateChangelog', () => {
   });
 
   test('returns empty-unreleased when the section has no entries', () => {
-    const empty = '# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n';
     const outcome = graduateChangelog({
-      current: empty,
+      current: EMPTY_UNRELEASED,
       newVersion: '1.1.0',
       today: '2026-05-07',
     });
@@ -407,7 +417,7 @@ describe('release changelog CLI', () => {
     sandbox = setupSandbox('1.1.0');
     writeFileSync(
       path.join(sandbox.root, 'CHANGELOG.md'),
-      '# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n- old\n',
+      EMPTY_UNRELEASED,
       'utf8'
     );
     const runner = buildRunner([{subject: 'feat: shiny'}]);

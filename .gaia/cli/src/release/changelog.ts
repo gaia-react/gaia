@@ -405,15 +405,8 @@ export const graduateChangelog = ({
     return {kind: 'empty-unreleased'};
   }
 
-  // Rename the Unreleased heading to the dated one and open a fresh empty
-  // Unreleased above it. The hand-written body below the old heading is left
-  // exactly where it is, so it becomes the released block. Result:
-  //
-  //   ## [Unreleased]
-  //
-  //   ## [X.Y.Z] - DATE
-  //
-  //   <the hand-written entries, untouched>
+  // Only the heading is replaced: the hand-written body below it is left where
+  // it is, which is what makes it the released block.
   lines.splice(unreleasedIndex, 1, UNRELEASED_HEADING, '', versionHeading);
 
   const updated = updateLinkReferences(lines.join('\n'), newVersion);
