@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {runInNewContext} from 'node:vm';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {claudeMdHasH1, run} from './rename.js';
 import {readState} from './util/state.js';
@@ -84,6 +85,11 @@ const setupSandbox = (): Sandbox => {
  * unterminated literal a naive rewrite emits. Parsing the file is the oracle
  * that separates them, and reading the property back proves the value survived
  * rather than merely that the file compiles.
+ *
+ * Evaluating the generated source is therefore the assertion rather than a
+ * hazard: the input is a fixture this file defines, rewritten by the subject
+ * under test inside a temp sandbox, and it runs in a fresh context with no
+ * access to this module's scope.
  */
 const evaluateDefaultExport = (source: string): Record<string, unknown> => {
   const expression = source
@@ -91,9 +97,15 @@ const evaluateDefaultExport = (source: string): Record<string, unknown> => {
     .trim()
     .replace(/;$/u, '');
 
-  // eslint-disable-next-line no-new-func
-  return new Function(`return ${expression};`)() as Record<string, unknown>;
+  // eslint-disable-next-line sonarjs/code-eval -- see comment above
+  return runInNewContext(`(${expression})`) as Record<string, unknown>;
 };
+
+// The two titles both tables below assert on. Named so the idempotency rows
+// cannot drift into covering a different shape from the parse rows they were
+// chosen to follow up.
+const APOSTROPHE_TITLE = "Steve's App";
+const MATCH_REF_TITLE = 'Tom $& Co';
 
 const captureStdio = (): {
   errors: string[];
@@ -434,48 +446,58 @@ describe('init rename', () => {
   // asked for.
   test.each([
     ['a `$n` match reference', 'Q1 $1 Report'],
-    ['a `$&` whole-match reference', 'Tom $& Co'],
+    ['a `$&` whole-match reference', MATCH_REF_TITLE],
     ['a doubled `$$`', 'Cost $$ Plus'],
-    ['an apostrophe', "Steve's App"],
+    ['an apostrophe', APOSTROPHE_TITLE],
     ['a backslash', String.raw`Path\To App`],
-    ['both a quote and a `$`', String.raw`Steve's $1 App`],
-  ])('writes a parseable language file for a title with %s', (_label, title) => {
-    sandbox = setupSandbox();
+    ['both a quote and a `$`', "Steve's $1 App"],
+  ])(
+    'writes a parseable language file for a title with %s',
+    (_label, title) => {
+      sandbox = setupSandbox();
 
-    const exit = run(['--title', title, '--kebab', 'hello-world'], {
-      cwd: sandbox.root,
-    });
-    expect(exit).toBe(0);
+      const exit = run(['--title', title, '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      });
+      expect(exit).toBe(0);
 
-    const common = evaluateDefaultExport(
-      readFileSync(
-        path.join(sandbox.root, 'app', 'languages', 'en', 'common.ts'),
-        'utf8'
-      )
-    );
-    expect((common.meta as Record<string, unknown>).siteName).toBe(title);
-    expect(common.someOtherKey).toBe('untouched');
+      const common = evaluateDefaultExport(
+        readFileSync(
+          path.join(sandbox.root, 'app', 'languages', 'en', 'common.ts'),
+          'utf8'
+        )
+      );
+      expect((common.meta as Record<string, unknown>).siteName).toBe(title);
+      expect(common.someOtherKey).toBe('untouched');
 
-    const page = evaluateDefaultExport(
-      readFileSync(
-        path.join(sandbox.root, 'app', 'languages', 'en', 'pages', '_index.ts'),
-        'utf8'
-      )
-    );
-    expect(page.heroTitle).toBe(title);
-    expect(page.title).toBe(title);
-    expect((page.meta as Record<string, unknown>).title).toBe(title);
+      const page = evaluateDefaultExport(
+        readFileSync(
+          path.join(
+            sandbox.root,
+            'app',
+            'languages',
+            'en',
+            'pages',
+            '_index.ts'
+          ),
+          'utf8'
+        )
+      );
+      expect(page.heroTitle).toBe(title);
+      expect(page.title).toBe(title);
+      expect((page.meta as Record<string, unknown>).title).toBe(title);
 
-    // The markdown sink takes the value verbatim: a heading needs no escaping,
-    // so an escape leaking out of a language-file sink would show up here.
-    expect(
-      readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')
-    ).toContain(`# ${title}\n`);
-  });
+      // The markdown sink takes the value verbatim: a heading needs no escaping,
+      // so an escape leaking out of a language-file sink would show up here.
+      expect(
+        readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')
+      ).toContain(`# ${title}\n`);
+    }
+  );
 
   test.each([
-    ['an apostrophe', "Steve's App"],
-    ['a `$&` whole-match reference', 'Tom $& Co'],
+    ['an apostrophe', APOSTROPHE_TITLE],
+    ['a `$&` whole-match reference', MATCH_REF_TITLE],
   ])(
     're-running with the same awkward title is still a no-op: %s',
     (_label, title) => {
