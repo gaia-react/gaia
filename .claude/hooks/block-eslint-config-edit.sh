@@ -25,10 +25,23 @@
 #
 # Everything else is denied, including a shape this allowlist has never seen.
 # Uncertainty resolves the same way: an unrecognized tool, a payload whose
-# strings are missing or non-string, or a Write whose target cannot be read all
-# deny. A filename match already denied all of those, so the allowlist is never
-# more permissive than the filename match was, except on the two shapes above.
-# That direction is the guard; check any proposed simplification against it.
+# strings are missing or non-string, or a target that cannot be read all deny. A
+# filename match already denied all of those, so the allowlist is never more
+# permissive than the filename match was, except on the two shapes above. That
+# direction is the guard; check any proposed simplification against it.
+#
+# Every tool shape is judged on WHOLE FILES, never on the strings the payload
+# carries. An Edit's `old_string`/`new_string` are a fragment whose boundaries
+# the caller chooses, and comment state is a property of the file rather than of
+# the fragment, so judging fragments lets the caller pick a window that hides
+# what the edit does. Two edits that each look inert then compose into one that
+# is not: append a lone `/*` after one spread, append a lone `*/` after another,
+# and the spreads between them stop running while both fragments read as pure
+# comment lines. So Edit and MultiEdit reconstruct the before and after file the
+# way the real tool will, applying each pair in order, and classify those.
+# Reconstruction failure denies: an unreadable target, an `old_string` that is
+# absent, or one that matches more than once without `replace_all`, which is the
+# same uniqueness contract the edit tools themselves enforce.
 #
 # An unreadable payload is the one exception, and it predates this allowlist:
 # without a file_path there is no way to tell whether the call even targets a
@@ -87,16 +100,35 @@ deny() {
 # either way the comparison sees the change.
 #
 # `scan()` is deliberately a conservative tracker rather than a JavaScript
-# parser: it ignores string literals and `//`, so `// see /* note` reads as an
-# opener. That direction is the safe one and it is why a real parser is not
-# needed here. Misreading the state can only demote a line from `S` to `X`, and
+# parser. It counts a `/*` as an opener only at line start or after whitespace,
+# which is what keeps an ordinary glob out of it: `['dist/**']` and
+# `['.gaia/**']` both contain `/*`, and treating those as openers puts the whole
+# rest of the file inside a phantom comment, which denies the very migration
+# this hook exists to allow on the config that motivated it. The test costs
+# nothing in strictness, because an opener sitting on a line that is not itself
+# blank or comment-prefixed makes that line residue, and adding or changing
+# residue is already denied. What it does not model is a string literal holding a
+# whitespace-preceded `/*`; that reads as an opener and denies.
+#
+# Misreading the state can only demote a line from `S` to `X`, and
 # `X` is compared line for line while `S` is compared as a multiset, so every
 # error tightens the guard. There is no misreading that turns a checked line into
 # a skipped one, because a comment-prefixed line is skipped on its own shape
-# regardless of block state.
+# regardless of block state. That argument holds only because `classify()` is fed
+# a whole file: seeding the tracker at the start of a caller-chosen fragment
+# would itself be a misreading, and that one runs the wrong way, promoting `X`
+# back to `S`.
+#
+# Two residuals this leaves, both fail-closed, each costing a by-hand edit rather
+# than admitting anything. A block comment whose body lines carry no `*` prefix
+# is tagged `X` and compared line for line, so rewording that prose is denied;
+# the `//` and ` * ` styles this repo uses are skipped and unaffected. And the
+# spread multiset is compared without order, so swapping two bare spreads passes.
+# Preset order is deliberately unguarded: within `@gaia-react/lint` no rule id is
+# set by more than one group, so swapping two groups changes no effective rule.
 classify() {
   awk '
-    function scan(line,   i) {
+    function scan(line,   i, prev) {
       while (1) {
         if (inblock) {
           i = index(line, "*/")
@@ -106,8 +138,9 @@ classify() {
         } else {
           i = index(line, "/*")
           if (i == 0) return
+          prev = (i == 1) ? " " : substr(line, i - 1, 1)
           line = substr(line, i + 2)
-          inblock = 1
+          if (prev == " " || prev == "\t") inblock = 1
         }
       }
     }
@@ -151,6 +184,34 @@ pair_ok() {
   '
 }
 
+# Applies one literal old -> new replacement to the text on stdin, the way the
+# edit tools do. Strings arrive through the environment rather than `awk -v`,
+# which processes backslash escapes in its value and would corrupt any edit
+# carrying a backslash. Exit 1 = `old` absent or empty, 2 = it matches more than
+# once without `replace_all`; both deny.
+apply_edit() {
+  GAIA_OLD="$1" GAIA_NEW="$2" GAIA_ALL="$3" awk '
+    { buf = buf $0 "\n" }
+    END {
+      old = ENVIRON["GAIA_OLD"]
+      new = ENVIRON["GAIA_NEW"]
+      all = ENVIRON["GAIA_ALL"]
+      if (old == "") exit 1
+      rest = buf
+      out = ""
+      n = 0
+      while ((i = index(rest, old)) > 0) {
+        n++
+        out = out substr(rest, 1, i - 1) ((all == "true" || n == 1) ? new : old)
+        rest = substr(rest, i + length(old))
+      }
+      if (n == 0) exit 1
+      if (n > 1 && all != "true") exit 2
+      printf "%s", out rest
+    }
+  '
+}
+
 tool_name=$(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null) || tool_name=""
 
 case "$tool_name" in
@@ -166,9 +227,11 @@ case "$tool_name" in
 
   Edit | MultiEdit)
     if [ "$tool_name" = Edit ]; then
-      pairs=$(jq -c '[{old: .tool_input.old_string, new: .tool_input.new_string}]' <<<"$payload" 2>/dev/null) || pairs=''
+      pairs=$(jq -c '[{old: .tool_input.old_string, new: .tool_input.new_string,
+                       all: (.tool_input.replace_all // false)}]' <<<"$payload" 2>/dev/null) || pairs=''
     else
-      pairs=$(jq -c '[.tool_input.edits[]? | {old: .old_string, new: .new_string}]' <<<"$payload" 2>/dev/null) || pairs=''
+      pairs=$(jq -c '[.tool_input.edits[]? | {old: .old_string, new: .new_string,
+                       all: (.replace_all // false)}]' <<<"$payload" 2>/dev/null) || pairs=''
     fi
 
     if ! jq -e 'length > 0 and all(.[]; (.old | type == "string") and (.new | type == "string"))' \
@@ -176,15 +239,30 @@ case "$tool_name" in
       deny "this $tool_name carries no readable before/after strings, so what it changes cannot be established."
     fi
 
+    [ -f "$file_path" ] && [ -r "$file_path" ] ||
+      deny "'$file_path' cannot be read, so what this $tool_name changes cannot be established."
+    before=$(cat -- "$file_path" 2>/dev/null) ||
+      deny "'$file_path' cannot be read, so what this $tool_name changes cannot be established."
+
+    after="$before"
     count=$(jq 'length' <<<"$pairs")
     i=0
     while [ "$i" -lt "$count" ]; do
       old=$(jq -r ".[$i].old" <<<"$pairs")
       new=$(jq -r ".[$i].new" <<<"$pairs")
-      pair_ok "$old" "$new" ||
-        deny "this $tool_name changes more in '$file_path' than comments and added preset spreads."
+      all=$(jq -r ".[$i].all" <<<"$pairs")
+      rc=0
+      next=$(apply_edit "$old" "$new" "$all" <<<"$after") || rc=$?
+      case "$rc" in
+        0) after="$next" ;;
+        2) deny "this $tool_name's replaced text appears more than once in '$file_path', so which occurrence it changes cannot be established." ;;
+        *) deny "this $tool_name's replaced text is not present in '$file_path', so what it changes cannot be established." ;;
+      esac
       i=$((i + 1))
     done
+
+    pair_ok "$before" "$after" ||
+      deny "this $tool_name changes more in '$file_path' than comments and added preset spreads."
     ;;
 
   *)
