@@ -66,18 +66,66 @@ deny() {
 # The residual, stated rather than implied: a `*`-prefixed line with no `*/` is
 # taken as a comment. Reaching code that way needs a generator-method shape
 # (`*gen() {}`), which cannot express a rule override.
+#
+# A line's own shape is still not enough, because a spread can be neutralized by
+# wrapping it rather than by touching it:
+#
+#     /*
+#     ...lint.guardrails,
+#     */
+#
+# Every line there is either a delimiter or unchanged text, so nothing about any
+# single line changed, while the preset stops taking effect. Recognizing the
+# delimiters by shape does not close it either: an opener may carry text
+# (`/* note`), and a closer may already exist further down, so adding only an
+# opener swallows everything between. That makes block state the property being
+# tested, not the line.
+#
+# So `scan()` tracks whether a block comment is open, and a line that starts
+# inside one is tagged `X` rather than `R` or `S`. A wrapped spread stops being a
+# spread, and a wrapped line of code stops matching its own effective self, so
+# either way the comparison sees the change.
+#
+# `scan()` is deliberately a conservative tracker rather than a JavaScript
+# parser: it ignores string literals and `//`, so `// see /* note` reads as an
+# opener. That direction is the safe one and it is why a real parser is not
+# needed here. Misreading the state can only demote a line from `S` to `X`, and
+# `X` is compared line for line while `S` is compared as a multiset, so every
+# error tightens the guard. There is no misreading that turns a checked line into
+# a skipped one, because a comment-prefixed line is skipped on its own shape
+# regardless of block state.
 classify() {
   awk '
+    function scan(line,   i) {
+      while (1) {
+        if (inblock) {
+          i = index(line, "*/")
+          if (i == 0) return
+          line = substr(line, i + 2)
+          inblock = 0
+        } else {
+          i = index(line, "/*")
+          if (i == 0) return
+          line = substr(line, i + 2)
+          inblock = 1
+        }
+      }
+    }
+    BEGIN { inblock = 0 }
+    {
+      opened_inside = inblock
+      scan($0)
+    }
     /^[[:space:]]*$/ { next }
     /^[[:space:]]*(\/\/|\/\*|\*)/ && $0 !~ /\*\/[[:space:]]*[^[:space:]]/ { next }
-    /^[[:space:]]*\.\.\.[A-Za-z_$][A-Za-z0-9_$]*\.[A-Za-z_$][A-Za-z0-9_$]*,?[[:space:]]*$/ {
+    !opened_inside && /^[[:space:]]*\.\.\.[A-Za-z_$][A-Za-z0-9_$]*\.[A-Za-z_$][A-Za-z0-9_$]*,?[[:space:]]*$/ {
       s = $0
       sub(/^[[:space:]]+/, "", s)
       sub(/[[:space:]]*,?[[:space:]]*$/, "", s)
       print "S\t" s
       next
     }
-    { print "R\t" $0 }
+    { print (opened_inside ? "X\t" : "R\t") $0 }
   ' <<<"$1"
 }
 
@@ -87,8 +135,11 @@ pair_ok() {
   before_cls=$(classify "$1")
   after_cls=$(classify "$2")
 
-  before_res=$(grep '^R' <<<"$before_cls" || true)
-  after_res=$(grep '^R' <<<"$after_cls" || true)
+  # Everything the classifier emitted except the spreads: effective lines (`R`)
+  # and commented-out ones (`X`), which must match line for line, tag included.
+  # The tag is what makes a line moving between the two a change.
+  before_res=$(grep -v '^S' <<<"$before_cls" || true)
+  after_res=$(grep -v '^S' <<<"$after_cls" || true)
   [ "$before_res" = "$after_res" ] || return 1
 
   printf '%s\n===\n%s\n' "$before_cls" "$after_cls" | awk '

@@ -217,6 +217,43 @@ rules: {'no-empty-pattern': 'off'},"
   assert_allowed
 }
 
+@test "denies wrapping a spread in a block comment" {
+  # The wrap is the reason a line's own shape is not enough: every line here is
+  # either a delimiter or unchanged text, so a purely line-local reading sees no
+  # change at all while the spread stops taking effect. This is exactly what the
+  # no-spread-removed term exists to refuse.
+  run_edit 'eslint.config.mjs' '  ...lint.guardrails,' '  /*
+  ...lint.guardrails,
+  */'
+  assert_denied
+}
+
+@test "denies wrapping a spread with a text-carrying opener" {
+  # The delimiter lines cannot be recognized by shape alone either: an opener may
+  # carry text, which makes it indistinguishable from an ordinary comment.
+  run_edit 'eslint.config.mjs' '  ...lint.guardrails,' '  /* note
+  ...lint.guardrails,
+  */'
+  assert_denied
+}
+
+@test "denies wrapping a rules block in a block comment" {
+  run_edit 'eslint.config.mjs' "  rules: {'no-console': 'off'}," '  /*
+  rules: {'"'"'no-console'"'"': '"'"'off'"'"'},
+  */'
+  assert_denied
+}
+
+@test "denies opening a block comment that swallows the lines below it" {
+  # Only an opener is added; the closer already exists further down. Nothing is
+  # deleted and no line is rewritten, yet everything between them stops running.
+  run_edit 'eslint.config.mjs' '  ...lint.guardrails,
+   */' '  /* swallow
+  ...lint.guardrails,
+   */'
+  assert_denied
+}
+
 @test "denies adding a called preset that carries a rule override" {
   # The vector the bare-spread shape exists to exclude: a call is a spread by
   # eye, and it can carry the literal a bare `...lint.group` cannot. This case
