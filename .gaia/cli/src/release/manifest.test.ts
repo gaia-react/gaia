@@ -461,8 +461,15 @@ describe('computeMissing: paths named after Object.prototype keys', () => {
     const built = manifestWithFiles({['__proto__']: 'owned'});
     const committed = roundTrip(built);
 
-    // `serialize` emits the key perfectly well; it is the way back in that
-    // drops it, so the loss is invisible to anyone reading the written file.
+    // Which stage drops it, named rather than left as "the way back in",
+    // because these two assertions are a canary on that stage's behaviour and a
+    // reader who has to go find it cannot tell a real regression from a
+    // dependency moving underneath. `serialize` emits the key, and `JSON.parse`
+    // KEEPS it as an own property; `ManifestSchema`'s `z.record` is what drops
+    // it, by re-assigning each entry into a fresh object, where a plain
+    // assignment to `__proto__` with a string value is a no-op. So a zod bump
+    // that changes record's `__proto__` handling flips the two lines below and
+    // reds this suite.
     expect(serialize(built)).toContain('"__proto__"');
     expect(Object.hasOwn(committed.files, '__proto__')).toBe(false);
     expect(Object.keys(committed.files)).toEqual([]);

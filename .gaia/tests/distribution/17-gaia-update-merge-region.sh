@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# SC2016 is intentional: the two release-resolution greps' single-quoted
-# patterns carry a literal `$LATEST_DIR`, matched as text, not expanded.
-# shellcheck disable=SC2016
 # 17-gaia-update-merge-region.sh
 #
 # Adopter-flow regression: runs `gaia update merge-region` against the
@@ -336,9 +333,19 @@ log "scenario 8 (help lists merge-region and regen-regions): OK"
 # whose installed binary predates them can still reach them.
 # This is the grep-assertable half of that rule: the skill carries the
 # release-resolved form and carries no working-tree-resolved one.
+#
+# The two SC2016 disables below are per-line rather than file-wide on purpose.
+# Each of these patterns carries a literal `$LATEST_DIR` that is matched as
+# text and must not expand, which is exactly what SC2016 reports. Scoping the
+# directive to the two lines that earn it keeps the rule live everywhere else,
+# and the single-quoted `node -e` body in scenario 3 is why that matters: a
+# later edit writing `'$FIXTURES/x'` inside it expecting shell expansion is an
+# SC2016 hit worth seeing, and a file-wide disable would swallow it silently.
+# shellcheck disable=SC2016
 grep -q '"\$LATEST_DIR/\.gaia/cli/gaia" update merge-region' \
   "$PROJECT_ROOT/.claude/skills/update-gaia/SKILL.md" \
   || { fail "scenario 9: SKILL.md is missing the release-resolved merge-region invocation"; exit 1; }
+# shellcheck disable=SC2016
 grep -q '"\$LATEST_DIR/\.gaia/cli/gaia" update regen-regions' \
   "$PROJECT_ROOT/.claude/skills/update-gaia/SKILL.md" \
   || { fail "scenario 9: SKILL.md is missing the release-resolved regen-regions invocation"; exit 1; }

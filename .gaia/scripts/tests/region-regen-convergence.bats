@@ -152,20 +152,34 @@ YAML
   # including an early abort that never reached a single invariant. The
   # stronger the regression, the more reliably it would green.
   #
-  # `verify-audit-roster.sh`'s exit-code vocabulary is what settles which
-  # floor: 0 is ran-and-clean, 1 is ran-and-reported-violations, 2 is every
-  # way of not running (unknown argument, a flag missing its value, an
-  # unresolvable root, a roster that is not there). Pinning 1 therefore
-  # excludes 2, excludes any crash code, and excludes a checker stubbed out to
-  # succeed -- the three shapes an early abort takes -- without saying
-  # anything about WHICH invariants fired.
+  # `verify-audit-roster.sh`'s exit-code vocabulary settles most of it: 0 is
+  # ran-and-clean, 1 is ran-and-reported-violations, and 2 is MOST ways of not
+  # running (unknown argument, a flag missing its value, an unresolvable root,
+  # a roster that is not there). Pinning 1 excludes 2, excludes any crash code,
+  # and excludes a checker stubbed out to succeed, without saying anything
+  # about WHICH invariants fired.
   #
-  # 1 is structural here, not incidental: this scratch tree carries no
-  # machinery lists at all, so the registration invariant always fires and the
-  # run always reports. Verified by running it, not assumed. If a later
-  # fixture registers them and the run goes clean, this line fails loudly and
-  # is meant to -- that is a prompt to re-read the floor, not to delete it.
+  # The status alone is NOT sufficient, and the exception is precise:
+  # `verify-audit-roster.sh:184` exits **1** on `roster-parsing library
+  # unavailable`, having evaluated zero invariants. `setup()` does not cover
+  # it, because it checks that `audit-scope.sh` EXISTS, while that guard fires
+  # when the file is present but no longer defines
+  # `_audit_scope_parse_auditors` -- a rename refactor. Its output matches no
+  # parity pattern, so the check below would return 0 and green on the exact
+  # early abort this floor exists to reject.
+  #
+  # So the status is paired with a positive liveness needle: at least one
+  # finding block, which only a run that reached the reporting stage can emit.
+  # A needle rather than a wider status range, because widening admits 0 and
+  # loses the stubbed-to-succeed case. Neither line says which invariant fired.
   [ "$status" -eq 1 ]
+  grep -qE '^verify-audit-roster: FAIL ' <<<"$output" || return 1
+
+  # A finding is structural here, not incidental: this scratch tree carries no
+  # machinery lists at all, so the registration invariant always fires and the
+  # run always reports. Verified by running it, not assumed. If a later fixture
+  # registers them and the run goes clean, these two lines fail loudly and are
+  # meant to -- that is a prompt to re-read the floor, not to delete it.
 
   # An `&& return 1` as the test body's OWN final line would make the good
   # case (no match, exit 1) become the test's own failing exit status; the
