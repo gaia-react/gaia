@@ -25,6 +25,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {escapeJsLiteralValue} from './util/js-literal.js';
+import type {JsLiteralQuote} from './util/js-literal.js';
 import {markStepCompleted} from './util/state.js';
 import {titleFailure} from './util/title.js';
 
@@ -243,7 +244,9 @@ const replaceQuotedValue = (
 ): string =>
   source.replace(
     pattern,
-    (_match: string, prefix: string, quote: string) =>
+    // Every pattern below captures the quote as `(['"])`, so group 2 is one of
+    // the two by construction, which is what the narrower type records.
+    (_match: string, prefix: string, quote: JsLiteralQuote) =>
       `${prefix}${quote}${escapeJsLiteralValue(newValue, quote)}${quote}`
   );
 

@@ -495,6 +495,36 @@ describe('init rename', () => {
     }
   );
 
+  // Every seeded value is single-quoted, so the escaping above only ever runs
+  // against `'`. A file whose values are double-quoted drives the other arm:
+  // there the wrapping `"` is what needs escaping and the apostrophe is what
+  // passes through bare, which is the claim the escaper's docblock makes.
+  test('escapes for the quote the file uses, not a fixed one', () => {
+    sandbox = setupSandbox();
+    writeFileSync(
+      path.join(sandbox.root, 'app', 'languages', 'en', 'pages', '_index.ts'),
+      'export default {\n  heroTitle: "Start with something solid.",\n  title: "Old Title",\n};\n',
+      'utf8'
+    );
+
+    expect(
+      run(['--title', 'Steve\'s "Hi" App', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      })
+    ).toBe(0);
+
+    const raw = readFileSync(
+      path.join(sandbox.root, 'app', 'languages', 'en', 'pages', '_index.ts'),
+      'utf8'
+    );
+    const page = evaluateDefaultExport(raw);
+    expect(page.heroTitle).toBe('Steve\'s "Hi" App');
+    expect(page.title).toBe('Steve\'s "Hi" App');
+    // The apostrophe reaches a double-quoted sink unescaped, and the `"` does
+    // not: asserted on the bytes, since both spellings parse to the same value.
+    expect(raw).toContain(String.raw`title: "Steve's \"Hi\" App"`);
+  });
+
   test.each([
     ['an apostrophe', APOSTROPHE_TITLE],
     ['a `$&` whole-match reference', MATCH_REF_TITLE],

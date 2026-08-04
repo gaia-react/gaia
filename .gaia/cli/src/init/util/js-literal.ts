@@ -9,6 +9,9 @@
  * and `init strip-branding` (`.storybook/preview.ts`).
  */
 
+/** The quote characters a value may be wrapped in. */
+export type JsLiteralQuote = "'" | '"';
+
 /**
  * `value` as it must appear between two `quote` characters in a JavaScript
  * string literal.
@@ -22,6 +25,12 @@
  * string literal from ES2019 on. The quote that is *not* wrapping the value
  * needs no escape and does not get one, so an apostrophe reaches a
  * double-quoted sink unchanged.
+ *
+ * `quote` is the two literal quotes and not `string`, because a backtick sink
+ * would need `${` escaped as well and this escaping is wrong for one; a
+ * template literal has to be handled where it is written, not admitted here.
  */
-export const escapeJsLiteralValue = (value: string, quote: string): string =>
-  value.replaceAll('\\', '\\\\').replaceAll(quote, `\\${quote}`);
+export const escapeJsLiteralValue = (
+  value: string,
+  quote: JsLiteralQuote
+): string => value.replaceAll('\\', '\\\\').replaceAll(quote, `\\${quote}`);
