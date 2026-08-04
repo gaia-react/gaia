@@ -86,9 +86,13 @@ const HELP_TEXT = `Usage: gaia update regen-regions --manifest <path> --root <di
   appears in --conflicted or --absent-path, is left alone. A declaration that
   fails well-formedness, or an operand that fails the shipped-path / symlink /
   parent-segment guard, is refused before anything is spawned. Writes outside
-  a region's declared paths are reverted (inside the region's own directories)
-  or reported (anywhere else); a regular file or symlink the snapshot could
-  examine is never silently kept.
+  a region's declared paths are handled by where they land: inside the
+  region's own directories the runner undoes the write, and reports any path
+  it cannot undo or cannot establish it would undo safely; anywhere else it
+  reports the write and leaves it in place. A regular file or symlink the
+  snapshot could examine is never silently kept. Not every reported entry is
+  a write: an in-scope node with nothing to read, such as a FIFO or socket,
+  is reported on every run.
 
   Read the manifest's regions from a RELEASE copy, never the adopter's stale
   working-tree copy: pass $LATEST_DIR/.gaia/manifest.json as --manifest.
