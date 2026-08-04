@@ -94,25 +94,14 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '%s\n' "$*" >&2; }
 
-# hash16 / rate_table_id mirror token-tally.sh's own definitions (which live
-# inside that executable, not in a sourceable lib) so a re-priced row's
-# rate_table_id is computed exactly the way the writer computes it.
-hash16() {
-  local out
-  if out="$(shasum -a 256 2>/dev/null)"; then :;
-  elif out="$(sha256sum 2>/dev/null)"; then :;
-  else return 1; fi
-  out="${out%% *}"
-  [ -z "$out" ] && return 1
-  printf '%s' "${out:0:16}"
-}
-
+# rate_table_id comes from token-pricing-lib.sh, which token-tally.sh's own
+# helper of the same name also delegates to, so a re-priced row's identity is
+# computed exactly the way the writer computes it. It used to be a deliberate
+# copy of the writer's definition because the writer's lived inside that
+# executable rather than in a sourceable lib; it lives in the lib now, and the
+# machine-local overlay is precisely the input a second copy would drift on.
 rate_table_id() {
-  local path="$1" h
-  [ -f "$path" ] || return 1
-  h="$(hash16 <"$path")" || return 1
-  [ -z "$h" ] && return 1
-  printf 'sha256:%s' "$h"
+  gaia_rate_table_id "$@"
 }
 
 # ---------- args ----------
@@ -188,6 +177,13 @@ if ! rates="$(gaia_load_rate_table "$rt")"; then
   log "cost-reprice: rate table unreadable or malformed: $rt"
   exit 1
 fi
+# The machine-local overlay merges over the shipped table, so a re-price sees the
+# same card the writer saw. Without this a row the overlay priced would be re-read
+# under the shipped table alone and driven straight back down to an unpriced zero.
+# Bare call, never `$( )`: it assigns GAIA_EFFECTIVE_RATES and the overlay globals,
+# which rate_table_id below reads, and a subshell would drop both.
+gaia_apply_rate_overlay "$rates" "$rate_table_override"
+rates="$GAIA_EFFECTIVE_RATES"
 rtid="$(rate_table_id "$rt" 2>/dev/null || true)"
 if [ -z "$rtid" ]; then
   log "cost-reprice: could not compute the rate table's identity: $rt"

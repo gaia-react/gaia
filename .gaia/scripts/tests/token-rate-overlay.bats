@@ -50,6 +50,11 @@ setup() {
   # Tracked and non-optional. A `skip` would green the suite on a rename.
   [ -f "$LIB" ] || { echo "token-pricing-lib.sh not found: $LIB" >&2; return 1; }
 
+  TALLY="$SCRIPT_DIR/token-tally.sh"
+  # Two models with distinct non-zero buckets, hand-computed in token-tally.bats
+  # and quoted in token-tally-price.bats's header. Reused, never re-derived here.
+  MULTIMODEL="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally/multimodel/projects" && pwd)"
+
   SANDBOX="$(cd "$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")" && pwd -P)"
   mkdir -p "$SANDBOX/.gaia/scripts" "$SANDBOX/.gaia/local"
   SHIPPED="$SANDBOX/.gaia/scripts/token-rates.json"
@@ -343,4 +348,115 @@ JSON
   grep -qF -- '$7.00' <<<"$output"
   grep -qF -- "unpriced model(s)" <<<"$output" && return 1
   true
+}
+
+# ---------- 10. Layer 3: naming the condition AND the cure ----------
+#
+# The sandbox's shipped table prices claude-opus-4-8 but not claude-sonnet-4-6,
+# so the multimodel fixture run is exactly the mixed case #1088 showed is the
+# majority: a plausible non-zero figure silently missing one model's share.
+run_tally_in_sandbox() {
+  cd "$SANDBOX"
+  bash "$TALLY" --action execute --spec-id SPEC-900 --plan-slug spec-900-overlay \
+    --session-id fixturemultimodel0001 --projects-root "$MULTIMODEL" \
+    --ledger "$SANDBOX/.gaia/local/telemetry/cost.jsonl" "$@"
+}
+
+@test "an unpriced model prints the overlay path and a pasteable entry" {
+  [ -f "$TALLY" ] || { echo "token-tally.sh not found: $TALLY" >&2; return 1; }
+
+  run run_tally_in_sandbox
+  [ "$status" -eq 0 ]
+
+  grep -qF -- '(lower bound: unpriced model(s) claude-sonnet-4-6)' <<<"$output"
+  grep -qF -- "$OVERLAY" <<<"$output"
+  grep -qF -- '"claude-sonnet-4-6"' <<<"$output"
+}
+
+@test "the printed entry is valid JSON that names every unpriced model" {
+  [ -f "$TALLY" ] || { echo "token-tally.sh not found: $TALLY" >&2; return 1; }
+
+  run run_tally_in_sandbox
+  [ "$status" -eq 0 ]
+
+  # Lift the pasteable line back out of the output and prove it round-trips, so
+  # the remedy cannot drift into something that does not parse.
+  entry="$(grep -F -- '{"models":' <<<"$output" | sed 's/^ *//')"
+  [ -n "$entry" ]
+  [ "$(jq -r '.models | keys | join(",")' <<<"$entry")" = "claude-sonnet-4-6" ]
+}
+
+@test "the placeholder rates are not zeros, so an unedited paste cannot price at zero" {
+  [ -f "$TALLY" ] || { echo "token-tally.sh not found: $TALLY" >&2; return 1; }
+
+  run run_tally_in_sandbox
+  [ "$status" -eq 0 ]
+  entry="$(grep -F -- '{"models":' <<<"$output" | sed 's/^ *//')"
+
+  # A zero placeholder would reproduce the silent undercount the remedy exists to
+  # end: pasted unedited it prices the model at nothing and the marker goes away.
+  [ "$(jq -r '.models["claude-sonnet-4-6"][0].input' <<<"$entry")" != "0" ]
+  [ "$(jq -r '.models["claude-sonnet-4-6"][0].output' <<<"$entry")" != "0" ]
+
+  # Pasted unedited it must land on "unknown", not on a number. The multi-line
+  # block carries no dollar figure at all, so the property lives on the written
+  # record: `dollars: null` is the degrade token-tally.sh already uses for a rate
+  # it cannot resolve, and it is what a downstream re-price treats as re-computable.
+  # A zero placeholder would instead write a confident 0.76 and drop the marker.
+  ledger="$SANDBOX/.gaia/local/telemetry/cost.jsonl"
+  : > "$ledger"
+  printf '%s\n' "$entry" > "$OVERLAY"
+  run run_tally_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$(jq -r 'select(.kind == "execute") | .dollars' "$ledger" | tail -n 1)" = "null" ]
+}
+
+# ---------- 11. the overlay announces itself, so it does not calcify ----------
+@test "an active overlay is named in the cost block and the unpriced marker clears" {
+  [ -f "$TALLY" ] || { echo "token-tally.sh not found: $TALLY" >&2; return 1; }
+
+  cat > "$OVERLAY" <<'JSON'
+{ "models": { "claude-sonnet-4-6": [ { "input": 300, "output": 1500 } ] } }
+JSON
+
+  run run_tally_in_sandbox
+  [ "$status" -eq 0 ]
+
+  grep -qF -- '(local rate overlay active for: claude-sonnet-4-6)' <<<"$output"
+  grep -qF -- 'unpriced model(s)' <<<"$output" && return 1
+  true
+}
+
+@test "an explicit rate-table keeps the tally off the overlay entirely" {
+  [ -f "$TALLY" ] || { echo "token-tally.sh not found: $TALLY" >&2; return 1; }
+
+  cat > "$OVERLAY" <<'JSON'
+{ "models": { "claude-sonnet-4-6": [ { "input": 300, "output": 1500 } ] } }
+JSON
+
+  run run_tally_in_sandbox --rate-table "$SHIPPED"
+  [ "$status" -eq 0 ]
+
+  # The overlay would have priced sonnet; under an explicit table it stays
+  # unpriced, which is the bypass rule observed through a real consumer.
+  grep -qF -- 'unpriced model(s) claude-sonnet-4-6' <<<"$output"
+  grep -qF -- 'local rate overlay active' <<<"$output" && return 1
+  true
+}
+
+# ---------- 12. the one-line command contract survives Layer 3 ----------
+@test "--action command stays exactly one line even when a model is unpriced" {
+  [ -f "$TALLY" ] || { echo "token-tally.sh not found: $TALLY" >&2; return 1; }
+
+  cd "$SANDBOX"
+  run bash "$TALLY" --action command --command gaia-debt \
+    --session-id fixturemultimodel0001 --projects-root "$MULTIMODEL" \
+    --ledger "$SANDBOX/.gaia/local/telemetry/cost.jsonl"
+  [ "$status" -eq 0 ]
+
+  # Contractually one line so every command surface relays it byte-identically.
+  # The remedy block is deliberately confined to the multi-line shape; this line
+  # already names the model.
+  [ "$(printf '%s\n' "$output" | awk 'END{print NR}')" = "1" ]
+  grep -qF -- 'unpriced model(s) claude-sonnet-4-6' <<<"$output"
 }
