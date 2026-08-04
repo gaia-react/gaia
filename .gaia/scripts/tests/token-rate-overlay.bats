@@ -356,7 +356,7 @@ JSON
 # so the multimodel fixture run is exactly the mixed case #1088 showed is the
 # majority: a plausible non-zero figure silently missing one model's share.
 run_tally_in_sandbox() {
-  cd "$SANDBOX"
+  cd "$SANDBOX" || return 1
   bash "$TALLY" --action execute --spec-id SPEC-900 --plan-slug spec-900-overlay \
     --session-id fixturemultimodel0001 --projects-root "$MULTIMODEL" \
     --ledger "$SANDBOX/.gaia/local/telemetry/cost.jsonl" "$@"
