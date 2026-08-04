@@ -3,7 +3,6 @@ import {themes} from 'storybook/theming';
 import {decorators} from './chromatic';
 import i18n from './i18next';
 import viewport from './viewport';
-import './env';
 import '~/styles/tailwind.css';
 
 const BRAND = {

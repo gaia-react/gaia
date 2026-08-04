@@ -328,7 +328,6 @@
     ".storybook/chromatic/index.ts": "owned",
     ".storybook/decorators/ToastDecorator.tsx": "owned",
     ".storybook/decorators/WrapDecorator.tsx": "owned",
-    ".storybook/env.ts": "owned",
     ".storybook/i18next.ts": "owned",
     ".storybook/main.ts": "owned",
     ".storybook/preview-head.html": "owned",
@@ -504,6 +503,7 @@
     "test/mocks/ping.ts": "owned",
     "test/mocks/url.ts": "owned",
     "test/msw.server.ts": "owned",
+    "test/preview-env.test.ts": "owned",
     "test/primary-contrast.test.ts": "owned",
     "test/primary-token.test.ts": "owned",
     "test/rtl.tsx": "owned",
@@ -640,7 +640,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-04T03:28:21.412Z",
+  "generated": "2026-08-04T10:21:55.078Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

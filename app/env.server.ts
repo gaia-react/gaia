@@ -24,6 +24,11 @@ export const envClient = clientSchema.parse(process.env);
 
 type Environment = z.infer<typeof clientSchema>;
 
+// `app/root.tsx` populates `window.process` on every render, so these fields
+// are present in the running app. Storybook is deliberately exempt:
+// `.storybook/preview-head.html` seeds `window.process = {env: {}}` and the
+// preview inlines nothing, so under a story every field reads `undefined`
+// despite the type. Give a story the values it needs as args.
 declare global {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Window {
