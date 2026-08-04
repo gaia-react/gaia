@@ -45,6 +45,30 @@ START_MARKER='<!-- test-region:start -->'
 END_MARKER='<!-- test-region:end -->'
 PLACEHOLDER='<<<gaia:region>>>'
 
+# Every invocation below that asserts SUCCESS captures the CLI's stderr here
+# instead of discarding it, and its failure branch prints what it captured.
+# `2>/dev/null` on a success-asserting call leaves the `||` branch with nothing
+# to report but the exit code, which is the one fact the branch being taken
+# already implies; on a runner nobody is sitting in front of, that costs a local
+# reproduction to learn anything at all. Redirecting to a file rather than
+# dropping the redirect keeps stdout clean for the JSON the caller parses.
+#
+# The discriminator is what the scenario asserts, not its number: scenario 7
+# asserts FAILURE, so its diagnostic is expected noise and it keeps its own
+# suppression.
+CLI_STDERR="$FIXTURES/cli-stderr.txt"
+: > "$CLI_STDERR"
+
+report_cli_stderr() {
+  if [ -s "$CLI_STDERR" ]; then
+    printf -- '--- gaia stderr ---\n' >&2
+    cat "$CLI_STDERR" >&2
+    printf -- '--- end gaia stderr ---\n' >&2
+  else
+    printf -- '(gaia wrote nothing to stderr)\n' >&2
+  fi
+}
+
 # --- Scenario 1: region-only divergence -----------------------------------
 # `current` differs from `baseline` only inside the region; `latest` differs
 # from `baseline` only outside it. Masking the region should make the two
@@ -62,8 +86,8 @@ S1_JSON="$("$GAIA" update merge-region \
   --latest "$FIXTURES/s1-latest.txt" \
   --current "$FIXTURES/s1-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
-  --json 2>/dev/null)" \
-  || { fail "scenario 1: gaia update merge-region exited non-zero on staged tree"; exit 1; }
+  --json 2>"$CLI_STDERR")" \
+  || { fail "scenario 1: gaia update merge-region exited non-zero on staged tree"; report_cli_stderr; exit 1; }
 
 printf '%s' "$S1_JSON" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -93,8 +117,8 @@ S2_JSON="$("$GAIA" update merge-region \
   --latest "$FIXTURES/s2-latest.txt" \
   --current "$FIXTURES/s2-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
-  --json 2>/dev/null)" \
-  || { fail "scenario 2: gaia update merge-region exited non-zero on staged tree"; exit 1; }
+  --json 2>"$CLI_STDERR")" \
+  || { fail "scenario 2: gaia update merge-region exited non-zero on staged tree"; report_cli_stderr; exit 1; }
 
 printf '%s' "$S2_JSON" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -129,26 +153,38 @@ S3_JSON="$("$GAIA" update merge-region \
   --latest "$FIXTURES/s3-latest.txt" \
   --current "$FIXTURES/s3-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
-  --json 2>/dev/null)" \
-  || { fail "scenario 3: gaia update merge-region exited non-zero on staged tree"; exit 1; }
+  --json 2>"$CLI_STDERR")" \
+  || { fail "scenario 3: gaia update merge-region exited non-zero on staged tree"; report_cli_stderr; exit 1; }
 
-printf '%s' "$S3_JSON" | node -e "
-  const fs = require('node:fs');
-  const r = JSON.parse(fs.readFileSync(0, 'utf8'));
+# The fixture paths reach node through the ENVIRONMENT, never interpolated by
+# the shell into the JS source. `$FIXTURES` derives from `mktemp -d`, so a
+# single quote or a backslash in `TMPDIR` would otherwise land inside a JS
+# string literal and break the eval with a syntax error that names nothing a
+# maintainer can act on. The body is single-quoted for the same reason: with no
+# shell expansion into it at all, the property holds by construction rather than
+# by every future edit remembering it. Same shape as the sibling probe at
+# `.gaia/scripts/tests/region-marker-conformance.bats`.
+printf '%s' "$S3_JSON" \
+  | GAIA_S3_BASELINE="$FIXTURES/s3-baseline.txt" \
+    GAIA_S3_LATEST="$FIXTURES/s3-latest.txt" \
+    GAIA_S3_CURRENT="$FIXTURES/s3-current.txt" \
+    node -e '
+  const fs = require("node:fs");
+  const r = JSON.parse(fs.readFileSync(0, "utf8"));
   if (r.markers.bailed !== true)
-    throw new Error('expected markers.bailed=true, got ' + r.markers.bailed);
-  if (r.markers.current.scan !== 'malformed')
-    throw new Error('expected markers.current.scan=malformed, got ' + r.markers.current.scan);
+    throw new Error("expected markers.bailed=true, got " + r.markers.bailed);
+  if (r.markers.current.scan !== "malformed")
+    throw new Error("expected markers.current.scan=malformed, got " + r.markers.current.scan);
   const raw = {
-    baseline: fs.readFileSync('$FIXTURES/s3-baseline.txt', 'utf8'),
-    latest: fs.readFileSync('$FIXTURES/s3-latest.txt', 'utf8'),
-    current: fs.readFileSync('$FIXTURES/s3-current.txt', 'utf8'),
+    baseline: fs.readFileSync(process.env.GAIA_S3_BASELINE, "utf8"),
+    latest: fs.readFileSync(process.env.GAIA_S3_LATEST, "utf8"),
+    current: fs.readFileSync(process.env.GAIA_S3_CURRENT, "utf8"),
   };
-  for (const side of ['baseline', 'latest', 'current']) {
+  for (const side of ["baseline", "latest", "current"]) {
     if (r.normalized[side] !== raw[side])
-      throw new Error('normalized.' + side + ' is not byte-identical to its input file');
+      throw new Error("normalized." + side + " is not byte-identical to its input file");
   }
-" || { fail "scenario 3 (malformed markers) did not match the expected global-bail shape"; exit 1; }
+' || { fail "scenario 3 (malformed markers) did not match the expected global-bail shape"; exit 1; }
 log "scenario 3 (malformed markers, global bail): OK"
 
 # --- Scenario 4: absent markers on baseline and current -------------------
@@ -165,8 +201,8 @@ S4_JSON="$("$GAIA" update merge-region \
   --latest "$FIXTURES/s4-latest.txt" \
   --current "$FIXTURES/s4-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
-  --json 2>/dev/null)" \
-  || { fail "scenario 4: gaia update merge-region exited non-zero on staged tree"; exit 1; }
+  --json 2>"$CLI_STDERR")" \
+  || { fail "scenario 4: gaia update merge-region exited non-zero on staged tree"; report_cli_stderr; exit 1; }
 
 printf '%s' "$S4_JSON" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -188,37 +224,60 @@ S5_ARGS=(update merge-region \
   --current "$FIXTURES/s1-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json)
-S5_FIRST="$("$GAIA" "${S5_ARGS[@]}" 2>/dev/null)" \
-  || { fail "scenario 5: first invocation exited non-zero"; exit 1; }
-S5_SECOND="$("$GAIA" "${S5_ARGS[@]}" 2>/dev/null)" \
-  || { fail "scenario 5: second invocation exited non-zero"; exit 1; }
+S5_FIRST="$("$GAIA" "${S5_ARGS[@]}" 2>"$CLI_STDERR")" \
+  || { fail "scenario 5: first invocation exited non-zero"; report_cli_stderr; exit 1; }
+S5_SECOND="$("$GAIA" "${S5_ARGS[@]}" 2>"$CLI_STDERR")" \
+  || { fail "scenario 5: second invocation exited non-zero"; report_cli_stderr; exit 1; }
 [ "$S5_FIRST" = "$S5_SECOND" ] \
   || { fail "scenario 5 (idempotence): two invocations on the same inputs produced different output"; exit 1; }
 log "scenario 5 (idempotence): OK"
 
 # --- Scenario 6: post-update idempotence -----------------------------------
-# Copying `latest` over `current` simulates the post-update working tree. A
-# second `/update-gaia` run cannot reach the merge walk at all once
+# `current` byte-identical to `latest` simulates the post-update working tree.
+# A second `/update-gaia` run cannot reach the merge walk at all once
 # `.gaia/VERSION` is bumped, so this is the only layer that can observe a
-# re-invocation against the post-update state. The verdict this run returns
-# need not equal the pre-update verdict, because once the working copy equals
-# the release copy the same inputs resolve to `already-latest`; the assertable
-# property is that repeated re-invocations against the SAME post-update
-# state produce the SAME output.
-cp "$FIXTURES/s1-latest.txt" "$FIXTURES/s1-current.txt"
+# re-invocation against the post-update state.
+#
+# Two independent properties, and the first is why this scenario is not a
+# restatement of scenario 5. Scenario 5 establishes that the function is stable
+# across two calls on the PRE-update inputs; repeating that on a different set
+# of inputs adds no failure mode. What is only observable here is the VERDICT:
+# once the working copy equals the release copy, the same three sides resolve to
+# `already-latest` rather than to scenario 1's `no-adopter-drift`, which is the
+# state every adopter's tree is left in and the one a re-run must recognize.
+#
+# Dedicated `s6-*` fixtures rather than a `cp` over `s1-current.txt`. Mutating a
+# scenario-1 fixture in place is safe only for as long as nothing below this
+# line reads it for its pre-update content: any scenario later inserted above,
+# or any reordering of this file, silently gets post-update content and passes
+# for the wrong reason.
+printf 'outside-A\n%s\nregion-baseline-1\nregion-baseline-2\n%s\noutside-B\n' \
+  "$START_MARKER" "$END_MARKER" > "$FIXTURES/s6-baseline.txt"
+printf 'outside-A-changed\n%s\nregion-baseline-1\nregion-baseline-2\n%s\noutside-B\n' \
+  "$START_MARKER" "$END_MARKER" > "$FIXTURES/s6-latest.txt"
+# The post-update working tree: the adopter's copy IS the release copy.
+cp "$FIXTURES/s6-latest.txt" "$FIXTURES/s6-current.txt"
+
 S6_ARGS=(update merge-region \
-  --baseline "$FIXTURES/s1-baseline.txt" \
-  --latest "$FIXTURES/s1-latest.txt" \
-  --current "$FIXTURES/s1-current.txt" \
+  --baseline "$FIXTURES/s6-baseline.txt" \
+  --latest "$FIXTURES/s6-latest.txt" \
+  --current "$FIXTURES/s6-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json)
-S6_FIRST="$("$GAIA" "${S6_ARGS[@]}" 2>/dev/null)" \
-  || { fail "scenario 6: first post-update invocation exited non-zero"; exit 1; }
-S6_SECOND="$("$GAIA" "${S6_ARGS[@]}" 2>/dev/null)" \
-  || { fail "scenario 6: second post-update invocation exited non-zero"; exit 1; }
+S6_FIRST="$("$GAIA" "${S6_ARGS[@]}" 2>"$CLI_STDERR")" \
+  || { fail "scenario 6: first post-update invocation exited non-zero"; report_cli_stderr; exit 1; }
+S6_SECOND="$("$GAIA" "${S6_ARGS[@]}" 2>"$CLI_STDERR")" \
+  || { fail "scenario 6: second post-update invocation exited non-zero"; report_cli_stderr; exit 1; }
+
+printf '%s' "$S6_FIRST" | node -e '
+  const r = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+  if (r.verdict !== "already-latest")
+    throw new Error("expected verdict already-latest, got " + r.verdict);
+' || { fail "scenario 6: the post-update state did not resolve to already-latest"; exit 1; }
+
 [ "$S6_FIRST" = "$S6_SECOND" ] \
   || { fail "scenario 6 (post-update idempotence): re-invocation was not stable"; exit 1; }
-log "scenario 6 (post-update idempotence): OK"
+log "scenario 6 (post-update verdict and idempotence): OK"
 
 # --- Scenario 7: error path -------------------------------------------------
 if "$GAIA" update merge-region \
