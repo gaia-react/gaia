@@ -278,7 +278,7 @@ This decision runs **after** section B's security classification and **before** 
 
 Promote a non-security out-of-scope finding into the self-heal path, repaired in place rather than filed, **if and only if all five** of these hold:
 
-1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `changed` set the audit already resolved in "Rules-Based Audit" → "How to run" step 1 (`git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx'`). Read that value; do not re-derive it, or this filter and the review can disagree about which files the audit covered. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
+1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `changed` set the audit already resolved in "Rules-Based Audit" → "How to run" step 1 (`git -C "$AUDIT_ROOT" -c core.quotePath=false diff --name-only "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx'`). Read that value; do not re-derive it, or this filter and the review can disagree about which files the audit covered. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
 2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out, because `block-selfheal-paths.sh` would hard-deny the edit and leave the finding with no disposition at all.
 3. The file is in **your own remit** (your declared globs, see "Remit and self-skip", evaluated at the second precedence tier), not a cross-remit file a claimant member owns.
 4. The finding is **non-security** per section B's classification, read as section B's own flag, bound on **every repo including a confirmed PRIVATE one**. Never re-derive "non-security" from the `finding_class` tag or a fresh screen.
@@ -703,7 +703,7 @@ BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || tr
 # the silence is created, rather than leaving it to the handshake further
 # down that rejects --base "".
 [ -n "$BASE_SHA" ] || printf 'resolve-audit-base returned no base; review scope is unreliable\n' >&2
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx' 2>/dev/null || true)
+changed=$(git -C "$AUDIT_ROOT" -c core.quotePath=false diff --name-only "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx' 2>/dev/null || true)
 # `Read` returns WORKING-TREE bytes while your clearance attests to a digest
 # over HEAD (`git ls-tree HEAD`, .claude/hooks/lib/audit-digest.sh), so a pass
 # over a dirty tree certifies content it never read. Detect that here, over the

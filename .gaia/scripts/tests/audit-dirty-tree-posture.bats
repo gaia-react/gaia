@@ -51,6 +51,12 @@ code-audit-maintainer-shell"
   # The byte-identical refusal contract.
   REFUSAL='**A non-empty `dirty_in_scope` REFUSES this pass.**'
 
+  # The obligation the refusal owes, pinned separately from the sentence that
+  # opens it. A refusal that briefs nothing blocks a merge no one can clear, so
+  # the sidecar write is the load-bearing half; pinning only the bolded opener
+  # would let this clause be reworded or dropped with the suite still green.
+  SIDECAR_CLAUSE='write the findings sidecar naming each dirty path'
+
   # The run-order anchor, so the refusal is reachable from the member's own
   # order of operations rather than stated only beside the code block. The
   # four specialists carry it in Methodology step 1; the default member's
@@ -90,7 +96,7 @@ member_path() {
 @test "the check sits after the changed= derivation it reads" {
   for m in $MEMBERS; do
     f="$(member_path "$m")"
-    derivation_line="$(grep -nF -- 'changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD"' "$f" | head -1 | cut -d: -f1)"
+    derivation_line="$(grep -nF -- 'changed=$(git -C "$AUDIT_ROOT" -c core.quotePath=false diff --name-only "${BASE_SHA}...HEAD"' "$f" | head -1 | cut -d: -f1)"
     check_line="$(grep -nF -- "$CHECK_LINE" "$f" | head -1 | cut -d: -f1)"
     [ -n "$derivation_line" ] || { echo "no review-base derivation found: $m" >&2; return 1; }
     [ -n "$check_line" ] || { echo "no dirty-scope check found: $m" >&2; return 1; }
@@ -110,31 +116,55 @@ member_path() {
   done
 }
 
-@test "the refusal briefs: every member ties it to the findings sidecar" {
+@test "the refusal briefs: every member owes the sidecar on the dirty path" {
   for m in $MEMBERS; do
-    f="$(member_path "$m")"
-    # The refusal paragraph must reach the sidecar writer, because a refusal
-    # that briefs nothing blocks a merge no one can clear.
-    grep -qF -- 'audit-write-findings.sh' "$f" || {
-      echo "no sidecar writer reference to carry the refusal: $m" >&2
+    grep -qF -- "$SIDECAR_CLAUSE" "$(member_path "$m")" || {
+      echo "refusal does not oblige the findings sidecar: $m" >&2
       return 1
     }
   done
 }
 
-@test "parity assertion reds when a member drops the check (non-vacuity)" {
-  tmp="$BATS_TEST_TMPDIR/mutant.md"
-  cp "$(member_path code-audit-maintainer-shell)" "$tmp"
+# assert_cut_reds NEEDLE: copy a real member file, confirm the unmutated copy
+# satisfies the assertion (so a red is the mutation talking and not a broken
+# fixture), cut every line carrying NEEDLE, and confirm the assertion no longer
+# holds. One helper per pinned string, because a suite that proves only its
+# first assertion non-vacuous is how a second, hollow one rides along.
+assert_cut_reds() {
+  local needle="$1" src tmp
+  src="$(member_path code-audit-maintainer-shell)"
+  tmp="$BATS_TEST_TMPDIR/mutant-$2.md"
+  cp "$src" "$tmp"
 
-  # Sanity: the unmutated copy satisfies the assertion, so a red below is the
-  # mutation talking and not a broken fixture.
-  grep -qF -- "$CHECK_LINE" "$tmp" || return 1
+  grep -qF -- "$needle" "$tmp" || {
+    echo "fixture is broken: needle absent before mutation" >&2
+    return 1
+  }
 
-  grep -vF -- "$CHECK_LINE" "$tmp" > "$tmp.cut"
+  grep -vF -- "$needle" "$tmp" > "$tmp.cut"
   mv "$tmp.cut" "$tmp"
 
   # The bad case written as a positive match, per the bats-assertions rule: a
   # `!`-negation here would be exempted by set -e and green silently.
-  grep -qF -- "$CHECK_LINE" "$tmp" && return 1
-  true
+  grep -qF -- "$needle" "$tmp" && {
+    echo "mutation did not remove the needle; the proof would be hollow" >&2
+    return 1
+  }
+  return 0
+}
+
+@test "parity assertion reds when a member drops the check (non-vacuity)" {
+  assert_cut_reds "$CHECK_LINE" check
+}
+
+@test "refusal assertion reds when a member drops the contract (non-vacuity)" {
+  assert_cut_reds "$REFUSAL" refusal
+}
+
+@test "sidecar assertion reds when a member drops the obligation (non-vacuity)" {
+  assert_cut_reds "$SIDECAR_CLAUSE" sidecar
+}
+
+@test "run-order assertion reds when a member drops the anchor (non-vacuity)" {
+  assert_cut_reds "$METHOD_ANCHOR" anchor
 }

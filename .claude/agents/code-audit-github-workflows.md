@@ -74,7 +74,7 @@ BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || tr
 # where the silence is created, rather than leaving it to the handshake
 # three steps down that rejects --base "".
 [ -n "$BASE_SHA" ] || printf 'resolve-audit-base returned no base; review scope is unreliable\n' >&2
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
+changed=$(git -C "$AUDIT_ROOT" -c core.quotePath=false diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
 # `Read` returns WORKING-TREE bytes while your clearance attests to a digest
 # over HEAD (`git ls-tree HEAD`, .claude/hooks/lib/audit-digest.sh), so a pass
 # over a dirty tree certifies content it never read. Detect that here, over the
