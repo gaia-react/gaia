@@ -360,7 +360,7 @@ const updateLinkReferences = (body: string, newVersion: string): string => {
 };
 
 /** A Keep-a-Changelog reference-link definition, e.g. `[1.0.0]: https://…`. */
-const LINK_DEFINITION = /^\[[^\]]+\]:\s/u;
+const LINK_DEFINITION = /^\[[^\]]+\]:/u;
 
 /**
  * Does the `## [Unreleased]` section carry anything to release? Its body runs

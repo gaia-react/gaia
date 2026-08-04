@@ -17891,7 +17891,7 @@ var updateLinkReferences = (body, newVersion) => {
   );
   return lines.join("\n");
 };
-var LINK_DEFINITION = /^\[[^\]]+\]:\s/u;
+var LINK_DEFINITION = /^\[[^\]]+\]:/u;
 var hasUnreleasedEntries = (lines, unreleasedIndex) => {
   for (const line of lines.slice(unreleasedIndex + 1)) {
     if (line.startsWith("## ") || LINK_DEFINITION.test(line)) return false;

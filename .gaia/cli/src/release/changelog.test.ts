@@ -248,6 +248,49 @@ describe('graduateChangelog', () => {
     expect(outcome.kind).toBe('empty-unreleased');
   });
 
+  test('returns empty-unreleased for a link definition with no space', () => {
+    const tight = `# Changelog
+
+## [Unreleased]
+
+[Unreleased]:https://github.com/gaia-react/gaia/compare/v0.9.0...HEAD
+`;
+    const outcome = graduateChangelog({
+      current: tight,
+      newVersion: '1.0.0',
+      today: '2026-05-07',
+    });
+    expect(outcome.kind).toBe('empty-unreleased');
+  });
+
+  // The positive direction of the same rule: the link block ends the body, it
+  // does not veto entries that precede it. Without this, widening
+  // LINK_DEFINITION could start refusing real releases with the suite green.
+  test('graduates entries that sit directly above the link block', () => {
+    const firstRelease = `# Changelog
+
+## [Unreleased]
+
+### Added
+
+- initial thing
+
+[Unreleased]: https://github.com/gaia-react/gaia/compare/v0.9.0...HEAD
+`;
+    const outcome = graduateChangelog({
+      current: firstRelease,
+      newVersion: '1.0.0',
+      today: '2026-05-07',
+    });
+    assertOk(outcome);
+
+    expect(outcome.updated).toContain('## [1.0.0] - 2026-05-07');
+    expect(outcome.updated).toContain('- initial thing');
+    expect(outcome.updated).toContain(
+      '[1.0.0]: https://github.com/gaia-react/gaia/releases/tag/v1.0.0'
+    );
+  });
+
   test('returns duplicate when version already present', () => {
     const outcome = graduateChangelog({
       current: TEMPLATE,
