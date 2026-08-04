@@ -70,6 +70,19 @@
 #     that window would not hold the lost row either. When the mutex helper is
 #     unavailable the same section runs unlocked, which is the pre-existing
 #     fallback, not a second design.
+#   - A row appended by another writer DURING the run is carried into the
+#     rewrite rather than dropped. Holding the mutex is not exclusivity here:
+#     token-tally.sh degrades to an unlocked append when it cannot acquire the
+#     mutex within its timeout, so a row can land after classify read its N
+#     lines, and the backup taken before it does not hold it either. The ledger's
+#     tail is re-read immediately before the replace and any late rows are
+#     appended to the temp file, unpriced and byte-identical, since this pass
+#     never classified them. This NARROWS the window to the gap between that
+#     re-read and the rename; it does not close it. Closing it outright needs the
+#     degraded append to write somewhere this rewrite cannot reach, which costs a
+#     second on-disk shape plus a fold-in in every reader. A ledger that SHRANK
+#     mid-run refuses the replace instead: the tail arithmetic is only meaningful
+#     while the first N lines are still the N classify read.
 #   - The pre-rewrite ledger is copied to `<ledger>.bak.<UTC-timestamp>` before
 #     the replace, with a numeric suffix appended if that path is already taken,
 #     so a second run inside the same second cannot clobber the first run's copy.
@@ -94,25 +107,14 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '%s\n' "$*" >&2; }
 
-# hash16 / rate_table_id mirror token-tally.sh's own definitions (which live
-# inside that executable, not in a sourceable lib) so a re-priced row's
-# rate_table_id is computed exactly the way the writer computes it.
-hash16() {
-  local out
-  if out="$(shasum -a 256 2>/dev/null)"; then :;
-  elif out="$(sha256sum 2>/dev/null)"; then :;
-  else return 1; fi
-  out="${out%% *}"
-  [ -z "$out" ] && return 1
-  printf '%s' "${out:0:16}"
-}
-
+# rate_table_id comes from token-pricing-lib.sh, which token-tally.sh's own
+# helper of the same name also delegates to, so a re-priced row's identity is
+# computed exactly the way the writer computes it. It used to be a deliberate
+# copy of the writer's definition because the writer's lived inside that
+# executable rather than in a sourceable lib; it lives in the lib now, and the
+# machine-local overlay is precisely the input a second copy would drift on.
 rate_table_id() {
-  local path="$1" h
-  [ -f "$path" ] || return 1
-  h="$(hash16 <"$path")" || return 1
-  [ -z "$h" ] && return 1
-  printf 'sha256:%s' "$h"
+  gaia_rate_table_id "$@"
 }
 
 # ---------- args ----------
@@ -188,6 +190,13 @@ if ! rates="$(gaia_load_rate_table "$rt")"; then
   log "cost-reprice: rate table unreadable or malformed: $rt"
   exit 1
 fi
+# The machine-local overlay merges over the shipped table, so a re-price sees the
+# same card the writer saw. Without this a row the overlay priced would be re-read
+# under the shipped table alone and driven straight back down to an unpriced zero.
+# Bare call, never `$( )`: it assigns GAIA_EFFECTIVE_RATES and the overlay globals,
+# which rate_table_id below reads, and a subshell would drop both.
+gaia_apply_rate_overlay "$rates" "$rate_table_override"
+rates="$GAIA_EFFECTIVE_RATES"
 rtid="$(rate_table_id "$rt" 2>/dev/null || true)"
 if [ -z "$rtid" ]; then
   log "cost-reprice: could not compute the rate table's identity: $rt"
@@ -224,7 +233,7 @@ _cost_reprice_report_jq_err() {
 # than known-zero, so recomputing it adds information instead of destroying it.
 # Anything else passes through untouched.
 _cost_reprice_run() {
-  local classified changed_count total_count expected_lines jq_err backup tmp n
+  local classified changed_count total_count expected_lines late_lines jq_err backup tmp n
 
   # The record count is an INVARIANT here, not a statistic. jq does not abort on
   # a runtime error raised for a single input: it reports the error on stderr,
@@ -379,6 +388,46 @@ _cost_reprice_run() {
     log "cost-reprice: rewrite failed; original ledger is intact. Backup at $backup"
     return 1
   fi
+
+  # Holding the mutex does not make this ledger private. token-tally.sh degrades
+  # to an UNLOCKED append when it cannot acquire the mutex within its timeout, by
+  # design, to keep from blocking a hook. So a row can land after classify read
+  # its N lines, and the rewrite below emits only those N: the row would be
+  # dropped outright, and the backup, taken before the append, does not hold it
+  # either.
+  #
+  # Carry anything that arrived. This NARROWS the window to the gap between this
+  # re-count and the rename; it does not close it. Closing it outright needs the
+  # degraded append to write somewhere this rewrite cannot reach, which costs a
+  # second on-disk shape plus a fold-in in every reader of the ledger.
+  #
+  # A carried row is passed through from the ORIGINAL bytes and is deliberately
+  # not priced: this pass never classified it, so it has no recomputed figure to
+  # stamp, and inventing one here would bypass every pass-through guard above.
+  late_lines="$(awk 'END{print NR}' "$ledger")"
+  case "$late_lines" in
+    '' | *[!0-9]*)
+      rm -f "$tmp"
+      log "cost-reprice: could not re-count $ledger before the replace (got '${late_lines}'); refusing to rewrite. Backup at $backup"
+      return 1 ;;
+  esac
+  if [ "$late_lines" -gt "$expected_lines" ]; then
+    if ! tail -n +"$((expected_lines + 1))" "$ledger" >> "$tmp"; then
+      rm -f "$tmp"
+      log "cost-reprice: could not carry the $((late_lines - expected_lines)) row(s) appended during the re-price; refusing to rewrite. Backup at $backup"
+      return 1
+    fi
+    log "cost-reprice: carried $((late_lines - expected_lines)) row(s) appended during the re-price."
+  elif [ "$late_lines" -lt "$expected_lines" ]; then
+    # The tail arithmetic above is only meaningful while the ledger's first N
+    # lines are still the N classify read. A shrink means something rewrote the
+    # file underneath this run, so there is no safe way to reconcile the two and
+    # the refusal is the same direction every other guard here fails in.
+    rm -f "$tmp"
+    log "cost-reprice: $ledger shrank from $expected_lines to $late_lines line(s) during the re-price; refusing to rewrite. Backup at $backup"
+    return 1
+  fi
+
   # Same-directory rename: atomic, so a reader never observes a partial ledger.
   if ! mv "$tmp" "$ledger"; then
     rm -f "$tmp"

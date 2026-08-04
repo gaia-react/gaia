@@ -512,3 +512,104 @@ STUB
   [ "$(jq -r '.dollars' "$LEDGER")" = "0.76" ]
   [ "$(jq -r '.unpriced | join(",")' "$LEDGER")" = "claude-sonnet-4-6" ]
 }
+
+# ---------- #1091: a row appended while the re-price holds the mutex ----------
+#
+# token-tally.sh degrades to an UNLOCKED append when it cannot acquire the cost
+# mutex within its timeout, deliberately, to preserve the never-block-a-hook
+# contract. Its comment claimed "a timeout never drops a row", which was true
+# when the only other writer was another append and stopped being true when this
+# whole-ledger rewrite arrived: the rewrite emits only the lines classify saw, and
+# the backup is taken before the append lands, so it does not hold the row either.
+#
+# The window is real but unreachable by racing in a test: it needs a lock
+# starvation to overlap a manual command. `cp` is what the script uses to write
+# its backup, which runs strictly after classify and strictly before the replace,
+# so a shim on PATH lands the append in exactly the window under test, every run.
+# It reproduces the ordering rather than simulating it.
+seed_late_appender() {
+  SHIM="$BATS_TEST_TMPDIR/shim"
+  mkdir -p "$SHIM"
+  cat > "$SHIM/cp" <<SHIMEOF
+#!/usr/bin/env bash
+# Stand in for the unlocked degraded append token-tally.sh performs on a lock
+# timeout, at the one point in the run where it is destructive.
+#
+# The real cp runs FIRST, deliberately. #1091's whole point is that the backup
+# does not hold the lost row because it is taken before the append lands, so
+# appending afterwards reproduces the actual failure rather than a kinder one.
+/bin/cp "\$@" || exit \$?
+printf '%s\n' '$1' >> "$LEDGER"
+SHIMEOF
+  chmod +x "$SHIM/cp"
+}
+
+@test "#1091: a row appended during the re-price survives the rewrite" {
+  seed_row 0.76 2026-07-28T07:28:15Z
+  late='{"schema_version":1,"kind":"execute","session_id":"late","total":42,"ts":"2026-07-28T09:00:00Z","final":true}'
+  seed_late_appender "$late"
+
+  run env PATH="$SHIM:$PATH" bash "$SCRIPT" --ledger "$LEDGER" --rate-table "$RATES_FULL"
+  [ "$status" -eq 0 ]
+
+  # Two lines, not one. Before the fix the rewrite emitted only classify's single
+  # line and the late row was gone at exit 0, with the backup predating it.
+  [ "$(awk 'END{print NR}' "$LEDGER")" = "2" ]
+
+  # The re-priced row is still re-priced ...
+  [ "$(head -n 1 "$LEDGER" | jq -r '.dollars')" = "0.87925" ]
+  # ... and the late row is carried through BYTE-identical, never re-serialized:
+  # this pass never classified it, so it has no recomputed figure to stamp.
+  [ "$(tail -n 1 "$LEDGER")" = "$late" ]
+}
+
+@test "#1091: carrying a late row is reported, not done silently" {
+  seed_row 0.76 2026-07-28T07:28:15Z
+  seed_late_appender '{"schema_version":1,"kind":"execute","session_id":"late","total":42,"ts":"2026-07-28T09:00:00Z","final":true}'
+
+  run env PATH="$SHIM:$PATH" bash "$SCRIPT" --ledger "$LEDGER" --rate-table "$RATES_FULL"
+  [ "$status" -eq 0 ]
+
+  # The operator ran a rewrite over a file something else was writing to. That is
+  # worth one line, both because it explains a row this pass did not price and
+  # because a silent carry looks identical to no concurrency at all.
+  grep -qF -- 'appended during the re-price' <<<"$output"
+}
+
+@test "#1091: a ledger that SHRANK mid-run refuses the replace instead of guessing" {
+  seed_row 0.76 2026-07-28T07:28:15Z
+  seed_row 0.76 2026-07-28T08:00:00Z
+  before="$(cat "$LEDGER")"
+
+  SHIM="$BATS_TEST_TMPDIR/shim"
+  mkdir -p "$SHIM"
+  cat > "$SHIM/cp" <<SHIMEOF
+#!/usr/bin/env bash
+# Not a shape any current writer produces. It stands for the general case the
+# count check has to cover: the tail arithmetic is only meaningful while the
+# ledger's first N lines are still the N classify read. The real cp runs first,
+# so the backup still holds the pre-truncation ledger and the refusal below has
+# a way back for the operator.
+/bin/cp "\$@" || exit \$?
+printf '%s\n' '{"kind":"execute"}' > "$LEDGER"
+SHIMEOF
+  chmod +x "$SHIM/cp"
+
+  run env PATH="$SHIM:$PATH" bash "$SCRIPT" --ledger "$LEDGER" --rate-table "$RATES_FULL"
+  [ "$status" -ne 0 ]
+  grep -qF -- 'shrank' <<<"$output"
+
+  # The refusal has to leave the operator a way back. The rewrite is abandoned and
+  # the backup, taken before the truncation, still holds the original two rows.
+  backup="$(find "$(dirname "$LEDGER")" -name 'cost.jsonl.bak.*' | head -n 1)"
+  [ -n "$backup" ]
+  [ "$(cat "$backup")" = "$before" ]
+}
+
+@test "#1091: an ordinary run reports no carry, so the message is not noise" {
+  seed_row 0.76 2026-07-28T07:28:15Z
+  run run_reprice "$RATES_FULL"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'appended during the re-price' <<<"$output" && return 1
+  true
+}

@@ -117,13 +117,14 @@ hash16() {
   printf '%s' "${out:0:16}"
 }
 
-# Echoes `sha256:<first-16-hex>` for a readable file, else returns 1.
+# Echoes `sha256:<first-16-hex>` for a readable file, else returns 1. Delegates
+# to token-pricing-lib.sh so a row priced through the machine-local overlay gets
+# an identity that folds the overlay's bytes in, computed the one way every
+# writer computes it. The lib is a hard dependency of the priced path anyway
+# (GAIA_PRICING_JQ_DEFS and gaia_load_rate_table both come from it), so there is
+# no state where this resolves and the pricing around it does not.
 rate_table_id() {
-  local path="$1" h
-  [[ -f "$path" ]] || return 1
-  h="$(hash16 <"$path")" || return 1
-  [[ -z "$h" ]] && return 1
-  printf 'sha256:%s' "$h"
+  gaia_rate_table_id "$@"
 }
 
 # Collision-resistant repo identity from the origin remote: normalize the URL
@@ -473,6 +474,10 @@ if [[ "$ACTION" == "review" ]]; then
   review_rates="null"
   if review_rt="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" && [[ -n "$review_rt" ]]; then
     if review_rates="$(gaia_load_rate_table "$review_rt")"; then
+      # Bare call, never `$( )`: it assigns GAIA_EFFECTIVE_RATES and the overlay
+      # globals, and a subshell would drop both.
+      gaia_apply_rate_overlay "$review_rates" "$RATE_TABLE_OVERRIDE"
+      review_rates="$GAIA_EFFECTIVE_RATES"
       review_cost_ok=true
     else
       log "token-tally: rate table unreadable: $review_rt"
@@ -796,6 +801,10 @@ if jq -e 'length > 0' >/dev/null 2>&1 <<<"$BY_MODEL"; then
   cost_ok=false
   if cost_rt="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" && [[ -n "$cost_rt" ]]; then
     if cost_rates="$(gaia_load_rate_table "$cost_rt")"; then
+      # Bare call, never `$( )`: it assigns GAIA_EFFECTIVE_RATES and the overlay
+      # globals, and a subshell would drop both.
+      gaia_apply_rate_overlay "$cost_rates" "$RATE_TABLE_OVERRIDE"
+      cost_rates="$GAIA_EFFECTIVE_RATES"
       cost_ok=true
     else
       log "token-tally: rate table unreadable: $cost_rt"
@@ -1155,7 +1164,16 @@ if [[ -n "$rec" && -n "$ledger" ]]; then
     if [[ "$lock_rc" -eq 75 ]]; then
       # Lock-acquisition timeout: degrade to the append WITHOUT clear_prior_finals.
       # Never skip the append; never run the rewrite unlocked. The reader's max-seq
-      # fallback copes with the un-cleared prior final, so a timeout never drops a row.
+      # fallback copes with the un-cleared prior final.
+      #
+      # This append is UNLOCKED, so it is visible to a concurrent whole-ledger
+      # rewrite. cost-reprice.sh is the one that performs such a rewrite, and it
+      # re-reads the ledger's tail immediately before its atomic replace and
+      # carries anything that landed. That narrows the loss window to the gap
+      # between that re-read and the rename rather than closing it: a row is only
+      # safe from the rewrite once the rewrite has seen it. Never block the hook
+      # is the invariant this branch keeps; never lose a row is kept on the
+      # rewriting side, where the row can actually be observed.
       log "token-tally: cost lock timed out; appending without clear_prior_finals"
       printf '%s\n' "$rec" >>"$ledger" 2>/dev/null || log "token-tally: degraded append failed: $ledger"
     fi
@@ -1204,6 +1222,30 @@ fi
 # reads as one hyphenated name per model once two models are unpriced.
 UNPRICED_LIST="$(jq -r 'join(", ")' <<<"$UNPRICED_JSON" 2>/dev/null || true)"
 
+# The remedy for an unpriced model, printed with the marker so the fix is one
+# paste rather than a wait for the next release. Naming the condition without
+# naming the cure leaves the operator with a number they know is wrong and no
+# way to correct it, which is the state the overlay exists to end.
+#
+# The placeholder rates are deliberately NOT zeros. A zero pasted unedited prices
+# the model at nothing and reproduces the silent undercount verbatim; the string
+# below fails the pricing arithmetic instead, so the figure degrades to the
+# marked "unavailable" line until a real number replaces it.
+#
+# Only the multi-line shape carries this. `--action command` is contractually
+# exactly one line so every command surface can relay it byte-identically, and
+# that line already names the model.
+print_unpriced_remedy() {
+  local overlay_path entry
+  overlay_path="$(gaia_resolve_rate_overlay 2>/dev/null || true)"
+  [[ -z "$overlay_path" ]] && return 0
+  entry="$(jq -c 'map({(.): [{input: "<usd-per-1M-input>", output: "<usd-per-1M-output>"}]}) | add // {} | {models: .}' \
+    <<<"$UNPRICED_JSON" 2>/dev/null || true)"
+  [[ -z "$entry" ]] && return 0
+  printf '  Add a rate in %s, then re-run:\n' "$overlay_path"
+  printf '    %s\n' "$entry"
+}
+
 if [[ "$ACTION" == "command" ]]; then
   # Exactly one line, no per-stage breakdown (a command run has one stage), so
   # every command surface relays a byte-identical line. Never bash integer
@@ -1237,6 +1279,14 @@ else
   fi
   if [[ -n "$UNPRICED_LIST" ]]; then
     printf '  (lower bound: unpriced model(s) %s)\n' "$UNPRICED_LIST"
+    print_unpriced_remedy
+  fi
+  # A populated overlay means the shipped table is behind. Say so where the
+  # figure is read, so an overlay entry gets folded upstream into
+  # token-rates.json instead of calcifying into permanent shadow config that
+  # silently diverges from what adopters receive.
+  if [[ -n "${GAIA_RATE_OVERLAY_MODELS:-}" ]]; then
+    printf '  (local rate overlay active for: %s)\n' "${GAIA_RATE_OVERLAY_MODELS// /, }"
   fi
 fi
 
