@@ -3,16 +3,18 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import react from '@vitejs/plugin-react';
-import {loadEnv} from 'vite';
 import {defineConfig} from 'vitest/config';
 
 const ignoreWarnings = ['React DevTools', 'React Router Future Flag Warning'];
 
-export default defineConfig(({mode}) => {
-  Object.assign(process.env, loadEnv(mode, process.cwd(), ''));
-
-  return {
-    plugins: [react()],
+// The suite deliberately does not read `.env`. Workers inherit the shell's own
+// `process.env`, and `test/setup.ts` supplies defaults for the keys
+// `app/env.server.ts` requires, so a test sees the same environment locally as
+// it does in CI, where `.env` is gitignored and absent. Loading `.env` here
+// would instead put every value in it, `SESSION_SECRET` included, in reach of
+// every test file and every transitive dependency loaded in this process.
+export default defineConfig({
+  plugins: [react()],
     resolve: {
       conditions: ['module-sync'],
       tsconfigPaths: true,
@@ -39,7 +41,6 @@ export default defineConfig(({mode}) => {
         ],
         provider: 'v8',
       },
-      env: process.env,
       environment: 'happy-dom',
       globals: true,
       include: ['./app/**/*.test.{ts,tsx}', './test/**/*.test.{ts,tsx}'],
@@ -49,6 +50,5 @@ export default defineConfig(({mode}) => {
         }
       },
       setupFiles: ['./test/setup.ts'],
-    },
-  };
+  },
 });
