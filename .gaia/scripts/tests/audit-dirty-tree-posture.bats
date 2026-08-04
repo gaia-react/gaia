@@ -43,6 +43,25 @@ code-audit-maintainer-node
 code-audit-maintainer-prose
 code-audit-maintainer-shell"
 
+  # The four members whose clearance actually gates a merge. They carry the
+  # withhold contract. The prose member is deliberately NOT among them: it is
+  # advisory-only and its own file states, absolutely and in five places, that
+  # it always writes an earned marker and never deadlocks a merge. A clearance
+  # that always clears attests nothing about content, so withholding there would
+  # buy no guarantee while breaking the contract the member exists to keep. It
+  # records the divergence instead. Splitting the pins this way is what stops
+  # the two contracts from silently contradicting each other.
+  GATING="code-audit-frontend
+code-audit-github-workflows
+code-audit-maintainer-node
+code-audit-maintainer-shell"
+  ADVISORY="code-audit-maintainer-prose"
+
+  # The advisory member's counterpart pins.
+  EXEMPTION='**A non-empty `dirty_in_scope` does NOT withhold your pass, and the exemption is deliberate.**'
+  ADVISORY_ANCHOR='record any working-tree dirt within `changed`'
+  ADVISORY_ARTIFACT='**Do not reach for a `.refused` artifact here under any reading:**' 
+
   # The byte-identical detection line. One line on purpose: a wrapped command
   # cannot be asserted byte-for-byte with a fixed-string grep, and byte
   # identity across five files is what keeps the members from drifting into
@@ -95,8 +114,8 @@ member_path() {
   done
 }
 
-@test "every member carries the byte-identical refusal contract" {
-  for m in $MEMBERS; do
+@test "every GATING member carries the byte-identical withhold contract" {
+  for m in $GATING; do
     assert_carries "$(member_path "$m")" "$REFUSAL" || {
       echo "missing or drifted refusal contract: $m" >&2
       return 1
@@ -118,8 +137,8 @@ member_path() {
   done
 }
 
-@test "every member names the refusal in its run order" {
-  for m in $MEMBERS; do
+@test "every GATING member names the refusal in its run order" {
+  for m in $GATING; do
     assert_carries "$(member_path "$m")" "$METHOD_ANCHOR" || {
       echo "run order does not name the refusal: $m" >&2
       return 1
@@ -136,8 +155,8 @@ member_path() {
   done
 }
 
-@test "every member exempts the failure sentinel from the remit filter" {
-  for m in $MEMBERS; do
+@test "every GATING member exempts the failure sentinel from the remit filter" {
+  for m in $GATING; do
     assert_carries "$(member_path "$m")" "$SENTINEL_CARVEOUT" || {
       echo "fail-closed sentinel is filterable away: $m" >&2
       return 1
@@ -145,8 +164,8 @@ member_path() {
   done
 }
 
-@test "every member withholds without stranding a refusal artifact" {
-  for m in $MEMBERS; do
+@test "every GATING member withholds without stranding a refusal artifact" {
+  for m in $GATING; do
     assert_carries "$(member_path "$m")" "$NO_REFUSAL_ARTIFACT" || {
       echo "does not forbid the digest-keyed refusal artifact: $m" >&2
       return 1
@@ -161,6 +180,30 @@ member_path() {
       return 1
     }
   done
+}
+
+@test "the advisory member is exempted, explicitly and not by omission" {
+  f="$(member_path "$ADVISORY")"
+  assert_carries "$f" "$EXEMPTION" || { echo "advisory member carries no explicit exemption" >&2; return 1; }
+  assert_carries "$f" "$ADVISORY_ANCHOR" || { echo "advisory run order does not name the record step" >&2; return 1; }
+  assert_carries "$f" "$ADVISORY_ARTIFACT" || { echo "advisory member does not forbid the refusal artifact" >&2; return 1; }
+}
+
+@test "the advisory member never acquires the withhold contract" {
+  # Written as a positive match on the bad case per the bats-assertions rule.
+  # This is the assertion that would have caught the round-4 Critical: applying
+  # the withhold byte-identically to all five contradicted this member's own
+  # always-clear charter, and a presence-only pin reported green either way.
+  f="$(member_path "$ADVISORY")"
+  assert_carries "$f" "$REFUSAL" && {
+    echo "advisory member has acquired the withhold contract it is exempt from" >&2
+    return 1
+  }
+  assert_carries "$f" "$NO_REFUSAL_ARTIFACT" && {
+    echo "advisory member has acquired the gating withhold-artifact clause" >&2
+    return 1
+  }
+  true
 }
 
 # --- Non-vacuity ------------------------------------------------------------
