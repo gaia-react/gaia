@@ -74,14 +74,20 @@ BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || tr
 # where the silence is created, rather than leaving it to the handshake
 # three steps down that rejects --base "".
 [ -n "$BASE_SHA" ] || printf 'resolve-audit-base returned no base; review scope is unreliable\n' >&2
-changed=$(git -C "$AUDIT_ROOT" -c core.quotePath=false diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
 # `Read` returns WORKING-TREE bytes while your clearance attests to a digest
 # over HEAD (`git ls-tree HEAD`, .claude/hooks/lib/audit-digest.sh), so a pass
-# over a dirty tree certifies content it never read. Detect that here, over the
-# set you just resolved rather than the whole tree: a sibling member
-# self-healing in another remit must not refuse your pass, and your own
-# self-heal cannot have run yet at this point in the order.
-dirty_in_scope=$(printf '%s\n' "$changed" | tr '\n' '\0' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain -- 2>/dev/null || true)
+# over a dirty tree certifies content it never read. Check the set you just
+# resolved, never the whole tree; your own remit filter, below, is what keeps a
+# sibling member's legitimate self-heal out of your answer. Your own self-heal
+# cannot have run yet at this point in the order. This FAILS CLOSED: a status
+# that cannot run refuses rather than reading as clean, and the empty-`changed`
+# guard is what stops that from turning an empty review scope into a refusal.
+dirty_in_scope=""
+if [ -n "$changed" ] && ! dirty_in_scope=$(printf '%s\n' "$changed" | tr '\n' '\0' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain --); then
+  printf 'dirty-scope check could not run; refusing rather than assuming a clean tree\n' >&2
+  dirty_in_scope="dirty-scope check failed"
+fi
 ```
 
 **A non-empty `dirty_in_scope` REFUSES this pass.** Every path it names holds working-tree bytes that differ from the HEAD bytes your clearance attests to, so reviewing it certifies content nobody read. Apply your own remit filter to the list first: a dirty path you would never have opened cannot make your review disagree with your marker. On anything that survives, write no marker, write the findings sidecar naming each dirty path (a refusal that briefs nothing blocks a merge no one can clear), and report that you must be re-dispatched once the operator commits or reverts them. This is the self-heal rule reaching one case further, a marker only ever attests committed content; the only difference is whose uncommitted edit it is.
