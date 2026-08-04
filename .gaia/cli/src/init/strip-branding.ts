@@ -22,6 +22,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {markStepCompleted} from './util/state.js';
+import {titleFailure} from './util/title.js';
 
 const HELP_TEXT = `Usage: gaia init strip-branding --title <T>
 
@@ -32,7 +33,7 @@ const HELP_TEXT = `Usage: gaia init strip-branding --title <T>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flag, missing template)
+    1  user-correctable error (missing flag, invalid title, missing template)
     2  unexpected (filesystem failure)
 `;
 
@@ -91,6 +92,10 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   if (title === undefined) {
     return {message: '--title is required', ok: false};
   }
+
+  const titleProblem = titleFailure(title);
+
+  if (titleProblem) return {message: titleProblem, ok: false};
 
   return {flags: {title}, ok: true};
 };

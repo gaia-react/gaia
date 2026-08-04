@@ -17948,6 +17948,19 @@ var run17 = async (argv, options = {}) => {
 // src/init/rename.ts
 import { existsSync as existsSync8, readFileSync as readFileSync10 } from "node:fs";
 import path15 from "node:path";
+
+// src/init/util/title.ts
+var titleFailure = (title) => {
+  if (/[\n\r]/u.test(title)) {
+    return "--title must be a single line";
+  }
+  if (title.trim() === "") {
+    return "--title must not be blank";
+  }
+  return void 0;
+};
+
+// src/init/rename.ts
 var HELP_TEXT17 = `Usage: gaia init rename --title <T> --kebab <K>
 
   Rename the project across package.json, CLAUDE.md, and seeded language
@@ -17959,8 +17972,8 @@ var HELP_TEXT17 = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, no package.json, no
-       CLAUDE.md heading)
+    1  user-correctable error (missing flags, invalid title, no
+       package.json, no CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
 var HELP_TOKENS17 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -17971,15 +17984,6 @@ var takeValue3 = (argv, index, flag) => {
     return { message: `${flag} requires a value`, ok: false };
   }
   return { ok: true, value: argv[index] };
-};
-var titleFailure = (title) => {
-  if (/[\n\r]/u.test(title)) {
-    return { message: "--title must be a single line", ok: false };
-  }
-  if (title.trim() === "") {
-    return { message: "--title must not be blank", ok: false };
-  }
-  return void 0;
 };
 var parseFlags4 = (argv) => {
   let title;
@@ -18007,7 +18011,7 @@ var parseFlags4 = (argv) => {
     return { message: "--kebab is required", ok: false };
   }
   const titleProblem = titleFailure(title);
-  if (titleProblem) return titleProblem;
+  if (titleProblem) return { message: titleProblem, ok: false };
   if (!/^[a-z][\d a-z-]*$/u.test(kebab)) {
     return { message: "--kebab must be a kebab-case identifier", ok: false };
   }
@@ -18171,7 +18175,7 @@ var HELP_TEXT18 = `Usage: gaia init strip-branding --title <T>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flag, missing template)
+    1  user-correctable error (missing flag, invalid title, missing template)
     2  unexpected (filesystem failure)
 `;
 var HELP_TOKENS18 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -18199,6 +18203,8 @@ var parseFlags5 = (argv) => {
   if (title === void 0) {
     return { message: "--title is required", ok: false };
   }
+  const titleProblem = titleFailure(title);
+  if (titleProblem) return { message: titleProblem, ok: false };
   return { flags: { title }, ok: true };
 };
 var FUNDING_PATH = ".github/FUNDING.yml";

@@ -25,6 +25,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {markStepCompleted} from './util/state.js';
+import {titleFailure} from './util/title.js';
 
 const HELP_TEXT = `Usage: gaia init rename --title <T> --kebab <K>
 
@@ -37,8 +38,8 @@ const HELP_TEXT = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, no package.json, no
-       CLAUDE.md heading)
+    1  user-correctable error (missing flags, invalid title, no
+       package.json, no CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
 
@@ -78,32 +79,6 @@ const takeValue = (
   return {ok: true, value: argv[index]};
 };
 
-/**
- * The shapes `--title` may not take, or `undefined` when it is usable.
- *
- * Refuse rather than trim or escape: the title is an identity value this step
- * is given, not one it may rewrite, which is the convention the `--kebab` arm
- * already sets. Both rules are checked ahead of the first write, so a rejected
- * run has renamed nothing.
- */
-const titleFailure = (title: string): FlagParseFailure | undefined => {
-  // A line ending splits the heading in two, and `renameClaudeMd`'s guard
-  // compares only the first of those lines against the rebuilt heading, so the
-  // rewrite re-runs and appends on every call.
-  if (/[\n\r]/u.test(title)) {
-    return {message: '--title must be a single line', ok: false};
-  }
-
-  // A blank title would write `# ` as the heading, which is a `CLAUDE.md`
-  // carrying no title: the state `claudeMdPreconditionMet` refuses when the
-  // file arrives that way, reached through the flag instead.
-  if (title.trim() === '') {
-    return {message: '--title must not be blank', ok: false};
-  }
-
-  return undefined;
-};
-
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let title: string | undefined;
   let kebab: string | undefined;
@@ -138,7 +113,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 
   const titleProblem = titleFailure(title);
 
-  if (titleProblem) return titleProblem;
+  if (titleProblem) return {message: titleProblem, ok: false};
 
   if (!/^[a-z][\d a-z-]*$/u.test(kebab)) {
     return {message: '--kebab must be a kebab-case identifier', ok: false};
