@@ -24,6 +24,8 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {escapeJsLiteralValue} from './util/js-literal.js';
+import type {JsLiteralQuote} from './util/js-literal.js';
 import {markStepCompleted} from './util/state.js';
 import {titleFailure} from './util/title.js';
 
@@ -38,7 +40,7 @@ const HELP_TEXT = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, invalid title, no
+    1  user-correctable error (missing flags, invalid title or kebab, no
        package.json, no CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
@@ -221,6 +223,34 @@ const renameClaudeMd = (cwd: string, title: string): void => {
 };
 
 /**
+ * Rewrite the quoted value each `pattern` match captures, where group 1 is
+ * everything up to the opening quote and group 2 is the quote itself.
+ *
+ * A **function** replacement, which is what makes the title safe to splice: in
+ * a replacement *string* `$1` and `$&` are match references, so a title
+ * carrying one injects part of the file into itself. A backslash does not
+ * neutralize them, only `$$` does, so the escape this replaced looked like a
+ * guard and was inert. A function receives the value verbatim and interprets
+ * nothing.
+ *
+ * The value is then escaped for the quote the match found, so an ordinary
+ * `Steve's App` cannot close the literal early. Both halves are needed: the
+ * function form fixes `$`, the escape fixes the quote.
+ */
+const replaceQuotedValue = (
+  source: string,
+  pattern: RegExp,
+  newValue: string
+): string =>
+  source.replace(
+    pattern,
+    // Every pattern below captures the quote as `(['"])`, so group 2 is one of
+    // the two by construction, which is what the narrower type records.
+    (_match: string, prefix: string, quote: JsLiteralQuote) =>
+      `${prefix}${quote}${escapeJsLiteralValue(newValue, quote)}${quote}`
+  );
+
+/**
  * Replace every occurrence of a string-literal property's value while
  * preserving quotes (single or double) and surrounding whitespace.
  * Used for keys whose value is the project title regardless of where
@@ -230,15 +260,12 @@ const replaceStringPropertyAll = (
   source: string,
   key: string,
   newValue: string
-): string => {
-  const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
-  const pattern = new RegExp(
-    String.raw`(\b${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`,
-    'gmu'
+): string =>
+  replaceQuotedValue(
+    source,
+    new RegExp(String.raw`(\b${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`, 'gmu'),
+    newValue
   );
-
-  return source.replace(pattern, `$1$2${escaped}$2`);
-};
 
 /**
  * Replace a string-literal property's value, but only when the key is
@@ -250,15 +277,15 @@ const replaceTopLevelStringProperty = (
   source: string,
   key: string,
   newValue: string
-): string => {
-  const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
-  const pattern = new RegExp(
-    String.raw`^(\x20\x20${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`,
-    'gmu'
+): string =>
+  replaceQuotedValue(
+    source,
+    new RegExp(
+      String.raw`^(\x20\x20${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`,
+      'gmu'
+    ),
+    newValue
   );
-
-  return source.replace(pattern, `$1$2${escaped}$2`);
-};
 
 /**
  * Replace the `title` string-literal nested directly inside the
@@ -266,13 +293,12 @@ const replaceTopLevelStringProperty = (
  * `meta.title` so other `title` keys elsewhere in the file are untouched.
  */
 const replaceMetaTitle = (source: string, newValue: string): string => {
-  const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
   // Match `meta: {` opened at the top object level, then the first
   // `title:` string within it before the block closes.
   const pattern =
     /^(\u0020\u0020meta\s*:\s*\{[^}]*?\btitle\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2/mu;
 
-  return source.replace(pattern, `$1$2${escaped}$2`);
+  return replaceQuotedValue(source, pattern, newValue);
 };
 
 const renameCommonTs = (cwd: string, title: string): void => {

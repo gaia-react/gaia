@@ -21,6 +21,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {escapeJsLiteralValue} from './util/js-literal.js';
 import {markStepCompleted} from './util/state.js';
 import {titleFailure} from './util/title.js';
 
@@ -141,9 +142,7 @@ const debrandStorybook = (cwd: string, title: string): void => {
 
   // Rewrite the brand to the project wordmark: no GAIA title or URL.
   // A function replacement avoids `$` in the title being read as a backref.
-  const safeTitle = title
-    .replaceAll('\\', '\\\\')
-    .replaceAll("'", String.raw`\'`);
+  const safeTitle = escapeJsLiteralValue(title, "'");
 
   next = next.replaceAll(
     /const BRAND = \{[\s\S]*?\};/gu,

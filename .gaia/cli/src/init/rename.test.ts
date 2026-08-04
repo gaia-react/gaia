@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {runInNewContext} from 'node:vm';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {claudeMdHasH1, run} from './rename.js';
 import {readState} from './util/state.js';
@@ -74,6 +75,37 @@ const setupSandbox = (): Sandbox => {
     root,
   };
 };
+
+/**
+ * The seeded language file's default export, evaluated by the JavaScript
+ * engine.
+ *
+ * A substring assertion cannot tell a correctly escaped literal from a broken
+ * one: `siteName: 'Steve'` is a prefix of both the intended value and the
+ * unterminated literal a naive rewrite emits. Parsing the file is the oracle
+ * that separates them, and reading the property back proves the value survived
+ * rather than merely that the file compiles.
+ *
+ * Evaluating the generated source is therefore the assertion rather than a
+ * hazard: the input is a fixture this file defines, rewritten by the subject
+ * under test inside a temp sandbox, and it runs in a fresh context with no
+ * access to this module's scope.
+ */
+const evaluateDefaultExport = (source: string): Record<string, unknown> => {
+  const expression = source
+    .replace(/^export default\s*/mu, '')
+    .trim()
+    .replace(/;$/u, '');
+
+  // eslint-disable-next-line sonarjs/code-eval -- see comment above
+  return runInNewContext(`(${expression})`) as Record<string, unknown>;
+};
+
+// The two titles both tables below assert on. Named so the idempotency rows
+// cannot drift into covering a different shape from the parse rows they were
+// chosen to follow up.
+const APOSTROPHE_TITLE = "Steve's App";
+const MATCH_REF_TITLE = 'Tom $& Co';
 
 const captureStdio = (): {
   errors: string[];
@@ -405,6 +437,117 @@ describe('init rename', () => {
     expect(run(['--title', 'X'], {cwd: sandbox.root})).toBe(1);
     expect(run(['--kebab', 'x'], {cwd: sandbox.root})).toBe(1);
   });
+
+  // Ordinary titles that the sinks, not the flag boundary, have to handle:
+  // `$1` and `$&` are match references in a replacement string, and an
+  // apostrophe closes the literal the value is being written into. Asserted
+  // through the engine rather than through a substring, so the test proves the
+  // seeded file still parses and the key still holds the title the adopter
+  // asked for.
+  test.each([
+    ['a `$n` match reference', 'Q1 $1 Report'],
+    ['a `$&` whole-match reference', MATCH_REF_TITLE],
+    ['a doubled `$$`', 'Cost $$ Plus'],
+    ['an apostrophe', APOSTROPHE_TITLE],
+    ['a backslash', String.raw`Path\To App`],
+    ['both a quote and a `$`', "Steve's $1 App"],
+  ])(
+    'writes a parseable language file for a title with %s',
+    (_label, title) => {
+      sandbox = setupSandbox();
+
+      const exit = run(['--title', title, '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      });
+      expect(exit).toBe(0);
+
+      const common = evaluateDefaultExport(
+        readFileSync(
+          path.join(sandbox.root, 'app', 'languages', 'en', 'common.ts'),
+          'utf8'
+        )
+      );
+      expect((common.meta as Record<string, unknown>).siteName).toBe(title);
+      expect(common.someOtherKey).toBe('untouched');
+
+      const page = evaluateDefaultExport(
+        readFileSync(
+          path.join(
+            sandbox.root,
+            'app',
+            'languages',
+            'en',
+            'pages',
+            '_index.ts'
+          ),
+          'utf8'
+        )
+      );
+      expect(page.heroTitle).toBe(title);
+      expect(page.title).toBe(title);
+      expect((page.meta as Record<string, unknown>).title).toBe(title);
+
+      // The markdown sink takes the value verbatim: a heading needs no escaping,
+      // so an escape leaking out of a language-file sink would show up here.
+      expect(
+        readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')
+      ).toContain(`# ${title}\n`);
+    }
+  );
+
+  // Every seeded value is single-quoted, so the escaping above only ever runs
+  // against `'`. A file whose values are double-quoted drives the other arm:
+  // there the wrapping `"` is what needs escaping and the apostrophe is what
+  // passes through bare, which is the claim the escaper's docblock makes.
+  test('escapes for the quote the file uses, not a fixed one', () => {
+    sandbox = setupSandbox();
+    writeFileSync(
+      path.join(sandbox.root, 'app', 'languages', 'en', 'pages', '_index.ts'),
+      'export default {\n  heroTitle: "Start with something solid.",\n  title: "Old Title",\n};\n',
+      'utf8'
+    );
+
+    expect(
+      run(['--title', 'Steve\'s "Hi" App', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      })
+    ).toBe(0);
+
+    const raw = readFileSync(
+      path.join(sandbox.root, 'app', 'languages', 'en', 'pages', '_index.ts'),
+      'utf8'
+    );
+    const page = evaluateDefaultExport(raw);
+    expect(page.heroTitle).toBe('Steve\'s "Hi" App');
+    expect(page.title).toBe('Steve\'s "Hi" App');
+    // The apostrophe reaches a double-quoted sink unescaped, and the `"` does
+    // not: asserted on the bytes, since both spellings parse to the same value.
+    expect(raw).toContain(String.raw`title: "Steve's \"Hi\" App"`);
+  });
+
+  test.each([
+    ['an apostrophe', APOSTROPHE_TITLE],
+    ['a `$&` whole-match reference', MATCH_REF_TITLE],
+  ])(
+    're-running with the same awkward title is still a no-op: %s',
+    (_label, title) => {
+      sandbox = setupSandbox();
+      const args = ['--title', title, '--kebab', 'hello-world'];
+      run(args, {cwd: sandbox.root});
+      const first = readFileSync(
+        path.join(sandbox.root, 'app', 'languages', 'en', 'common.ts'),
+        'utf8'
+      );
+
+      expect(run(args, {cwd: sandbox.root})).toBe(0);
+      expect(
+        readFileSync(
+          path.join(sandbox.root, 'app', 'languages', 'en', 'common.ts'),
+          'utf8'
+        )
+      ).toBe(first);
+    }
+  );
 });
 
 /**

@@ -16230,6 +16230,9 @@ var run11 = async (argv, options = {}) => {
 import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
 import path10 from "node:path";
 
+// src/init/util/js-literal.ts
+var escapeJsLiteralValue = (value, quote) => value.replaceAll("\\", "\\\\").replaceAll(quote, `\\${quote}`);
+
 // src/init/util/title.ts
 var titleFailure = (title) => {
   if (/[\n\r]/u.test(title)) {
@@ -16253,7 +16256,7 @@ var HELP_TEXT12 = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, invalid title, no
+    1  user-correctable error (missing flags, invalid title or kebab, no
        package.json, no CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
@@ -16341,26 +16344,28 @@ var renameClaudeMd = (cwd, title) => {
   lines[index] = heading;
   atomicWriteFileSync(target, lines.join("\n"));
 };
-var replaceStringPropertyAll = (source, key, newValue) => {
-  const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
-  const pattern = new RegExp(
-    String.raw`(\b${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`,
-    "gmu"
-  );
-  return source.replace(pattern, `$1$2${escaped}$2`);
-};
-var replaceTopLevelStringProperty = (source, key, newValue) => {
-  const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
-  const pattern = new RegExp(
+var replaceQuotedValue = (source, pattern, newValue) => source.replace(
+  pattern,
+  // Every pattern below captures the quote as `(['"])`, so group 2 is one of
+  // the two by construction, which is what the narrower type records.
+  (_match, prefix, quote) => `${prefix}${quote}${escapeJsLiteralValue(newValue, quote)}${quote}`
+);
+var replaceStringPropertyAll = (source, key, newValue) => replaceQuotedValue(
+  source,
+  new RegExp(String.raw`(\b${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`, "gmu"),
+  newValue
+);
+var replaceTopLevelStringProperty = (source, key, newValue) => replaceQuotedValue(
+  source,
+  new RegExp(
     String.raw`^(\x20\x20${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`,
     "gmu"
-  );
-  return source.replace(pattern, `$1$2${escaped}$2`);
-};
+  ),
+  newValue
+);
 var replaceMetaTitle = (source, newValue) => {
-  const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
   const pattern = /^(\u0020\u0020meta\s*:\s*\{[^}]*?\btitle\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2/mu;
-  return source.replace(pattern, `$1$2${escaped}$2`);
+  return replaceQuotedValue(source, pattern, newValue);
 };
 var renameCommonTs = (cwd, title) => {
   const target = path10.join(cwd, COMMON_TS);
@@ -16518,7 +16523,7 @@ var debrandStorybook = (cwd, title) => {
   if (!existsSync7(target)) return;
   const original = readFileSync8(target, "utf8");
   let next = original;
-  const safeTitle = title.replaceAll("\\", "\\\\").replaceAll("'", String.raw`\'`);
+  const safeTitle = escapeJsLiteralValue(title, "'");
   next = next.replaceAll(
     /const BRAND = \{[\s\S]*?\};/gu,
     () => `const BRAND = {
