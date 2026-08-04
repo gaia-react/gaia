@@ -83,7 +83,7 @@ Human refuses → escalate.
 | Bucket C (bundle simulation)                                                                                      | Haiku  |
 | Bucket D (cross-class walk)                                                                                       | Sonnet |
 | Bucket E: Auditor (the wiki page's mechanical categories)                                                        | Haiku  |
-| Bucket E: Auditor (judgment: skill/command/agent frontmatter, rule hygiene, `CLAUDE.md` hygiene, grade synthesis) | Sonnet |
+| Bucket E: Auditor (the wiki page's judgment categories, plus grade synthesis)                                     | Sonnet |
 | Challenger lens: Blind-spot (BS)                                                                                  | Sonnet |
 | Challenger lens: Misclassification (MC)                                                                           | Sonnet |
 | Challenger lens: Grade-honesty (GH)                                                                               | Sonnet |
