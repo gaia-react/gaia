@@ -1,5 +1,4 @@
 import type {StorybookConfig} from '@storybook/react-vite';
-import {mergeConfig} from 'vite';
 
 // The preview inlines no environment values. `window.process.env` stays the
 // empty object `preview-head.html` seeds, so a story reading a client env var
@@ -32,11 +31,6 @@ const config: StorybookConfig = {
   },
 
   stories: ['../app/**/*.stories.tsx'],
-
-  viteFinal: (viteConfig) =>
-    mergeConfig(viteConfig, {
-      resolve: {tsconfigPaths: true},
-    }),
 };
 
 export default config;

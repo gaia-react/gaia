@@ -15,40 +15,40 @@ const ignoreWarnings = ['React DevTools', 'React Router Future Flag Warning'];
 // every test file and every transitive dependency loaded in this process.
 export default defineConfig({
   plugins: [react()],
-    resolve: {
-      conditions: ['module-sync'],
-      tsconfigPaths: true,
+  resolve: {
+    conditions: ['module-sync'],
+    tsconfigPaths: true,
+  },
+  ssr: {
+    noExternal: ['lodash', '@fortawesome/react-fontawesome'],
+  },
+  test: {
+    coverage: {
+      exclude: [
+        '**/node_modules/**',
+        '**/public/**',
+        '**/.{idea,git,cache,output,temp}/**',
+        '**/{playwright,react-router,vite,vitest}.config.*',
+        '.{playwright,storybook}/**/*',
+        'app/{languages,routes,sessions.server,state,types}/**/*',
+        'app/{entry.client,entry.server,env.server,i18n,i18next.server,root}.*',
+        'app/services/api/{index,uris}.ts',
+        'app/services/api/**/{parsers,requests,requests.server,state,types}.*',
+        'app/utils/http.server.ts',
+        'app/**/{state,tests}/*',
+        'docs/**',
+        'test/**/*',
+      ],
+      provider: 'v8',
     },
-    ssr: {
-      noExternal: ['lodash', '@fortawesome/react-fontawesome'],
+    environment: 'happy-dom',
+    globals: true,
+    include: ['./app/**/*.test.{ts,tsx}', './test/**/*.test.{ts,tsx}'],
+    onConsoleLog: (message) => {
+      if (ignoreWarnings.some((warning) => message.includes(warning))) {
+        return false;
+      }
     },
-    test: {
-      coverage: {
-        exclude: [
-          '**/node_modules/**',
-          '**/public/**',
-          '**/.{idea,git,cache,output,temp}/**',
-          '**/{playwright,react-router,vite,vitest}.config.*',
-          '.{playwright,storybook}/**/*',
-          'app/{languages,routes,sessions.server,state,types}/**/*',
-          'app/{entry.client,entry.server,env.server,i18n,i18next.server,root}.*',
-          'app/services/api/{index,uris}.ts',
-          'app/services/api/**/{parsers,requests,requests.server,state,types}.*',
-          'app/utils/http.server.ts',
-          'app/**/{state,tests}/*',
-          'docs/**',
-          'test/**/*',
-        ],
-        provider: 'v8',
-      },
-      environment: 'happy-dom',
-      globals: true,
-      include: ['./app/**/*.test.{ts,tsx}', './test/**/*.test.{ts,tsx}'],
-      onConsoleLog: (message) => {
-        if (ignoreWarnings.some((warning) => message.includes(warning))) {
-          return false;
-        }
-      },
-      setupFiles: ['./test/setup.ts'],
+    setupFiles: ['./test/setup.ts'],
   },
 });
