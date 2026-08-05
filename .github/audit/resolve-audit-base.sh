@@ -236,8 +236,14 @@ emit_base_or_reset() {
     # writing past the ~64KB pipe buffer takes SIGPIPE (141), and under
     # `set -o pipefail` the pipeline status collapses to false -- silently
     # skipping the reset. The sibling scripts avoid this the same way.
+    #
+    # `-z` because audit_delta_has_machinery matches its prefixes literally:
+    # under git's default core.quotePath a path carrying non-ASCII or control
+    # bytes comes back wrapped in literal double quotes, and a token starting
+    # with `"` prefix-matches nothing, so the reset silently does not fire. The
+    # `tr` puts the newlines back that the here-string feed below reads by.
     local _delta
-    _delta="$(git -C "$repo_root" diff --name-only "$candidate" "$head_sha" 2>/dev/null || true)"
+    _delta="$(git -C "$repo_root" diff --name-only -z "$candidate" "$head_sha" 2>/dev/null | tr '\0' '\n' || true)"
     if [ -n "$_delta" ] && audit_delta_has_machinery >/dev/null <<<"$_delta"; then
       echo "resolve-audit-base: machinery changed between ${candidate} and HEAD; resetting to full scope (${main_ref})." >&2
       printf '%s\n' "$main_ref"

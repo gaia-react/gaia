@@ -235,6 +235,21 @@ test("adds two numbers", () => {
   ! denied
 }
 
+# --- path encoding: a non-ASCII path is still scoped in ---
+
+# Under git's default core.quotePath, `git diff --name-only` C-quotes a path
+# carrying non-ASCII bytes, emitting the surrounding double quotes as literal
+# characters. A quoted token starts with `"`, so it matches none of the
+# emergent-surface case patterns above, drops out of the loop, and the gate
+# passes on exactly the input it exists to hold -- indistinguishable, by then,
+# from having nothing to flag.
+@test "denies an emergent component test whose path carries non-ASCII bytes" {
+  commit_file "app/components/Café/tests/index.test.tsx" "$EMERGENT_TEST"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  denied
+}
+
 # --- fail-open: unparseable file is skipped, not denied ---
 
 @test "skips (allows) an emergent test file with a syntax error" {
