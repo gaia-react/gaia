@@ -698,6 +698,30 @@ changed=$(git diff --name-only "${BASE_SHA}...HEAD") ; full_changed=$(git diff -
 ```
 '
 
+# A quoting call whose line goes on to test the resulting variable for
+# emptiness. `[ -z "$changed" ]` is an ordinary thing to write beside a diff,
+# and its `-z` is not the diff's, so without the `)` wall the window runs to
+# end of line and the emptiness test vouches for a call that quotes. None of
+# the other walls closes this: no second call, no comment, no code span.
+DIFF_LATER_DASH_Z_ON_LINE='Agent prose, per .github/audit/resolve-audit-base.sh.
+```bash
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD") && [ -z "$changed" ]
+```
+'
+
+@test "fixture: an unrelated -z later on the line does not vouch for a quoting call" {
+  local repo
+  repo="$(make_fixture_repo diff-later-dash-z)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_LATER_DASH_Z_ON_LINE"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
+  # The range is correct, so assertion 3 stays green and this red is the token
+  # test catching a call the `)` wall is what scoped correctly.
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
 @test "fixture: a base-consuming diff without -z fails assertion 4" {
   local repo
   repo="$(make_fixture_repo diff-full-base-quoted)"

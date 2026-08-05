@@ -383,13 +383,20 @@ _gaia_drop_full_base_matches() {
 # the call, never line-wide: a line may legitimately carry a correct diff and,
 # further along, prose naming the resolver.
 #
-# The call's text ends at the first `#`, backtick, or `;` after it. Those
-# three characters are the walls that matter here: `#` opens a shell comment,
-# a backtick closes a markdown code span, `;` ends the command outright, and
-# past any of them the text is no longer part of this call. `;` is a wall for
-# the same reason the ownership walk above treats it as one -- nothing in a
-# real call's argument list contains one, so a `;` can only introduce a
-# SEPARATE command, whose range must never vouch for this one.
+# The call's text ends at the first `#`, backtick, `;`, or `)` after it. Those
+# four characters are the walls that matter here: `#` opens a shell comment,
+# a backtick closes a markdown code span, `;` ends the command outright, `)`
+# closes the `$( )` the call lives inside, and past any of them the text is no
+# longer part of this call. `;` and `)` are walls for the same reason
+# _gaia_drop_full_base_matches treats them as one -- nothing in a real call's
+# argument list contains either, so each can only introduce text belonging to
+# something OTHER than this call, which must never vouch for it.
+#
+# `)` earns its place on a concrete escape rather than on symmetry. Without it
+# the window of `changed=$(git diff --name-only "${BASE}...HEAD") && [ -z
+# "$changed" ]` runs to end of line, and the emptiness test's own `-z` then
+# satisfies assertion 4 for a call that quotes. None of the other three walls
+# closes that: there is no second call, no comment, and no code span.
 #
 # `|` is deliberately NOT a wall, which is where this walk and the ownership
 # walk part company: a pathspec or a redirect routinely follows the revision
@@ -411,17 +418,17 @@ _gaia_keep_diff_matches_missing() {
       rest = content
       while ((pos = index(rest, call)) > 0) {
         # The call window: everything after this occurrence, cut at the first
-        # wall. FOUR walls, and the first is what makes "per call" true rather
+        # wall. FIVE walls, and the first is what makes "per call" true rather
         # than merely claimed: without it the window runs to end of line, so a
         # two-dot call followed on the same line by a correct three-dot one is
-        # vouched for by the dots belonging to that LATER call. The `;` wall
-        # closes the same hole for a later command that is not a diff call at
+        # vouched for by the dots belonging to that LATER call. The `;` and `)`
+        # walls close the same hole for later text that is not a diff call at
         # all, which the first wall cannot see.
         # _gaia_drop_full_base_matches bounds its own scan at the closing paren
         # for the same reason.
         #
         # Each cut applies to the already-shortened window, so the walls
-        # compose to the EARLIEST of the four and their order here is
+        # compose to the EARLIEST of the five and their order here is
         # immaterial.
         #
         # No apostrophe anywhere in this program: it is a single-quoted shell
@@ -429,6 +436,7 @@ _gaia_keep_diff_matches_missing() {
         window = substr(content, consumed + pos + calllen)
         if ((w = index(window, call)) > 0)  window = substr(window, 1, w - 1)
         if ((w = index(window, "#")) > 0)   window = substr(window, 1, w - 1)
+        if ((w = index(window, ")")) > 0)   window = substr(window, 1, w - 1)
         if ((w = index(window, "`")) > 0)   window = substr(window, 1, w - 1)
         if ((w = index(window, ";")) > 0)   window = substr(window, 1, w - 1)
 

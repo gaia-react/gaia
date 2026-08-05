@@ -200,6 +200,15 @@ base="$(resolve_base)"
 # `tr` is what turns the NUL-terminated output back into the newline-delimited
 # list every consumer below reads. Same spelling the roster's own definitions
 # use (.claude/agents/code-audit-*.md).
+#
+# Quote-safe is not the same as faithful to every path, and the `tr` is where
+# the difference lives: a path containing a literal newline survives `-z` and
+# is then split back into two ownerless tokens, so membership resolves empty
+# for it exactly as it did before. That is not a regression (the quoted
+# spelling produced one ownerless token instead of two) and closing it means
+# consuming the NUL stream without the round-trip, which every consumer below
+# would have to want. code-audit-frontend.md records the same residue against
+# its own eligibility set.
 changed="$(git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)"
 [ -n "$changed" ] || exit 0
 
