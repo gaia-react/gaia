@@ -325,6 +325,18 @@ assert_denied() {
   assert_denied
 }
 
+@test "denies an edit whose new_string drops the trailing newline onto the next line" {
+  # The reconstruction has to model what the tool writes, and the tool glues
+  # new_string's last line onto whatever followed old_string. Here old_string
+  # ends in a newline and new_string does not, so `  //` does not stay a line of
+  # its own: it prefixes the spread below and comments it out. Both strings must
+  # therefore survive with their trailing newlines intact.
+  run_edit "$(cfg)" '  ...lint.base,
+' '  ...lint.base,
+  //'
+  assert_denied
+}
+
 @test "denies moving an existing block-comment closer down past effective code" {
   # Nothing is added or deleted; a closer simply moves, and a line that was
   # running stops running.

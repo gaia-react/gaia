@@ -110,14 +110,23 @@ deny() {
 # residue is already denied. What it does not model is a string literal holding a
 # whitespace-preceded `/*`; that reads as an opener and denies.
 #
-# Misreading the state can only demote a line from `S` to `X`, and
-# `X` is compared line for line while `S` is compared as a multiset, so every
-# error tightens the guard. There is no misreading that turns a checked line into
-# a skipped one, because a comment-prefixed line is skipped on its own shape
-# regardless of block state. That argument holds only because `classify()` is fed
-# a whole file: seeding the tracker at the start of a caller-chosen fragment
-# would itself be a misreading, and that one runs the wrong way, promoting `X`
-# back to `S`.
+# Over-reading the state demotes a line from `S` to `X`, and `X` is compared line
+# for line while `S` is compared as a multiset, so an error in that direction
+# tightens the guard. Under-reading runs the other way, and the opener rule can
+# under-read: `];/*` opens a block in JavaScript and is not counted here, so the
+# region below it reads as live when it is really commented out, and a later bare
+# `*/` would then be admitted while really ending the block early. That residual
+# is accepted rather than closed, on two grounds. No admitted edit can create the
+# precondition, since a line carrying such a `/*` is residue and changing residue
+# is already denied, so the guard cannot be walked into the state; the config has
+# to arrive that way. And every candidate rule tried here trades one direction of
+# error for the other: excluding word characters instead of requiring whitespace
+# restores `];/*` and re-breaks `['**/*.ts']`. Chasing that is how a guard
+# acquires a shape per round.
+#
+# The whole argument holds only because `classify()` is fed a whole file: seeding
+# the tracker at the start of a caller-chosen fragment is itself a misreading,
+# and that one runs the loosening way, promoting `X` back to `S`.
 #
 # Two residuals this leaves, both fail-closed, each costing a by-hand edit rather
 # than admitting anything. A block comment whose body lines carry no `*` prefix
@@ -241,15 +250,23 @@ case "$tool_name" in
 
     [ -f "$file_path" ] && [ -r "$file_path" ] ||
       deny "'$file_path' cannot be read, so what this $tool_name changes cannot be established."
-    before=$(cat -- "$file_path" 2>/dev/null) ||
+    # `$(…)` strips every trailing newline, and here that is not cosmetic: when
+    # `old_string` ends in a newline and `new_string` does not, the tool glues
+    # `new_string`'s last line onto the line that followed, so `…base,\n` ->
+    # `…base,\n  //` comments out the spread below rather than adding a `//`
+    # line of its own. Stripping either string hides that. The `printf x`
+    # sentinel preserves them exactly, and `jq -j` is what keeps jq from adding a
+    # newline of its own on top.
+    before=$(cat -- "$file_path" 2>/dev/null; printf x) ||
       deny "'$file_path' cannot be read, so what this $tool_name changes cannot be established."
+    before=${before%x}
 
     after="$before"
     count=$(jq 'length' <<<"$pairs")
     i=0
     while [ "$i" -lt "$count" ]; do
-      old=$(jq -r ".[$i].old" <<<"$pairs")
-      new=$(jq -r ".[$i].new" <<<"$pairs")
+      old=$(jq -j ".[$i].old" <<<"$pairs"; printf x); old=${old%x}
+      new=$(jq -j ".[$i].new" <<<"$pairs"; printf x); new=${new%x}
       all=$(jq -r ".[$i].all" <<<"$pairs")
       rc=0
       next=$(apply_edit "$old" "$new" "$all" <<<"$after") || rc=$?
