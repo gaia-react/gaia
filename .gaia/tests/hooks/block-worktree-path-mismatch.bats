@@ -16,6 +16,7 @@
 # `return 1`, never `!`-negation.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-worktree-path-mismatch.sh"
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
@@ -105,15 +106,13 @@ make_worktree() {
   WT="$REPO/.claude/worktrees/$rel"
 }
 
-# Quote-safe delivery (mandatory, mirrors block-manifest-write.bats): pass
-# $json and $HOOK_ABS as positional args to an inner bash -c rather than
-# re-wrapping in an outer single-quoted string, so embedded quotes in a
-# payload path never terminate the wrapper early.
+# A payload path can carry quotes of its own, so delivery goes through
+# `invoke_hook` (helpers/run-hook.sh) rather than any local variant.
 run_hook_edit() {
   local tool="$1" path="$2"
   local json
   json=$(jq -n --arg t "$tool" --arg p "$path" '{tool_name: $t, tool_input: {file_path: $p}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 # Same delivery contract as run_hook_edit, plus the payload's `cwd` field: the
@@ -125,7 +124,7 @@ run_hook_edit_cwd() {
   local json
   json=$(jq -n --arg t "$tool" --arg p "$path" --arg c "$cwd" \
     '{tool_name: $t, cwd: $c, tool_input: {file_path: $p}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 # An unrelated git repository, used to check that a payload cwd naming some
@@ -138,16 +137,7 @@ make_other_repo() {
   git -C "$OTHER_REPO" init -q --initial-branch=main
 }
 
-assert_denied() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
-}
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
-  return 0
-}
 
 # --- allowed: editing inside the current worktree ---
 
@@ -156,7 +146,7 @@ assert_allowed() {
   make_worktree "debt/1-foo" "debt/1-foo"
   cd "$WT"
   run_hook_edit "Edit" "$WT/f"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Write on a new file under an existing subdirectory of the current worktree is allowed" {
@@ -165,7 +155,7 @@ assert_allowed() {
   mkdir -p "$WT/sub"
   cd "$WT"
   run_hook_edit "Write" "$WT/sub/new.ts"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "MultiEdit on a tracked file inside the current worktree is allowed" {
@@ -173,7 +163,7 @@ assert_allowed() {
   make_worktree "debt/3-foo" "debt/3-foo"
   cd "$WT"
   run_hook_edit "MultiEdit" "$WT/f"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- denied: the #841 regression, a stale path into a different checkout ---
@@ -183,7 +173,7 @@ assert_allowed() {
   make_worktree "debt/4-foo" "debt/4-foo"
   cd "$WT"
   run_hook_edit "Edit" "$REPO/f"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Write targeting the main checkout while the session is inside the worktree is denied" {
@@ -191,7 +181,7 @@ assert_allowed() {
   make_worktree "debt/5-foo" "debt/5-foo"
   cd "$WT"
   run_hook_edit "Write" "$REPO/new.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "MultiEdit targeting the main checkout while the session is inside the worktree is denied" {
@@ -199,7 +189,7 @@ assert_allowed() {
   make_worktree "debt/6-foo" "debt/6-foo"
   cd "$WT"
   run_hook_edit "MultiEdit" "$REPO/f"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- allowed: no linked-worktree session, nothing to guard ---
@@ -209,7 +199,7 @@ assert_allowed() {
   make_worktree "debt/7-foo" "debt/7-foo"
   cd "$REPO"
   run_hook_edit "Edit" "$WT/f"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # Regression: both roots the guard compares are symlink-canonicalized (main_root
@@ -226,7 +216,7 @@ assert_allowed() {
   ln -s "$REPO" "$SYMLINK_REPO"
   cd "$SYMLINK_REPO"
   run_hook_edit "Edit" "$WT/f"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- allowed: the shared .gaia/local tree ---
@@ -246,7 +236,7 @@ assert_allowed() {
   ln -s "$REPO/.gaia/local/audit" "$WT/.gaia/local/audit"
   cd "$WT"
   run_hook_edit "Write" "$WT/.gaia/local/audit/issue-body-abc123.md"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The exemption is a path-prefix test, so it must not leak to a sibling whose
@@ -257,7 +247,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/localish"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/localish/notes.md"
-  assert_denied
+  assert_denied_by_json
 }
 
 # link-worktree.sh now symlinks the worktree's whole .gaia/local wholesale to
@@ -278,7 +268,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local/handoff/$own_key"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/handoff/$own_key/HANDOFF-2026-01-01.md"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a worktree-mode write to a PEER tree's keyed handoff subtree in the main checkout is denied" {
@@ -290,7 +280,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local/handoff/$peer_key"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/handoff/$peer_key/HANDOFF-2026-01-01.md"
-  assert_denied
+  assert_denied_by_json
   # The refusal has to name the key, not repeat the generic stale-path advice.
   # Re-resolving the repository root does not move a path that reaches main
   # through the one .gaia/local symlink, so the generic message would send the
@@ -307,7 +297,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local/handoff"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/handoff/HANDOFF-2026-01-01.md"
-  assert_denied
+  assert_denied_by_json
 }
 
 # tech-debt #934. plan.md puts the plan folder in the main checkout by contract
@@ -323,7 +313,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local/plans/PLAN-001"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/plans/PLAN-001/PROGRESS.md"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The spec-colocated arm of the same contract: a plan under
@@ -335,7 +325,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local/specs/SPEC-009/plan"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/specs/SPEC-009/plan/PROGRESS.md"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The plans/specs carve-out is a path-segment match like the shared-state arm
@@ -346,7 +336,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local/plansible"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/plansible/notes.md"
-  assert_denied
+  assert_denied_by_json
 }
 
 # The remaining symlinked dirs get the same coverage as audit/, so a future
@@ -359,7 +349,7 @@ assert_allowed() {
   ln -s "$REPO/.gaia/local/debt" "$WT/.gaia/local/debt"
   cd "$WT"
   run_hook_edit "Write" "$WT/.gaia/local/debt/refresh-requested"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a write under the worktree's symlinked .gaia/local/telemetry is allowed" {
@@ -370,7 +360,7 @@ assert_allowed() {
   ln -s "$REPO/.gaia/local/telemetry" "$WT/.gaia/local/telemetry"
   cd "$WT"
   run_hook_edit "Write" "$WT/.gaia/local/telemetry/tally.jsonl"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a write under the worktree's symlinked .gaia/local/cache/shared is allowed" {
@@ -381,7 +371,7 @@ assert_allowed() {
   ln -s "$REPO/.gaia/local/cache/shared" "$WT/.gaia/local/cache/shared"
   cd "$WT"
   run_hook_edit "Write" "$WT/.gaia/local/cache/shared/blob.json"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # Once .gaia/local is one shared symlink, cache/ has no worktree-side copy at
@@ -396,7 +386,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local/cache"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/cache/draft-SPEC-001.md"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # setup-state.json is a symlinked FILE, so its target_dir is the worktree's own
@@ -411,7 +401,7 @@ assert_allowed() {
   ln -s "$REPO/.gaia/local/setup-state.json" "$WT/.gaia/local/setup-state.json"
   cd "$WT"
   run_hook_edit "Write" "$WT/.gaia/local/setup-state.json"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # fixture-main-dir/ is a synthetic third main-only directory in the fixture
@@ -426,7 +416,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local/fixture-main-dir/some-lock"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/fixture-main-dir/some-lock/lock"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The exemption is registry-driven (gaia_registry_recognizes +
@@ -448,7 +438,7 @@ assert_allowed() {
   ln -s "$REPO/.gaia/local/newshared" "$WT/.gaia/local/newshared"
   cd "$WT"
   run_hook_edit "Write" "$WT/.gaia/local/newshared/marker"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The converse of the auto-exempt case: the guard exempts ONLY what the
@@ -463,7 +453,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local/unregistered"
   cd "$WT"
   run_hook_edit "Write" "$REPO/.gaia/local/unregistered/notes.md"
-  assert_denied
+  assert_denied_by_json
   # An unregistered path under .gaia/local is denied because the guard cannot
   # tell shared state from per-tree state without a registry row, and it must
   # say that rather than blame a stale path -- the same reason as the peer-key
@@ -490,7 +480,7 @@ assert_allowed() {
   make_worktree "debt/14-b" "debt/14-b"
   cd "$WT"
   run_hook_edit "Edit" "$WT_A/f"
-  assert_denied
+  assert_denied_by_json
 }
 
 # The payload cwd is authoritative for the acting tree, so the target-side
@@ -508,7 +498,7 @@ assert_allowed() {
   WT_B="$WT"
   cd "$REPO"
   run_hook_edit_cwd "Edit" "$WT_A/f" "$WT_B"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- ignored: not our matcher ---
@@ -518,7 +508,7 @@ assert_allowed() {
   make_worktree "debt/8-foo" "debt/8-foo"
   cd "$WT"
   run_hook_edit "Read" "$REPO/f"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- fail-open: anything the guard cannot resolve ---
@@ -528,7 +518,7 @@ assert_allowed() {
   make_worktree "debt/9-foo" "debt/9-foo"
   cd "$WT"
   run_hook_edit "Write" "/no-such-parent-dir-xyz/new.ts"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a target outside any git repository fails open (allowed)" {
@@ -537,7 +527,7 @@ assert_allowed() {
   NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
   cd "$WT"
   run_hook_edit "Edit" "$NONREPO/scratch.txt"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # A process cwd outside every git repository leaves the hook with no checkout to
@@ -549,7 +539,7 @@ assert_allowed() {
   NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
   cd "$NONREPO"
   run_hook_edit "Edit" "$REPO/f"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- the calling agent's cwd comes from the payload ---
@@ -566,7 +556,7 @@ assert_allowed() {
   make_worktree "debt/22-foo" "debt/22-foo"
   cd "$REPO"
   run_hook_edit_cwd "Edit" "$REPO/f" "$WT"
-  assert_denied
+  assert_denied_by_json
 }
 
 # The mirror of the case above: the same payload cwd, targeting that agent's own
@@ -576,7 +566,7 @@ assert_allowed() {
   make_worktree "debt/23-foo" "debt/23-foo"
   cd "$REPO"
   run_hook_edit_cwd "Edit" "$WT/f" "$WT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # A payload without `cwd` still adjudicates off the process cwd. The rest of
@@ -587,7 +577,7 @@ assert_allowed() {
   make_worktree "debt/24-foo" "debt/24-foo"
   cd "$WT"
   run_hook_edit "Edit" "$REPO/f"
-  assert_denied
+  assert_denied_by_json
 }
 
 # A payload cwd the hook cannot resolve is not a reason to stop guarding. Both
@@ -598,7 +588,7 @@ assert_allowed() {
   make_worktree "debt/25-foo" "debt/25-foo"
   cd "$WT"
   run_hook_edit_cwd "Edit" "$REPO/f" "/no-such-agent-cwd-xyz"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a payload cwd naming a directory outside any git repository falls back to the process cwd" {
@@ -607,7 +597,7 @@ assert_allowed() {
   NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
   cd "$WT"
   run_hook_edit_cwd "Edit" "$REPO/f" "$NONREPO"
-  assert_denied
+  assert_denied_by_json
 }
 
 # The payload cwd is authoritative for tree identity whenever it is absolute and
@@ -623,7 +613,7 @@ assert_allowed() {
   make_other_repo
   cd "$REPO"
   run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The accepted residual of making the payload authoritative (the dropped
@@ -643,7 +633,7 @@ assert_allowed() {
   make_other_repo
   cd "$WT"
   run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The payload cwd is honored only when it is absolute. The absolute check gates
@@ -661,7 +651,7 @@ assert_allowed() {
   ln -s "$REPO" "$WT/linkdir"
   cd "$WT"
   run_hook_edit_cwd "Edit" "$REPO/f" "linkdir"
-  assert_denied
+  assert_denied_by_json
 }
 
 # The mirror of the load-bearing deny case above, and the one case reading the
@@ -674,7 +664,7 @@ assert_allowed() {
   make_worktree "debt/29-foo" "debt/29-foo"
   cd "$WT"
   run_hook_edit_cwd "Edit" "$REPO/f" "$REPO"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # A payload cwd below the main checkout's root, not at it. The shared resolver
@@ -690,7 +680,7 @@ assert_allowed() {
   mkdir -p "$REPO/sub"
   cd "$WT"
   run_hook_edit_cwd "Edit" "$REPO/f" "$REPO/sub"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # tech-debt #940. main_root used to derive from the hook's own process cwd even
@@ -706,7 +696,7 @@ assert_allowed() {
   NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
   cd "$NONREPO"
   run_hook_edit_cwd "Edit" "$REPO/f" "$WT"
-  assert_denied
+  assert_denied_by_json
 }
 
 # The mirror of the case above: the same payload cwd, targeting that agent's own
@@ -717,7 +707,7 @@ assert_allowed() {
   NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
   cd "$NONREPO"
   run_hook_edit_cwd "Edit" "$WT/f" "$WT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The payload is authoritative and both roots come from it, so a target in a
@@ -732,7 +722,7 @@ assert_allowed() {
   NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
   cd "$NONREPO"
   run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- defense in depth: the file_path chain's own two guards ---
@@ -765,7 +755,7 @@ assert_allowed() {
   cd "$WT"
   export CDPATH="$REPO/.gaia/local/audit"
   run_hook_edit "Write" "inner/f"
-  assert_denied
+  assert_denied_by_json
 }
 
 # `dirname --` killer. A file_path whose leading component reads as an option
@@ -779,7 +769,7 @@ assert_allowed() {
   make_worktree "debt/35-foo" "debt/35-foo"
   cd "$WT"
   run_hook_edit "Write" "-x/f"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- structural ---

@@ -28,6 +28,7 @@
 # `"permissionDecision": "deny"`, an allow emits nothing.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOME_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   # The hook (and this suite's seed helpers) recompute signals via the Node
   # helper, which resolves `typescript` from node_modules; skip where deps
@@ -123,7 +124,7 @@ run_merge_hook() {
   local cmd="${1:-gh pr merge 30 --squash --delete-branch}"
   local json
   json=$(jq -nc --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')
-  run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS'"
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
 }
 
 denied() { [[ "$output" == *'"permissionDecision": "deny"'* ]]; }

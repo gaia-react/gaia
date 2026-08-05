@@ -27,6 +27,7 @@
 # edited-after-RED proves the handshake breaks when the body changes.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOME_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   # Both hooks recompute RED signals via the Node helper, which resolves
   # `typescript` from node_modules; skip where deps aren't installed (e.g. the
@@ -92,7 +93,7 @@ run_capture() {
   local payload
   payload=$(jq -nc --arg c "pnpm test --run $file_rel" \
     '{tool_name:"Bash", tool_input:{command:$c}, tool_response:{stdout:"", stderr:"", interrupted:false}}')
-  run bash -c "cd '$REPO' && export RED_CAPTURE_JSON_OVERRIDE='$json_abs'; printf '%s' '$payload' | bash '$CAPTURE_HOOK'"
+  RED_CAPTURE_JSON_OVERRIDE="$json_abs" invoke_hook_in "$REPO" "$payload" "$CAPTURE_HOOK"
 }
 
 # Drive the CHECK hook for a `git commit` PreToolUse, from inside the tmp repo.
@@ -100,7 +101,7 @@ run_check() {
   local cmd="${1:-git commit -m change}"
   local payload
   payload=$(jq -nc --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')
-  run bash -c "cd '$REPO' && printf '%s' '$payload' | bash '$CHECK_HOOK'"
+  invoke_hook_in "$REPO" "$payload" "$CHECK_HOOK"
 }
 
 # Write a canned vitest json reporting ONE failing per-test result. Args:
@@ -202,13 +203,13 @@ test("adds two numbers", () => {
 # ---------------------------------------------------------------------------
 @test "bare pnpm test is still blocked by block-bare-test.sh (exit 2)" {
   payload=$(jq -nc '{tool_name:"Bash", tool_input:{command:"pnpm test"}}')
-  run bash -c "printf '%s' '$payload' | bash '$BARE_TEST_HOOK'"
+  invoke_hook "$payload" "$BARE_TEST_HOOK"
   [ "$status" -eq 2 ]
   [[ "$output" == *"BLOCKED"* ]]
 }
 
 @test "pnpm test --run is NOT blocked by block-bare-test.sh" {
   payload=$(jq -nc '{tool_name:"Bash", tool_input:{command:"pnpm test --run app/utils/x/index.test.ts"}}')
-  run bash -c "printf '%s' '$payload' | bash '$BARE_TEST_HOOK'"
+  invoke_hook "$payload" "$BARE_TEST_HOOK"
   [ "$status" -eq 0 ]
 }

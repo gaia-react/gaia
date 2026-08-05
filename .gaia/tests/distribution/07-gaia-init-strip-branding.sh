@@ -28,7 +28,10 @@ require_cmd rsync "rsync required for adopter-flow scaffold copy"
 
 STAGING="$(mktemp -d -t gaia-dist-init-stage-XXXXXX)"
 SCAFFOLD="$(mktemp -d -t gaia-dist-init-scaffold-XXXXXX)"
-trap 'rm -rf "$STAGING" "$SCAFFOLD"' EXIT
+# Outside the scaffold, which this scenario asserts on file by file.
+CLI_STDERR_FILE="$(mktemp -t gaia-dist-init-stderr-XXXXXX)"
+trap 'rm -rf "$STAGING" "$SCAFFOLD" "$CLI_STDERR_FILE"' EXIT
+capture_cli_stderr "$CLI_STDERR_FILE"
 
 "$HERE/lib/build-staging.sh" "$STAGING" \
   || { fail "build-staging failed"; exit 1; }
@@ -52,15 +55,8 @@ fi
 # own pwd; never `cd "$SCAFFOLD"` at scenario scope, since other
 # scenarios sourced or invoked from `run-all.sh` may rely on $PWD.
 TITLE="Test Project"
-STDOUT="$(cd "$SCAFFOLD" && "$SCAFFOLD/.gaia/cli/gaia" init strip-branding --title "$TITLE" 2>/dev/null)" || {
-  # Re-run with stderr unsuppressed for diagnosis. The `fail; exit 1`
-  # below runs unconditionally; the diagnostic re-run's exit code is
-  # intentionally ignored (`|| :`).
-  log "gaia init strip-branding exited non-zero; rerunning with stderr:"
-  ( cd "$SCAFFOLD" && "$SCAFFOLD/.gaia/cli/gaia" init strip-branding --title "$TITLE" ) || :
-  fail "gaia init strip-branding exited non-zero on staged tree"
-  exit 1
-}
+STDOUT="$(cd "$SCAFFOLD" && run_cli "$SCAFFOLD/.gaia/cli/gaia" init strip-branding --title "$TITLE")" \
+  || fail_with_stderr "gaia init strip-branding exited non-zero on staged tree"
 
 if [ -n "$STDOUT" ]; then
   log "unexpected stdout from strip-branding (contract: no stdout on success):"

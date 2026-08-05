@@ -44,6 +44,7 @@ require_yaml_parser() {
 # CI branch's `return 1` fails each test individually and attaches its message,
 # rather than aborting the run.
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-invalid-yaml-write.sh"
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
@@ -59,41 +60,30 @@ make_workdir() {
   WORKDIR=$(mktemp -d -t gaia-yaml-write-XXXXXX)
 }
 
-# Quote-safe delivery (mandatory, mirrors block-worktree-path-mismatch.bats):
-# pass $json and $HOOK_ABS as positional args to an inner bash -c rather than
-# re-wrapping in an outer single-quoted string, so embedded quotes/newlines in
-# a payload never terminate the wrapper early.
+# Payloads here carry both quotes and newlines, so delivery goes through
+# `invoke_hook` (helpers/run-hook.sh) rather than any local variant.
 run_hook_write() {
   local path="$1" content="$2"
   local json
   json=$(jq -n --arg p "$path" --arg c "$content" '{tool_name: "Write", tool_input: {file_path: $p, content: $c}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 run_hook_edit() {
   local path="$1" old="$2" new="$3"
   local json
   json=$(jq -n --arg p "$path" --arg o "$old" --arg n "$new" '{tool_name: "Edit", tool_input: {file_path: $p, old_string: $o, new_string: $n}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 run_hook_multiedit() {
   local path="$1" edits_json="$2"
   local json
   json=$(jq -n --arg p "$path" --argjson e "$edits_json" '{tool_name: "MultiEdit", tool_input: {file_path: $p, edits: $e}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
-assert_denied() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
-}
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
-  return 0
-}
 
 # --- the parser gate itself ---
 #
@@ -140,13 +130,13 @@ assert_allowed() {
 @test "Write of a .yaml file with a mid-sentence colon-space plain scalar is denied" {
   make_workdir
   run_hook_write "$WORKDIR/foo.yaml" $'title: fix this: it breaks\n'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Write of a .md file whose frontmatter has an unquoted colon-space value is denied" {
   make_workdir
   run_hook_write "$WORKDIR/foo.md" $'---\ndescription: works in isolation: its guarantees hold\n---\nbody\n'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- allowed: Write with valid YAML ---
@@ -154,25 +144,25 @@ assert_allowed() {
 @test "Write of a .yaml file with a properly quoted colon-space value is allowed" {
   make_workdir
   run_hook_write "$WORKDIR/foo.yaml" $'title: "fix this: it breaks"\n'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Write of a .md file with valid frontmatter is allowed" {
   make_workdir
   run_hook_write "$WORKDIR/foo.md" $'---\nname: foo\ndescription: a normal description\n---\nbody\n'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Write of a .md file with no frontmatter at all is allowed" {
   make_workdir
   run_hook_write "$WORKDIR/foo.md" $'# Just a heading\n\nSome prose: with a colon.\n'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Write of a non-YAML, non-Markdown file is allowed (out of scope)" {
   make_workdir
   run_hook_write "$WORKDIR/foo.ts" $'const x: number = 1;\n'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- fail-open: an internal error never turns into a surprise deny ---
@@ -181,7 +171,7 @@ assert_allowed() {
   make_workdir
   printf 'title: caf\xe9 time\n' >"$WORKDIR/foo.yaml"
   run_hook_write "$WORKDIR/foo.yaml" $'title: valid\n'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- regression-only: pre-existing brokenness never locks out a file ---
@@ -190,14 +180,14 @@ assert_allowed() {
   make_workdir
   printf '%s' $'---\ndescription: works in isolation: its guarantees hold\n---\nold body\n' >"$WORKDIR/foo.md"
   run_hook_write "$WORKDIR/foo.md" $'---\ndescription: works in isolation: its guarantees hold\n---\nnew body\n'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Edit to the body of a file whose frontmatter is already broken is allowed" {
   make_workdir
   printf '%s' $'---\ndescription: works in isolation: its guarantees hold\n---\nold body\n' >"$WORKDIR/foo.md"
   run_hook_edit "$WORKDIR/foo.md" "old body" "new body, unrelated to the frontmatter"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- Edit: reconstructs resulting content from the on-disk file ---
@@ -206,34 +196,34 @@ assert_allowed() {
   make_workdir
   printf '%s' $'---\ndescription: fine\n---\nbody\n' >"$WORKDIR/foo.md"
   run_hook_edit "$WORKDIR/foo.md" "description: fine" "description: works in isolation: its guarantees hold"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Edit that keeps frontmatter valid is allowed" {
   make_workdir
   printf '%s' $'---\ndescription: fine\n---\nbody\n' >"$WORKDIR/foo.md"
   run_hook_edit "$WORKDIR/foo.md" "description: fine" "description: still fine"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Edit introducing a space-hash comment truncation into a .yaml value is denied" {
   make_workdir
   printf '%s' $'title: sweep\n' >"$WORKDIR/foo.yaml"
   run_hook_edit "$WORKDIR/foo.yaml" "title: sweep" "title: sweep #9"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Edit on a file that does not exist yet fails open (allowed)" {
   make_workdir
   run_hook_edit "$WORKDIR/nope.yaml" "a" "b"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Edit whose old_string is not found in the current file fails open (allowed)" {
   make_workdir
   printf '%s' $'title: fine\n' >"$WORKDIR/foo.yaml"
   run_hook_edit "$WORKDIR/foo.yaml" "not-present-anywhere" "title: broken: value"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- MultiEdit ---
@@ -243,7 +233,7 @@ assert_allowed() {
   printf '%s' $'---\ndescription: fine\nother: ok\n---\nbody\n' >"$WORKDIR/foo.md"
   edits='[{"old_string":"description: fine","new_string":"description: fine"},{"old_string":"other: ok","new_string":"other: works in isolation: its guarantees hold"}]'
   run_hook_multiedit "$WORKDIR/foo.md" "$edits"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "MultiEdit that keeps content valid is allowed" {
@@ -251,7 +241,7 @@ assert_allowed() {
   printf '%s' $'---\ndescription: fine\nother: ok\n---\nbody\n' >"$WORKDIR/foo.md"
   edits='[{"old_string":"description: fine","new_string":"description: still fine"},{"old_string":"other: ok","new_string":"other: still ok"}]'
   run_hook_multiedit "$WORKDIR/foo.md" "$edits"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- ignored: not our matcher ---
@@ -260,8 +250,8 @@ assert_allowed() {
   make_workdir
   local json
   json=$(jq -n --arg p "$WORKDIR/foo.yaml" '{tool_name: "Read", tool_input: {file_path: $p}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
-  assert_allowed
+  invoke_hook "$json" "$HOOK_ABS"
+  assert_allowed_by_json
 }
 
 # --- structural ---

@@ -35,6 +35,7 @@ source "$HERE/lib/lib.sh"
 STAGING="$(mktemp -d -t gaia-dist-update-stage-XXXXXX)"
 FIXTURES="$(mktemp -d -t gaia-dist-update-fix-XXXXXX)"
 trap 'rm -rf "$STAGING" "$FIXTURES"' EXIT
+capture_cli_stderr "$FIXTURES/cli-stderr.txt"
 
 "$HERE/lib/build-staging.sh" "$STAGING" \
   || { fail "build-staging failed"; exit 1; }
@@ -48,19 +49,12 @@ printf 'minimumReleaseAge: 2880\n' > "$FIXTURES/latest.yaml"
 printf 'minimumReleaseAge: 1440\n' > "$FIXTURES/current.yaml"
 
 # --- JSON verdict --------------------------------------------------------
-VERDICT="$("$GAIA" update merge-workspace \
+VERDICT="$(run_cli "$GAIA" update merge-workspace \
   --baseline "$FIXTURES/baseline.yaml" \
   --latest "$FIXTURES/latest.yaml" \
   --current "$FIXTURES/current.yaml" \
-  --json 2>/dev/null)" || {
-  log "gaia update merge-workspace exited non-zero; rerunning with stderr:"
-  "$GAIA" update merge-workspace \
-    --baseline "$FIXTURES/baseline.yaml" \
-    --latest "$FIXTURES/latest.yaml" \
-    --current "$FIXTURES/current.yaml" --json || :
-  fail "gaia update merge-workspace exited non-zero on staged tree"
-  exit 1
-}
+  --json)" \
+  || fail_with_stderr "gaia update merge-workspace exited non-zero on staged tree"
 
 printf '%s' "$VERDICT" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0,'utf8'));

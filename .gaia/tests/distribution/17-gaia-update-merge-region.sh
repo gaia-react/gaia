@@ -42,60 +42,15 @@ START_MARKER='<!-- test-region:start -->'
 END_MARKER='<!-- test-region:end -->'
 PLACEHOLDER='<<<gaia:region>>>'
 
-# Every invocation below that asserts SUCCESS captures the CLI's stderr here
-# instead of discarding it, and its failure branch prints what it captured.
-# `2>/dev/null` on a success-asserting call leaves the `||` branch with nothing
-# to report but the exit code, which is the one fact the branch being taken
-# already implies; on a runner nobody is sitting in front of, that costs a local
-# reproduction to learn anything at all. Redirecting to a file rather than
-# dropping the redirect keeps stdout clean for the JSON the caller parses.
+# Every invocation below that asserts SUCCESS runs through `run_cli`, which
+# captures the CLI's stderr here instead of discarding it, and reports it from
+# `fail_with_stderr`. Both live in `lib/lib.sh`, whose header explains the
+# mechanism and the load-bearing call order.
 #
 # The discriminator is what the scenario asserts, not its number: scenario 7
 # asserts FAILURE, so its diagnostic is expected noise and it keeps its own
 # suppression.
-#
-# WHY NOT THE SIBLING IDIOM. Several other scenarios in this directory
-# (07, 08, 10, 11, 12, 13, 14) solve the same problem the other way: keep
-# `2>/dev/null`, and on failure re-run the identical command unsuppressed for a
-# human to read. Capturing to a file is preferred here because it reports the
-# bytes the FAILING run actually emitted, where a re-run reports a second,
-# different execution: it can succeed, or fail differently, and it doubles the
-# work on the one path that is already going wrong. This is also the fix the
-# issue itself names. The cost is honest and worth stating: this directory now
-# holds two mechanisms for one job and neither lives in `lib/lib.sh`, which is
-# filed rather than fixed here, because converging the other seven scenarios is
-# not this change's scope.
-#
-# CALL ORDER IS LOAD-BEARING, which is why `fail_with_stderr` exists rather
-# than an inline group at each site. `report_cli_stderr` runs BEFORE `fail`,
-# never after: `fail` returns 1 rather than exiting, and the `||` right-hand
-# side is the LAST command of its AND-OR list, so `set -e` is NOT suppressed
-# there and aborts the script the moment `fail` returns. Anything sequenced
-# after `fail` is dead code that never runs, which is how a diagnostic that
-# looks present prints nothing. (`fail_with_stderr`'s own trailing `exit 1` is
-# unreachable for that reason and is kept as the statement of intent, matching
-# every other failure branch in this file.) Verified by driving a real non-zero
-# exit through scenario 1, not by reading.
-CLI_STDERR="$FIXTURES/cli-stderr.txt"
-: > "$CLI_STDERR"
-
-report_cli_stderr() {
-  if [ -s "$CLI_STDERR" ]; then
-    printf -- '--- gaia stderr ---\n' >&2
-    cat "$CLI_STDERR" >&2
-    printf -- '--- end gaia stderr ---\n' >&2
-  else
-    printf -- '(gaia wrote nothing to stderr)\n' >&2
-  fi
-}
-
-# The one failure branch every success-asserting invocation below uses, so the
-# order above is stated once rather than repeated at eight call sites.
-fail_with_stderr() {
-  report_cli_stderr
-  fail "$1"
-  exit 1
-}
+capture_cli_stderr "$FIXTURES/cli-stderr.txt"
 
 # --- Scenario 1: region-only divergence -----------------------------------
 # `current` differs from `baseline` only inside the region; `latest` differs
@@ -109,12 +64,12 @@ printf 'outside-A-changed\n%s\nregion-baseline-1\nregion-baseline-2\n%s\noutside
 printf 'outside-A\n%s\nregion-current-1\nregion-current-2\n%s\noutside-B\n' \
   "$START_MARKER" "$END_MARKER" > "$FIXTURES/s1-current.txt"
 
-S1_JSON="$("$GAIA" update merge-region \
+S1_JSON="$(run_cli "$GAIA" update merge-region \
   --baseline "$FIXTURES/s1-baseline.txt" \
   --latest "$FIXTURES/s1-latest.txt" \
   --current "$FIXTURES/s1-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
-  --json 2>"$CLI_STDERR")" \
+  --json)" \
   || fail_with_stderr "scenario 1: gaia update merge-region exited non-zero on staged tree"
 
 printf '%s' "$S1_JSON" | node -e "
@@ -140,12 +95,12 @@ printf 'outside-A-current\n%s\nregion-current\n%s\noutside-B\n' \
 printf 'outside-A-latest\n%s\nregion-latest\n%s\noutside-B\n' \
   "$START_MARKER" "$END_MARKER" > "$FIXTURES/s2-latest.txt"
 
-S2_JSON="$("$GAIA" update merge-region \
+S2_JSON="$(run_cli "$GAIA" update merge-region \
   --baseline "$FIXTURES/s2-baseline.txt" \
   --latest "$FIXTURES/s2-latest.txt" \
   --current "$FIXTURES/s2-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
-  --json 2>"$CLI_STDERR")" \
+  --json)" \
   || fail_with_stderr "scenario 2: gaia update merge-region exited non-zero on staged tree"
 
 printf '%s' "$S2_JSON" | node -e "
@@ -176,12 +131,12 @@ printf 'outside-A\n%s\nregion-baseline\n%s\noutside-B\n' \
 printf 'outside-A\n%s\nregion-current\noutside-B\n' \
   "$START_MARKER" > "$FIXTURES/s3-current.txt"
 
-S3_JSON="$("$GAIA" update merge-region \
+S3_JSON="$(run_cli "$GAIA" update merge-region \
   --baseline "$FIXTURES/s3-baseline.txt" \
   --latest "$FIXTURES/s3-latest.txt" \
   --current "$FIXTURES/s3-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
-  --json 2>"$CLI_STDERR")" \
+  --json)" \
   || fail_with_stderr "scenario 3: gaia update merge-region exited non-zero on staged tree"
 
 # The fixture paths reach node through the ENVIRONMENT, never interpolated by
@@ -224,12 +179,12 @@ printf 'no markers here at all\njust plain text\n' > "$FIXTURES/s4-current.txt"
 printf 'outside-A\n%s\nregion-latest\n%s\noutside-B\n' \
   "$START_MARKER" "$END_MARKER" > "$FIXTURES/s4-latest.txt"
 
-S4_JSON="$("$GAIA" update merge-region \
+S4_JSON="$(run_cli "$GAIA" update merge-region \
   --baseline "$FIXTURES/s4-baseline.txt" \
   --latest "$FIXTURES/s4-latest.txt" \
   --current "$FIXTURES/s4-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
-  --json 2>"$CLI_STDERR")" \
+  --json)" \
   || fail_with_stderr "scenario 4: gaia update merge-region exited non-zero on staged tree"
 
 printf '%s' "$S4_JSON" | node -e "
@@ -252,9 +207,9 @@ S5_ARGS=(update merge-region \
   --current "$FIXTURES/s1-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json)
-S5_FIRST="$("$GAIA" "${S5_ARGS[@]}" 2>"$CLI_STDERR")" \
+S5_FIRST="$(run_cli "$GAIA" "${S5_ARGS[@]}")" \
   || fail_with_stderr "scenario 5: first invocation exited non-zero"
-S5_SECOND="$("$GAIA" "${S5_ARGS[@]}" 2>"$CLI_STDERR")" \
+S5_SECOND="$(run_cli "$GAIA" "${S5_ARGS[@]}")" \
   || fail_with_stderr "scenario 5: second invocation exited non-zero"
 [ "$S5_FIRST" = "$S5_SECOND" ] \
   || { fail "scenario 5 (idempotence): two invocations on the same inputs produced different output"; exit 1; }
@@ -292,9 +247,9 @@ S6_ARGS=(update merge-region \
   --current "$FIXTURES/s6-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json)
-S6_FIRST="$("$GAIA" "${S6_ARGS[@]}" 2>"$CLI_STDERR")" \
+S6_FIRST="$(run_cli "$GAIA" "${S6_ARGS[@]}")" \
   || fail_with_stderr "scenario 6: first post-update invocation exited non-zero"
-S6_SECOND="$("$GAIA" "${S6_ARGS[@]}" 2>"$CLI_STDERR")" \
+S6_SECOND="$(run_cli "$GAIA" "${S6_ARGS[@]}")" \
   || fail_with_stderr "scenario 6: second post-update invocation exited non-zero"
 
 printf '%s' "$S6_FIRST" | node -e '

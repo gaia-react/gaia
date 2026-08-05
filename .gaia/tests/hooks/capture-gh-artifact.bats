@@ -7,6 +7,7 @@
 # real .gaia/local/cache/.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HOOK_ABS="$REPO_ROOT/.claude/hooks/capture-gh-artifact.sh"
@@ -47,14 +48,14 @@ build_repo() {
 run_hook() {
   local cmd="$1" out="${2:-}" sid="${3:-S1}" input
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use "$sid" Bash "$cmd" "$out")
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
 }
 
 # run_hook_raw <json> - for payloads the helper's required-param mock cannot
 # express (an empty session_id).
 run_hook_raw() {
   local input="$1"
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
 }
 
 # breadcrumb_path <branch>: the exact keyed filename the hook (and the real
@@ -134,7 +135,7 @@ any_breadcrumb_exists() {
   build_repo
   cd "$REPO"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Edit "gh pr create")
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
 
   any_breadcrumb_exists && return 1
@@ -213,7 +214,7 @@ any_breadcrumb_exists() {
 
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "gh pr create --title x" \
     "https://github.com/gaia-react/gaia/pull/712")
-  PATH="$nojq_bin" run bash -c "echo '$input' | '$HOOK_ABS'"
+  PATH="$nojq_bin" invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 

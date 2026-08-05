@@ -46,6 +46,7 @@
 # removes this copy explicitly.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
   RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
   SPAWN_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-spawn.sh
@@ -126,7 +127,7 @@ run_merge_hook_at() {
   local json
   json=$(jq -n --arg c "$cmd" \
     '{tool_name: "Bash", tool_input: {command: $c}}')
-  run bash -c "cd '$root' && printf '%s' '$json' | bash '$HOOK_ABS'"
+  invoke_hook_in "$root" "$json" "$HOOK_ABS"
 }
 
 # Run the hook with a `gh pr merge` command, from inside the repo.
@@ -293,18 +294,8 @@ EOF
 }
 
 # Assert the most recent run_merge_hook call allowed the merge.
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
-  return 0
-}
 
 # Assert the most recent run_merge_hook call denied the merge.
-assert_denied() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
-  return 0
-}
 
 # Assert NAME is present as a whole line in NEWLINE-separated SET.
 assert_in_set() {
@@ -592,7 +583,7 @@ assert_not_in_set() {
 
   before_pool="$(pool_snapshot)"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
   after_pool="$(pool_snapshot)"
   [ "$before_pool" = "$after_pool" ]
 }
@@ -624,7 +615,7 @@ assert_not_in_set() {
 
   write_marker "code-audit-maintainer-node"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # ---------------------------------------------------------------------------
@@ -665,7 +656,7 @@ assert_not_in_set() {
   write_refused "code-audit-frontend"
 
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "UAT-004: refusal precedence also applies to a specialized member" {
@@ -675,7 +666,7 @@ assert_not_in_set() {
   write_refused "code-audit-maintainer-shell"
 
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
   grep -qF "code-audit-maintainer-shell: REFUSED" <<< "$output" || return 1
 }
 
@@ -691,7 +682,7 @@ assert_not_in_set() {
   commit_files "Dockerfile" "FROM scratch"
 
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "UAT-011: a stale frontend marker does not clear a merge that adds a nested ownerless public asset" {
@@ -700,7 +691,7 @@ assert_not_in_set() {
   commit_files "public/logo.svg" "<svg></svg>"
 
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
 }
 
 # ---------------------------------------------------------------------------
@@ -719,7 +710,7 @@ assert_not_in_set() {
   rm -f "$REPO/.gaia/local/audit/${digest}.dispositions.json"
 
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
   grep -qF "disposition sidecar" <<< "$output" || return 1
 }
 
@@ -730,7 +721,7 @@ assert_not_in_set() {
   write_sidecar '[{"key":"v1 class=x path=app/x.ts line=1","disposition":"filed"}]' "github"
 
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
   grep -qF "filed-but-missing" <<< "$output" || return 1
   grep -qF "v1 class=x path=app/x.ts line=1" <<< "$output" || return 1
 }
@@ -742,7 +733,7 @@ assert_not_in_set() {
   write_sidecar '[]' "absent"
 
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # ---------------------------------------------------------------------------
@@ -784,7 +775,7 @@ assert_not_in_set() {
   ]' "github"
 
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
   grep -qF "machinery-waived-not-eligible: v1 class=x path=app/y.ts line=1" <<<"$output" || return 1
   grep -qF "machinery-waived-not-eligible: v1 class=x path=app/x.tsx line=1" <<<"$output" || return 1
   grep -qF "machinery-waived-not-eligible: v1 class=x path=x.ts line=1" <<<"$output" || return 1
@@ -805,7 +796,7 @@ assert_not_in_set() {
     {"key":"v1 class=x path=app/x.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}
   ]' "github"
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
   grep -qF "machinery-waived-not-eligible: v1 class=x path=app/y.ts line=1" <<<"$output" || return 1
 
   # Drop the sibling offender; the surviving entry is keyed to app/x.ts, a
@@ -813,7 +804,7 @@ assert_not_in_set() {
   write_sidecar '[{"key":"v1 class=x path=app/x.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}]' "github"
   run_merge_hook
   grep -qF '"permissionDecision": "deny"' <<<"$output" && return 1
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "machinery_waived abuse-check: an unresolvable base still denies a non-machinery key (gate-machinery term, not the git failure)" {
@@ -823,7 +814,7 @@ assert_not_in_set() {
   write_sidecar_at "$repo" '[{"key":"v1 class=x path=app/other.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}]' "github"
 
   run_merge_hook_at "$repo"
-  assert_denied
+  assert_denied_by_json
   grep -qF "machinery-waived-not-eligible: v1 class=x path=app/other.ts line=1" <<<"$output" || return 1
 }
 
@@ -844,7 +835,7 @@ assert_not_in_set() {
   # this case cannot pass on a gate that returned before reading anything.
   grep -qF "changed-files-unverified: v1 class=x path=.claude/hooks/lib/audit-machinery.sh line=1" <<<"$output" || return 1
   grep -qF '"permissionDecision": "deny"' <<<"$output" && return 1
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "machinery_waived abuse-check: a resolved base with a genuinely empty diff still denies a non-machinery key, with no note" {
@@ -861,7 +852,7 @@ assert_not_in_set() {
   run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS' 2>&1"
 
   grep -qF "machinery-waived-not-eligible: v1 class=x path=app/other.ts line=1" <<<"$output" || return 1
-  assert_denied
+  assert_denied_by_json
   grep -qF "changed-files-unverified" <<<"$output" && return 1
   grep -qF "changed-files-not-attributable" <<<"$output" && return 1
   return 0
@@ -876,14 +867,14 @@ assert_not_in_set() {
   # (an arm unconditional on the diff base) must deny.
   write_sidecar_at "$repo" '[{"key":"v1 class=x path=sibling line=1","severity":"suggestion","security_class":false,"disposition":"pending","pending_reason":"definitive"}]' "github"
   run_merge_hook_at "$repo"
-  assert_denied
+  assert_denied_by_json
   grep -qF "pending(definitive): v1 class=x path=sibling line=1" <<<"$output" || return 1
 
   # With zero findings at all, the unresolvable base by itself must never
   # deny: nothing depends on it.
   write_sidecar_at "$repo" '[]' "github"
   run_merge_hook_at "$repo"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # ---------------------------------------------------------------------------
@@ -911,7 +902,7 @@ assert_not_in_set() {
   [ "$set" = "code-audit-frontend" ]
   write_markers_for_spawn_set "$set"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-deadlock: root tsconfig.json spawns the default member alone, and its marker allows" {
@@ -920,7 +911,7 @@ assert_not_in_set() {
   [ "$set" = "code-audit-frontend" ]
   write_markers_for_spawn_set "$set"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-deadlock: a CI workflow spawns the workflows member only (not the default), and its marker allows" {
@@ -930,7 +921,7 @@ assert_not_in_set() {
   assert_not_in_set "code-audit-frontend" "$set"
   write_markers_for_spawn_set "$set"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-deadlock: framework shell spawns the shell member only (not the default), and its marker allows" {
@@ -940,7 +931,7 @@ assert_not_in_set() {
   assert_not_in_set "code-audit-frontend" "$set"
   write_markers_for_spawn_set "$set"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-deadlock: framework CLI TypeScript spawns the node member only (not the default), and its marker allows" {
@@ -950,7 +941,7 @@ assert_not_in_set() {
   assert_not_in_set "code-audit-frontend" "$set"
   write_markers_for_spawn_set "$set"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-deadlock: skills prose spawns the prose member only (not the default), and its marker allows" {
@@ -960,7 +951,7 @@ assert_not_in_set() {
   assert_not_in_set "code-audit-frontend" "$set"
   write_markers_for_spawn_set "$set"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-deadlock: mixed app/ + framework shell spawns both, sorted, and their markers allow" {
@@ -970,7 +961,7 @@ assert_not_in_set() {
   [ "$set" = "$expected" ]
   write_markers_for_spawn_set "$set"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-deadlock: wiki + .claude + root markdown spawns nobody, and no markers still allows" {
@@ -984,7 +975,7 @@ assert_not_in_set() {
   set=$(spawn_set)
   [ -z "$set" ]
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-deadlock: root Dockerfile (in-scope, ownerless) denies unmarked and allows once spawned" {
@@ -996,13 +987,13 @@ assert_not_in_set() {
   # Dockerfile), but the legacy out-of-scope gate still denies because
   # Dockerfile is in-scope. Writing no markers must still deny.
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
 
   # The oracle's ownerless probe names the default member for exactly this
   # case, so spawning it and writing its marker clears the gate.
   write_markers_for_spawn_set "$set"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-deadlock: nested public/** (in-scope, ownerless) denies unmarked and allows once spawned" {
@@ -1011,11 +1002,11 @@ assert_not_in_set() {
   [ "$set" = "code-audit-frontend" ]
 
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
 
   write_markers_for_spawn_set "$set"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-deadlock: ownerless Dockerfile riding with a specialized member spawns the specialized member only" {
@@ -1031,7 +1022,7 @@ assert_not_in_set() {
   [ "$set" = "code-audit-maintainer-shell" ]
   write_markers_for_spawn_set "$set"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- No useless spawn: withholding a spawned member's marker must deny -----
@@ -1040,25 +1031,25 @@ assert_not_in_set() {
   commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
   write_marker "code-audit-frontend"
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "FC-4 no-useless-spawn: mixed diff denies with only the shell marker, then allows once both are present" {
   commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
   write_marker "code-audit-maintainer-shell"
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
 
   write_marker "code-audit-frontend"
   run_merge_hook
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "FC-4 no-useless-spawn: framework-shell-only diff denies with a frontend marker instead of the shell one" {
   commit_files ".gaia/scripts/y.sh" "#!/bin/bash"
   write_marker "code-audit-frontend"
   run_merge_hook
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- Linked-worktree anchoring (regression) ---------------------------------
@@ -1116,7 +1107,7 @@ run_merge_hook_in_worktree() {
   local cmd="gh pr merge 30 --squash --delete-branch"
   local json
   json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  run bash -c "cd '$WT' && printf '%s' '$json' | bash '$HOOK_ABS'"
+  invoke_hook_in "$WT" "$json" "$HOOK_ABS"
 }
 
 teardown_linked_worktree() {

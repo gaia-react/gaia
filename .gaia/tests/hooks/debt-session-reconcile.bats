@@ -14,6 +14,7 @@
 # answer from.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/debt-session-reconcile.sh
   command -v jq >/dev/null 2>&1 || skip "jq required"
 
@@ -37,7 +38,7 @@ write_cache() {
 # run_hook: run the hook from the sandbox, draining a synthetic SessionStart
 # payload on stdin.
 run_hook() {
-  run bash -c "cd '$SANDBOX' && printf '%s' '{\"hook_event_name\":\"SessionStart\"}' | '$HOOK_ABS'"
+  invoke_hook_in "$SANDBOX" '{"hook_event_name":"SessionStart"}' "$HOOK_ABS"
   [ "$status" -eq 0 ]
 }
 
@@ -73,7 +74,11 @@ run_hook() {
 
 @test "empty stdin is drained without error" {
   write_cache 2
-  run bash -c "cd '$SANDBOX' && '$HOOK_ABS' < /dev/null"
+  invoke_hook_in "$SANDBOX" "" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -f "$SENTINEL" ]
+}
+
+@test "the hook file is executable" {
+  [ -x "$HOOK_ABS" ]
 }

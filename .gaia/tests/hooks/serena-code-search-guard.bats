@@ -24,6 +24,7 @@
 # repo per test also means the block-once cache starts empty every time.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOK=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/serena-code-search-guard.sh
 
   REPO=$(mktemp -d -t serena-guard-repo-XXXXXX)
@@ -60,18 +61,10 @@ mk_bash() {
 # Pipe $1 (a payload) to the hook from inside the repo. $2 overrides HOME.
 run_hook() {
   local payload="$1" home="${2:-$FAKEHOME}"
-  run bash -c "cd '$REPO' && printf '%s' '$payload' | HOME='$home' bash '$HOOK'"
+  HOME="$home" invoke_hook_in "$REPO" "$payload" "$HOOK"
 }
 
-assert_blocked() {
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"BLOCKED"* ]]
-}
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
 
 # ===========================================================================
 # Grep matcher: regression-lock the existing structured-field behavior.
@@ -79,58 +72,58 @@ assert_allowed() {
 
 @test "grep: bare identifier with no scope narrowing is blocked" {
   run_hook "$(mk_grep 'useBreakpoint' '' '' '')"
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 @test "grep: a prose pattern with a space is allowed" {
   run_hook "$(mk_grep 'some phrase' '' '' '')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "grep: a pattern with regex metacharacters is allowed" {
   run_hook "$(mk_grep 'foo.*bar' '' '' '')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "grep: a non-TS type filter is allowed" {
   run_hook "$(mk_grep 'useBreakpoint' '' '' 'css')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "grep: a *.md glob is allowed" {
   run_hook "$(mk_grep 'useBreakpoint' '' '*.md' '')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "grep: a path outside app/ and test/ is allowed" {
   run_hook "$(mk_grep 'useBreakpoint' 'wiki' '' '')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "grep: a pattern shorter than 3 chars is allowed" {
   run_hook "$(mk_grep 'ab' '' '' '')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "grep: block-once - the identical blocked grep re-run within the window passes" {
   local p; p=$(mk_grep 'useBreakpoint' '' '' '' 'sGrepOnce')
   run_hook "$p"
-  assert_blocked
+  assert_blocked_by_exit
   run_hook "$p"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "grep: no tsconfig.json is a no-op (allow)" {
   rm -f "$REPO/tsconfig.json"
   run_hook "$(mk_grep 'useBreakpoint' '' '' '')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "grep: serena unregistered is a no-op (allow)" {
   local emptyhome; emptyhome=$(mktemp -d -t serena-guard-nohome-XXXXXX)
   run_hook "$(mk_grep 'useBreakpoint' '' '' '')" "$emptyhome"
   rm -rf "$emptyhome"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 # ===========================================================================
@@ -139,22 +132,22 @@ assert_allowed() {
 
 @test "bash: grep -rn over app/ is blocked" {
   run_hook "$(mk_bash 'grep -rn "useBreakpoint" app/')"
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 @test "bash: rg over app/components is blocked" {
   run_hook "$(mk_bash 'rg "handleSubmit" app/components')"
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 @test "bash: ag over test/ is blocked" {
   run_hook "$(mk_bash 'ag SomeSymbol test/')"
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 @test "bash: grep --include=*.ts over app is blocked" {
   run_hook "$(mk_bash 'grep --include=*.ts -rn "MyType" app')"
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 # ===========================================================================
@@ -163,67 +156,67 @@ assert_allowed() {
 
 @test "bash: a git-diff pipeline is allowed" {
   run_hook "$(mk_bash 'git diff | grep "foo"')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: a lint pipeline with context flags is allowed" {
   run_hook "$(mk_bash 'pnpm lint | grep -A2 "warning"')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: a wiki-lint scan scoped to .claude/ is allowed" {
   run_hook "$(mk_bash 'grep -rn "wiki-lint" .claude/')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: a playwright-output pipeline is allowed" {
   run_hook "$(mk_bash 'playwright-cli screenshot out.png | grep passed')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: a path-literal pattern searched in a JSON file is allowed" {
   run_hook "$(mk_bash 'grep -n "app/languages/" manifest.json')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: a multi-word pattern is allowed" {
   run_hook "$(mk_bash 'grep -rn "some phrase here" app/')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: a regex-alternation pattern is allowed" {
   run_hook "$(mk_bash 'grep -rEn "foo|bar" app/')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: a pattern shorter than 3 chars is allowed" {
   run_hook "$(mk_bash 'grep -rn "ab" app/')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: a scope that is not TS/TSX is allowed" {
   run_hook "$(mk_bash 'grep -rn "useThing" app/foo.md')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: a compound command is allowed" {
   run_hook "$(mk_bash 'echo useBreakpoint && grep -rn useBreakpoint app/')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: rg with no resolvable app/test scope is allowed" {
   run_hook "$(mk_bash 'rg useBreakpoint')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: a non-grep command is allowed" {
   run_hook "$(mk_bash 'ls app/')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: grep as prose inside a quoted commit message is allowed" {
   run_hook "$(mk_bash 'git commit -m "grep useBreakpoint in app"')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 # ===========================================================================
@@ -233,20 +226,20 @@ assert_allowed() {
 @test "bash: block-once - the identical blocked grep re-run within the window passes" {
   local p; p=$(mk_bash 'grep -rn "useBreakpoint" app/' 'sBashOnce')
   run_hook "$p"
-  assert_blocked
+  assert_blocked_by_exit
   run_hook "$p"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: no tsconfig.json is a no-op (allow)" {
   rm -f "$REPO/tsconfig.json"
   run_hook "$(mk_bash 'grep -rn "useBreakpoint" app/')"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "bash: serena unregistered is a no-op (allow)" {
   local emptyhome; emptyhome=$(mktemp -d -t serena-guard-nohome-XXXXXX)
   run_hook "$(mk_bash 'grep -rn "useBreakpoint" app/')" "$emptyhome"
   rm -rf "$emptyhome"
-  assert_allowed
+  assert_allowed_by_exit
 }

@@ -12,6 +12,7 @@
 # matching command proceeds).
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/debt-sentinel-touch.sh
   command -v jq >/dev/null 2>&1 || skip "jq required"
@@ -19,7 +20,10 @@ setup() {
 }
 
 teardown() {
+  # `return 0` because the guard is an AND-list: with no $REPO to remove it
+  # would otherwise leave teardown non-zero and fail an innocent test.
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
+  return 0
 }
 
 # run_hook <command>: feed a PostToolUse Bash payload carrying <command> to the
@@ -29,7 +33,7 @@ run_hook() {
   cd "$REPO" || return 1
   local input
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$1")
-  run bash -c "printf '%s' '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
 }
 
@@ -75,7 +79,7 @@ assert_not_armed() { [ ! -f "$REPO/$SENTINEL_REL" ]; }
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO" || return 1
   input=$(jq -n '{tool_name:"Edit",tool_input:{file_path:"x"}}')
-  run bash -c "printf '%s' '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   assert_not_armed
 }
@@ -98,4 +102,8 @@ assert_not_armed() { [ ! -f "$REPO/$SENTINEL_REL" ]; }
 @test "close mentioned inside a --body string is not a real invocation" {
   run_hook 'gh pr create --body "remember to gh issue close 590 later"'
   assert_not_armed
+}
+
+@test "the hook file is executable" {
+  [ -x "$HOOK_ABS" ]
 }

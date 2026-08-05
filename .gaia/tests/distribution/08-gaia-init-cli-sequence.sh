@@ -54,7 +54,10 @@ require_cmd rsync "rsync required for adopter-flow scaffold copy"
 
 STAGING="$(mktemp -d -t gaia-dist-init-stage-XXXXXX)"
 SCAFFOLD="$(mktemp -d -t gaia-dist-init-scaffold-XXXXXX)"
-trap 'rm -rf "$STAGING" "$SCAFFOLD"' EXIT
+# Outside the staged tree, which these scenarios assert on file by file.
+CLI_STDERR_FILE="$(mktemp -t gaia-dist-init-stderr-XXXXXX)"
+trap 'rm -rf "$STAGING" "$SCAFFOLD" "$CLI_STDERR_FILE"' EXIT
+capture_cli_stderr "$CLI_STDERR_FILE"
 
 "$HERE/lib/build-staging.sh" "$STAGING" \
   || { fail "build-staging failed"; exit 1; }
@@ -109,15 +112,8 @@ export GAIA_TELEMETRY_PING_DISABLE=1
 run_step() {
   local label="$1"; shift
   local stdout
-  stdout="$(cd "$SCAFFOLD" && "$GAIA" "$@" 2>/dev/null)" || {
-    # Re-run with stderr unsuppressed for diagnosis. The `fail; exit 1`
-    # below runs unconditionally; the diagnostic re-run's exit code is
-    # intentionally ignored (`|| :`).
-    log "gaia $* exited non-zero; rerunning with stderr:"
-    ( cd "$SCAFFOLD" && "$GAIA" "$@" ) || :
-    fail "gaia $* exited non-zero on staged tree (step: $label)"
-    exit 1
-  }
+  stdout="$(cd "$SCAFFOLD" && run_cli "$GAIA" "$@")" \
+    || fail_with_stderr "gaia $* exited non-zero on staged tree (step: $label)"
   if [ -n "$stdout" ]; then
     log "unexpected stdout from gaia $* (contract: no stdout on success):"
     printf '%s\n' "$stdout" >&2

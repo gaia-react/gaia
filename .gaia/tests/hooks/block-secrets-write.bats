@@ -37,25 +37,26 @@
 # buries the oracle's real output under a warning that is correct for every hit.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-secrets-write.sh"
 }
 
-# Quote-safe delivery: the payloads below carry shell snippets with quotes of
-# their own, so $json and the hook path go in as positional args rather than
-# being re-wrapped in an outer quoted string.
+# The payloads below carry shell snippets with quotes of their own, so
+# delivery goes through `invoke_hook` (helpers/run-hook.sh) rather than any
+# local variant.
 run_hook_write() {
   local body="$1"
   local json
   json=$(jq -n --arg c "$body" '{tool_name: "Write", tool_input: {content: $c}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 run_hook_edit() {
   local body="$1"
   local json
   json=$(jq -n --arg s "$body" '{tool_name: "Edit", tool_input: {new_string: $s}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 # The two above carry no file_path, which is what every test written before the
@@ -66,7 +67,7 @@ run_hook_write_path() {
   local json
   json=$(jq -n --arg p "$path" --arg c "$body" \
     '{tool_name: "Write", tool_input: {file_path: $p, content: $c}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 run_hook_edit_path() {
@@ -75,7 +76,7 @@ run_hook_edit_path() {
   local json
   json=$(jq -n --arg p "$path" --arg s "$body" \
     '{tool_name: "Edit", tool_input: {file_path: $p, new_string: $s}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 # MultiEdit sits on the same `Edit|Write|MultiEdit` matcher as the two above and
@@ -89,7 +90,7 @@ run_hook_multiedit_path() {
   local json
   json=$(jq -n --arg p "$path" --arg s "$body" \
     '{tool_name: "MultiEdit", tool_input: {file_path: $p, edits: [{new_string: $s}]}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 # A deny fixture that grows past one of rule 4's scan caps keeps passing while no
@@ -104,24 +105,18 @@ run_hook_multiedit_path() {
 # condition is FALSE. As a function's last command that inverts the whole
 # assertion, so it can only ever sit before one.
 assert_denied() {
-  [ "$status" -eq 0 ]
   grep -qF -- 'this guard judges in one write' <<<"$output" && return 1
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+  assert_denied_by_json
 }
 
 # The opt-in variant, for the fixtures that cross a cap on purpose. Callers
 # follow it with a grep for the specific cap, since this one only pins that some
 # cap fired.
 assert_denied_cap() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+  assert_denied_by_json
   grep -qF -- 'this guard judges in one write' <<<"$output"
 }
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  ! grep -qF -- '"permissionDecision": "deny"' <<<"$output"
-}
 
 # --- The three secret-shaped patterns still deny ---
 
@@ -234,27 +229,27 @@ assert_allowed() {
 
 @test "an empty value is allowed" {
   run_hook_write "$(printf 'API_KEY=\n')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a bare \$VAR value is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' '$MY_API_KEY')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a braced \${VAR} value is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' '${MY_API_KEY}')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a named placeholder value is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' 'placeholder')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "content with no secret shape at all is allowed" {
   run_hook_write "export function add(a, b) { return a + b }"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The tightened arms have to stay usable: these are the placeholder values the
@@ -263,27 +258,27 @@ assert_allowed() {
 
 @test "an angle-bracket placeholder is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' '<your-key-here>')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a your- placeholder is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' 'your-api-key-here')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a bare example placeholder is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' 'example')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "an example domain placeholder is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' 'example.com')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "an exported \$VAR value is allowed" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '$MY_API_KEY')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # Recognizing the declaration keywords pulls shell lines into a rule written for
@@ -293,22 +288,22 @@ assert_allowed() {
 
 @test "an expansion carrying a default operator is allowed" {
   run_hook_write "$(printf 'export GITHUB_TOKEN=%s\n' '"${GITHUB_TOKEN:-}"')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a positional expansion is allowed" {
   run_hook_write "$(printf 'local CACHE_KEY=%s\n' '"${1}"')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "an expansion followed by a literal path is allowed" {
   run_hook_write "$(printf 'readonly SIGNING_KEY=%s\n' '"${REPO_ROOT}/dev.pem"')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a named fake placeholder is allowed" {
   run_hook_write "$(printf 'export GH_TOKEN=%s\n' '"fake-token"')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The expansion allowance is bounded by the same segment rule as the placeholder
@@ -381,12 +376,12 @@ assert_allowed() {
 
 @test "a long but segmented your- placeholder is allowed" {
   run_hook_write "$(printf 'GITHUB_TOKEN=%s\n' 'your-github-personal-access-token')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "an underscore-segmented your_ placeholder is allowed" {
   run_hook_write "$(printf 'SUPABASE_ANON_KEY=%s\n' 'your_supabase_anon_key_here')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a short unbroken run behind a placeholder prefix is denied" {
@@ -409,17 +404,17 @@ assert_allowed() {
 
 @test "a value that is wholly a command substitution is allowed" {
   run_hook_write "$(printf 'AUDIT_KEY="%s"\n' '$(gaia_audit_key "$BASE_SHA")')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "an unquoted command substitution value is allowed" {
   run_hook_write "$(printf 'SESSION_TOKEN=%s\n' '$(mint_token)')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a command substitution is allowed through Edit too" {
   run_hook_edit "$(printf 'AUDIT_KEY="%s"\n' '$(gaia_audit_key "$BASE_SHA")')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- The declaration keyword carries its options ---
@@ -464,22 +459,22 @@ assert_allowed() {
 
 @test "a trailing comment does not defeat the value extraction" {
   run_hook_write "$(printf 'export GITHUB_TOKEN=%s\n' '"$GH_PAT" # for gh cli')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a trailing or-clause does not defeat the value extraction" {
   run_hook_write "$(printf 'local API_KEY=%s\n' '"$1" || true')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "an unbraced positional is allowed" {
   run_hook_write "$(printf 'local API_KEY=%s\n' '"$1"')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "two concatenated references are allowed" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '"${A}${B}"')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # A trailing comment strips the comment, not the scan: a literal secret ahead of
@@ -520,7 +515,7 @@ assert_allowed() {
 
 @test "ordinary prose in a trailing comment is allowed" {
   run_hook_write "$(printf 'export GITHUB_TOKEN=%s\n' '"$GH_PAT" # authentication for the gh cli')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # `typeset` is bash's synonym for `declare`, so it belongs with the other three.
@@ -539,17 +534,17 @@ assert_allowed() {
 
 @test "an or-separator inside a command substitution is allowed" {
   run_hook_write "$(printf 'AUDIT_KEY=%s\n' '"$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "an and-separator inside a command substitution is allowed" {
   run_hook_write "$(printf 'GH_TOKEN=%s\n' '$(gh auth token 2>/dev/null && :)')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a separator inside an angle-bracket placeholder is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' '<paste || generate>')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # A separator inside the value AND a tail on the same line is the case the
@@ -561,17 +556,17 @@ assert_allowed() {
 
 @test "a guarded substitution ahead of a trailing comment is allowed" {
   run_hook_write "$(printf 'export GH_TOKEN=%s\n' '$(gh auth token 2>/dev/null || true) # for gh cli')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a guarded substitution ahead of an executable tail is allowed" {
   run_hook_write "$(printf 'local API_KEY=%s\n' '$(cat f || true) && echo done')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a quoted guarded substitution ahead of a comment is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' '"$(gaia_audit_key "$B" "$R" 2>/dev/null || true)" # base key')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # Masking the cut point widens nothing else, because the allowlist still reads
@@ -633,7 +628,7 @@ assert_allowed() {
 @test "a guarded substitution in a long value under the cap is allowed" {
   long=$(printf '%*s' 4000 '' | tr ' ' 'a')
   run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a value over the mask cap falls back to the raw cut" {
@@ -676,7 +671,7 @@ assert_allowed() {
 
 @test "an allowed assignment in an executable tail is allowed" {
   run_hook_write "$(printf 'API_KEY=%s\n' '$X ; OTHER_TOKEN=${Y}')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The fragment split is a `tr`, not a parser, so a `||` or `&&` INSIDE a parked
@@ -688,12 +683,12 @@ assert_allowed() {
 
 @test "a guarded substitution in a parked assignment is allowed" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; export API_TOKEN=$(gh auth token 2>/dev/null || true)')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "an and-guarded substitution in a parked assignment is allowed" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; export GH_TOKEN=$(gh auth token 2>/dev/null && :)')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # ...and the bound runs one way only. A sibling fragment carrying a literal is
@@ -722,7 +717,7 @@ assert_allowed() {
 
 @test "two guarded substitutions in one tail are allowed" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$(gh auth token 2>/dev/null || true) ; B_TOKEN=$(id -u 2>/dev/null || true)')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The mask is not verdict-preserving: erasing a substitution body erases what
@@ -732,7 +727,7 @@ assert_allowed() {
 
 @test "an assignment inside a substitution body in a tail is allowed" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$(foo ; B_KEY=hunter2xyz123 )')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # Second, the erased body takes an inner `>` with it, so a `<…>` wrapper that
@@ -743,7 +738,7 @@ assert_allowed() {
 
 @test "a bracket-wrapped substitution carrying a redirect in a tail is allowed" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=<$(gh auth token 2>/dev/null)>')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # Erasing a body erases any assignment inside it, so the flag has to come off
@@ -755,7 +750,7 @@ assert_allowed() {
 
 @test "an assignment inside a substitution does not expose the tail to the shape rule" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; OUT=$(cd repo ; export GH_TOKEN=$T ; git checkout 3ea35f1756b5375b0691436907e14ee8d2dbc43b)')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The same line, long enough that the flag pass's reader is still writing when
@@ -775,7 +770,7 @@ assert_allowed() {
   local filler
   filler=$(head -c 40000 < /dev/zero | tr '\0' 'a')
   run_hook_write "$(printf 'export API_KEY=%s\n' "\$X ; OUT=\$(cd repo ; export GH_TOKEN=\$T ; echo ${filler} ; git checkout 3ea35f1756b5375b0691436907e14ee8d2dbc43b)")"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # ...and the shape backstop survives that split. A tail carrying no watched
@@ -803,7 +798,7 @@ assert_allowed() {
 @test "an allowed assignment in a secret-shaped executable tail is allowed" {
   local ref="LONGVARNAME""1234567"
   run_hook_write "$(printf 'API_KEY=%s\n' "\$X ; OTHER_TOKEN=\${$ref}")"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # `secret_shaped` is fed by process substitution for the same reason the flag
@@ -843,13 +838,13 @@ assert_allowed() {
 
 @test "a short placeholder assignment in .env.example is allowed" {
   run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "the tracked .env.example content is allowed whole" {
   run_hook_write_path '.env.example' "$(printf '%s\n%s\n%s\n' \
     'SITE_URL=http://localhost:5173' 'SESSION_SECRET=local' 'MSW_ENABLED=true')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The values the ALLOWLIST would refuse and shape accepts. These are the whole
@@ -857,27 +852,27 @@ assert_allowed() {
 
 @test "an all-letter word in .env.example is allowed" {
   run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'development')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a localhost URL in .env.example is allowed" {
   run_hook_write_path '.env.example' "$(printf 'API_KEY=%s\n' 'http://localhost:3001/api/')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a short value in .env.example is allowed through Edit too" {
   run_hook_edit_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' '"local"')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a short value in .env.example is allowed through MultiEdit too" {
   run_hook_multiedit_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a nested .env.example is matched by basename" {
   run_hook_write_path 'packages/api/.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # ...and the values shape still refuses there. A committed file is the worst
@@ -913,7 +908,7 @@ assert_allowed() {
 @test "a segmented UUID-format value in .env.example is allowed" {
   run_hook_write_path '.env.example' \
     "$(printf 'API_KEY=%s\n' '550e8400-e29b-41d4-a716-446655440000')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "the same UUID-format value outside .env.example is denied" {
@@ -925,7 +920,7 @@ assert_allowed() {
 @test "a slash-broken value in .env.example is allowed" {
   run_hook_write_path '.env.example' \
     "$(printf 'API_KEY=%s\n' 'aB3xK9pQ7zR2/wL5tN8mV4cX/pQ7zR2wL5tN')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # Dropping the allowlist drops the executable-tail rescan with it: the whole
@@ -944,7 +939,7 @@ assert_allowed() {
 @test "an executable tail in .env.example is judged by shape, not the rescan" {
   run_hook_write_path '.env.example' \
     "$(printf 'SESSION_SECRET=%s ; API_KEY=%s\n' 'local' 'abcd')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "the same executable tail outside .env.example is denied by the rescan" {
@@ -1047,7 +1042,7 @@ assert_allowed() {
 @test "a write at the matching-line cap is still judged" {
   many=$(for i in $(seq 1 200); do printf 'A%d_KEY=${FOO}\n' "$i"; done)
   run_hook_write "$many"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The test above passes both when all 200 lines were judged and when a
@@ -1101,7 +1096,7 @@ assert_allowed() {
 @test "a large write carrying few matching lines is allowed" {
   bulk=$(for i in $(seq 1 2500); do printf 'const value%d = "ordinary line";\n' "$i"; done)
   run_hook_write "$bulk$(printf '\nA_KEY=${FOO}\n')"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The size cap is what bounds the work, since one line can carry unboundedly
@@ -1118,7 +1113,7 @@ assert_allowed() {
 @test "a single matching line at the judged-size cap is still judged" {
   name=$(printf '%*s' 65527 '' | tr ' ' 'A')
   run_hook_write "$(printf 'A_KEY=${%s}\n' "$name")"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a single matching line one character over the judged-size cap is denied" {

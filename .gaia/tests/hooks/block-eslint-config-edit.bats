@@ -42,6 +42,7 @@
 # real edit would carry.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-eslint-config-edit.sh"
   TMP=$(mktemp -d "${BATS_TMPDIR:-/tmp}/eslint-hook.XXXXXX")
@@ -83,10 +84,10 @@ cfg() {
   printf '%s' "$TMP/$name"
 }
 
-# Quote-safe delivery: fixtures carry quotes of their own, so the JSON payload
-# and the hook path go in as positional args rather than being re-wrapped.
+# The fixtures here carry quotes of their own, so delivery goes through
+# `invoke_hook` (helpers/run-hook.sh), which passes the payload positionally.
 run_hook() {
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$1" "$HOOK_ABS"
+  invoke_hook "$1" "$HOOK_ABS"
 }
 
 run_edit() {
@@ -107,36 +108,28 @@ run_tool() {
   run_hook "$(jq -n --arg t "$1" --argjson i "$2" '{tool_name: $t, tool_input: $i}')"
 }
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
 
-assert_denied() {
-  [ "$status" -eq 2 ]
-  grep -qF -- 'BLOCKED' <<<"$output"
-}
 
 # --- path gate, the only thing that decides anything ------------------------
 
 @test "allows an edit to a file that is not an eslint config" {
   run_edit "$(cfg 'const a = 1;' 'home.tsx')" 'const a = 1;' 'const a = 2;'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "allows an edit to a lookalike filename" {
   run_edit "$(cfg 'rules: {}' 'eslint.config.md')" 'rules: {}' "rules: {a: 'off'}"
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "allows a source file whose name merely ends in the guarded one" {
   run_edit "$(cfg 'const a = 1;' 'my-eslint.config.mjs')" 'const a = 1;' 'const a = 2;'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "allows a file whose name merely starts with the guarded one" {
   run_edit "$(cfg 'const a = 1;' 'eslint.config.mjs.bak')" 'const a = 1;' 'const a = 2;'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 # This fixture is pinned between two limits that pull in opposite directions,
@@ -168,7 +161,7 @@ assert_denied() {
     '{tool_name: "Edit", tool_input: {file_path: $p, old_string: "a", new_string: "b"}}' \
     >"$TMP/payload.json"
   run bash -c 'bash "$2" <"$1"' _ "$TMP/payload.json" "$HOOK_ABS"
-  assert_denied
+  assert_blocked_by_exit
 }
 
 # Every other fixture builds its path under $TMP, so all of them carry a slash
@@ -176,7 +169,7 @@ assert_denied() {
 # case, narrowing the group to `(/)` is undetected.
 @test "guards a config named with no directory component at all" {
   run_tool Edit '{"file_path": "eslint.config.mjs", "old_string": "a", "new_string": "b"}'
-  assert_denied
+  assert_blocked_by_exit
 }
 
 @test "guards every extension ESLint resolves, at any depth" {
@@ -194,12 +187,12 @@ assert_denied() {
 @test "denies the reactRouter migration, which is legitimate and denied anyway" {
   run_edit "$(cfg)" '  ...lint.react,' '  ...lint.react,
   ...lint.reactRouter,'
-  assert_denied
+  assert_blocked_by_exit
 }
 
 @test "denies a comment-only change" {
   run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config for the app.'
-  assert_denied
+  assert_blocked_by_exit
 }
 
 @test "denies a blank-line-only change" {
@@ -209,12 +202,12 @@ export default" "const lint = gaiaLint();
 
 
 export default"
-  assert_denied
+  assert_blocked_by_exit
 }
 
 @test "denies a Write whose content only changes a comment" {
   run_write "$(cfg)" "${DEFAULT_BODY/Config for the app./ESLint config for the app.}"
-  assert_denied
+  assert_blocked_by_exit
 }
 
 @test "denies a MultiEdit whose every pair is a comment or an added spread" {
@@ -222,7 +215,7 @@ export default"
     '{file_path: $p,
       edits: [{old_string: " * Config for the app.", new_string: " * ESLint config."},
               {old_string: "  ...lint.react,", new_string: "  ...lint.react,\n  ...lint.reactRouter,"}]}')"
-  assert_denied
+  assert_blocked_by_exit
 }
 
 # --- and every shape it would deny too, so the floor is pinned --------------
@@ -230,18 +223,18 @@ export default"
 @test "denies adding a rule override" {
   run_edit "$(cfg)" "    rules: {'no-console': 'off'}," \
     "    rules: {'no-console': 'off', 'no-empty-pattern': 'off'},"
-  assert_denied
+  assert_blocked_by_exit
 }
 
 @test "denies removing a preset spread" {
   run_edit "$(cfg)" '  ...lint.guardrails,
 ' ''
-  assert_denied
+  assert_blocked_by_exit
 }
 
 @test "denies a Write that replaces the whole config" {
   run_write "$(cfg)" 'export default [];'
-  assert_denied
+  assert_blocked_by_exit
 }
 
 # --- the message is what makes the bluntness honest -------------------------
@@ -283,27 +276,27 @@ export default"
 
 @test "denies a tool shape it cannot otherwise read on a guarded path" {
   run_tool NotebookEdit "$(jq -n --arg p "$(cfg)" '{file_path: $p}')"
-  assert_denied
+  assert_blocked_by_exit
 }
 
 @test "denies an Edit on a guarded path carrying no strings at all" {
   run_tool Edit "$(jq -n --arg p "$(cfg)" '{file_path: $p}')"
-  assert_denied
+  assert_blocked_by_exit
 }
 
 @test "denies a Write on a guarded path that does not exist yet" {
   run_write "$TMP/eslint.config.ts" 'export default [];'
-  assert_denied
+  assert_blocked_by_exit
 }
 
 # --- a payload naming no file cannot be judged, and is not an exemption -----
 
 @test "exits zero on a payload carrying no file_path" {
   run_tool Edit '{"old_string": "a", "new_string": "b"}'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "exits zero on a payload that is not readable JSON" {
   run_hook 'not json at all'
-  assert_allowed
+  assert_allowed_by_exit
 }

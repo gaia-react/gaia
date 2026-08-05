@@ -15,6 +15,7 @@
 # allow/deny decision in stdout JSON.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-spec-plan-chain.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
@@ -32,12 +33,11 @@ teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
 }
 
-# Quote-safe delivery: payloads carry paths and command strings of their own, so
-# $json and $HOOK_ABS go in as positional args rather than being re-wrapped in an
-# outer single-quoted `bash -c '...'` string.
+# Payloads carry paths and command strings of their own, so delivery goes
+# through `invoke_hook` (helpers/run-hook.sh) rather than any local variant.
 run_hook() {
   local json="$1"
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 run_skill() {
@@ -73,6 +73,12 @@ stamp_session() {
   [ -f "$REPO/.gaia/local/cache/spec-chain-${1:-$SESSION}.json" ]
 }
 
+# Both assertions are deliberately narrower than the shared
+# `assert_denied_by_json` / `assert_allowed_by_json` pair in
+# helpers/run-hook.sh, so this suite keeps its own rather than trading down:
+# the deny reads the decision as a JSON FIELD rather than as a substring, and
+# this hook says nothing at all when it allows, which the shared allow does not
+# require.
 assert_denied() {
   [ "$status" -eq 0 ]
   [ "$(jq -r '.hookSpecificOutput.permissionDecision' <<<"$output")" = "deny" ]

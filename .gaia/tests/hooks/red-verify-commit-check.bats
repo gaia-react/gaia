@@ -26,6 +26,7 @@
 # createRequire(import.meta.url), so the signal recompute works.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOME_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   # The hook recomputes RED signals via the Node helper, which resolves
   # `typescript` from node_modules; skip where deps aren't installed (e.g. the
@@ -122,7 +123,7 @@ run_commit_hook() {
   local cmd="${1:-git commit -m change}"
   local json
   json=$(jq -nc --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')
-  run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS'"
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
 }
 
 denied() { [[ "$output" == *'"permissionDecision": "deny"'* ]]; }

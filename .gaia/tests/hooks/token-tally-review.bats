@@ -16,6 +16,7 @@
 # token-tally.sh (a recording stub stands in at the same repo-relative path).
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HOOK_ABS="$REPO_ROOT/.claude/hooks/token-tally-review.sh"
@@ -129,7 +130,7 @@ run_hook_stop() {
 @test "empty/garbage payload: exit 0" {
   build_repo
   cd "$REPO"
-  run bash -c "echo 'not-json{{' | '$HOOK_ABS'"
+  invoke_hook 'not-json{{' "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS_FILE" ]
 }
@@ -137,7 +138,7 @@ run_hook_stop() {
 @test "truly empty stdin: exit 0" {
   build_repo
   cd "$REPO"
-  run bash -c "echo '' | '$HOOK_ABS'"
+  invoke_hook '' "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS_FILE" ]
 }
@@ -323,4 +324,8 @@ EOF
   [ "$status" -eq 0 ]
   [ -f "$CALLS_FILE" ]
   rm -rf "$PATHSTUB"
+}
+
+@test "the hook file is executable" {
+  [ -x "$HOOK_ABS" ]
 }

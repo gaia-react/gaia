@@ -60,6 +60,7 @@
 # bare non-repository cwd.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 
   MAIN=$(mktemp -d -t audit-root-main-XXXXXX)
@@ -786,7 +787,7 @@ run_audit_root_block() {
   main_frontend_digest="$(digest_of "$MAIN" code-audit-frontend)"
   payload="$(write_merge_payload)"
 
-  run bash -c 'cd "$1" && cat "$2" | bash "$3"' _ "$WT" "$payload" "$HOOK_MERGE"
+  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
   [ "$status" -eq 0 ]
   grep -qF -- "$wt_frontend_digest" <<<"$output" || { echo "deny output does not name WT's frontend digest ($wt_frontend_digest): $output" >&2; return 1; }
   grep -qF -- "$main_frontend_digest" <<<"$output" && { echo "deny output names MAIN's digest instead of WT's" >&2; return 1; }
@@ -801,7 +802,7 @@ run_audit_root_block() {
   done
   payload="$(write_merge_payload)"
 
-  run bash -c 'cd "$1" && cat "$2" | bash "$3"' _ "$WT" "$payload" "$HOOK_MERGE"
+  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" && { echo "expected allow, got deny: $output" >&2; return 1; }
   return 0
@@ -815,7 +816,7 @@ run_audit_root_block() {
   done
   payload="$(write_merge_payload)"
 
-  run bash -c 'cd "$1" && cat "$2" | bash "$3"' _ "$WT" "$payload" "$HOOK_MERGE"
+  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" || { echo "expected deny (wrong-digest marker must not clear), got allow: $output" >&2; return 1; }
 }
@@ -830,7 +831,7 @@ run_audit_root_block() {
     [ "$m" = "code-audit-frontend" ] && write_sidecar_at "$MAIN" "$digest"
   done
   payload="$(write_merge_payload)"
-  run bash -c 'cd "$1" && cat "$2" | bash "$3"' _ "$WT" "$payload" "$HOOK_MERGE"
+  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
   if grep -qF -- '"permissionDecision": "deny"' <<<"$output"; then
     echo "baseline (unmutated) stage 7 store assertion failed: $output" >&2
     restore_file "$HOOK_MERGE" "$orig_sum"
@@ -842,7 +843,7 @@ run_audit_root_block() {
   rm -rf "$MAIN/.gaia/local"
   wt_frontend_digest="$(digest_of "$WT" code-audit-frontend)"
   payload="$(write_merge_payload)"
-  run bash -c 'cd "$1" && cat "$2" | bash "$3"' _ "$WT" "$payload" "$HOOK_MERGE"
+  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
   if ! grep -qF -- "$wt_frontend_digest" <<<"$output"; then
     echo "baseline (unmutated) stage 7 digest assertion failed: $output" >&2
     restore_file "$HOOK_MERGE" "$orig_sum"
@@ -873,14 +874,14 @@ run_audit_root_block() {
     [ "$m" = "code-audit-frontend" ] && write_sidecar_at "$MAIN" "$digest"
   done
   payload="$(write_merge_payload)"
-  run bash -c 'cd "$1" && cat "$2" | bash "$3"' _ "$WT" "$payload" "$HOOK_MERGE"
+  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" && store_went_red=1
 
   # Digest assertion, mutated: must stay green -- tree_root's own derivation
   # is untouched by this mutation and still walks WT.
   rm -rf "$MAIN/.gaia/local"
   payload="$(write_merge_payload)"
-  run bash -c 'cd "$1" && cat "$2" | bash "$3"' _ "$WT" "$payload" "$HOOK_MERGE"
+  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
   grep -qF -- "$wt_frontend_digest" <<<"$output" && digest_stayed_green=1
 
   restore_file "$HOOK_MERGE" "$orig_sum"

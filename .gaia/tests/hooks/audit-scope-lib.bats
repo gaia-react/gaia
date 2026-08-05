@@ -15,6 +15,7 @@
 # unless it is the test's last command.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   SCOPE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
@@ -266,7 +267,7 @@ golden_commit() {
 golden_run_hook() {
   local json
   json=$(jq -n '{tool_name: "Bash", tool_input: {command: "gh pr merge 1 --squash"}}')
-  run bash -c "cd '$GREPO' && printf '%s' '$json' | bash '$HOOK'"
+  invoke_hook_in "$GREPO" "$json" "$HOOK"
 }
 
 @test "golden table: pure wiki-only diff allows" {
@@ -374,7 +375,7 @@ golden_run_hook() {
   chmod +x "$SANDBOX/.claude/hooks/pr-merge-audit-check.sh"
 
   json=$(jq -n '{tool_name: "Bash", tool_input: {command: "gh pr merge 1 --squash"}}')
-  run bash -c "cd '$SANDBOX' && printf '%s' '$json' | bash '$SANDBOX/.claude/hooks/pr-merge-audit-check.sh'"
+  invoke_hook_in "$SANDBOX" "$json" "$SANDBOX/.claude/hooks/pr-merge-audit-check.sh"
   rm -rf "$SANDBOX"
 
   [ "$status" -eq 0 ]

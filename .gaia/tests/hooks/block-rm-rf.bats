@@ -18,40 +18,31 @@
 # the quotes sit inside the token rather than around it.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-rm-rf.sh"
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
 }
 
-# Quote-safe delivery (mandatory): every payload here is about quoting, so the
-# command text must reach the hook byte-for-byte. Passing $json and $HOME_ABS
-# as positional args means no outer re-quoting can strip the inner quotes
-# under test. Payloads are written in single quotes so `$HOME` stays the
-# literal 5-character string the guard must match, never this machine's home.
+# Every payload here is about quoting, so the command text must reach the hook
+# byte-for-byte: delivery goes through `invoke_hook` (helpers/run-hook.sh)
+# rather than any local variant. Payloads are written in single quotes so
+# `$HOME` stays the literal 5-character string the guard must match, never this
+# machine's home.
 run_hook_bash() {
   local cmd="$1"
   local json
   json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
-assert_denied() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
-}
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
-  return 0
-}
 
 # Asserts the deny fired for the *stated* reason, not merely that some deny
 # fired. Without this, a target denied by the wrong case arm (say, `$HOME`
 # caught by the absolute-path arm) still reads as a pass.
 assert_denied_because() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+  assert_denied_by_json
   grep -qF -- "$1" <<<"$output"
 }
 
@@ -59,57 +50,57 @@ assert_denied_because() {
 
 @test "rm -rf / is denied" {
   run_hook_bash 'rm -rf /'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \$HOME is denied" {
   run_hook_bash 'rm -rf $HOME'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf ~ is denied" {
   run_hook_bash 'rm -rf ~'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf ~/ is denied" {
   run_hook_bash 'rm -rf ~/'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \$HOME/projects is denied" {
   run_hook_bash 'rm -rf $HOME/projects'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf . is denied" {
   run_hook_bash 'rm -rf .'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf * is denied" {
   run_hook_bash 'rm -rf *'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf .git is denied" {
   run_hook_bash 'rm -rf .git'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf node_modules is denied" {
   run_hook_bash 'rm -rf node_modules'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -fr / (reversed flags) is denied" {
   run_hook_bash 'rm -fr /'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm --no-preserve-root -rf / is denied" {
   run_hook_bash 'rm --no-preserve-root -rf /'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- denied: double-quoted targets ---
@@ -120,66 +111,66 @@ assert_denied_because() {
 
 @test "rm -rf \"\$HOME\" (quoted) is denied" {
   run_hook_bash 'rm -rf "$HOME"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \"/\" (quoted) is denied" {
   run_hook_bash 'rm -rf "/"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \".\" (quoted) is denied" {
   run_hook_bash 'rm -rf "."'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \"*\" (quoted) is denied" {
   run_hook_bash 'rm -rf "*"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \"~\" (quoted) is denied" {
   run_hook_bash 'rm -rf "~"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \".git\" (quoted) is denied" {
   run_hook_bash 'rm -rf ".git"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \"node_modules\" (quoted) is denied" {
   run_hook_bash 'rm -rf "node_modules"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \"\$HOME/projects\" (fully quoted path) is denied" {
   run_hook_bash 'rm -rf "$HOME/projects"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \"\$HOME\"/projects (quotes inside the token) is denied" {
   # Quoting only the expansion and leaving the rest bare is just as idiomatic,
   # and leaves the quote characters mid-token rather than surrounding it.
   run_hook_bash 'rm -rf "$HOME"/projects'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- denied: single-quoted targets ---
 
 @test "rm -rf '\$HOME' (single-quoted) is denied" {
   run_hook_bash "rm -rf '\$HOME'"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf '/' (single-quoted) is denied" {
   run_hook_bash "rm -rf '/'"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf '.git' (single-quoted) is denied" {
   run_hook_bash "rm -rf '.git'"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- denied: the ${HOME} brace form ---
@@ -190,22 +181,22 @@ assert_denied_because() {
 
 @test "rm -rf \${HOME} (brace form) is denied" {
   run_hook_bash 'rm -rf ${HOME}'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \"\${HOME}\" (quoted brace form) is denied" {
   run_hook_bash 'rm -rf "${HOME}"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \"\${HOME}/projects\" (quoted brace path) is denied" {
   run_hook_bash 'rm -rf "${HOME}/projects"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm -rf \${HOME}/.config (brace path) is denied" {
   run_hook_bash 'rm -rf ${HOME}/.config'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- denied: a dangerous target in a non-first rm segment ---
@@ -216,22 +207,22 @@ assert_denied_because() {
 
 @test "a dangerous target in the second rm segment (&&) is denied" {
   run_hook_bash 'rm -rf dist && rm -rf /'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a dangerous target in the second rm segment (;) is denied" {
   run_hook_bash 'rm -rf dist ; rm -rf ~'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a dangerous target in the second rm segment (||) is denied" {
   run_hook_bash 'rm -rf dist || rm -rf .git'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a dangerous target in the third rm segment is denied" {
   run_hook_bash 'cd /tmp && rm -rf build && rm -rf $HOME'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- denied: operand-first flag order ---
@@ -242,17 +233,17 @@ assert_denied_because() {
 
 @test "rm \$HOME -rf (operand before flags) is denied" {
   run_hook_bash 'rm $HOME -rf'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm .git -rf (operand before flags) is denied" {
   run_hook_bash 'rm .git -rf'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm ~ -rf (operand before flags) is denied" {
   run_hook_bash 'rm ~ -rf'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- denied: backslash-newline continuations ---
@@ -265,25 +256,25 @@ assert_denied_because() {
 @test "a continuation-line \$HOME target is denied" {
   run_hook_bash 'rm -rf \
   $HOME/.cache/foo'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a continuation-line root target is denied" {
   run_hook_bash 'rm -rf \
   /'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a continuation-line quoted brace target is denied" {
   run_hook_bash 'rm -rf \
   "${HOME}"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a continuation split between rm and its flags is denied" {
   run_hook_bash 'rm \
   -rf /'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a benign continuation-line cleanup is allowed" {
@@ -291,7 +282,7 @@ assert_denied_because() {
   run_hook_bash 'rm -rf \
   dist \
   build/output'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # A continuation may split a token mid-word. Bash removes the backslash-newline
@@ -302,25 +293,25 @@ assert_denied_because() {
 @test "a continuation splitting \$HOME mid-token is denied" {
   run_hook_bash 'rm -rf $HOM\
 E'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a continuation splitting a quoted \$HOME mid-token is denied" {
   run_hook_bash 'rm -rf "$HO\
 ME"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a continuation splitting node_modules mid-token is denied" {
   run_hook_bash 'rm -rf node_modul\
 es'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a continuation splitting .git mid-token is denied" {
   run_hook_bash 'rm -rf .gi\
 t'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- denied: backslash-escaped targets ---
@@ -366,17 +357,17 @@ t'
   # The bare form carries no -r/-f at all, so only the widened short-circuit
   # reaches it. The -rf variant above does not cover this path.
   run_hook_bash 'rm --no-preserve-root /'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "rm \${HOME} -rf (brace form, operand first) is denied" {
   run_hook_bash 'rm ${HOME} -rf'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- denied: for the right reason ---
 #
-# assert_denied alone cannot tell a correct deny from a deny by the wrong arm.
+# assert_denied_by_json alone cannot tell a correct deny from a deny by the wrong arm.
 
 @test "\$HOME denies via the \$HOME arm, not the absolute-path arm" {
   run_hook_bash 'rm -rf "$HOME"'
@@ -718,27 +709,27 @@ t'
 
 @test "/bin/rm -rf dist (path-qualified word, whitelisted target) is allowed" {
   run_hook_bash '/bin/rm -rf dist'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "/usr/bin/rm -rf dist (path-qualified word, whitelisted target) is allowed" {
   run_hook_bash '/usr/bin/rm -rf dist'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "/bin/RM -rf dist (path-qualified, uppercase word) is allowed" {
   run_hook_bash '/bin/RM -rf dist'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "/bin/rm -rf build/output (path-qualified word) is allowed" {
   run_hook_bash '/bin/rm -rf build/output'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "echo hi && /bin/rm -rf dist (path-qualified word in a later segment) is allowed" {
   run_hook_bash 'echo hi && /bin/rm -rf dist'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The dangerous shapes must still deny, and must deny via the TARGET's own arm.
@@ -784,33 +775,33 @@ t'
 
 @test "rm -rf .gaia/local/plans/x is allowed" {
   run_hook_bash 'rm -rf .gaia/local/plans/x'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf .gaia/local/cache/x is allowed" {
   run_hook_bash 'rm -rf .gaia/local/cache/x'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf dist is allowed" {
   run_hook_bash 'rm -rf dist'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf build/output is allowed" {
   run_hook_bash 'rm -rf build/output'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf \"dist\" (quoted whitelist entry) is allowed" {
   # Quote-stripping must not turn a benign quoted target into a denial.
   run_hook_bash 'rm -rf "dist"'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf ./\"dist\" (quotes inside a benign token) is allowed" {
   run_hook_bash 'rm -rf ./"dist"'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- allowed: the ABSOLUTE spelling of a whitelisted scratch path ---
@@ -830,22 +821,22 @@ t'
 
 @test "rm -f of an absolute .gaia/local/audit path is allowed" {
   run_hook_bash 'rm -f /Users/you/projects/my-app/.gaia/local/audit/issue-body-x.md'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf of an absolute .gaia/local/plans path is allowed" {
   run_hook_bash 'rm -rf /Users/you/projects/my-app/.gaia/local/plans/x'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf of an absolute dist path is allowed" {
   run_hook_bash 'rm -rf /Users/you/projects/my-app/dist'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf of an absolute build path is allowed" {
   run_hook_bash 'rm -rf /Users/you/projects/my-app/build/output'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # The suffix match must not reach up to a filesystem-root directory. `/dist` is a
@@ -910,7 +901,7 @@ t'
   # Collapsing the dot segment must land the token ON the whitelist, not merely
   # off the deny arm: this is the same directory as the plain spelling.
   run_hook_bash 'rm -rf /Users/you/projects/my-app/./dist'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # A `..` segment makes an absolute path resolve somewhere the spelling does not
@@ -943,24 +934,24 @@ t'
 
 @test "rm -rf of worktree scratch under .gaia/local is allowed" {
   run_hook_bash 'rm -rf /Users/you/projects/my-app/.claude/worktrees/c-text-matcher-guards/.gaia/local/audit/issue-body.md'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -f of worktree scratch under .gaia/local is allowed" {
   run_hook_bash 'rm -f /Users/you/projects/my-app/.claude/worktrees/c-text-matcher-guards/.gaia/local/audit/issue-body.md'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "flagless rm of worktree scratch under .gaia/local is allowed" {
   run_hook_bash 'rm /Users/you/projects/my-app/.claude/worktrees/c-text-matcher-guards/.gaia/local/audit/issue-body.md'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "the same scratch path resolved to the main checkout is allowed" {
   # `.gaia/local/audit` is a symlink out of the worktree, so an agent may spell
   # either end of it. Both are the same directory and both must be allowed.
   run_hook_bash 'rm -f /Users/you/projects/my-app/.gaia/local/audit/issue-body.md'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- a hyphenated PATH COMPONENT is not a destructive flag ---
@@ -977,12 +968,12 @@ t'
 
 @test "a hyphenated path component ending in r is not read as a flag" {
   run_hook_bash 'rm /Users/you/projects/my-matcher/notes.md'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a hyphenated path component ending in f is not read as a flag" {
   run_hook_bash 'rm /Users/you/projects/my-perf/notes.md'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm \"-rf\" / (quoted flag) is still denied" {
@@ -1021,7 +1012,7 @@ t'
 
 @test "an unflagged rm segment is not judged on a sibling's flag" {
   run_hook_bash 'rm -rf dist && rm /abs/path/file'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a heredoc quoting shell-cwd.md's own example beside a real rm -rf is allowed" {
@@ -1029,7 +1020,7 @@ t'
 cat > /tmp/body.md <<EOF
 - `rm /abs/path/file`, not `cd /abs/path && rm file`
 EOF'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a FLAGGED sibling segment is still judged" {
@@ -1051,31 +1042,31 @@ EOF'
 
 @test "rm -rf on an unknown relative path is allowed" {
   run_hook_bash 'rm -rf some/scratch/dir'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf on an unrelated quoted variable is allowed" {
   run_hook_bash 'rm -rf "$SCRATCH_DIR"'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf \${HOMEBREW_PREFIX} (a \$HOME-prefixed neighbour) is allowed" {
   # The brace arms must be anchored, not prefix matches: a variable whose name
   # merely starts with HOME is not $HOME.
   run_hook_bash 'rm -rf ${HOMEBREW_PREFIX}'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf \${PWD}/dist (a \$PWD-prefixed whitelist entry) is allowed" {
   # `$PWD/x` IS `x`, so rewriting the prefix must land this on the dist
   # whitelist. Denying every $PWD path would be the easy over-fix.
   run_hook_bash 'rm -rf ${PWD}/dist'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf \$PWD/.gaia/local/cache/x is allowed" {
   run_hook_bash 'rm -rf $PWD/.gaia/local/cache/x'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- allowed: globs and dots the dotfile-glob arm must not swallow ---
@@ -1086,56 +1077,56 @@ EOF'
 
 @test "rm -rf .gaia/local/plans/* (a glob inside a whitelisted path) is allowed" {
   run_hook_bash 'rm -rf .gaia/local/plans/*'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf .gaia/local/audit/*/findings is allowed" {
   run_hook_bash 'rm -rf .gaia/local/audit/*/findings'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf .gitignore (a dotfile with no glob) is allowed" {
   # Starting with a dot is not the hazard; expanding in the cwd is.
   run_hook_bash 'rm -rf .gitignore'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf dist/{a,b} (a scoped brace list with no glob) is allowed" {
   run_hook_bash 'rm -rf dist/{a,b}'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- allowed: quoted separators must not manufacture a denial ---
 
 @test "a benign chain whose first command carries a quoted ; is allowed" {
   run_hook_bash 'echo "a;b" && rm -rf dist'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a benign quoted chain is still split on its real separators" {
   run_hook_bash 'rm -rf dist && rm -rf "build/output"'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a benign multi-segment rm chain is allowed" {
   # Inspecting every segment must not turn an ordinary cleanup chain into a deny.
   run_hook_bash 'rm -rf dist && rm -rf build/output'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm -rf node_modules_backup (a node_modules-prefixed neighbour) is allowed" {
   run_hook_bash 'rm -rf node_modules_backup'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "rm without -rf is allowed" {
   run_hook_bash 'rm file.txt'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a command with no rm at all is allowed" {
   run_hook_bash 'ls -la node_modules'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- allowed: the .claude arm must not swallow its neighbours ---
@@ -1144,7 +1135,7 @@ EOF'
   # The arm is anchored, not a prefix match: a directory whose name merely starts
   # with `.claude` is not `.claude`.
   run_hook_bash 'rm -rf .claudia'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- allowed: the command-word rule must not manufacture a denial ---
@@ -1155,34 +1146,34 @@ EOF'
 
 @test "RM file.txt (uppercase word, no -rf) is allowed" {
   run_hook_bash 'RM file.txt'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "r\"\"m file.txt (quote-split word, no -rf) is allowed" {
   run_hook_bash 'r""m file.txt'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "RM -rf dist (uppercase word, whitelisted target) is allowed" {
   run_hook_bash 'RM -rf dist'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "r\"\"m -rf build/output (quote-split word, whitelisted target) is allowed" {
   run_hook_bash 'r""m -rf build/output'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "charm -rf x (a word merely ENDING in rm) is allowed" {
   # The leading boundary is what keeps the widened command-word match from firing
   # on every word that happens to contain `rm`.
   run_hook_bash 'charm -rf x'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "git commit -m \"warm restart\" (rm inside a word) is allowed" {
   run_hook_bash 'git commit -m "warm restart"'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- the walk's position-preserving invariant, asserted directly ---

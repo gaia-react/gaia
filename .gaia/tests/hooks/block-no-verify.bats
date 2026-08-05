@@ -18,6 +18,7 @@
 # output and those assertions would fail rather than false-pass.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-no-verify.sh"
 
@@ -54,81 +55,73 @@ run_hook() {
   local cmd="$1"
   local json
   json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS'"
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
 }
 
-assert_denied() {
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"permissionDecision": "deny"'* ]]
-}
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  [[ "$output" != *'"permissionDecision": "deny"'* ]]
-}
 
 # --- denied ---
 
 @test "git commit --no-verify is denied" {
   run_hook 'git commit --no-verify -m "x"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "git commit -n is denied" {
   run_hook 'git commit -n -m "x"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "git commit with bundled short flags -anm is denied" {
   run_hook 'git commit -anm "x"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "HUSKY=0 git commit is denied" {
   run_hook 'HUSKY=0 git commit -m "x"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "git -c core.hooksPath=/dev/null commit is denied" {
   run_hook 'git -c core.hooksPath=/dev/null commit -m "x"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "git push --no-verify is denied" {
   run_hook 'git push --no-verify'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "HUSKY=0 git push is denied" {
   run_hook 'HUSKY=0 git push origin feature'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- allowed ---
 
 @test "plain git commit on a feature branch is allowed" {
   run_hook 'git commit -m "x"'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "git push -n (dry-run) is allowed" {
   run_hook 'git push -n origin feature'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "git push --dry-run is allowed" {
   run_hook 'git push --dry-run origin feature'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "plain git push on a feature branch is allowed" {
   run_hook 'git push origin feature'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "HUSKY=1 git commit is allowed (enabling is not a bypass)" {
   run_hook 'HUSKY=1 git commit -m "x"'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "home-repo git -C commit (no bypass) is allowed" {
@@ -136,22 +129,22 @@ assert_allowed() {
   # `git -C <home> commit` must pass; only lowercase `-c core.hooksPath=`
   # (the next test) carries a bypass.
   run_hook "git -C $REPO commit -m \"x\""
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "foreign-repo commit with a bypass is allowed (out of scope)" {
   run_hook "git -C $FOREIGN commit --no-verify -m \"x\""
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a non-commit/push git command with a hooksPath override is ignored" {
   run_hook 'git -c core.hooksPath=/dev/null status'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a non-git command is ignored" {
   run_hook 'pnpm run build'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- command-position anchoring: the words appear, but git is not the program ---
@@ -160,37 +153,37 @@ assert_allowed() {
   # The reported false positive: -n belongs to grep, 'git commit' is the search
   # pattern. git is not in command position, so nothing fires.
   run_hook 'grep -n -e git commit app/foo.ts'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "echo of 'git commit' piped to grep -n is allowed" {
   run_hook 'echo git commit && grep -n foo bar'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "real git commit followed by grep -n is allowed (-n is grep's)" {
   # -n is scoped to the git segment; the grep on the other side of && is inert.
   run_hook 'git commit -m "x" && grep -n foo bar'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "tail -n over a file path containing 'commit' is allowed" {
   run_hook 'tail -n 5 git-commit-notes.txt'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- command-position anchoring still catches real bypasses ---
 
 @test "git commit -n after an unrelated piped command is denied" {
   run_hook 'echo hi | git commit -n -m "x"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "bypass orphaned by a pipe inside the commit message is still denied" {
   # Segment-splitting on the quoted '|' would orphan --no-verify from its git
   # segment; the whole-command safety net re-asserts it.
   run_hook 'git commit -m "a|b" --no-verify'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- deny message names the documented over-block case ---
@@ -202,7 +195,7 @@ assert_allowed() {
   # flag position) so this test pins the message that case actually gets,
   # not the message a real bypass gets from an identical-looking command.
   run_hook 'git commit -m "use --no-verify next time"'
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "documented over-block" <<<"$output" || return 1
 }
 
@@ -211,7 +204,7 @@ assert_allowed() {
   # to commit, since push carries no message text a token could be mentioned
   # inside.
   run_hook 'git push --no-verify'
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "documented over-block" <<<"$output" && return 1
   return 0
 }

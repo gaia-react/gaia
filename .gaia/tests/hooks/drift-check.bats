@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   HOOK="$BATS_TEST_DIRNAME/../../../.claude/hooks/wiki-drift-check.sh"
   # Hook is invoked relative to its own repo. Resolve to absolute.
@@ -8,7 +9,10 @@ setup() {
 }
 
 teardown() {
+  # `return 0` because the guard is an AND-list: with no $REPO to remove it
+  # would otherwise leave teardown non-zero and fail an innocent test.
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
+  return 0
 }
 
 @test "no state file: silent no-op" {
@@ -16,7 +20,7 @@ teardown() {
   cd "$REPO"
   rm -f wiki/.state.json
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -29,7 +33,7 @@ teardown() {
 {"version":1,"last_evaluated_sha":"$head","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ -f .claude/wiki-drift-checked ]
@@ -44,7 +48,7 @@ EOF
 {"version":1,"last_evaluated_sha":"$base","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"[wiki state]"* ]]
   [[ "$output" == *"5 commits ahead"* ]]
@@ -62,11 +66,11 @@ EOF
 
   # First call: emits reminder
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ -n "$output" ]
 
   # Second call same session: no output
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -83,7 +87,7 @@ EOF
   bash -c "echo '$input1' | '$HOOK_ABS'" >/dev/null
 
   input2=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S2)
-  run bash -c "echo '$input2' | '$HOOK_ABS'"
+  invoke_hook "$input2" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"[wiki state]"* ]]
   grep -q "session_id=S2" .claude/wiki-drift-checked
@@ -97,7 +101,7 @@ EOF
 {"version":1,"last_evaluated_sha":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -110,7 +114,7 @@ EOF
   cat > wiki/.state.json <<EOF
 {"version":1,"last_evaluated_sha":"$head","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
-  run bash -c "echo 'not json' | '$HOOK_ABS'"
+  invoke_hook 'not json' "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -127,7 +131,7 @@ EOF
 {"version":1,"last_evaluated_sha":"$base","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   grep -q "drift_count=0" .claude/wiki-drift-checked
@@ -145,8 +149,12 @@ EOF
 {"version":1,"last_evaluated_sha":"$base","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"2 commits ahead"* ]]
   grep -q "drift_count=2" .claude/wiki-drift-checked
+}
+
+@test "the hook file is executable" {
+  [ -x "$HOOK_ABS" ]
 }

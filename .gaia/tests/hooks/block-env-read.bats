@@ -21,100 +21,90 @@
 # an indirectly-invoked bats suite at all.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-env-read.sh"
   WRITE_HOOK_ABS="$HOOKS_SRC/block-env-write.sh"
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
 }
 
-# Quote-safe delivery (mandatory): several payloads below carry Bash commands
-# that contain single quotes of their own (grep '.env' .gitignore, env
-# SECRET=hunter2 cat .env.local). Re-wrapping $json in an outer
-# single-quoted `bash -c '...'` string would let those embedded quotes
-# terminate the wrapper early. Passing $json and the hook path as positional
-# args instead means no re-quoting happens.
+# Several payloads below carry Bash commands with single quotes of their own
+# (grep '.env' .gitignore, env SECRET=hunter2 cat .env.local), so delivery goes
+# through `invoke_hook` (helpers/run-hook.sh) rather than any local variant.
 run_hook_read() {
   local path="$1"
   local json
   json=$(jq -n --arg p "$path" '{tool_name: "Read", tool_input: {file_path: $p}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 run_hook_bash() {
   local cmd="$1"
   local json
   json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 run_write_hook_edit() {
   local tool="$1" path="$2"
   local json
   json=$(jq -n --arg t "$tool" --arg p "$path" '{tool_name: $t, tool_input: {file_path: $p}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$WRITE_HOOK_ABS"
+  invoke_hook "$json" "$WRITE_HOOK_ABS"
 }
 
-assert_denied() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
-}
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  ! grep -qF -- '"permissionDecision": "deny"' <<<"$output"
-}
 
 # --- Read-tool denies (UAT-001, UAT-002) ---
 
 @test "Read .env.local is denied" {
   run_hook_read ".env.local"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Read .env.production is denied" {
   run_hook_read ".env.production"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Read a nested packages/api/.env.production is denied" {
   run_hook_read "packages/api/.env.production"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- Read-tool allow (UAT-003) ---
 
 @test "Read .env.example is allowed" {
   run_hook_read ".env.example"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- Bash denies: recognized readers against variants (UAT-001, UAT-002) ---
 
 @test "cat .env.local is denied" {
   run_hook_bash "cat .env.local"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "cat .env.production is denied" {
   run_hook_bash "cat .env.production"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "cat a nested packages/api/.env.production is denied" {
   run_hook_bash "cat packages/api/.env.production"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- Bash denies: residual read paths (UAT-004) ---
 
 @test "source .env is denied" {
   run_hook_bash "source .env"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test ". ./.env is denied" {
   run_hook_bash ". ./.env"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "x=\$(<.env) is denied" {
@@ -123,100 +113,100 @@ assert_allowed() {
   # would expand $(<.env) here and defeat the test.
   # shellcheck disable=SC2016
   run_hook_bash 'x=$(<.env)'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "xxd .env is denied" {
   run_hook_bash "xxd .env"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "true && cat .env.local is denied (compound-command segment walk)" {
   run_hook_bash "true && cat .env.local"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "cd /tmp; cat .env.local is denied (semicolon segment walk)" {
   run_hook_bash "cd /tmp; cat .env.local"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "false || cat .env.local is denied (or segment walk)" {
   run_hook_bash "false || cat .env.local"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- Bash denies: bare environment dumps (UAT-005) ---
 
 @test "bare env is denied" {
   run_hook_bash "env"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "bare printenv is denied" {
   run_hook_bash "printenv"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "printenv NODE_ENV is denied (printenv has no runner form)" {
   run_hook_bash "printenv NODE_ENV"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- Bash allows: env as a runner (UAT-005) ---
 
 @test "env NODE_ENV=production node app.js is allowed" {
   run_hook_bash "env NODE_ENV=production node app.js"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- Bash allows: false-positive guards (UAT-006) ---
 
 @test "pnpm dev is allowed" {
   run_hook_bash "pnpm dev"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "pnpm i && pnpm dev is allowed (benign compound command)" {
   run_hook_bash "pnpm i && pnpm dev"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "cat app/services/env.ts is allowed" {
   run_hook_bash "cat app/services/env.ts"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "cat README.md is allowed" {
   run_hook_bash "cat README.md"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "cp .env.example .env is allowed" {
   run_hook_bash "cp .env.example .env"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "grep '.env' .gitignore is allowed (pattern, not a file read)" {
   run_hook_bash "grep '.env' .gitignore"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "ls -la .env is allowed (non-reading)" {
   run_hook_bash "ls -la .env"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "cat .env.example is allowed (UAT-003)" {
   run_hook_bash "cat .env.example"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- Self-leak (UAT-009) ---
 
 @test "env SECRET=hunter2 cat .env.local is denied without leaking the inline value" {
   run_hook_bash "env SECRET=hunter2 cat .env.local"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "hunter2" <<<"$output" && return 1
   grep -qF -- "env SECRET=hunter2 cat .env.local" <<<"$output" && return 1
   return 0
@@ -226,12 +216,12 @@ assert_allowed() {
 
 @test "Edit on .env.local is denied by block-env-write.sh (UAT-007)" {
   run_write_hook_edit "Edit" ".env.local"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Write on .env.example is allowed by block-env-write.sh (UAT-007)" {
   run_write_hook_edit "Write" ".env.example"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- Structural ---
@@ -272,7 +262,7 @@ assert_allowed() {
 
 @test "a benign Bash command allows without short-circuiting the chain (UAT-008)" {
   run_hook_bash "pnpm dev"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "hook header documents the corrected posture (UAT-010)" {
