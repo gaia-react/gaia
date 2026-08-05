@@ -35,7 +35,7 @@
       "hook": ".claude/hooks/block-eslint-config-edit.sh",
       "scope": "any",
       "state": [],
-      "why": "Reads the payload's own file_path and before/after strings, plus the target file itself on every arm (Write compares against it; Edit and MultiEdit reconstruct the post-edit file from it); every input is supplied by or addressed by the call, so nothing resolves against a tree-scoped root."
+      "why": "Pattern-matches the payload's own file_path only; touches no tree-scoped state."
     },
     {
       "hook": ".claude/hooks/block-invalid-yaml-write.sh",

@@ -2,35 +2,35 @@
 
 # Tests for .claude/hooks/block-eslint-config-edit.sh.
 #
-# The guard protects eslint.config.{js,cjs,mjs,ts} at any path, and it is an
-# ALLOWLIST rather than a blocklist: blank lines and comments change freely, a
-# bare `...<name>.<group>` preset spread may be added anywhere, and nothing else
-# is added while nothing at all is removed, altered, or reordered. Everything
-# else is denied, including a shape the allowlist has never seen. That direction
-# is the whole guard, so the deny cases below carry more weight than the allow
-# cases: a widening that admits a `rules:` override, an `ignores:` entry, a
-# spread deletion, or a spread MOVE has hollowed the hook out even while the two
-# allow cases still pass.
+# The guard protects eslint.config.{js,cjs,mjs,ts} at any path, and it is a
+# BLANKET DENY on the filename: every edit to the file is refused, whatever the
+# edit does. So the suite has two halves and neither is decoration.
 #
-# The two allow cases are not decoration either. They are the defect the hook
-# was filed for (tech-debt #1153): a filename-only deny blocks the
+# The first half is the path gate, which is the only thing that decides anything:
+# a file that is not an eslint config passes, every guarded extension at every
+# depth does not.
+#
+# The second half is the message, and it carries more weight than a message
+# usually does. A blunt guard that says nothing useful is indistinguishable from
+# a broken one to whoever hits it, and the denial reaches a legitimate edit: the
 # `...lint.reactRouter` migration the CHANGELOG's Action required tells adopters
-# to make, and blocks repairing a stale comment in the config itself.
+# to make is denied here like everything else. The message has to name that,
+# admit the denial is on the filename alone, and say how the edit gets made. Those
+# three are pinned individually, because a message that loses any one of them has
+# lost the thing that makes the bluntness honest rather than merely broad.
 #
-# **Every content test runs against a real file on disk**, and that is
-# load-bearing rather than tidiness. The hook judges whole files: an Edit's
-# old_string/new_string are a fragment whose boundaries the caller picks, and
-# comment state is a property of the file, so a suite that fed bare fragments
-# could only ever test the arrangements it happened to choose. The split-wrap
-# tests below are the cases that shortcut hid.
-
+# The deny cases below deliberately include the shapes an allowlist would admit,
+# a comment-only change, an added bare preset spread, a blank-line-only change.
+# They are the cases where a guard that starts judging edits again would first
+# diverge, so they are what pins the blanket deny in place.
+#
 # shellcheck disable=SC2317
 # SC2317 (command appears unreachable) is a structural false positive on every
 # @test block: bats invokes each body through its own runner, which the static
 # analyzer cannot see. File-wide because the false positive is intrinsic to the
 # bats structure rather than to any single test. (Keep the word "shellcheck"
 # off the start of a comment line here; it is parsed as a directive there.)
-
+#
 # shellcheck disable=SC2016
 # SC2016 (expressions don't expand in single quotes) fires on the `$` inside
 # fixture identifiers and on `${...}` inside fixture config bodies. Not
@@ -113,7 +113,7 @@ assert_denied() {
   grep -qF -- 'BLOCKED' <<<"$output"
 }
 
-# --- path gate -------------------------------------------------------------
+# --- path gate, the only thing that decides anything ------------------------
 
 @test "allows an edit to a file that is not an eslint config" {
   run_edit "$(cfg 'const a = 1;' 'home.tsx')" 'const a = 1;' 'const a = 2;'
@@ -135,75 +135,46 @@ assert_denied() {
   done
 }
 
-# --- the two allowed shapes ------------------------------------------------
+# --- the deny is blanket, including every shape an allowlist would admit ----
 
-@test "allows the reactRouter migration the CHANGELOG tells adopters to make" {
-  run_edit "$(cfg)" '  ...lint.react,' "  ...lint.react,
-  ...lint.reactRouter,"
-  assert_allowed
-}
-
-@test "allows adding a spread where the anchor line gains a trailing comma" {
-  run_edit "$(cfg)" '  ...lint.react' "  ...lint.react,
-  ...lint.reactRouter"
-  assert_allowed
-}
-
-@test "allows repairing a stale comment" {
-  run_edit "$(cfg)" ' * (storybook, playwright, betterTailwind).' \
-    ' * (storybook, playwright, reactRouter, betterTailwind).'
-  assert_allowed
-}
-
-@test "allows turning a line comment into a block comment" {
-  run_edit "$(cfg)" '    // why this rule is off' "    /* why this rule is off
-     * and when to revisit it
-     */"
-  assert_allowed
-}
-
-@test "allows the migration on a config carrying a glob that contains a slash-star" {
-  # `['dist/**']` and `['.gaia/**']` both contain the two characters that open a
-  # block comment. Reading those as openers puts the rest of the file inside a
-  # phantom comment and denies the migration this hook exists to allow, on the
-  # exact config that motivated it. DEFAULT_BODY carries such a glob on purpose;
-  # this test pins the reason.
-  run_edit "$(cfg)" '  ...lint.react,' "  ...lint.react,
-  ...lint.reactRouter,"
-  assert_allowed
-  grep -qF -- "dist/**" "$TMP/eslint.config.mjs"
-}
-
-@test "allows a blank-line-only change" {
-  run_edit "$(cfg)" '  ...lint.base,
-  ...lint.react,' '  ...lint.base,
-
-  ...lint.react,'
-  assert_allowed
-}
-
-@test "allows a comment change surrounding an untouched rules block" {
-  run_edit "$(cfg)" '    // why this rule is off' '    // why this rule is off, see #123'
-  assert_allowed
-}
-
-@test "allows editing a whole-line block comment" {
-  run_edit "$(cfg)" '  ...lint.base,' '  /* base first */
-  ...lint.base,'
-  assert_allowed
-}
-
-# --- the deny cases, which are the guard -----------------------------------
-
-@test "denies adding a rule override" {
-  run_edit "$(cfg)" '  ...lint.react,' "  ...lint.react,
-  rules: {'no-empty-pattern': 'off'},"
+@test "denies the reactRouter migration, which is legitimate and denied anyway" {
+  run_edit "$(cfg)" '  ...lint.react,' '  ...lint.react,
+  ...lint.reactRouter,'
   assert_denied
 }
 
-@test "denies adding an ignores entry" {
-  run_edit "$(cfg)" '  ...lint.guardrails,' "  ...lint.guardrails,
-  ignores: ['app/routes/**'],"
+@test "denies a comment-only change" {
+  run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config for the app.'
+  assert_denied
+}
+
+@test "denies a blank-line-only change" {
+  run_edit "$(cfg)" "const lint = gaiaLint();
+
+export default" "const lint = gaiaLint();
+
+export default"
+  assert_denied
+}
+
+@test "denies a Write whose content only changes a comment" {
+  run_write "$(cfg)" "${DEFAULT_BODY/Config for the app./ESLint config for the app.}"
+  assert_denied
+}
+
+@test "denies a MultiEdit whose every pair is a comment or an added spread" {
+  run_tool MultiEdit "$(jq -n --arg p "$(cfg)" \
+    '{file_path: $p,
+      edits: [{old_string: " * Config for the app.", new_string: " * ESLint config."},
+              {old_string: "  ...lint.react,", new_string: "  ...lint.react,\n  ...lint.reactRouter,"}]}')"
+  assert_denied
+}
+
+# --- and every shape it would deny too, so the floor is pinned --------------
+
+@test "denies adding a rule override" {
+  run_edit "$(cfg)" "    rules: {'no-console': 'off'}," \
+    "    rules: {'no-console': 'off', 'no-empty-pattern': 'off'},"
   assert_denied
 }
 
@@ -213,324 +184,65 @@ assert_denied() {
   assert_denied
 }
 
-@test "denies commenting out a preset spread" {
-  run_edit "$(cfg)" '  ...lint.guardrails,' '  // ...lint.guardrails,'
+@test "denies a Write that replaces the whole config" {
+  run_write "$(cfg)" 'export default [];'
   assert_denied
 }
 
-@test "denies changing the options of a called preset" {
-  run_edit "$(cfg)" "  ...lint.ignores({extra: ['dist/**']})," \
-    "  ...lint.ignores({extra: ['dist/**', 'app/routes/**']}),"
-  assert_denied
+# --- the message is what makes the bluntness honest -------------------------
+
+@test "the message names the sanctioned migration it is denying" {
+  run_edit "$(cfg)" '  ...lint.react,' '  ...lint.react,
+  ...lint.reactRouter,'
+  [ "$status" -eq 2 ]
+  grep -qF -- '...lint.reactRouter' <<<"$output"
 }
 
-@test "denies flipping a rule severity even when the line count is unchanged" {
-  run_edit "$(cfg)" "    rules: {'no-console': 'off'}," "    rules: {'no-console': 'error'},"
-  assert_denied
+@test "the message admits the denial is on the filename alone" {
+  run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config.'
+  [ "$status" -eq 2 ]
+  grep -qF -- 'filename alone' <<<"$output"
 }
 
-@test "denies a spread carrying an inline object literal" {
-  run_edit "$(cfg)" '  ...lint.react,' "  ...lint.react,
-  ...{rules: {'no-empty-pattern': 'off'}},"
-  assert_denied
+@test "the message says where the edit is made instead" {
+  run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config.'
+  [ "$status" -eq 2 ]
+  grep -qF -- 'by hand' <<<"$output"
+  grep -qF -- '.claude/settings.json' <<<"$output"
 }
 
-@test "denies adding a called preset that carries a rule override" {
-  # The vector the bare-spread shape exists to exclude: a call is a spread by
-  # eye, and it can carry the literal a bare `...lint.group` cannot. Single-line
-  # on purpose. A multi-line call is already denied by its own inner lines, and a
-  # changed one by the removal rule, so neither discriminates a regex widened to
-  # admit calls; only an ADDED single-line call does.
-  run_edit "$(cfg)" '  ...lint.react,' "  ...lint.react,
-  ...lint.custom({rules: {'no-empty-pattern': 'off'}}),"
-  assert_denied
+@test "the message keeps pointing at the source file for the common case" {
+  run_edit "$(cfg)" "    rules: {'no-console': 'off'}," \
+    "    rules: {'no-console': 'off', 'no-empty-pattern': 'off'},"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'source file where it occurs' <<<"$output"
 }
 
-@test "denies reindenting a rules block" {
-  run_edit "$(cfg)" "    rules: {'no-console': 'off'}," "      rules: {'no-console': 'off'},"
-  assert_denied
-}
+# --- uncertainty on a guarded path resolves to deny -------------------------
 
-# --- a comment prefix does not make a line a comment -----------------------
-
-@test "denies a rule override smuggled past a closed block comment" {
-  # `/* x */` closes the block and everything after it is executable.
-  run_edit "$(cfg)" '  ...lint.react,' "  ...lint.react,
-  /* x */ rules: {'no-console': 'off'},"
-  assert_denied
-}
-
-@test "denies a rule override smuggled past a block comment closed on a // line" {
-  # The same vector one prefix over, and the reason the comment arm cannot carve
-  # out `//` as unconditionally safe: inside an open block comment a `//` line
-  # closes it just as well, and the tail is code.
-  run_edit "$(cfg)" '  ...lint.react,' "  ...lint.react,
-  /*
-  // */ rules: {'no-console': 'off'},"
-  assert_denied
-}
-
-@test "denies an ignores entry smuggled past an empty block comment" {
-  run_edit "$(cfg)" '  ...lint.guardrails,' "  ...lint.guardrails,
-  /**/ignores: ['app/routes/**'],"
-  assert_denied
-}
-
-# --- wrapping, where the line-local reading runs out -----------------------
-
-@test "denies wrapping a spread in a block comment" {
-  # Every line here is a delimiter or unchanged text, so nothing about any single
-  # line changed while the preset stopped taking effect.
-  run_edit "$(cfg)" '  ...lint.guardrails,' '  /*
-  ...lint.guardrails,
-  */'
-  assert_denied
-}
-
-@test "denies wrapping a spread with a text-carrying opener" {
-  # The delimiters cannot be recognized by shape alone: an opener may carry text,
-  # which makes it indistinguishable from an ordinary comment.
-  run_edit "$(cfg)" '  ...lint.guardrails,' '  /* note
-  ...lint.guardrails,
-  */'
-  assert_denied
-}
-
-@test "denies wrapping a rules block in a block comment" {
-  run_edit "$(cfg)" "    rules: {'no-console': 'off'}," "    /*
-    rules: {'no-console': 'off'},
-    */"
-  assert_denied
-}
-
-@test "denies appending a lone block-comment opener" {
-  # The split wrap's first half, and the case a fragment-level reading could not
-  # see: the fragment ends at the delimiter, so on its own it reads as a pure
-  # comment line. Against the whole file it swallows everything below it.
-  run_edit "$(cfg)" '  ...lint.base,' '  ...lint.base,
-  /*'
-  assert_denied
-}
-
-@test "denies a MultiEdit that splits a wrap across two pairs" {
-  # Neither pair looks like anything on its own. Together they comment out a
-  # preset. This is the composition a per-pair reading admitted.
-  local p; p="$(cfg)"
-  run_tool MultiEdit "$(jq -n --arg p "$p" '{
-    file_path: $p,
-    edits: [
-      {old_string: "  ...lint.base,", new_string: "  ...lint.base,\n  /*"},
-      {old_string: "  ...lint.guardrails,", new_string: "  ...lint.guardrails,\n  */"}
-    ]
-  }')"
-  assert_denied
-}
-
-@test "denies an edit whose new_string drops the trailing newline onto the next line" {
-  # The reconstruction has to model what the tool writes, and the tool glues
-  # new_string's last line onto whatever followed old_string. Here old_string
-  # ends in a newline and new_string does not, so `  //` does not stay a line of
-  # its own: it prefixes the spread below and comments it out. Both strings must
-  # therefore survive with their trailing newlines intact.
-  run_edit "$(cfg)" '  ...lint.base,
-' '  ...lint.base,
-  //'
-  assert_denied
-}
-
-@test "denies moving an existing block-comment closer down past effective code" {
-  # Nothing is added or deleted; a closer simply moves, and a line that was
-  # running stops running.
-  run_edit "$(cfg)" ' */
-const lint = gaiaLint();' 'const lint = gaiaLint();
- */'
-  assert_denied
-}
-
-# --- order is precedence, so a move is a change ----------------------------
-#
-# Later spreads win. Groups in `@gaia-react/lint` overlap heavily (`base` and
-# `prettier` share 155 rule ids, most at different severities), so reordering two
-# of them silences rules that are on today, which is the thing this guard
-# exists to refuse. None of these three adds, removes, or alters a line: they are
-# invisible to any comparison that checks the non-spread lines for equality and
-# the spreads for removal, and that is why all three are here.
-
-@test "denies swapping two adjacent preset spreads" {
-  run_edit "$(cfg)" '  ...lint.guardrails,
-  ...lint.prettier,' '  ...lint.prettier,
-  ...lint.guardrails,'
-  assert_denied
-}
-
-@test "denies swapping two preset spreads with others between them" {
-  run_edit "$(cfg)" '  ...lint.base,
-  ...lint.react,
-  ...lint.guardrails,
-  ...lint.prettier,' '  ...lint.prettier,
-  ...lint.react,
-  ...lint.guardrails,
-  ...lint.base,'
-  assert_denied
-}
-
-@test "denies moving a preset spread across a line that is not a spread" {
-  # The vector a swap-only reading misses: nothing swaps, one spread hoists past
-  # the called preset above it. The non-spread lines keep their own order, and the
-  # set of spreads is untouched, so only a comparison that reads both together in
-  # one order sees it.
-  run_edit "$(cfg)" "  ...lint.ignores({extra: ['dist/**']}),
-  ...lint.base,
-  ...lint.react,
-  ...lint.guardrails,
-  ...lint.prettier," "  ...lint.prettier,
-  ...lint.ignores({extra: ['dist/**']}),
-  ...lint.base,
-  ...lint.react,
-  ...lint.guardrails,"
-  assert_denied
-}
-
-# --- Write -----------------------------------------------------------------
-
-@test "allows a Write that only changes a comment" {
-  local p; p="$(cfg)"
-  run_write "$p" "${DEFAULT_BODY/Config for the app./Config for this app.}"
-  assert_allowed
-}
-
-@test "denies a Write that adds a rule override" {
-  local p; p="$(cfg)"
-  run_write "$p" "${DEFAULT_BODY/  ...lint.prettier,/  ...lint.prettier,
-  {rules: {\'no-console\': \'off\'}},}"
-  assert_denied
-}
-
-@test "denies a Write that truncates the config to its header" {
-  # The one shape that reaches the "every before line is accounted for" half of
-  # the comparison on its own: nothing is added, so no after line is left over to
-  # judge, and the whole body simply stops existing. Every other deny case in this
-  # suite leaves something behind that fails the other half first, which is why
-  # this fixture is here rather than folded into one of them.
-  local p; p="$(cfg)"
-  run_write "$p" "import gaiaLint from '@gaia-react/lint';
-import {defineConfig} from 'eslint/config';
-
-const lint = gaiaLint();
-"
-  assert_denied
-}
-
-@test "denies a Write whose target exists but cannot be read" {
-  # The Edit and MultiEdit arms refuse an unreadable target rather than judging
-  # against a baseline they never read; the Write arm has to do the same, or an
-  # empty baseline makes every line of the replacement look added, and content
-  # that is nothing but comments and spreads passes while really replacing a whole
-  # config. A directory is the deterministic unreadable target: `chmod 000` is not
-  # one when the suite runs as root.
-  mkdir -p "$TMP/eslint.config.mjs"
-  run_write "$TMP/eslint.config.mjs" '// replaced
-  ...lint.base,'
-  assert_denied
-}
-
-@test "denies a Write that creates a config file from nothing" {
-  run_write "$TMP/eslint.config.mjs" 'export default [];
-'
-  assert_denied
-}
-
-# --- MultiEdit -------------------------------------------------------------
-
-@test "allows a MultiEdit whose every pair is comment or added spread" {
-  local p; p="$(cfg)"
-  run_tool MultiEdit "$(jq -n --arg p "$p" '{
-    file_path: $p,
-    edits: [
-      {old_string: "    // why this rule is off", new_string: "    // why it is off"},
-      {old_string: "  ...lint.react,", new_string: "  ...lint.react,\n  ...lint.reactRouter,"}
-    ]
-  }')"
-  assert_allowed
-}
-
-@test "denies a MultiEdit when any one pair adds a rule override" {
-  local p; p="$(cfg)"
-  run_tool MultiEdit "$(jq -n --arg p "$p" '{
-    file_path: $p,
-    edits: [
-      {old_string: "    // why this rule is off", new_string: "    // why it is off"},
-      {old_string: "  ...lint.react,", new_string: "  ...lint.react,\n  rules: {},"}
-    ]
-  }')"
-  assert_denied
-}
-
-@test "denies a MultiEdit that removes a spread in a later pair" {
-  local p; p="$(cfg)"
-  run_tool MultiEdit "$(jq -n --arg p "$p" '{
-    file_path: $p,
-    edits: [
-      {old_string: "    // why this rule is off", new_string: "    // why it is off"},
-      {old_string: "  ...lint.guardrails,\n", new_string: ""}
-    ]
-  }')"
-  assert_denied
-}
-
-# --- uncertainty resolves to deny, never to allow --------------------------
-
-@test "denies a tool shape it cannot read on a guarded path" {
+@test "denies a tool shape it cannot otherwise read on a guarded path" {
   run_tool NotebookEdit "$(jq -n --arg p "$(cfg)" '{file_path: $p}')"
   assert_denied
 }
 
-@test "denies an Edit on a guarded path with no strings to compare" {
+@test "denies an Edit on a guarded path carrying no strings at all" {
   run_tool Edit "$(jq -n --arg p "$(cfg)" '{file_path: $p}')"
   assert_denied
 }
 
-@test "denies a MultiEdit on a guarded path with an empty edits array" {
-  run_tool MultiEdit "$(jq -n --arg p "$(cfg)" '{file_path: $p, edits: []}')"
+@test "denies a Write on a guarded path that does not exist yet" {
+  run_write "$TMP/eslint.config.ts" 'export default [];'
   assert_denied
 }
 
-@test "denies an Edit whose replaced text is not in the file" {
-  run_edit "$(cfg)" '  ...lint.doesNotExist,' '  ...lint.doesNotExist,
-  ...lint.reactRouter,'
-  assert_denied
-}
+# --- a payload naming no file cannot be judged, and is not an exemption -----
 
-@test "denies an Edit whose replaced text appears more than once" {
-  # The edit tools enforce this uniqueness themselves; the guard cannot establish
-  # which occurrence would move, so it refuses rather than guessing.
-  run_edit "$(cfg 'export default [
-  ...lint.base,
-  // marker
-  ...lint.react,
-  // marker
-];')" '  // marker' '  // marker two'
-  assert_denied
-}
-
-@test "denies an Edit on a guarded path whose file does not exist" {
-  run_edit "$TMP/eslint.config.mjs" '  ...lint.react,' '  ...lint.react,
-  ...lint.reactRouter,'
-  assert_denied
-}
-
-@test "allows an unreadable payload, matching the pre-existing path gate" {
-  run_hook 'not json at all'
+@test "exits zero on a payload carrying no file_path" {
+  run_tool Edit '{"old_string": "a", "new_string": "b"}'
   assert_allowed
 }
 
-# --- the message states what is enforced -----------------------------------
-
-@test "the deny message names both allowed shapes and the by-hand path" {
-  run_edit "$(cfg)" '  ...lint.react,' "  ...lint.react,
-  rules: {},"
-  [ "$status" -eq 2 ]
-  grep -qF -- 'comment' <<<"$output"
-  grep -qF -- 'spread' <<<"$output"
-  grep -qF -- 'by hand' <<<"$output"
+@test "exits zero on a payload that is not readable JSON" {
+  run_hook 'not json at all'
+  assert_allowed
 }
