@@ -379,7 +379,7 @@ DIFF_ANCHORED_OK='Agent prose.
 ```bash
 BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)"
 BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null || true)
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}...HEAD" 2>/dev/null || true)
 ```
 '
 
@@ -388,7 +388,7 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null
 # that may have advanced past the fork point.
 DIFF_RESOLVER_DIRECT='Agent prose.
 ```bash
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)")
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)")
 ```
 '
 
@@ -396,7 +396,7 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "$(cd "$AUDIT_ROOT" && .github/a
 # consuming it directly is the identical un-anchored diff.
 DIFF_BASE_REF_DIRECT='Agent prose.
 ```bash
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "$BASE_REF")
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "$BASE_REF")
 ```
 '
 
@@ -407,14 +407,14 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "$BASE_REF")
 # the wrong thing.
 DIFF_BASE_SHA_TWO_DOT='Agent prose, per .github/audit/resolve-audit-base.sh.
 ```bash
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}" -- "*.ts")
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}" -- "*.ts")
 ```
 '
 
 # The same two-dot defect written as a markdown code span rather than a fence,
 # which is how a definition restates its scope in prose. A restatement that
 # drifts from the fence is still an instruction a model can follow.
-DIFF_BASE_SHA_TWO_DOT_SPAN='The set is the exact `git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}" -- "*.ts"` list the audit resolved, per .github/audit/resolve-audit-base.sh.
+DIFF_BASE_SHA_TWO_DOT_SPAN='The set is the exact `git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}" -- "*.ts"` list the audit resolved, per .github/audit/resolve-audit-base.sh.
 '
 
 # A three-dot range on BASE_REF narrows correctly, since git resolves the merge
@@ -422,7 +422,7 @@ DIFF_BASE_SHA_TWO_DOT_SPAN='The set is the exact `git -C "$AUDIT_ROOT" diff --na
 # spelling reached it, so this passes.
 DIFF_BASE_REF_THREE_DOT_OK='Agent prose.
 ```bash
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_REF}...HEAD")
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_REF}...HEAD")
 ```
 '
 
@@ -433,7 +433,7 @@ DIFF_TRAILING_COMMENT_OK='Agent prose.
 ```bash
 BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)"
 BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD")   # never BASE_REF here
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}...HEAD")   # never BASE_REF here
 ```
 '
 
@@ -465,7 +465,7 @@ staged=$(git -C "$AUDIT_ROOT" diff --name-only --cached)   # not BASE_REF, delib
 # that requires the wall; the reverse is caught by the walk alone.
 TWO_DIFFS_ONE_LINE='Agent prose, per .github/audit/resolve-audit-base.sh.
 ```bash
-changed=$(git diff --name-only "$BASE_SHA") ; full_changed=$(git diff --name-only "${FULL_BASE}...HEAD")
+changed=$(git diff --name-only -z "$BASE_SHA") ; full_changed=$(git diff --name-only -z "${FULL_BASE}...HEAD")
 ```
 '
 
@@ -478,7 +478,7 @@ changed=$(git diff --name-only "$BASE_SHA") ; full_changed=$(git diff --name-onl
 # `;` wall and nothing else can save it.
 DIFF_SEMICOLON_LATER_RANGE='Agent prose, per .github/audit/resolve-audit-base.sh.
 ```bash
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "$BASE_SHA") ; echo "${BASE_REF}...HEAD"
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "$BASE_SHA") ; echo "${BASE_REF}...HEAD"
 ```
 '
 
@@ -486,7 +486,7 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "$BASE_SHA") ; echo "${BASE_REF}
 DIFF_FULL_BASE_OK='Agent prose.
 ```bash
 FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || true)
-full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
+full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>/dev/null || true)
 ```
 '
 
@@ -497,7 +497,7 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/de
 DIFF_FULL_BASE_TWO_DOT='Agent prose.
 ```bash
 FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || true)
-full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null || true)
+full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}" 2>/dev/null || true)
 ```
 '
 
@@ -664,6 +664,92 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null 
   grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
 }
 
+# ---------- assertion 4: no diff lets git quote the paths it prints ----------
+#
+# Assertion 3 polices the RANGE a call compares; this one polices the ENCODING
+# of what it prints back. Under git's default core.quotePath a correct
+# three-dot call still C-quotes any path carrying non-ASCII or control bytes,
+# and the quoted token matches no remit glob, so the member self-skips and the
+# file merges unaudited. That failure is silent by construction, which is why
+# it gets a static assertion rather than a convention.
+#
+# Every fixture above carries `-z` for the same reason each carries exactly one
+# defect: a fixture that reds two assertions cannot show which one caught it.
+# They carry the flag alone, not the `| tr` a real derivation also needs, both
+# because that is all assertion 4 reads and because a literal single quote
+# would end the single-quoted constant holding it.
+
+# The self-skip diff with quoting left on: a correct three-dot range that still
+# hands back a quoted token. This is the shape #1213 found live in four members.
+DIFF_FULL_BASE_QUOTED='Agent prose.
+```bash
+FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || true)
+full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
+```
+'
+
+# A quoting call sharing its LINE with a quote-safe one. The window has to end
+# at the NEXT call or the later `-z` satisfies the token test for the earlier
+# call, which is the same wall assertion 3 needs and the reason both assertions
+# run through one walk rather than two copies of it.
+TWO_DIFFS_ONE_LINE_ONE_QUOTED='Agent prose, per .github/audit/resolve-audit-base.sh.
+```bash
+changed=$(git diff --name-only "${BASE_SHA}...HEAD") ; full_changed=$(git diff --name-only -z "${FULL_BASE}...HEAD")
+```
+'
+
+@test "fixture: a base-consuming diff without -z fails assertion 4" {
+  local repo
+  repo="$(make_fixture_repo diff-full-base-quoted)"
+  write_agent_file "$repo" code-audit-github-workflows.md "$DIFF_FULL_BASE_QUOTED"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "code-audit-github-workflows.md" <<<"$output" || return 1
+  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
+  # The range is correct and the FULL_BASE derivation is exempt from assertion
+  # 1, so this red is assertion 4's alone. Without that isolation the test
+  # would pass on any red at all, including one it did not cause.
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+  grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
+}
+
+@test "fixture: the same self-skip diff carrying -z passes assertion 4" {
+  local repo
+  repo="$(make_fixture_repo diff-full-base-unquoted)"
+  write_agent_file "$repo" code-audit-github-workflows.md "$DIFF_FULL_BASE_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a diff that consumes no base is never required to carry -z" {
+  # The `--cached` call reaches no base at all, so assertion 4 has nothing to
+  # be about. Without the `consumes` test it would condemn every `git diff` an
+  # agent definition happens to mention.
+  local repo
+  repo="$(make_fixture_repo diff-no-base-no-z)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_TRAILING_COMMENT_NO_RANGE_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a quoting call is not vouched for by a later call's -z" {
+  local repo
+  repo="$(make_fixture_repo diff-two-calls-one-quoted)"
+  write_agent_file "$repo" code-audit-maintainer-node.md "$TWO_DIFFS_ONE_LINE_ONE_QUOTED"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
+  # Both calls are correctly ranged, so assertion 3 stays green and the line is
+  # condemned by the token test alone.
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
 # ---------- real repo: the standing guarantee ----------
 
 @test "real repo: every Code Audit Team definition resolves its review base through the resolver" {
@@ -672,13 +758,15 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null 
   grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
   grep -qF "agent files naming BASE_SHA without naming resolve-audit-base.sh: 0" <<<"$output" || return 1
   grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+  grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
 }
 
-@test "real repo: every changed-file diff in the roster is a three-dot range" {
-  # Assertion 3 states the rule negatively (count of violations), so this
-  # pins the positive form directly: every `diff --name-only` the five
-  # definitions carry inside a fence resolves `<something>...HEAD`. A
-  # definition that drops to two-dot reds here as well as on the check.
+@test "real repo: every changed-file diff in the roster is a three-dot range and quote-safe" {
+  # Assertions 3 and 4 state their rules negatively (counts of violations), so
+  # this pins the positive form directly: every `diff --name-only` the five
+  # definitions carry inside a fence resolves `<something>...HEAD` and carries
+  # `-z`. A definition that drops to two-dot, or that lets git quote what it
+  # prints, reds here as well as on the check.
   #
   # The `"?` accepts both spellings of the assignment. Requiring `$(` to sit
   # immediately after the `=` matches the unquoted form alone, so a definition
@@ -704,6 +792,10 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}" 2>/dev/null 
     [ -n "$line" ] || continue
     grep -qF '...HEAD' <<<"$line" || {
       printf 'changed-file diff is not a three-dot range: %s\n' "$line"
+      return 1
+    }
+    grep -qF -- '--name-only -z' <<<"$line" || {
+      printf 'changed-file diff lets git quote the paths it prints: %s\n' "$line"
       return 1
     }
   done <<< "$output"
