@@ -25,6 +25,12 @@
 # wrong about the sanctioned migration and it leaves an agent with no next step
 # but to give up or work around the hook.
 #
+# Whether any evidence a synchronous hook can reach would separate the two, and
+# so let the sanctioned migration through without also letting silencing
+# through, is an open design question tracked as tech-debt #1220. A text-level
+# allowlist over what an edit changes is the candidate already measured and
+# closed; that issue carries the measurement and its specification.
+#
 # Exit 2 = block the tool call, stderr is shown to Claude as the reason.
 #
 # One case exits 0 and it is not an exemption: a payload with no readable
