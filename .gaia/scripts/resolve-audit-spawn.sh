@@ -455,7 +455,16 @@ ownerless_probe() {
     return 0
   fi
 
-  changed="$(git -C "$repo_root" diff --name-only "${base}...HEAD" 2>/dev/null || true)"
+  # `-z` for the reason resolve-audit-members.sh states at its own copy of this
+  # derivation, though NOT for the same consequence, and the difference is
+  # worth stating so a reader does not carry the stronger claim here. This
+  # probe fails CLOSED on a C-quoted token: the quoted form is not allowlisted,
+  # so the loop below spawns the default member. What quoting costs here is
+  # accuracy rather than coverage -- a pull request whose only change is an
+  # allowlisted out-of-scope path spawns a member it does not need, because the
+  # allowlist never gets to recognize the path. The flag is what lets this
+  # probe answer the question it is actually asking.
+  changed="$(git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)"
   if [ -z "$changed" ]; then
     echo "code-audit-frontend"
     return 0

@@ -202,7 +202,7 @@ default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/H
 [ -n "$default_branch" ] || default_branch="main"
 FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
   || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
-pr_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
+pr_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
 origin="$(cd "${AUDIT_ROOT:-/dev/null/unset}" 2>/dev/null && bash .gaia/scripts/debt-origin-lib.sh \
   --changed "<0|1|unknown>" --dir . 2>/dev/null || true)"
 ```

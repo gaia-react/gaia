@@ -24,7 +24,7 @@
 # .gaia/scripts/tests/audit-base-agreement.bats.
 # gaia:maintainer-only:end
 #
-# Over `.claude/agents/`, THREE assertions:
+# Over `.claude/agents/`, FOUR assertions:
 #
 #   1. No REVIEW base is derived by a bare `merge-base` against a branch.
 #      The review base must come from `.github/audit/resolve-audit-base.sh`,
@@ -131,6 +131,74 @@
 #      the resulting file lists, which is what covers that shape.
 # gaia:maintainer-only:end
 #
+#   4. No `diff --name-only` CONSUMES the base without `-z`.
+#
+#      (3) polices the RANGE a call compares. This polices the ENCODING of
+#      what it prints back, and the two are independent: a correct three-dot
+#      call still emits a C-quoted token for any path carrying non-ASCII or
+#      control bytes, because git's default `core.quotePath` wraps such a path
+#      in double quotes and backslash-escapes the offending bytes. A tracked
+#      file whose name carries an accented character comes back as a quoted
+#      token full of octal escapes rather than as its own name.
+#
+#      What earns this an assertion rather than a style note is that the
+#      consequence FAILS OPEN, in two different places and two different ways.
+#
+#      `full_changed` decides whether a specialist runs at all: it filters that
+#      list against the member's remit globs and self-skips when nothing
+#      matches. A quoted token matches no glob, so a pull request whose only
+#      in-remit change is such a file yields an empty filtered set and the
+#      member self-skips, writing no marker. A clean skip and a genuine
+#      no-match are indistinguishable by then, so nothing records that the file
+#      went unreviewed.
+#
+#      The same derivation decides MEMBERSHIP one step earlier, in
+#      .gaia/scripts/resolve-audit-members.sh, and that is the more dangerous
+#      of the two because it is silent rather than stuck. A quoted token has no
+#      owner, the resolver answers with an empty set, and resolve-audit-spawn.sh
+#      falls through to its ownerless probe, which spawns the default member.
+#      So the file does get an auditor -- just never the specialist whose remit
+#      it is in, and the merge completes looking audited. (The specialist's own
+#      self-skip is the less quiet failure: when membership DID name it, a
+#      self-skip leaves a marker the gate still demands, which deadlocks
+#      loudly rather than passing.)
+#
+#      `-z` rather than `-c core.quotePath=false`, which is the narrower fix
+#      and the tempting one: the flag only stops treating bytes above 0x7f as
+#      unusual, so a path containing a double quote, a backslash, or a control
+#      byte is still C-quoted. `-z` suppresses quoting outright and terminates
+#      each path with a NUL instead. Every derivation in the roster already
+#      spells it that way, so this pins the shape rather than introducing one.
+#
+#      Shares assertion 3's candidate net and its per-call window, for the
+#      reason the shared helper's own header gives.
+#
+#      What it does NOT see is a call that carries `-z` and never converts the
+#      NULs back, which fails open the same way: bash drops NUL bytes in a
+#      command substitution, so every path concatenates into one token that
+#      matches no glob. Requiring the conversion is not available to this net,
+#      because the net cannot tell a fence from prose and code-audit-frontend.md
+#      states the command inside a markdown code span with no pipeline after
+#      it, which such a requirement would red.
+# gaia:maintainer-only:start
+#      The behavioural suite next door executes the real fences against a
+#      repository carrying a non-ASCII path, which is what covers that shape.
+# gaia:maintainer-only:end
+#
+#      The flag has to sit IMMEDIATELY after the `--name-only` it modifies, not
+#      merely somewhere in the call. Anywhere-in-the-call is a weaker claim than
+#      it looks: a pathspec (`-- "app/[a-z]/*"`) or an emptiness test on the
+#      same line contains the token while the call still quotes, so the
+#      assertion would vouch for exactly the shape it exists to reject.
+#      The rejected set is therefore every correct spelling that does not put
+#      `-z` immediately after `--name-only`, separated by exactly one space:
+#      `git diff -z --name-only`, an intervening flag
+#      (`--name-only --diff-filter=d -z`), and a tab or a double space. That is
+#      the accepted cost, and it is accepted rather than worked around because
+#      no positional rule admits every spelling, the roster spells every one of
+#      its own sites the one way, and the failure this trades into is loud and
+#      one edit from resolved where the false green it replaces is silent.
+#
 # Comment lines are NOT stripped from either scan, unlike
 # check-main-root-derivation.sh, which scans executable source where a
 # commented-out shape cannot run. These are agent definitions: the file IS
@@ -145,7 +213,7 @@
 # gaia_check_audit_base_derivation <repo_root>
 #   Runs `git -C <repo_root> grep` over `.claude/agents/` (recursive) for
 #   every assertion. Prints every match line, then one verdict line per
-#   assertion. Returns 0 when ALL THREE hold, 1 otherwise.
+#   assertion. Returns 0 when ALL FOUR hold, 1 otherwise.
 #   <repo_root> is a required parameter -- this check never derives it
 #   itself: a CI caller passes the plain checkout root, a bats fixture
 #   passes a temp repo, so "would this literal fail the check" is testable
@@ -154,7 +222,7 @@
 # GREEN against this repo's real `.claude/agents/`: all five definitions
 # resolve their review base through the resolver, the only bare merge-base
 # left is each specialist's `FULL_BASE`, and every changed-file diff is a
-# three-dot range against HEAD.
+# three-dot range against HEAD carrying `-z`.
 
 # Assertion 1's candidate shape: any assignment whose value reaches a
 # `merge-base` call. Deliberately a wide net -- BOTH discriminations that
@@ -305,22 +373,38 @@ _gaia_drop_full_base_matches() {
   '
 }
 
-# _gaia_keep_unanchored_diff_matches: reads `file:line:content` lines on stdin
-# (git grep's -n format) and keeps only the `diff --name-only` calls that
-# consume a base which never reached the fork point.
+# _gaia_keep_diff_matches_missing <token>: reads `file:line:content` lines on
+# stdin (git grep's -n format) and keeps only the `diff --name-only` calls that
+# consume the review base and do NOT carry <token> inside their own text.
 #
-# A call survives when, inside its own text, `resolve-audit-base.sh` or
-# `BASE_REF` appears with no `...` range before it. Both tests are per CALL and
-# measured from the call, never line-wide: a line may legitimately carry a
-# correct diff and, further along, prose naming the resolver.
+# TWO assertions share this walk, and the sharing is deliberate rather than
+# incidental. Assertion 3 passes `...` (the call compares against the fork
+# point) and assertion 4 passes `-z` (the call does not let git quote what it
+# prints). Both are the same sentence about a base-consuming call, differing
+# only in the token it must carry, and the window logic below is subtle enough
+# that a second copy of it would drift from this one. A fix applied to one of
+# two sibling derivations and not the other is precisely the defect class
+# assertion 4 exists to close, so this file does not open a second instance of
+# it in its own source.
 #
-# The call's text ends at the first `#`, backtick, or `;` after it. Those
-# three characters are the walls that matter here: `#` opens a shell comment,
-# a backtick closes a markdown code span, `;` ends the command outright, and
-# past any of them the text is no longer part of this call. `;` is a wall for
-# the same reason the ownership walk above treats it as one -- nothing in a
-# real call's argument list contains one, so a `;` can only introduce a
-# SEPARATE command, whose range must never vouch for this one.
+# The `consumes` test and the token test are both per CALL and measured from
+# the call, never line-wide: a line may legitimately carry a correct diff and,
+# further along, prose naming the resolver.
+#
+# The call's text ends at the first `#`, backtick, `;`, or `)` after it. Those
+# four characters are the walls that matter here: `#` opens a shell comment,
+# a backtick closes a markdown code span, `;` ends the command outright, `)`
+# closes the `$( )` the call lives inside, and past any of them the text is no
+# longer part of this call. `;` and `)` are walls for the same reason
+# _gaia_drop_full_base_matches treats them as one -- nothing in a real call's
+# argument list contains either, so each can only introduce text belonging to
+# something OTHER than this call, which must never vouch for it.
+#
+# `)` earns its place on a concrete escape rather than on symmetry. Without it
+# the window of `changed=$(git diff --name-only "${BASE}...HEAD") && [ -z
+# "$changed" ]` runs to end of line, and the emptiness test's own `-z` then
+# satisfies assertion 4 for a call that quotes. None of the other three walls
+# closes that: there is no second call, no comment, and no code span.
 #
 # `|` is deliberately NOT a wall, which is where this walk and the ownership
 # walk part company: a pathspec or a redirect routinely follows the revision
@@ -331,8 +415,17 @@ _gaia_drop_full_base_matches() {
 # `sub` on a copy removes only the FIRST two colon-delimited fields, so a colon
 # inside the content itself never shifts the boundary -- the same framing the
 # ownership walk uses.
-_gaia_keep_unanchored_diff_matches() {
-  awk -v call="$GAIA_AUDIT_DIFF_CALL" '
+# <anchored>, any non-empty value, additionally requires the token to sit at the
+# START of the window, which is the position immediately after the call. That is
+# the difference between "this call passes -z" and "these two characters occur
+# somewhere in this call", and the two are not the same claim: a pathspec like
+# `-- "app/[a-z]/*"` contains the token while the call still lets git quote.
+# Assertion 4 anchors for that reason; assertion 3 must not, because `...` is
+# legitimately written on either side of the revision argument.
+_gaia_keep_diff_matches_missing() {
+  local tok="${1:?_gaia_keep_diff_matches_missing requires a token argument}"
+  local anchored="${2:-}"
+  awk -v call="$GAIA_AUDIT_DIFF_CALL" -v tok="$tok" -v anchored="$anchored" '
     BEGIN { calllen = length(call) }
     {
       content = $0
@@ -341,17 +434,17 @@ _gaia_keep_unanchored_diff_matches() {
       rest = content
       while ((pos = index(rest, call)) > 0) {
         # The call window: everything after this occurrence, cut at the first
-        # wall. FOUR walls, and the first is what makes "per call" true rather
+        # wall. FIVE walls, and the first is what makes "per call" true rather
         # than merely claimed: without it the window runs to end of line, so a
         # two-dot call followed on the same line by a correct three-dot one is
-        # vouched for by the dots belonging to that LATER call. The `;` wall
-        # closes the same hole for a later command that is not a diff call at
+        # vouched for by the dots belonging to that LATER call. The `;` and `)`
+        # walls close the same hole for later text that is not a diff call at
         # all, which the first wall cannot see.
         # _gaia_drop_full_base_matches bounds its own scan at the closing paren
         # for the same reason.
         #
         # Each cut applies to the already-shortened window, so the walls
-        # compose to the EARLIEST of the four and their order here is
+        # compose to the EARLIEST of the five and their order here is
         # immaterial.
         #
         # No apostrophe anywhere in this program: it is a single-quoted shell
@@ -359,6 +452,7 @@ _gaia_keep_unanchored_diff_matches() {
         window = substr(content, consumed + pos + calllen)
         if ((w = index(window, call)) > 0)  window = substr(window, 1, w - 1)
         if ((w = index(window, "#")) > 0)   window = substr(window, 1, w - 1)
+        if ((w = index(window, ")")) > 0)   window = substr(window, 1, w - 1)
         if ((w = index(window, "`")) > 0)   window = substr(window, 1, w - 1)
         if ((w = index(window, ";")) > 0)   window = substr(window, 1, w - 1)
 
@@ -373,12 +467,16 @@ _gaia_keep_unanchored_diff_matches() {
                 || index(window, "BASE_SHA") > 0 \
                 || index(window, "FULL_BASE") > 0
 
-        # A base-consuming call must carry a `...` range. Position within the
-        # window is deliberately not tested: the correct forms put it on either
-        # side of the token depending on the spelling (`"${BASE_SHA}...HEAD"`
-        # after, a pathspec-first variant before), and a rule that pinned the
-        # side would reject a correct call to reject a stylistic one.
-        if (consumes && index(window, "...") == 0) { print; next }
+        # A base-consuming call must carry the token, and `anchored` decides
+        # WHERE. Unanchored for `...`, whose correct forms put it on either
+        # side of the revision argument depending on the spelling
+        # (`"${BASE_SHA}...HEAD"` after, a pathspec-first variant before), so a
+        # rule pinning the side would reject a correct call to reject a
+        # stylistic one. Anchored for `-z`, where the position IS the claim:
+        # unanchored, any `-z` occurring later in the call satisfies it, and a
+        # pathspec is the ordinary way that happens by accident.
+        missing = anchored != "" ? index(window, tok) != 1 : index(window, tok) == 0
+        if (consumes && missing) { print; next }
         consumed += pos + calllen - 1
         rest = substr(content, consumed + 1)
       }
@@ -388,7 +486,7 @@ _gaia_keep_unanchored_diff_matches() {
 
 gaia_check_audit_base_derivation() {
   local repo_root="${1:?gaia_check_audit_base_derivation requires a repo_root argument}"
-  local bare_failed=0 resolver_failed=0 consumer_failed=0
+  local bare_failed=0 resolver_failed=0 consumer_failed=0 quoting_failed=0
 
   # A `git grep` that cannot run returns nothing, which is byte-identical to
   # "scanned it, found no violations". Both assertions would then print 0 and
@@ -451,9 +549,13 @@ gaia_check_audit_base_derivation() {
   printf 'agent files naming BASE_SHA without naming resolve-audit-base.sh: %s\n' "$missing_count"
 
   # ---------- assertion 3: no diff consumes an un-anchored base ----------
+  #
+  # One candidate net feeds assertions 3 and 4: they range over the same calls
+  # and differ only in the token each requires, so a second `git grep` would be
+  # the same list resolved twice with the two able to disagree.
   local diff_candidates diff_matches diff_count=0
   diff_candidates="$(git -C "$repo_root" grep -nIF "$GAIA_AUDIT_DIFF_CALL" -- '.claude/agents/code-audit-*.md' 2>/dev/null)"
-  diff_matches="$(printf '%s\n' "$diff_candidates" | _gaia_keep_unanchored_diff_matches)"
+  diff_matches="$(printf '%s\n' "$diff_candidates" | _gaia_keep_diff_matches_missing '...')"
   if [ -n "$diff_matches" ]; then
     printf '%s\n' "$diff_matches"
     diff_count="$(printf '%s\n' "$diff_matches" | wc -l | tr -d ' ')"
@@ -461,7 +563,18 @@ gaia_check_audit_base_derivation() {
   fi
   printf 'review diffs consuming a base that never reached the fork point: %s\n' "$diff_count"
 
-  [ "$bare_failed" -eq 0 ] && [ "$resolver_failed" -eq 0 ] && [ "$consumer_failed" -eq 0 ]
+  # ---------- assertion 4: no diff lets git quote the paths it prints -------
+  local quote_matches quote_count=0
+  quote_matches="$(printf '%s\n' "$diff_candidates" | _gaia_keep_diff_matches_missing ' -z' anchored)"
+  if [ -n "$quote_matches" ]; then
+    printf '%s\n' "$quote_matches"
+    quote_count="$(printf '%s\n' "$quote_matches" | wc -l | tr -d ' ')"
+    quoting_failed=1
+  fi
+  printf 'changed-file diffs that let git C-quote a path: %s\n' "$quote_count"
+
+  [ "$bare_failed" -eq 0 ] && [ "$resolver_failed" -eq 0 ] && [ "$consumer_failed" -eq 0 ] \
+    && [ "$quoting_failed" -eq 0 ]
 }
 
 # Executable entry.

@@ -62,7 +62,7 @@ if [ -z "$FULL_BASE" ]; then
   printf 'no merge-base against %s: membership scope is unresolvable, do NOT self-skip\n' "$default_branch" >&2
   exit 1
 fi
-full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
+full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
 # BASE_SHA, not a lowercase local: every handshake invocation below passes
 # `--base "$BASE_SHA"`, and shell state does NOT persist between an agent's
 # Bash calls, so each of those calls re-runs this snippet, and the AUDIT_ROOT

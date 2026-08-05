@@ -619,6 +619,83 @@ probe_deadlock() {
   done
 }
 
+# ---------- probe 3b: the membership list survives an unusual path -----------
+#
+# `full_changed` decides whether a specialist runs at all, and git's default
+# `core.quotePath` makes that decision fail OPEN. `diff --name-only` C-quotes
+# any path carrying non-ASCII or control bytes, emitting the surrounding double
+# quotes as literal characters, and a quoted token matches no remit glob. The
+# member then self-skips as if nothing it owned had changed, and the
+# membership resolver reading the same list names no owner at all, which sends
+# resolve-audit-spawn.sh to its ownerless fallback and the default member.
+# Either way the specialist whose remit the file is in never reviews it, the
+# outcome is indistinguishable from a genuine no-match, and nothing in the run
+# records that it happened.
+#
+# check-audit-base-derivation.sh's assertion 4 pins the `-z` that prevents it,
+# but a static check can only see that the flag is present. This proves the
+# flag does what that check assumes, against a real repository and the REAL
+# roster classifier, and it carries its own non-vacuity: the same repository is
+# asked the same question through the pre-fix spelling, which must give the
+# answer the flag exists to stop. Without that half, a fixture whose paths were
+# quietly all-ASCII would pass while proving nothing.
+
+@test "each specialist's whole-PR list survives a non-ASCII path, where the pre-fix spelling does not" {
+  local repo member full owners base quoted
+  repo="$(make_repo quote-safety)"
+  git -C "$repo" checkout -q -b feat
+  # One in-remit path per specialist, each carrying non-ASCII bytes.
+  commit_file "$repo" ".github/workflows/été.yml" "workflows"
+  commit_file "$repo" ".claude/rules/règle.md" "shell"
+  commit_file "$repo" ".gaia/cli/src/café.ts" "node"
+  commit_file "$repo" ".claude/skills/naïve/SKILL.md" "prose"
+
+  for member in "${SPECIALISTS[@]}"; do
+    full="$(fence_eval "$member" "$repo" 'printf "%s\n" "${full_changed:-}"')"
+    # Checked before the quoting assertion: an empty list carries no double
+    # quote either, so a fence that stopped resolving anything would sail
+    # through the check below rather than failing it.
+    [ -n "$full" ] || {
+      printf '%s: whole-PR list came back empty\n' "$member"
+      return 1
+    }
+    # C-quoting is what wraps a path in literal double quotes, and no path this
+    # fixture commits contains one, so a quote in the list can only be git's.
+    grep -qF '"' <<<"$full" && {
+      printf '%s: whole-PR list is C-quoted: %s\n' "$member" "$full"
+      return 1
+    }
+    # The real classifier rather than a copy of the remit globs: "does this
+    # member self-skip on this list" is the decision that fails open, and
+    # audit_owners_for_paths is what answers it in production.
+    owners="$(owners_of "$repo" "$full")"
+    grep -qxF "$member" <<<"$owners" || {
+      printf '%s: absent from the owners of its own non-ASCII path: %s\n' "$member" "$owners"
+      return 1
+    }
+  done
+
+  # Non-vacuity: the pre-fix spelling, same repository, same base.
+  # `core.quotePath` is pinned rather than inherited: it is the DEFAULT this
+  # probe asserts about, and a maintainer who turns it off in ~/.gitconfig
+  # would otherwise get a red here against a tree with nothing wrong with it.
+  base="$(git -C "$repo" merge-base HEAD main)"
+  quoted="$(git -C "$repo" -c core.quotePath=true diff --name-only "${base}...HEAD")"
+  grep -qF '"' <<<"$quoted" || {
+    printf 'the pre-fix spelling did not quote, so this fixture proves nothing: %s\n' "$quoted"
+    return 1
+  }
+  owners="$(owners_of "$repo" "$quoted")"
+  for member in "${SPECIALISTS[@]}"; do
+    grep -qxF "$member" <<<"$owners" && {
+      printf '%s still owns something under the pre-fix spelling, so the defect is not reproduced: %s\n' \
+        "$member" "$owners"
+      return 1
+    }
+  done
+  true
+}
+
 # ---------- probe 4: the eligibility-widening fence --------------------------
 #
 # The out-of-scope machinery-waive rule reads an ELIGIBILITY set that is wider
