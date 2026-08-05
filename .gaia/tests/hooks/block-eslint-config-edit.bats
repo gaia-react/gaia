@@ -139,20 +139,35 @@ assert_denied() {
   assert_allowed
 }
 
-# The size is deliberately far larger than it needs to be, and shrinking it is
-# how this test goes hollow. What it pins is a pipe fail-open, so the shape only
-# reproduces past pipe capacity (65536) plus whatever the reader drains before
-# exiting, and that second term is a property of the grep implementation, not a
-# constant: it moves by kilobytes between the two greps on one macOS host, and
-# CI runs a third one nobody can measure from here. A fixture sitting just above
-# the local boundary passes with the defect fully restored on any reader that
-# buffers more. Keep it orders of magnitude clear of the boundary rather than
-# tuned to it.
+# This fixture is pinned between two limits that pull in opposite directions,
+# and it is the only test here that cannot use the shared helpers. Both
+# constraints are load-bearing; satisfying one alone breaks it.
+#
+# It must be FAR ABOVE the pipe boundary. What it pins is a pipe fail-open, so
+# the shape only reproduces past pipe capacity (65536) plus whatever the reader
+# drains before exiting, and that second term is a property of the grep
+# implementation rather than a constant: it moves by kilobytes between the two
+# greps on one macOS host, and CI runs a third. A fixture tuned just above the
+# local boundary passes with the defect fully restored on any reader that
+# buffers more.
+#
+# It must also NEVER TRAVEL THROUGH ARGV, which is the constraint that bites as
+# soon as the first one is satisfied. Linux caps a single execve argument at
+# MAX_ARG_STRLEN, 32 pages (131072 bytes), independently of ARG_MAX, so a
+# megabyte-scale payload handed to `jq --arg` never execs at all: jq dies E2BIG,
+# the substitution yields nothing, the hook reads empty stdin and exits 0, and
+# the test fails on the platform CI runs while passing on macOS, which has no
+# per-string cap. That is a kernel limit rather than a bash-version gap, so the
+# bash-5 pre-flight cannot see it either.
+#
+# So the payload is assembled into files and reaches jq by --rawfile and the
+# hook by stdin redirection, crossing no argv boundary at any size.
 @test "denies a guarded path arriving with megabytes of trailing payload" {
-  local path
-  path="$(cfg)"$'\n'"$(head -c 1000000 /dev/zero | tr '\0' 'x')"
-  run_hook "$(jq -n --arg p "$path" \
-    '{tool_name: "Edit", tool_input: {file_path: $p, old_string: "a", new_string: "b"}}')"
+  { printf '%s\n' "$(cfg)"; head -c 1000000 /dev/zero | tr '\0' 'x'; } >"$TMP/path.txt"
+  jq -n --rawfile p "$TMP/path.txt" \
+    '{tool_name: "Edit", tool_input: {file_path: $p, old_string: "a", new_string: "b"}}' \
+    >"$TMP/payload.json"
+  run bash -c 'bash "$2" <"$1"' _ "$TMP/payload.json" "$HOOK_ABS"
   assert_denied
 }
 
