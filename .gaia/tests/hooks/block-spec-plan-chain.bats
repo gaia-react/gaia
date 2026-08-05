@@ -33,9 +33,8 @@ teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
 }
 
-# Quote-safe delivery: payloads carry paths and command strings of their own, so
-# $json and $HOOK_ABS go in as positional args rather than being re-wrapped in an
-# outer single-quoted `bash -c '...'` string.
+# Payloads carry paths and command strings of their own, so delivery goes
+# through `invoke_hook` (helpers/run-hook.sh) rather than any local variant.
 run_hook() {
   local json="$1"
   invoke_hook "$json" "$HOOK_ABS"

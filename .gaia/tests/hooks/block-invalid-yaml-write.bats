@@ -60,10 +60,8 @@ make_workdir() {
   WORKDIR=$(mktemp -d -t gaia-yaml-write-XXXXXX)
 }
 
-# Quote-safe delivery (mandatory, mirrors block-worktree-path-mismatch.bats):
-# pass $json and $HOOK_ABS as positional args to an inner bash -c rather than
-# re-wrapping in an outer single-quoted string, so embedded quotes/newlines in
-# a payload never terminate the wrapper early.
+# Payloads here carry both quotes and newlines, so delivery goes through
+# `invoke_hook` (helpers/run-hook.sh) rather than any local variant.
 run_hook_write() {
   local path="$1" content="$2"
   local json

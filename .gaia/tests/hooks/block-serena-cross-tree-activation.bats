@@ -68,10 +68,8 @@ make_other_repo() {
   git -C "$OTHER_REPO" init -q --initial-branch=main
 }
 
-# Quote-safe delivery (mandatory, mirrors block-worktree-path-mismatch.bats):
-# pass $json and $HOOK_ABS as positional args to an inner bash -c rather than
-# re-wrapping in an outer single-quoted string, so embedded quotes in a
-# payload path never terminate the wrapper early.
+# A payload path can carry quotes of its own, so delivery goes through
+# `invoke_hook` (helpers/run-hook.sh) rather than any local variant.
 run_hook() {
   local project="$1" cwd="$2"
   local json

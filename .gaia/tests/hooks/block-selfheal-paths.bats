@@ -23,10 +23,9 @@ setup() {
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
 }
 
-# Quote-safe delivery (mandatory, per block-manifest-write.bats precedent):
-# several payloads below carry Bash commands with their own single quotes
-# (sed -i '' ...). Passing $json and $HOOK_ABS as positional args to an
-# inner `bash -c` avoids re-quoting that would strip the embedded quoting.
+# Several payloads below carry Bash commands with their own single quotes
+# (sed -i '' ...), so delivery goes through `invoke_hook`
+# (helpers/run-hook.sh) rather than any local variant.
 run_hook_edit() {
   local agent="$1" tool="$2" path="$3"
   local json

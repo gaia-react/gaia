@@ -106,10 +106,8 @@ make_worktree() {
   WT="$REPO/.claude/worktrees/$rel"
 }
 
-# Quote-safe delivery (mandatory, mirrors block-manifest-write.bats): pass
-# $json and $HOOK_ABS as positional args to an inner bash -c rather than
-# re-wrapping in an outer single-quoted string, so embedded quotes in a
-# payload path never terminate the wrapper early.
+# A payload path can carry quotes of its own, so delivery goes through
+# `invoke_hook` (helpers/run-hook.sh) rather than any local variant.
 run_hook_edit() {
   local tool="$1" path="$2"
   local json

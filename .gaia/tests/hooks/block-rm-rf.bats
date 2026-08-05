@@ -24,11 +24,11 @@ setup() {
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
 }
 
-# Quote-safe delivery (mandatory): every payload here is about quoting, so the
-# command text must reach the hook byte-for-byte. Passing $json and $HOME_ABS
-# as positional args means no outer re-quoting can strip the inner quotes
-# under test. Payloads are written in single quotes so `$HOME` stays the
-# literal 5-character string the guard must match, never this machine's home.
+# Every payload here is about quoting, so the command text must reach the hook
+# byte-for-byte: delivery goes through `invoke_hook` (helpers/run-hook.sh)
+# rather than any local variant. Payloads are written in single quotes so
+# `$HOME` stays the literal 5-character string the guard must match, never this
+# machine's home.
 run_hook_bash() {
   local cmd="$1"
   local json

@@ -84,8 +84,8 @@ cfg() {
   printf '%s' "$TMP/$name"
 }
 
-# Quote-safe delivery: fixtures carry quotes of their own, so the JSON payload
-# and the hook path go in as positional args rather than being re-wrapped.
+# The fixtures here carry quotes of their own, so delivery goes through
+# `invoke_hook` (helpers/run-hook.sh), which passes the payload positionally.
 run_hook() {
   invoke_hook "$1" "$HOOK_ABS"
 }

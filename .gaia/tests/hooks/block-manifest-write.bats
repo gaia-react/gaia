@@ -17,12 +17,9 @@ setup() {
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
 }
 
-# Quote-safe delivery (mandatory): several payloads below carry Bash commands
-# that contain single quotes of their own (echo '{}' > ..., sed -i '' ..., a
-# jq '...' filter). Re-wrapping $json in an outer single-quoted `bash -c '...'`
-# string would let those embedded quotes terminate the wrapper early and strip
-# the inner quoting before it reaches the hook. Passing $json and $HOOK_ABS as
-# positional args instead means no re-quoting happens.
+# Several payloads below carry Bash commands with single quotes of their own
+# (echo '{}' > ..., sed -i '' ..., a jq '...' filter), so delivery goes through
+# `invoke_hook` (helpers/run-hook.sh) rather than any local variant.
 run_hook_edit() {
   local tool="$1" path="$2"
   local json

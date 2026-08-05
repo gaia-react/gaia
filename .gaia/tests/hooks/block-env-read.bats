@@ -28,12 +28,9 @@ setup() {
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
 }
 
-# Quote-safe delivery (mandatory): several payloads below carry Bash commands
-# that contain single quotes of their own (grep '.env' .gitignore, env
-# SECRET=hunter2 cat .env.local). Re-wrapping $json in an outer
-# single-quoted `bash -c '...'` string would let those embedded quotes
-# terminate the wrapper early. Passing $json and the hook path as positional
-# args instead means no re-quoting happens.
+# Several payloads below carry Bash commands with single quotes of their own
+# (grep '.env' .gitignore, env SECRET=hunter2 cat .env.local), so delivery goes
+# through `invoke_hook` (helpers/run-hook.sh) rather than any local variant.
 run_hook_read() {
   local path="$1"
   local json

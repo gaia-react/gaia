@@ -42,9 +42,9 @@ setup() {
   HOOK_ABS="$HOOKS_SRC/block-secrets-write.sh"
 }
 
-# Quote-safe delivery: the payloads below carry shell snippets with quotes of
-# their own, so $json and the hook path go in as positional args rather than
-# being re-wrapped in an outer quoted string.
+# The payloads below carry shell snippets with quotes of their own, so
+# delivery goes through `invoke_hook` (helpers/run-hook.sh) rather than any
+# local variant.
 run_hook_write() {
   local body="$1"
   local json
