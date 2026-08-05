@@ -11,6 +11,8 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$BATS_TEST_DIRNAME/../helpers/files.sh"
   ALLOC=".specify/extensions/gaia/lib/spec-allocator.sh"
   FOLDERIZE=".specify/extensions/gaia/lib/spec-folderize.sh"
   RENUMBER=".specify/extensions/gaia/lib/spec-renumber.sh"
@@ -39,9 +41,9 @@ _snapshot() {
     --seed-flat SPEC-001 --seed-flat SPEC-002 --seed-archived-flat SPEC-000)"
   cd "$REPO"
 
-  c1="$(cat "$REPO/.gaia/local/specs/SPEC-001.md")"
-  c2="$(cat "$REPO/.gaia/local/specs/SPEC-002.md")"
-  c0="$(cat "$REPO/.gaia/local/specs/archived/SPEC-000.md")"
+  c1="$(snapshot_file "$REPO/.gaia/local/specs/SPEC-001.md")"
+  c2="$(snapshot_file "$REPO/.gaia/local/specs/SPEC-002.md")"
+  c0="$(snapshot_file "$REPO/.gaia/local/specs/archived/SPEC-000.md")"
 
   run bash -c "bash '$REPO/$FOLDERIZE' '$REPO'"
   [ "$status" -eq 0 ]
@@ -57,9 +59,9 @@ _snapshot() {
   [ ! -e "$REPO/.gaia/local/specs/archived/SPEC-000.md" ]
 
   # Contents moved byte-for-byte.
-  [ "$(cat "$REPO/.gaia/local/specs/SPEC-001/SPEC.md")" = "$c1" ]
-  [ "$(cat "$REPO/.gaia/local/specs/SPEC-002/SPEC.md")" = "$c2" ]
-  [ "$(cat "$REPO/.gaia/local/specs/archived/SPEC-000/SPEC.md")" = "$c0" ]
+  assert_files_identical "$REPO/.gaia/local/specs/SPEC-001/SPEC.md" "$c1"
+  assert_files_identical "$REPO/.gaia/local/specs/SPEC-002/SPEC.md" "$c2"
+  assert_files_identical "$REPO/.gaia/local/specs/archived/SPEC-000/SPEC.md" "$c0"
 }
 
 # --- 2: idempotent re-run ----------------------------------------------------
@@ -114,8 +116,8 @@ _snapshot() {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-flat SPEC-003 --seed-folder SPEC-003)"
   cd "$REPO"
 
-  flat_before="$(cat "$REPO/.gaia/local/specs/SPEC-003.md")"
-  fold_before="$(cat "$REPO/.gaia/local/specs/SPEC-003/SPEC.md")"
+  flat_before="$(snapshot_file "$REPO/.gaia/local/specs/SPEC-003.md")"
+  fold_before="$(snapshot_file "$REPO/.gaia/local/specs/SPEC-003/SPEC.md")"
 
   run bash -c "bash '$REPO/$FOLDERIZE' '$REPO' 2>&1 1>/dev/null"
   [ "$status" -eq 4 ]
@@ -123,8 +125,8 @@ _snapshot() {
   [[ "$output" == *"SPEC-003/SPEC.md"* ]]
 
   # Neither file modified.
-  [ "$(cat "$REPO/.gaia/local/specs/SPEC-003.md")" = "$flat_before" ]
-  [ "$(cat "$REPO/.gaia/local/specs/SPEC-003/SPEC.md")" = "$fold_before" ]
+  assert_files_identical "$REPO/.gaia/local/specs/SPEC-003.md" "$flat_before"
+  assert_files_identical "$REPO/.gaia/local/specs/SPEC-003/SPEC.md" "$fold_before"
 }
 
 # --- 6: tracked vs untracked -------------------------------------------------
@@ -267,9 +269,9 @@ _snapshot() {
     --seed-flat-sibling SPEC-001-FOLLOWUP-REPORT)"
   cd "$REPO"
 
-  c_spec="$(cat "$REPO/.gaia/local/specs/SPEC-001.md")"
-  c_report="$(cat "$REPO/.gaia/local/specs/SPEC-001-REPORT.md")"
-  c_followup="$(cat "$REPO/.gaia/local/specs/SPEC-001-FOLLOWUP-REPORT.md")"
+  c_spec="$(snapshot_file "$REPO/.gaia/local/specs/SPEC-001.md")"
+  c_report="$(snapshot_file "$REPO/.gaia/local/specs/SPEC-001-REPORT.md")"
+  c_followup="$(snapshot_file "$REPO/.gaia/local/specs/SPEC-001-FOLLOWUP-REPORT.md")"
 
   run bash -c "bash '$REPO/$FOLDERIZE' '$REPO'"
   [ "$status" -eq 0 ]
@@ -285,9 +287,9 @@ _snapshot() {
   [ ! -e "$REPO/.gaia/local/specs/SPEC-001-FOLLOWUP-REPORT.md" ]
 
   # Contents moved byte-for-byte.
-  [ "$(cat "$REPO/.gaia/local/specs/SPEC-001/SPEC.md")" = "$c_spec" ]
-  [ "$(cat "$REPO/.gaia/local/specs/SPEC-001/REPORT.md")" = "$c_report" ]
-  [ "$(cat "$REPO/.gaia/local/specs/SPEC-001/FOLLOWUP-REPORT.md")" = "$c_followup" ]
+  assert_files_identical "$REPO/.gaia/local/specs/SPEC-001/SPEC.md" "$c_spec"
+  assert_files_identical "$REPO/.gaia/local/specs/SPEC-001/REPORT.md" "$c_report"
+  assert_files_identical "$REPO/.gaia/local/specs/SPEC-001/FOLLOWUP-REPORT.md" "$c_followup"
 }
 
 # --- 12: sibling conflict ----------------------------------------------------
@@ -302,8 +304,8 @@ _snapshot() {
   git -C "$REPO" add .gaia/local/specs/SPEC-003/REPORT.md
   git -C "$REPO" commit --quiet -m "add foldered report"
 
-  flat_before="$(cat "$REPO/.gaia/local/specs/SPEC-003-REPORT.md")"
-  fold_before="$(cat "$REPO/.gaia/local/specs/SPEC-003/REPORT.md")"
+  flat_before="$(snapshot_file "$REPO/.gaia/local/specs/SPEC-003-REPORT.md")"
+  fold_before="$(snapshot_file "$REPO/.gaia/local/specs/SPEC-003/REPORT.md")"
 
   run bash -c "bash '$REPO/$FOLDERIZE' '$REPO' 2>&1 1>/dev/null"
   [ "$status" -eq 4 ]
@@ -311,8 +313,8 @@ _snapshot() {
   [[ "$output" == *"SPEC-003/REPORT.md"* ]]
 
   # Neither file modified.
-  [ "$(cat "$REPO/.gaia/local/specs/SPEC-003-REPORT.md")" = "$flat_before" ]
-  [ "$(cat "$REPO/.gaia/local/specs/SPEC-003/REPORT.md")" = "$fold_before" ]
+  assert_files_identical "$REPO/.gaia/local/specs/SPEC-003-REPORT.md" "$flat_before"
+  assert_files_identical "$REPO/.gaia/local/specs/SPEC-003/REPORT.md" "$fold_before"
 }
 
 # --- 13: idempotent re-run after sibling migration ---------------------------
@@ -341,7 +343,7 @@ _snapshot() {
     --seed-archived-flat-sibling SPEC-000-REPORT)"
   cd "$REPO"
 
-  c_report="$(cat "$REPO/.gaia/local/specs/archived/SPEC-000-REPORT.md")"
+  c_report="$(snapshot_file "$REPO/.gaia/local/specs/archived/SPEC-000-REPORT.md")"
 
   run bash -c "bash '$REPO/$FOLDERIZE' '$REPO'"
   [ "$status" -eq 0 ]
@@ -349,7 +351,7 @@ _snapshot() {
   [ -f "$REPO/.gaia/local/specs/archived/SPEC-000/SPEC.md" ]
   [ -f "$REPO/.gaia/local/specs/archived/SPEC-000/REPORT.md" ]
   [ ! -e "$REPO/.gaia/local/specs/archived/SPEC-000-REPORT.md" ]
-  [ "$(cat "$REPO/.gaia/local/specs/archived/SPEC-000/REPORT.md")" = "$c_report" ]
+  assert_files_identical "$REPO/.gaia/local/specs/archived/SPEC-000/REPORT.md" "$c_report"
 }
 
 # --- 10: read-only modes take no lock and create no folder -------------------

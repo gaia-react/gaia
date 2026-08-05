@@ -17,6 +17,8 @@
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
   SRC_LIB="$REPO_ROOT/.specify/extensions/gaia/lib"
   SRC_SCRIPTS="$REPO_ROOT/.gaia/scripts"
   [ -x "$SRC_LIB/plan-ledger-update.sh" ] || skip "plan-ledger-update.sh not executable"
@@ -96,10 +98,10 @@ _row_field() {
 }
 
 @test "4: patch for a non-existent row exits 4 and mutates nothing" {
-  before="$(cat "$SANDBOX/$LEDGER_REL")"
+  before="$(snapshot_file "$SANDBOX/$LEDGER_REL")"
   run _update PLAN-999 '{"status":"merged"}'
   [ "$status" -eq 4 ]
-  [ "$(cat "$SANDBOX/$LEDGER_REL")" = "$before" ]
+  assert_files_identical "$SANDBOX/$LEDGER_REL" "$before"
 }
 
 @test "5: malformed patch JSON exits 5" {

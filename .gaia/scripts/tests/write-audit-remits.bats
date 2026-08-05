@@ -14,6 +14,8 @@
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
   WRITER="$REPO_ROOT/.gaia/scripts/write-audit-remits.sh"
   CHECK="$REPO_ROOT/.gaia/scripts/verify-audit-roster.sh"
   # A hard failure, not a skip: a `skip` here would silently retire every
@@ -199,7 +201,7 @@ YAML
   [ "$status" -eq 0 ]
 
   local before
-  before="$(cat "$r/.claude/agents/code-audit-a.md")"
+  before="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
 
   sed '/^- `a\/b\/\*\.ts`$/d' "$r/.claude/agents/code-audit-a.md" > "$r/tmp-corrupt"
   mv "$r/tmp-corrupt" "$r/.claude/agents/code-audit-a.md"
@@ -208,8 +210,8 @@ YAML
   [ "$status" -eq 0 ]
 
   local after
-  after="$(cat "$r/.claude/agents/code-audit-a.md")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  assert_files_identical "$before" "$after"
 }
 
 @test "UAT-006: repair announces a roster-ungranted glob with a - prefix, after the + list" {
@@ -442,15 +444,15 @@ YAML
   mv "$r/tmp-corrupt" "$f"
 
   local before
-  before="$(cat "$f")"
+  before="$(snapshot_file "$f")"
 
   run_writer "$r"
   [ "$status" -eq 1 ]
   assert_contains "code-audit-a"
 
   local after
-  after="$(cat "$f")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$f")"
+  assert_files_identical "$before" "$after"
 }
 
 @test "malformed markers: a start marker with no end marker is refused, the file left byte-identical" {
@@ -473,15 +475,15 @@ YAML
   mv "$r/tmp-corrupt" "$f"
 
   local before
-  before="$(cat "$f")"
+  before="$(snapshot_file "$f")"
 
   run_writer "$r"
   [ "$status" -eq 1 ]
   assert_contains "code-audit-a"
 
   local after
-  after="$(cat "$f")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$f")"
+  assert_files_identical "$before" "$after"
 }
 
 @test "malformed markers: a reversed pair (end before start) is refused, the file left byte-identical, tail intact" {
@@ -529,15 +531,15 @@ THIS TAIL MUST SURVIVE
 MD
 
   local before
-  before="$(cat "$f")"
+  before="$(snapshot_file "$f")"
 
   run_writer "$r"
   [ "$status" -eq 1 ]
   assert_contains "code-audit-a"
 
   local after
-  after="$(cat "$f")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$f")"
+  assert_files_identical "$before" "$after"
   grep -qxF -- "THIS TAIL MUST SURVIVE" "$f"
 }
 
@@ -558,15 +560,15 @@ auditors:
       - "a/**"
 YAML
   local before
-  before="$(cat "$r/.claude/agents/code-audit-a.md")"
+  before="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
 
   run_writer "$r"
   [ "$status" -eq 1 ]
   assert_contains "code-audit-a"
 
   local after
-  after="$(cat "$r/.claude/agents/code-audit-a.md")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  assert_files_identical "$before" "$after"
 }
 
 # ---------------------------------------------------------------------------
@@ -591,18 +593,18 @@ auditors:
       - "a/**"
 YAML
   local before_default before_a
-  before_default="$(cat "$r/.claude/agents/code-audit-default.md")"
-  before_a="$(cat "$r/.claude/agents/code-audit-a.md")"
+  before_default="$(snapshot_file "$r/.claude/agents/code-audit-default.md")"
+  before_a="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
 
   run env TMPDIR="$r/no-such-tmpdir" bash "$WRITER" --root "$r" --config "$r/.gaia/audit-ci.yml"
   [ "$status" -eq 1 ]
 
   # The definitions are untouched, and in particular no emptied region landed.
   local after_default after_a
-  after_default="$(cat "$r/.claude/agents/code-audit-default.md")"
-  after_a="$(cat "$r/.claude/agents/code-audit-a.md")"
-  [ "$before_default" = "$after_default" ]
-  [ "$before_a" = "$after_a" ]
+  after_default="$(snapshot_file "$r/.claude/agents/code-audit-default.md")"
+  after_a="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  assert_files_identical "$before_default" "$after_default"
+  assert_files_identical "$before_a" "$after_a"
 }
 
 @test "robustness: a body write that fails after mktemp succeeds is refused, definitions byte-identical" {
@@ -648,8 +650,8 @@ SH
   chmod +x "$shim/mktemp"
 
   local before_default before_a
-  before_default="$(cat "$r/.claude/agents/code-audit-default.md")"
-  before_a="$(cat "$r/.claude/agents/code-audit-a.md")"
+  before_default="$(snapshot_file "$r/.claude/agents/code-audit-default.md")"
+  before_a="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
 
   run env PATH="$shim:$PATH" bash "$WRITER" --root "$r" --config "$r/.gaia/audit-ci.yml"
   [ "$status" -eq 1 ]
@@ -663,10 +665,10 @@ SH
 
   # No emptied region landed: every definition is byte-identical.
   local after_default after_a
-  after_default="$(cat "$r/.claude/agents/code-audit-default.md")"
-  after_a="$(cat "$r/.claude/agents/code-audit-a.md")"
-  [ "$before_default" = "$after_default" ]
-  [ "$before_a" = "$after_a" ]
+  after_default="$(snapshot_file "$r/.claude/agents/code-audit-default.md")"
+  after_a="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  assert_files_identical "$before_default" "$after_default"
+  assert_files_identical "$before_a" "$after_a"
 }
 
 @test "robustness: a roster with no auditors block exits 0 and writes nothing" {

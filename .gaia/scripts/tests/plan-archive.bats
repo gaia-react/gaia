@@ -18,6 +18,8 @@ setup() {
   SCRIPT="$THIS_DIR/../plan-archive.sh"
   [ -x "$SCRIPT" ] || skip "plan-archive.sh not executable"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
 
   # Canonicalize via `pwd -P`: macOS resolves /tmp -> /private/tmp inside
   # `git rev-parse`, and the script derives its repo root the same way.
@@ -316,11 +318,11 @@ EOF
   write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-006/plan" 2 0 0 0
   seed_cost_row execute spec_id SPEC-006 "" 2 0 0 0
   seed_plans_ledger '{"id":"PLAN-005","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
-  ledger_before="$(cat "$SANDBOX/.gaia/local/plans/ledger.json")"
+  ledger_before="$(snapshot_file "$SANDBOX/.gaia/local/plans/ledger.json")"
   run run_in_sandbox ".gaia/local/specs/SPEC-006/plan"
   [ "$status" -eq 0 ]
   assert_deleted "$SANDBOX/.gaia/local/specs/SPEC-006/plan"
-  [ "$(cat "$SANDBOX/.gaia/local/plans/ledger.json")" = "$ledger_before" ]
+  assert_files_identical "$SANDBOX/.gaia/local/plans/ledger.json" "$ledger_before"
 }
 
 # --- 9. Best-effort: a missing ledger row for the stamp never blocks reduce -

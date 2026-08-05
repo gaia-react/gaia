@@ -12,6 +12,8 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$BATS_TEST_DIRNAME/../helpers/files.sh"
   RECONCILE=".specify/extensions/gaia/lib/spec-reconcile.sh"
 }
 
@@ -110,25 +112,25 @@ _no_gh_path() {
 @test "8a: gh absent from PATH; exit 0, ledger unchanged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
   _promote_to_ready SPEC-006
-  before="$(cat "$REPO/.gaia/local/specs/ledger.json")"
+  before="$(snapshot_file "$REPO/.gaia/local/specs/ledger.json")"
   _no_gh_path
 
   run bash -c "PATH='$NO_GH_PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]
-  after="$(cat "$REPO/.gaia/local/specs/ledger.json")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$REPO/.gaia/local/specs/ledger.json")"
+  assert_files_identical "$before" "$after"
 }
 
 @test "8b: gh present but returns empty output; exit 0, ledger unchanged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
   _promote_to_ready SPEC-006
-  before="$(cat "$REPO/.gaia/local/specs/ledger.json")"
+  before="$(snapshot_file "$REPO/.gaia/local/specs/ledger.json")"
   _stub_gh_empty
 
   run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]
-  after="$(cat "$REPO/.gaia/local/specs/ledger.json")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$REPO/.gaia/local/specs/ledger.json")"
+  assert_files_identical "$before" "$after"
 }
 
 # --- 9: a retired 'specified' row is off-vocab, never a merge candidate ---

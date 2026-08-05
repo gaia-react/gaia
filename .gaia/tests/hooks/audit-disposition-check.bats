@@ -20,6 +20,8 @@
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
   LIB="$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh"
   HOOK_ABS="$REPO_ROOT/.claude/hooks/audit-disposition-check.sh"
   DIGEST_CLI="$REPO_ROOT/.gaia/scripts/audit-member-digest.sh"
@@ -239,10 +241,10 @@ write_sidecar() { printf '%s\n' "$1" > "$SIDECAR"; }
 
 @test "seed-forward: fail-safe no-op on a missing prev sidecar" {
   printf '%s\n' '{"schema":1,"backend":"github","findings":[{"key":"K9","disposition":"filed"}]}' > "$SIDECAR"
-  before="$(cat "$SIDECAR")"
+  before="$(snapshot_file "$SIDECAR")"
   disposition_seed_forward "$BATS_TEST_TMPDIR/does-not-exist.json" "$SIDECAR"
-  after="$(cat "$SIDECAR")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$SIDECAR")"
+  assert_files_identical "$before" "$after"
 }
 
 @test "seed-forward: fail-safe no-op on an unparseable prev sidecar" {

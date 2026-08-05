@@ -215,6 +215,15 @@ jobs:
               - '.gaia/tests/forensics/**'
               - '.gaia/tests/hooks/**'
               - '.gaia/tests/lib/**'
+              # The cross-directory bats helper (.gaia/tests/helpers/) is sourced
+              # by suites in .gaia/scripts/tests/, .gaia/tests/lib/ and
+              # .gaia/tests/hooks/, and it holds the byte-identity assertion
+              # those suites depend on. It sits at the top of .gaia/tests/,
+              # matching none of the .gaia/tests/*/ globs above, so without this
+              # line an edit that weakened the helper alone would report
+              # `code=false`, skip every bats step, and green the job having run
+              # the assertions it broke zero times.
+              - '.gaia/tests/helpers/**'
               # The .gaia/tests/lib/ suites exercise the SPEC-ledger lib scripts
               # under .specify/extensions/gaia/lib/ (spec-archive-merged.sh and
               # its shared cost-consolidate.sh, the allocators, ledger-update,
