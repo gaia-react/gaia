@@ -455,7 +455,10 @@ ownerless_probe() {
     return 0
   fi
 
-  changed="$(git -C "$repo_root" diff --name-only "${base}...HEAD" 2>/dev/null || true)"
+  # `-z` for the reason resolve-audit-members.sh states at its own copy of this
+  # derivation: a C-quoted path matches no remit glob, so it fails open on the
+  # membership question rather than loudly.
+  changed="$(git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)"
   if [ -z "$changed" ]; then
     echo "code-audit-frontend"
     return 0

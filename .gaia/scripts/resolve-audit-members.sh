@@ -183,7 +183,20 @@ resolve_base() {
 base="$(resolve_base)"
 [ -n "$base" ] || exit 0
 
-changed="$(git -C "$repo_root" diff --name-only "${base}...HEAD" 2>/dev/null || true)"
+# `-z`, because this list decides MEMBERSHIP and a quoted path fails open.
+# Under git's default core.quotePath, `diff --name-only` C-quotes any path
+# carrying non-ASCII or control bytes and emits the surrounding double quotes
+# as literal characters, so `ete.ts` with accents arrives as the token
+# "\303\251t\303\251.ts". That token matches no member's remit glob, the
+# classifier below names no owner for it, and a pull request whose only
+# in-remit change is such a file resolves an EMPTY member set: nothing is
+# dispatched, no marker is owed, and the file merges unaudited. `-z` disables
+# quoting outright rather than narrowing it -- `core.quotePath=false` still
+# quotes a path containing a quote, a backslash, or a control byte -- and the
+# `tr` is what turns the NUL-terminated output back into the newline-delimited
+# list every consumer below reads. Same spelling the roster's own definitions
+# use (.claude/agents/code-audit-*.md).
+changed="$(git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)"
 [ -n "$changed" ] || exit 0
 
 # --- Dispatch: batch-classify every changed path, collect unique owners -----
