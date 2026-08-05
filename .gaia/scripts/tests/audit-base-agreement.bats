@@ -625,9 +625,12 @@ probe_deadlock() {
 # `core.quotePath` makes that decision fail OPEN. `diff --name-only` C-quotes
 # any path carrying non-ASCII or control bytes, emitting the surrounding double
 # quotes as literal characters, and a quoted token matches no remit glob. The
-# member then self-skips as if nothing it owned had changed, writes no marker,
-# and the file merges with nobody having reviewed it -- indistinguishable from
-# a genuine no-match, so nothing anywhere records that it went unreviewed.
+# member then self-skips as if nothing it owned had changed, and the
+# membership resolver reading the same list names no owner at all, which sends
+# resolve-audit-spawn.sh to its ownerless fallback and the default member.
+# Either way the specialist whose remit the file is in never reviews it, the
+# outcome is indistinguishable from a genuine no-match, and nothing in the run
+# records that it happened.
 #
 # check-audit-base-derivation.sh's assertion 4 pins the `-z` that prevents it,
 # but a static check can only see that the flag is present. This proves the

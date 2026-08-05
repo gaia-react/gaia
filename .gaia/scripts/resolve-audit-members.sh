@@ -189,8 +189,12 @@ base="$(resolve_base)"
 # as literal characters, so `ete.ts` with accents arrives as the token
 # "\303\251t\303\251.ts". That token matches no member's remit glob, the
 # classifier below names no owner for it, and a pull request whose only
-# in-remit change is such a file resolves an EMPTY member set: nothing is
-# dispatched, no marker is owed, and the file merges unaudited. `-z` disables
+# in-remit change is such a file resolves an EMPTY member set. That is quiet
+# rather than loud: resolve-audit-spawn.sh treats an empty set as "nobody owns
+# anything here" and falls through to its ownerless probe, which spawns the
+# default member. So the file is reviewed by a member whose remit excludes it
+# while the specialist that owns it is never named, and the merge completes
+# looking audited. `-z` disables
 # quoting outright rather than narrowing it -- `core.quotePath=false` still
 # quotes a path containing a quote, a backslash, or a control byte -- and the
 # `tr` is what turns the NUL-terminated output back into the newline-delimited

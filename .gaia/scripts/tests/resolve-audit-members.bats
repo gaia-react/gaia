@@ -155,6 +155,38 @@ code-audit-maintainer-shell"
 }
 
 # ---------------------------------------------------------------------------
+# 3b. a non-ASCII path is classified, not C-quoted into ownerlessness
+# ---------------------------------------------------------------------------
+#
+# Under git's default `core.quotePath`, `diff --name-only` wraps any path
+# carrying non-ASCII or control bytes in double quotes and backslash-escapes
+# the bytes, so the path arrives as a token that matches no remit glob. This
+# resolver's answer is then an EMPTY member set, which resolve-audit-spawn.sh
+# reads as "nobody owns anything here" and answers with the default member. The
+# specialist that owns the file is never named and the merge completes looking
+# audited, which is why the derivation reads `--name-only -z`.
+
+@test "a non-ASCII path is classified rather than C-quoted into no member" {
+  write_full_roster
+  stage .gaia/scripts/règle.sh
+  commit "chore"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-shell" ]
+
+  # Non-vacuity: git really does quote THIS path under the pre-fix spelling. A
+  # fixture whose name turned out to be plain ASCII would pass the assertion
+  # above while proving nothing about quoting.
+  local base quoted
+  base="$(git -C "$SANDBOX" merge-base HEAD main)"
+  quoted="$(git -C "$SANDBOX" diff --name-only "${base}...HEAD")"
+  grep -qF '"' <<<"$quoted" || {
+    printf 'the pre-fix spelling did not quote %s, so this fixture proves nothing\n' "$quoted"
+    return 1
+  }
+}
+
+# ---------------------------------------------------------------------------
 # 4. .claude/hooks/lib/*.sh → maintainer-shell (nested ** under hooks)
 # ---------------------------------------------------------------------------
 

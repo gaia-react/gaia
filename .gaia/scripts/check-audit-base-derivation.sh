@@ -142,16 +142,26 @@
 #      20-character quoted token rather than as its own name.
 #
 #      What earns this an assertion rather than a style note is that the
-#      consequence FAILS OPEN. `full_changed` decides whether a specialist runs
-#      at all: it filters that list against the member's remit globs and
-#      self-skips when nothing matches. A quoted token matches no glob, so a
-#      pull request whose only in-remit change is such a file yields an empty
-#      filtered set, the member self-skips cleanly, writes no marker, and the
-#      merge proceeds with nobody having reviewed the file. A clean skip and a
-#      genuine no-match are indistinguishable by then, so nothing anywhere
-#      records that the file went unreviewed. The same output feeds
-#      .gaia/scripts/resolve-audit-members.sh, which reaches the identical
-#      empty answer one step earlier.
+#      consequence FAILS OPEN, in two different places and two different ways.
+#
+#      `full_changed` decides whether a specialist runs at all: it filters that
+#      list against the member's remit globs and self-skips when nothing
+#      matches. A quoted token matches no glob, so a pull request whose only
+#      in-remit change is such a file yields an empty filtered set and the
+#      member self-skips, writing no marker. A clean skip and a genuine
+#      no-match are indistinguishable by then, so nothing records that the file
+#      went unreviewed.
+#
+#      The same derivation decides MEMBERSHIP one step earlier, in
+#      .gaia/scripts/resolve-audit-members.sh, and that is the more dangerous
+#      of the two because it is silent rather than stuck. A quoted token has no
+#      owner, the resolver answers with an empty set, and resolve-audit-spawn.sh
+#      falls through to its ownerless probe, which spawns the default member.
+#      So the file does get an auditor -- just never the specialist whose remit
+#      it is in, and the merge completes looking audited. (The specialist's own
+#      self-skip is the less quiet failure: when membership DID name it, a
+#      self-skip leaves a marker the gate still demands, which deadlocks
+#      loudly rather than passing.)
 #
 #      `-z` rather than `-c core.quotePath=false`, which is the narrower fix
 #      and the tempting one: the flag only stops treating bytes above 0x7f as
