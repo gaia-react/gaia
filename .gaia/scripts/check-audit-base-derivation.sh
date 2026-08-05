@@ -195,7 +195,7 @@
 #      `git diff -z --name-only`, an intervening flag
 #      (`--name-only --diff-filter=d -z`), and a tab or a double space. That is
 #      the accepted cost, and it is accepted rather than worked around because
-#      no positional rule admits every spelling, the roster spells all eight of
+#      no positional rule admits every spelling, the roster spells every one of
 #      its own sites the one way, and the failure this trades into is loud and
 #      one edit from resolved where the false green it replaces is silent.
 #

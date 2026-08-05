@@ -712,15 +712,27 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD") && [ -z "$
 # Assertion 4 requires TWO things of the token and they need separate fixtures,
 # because a mutant that drops one is invisible to a fixture the other already
 # rejects. The token is ` -z` with a LEADING SPACE, and the match is ANCHORED at
-# the position immediately after the call. This fixture pins the space; the one
-# below it pins the anchor.
+# the position immediately after the call. Which fixture pins which, stated
+# from the mutants rather than from intent:
+#
+#   - the ANCHOR is pinned by DIFF_DASH_Z_AFTER_PIPE below, the only test that
+#     goes green when the anchor alone is dropped;
+#   - the LEADING SPACE is pinned by the CORRECT-CALL fixtures, which red when
+#     the space alone is dropped, because `-z` unanchored-by-a-space no longer
+#     sits at index 1 in a window that opens with one;
+#   - this fixture pins NEITHER on its own. It survives both single mutants and
+#     turns green only on the both-absent pre-fix spelling, so what it rejects
+#     is the original anywhere-in-the-call substring test.
+#
+# The distinction matters to a later editor: deleting a correct-call fixture on
+# the belief that this one covers the space would retire the space's only
+# guard.
 #
 # A quoting call whose PATHSPEC happens to contain the token. `[a-z]` is an
 # ordinary character class and it carries `-z` inside it, so a bare
-# anywhere-in-the-call substring test vouches for a call that quotes. The
-# leading space is what rejects it, since the `-z` here is preceded by `a`. The
-# `)` wall does not help, because the pathspec is inside the call rather than
-# after it.
+# anywhere-in-the-call substring test vouches for a call that quotes. The `)`
+# wall does not help, because the pathspec is inside the call rather than after
+# it.
 DIFF_DASH_Z_INSIDE_PATHSPEC='Agent prose, per .github/audit/resolve-audit-base.sh.
 ```bash
 changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- "app/[a-z]/*")

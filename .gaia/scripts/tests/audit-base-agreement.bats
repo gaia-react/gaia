@@ -676,8 +676,11 @@ probe_deadlock() {
   done
 
   # Non-vacuity: the pre-fix spelling, same repository, same base.
+  # `core.quotePath` is pinned rather than inherited: it is the DEFAULT this
+  # probe asserts about, and a maintainer who turns it off in ~/.gitconfig
+  # would otherwise get a red here against a tree with nothing wrong with it.
   base="$(git -C "$repo" merge-base HEAD main)"
-  quoted="$(git -C "$repo" diff --name-only "${base}...HEAD")"
+  quoted="$(git -C "$repo" -c core.quotePath=true diff --name-only "${base}...HEAD")"
   grep -qF '"' <<<"$quoted" || {
     printf 'the pre-fix spelling did not quote, so this fixture proves nothing: %s\n' "$quoted"
     return 1

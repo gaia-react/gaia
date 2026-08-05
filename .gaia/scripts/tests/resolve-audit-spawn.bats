@@ -581,10 +581,13 @@ code-audit-maintainer-shell"
 
   # Non-vacuity: git really does quote THIS path under the pre-fix spelling. A
   # fixture whose name turned out to be plain ASCII would pass the assertion
-  # above while proving nothing about quoting.
+  # above while proving nothing about quoting. `core.quotePath` is pinned rather
+  # than inherited: it is the DEFAULT this probe asserts about, and a maintainer
+  # who turns it off in ~/.gitconfig would otherwise get a red here against a
+  # tree with nothing wrong with it.
   local base quoted
   base="$(git -C "$SANDBOX" merge-base HEAD main)"
-  quoted="$(git -C "$SANDBOX" diff --name-only "${base}...HEAD")"
+  quoted="$(git -C "$SANDBOX" -c core.quotePath=true diff --name-only "${base}...HEAD")"
   grep -qF '"' <<<"$quoted" || {
     printf 'the pre-fix spelling did not quote %s, so this fixture proves nothing\n' "$quoted"
     return 1
