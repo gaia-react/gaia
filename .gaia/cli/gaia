@@ -31573,19 +31573,19 @@ var HELP_TEXT72 = `Usage: gaia <subcommand> [args]
 
   scaffold component|hook|route|service
   react-perf reduce <raw.json> [--frame-budget-ms N]
-  wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
+  wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|diff-size|chain|sync land
   fitness render-card [--cols N]
   harden-ledger list|record|is-suppressed|prune
   harden-tally
-  automation read-config|cron-decide
+  automation read-config|cron-decide|render-workflows|install-audit-workflow
   ci-check-subject --subject "<text>"
   ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
   ci-revert open|mark-failed|is-cap-reached
   update merge-workspace|merge-audit-ci|merge-region|regen-regions
-  update-deps run --emit-updates <path>
-  init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
+  update-deps run|decline
+  init strip-branding|configure-i18n|rename|wire-statusline|bootstrap-env|configure-automation|finalize|resume
   setup status|mark-step|finalize|link-worktree
-  setup-ci status|detect-remote|warn-existing-tools|check-admin|dismiss-personal|opt-out-team|enable-delete-branch|verify-run|finalize|write-tool-mode
+  setup-ci status|check-drift|check-audit-drift|detect-remote|warn-existing-tools|check-admin|dismiss-personal|opt-out-team|enable-delete-branch|verify-run|finalize|write-tool-mode|write-isolation-policy
   sandbox detect|seed|apply|record|status
   ping --event <init|setup|update> [--field value ...]
 `;

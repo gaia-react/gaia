@@ -1,6 +1,11 @@
 import {describe, expect, test} from 'vitest';
 /**
- * Maintainer reachability-guard for the CLI subcommand surface.
+ * Maintainer guards for the CLI subcommand surface. Two of them, sharing one
+ * router scan: a reachability guard (is each command invoked from anywhere?)
+ * and a help-summary completeness guard (is each command documented in its
+ * binary's top-level summary?).
+ *
+ * # Reachability
  *
  * `knip` cannot see this class of deadness. A subcommand is statically
  * reachable through its router's `SUBCOMMAND_HANDLERS` object map, so
@@ -30,6 +35,33 @@ import {describe, expect, test} from 'vitest';
  * substring match, so an invocation-shaped string in operator-facing prose
  * (e.g. a recovery hint in a CI PR body) counts as reachable; that is the
  * intended floor, the target is the command referenced by nothing at all.
+ *
+ * # Help-summary completeness
+ *
+ * Each binary prints a top-level summary with one line per command. A
+ * namespace line's subcommands are also declared, separately, in that
+ * namespace's own router in a different file, and nothing points from one to
+ * the other: a subcommand added to a router and to that router's own
+ * `HELP_TEXT`, both in the file the author already has open, does not reach the
+ * summary. The class recurs on its own and is invisible to a reader who
+ * consults only one of the two surfaces, so it needs a guard rather than a
+ * sweep.
+ *
+ * The convention this asserts is **exhaustive enumeration with no allowlist**:
+ * a namespace line names every key its router dispatches and nothing else.
+ * `sandbox seed` is listed even though the reachability guard above records it
+ * as invoker-less by design, which is the existing text's own answer to whether
+ * a summary is a curated view (it is not). Should a command ever genuinely need
+ * to be unlisted, design the allowlist then; speculating one now costs a second
+ * hand-maintained list to keep honest.
+ *
+ * Scope boundary, narrower than the reachability guard's: only lines whose
+ * first token is a `SUBCOMMAND_HANDLERS` domain router are compared key-for-key.
+ * A top-level leaf that carries its own inner verbs (`ci-revert open|…`,
+ * `harden-ledger list|…`) declares them inside a single handler rather than in
+ * a router map, and `scaffold` dispatches with `if (subcommand === '...')`, so
+ * for those lines this guard checks only that the command is documented and
+ * dispatched, never that the verbs after it are complete.
  */
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
@@ -95,20 +127,31 @@ const escapeRegExp = (value: string): string =>
 // keeps each match a single bounded-length attempt.
 const HANDLER_KEY_PATTERN = /^\s*'?([a-z][a-z0-9-]*)'?\s*:\s*run[A-Z]/u;
 
-const extractHandlerKeys = (source: string): string[] => {
+// The lines between a `SUBCOMMAND_HANDLERS` map's `= {` and its closing
+// `\n};`. Starting after the brace rather than at the declaration keeps the
+// multi-line generic in the two entrypoints (`Readonly<Partial<Record<…>>>`)
+// out of the body, so a type line is never mistaken for an unparsed entry.
+const handlerMapBody = (source: string): string => {
   const start = source.indexOf('const SUBCOMMAND_HANDLERS');
 
-  if (start === -1) return [];
+  if (start === -1) return '';
 
-  const endOffset = source.slice(start).indexOf('\n};');
-  const body =
-    endOffset === -1 ?
-      source.slice(start)
-    : source.slice(start, start + endOffset);
+  const openOffset = source.slice(start).indexOf('= {');
 
+  if (openOffset === -1) return '';
+
+  const bodyStart = start + openOffset + '= {'.length;
+  const endOffset = source.slice(bodyStart).indexOf('\n};');
+
+  return endOffset === -1 ?
+      source.slice(bodyStart)
+    : source.slice(bodyStart, bodyStart + endOffset);
+};
+
+const extractHandlerKeys = (source: string): string[] => {
   const keys: string[] = [];
 
-  for (const line of body.split('\n')) {
+  for (const line of handlerMapBody(source).split('\n')) {
     const match = HANDLER_KEY_PATTERN.exec(line);
 
     if (match) keys.push(match[1]);
@@ -117,38 +160,104 @@ const extractHandlerKeys = (source: string): string[] => {
   return keys;
 };
 
+const COMMENT_OR_BLANK_PATTERN = /^\s*(?:\/\/|\/\*|\*|$)/u;
+
+// Map-body lines the key pattern does not recognize.
+//
+// `HANDLER_KEY_PATTERN` matches only a `run<Pascal>` value, which is the
+// convention every router follows today. An entry written any other way is
+// dropped from the key set **silently**, and that silence is worse than a
+// parse error: a subcommand missing from both its router's keys and its
+// summary line leaves `missing` and `unknown` both empty, so the drift guard
+// reads agreement and passes green on precisely the undocumented-subcommand
+// case it exists to catch. The reachability guard goes quiet on the same
+// command for the same reason.
+//
+// Widening the pattern is the wrong repair: it would have to anticipate every
+// value shape, and the next unanticipated one fails the same silent way.
+// Refusing to leave a line unaccounted for does not.
+const unparsedHandlerLines = (source: string): string[] =>
+  handlerMapBody(source)
+    .split('\n')
+    .filter(
+      (line) =>
+        !COMMENT_OR_BLANK_PATTERN.test(line) && !HANDLER_KEY_PATTERN.test(line)
+    );
+
+const hasDomainIndex = (cliSrc: string, name: string): boolean =>
+  existsSync(path.join(cliSrc, name, 'index.ts'));
+
+// The binary entrypoints, as `[source file, binary name]`. Both guards read
+// this one list, so a third entrypoint is wired in one place.
+const ENTRYPOINTS: readonly (readonly [string, string])[] = [
+  ['index.ts', 'gaia'],
+  ['index.maintainer.ts', 'gaia-maintainer'],
+];
+
+type RouterScan = {
+  // Domain name → that router's own subcommand keys.
+  readonly keys: ReadonlyMap<string, readonly string[]>;
+  // `<file>: <line>` for every map-body line the key pattern did not parse,
+  // across the domain routers and both entrypoints.
+  readonly unparsed: readonly string[];
+};
+
+// One pass over every `SUBCOMMAND_HANDLERS` map in the tree, feeding both
+// guards and the extractor's own blind-spot check.
+const scanRouters = (cliSrc: string): RouterScan => {
+  const domains = readdirSync(cliSrc, {withFileTypes: true})
+    .filter(
+      (entry) => entry.isDirectory() && hasDomainIndex(cliSrc, entry.name)
+    )
+    .map((entry) => entry.name);
+
+  const keys = new Map<string, readonly string[]>();
+  const unparsed: string[] = [];
+
+  const record = (file: string, source: string): void => {
+    for (const line of unparsedHandlerLines(source)) {
+      unparsed.push(`${file}: ${line.trim()}`);
+    }
+  };
+
+  for (const domain of domains) {
+    const file = path.join(domain, 'index.ts');
+    const source = readFileSync(path.join(cliSrc, file), 'utf8');
+
+    if (source.includes('const SUBCOMMAND_HANDLERS')) {
+      keys.set(domain, extractHandlerKeys(source));
+      record(file, source);
+    }
+  }
+
+  for (const [entrypoint] of ENTRYPOINTS) {
+    record(entrypoint, readFileSync(path.join(cliSrc, entrypoint), 'utf8'));
+  }
+
+  return {keys, unparsed};
+};
+
 // Full invocation paths for every map-dispatched leaf command. Domain routers
 // (`src/<domain>/index.ts` declaring the map) contribute `<domain> <key>`.
 // The two entrypoints contribute their keys that have no same-named sub-router
 // directory, the genuinely top-level commands (ci-revert, harden-tally, ...).
-const enumerateLeafCommands = (cliSrc: string): string[] => {
-  const hasIndex = (name: string): boolean =>
-    existsSync(path.join(cliSrc, name, 'index.ts'));
-
-  const domainDirs = readdirSync(cliSrc, {withFileTypes: true})
-    .filter((entry) => entry.isDirectory() && hasIndex(entry.name))
-    .map((entry) => entry.name)
-    .filter((name) =>
-      readFileSync(path.join(cliSrc, name, 'index.ts'), 'utf8').includes(
-        'const SUBCOMMAND_HANDLERS'
-      )
-    );
-
+const enumerateLeafCommands = (
+  cliSrc: string,
+  routers: ReadonlyMap<string, readonly string[]>
+): string[] => {
   const leaves = new Set<string>();
 
-  for (const domain of domainDirs) {
-    const source = readFileSync(path.join(cliSrc, domain, 'index.ts'), 'utf8');
-
-    for (const key of extractHandlerKeys(source)) {
+  for (const [domain, keys] of routers) {
+    for (const key of keys) {
       leaves.add(`${domain} ${key}`);
     }
   }
 
-  for (const entrypoint of ['index.ts', 'index.maintainer.ts']) {
+  for (const [entrypoint] of ENTRYPOINTS) {
     const source = readFileSync(path.join(cliSrc, entrypoint), 'utf8');
 
     for (const key of extractHandlerKeys(source)) {
-      if (!hasIndex(key)) leaves.add(key);
+      if (!hasDomainIndex(cliSrc, key)) leaves.add(key);
     }
   }
 
@@ -188,11 +297,158 @@ const collectText = (absDir: string): string => {
   return parts.join('\n');
 };
 
+// The body of a `HELP_TEXT` template literal. Neither entrypoint's help text
+// contains a backtick, so the first `\`;` after the opening delimiter closes it.
+const extractHelpText = (source: string): string => {
+  const opener = 'const HELP_TEXT = `';
+  const start = source.indexOf(opener);
+
+  if (start === -1) return '';
+
+  const bodyStart = start + opener.length;
+  const end = source.indexOf('`;', bodyStart);
+
+  return end === -1 ? '' : source.slice(bodyStart, end);
+};
+
+// A top-level summary line: two-space indent, the command it documents, then
+// optionally that command's pipe-separated subcommand list. Prose in a help
+// text (the maintainer binary's "Maintainer-only binary." note, the `Usage:`
+// header) sits at column 0 and never matches.
+//
+// Anything after the subcommand list is free-form flag and argument text
+// (`[--cols N]`, `<raw.json>`, the `land` in `wiki … sync land`) and is not
+// checked here; each namespace's own `--help` documents it. A line whose
+// second token opens with `-` or `<` has no list at all, so group 2 captures
+// the empty string; the optionality sits inside the group rather than on it so
+// that the group always participates and never types as `undefined`.
+const SUMMARY_LINE_PATTERN =
+  /^ {2}([a-z][a-z0-9-]*)((?: [a-z][a-z0-9-]*(?:\|[a-z][a-z0-9-]*)*)?)(?![\w|-])/u;
+
+type SummaryAudit = {
+  // `<binary> <namespace>` for every line compared key-for-key. Pinned by its
+  // own test so a parser that silently matched nothing cannot green the rest.
+  readonly compared: string[];
+  // A namespace line whose subcommand list is not exactly its router's keys.
+  readonly drifted: string[];
+  // A summary line for something the binary does not dispatch.
+  readonly undispatched: string[];
+  // A command the binary dispatches with no line in its summary at all.
+  readonly unlisted: string[];
+};
+
+type SummaryLine = {
+  readonly command: string;
+  readonly listed: readonly string[];
+};
+
+const parseSummaryLines = (helpText: string): SummaryLine[] => {
+  const parsed: SummaryLine[] = [];
+
+  for (const line of helpText.split('\n')) {
+    const match = SUMMARY_LINE_PATTERN.exec(line);
+
+    if (match !== null) {
+      const subcommands = match[2].trim();
+
+      parsed.push({
+        command: match[1],
+        listed: subcommands === '' ? [] : subcommands.split('|'),
+      });
+    }
+  }
+
+  return parsed;
+};
+
+const auditBinary = (
+  source: string,
+  binary: string,
+  routers: ReadonlyMap<string, readonly string[]>
+): SummaryAudit => {
+  const audit: SummaryAudit = {
+    compared: [],
+    drifted: [],
+    undispatched: [],
+    unlisted: [],
+  };
+
+  const dispatched = extractHandlerKeys(source);
+  const summary = parseSummaryLines(extractHelpText(source));
+  const documented = new Set(summary.map(({command}) => command));
+
+  for (const {command, listed} of summary) {
+    const keys = routers.get(command);
+
+    // A `keys` of undefined is not a `SUBCOMMAND_HANDLERS` domain: a top-level
+    // leaf (`harden-tally`), a leaf with its own inner verbs (`ci-revert`,
+    // `harden-ledger`), or the `if (subcommand === …)` router (`scaffold`).
+    // Same v1 scope boundary the reachability guard declares, so their lists
+    // are not checked.
+    if (keys !== undefined) {
+      audit.compared.push(`${binary} ${command}`);
+
+      const missing = keys.filter((key) => !listed.includes(key));
+      const unknown = listed.filter((key) => !keys.includes(key));
+
+      if (missing.length > 0 || unknown.length > 0) {
+        audit.drifted.push(
+          `${binary} ${command}: omits [${missing.join(', ')}], names non-existent [${unknown.join(', ')}]`
+        );
+      }
+    }
+  }
+
+  for (const key of dispatched) {
+    if (!documented.has(key)) audit.unlisted.push(`${binary} ${key}`);
+  }
+
+  for (const command of documented) {
+    if (!dispatched.includes(command)) {
+      audit.undispatched.push(`${binary} ${command}`);
+    }
+  }
+
+  return audit;
+};
+
+const auditHelpSummaries = (
+  cliSrc: string,
+  routers: ReadonlyMap<string, readonly string[]>
+): SummaryAudit => {
+  const audits = ENTRYPOINTS.map(([entrypoint, binary]) =>
+    auditBinary(
+      readFileSync(path.join(cliSrc, entrypoint), 'utf8'),
+      binary,
+      routers
+    )
+  );
+
+  return {
+    compared: audits.flatMap(({compared}) => compared),
+    drifted: audits.flatMap(({drifted}) => drifted),
+    undispatched: audits.flatMap(({undispatched}) => undispatched),
+    unlisted: audits.flatMap(({unlisted}) => unlisted),
+  };
+};
+
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const cliSrc = path.join(repoRoot, '.gaia', 'cli', 'src');
 const routersPresent = existsSync(cliSrc);
 
-const leafCommands = routersPresent ? enumerateLeafCommands(cliSrc) : [];
+const routerScan: RouterScan =
+  routersPresent ?
+    scanRouters(cliSrc)
+  : {keys: new Map<string, readonly string[]>(), unparsed: []};
+
+const domainRouters = routerScan.keys;
+
+const leafCommands =
+  routersPresent ? enumerateLeafCommands(cliSrc, domainRouters) : [];
+const summaryAudit =
+  routersPresent ?
+    auditHelpSummaries(cliSrc, domainRouters)
+  : {compared: [], drifted: [], undispatched: [], unlisted: []};
 const invokerText =
   routersPresent ?
     INVOKER_SURFACES.map((surface) =>
@@ -236,6 +492,21 @@ describe('CLI subcommand reachability guard', () => {
   );
 
   test.skipIf(!routersPresent)(
+    'every router map entry parses, so no command is dropped silently',
+    () => {
+      // See `unparsedHandlerLines`. Both guards in this file read their command
+      // set through `HANDLER_KEY_PATTERN`, and a router entry it does not match
+      // vanishes from that set without a word: the reachability guard stops
+      // watching the command, and the help-summary guard reads its absence from
+      // both the router and the summary as agreement.
+      //
+      // To resolve a failure, write the entry as `key: run<Pascal>` like every
+      // other router, rather than widening the pattern to admit a new shape.
+      expect(routerScan.unparsed).toEqual([]);
+    }
+  );
+
+  test.skipIf(!routersPresent)(
     'every map-dispatched leaf command has an external invoker',
     () => {
       const dead = leafCommands.filter(
@@ -262,6 +533,48 @@ describe('CLI subcommand reachability guard', () => {
       // See the file docstring: remove any stale INTERNAL_COMMANDS entry
       // (command retired or now has an external invoker).
       expect(stale).toEqual([]);
+    }
+  );
+});
+
+describe('CLI help-summary completeness guard', () => {
+  test.skipIf(!routersPresent)(
+    'compares the summary lines it claims to (guards against parser rot)',
+    () => {
+      // Every assertion below is a set difference, and an empty set difference
+      // is what "passing" looks like. A help-text extractor or a line pattern
+      // that silently matched nothing would therefore green all three. Pin one
+      // namespace per binary and a floor count so that failure is loud.
+      expect(summaryAudit.compared).toContain('gaia wiki');
+      expect(summaryAudit.compared).toContain('gaia setup-ci');
+      expect(summaryAudit.compared).toContain('gaia-maintainer release');
+      expect(summaryAudit.compared).toContain('gaia-maintainer init');
+      expect(summaryAudit.compared.length).toBeGreaterThanOrEqual(15);
+    }
+  );
+
+  test.skipIf(!routersPresent)(
+    'every namespace line enumerates exactly its router subcommands',
+    () => {
+      // The convention is exhaustive enumeration, with no allowlist: a
+      // namespace line names every key its router dispatches and nothing else.
+      // To resolve a failure, add the omitted subcommand to that line in
+      // `index.ts` / `index.maintainer.ts` (both, when both dispatch the
+      // namespace), or drop the name the router no longer has. Do not silence
+      // this by widening the parser.
+      expect(summaryAudit.drifted).toEqual([]);
+    }
+  );
+
+  test.skipIf(!routersPresent)(
+    'every dispatched command has a summary line, and every line is dispatched',
+    () => {
+      // The line-by-line comparison above can only check namespaces that
+      // appear in the help text at all, so a whole namespace added to
+      // `SUBCOMMAND_HANDLERS` and never documented would slip past it. These
+      // two close that gap from both directions.
+      expect(summaryAudit.unlisted).toEqual([]);
+      expect(summaryAudit.undispatched).toEqual([]);
     }
   );
 });
