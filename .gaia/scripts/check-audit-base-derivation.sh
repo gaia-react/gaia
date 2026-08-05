@@ -138,8 +138,8 @@
 #      call still emits a C-quoted token for any path carrying non-ASCII or
 #      control bytes, because git's default `core.quotePath` wraps such a path
 #      in double quotes and backslash-escapes the offending bytes. A tracked
-#      file whose name carries two accented characters comes back as a
-#      20-character quoted token rather than as its own name.
+#      file whose name carries an accented character comes back as a quoted
+#      token full of octal escapes rather than as its own name.
 #
 #      What earns this an assertion rather than a style note is that the
 #      consequence FAILS OPEN, in two different places and two different ways.
