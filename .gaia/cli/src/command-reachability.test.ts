@@ -40,12 +40,12 @@ import {describe, expect, test} from 'vitest';
  *
  * Each binary prints a top-level summary with one line per command. A
  * namespace line's subcommands are also declared, separately, in that
- * namespace's own router in a different file, and nothing pointed from one to
+ * namespace's own router in a different file, and nothing points from one to
  * the other: a subcommand added to a router and to that router's own
- * `HELP_TEXT` (both in the file the author already has open) never reached the
- * summary. That produced 21 omissions across 9 lines before this guard, and it
- * had been repaired one line at a time twice without either repair noticing the
- * other eight lines.
+ * `HELP_TEXT`, both in the file the author already has open, does not reach the
+ * summary. The class recurs on its own and is invisible to a reader who
+ * consults only one of the two surfaces, so it needs a guard rather than a
+ * sweep.
  *
  * The convention this asserts is **exhaustive enumeration with no allowlist**:
  * a namespace line names every key its router dispatches and nothing else.
@@ -152,9 +152,16 @@ const extractHandlerKeys = (source: string): string[] => {
 const hasDomainIndex = (cliSrc: string, name: string): boolean =>
   existsSync(path.join(cliSrc, name, 'index.ts'));
 
+// The binary entrypoints, as `[source file, binary name]`. Both guards read
+// this one list, so a third entrypoint is wired in one place.
+const ENTRYPOINTS: readonly (readonly [string, string])[] = [
+  ['index.ts', 'gaia'],
+  ['index.maintainer.ts', 'gaia-maintainer'],
+];
+
 // Every domain router (`src/<domain>/index.ts` declaring a
 // `SUBCOMMAND_HANDLERS` map), keyed by domain name, with that router's own
-// subcommand keys. Both guards in this file dispatch off this one scan.
+// subcommand keys. Scanned once and passed to both guards.
 const collectDomainRouters = (
   cliSrc: string
 ): ReadonlyMap<string, readonly string[]> => {
@@ -180,16 +187,19 @@ const collectDomainRouters = (
 // (`src/<domain>/index.ts` declaring the map) contribute `<domain> <key>`.
 // The two entrypoints contribute their keys that have no same-named sub-router
 // directory, the genuinely top-level commands (ci-revert, harden-tally, ...).
-const enumerateLeafCommands = (cliSrc: string): string[] => {
+const enumerateLeafCommands = (
+  cliSrc: string,
+  routers: ReadonlyMap<string, readonly string[]>
+): string[] => {
   const leaves = new Set<string>();
 
-  for (const [domain, keys] of collectDomainRouters(cliSrc)) {
+  for (const [domain, keys] of routers) {
     for (const key of keys) {
       leaves.add(`${domain} ${key}`);
     }
   }
 
-  for (const entrypoint of ['index.ts', 'index.maintainer.ts']) {
+  for (const [entrypoint] of ENTRYPOINTS) {
     const source = readFileSync(path.join(cliSrc, entrypoint), 'utf8');
 
     for (const key of extractHandlerKeys(source)) {
@@ -247,17 +257,17 @@ const extractHelpText = (source: string): string => {
   return end === -1 ? '' : source.slice(bodyStart, end);
 };
 
-// A top-level summary line is indented two spaces and opens with the command
-// it documents. Prose in a help text (the maintainer binary's "Maintainer-only
-// binary." note, the `Usage:` header) sits at column 0 and never matches.
-const SUMMARY_COMMAND_PATTERN = /^ {2}([a-z][a-z0-9-]*)(?![\w-])/u;
-
-// The pipe-separated subcommand list is the token immediately after the
-// namespace. Everything after that token is free-form flag and argument text
+// A top-level summary line: two-space indent, the command it documents, then
+// optionally that command's pipe-separated subcommand list. Prose in a help
+// text (the maintainer binary's "Maintainer-only binary." note, the `Usage:`
+// header) sits at column 0 and never matches.
+//
+// Anything after the subcommand list is free-form flag and argument text
 // (`[--cols N]`, `<raw.json>`, the `land` in `wiki … sync land`) and is not
-// checked here; each namespace's own `--help` documents it.
-const SUMMARY_SUBCOMMANDS_PATTERN =
-  /^ {2}[a-z][a-z0-9-]* ([a-z][a-z0-9-]*(?:\|[a-z][a-z0-9-]*)*)(?![\w|-])/u;
+// checked here; each namespace's own `--help` documents it. A line whose
+// second token opens with `-` or `<` has no list, so group 2 stays undefined.
+const SUMMARY_LINE_PATTERN =
+  /^ {2}([a-z][a-z0-9-]*)(?: ([a-z][a-z0-9-]*(?:\|[a-z][a-z0-9-]*)*))?(?![\w|-])/u;
 
 type SummaryAudit = {
   // `<binary> <namespace>` for every line compared key-for-key. Pinned by its
@@ -282,19 +292,18 @@ const auditHelpSummaries = (
     unlisted: [],
   };
 
-  for (const [entrypoint, binary] of [
-    ['index.ts', 'gaia'],
-    ['index.maintainer.ts', 'gaia-maintainer'],
-  ]) {
+  for (const [entrypoint, binary] of ENTRYPOINTS) {
     const source = readFileSync(path.join(cliSrc, entrypoint), 'utf8');
     const helpText = extractHelpText(source);
     const dispatched = extractHandlerKeys(source);
     const documented = new Set<string>();
 
     for (const line of helpText.split('\n')) {
-      const command = SUMMARY_COMMAND_PATTERN.exec(line)?.[1];
+      const match = SUMMARY_LINE_PATTERN.exec(line);
 
-      if (command === undefined) continue;
+      if (match === null) continue;
+
+      const command = match[1];
 
       documented.add(command);
 
@@ -308,8 +317,7 @@ const auditHelpSummaries = (
 
       audit.compared.push(`${binary} ${command}`);
 
-      const listed =
-        SUMMARY_SUBCOMMANDS_PATTERN.exec(line)?.[1]?.split('|') ?? [];
+      const listed = match[2]?.split('|') ?? [];
       const missing = keys.filter((key) => !listed.includes(key));
       const unknown = listed.filter((key) => !keys.includes(key));
 
@@ -338,10 +346,16 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const cliSrc = path.join(repoRoot, '.gaia', 'cli', 'src');
 const routersPresent = existsSync(cliSrc);
 
-const leafCommands = routersPresent ? enumerateLeafCommands(cliSrc) : [];
+const domainRouters =
+  routersPresent ?
+    collectDomainRouters(cliSrc)
+  : new Map<string, readonly string[]>();
+
+const leafCommands =
+  routersPresent ? enumerateLeafCommands(cliSrc, domainRouters) : [];
 const summaryAudit =
   routersPresent ?
-    auditHelpSummaries(cliSrc, collectDomainRouters(cliSrc))
+    auditHelpSummaries(cliSrc, domainRouters)
   : {compared: [], drifted: [], undispatched: [], unlisted: []};
 const invokerText =
   routersPresent ?
