@@ -37,6 +37,7 @@
 # `<positive-bad-case> && return 1`, never `! grep -q`.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   HOOK_ABS="$REPO_ROOT/.claude/hooks/distribution-preflight-check.sh"
@@ -109,25 +110,23 @@ EOF
 }
 
 # run_hook COMMAND [TOOL_NAME]: drive the hook with a PreToolUse payload.
-# The payload goes through a file rather than a here-string so command bodies
-# carrying quotes and newlines survive verbatim. cwd is the fixture repo
-# because the hook resolves .gaia/cli/gaia-maintainer repo-relative.
+# cwd is the fixture repo because the hook resolves .gaia/cli/gaia-maintainer
+# repo-relative.
 run_hook() {
-  local cmd="$1" tool="${2:-Bash}" payload_file="$BATS_TEST_TMPDIR/payload.json"
-  jq -n --arg t "$tool" --arg c "$cmd" \
-    '{tool_name: $t, tool_input: {command: $c}}' > "$payload_file"
-  run bash -c "cd \"\$1\" && bash \"\$2\" < \"\$3\"" _ \
-    "$FIXTURE" "$HOOK_ABS" "$payload_file"
+  local cmd="$1" tool="${2:-Bash}" payload
+  payload=$(jq -n --arg t "$tool" --arg c "$cmd" \
+    '{tool_name: $t, tool_input: {command: $c}}')
+  invoke_hook_in "$FIXTURE" "$payload" "$HOOK_ABS"
 }
 
 assert_deny() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
+  assert_denied_by_json
 }
 
 assert_allow() {
-  [ "$status" -eq 0 ]
-  grep -qF -- 'deny' <<<"$output" && return 1
+  assert_allowed_by_json
+  # This hook is additionally silent when it allows, which the shared pair does
+  # not require; asserted on top of it rather than in place of it.
   [ -z "$output" ]
 }
 

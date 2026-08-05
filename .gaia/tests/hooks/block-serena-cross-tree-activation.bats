@@ -16,6 +16,7 @@
 # `return 1`, never `!`-negation.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-serena-cross-tree-activation.sh"
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
@@ -76,7 +77,7 @@ run_hook() {
   local json
   json=$(jq -n --arg p "$project" --arg c "$cwd" \
     '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 run_hook_other_tool() {
@@ -84,19 +85,10 @@ run_hook_other_tool() {
   local json
   json=$(jq -n --arg t "$tool" --arg c "$cwd" \
     '{tool_name: $t, cwd: $c, tool_input: {project: "gaia"}}')
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
-assert_denied() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
-}
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
-  return 0
-}
 
 # --- NAME arm ---
 
@@ -104,7 +96,7 @@ assert_allowed() {
   make_repo
   make_worktree "debt/1-foo" "debt/1-foo"
   run_hook "gaia" "$WT"
-  assert_denied
+  assert_denied_by_json
   # The reason names the worktree's own root, the value to pass instead.
   grep -qF -- "$WT" <<<"$output" || return 1
 }
@@ -113,14 +105,14 @@ assert_allowed() {
   make_repo
   make_worktree "debt/2-foo" "debt/2-foo"
   run_hook "some-other-project" "$WT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "from the main checkout, the bare name is allowed (the correct activation)" {
   make_repo
   make_worktree "debt/3-foo" "debt/3-foo"
   run_hook "gaia" "$REPO"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- PATH arm ---
@@ -129,7 +121,7 @@ assert_allowed() {
   make_repo
   make_worktree "debt/4-foo" "debt/4-foo"
   run_hook "$REPO" "$WT"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "$WT" <<<"$output" || return 1
 }
 
@@ -139,14 +131,14 @@ assert_allowed() {
   WT_A="$WT"
   make_worktree "debt/5-b" "debt/5-b"
   run_hook "$WT_A" "$WT"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "from a linked worktree, its own absolute path is allowed" {
   make_repo
   make_worktree "debt/6-foo" "debt/6-foo"
   run_hook "$WT" "$WT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "from a linked worktree, an absolute path in a different repository is allowed" {
@@ -154,14 +146,14 @@ assert_allowed() {
   make_worktree "debt/7-foo" "debt/7-foo"
   make_other_repo
   run_hook "$OTHER_REPO" "$WT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "from the main checkout, a linked worktree's path is denied (the symmetric arm)" {
   make_repo
   make_worktree "debt/8-foo" "debt/8-foo"
   run_hook "$WT" "$REPO"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- ignored / fail-open ---
@@ -170,7 +162,7 @@ assert_allowed() {
   make_repo
   make_worktree "debt/9-foo" "debt/9-foo"
   run_hook_other_tool "mcp__serena__find_symbol" "$WT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a payload whose cwd is not a repository fails open (allowed)" {
@@ -181,7 +173,7 @@ assert_allowed() {
   # running this suite, which is not the state under test.
   cd "$NONREPO"
   run_hook "gaia" "$NONREPO"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- structural ---

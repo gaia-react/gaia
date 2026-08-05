@@ -20,6 +20,7 @@
 # `git commit -m "...pnpm test..."` were being denied.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOK=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/block-bare-test.sh
 }
 
@@ -27,105 +28,97 @@ setup() {
 run_hook() {
   local cmd="$1" payload
   payload=$(jq -nc --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  run bash -c "printf '%s' '$payload' | bash '$HOOK'"
+  invoke_hook "$payload" "$HOOK"
 }
 
-assert_blocked() {
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"BLOCKED"* ]]
-}
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
 
 # --- blocked: a real bare invocation starts watch mode ------------------------
 
 @test "(a) bare pnpm test is blocked" {
   run_hook 'pnpm test'
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 @test "bare npm test is blocked" {
   run_hook 'npm test'
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 @test "bare pnpm run test is blocked" {
   run_hook 'pnpm run test'
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 @test "(e) env-prefixed FOO=bar pnpm test is blocked" {
   run_hook 'FOO=bar pnpm test'
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 @test "pnpm test after a separator is blocked (command position, not prose)" {
   run_hook 'echo hi && pnpm test'
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 @test "pnpm test inside a command substitution is blocked (it would run)" {
   run_hook 'echo $(pnpm test)'
-  assert_blocked
+  assert_blocked_by_exit
 }
 
 # --- allowed: --run opts out of watch mode ------------------------------------
 
 @test "(b) pnpm test --run <scope> is allowed" {
   run_hook 'pnpm test --run app/x'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "pnpm run test --run is allowed" {
   run_hook 'pnpm run test --run'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 # --- allowed: prose mentions are not invocations (the fixed false positives) --
 
 @test "(c) gh pr create --body mentioning pnpm test --run is allowed" {
   run_hook 'gh pr create --body "see `pnpm test --run` output"'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "(d) git commit -m mentioning pnpm test is allowed" {
   run_hook 'git commit -m "run pnpm test later"'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "git commit -m mentioning bare pnpm test (no --run) is allowed" {
   run_hook 'git commit -m "remember to run pnpm test"'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "echo of the phrase into a file is allowed" {
   run_hook 'echo "pnpm test" > notes.txt'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 # --- allowed: the test: carve-out (a package script that exits on its own) ----
 
 @test "(f) pnpm test:ci is allowed (test: token, not bare test)" {
   run_hook 'pnpm test:ci'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "(g) pnpm run test:lint-staged is allowed" {
   run_hook 'pnpm run test:lint-staged'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 # --- allowed: unrelated commands ----------------------------------------------
 
 @test "pnpm typecheck is allowed" {
   run_hook 'pnpm typecheck'
-  assert_allowed
+  assert_allowed_by_exit
 }
 
 @test "an empty command is allowed" {
   run_hook ''
-  assert_allowed
+  assert_allowed_by_exit
 }

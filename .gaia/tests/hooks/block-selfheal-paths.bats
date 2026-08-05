@@ -17,6 +17,7 @@
 # the allow/deny decision in stdout JSON.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-selfheal-paths.sh"
   SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
@@ -34,7 +35,7 @@ run_hook_edit() {
   else
     json=$(jq -n --arg t "$tool" --arg p "$path" '{tool_name: $t, tool_input: {file_path: $p}}')
   fi
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
 run_hook_bash() {
@@ -45,95 +46,86 @@ run_hook_bash() {
   else
     json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
   fi
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABS"
 }
 
-assert_denied() {
-  [ "$status" -eq 0 ]
-  grep -qF '"permissionDecision": "deny"' <<<"$output"
-}
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  grep -qF '"permissionDecision": "deny"' <<<"$output" && return 1
-  return 0
-}
 
 # --- the gate binds members, not the tree (criteria 5, 6) ---
 
 @test "no agent_type (main session / orchestrator): editing test/foo.ts is allowed" {
   run_hook_edit "" "Edit" "test/foo.ts"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "no agent_type: editing .gaia/audit-ci.yml is allowed" {
   run_hook_edit "" "Edit" ".gaia/audit-ci.yml"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "no agent_type: editing .github/workflows/tests.yml is allowed" {
   run_hook_edit "" "Edit" ".github/workflows/tests.yml"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "agent_type general-purpose (non-member subagent): editing test/foo.ts is allowed" {
   run_hook_edit "general-purpose" "Edit" "test/foo.ts"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- a member denied on the refused set, criteria 1, 2, 7 (UAT-026/UAT-027) ---
 
 @test "code-audit-frontend editing test/foo.ts is denied and names the path" {
   run_hook_edit "code-audit-frontend" "Edit" "test/foo.ts"
-  assert_denied
+  assert_denied_by_json
   grep -qF 'test/foo.ts' <<<"$output"
 }
 
 @test "code-audit-frontend editing .github/workflows/tests.yml is denied and names the path" {
   run_hook_edit "code-audit-frontend" "Edit" ".github/workflows/tests.yml"
-  assert_denied
+  assert_denied_by_json
   grep -qF '.github/workflows/tests.yml' <<<"$output"
 }
 
 @test "code-audit-frontend editing .gaia/audit-ci.yml is denied and names the path" {
   run_hook_edit "code-audit-frontend" "Edit" ".gaia/audit-ci.yml"
-  assert_denied
+  assert_denied_by_json
   grep -qF '.gaia/audit-ci.yml' <<<"$output"
 }
 
 @test "code-audit-frontend editing .claude/rules/foo.md is denied" {
   run_hook_edit "code-audit-frontend" "Edit" ".claude/rules/foo.md"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "code-audit-frontend editing wiki/concepts/Foo.md is denied" {
   run_hook_edit "code-audit-frontend" "Edit" "wiki/concepts/Foo.md"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "code-audit-frontend editing root package.json is denied" {
   run_hook_edit "code-audit-frontend" "Edit" "package.json"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "code-audit-frontend editing root tsconfig.base.json is denied" {
   run_hook_edit "code-audit-frontend" "Edit" "tsconfig.base.json"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "code-audit-frontend editing root vite.config.ts is denied" {
   run_hook_edit "code-audit-frontend" "Edit" "vite.config.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "an advisory member (code-audit-github-workflows) is denied on .github/workflows/tests.yml too" {
   run_hook_edit "code-audit-github-workflows" "Edit" ".github/workflows/tests.yml"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "code-audit-maintainer-shell editing test/foo.ts is denied (every member, not just the self-healer)" {
   run_hook_edit "code-audit-maintainer-shell" "Edit" "test/foo.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- every test surface is refused, not just test/ ---
@@ -147,46 +139,46 @@ assert_allowed() {
 
 @test "code-audit-frontend editing .playwright/e2e/hydration.spec.ts is denied and names the path" {
   run_hook_edit "code-audit-frontend" "Edit" ".playwright/e2e/hydration.spec.ts"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- '.playwright/e2e/hydration.spec.ts' <<<"$output"
 }
 
 @test "code-audit-frontend editing .playwright/utils.ts is denied (the whole tree, not just e2e/)" {
   run_hook_edit "code-audit-frontend" "Edit" ".playwright/utils.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "code-audit-frontend editing .storybook/preview.ts is denied and names the path" {
   run_hook_edit "code-audit-frontend" "Edit" ".storybook/preview.ts"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- '.storybook/preview.ts' <<<"$output"
 }
 
 @test "code-audit-frontend editing .storybook/chromatic/decorator.tsx is denied" {
   run_hook_edit "code-audit-frontend" "Edit" ".storybook/chromatic/decorator.tsx"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Bash: code-audit-frontend redirecting into a .playwright/ spec is denied" {
   run_hook_bash "code-audit-frontend" "echo x > .playwright/e2e/hydration.spec.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- an app-only edit still allowed, criterion 3 ---
 
 @test "code-audit-frontend editing app/foo.ts is allowed" {
   run_hook_edit "code-audit-frontend" "Edit" "app/foo.ts"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Write tool: code-audit-frontend writing app/Foo/index.tsx is allowed" {
   run_hook_edit "code-audit-frontend" "Write" "app/Foo/index.tsx"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "MultiEdit tool: code-audit-frontend editing test/foo.ts is denied" {
   run_hook_edit "code-audit-frontend" "MultiEdit" "test/foo.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- .gaia/local/ is the members' own gitignored artifact dir, never refused ---
@@ -197,39 +189,39 @@ assert_allowed() {
 
 @test "code-audit-frontend writing its findings sidecar under .gaia/local/audit/ is allowed" {
   run_hook_edit "code-audit-frontend" "Write" ".gaia/local/audit/2cea369b.code-audit-frontend.findings.json"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "code-audit-frontend writing its disposition sidecar under .gaia/local/audit/ is allowed" {
   run_hook_edit "code-audit-frontend" "Write" ".gaia/local/audit/abc123.dispositions.json"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Bash: code-audit-frontend redirecting into a .gaia/local/audit/ sidecar is allowed" {
   run_hook_bash "code-audit-frontend" "printf '%s' '{}' > .gaia/local/audit/abc123.dispositions.json"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "code-audit-frontend editing .gaia/localfoo/x.sh (a sibling, not the carve-out) is denied" {
   run_hook_edit "code-audit-frontend" "Edit" ".gaia/localfoo/x.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "code-audit-frontend editing .gaia/scripts/x.sh (machinery, not .gaia/local) is denied" {
   run_hook_edit "code-audit-frontend" "Edit" ".gaia/scripts/x.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- root vs nested build config, criterion 4 ---
 
 @test "code-audit-frontend editing nested app/foo.config.ts is allowed (root-only arm)" {
   run_hook_edit "code-audit-frontend" "Edit" "app/foo.config.ts"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "code-audit-frontend editing nested app/package.json is allowed (root-only arm)" {
   run_hook_edit "code-audit-frontend" "Edit" "app/package.json"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- absolute paths relativize against the repo root ---
@@ -238,107 +230,107 @@ assert_allowed() {
   local repo_root
   repo_root=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   run_hook_edit "code-audit-frontend" "Edit" "$repo_root/test/foo.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "an absolute path OUTSIDE the repo root is left alone (allowed)" {
   run_hook_edit "code-audit-frontend" "Edit" "/tmp/some-other-place/test/foo.ts"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- Bash write vectors ---
 
 @test "Bash: code-audit-frontend redirecting into test/foo.ts is denied" {
   run_hook_bash "code-audit-frontend" "echo x > test/foo.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Bash: code-audit-frontend appending into .gaia/audit-ci.yml is denied" {
   run_hook_bash "code-audit-frontend" "cat frag >> .gaia/audit-ci.yml"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Bash: code-audit-frontend tee into .github/workflows/tests.yml is denied" {
   run_hook_bash "code-audit-frontend" "tee .github/workflows/tests.yml"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Bash: code-audit-frontend sponge into test/foo.ts is denied" {
   run_hook_bash "code-audit-frontend" "cat test/foo.ts | sponge test/foo.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Bash: code-audit-frontend sed -i (macOS empty-suffix) on .gaia/audit-ci.yml is denied" {
   run_hook_bash "code-audit-frontend" "sed -i '' 's/a/b/' .gaia/audit-ci.yml"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Bash: code-audit-frontend sed -i (GNU) on test/foo.ts is denied" {
   run_hook_bash "code-audit-frontend" "sed -i 's/a/b/' test/foo.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Bash: code-audit-frontend cp with test/foo.ts as destination is denied" {
   run_hook_bash "code-audit-frontend" "cp /tmp/x.ts test/foo.ts"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Bash: code-audit-frontend mv with .github/workflows/x.yml as destination is denied" {
   run_hook_bash "code-audit-frontend" "mv /tmp/x.yml .github/workflows/x.yml"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "Bash: code-audit-frontend cp with test/foo.ts as SOURCE (not destination) is allowed" {
   run_hook_bash "code-audit-frontend" "cp test/foo.ts /tmp/backup.ts"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Bash: code-audit-frontend redirecting into app/foo.ts is allowed" {
   run_hook_bash "code-audit-frontend" "echo x > app/foo.ts"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Bash: no agent_type, redirecting into .gaia/audit-ci.yml is allowed (orchestrator)" {
   run_hook_bash "" "echo x > .gaia/audit-ci.yml"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "Bash: a plain git command with no write vector is allowed" {
   run_hook_bash "code-audit-frontend" "git status"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- the remit writer is an execution-shape refusal, not a write-shape one ---
 
 @test "SPEC-056 UAT-015: code-audit-frontend running the remit writer is denied" {
   run_hook_bash "code-audit-frontend" "bash .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "finding" <<<"$output"
 }
 
 @test "SPEC-056 UAT-015: an advisory member running the remit writer is denied too" {
   run_hook_bash "code-audit-maintainer-shell" "bash .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: the writer invoked by an absolute path is denied" {
   run_hook_bash "code-audit-frontend" "bash /Users/you/projects/my-app/.gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: the writer invoked with a leading ./ is denied" {
   run_hook_bash "code-audit-frontend" "bash ./.gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: no agent_type running the remit writer is allowed" {
   run_hook_bash "" "bash .gaia/scripts/write-audit-remits.sh"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "SPEC-056 UAT-015: a non-member subagent running the remit writer is allowed" {
   run_hook_bash "general-purpose" "bash .gaia/scripts/write-audit-remits.sh"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "SPEC-056 UAT-015: neither payload writes a file" {
@@ -353,7 +345,7 @@ assert_allowed() {
 
 @test "SPEC-056 UAT-015: running the roster CHECK is still allowed for a member" {
   run_hook_bash "code-audit-frontend" "bash .gaia/scripts/verify-audit-roster.sh"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "SPEC-056 UAT-015: shellcheck naming the writer as an argument is allowed, not an invocation" {
@@ -363,44 +355,44 @@ assert_allowed() {
   # naming the writer as an argument must stay allowed, including the
   # shell auditor's own mandated methodology against this very file.
   run_hook_bash "code-audit-maintainer-shell" "shellcheck .gaia/scripts/write-audit-remits.sh"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "SPEC-056 UAT-015: the writer invoked bare (no interpreter) is denied" {
   run_hook_bash "code-audit-frontend" ".gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: the writer invoked after a && separator is denied" {
   run_hook_bash "code-audit-frontend" "true && bash .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- execution-position anchor: skip interpreter options and env assignments ---
 
 @test "SPEC-056 UAT-015: bash -x <writer> is denied" {
   run_hook_bash "code-audit-frontend" "bash -x .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: sh -x <writer> is denied" {
   run_hook_bash "code-audit-frontend" "sh -x .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: bash --norc <writer> is denied" {
   run_hook_bash "code-audit-frontend" "bash --norc .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: env FOO=1 <writer> is denied" {
   run_hook_bash "code-audit-frontend" "env FOO=1 .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: nohup <writer> is denied" {
   run_hook_bash "code-audit-frontend" "nohup .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- execution-position anchor: separators glued to a neighbouring token ---
@@ -413,27 +405,27 @@ assert_allowed() {
 @test "SPEC-056 UAT-015: the writer chained onto the check with '; ' is denied" {
   run_hook_bash "code-audit-frontend" \
     "bash .gaia/scripts/verify-audit-roster.sh; bash .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: the writer after a glued '; ' with no interpreter is denied" {
   run_hook_bash "code-audit-frontend" "true; .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: the writer after a pipe glued to the previous token is denied" {
   run_hook_bash "code-audit-frontend" "echo x| bash .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: the writer after a fully glued && is denied" {
   run_hook_bash "code-audit-frontend" "true&&bash .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: the writer after a glued || is denied" {
   run_hook_bash "code-audit-frontend" "false|| bash .gaia/scripts/write-audit-remits.sh"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "SPEC-056 UAT-015: separator padding does not deny a read-only command naming the writer" {
@@ -441,7 +433,7 @@ assert_allowed() {
   # the writer as an argument, with a separator elsewhere, must stay allowed.
   run_hook_bash "code-audit-maintainer-shell" \
     "bash .gaia/scripts/verify-audit-roster.sh; shellcheck .gaia/scripts/write-audit-remits.sh"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "SPEC-056 UAT-015: separator padding leaves the write-shape loop intact" {
@@ -449,7 +441,7 @@ assert_allowed() {
   # are load-bearing. A redirect into a refused path must still deny with a
   # stderr redirect present in the same command.
   run_hook_bash "code-audit-frontend" "echo x > .claude/agents/code-audit-frontend.md 2>&1"
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- execution-position anchor: multi-line, subshell, and brace-group shapes ---
@@ -464,45 +456,45 @@ assert_allowed() {
 @test "the writer on line 2 of a multi-line payload is denied" {
   run_hook_bash "code-audit-frontend" \
     $'R=$(git rev-parse --show-toplevel)\nbash "$R/.gaia/scripts/write-audit-remits.sh"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a write vector on line 2 of a multi-line payload is denied" {
   run_hook_bash "code-audit-frontend" $'echo start\necho x > test/foo.ts'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a write vector continued across a backslash-newline is denied" {
   # The continuation folds to a space, not a `;`. Folding it to a separator
   # would break the cp destination scan at the line boundary and allow this.
   run_hook_bash "code-audit-frontend" $'cp /tmp/x.ts \\\n  test/foo.ts'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "the writer inside a subshell is denied" {
   run_hook_bash "code-audit-frontend" "(bash .gaia/scripts/write-audit-remits.sh)"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "the writer invoked bare inside a subshell is denied" {
   run_hook_bash "code-audit-frontend" "(.gaia/scripts/write-audit-remits.sh)"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "the writer inside a brace group is denied" {
   run_hook_bash "code-audit-frontend" "{ bash .gaia/scripts/write-audit-remits.sh; }"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "the writer inside a command substitution is denied" {
   run_hook_bash "code-audit-frontend" "OUT=\$(bash .gaia/scripts/write-audit-remits.sh)"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "the writer after a cd inside a subshell is denied" {
   run_hook_bash "code-audit-frontend" \
     "(cd .gaia/scripts && bash write-audit-remits.sh)"
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "a read-only command naming the writer inside a subshell is allowed" {
@@ -510,7 +502,7 @@ assert_allowed() {
   # command merely NAMES the writer as an argument must stay allowed.
   run_hook_bash "code-audit-maintainer-shell" \
     "(shellcheck .gaia/scripts/write-audit-remits.sh)"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "an awk brace program does not make its trailing argument an execution position" {
@@ -518,7 +510,7 @@ assert_allowed() {
   # position, so the file argument after a quoted brace program stays allowed.
   run_hook_bash "code-audit-maintainer-shell" \
     "awk '{print}' .gaia/scripts/write-audit-remits.sh"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # Padding characters shred any shell construct that embeds them mid-token, and
@@ -541,44 +533,44 @@ assert_allowed() {
 # under test; double-quoting would expand it away and hollow out the assertion.
 @test "the writer reached through a braced variable is denied" {
   run_hook_bash "code-audit-frontend" 'bash "${R}/.gaia/scripts/write-audit-remits.sh"'
-  assert_denied
+  assert_denied_by_json
 }
 
 # shellcheck disable=SC2016 # the literal `${VAR}` IS the payload under test
 @test "the writer reached through a braced variable with no interpreter is denied" {
   run_hook_bash "code-audit-frontend" '${R}/.gaia/scripts/write-audit-remits.sh'
-  assert_denied
+  assert_denied_by_json
 }
 
 # shellcheck disable=SC2016 # the literal `${VAR}` IS the payload under test
 @test "the writer reached through a braced variable after an interpreter option is denied" {
   run_hook_bash "code-audit-frontend" 'sh -x ${D}/write-audit-remits.sh'
-  assert_denied
+  assert_denied_by_json
 }
 
 # shellcheck disable=SC2016 # the literal `$(cmd)` IS the payload under test
 @test "the writer reached through a command substitution in the path is denied" {
   run_hook_bash "code-audit-frontend" 'bash "$(pwd)/.gaia/scripts/write-audit-remits.sh"'
-  assert_denied
+  assert_denied_by_json
 }
 
 # shellcheck disable=SC2016 # the literal `$(cmd)` IS the payload under test
 @test "the writer reached through a command substitution with no interpreter is denied" {
   run_hook_bash "code-audit-frontend" '"$(pwd)/.gaia/scripts/write-audit-remits.sh"'
-  assert_denied
+  assert_denied_by_json
 }
 
 # shellcheck disable=SC2016 # the literal `$(cmd)` IS the payload under test
 @test "the writer reached through a command substitution after an interpreter option is denied" {
   run_hook_bash "code-audit-frontend" 'sh -x "$(pwd)/write-audit-remits.sh"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "bracket padding leaves the write-shape loop intact" {
   # The write-shape loop reads the UNPADDED token array. A subshell-wrapped
   # redirect into an allowed path must still be allowed.
   run_hook_bash "code-audit-frontend" "(echo x > app/foo.ts)"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- structural ---

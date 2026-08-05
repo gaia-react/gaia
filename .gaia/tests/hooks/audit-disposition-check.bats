@@ -18,6 +18,7 @@
 # (.claude/rules/bats-assertions.md): `grep -q` / `[ ]` / explicit `return 1`.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
@@ -317,20 +318,10 @@ write_frontend_marker() {
 run_disposition_hook() {
   local root="$1" cmd="${2:-gh pr merge 30 --squash --delete-branch}" json
   json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  run bash -c "cd '$root' && printf '%s' '$json' | bash '$HOOK_ABS'"
+  invoke_hook_in "$root" "$json" "$HOOK_ABS"
 }
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
-  return 0
-}
 
-assert_denied() {
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
-  return 0
-}
 
 # ---------------------------------------------------------------------------
 # SPEC-064 fixtures: a pull-request-shaped repository (a base commit on
@@ -769,7 +760,7 @@ orphan_commit_on_current_branch() {
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
   run_disposition_hook "$ROOT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "hook: no marker at all, but sidecar has a confirmed offender -> DENY (offender check is independent of marker state)" {
@@ -783,7 +774,7 @@ orphan_commit_on_current_branch() {
     > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   install_gh_mock ok '[]'
   run_disposition_hook "$ROOT"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "filed-but-missing: v1 class=y path=b line=2" <<<"$output" || return 1
 }
 
@@ -797,7 +788,7 @@ orphan_commit_on_current_branch() {
   printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=holistic/x path=.claude/hooks/lib/audit-machinery.sh line=1","disposition":"machinery_waived"}]}\n' \
     > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   run_disposition_hook "$ROOT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "hook: a machinery_waived entry whose path is NOT machinery -> DENY (abuse-check offender)" {
@@ -810,7 +801,7 @@ orphan_commit_on_current_branch() {
   printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=holistic/x path=app/x.ts line=1","disposition":"machinery_waived"}]}\n' \
     > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   run_disposition_hook "$ROOT"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "machinery-waived-not-eligible: v1 class=holistic/x path=app/x.ts line=1" <<<"$output" || return 1
 }
 
@@ -823,7 +814,7 @@ orphan_commit_on_current_branch() {
   mkdir -p "$ROOT/.gaia/local/audit"
   printf 'not json {' > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   run_disposition_hook "$ROOT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "hook: sidecar backend absent -> fail open (allow) even with a filed entry" {
@@ -836,7 +827,7 @@ orphan_commit_on_current_branch() {
   printf '{"schema":1,"backend":"absent","findings":[{"key":"K","disposition":"filed"}]}\n' \
     > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   run_disposition_hook "$ROOT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "hook: gh unreachable -> fail open (allow), no filed offender" {
@@ -850,7 +841,7 @@ orphan_commit_on_current_branch() {
     > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   install_gh_mock fail
   run_disposition_hook "$ROOT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "hook: a marker valid for a rotated-away (stale) digest does not trigger the absent-sidecar arm -> allow" {
@@ -865,7 +856,7 @@ orphan_commit_on_current_branch() {
   printf 'export const y = 2;\n' >> "$ROOT/app/x.ts"
   git -C "$ROOT" commit -aqm "rotate"
   run_disposition_hook "$ROOT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # ---------------------------------------------------------------------------
@@ -884,7 +875,7 @@ orphan_commit_on_current_branch() {
   printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=app/y.ts line=1","disposition":"machinery_waived"}]}\n' \
     > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   run_disposition_hook "$ROOT"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/y.ts line=1" <<<"$output" || return 1
 }
 
@@ -896,7 +887,7 @@ orphan_commit_on_current_branch() {
   printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=.claude/hooks/lib/audit-machinery.sh line=1","disposition":"machinery_waived"}]}\n' \
     > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   run_disposition_hook "$ROOT"
-  assert_allowed
+  assert_allowed_by_json
   grep -qF -- "changed-files-unverified: v1 class=x path=.claude/hooks/lib/audit-machinery.sh line=1" <<<"$output" || return 1
 }
 
@@ -909,7 +900,7 @@ orphan_commit_on_current_branch() {
   printf '{"schema":1,"sha":"%s","backend":"github","findings":[{"key":"v1 class=x path=.gaia/cli/src/fixture.ts line=1","severity":"suggestion","security_class":false,"disposition":"machinery_waived"}]}\n' \
     "$head_sha" > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   run_disposition_hook "$ROOT"
-  assert_allowed
+  assert_allowed_by_json
   [ "$(jq -r '.findings[0].issue_number // "null"' "$ROOT/.gaia/local/audit/${digest}.dispositions.json")" = "null" ]
   [ ! -f "$ROOT/.gaia/local/debt/refresh-requested" ]
 }
@@ -926,7 +917,7 @@ orphan_commit_on_current_branch() {
   [ -n "$digest" ] || skip "could not derive digest"
   write_frontend_marker "$ROOT" "$digest"
   run_disposition_hook "$ROOT"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "sidecar" <<<"$output" || return 1
 }
 
@@ -941,14 +932,14 @@ orphan_commit_on_current_branch() {
   printf '{"schema":1,"backend":"github","findings":[]}\n' \
     > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
   run_disposition_hook "$ROOT"
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "hook: digest cannot be derived (non-git root) -> DENY (fail closed)" {
   ROOT="$BATS_TEST_TMPDIR/nogit"
   mkdir -p "$ROOT"
   run_disposition_hook "$ROOT"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "could not be derived" <<<"$output" || return 1
 }
 
@@ -1009,6 +1000,6 @@ orphan_commit_on_current_branch() {
   # 4. Run the standalone gate at the new HEAD with gh stubbed per TST-007.
   install_gh_mock ok '[]'
   run_disposition_hook "$ROOT"
-  assert_denied
+  assert_denied_by_json
   grep -qF -- "filed-but-missing: v1 class=y path=app/x.ts line=1" <<<"$output" || return 1
 }

@@ -15,6 +15,7 @@
 # cwd). The hook always exits 0; allow vs deny is carried in stdout.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABS="$HOOKS_SRC/block-main-destructive-git.sh"
 
@@ -53,49 +54,41 @@ run_hook() {
   local cmd="$1"
   local json
   json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS'"
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
 }
 
-assert_denied() {
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"permissionDecision": "deny"'* ]]
-}
 
-assert_allowed() {
-  [ "$status" -eq 0 ]
-  [[ "$output" != *'"permissionDecision": "deny"'* ]]
-}
 
 # --- denied ---
 
 @test "git commit on main is denied" {
   on_main
   run_hook 'git commit -m "x"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "plain git push from main is denied" {
   on_main
   run_hook 'git push'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "git push origin main (refspec) is denied from a feature branch" {
   on_feature
   run_hook 'git push origin main'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "force-push to main is denied from a feature branch" {
   on_feature
   run_hook 'git push --force origin main'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "home-repo git -C commit on main is denied" {
   on_main
   run_hook "git -C $REPO commit -m \"x\""
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- allowed ---
@@ -103,31 +96,31 @@ assert_allowed() {
 @test "git commit on a feature branch is allowed" {
   on_feature
   run_hook 'git commit -m "x"'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "git push origin feature from a feature branch is allowed" {
   on_feature
   run_hook 'git push origin feature'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "plain git push from a feature branch is allowed" {
   on_feature
   run_hook 'git push'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "foreign-repo commit is allowed even though it targets main" {
   on_main
   run_hook "git -C $FOREIGN commit -m \"x\""
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a non-git command is ignored" {
   on_main
   run_hook 'pnpm run build'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- setup standdown: the .gaia/local/setup-in-progress sentinel suspends ---
@@ -138,7 +131,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local"
   touch "$REPO/.gaia/local/setup-in-progress"
   run_hook 'git commit -m "x"'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "setup sentinel allows git push origin main from main" {
@@ -146,7 +139,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local"
   touch "$REPO/.gaia/local/setup-in-progress"
   run_hook 'git push origin main'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "enforcement resumes once the setup sentinel is removed" {
@@ -154,10 +147,10 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local"
   touch "$REPO/.gaia/local/setup-in-progress"
   run_hook 'git commit -m "x"'
-  assert_allowed
+  assert_allowed_by_json
   rm -f "$REPO/.gaia/local/setup-in-progress"
   run_hook 'git commit -m "x"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "setup sentinel is a total standdown: force-push to main is allowed" {
@@ -165,7 +158,7 @@ assert_allowed() {
   mkdir -p "$REPO/.gaia/local"
   touch "$REPO/.gaia/local/setup-in-progress"
   run_hook 'git push --force origin main'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "a stale setup sentinel self-heals: enforcement resumes without removal" {
@@ -176,7 +169,7 @@ assert_allowed() {
   # crashed before cleanup must NOT keep main-branch protection suspended.
   touch -t 200001010000 "$REPO/.gaia/local/setup-in-progress"
   run_hook 'git commit -m "x"'
-  assert_denied
+  assert_denied_by_json
 }
 
 # --- command-position anchoring: the words appear, but git is not the program ---
@@ -184,19 +177,19 @@ assert_allowed() {
 @test "grep for the text 'git commit' is allowed on main" {
   on_main
   run_hook 'grep -n -e git commit app/foo.ts'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "echo of 'git push origin main' is allowed on main" {
   on_main
   run_hook 'echo "git push origin main"'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 @test "echo 'git commit' piped to grep is allowed on main" {
   on_main
   run_hook 'echo git commit && grep -n foo bar'
-  assert_allowed
+  assert_allowed_by_json
 }
 
 # --- command-position anchoring still catches real invocations ---
@@ -204,11 +197,11 @@ assert_allowed() {
 @test "git commit after an unrelated piped command is denied on main" {
   on_main
   run_hook 'echo hi | git commit -m "x"'
-  assert_denied
+  assert_denied_by_json
 }
 
 @test "git push origin main after && is denied" {
   on_feature
   run_hook 'true && git push origin main'
-  assert_denied
+  assert_denied_by_json
 }
