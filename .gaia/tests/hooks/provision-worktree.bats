@@ -24,6 +24,7 @@
 # `return 1`.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOK_ABS="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/provision-worktree.sh"
   REPO_ROOT_REAL="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 }
@@ -142,7 +143,7 @@ SH
   make_main
   WT="$(add_worktree feat-enter)"
 
-  run bash -c "printf '%s' '$(enter_payload "$WT")' | bash '$HOOK_ABS'"
+  invoke_hook "$(enter_payload "$WT")" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -L "$WT/.gaia/local" ] || return 1
 }
@@ -155,7 +156,7 @@ SH
   WT="$(add_worktree feat-sessionstart)"
 
   payload="$(jq -nc --arg p "$WT" '{hook_event_name: "SessionStart", source: "startup", cwd: $p}')"
-  run bash -c "printf '%s' '$payload' | bash '$HOOK_ABS'"
+  invoke_hook "$payload" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -L "$WT/.gaia/local" ] || return 1
 }
@@ -167,7 +168,7 @@ SH
   make_main
 
   payload="$(jq -nc --arg p "$MAIN" '{hook_event_name: "SessionStart", source: "startup", cwd: $p}')"
-  run bash -c "printf '%s' '$payload' | bash '$HOOK_ABS'"
+  invoke_hook "$payload" "$HOOK_ABS"
   [ "$status" -eq 0 ]
 
   # No symlink was created over main's own real directory, and nothing was
@@ -213,7 +214,7 @@ SH
   mkdir -p "$WT/.gaia/local/audit"
   echo orphaned > "$WT/.gaia/local/audit/orphan.txt"
 
-  run bash -c "printf '%s' '$(enter_payload "$WT")' | bash '$HOOK_ABS'"
+  invoke_hook "$(enter_payload "$WT")" "$HOOK_ABS"
   [ "$status" -eq 0 ]
 
   [ -L "$WT/.gaia/local" ] || return 1
@@ -230,7 +231,7 @@ SH
   WT="$(add_worktree feat-byhand)"
   [ -L "$WT/.gaia/local" ] && return 1
 
-  run bash -c "printf '%s' '$(enter_payload "$WT")' | bash '$HOOK_ABS'"
+  invoke_hook "$(enter_payload "$WT")" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -L "$WT/.gaia/local" ] || return 1
 }
@@ -268,7 +269,7 @@ SH
   mkdir -p "$WT/.react-router/types"
   echo LEFTOVER > "$WT/.react-router/types/.stamp"
 
-  run bash -c "printf '%s' '$(enter_payload "$WT")' | bash '$HOOK_ABS'"
+  invoke_hook "$(enter_payload "$WT")" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   grep -qF LEFTOVER "$WT/.react-router/types/.stamp" && return 1
   [ "$(cat "$WT/.react-router/types/.stamp")" = "$WT" ]
@@ -449,7 +450,7 @@ SH
   echo main-red > "$MAIN/.gaia/local/red-ledger/observations.jsonl"
 
   payload="$(jq -nc --arg p "$MAIN" '{hook_event_name: "SessionStart", source: "startup", cwd: $p}')"
-  run bash -c "printf '%s' '$payload' | bash '$HOOK_ABS'"
+  invoke_hook "$payload" "$HOOK_ABS"
   [ "$status" -eq 0 ]
 
   key="$(tree_key_for "$MAIN")"
@@ -638,7 +639,7 @@ SH
   echo main-own-data > "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl"
 
   payload="$(jq -nc --arg p "$MAIN" '{hook_event_name: "SessionStart", source: "startup", cwd: $p}')"
-  run bash -c "printf '%s' '$payload' | bash '$HOOK_ABS'"
+  invoke_hook "$payload" "$HOOK_ABS"
   [ "$status" -eq 0 ]
 
   grep -qF -- "CUTOVER MIGRATION" <<<"$output" && return 1

@@ -25,6 +25,7 @@
 # branch under test, i.e. the sandbox's own init commit.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/post-findings-block-on-merge.sh
   SETTINGS_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
   CI_CONFIG_RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/read-audit-ci-config.sh
@@ -169,7 +170,7 @@ run_merge_hook() {
   local tool="${2:-Bash}"
   local json
   json=$(jq -n --arg c "$cmd" --arg t "$tool" '{tool_name: $t, tool_input: {command: $c}}')
-  run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS'"
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
 }
 
 write_sidecar() {

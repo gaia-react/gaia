@@ -1,12 +1,16 @@
 #!/usr/bin/env bats
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/wiki-session-stop.sh
 }
 
 teardown() {
+  # `return 0` because the guard is an AND-list: with no $REPO to remove it
+  # would otherwise leave teardown non-zero and fail an innocent test.
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
+  return 0
 }
 
 @test "no session-start marker: silent no-op" {
@@ -17,7 +21,7 @@ teardown() {
 {"version":1,"last_evaluated_sha":"$head","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" stop S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -32,7 +36,7 @@ EOF
 {"version":1,"last_evaluated_sha":"$head","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" stop S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -51,7 +55,7 @@ EOF
 {"version":1,"last_evaluated_sha":"$head","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" stop S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -71,7 +75,7 @@ EOF
 {"version":1,"last_evaluated_sha":"$start","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" stop S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"[wiki end-of-session]"* ]]
   [[ "$output" == *"3 times"* ]]
@@ -92,10 +96,10 @@ EOF
 EOF
 
   input=$("$HELPERS/mock-hook-input.sh" stop S1)
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ -n "$output" ]
 
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -112,7 +116,11 @@ EOF
   cat > wiki/.state.json <<EOF
 {"version":1,"last_evaluated_sha":"$start","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
-  run bash -c "echo 'not-json{{' | '$HOOK_ABS'"
+  invoke_hook 'not-json{{' "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+@test "the hook file is executable" {
+  [ -x "$HOOK_ABS" ]
 }

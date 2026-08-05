@@ -267,7 +267,7 @@ golden_commit() {
 golden_run_hook() {
   local json
   json=$(jq -n '{tool_name: "Bash", tool_input: {command: "gh pr merge 1 --squash"}}')
-  run bash -c "cd '$GREPO' && printf '%s' '$json' | bash '$HOOK'"
+  invoke_hook_in "$GREPO" "$json" "$HOOK"
 }
 
 @test "golden table: pure wiki-only diff allows" {

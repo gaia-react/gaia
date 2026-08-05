@@ -24,6 +24,7 @@
 # developer's scratch ledger is never clobbered.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   # The hook recomputes RED signals via the Node helper, which resolves
   # `typescript` from node_modules; skip where deps aren't installed (e.g. the
@@ -63,13 +64,14 @@ run_capture() {
   payload=$(jq -n --arg t "$tool" --arg c "$cmd" \
     '{tool_name: $t, tool_input: {command: $c}, tool_response: {stdout: "", stderr: "", interrupted: false}}')
 
-  # Export the override so it reaches the hook on the RIGHT side of the pipe
-  # (a `VAR=x cmd | hook` prefix would set it on the left command, not the hook).
-  local env_prefix=""
+  # The override is set on the invocation as a whole, so it is in the
+  # environment the hook inherits rather than on one side of the pipe.
   if [ -n "$override_rel" ]; then
-    env_prefix="export RED_CAPTURE_JSON_OVERRIDE='$REPO_ROOT/$override_rel'; "
+    RED_CAPTURE_JSON_OVERRIDE="$REPO_ROOT/$override_rel" \
+      invoke_hook_in "$REPO_ROOT" "$payload" "$HOOK"
+  else
+    invoke_hook_in "$REPO_ROOT" "$payload" "$HOOK"
   fi
-  run bash -c "cd '$REPO_ROOT' && ${env_prefix}printf '%s' '$payload' | bash '$HOOK'"
 }
 
 # Count ledger lines (0 when the file is absent).
@@ -217,7 +219,7 @@ ledger_lines() {
 # --- robustness: malformed input, empty command -------------------------------
 
 @test "malformed stdin (not json) exits 0 and writes nothing" {
-  run bash -c "cd '$REPO_ROOT' && printf 'not json at all' | bash '$HOOK'"
+  invoke_hook_in "$REPO_ROOT" 'not json at all' "$HOOK"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 0 ]
 }

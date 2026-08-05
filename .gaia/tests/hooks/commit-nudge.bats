@@ -1,19 +1,23 @@
 #!/usr/bin/env bats
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/wiki-commit-nudge.sh
 }
 
 teardown() {
+  # `return 0` because the guard is an AND-list: with no $REPO to remove it
+  # would otherwise leave teardown non-zero and fail an innocent test.
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
+  return 0
 }
 
 @test "non-Bash tool: silent no-op" {
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"
   input=$(jq -n '{session_id:"S1",tool_name:"Edit",tool_input:{file_path:"x"}}')
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -22,7 +26,7 @@ teardown() {
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "ls -la")
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -31,7 +35,7 @@ teardown() {
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "git commit-tree foo")
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -40,7 +44,7 @@ teardown() {
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "git commit --amend --no-edit")
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -49,7 +53,7 @@ teardown() {
   REPO=$("$HELPERS/tmp-git-repo.sh" --commits 1)
   cd "$REPO"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash 'git commit -m "feat: add foo"')
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"[wiki nudge]"* ]]
   [[ "$output" == *"Committed"* ]]
@@ -62,7 +66,7 @@ teardown() {
   git add wiki/foo.md
   git commit --quiet -m "wiki: auto-commit 2026-05-03"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "git commit -m wiki")
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -77,7 +81,7 @@ EOF
   git add wiki/.state.json
   git commit --quiet -m "feat: another"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash 'git commit -m "feat: another"')
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [[ "$output" == *"commits behind"* ]]
 }
 
@@ -86,8 +90,12 @@ EOF
   cd "$REPO"
   rm -f wiki/.state.json
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash 'git commit -m "feat: x"')
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"[wiki nudge]"* ]]
   [[ "$output" != *"commits behind"* ]]
+}
+
+@test "the hook file is executable" {
+  [ -x "$HOOK_ABS" ]
 }

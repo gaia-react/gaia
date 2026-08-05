@@ -11,6 +11,7 @@
 # (build_repo below), matching what a real checkout has.
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HOOK_ABS="$REPO_ROOT/.claude/hooks/token-rollup-merge.sh"
@@ -88,7 +89,7 @@ run_hook() {
   # run_hook <command>
   local cmd="$1" input
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$cmd")
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
 }
 
 # ---------- 1. Renders spec+plan+execute+Total at merge (UAT-006) ----------
@@ -297,7 +298,11 @@ run_hook() {
     '{session_id:$sid, transcript_path:"/tmp/t.jsonl", cwd:".", hook_event_name:"PostToolUse",
       tool_name:"Bash", tool_input:{command:$cmd},
       tool_response:{stdout:"", stderr:"merge failed", exit_code:1, interrupted:false}}')
-  run bash -c "echo '$input' | '$HOOK_ABS'"
+  invoke_hook "$input" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Cycle cost (SPEC-042)"* ]]
+}
+
+@test "the hook file is executable" {
+  [ -x "$HOOK_ABS" ]
 }
