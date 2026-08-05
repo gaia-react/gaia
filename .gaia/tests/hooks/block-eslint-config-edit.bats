@@ -139,9 +139,18 @@ assert_denied() {
   assert_allowed
 }
 
+# The size is deliberately far larger than it needs to be, and shrinking it is
+# how this test goes hollow. What it pins is a pipe fail-open, so the shape only
+# reproduces past pipe capacity (65536) plus whatever the reader drains before
+# exiting, and that second term is a property of the grep implementation, not a
+# constant: it moves by kilobytes between the two greps on one macOS host, and
+# CI runs a third one nobody can measure from here. A fixture sitting just above
+# the local boundary passes with the defect fully restored on any reader that
+# buffers more. Keep it orders of magnitude clear of the boundary rather than
+# tuned to it.
 @test "denies a guarded path arriving with megabytes of trailing payload" {
   local path
-  path="$(cfg)"$'\n'"$(head -c 70000 /dev/zero | tr '\0' 'x')"
+  path="$(cfg)"$'\n'"$(head -c 1000000 /dev/zero | tr '\0' 'x')"
   run_hook "$(jq -n --arg p "$path" \
     '{tool_name: "Edit", tool_input: {file_path: $p, old_string: "a", new_string: "b"}}')"
   assert_denied
