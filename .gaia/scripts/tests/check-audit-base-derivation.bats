@@ -709,6 +709,30 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD") && [ -z "$
 ```
 '
 
+# A quoting call whose PATHSPEC happens to contain the token. `[a-z]` is an
+# ordinary character class and it carries `-z` inside it, so an anywhere-in-the-
+# call test vouches for a call that quotes. This is the shape that makes
+# "carries -z" and "passes -z" different claims, and only the anchored form
+# tells them apart: the `)` wall does not help here, because the pathspec is
+# inside the call rather than after it.
+DIFF_DASH_Z_INSIDE_PATHSPEC='Agent prose, per .github/audit/resolve-audit-base.sh.
+```bash
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- "app/[a-z]/*")
+```
+'
+
+@test "fixture: a -z inside a pathspec does not count as the call passing -z" {
+  local repo
+  repo="$(make_fixture_repo diff-dash-z-in-pathspec)"
+  write_agent_file "$repo" code-audit-maintainer-node.md "$DIFF_DASH_Z_INSIDE_PATHSPEC"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
+  # Correctly ranged, so this red is the anchored token test alone.
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
 @test "fixture: an unrelated -z later on the line does not vouch for a quoting call" {
   local repo
   repo="$(make_fixture_repo diff-later-dash-z)"

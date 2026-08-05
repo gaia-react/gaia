@@ -553,6 +553,45 @@ code-audit-maintainer-shell"
 }
 
 # ---------------------------------------------------------------------------
+# 15b. resolver removed, diff is a non-ASCII out-of-scope path -> still empty
+# ---------------------------------------------------------------------------
+#
+# The probe's own `changed` derivation reads `git diff --name-only`, which
+# C-quotes any path carrying non-ASCII or control bytes under git's default
+# core.quotePath. The quoted token is not what the allowlist matches, so the
+# loop treats an out-of-scope path as in-scope and spawns the default member
+# that nothing owes. That direction is fail-closed, an unnecessary spawn rather
+# than a missed audit, which is why the derivation reads `--name-only -z`
+# rather than why it must.
+#
+# This test exists because the sibling copy of that derivation in
+# resolve-audit-members.sh has its own regression test and this one had none:
+# two copies of one shape with asymmetric protection is the drift class the
+# `-z` change was made to close, so leaving it untested reproduced that class
+# one file over.
+
+@test "the ownerless probe recognizes a non-ASCII out-of-scope path rather than quoting it" {
+  write_full_roster
+  rm -f "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
+  stage wiki/règle.md
+  commit "docs"
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  # Non-vacuity: git really does quote THIS path under the pre-fix spelling. A
+  # fixture whose name turned out to be plain ASCII would pass the assertion
+  # above while proving nothing about quoting.
+  local base quoted
+  base="$(git -C "$SANDBOX" merge-base HEAD main)"
+  quoted="$(git -C "$SANDBOX" diff --name-only "${base}...HEAD")"
+  grep -qF '"' <<<"$quoted" || {
+    printf 'the pre-fix spelling did not quote %s, so this fixture proves nothing\n' "$quoted"
+    return 1
+  }
+}
+
+# ---------------------------------------------------------------------------
 # 16. resolver present but exec bit cleared, diff is .gaia/scripts/y.sh ->
 #     the [ -x ] guard falls to the ownerless probe; .gaia/* is out-of-scope
 #     allowlisted, so nothing is owed (M2 mirror test).

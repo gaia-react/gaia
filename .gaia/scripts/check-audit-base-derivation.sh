@@ -185,11 +185,15 @@
 #      repository carrying a non-ASCII path, which is what covers that shape.
 # gaia:maintainer-only:end
 #
-#      The token has to appear inside the call's OWN window, so it follows the
-#      `--name-only` it modifies. `git diff -z --name-only` is a correct
-#      command this reports, and that is the accepted cost of per-call scoping:
-#      the alternative, widening the window to the whole line, is what lets a
-#      later correct call vouch for an earlier defective one.
+#      The flag has to sit IMMEDIATELY after the `--name-only` it modifies, not
+#      merely somewhere in the call. Anywhere-in-the-call is a weaker claim than
+#      it looks: a pathspec (`-- "app/[a-z]/*"`) or an emptiness test on the
+#      same line contains the token while the call still quotes, so the
+#      assertion would vouch for exactly the shape it exists to reject.
+#      `git diff -z --name-only` is a correct command this reports, and that is
+#      the accepted cost. Both spellings cannot be admitted by one positional
+#      rule, the in-tree convention is the one pinned, and a red here is loud
+#      and one edit from resolved, where the false green it replaces is silent.
 #
 # Comment lines are NOT stripped from either scan, unlike
 # check-main-root-derivation.sh, which scans executable source where a
@@ -407,9 +411,17 @@ _gaia_drop_full_base_matches() {
 # `sub` on a copy removes only the FIRST two colon-delimited fields, so a colon
 # inside the content itself never shifts the boundary -- the same framing the
 # ownership walk uses.
+# <anchored>, any non-empty value, additionally requires the token to sit at the
+# START of the window, which is the position immediately after the call. That is
+# the difference between "this call passes -z" and "these two characters occur
+# somewhere in this call", and the two are not the same claim: a pathspec like
+# `-- "app/[a-z]/*"` contains the token while the call still lets git quote.
+# Assertion 4 anchors for that reason; assertion 3 must not, because `...` is
+# legitimately written on either side of the revision argument.
 _gaia_keep_diff_matches_missing() {
   local tok="${1:?_gaia_keep_diff_matches_missing requires a token argument}"
-  awk -v call="$GAIA_AUDIT_DIFF_CALL" -v tok="$tok" '
+  local anchored="${2:-}"
+  awk -v call="$GAIA_AUDIT_DIFF_CALL" -v tok="$tok" -v anchored="$anchored" '
     BEGIN { calllen = length(call) }
     {
       content = $0
@@ -451,14 +463,16 @@ _gaia_keep_diff_matches_missing() {
                 || index(window, "BASE_SHA") > 0 \
                 || index(window, "FULL_BASE") > 0
 
-        # A base-consuming call must carry the token. Position within the
-        # window is deliberately not tested: for `...` the correct forms put it
-        # on either side depending on the spelling (`"${BASE_SHA}...HEAD"`
-        # after, a pathspec-first variant before), and a rule that pinned the
-        # side would reject a correct call to reject a stylistic one. For `-z`
-        # the window itself already imposes the only ordering that matters,
-        # since it opens after the `--name-only` the flag modifies.
-        if (consumes && index(window, tok) == 0) { print; next }
+        # A base-consuming call must carry the token, and `anchored` decides
+        # WHERE. Unanchored for `...`, whose correct forms put it on either
+        # side of the revision argument depending on the spelling
+        # (`"${BASE_SHA}...HEAD"` after, a pathspec-first variant before), so a
+        # rule pinning the side would reject a correct call to reject a
+        # stylistic one. Anchored for `-z`, where the position IS the claim:
+        # unanchored, any `-z` occurring later in the call satisfies it, and a
+        # pathspec is the ordinary way that happens by accident.
+        missing = anchored != "" ? index(window, tok) != 1 : index(window, tok) == 0
+        if (consumes && missing) { print; next }
         consumed += pos + calllen - 1
         rest = substr(content, consumed + 1)
       }
@@ -547,7 +561,7 @@ gaia_check_audit_base_derivation() {
 
   # ---------- assertion 4: no diff lets git quote the paths it prints -------
   local quote_matches quote_count=0
-  quote_matches="$(printf '%s\n' "$diff_candidates" | _gaia_keep_diff_matches_missing '-z')"
+  quote_matches="$(printf '%s\n' "$diff_candidates" | _gaia_keep_diff_matches_missing ' -z' anchored)"
   if [ -n "$quote_matches" ]; then
     printf '%s\n' "$quote_matches"
     quote_count="$(printf '%s\n' "$quote_matches" | wc -l | tr -d ' ')"
