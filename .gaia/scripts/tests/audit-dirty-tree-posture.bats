@@ -109,7 +109,16 @@ code-audit-maintainer-shell"
   # it", "withholding would buy no guarantee"). Matching the verb plus the thing
   # withheld is what separates an instruction to this member from a description
   # of a sibling.
-  WITHHOLD_SHAPED='withhold(s|ing)? (this|your) (pass|clearance|marker)'
+  #
+  # `the` belongs in the determiner class as much as `this` and `your` do, and
+  # leaving it out missed the likeliest vector of all. `Withhold the marker on
+  # any unresolved Critical…` is the VERBATIM handshake sentence three gating
+  # members carry, so copy-pasting a sibling's real paragraph is the most
+  # probable way this member acquires the contract, and it was the one shape the
+  # scan could not see. The test below derives its fixtures from the gating
+  # members themselves rather than from invented rewordings, so a phrasing this
+  # class cannot reach reds when a sibling adopts it, not after it is pasted.
+  WITHHOLD_SHAPED='withhold(s|ing)? (this|your|the) (pass|clearance|marker)'
 
   # The one legitimate form the alternation above still reaches: the exemption
   # sentence's own negation, `does NOT withhold your pass`.
@@ -402,6 +411,48 @@ assert_drift_caught() {
   # `never` appears throughout this member legitimately, which is exactly why an
   # unanchored exclusion was a fail-open rather than a narrow carve-out.
   assert_drift_caught nearby_never 'This member never self-heals, and it will withhold this pass on dirt.'
+}
+
+# gating_withhold_phrases: every withhold-bearing phrase the GATING members
+# actually carry, deduped, one per line.
+#
+# Extraction is deliberately BROADER than WITHHOLD_SHAPED (any determiner, not
+# the three that pattern admits), because its job is to describe what the
+# siblings really say rather than to judge it. What it feeds is the test below,
+# which requires the drift scan to catch each one. That inverts the usual
+# failure: instead of the scan being taught one more phrasing every time a
+# reviewer finds one, a phrasing the scan cannot see reds here as soon as a
+# gating member adopts it, which is well before anyone can paste it into the
+# advisory member.
+gating_withhold_phrases() {
+  local m
+  for m in $GATING; do
+    tr '\n' ' ' < "$(member_path "$m")" \
+      | grep -oiE 'withhold[a-z]* [a-z]+ (pass|clearance|marker)'
+  done | sort -u
+  return 0
+}
+
+@test "the drift guard catches every withhold phrasing the gating members really use" {
+  # The four fixtures around this one are invented rewordings; this one is not.
+  # Each phrase here is lifted verbatim from a member whose paragraph a careless
+  # edit would copy wholesale, which is the vector that actually happens.
+  local phrase n=0
+  while IFS= read -r phrase; do
+    [ -n "$phrase" ] || continue
+    n=$((n + 1))
+    assert_drift_caught "real-$n" \
+      "When the check comes back non-empty you $phrase until the operator commits or reverts." || return 1
+  done <<PHRASES
+$(gating_withhold_phrases)
+PHRASES
+
+  # A floor, so a broken extraction cannot quietly turn this into a test that
+  # asserts nothing. The four gating members carry five distinct phrasings today.
+  [ "$n" -ge 4 ] || {
+    echo "extraction yielded only $n phrases; the derived fixture set has gone vacuous" >&2
+    return 1
+  }
 }
 
 @test "the advisory drift guard sees a clause split across a line break (non-vacuity)" {
