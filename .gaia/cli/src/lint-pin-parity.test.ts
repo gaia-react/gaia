@@ -304,9 +304,89 @@ describe('supply-chain hardening parity', () => {
   // would fail on `bippy` and `chokidar`; but an entry present ONLY in `.gaia/cli`
   // exempts a package from the setting above it in one workspace and not the other,
   // which is the asymmetric hardening this describe block exists to catch.
+  // Compared as ATOMS rather than as literal strings, because pnpm does not
+  // store one exemption per entry. When a package needs more than one exempted
+  // version it merges them into a single union entry, `name@1.0.0 || 2.0.0`, and
+  // writes that back into `pnpm-workspace.yaml` itself. Root's dependency closure
+  // is a superset of `.gaia/cli`'s, so the two workspaces can legitimately need
+  // different version counts of one shared package, at which point root carries
+  // the union and `.gaia/cli` carries the single version. That is exactly the
+  // containment these tests exist to permit, and literal membership cannot see
+  // it: `arrayContaining` looks for `semver@6.3.1`, finds only the union, and
+  // reds a required check over a valid configuration.
+  //
+  // The shape is pnpm's own (`expandPackageVersionSpecs`, the inverse of the
+  // `mergePackageVersionSpecs` that writes the union), mirrored here rather than
+  // imported: pnpm is this repo's `packageManager`, not a dependency of either
+  // workspace, so there is nothing to import from. Its parse is followed exactly,
+  // including the scope-aware `@` split that keeps `@scope/name` from splitting
+  // on its own leading `@`.
+  //
+  // One deliberate divergence, stated because a wrong normalization here is the
+  // same false-positive class this fixes: pnpm runs each version through
+  // `semver.valid`, which also folds spellings like `=1.2.3` and `v1.2.3` onto
+  // `1.2.3`. Trimming is all that pnpm's OWN output needs (its union separator
+  // leaves a leading space), and `semver` is a dependency of neither workspace.
+  // A hand-written `v1.2.3` on one side and `1.2.3` on the other would therefore
+  // still red. Add the dependency and use `semver.valid` if that ever happens;
+  // do not grow a second normalizer by hand, which is how the sibling predicate
+  // below accumulated four rounds of shape-by-shape repair.
+  //
+  // A name-only entry stays one atom, so exempting EVERY version of a package in
+  // `.gaia/cli` is not contained by exempting one version of it at root. That is
+  // asymmetric hardening and stays red, which is pnpm's reading too.
+  const exemptionAtoms = (list: unknown[]): unknown[] => {
+    const atoms = new Set<unknown>();
+
+    for (const entry of list) {
+      // A non-string is the exactness tests' finding, not this one's. Passed
+      // through unexpanded so it still compares, rather than being dropped into
+      // a silently smaller list on the containing side.
+      if (typeof entry !== 'string') {
+        atoms.add(entry);
+        continue;
+      }
+
+      const atIndex = entry.startsWith('@')
+        ? entry.indexOf('@', 1)
+        : entry.indexOf('@');
+
+      if (atIndex === -1) {
+        atoms.add(entry);
+        continue;
+      }
+
+      const packageName = entry.slice(0, atIndex);
+
+      for (const version of entry.slice(atIndex + 1).split('||')) {
+        atoms.add(`${packageName}@${version.trim()}`);
+      }
+    }
+
+    return [...atoms];
+  };
+
   test('.gaia/cli exempts nothing from the release-age window that root does not', () => {
-    expect(rootSettings.minimumReleaseAgeExclude).toEqual(
-      expect.arrayContaining(cliSettings.minimumReleaseAgeExclude)
+    expect(exemptionAtoms(rootSettings.minimumReleaseAgeExclude)).toEqual(
+      expect.arrayContaining(exemptionAtoms(cliSettings.minimumReleaseAgeExclude))
+    );
+  });
+
+  test('a merged union contains the single version it was merged from', () => {
+    expect(exemptionAtoms(['semver@6.3.1 || 6.3.2'])).toEqual(
+      expect.arrayContaining(exemptionAtoms(['semver@6.3.1']))
+    );
+  });
+
+  test('a version only .gaia/cli exempts is still drift after expansion', () => {
+    expect(exemptionAtoms(['semver@6.3.1 || 6.3.2'])).not.toEqual(
+      expect.arrayContaining(exemptionAtoms(['semver@6.3.3']))
+    );
+  });
+
+  test('exempting every version of a package is not contained by exempting one', () => {
+    expect(exemptionAtoms(['semver@6.3.1'])).not.toEqual(
+      expect.arrayContaining(exemptionAtoms(['semver']))
     );
   });
 
@@ -374,8 +454,8 @@ describe('supply-chain hardening parity', () => {
   });
 
   test('.gaia/cli exempts nothing from the trust policy that root does not', () => {
-    expect(rootSettings.trustPolicyExclude).toEqual(
-      expect.arrayContaining(cliSettings.trustPolicyExclude)
+    expect(exemptionAtoms(rootSettings.trustPolicyExclude)).toEqual(
+      expect.arrayContaining(exemptionAtoms(cliSettings.trustPolicyExclude))
     );
   });
 });
