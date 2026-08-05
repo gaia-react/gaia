@@ -2,6 +2,13 @@
 # Shared harness for the .gaia/tests/hooks bats suites: one quote-safe hook
 # invocation, and one assertion pair per deny mechanism.
 #
+# The directive below is the one thing this file needs that a suite does not:
+# `status` and `output` are set by bats' own `run`, which is invisible to the
+# linter here because this is a `.sh` held to the strictest severity floor
+# rather than a `.bats` file (see .gaia/tests/shell-lint.sh). Scoped to the one
+# code, so every other finding in this file still fires.
+# shellcheck disable=SC2154
+#
 # Source it from `setup()`, never `setup_file()`. bats runs `setup_file` in a
 # separate process, so functions defined there are invisible to test bodies:
 #
