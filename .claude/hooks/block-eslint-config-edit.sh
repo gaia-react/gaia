@@ -48,7 +48,15 @@ payload=$(cat)
 
 file_path=$(jq -r '.tool_input.file_path // ""' <<<"$payload" 2>/dev/null) || file_path=""
 
-printf '%s' "$file_path" | grep -Eq '(^|/)eslint\.config\.(js|cjs|mjs|ts|mts|cts)$' || exit 0
+# Fed by herestring rather than through a pipe, deliberately. `file_path` comes
+# from the payload, so its length and line count are not bounded by anything a
+# real path obeys. Piped into `grep -q`, a match on an early line lets grep exit
+# and close the pipe while the writer still has more than a pipe buffer to
+# write; the writer dies on SIGPIPE, `pipefail` adopts its status, and `|| exit 0`
+# turns a match into an allow. A guard whose failure mode is "allows what it
+# matched" has to not have that mode at all, so the pipeline goes rather than
+# being bounded.
+grep -Eq '(^|/)eslint\.config\.(js|cjs|mjs|ts|mts|cts)$' <<<"$file_path" || exit 0
 
 echo "BLOCKED: this guard denies every edit to eslint.config.* on the filename alone, because no automatic test tells a lint error being silenced here apart from a legitimate config change. Most edits here are the first kind: fix the ESLint error in the source file where it occurs, not in this file. Some are not, and adding a '...lint.<group>' preset spread is one, including the '...lint.reactRouter' migration GAIA's CHANGELOG tells adopters to make. Make that edit by hand, or with this hook temporarily disabled in .claude/settings.json; do not work around it." >&2
 exit 2

@@ -134,6 +134,19 @@ assert_denied() {
   assert_allowed
 }
 
+@test "allows a file whose name merely starts with the guarded one" {
+  run_edit "$(cfg 'const a = 1;' 'eslint.config.mjs.bak')" 'const a = 1;' 'const a = 2;'
+  assert_allowed
+}
+
+@test "denies a guarded path arriving with megabytes of trailing payload" {
+  local path
+  path="$(cfg)"$'\n'"$(head -c 70000 /dev/zero | tr '\0' 'x')"
+  run_hook "$(jq -n --arg p "$path" \
+    '{tool_name: "Edit", tool_input: {file_path: $p, old_string: "a", new_string: "b"}}')"
+  assert_denied
+}
+
 @test "guards every extension ESLint resolves, at any depth" {
   mkdir -p "$TMP/apps/web"
   for name in eslint.config.js eslint.config.cjs eslint.config.mjs eslint.config.ts \
@@ -161,6 +174,7 @@ assert_denied() {
   run_edit "$(cfg)" "const lint = gaiaLint();
 
 export default" "const lint = gaiaLint();
+
 
 export default"
   assert_denied
