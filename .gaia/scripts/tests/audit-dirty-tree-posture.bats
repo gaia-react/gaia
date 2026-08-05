@@ -78,6 +78,16 @@ code-audit-maintainer-shell"
   SENTINEL_CARVEOUT='is a sentinel rather than a path and withholds unconditionally'
   NO_REFUSAL_ARTIFACT='**Withhold without writing a `.refused` artifact.**'
 
+  # The assignment that PRODUCES the sentinel the carve-out above protects.
+  # Pinned separately because the two say different things: SENTINEL_CARVEOUT
+  # pins the prose promising the sentinel is never remit-filtered, and CHECK_LINE
+  # pins only the `if` that detects the failure. Deleting this line from all five
+  # members left the suite reporting 18/18 ok while the fail-closed arm produced
+  # nothing to withhold on, which is the suite's own stated anti-goal. Matched
+  # without leading indentation: the content is what must not drift, and pinning
+  # the block's indentation too would red on a reflow that changes no meaning.
+  SENTINEL_LINE='dirty_in_scope="dirty-scope check failed"'
+
   # The byte-identical refusal contract.
   REFUSAL='**A non-empty `dirty_in_scope` WITHHOLDS this pass.**'
 
@@ -86,6 +96,26 @@ code-audit-maintainer-shell"
   # the sidecar write is the load-bearing half; pinning only the bolded opener
   # would let this clause be reworded or dropped with the suite still green.
   SIDECAR_CLAUSE='write the findings sidecar naming each dirty path'
+
+  # Withhold-shaped clauses, as an ERE alternation, for the advisory member's
+  # drift guard below. This matches an instruction that the member withholds
+  # ITS OWN pass, which is the meaning the advisory member must never acquire,
+  # rather than the one bolded sentence a byte-identical pin could see.
+  #
+  # Two spellings are deliberately NOT in it, both because the advisory member
+  # carries them legitimately. `write no marker` is its self-skip arm ("the only
+  # `no marker` case is the self-skip above"), and an unqualified `withhold`
+  # covers its own exemption prose ("why the four gating members withhold on
+  # it", "withholding would buy no guarantee"). Matching the verb plus the thing
+  # withheld is what separates an instruction to this member from a description
+  # of a sibling.
+  WITHHOLD_SHAPED='withhold(s|ing)? (this|your) (pass|clearance|marker)'
+
+  # The one legitimate form the alternation above still reaches: the exemption
+  # sentence's own negation, `does NOT withhold your pass`. Kept as narrow as
+  # that fact requires. A wide exclusion list would be a fail-open here, since
+  # every term in it is a way for a real withhold clause to go unseen.
+  WITHHOLD_NEGATED='(does not|never|cannot)'
 
   # The run-order anchor, so the refusal is reachable from the member's own
   # order of operations rather than stated only beside the code block. The
@@ -97,6 +127,18 @@ code-audit-maintainer-shell"
 
 member_path() {
   printf '%s/.claude/agents/%s.md' "$REPO_ROOT" "$1"
+}
+
+# withhold_drift FILE: print every withhold-shaped clause in FILE that is not
+# the exemption's own negation, one per line with up to 30 characters of
+# preceding context so a reader can see which sentence tripped it. Case
+# insensitive on purpose: a reworded clause has no reason to keep the shouted
+# spelling of the sentence the gating members carry.
+withhold_drift() {
+  grep -oiE ".{0,30}$WITHHOLD_SHAPED" "$1" | grep -viE "$WITHHOLD_NEGATED"
+  # Both greps exit 1 on no match, which is the passing case here, so the
+  # function's own status must not carry it into a `set -e` test body.
+  return 0
 }
 
 @test "every member file exists" {
@@ -141,6 +183,15 @@ member_path() {
   for m in $GATING; do
     assert_carries "$(member_path "$m")" "$METHOD_ANCHOR" || {
       echo "run order does not name the refusal: $m" >&2
+      return 1
+    }
+  done
+}
+
+@test "every member assigns the fail-closed sentinel it withholds on" {
+  for m in $MEMBERS; do
+    assert_carries "$(member_path "$m")" "$SENTINEL_LINE" || {
+      echo "fail-closed arm produces no sentinel to withhold on: $m" >&2
       return 1
     }
   done
@@ -194,9 +245,16 @@ member_path() {
   # This is the assertion that would have caught the round-4 Critical: applying
   # the withhold byte-identically to all five contradicted this member's own
   # always-clear charter, and a presence-only pin reported green either way.
+  #
+  # Scanned by meaning rather than by the one bolded sentence. An exact-string
+  # absence check only ever caught the byte-identical copy-paste: leaving the
+  # exemption paragraph intact and ADDING a reworded withhold clause restored
+  # the same contradiction with every test still green.
   f="$(member_path "$ADVISORY")"
-  assert_carries "$f" "$REFUSAL" && {
-    echo "advisory member has acquired the withhold contract it is exempt from" >&2
+  drift="$(withhold_drift "$f")"
+  [ -z "$drift" ] || {
+    echo "advisory member has acquired a withhold clause it is exempt from:" >&2
+    echo "$drift" >&2
     return 1
   }
   assert_carries "$f" "$NO_REFUSAL_ARTIFACT" && {
@@ -265,6 +323,49 @@ assert_pin_breaks() {
 
 @test "the print pin breaks when the result stops reaching stderr (non-vacuity)" {
   assert_pin_breaks print 's|>&2; fi|; fi|' "$PRINT_LINE"
+}
+
+@test "the sentinel-assignment pin breaks when the arm stops failing closed (non-vacuity)" {
+  # The mutant keeps the failure branch and its warning and only empties the
+  # value it assigns, so the check reports a clean tree on a status that could
+  # not run. A pin covering the variable name alone survives this and the test
+  # reds, which is the weakness that let the line go unpinned in the first place.
+  assert_pin_breaks sentinel_line 's|dirty_in_scope="dirty-scope check failed"|dirty_in_scope=""|' "$SENTINEL_LINE"
+}
+
+@test "the advisory drift guard catches a reworded withhold clause (non-vacuity)" {
+  # The failure the byte-identical absence check could not see: the exemption
+  # paragraph stays exactly where it is, and a withhold clause sharing no
+  # sentence with the gating members' is added ahead of the handshake's
+  # "There is no withhold path here". The old exact-string pin reported green.
+  local src tmp anchor
+  src="$(member_path "$ADVISORY")"
+  tmp="$BATS_TEST_TMPDIR/mutant-advisory-reworded.md"
+  anchor='There is no withhold path here;'
+
+  grep -qF -- "$anchor" "$src" || {
+    echo "fixture broken: advisory member no longer carries the insertion anchor" >&2
+    return 1
+  }
+  [ -z "$(withhold_drift "$src")" ] || {
+    echo "fixture broken: advisory member already carries a withhold clause" >&2
+    return 1
+  }
+
+  awk -v anchor="$anchor" \
+    -v clause='When `dirty_in_scope` comes back non-empty, you withhold this pass and report that you must be re-dispatched once the operator commits or reverts.' \
+    'index($0, anchor) && !done { print clause; print ""; done = 1 } { print }' \
+    "$src" > "$tmp"
+
+  grep -qF -- "$REFUSAL" "$tmp" && {
+    echo "fixture is not the reworded case: it carries the byte-identical contract" >&2
+    return 1
+  }
+  [ -n "$(withhold_drift "$tmp")" ] || {
+    echo "drift guard misses a reworded withhold clause; it only sees the copy-paste" >&2
+    return 1
+  }
+  true
 }
 
 @test "the sentinel pin breaks when the carve-out is softened (non-vacuity)" {
