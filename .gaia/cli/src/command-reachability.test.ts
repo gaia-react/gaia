@@ -127,20 +127,31 @@ const escapeRegExp = (value: string): string =>
 // keeps each match a single bounded-length attempt.
 const HANDLER_KEY_PATTERN = /^\s*'?([a-z][a-z0-9-]*)'?\s*:\s*run[A-Z]/u;
 
-const extractHandlerKeys = (source: string): string[] => {
+// The lines between a `SUBCOMMAND_HANDLERS` map's `= {` and its closing
+// `\n};`. Starting after the brace rather than at the declaration keeps the
+// multi-line generic in the two entrypoints (`Readonly<Partial<Record<…>>>`)
+// out of the body, so a type line is never mistaken for an unparsed entry.
+const handlerMapBody = (source: string): string => {
   const start = source.indexOf('const SUBCOMMAND_HANDLERS');
 
-  if (start === -1) return [];
+  if (start === -1) return '';
 
-  const endOffset = source.slice(start).indexOf('\n};');
-  const body =
-    endOffset === -1 ?
-      source.slice(start)
-    : source.slice(start, start + endOffset);
+  const openOffset = source.slice(start).indexOf('= {');
 
+  if (openOffset === -1) return '';
+
+  const bodyStart = start + openOffset + '= {'.length;
+  const endOffset = source.slice(bodyStart).indexOf('\n};');
+
+  return endOffset === -1 ?
+      source.slice(bodyStart)
+    : source.slice(bodyStart, bodyStart + endOffset);
+};
+
+const extractHandlerKeys = (source: string): string[] => {
   const keys: string[] = [];
 
-  for (const line of body.split('\n')) {
+  for (const line of handlerMapBody(source).split('\n')) {
     const match = HANDLER_KEY_PATTERN.exec(line);
 
     if (match) keys.push(match[1]);
@@ -148,6 +159,30 @@ const extractHandlerKeys = (source: string): string[] => {
 
   return keys;
 };
+
+const COMMENT_OR_BLANK_PATTERN = /^\s*(?:\/\/|\/\*|\*|$)/u;
+
+// Map-body lines the key pattern does not recognize.
+//
+// `HANDLER_KEY_PATTERN` matches only a `run<Pascal>` value, which is the
+// convention every router follows today. An entry written any other way is
+// dropped from the key set **silently**, and that silence is worse than a
+// parse error: a subcommand missing from both its router's keys and its
+// summary line leaves `missing` and `unknown` both empty, so the drift guard
+// reads agreement and passes green on precisely the undocumented-subcommand
+// case it exists to catch. The reachability guard goes quiet on the same
+// command for the same reason.
+//
+// Widening the pattern is the wrong repair: it would have to anticipate every
+// value shape, and the next unanticipated one fails the same silent way.
+// Refusing to leave a line unaccounted for does not.
+const unparsedHandlerLines = (source: string): string[] =>
+  handlerMapBody(source)
+    .split('\n')
+    .filter(
+      (line) =>
+        !COMMENT_OR_BLANK_PATTERN.test(line) && !HANDLER_KEY_PATTERN.test(line)
+    );
 
 const hasDomainIndex = (cliSrc: string, name: string): boolean =>
   existsSync(path.join(cliSrc, name, 'index.ts'));
@@ -159,29 +194,47 @@ const ENTRYPOINTS: readonly (readonly [string, string])[] = [
   ['index.maintainer.ts', 'gaia-maintainer'],
 ];
 
-// Every domain router (`src/<domain>/index.ts` declaring a
-// `SUBCOMMAND_HANDLERS` map), keyed by domain name, with that router's own
-// subcommand keys. Scanned once and passed to both guards.
-const collectDomainRouters = (
-  cliSrc: string
-): ReadonlyMap<string, readonly string[]> => {
+type RouterScan = {
+  // Domain name → that router's own subcommand keys.
+  readonly keys: ReadonlyMap<string, readonly string[]>;
+  // `<file>: <line>` for every map-body line the key pattern did not parse,
+  // across the domain routers and both entrypoints.
+  readonly unparsed: readonly string[];
+};
+
+// One pass over every `SUBCOMMAND_HANDLERS` map in the tree, feeding both
+// guards and the extractor's own blind-spot check.
+const scanRouters = (cliSrc: string): RouterScan => {
   const domains = readdirSync(cliSrc, {withFileTypes: true})
     .filter(
       (entry) => entry.isDirectory() && hasDomainIndex(cliSrc, entry.name)
     )
     .map((entry) => entry.name);
 
-  const routers = new Map<string, readonly string[]>();
+  const keys = new Map<string, readonly string[]>();
+  const unparsed: string[] = [];
+
+  const record = (file: string, source: string): void => {
+    for (const line of unparsedHandlerLines(source)) {
+      unparsed.push(`${file}: ${line.trim()}`);
+    }
+  };
 
   for (const domain of domains) {
-    const source = readFileSync(path.join(cliSrc, domain, 'index.ts'), 'utf8');
+    const file = path.join(domain, 'index.ts');
+    const source = readFileSync(path.join(cliSrc, file), 'utf8');
 
     if (source.includes('const SUBCOMMAND_HANDLERS')) {
-      routers.set(domain, extractHandlerKeys(source));
+      keys.set(domain, extractHandlerKeys(source));
+      record(file, source);
     }
   }
 
-  return routers;
+  for (const [entrypoint] of ENTRYPOINTS) {
+    record(entrypoint, readFileSync(path.join(cliSrc, entrypoint), 'utf8'));
+  }
+
+  return {keys, unparsed};
 };
 
 // Full invocation paths for every map-dispatched leaf command. Domain routers
@@ -383,10 +436,12 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const cliSrc = path.join(repoRoot, '.gaia', 'cli', 'src');
 const routersPresent = existsSync(cliSrc);
 
-const domainRouters =
+const routerScan: RouterScan =
   routersPresent ?
-    collectDomainRouters(cliSrc)
-  : new Map<string, readonly string[]>();
+    scanRouters(cliSrc)
+  : {keys: new Map<string, readonly string[]>(), unparsed: []};
+
+const domainRouters = routerScan.keys;
 
 const leafCommands =
   routersPresent ? enumerateLeafCommands(cliSrc, domainRouters) : [];
@@ -433,6 +488,21 @@ describe('CLI subcommand reachability guard', () => {
       // The oracle must be able to return false, else everything looks
       // reachable.
       expect(isReachable('zzz fabricated-command')).toBe(false);
+    }
+  );
+
+  test.skipIf(!routersPresent)(
+    'every router map entry parses, so no command is dropped silently',
+    () => {
+      // See `unparsedHandlerLines`. Both guards in this file read their command
+      // set through `HANDLER_KEY_PATTERN`, and a router entry it does not match
+      // vanishes from that set without a word: the reachability guard stops
+      // watching the command, and the help-summary guard reads its absence from
+      // both the router and the summary as agreement.
+      //
+      // To resolve a failure, write the entry as `key: run<Pascal>` like every
+      // other router, rather than widening the pattern to admit a new shape.
+      expect(routerScan.unparsed).toEqual([]);
     }
   );
 
