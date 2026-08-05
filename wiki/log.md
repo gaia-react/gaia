@@ -11,6 +11,19 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-05 7e801785 SKIP - internal correctness fix, trailing-newline preservation; existing wiki description accurate at its abstraction level
+- 2026-08-05 ae974ea0 SKIP - internal correctness fix, whole-file reconstruction for Edit/MultiEdit; existing wiki description accurate at its abstraction level
+- 2026-08-05 31d5aa2c SKIP - internal correctness fix to the eslint-config guard's block-comment tracking; existing wiki description accurate at its abstraction level
+- 2026-08-05 37812f0b SKIP - internal correctness fix to the eslint-config guard's comment classifier; existing wiki description accurate at its abstraction level
+- 2026-08-05 f2a1826f SKIP - docs: prose-only CHANGELOG entry
+- 2026-08-05 9d078a68 SKIP - eslint-config guard rewrite already documented in-commit across 4 pages; verified accurate
+- 2026-08-05 c835d1dd SKIP - wiki/concepts/Release Workflow.md already corrected in-commit; verified accurate
+- 2026-08-05 7111e876 SKIP - wiki/concepts/Update Workflow.md already corrected in-commit; verified accurate
+- 2026-08-05 9cde1923 WORTHY - Code Audit Team members refuse a pass over a dirty review scope → wiki/decisions/Code Audit Team.md
+- 2026-08-05 395b416e WORTHY - Storybook preview inlines no env values, Vitest workers stop merging .env → wiki/dependencies/Storybook.md
+- 2026-08-05 0eddd186 WORTHY - hardened .gaia/cli's own pnpm workspace + typescript-eslint parity guard → wiki/decisions/pnpm.md, wiki/dependencies/gaia-lint.md
+- 2026-08-05 abe9b84d SKIP - tests-only, no wiki-relevant behavior change
+- 2026-08-05 8d4e4070 SKIP - prior wiki maintenance-chain commit; no new source to reflect
 - 2026-08-04 391a449c SKIP - machine-local rate overlay + concurrent re-price, wiki (Cost Data Contract, Token Cost Readout, Claude Integration Fitness) already updated within this same commit
 - 2026-08-04 a1882611 WORTHY - init rename escapes --title into seeded language files via function replacement → wiki/concepts/GAIA Init Workflow.md
 - 2026-08-04 3cc2e4ec WORTHY - init strip-branding refuses a multi-line or blank --title, shared checker → wiki/concepts/GAIA Init Workflow.md
