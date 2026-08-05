@@ -264,6 +264,12 @@ export default"
   [ "$status" -eq 2 ]
   grep -qF -- 'by hand' <<<"$output"
   grep -qF -- '.claude/settings.json' <<<"$output"
+  # Naming where the switch lives is only safe while the message also says whose
+  # switch it is. Nothing in .claude/hooks/ guards writes to .claude/settings.json,
+  # so without this clause a denied agent can follow the message literally, drop
+  # the registration, and leave the guard off. The two assertions above cannot
+  # see that: both strings appear in the wording that invited it.
+  grep -qF -- 'do not disable it yourself' <<<"$output"
 }
 
 @test "the message keeps pointing at the source file for the common case" {
