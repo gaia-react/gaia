@@ -2,13 +2,17 @@
 
 # Tests for .claude/hooks/block-eslint-config-edit.sh.
 #
-# The guard protects eslint.config.{js,cjs,mjs,ts} at any path, and it is a
-# BLANKET DENY on the filename: every edit to the file is refused, whatever the
+# The guard protects eslint.config.{js,cjs,mjs,ts,mts,cts} at any path, and it is
+# a BLANKET DENY on the filename: every edit to the file is refused, whatever the
 # edit does. So the suite has two halves and neither is decoration.
 #
 # The first half is the path gate, which is the only thing that decides anything:
 # a file that is not an eslint config passes, every guarded extension at every
-# depth does not.
+# depth does not. It is pinned in both directions on purpose. The extension set
+# is ESLint's own `FLAT_CONFIG_FILENAMES`, so a missing member is a config the
+# resolver loads and the guard ignores; and the pattern's `(^|/)` boundary is
+# what keeps an ordinary source file named `my-eslint.config.mjs` out of the
+# deny, a dimension no fixture varies unless one is written for it.
 #
 # The second half is the message, and it carries more weight than a message
 # usually does. A blunt guard that says nothing useful is indistinguishable from
@@ -125,10 +129,15 @@ assert_denied() {
   assert_allowed
 }
 
-@test "guards every extension and any depth" {
+@test "allows a source file whose name merely ends in the guarded one" {
+  run_edit "$(cfg 'const a = 1;' 'my-eslint.config.mjs')" 'const a = 1;' 'const a = 2;'
+  assert_allowed
+}
+
+@test "guards every extension ESLint resolves, at any depth" {
   mkdir -p "$TMP/apps/web"
   for name in eslint.config.js eslint.config.cjs eslint.config.mjs eslint.config.ts \
-    apps/web/eslint.config.mjs; do
+    eslint.config.mts eslint.config.cts apps/web/eslint.config.mjs; do
     run_edit "$(cfg "$DEFAULT_BODY" "$name")" '  ...lint.react,' "  ...lint.react,
   rules: {'no-empty-pattern': 'off'},"
     [ "$status" -eq 2 ] || return 1
