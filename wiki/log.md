@@ -11,6 +11,7 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-05 b027e62d SKIP - eslint.config guard rewrite (#1153) already documented in-commit across wiki/concepts/Claude Hooks.md, ESLint Fixes.md, wiki/decisions/Code Audit Team.md, pnpm.md, wiki/dependencies/Storybook.md, gaia-lint.md, wiki/modules/Claude Integration.md; verified accurate
 - 2026-08-05 7e801785 SKIP - internal correctness fix, trailing-newline preservation; existing wiki description accurate at its abstraction level
 - 2026-08-05 ae974ea0 SKIP - internal correctness fix, whole-file reconstruction for Edit/MultiEdit; existing wiki description accurate at its abstraction level
 - 2026-08-05 31d5aa2c SKIP - internal correctness fix to the eslint-config guard's block-comment tracking; existing wiki description accurate at its abstraction level
