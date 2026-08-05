@@ -26,6 +26,8 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$BATS_TEST_DIRNAME/../helpers/files.sh"
   # Statuses ledger-update.sh accepts: the four canonical unified values.
   WRITABLE="draft ready merged abandoned"
   # Retired values the guard now rejects (superseded by the unified vocabulary).
@@ -66,10 +68,10 @@ _plant_status() {
 
 @test "2: a rejected patch leaves the ledger byte-for-byte unchanged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
-  before="$(cat "$REPO/.gaia/local/specs/ledger.json")"
+  before="$(snapshot_file "$REPO/.gaia/local/specs/ledger.json")"
   run _ledger_update "$REPO" SPEC-001 '{"status":"shipped"}'
   [ "$status" -eq 6 ]
-  [ "$(cat "$REPO/.gaia/local/specs/ledger.json")" = "$before" ]
+  assert_files_identical "$REPO/.gaia/local/specs/ledger.json" "$before"
 }
 
 @test "3: every writable status (the unified vocabulary) is accepted" {

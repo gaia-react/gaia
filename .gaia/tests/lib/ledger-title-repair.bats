@@ -16,6 +16,8 @@
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
   SRC_LIB="$REPO_ROOT/.specify/extensions/gaia/lib"
   [ -x "$SRC_LIB/ledger-title-repair.sh" ] || skip "ledger-title-repair.sh not executable"
 
@@ -415,11 +417,11 @@ EOF
 }
 EOF
 
-  before="$(cat "$SANDBOX/.gaia/local/specs/ledger.json")"
+  before="$(snapshot_file "$SANDBOX/.gaia/local/specs/ledger.json")"
   run _run_repair
   [ "$status" -eq 0 ]
-  after="$(cat "$SANDBOX/.gaia/local/specs/ledger.json")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$SANDBOX/.gaia/local/specs/ledger.json")"
+  assert_files_identical "$before" "$after"
 }
 
 # --- 6. Idempotency -----------------------------------------------------------
@@ -487,16 +489,16 @@ EOF
 
   run _run_repair
   [ "$status" -eq 0 ]
-  specs_after_1="$(cat "$SANDBOX/.gaia/local/specs/ledger.json")"
-  plans_after_1="$(cat "$SANDBOX/.gaia/local/plans/ledger.json")"
+  specs_after_1="$(snapshot_file "$SANDBOX/.gaia/local/specs/ledger.json")"
+  plans_after_1="$(snapshot_file "$SANDBOX/.gaia/local/plans/ledger.json")"
 
   run _run_repair
   [ "$status" -eq 0 ]
-  specs_after_2="$(cat "$SANDBOX/.gaia/local/specs/ledger.json")"
-  plans_after_2="$(cat "$SANDBOX/.gaia/local/plans/ledger.json")"
+  specs_after_2="$(snapshot_file "$SANDBOX/.gaia/local/specs/ledger.json")"
+  plans_after_2="$(snapshot_file "$SANDBOX/.gaia/local/plans/ledger.json")"
 
-  [ "$specs_after_1" = "$specs_after_2" ]
-  [ "$plans_after_1" = "$plans_after_2" ]
+  assert_files_identical "$specs_after_1" "$specs_after_2"
+  assert_files_identical "$plans_after_1" "$plans_after_2"
 }
 
 # --- 7. Missing ledgers / usage -----------------------------------------------

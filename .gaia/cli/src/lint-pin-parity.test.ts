@@ -198,6 +198,67 @@ const readHardeningSettings = (
   };
 };
 
+// Exemption entries compared as ATOMS rather than as literal strings, because
+// pnpm does not store one exemption per entry. When a package needs more than
+// one exempted version it merges them into a single union entry,
+// `name@1.0.0 || 2.0.0`, and writes that back into `pnpm-workspace.yaml`
+// itself. Root's dependency closure is a superset of `.gaia/cli`'s, so the two
+// workspaces can legitimately need different version counts of one shared
+// package, at which point root carries the union and `.gaia/cli` carries the
+// single version. That is exactly the containment the two tests below permit,
+// and literal membership cannot see it: `arrayContaining` looks for
+// `semver@6.3.1`, finds only the union, and reds a required check over a valid
+// configuration.
+//
+// The shape is pnpm's own (`expandPackageVersionSpecs`, the inverse of the
+// `mergePackageVersionSpecs` that writes the union), mirrored here rather than
+// imported: pnpm is this repo's `packageManager`, not a dependency of either
+// workspace, so there is nothing to import from. Its parse is followed exactly,
+// including the scope-aware `@` split that keeps `@scope/name` from splitting on
+// its own leading `@`.
+//
+// One deliberate divergence, stated because a wrong normalization here is the
+// same false-positive class this exists to fix: pnpm runs each version through
+// `semver.valid`, which also folds spellings like `=1.2.3` and `v1.2.3` onto
+// `1.2.3`. Trimming is all that pnpm's OWN output needs (its union separator
+// leaves a leading space), and `semver` is a dependency of neither workspace. A
+// hand-written `v1.2.3` on one side and `1.2.3` on the other would therefore
+// still red. Add the dependency and use `semver.valid` if that ever happens; do
+// not grow a second normalizer by hand, which is how the sibling exactness
+// predicate accumulated four rounds of shape-by-shape repair.
+//
+// A name-only entry stays one atom, so exempting EVERY version of a package in
+// `.gaia/cli` is not contained by exempting one version of it at root. That is
+// asymmetric hardening and stays red, which is pnpm's reading too.
+//
+// A non-string entry is the exactness tests' finding, not this one's. It passes
+// through unexpanded so it still compares, rather than being dropped into a
+// silently smaller list on the containing side.
+const exemptionAtoms = (list: unknown[]): unknown[] => {
+  const atoms = new Set<unknown>();
+
+  for (const entry of list) {
+    if (typeof entry === 'string') {
+      const atIndex =
+        entry.startsWith('@') ? entry.indexOf('@', 1) : entry.indexOf('@');
+
+      if (atIndex === -1) {
+        atoms.add(entry);
+      } else {
+        const packageName = entry.slice(0, atIndex);
+
+        for (const version of entry.slice(atIndex + 1).split('||')) {
+          atoms.add(`${packageName}@${version.trim()}`);
+        }
+      }
+    } else {
+      atoms.add(entry);
+    }
+  }
+
+  return [...atoms];
+};
+
 describe('@gaia-react/lint pin parity', () => {
   const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
   const rootPin = readPin(path.join(repoRoot, 'package.json'));
@@ -303,10 +364,49 @@ describe('supply-chain hardening parity', () => {
   // Containment, not equality. Root's lists are supersets by design, so equality
   // would fail on `bippy` and `chokidar`; but an entry present ONLY in `.gaia/cli`
   // exempts a package from the setting above it in one workspace and not the other,
-  // which is the asymmetric hardening this describe block exists to catch.
+  // which is the asymmetric hardening this describe block exists to catch. The
+  // two sides are compared as atoms; see `exemptionAtoms` above for why literal
+  // membership cannot see a legitimate containment.
   test('.gaia/cli exempts nothing from the release-age window that root does not', () => {
-    expect(rootSettings.minimumReleaseAgeExclude).toEqual(
-      expect.arrayContaining(cliSettings.minimumReleaseAgeExclude)
+    expect(exemptionAtoms(rootSettings.minimumReleaseAgeExclude)).toEqual(
+      expect.arrayContaining(
+        exemptionAtoms(cliSettings.minimumReleaseAgeExclude)
+      )
+    );
+  });
+
+  // The four below are unit tests of `exemptionAtoms` over constructed entries,
+  // not assertions about either live `pnpm-workspace.yaml`. Named for the helper
+  // so they cannot be read as live parity coverage: the two tests that do assert
+  // on the real files are the containment pair, above and below this block.
+  test('exemptionAtoms: a merged union contains the single version it merged', () => {
+    expect(exemptionAtoms(['semver@6.3.1 || 6.3.2'])).toEqual(
+      expect.arrayContaining(exemptionAtoms(['semver@6.3.1']))
+    );
+  });
+
+  // The scope-aware `@` split is the one part of pnpm's parse a plain
+  // `indexOf('@')` gets wrong, and a SCOPED UNION is the only input shape where
+  // the two spellings diverge: naive splitting yields the name-less atom
+  // `@2.0.0`, which reds containment on a valid pair, reintroducing exactly the
+  // false red this helper exists to remove. Without this test the branch is
+  // unpinned and collapsing it leaves every other test green, which is not
+  // hypothetical: a quality-review pass proposed that collapse on this very diff.
+  test('exemptionAtoms: a scoped union splits on the version @, not the scope @', () => {
+    expect(exemptionAtoms(['@scope/n@1.0.0 || 2.0.0'])).toEqual(
+      expect.arrayContaining(exemptionAtoms(['@scope/n@2.0.0']))
+    );
+  });
+
+  test('exemptionAtoms: a version only one side exempts is still drift', () => {
+    expect(exemptionAtoms(['semver@6.3.1 || 6.3.2'])).not.toEqual(
+      expect.arrayContaining(exemptionAtoms(['semver@6.3.3']))
+    );
+  });
+
+  test('exemptionAtoms: exempting every version is not contained by exempting one', () => {
+    expect(exemptionAtoms(['semver@6.3.1'])).not.toEqual(
+      expect.arrayContaining(exemptionAtoms(['semver']))
     );
   });
 
@@ -374,8 +474,8 @@ describe('supply-chain hardening parity', () => {
   });
 
   test('.gaia/cli exempts nothing from the trust policy that root does not', () => {
-    expect(rootSettings.trustPolicyExclude).toEqual(
-      expect.arrayContaining(cliSettings.trustPolicyExclude)
+    expect(exemptionAtoms(rootSettings.trustPolicyExclude)).toEqual(
+      expect.arrayContaining(exemptionAtoms(cliSettings.trustPolicyExclude))
     );
   });
 });

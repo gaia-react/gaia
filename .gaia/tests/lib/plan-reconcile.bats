@@ -18,6 +18,8 @@
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
   SRC_LIB="$REPO_ROOT/.specify/extensions/gaia/lib"
   SRC_SCRIPTS="$REPO_ROOT/.gaia/scripts"
   [ -x "$SRC_LIB/plan-reconcile.sh" ] || skip "plan-reconcile.sh not executable"
@@ -102,13 +104,13 @@ _row_field() {
 }
 
 @test "3: a non-PLAN-NNN id is a no-op, exits 0, leaves the ledger unchanged" {
-  before="$(cat "$SANDBOX/$LEDGER_REL")"
+  before="$(snapshot_file "$SANDBOX/$LEDGER_REL")"
   for id in cache-thing PLAN-x; do
     run _reconcile "$id"
     [ "$status" -eq 0 ]
   done
-  after="$(cat "$SANDBOX/$LEDGER_REL")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$SANDBOX/$LEDGER_REL")"
+  assert_files_identical "$before" "$after"
 }
 
 @test "4a: a missing ledger exits 0 and creates nothing" {
@@ -119,11 +121,11 @@ _row_field() {
 }
 
 @test "4b: a missing row exits 0 and leaves the ledger unchanged" {
-  before="$(cat "$SANDBOX/$LEDGER_REL")"
+  before="$(snapshot_file "$SANDBOX/$LEDGER_REL")"
   run _reconcile PLAN-999
   [ "$status" -eq 0 ]
-  after="$(cat "$SANDBOX/$LEDGER_REL")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$SANDBOX/$LEDGER_REL")"
+  assert_files_identical "$before" "$after"
 }
 
 @test "5: the plans status vocabulary guard holds; plan-reconcile never writes the retired 'completed' status" {

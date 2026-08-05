@@ -46,6 +46,8 @@ setup() {
   SCRIPT="$SCRIPT_DIR/cost-reprice.sh"
   FIX_E2E="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-cost-e2e" && pwd)"
   FIX_PRICE="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally-price" && pwd)"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$BATS_TEST_DIRNAME/../../tests/helpers/files.sh"
 
   # Tracked, non-optional, and this suite is release-excluded so it only runs
   # where the script exists. A `skip` would green the suite on a rename.
@@ -118,21 +120,21 @@ run_deadline() {
 
 @test "a row that already prices correctly is left byte-identical" {
   seed_row 0.87925 2026-07-28T07:28:15Z
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   run run_reprice "$RATES_FULL"
   [ "$status" -eq 0 ]
-  [ "$(cat "$LEDGER")" = "$before" ]
+  assert_files_identical "$LEDGER" "$before"
 }
 
 @test "a second run changes nothing (idempotent)" {
   seed_row 0.76 2026-07-28T07:28:15Z
   run_reprice "$RATES_FULL"
-  after_first="$(cat "$LEDGER")"
+  after_first="$(snapshot_file "$LEDGER")"
 
   run run_reprice "$RATES_FULL"
   [ "$status" -eq 0 ]
-  [ "$(cat "$LEDGER")" = "$after_first" ]
+  assert_files_identical "$LEDGER" "$after_first"
   grep -qF -- '0 row' <<<"$output"
 }
 
@@ -174,26 +176,26 @@ run_deadline() {
 @test "a row with no by_model attribution is left byte-identical" {
   jq -c -n '{schema_version:1, kind:"execute", session_id:"legacy",
              dollars:null, ts:"2026-07-28T07:28:15Z"}' >> "$LEDGER"
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   run run_reprice "$RATES_FULL"
   [ "$status" -eq 0 ]
-  [ "$(cat "$LEDGER")" = "$before" ]
+  assert_files_identical "$LEDGER" "$before"
 }
 
 @test "--dry-run reports the change but writes nothing" {
   seed_row 0.76 2026-07-28T07:28:15Z
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   run run_reprice "$RATES_FULL" --dry-run
   [ "$status" -eq 0 ]
-  [ "$(cat "$LEDGER")" = "$before" ]
+  assert_files_identical "$LEDGER" "$before"
   grep -qF -- '0.87925' <<<"$output"
 }
 
 @test "the pre-rewrite ledger is backed up before any row changes" {
   seed_row 0.76 2026-07-28T07:28:15Z
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   run run_reprice "$RATES_FULL"
   [ "$status" -eq 0 ]
@@ -204,7 +206,7 @@ run_deadline() {
   [ "$(find "$(dirname "$LEDGER")" -name 'cost.jsonl.bak.*' | wc -l | tr -d ' ')" -eq 1 ]
   bak="$(find "$(dirname "$LEDGER")" -name 'cost.jsonl.bak.*' | head -n 1)"
   [ -n "$bak" ]
-  [ "$(cat "$bak")" = "$before" ]
+  assert_files_identical "$bak" "$before"
 }
 
 @test "a second backup in the same second does not clobber the first" {
@@ -227,7 +229,7 @@ STUB
   chmod +x "$SANDBOX/bin/date"
 
   seed_row 0.76 2026-07-28T07:28:15Z
-  original="$(cat "$LEDGER")"
+  original="$(snapshot_file "$LEDGER")"
 
   run env PATH="$SANDBOX/bin:$PATH" bash "$SCRIPT" \
     --ledger "$LEDGER" --rate-table "$RATES_FULL"
@@ -248,7 +250,7 @@ STUB
   [ -f "$d/cost.jsonl.bak.20260101T000000Z" ]
   [ -f "$d/cost.jsonl.bak.20260101T000000Z.2" ]
   # Run 1's copy still holds run 1's pre-image, unclobbered.
-  [ "$(cat "$d/cost.jsonl.bak.20260101T000000Z")" = "$original" ]
+  assert_files_identical "$d/cost.jsonl.bak.20260101T000000Z" "$original"
 }
 
 @test "a row jq cannot process refuses the whole rewrite instead of dropping it" {
@@ -263,14 +265,14 @@ STUB
                cache_write_1h:360, cache_read:3000, output:"30"}},
              dollars:0.76, ts:"2026-07-28T07:28:15Z"}' >> "$LEDGER"
   seed_row 0.76 2026-07-28T07:28:15Z
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   run run_reprice "$RATES_FULL"
   [ "$status" -ne 0 ]
 
   # Nothing written, nothing dropped, and the refusal says so rather than
   # reporting a plausible-looking partial success.
-  [ "$(cat "$LEDGER")" = "$before" ]
+  assert_files_identical "$LEDGER" "$before"
   [ "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 3 ]
   [ "$(find "$(dirname "$LEDGER")" -name 'cost.jsonl.bak.*' | wc -l | tr -d ' ')" -eq 0 ]
   grep -qF -- 'would drop 1 row' <<<"$output"
@@ -286,11 +288,11 @@ STUB
                cache_write_1h:0, cache_read:0, output:30}},
              dollars:1.23, rate_table_id:"sha256:stale00000000000",
              ts:"2026-07-28T07:28:15Z"}' >> "$LEDGER"
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   run run_reprice "$RATES_FULL"
   [ "$status" -eq 0 ]
-  [ "$(cat "$LEDGER")" = "$before" ]
+  assert_files_identical "$LEDGER" "$before"
   grep -qF -- '0 row' <<<"$output"
 }
 
@@ -305,11 +307,11 @@ STUB
         cache_write_1h:0, cache_read:0, output:9999}}),
       dollars:5.00, rate_table_id:"sha256:stale00000000000",
       ts:"2026-07-28T07:28:15Z"}' >> "$LEDGER"
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   run run_reprice "$RATES_FULL"
   [ "$status" -eq 0 ]
-  [ "$(cat "$LEDGER")" = "$before" ]
+  assert_files_identical "$LEDGER" "$before"
   grep -qF -- '0 row' <<<"$output"
 }
 
@@ -342,11 +344,11 @@ STUB
     '{schema_version:1, kind:"execute", session_id:"anchorless", by_model:$bm,
       dollars:0.87925, rate_table_id:"sha256:stale00000000000", ts:null}' \
     >> "$LEDGER"
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   run run_reprice "$RATES_FULL"
   [ "$status" -eq 0 ]
-  [ "$(cat "$LEDGER")" = "$before" ]
+  assert_files_identical "$LEDGER" "$before"
   grep -qF -- '0 row' <<<"$output"
 }
 
@@ -373,11 +375,11 @@ STUB
   # honored. Accepting one silently reprices THIS checkout while reporting
   # success for the one that was named.
   seed_row 0.76 2026-07-28T07:28:15Z
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   run bash "$SCRIPT" "$SANDBOX" --ledger "$LEDGER" --rate-table "$RATES_FULL"
   [ "$status" -ne 0 ]
-  [ "$(cat "$LEDGER")" = "$before" ]
+  assert_files_identical "$LEDGER" "$before"
   grep -qF -- 'unexpected argument' <<<"$output"
 }
 
@@ -409,13 +411,13 @@ STUB
   git -C "$repo" worktree add -b wt-branch "$wt" \
     || { echo "worktree add failed" >&2; return 1; }
 
-  before="$(cat "$repo/.gaia/local/telemetry/cost.jsonl")"
+  before="$(snapshot_file "$repo/.gaia/local/telemetry/cost.jsonl")"
   run env -u GAIA_MAIN_ROOT bash -c "cd '$wt' && bash .gaia/scripts/cost-reprice.sh"
   [ "$status" -ne 0 ]
 
   # Refused by name, pointing at the main checkout, and main's ledger untouched.
   grep -qF -- 'must run from the main checkout' <<<"$output"
-  [ "$(cat "$repo/.gaia/local/telemetry/cost.jsonl")" = "$before" ]
+  assert_files_identical "$repo/.gaia/local/telemetry/cost.jsonl" "$before"
 }
 
 @test "a missing main-only lib still refuses the worktree, it does not fail open" {
@@ -443,7 +445,7 @@ STUB
   git -C "$repo" worktree add -b wt-branch2 "$wt" \
     || { echo "worktree add failed" >&2; return 1; }
 
-  before="$(cat "$repo/.gaia/local/telemetry/cost.jsonl")"
+  before="$(snapshot_file "$repo/.gaia/local/telemetry/cost.jsonl")"
   run env -u GAIA_MAIN_ROOT bash -c "cd '$wt' && bash .gaia/scripts/cost-reprice.sh"
   [ "$status" -ne 0 ]
 
@@ -454,7 +456,7 @@ STUB
   # written as `grep … && return 1` returns non-zero when the needle is correctly
   # absent, so as a test's final line it would fail the good case. Per
   # .claude/rules/bats-assertions.md, the last line must be a positive assertion.
-  [ "$(cat "$repo/.gaia/local/telemetry/cost.jsonl")" = "$before" ]
+  assert_files_identical "$repo/.gaia/local/telemetry/cost.jsonl" "$before"
 }
 
 @test "an empty ledger is a success with nothing to do, not a failure" {
@@ -473,7 +475,7 @@ STUB
   # lost row either. With the lock held from outside, a correctly-scoped run
   # produces no report line and no backup at all.
   seed_row 0.76 2026-07-28T07:28:15Z
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   # Force the portable mkdir primitive and pre-create its lock dir, so the run
   # cannot acquire. A high stale threshold keeps it from being reclaimed.
@@ -485,7 +487,7 @@ STUB
       bash "$SCRIPT" --ledger "$LEDGER" --rate-table "$RATES_FULL"
   [ "$status" -ne 0 ]
 
-  [ "$(cat "$LEDGER")" = "$before" ]
+  assert_files_identical "$LEDGER" "$before"
   [ "$(find "$(dirname "$LEDGER")" -name 'cost.jsonl.bak.*' | wc -l | tr -d ' ')" -eq 0 ]
   # `->` appears only in a per-row report line ("$before -> $after"), so it is the
   # substring that proves classify ran. Matching on "reprice:" would not: the
@@ -579,7 +581,7 @@ SHIMEOF
 @test "#1091: a ledger that SHRANK mid-run refuses the replace instead of guessing" {
   seed_row 0.76 2026-07-28T07:28:15Z
   seed_row 0.76 2026-07-28T08:00:00Z
-  before="$(cat "$LEDGER")"
+  before="$(snapshot_file "$LEDGER")"
 
   SHIM="$BATS_TEST_TMPDIR/shim"
   mkdir -p "$SHIM"
@@ -603,7 +605,7 @@ SHIMEOF
   # the backup, taken before the truncation, still holds the original two rows.
   backup="$(find "$(dirname "$LEDGER")" -name 'cost.jsonl.bak.*' | head -n 1)"
   [ -n "$backup" ]
-  [ "$(cat "$backup")" = "$before" ]
+  assert_files_identical "$backup" "$before"
 }
 
 @test "#1091: an ordinary run reports no carry, so the message is not noise" {

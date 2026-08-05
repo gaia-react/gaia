@@ -30,6 +30,8 @@
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
+  . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
 }
 
 @test "UAT-007: cost-consolidate.sh no longer exists" {
@@ -52,7 +54,7 @@ setup() {
   mkdir -p "$SANDBOX/.gaia/local/telemetry"
   ledger="$SANDBOX/.gaia/local/telemetry/cost.jsonl"
   printf '%s\n' '{"schema_version":1,"kind":"execute","spec_id":"SPEC-PRE","session_id":"pre","buckets":{"fresh_input":1,"cache_write":0,"cache_read":0,"output":0},"total":1}' > "$ledger"
-  before="$(cat "$ledger")"
+  before="$(snapshot_file "$ledger")"
 
   # Neither archived/ tree exists in this sandbox at all.
   [ ! -d "$SANDBOX/.gaia/local/specs/archived" ]
@@ -66,6 +68,6 @@ setup() {
   [ ! -d "$SANDBOX/.gaia/local/plans/archived" ]
 
   # The ledger is byte-identical: no row was appended.
-  after="$(cat "$ledger")"
-  [ "$before" = "$after" ]
+  after="$(snapshot_file "$ledger")"
+  assert_files_identical "$before" "$after"
 }
