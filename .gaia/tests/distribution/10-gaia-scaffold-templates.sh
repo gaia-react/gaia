@@ -33,7 +33,10 @@ require_cmd rsync "rsync required for adopter-flow scaffold copy"
 
 STAGING="$(mktemp -d -t gaia-dist-scaffold-stage-XXXXXX)"
 SCAFFOLD="$(mktemp -d -t gaia-dist-scaffold-scaffold-XXXXXX)"
-trap 'rm -rf "$STAGING" "$SCAFFOLD"' EXIT
+# Outside the staged tree, which these scenarios assert on file by file.
+CLI_STDERR_FILE="$(mktemp -t gaia-dist-scaffold-stderr-XXXXXX)"
+trap 'rm -rf "$STAGING" "$SCAFFOLD" "$CLI_STDERR_FILE"' EXIT
+capture_cli_stderr "$CLI_STDERR_FILE"
 
 "$HERE/lib/build-staging.sh" "$STAGING" \
   || { fail "build-staging failed"; exit 1; }
@@ -67,12 +70,8 @@ done
 run_scaffold() {
   local label="$1"; shift
   local stdout
-  stdout="$(cd "$SCAFFOLD" && "$GAIA" scaffold "$@" 2>/dev/null)" || {
-    log "gaia scaffold $* exited non-zero; rerunning with stderr:"
-    ( cd "$SCAFFOLD" && "$GAIA" scaffold "$@" ) || :
-    fail "gaia scaffold $* exited non-zero on staged tree (kind: $label)"
-    exit 1
-  }
+  stdout="$(cd "$SCAFFOLD" && run_cli "$GAIA" scaffold "$@")" \
+    || fail_with_stderr "gaia scaffold $* exited non-zero on staged tree (kind: $label)"
   printf '%s' "$stdout"
 }
 

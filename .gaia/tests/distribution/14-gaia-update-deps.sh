@@ -38,7 +38,10 @@ require_cmd rsync "rsync required for adopter-flow scaffold copy"
 
 STAGING="$(mktemp -d -t gaia-dist-udeps-stage-XXXXXX)"
 SCAFFOLD="$(mktemp -d -t gaia-dist-udeps-scaffold-XXXXXX)"
-trap 'rm -rf "$STAGING" "$SCAFFOLD"' EXIT
+# Outside the staged tree, which these scenarios assert on file by file.
+CLI_STDERR_FILE="$(mktemp -t gaia-dist-udeps-stderr-XXXXXX)"
+trap 'rm -rf "$STAGING" "$SCAFFOLD" "$CLI_STDERR_FILE"' EXIT
+capture_cli_stderr "$CLI_STDERR_FILE"
 
 "$HERE/lib/build-staging.sh" "$STAGING" \
   || { fail "build-staging failed"; exit 1; }
@@ -64,12 +67,8 @@ JSON
 LEDGER="$SCAFFOLD/.gaia/local/declined-updates.json"
 
 # --- decline --source --skip --------------------------------------------
-DECLINE_OUT="$(cd "$SCAFFOLD" && "$GAIA" update-deps decline --source updates.json --skip react-router 2>/dev/null)" || {
-  log "gaia update-deps decline exited non-zero; rerunning with stderr:"
-  ( cd "$SCAFFOLD" && "$GAIA" update-deps decline --source updates.json --skip react-router ) || :
-  fail "gaia update-deps decline exited non-zero on staged tree"
-  exit 1
-}
+DECLINE_OUT="$(cd "$SCAFFOLD" && run_cli "$GAIA" update-deps decline --source updates.json --skip react-router)" \
+  || fail_with_stderr "gaia update-deps decline exited non-zero on staged tree"
 printf '%s' "$DECLINE_OUT" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0,'utf8'));
   if (!Array.isArray(r.snoozed) || !r.snoozed.includes('react-router')) {
@@ -80,8 +79,8 @@ printf '%s' "$DECLINE_OUT" | node -e "
   || { fail "gaia update-deps decline did not write .gaia/local/declined-updates.json"; exit 1; }
 
 # --- decline --clear -----------------------------------------------------
-CLEAR_OUT="$(cd "$SCAFFOLD" && "$GAIA" update-deps decline --clear 2>/dev/null)" \
-  || { fail "gaia update-deps decline --clear exited non-zero"; exit 1; }
+CLEAR_OUT="$(cd "$SCAFFOLD" && run_cli "$GAIA" update-deps decline --clear)" \
+  || fail_with_stderr "gaia update-deps decline --clear exited non-zero"
 printf '%s' "$CLEAR_OUT" | node -e "
   const r = JSON.parse(require('node:fs').readFileSync(0,'utf8'));
   if (r.cleared !== true) throw new Error('expected {cleared:true}, got ' + JSON.stringify(r));

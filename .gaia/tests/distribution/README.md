@@ -17,7 +17,7 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 .gaia/tests/distribution/
 ├── run-all.sh                   # top-level driver
 ├── lib/
-│   ├── lib.sh                   # pass/fail/log/require_cmd, PROJECT_ROOT
+│   ├── lib.sh                   # pass/fail/log/require_cmd, PROJECT_ROOT, CLI stderr capture
 │   ├── build-staging.sh         # builds staging tarball into $1 (mktemp dir)
 │   └── docker.sh                # Layer 2 image build + container run helpers
 ├── 01-files-present.sh          # manifest/exclude/sentinel presence

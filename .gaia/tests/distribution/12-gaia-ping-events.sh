@@ -32,7 +32,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
 
 STAGING="$(mktemp -d -t gaia-dist-ping-stage-XXXXXX)"
-trap 'rm -rf "$STAGING"' EXIT
+# Outside the staged tree, which these scenarios assert on file by file.
+CLI_STDERR_FILE="$(mktemp -t gaia-dist-ping-stderr-XXXXXX)"
+trap 'rm -rf "$STAGING" "$CLI_STDERR_FILE"' EXIT
+capture_cli_stderr "$CLI_STDERR_FILE"
 
 "$HERE/lib/build-staging.sh" "$STAGING" \
   || { fail "build-staging failed"; exit 1; }
@@ -48,12 +51,8 @@ GAIA="$STAGING/.gaia/cli/gaia"
 run_ping_ok() {
   local label="$1"; shift
   local stdout
-  stdout="$(cd "$STAGING" && GAIA_TELEMETRY_PING_DISABLE=1 "$GAIA" ping "$@" 2>/dev/null)" || {
-    log "gaia ping $* exited non-zero; rerunning with stderr:"
-    ( cd "$STAGING" && GAIA_TELEMETRY_PING_DISABLE=1 "$GAIA" ping "$@" ) || :
-    fail "gaia ping $* exited non-zero on staged tree (event: $label)"
-    exit 1
-  }
+  stdout="$(cd "$STAGING" && GAIA_TELEMETRY_PING_DISABLE=1 run_cli "$GAIA" ping "$@")" \
+    || fail_with_stderr "gaia ping $* exited non-zero on staged tree (event: $label)"
   if [ -n "$stdout" ]; then
     log "unexpected stdout from ping $label (fire-and-forget: no stdout on success):"
     printf '%s\n' "$stdout" >&2
