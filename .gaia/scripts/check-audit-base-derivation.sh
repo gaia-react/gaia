@@ -190,10 +190,14 @@
 #      it looks: a pathspec (`-- "app/[a-z]/*"`) or an emptiness test on the
 #      same line contains the token while the call still quotes, so the
 #      assertion would vouch for exactly the shape it exists to reject.
-#      `git diff -z --name-only` is a correct command this reports, and that is
-#      the accepted cost. Both spellings cannot be admitted by one positional
-#      rule, the in-tree convention is the one pinned, and a red here is loud
-#      and one edit from resolved, where the false green it replaces is silent.
+#      The rejected set is therefore every correct spelling that does not put
+#      `-z` immediately after `--name-only`, separated by exactly one space:
+#      `git diff -z --name-only`, an intervening flag
+#      (`--name-only --diff-filter=d -z`), and a tab or a double space. That is
+#      the accepted cost, and it is accepted rather than worked around because
+#      no positional rule admits every spelling, the roster spells all eight of
+#      its own sites the one way, and the failure this trades into is loud and
+#      one edit from resolved where the false green it replaces is silent.
 #
 # Comment lines are NOT stripped from either scan, unlike
 # check-main-root-derivation.sh, which scans executable source where a

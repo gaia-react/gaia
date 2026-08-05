@@ -709,12 +709,18 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD") && [ -z "$
 ```
 '
 
+# Assertion 4 requires TWO things of the token and they need separate fixtures,
+# because a mutant that drops one is invisible to a fixture the other already
+# rejects. The token is ` -z` with a LEADING SPACE, and the match is ANCHORED at
+# the position immediately after the call. This fixture pins the space; the one
+# below it pins the anchor.
+#
 # A quoting call whose PATHSPEC happens to contain the token. `[a-z]` is an
-# ordinary character class and it carries `-z` inside it, so an anywhere-in-the-
-# call test vouches for a call that quotes. This is the shape that makes
-# "carries -z" and "passes -z" different claims, and only the anchored form
-# tells them apart: the `)` wall does not help here, because the pathspec is
-# inside the call rather than after it.
+# ordinary character class and it carries `-z` inside it, so a bare
+# anywhere-in-the-call substring test vouches for a call that quotes. The
+# leading space is what rejects it, since the `-z` here is preceded by `a`. The
+# `)` wall does not help, because the pathspec is inside the call rather than
+# after it.
 DIFF_DASH_Z_INSIDE_PATHSPEC='Agent prose, per .github/audit/resolve-audit-base.sh.
 ```bash
 changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- "app/[a-z]/*")
@@ -730,6 +736,31 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- "app/[a-
   [ "$status" -eq 1 ]
   grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
   # Correctly ranged, so this red is the anchored token test alone.
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+# A quoting call piping into a command that legitimately takes `-z` of its own.
+# The token here is spelled with its leading space, so the space test admits it
+# and ONLY the anchor rejects it: this is the fixture that discriminates the
+# two mechanisms. `|` is deliberately not a window wall, so ` -z` really does
+# land inside this call's window, at an index that is not 1.
+DIFF_DASH_Z_AFTER_PIPE='Agent prose, per .github/audit/resolve-audit-base.sh.
+```bash
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" | sort -z)
+```
+'
+
+@test "fixture: a -z belonging to a piped command does not count as the call passing -z" {
+  local repo
+  repo="$(make_fixture_repo diff-dash-z-after-pipe)"
+  write_agent_file "$repo" code-audit-maintainer-prose.md "$DIFF_DASH_Z_AFTER_PIPE"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
+  # Correctly ranged, so this red is the anchor alone. Drop the `anchored`
+  # argument at the call site and this is the test that goes green while the
+  # pathspec fixture beside it stays red.
   grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
 }
 
