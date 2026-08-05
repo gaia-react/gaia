@@ -171,6 +171,14 @@ assert_denied() {
   assert_denied
 }
 
+# Every other fixture builds its path under $TMP, so all of them carry a slash
+# and only the `/` half of the pattern's `(^|/)` gets exercised. Without this
+# case, narrowing the group to `(/)` is undetected.
+@test "guards a config named with no directory component at all" {
+  run_tool Edit '{"file_path": "eslint.config.mjs", "old_string": "a", "new_string": "b"}'
+  assert_denied
+}
+
 @test "guards every extension ESLint resolves, at any depth" {
   mkdir -p "$TMP/apps/web"
   for name in eslint.config.js eslint.config.cjs eslint.config.mjs eslint.config.ts \
