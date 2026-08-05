@@ -112,10 +112,22 @@ code-audit-maintainer-shell"
   WITHHOLD_SHAPED='withhold(s|ing)? (this|your) (pass|clearance|marker)'
 
   # The one legitimate form the alternation above still reaches: the exemption
-  # sentence's own negation, `does NOT withhold your pass`. Kept as narrow as
-  # that fact requires. A wide exclusion list would be a fail-open here, since
-  # every term in it is a way for a real withhold clause to go unseen.
-  WITHHOLD_NEGATED='(does not|never|cannot)'
+  # sentence's own negation, `does NOT withhold your pass`.
+  #
+  # The negator is ANCHORED TO THE VERB rather than merely required somewhere in
+  # the context window, and that anchor is the whole strength of this exclusion.
+  # Unanchored, any of these words appearing within 30 characters of a real
+  # withhold clause discards it, and they saturate this prose: `never` alone
+  # appears 33 times in the advisory member. Two house-style clauses got through
+  # the unanchored form, both carrying the contradiction the guard exists to
+  # catch, and both are pinned as fixtures below:
+  #
+  #   "…cannot be trusted, so withhold your marker until it is clean."
+  #   "This member never self-heals, and it will withhold this pass on dirt."
+  #
+  # Every term here is a way for a real withhold clause to go unseen, so the
+  # exclusion stays as narrow as the one legitimate sentence requires.
+  WITHHOLD_NEGATED='(does not|never|cannot) +withhold'
 
   # The run-order anchor, so the refusal is reachable from the member's own
   # order of operations rather than stated only beside the code block. The
@@ -134,8 +146,13 @@ member_path() {
 # preceding context so a reader can see which sentence tripped it. Case
 # insensitive on purpose: a reworded clause has no reason to keep the shouted
 # spelling of the sentence the gating members carry.
+#
+# Newlines are folded to spaces before matching, because `grep` is line-scoped
+# and a clause split across a line break would otherwise be invisible. The
+# guarded file carries unwrapped paragraphs today, so this closes the hole
+# before a reflow opens it rather than after.
 withhold_drift() {
-  grep -oiE ".{0,30}$WITHHOLD_SHAPED" "$1" | grep -viE "$WITHHOLD_NEGATED"
+  tr '\n' ' ' < "$1" | grep -oiE ".{0,30}$WITHHOLD_SHAPED" | grep -viE "$WITHHOLD_NEGATED"
   # Both greps exit 1 on no match, which is the passing case here, so the
   # function's own status must not carry it into a `set -e` test body.
   return 0
@@ -333,39 +350,70 @@ assert_pin_breaks() {
   assert_pin_breaks sentinel_line 's|dirty_in_scope="dirty-scope check failed"|dirty_in_scope=""|' "$SENTINEL_LINE"
 }
 
-@test "the advisory drift guard catches a reworded withhold clause (non-vacuity)" {
-  # The failure the byte-identical absence check could not see: the exemption
-  # paragraph stays exactly where it is, and a withhold clause sharing no
-  # sentence with the gating members' is added ahead of the handshake's
-  # "There is no withhold path here". The old exact-string pin reported green.
-  local src tmp anchor
+# assert_drift_caught TAG CLAUSE: the advisory member with CLAUSE inserted ahead
+# of the handshake's "There is no withhold path here", exemption paragraph left
+# exactly where it is, must trip the drift guard.
+#
+# That insertion shape is the failure the byte-identical absence check could not
+# see: nothing is reworded in place, a clause is ADDED, and the old exact-string
+# pin reported green on every one of these.
+assert_drift_caught() {
+  local tag="$1" clause="$2" src tmp anchor
   src="$(member_path "$ADVISORY")"
-  tmp="$BATS_TEST_TMPDIR/mutant-advisory-reworded.md"
+  tmp="$BATS_TEST_TMPDIR/mutant-advisory-$tag.md"
   anchor='There is no withhold path here;'
 
   grep -qF -- "$anchor" "$src" || {
-    echo "fixture broken: advisory member no longer carries the insertion anchor" >&2
+    echo "fixture broken: advisory member no longer carries the insertion anchor ($tag)" >&2
     return 1
   }
   [ -z "$(withhold_drift "$src")" ] || {
-    echo "fixture broken: advisory member already carries a withhold clause" >&2
+    echo "fixture broken: advisory member already carries a withhold clause ($tag)" >&2
     return 1
   }
 
-  awk -v anchor="$anchor" \
-    -v clause='When `dirty_in_scope` comes back non-empty, you withhold this pass and report that you must be re-dispatched once the operator commits or reverts.' \
+  awk -v anchor="$anchor" -v clause="$clause" \
     'index($0, anchor) && !done { print clause; print ""; done = 1 } { print }' \
     "$src" > "$tmp"
 
   grep -qF -- "$REFUSAL" "$tmp" && {
-    echo "fixture is not the reworded case: it carries the byte-identical contract" >&2
+    echo "fixture is not the reworded case: it carries the byte-identical contract ($tag)" >&2
     return 1
   }
   [ -n "$(withhold_drift "$tmp")" ] || {
-    echo "drift guard misses a reworded withhold clause; it only sees the copy-paste" >&2
+    echo "drift guard misses a withhold clause it must catch ($tag)" >&2
     return 1
   }
-  true
+  return 0
+}
+
+@test "the advisory drift guard catches a reworded withhold clause (non-vacuity)" {
+  assert_drift_caught reworded 'When `dirty_in_scope` comes back non-empty, you withhold this pass and report that you must be re-dispatched once the operator commits or reverts.'
+}
+
+@test "the advisory drift guard is not evaded by a nearby 'cannot' (non-vacuity)" {
+  # The negator is anchored to the verb, so a `cannot` that negates something
+  # else in the same sentence no longer discards the clause beside it. Under an
+  # unanchored exclusion this clause passed and the suite stayed green.
+  assert_drift_caught nearby_cannot 'A pass over a dirty tree cannot be trusted, so withhold your marker until it is clean.'
+}
+
+@test "the advisory drift guard is not evaded by a nearby 'never' (non-vacuity)" {
+  # `never` appears throughout this member legitimately, which is exactly why an
+  # unanchored exclusion was a fail-open rather than a narrow carve-out.
+  assert_drift_caught nearby_never 'This member never self-heals, and it will withhold this pass on dirt.'
+}
+
+@test "the advisory drift guard sees a clause split across a line break (non-vacuity)" {
+  # `grep` is line-scoped, so the scan folds newlines before matching. Written
+  # as a fixture rather than trusted: the guarded file's paragraphs are
+  # unwrapped today, and a reflow is what would otherwise open this hole.
+  #
+  # The break is written `\n` rather than as a literal newline in the argument.
+  # awk processes escape sequences in a `-v` assignment, so this reaches the
+  # mutant as a real line break, while a literal one is a hard error on the BSD
+  # awk this suite has to run under as well ("newline in string").
+  assert_drift_caught line_split 'When the check comes back non-empty you\nwithhold this pass until the operator commits or reverts.'
 }
 
 @test "the sentinel pin breaks when the carve-out is softened (non-vacuity)" {
