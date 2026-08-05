@@ -161,7 +161,12 @@ base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null \
   || true)
 [ -n "$base" ] || exit 0
 
-changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null || true)
+# `-z` because the emergent-surface case patterns below match a repo-relative
+# path literally: under git's default core.quotePath a path carrying non-ASCII
+# or control bytes comes back wrapped in literal double quotes, matches none of
+# them, and the gate passes on the input it exists to hold. The `tr` restores
+# the newlines the read loop below splits on.
+changed=$(git diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
 [ -n "$changed" ] || exit 0
 
 # Echo "emergent" only when the classifier affirmatively classifies the given
