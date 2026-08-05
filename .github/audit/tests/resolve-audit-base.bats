@@ -50,6 +50,7 @@ bats_require_minimum_version 1.5.0
 #   16. RT-006: machinery change between base and HEAD → main ref (reset)
 #   17. RT-006: no machinery change → candidate still returned
 #   18. RT-006: libs unavailable → fail-open, version-only selection
+#   19. RT-006: machinery change on a non-ASCII path → main ref (reset)
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -110,6 +111,20 @@ add_machinery_commit() {
   echo "rule" > "$SANDBOX/.claude/rules/new-rule.md"
   git -C "$SANDBOX" add .claude/rules/new-rule.md
   git -C "$SANDBOX" commit --quiet -m "machinery change"
+}
+
+# Add a machinery commit whose PATH carries a non-ASCII byte. Under git's
+# default core.quotePath, `git diff --name-only` C-quotes such a path: it wraps
+# the token in literal double quotes and backslash-escapes the offending bytes,
+# and `audit_delta_has_machinery` matches its prefixes literally, so a quoted
+# token prefix-matches nothing and the reset silently does not fire. Same
+# machinery prefix as add_machinery_commit, so the two differ in the path's
+# bytes and nothing else.
+add_non_ascii_machinery_commit() {
+  mkdir -p "$SANDBOX/.claude/rules"
+  echo "rule" > "$SANDBOX/.claude/rules/règle.md"
+  git -C "$SANDBOX" add ".claude/rules/règle.md"
+  git -C "$SANDBOX" commit --quiet -m "machinery change on a non-ASCII path"
 }
 
 # Amend the given commit-ish (default HEAD) with one GAIA-Audit trailer.
@@ -494,4 +509,24 @@ GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
   [ "$status" -eq 0 ]
   [ "$output" = "$base" ]
   grep -qF "libs unavailable" <<<"$stderr"
+}
+
+# -----------------------------------------------------------------------------
+# 19. RT-006 encoding: the reset fires for a machinery path carrying non-ASCII
+# bytes, exactly as it does for test 16's ASCII one. The classifier reads the
+# names `git diff` prints, so letting git C-quote them turns a machinery change
+# into a machinery-free delta -- and a delta with no machinery in it is the
+# ordinary case, so nothing anywhere reports that the reset was skipped. This
+# is the encoding half of test 16, which the ASCII path cannot reach.
+# -----------------------------------------------------------------------------
+
+@test "RT-006: a machinery change on a non-ASCII path resets to full scope" {
+  add_commit a
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  add_non_ascii_machinery_commit
+
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "main" ]
+  grep -qF "machinery changed" <<<"$stderr"
 }
