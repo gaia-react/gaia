@@ -3,13 +3,14 @@
 # Tests for .claude/hooks/block-eslint-config-edit.sh.
 #
 # The guard protects eslint.config.{js,cjs,mjs,ts} at any path, and it is an
-# ALLOWLIST rather than a blocklist: an edit passes only when every line it
-# changes is blank, a comment, or a bare `...<name>.<group>` preset spread, and
-# only when no preset spread is removed. Everything else is denied, including a
-# shape the allowlist has never seen. That direction is the whole guard, so the
-# deny cases below carry more weight than the allow cases: a widening that
-# admits a `rules:` override, an `ignores:` entry, or a spread deletion has
-# hollowed the hook out even while the two allow cases still pass.
+# ALLOWLIST rather than a blocklist: blank lines and comments change freely, a
+# bare `...<name>.<group>` preset spread may be added anywhere, and nothing else
+# is added while nothing at all is removed, altered, or reordered. Everything
+# else is denied, including a shape the allowlist has never seen. That direction
+# is the whole guard, so the deny cases below carry more weight than the allow
+# cases: a widening that admits a `rules:` override, an `ignores:` entry, a
+# spread deletion, or a spread MOVE has hollowed the hook out even while the two
+# allow cases still pass.
 #
 # The two allow cases are not decoration either. They are the defect the hook
 # was filed for (tech-debt #1153): a filename-only deny blocks the
@@ -346,6 +347,50 @@ const lint = gaiaLint();' 'const lint = gaiaLint();
   assert_denied
 }
 
+# --- order is precedence, so a move is a change ----------------------------
+#
+# Later spreads win. Groups in `@gaia-react/lint` overlap heavily (`base` and
+# `prettier` share 155 rule ids, most at different severities), so reordering two
+# of them silences rules that are on today, which is the thing this guard
+# exists to refuse. None of these three adds, removes, or alters a line: they are
+# invisible to any comparison that checks the non-spread lines for equality and
+# the spreads for removal, and that is why all three are here.
+
+@test "denies swapping two adjacent preset spreads" {
+  run_edit "$(cfg)" '  ...lint.guardrails,
+  ...lint.prettier,' '  ...lint.prettier,
+  ...lint.guardrails,'
+  assert_denied
+}
+
+@test "denies swapping two preset spreads with others between them" {
+  run_edit "$(cfg)" '  ...lint.base,
+  ...lint.react,
+  ...lint.guardrails,
+  ...lint.prettier,' '  ...lint.prettier,
+  ...lint.react,
+  ...lint.guardrails,
+  ...lint.base,'
+  assert_denied
+}
+
+@test "denies moving a preset spread across a line that is not a spread" {
+  # The vector a swap-only reading misses: nothing swaps, one spread hoists past
+  # the called preset above it. The non-spread lines keep their own order, and the
+  # set of spreads is untouched, so only a comparison that reads both together in
+  # one order sees it.
+  run_edit "$(cfg)" "  ...lint.ignores({extra: ['dist/**']}),
+  ...lint.base,
+  ...lint.react,
+  ...lint.guardrails,
+  ...lint.prettier," "  ...lint.prettier,
+  ...lint.ignores({extra: ['dist/**']}),
+  ...lint.base,
+  ...lint.react,
+  ...lint.guardrails,"
+  assert_denied
+}
+
 # --- Write -----------------------------------------------------------------
 
 @test "allows a Write that only changes a comment" {
@@ -358,6 +403,34 @@ const lint = gaiaLint();' 'const lint = gaiaLint();
   local p; p="$(cfg)"
   run_write "$p" "${DEFAULT_BODY/  ...lint.prettier,/  ...lint.prettier,
   {rules: {\'no-console\': \'off\'}},}"
+  assert_denied
+}
+
+@test "denies a Write that truncates the config to its header" {
+  # The one shape that reaches the "every before line is accounted for" half of
+  # the comparison on its own: nothing is added, so no after line is left over to
+  # judge, and the whole body simply stops existing. Every other deny case in this
+  # suite leaves something behind that fails the other half first, which is why
+  # this fixture is here rather than folded into one of them.
+  local p; p="$(cfg)"
+  run_write "$p" "import gaiaLint from '@gaia-react/lint';
+import {defineConfig} from 'eslint/config';
+
+const lint = gaiaLint();
+"
+  assert_denied
+}
+
+@test "denies a Write whose target exists but cannot be read" {
+  # The Edit and MultiEdit arms refuse an unreadable target rather than judging
+  # against a baseline they never read; the Write arm has to do the same, or an
+  # empty baseline makes every line of the replacement look added, and content
+  # that is nothing but comments and spreads passes while really replacing a whole
+  # config. A directory is the deterministic unreadable target: `chmod 000` is not
+  # one when the suite runs as root.
+  mkdir -p "$TMP/eslint.config.mjs"
+  run_write "$TMP/eslint.config.mjs" '// replaced
+  ...lint.base,'
   assert_denied
 }
 

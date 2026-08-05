@@ -11,24 +11,38 @@
 # repair to a stale comment inside the config. That mismatch between the stated
 # rule and the enforced one is tech-debt #1153.
 #
-# So the guard is an ALLOWLIST over the lines an edit changes, not a filename
-# match. An edit passes only when both hold:
+# So the guard is an ALLOWLIST over what an edit changes, not a filename match.
+# Each side of the edit is read as a stream of the lines that matter: blank lines
+# and comments drop out, and every line that survives is tagged either a bare
+# `...<name>.<group>` preset spread or anything else. An edit passes on one
+# relation between the two streams:
 #
-#   1. every changed line is blank, a comment, or a bare `...<name>.<group>`
-#      preset spread, and
-#   2. no preset spread is removed.
+#   the before stream appears in the after stream as an ORDERED SUBSEQUENCE,
+#   and every after line the match does not consume is a preset spread.
+#
+# Read as shapes, that is: a blank line or a comment changes freely, since
+# neither reaches the stream; a preset spread may be ADDED anywhere; and nothing
+# else may be added, and nothing at all removed, altered, or REORDERED, since
+# order is the thing a subsequence preserves.
 #
 # A bare spread carries no literal, so it cannot express a rule override; a
-# called preset (`...lint.betterTailwind({...})`) can, and stays denied. Term 2
-# is what stops the obvious way around term 1, deleting or commenting out a
-# spread to make a rule stop firing.
+# called preset (`...lint.betterTailwind({...})`) can, and stays denied.
+# Refusing removal is what stops the obvious way around addition, deleting or
+# commenting out a spread so a rule stops firing. Refusing reordering stops the
+# same thing by a quieter route, because a later spread overrides an earlier one
+# and moving one silences rules without touching a line (see `classify()`).
+#
+# One relation rather than a list of permitted shapes is the point: a shape list
+# is only as good as the shapes someone thought of, and a move is the shape that
+# gets missed, being neither an addition nor a deletion.
 #
 # Everything else is denied, including a shape this allowlist has never seen.
 # Uncertainty resolves the same way: an unrecognized tool, a payload whose
 # strings are missing or non-string, or a target that cannot be read all deny. A
 # filename match already denied all of those, so the allowlist is never more
-# permissive than the filename match was, except on the two shapes above. That
-# direction is the guard; check any proposed simplification against it.
+# permissive than the filename match was, except that it admits a comment-only
+# change and an added preset spread. That direction is the guard; check any
+# proposed simplification against it.
 #
 # Every tool shape is judged on WHOLE FILES, never on the strings the payload
 # carries. An Edit's `old_string`/`new_string` are a fragment whose boundaries
@@ -56,7 +70,7 @@ printf '%s' "$file_path" | grep -Eq '(^|/)eslint\.config\.(js|cjs|mjs|ts)$' || e
 
 # Exit 2 = block the tool call, stderr is shown to Claude as the reason.
 deny() {
-  echo "BLOCKED: $1 The rule is to fix the lint error in the source file where it occurs, not to silence it in eslint.config.*. Two edits to this file are allowed: one whose changed lines are all comments, and one that only ADDS a bare '...<name>.<group>' preset spread. Removing a spread, commenting one out, or touching a rules/ignores/options block is denied; make that edit by hand." >&2
+  echo "BLOCKED: $1 The rule is to fix the lint error in the source file where it occurs, not to silence it in eslint.config.*. Two edits to this file are allowed: one whose changed lines are all comments, and one that only ADDS a bare '...<name>.<group>' preset spread. Removing a spread, commenting one out, MOVING one (a later preset overrides an earlier one, so order silences rules too), or touching a rules/ignores/options block is denied; make that edit by hand." >&2
   exit 2
 }
 
@@ -128,13 +142,19 @@ deny() {
 # the tracker at the start of a caller-chosen fragment is itself a misreading,
 # and that one runs the loosening way, promoting `X` back to `S`.
 #
-# Two residuals this leaves, both fail-closed, each costing a by-hand edit rather
-# than admitting anything. A block comment whose body lines carry no `*` prefix
-# is tagged `X` and compared line for line, so rewording that prose is denied;
-# the `//` and ` * ` styles this repo uses are skipped and unaffected. And the
-# spread multiset is compared without order, so swapping two bare spreads passes.
-# Preset order is deliberately unguarded: within `@gaia-react/lint` no rule id is
-# set by more than one group, so swapping two groups changes no effective rule.
+# One residual this leaves, fail-closed, costing a by-hand edit rather than
+# admitting anything: a block comment whose body lines carry no `*` prefix is
+# tagged `X` and compared line for line, so rewording that prose is denied. The
+# `//` and ` * ` styles this repo uses are skipped and unaffected.
+#
+# What the tags do NOT carry is position, so the comparison in `pair_ok()` has to
+# supply it. Preset order is load-bearing: ESLint applies later config objects
+# over earlier ones, and the groups in `@gaia-react/lint` overlap heavily rather
+# than partitioning the rule space, `base` and `prettier` alone sharing 155 rule
+# ids with most set at different severities. So swapping two spreads, or hoisting
+# one past a line that is not a spread, turns rules off that are on today,
+# without adding, deleting, or altering a single line. Anything that compares the
+# spreads as an unordered set cannot see it.
 classify() {
   awk '
     function scan(line,   i, prev) {
@@ -172,24 +192,46 @@ classify() {
 }
 
 # 0 = this before/after pair is inside the allowlist, 1 = deny.
+#
+# One walk down the two classified streams, matching each before line against the
+# next after line that equals it, tag included, so that a line moving between the
+# categories counts as a change: a spread wrapped in a block comment comes back
+# `X` and no longer equals the `S` line it was. The pair passes when the walk
+# consumes the whole before stream and every after line it skipped is a spread.
+#
+# Matching greedily is safe. Which after lines end up skipped does not depend on
+# where the walk chose to match, because the matched lines are exactly the before
+# stream either way, so the skipped ones are always the after stream minus the
+# before stream. The greedy walk therefore decides the whole relation, and it is
+# the standard subsequence test.
+#
+# This one relation subsumes the pair of tests it replaces, rather than trading
+# one for the other. If the before stream embeds in order then every non-spread
+# line survives in its own order and no non-spread line was added, which is the
+# line-for-line comparison; and each before spread consumes a distinct after
+# spread, which is the no-spread-removed count. It refuses two things they let
+# through, a reorder and a hoist past a non-spread line, and nothing they refuse
+# gets through it.
 pair_ok() {
-  local before_cls after_cls before_res after_res
+  local before_cls after_cls
   before_cls=$(classify "$1")
   after_cls=$(classify "$2")
 
-  # Everything the classifier emitted except the spreads: effective lines (`R`)
-  # and commented-out ones (`X`), which must match line for line, tag included.
-  # The tag is what makes a line moving between the two a change.
-  before_res=$(grep -v '^S' <<<"$before_cls" || true)
-  after_res=$(grep -v '^S' <<<"$after_cls" || true)
-  [ "$before_res" = "$after_res" ] || return 1
-
+  # `classify()` never emits an empty line, so skipping them costs nothing and
+  # keeps an empty stream (an empty or absent file) from arriving as one line.
   printf '%s\n===\n%s\n' "$before_cls" "$after_cls" | awk '
+    /^$/ { next }
     $0 == "===" { side = 1; next }
-    $0 !~ /^S/ { next }
-    side == 0 { before[$0]++; next }
-    { after[$0]++ }
-    END { for (k in before) if (before[k] > after[k]) exit 1 }
+    side == 0 { before[++nb] = $0; next }
+    { after[++na] = $0 }
+    END {
+      j = 1
+      for (i = 1; i <= na; i++) {
+        if (j <= nb && after[i] == before[j]) { j++; continue }
+        if (after[i] !~ /^S/) exit 1
+      }
+      if (j <= nb) exit 1
+    }
   '
 }
 
@@ -229,7 +271,25 @@ case "$tool_name" in
       deny "this Write carries no readable content, so what it changes cannot be established."
     fi
     after=$(jq -r '.tool_input.content' <<<"$payload")
-    before=$(cat -- "$file_path" 2>/dev/null || true)
+    # An unreadable target is not an empty one. Swallowing the read failure
+    # judges the Write against a baseline nothing ever read, and every line of the
+    # replacement then reads as added, so content that is nothing but comments and
+    # spreads passes while really replacing a whole config, spreads and rules
+    # blocks included. The Edit and MultiEdit arms refuse an unreadable target and
+    # this one has to as well. A target that does not exist is the one honest
+    # empty baseline: there the Write creates the file rather than replacing
+    # anything. No `printf x` sentinel here, unlike the arms below: nothing is
+    # reconstructed from the two strings, and a trailing newline reaches the
+    # classifier as a blank line, which it drops. Leaving it off is also what
+    # keeps `|| deny` live, since the sentinel would supply the exit status.
+    if [ -e "$file_path" ]; then
+      { [ -f "$file_path" ] && [ -r "$file_path" ]; } ||
+        deny "'$file_path' cannot be read, so what this Write changes cannot be established."
+      before=$(cat -- "$file_path") ||
+        deny "'$file_path' cannot be read, so what this Write changes cannot be established."
+    else
+      before=""
+    fi
     pair_ok "$before" "$after" ||
       deny "this Write changes more in '$file_path' than comments and added preset spreads."
     ;;
