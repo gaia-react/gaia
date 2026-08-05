@@ -35,7 +35,7 @@
       "hook": ".claude/hooks/block-eslint-config-edit.sh",
       "scope": "any",
       "state": [],
-      "why": "Pattern-matches an Edit/Write file_path only; touches no tree-scoped state."
+      "why": "Pattern-matches the payload's own file_path only; touches no tree-scoped state."
     },
     {
       "hook": ".claude/hooks/block-invalid-yaml-write.sh",

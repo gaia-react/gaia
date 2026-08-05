@@ -5,7 +5,7 @@ package: '@gaia-react/lint'
 version: 2.0.0
 role: lint-config
 created: 2026-04-27
-updated: 2026-08-02
+updated: 2026-08-05
 tags: [dependency, lint, eslint]
 ---
 
@@ -81,10 +81,10 @@ The `resources+/` and `actions+/` carve-out means UI-layer files may import type
 
 ## CLI consumer
 
-`.gaia/cli` (`@gaia-react/cli`) is a second consumer, with its own `.gaia/cli/eslint.config.mjs` in its separate pnpm workspace. It consumes `base`/`react`/`testing`/`styleHygiene`/`guardrails`/`prettier` with `sourceDir: 'src'`, omitting the React-app-only presets (`storybook`, `playwright`, `betterTailwind`). It spreads `react` only because `base` transitively references `react/*` rules; the ruleset is inert on the CLI's non-JSX TypeScript. It disables a small Node/CLI set (`sonarjs/no-os-command-from-path`, `no-relative-import-paths`, `check-file/folder-match-with-fex`, `testing-library/render-result-naming-convention`) and extends the `unicorn/prevent-abbreviations` ignore list for CLI idioms. `.gaia/cli/eslint.config.mjs` is the source of truth for the full rule table.
+`.gaia/cli` (`@gaia-react/cli`) is a second consumer, with its own `.gaia/cli/eslint.config.mjs` in its separate pnpm workspace. It consumes `base`/`react`/`testing`/`styleHygiene`/`guardrails`/`prettier` with `sourceDir: 'src'`, omitting the React-app-only presets (`storybook`, `playwright`, `reactRouter`, `betterTailwind`). It spreads `react` only because `base` transitively references `react/*` rules; the ruleset is inert on the CLI's non-JSX TypeScript. It disables a small Node/CLI set (`sonarjs/no-os-command-from-path`, `no-relative-import-paths`, `check-file/folder-match-with-fex`, `testing-library/render-result-naming-convention`) and extends the `unicorn/prevent-abbreviations` ignore list for CLI idioms. `.gaia/cli/eslint.config.mjs` is the source of truth for the full rule table.
 
 <!-- gaia:maintainer-only:start -->
-Because `.gaia/cli` pins `@gaia-react/lint` independently in its own lockfile, nothing else keeps its version in step with the root workspace's pin. `.gaia/cli/src/lint-pin-parity.test.ts` asserts both workspaces declare the same version, and `cli-tests.yml` includes root `package.json` in its path filter so the guard runs on the pull request that causes any drift, not just on a later unrelated `.gaia/cli/**` change.
+Because `.gaia/cli` pins `@gaia-react/lint` independently in its own lockfile, nothing else keeps its version in step with the root workspace's pin. `.gaia/cli/src/lint-pin-parity.test.ts` asserts both workspaces declare the same version, and `cli-tests.yml` includes root `package.json` in its path filter so the guard runs on the pull request that causes any drift, not just on a later unrelated `.gaia/cli/**` change. The same test also pins the two workspaces' `minimumReleaseAge`, `trustPolicy`, and shared `typescript-eslint` version in parity; see [[pnpm]] for the full cross-workspace hardening.
 <!-- gaia:maintainer-only:end -->
 
 ## See also

@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-26
 created: 2026-04-26
-updated: 2026-06-25
+updated: 2026-08-05
 tags: [decision, tooling, package-manager, security]
 ---
 
@@ -36,6 +36,12 @@ GAIA uses **pnpm** for installs and dependency resolution. The `packageManager` 
 ## Pinning
 
 Caret ranges (`^x.y.z`) are kept in `package.json`. The lockfile is the authoritative pin; `--frozen-lockfile` guarantees CI installs the exact tree on disk regardless of the `^` specifier. `minimumReleaseAge` provides the supply-chain delay. Packages already pinned exactly stay that way; no bulk conversion in either direction.
+
+## Maintainer CLI workspace
+
+<!-- gaia:maintainer-only:start -->
+`.gaia/cli` is a second, independent pnpm root: its own `pnpm-workspace.yaml` and `pnpm-lock.yaml`, resolved separately from the repository root. It carries the same supply-chain settings as root, `minimumReleaseAge`, `trustPolicy`, `trustPolicyExclude`, `minimumReleaseAgeExclude`, with each exclusion entry checked against that workspace's own dependency closure rather than copied wholesale from root's. `.gaia/cli/src/lint-pin-parity.test.ts` asserts both workspaces resolve identical values for every cross-workspace floor: the release-age minimum, the trust policy, and the `typescript-eslint` version each lockfile freezes independently through `eslint-config-airbnb-extended`'s floating range. `cli-tests.yml` includes root `pnpm-lock.yaml`, `pnpm-workspace.yaml`, and `package.json` in its path filter so the guard runs on the pull request that moves any of them, not only on a later `.gaia/cli/**` change.
+<!-- gaia:maintainer-only:end -->
 
 ## Override audit
 

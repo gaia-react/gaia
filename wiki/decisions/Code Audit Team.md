@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-07-09
 created: 2026-07-09
-updated: 2026-08-02
+updated: 2026-08-05
 tags: [decision, claude, audit, ci]
 ---
 
@@ -34,6 +34,10 @@ A sibling module, `.claude/hooks/lib/audit-machinery.sh`, holds the one list of 
 Every member's clearance marker is keyed to a **content digest**, not the whole repository tree: a sha256 over exactly the files that member owns plus this machinery set (plus the in-scope-but-ownerless paths, for the default member; see [[PR Merge Workflow#Marker key]]). The machinery set is what makes a machinery edit rotate **every** member's digest, since it sits in every member's input set by construction, and because the classifier and machinery modules are themselves machinery, a classifier edit rotates every digest too. Machinery-list completeness is therefore load-bearing, not cosmetic: an unlisted gate-machinery file would rotate no member's key, a fail-open. `.gaia/scripts/audit-machinery-complete.sh` asserts every gate-machinery file (the trailer/status producers, the CI parsers, the dispatch resolvers, the noop detector, the disposition gate, among others) is matched by `audit_path_is_machinery`.
 
 The digest functions in `.claude/hooks/lib/audit-digest.sh` (`audit_digests_all`, `audit_member_digest`) take an optional ref argument, defaulting to `HEAD`; production callers pass a base sha through it to derive a prior digest at an incremental base rather than only at HEAD. The constraint that this machinery never resolves a main or tree root, and answers what key a tree writes under rather than where anything is, belongs to `.gaia/scripts/audit-key-lib.sh`, a property of that file, not of the digest lib. That the digest functions accept a ref proves the lib can hash a different tree; it does not mean the lib can scope to a diff between two trees, which would be a new capability, not a parameter already present.
+
+### Dirty-scope refusal
+
+A clearance marker's content digest is computed over `git ls-tree HEAD`, while a member reviews a file by Reading it, which returns working-tree bytes. On a dirty tree those disagree, so a pass could otherwise write a marker certifying content nobody read. Each gating member checks `git status` (NUL-delimited, so it is correct on paths carrying quotes, control bytes, or non-ASCII) over its own resolved review-scope list immediately after resolving it, and refuses the pass when that list is dirty: no clearance marker is written, a findings sidecar names each dirty path, and the operator re-dispatches once the path is committed or reverted. The check runs ahead of any self-heal a member's own remit performs, so a sibling member's legitimate write to files outside this member's scope cannot trip its refusal, and a status the guard cannot determine fails closed (refuses) rather than reading as a clean tree. The advisory prose member is the one exemption: its contract is to always write an earned clearance marker and never block a merge, so it records dirty paths in its findings sidecar instead of withholding.
 
 ## Dispatch resolver
 

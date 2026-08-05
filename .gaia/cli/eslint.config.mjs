@@ -7,9 +7,9 @@ import {defineConfig} from 'eslint/config';
  * The CLI is a Node/TypeScript program (NodeNext ESM, esbuild-bundled), not a
  * React app. It consumes @gaia-react/lint's base/testing/styleHygiene/
  * guardrails/prettier presets and OMITS the React-app-only presets (storybook,
- * playwright, betterTailwind). `react` is spread in only because `base`
- * transitively references `react/*` rules through airbnb's shared TypeScript
- * config; the React ruleset is inert on the CLI's non-JSX TypeScript.
+ * playwright, reactRouter, betterTailwind). `react` is spread in only because
+ * `base` transitively references `react/*` rules through airbnb's shared
+ * TypeScript config; the React ruleset is inert on the CLI's non-JSX TypeScript.
  */
 const lint = gaiaLint({sourceDir: 'src'});
 
