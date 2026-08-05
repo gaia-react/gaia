@@ -375,19 +375,36 @@ describe('supply-chain hardening parity', () => {
     );
   });
 
-  test('a merged union contains the single version it was merged from', () => {
+  // The four below are unit tests of `exemptionAtoms` over constructed entries,
+  // not assertions about either live `pnpm-workspace.yaml`. Named for the helper
+  // so they cannot be read as live parity coverage: the two tests that do assert
+  // on the real files are the containment pair, above and below this block.
+  test('exemptionAtoms: a merged union contains the single version it merged', () => {
     expect(exemptionAtoms(['semver@6.3.1 || 6.3.2'])).toEqual(
       expect.arrayContaining(exemptionAtoms(['semver@6.3.1']))
     );
   });
 
-  test('a version only .gaia/cli exempts is still drift after expansion', () => {
+  // The scope-aware `@` split is the one part of pnpm's parse a plain
+  // `indexOf('@')` gets wrong, and a SCOPED UNION is the only input shape where
+  // the two spellings diverge: naive splitting yields the name-less atom
+  // `@2.0.0`, which reds containment on a valid pair, reintroducing exactly the
+  // false red this helper exists to remove. Without this test the branch is
+  // unpinned and collapsing it leaves every other test green, which is not
+  // hypothetical: a quality-review pass proposed that collapse on this very diff.
+  test('exemptionAtoms: a scoped union splits on the version @, not the scope @', () => {
+    expect(exemptionAtoms(['@scope/n@1.0.0 || 2.0.0'])).toEqual(
+      expect.arrayContaining(exemptionAtoms(['@scope/n@2.0.0']))
+    );
+  });
+
+  test('exemptionAtoms: a version only one side exempts is still drift', () => {
     expect(exemptionAtoms(['semver@6.3.1 || 6.3.2'])).not.toEqual(
       expect.arrayContaining(exemptionAtoms(['semver@6.3.3']))
     );
   });
 
-  test('exempting every version of a package is not contained by exempting one', () => {
+  test('exemptionAtoms: exempting every version is not contained by exempting one', () => {
     expect(exemptionAtoms(['semver@6.3.1'])).not.toEqual(
       expect.arrayContaining(exemptionAtoms(['semver']))
     );
