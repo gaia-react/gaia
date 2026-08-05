@@ -165,19 +165,20 @@ const ENTRYPOINTS: readonly (readonly [string, string])[] = [
 const collectDomainRouters = (
   cliSrc: string
 ): ReadonlyMap<string, readonly string[]> => {
+  const domains = readdirSync(cliSrc, {withFileTypes: true})
+    .filter(
+      (entry) => entry.isDirectory() && hasDomainIndex(cliSrc, entry.name)
+    )
+    .map((entry) => entry.name);
+
   const routers = new Map<string, readonly string[]>();
 
-  for (const entry of readdirSync(cliSrc, {withFileTypes: true})) {
-    if (!entry.isDirectory() || !hasDomainIndex(cliSrc, entry.name)) continue;
+  for (const domain of domains) {
+    const source = readFileSync(path.join(cliSrc, domain, 'index.ts'), 'utf8');
 
-    const source = readFileSync(
-      path.join(cliSrc, entry.name, 'index.ts'),
-      'utf8'
-    );
-
-    if (!source.includes('const SUBCOMMAND_HANDLERS')) continue;
-
-    routers.set(entry.name, extractHandlerKeys(source));
+    if (source.includes('const SUBCOMMAND_HANDLERS')) {
+      routers.set(domain, extractHandlerKeys(source));
+    }
   }
 
   return routers;
@@ -265,9 +266,11 @@ const extractHelpText = (source: string): string => {
 // Anything after the subcommand list is free-form flag and argument text
 // (`[--cols N]`, `<raw.json>`, the `land` in `wiki … sync land`) and is not
 // checked here; each namespace's own `--help` documents it. A line whose
-// second token opens with `-` or `<` has no list, so group 2 stays undefined.
+// second token opens with `-` or `<` has no list at all, so group 2 captures
+// the empty string; the optionality sits inside the group rather than on it so
+// that the group always participates and never types as `undefined`.
 const SUMMARY_LINE_PATTERN =
-  /^ {2}([a-z][a-z0-9-]*)(?: ([a-z][a-z0-9-]*(?:\|[a-z][a-z0-9-]*)*))?(?![\w|-])/u;
+  /^ {2}([a-z][a-z0-9-]*)((?: [a-z][a-z0-9-]*(?:\|[a-z][a-z0-9-]*)*)?)(?![\w|-])/u;
 
 type SummaryAudit = {
   // `<binary> <namespace>` for every line compared key-for-key. Pinned by its
@@ -275,14 +278,39 @@ type SummaryAudit = {
   readonly compared: string[];
   // A namespace line whose subcommand list is not exactly its router's keys.
   readonly drifted: string[];
-  // A command the binary dispatches with no line in its summary at all.
-  readonly unlisted: string[];
   // A summary line for something the binary does not dispatch.
   readonly undispatched: string[];
+  // A command the binary dispatches with no line in its summary at all.
+  readonly unlisted: string[];
 };
 
-const auditHelpSummaries = (
-  cliSrc: string,
+type SummaryLine = {
+  readonly command: string;
+  readonly listed: readonly string[];
+};
+
+const parseSummaryLines = (helpText: string): SummaryLine[] => {
+  const parsed: SummaryLine[] = [];
+
+  for (const line of helpText.split('\n')) {
+    const match = SUMMARY_LINE_PATTERN.exec(line);
+
+    if (match !== null) {
+      const subcommands = match[2].trim();
+
+      parsed.push({
+        command: match[1],
+        listed: subcommands === '' ? [] : subcommands.split('|'),
+      });
+    }
+  }
+
+  return parsed;
+};
+
+const auditBinary = (
+  source: string,
+  binary: string,
   routers: ReadonlyMap<string, readonly string[]>
 ): SummaryAudit => {
   const audit: SummaryAudit = {
@@ -292,32 +320,21 @@ const auditHelpSummaries = (
     unlisted: [],
   };
 
-  for (const [entrypoint, binary] of ENTRYPOINTS) {
-    const source = readFileSync(path.join(cliSrc, entrypoint), 'utf8');
-    const helpText = extractHelpText(source);
-    const dispatched = extractHandlerKeys(source);
-    const documented = new Set<string>();
+  const dispatched = extractHandlerKeys(source);
+  const summary = parseSummaryLines(extractHelpText(source));
+  const documented = new Set(summary.map(({command}) => command));
 
-    for (const line of helpText.split('\n')) {
-      const match = SUMMARY_LINE_PATTERN.exec(line);
+  for (const {command, listed} of summary) {
+    const keys = routers.get(command);
 
-      if (match === null) continue;
-
-      const command = match[1];
-
-      documented.add(command);
-
-      const keys = routers.get(command);
-
-      // Not a `SUBCOMMAND_HANDLERS` domain: a top-level leaf (`harden-tally`),
-      // a leaf with its own inner verbs (`ci-revert`, `harden-ledger`), or the
-      // `if (subcommand === …)` router (`scaffold`). Same v1 scope boundary
-      // the reachability guard declares; their lists are not checked.
-      if (keys === undefined) continue;
-
+    // A `keys` of undefined is not a `SUBCOMMAND_HANDLERS` domain: a top-level
+    // leaf (`harden-tally`), a leaf with its own inner verbs (`ci-revert`,
+    // `harden-ledger`), or the `if (subcommand === …)` router (`scaffold`).
+    // Same v1 scope boundary the reachability guard declares, so their lists
+    // are not checked.
+    if (keys !== undefined) {
       audit.compared.push(`${binary} ${command}`);
 
-      const listed = match[2]?.split('|') ?? [];
       const missing = keys.filter((key) => !listed.includes(key));
       const unknown = listed.filter((key) => !keys.includes(key));
 
@@ -327,19 +344,39 @@ const auditHelpSummaries = (
         );
       }
     }
+  }
 
-    for (const key of dispatched) {
-      if (!documented.has(key)) audit.unlisted.push(`${binary} ${key}`);
-    }
+  for (const key of dispatched) {
+    if (!documented.has(key)) audit.unlisted.push(`${binary} ${key}`);
+  }
 
-    for (const command of documented) {
-      if (!dispatched.includes(command)) {
-        audit.undispatched.push(`${binary} ${command}`);
-      }
+  for (const command of documented) {
+    if (!dispatched.includes(command)) {
+      audit.undispatched.push(`${binary} ${command}`);
     }
   }
 
   return audit;
+};
+
+const auditHelpSummaries = (
+  cliSrc: string,
+  routers: ReadonlyMap<string, readonly string[]>
+): SummaryAudit => {
+  const audits = ENTRYPOINTS.map(([entrypoint, binary]) =>
+    auditBinary(
+      readFileSync(path.join(cliSrc, entrypoint), 'utf8'),
+      binary,
+      routers
+    )
+  );
+
+  return {
+    compared: audits.flatMap(({compared}) => compared),
+    drifted: audits.flatMap(({drifted}) => drifted),
+    undispatched: audits.flatMap(({undispatched}) => undispatched),
+    unlisted: audits.flatMap(({unlisted}) => unlisted),
+  };
 };
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
