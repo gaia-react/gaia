@@ -6,7 +6,14 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * then ask the handler to classify them since the initial baseline. We
  * snapshot the suggestion + reason for each commit and assert against it.
  */
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
@@ -37,7 +44,11 @@ const describeSandbox = (root: string): string => {
     try {
       return execGaiaGit(args, root).replaceAll('\n', ' ');
     } catch (error) {
-      return `<${(error instanceof Error ? error.message : String(error)).split('\n', 1)[0]}>`;
+      // Keep the whole message, collapsed to this row's single line. Node puts
+      // the failed command on the first line and git's own explanation on the
+      // lines after it, so taking only the first line reports that `fsck`
+      // failed while discarding the one thing that says why.
+      return `<${(error instanceof Error ? error.message : String(error)).replaceAll('\n', ' ').trim()}>`;
     }
   };
 
@@ -70,18 +81,91 @@ const sandboxGit = (root: string, args: string[]): string => {
   }
 };
 
+/**
+ * Every git config a repository this fixture creates needs, identity included.
+ *
+ * The maintenance entries are the load-bearing ones. Every `git commit`
+ * otherwise spawns a detached `git maintenance run --auto --quiet --detach`,
+ * so a 25-commit scenario leaves background git processes running against a
+ * sandbox that `afterEach` deletes out from under them, and one that repacks
+ * while the next `git commit` is running leaves the repository holding several
+ * packfiles and a HEAD whose commit object that commit can no longer parse.
+ *
+ * One key alone will not do it, because the spelling that gates this moved
+ * when `git maintenance` replaced `git gc --auto`, and the git the fixture
+ * runs under is whatever the machine or the CI runner supplies:
+ *
+ * - `maintenance.auto=false` is the documented gate on the spawn, and it covers
+ *   the whole task set, including the `loose-objects` and `incremental-repack`
+ *   tasks, which are the ones that pack.
+ * - `gc.auto=0` is the gate for git predating that task set, which reaches the
+ *   repository through `git gc --auto` instead. On git 2.55 it also suppresses
+ *   the modern spawn on its own, so what failed in CI is not established to be
+ *   this key being the weaker one; what is established is that a single key was
+ *   not enough on the git that ran there.
+ * - `gc.autoDetach=false` and `maintenance.autoDetach=false` are the fallback
+ *   for both: a run that starts anyway finishes before the command that
+ *   triggered it returns, so it can neither outlive the test nor race the next
+ *   `git commit`. Both spellings are here for the control repository below
+ *   rather than for the sandbox, which needs neither once the gates hold.
+ *   Neither is a gate, so the control inherits both, and the control is the one
+ *   repository that deliberately leaves maintenance switched on. Modern git
+ *   resolves `maintenance.autoDetach` ahead of `gc.autoDetach`, so dropping it
+ *   as redundant would let a global `maintenance.autoDetach = true` detach the
+ *   control's run and leave it working in a directory `rmSync` is about to
+ *   delete, which is the orphan this whole list exists to prevent.
+ *
+ * Measured on git 2.55, over the whole list rather than per entry: one spawned
+ * maintenance run per commit with none of these set, zero with them. The test
+ * at the bottom of this file is what keeps that true.
+ */
+const SANDBOX_GIT_CONFIG: [string, string][] = [
+  ['user.email', 'test@example.com'],
+  ['user.name', 'Test'],
+  ['commit.gpgsign', 'false'],
+  ['gc.auto', '0'],
+  ['maintenance.auto', 'false'],
+  ['gc.autoDetach', 'false'],
+  ['maintenance.autoDetach', 'false'],
+];
+
+/**
+ * The gates, paired with the value that explicitly turns each one off.
+ *
+ * The control repository cannot establish "ungated" by leaving these out.
+ * Repo-local config beats global, so the sandbox is immune to whatever the
+ * machine's own `~/.gitconfig` says, but a control that merely omits these
+ * keys inherits it, and `gc.auto = 0` is a common thing to carry in a personal
+ * dotfile. The control would then spawn nothing and the arm asserting git
+ * still spawns maintenance would fail against a fixture behaving perfectly.
+ * Writing git's own defaults into the control makes its condition its own.
+ *
+ * Named beside the list it subtracts from so the two cannot drift into
+ * disagreeing about which entries are the gates.
+ */
+const MAINTENANCE_GATE_DEFAULTS: [string, string][] = [
+  ['gc.auto', '6700'],
+  ['maintenance.auto', 'true'],
+];
+
+const MAINTENANCE_GATES = new Set(
+  MAINTENANCE_GATE_DEFAULTS.map(([key]) => key)
+);
+
+/** Initialize one repository this fixture owns, suppression included. */
+const initSandboxRepo = (root: string, omit?: ReadonlySet<string>): void => {
+  sandboxGit(root, ['init', '-q', '-b', 'main']);
+
+  for (const [key, value] of SANDBOX_GIT_CONFIG) {
+    if (!omit?.has(key)) {
+      sandboxGit(root, ['config', key, value]);
+    }
+  }
+};
+
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-classify-'));
-  sandboxGit(root, ['init', '-q', '-b', 'main']);
-  sandboxGit(root, ['config', 'user.email', 'test@example.com']);
-  sandboxGit(root, ['config', 'user.name', 'Test']);
-  sandboxGit(root, ['config', 'commit.gpgsign', 'false']);
-  // Every `git commit` otherwise spawns a detached
-  // `git maintenance run --auto --quiet --detach`, so a 25-commit scenario
-  // leaves background git processes running against a sandbox that `afterEach`
-  // deletes out from under them. `gc.auto=0` suppresses the spawn outright
-  // (measured: 3 spawns per commit by default, 0 with this set).
-  sandboxGit(root, ['config', 'gc.auto', '0']);
+  initSandboxRepo(root);
 
   const commit = (message: string, files: Record<string, string>): string => {
     for (const [relativePath, contents] of Object.entries(files)) {
@@ -720,6 +804,28 @@ describe('wiki commit-classify', () => {
 });
 
 /**
+ * Every auto-maintenance child process git's own trace recorded.
+ *
+ * `GIT_TRACE2_EVENT` writes a `child_start` event, carrying the child's argv,
+ * into the trace of the process that spawned it, so a run detached with
+ * `--detach` is still visible without waiting on it or racing its exit. An
+ * absent file means git spawned nothing and so wrote nothing.
+ *
+ * Both spellings count. Modern git spawns `git maintenance run --auto`; git
+ * predating that task set spawns `git gc --auto`, which the config list above
+ * names as a version it suppresses, so a filter matching only the first would
+ * assert nothing on exactly the git the second entry exists for.
+ */
+const autoMaintenanceSpawns = (tracePath: string): string[] =>
+  (existsSync(tracePath) ? readFileSync(tracePath, 'utf8') : '')
+    .split('\n')
+    .filter(
+      (line) =>
+        line.includes('"child_start"') &&
+        (line.includes('"maintenance"') || line.includes('"gc"'))
+    );
+
+/**
  * The fixture's own hermeticity. Every scenario above takes it on faith that
  * the repository it commits into is the one `setupSandbox` created; nothing
  * asserted it, and a bare `execFileSync('git', ...)` hands that assumption to
@@ -728,9 +834,7 @@ describe('wiki commit-classify', () => {
 describe('commit-classify sandbox fixture', () => {
   test('commits into its own repository under an ambient GIT_DIR', () => {
     const decoy = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-classify-decoy-'));
-    execGaiaGit(['init', '-q', '-b', 'main'], decoy);
-    execGaiaGit(['config', 'user.email', 'decoy@example.com'], decoy);
-    execGaiaGit(['config', 'user.name', 'Decoy'], decoy);
+    initSandboxRepo(decoy);
     execGaiaGit(
       ['commit', '-q', '--allow-empty', '-m', 'decoy baseline'],
       decoy
@@ -750,6 +854,69 @@ describe('commit-classify sandbox fixture', () => {
       vi.unstubAllEnvs();
       sandbox?.cleanup();
       rmSync(decoy, {force: true, recursive: true});
+    }
+  });
+
+  // A bare "no maintenance was spawned" assertion passes just as well when the
+  // trace recorded nothing at all, which is how a guard against a background
+  // process goes vacuous without anyone noticing. The control repository, which
+  // sets everything the sandbox sets except the two suppression gates, proves in
+  // the same run that git still spawns maintenance on commit and that the trace
+  // captures it.
+  test('the sandbox config suppresses maintenance a bare repo spawns', () => {
+    const traceRoot = mkdtempSync(
+      path.join(tmpdir(), 'gaia-wiki-classify-trace-')
+    );
+    const controlRoot = mkdtempSync(
+      path.join(tmpdir(), 'gaia-wiki-classify-control-')
+    );
+    let sandbox: Sandbox | undefined;
+
+    try {
+      // Everything the sandbox sets except the gates, which are then written
+      // back at git's own defaults so the control's ungated state is its own
+      // rather than inherited from the machine's global config. `gc.autoDetach`
+      // is not a gate and so stays, which keeps the control's own maintenance
+      // run a foreground child; without it this test would leak the very
+      // orphaned background process it exists to keep out of the suite.
+      initSandboxRepo(controlRoot, MAINTENANCE_GATES);
+
+      for (const [key, value] of MAINTENANCE_GATE_DEFAULTS) {
+        sandboxGit(controlRoot, ['config', key, value]);
+      }
+
+      const controlTrace = path.join(traceRoot, 'control.json');
+      vi.stubEnv('GIT_TRACE2_EVENT', controlTrace);
+      execGaiaGit(
+        ['commit', '-q', '--allow-empty', '-m', 'control baseline'],
+        controlRoot
+      );
+
+      const controlSpawns = autoMaintenanceSpawns(controlTrace);
+      expect(controlSpawns.length).toBeGreaterThan(0);
+      // The control's own run must stay in the foreground, or the `finally`
+      // below deletes `controlRoot` out from under a live background git. A
+      // count alone cannot see that: the parent records the child either way,
+      // so this test would pass green while leaking the orphan the whole
+      // fixture exists to prevent. Asserted as an absence to stay portable,
+      // git predating the task set spawns `git gc --auto`, which carries no
+      // detach flag at all and passes, while modern git catches a
+      // `maintenance.autoDetach` that a later edit dropped as redundant.
+      expect(controlSpawns.some((line) => line.includes('"--detach"'))).toBe(
+        false
+      );
+
+      const sandboxTrace = path.join(traceRoot, 'sandbox.json');
+      vi.stubEnv('GIT_TRACE2_EVENT', sandboxTrace);
+      sandbox = setupSandbox();
+      commitManyTo(sandbox, 4, 'docs: prose', 'notes/thing.md');
+
+      expect(autoMaintenanceSpawns(sandboxTrace)).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+      sandbox?.cleanup();
+      rmSync(controlRoot, {force: true, recursive: true});
+      rmSync(traceRoot, {force: true, recursive: true});
     }
   });
 });
