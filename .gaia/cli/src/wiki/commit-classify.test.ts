@@ -103,11 +103,17 @@ const sandboxGit = (root: string, args: string[]): string => {
  *   the modern spawn on its own, so what failed in CI is not established to be
  *   this key being the weaker one; what is established is that a single key was
  *   not enough on the git that ran there.
- * - `gc.autoDetach=false` is the fallback for both: a run that starts anyway
- *   finishes before the command that triggered it returns, so it can neither
- *   outlive the test nor race the next `git commit`. `maintenance.autoDetach`
- *   is deliberately absent, every git new enough to read it also honors
- *   `maintenance.auto=false` above.
+ * - `gc.autoDetach=false` and `maintenance.autoDetach=false` are the fallback
+ *   for both: a run that starts anyway finishes before the command that
+ *   triggered it returns, so it can neither outlive the test nor race the next
+ *   `git commit`. Both spellings are here for the control repository below
+ *   rather than for the sandbox, which needs neither once the gates hold.
+ *   Neither is a gate, so the control inherits both, and the control is the one
+ *   repository that deliberately leaves maintenance switched on. Modern git
+ *   resolves `maintenance.autoDetach` ahead of `gc.autoDetach`, so dropping it
+ *   as redundant would let a global `maintenance.autoDetach = true` detach the
+ *   control's run and leave it working in a directory `rmSync` is about to
+ *   delete, which is the orphan this whole list exists to prevent.
  *
  * Measured on git 2.55, over the whole list rather than per entry: one spawned
  * maintenance run per commit with none of these set, zero with them. The test
@@ -120,6 +126,7 @@ const SANDBOX_GIT_CONFIG: [string, string][] = [
   ['gc.auto', '0'],
   ['maintenance.auto', 'false'],
   ['gc.autoDetach', 'false'],
+  ['maintenance.autoDetach', 'false'],
 ];
 
 /**
