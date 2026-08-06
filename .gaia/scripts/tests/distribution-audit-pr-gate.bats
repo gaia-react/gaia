@@ -26,13 +26,42 @@
 # for presence; a positive match plus an explicit `return 1` for absence, since a
 # `!`-negated non-final line never fails a test under `set -e`.
 
+# require <label> <test-expression...>
+#
+# A precondition this suite cannot run without. Off CI it skips: a lean box that
+# genuinely lacks jq is not the environment this guard makes a claim about. On CI
+# it FAILS instead, because a skip reports `ok ... # skip` and greens the job
+# having run zero assertions against the `Distribution Audit` required check's
+# gate step, which is indistinguishable from a genuine pass. The runner installs
+# all three in the same job that runs this suite, so an absent one there means
+# that install was dropped, not that the box is lean. Same shape and same reason
+# as `require_repo_path` / `require_yaml_parser` in retrigger-reachability.bats.
+require() {
+  local label="$1"
+  shift
+  if "$@" >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    # No `::error::` prefix: bats prefixes a test's stderr with `# `, and Actions
+    # parses a workflow command only at column 0, so the annotation that spelling
+    # promises would never render. The `return 1` is what gates.
+    echo "$label absent on a CI runner; every test here would skip to green. Check the checkout and the apt install in .github/workflows/audit-ci-tests.yml." >&2
+    return 1
+  fi
+  skip "$label not available"
+}
+
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   WORKFLOW="$REPO_ROOT/.github/workflows/distribution-audit-pr.yml"
-  [ -f "$WORKFLOW" ] || skip "distribution-audit-pr.yml not present"
-  command -v jq >/dev/null 2>&1 || skip "jq not available"
-  command -v git >/dev/null 2>&1 || skip "git not available"
+  # `|| return 1` on each: only the last is setup()'s final command, so the
+  # others would otherwise lean on `set -e` to propagate. The skip arm exits 0
+  # from inside the helper, so this only ever forwards the CI failure.
+  require "distribution-audit-pr.yml" test -f "$WORKFLOW" || return 1
+  require "jq" command -v jq || return 1
+  require "git" command -v git || return 1
 
   SANDBOX="$BATS_TEST_TMPDIR/repo"
   mkdir -p "$SANDBOX"
