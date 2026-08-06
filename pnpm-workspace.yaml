@@ -6,6 +6,33 @@
 # Value is in minutes; 10080 = 7 days.
 minimumReleaseAge: 10080
 
+# Require a decision when a resolution breaches the window above, rather than
+# letting it through. An interactive terminal gets a prompt; CI and any other
+# non-TTY gets a hard install failure. With this false there is no decision to
+# make: pnpm merges the offending `name@version` into minimumReleaseAgeExclude
+# below and writes this file back on an ordinary install/add/update, so the
+# window degrades from "block an immature version" to "admit it and record a
+# permanent exemption", with nothing red.
+#
+# Stated explicitly even though pnpm infers it. Setting minimumReleaseAge with
+# this key absent already turns strict mode on, so this changes no behaviour
+# today. It pins the behaviour where the policy is stated instead of leaving it
+# resting on a default in pnpm's config reader, and it gives the parity guard in
+# .gaia/cli/src/lint-pin-parity.test.ts something to assert. The flag is pnpm
+# 11-only, and 10.x needs none of it: it reads the window above but ships no
+# auto-exemption path at all, so a breach there resolves to an older mature
+# version or fails outright and the exclusion list stays hand-written. The weak
+# behaviour this key closes arrived with pnpm 11, alongside the key itself.
+#
+# When an install IS blocked, the escape hatch is no longer automatic, which is
+# the point. Do not reach for minimumReleaseAgeExclude first, and do not approve
+# the prompt reflexively; approving it writes the same permanent exemption. Wait
+# for the package to age past the cutoff, which costs nothing on a routine bump.
+# Exempt it only when the version is needed before then AND its provenance has
+# been checked by hand, and then scope the entry below to the exact version with
+# a comment saying who checked it and why, the way every entry there already is.
+minimumReleaseAgeStrict: true
+
 # Fail the install if a package's trust level has decreased vs prior releases.
 trustPolicy: no-downgrade
 

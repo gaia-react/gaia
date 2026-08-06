@@ -439,7 +439,7 @@ Let `A` = working-tree `package.json`, `B` = `$BASELINE_DIR/package.json`, `L` =
 - **Object sections, merged per entry key:** `dependencies`, `devDependencies`, `scripts`, `engines`.
 - **Scalar / whole-value keys, merged as a single value:** `packageManager`.
 
-Resolution, `overrides`, and build-approval (`allowBuilds`) settings live in `pnpm-workspace.yaml`, classed `owned` and merged by the generic Step 7 walk, not here. pnpm 11 reads them only from there; the `package.json` `pnpm` field and a top-level `overrides` key are not pnpm-managed `package.json` sections.
+Resolution, `overrides`, and build-approval (`allowBuilds`) settings live in `pnpm-workspace.yaml`, merged field-aware in Step 7b, not here. pnpm 11 reads them only from there; the `package.json` `pnpm` field and a top-level `overrides` key are not pnpm-managed `package.json` sections.
 
 For each managed entry key `k` (within its section), with `Bk` / `Lk` / `Ak` its value in baseline / latest / adopter:
 
@@ -495,7 +495,7 @@ Apply the same rule to the scalar `packageManager` by hand: `B == L` → no-op; 
 
 ### Step 7b: Field-aware `pnpm-workspace.yaml` merge
 
-`pnpm-workspace.yaml` is classed `shared`, but it is a **mixed** file, so a whole-file three-way merge produces the same noise `package.json` does. It carries GAIA-authored settings (`minimumReleaseAge`, `trustPolicy`, `trustPolicyExclude`, `minimumReleaseAgeExclude`, `publicHoistPattern`, `savePrefix`, `strictPeerDependencies`) **and** adopter-extensible maps (`overrides`, `allowBuilds`). pnpm 11 reads dependency overrides and build approvals only from here, so any adopter who adds a single override drifts the file and eats a full-file conflict patch on every release that touches it. Merge it at YAML-key / map-entry granularity instead, acting only on the genuine upstream delta `B → L`.
+`pnpm-workspace.yaml` is classed `shared`, but it is a **mixed** file, so a whole-file three-way merge produces the same noise `package.json` does. It carries GAIA-authored settings (`minimumReleaseAge`, `minimumReleaseAgeStrict`, `trustPolicy`, `trustPolicyExclude`, `minimumReleaseAgeExclude`, `publicHoistPattern`, `savePrefix`, `strictPeerDependencies`) **and** adopter-extensible maps (`overrides`, `allowBuilds`). pnpm 11 reads dependency overrides and build approvals only from here, so any adopter who adds a single override drifts the file and eats a full-file conflict patch on every release that touches it. Merge it at YAML-key / map-entry granularity instead, acting only on the genuine upstream delta `B → L`.
 
 Let `A` = working-tree `pnpm-workspace.yaml`, `B` = `$BASELINE_DIR/pnpm-workspace.yaml`, `L` = `$LATEST_DIR/pnpm-workspace.yaml`.
 
@@ -521,7 +521,7 @@ Let `A` = working-tree `pnpm-workspace.yaml`, `B` = `$BASELINE_DIR/pnpm-workspac
 
 The command exits non-zero with a structured error if any file is missing or not valid YAML (for example the adopter introduced a syntax error). On a non-zero exit, fall back to a whole-file conflict patch (`diff -u A L > .gaia-merge/pnpm-workspace.yaml.patch`) and surface it as a conflict; do not proceed with the JSON path.
 
-The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 'key' | 'entry', section?, key, baseline?, latest?, adopter?, reason? }`. The CLI iterates only `keys(B) ∪ keys(L)` per managed key and per `overrides` / `allowBuilds` entry, so an adopter-only override or build approval is never visited, never clobbered. The seven GAIA-managed keys are compared whole-value; the two map sections are compared per entry. Both use the identical verdict table as Step 7a (`apply` / `conflict` / `suggest-add` / `suggest-removed`).
+The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 'key' | 'entry', section?, key, baseline?, latest?, adopter?, reason? }`. The CLI iterates only `keys(B) ∪ keys(L)` per managed key and per `overrides` / `allowBuilds` entry, so an adopter-only override or build approval is never visited, never clobbered. The GAIA-managed keys listed above are compared whole-value; the two map sections are compared per entry. Both use the identical verdict table as Step 7a (`apply` / `conflict` / `suggest-add` / `suggest-removed`).
 
 **Apply clean changes (`applied[]`):** for each item, edit the working-tree `pnpm-workspace.yaml` so the key's (or entry's) value becomes `latest`, using the **Edit** tool. Preserve the file's comments, key order, and quote style; change only the value text. Do **not** reserialize the file (`js-yaml` `dump` strips every comment). A whole-value list change replaces the list block; a scalar or map-entry change edits the single line.
 

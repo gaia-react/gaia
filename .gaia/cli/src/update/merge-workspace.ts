@@ -56,6 +56,7 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
  */
 const MANAGED_WHOLE_VALUE_KEYS: readonly string[] = [
   'minimumReleaseAge',
+  'minimumReleaseAgeStrict',
   'trustPolicy',
   'trustPolicyExclude',
   'minimumReleaseAgeExclude',
