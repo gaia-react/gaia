@@ -24,6 +24,37 @@
 # reads to a later audit as accidental drift. See wiki/decisions/Deliberate
 # Configuration Asymmetries.md for the sibling cases.
 #
+# WHAT THIS DOES NOT MIRROR: the CI gate has a second, independent failure
+# condition, region-declaration drift, and this hook does not evaluate it. That
+# omission is deliberate. The claim above is that this hook is only ever a
+# cheaper way to find out what CI would have told you, and that holds only
+# while every arm here answers from the same state CI audits:
+#
+#   The missing arm qualifies, and the intersection is precisely what makes it
+#   qualify. The file map behind `missing` is a git ls-files walk, which reads
+#   the INDEX, so a staged-but-uncommitted `git add` of a new file does reach
+#   `missing` on its own. Intersecting it with this branch's committed changed
+#   set (the three-dot diff below) is what drops that staged-only path, leaving
+#   the arm denying on committed state, the same state CI audits. Do not read
+#   the ls-files walk as confining the arm by itself, and do not drop the
+#   intersection on that belief.
+#
+#   Region drift does not qualify. The checker reports it as `.regionDrift` in
+#   the same --json report parsed below, and builds it by reading each
+#   shipped file's CONTENT off disk and diffing the marker-bearing paths it
+#   finds against the committed manifest's declaration, so an uncommitted edit
+#   that adds or removes a marker pair moves it. CI also leaves it unscoped on
+#   purpose, so a stale declaration cannot slip through on a PR that touches no
+#   declared path. Evaluated here, it would be the one arm that denies what CI
+#   would pass, on a working tree the PR never contains, and its remedy text
+#   would tell the maintainer to regenerate a manifest that is not stale.
+#   Narrowing it to the changed set instead would enforce a different rule than
+#   CI's, which that workflow's own inline comment rules out.
+#
+# So region drift stays CI-only and does surface as a red check after the push.
+# That gap in local coverage is the accepted price of the guarantee that a deny
+# here always means a red check there.
+#
 # WHY `gh pr create` AND NOT `git push`: push-time would catch this one round
 # earlier, but it fires on every work-in-progress push to a branch that has no
 # PR and may never get one, where an unanswered manifest entry is not yet a
@@ -32,9 +63,9 @@
 # real.
 #
 # ADOPTER POSTURE: neither this script nor its registration reaches an adopter
-# clone. The script is release-excluded, and it is registered only in
-# .claude/settings.local.json, which is gitignored. Both halves are required and
-# neither is sufficient alone:
+# clone. The script is release-excluded, and the registration is committed in
+# .claude/settings.json but stripped at bundle time. Both halves are required
+# and neither is sufficient alone:
 #
 #   - The script cannot ship. It names `.gaia/cli/gaia-maintainer` and
 #     `.github/workflows/distribution-audit-pr.yml`, both release-excluded, and
@@ -45,17 +76,18 @@
 #     /distribution-audit command that do not exist on their clone, and act on
 #     that inference.
 #
-#   - The registration cannot live in .claude/settings.json. That file is
-#     manifest class `shared` and reaches adopter clones, so a registration
-#     there would point every adopter's PreToolUse/Bash chain at a file they do
-#     not have. `json-strip` addresses object keys by dot-notation and cannot
-#     remove one element from the hooks[] array, so there is no scrub path that
-#     would let the registration ship and be stripped.
+#   - The registration must not survive into an adopter bundle.
+#     .claude/settings.json is manifest class `shared` and reaches adopter
+#     clones, so a registration that shipped would point every adopter's
+#     PreToolUse/Bash chain at a file they do not have. The `json-strip-array-
+#     element` rule in .gaia/release-scrub.yml removes exactly this element
+#     (selector `hooks.PreToolUse[].hooks[]` matching this script's command)
+#     before tar, so the committed registration never reaches an adopter.
 #
-# The cost of that pairing is that the gate is maintainer-machine-local: it does
-# not travel to another maintainer clone until the scrub engine can strip a
-# single array element. The inertness guard below stays regardless, so a
-# maintainer checkout with no built binary is also a clean no-op.
+# Committing the registration is what makes the gate travel: every maintainer
+# clone gets it from the checkout rather than having to re-add it by hand. The
+# inertness guard below stays regardless, so a maintainer checkout with no built
+# binary is also a clean no-op.
 #
 # FAIL-OPEN on every uncertainty: no maintainer binary (adopter clone), no jq,
 # no git, an unresolvable base ref, a non-JSON report, or any exit >= 2 from the
@@ -265,8 +297,11 @@ done
 # Files this branch adds or modifies on the head side. Three-dot compares from
 # the point HEAD diverged from base, so only this branch's own changes count.
 # Deletions are excluded; even if one slipped through it could never intersect
-# `missing`, which is built from a git ls-files walk of the head tree. Matches
-# distribution-audit-pr.yml exactly so the two gates never disagree.
+# `missing`, which is built from a git ls-files walk of the head tree. This
+# derivation matches distribution-audit-pr.yml's changed-set step exactly, so
+# the two gates never disagree about which files this branch touched. It is the
+# changed set that matches, not the gate as a whole: see WHAT THIS DOES NOT
+# MIRROR in the header.
 # `-z` because git's default `core.quotePath` C-quotes any path carrying
 # non-ASCII or control bytes, while `missing` below arrives raw through `jq -r`.
 # The two sides would then never intersect for exactly those paths, `offenders`
@@ -318,4 +353,4 @@ To unblock:
 
 Landing the manifest answer first also keeps HEAD stable through the later audit-marker handshake (see wiki/concepts/PR Merge Workflow.md, step 1).
 
-This gate mirrors .github/workflows/distribution-audit-pr.yml deliberately; see this hook's header for why the rule is enforced in both places."
+This gate deliberately duplicates the unanswered-file rule from .github/workflows/distribution-audit-pr.yml; see this hook's header for why that rule is enforced in both places. It does not cover that workflow's second condition, region-declaration drift, which stays CI-only."
