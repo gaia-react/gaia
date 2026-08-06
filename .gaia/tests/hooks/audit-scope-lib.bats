@@ -501,6 +501,39 @@ EOF
   [ "$(audit_owner_for_path '.husky/pre-commit')" = "code-audit-maintainer-shell" ]
 }
 
+@test "the CLI workspace policy file is owned by the node member under both rosters" {
+  # .gaia/cli/pnpm-workspace.yaml carries the .gaia/cli workspace's entire
+  # supply-chain policy: minimumReleaseAge, trustPolicy, and both exclusion
+  # lists. The node member already owns the rest of that dependency surface
+  # (package.json, pnpm-lock.yaml, tsconfig*.json), so this file belongs with
+  # it. Without a glob claiming it, a PR whose only change lowers
+  # minimumReleaseAge, drops trustPolicy, or adds an exclusion entry resolves
+  # an empty dispatched set: no member runs, no marker is required, and it
+  # merges with no member responsible for it.
+  #
+  # It is deliberately NOT in AUDIT_MACHINERY_PATHS: that list's generating
+  # rule is bytes that change what a member reviews, who reviews it, where a
+  # clearance lands, or whether a clearance is believed. This file governs
+  # dependency admission, not audits, so SEC-007 does not reach it and this
+  # test is the pin.
+
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIB"
+  audit_scope_init "$REPO_ROOT"
+  [ "$(audit_owner_for_path '.gaia/cli/pnpm-workspace.yaml')" = "code-audit-maintainer-node" ]
+  # The default member's own `pnpm-workspace.yaml` glob never crosses a `/`,
+  # so the repository-root file stays with it and the two do not collide.
+  [ "$(audit_owner_for_path 'pnpm-workspace.yaml')" = "code-audit-frontend" ]
+
+  # The builtin fallback roster must claim it too: when .gaia/audit-ci.yml is
+  # absent the degraded gate falls back to it, and a glob present in the
+  # committed roster but missing here leaves the file ownerless there.
+  EMPTY_ROOT=$(mktemp -d -t audit-scope-cli-workspace-XXXXXX)
+  audit_scope_init "$EMPTY_ROOT"
+  rm -rf "$EMPTY_ROOT"
+  [ "$(audit_owner_for_path '.gaia/cli/pnpm-workspace.yaml')" = "code-audit-maintainer-node" ]
+}
+
 @test "UAT-002: skills-md is owned by the prose member; non-md under skills stays ownerless" {
   # shellcheck source=/dev/null
   . "$SCOPE_LIB"

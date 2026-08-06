@@ -371,6 +371,18 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
+@test "built-in roster dispatches maintainer-node for .gaia/cli/pnpm-workspace.yaml" {
+  # A workspace-file-only diff is the shape that resolves an empty dispatched
+  # set when no glob claims the file: no member reviews the supply-chain
+  # policy it carries, and no marker is required to merge it.
+  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  stage .gaia/cli/pnpm-workspace.yaml
+  commit "chore: cli workspace policy"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-node" ]
+}
+
 @test "built-in roster dispatches maintainer-node for .gaia/cli/tsconfig.json (tsconfig*.json)" {
   rm -f "$SANDBOX/.gaia/audit-ci.yml"
   stage .gaia/cli/tsconfig.json
