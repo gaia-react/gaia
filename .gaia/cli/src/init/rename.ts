@@ -352,6 +352,15 @@ const META_TITLE_KEY: RewriteKey = {
  *
  * Every key is optional. The shipped `_index.ts` carries only `meta.title`, so
  * a file missing the others is a clean pass.
+ *
+ * `heroTitle` and top-level `title` are not in the seed, so a file carrying one
+ * carries a key the adopter added, and the precondition below holds it to the
+ * same standard as a seeded key. That is deliberate: this table is the single
+ * definition of what the step rewrites, and the rewrite already claims those
+ * two, overwriting either with the project title wherever it finds a literal.
+ * A refusal scoped narrower than the rewrite would mean the step silently
+ * declines to rename a key it does in fact own, which is the failure this
+ * precondition exists to remove.
  */
 const LANGUAGE_FILES: readonly LanguageFile[] = [
   {file: COMMON_TS, keys: [unscopedKey('siteName')]},
@@ -366,11 +375,13 @@ const LANGUAGE_FILES: readonly LanguageFile[] = [
  * `undefined` when the file is absent or every key present is rewritable.
  *
  * The probe is the rewrite's own prefix, so it reads the key exactly where the
- * rewrite looks for it, which also means it reads a comment naming the key in
- * that same position. The three `_index.ts` keys are indent-anchored, where a
- * comment cannot sit; an unscoped `// siteName:` in a diverged `common.ts` is
- * refused rather than ignored, and the refusal names the file and the key
- * before anything is written.
+ * rewrite looks for it. Both halves are existential over the whole file, which
+ * is what keeps the check aligned with a rewrite that is itself file-wide: a
+ * key refuses only when it appears somewhere the rewrite would look and **no**
+ * occurrence of it anywhere in the file is a rewritable literal. So a diverged
+ * `common.ts` carrying both a `// siteName:` comment and a real
+ * `siteName: 'App'` passes, and the comment is ignored rather than refused;
+ * that same comment alone, with no literal to rewrite, refuses.
  */
 const missedKeyIn = (
   target: string,
@@ -394,8 +405,17 @@ const missedKeyIn = (
  * 0 over a file still holding the old title, where the adopter finds out from
  * the running app rather than from the command. Checked before the first write,
  * so a refused run has renamed nothing.
+ *
+ * Exported so the suite asserting the shipped language files runs them through
+ * the same predicate the step uses and cannot drift from it, exactly as
+ * `claudeMdHasH1` is. That guard is load-bearing here: reshaping a seeded value
+ * into a template literal, a computed value, or a different indentation now
+ * fails Step 6 of `/gaia-init` for every adopter scaffold, where the same drift
+ * used to pass silently.
  */
-const unrewritableKey = (cwd: string): null | {file: string; label: string} => {
+export const unrewritableKey = (
+  cwd: string
+): null | {file: string; label: string} => {
   for (const {file, keys} of LANGUAGE_FILES) {
     const missed = missedKeyIn(path.join(cwd, file), keys);
 

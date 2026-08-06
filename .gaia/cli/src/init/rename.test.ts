@@ -13,7 +13,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {runInNewContext} from 'node:vm';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
-import {claudeMdHasH1, run} from './rename.js';
+import {claudeMdHasH1, run, unrewritableKey} from './rename.js';
 import {readState} from './util/state.js';
 
 type Sandbox = {
@@ -736,5 +736,24 @@ describe('CLAUDE.md template invariant', () => {
     const claudeMd = readFileSync(path.join(repoRoot, 'CLAUDE.md'), 'utf8');
 
     expect(claudeMdHasH1(claudeMd)).toBe(true);
+  });
+});
+
+/**
+ * The same invariant for the other sink. `rename` now refuses when a seeded
+ * language key holds something it cannot rewrite, so reshaping a shipped value
+ * into a template literal, a computed value, or a different indentation fails
+ * Step 6 of `/gaia-init` for every adopter scaffold. Every test above writes
+ * its own fixture, so nothing else reads the files that actually ship, and the
+ * drift that used to be a silent no-op is now a hard failure.
+ *
+ * Asserted through `unrewritableKey`, the predicate the step itself uses, for
+ * the reason the `CLAUDE.md` invariant above gives.
+ */
+describe('language template invariant', () => {
+  test('the shipped language files carry values rename can rewrite', () => {
+    const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+
+    expect(unrewritableKey(repoRoot)).toBeNull();
   });
 });
