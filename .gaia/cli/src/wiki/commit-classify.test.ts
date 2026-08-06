@@ -95,12 +95,14 @@ const sandboxGit = (root: string, args: string[]): string => {
  * when `git maintenance` replaced `git gc --auto`, and the git the fixture
  * runs under is whatever the machine or the CI runner supplies:
  *
- * - `maintenance.auto=false` is the gate on modern git, and it covers the whole
- *   task set. `gc.auto` governs only the gc heuristic, so it says nothing about
- *   the `loose-objects` and `incremental-repack` tasks, and those are the ones
- *   that pack.
- * - `gc.auto=0` is the same gate for git predating that task set, which reaches
- *   the repository through `git gc --auto` instead.
+ * - `maintenance.auto=false` is the documented gate on the spawn, and it covers
+ *   the whole task set, including the `loose-objects` and `incremental-repack`
+ *   tasks, which are the ones that pack.
+ * - `gc.auto=0` is the gate for git predating that task set, which reaches the
+ *   repository through `git gc --auto` instead. On git 2.55 it also suppresses
+ *   the modern spawn on its own, so what failed in CI is not established to be
+ *   this key being the weaker one; what is established is that a single key was
+ *   not enough on the git that ran there.
  * - `gc.autoDetach=false` is the fallback for both: a run that starts anyway
  *   finishes before the command that triggered it returns, so it can neither
  *   outlive the test nor race the next `git commit`. `maintenance.autoDetach`
@@ -121,11 +123,27 @@ const SANDBOX_GIT_CONFIG: [string, string][] = [
 ];
 
 /**
- * The gates the control repository omits, so it still spawns what the sandbox
- * suppresses. Named here, beside the list it subtracts from, so the two cannot
- * drift into disagreeing about which entries are the gates.
+ * The gates, paired with the value that explicitly turns each one off.
+ *
+ * The control repository cannot establish "ungated" by leaving these out.
+ * Repo-local config beats global, so the sandbox is immune to whatever the
+ * machine's own `~/.gitconfig` says, but a control that merely omits these
+ * keys inherits it, and `gc.auto = 0` is a common thing to carry in a personal
+ * dotfile. The control would then spawn nothing and the arm asserting git
+ * still spawns maintenance would fail against a fixture behaving perfectly.
+ * Writing git's own defaults into the control makes its condition its own.
+ *
+ * Named beside the list it subtracts from so the two cannot drift into
+ * disagreeing about which entries are the gates.
  */
-const MAINTENANCE_GATES = new Set(['gc.auto', 'maintenance.auto']);
+const MAINTENANCE_GATE_DEFAULTS: [string, string][] = [
+  ['gc.auto', '6700'],
+  ['maintenance.auto', 'true'],
+];
+
+const MAINTENANCE_GATES = new Set(
+  MAINTENANCE_GATE_DEFAULTS.map(([key]) => key)
+);
 
 /** Initialize one repository this fixture owns, suppression included. */
 const initSandboxRepo = (root: string, omit?: ReadonlySet<string>): void => {
@@ -779,18 +797,25 @@ describe('wiki commit-classify', () => {
 });
 
 /**
- * Every `git maintenance` child process git's own trace recorded.
+ * Every auto-maintenance child process git's own trace recorded.
  *
  * `GIT_TRACE2_EVENT` writes a `child_start` event, carrying the child's argv,
  * into the trace of the process that spawned it, so a run detached with
  * `--detach` is still visible without waiting on it or racing its exit. An
  * absent file means git spawned nothing and so wrote nothing.
+ *
+ * Both spellings count. Modern git spawns `git maintenance run --auto`; git
+ * predating that task set spawns `git gc --auto`, which the config list above
+ * names as a version it suppresses, so a filter matching only the first would
+ * assert nothing on exactly the git the second entry exists for.
  */
-const maintenanceSpawns = (tracePath: string): string[] =>
+const autoMaintenanceSpawns = (tracePath: string): string[] =>
   (existsSync(tracePath) ? readFileSync(tracePath, 'utf8') : '')
     .split('\n')
     .filter(
-      (line) => line.includes('"child_start"') && line.includes('maintenance')
+      (line) =>
+        line.includes('"child_start"') &&
+        (line.includes('"maintenance"') || line.includes('"gc"'))
     );
 
 /**
@@ -841,11 +866,17 @@ describe('commit-classify sandbox fixture', () => {
     let sandbox: Sandbox | undefined;
 
     try {
-      // Everything the sandbox sets except the gates. `gc.autoDetach` is not a
-      // gate and so stays, which keeps the control's own maintenance run a
-      // foreground child; without it this test would leak the very orphaned
-      // background process it exists to keep out of the suite.
+      // Everything the sandbox sets except the gates, which are then written
+      // back at git's own defaults so the control's ungated state is its own
+      // rather than inherited from the machine's global config. `gc.autoDetach`
+      // is not a gate and so stays, which keeps the control's own maintenance
+      // run a foreground child; without it this test would leak the very
+      // orphaned background process it exists to keep out of the suite.
       initSandboxRepo(controlRoot, MAINTENANCE_GATES);
+
+      for (const [key, value] of MAINTENANCE_GATE_DEFAULTS) {
+        sandboxGit(controlRoot, ['config', key, value]);
+      }
 
       const controlTrace = path.join(traceRoot, 'control.json');
       vi.stubEnv('GIT_TRACE2_EVENT', controlTrace);
@@ -854,14 +885,14 @@ describe('commit-classify sandbox fixture', () => {
         controlRoot
       );
 
-      expect(maintenanceSpawns(controlTrace).length).toBeGreaterThan(0);
+      expect(autoMaintenanceSpawns(controlTrace).length).toBeGreaterThan(0);
 
       const sandboxTrace = path.join(traceRoot, 'sandbox.json');
       vi.stubEnv('GIT_TRACE2_EVENT', sandboxTrace);
       sandbox = setupSandbox();
       commitManyTo(sandbox, 4, 'docs: prose', 'notes/thing.md');
 
-      expect(maintenanceSpawns(sandboxTrace)).toEqual([]);
+      expect(autoMaintenanceSpawns(sandboxTrace)).toEqual([]);
     } finally {
       vi.unstubAllEnvs();
       sandbox?.cleanup();
