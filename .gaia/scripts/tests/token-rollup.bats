@@ -118,6 +118,11 @@ setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   SCRIPT="$SCRIPT_DIR/token-rollup.sh"
   FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-rollup" && pwd)"
+  # The hermetic price table the full-cycle case pins, resolved from the test
+  # file's own location like every other fixture path here. bats runs each test
+  # in whatever directory bats was invoked from, so a path written relative to
+  # the repo root resolves only for a run launched there.
+  RATES="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-price" && pwd)/rates.json"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -205,8 +210,11 @@ setup() {
   # --show-toplevel to decide rate_table_ok FIRST, so an absent/invalid
   # committed table would flip this fixture's dollar line to "unavailable
   # (rate table unreadable)" instead of the "records predate" line this test
-  # asserts. These fixture rows have no by_model either way (SPEC-019).
-  run bash "$SCRIPT" --spec-id SPEC-220 --ledger "$FIX/full-cycle.jsonl" --rate-table .gaia/scripts/tests/fixtures/token-price/rates.json
+  # asserts. An unreadable pinned table degrades to that same line, which is
+  # why $RATES is absolute: the reader `cat`s the --rate-table value as given,
+  # so a relative one makes the assertion depend on the caller's directory.
+  # These fixture rows have no by_model either way (SPEC-019).
+  run bash "$SCRIPT" --spec-id SPEC-220 --ledger "$FIX/full-cycle.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   [[ "$output" == *"spec:       37,000   (elapsed 10m0s)"* ]]
   [[ "$output" == *"plan:       38,300   (elapsed 11m40s)"* ]]
