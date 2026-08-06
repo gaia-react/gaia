@@ -450,6 +450,39 @@ assert_allow() {
   assert_allow
 }
 
+# Under git's default `core.quotePath`, `git diff --name-only` C-quotes any path
+# carrying non-ASCII or control bytes: it wraps the path in double quotes and
+# backslash-escapes the offending bytes, emitting the quotes as literal
+# characters. `missing` reaches the intersection through `jq -r`, which emits raw
+# bytes, so the two sides speak different encodings for exactly the paths at
+# issue. `comm -12` then matches nothing, `offenders` comes back empty, and the
+# hook ALLOWS `gh pr create` for a newly-shipping file with no ship-or-withhold
+# answer. An empty `offenders` set is also what a correctly-answered branch
+# produces, so by then the failure is indistinguishable from an ordinary pass.
+@test "denies when the unanswered file's path carries non-ASCII bytes" {
+  # `core.quotePath` is pinned rather than inherited: it is git's DEFAULT and is
+  # the condition this test makes a claim about, so a maintainer who turns it off
+  # in ~/.gitconfig would otherwise green here against the bug itself.
+  git -C "$FIXTURE" config core.quotePath true
+  printf 'ship\n' > "$FIXTURE/café.txt"
+  git -C "$FIXTURE" add "café.txt"
+  git -C "$FIXTURE" commit --quiet -m "add a non-ASCII path"
+  install_maintainer_mock '[{"file":"café.txt"}]'
+  run_hook "gh pr create --title x"
+  assert_deny
+  grep -qF -- 'café.txt' <<<"$output" || return 1
+  # Non-vacuity: the same repository, the same range, through the pre-fix
+  # spelling. Without it a fixture whose path was quietly all-ASCII would pass
+  # while proving nothing. No path this fixture commits contains a double quote,
+  # so a quote in this list can only be git's own.
+  local quoted
+  quoted="$(git -C "$FIXTURE" diff --name-only --diff-filter=ACMR "main...HEAD")"
+  grep -qF '"' <<<"$quoted" || {
+    printf 'the pre-fix spelling did not quote, so this fixture proves nothing: %s\n' "$quoted"
+    return 1
+  }
+}
+
 @test "names every offending file in the deny reason" {
   git -C "$FIXTURE" checkout --quiet feature
   printf 'two\n' > "$FIXTURE/second.txt"
