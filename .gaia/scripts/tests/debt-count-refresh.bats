@@ -34,7 +34,13 @@ setup() {
 # one and emits the raw `--json` array when not, so the stub scans argv for
 # `--jq` and does the same. A stub that answered only one shape would go green
 # or red on the shape rather than on the behaviour under test.
+# The fixture goes to a sidecar file rather than being spliced into the stub
+# between single quotes: one apostrophe in an issue body would otherwise close
+# the quote and emit a stub that is a syntax error, which presents as an empty
+# read (a gh failure) and reds a test on a stale count instead of on the real
+# cause.
 write_gh_stub() {
+  printf '%s' "$1" > "$SANDBOX/issues.json"
   cat > "$SANDBOX/bin/gh" <<STUB
 #!/usr/bin/env bash
 if [ "\$1" = "issue" ] && [ "\$2" = "list" ]; then
@@ -46,9 +52,9 @@ if [ "\$1" = "issue" ] && [ "\$2" = "list" ]; then
     prev="\$a"
   done
   if [ -n "\$filter" ]; then
-    printf '%s' '$1' | jq -r "\$filter"
+    jq -r "\$filter" "$SANDBOX/issues.json"
   else
-    printf '%s' '$1'
+    cat "$SANDBOX/issues.json"
   fi
 fi
 exit 0
@@ -164,8 +170,14 @@ open_count() { jq -r '.openCount' "$CACHE"; }
 # The core concurrency contract: an open tech-debt issue carrying the claim label
 # is subtracted from the count so a peer session's nudge drops. Three issues, one
 # claimed, must count 2.
+#
+# Issue 1 carries an apostrophe in its body on purpose. Filed issue bodies
+# routinely do, and it is what pins the stub's fixture handling: splice the
+# fixture into the stub between single quotes and the apostrophe closes the
+# quote, so the stub becomes a syntax error, reads as a gh failure, and this
+# test reds on a stale count rather than on the real cause.
 @test "excludes debt:in-progress from the open count" {
-  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"},{"name":"severity:important"}]},{"number":2,"labels":[{"name":"tech-debt"},{"name":"severity:suggestion"},{"name":"debt:in-progress"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"severity:critical"}]}]'
+  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"},{"name":"severity:important"}],"body":"the refresher'"'"'s own count"},{"number":2,"labels":[{"name":"tech-debt"},{"name":"severity:suggestion"},{"name":"debt:in-progress"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"severity:critical"}]}]'
   : > "$SENTINEL"
   touch -t "$(past_ts 300)" "$SENTINEL"   # aged past the 120s grace: count trusted & written
   run run_refresh

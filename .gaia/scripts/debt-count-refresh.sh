@@ -163,10 +163,14 @@ mkdir -p "$DEBT_DIR" 2>/dev/null
 #
 # ONE fetch answers both fields. With local jq the raw issue list is pulled once
 # and filtered twice here; without it, gh's own `--jq` computes the count
-# server-side exactly as before and `coveredPaths` carries forward unchanged.
-# That degradation is safe in one direction only, and deliberately so: fewer
-# covered paths means less suppression, so the nudge fires more often, never
-# less. A missing jq can never silence a live over-budget condition.
+# server-side exactly as before and `coveredPaths` is written EMPTY rather than
+# carried forward, since deriving it needs jq and the no-jq write branch below
+# hardcodes the empty list. That degradation is safe in one direction only, and
+# deliberately so: fewer covered paths means less suppression, so the nudge
+# fires more often, never less. A missing jq can never silence a live
+# over-budget condition. What it does cost is history: check-updates.sh then
+# sees no covered path, drops its auditDriftBaseline entries, and re-seeds them
+# at each file's current larger size once jq returns.
 open_count="$prev_open_count"
 covered_paths="$prev_covered_paths"
 recompute_ok=false
