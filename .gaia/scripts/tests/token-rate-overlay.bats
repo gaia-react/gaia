@@ -269,6 +269,57 @@ JSON
   grep -qF -- "token-rates.local.json" "$err"
 }
 
+@test "an overlay model whose window array is empty is refused, never announced active" {
+  shipped="$(load_shipped)"
+  # An empty array is an array, so a type-only check admits it. It then merges
+  # cleanly and replaces the model's WHOLE window array with nothing, so
+  # rate_window returns null and the model prices at zero while the readout
+  # announces `(local rate overlay active for: claude-brand-new-1)` on the same
+  # block as `(lower bound: unpriced model(s) claude-brand-new-1)`.
+  printf '{"models":{"claude-brand-new-1":[]}}\n' > "$OVERLAY"
+
+  cd "$SANDBOX"
+  err="$BATS_TEST_TMPDIR/err.txt"
+  gaia_apply_rate_overlay "$shipped" "" 2>"$err"
+
+  [ -z "$GAIA_RATE_OVERLAY_MODELS" ]
+  [ "$(price_fresh "$GAIA_EFFECTIVE_RATES" claude-opus-4-8 1000000)" = "5" ]
+  grep -qF -- "token-rates.local.json" "$err"
+}
+
+@test "an overlay whose window array holds non-objects is refused, not raised at pricing time" {
+  shipped="$(load_shipped)"
+  # `[7,35]` is the shape an operator writes reaching for a bare rate pair. It is
+  # an array, so a type-only check admits it, and the failure surfaces much later
+  # inside rate_window as `Cannot index number with "effective_through"`: the
+  # consumer then reports a pricing failure whose stated reason never names the
+  # overlay the operator just hand-wrote.
+  printf '{"models":{"claude-brand-new-1":[7,35]}}\n' > "$OVERLAY"
+
+  cd "$SANDBOX"
+  err="$BATS_TEST_TMPDIR/err.txt"
+  gaia_apply_rate_overlay "$shipped" "" 2>"$err"
+
+  [ -z "$GAIA_RATE_OVERLAY_MODELS" ]
+  [ "$(price_fresh "$GAIA_EFFECTIVE_RATES" claude-opus-4-8 1000000)" = "5" ]
+  grep -qF -- "token-rates.local.json" "$err"
+}
+
+@test "a window array of hand-written placeholder strings still merges" {
+  shipped="$(load_shipped)"
+  # The tripwire on tightening this check any further. token-tally.sh's
+  # print_unpriced_remedy emits its rates as STRINGS deliberately, so an unedited
+  # paste degrades `dollars` to null instead of pricing the model at zero. A
+  # numeric-rate assertion in the shape check would refuse that entry outright
+  # and take the degrade with it.
+  printf '{"models":{"claude-brand-new-1":[{"input":"<usd-per-1M-input>","output":"<usd-per-1M-output>"}]}}\n' > "$OVERLAY"
+
+  cd "$SANDBOX"
+  gaia_apply_rate_overlay "$shipped" "" 2>/dev/null
+
+  [ "$GAIA_RATE_OVERLAY_MODELS" = "claude-brand-new-1" ]
+}
+
 @test "one bad model refuses the whole overlay rather than half-applying it" {
   shipped="$(load_shipped)"
   # A partial apply would be the worst of both: some models repriced, one
