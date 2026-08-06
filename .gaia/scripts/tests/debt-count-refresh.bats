@@ -28,16 +28,44 @@ setup() {
   CACHE="$DEBT_DIR/count.json"
 }
 
-# stub_gh <count>: a fake `gh` whose `issue list` reports <count> open issues.
-stub_gh() {
+# write_gh_stub <json> [extra-line]: a fake `gh` that serves <json> from
+# `issue list` the way the real one does, which is what lets one stub cover both
+# call shapes the refresher uses. Real `gh` applies a `--jq` filter when given
+# one and emits the raw `--json` array when not, so the stub scans argv for
+# `--jq` and does the same. A stub that answered only one shape would go green
+# or red on the shape rather than on the behaviour under test.
+write_gh_stub() {
   cat > "$SANDBOX/bin/gh" <<STUB
 #!/usr/bin/env bash
 if [ "\$1" = "issue" ] && [ "\$2" = "list" ]; then
-  printf '%s\n' "$1"
+  $2
+  filter=""
+  prev=""
+  for a in "\$@"; do
+    if [ "\$prev" = "--jq" ]; then filter="\$a"; fi
+    prev="\$a"
+  done
+  if [ -n "\$filter" ]; then
+    printf '%s' '$1' | jq -r "\$filter"
+  else
+    printf '%s' '$1'
+  fi
 fi
 exit 0
 STUB
   chmod +x "$SANDBOX/bin/gh"
+}
+
+# issues_json <count>: <count> plain open `tech-debt` issues, none carrying an
+# exclusion label and none carrying a dedup key, so they count toward openCount
+# and contribute no coveredPaths.
+issues_json() {
+  jq -nc --argjson n "$1" '[range($n) | {number: (. + 1), labels: [{name: "tech-debt"}], body: ""}]'
+}
+
+# stub_gh <count>: a fake `gh` whose `issue list` reports <count> open issues.
+stub_gh() {
+  write_gh_stub "$(issues_json "$1")"
 }
 
 # stub_gh_fail: a fake `gh` whose `issue list` prints nothing (a network/auth
@@ -55,35 +83,14 @@ STUB
 # /gaia-debt PR merges inside this run's network window. `.gaia/local/debt/` is a
 # shared-state path symlinked into every worktree, so both runs address one file.
 stub_gh_touching() {
-  cat > "$SANDBOX/bin/gh" <<STUB
-#!/usr/bin/env bash
-if [ "\$1" = "issue" ] && [ "\$2" = "list" ]; then
-  : > "$SENTINEL"
-  printf '%s\n' "$1"
-fi
-exit 0
-STUB
-  chmod +x "$SANDBOX/bin/gh"
+  write_gh_stub "$(issues_json "$1")" ": > \"$SENTINEL\""
 }
 
-# stub_gh_json <json>: a fake `gh` whose `issue list` applies the script's own
-# --jq filter (scanned from argv) to <json>, so the real exclusion expression is
-# exercised rather than a pre-baked count.
+# stub_gh_json <json>: a fake `gh` serving a hand-written issue array, so the
+# real exclusion expression runs against real labels rather than a pre-baked
+# count.
 stub_gh_json() {
-  cat > "$SANDBOX/bin/gh" <<STUB
-#!/usr/bin/env bash
-if [ "\$1" = "issue" ] && [ "\$2" = "list" ]; then
-  filter='length'
-  prev=""
-  for a in "\$@"; do
-    if [ "\$prev" = "--jq" ]; then filter="\$a"; fi
-    prev="\$a"
-  done
-  printf '%s' '$1' | jq -r "\$filter"
-fi
-exit 0
-STUB
-  chmod +x "$SANDBOX/bin/gh"
+  write_gh_stub "$1"
 }
 
 # Prepend the stub dir so our `gh` wins over any host `gh`; keep the rest of PATH

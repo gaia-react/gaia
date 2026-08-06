@@ -168,6 +168,18 @@ baseline_for() { jq -r --arg p "$1" '.auditDriftBaseline[$p] // "none"' "$CACHE"
   [ "$(jq -r '.coveredPaths[0]' "$DEBT_CACHE")" = "wiki/concepts/PR Merge Workflow.md" ]
 }
 
+@test "a body that only mentions the key in prose injects no covered path" {
+  # The extraction anchors on the whole `<!-- gaia-debt-key:` opener rather than
+  # the bare key name, because a false match here ADDS suppression, and that is
+  # the one direction the shared-state argument does not cover.
+  jq -n '[{number: 1, labels: [{name: "tech-debt"}],
+           body: "prose discussing gaia-debt-key: v1 class=x path=CLAUDE.md line=1 with no comment wrapper"}]' \
+    > "$MOCK_ISSUES"
+  run bash "$ROOT/.gaia/scripts/debt-count-refresh.sh"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.coveredPaths | length' "$DEBT_CACHE")" = "0" ]
+}
+
 @test "refresher emits an empty coveredPaths rather than omitting the field" {
   printf '[]\n' > "$MOCK_ISSUES"
   run bash "$ROOT/.gaia/scripts/debt-count-refresh.sh"

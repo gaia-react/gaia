@@ -101,8 +101,11 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   prev_audit_last_applied_at=$(jq -r '.auditLastAppliedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_count=$(jq -r '.auditMemoryCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_baseline=$(jq -r '.auditMemoryBaseline // 0' "$CACHE_FILE" 2>/dev/null)
-  case "$(jq -c '.auditDriftBaseline // {}' "$CACHE_FILE" 2>/dev/null)" in
-    '{'*) prev_audit_drift_baseline=$(jq -c '.auditDriftBaseline // {}' "$CACHE_FILE" 2>/dev/null) ;;
+  # Read once and validate that value, so the guard and the assignment cannot
+  # disagree about what was read.
+  drift_baseline_read=$(jq -c '.auditDriftBaseline // {}' "$CACHE_FILE" 2>/dev/null)
+  case "$drift_baseline_read" in
+    '{'*) prev_audit_drift_baseline="$drift_baseline_read" ;;
   esac
   case "$prev_checked_at" in
     ''|*[!0-9]*) prev_checked_at=0 ;;
@@ -307,10 +310,18 @@ fi
 
 # Growth guard: suppression must not hide a file that keeps growing. The size
 # observed when a path was first suppressed lives in this script's own cache, so
-# there is no new state file and no second writer. Machine-local is sound for
-# this specific value because it only ever UN-suppresses -- a baseline can add a
+# there is no new state file to register. Machine-local is sound for this
+# specific value because it only ever UN-suppresses -- a baseline can add a
 # nudge and can never remove one, which is the property the shared-state rule
 # above exists to protect.
+#
+# This cache has other writers, and they matter here. /update-deps and
+# /update-gaia rewrite it wholesale from an enumerated preserve list, so both
+# must name this field. Unlike serenaLangDrift, which the next refresh
+# recomputes from source, a baseline is a HISTORICAL OBSERVATION: drop it and
+# the next run re-seeds at the file's current, larger size, disarming this guard
+# with nothing to show for it. /gaia-audit's post-flight is safe by contrast,
+# it updates single fields in place rather than rewriting the object.
 drift_baseline_next=""
 
 # drifts <repo-relative path> <measured> <budget>

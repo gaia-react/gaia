@@ -108,8 +108,11 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   prev_open_count=$(jq -r '.openCount // 0' "$CACHE_FILE" 2>/dev/null)
   # Same never-blank posture as the count: a partial failure below keeps the
   # paths already cached rather than dropping suppression on a transient error.
-  case "$(jq -c '.coveredPaths // []' "$CACHE_FILE" 2>/dev/null)" in
-    '['*) prev_covered_paths=$(jq -c '.coveredPaths // []' "$CACHE_FILE" 2>/dev/null) ;;
+  # Read once and validate that value, so the guard and the assignment cannot
+  # disagree about what was read.
+  covered_read=$(jq -c '.coveredPaths // []' "$CACHE_FILE" 2>/dev/null)
+  case "$covered_read" in
+    '['*) prev_covered_paths="$covered_read" ;;
   esac
   case "$prev_computed_at" in
     ''|*[!0-9]*) prev_computed_at=0 ;;
@@ -167,14 +170,19 @@ mkdir -p "$DEBT_DIR" 2>/dev/null
 open_count="$prev_open_count"
 covered_paths="$prev_covered_paths"
 recompute_ok=false
+# One expression, used by whichever arm runs, so the two can never drift apart.
+COUNT_FILTER='[.[] | select([.labels[].name] | (index("debt:in-progress") or index("debt:spec-pending")) | not)] | length'
 if command -v gh >/dev/null 2>&1; then
   if command -v jq >/dev/null 2>&1; then
     issues_json=$(gh issue list --label tech-debt --state open --json number,labels,body --limit 1000 2>/dev/null)
-    count_out=$(printf '%s' "$issues_json" | jq '[.[] | select([.labels[].name] | (index("debt:in-progress") or index("debt:spec-pending")) | not)] | length' 2>/dev/null)
-    # Anchored on the key comment rather than a bare `path=`, so prose in the
-    # body cannot inject a path. The lazy ` line=` terminator is what lets a
-    # path contain spaces, which several filed issues do.
-    paths_out=$(printf '%s' "$issues_json" | jq -c '[.[] | (.body // "") | scan("gaia-debt-key:[^>]*?path=(.+?) line=")] | flatten | unique' 2>/dev/null)
+    count_out=$(printf '%s' "$issues_json" | jq "$COUNT_FILTER" 2>/dev/null)
+    # Anchored on the whole `<!-- gaia-debt-key:` opener, not a bare `path=` and
+    # not the bare key name, so body prose that merely mentions the key cannot
+    # inject a path. That direction matters: a false match would ADD suppression,
+    # which is the one direction the header's safety argument does not cover.
+    # The lazy ` line=` terminator is what lets a path contain spaces, as
+    # several filed issues do.
+    paths_out=$(printf '%s' "$issues_json" | jq -c '[.[] | (.body // "") | scan("<!-- gaia-debt-key:[^>]*?path=(.+?) line=")] | flatten | unique' 2>/dev/null)
     case "$count_out" in
       ''|*[!0-9]*) ;;
       *) open_count="$count_out"; recompute_ok=true ;;
@@ -183,7 +191,7 @@ if command -v gh >/dev/null 2>&1; then
       '['*) covered_paths="$paths_out" ;;
     esac
   else
-    count_out=$(gh issue list --label tech-debt --state open --json number,labels --jq '[.[] | select([.labels[].name] | (index("debt:in-progress") or index("debt:spec-pending")) | not)] | length' --limit 1000 2>/dev/null)
+    count_out=$(gh issue list --label tech-debt --state open --json number,labels --jq "$COUNT_FILTER" --limit 1000 2>/dev/null)
     case "$count_out" in
       ''|*[!0-9]*) ;;
       *) open_count="$count_out"; recompute_ok=true ;;
