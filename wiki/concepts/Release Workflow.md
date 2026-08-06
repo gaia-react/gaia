@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-07-17
+updated: 2026-08-06
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -188,6 +188,8 @@ The classifier is in `.gaia/cli/src/release/manifest.ts`, `ADOPTER_OWNED_SENTINE
 `.github/workflows/distribution-audit-pr.yml` enforces the manifest answer-contract at PR time. A feature PR that adds a git-tracked, non-release-excluded, classified file, one that would newly ship to adopters, must acknowledge it in `.gaia/manifest.json` before it merges, so the ship-or-withhold decision lands with the feature that creates the file rather than accumulating as an unanswered backlog left for a later, unrelated `/distribution-audit` run.
 
 The gate runs `gaia-maintainer release manifest --check --json` and reads its `missing` array (every classified file the committed manifest has never acknowledged). It fails only on the intersection of `missing` with the files the PR touches: a pre-existing backlog inherited from earlier merges is not the current PR's to drain, so a PR is never blocked by a file it did not introduce. To clear a failure, run `/distribution-audit`, answer ship-or-withhold for each named file, and commit the regenerated manifest (and `.gaia/release-exclude` for any withheld file) to the branch.
+
+The CI workflow and its local mirror, `.claude/hooks/distribution-preflight-check.sh`, derive the PR's changed-file list with `git diff --name-only -z --diff-filter=ACMR` piped through `tr '\0' '\n'`, NUL-delimited rather than newline-delimited. Git's default `core.quotePath` C-quotes any path carrying non-ASCII or control bytes, and `missing` arrives raw through `jq -r`; a quoted token would never intersect the raw set, so an unacknowledged file with such a path would pass both gates with no ship-or-withhold answer.
 
 This is the PR-time complement to release Step 10, which regenerates the manifest with `--allow-undecided`: the release path must never start failing on a tree that carries a new file, so it takes the escape hatch by design, while the per-PR gate is where a newly-shipping file is actually answered.
 
