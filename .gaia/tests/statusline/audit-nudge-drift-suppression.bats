@@ -221,16 +221,19 @@ baseline_for() { jq -r --arg p "$1" '.auditDriftBaseline[$p] // "none"' "$CACHE"
   [ "$(baseline_for 'CLAUDE.md')" = "500" ]
 }
 
-@test "a suppressed file does not mask a second, uncovered over-budget rule file" {
-  # The rule loop breaks at the first over-budget file. A suppressed file must
-  # not consume that break, or one covered rule file hides every other one.
-  write_lines "$ROOT/.claude/rules/covered.md" 250
-  write_lines "$ROOT/.claude/rules/uncovered.md" 250
-  seed_debt_cache ".claude/rules/covered.md"
+@test "a drifting rule file does not stop the scan before a later covered file is baselined" {
+  # The rule loop must not exit early. Glob order is alphabetical, so an early
+  # exit on the first drifting file leaves the covered file after it unmeasured,
+  # and its baseline is then taken only once the earlier file is fixed, at
+  # whatever size it had grown to by then.
+  write_lines "$ROOT/.claude/rules/aaa-uncovered.md" 250
+  write_lines "$ROOT/.claude/rules/zzz-covered.md" 300
+  seed_debt_cache ".claude/rules/zzz-covered.md"
   run_checker
   [ "$status" -eq 0 ]
   [ "$(nudge)" = "true" ]
   [ "$(nudge_reason)" = "over budget" ]
+  [ "$(baseline_for '.claude/rules/zzz-covered.md')" = "300" ]
 }
 
 @test "the baseline is dropped once the covering issue closes" {

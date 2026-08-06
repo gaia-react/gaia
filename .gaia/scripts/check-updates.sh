@@ -349,9 +349,11 @@ esac
 if drifts "CLAUDE.md" "$claudemd_words" "$AUDIT_CLAUDEMD_BUDGET"; then
   project_drift=true
 fi
-# No early exit on the first over-budget rule file. A suppressed file must not
-# consume it, or one covered rule file hides every other one; and the scan has
-# to reach every covered file anyway to carry its baseline forward.
+# No early exit on the first over-budget rule file: the scan has to reach every
+# covered file to record its baseline. Stopping at the first drifting file would
+# leave a covered file later in the glob unmeasured, so its baseline would only
+# be taken once the earlier file is fixed, at whatever size it had grown to by
+# then, which is the growth guard reading a number it never observed.
 for rule in "$PROJECT_ROOT"/.claude/rules/*.md; do
   [ -f "$rule" ] || continue
   rule_lines=$(wc -l < "$rule" 2>/dev/null | tr -d '[:space:]')
