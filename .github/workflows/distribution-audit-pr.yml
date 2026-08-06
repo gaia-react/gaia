@@ -115,8 +115,18 @@ jobs:
           # count. Deletions are excluded; even if one slipped through it could
           # never intersect `missing`, which is built from `git ls-files` of the
           # head tree.
-          git diff --name-only --diff-filter=ACMR "${BASE_SHA}...${HEAD_SHA}" \
-            | LC_ALL=C sort -u > /tmp/pr-changed.txt
+          #
+          # `-z` because git's default `core.quotePath` C-quotes any path
+          # carrying non-ASCII or control bytes, while `missing` below arrives
+          # raw through `jq -r`. The two sides would then never intersect for
+          # exactly those paths, `offenders` would come back empty, and this
+          # required check would report green for a file with no answer -- a miss
+          # indistinguishable from an ordinary pass. `-z` rather than
+          # `-c core.quotePath=false`, which only stops treating bytes at or
+          # above 0x80 as unusual and still quotes a path containing a quote, a
+          # backslash, or a control byte.
+          git diff --name-only -z --diff-filter=ACMR "${BASE_SHA}...${HEAD_SHA}" \
+            | tr '\0' '\n' | LC_ALL=C sort -u > /tmp/pr-changed.txt
 
           # `--check` is read-only and exits non-zero on ANY drift (a
           # pre-existing backlog included), so treat a non-zero exit as data,

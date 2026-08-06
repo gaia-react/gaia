@@ -267,8 +267,16 @@ done
 # Deletions are excluded; even if one slipped through it could never intersect
 # `missing`, which is built from a git ls-files walk of the head tree. Matches
 # distribution-audit-pr.yml exactly so the two gates never disagree.
-changed=$( cd "$audited_root" && git diff --name-only --diff-filter=ACMR "${base_rev}...HEAD" 2>/dev/null \
-  | LC_ALL=C sort -u || true)
+# `-z` because git's default `core.quotePath` C-quotes any path carrying
+# non-ASCII or control bytes, while `missing` below arrives raw through `jq -r`.
+# The two sides would then never intersect for exactly those paths, `offenders`
+# would come back empty, and the gate would allow a file with no answer -- a
+# miss indistinguishable from an ordinary pass. `-z` rather than
+# `-c core.quotePath=false`, which only stops treating bytes at or above 0x80 as
+# unusual and still quotes a path containing a quote, a backslash, or a control
+# byte.
+changed=$( cd "$audited_root" && git diff --name-only -z --diff-filter=ACMR "${base_rev}...HEAD" 2>/dev/null \
+  | tr '\0' '\n' | LC_ALL=C sort -u || true)
 [ -n "$changed" ] || exit 0
 
 # `--check` is read-only and exits non-zero on ANY drift (a pre-existing backlog
