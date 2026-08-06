@@ -148,6 +148,8 @@ auditors:
       - ".gaia/cli/pnpm-lock.yaml"
       - ".gaia/cli/pnpm-workspace.yaml"
       - ".gaia/cli/tsconfig*.json"
+      - ".gaia/cli/*.config.ts"
+      - ".gaia/cli/*.config.mjs"
     scope: maintainer-only
     push_fixes: false
   - name: code-audit-maintainer-prose

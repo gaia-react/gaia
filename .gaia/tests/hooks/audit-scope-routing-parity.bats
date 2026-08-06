@@ -13,8 +13,8 @@
 #   .github/workflows/<single-segment>.yml|.yaml -> code-audit-github-workflows
 #   .github/actions/**/*.yml|*.yaml               -> code-audit-github-workflows
 #   .gaia/cli/templates/workflows/code-review-audit.yml.tmpl -> ownerless
-#   .gaia/cli/{package.json,pnpm-lock.yaml,pnpm-workspace.yaml,tsconfig*.json}
-#                                                 -> code-audit-maintainer-node
+#   .gaia/cli/{package.json,pnpm-lock.yaml,pnpm-workspace.yaml,tsconfig*.json,
+#              *.config.ts,*.config.mjs}          -> code-audit-maintainer-node
 #   .claude/skills/**/*.md                        -> code-audit-maintainer-prose
 #   .husky/**                                     -> code-audit-maintainer-shell
 #
@@ -61,7 +61,7 @@ setup() {
       expected="code-audit-github-workflows"
     elif [ "$path" = ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" ]; then
       expected="-"
-    elif [[ "$path" =~ ^\.gaia/cli/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig[^/]*\.json)$ ]]; then
+    elif [[ "$path" =~ ^\.gaia/cli/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig[^/]*\.json|[^/]*\.config\.ts|[^/]*\.config\.mjs)$ ]]; then
       expected="code-audit-maintainer-node"
     elif [[ "$path" =~ ^\.claude/skills/.*\.md$ ]]; then
       expected="code-audit-maintainer-prose"

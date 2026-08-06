@@ -123,14 +123,19 @@ auditors:
       # runtime deps (package.json), the resolved dependency tree
       # (pnpm-lock.yaml), the workspace's supply-chain policy
       # (pnpm-workspace.yaml: minimumReleaseAge, trustPolicy, and both
-      # exclusion lists), and the build config (tsconfig*.json). Without these
-      # a change to any merges with no code-audit review. The default member's
-      # own `pnpm-workspace.yaml` glob never crosses a `/`, so it claims the
-      # repository-root file only and reaches this one not at all.
+      # exclusion lists), the build config (tsconfig*.json), and the CLI's own
+      # tool configs (vitest.config.ts, eslint.config.mjs,
+      # prettier.config.mjs), whose `setupFiles` and rule sets decide what the
+      # CLI test and lint runs actually execute. Without these a change to any
+      # merges with no code-audit review. The default member's own
+      # `pnpm-workspace.yaml` and bare `*.config.*` globs never cross a `/`, so
+      # they claim the repository-root files only and reach these not at all.
       - ".gaia/cli/package.json"
       - ".gaia/cli/pnpm-lock.yaml"
       - ".gaia/cli/pnpm-workspace.yaml"
       - ".gaia/cli/tsconfig*.json"
+      - ".gaia/cli/*.config.ts"
+      - ".gaia/cli/*.config.mjs"
     scope: maintainer-only
     push_fixes: false
   - name: code-audit-maintainer-prose
