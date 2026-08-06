@@ -13,10 +13,11 @@
 # inherits whatever the last unhardened resolve committed.
 minimumReleaseAge: 10080
 
-# Fail the install when a resolution breaches the window above, rather than
-# admitting the version and auto-appending its exemption below. Same reasoning
-# as root's entry, including why it is stated explicitly when pnpm would infer
-# it; the maintainer runbook for a blocked install lives there too.
+# Require a decision when a resolution breaches the window above (a prompt on a
+# TTY, a hard failure in CI), rather than admitting the version and
+# auto-appending its exemption below. Same reasoning as root's entry, including
+# why it is stated explicitly when pnpm would infer it; the maintainer runbook
+# for a blocked install lives there too.
 minimumReleaseAgeStrict: true
 
 # Fail the install if a package's trust level has decreased vs prior releases.
