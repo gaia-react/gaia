@@ -103,6 +103,15 @@ jobs:
               # bats step, and green the job having run zero tests. Same test-dir/
               # source-dir pairing as the three instruction files below.
               - '.github/workflows/code-review-audit.yml'
+              # distribution-audit-pr-gate.bats (.gaia/scripts/tests/) EXECUTES
+              # the `run:` body extracted from distribution-audit-pr.yml, so that
+              # workflow is a source this suite guards on the same terms as
+              # code-review-audit.yml above. An edit to the gate step touches only
+              # the workflow, which matches none of the other paths here, so
+              # without this line the filter would report `code=false`, skip every
+              # bats step, and green the job having run that gate's tests zero
+              # times.
+              - '.github/workflows/distribution-audit-pr.yml'
               # '.claude/hooks/**' is the superset of the specific hooks this
               # suite used to filter on (repo-scope.sh, pr-merge-audit-check.sh,
               # post-audit-status.sh); it now also covers every hook exercised
