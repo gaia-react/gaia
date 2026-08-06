@@ -16,6 +16,7 @@ You audit the framework's own Node/CLI TypeScript, the code behind GAIA's CLI: r
 - `.gaia/cli/src/**/.gitkeep`
 - `.gaia/cli/package.json`
 - `.gaia/cli/pnpm-lock.yaml`
+- `.gaia/cli/pnpm-workspace.yaml`
 - `.gaia/cli/tsconfig*.json`
 
 Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.
