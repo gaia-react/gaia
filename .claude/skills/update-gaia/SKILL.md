@@ -439,7 +439,7 @@ Let `A` = working-tree `package.json`, `B` = `$BASELINE_DIR/package.json`, `L` =
 - **Object sections, merged per entry key:** `dependencies`, `devDependencies`, `scripts`, `engines`.
 - **Scalar / whole-value keys, merged as a single value:** `packageManager`.
 
-Resolution, `overrides`, and build-approval (`allowBuilds`) settings live in `pnpm-workspace.yaml`, classed `owned` and merged by the generic Step 7 walk, not here. pnpm 11 reads them only from there; the `package.json` `pnpm` field and a top-level `overrides` key are not pnpm-managed `package.json` sections.
+Resolution, `overrides`, and build-approval (`allowBuilds`) settings live in `pnpm-workspace.yaml`, merged field-aware in Step 7b, not here. pnpm 11 reads them only from there; the `package.json` `pnpm` field and a top-level `overrides` key are not pnpm-managed `package.json` sections.
 
 For each managed entry key `k` (within its section), with `Bk` / `Lk` / `Ak` its value in baseline / latest / adopter:
 

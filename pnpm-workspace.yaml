@@ -19,8 +19,10 @@ minimumReleaseAge: 10080
 # today. It pins the behaviour where the policy is stated instead of leaving it
 # resting on a default in pnpm's config reader, and it gives the parity guard in
 # .gaia/cli/src/lint-pin-parity.test.ts something to assert. The flag is pnpm
-# 11-only; 10.x reads the window above but has no strict key at all, so an
-# adopter still on 10.x gets the weak behaviour whatever this file says.
+# 11-only, and 10.x needs none of it: it reads the window above but ships no
+# auto-exemption path at all, so a breach there resolves to an older mature
+# version or fails outright and the exclusion list stays hand-written. The weak
+# behaviour this key closes arrived with pnpm 11, alongside the key itself.
 #
 # When an install IS blocked, the escape hatch is no longer automatic, which is
 # the point. Do not reach for minimumReleaseAgeExclude first, and do not approve
