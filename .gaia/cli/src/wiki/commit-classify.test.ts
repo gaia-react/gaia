@@ -892,7 +892,19 @@ describe('commit-classify sandbox fixture', () => {
         controlRoot
       );
 
-      expect(autoMaintenanceSpawns(controlTrace).length).toBeGreaterThan(0);
+      const controlSpawns = autoMaintenanceSpawns(controlTrace);
+      expect(controlSpawns.length).toBeGreaterThan(0);
+      // The control's own run must stay in the foreground, or the `finally`
+      // below deletes `controlRoot` out from under a live background git. A
+      // count alone cannot see that: the parent records the child either way,
+      // so this test would pass green while leaking the orphan the whole
+      // fixture exists to prevent. Asserted as an absence to stay portable,
+      // git predating the task set spawns `git gc --auto`, which carries no
+      // detach flag at all and passes, while modern git catches a
+      // `maintenance.autoDetach` that a later edit dropped as redundant.
+      expect(controlSpawns.some((line) => line.includes('"--detach"'))).toBe(
+        false
+      );
 
       const sandboxTrace = path.join(traceRoot, 'sandbox.json');
       vi.stubEnv('GIT_TRACE2_EVENT', sandboxTrace);
