@@ -14,6 +14,12 @@
  *   - `app/languages/en/pages/_index.ts` `meta.title`, `title`, and
  *     `heroTitle` → `<Title>` (when the keys exist).
  *
+ * A language-file key that is absent is tolerated; one that is present but
+ * holds something other than a quoted string literal fails the step, for the
+ * same reason the `CLAUDE.md` heading does. Rewriting it is not possible, and
+ * exiting 0 over a file that still holds the old title reports a rename that
+ * did not happen.
+ *
  * Idempotent: re-running with the same args is a no-op once the rename
  * has been applied.
  *
@@ -41,7 +47,8 @@ const HELP_TEXT = `Usage: gaia init rename --title <T> --kebab <K>
   Exit codes:
     0  success (no stdout)
     1  user-correctable error (missing flags, invalid title or kebab, no
-       package.json, no CLAUDE.md heading)
+       package.json, no CLAUDE.md heading, a language-file key whose value
+       is not a rewritable string literal)
     2  unexpected (filesystem failure)
 `;
 
@@ -223,8 +230,62 @@ const renameClaudeMd = (cwd: string, title: string): void => {
 };
 
 /**
- * Rewrite the quoted value each `pattern` match captures, where group 1 is
- * everything up to the opening quote and group 2 is the quote itself.
+ * The body of a quoted string literal, for the pattern `literalPattern` builds
+ * around it, whose group 2 is the opening quote.
+ *
+ * `(?!\2)` excludes only the quote the match actually opened with, so a
+ * single-quoted literal may hold a bare `"` and a double-quoted one a bare `'`.
+ * A class naming both quotes refuses `"Steve's Template"` outright, and a
+ * pattern that cannot match is a rewrite that silently does not happen. It
+ * cannot re-match this command's own output either: the escaper leaves the
+ * non-wrapping quote bare, because it needs no escape, so a title carrying one
+ * survives the first rename and then defeats the second.
+ *
+ * `\n` stays excluded because a JavaScript string literal cannot span a raw
+ * line ending. Bounding the body to one line is what keeps a quote further down
+ * the file from being read as this literal's closing one, now that the class no
+ * longer stops at the other quote character.
+ */
+const LITERAL_BODY = String.raw`(?:(?!\2)[^\n\\]|\\.)*`;
+
+type LanguageFile = {
+  file: string;
+  keys: readonly RewriteKey[];
+};
+
+/**
+ * One rewritable identity key.
+ *
+ * `prefix` is everything up to the opening quote and carries **no capturing
+ * group of its own**: `literalPattern` wraps it in group 1 and opens group 2 for
+ * the quote, so both indices `LITERAL_BODY` and the replacer depend on are fixed
+ * where the pattern is composed rather than by whoever authored the prefix.
+ *
+ * `global` is whether the key is rewritten everywhere it appears or only at its
+ * first match, which is the one regex flag that varies across the table.
+ *
+ * `label` is what a refusal calls the key, and the prefix is read two ways, as
+ * the rewrite itself and as the precondition's probe, so the check that a key
+ * *was* rewritten cannot drift from the rewrite that was supposed to do it.
+ */
+type RewriteKey = {
+  global: boolean;
+  label: string;
+  prefix: string;
+};
+
+const flagsFor = (key: RewriteKey): string => (key.global ? 'gmu' : 'mu');
+
+/** The whole property: prefix, opening quote, body, matching close quote. */
+const literalPattern = (key: RewriteKey): RegExp =>
+  new RegExp(String.raw`(${key.prefix})(['"])${LITERAL_BODY}\2`, flagsFor(key));
+
+/** The key alone, matched wherever its own rewrite would look for it. */
+const keyPattern = (key: RewriteKey): RegExp =>
+  new RegExp(key.prefix, flagsFor(key));
+
+/**
+ * `source` with `newValue` written into every value `key` matches.
  *
  * A **function** replacement, which is what makes the title safe to splice: in
  * a replacement *string* `$1` and `$&` are match references, so a title
@@ -237,99 +298,142 @@ const renameClaudeMd = (cwd: string, title: string): void => {
  * `Steve's App` cannot close the literal early. Both halves are needed: the
  * function form fixes `$`, the escape fixes the quote.
  */
-const replaceQuotedValue = (
+const applyRewrite = (
   source: string,
-  pattern: RegExp,
+  key: RewriteKey,
   newValue: string
 ): string =>
   source.replace(
-    pattern,
-    // Every pattern below captures the quote as `(['"])`, so group 2 is one of
-    // the two by construction, which is what the narrower type records.
+    literalPattern(key),
+    // `literalPattern` captures the quote as `(['"])`, so group 2 is one of the
+    // two by construction, which is what the narrower type records.
     (_match: string, prefix: string, quote: JsLiteralQuote) =>
       `${prefix}${quote}${escapeJsLiteralValue(newValue, quote)}${quote}`
   );
 
-/**
- * Replace every occurrence of a string-literal property's value while
- * preserving quotes (single or double) and surrounding whitespace.
- * Used for keys whose value is the project title regardless of where
- * they appear (top-level, nested in `meta`, etc.).
- */
-const replaceStringPropertyAll = (
-  source: string,
-  key: string,
-  newValue: string
-): string =>
-  replaceQuotedValue(
-    source,
-    new RegExp(String.raw`(\b${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`, 'gmu'),
-    newValue
-  );
+/** A key whose value is the title wherever in the file it appears. */
+const unscopedKey = (key: string): RewriteKey => ({
+  global: true,
+  label: key,
+  prefix: String.raw`\b${key}\s*:\s*`,
+});
 
 /**
- * Replace a string-literal property's value, but only when the key is
- * indented at the file's top object level (a single indentation unit).
- * Nested keys with the same name (e.g. a `title` inside a deeper route
- * object) are left untouched so a user-diverged file is preserved.
+ * A key indented at the file's top object level (a single indentation unit).
+ * Nested keys with the same name (e.g. a `title` inside a deeper route object)
+ * are left untouched so a user-diverged file is preserved.
  */
-const replaceTopLevelStringProperty = (
-  source: string,
-  key: string,
-  newValue: string
-): string =>
-  replaceQuotedValue(
-    source,
-    new RegExp(
-      String.raw`^(\x20\x20${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`,
-      'gmu'
-    ),
-    newValue
-  );
+const topLevelKey = (key: string): RewriteKey => ({
+  global: true,
+  label: key,
+  prefix: String.raw`^\x20\x20${key}\s*:\s*`,
+});
 
 /**
- * Replace the `title` string-literal nested directly inside the
- * top-level `meta: { … }` block. Scopes the rewrite to the seed's
- * `meta.title` so other `title` keys elsewhere in the file are untouched.
+ * The `title` nested directly inside the top-level `meta: { … }` block: the
+ * block opened at the top object level, then the first `title:` within it
+ * before the block closes. Scoped so other `title` keys are untouched.
  */
-const replaceMetaTitle = (source: string, newValue: string): string => {
-  // Match `meta: {` opened at the top object level, then the first
-  // `title:` string within it before the block closes.
-  const pattern =
-    /^(\u0020\u0020meta\s*:\s*\{[^}]*?\btitle\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2/mu;
-
-  return replaceQuotedValue(source, pattern, newValue);
+const META_TITLE_KEY: RewriteKey = {
+  global: false,
+  label: 'meta.title',
+  prefix: String.raw`^\x20\x20meta\s*:\s*\{[^}]*?\btitle\s*:\s*`,
 };
 
-const renameCommonTs = (cwd: string, title: string): void => {
-  const target = path.join(cwd, COMMON_TS);
+/**
+ * Every identity key this step rewrites, grouped by the file carrying it. One
+ * table, read by both the rewrite below and the precondition after it.
+ *
+ * `common.ts` carries a single identity-bearing key. Other `*Name` properties
+ * exist there (form labels) but no second `siteName`, so an unscoped rewrite is
+ * safe. `_index.ts` has three, each scoped to the precise location it occupies:
+ * a global `title` rewrite would clobber `title` keys in extra routes a user
+ * may have added, which is data loss on a diverged file.
+ *
+ * Every key is optional. The shipped `_index.ts` carries only `meta.title`, so
+ * a file missing the others is a clean pass.
+ *
+ * `heroTitle` and top-level `title` are not in the seed, so a file carrying one
+ * carries a key the adopter added, and the precondition below holds it to the
+ * same standard as a seeded key. That is deliberate: this table is the single
+ * definition of what the step rewrites, and the rewrite already claims those
+ * two, overwriting either with the project title wherever it finds a literal.
+ * A refusal scoped narrower than the rewrite would mean the step silently
+ * declines to rename a key it does in fact own, which is the failure this
+ * precondition exists to remove.
+ */
+const LANGUAGE_FILES: readonly LanguageFile[] = [
+  {file: COMMON_TS, keys: [unscopedKey('siteName')]},
+  {
+    file: INDEX_PAGE_TS,
+    keys: [topLevelKey('heroTitle'), topLevelKey('title'), META_TITLE_KEY],
+  },
+];
 
-  if (!existsSync(target)) return;
-  const original = readFileSync(target, 'utf8');
-  // common.ts only carries one identity-bearing key, `siteName`. Other
-  // `*Name` properties exist (e.g. form labels) but no other `siteName`,
-  // so a global rewrite is safe.
-  const next = replaceStringPropertyAll(original, 'siteName', title);
+/**
+ * The first of `keys` that `target` carries but this step cannot rewrite, or
+ * `undefined` when the file is absent or every key present is rewritable.
+ *
+ * The probe is the rewrite's own prefix, so it reads the key exactly where the
+ * rewrite looks for it. Both halves are existential over the whole file, which
+ * is what keeps the check aligned with a rewrite that is itself file-wide: a
+ * key refuses only when it appears somewhere the rewrite would look and **no**
+ * occurrence of it anywhere in the file is a rewritable literal. So a diverged
+ * `common.ts` carrying both a `// siteName:` comment and a real
+ * `siteName: 'App'` passes, and the comment is ignored rather than refused;
+ * that same comment alone, with no literal to rewrite, refuses.
+ */
+const missedKeyIn = (
+  target: string,
+  keys: readonly RewriteKey[]
+): RewriteKey | undefined => {
+  if (!existsSync(target)) return undefined;
+  const source = readFileSync(target, 'utf8');
 
-  if (next !== original) {
-    atomicWriteFileSync(target, next);
+  return keys.find(
+    (key) => keyPattern(key).test(source) && !literalPattern(key).test(source)
+  );
+};
+
+/**
+ * The first identity key a seeded language file carries but this step cannot
+ * rewrite, or `null` when every key present is rewritable.
+ *
+ * The precondition the missing `CLAUDE.md` heading already settled for this
+ * module, applied to the other sink. A key holding something that is not a
+ * quoted literal is a rename that cannot happen, and reporting it beats exiting
+ * 0 over a file still holding the old title, where the adopter finds out from
+ * the running app rather than from the command. Checked before the first write,
+ * so a refused run has renamed nothing.
+ *
+ * It reports a key it can see but cannot rewrite, so it is silent on a key it
+ * cannot see at all: an `_index.ts` reindented past the anchored prefixes has
+ * nothing to report here and nothing to rewrite either. That gap is why the
+ * suite pins the shipped files by renaming them rather than by asking this.
+ */
+const unrewritableKey = (cwd: string): null | {file: string; label: string} => {
+  for (const {file, keys} of LANGUAGE_FILES) {
+    const missed = missedKeyIn(path.join(cwd, file), keys);
+
+    if (missed) return {file, label: missed.label};
   }
+
+  return null;
 };
 
-const renameIndexPage = (cwd: string, title: string): void => {
-  const target = path.join(cwd, INDEX_PAGE_TS);
+const renameLanguageFile = (
+  cwd: string,
+  {file, keys}: LanguageFile,
+  title: string
+): void => {
+  const target = path.join(cwd, file);
 
   if (!existsSync(target)) return;
   const original = readFileSync(target, 'utf8');
-  let next = original;
-  // The seeded `_index.ts` has exactly three identity-bearing keys whose
-  // value is the project title: top-level `heroTitle`, top-level `title`,
-  // and `meta.title`. Scope the rewrite to those precise locations; a
-  // global `title` rewrite would clobber `title` keys in extra routes a
-  // user may have added (data loss on a diverged file).
-  next = replaceTopLevelStringProperty(next, 'heroTitle', title);
-  next = replaceTopLevelStringProperty(next, 'title', title);
-  next = replaceMetaTitle(next, title);
+  const next = keys.reduce(
+    (source, key) => applyRewrite(source, key, title),
+    original
+  );
 
   if (next !== original) {
     atomicWriteFileSync(target, next);
@@ -377,10 +481,24 @@ export const run = (
 
       return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
+
+    const unrewritable = unrewritableKey(cwd);
+
+    if (unrewritable) {
+      structuredError({
+        code: 'language_value_not_rewritable',
+        message: `${unrewritable.file} carries a "${unrewritable.label}" key whose value is not a plain quoted string literal, so this step cannot rewrite it; give it a string literal value, or remove the key if it should not hold the project title, then re-run`,
+        subcommand: 'init rename',
+      });
+
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
     renamePackageJson(cwd, parsed.flags.kebab);
     renameClaudeMd(cwd, parsed.flags.title);
-    renameCommonTs(cwd, parsed.flags.title);
-    renameIndexPage(cwd, parsed.flags.title);
+
+    for (const languageFile of LANGUAGE_FILES) {
+      renameLanguageFile(cwd, languageFile, parsed.flags.title);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 

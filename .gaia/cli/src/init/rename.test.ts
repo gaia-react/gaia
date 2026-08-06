@@ -3,6 +3,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * Tests for `gaia init rename`.
  */
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -525,6 +526,78 @@ describe('init rename', () => {
     expect(raw).toContain(String.raw`title: "Steve's \"Hi\" App"`);
   });
 
+  // The seed is single-quoted, so every test above drives a literal whose
+  // wrapping quote is the only quote in it. A literal wrapped in one quote and
+  // holding the other bare is still a valid literal, and a content class that
+  // spells both quotes out cannot match it: the rewriter finds nothing, writes
+  // nothing, and exits 0 with the file untouched.
+  test('rewrites a double-quoted value holding a bare apostrophe', () => {
+    sandbox = setupSandbox();
+    const target = path.join(
+      sandbox.root,
+      'app',
+      'languages',
+      'en',
+      'common.ts'
+    );
+    // The seed with only its `siteName` quoting changed, so the `someOtherKey`
+    // assertion below stays anchored to the shape the fixture actually ships.
+    writeFileSync(
+      target,
+      COMMON_TS.replace("'GAIA'", '"Steve\'s Template"'),
+      'utf8'
+    );
+
+    expect(
+      run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      })
+    ).toBe(0);
+
+    const common = evaluateDefaultExport(readFileSync(target, 'utf8'));
+    expect((common.meta as Record<string, unknown>).siteName).toBe(
+      'Hello World'
+    );
+    expect(common.someOtherKey).toBe('untouched');
+  });
+
+  // The same class applied to this command's own output. The escaper leaves the
+  // non-wrapping quote bare, because it needs no escape, so a first rename can
+  // write a literal the second rename is then unable to match.
+  test('re-renames a value holding the quote its literal is not wrapped in', () => {
+    sandbox = setupSandbox();
+    const target = path.join(
+      sandbox.root,
+      'app',
+      'languages',
+      'en',
+      'common.ts'
+    );
+
+    expect(
+      run(['--title', 'Say "Hi" App', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      })
+    ).toBe(0);
+    // Written into a single-quoted seed, so the `"` lands bare: this is the
+    // input the second run has to match, asserted on the bytes so the test
+    // fails here rather than downstream if the escaper ever changes.
+    expect(readFileSync(target, 'utf8')).toContain(
+      'siteName: \'Say "Hi" App\''
+    );
+
+    expect(
+      run(['--title', 'Second Title', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      })
+    ).toBe(0);
+
+    const common = evaluateDefaultExport(readFileSync(target, 'utf8'));
+    expect((common.meta as Record<string, unknown>).siteName).toBe(
+      'Second Title'
+    );
+  });
+
   test.each([
     ['an apostrophe', APOSTROPHE_TITLE],
     ['a `$&` whole-match reference', MATCH_REF_TITLE],
@@ -548,6 +621,101 @@ describe('init rename', () => {
       ).toBe(first);
     }
   );
+
+  // A key the rewriter cannot match is a precondition failure, the answer this
+  // module already settled for the missing `CLAUDE.md` heading. Exiting 0 over
+  // an untouched file reports a rename that did not happen, and the adopter
+  // finds out from the running app rather than from the command.
+  test.each([
+    ['a template literal', 'siteName: `GAIA`,'],
+    ['a computed value', 'siteName: buildSiteName(),'],
+  ])(
+    'exit 1 when common.ts `siteName` is not a rewritable literal: %s',
+    (_label, line) => {
+      sandbox = setupSandbox();
+      const target = path.join(
+        sandbox.root,
+        'app',
+        'languages',
+        'en',
+        'common.ts'
+      );
+      const content = `export default {\n  meta: {\n    ${line}\n  },\n};\n`;
+      writeFileSync(target, content, 'utf8');
+
+      const exit = run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      });
+      expect(exit).toBe(1);
+      expect(stdio.errors.join('')).toContain('language_value_not_rewritable');
+      expect(stdio.errors.join('')).toContain('siteName');
+
+      // Checked ahead of the first write, so a refused run renamed nothing and
+      // the step is not recorded as completed.
+      expect(readFileSync(target, 'utf8')).toBe(content);
+      const pkg = JSON.parse(
+        readFileSync(path.join(sandbox.root, 'package.json'), 'utf8')
+      ) as {name: string};
+      expect(pkg.name).toBe('gaia');
+      expect(readState(sandbox.root).completed_steps).not.toContain('rename');
+    }
+  );
+
+  test('exit 1 when a seeded _index.ts key is not a rewritable literal', () => {
+    sandbox = setupSandbox();
+    const target = path.join(
+      sandbox.root,
+      'app',
+      'languages',
+      'en',
+      'pages',
+      '_index.ts'
+    );
+    writeFileSync(
+      target,
+      'export default {\n  heroTitle: buildHero(),\n  title: 1,\n};\n',
+      'utf8'
+    );
+
+    expect(
+      run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      })
+    ).toBe(1);
+    expect(stdio.errors.join('')).toContain('language_value_not_rewritable');
+    expect(stdio.errors.join('')).toContain('heroTitle');
+    expect(readState(sandbox.root).completed_steps).not.toContain('rename');
+  });
+
+  // The keys are optional, not required: the shipped `_index.ts` carries only
+  // `meta.title`, so a file missing `heroTitle` and a top-level `title`
+  // entirely has to stay a clean pass. Only a key that is present and
+  // unmatchable fails.
+  test('a language file missing the optional keys still succeeds', () => {
+    sandbox = setupSandbox();
+    const target = path.join(
+      sandbox.root,
+      'app',
+      'languages',
+      'en',
+      'pages',
+      '_index.ts'
+    );
+    writeFileSync(
+      target,
+      "export default {\n  meta: {\n    description: 'Description of the index page',\n    title: 'Index Page',\n  },\n};\n",
+      'utf8'
+    );
+
+    expect(
+      run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+        cwd: sandbox.root,
+      })
+    ).toBe(0);
+
+    const page = evaluateDefaultExport(readFileSync(target, 'utf8'));
+    expect((page.meta as Record<string, unknown>).title).toBe('Hello World');
+  });
 });
 
 /**
@@ -569,5 +737,70 @@ describe('CLAUDE.md template invariant', () => {
     const claudeMd = readFileSync(path.join(repoRoot, 'CLAUDE.md'), 'utf8');
 
     expect(claudeMdHasH1(claudeMd)).toBe(true);
+  });
+});
+
+/**
+ * The same invariant for the other sink: the shipped language files have to
+ * come back actually renamed, or every adopter scaffold finishes Step 6 of
+ * `/gaia-init` still carrying GAIA's title. Every test above writes its own
+ * fixture, so nothing else reads the files that ship.
+ *
+ * Asserted by renaming the real files rather than by asking the precondition
+ * about them, because the two fail on different things and only one of them is
+ * the invariant. The precondition reports a key it can see but cannot rewrite,
+ * so it is silent on a key it cannot see at all: reindenting `_index.ts`, or
+ * nesting `meta` a level deeper, moves `meta.title` out of the anchored pattern
+ * and the precondition returns "nothing wrong" for a file nothing will rewrite.
+ * Running the step and reading the values back fails on that, on a
+ * non-rewritable value, and on the file going missing alike.
+ */
+describe('language template invariant', () => {
+  test('the shipped language files come back carrying the new title', () => {
+    const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+    const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-rename-shipped-'));
+
+    try {
+      writeFileSync(
+        path.join(root, 'package.json'),
+        `${PACKAGE_JSON}\n`,
+        'utf8'
+      );
+      writeFileSync(path.join(root, 'CLAUDE.md'), CLAUDE_MD, 'utf8');
+      mkdirSync(path.join(root, 'app', 'languages', 'en', 'pages'), {
+        recursive: true,
+      });
+      copyFileSync(
+        path.join(repoRoot, 'app', 'languages', 'en', 'common.ts'),
+        path.join(root, 'app', 'languages', 'en', 'common.ts')
+      );
+      copyFileSync(
+        path.join(repoRoot, 'app', 'languages', 'en', 'pages', '_index.ts'),
+        path.join(root, 'app', 'languages', 'en', 'pages', '_index.ts')
+      );
+
+      expect(
+        run(['--title', 'Hello World', '--kebab', 'hello-world'], {cwd: root})
+      ).toBe(0);
+
+      const common = evaluateDefaultExport(
+        readFileSync(path.join(root, 'app', 'languages', 'en', 'common.ts'), {
+          encoding: 'utf8',
+        })
+      );
+      expect((common.meta as Record<string, unknown>).siteName).toBe(
+        'Hello World'
+      );
+
+      const page = evaluateDefaultExport(
+        readFileSync(
+          path.join(root, 'app', 'languages', 'en', 'pages', '_index.ts'),
+          {encoding: 'utf8'}
+        )
+      );
+      expect((page.meta as Record<string, unknown>).title).toBe('Hello World');
+    } finally {
+      rmSync(root, {force: true, recursive: true});
+    }
   });
 });
