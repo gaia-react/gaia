@@ -376,9 +376,14 @@ Some other finding entirely.'
 
 @test "6. debt:pre-provenance is counted while debt:in-progress and debt:spec-pending are not" {
   local jq_filter fixture result
-  jq_filter="$(grep -oE -- "--jq '[^']*'" "$REPO_ROOT/.gaia/scripts/debt-count-refresh.sh" | sed "s/^--jq '//; s/'\$//")"
+  # The filter is declared once, as COUNT_FILTER, and both the local-jq arm and
+  # the `gh --jq` fallback arm read that one variable. Scraping the declaration
+  # rather than a call site is what keeps this test pinned to a single spelling:
+  # when the filter lived inline at each call site, an arm could change without
+  # this scraper noticing, and adding an arm meant adding a copy it could miss.
+  jq_filter="$(grep -oE -- "^COUNT_FILTER='[^']*'" "$REPO_ROOT/.gaia/scripts/debt-count-refresh.sh" | sed "s/^COUNT_FILTER='//; s/'\$//")"
   [ -n "$jq_filter" ] || {
-    echo "no --jq filter found in debt-count-refresh.sh; the extraction anchor drifted" >&2
+    echo "no COUNT_FILTER declaration found in debt-count-refresh.sh; the extraction anchor drifted" >&2
     return 1
   }
 
