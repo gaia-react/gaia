@@ -11,6 +11,16 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-06 09a0c932 WORTHY - NUL-delimit changed-file diff on both distribution gates (#1228, #1230) -> wiki/concepts/Release Workflow.md
+- 2026-08-06 297771f6 SKIP - tests-only
+- 2026-08-06 4d0bc9a2 SKIP - tests-only
+- 2026-08-06 cfebcec5 SKIP - tests-only
+- 2026-08-06 47184ebf SKIP - tests-only: assertion hardening across bats/vitest suites (#1201, #1209, #1214)
+- 2026-08-06 466ccbb5 SKIP - quote-safe RT-006 reset + worthiness gate (#1224, #1225); scripts not documented at command level in wiki
+- 2026-08-06 473c1790 WORTHY - mutation-restore hazard + stopping rule (#1226) -> wiki/concepts/PR Merge Workflow.md (edited in-commit)
+- 2026-08-06 8b4bdc2e WORTHY - quote-safe audit membership diffs (#1213) -> wiki/concepts/Code Review Audit Agent.md, wiki/concepts/PR Merge Workflow.md (edited in-commit)
+- 2026-08-06 74667407 SKIP - CLI help-summary drift fix (#1166); internal consistency only, no documented interface changed
+- 2026-08-06 c8dec9a4 SKIP - wiki: self-referential sync commit
 - 2026-08-05 b027e62d SKIP - eslint.config guard rewrite (#1153) already documented in-commit across wiki/concepts/Claude Hooks.md, ESLint Fixes.md, wiki/decisions/Code Audit Team.md, pnpm.md, wiki/dependencies/Storybook.md, gaia-lint.md, wiki/modules/Claude Integration.md; verified accurate
 - 2026-08-05 7e801785 SKIP - internal correctness fix, trailing-newline preservation; existing wiki description accurate at its abstraction level
 - 2026-08-05 ae974ea0 SKIP - internal correctness fix, whole-file reconstruction for Edit/MultiEdit; existing wiki description accurate at its abstraction level
