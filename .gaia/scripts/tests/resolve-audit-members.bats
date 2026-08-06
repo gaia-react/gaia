@@ -347,10 +347,11 @@ code-audit-maintainer-shell"
 # 14b. Built-in roster: the CLI build/config surface dispatches maintainer-node.
 #      package.json carries the bundle build scripts + runtime deps,
 #      pnpm-lock.yaml the resolved dependency tree, tsconfig*.json the build
-#      config. Each sits beside src/ but outside .gaia/cli/src/**, so before
-#      maintainer-node claims it a change to any merges with no code-audit
-#      review. One file per test on purpose: a combined stage would still emit
-#      maintainer-node if only one of the three were owned.
+#      config, and vitest/eslint/prettier.config.* the CLI's own test and lint
+#      tool configs. Each sits beside src/ but outside .gaia/cli/src/**, so
+#      before maintainer-node claims it a change to any merges with no
+#      code-audit review. One file per test on purpose: a combined stage would
+#      still emit maintainer-node if only one of them were owned.
 # ---------------------------------------------------------------------------
 
 @test "built-in roster dispatches maintainer-node for .gaia/cli/package.json" {
@@ -387,6 +388,35 @@ code-audit-maintainer-shell"
   rm -f "$SANDBOX/.gaia/audit-ci.yml"
   stage .gaia/cli/tsconfig.json
   commit "chore: cli tsconfig"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-node" ]
+}
+
+@test "built-in roster dispatches maintainer-node for .gaia/cli/vitest.config.ts (*.config.ts)" {
+  # The sharpest of the CLI's three tool configs: `setupFiles` executes
+  # arbitrary code in every CLI test run, so a config-only diff is a code diff.
+  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  stage .gaia/cli/vitest.config.ts
+  commit "chore: cli vitest config"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-node" ]
+}
+
+@test "built-in roster dispatches maintainer-node for .gaia/cli/eslint.config.mjs (*.config.mjs)" {
+  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  stage .gaia/cli/eslint.config.mjs
+  commit "chore: cli eslint config"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-maintainer-node" ]
+}
+
+@test "built-in roster dispatches maintainer-node for .gaia/cli/prettier.config.mjs (*.config.mjs)" {
+  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  stage .gaia/cli/prettier.config.mjs
+  commit "chore: cli prettier config"
   run run_resolver
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-maintainer-node" ]

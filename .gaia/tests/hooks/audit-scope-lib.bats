@@ -535,6 +535,41 @@ EOF
   [ "$(audit_owner_for_path '.gaia/cli/pnpm-workspace.yaml')" = "code-audit-maintainer-node" ]
 }
 
+@test "the CLI's own tool config files are owned by the node member under both rosters" {
+  # `.gaia/cli/` carries three tool configs beside src/: vitest.config.ts,
+  # eslint.config.mjs, and prettier.config.mjs. The default member's bare
+  # `*.config.ts` / `*.config.mjs` globs never cross a `/`, so they claim the
+  # repository-root files only and reach none of these; the node member's
+  # explicit CLI build/config list named package.json, pnpm-lock.yaml,
+  # pnpm-workspace.yaml, and tsconfig*.json but not these. Without a glob
+  # claiming them, a PR whose only change is one of the three resolves an
+  # empty dispatched set: no member runs, no marker is required, and it merges
+  # with no member responsible for it. vitest.config.ts is the sharpest of the
+  # three, since its `setupFiles` executes arbitrary code in every CLI test
+  # run.
+
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIB"
+  audit_scope_init "$REPO_ROOT"
+  [ "$(audit_owner_for_path '.gaia/cli/vitest.config.ts')" = "code-audit-maintainer-node" ]
+  [ "$(audit_owner_for_path '.gaia/cli/eslint.config.mjs')" = "code-audit-maintainer-node" ]
+  [ "$(audit_owner_for_path '.gaia/cli/prettier.config.mjs')" = "code-audit-maintainer-node" ]
+  # The default member's own bare config globs never cross a `/`, so the
+  # repository-root files stay with it and the two do not collide.
+  [ "$(audit_owner_for_path 'vitest.config.ts')" = "code-audit-frontend" ]
+  [ "$(audit_owner_for_path 'eslint.config.mjs')" = "code-audit-frontend" ]
+
+  # The builtin fallback roster must claim them too: when .gaia/audit-ci.yml is
+  # absent the degraded gate falls back to it, and a glob present in the
+  # committed roster but missing here leaves the files ownerless there.
+  EMPTY_ROOT=$(mktemp -d -t audit-scope-cli-config-XXXXXX)
+  audit_scope_init "$EMPTY_ROOT"
+  rm -rf "$EMPTY_ROOT"
+  [ "$(audit_owner_for_path '.gaia/cli/vitest.config.ts')" = "code-audit-maintainer-node" ]
+  [ "$(audit_owner_for_path '.gaia/cli/eslint.config.mjs')" = "code-audit-maintainer-node" ]
+  [ "$(audit_owner_for_path '.gaia/cli/prettier.config.mjs')" = "code-audit-maintainer-node" ]
+}
+
 @test "UAT-002: skills-md is owned by the prose member; non-md under skills stays ownerless" {
   # shellcheck source=/dev/null
   . "$SCOPE_LIB"
