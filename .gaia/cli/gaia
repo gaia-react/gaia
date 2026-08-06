@@ -27632,6 +27632,7 @@ var HELP_TEXT54 = `Usage: gaia update merge-workspace --baseline <file> --latest
 var HELP_TOKENS52 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var MANAGED_WHOLE_VALUE_KEYS2 = [
   "minimumReleaseAge",
+  "minimumReleaseAgeStrict",
   "trustPolicy",
   "trustPolicyExclude",
   "minimumReleaseAgeExclude",

@@ -89,7 +89,8 @@ jobs:
               # '.gaia/cli/**'.
               - 'pnpm-lock.yaml'
               # Third subject of the same guard: both workspaces must harden on
-              # the same terms (minimumReleaseAge, trustPolicy). .gaia/cli is a
+              # the same terms (minimumReleaseAge, its strict flag, and
+              # trustPolicy). .gaia/cli is a
               # separate pnpm root, so the settings exist twice by hand with
               # nothing holding them together, and relaxing root's copy alone is
               # the drift worth catching at the moment it is proposed.

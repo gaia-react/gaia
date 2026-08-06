@@ -495,7 +495,7 @@ Apply the same rule to the scalar `packageManager` by hand: `B == L` → no-op; 
 
 ### Step 7b: Field-aware `pnpm-workspace.yaml` merge
 
-`pnpm-workspace.yaml` is classed `shared`, but it is a **mixed** file, so a whole-file three-way merge produces the same noise `package.json` does. It carries GAIA-authored settings (`minimumReleaseAge`, `trustPolicy`, `trustPolicyExclude`, `minimumReleaseAgeExclude`, `publicHoistPattern`, `savePrefix`, `strictPeerDependencies`) **and** adopter-extensible maps (`overrides`, `allowBuilds`). pnpm 11 reads dependency overrides and build approvals only from here, so any adopter who adds a single override drifts the file and eats a full-file conflict patch on every release that touches it. Merge it at YAML-key / map-entry granularity instead, acting only on the genuine upstream delta `B → L`.
+`pnpm-workspace.yaml` is classed `shared`, but it is a **mixed** file, so a whole-file three-way merge produces the same noise `package.json` does. It carries GAIA-authored settings (`minimumReleaseAge`, `minimumReleaseAgeStrict`, `trustPolicy`, `trustPolicyExclude`, `minimumReleaseAgeExclude`, `publicHoistPattern`, `savePrefix`, `strictPeerDependencies`) **and** adopter-extensible maps (`overrides`, `allowBuilds`). pnpm 11 reads dependency overrides and build approvals only from here, so any adopter who adds a single override drifts the file and eats a full-file conflict patch on every release that touches it. Merge it at YAML-key / map-entry granularity instead, acting only on the genuine upstream delta `B → L`.
 
 Let `A` = working-tree `pnpm-workspace.yaml`, `B` = `$BASELINE_DIR/pnpm-workspace.yaml`, `L` = `$LATEST_DIR/pnpm-workspace.yaml`.
 

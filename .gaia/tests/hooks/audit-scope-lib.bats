@@ -503,7 +503,8 @@ EOF
 
 @test "the CLI workspace policy file is owned by the node member under both rosters" {
   # .gaia/cli/pnpm-workspace.yaml carries the .gaia/cli workspace's entire
-  # supply-chain policy: minimumReleaseAge, trustPolicy, and both exclusion
+  # supply-chain policy: minimumReleaseAge and its strict-enforcement flag,
+  # trustPolicy, and both exclusion
   # lists. The node member already owns the rest of that dependency surface
   # (package.json, pnpm-lock.yaml, tsconfig*.json), so this file belongs with
   # it. Without a glob claiming it, a PR whose only change lowers

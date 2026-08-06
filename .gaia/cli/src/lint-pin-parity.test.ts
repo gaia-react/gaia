@@ -176,6 +176,7 @@ const readHardeningSettings = (
 ): {
   minimumReleaseAge: unknown;
   minimumReleaseAgeExclude: unknown[];
+  minimumReleaseAgeStrict: unknown;
   trustPolicy: unknown;
   trustPolicyExclude: unknown[];
 } => {
@@ -189,6 +190,7 @@ const readHardeningSettings = (
       workspacePath,
       'minimumReleaseAgeExclude'
     ),
+    minimumReleaseAgeStrict: settings.minimumReleaseAgeStrict,
     trustPolicy: settings.trustPolicy,
     trustPolicyExclude: asList(
       settings.trustPolicyExclude,
@@ -339,24 +341,45 @@ describe('supply-chain hardening parity', () => {
   const FLOOR_MINUTES = 10_080;
   const TRUST_POLICY = 'no-downgrade';
 
+  // `minimumReleaseAgeStrict` decides what the window above DOES on a violation,
+  // so asserting the window without it pins a number whose consequence is still
+  // free to change. With it false, a resolution that breaches the cutoff does not
+  // fail: pnpm merges the offending `name@version` entries into
+  // `minimumReleaseAgeExclude` and writes them back on an ordinary `install`,
+  // `add`, or `update`, leaving the window in the file, every assertion above
+  // green, and the immature version installed. Measured, not inferred: a sandbox
+  // workspace at this same floor installs a same-day version and gains eight
+  // exemptions it never asked for.
+  //
+  // Asserted `true` rather than merely non-false, because pnpm infers the value
+  // when the key is absent; root's `pnpm-workspace.yaml` entry states why both
+  // files set it explicitly anyway, and is the one copy of that reasoning. What
+  // matters here is that an inferred value would make this guard read pnpm's
+  // default back to itself instead of asserting the repository's own intent.
+  const RELEASE_AGE_STRICT = true;
+
   test('the root workspace enforces the hardening floor', () => {
     expect(rootSettings.minimumReleaseAge).toBeGreaterThanOrEqual(
       FLOOR_MINUTES
     );
+    expect(rootSettings.minimumReleaseAgeStrict).toBe(RELEASE_AGE_STRICT);
     expect(rootSettings.trustPolicy).toBe(TRUST_POLICY);
   });
 
   test('.gaia/cli enforces the hardening floor', () => {
     expect(cliSettings.minimumReleaseAge).toBeGreaterThanOrEqual(FLOOR_MINUTES);
+    expect(cliSettings.minimumReleaseAgeStrict).toBe(RELEASE_AGE_STRICT);
     expect(cliSettings.trustPolicy).toBe(TRUST_POLICY);
   });
 
   test('.gaia/cli hardens on the same terms as the root workspace', () => {
     expect({
       minimumReleaseAge: cliSettings.minimumReleaseAge,
+      minimumReleaseAgeStrict: cliSettings.minimumReleaseAgeStrict,
       trustPolicy: cliSettings.trustPolicy,
     }).toStrictEqual({
       minimumReleaseAge: rootSettings.minimumReleaseAge,
+      minimumReleaseAgeStrict: rootSettings.minimumReleaseAgeStrict,
       trustPolicy: rootSettings.trustPolicy,
     });
   });
