@@ -30,10 +30,14 @@
 # cheaper way to find out what CI would have told you, and that holds only
 # while every arm here answers from the same state CI audits:
 #
-#   The missing arm qualifies. It is intersected with this branch's COMMITTED
-#   changed set (the three-dot diff below), and the file map behind `missing`
-#   is a git ls-files key set, which an uncommitted edit cannot move. So it
-#   denies on committed state, the same state CI audits.
+#   The missing arm qualifies, and the intersection is precisely what makes it
+#   qualify. The file map behind `missing` is a git ls-files walk, which reads
+#   the INDEX, so a staged-but-uncommitted `git add` of a new file does reach
+#   `missing` on its own. Intersecting it with this branch's committed changed
+#   set (the three-dot diff below) is what drops that staged-only path, leaving
+#   the arm denying on committed state, the same state CI audits. Do not read
+#   the ls-files walk as confining the arm by itself, and do not drop the
+#   intersection on that belief.
 #
 #   Region drift does not qualify. The checker reports it as `.regionDrift` in
 #   the same --json report parsed below, and builds it by reading each
@@ -59,9 +63,9 @@
 # real.
 #
 # ADOPTER POSTURE: neither this script nor its registration reaches an adopter
-# clone. The script is release-excluded, and it is registered only in
-# .claude/settings.local.json, which is gitignored. Both halves are required and
-# neither is sufficient alone:
+# clone. The script is release-excluded, and the registration is committed in
+# .claude/settings.json but stripped at bundle time. Both halves are required
+# and neither is sufficient alone:
 #
 #   - The script cannot ship. It names `.gaia/cli/gaia-maintainer` and
 #     `.github/workflows/distribution-audit-pr.yml`, both release-excluded, and
@@ -72,17 +76,18 @@
 #     /distribution-audit command that do not exist on their clone, and act on
 #     that inference.
 #
-#   - The registration cannot live in .claude/settings.json. That file is
-#     manifest class `shared` and reaches adopter clones, so a registration
-#     there would point every adopter's PreToolUse/Bash chain at a file they do
-#     not have. `json-strip` addresses object keys by dot-notation and cannot
-#     remove one element from the hooks[] array, so there is no scrub path that
-#     would let the registration ship and be stripped.
+#   - The registration must not survive into an adopter bundle.
+#     .claude/settings.json is manifest class `shared` and reaches adopter
+#     clones, so a registration that shipped would point every adopter's
+#     PreToolUse/Bash chain at a file they do not have. The `json-strip-array-
+#     element` rule in .gaia/release-scrub.yml removes exactly this element
+#     (selector `hooks.PreToolUse[].hooks[]` matching this script's command)
+#     before tar, so the committed registration never reaches an adopter.
 #
-# The cost of that pairing is that the gate is maintainer-machine-local: it does
-# not travel to another maintainer clone until the scrub engine can strip a
-# single array element. The inertness guard below stays regardless, so a
-# maintainer checkout with no built binary is also a clean no-op.
+# Committing the registration is what makes the gate travel: every maintainer
+# clone gets it from the checkout rather than having to re-add it by hand. The
+# inertness guard below stays regardless, so a maintainer checkout with no built
+# binary is also a clean no-op.
 #
 # FAIL-OPEN on every uncertainty: no maintainer binary (adopter clone), no jq,
 # no git, an unresolvable base ref, a non-JSON report, or any exit >= 2 from the
