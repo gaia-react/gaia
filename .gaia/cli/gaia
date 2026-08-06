@@ -17976,7 +17976,8 @@ var HELP_TEXT17 = `Usage: gaia init rename --title <T> --kebab <K>
   Exit codes:
     0  success (no stdout)
     1  user-correctable error (missing flags, invalid title or kebab, no
-       package.json, no CLAUDE.md heading)
+       package.json, no CLAUDE.md heading, a language-file key whose value
+       is not a rewritable string literal)
     2  unexpected (filesystem failure)
 `;
 var HELP_TOKENS17 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -18063,46 +18064,60 @@ var renameClaudeMd = (cwd, title) => {
   lines[index] = heading;
   atomicWriteFileSync(target, lines.join("\n"));
 };
-var replaceQuotedValue = (source, pattern, newValue) => source.replace(
-  pattern,
-  // Every pattern below captures the quote as `(['"])`, so group 2 is one of
-  // the two by construction, which is what the narrower type records.
+var LITERAL_BODY = String.raw`(?:(?!\2)[^\n\\]|\\.)*`;
+var flagsFor = (key) => key.global ? "gmu" : "mu";
+var literalPattern = (key) => new RegExp(String.raw`(${key.prefix})(['"])${LITERAL_BODY}\2`, flagsFor(key));
+var keyPattern = (key) => new RegExp(key.prefix, flagsFor(key));
+var applyRewrite = (source, key, newValue) => source.replace(
+  literalPattern(key),
+  // `literalPattern` captures the quote as `(['"])`, so group 2 is one of the
+  // two by construction, which is what the narrower type records.
   (_match, prefix, quote) => `${prefix}${quote}${escapeJsLiteralValue(newValue, quote)}${quote}`
 );
-var replaceStringPropertyAll = (source, key, newValue) => replaceQuotedValue(
-  source,
-  new RegExp(String.raw`(\b${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`, "gmu"),
-  newValue
-);
-var replaceTopLevelStringProperty = (source, key, newValue) => replaceQuotedValue(
-  source,
-  new RegExp(
-    String.raw`^(\x20\x20${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`,
-    "gmu"
-  ),
-  newValue
-);
-var replaceMetaTitle = (source, newValue) => {
-  const pattern = /^(\u0020\u0020meta\s*:\s*\{[^}]*?\btitle\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2/mu;
-  return replaceQuotedValue(source, pattern, newValue);
+var unscopedKey = (key) => ({
+  global: true,
+  label: key,
+  prefix: String.raw`\b${key}\s*:\s*`
+});
+var topLevelKey = (key) => ({
+  global: true,
+  label: key,
+  prefix: String.raw`^\x20\x20${key}\s*:\s*`
+});
+var META_TITLE_KEY = {
+  global: false,
+  label: "meta.title",
+  prefix: String.raw`^\x20\x20meta\s*:\s*\{[^}]*?\btitle\s*:\s*`
 };
-var renameCommonTs = (cwd, title) => {
-  const target = path15.join(cwd, COMMON_TS);
-  if (!existsSync8(target)) return;
-  const original = readFileSync10(target, "utf8");
-  const next = replaceStringPropertyAll(original, "siteName", title);
-  if (next !== original) {
-    atomicWriteFileSync(target, next);
+var LANGUAGE_FILES = [
+  { file: COMMON_TS, keys: [unscopedKey("siteName")] },
+  {
+    file: INDEX_PAGE_TS,
+    keys: [topLevelKey("heroTitle"), topLevelKey("title"), META_TITLE_KEY]
   }
+];
+var missedKeyIn = (target, keys) => {
+  if (!existsSync8(target)) return void 0;
+  const source = readFileSync10(target, "utf8");
+  return keys.find(
+    (key) => keyPattern(key).test(source) && !literalPattern(key).test(source)
+  );
 };
-var renameIndexPage = (cwd, title) => {
-  const target = path15.join(cwd, INDEX_PAGE_TS);
+var unrewritableKey = (cwd) => {
+  for (const { file: file2, keys } of LANGUAGE_FILES) {
+    const missed = missedKeyIn(path15.join(cwd, file2), keys);
+    if (missed) return { file: file2, label: missed.label };
+  }
+  return null;
+};
+var renameLanguageFile = (cwd, { file: file2, keys }, title) => {
+  const target = path15.join(cwd, file2);
   if (!existsSync8(target)) return;
   const original = readFileSync10(target, "utf8");
-  let next = original;
-  next = replaceTopLevelStringProperty(next, "heroTitle", title);
-  next = replaceTopLevelStringProperty(next, "title", title);
-  next = replaceMetaTitle(next, title);
+  const next = keys.reduce(
+    (source, key) => applyRewrite(source, key, title),
+    original
+  );
   if (next !== original) {
     atomicWriteFileSync(target, next);
   }
@@ -18131,10 +18146,20 @@ var run18 = (argv, options = {}) => {
       });
       return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
+    const unrewritable = unrewritableKey(cwd);
+    if (unrewritable) {
+      structuredError({
+        code: "language_value_not_rewritable",
+        message: `${unrewritable.file} carries a "${unrewritable.label}" key whose value is not a plain quoted string literal, so this step cannot rewrite it; give it a string literal value, or remove the key if it should not hold the project title, then re-run`,
+        subcommand: "init rename"
+      });
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
     renamePackageJson(cwd, parsed.flags.kebab);
     renameClaudeMd(cwd, parsed.flags.title);
-    renameCommonTs(cwd, parsed.flags.title);
-    renameIndexPage(cwd, parsed.flags.title);
+    for (const languageFile of LANGUAGE_FILES) {
+      renameLanguageFile(cwd, languageFile, parsed.flags.title);
+    }
   } catch (error51) {
     const message = error51 instanceof Error ? error51.message : String(error51);
     if (message.includes("not found")) {
