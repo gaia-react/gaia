@@ -127,7 +127,9 @@ run_gate() {
 @test "fails on a newly-shipping file with no answer in the manifest" {
   commit_file "shipped.txt"
   install_maintainer_mock '[{"file":"shipped.txt"}]'
-  run run_gate "$(gate_body)"
+  local body
+  body="$(gate_body)"
+  run run_gate "$body"
   [ "$status" -eq 1 ]
   grep -qF 'shipped.txt' <<<"$output" || return 1
   grep -qF '1 newly-shipping file(s)' <<<"$output" || return 1
@@ -136,7 +138,9 @@ run_gate() {
 @test "passes when the report answers every file this PR changes" {
   commit_file "shipped.txt"
   install_maintainer_mock '[]'
-  run run_gate "$(gate_body)"
+  local body
+  body="$(gate_body)"
+  run run_gate "$body"
   [ "$status" -eq 0 ]
 }
 
@@ -147,7 +151,9 @@ run_gate() {
   # is what makes the encoding test below a test of the INTERSECTION.
   commit_file "shipped.txt"
   install_maintainer_mock '[{"file":"unrelated.txt"}]'
-  run run_gate "$(gate_body)"
+  local body
+  body="$(gate_body)"
+  run run_gate "$body"
   [ "$status" -eq 0 ]
 }
 
@@ -165,7 +171,9 @@ run_gate() {
 @test "fails when the unanswered path carries non-ASCII bytes" {
   commit_file "café.txt"
   install_maintainer_mock '[{"file":"café.txt"}]'
-  run run_gate "$(gate_body)"
+  local body
+  body="$(gate_body)"
+  run run_gate "$body"
   [ "$status" -eq 1 ]
   grep -qF 'café.txt' <<<"$output" || return 1
   # Non-vacuity: the same repository and the same range through the pre-fix
