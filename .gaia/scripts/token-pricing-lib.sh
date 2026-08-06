@@ -123,19 +123,34 @@ gaia_apply_rate_overlay() {
   fi
 
   # `gaia_load_rate_table` only asserts `has("models")`, so an overlay whose
-  # `models` is a string, or whose model value is not a window array, gets past
-  # it. Both shapes have to be REFUSED here rather than merged:
+  # `models` is a string, or whose model value is not a usable window array, gets
+  # past it. Every such shape has to be REFUSED here rather than merged:
   #   - a non-object `models` raises inside jq, and swallowing that with
   #     `|| true` would drop the overlay down the same silent path an empty one
   #     takes, contradicting what this function promises two comments up.
   #   - a model whose value is not an array merges cleanly and is then announced
   #     as active while pricing nothing, which is a confidently-wrong figure
   #     wearing an "overlay is working" label.
-  # One shape check covers both, and it runs before the merge so a refusal costs
-  # nothing.
+  #   - a model whose array is EMPTY wears the same label: a model key replaces
+  #     that model's whole window array, so `[]` leaves rate_window nothing to
+  #     select and the model prices at zero on a readout announcing the overlay
+  #     as active.
+  #   - a model whose array holds non-objects (`[7,35]`, the bare rate pair an
+  #     operator reaches for) merges and then raises inside rate_window at
+  #     pricing time, where the consumer reports a failure whose stated reason
+  #     never names the overlay.
+  # Checking the array's CONTENTS rather than only its type covers all four, and
+  # it runs before the merge so a refusal costs nothing.
+  #
+  # Do not tighten further to require numeric `input`/`output`. token-tally.sh's
+  # `print_unpriced_remedy` emits those as strings on purpose, so an unedited
+  # paste degrades `dollars` to null instead of pricing the model at zero;
+  # refusing the entry outright would take that degrade with it.
   if ! jq -e '(.models | type) == "object"
-              and ([.models[] | type] | all(. == "array"))' >/dev/null 2>&1 <<<"$overlay"; then
-    printf 'token-rates: local overlay is malformed (models must be an object of window arrays); pricing from the shipped table alone: %s\n' \
+              and ([.models[]] | all((type == "array")
+                                     and (length > 0)
+                                     and (all(.[]; type == "object"))))' >/dev/null 2>&1 <<<"$overlay"; then
+    printf 'token-rates: local overlay is malformed (models must be an object whose every value is a non-empty array of window objects); pricing from the shipped table alone: %s\n' \
       "$overlay_path" >&2
     return 0
   fi
