@@ -406,16 +406,12 @@ const missedKeyIn = (
  * the running app rather than from the command. Checked before the first write,
  * so a refused run has renamed nothing.
  *
- * Exported so the suite asserting the shipped language files runs them through
- * the same predicate the step uses and cannot drift from it, exactly as
- * `claudeMdHasH1` is. That guard is load-bearing here: reshaping a seeded value
- * into a template literal, a computed value, or a different indentation now
- * fails Step 6 of `/gaia-init` for every adopter scaffold, where the same drift
- * used to pass silently.
+ * It reports a key it can see but cannot rewrite, so it is silent on a key it
+ * cannot see at all: an `_index.ts` reindented past the anchored prefixes has
+ * nothing to report here and nothing to rewrite either. That gap is why the
+ * suite pins the shipped files by renaming them rather than by asking this.
  */
-export const unrewritableKey = (
-  cwd: string
-): null | {file: string; label: string} => {
+const unrewritableKey = (cwd: string): null | {file: string; label: string} => {
   for (const {file, keys} of LANGUAGE_FILES) {
     const missed = missedKeyIn(path.join(cwd, file), keys);
 

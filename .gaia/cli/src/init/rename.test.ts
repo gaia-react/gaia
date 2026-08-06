@@ -3,6 +3,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * Tests for `gaia init rename`.
  */
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -13,7 +14,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {runInNewContext} from 'node:vm';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
-import {claudeMdHasH1, run, unrewritableKey} from './rename.js';
+import {claudeMdHasH1, run} from './rename.js';
 import {readState} from './util/state.js';
 
 type Sandbox = {
@@ -740,20 +741,66 @@ describe('CLAUDE.md template invariant', () => {
 });
 
 /**
- * The same invariant for the other sink. `rename` now refuses when a seeded
- * language key holds something it cannot rewrite, so reshaping a shipped value
- * into a template literal, a computed value, or a different indentation fails
- * Step 6 of `/gaia-init` for every adopter scaffold. Every test above writes
- * its own fixture, so nothing else reads the files that actually ship, and the
- * drift that used to be a silent no-op is now a hard failure.
+ * The same invariant for the other sink: the shipped language files have to
+ * come back actually renamed, or every adopter scaffold finishes Step 6 of
+ * `/gaia-init` still carrying GAIA's title. Every test above writes its own
+ * fixture, so nothing else reads the files that ship.
  *
- * Asserted through `unrewritableKey`, the predicate the step itself uses, for
- * the reason the `CLAUDE.md` invariant above gives.
+ * Asserted by renaming the real files rather than by asking the precondition
+ * about them, because the two fail on different things and only one of them is
+ * the invariant. The precondition reports a key it can see but cannot rewrite,
+ * so it is silent on a key it cannot see at all: reindenting `_index.ts`, or
+ * nesting `meta` a level deeper, moves `meta.title` out of the anchored pattern
+ * and the precondition returns "nothing wrong" for a file nothing will rewrite.
+ * Running the step and reading the values back fails on that, on a
+ * non-rewritable value, and on the file going missing alike.
  */
 describe('language template invariant', () => {
-  test('the shipped language files carry values rename can rewrite', () => {
+  test('the shipped language files come back carrying the new title', () => {
     const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+    const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-rename-shipped-'));
 
-    expect(unrewritableKey(repoRoot)).toBeNull();
+    try {
+      writeFileSync(
+        path.join(root, 'package.json'),
+        `${PACKAGE_JSON}\n`,
+        'utf8'
+      );
+      writeFileSync(path.join(root, 'CLAUDE.md'), CLAUDE_MD, 'utf8');
+      mkdirSync(path.join(root, 'app', 'languages', 'en', 'pages'), {
+        recursive: true,
+      });
+      copyFileSync(
+        path.join(repoRoot, 'app', 'languages', 'en', 'common.ts'),
+        path.join(root, 'app', 'languages', 'en', 'common.ts')
+      );
+      copyFileSync(
+        path.join(repoRoot, 'app', 'languages', 'en', 'pages', '_index.ts'),
+        path.join(root, 'app', 'languages', 'en', 'pages', '_index.ts')
+      );
+
+      expect(
+        run(['--title', 'Hello World', '--kebab', 'hello-world'], {cwd: root})
+      ).toBe(0);
+
+      const common = evaluateDefaultExport(
+        readFileSync(path.join(root, 'app', 'languages', 'en', 'common.ts'), {
+          encoding: 'utf8',
+        })
+      );
+      expect((common.meta as Record<string, unknown>).siteName).toBe(
+        'Hello World'
+      );
+
+      const page = evaluateDefaultExport(
+        readFileSync(
+          path.join(root, 'app', 'languages', 'en', 'pages', '_index.ts'),
+          {encoding: 'utf8'}
+        )
+      );
+      expect((page.meta as Record<string, unknown>).title).toBe('Hello World');
+    } finally {
+      rmSync(root, {force: true, recursive: true});
+    }
   });
 });
