@@ -5,6 +5,19 @@
 # (.gaia/local/debt/count.json) consumed by the statusline `Run /gaia-debt`
 # segment.
 #
+# The same cache carries `coveredPaths`: the repo-relative paths that already
+# have an open `tech-debt` issue, parsed out of each issue body's
+# `gaia-debt-key` comment. check-updates.sh reads that list to suppress the
+# audit nudge's `project_drift` arm for a file whose over-budget condition is
+# already tracked, so a completed `/gaia-audit` that files rather than trims
+# leaves the nudge clear instead of re-firing for work it just queued.
+#
+# `coveredPaths` and `openCount` deliberately apply DIFFERENT filters to the
+# same fetch. `openCount` excludes claimed and parked issues so they do not
+# inflate the nudge for a peer session; `coveredPaths` excludes nothing, because
+# a claimed issue still covers its path and suppression must hold while someone
+# is working on it.
+#
 # This refresh is INDEPENDENT of the 6h aggregate update-check refresher
 # (check-updates.sh). The two debt-invalidation events (the audit filing a
 # tech-debt issue; a /gaia-debt PR merging) drop a staleness sentinel
@@ -87,11 +100,20 @@ mtime_of() {
 # Read previous cache values (used as fallbacks on partial failure).
 prev_computed_at=0
 prev_open_count=0
+prev_covered_paths='[]'
 have_prev_cache=false
 if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   have_prev_cache=true
   prev_computed_at=$(jq -r '.computedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_open_count=$(jq -r '.openCount // 0' "$CACHE_FILE" 2>/dev/null)
+  # Same never-blank posture as the count: a partial failure below keeps the
+  # paths already cached rather than dropping suppression on a transient error.
+  # Read once and validate that value, so the guard and the assignment cannot
+  # disagree about what was read.
+  covered_read=$(jq -c '.coveredPaths // []' "$CACHE_FILE" 2>/dev/null)
+  case "$covered_read" in
+    '['*) prev_covered_paths="$covered_read" ;;
+  esac
   case "$prev_computed_at" in
     ''|*[!0-9]*) prev_computed_at=0 ;;
   esac
@@ -138,14 +160,47 @@ mkdir -p "$DEBT_DIR" 2>/dev/null
 # parked issue does not inflate the nudge for a peer session. Guarded on gh
 # presence + auth + network; on ANY failure keep the previous cached count
 # (never blank it).
+#
+# ONE fetch answers both fields. With local jq the raw issue list is pulled once
+# and filtered twice here; without it, gh's own `--jq` computes the count
+# server-side exactly as before and `coveredPaths` is written EMPTY rather than
+# carried forward, since deriving it needs jq and the no-jq write branch below
+# hardcodes the empty list. That degradation is safe in one direction only, and
+# deliberately so: fewer covered paths means less suppression, so the nudge
+# fires more often, never less. A missing jq can never silence a live
+# over-budget condition. What it does cost is history: check-updates.sh then
+# sees no covered path, drops its auditDriftBaseline entries, and re-seeds them
+# at each file's current larger size once jq returns.
 open_count="$prev_open_count"
+covered_paths="$prev_covered_paths"
 recompute_ok=false
+# One expression, used by whichever arm runs, so the two can never drift apart.
+COUNT_FILTER='[.[] | select([.labels[].name] | (index("debt:in-progress") or index("debt:spec-pending")) | not)] | length'
 if command -v gh >/dev/null 2>&1; then
-  count_out=$(gh issue list --label tech-debt --state open --json number,labels --jq '[.[] | select([.labels[].name] | (index("debt:in-progress") or index("debt:spec-pending")) | not)] | length' --limit 1000 2>/dev/null)
-  case "$count_out" in
-    ''|*[!0-9]*) ;;
-    *) open_count="$count_out"; recompute_ok=true ;;
-  esac
+  if command -v jq >/dev/null 2>&1; then
+    issues_json=$(gh issue list --label tech-debt --state open --json number,labels,body --limit 1000 2>/dev/null)
+    count_out=$(printf '%s' "$issues_json" | jq "$COUNT_FILTER" 2>/dev/null)
+    # Anchored on the whole `<!-- gaia-debt-key:` opener, not a bare `path=` and
+    # not the bare key name, so body prose that merely mentions the key cannot
+    # inject a path. That direction matters: a false match would ADD suppression,
+    # which is the one direction the header's safety argument does not cover.
+    # The lazy ` line=` terminator is what lets a path contain spaces, as
+    # several filed issues do.
+    paths_out=$(printf '%s' "$issues_json" | jq -c '[.[] | (.body // "") | scan("<!-- gaia-debt-key:[^>]*?path=(.+?) line=")] | flatten | unique' 2>/dev/null)
+    case "$count_out" in
+      ''|*[!0-9]*) ;;
+      *) open_count="$count_out"; recompute_ok=true ;;
+    esac
+    case "$paths_out" in
+      '['*) covered_paths="$paths_out" ;;
+    esac
+  else
+    count_out=$(gh issue list --label tech-debt --state open --json number,labels --jq "$COUNT_FILTER" --limit 1000 2>/dev/null)
+    case "$count_out" in
+      ''|*[!0-9]*) ;;
+      *) open_count="$count_out"; recompute_ok=true ;;
+    esac
+  fi
 fi
 
 # Backend absent / unauthenticated / network failure with a prior cache: leave
@@ -169,10 +224,13 @@ if command -v jq >/dev/null 2>&1; then
   jq -n \
     --argjson openCount "$open_count" \
     --argjson computedAt "$now" \
-    '{schema: 1, openCount: $openCount, computedAt: $computedAt}' \
+    --argjson coveredPaths "$covered_paths" \
+    '{schema: 1, openCount: $openCount, computedAt: $computedAt, coveredPaths: $coveredPaths}' \
     > "$tmp_file" 2>/dev/null
 else
-  printf '{"schema":1,"openCount":%s,"computedAt":%s}\n' "$open_count" "$now" > "$tmp_file" 2>/dev/null
+  # The no-jq branch hardcodes an empty list because deriving it requires jq;
+  # readers treat a missing or empty list as "suppress nothing".
+  printf '{"schema":1,"openCount":%s,"computedAt":%s,"coveredPaths":[]}\n' "$open_count" "$now" > "$tmp_file" 2>/dev/null
 fi
 
 if [ -s "$tmp_file" ]; then

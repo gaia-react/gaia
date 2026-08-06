@@ -271,7 +271,7 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 - `.claude/hooks/debt-session-reconcile.sh`
 - `.claude/skills/gaia/references/debt.md`
 <!-- gaia:maintainer-only:start -->
-- Tests: `.gaia/tests/hooks/debt-sentinel-touch.bats`, `.gaia/tests/hooks/debt-session-reconcile.bats`, `.gaia/scripts/tests/debt-count-refresh.bats`
+- Tests: `.gaia/tests/hooks/debt-sentinel-touch.bats`, `.gaia/tests/hooks/debt-session-reconcile.bats`, `.gaia/scripts/tests/debt-count-refresh.bats`, `.gaia/tests/statusline/audit-nudge-drift-suppression.bats`
 <!-- gaia:maintainer-only:end -->
 
 The governed set also includes the `debt:in-progress` claim label: `.claude/skills/gaia/references/debt.md` creates and applies it as the `/gaia-debt` in-progress claim, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count. This recipe never creates or applies `debt:in-progress` itself. The same holds for `debt:spec-pending`: `debt.md` creates and applies it as the `/gaia-debt` design-first handoff park label, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count too. This recipe never creates or applies `debt:spec-pending` itself.
