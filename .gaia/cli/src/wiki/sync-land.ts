@@ -250,8 +250,9 @@ const protectedBranchLanding = (
   }
 
   // Land like any other PR: `--auto` waits for the gate to go green server side,
-  // then finalizeMerge polls for the merge and cleans up locally (or defers to
-  // the session-start janitor on timeout). Mirrors `chain finish`.
+  // then finalizeMerge polls for the merge and cleans up locally (or, on
+  // timeout, leaves the catch-up to the router's `sync await` verb and the
+  // session-start janitor). Mirrors `chain finish`.
   return finalizeMerge({
     attempts: options.mergePollAttempts,
     base: ctx.originalBranch,

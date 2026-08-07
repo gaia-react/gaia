@@ -11,6 +11,19 @@ set -euo pipefail
 # Best-effort: any internal failure exits 0. Never block prompt submission.
 trap 'exit 0' ERR
 
+# Drain the janitor's one-line base-catch-up report, if any. Delivered here
+# because a UserPromptSubmit hook's stdout is injected into the conversation,
+# which a SessionStart hook's exit-0 stderr is not. Read-and-delete, so the
+# line surfaces exactly once. Never blocks: any failure is a silent skip.
+# Placed above every early exit below (jq, work-tree, wiki/.state.json) so a
+# checkout missing any of those still delivers the line; nothing has consumed
+# stdin yet at this point.
+catchup_report=".gaia/local/cache/shared/wiki-base-catchup.report"
+if [ -f "$catchup_report" ]; then
+  head -n 1 "$catchup_report" 2>/dev/null || true
+  rm -f "$catchup_report" 2>/dev/null || true
+fi
+
 command -v jq >/dev/null 2>&1 || exit 0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 [ -f wiki/.state.json ] || exit 0

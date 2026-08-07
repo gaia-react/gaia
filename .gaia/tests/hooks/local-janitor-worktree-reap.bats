@@ -31,7 +31,11 @@ teardown() {
 # Stand up a repo with a real bare origin so upstream-track state is faithful.
 make_repo() {
   ORIGIN=$(mktemp -d -t gaia-janitor-wt-origin-XXXXXX)
-  git init -q --bare "$ORIGIN"
+  # --initial-branch=main: an unpinned bare init follows ambient
+  # init.defaultBranch, which is unset on CI (falls back to "master"); a
+  # fetch or set-head against that name then cannot resolve. Pin it
+  # explicitly, matching local-janitor.bats's make_repo_default_branch.
+  git init -q --bare --initial-branch=main "$ORIGIN"
   REPO=$(mktemp -d -t gaia-janitor-wt-repo-XXXXXX)
   git -C "$REPO" init -q --initial-branch=main
   git -C "$REPO" config user.email test@example.com
@@ -42,6 +46,12 @@ make_repo() {
   git -C "$REPO" add f
   git -C "$REPO" commit -q -m init
   mkdir -p "$REPO/.gaia/local"
+  # Push main and pin origin/HEAD so origin/<base> resolves: sweep #8's
+  # cherry-based reap guard treats an unresolvable base as unanswerable and
+  # keeps the worktree, so a fixture that never establishes one can never
+  # exercise a genuine reap.
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
 }
 
 # make_repo_spaced: identical to make_repo, but REPO's absolute path contains
@@ -50,7 +60,8 @@ make_repo() {
 # not quote the path, so a naive awk $2 split truncates at the first space.
 make_repo_spaced() {
   ORIGIN=$(mktemp -d -t gaia-janitor-wt-origin-XXXXXX)
-  git init -q --bare "$ORIGIN"
+  # --initial-branch=main: same ambient-config hazard as make_repo above.
+  git init -q --bare --initial-branch=main "$ORIGIN"
   REPO=$(mktemp -d -t 'gaia janitor wt repo XXXXXX')
   git -C "$REPO" init -q --initial-branch=main
   git -C "$REPO" config user.email test@example.com
@@ -61,6 +72,9 @@ make_repo_spaced() {
   git -C "$REPO" add f
   git -C "$REPO" commit -q -m init
   mkdir -p "$REPO/.gaia/local"
+  # Same rationale as make_repo above: pin a resolvable origin/<base>.
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
 }
 
 # A branch whose upstream is [gone]: pushed (tracking ref created), then the
@@ -112,6 +126,12 @@ ignore_local_state() {
   printf '.gaia/local/\n' > "$REPO/.gitignore"
   git -C "$REPO" add .gitignore
   git -C "$REPO" commit -q -m "ignore local state"
+  # Keep origin/main current with this new commit: sweep #8's cherry-based
+  # reap guard compares a candidate branch against origin/<base>, and a
+  # branch cut from local main after this commit would otherwise carry a
+  # commit origin/main does not have, reading as unanswerable regardless of
+  # the branch's own merge state.
+  git -C "$REPO" push -q origin main
 }
 
 # write_plan_sentinel <root> <plan-rel> <branch>: a RUNNING plan sentinel at
@@ -318,4 +338,169 @@ write_plan_sentinel() {
   [ "$status" -eq 0 ]
   branch_exists "debt/109-other" && return 1
   [ ! -e "$wt" ]
+}
+
+# --- UAT-017 / UAT-019: sweep #1's fast-forward, run from a linked worktree,
+# and sweep #8's guards under the newly routine [gone] trigger -------------
+#
+# Sweep #1's own prune-fetch (task-janitor-fetch.md) now runs a real
+# `git fetch --prune` whenever ANY wiki-sync/* branch is present, not on some
+# rarer schedule -- and that fetch is never tree-scoped: refs and the object
+# store are shared across every worktree of the same repo, so it can flip an
+# UNRELATED branch's upstream-track to [gone] as a side effect. Sweep #8's
+# existing guards (current checkout, dirty tree, live RUNNING sentinel) have
+# to keep holding under this now much more frequent trigger.
+
+# push_upstream_then_delete <branch>: creates <branch>, pushes it (tracking
+# ref created), then deletes the remote head WITHOUT a local prune -- so its
+# upstream-track only flips to [gone] once something else (sweep #1's own
+# fetch --prune) resolves it, mirroring UAT-019's premise exactly.
+push_upstream_then_delete() {
+  local br="$1"
+  git -C "$REPO" branch "$br"
+  git -C "$REPO" push -q -u origin "$br"
+  git -C "$REPO" push -q origin --delete "$br"
+}
+
+@test "sweep 1: a worktree checked out on base fast-forwards main via its own tree, not main_root's" {
+  make_repo
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
+  make_gone_branch "wiki-sync/2026-08-13-6666663"
+
+  # Advance origin/main beyond what REPO's own main currently has, via a
+  # throwaway clone so REPO's own history is never touched directly.
+  local clone
+  clone=$(mktemp -d -t gaia-janitor-wt-adv-XXXXXX)
+  git clone -q "$ORIGIN" "$clone"
+  git -C "$clone" config user.email test@example.com
+  git -C "$clone" config user.name Test
+  git -C "$clone" config commit.gpgsign false
+  echo advanced >> "$clone/f"
+  git -C "$clone" add f
+  git -C "$clone" commit -q -m advance
+  git -C "$clone" push -q origin main
+  rm -rf "$clone"
+
+  # Free `main` for the worktree: git refuses the same branch checked out in
+  # two working trees at once, so REPO's own checkout has to move off it
+  # first. Detaching leaves REPO's checkout on the same commit main was on
+  # before the advance above -- a worktree checked out on some OTHER branch
+  # would never reach the merge command at all, since the on-base gate
+  # declines before it, which is exactly what made the previous fixture here
+  # unable to tell `-C "$root"` from `-C "$main_root"` apart.
+  git -C "$REPO" checkout -q --detach main
+  mkdir -p "$REPO/.claude/worktrees"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/main-side" main
+  wt="$REPO/.claude/worktrees/main-side"
+
+  main_before=$(git -C "$REPO" rev-parse main)
+  cd "$wt"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  # The fetch and the reap are NOT tree-scoped -- refs and the object store
+  # are shared, so this invocation, run from the worktree, still fetches and
+  # still reaps the wiki-sync branch.
+  branch_exists "wiki-sync/2026-08-13-6666663" && return 1
+  # `main` is a single ref shared across every worktree of this repo, and it
+  # only advances when the merge runs where main is actually checked out
+  # (the worktree, $root). Targeting main_root's own checkout instead --
+  # detached at an unrelated commit -- fast-forwards that detached HEAD in
+  # place without ever touching the `main` ref, leaving it exactly where it
+  # started; that divergence is what proves the merge is scoped to $root.
+  [ "$(git -C "$REPO" rev-parse main)" != "$main_before" ] || return 1
+  [ "$(git -C "$REPO" rev-parse main)" = "$(git -C "$REPO" rev-parse origin/main)" ]
+}
+
+@test "sweep 8: a worktree that is the current checkout survives the newly routine [gone] trigger" {
+  make_repo
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
+  make_gone_branch "wiki-sync/2026-08-14-7777774"
+
+  push_upstream_then_delete "debt/300-current"
+  mkdir -p "$REPO/.claude/worktrees"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/debt/300-current" "debt/300-current"
+  wt="$REPO/.claude/worktrees/debt/300-current"
+  mkdir -p "$wt/.gaia/local"
+
+  cd "$wt"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/300-current"
+}
+
+@test "sweep 8: a worktree with a dirty tree survives the newly routine [gone] trigger" {
+  make_repo
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
+  make_gone_branch "wiki-sync/2026-08-15-8888885"
+
+  push_upstream_then_delete "debt/301-dirty"
+  mkdir -p "$REPO/.claude/worktrees"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/debt/301-dirty" "debt/301-dirty"
+  wt="$REPO/.claude/worktrees/debt/301-dirty"
+  echo dirty > "$wt/dirty.txt"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/301-dirty"
+}
+
+@test "sweep 8: a worktree named by a live RUNNING plan survives the newly routine [gone] trigger" {
+  make_repo
+  ignore_local_state
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
+  make_gone_branch "wiki-sync/2026-08-16-9999996"
+
+  push_upstream_then_delete "debt/302-live"
+  mkdir -p "$REPO/.claude/worktrees"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/debt/302-live" "debt/302-live"
+  wt="$REPO/.claude/worktrees/debt/302-live"
+  write_plan_sentinel "$wt" "plans/PLAN-910" "debt/302-live"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/302-live"
+}
+
+# Regression: sweep #1's prune-fetch is repo-global and flips EVERY branch
+# whose remote head is absent to [gone], not only wiki-sync/* ones. A branch
+# whose pull request squash-merged reads [gone] the moment sweep #1's fetch
+# resolves it, exactly like a genuinely abandoned one -- ancestry cannot tell
+# the two apart, only a PATCH-ID (`git cherry`) comparison against
+# origin/<base> can. This models a developer who pushed the branch, its PR
+# squash-merged (GitHub auto-deletes the head branch), and then kept
+# committing follow-ups locally without pushing again: before the hook runs
+# the branch reads [ahead 1]; the hook's own fetch is what makes it [gone].
+# Sweep #8 must refuse to reap it, the same way sweep #1's own reap already
+# refuses a wiki-sync/* branch in the identical shape.
+@test "sweep 8: a worktree branch with an unpushed follow-up commit survives its upstream going [gone]" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-17-1111112"
+
+  push_upstream_then_delete "debt/303-followup"
+  mkdir -p "$REPO/.claude/worktrees"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/debt/303-followup" "debt/303-followup"
+  wt="$REPO/.claude/worktrees/debt/303-followup"
+
+  # The unpushed follow-up commit: made locally after the squash merge, never
+  # pushed, and reachable from no remote-tracking ref.
+  echo followup > "$wt/followup.txt"
+  git -C "$wt" add followup.txt
+  git -C "$wt" commit -q -m followup
+  followup_sha=$(git -C "$wt" rev-parse HEAD)
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/303-followup"
+  git -C "$REPO" cat-file -e "$followup_sha" 2>/dev/null
 }

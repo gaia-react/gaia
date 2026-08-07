@@ -34,7 +34,7 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
 
   scaffold component|hook|route|service
   react-perf reduce <raw.json> [--frame-budget-ms N]
-  wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|diff-size|chain|sync land
+  wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|diff-size|chain|sync land|sync await
   fitness render-card [--cols N]
   automation read-config|cron-decide|render-workflows|install-audit-workflow
   update merge-workspace|merge-audit-ci|merge-region|regen-regions

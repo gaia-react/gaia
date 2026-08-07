@@ -297,9 +297,9 @@ describe('wiki sync land', () => {
       ['gh', 'pr', 'create'],
       ['gh', 'pr', 'merge', '--squash', '--auto', '--delete-branch'],
       ['gh', 'pr', 'view', 'wiki-sync/2026-05-07-bbbbbbb'],
-      ['git', 'checkout', 'main'],
+      ['git', 'checkout', '--end-of-options', 'main'],
       ['git', 'pull', '--ff-only', 'origin', 'main'],
-      ['git', 'branch', '-D', 'wiki-sync/2026-05-07-bbbbbbb'],
+      ['git', 'branch', '-D', '--', 'wiki-sync/2026-05-07-bbbbbbb'],
       ['git', 'fetch', '--prune', 'origin'],
     ] as const;
 
@@ -423,7 +423,7 @@ describe('wiki sync land', () => {
     expect(pollCalls).toHaveLength(3);
     const gitCalls = recorded.filter((c) => c.command === 'git');
     expect(gitCalls).toContainEqual({
-      args: ['checkout', 'main'],
+      args: ['checkout', '--end-of-options', 'main'],
       command: 'git',
     });
     expect(recorded.find((c) => c.args[0] === 'branch')).toBeUndefined();

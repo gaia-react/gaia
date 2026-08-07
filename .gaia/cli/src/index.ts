@@ -35,7 +35,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
 
   scaffold component|hook|route|service
   react-perf reduce <raw.json> [--frame-budget-ms N]
-  wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|diff-size|chain|sync land
+  wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|diff-size|chain|sync land|sync await
   fitness render-card [--cols N]
   harden-ledger list|record|is-suppressed|prune
   harden-tally

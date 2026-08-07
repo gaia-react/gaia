@@ -67,11 +67,32 @@ export const passthroughFailure = (
   return UNEXPECTED_EXIT;
 };
 
-/** Number of `gh pr view` polls before the merge wait gives up. */
-const MERGE_POLL_ATTEMPTS = 10;
+/** Total blocking sleep budget for one merge-wait slice. */
+export const MERGE_WAIT_BUDGET_MS = 240_000;
 
 /** Pause between merge-state polls. */
-const MERGE_POLL_INTERVAL_MS = 30_000;
+export const MERGE_POLL_INTERVAL_MS = 30_000;
+
+/**
+ * Attempts derived from the budget, never tuned beside it. The loop sleeps
+ * only BETWEEN polls, so N attempts spend (N - 1) x interval sleeping.
+ */
+export const mergePollAttempts = (
+  budgetMs: number = MERGE_WAIT_BUDGET_MS,
+  intervalMs: number = MERGE_POLL_INTERVAL_MS
+): number => Math.floor(budgetMs / intervalMs) + 1;
+
+/** Assumed worst case for one `gh pr view` round trip. */
+export const GH_CALL_CEILING_MS = 10_000;
+
+/** Assumed worst case for the merged path's network pull + fetch. */
+export const CLEANUP_CEILING_MS = 60_000;
+
+/**
+ * Pinned upper bound for the whole blocking path of one CLI invocation.
+ * Strictly below the 600_000 ms timeout every call site passes.
+ */
+export const MAX_SLICE_MS = 540_000;
 
 /**
  * Block the current thread for `ms` without spinning, so the merge poll can
@@ -103,9 +124,9 @@ export type MergeWaitOptions = {
  * (transient network / auth) counts as "not yet" and keeps polling rather than
  * aborting the wait.
  */
-const waitForMerge = (options: MergeWaitOptions): boolean => {
+export const waitForMerge = (options: MergeWaitOptions): boolean => {
   const {
-    attempts = MERGE_POLL_ATTEMPTS,
+    attempts = mergePollAttempts(),
     branch,
     cwd,
     runner,
@@ -128,7 +149,7 @@ const waitForMerge = (options: MergeWaitOptions): boolean => {
   return false;
 };
 
-type CleanupAfterMergeOptions = {
+export type CleanupAfterMergeOptions = {
   base: string;
   branch: string;
   cwd: string;
@@ -140,14 +161,34 @@ type CleanupAfterMergeOptions = {
  * the just-merged commit, delete the local landing branch, and prune the
  * deleted remote ref. Best-effort by design: the merge already succeeded, so a
  * stale local checkout or an already-pruned ref must not surface as an error.
+ *
+ * Returns whether the branch delete itself succeeded. `refs/heads/*` is
+ * shared across worktrees, so `branch -D` is refused when `branch` is
+ * checked out in another worktree; callers that report a terminal "cleaned
+ * up" state to something else (e.g. a router) must not do so on a refusal,
+ * or that something else reads "deleted" for a branch git still has
+ * checked out elsewhere.
  */
-const cleanupAfterMerge = (options: CleanupAfterMergeOptions): void => {
+export const cleanupAfterMerge = (
+  options: CleanupAfterMergeOptions
+): boolean => {
   const {base, branch, cwd, runner} = options;
 
-  runner('git', ['checkout', base], {cwd});
+  // `checkout` treats a bare `--` as the revision/pathspec divider (it would
+  // reinterpret `base` as a pathspec, not a ref), so only `--end-of-options`
+  // closes the option-injection vector here. Both `base` checkouts in this
+  // module (this one and `finalizeMerge`'s timeout-path checkout below) take
+  // `base` from the same sources, so both need it. `git pull` offers no
+  // working separator at all: it strips `--` and re-execs its internal `git
+  // fetch` without it (confirmed via `GIT_TRACE=1`), so a flag-shaped `base`
+  // still reaches fetch as an option; that call is left as-is. `branch -D`
+  // accepts the plan's `--` form.
+  runner('git', ['checkout', '--end-of-options', base], {cwd});
   runner('git', ['pull', '--ff-only', 'origin', base], {cwd});
-  runner('git', ['branch', '-D', branch], {cwd});
+  const deleteResult = runner('git', ['branch', '-D', '--', branch], {cwd});
   runner('git', ['fetch', '--prune', 'origin'], {cwd});
+
+  return commandSucceeded(deleteResult);
 };
 
 export type FinalizeMergeOptions = MergeWaitOptions & {
@@ -156,9 +197,10 @@ export type FinalizeMergeOptions = MergeWaitOptions & {
 };
 
 /**
- * Finish a protected-branch landing like any other PR: wait for the auto-merge
- * to land, then either clean up locally (on `MERGED`) or return to `base` and
- * defer cleanup to the session-start janitor (on timeout). Writes a one-line
+ * Finish a protected-branch landing like any other PR: take one bounded wait
+ * on the auto-merge, then either clean up locally (on `MERGED`) or return to
+ * `base` and leave the local catch-up to the `sync await` verb and the
+ * session-start janitor (on timeout). Writes a one-line
  * `prefix`-tagged summary and returns `EXIT_CODES.OK`. Shared by `chain finish`
  * and `sync land`'s protected-branch path.
  */
@@ -176,10 +218,12 @@ export const finalizeMerge = (options: FinalizeMergeOptions): number => {
 
   // The merge did not land within the wait (slow/pending checks, a stuck
   // queue). Auto-merge stays queued and GitHub completes it once checks pass;
-  // return to base so the session-start janitor can prune the branch after the
-  // merge (it never deletes the current branch), and defer the pull/delete to
-  // that janitor.
-  runner('git', ['checkout', base], {cwd});
+  // return to base and leave the local catch-up to two places that own it: the
+  // `/gaia-wiki` router's `sync await` verb, which takes another bounded slice
+  // in the same session, and the session-start janitor, which prune-fetches,
+  // reaps the merged-and-gone branch, and fast-forwards base on a later
+  // session. Neither depends on this wait succeeding.
+  runner('git', ['checkout', '--end-of-options', base], {cwd});
   process.stdout.write(
     `${prefix}: opened PR for ${branch}; auto-merge queued but not yet merged, local cleanup deferred\n`
   );

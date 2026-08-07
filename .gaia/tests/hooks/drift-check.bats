@@ -158,3 +158,65 @@ EOF
 @test "the hook file is executable" {
   [ -x "$HOOK_ABS" ]
 }
+
+# --- Draining the janitor's one-line base-catch-up report ------------------
+# .claude/hooks/local-janitor.sh writes at most one line to
+# .gaia/local/cache/shared/wiki-base-catchup.report when its own fast-forward
+# of the base branch is refused. This hook is the delivery channel: its
+# stdout is injected into the conversation, which a SessionStart hook's
+# exit-0 stderr is not. The drain sits above every early exit (jq, work-tree,
+# wiki/.state.json) so a checkout missing any of those still delivers it.
+
+@test "drains the base-catch-up report to stdout exactly once" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  cd "$REPO"
+  mkdir -p .gaia/local/cache/shared
+  printf '[wiki base] fast-forward of main to origin/main refused (divergence); local base is behind. Resolve by hand; the next qualifying session retries.\n' \
+    > .gaia/local/cache/shared/wiki-base-catchup.report
+  input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
+  invoke_hook "$input" "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  grep -qF -- '[wiki base] fast-forward of main to origin/main refused' <<<"$output" || return 1
+  [ ! -f .gaia/local/cache/shared/wiki-base-catchup.report ] || return 1
+
+  # Read-and-delete: a second prompt in the same session sees nothing left.
+  input2=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S2)
+  invoke_hook "$input2" "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  grep -qF -- '[wiki base]' <<<"$output" && return 1
+  return 0
+}
+
+@test "drains the report even when jq is unavailable" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  cd "$REPO"
+  mkdir -p .gaia/local/cache/shared
+  printf '[wiki base] fast-forward of main to origin/main refused (git error); local base is behind. Resolve by hand; the next qualifying session retries.\n' \
+    > .gaia/local/cache/shared/wiki-base-catchup.report
+
+  # `command -v jq` only checks that an executable NAMED jq is on PATH; a shim
+  # that fails when run still satisfies it. To genuinely simulate "jq
+  # unavailable" the PATH below carries no jq at all -- only symlinks to the
+  # handful of external binaries the drain block itself needs (head, rm) plus
+  # bash to run the hook.
+  nojq_bin=$(mktemp -d -t gaia-drift-nojq-XXXXXX)
+  ln -sf "$(command -v bash)" "$nojq_bin/bash"
+  ln -sf "$(command -v head)" "$nojq_bin/head"
+  ln -sf "$(command -v rm)" "$nojq_bin/rm"
+
+  run bash -c 'PATH="$1" bash "$2" < /dev/null' _ "$nojq_bin" "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  grep -qF -- '[wiki base] fast-forward of main to origin/main refused' <<<"$output" || return 1
+  [ ! -f .gaia/local/cache/shared/wiki-base-catchup.report ] || return 1
+  rm -rf "$nojq_bin"
+}
+
+@test "no report file is a silent no-op" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  cd "$REPO"
+  rm -f .gaia/local/cache/shared/wiki-base-catchup.report
+  input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
+  invoke_hook "$input" "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

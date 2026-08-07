@@ -23,6 +23,7 @@ import {run as runPageIndex} from './page-index.js';
 import {run as runStateBump} from './state-bump.js';
 import {run as runStateInit} from './state-init.js';
 import {run as runState} from './state.js';
+import {run as runSyncAwait} from './sync-await.js';
 import {run as runSyncLand} from './sync-land.js';
 
 const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
@@ -42,6 +43,8 @@ const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
   diff-size --threshold-pct N [--base <ref>] [--json]
                                               Gate auto-merge on wiki byte-delta vs base.
   sync land [--branch-aware]                  Branch-aware landing of staged wiki changes.
+  sync await                                  Wait for a pending sync landing to merge, then
+                                              clean up locally. Self-discovering; no branch arg.
   chain <begin|commit|finish>                 One-branch / one-PR orchestration of the
                                               full /gaia-wiki chain.
 `;
@@ -50,6 +53,8 @@ const SYNC_HELP_TEXT = `Usage: gaia wiki sync <subcommand> [args]
 
   land [--branch-aware]                       Land staged wiki changes via the correct
                                               branch strategy.
+  await                                       Wait for a pending landing to merge, then clean
+                                              up locally. Self-discovering; no branch arg.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -70,6 +75,10 @@ const runSync: SubcommandHandler = async (
 
   if (subcommand === 'land') {
     return runSyncLand(rest);
+  }
+
+  if (subcommand === 'await') {
+    return runSyncAwait(rest);
   }
 
   structuredError({
