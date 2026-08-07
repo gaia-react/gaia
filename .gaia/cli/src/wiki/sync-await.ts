@@ -73,18 +73,25 @@ const safeOutput = (value: null | string | undefined): string => value ?? '';
 /**
  * Non-numeric falls back to the default; a below-floor numeric override is
  * raised to the floor; `0` is special-cased BEFORE the clamp so the opt-out
- * is real. Mirrors the janitor's shipped clamp idiom
- * (`.claude/hooks/local-janitor.sh:619-621`, `:777-779`).
+ * is real. Mirrors the janitor's shipped clamp idiom for
+ * `GAIA_AUDIT_FINDINGS_RETENTION_HOURS` and `GAIA_CACHE_ARTIFACT_RETENTION_DAYS`
+ * (`.claude/hooks/local-janitor.sh`).
+ *
+ * Trimmed once, up front, so a whitespace-padded override (`' 0 '`) is
+ * recognized as the opt-out instead of falling through to `Number(' 0 ')`
+ * and clamping up to the floor.
  */
 const resolveCeilingSeconds = (raw: string | undefined): number => {
-  if (raw === '0') return 0;
+  const trimmed = raw?.trim();
+
+  if (trimmed === '0') return 0;
   // `Number('')` (and whitespace-only) is `0`, which would otherwise slip
   // past the `Number.isInteger` / `< 0` checks below and clamp to the floor
   // instead of falling back to the default, same as any other non-numeric
   // override.
-  if (raw === undefined || raw.trim() === '') return CEILING_DEFAULT_SECONDS;
+  if (trimmed === undefined || trimmed === '') return CEILING_DEFAULT_SECONDS;
 
-  const parsed = Number(raw);
+  const parsed = Number(trimmed);
 
   if (!Number.isInteger(parsed) || parsed < 0) return CEILING_DEFAULT_SECONDS;
 
@@ -99,6 +106,13 @@ const resolveCeilingSeconds = (raw: string | undefined): number => {
  * branch must never be selected over the branch actually in flight), then
  * take the most recent remaining match. Returns `undefined` when nothing
  * qualifies.
+ *
+ * Recency is git's own `--sort=-committerdate`, not the branch name: two
+ * same-day branches carry a random short sha, so a lexicographic tie-break
+ * on the name is arbitrary and can pick a stale reap-refused branch over the
+ * one actually in flight. `for-each-ref` already returns candidates
+ * most-recent-first, so the first remaining match after the exclusion is
+ * the answer.
  */
 const discoverBranch = (
   cwd: string,
@@ -106,6 +120,7 @@ const discoverBranch = (
 ): string | undefined => {
   const listArgs = [
     'for-each-ref',
+    '--sort=-committerdate',
     '--format=%(refname:short)',
     'refs/heads/wiki-sync/',
   ];
@@ -134,20 +149,27 @@ const discoverBranch = (
 
   if (remaining.length === 0) return undefined;
 
-  // The date-and-sha shape sorts lexicographically by date; ascending sort,
-  // take the last (most recent).
-  return remaining.toSorted((a, b) => a.localeCompare(b)).at(-1);
+  return remaining[0];
 };
 
 type PrLookup = 'closed' | 'merged' | 'open' | 'unknown';
 
+// `gh`'s definitive "this PR does not exist for this branch" message. A
+// branch that never got a PR (e.g. `sync land`'s remote sequence failed
+// after the push, or the push itself failed) is a permanent state: no
+// future poll will ever turn this into MERGED or OPEN, so it must not ride
+// the same ceiling-bound wait as a transient failure.
+const NO_PR_STDERR_PATTERN = /no pull requests found/iu;
+
 /**
  * `gh pr view <branch>`: the same call `waitForMerge` polls with. A command
- * failure (transient network/auth, or a `gh` call that raced the PR's
- * creation) is not the same signal as a real `CLOSED` state, and must not be
- * treated as one: `waitForMerge` itself reads a failing call as "not yet"
- * and keeps polling, so a definitive give-up here on the very first look
- * would contradict that reading of the identical failure.
+ * failure is either a real, permanent absence of a PR (gh's definitive "no
+ * pull requests found" message) or a transient one (network/auth, or a `gh`
+ * call that raced the PR's creation). Only the former is a real signal to
+ * give up on; the latter must not be, because `waitForMerge` itself reads a
+ * failing call as "not yet" and keeps polling, so a definitive give-up here
+ * on a transient failure would contradict that reading of the identical
+ * failure.
  */
 const lookupPrState = (
   branch: string,
@@ -157,7 +179,14 @@ const lookupPrState = (
   const args = ['pr', 'view', branch, '--json', 'state', '--jq', '.state'];
   const result = runner('gh', args, {cwd});
 
-  if (!commandSucceeded(result)) return 'unknown'; // command failed; not a real signal
+  if (!commandSucceeded(result)) {
+    const stderr = safeOutput(result.stderr).trim();
+
+    // Definitive: this branch will never have a PR. Any other failure is
+    // transient (network/auth/race) and must not be treated as a real
+    // signal.
+    return NO_PR_STDERR_PATTERN.test(stderr) ? 'closed' : 'unknown';
+  }
 
   const state = safeOutput(result.stdout).trim();
 
@@ -199,8 +228,15 @@ const readAwaitState = (filePath: string): AwaitState | null => {
 };
 
 const writeAwaitState = (filePath: string, state: AwaitState): void => {
-  mkdirSync(path.dirname(filePath), {recursive: true});
-  atomicWriteFileSync(filePath, `${JSON.stringify(state)}\n`);
+  try {
+    mkdirSync(path.dirname(filePath), {recursive: true});
+    atomicWriteFileSync(filePath, `${JSON.stringify(state)}\n`);
+  } catch {
+    // Best-effort by design, like `readAwaitState`/`deleteAwaitState`: an
+    // EACCES/EROFS/ENOSPC filesystem here must not escape `run` and break
+    // its "never fails, exits 0" contract. Losing the durable ceiling just
+    // means the next invocation restarts its own clock.
+  }
 };
 
 const deleteAwaitState = (filePath: string): void => {
@@ -232,6 +268,13 @@ const printExhausted = (branch: string): void => {
   process.stdout.write('WIKI_AWAIT: exhausted\n');
 };
 
+const printMergedButNotOnBase = (branch: string): void => {
+  process.stdout.write(
+    `sync-await: merged PR for ${branch}, but HEAD is not on the base branch so local catch-up cannot run from here; the session-start janitor catches base up on a later session\n`
+  );
+  process.stdout.write('WIKI_AWAIT: exhausted\n');
+};
+
 type CleanUpAndReportMergedOptions = {
   branch: string;
   cwd: string;
@@ -249,6 +292,17 @@ type CleanUpAndReportMergedOptions = {
  * case would yank the caller's session onto base mid-workflow; skip the
  * catch-up instead and leave it to the janitor, which re-checks the same
  * gate on a later session.
+ *
+ * This is a stop, not a retry: HEAD does not move between invocations on
+ * its own, so a `pending` marker here would tell the router to call this
+ * verb again forever with byte-identical input and output (the merge
+ * already landed; only local catch-up is outstanding, and this process has
+ * no way to discharge it). The frozen marker table has exactly four
+ * outcomes, so this reuses `exhausted`, whose router action is already
+ * "stop" and whose documented meaning, "the session-start janitor takes the
+ * catch-up on a later session", is exactly true here, with its own summary
+ * line so the reason is not misreported as a ceiling that was never
+ * reached.
  */
 const cleanUpAndReportMerged = (
   options: CleanUpAndReportMergedOptions
@@ -266,7 +320,8 @@ const cleanUpAndReportMerged = (
     : undefined;
 
   if (head !== base) {
-    printPending(branch);
+    deleteAwaitState(filePath);
+    printMergedButNotOnBase(branch);
 
     return EXIT_CODES.OK;
   }
@@ -344,8 +399,9 @@ export const run = (
   // lookup === 'open' or 'unknown': the durable ceiling lives in state
   // because each invocation is a separate process. Reset when the branch
   // changes (a mismatched prior state is treated as no prior state). An
-  // 'unknown' lookup rides the same bounded ceiling as 'open' rather than
-  // giving up immediately, per the comment on `lookupPrState`.
+  // 'unknown' lookup rides the same bounded ceiling across invocations as
+  // 'open' rather than giving up immediately, per the comment on
+  // `lookupPrState`.
   const startedAt = priorStartedAt ?? now();
 
   if (priorStartedAt === undefined) {
@@ -355,6 +411,18 @@ export const run = (
   if (now() - startedAt >= ceilingSeconds * 1000) {
     deleteAwaitState(filePath);
     printExhausted(branch);
+
+    return EXIT_CODES.OK;
+  }
+
+  // An 'unknown' lookup already spent its one `gh` call above (inside
+  // `lookupPrState`); it must not also spend `waitForMerge`'s own bounded
+  // poll (up to `mergePollAttempts()` further calls, minutes of blocking
+  // sleep) on a transient failure that has not even confirmed a PR exists
+  // yet. It still reports pending and still accrues toward the ceiling on
+  // the NEXT invocation, so it stays bounded without costing a full slice.
+  if (lookup === 'unknown') {
+    printPending(branch);
 
     return EXIT_CODES.OK;
   }

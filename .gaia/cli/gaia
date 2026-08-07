@@ -31324,15 +31324,17 @@ var STATE_DIR_SEGMENTS = [".gaia", "local", "cache", "shared"];
 var STATE_FILENAME2 = "wiki-await.json";
 var safeOutput4 = (value) => value ?? "";
 var resolveCeilingSeconds = (raw) => {
-  if (raw === "0") return 0;
-  if (raw === void 0 || raw.trim() === "") return CEILING_DEFAULT_SECONDS;
-  const parsed = Number(raw);
+  const trimmed = raw?.trim();
+  if (trimmed === "0") return 0;
+  if (trimmed === void 0 || trimmed === "") return CEILING_DEFAULT_SECONDS;
+  const parsed = Number(trimmed);
   if (!Number.isInteger(parsed) || parsed < 0) return CEILING_DEFAULT_SECONDS;
   return Math.max(parsed, CEILING_FLOOR_SECONDS);
 };
 var discoverBranch = (cwd, runner) => {
   const listArgs = [
     "for-each-ref",
+    "--sort=-committerdate",
     "--format=%(refname:short)",
     "refs/heads/wiki-sync/"
   ];
@@ -31348,12 +31350,16 @@ var discoverBranch = (cwd, runner) => {
   const current = commandSucceeded(currentResult) ? safeOutput4(currentResult.stdout).trim() : void 0;
   const remaining = candidates.filter((name) => name !== current);
   if (remaining.length === 0) return void 0;
-  return remaining.toSorted((a, b) => a.localeCompare(b)).at(-1);
+  return remaining[0];
 };
+var NO_PR_STDERR_PATTERN = /no pull requests found/iu;
 var lookupPrState = (branch, cwd, runner) => {
   const args = ["pr", "view", branch, "--json", "state", "--jq", ".state"];
   const result = runner("gh", args, { cwd });
-  if (!commandSucceeded(result)) return "unknown";
+  if (!commandSucceeded(result)) {
+    const stderr = safeOutput4(result.stderr).trim();
+    return NO_PR_STDERR_PATTERN.test(stderr) ? "closed" : "unknown";
+  }
   const state = safeOutput4(result.stdout).trim();
   if (state === "MERGED") return "merged";
   if (state === "OPEN") return "open";
@@ -31375,9 +31381,12 @@ var readAwaitState = (filePath) => {
   }
 };
 var writeAwaitState = (filePath, state) => {
-  mkdirSync19(path52.dirname(filePath), { recursive: true });
-  atomicWriteFileSync(filePath, `${JSON.stringify(state)}
+  try {
+    mkdirSync19(path52.dirname(filePath), { recursive: true });
+    atomicWriteFileSync(filePath, `${JSON.stringify(state)}
 `);
+  } catch {
+  }
 };
 var deleteAwaitState = (filePath) => {
   try {
@@ -31406,6 +31415,13 @@ var printExhausted = (branch) => {
   );
   process.stdout.write("WIKI_AWAIT: exhausted\n");
 };
+var printMergedButNotOnBase = (branch) => {
+  process.stdout.write(
+    `sync-await: merged PR for ${branch}, but HEAD is not on the base branch so local catch-up cannot run from here; the session-start janitor catches base up on a later session
+`
+  );
+  process.stdout.write("WIKI_AWAIT: exhausted\n");
+};
 var cleanUpAndReportMerged = (options) => {
   const { branch, cwd, filePath, runner } = options;
   const base = defaultBranch(cwd, runner);
@@ -31416,7 +31432,8 @@ var cleanUpAndReportMerged = (options) => {
   );
   const head = commandSucceeded(headResult) ? safeOutput4(headResult.stdout).trim() : void 0;
   if (head !== base) {
-    printPending(branch);
+    deleteAwaitState(filePath);
+    printMergedButNotOnBase(branch);
     return EXIT_CODES.OK;
   }
   cleanupAfterMerge({ base, branch, cwd, runner });
@@ -31463,6 +31480,10 @@ var run72 = (argv, options = {}) => {
   if (now() - startedAt >= ceilingSeconds * 1e3) {
     deleteAwaitState(filePath);
     printExhausted(branch);
+    return EXIT_CODES.OK;
+  }
+  if (lookup3 === "unknown") {
+    printPending(branch);
     return EXIT_CODES.OK;
   }
   const merged = waitForMerge({

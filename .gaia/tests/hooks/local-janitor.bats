@@ -847,9 +847,7 @@ SHIM
   [ "$status" -eq 0 ]
   [ -z "$output" ] || return 1
   after=$(git -C "$shallow" rev-parse main)
-  if [ "$after" != "$before" ]; then
-    [ "$after" = "$(git -C "$shallow" rev-parse origin/main)" ] || return 1
-  fi
+  [ "$after" = "$before" ] || return 1
   # --depth 1 implies --single-branch: remote.origin.fetch covers only main,
   # so wiki-sync/*'s upstream is never mapped to a local tracking ref at all
   # -- %(upstream:track) reads empty, not "[gone]", for a ref outside that

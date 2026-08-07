@@ -92,7 +92,7 @@ Spawn:
 
 When the subagent returns, relay its final summary verbatim. Do not redo the work in the parent.
 
-After relaying the summary, run the "Await the landing" section below.
+Standalone (the sub-arg form `/gaia-wiki sync`): after relaying the summary, run the "Await the landing" section below. The no-arg full chain does **not** await here: step 2's Step 7 commits in place on the pre-cut chain branch and opens no PR, so nothing has landed yet at this point, the chain's one await call is at step 6 (finish), after the actual landing.
 
 If invoked as `/gaia-wiki sync` (sub-arg form): stop after the await completes. Do **not** chain into consolidate or lint, that's only the no-arg form's job. The sub-arg form `/gaia-wiki sync --force` is also valid; the same defer / force logic from "GAIA CI deferral check" applies.
 
@@ -115,14 +115,18 @@ Read the last line of stdout:
 - empty output: nothing was pending. Say nothing and move on.
 - `WIKI_AWAIT: merged`: relay the verb's summary line. The local branch is deleted and base is
   caught up.
-- `WIKI_AWAIT: pending`: run the same command again, same explicit timeout.
-- `WIKI_AWAIT: exhausted`: relay the verb's summary line. The merge is still pending and the
-  session-start janitor catches base up on a later session. This is a report, not a failure:
-  the landing already succeeded.
+- `WIKI_AWAIT: pending`: run the same command again, same explicit timeout, but re-run at most
+  once. If the second call still reports `WIKI_AWAIT: pending`, stop, do not call a third time,
+  and hand off to the session-start janitor: it catches base up on a later session.
+- `WIKI_AWAIT: exhausted`: relay the verb's summary line, which names why the verb stopped: the
+  wait ran out with the merge still pending, or the merge landed somewhere the local catch-up
+  cannot run from. Either way the session-start janitor catches base up on a later session, and
+  either way this is a report, not a failure: the landing already succeeded.
 
-The verb enforces the loop's own wall-clock ceiling, so the loop ends on its own. The ceiling is
-`GAIA_WIKI_AWAIT_CEILING_SECONDS`; setting it to `0` disables the await entirely and leaves the
-catch-up to the janitor.
+The two-call bound above is what actually ends this prose loop; do not rely on the verb's own
+ceiling to do that job instead, not every path reads it before reporting `pending`. The ceiling,
+`GAIA_WIKI_AWAIT_CEILING_SECONDS`, still bounds the verb's own internal wait on the paths that do
+read it; setting it to `0` disables the await entirely and leaves the catch-up to the janitor.
 
 ## Consolidate
 

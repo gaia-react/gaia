@@ -126,7 +126,12 @@ const buildRunner = (
 };
 
 const forEachRefRule = (branches: readonly string[]): Rule => ({
-  argv: ['for-each-ref', '--format=%(refname:short)', 'refs/heads/wiki-sync/'],
+  argv: [
+    'for-each-ref',
+    '--sort=-committerdate',
+    '--format=%(refname:short)',
+    'refs/heads/wiki-sync/',
+  ],
   command: 'git',
   results: [okResult(branches.length === 0 ? '' : `${branches.join('\n')}\n`)],
 });
@@ -153,10 +158,24 @@ const prViewRule = (
   results: states.map((state) => okResult(`${state}\n`)),
 });
 
-const prViewFailsRule = (branch: string): Rule => ({
+// gh's definitive "this PR does not exist for this branch" message: a
+// permanent state, e.g. a `wiki-sync/*` branch whose push failed and was
+// left behind with no PR ever opened.
+const prViewNoPrRule = (branch: string): Rule => ({
   argv: ['pr', 'view', branch, '--json', 'state', '--jq', '.state'],
   command: 'gh',
-  results: [failResult(1, 'no pull requests found')],
+  results: [
+    failResult(1, 'no pull requests found for branch "does-not-matter"'),
+  ],
+});
+
+// A transient failure (network/auth, or a lookup that raced the PR's
+// creation): not a real signal either way, distinct from the definitive
+// no-PR message above.
+const prViewTransientFailRule = (branch: string): Rule => ({
+  argv: ['pr', 'view', branch, '--json', 'state', '--jq', '.state'],
+  command: 'gh',
+  results: [failResult(1, 'GraphQL: connection reset by peer')],
 });
 
 const noSleep = (): void => undefined;
@@ -292,17 +311,19 @@ describe('wiki sync await', () => {
     expect(stdio.outputs.join('')).toBe('');
   });
 
-  test('a failing gh pr view is not treated as a real CLOSED: keeps polling and reports pending', () => {
+  test('gh pr view failing with the definitive no-PR message: treated as closed, silent no-op', () => {
     sandbox = setupSandbox();
     const branch = 'wiki-sync/2026-08-07-aaaaaaa';
     const recorded: RecordedCall[] = [];
-    // `prViewFailsRule` simulates a command failure (transient network/auth,
-    // or a lookup that races the PR's creation), not a real CLOSED state.
+    // gh's definitive "this PR does not exist" message: a branch left
+    // behind with no PR (e.g. `sync land`'s push failed) will never turn
+    // into MERGED/OPEN, so this must give up on the first look, exactly
+    // like a real CLOSED state, not ride the ceiling-bound poll.
     const runner = buildRunner(
       [
         forEachRefRule([branch]),
         symbolicRefHeadFailsRule(),
-        prViewFailsRule(branch),
+        prViewNoPrRule(branch),
       ],
       recorded
     );
@@ -310,15 +331,38 @@ describe('wiki sync await', () => {
     const exit = run([], {cwd: sandbox.root, runner, sleep: noSleep});
 
     expect(exit).toBe(EXIT_CODES.OK);
-    // A real CLOSED gives up silently; a command failure must not: it rides
-    // the same ceiling-bound poll as an OPEN PR (waitForMerge's own "keep
-    // polling" reading of an identical gh failure), so it reports pending.
+    expect(stdio.outputs.join('')).toBe('');
+    expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(1);
+  });
+
+  test('gh pr view failing with a transient error: unknown, costs exactly one gh call (not a full poll slice), reports pending', () => {
+    sandbox = setupSandbox();
+    const branch = 'wiki-sync/2026-08-07-aaaaaaa';
+    const recorded: RecordedCall[] = [];
+    // A transient failure (network/auth, or a lookup that races the PR's
+    // creation) is not the same signal as gh's definitive no-PR message and
+    // must not give up silently, but it also must not spend
+    // `waitForMerge`'s own bounded poll (up to `mergePollAttempts()` further
+    // `gh` calls) chasing a lookup that has not even confirmed a PR exists.
+    const runner = buildRunner(
+      [
+        forEachRefRule([branch]),
+        symbolicRefHeadFailsRule(),
+        prViewTransientFailRule(branch),
+      ],
+      recorded
+    );
+
+    const exit = run([], {cwd: sandbox.root, runner, sleep: noSleep});
+
+    expect(exit).toBe(EXIT_CODES.OK);
     expect(stdio.outputs.join('').trimEnd().split('\n').at(-1)).toBe(
       'WIKI_AWAIT: pending'
     );
-    expect(recorded.filter((c) => c.command === 'gh').length).toBeGreaterThan(
-      1
-    );
+    // Exactly one gh call total: the lookup itself. The old behavior rode
+    // the same ceiling-bound poll as OPEN, costing up to `mergePollAttempts()`
+    // further calls on every invocation.
+    expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(1);
   });
 
   test('a branch name that does not match the landing shape is ignored', () => {
@@ -372,32 +416,82 @@ describe('wiki sync await', () => {
     expect(branchDelete?.args).toEqual(['branch', '-D', '--', branch]);
   });
 
-  test('HEAD on a third, unrelated branch: merged cleanup is deferred, never switches the checkout', () => {
+  test('HEAD on a third, unrelated branch: merged catch-up cannot run from here; reports exhausted, not pending, and stays terminal across repeated invocations', () => {
     sandbox = setupSandbox();
     const branch = 'wiki-sync/2026-08-07-aaaaaaa';
     // Neither the candidate branch nor base: a session working on unrelated
     // feature work while a merged-but-unreaped wiki-sync branch lingers from
-    // an earlier session.
+    // an earlier session. HEAD does not move between invocations on its
+    // own, so this is a stop, not a retry: a `pending` marker here would
+    // tell the router to call this verb again forever with byte-identical
+    // input and output (an unbounded, no-sleep command loop).
+    const unrelated = 'feature/unrelated-work';
+
+    const makeRunner = (recorded: RecordedCall[]): CommandRunner =>
+      buildRunner(
+        [
+          forEachRefRule([branch]),
+          symbolicRefHeadRule(unrelated),
+          prViewRule(branch, ['MERGED']),
+        ],
+        recorded
+      );
+
+    // Three separate invocations (fresh runner/recorder each time, mirroring
+    // three separate CLI processes the router might spawn) must each
+    // independently stop, proving repeated invocations terminate rather than
+    // looping.
+    for (let index = 0; index < 3; index += 1) {
+      const recorded: RecordedCall[] = [];
+      const exit = run([], {
+        cwd: sandbox.root,
+        runner: makeRunner(recorded),
+        sleep: noSleep,
+      });
+
+      expect(exit).toBe(EXIT_CODES.OK);
+      expect(recorded.find((c) => c.args[0] === 'checkout')).toBeUndefined();
+      expect(recorded.find((c) => c.args[0] === 'pull')).toBeUndefined();
+      expect(recorded.find((c) => c.args.includes('-D'))).toBeUndefined();
+    }
+
+    const output = stdio.outputs.join('');
+    expect(output).not.toContain('WIKI_AWAIT: pending');
+    expect(
+      output.split('\n').filter((line) => line === 'WIKI_AWAIT: exhausted')
+    ).toHaveLength(3);
+    // Honest reason (the merge landed but HEAD is not on base), not a
+    // reused-and-misleading ceiling summary.
+    expect(output).toContain('HEAD is not on the base branch');
+  });
+
+  test('same-day branches: the more recently committed one wins the tie-break, not the lexicographically larger sha', () => {
+    sandbox = setupSandbox();
+    // `for-each-ref --sort=-committerdate` returns most-recent-first; the
+    // mocked order below encodes that git-side sort directly. `aaaaaaa`
+    // sorts BEFORE `zzzzzzz` lexicographically but is mocked as the MORE
+    // recently committed of the two, so a lexicographic tie-break (the old,
+    // buggy behavior) and a committerdate tie-break (the fix) disagree on
+    // which branch is "the one actually in flight".
+    const recentByCommit = 'wiki-sync/2026-08-07-aaaaaaa';
+    const olderByCommit = 'wiki-sync/2026-08-07-zzzzzzz';
     const unrelated = 'feature/unrelated-work';
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
-        forEachRefRule([branch]),
+        forEachRefRule([recentByCommit, olderByCommit]),
         symbolicRefHeadRule(unrelated),
-        prViewRule(branch, ['MERGED']),
+        prViewRule(recentByCommit, ['CLOSED']),
       ],
       recorded
     );
 
-    const exit = run([], {cwd: sandbox.root, runner, sleep: noSleep});
+    run([], {cwd: sandbox.root, runner, sleep: noSleep});
 
-    expect(exit).toBe(EXIT_CODES.OK);
-    expect(stdio.outputs.join('').trimEnd().split('\n').at(-1)).toBe(
-      'WIKI_AWAIT: pending'
-    );
-    expect(recorded.find((c) => c.args[0] === 'checkout')).toBeUndefined();
-    expect(recorded.find((c) => c.args[0] === 'pull')).toBeUndefined();
-    expect(recorded.find((c) => c.args.includes('-D'))).toBeUndefined();
+    const ghCalls = recorded.filter((c) => c.command === 'gh');
+    expect(ghCalls).toHaveLength(1);
+    expect(ghCalls[0]?.args).toContain(recentByCommit);
+    expect(ghCalls[0]?.args).not.toContain(olderByCommit);
   });
 
   test('already MERGED on the first look: cleans up without waiting', () => {
@@ -507,6 +601,66 @@ describe('wiki sync await', () => {
     expect(exit).toBe(EXIT_CODES.OK);
     expect(stdio.outputs.join('')).toBe('');
     expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(0);
+  });
+
+  test('a whitespace-padded "0" override still disables the await, not clamped up to the floor', () => {
+    sandbox = setupSandbox();
+    // The raw string is ' 0 ', not '0': must be trimmed before the opt-out
+    // comparison, or it falls through to `Number(' 0 ')` (also 0) and gets
+    // clamped UP to the 60s floor instead of disabling the await.
+    process.env.GAIA_WIKI_AWAIT_CEILING_SECONDS = ' 0 ';
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [forEachRefRule(['wiki-sync/2026-08-07-aaaaaaa'])],
+      recorded
+    );
+
+    const exit = run([], {cwd: sandbox.root, runner, sleep: noSleep});
+
+    expect(exit).toBe(EXIT_CODES.OK);
+    expect(stdio.outputs.join('')).toBe('');
+    expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(0);
+  });
+
+  test('a filesystem error writing the durable state file does not escape run (guarded, never fails)', () => {
+    sandbox = setupSandbox();
+    const branch = 'wiki-sync/2026-08-07-aaaaaaa';
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        forEachRefRule([branch]),
+        symbolicRefHeadFailsRule(),
+        prViewRule(branch, ['OPEN']),
+      ],
+      recorded
+    );
+
+    // A regular file where the state directory would go: `mkdirSync(...,
+    // {recursive: true})` cannot create a directory at a path a file
+    // already occupies, simulating a wedged EACCES/EROFS/ENOSPC filesystem.
+    const badStateRoot = mkdtempSync(
+      path.join(tmpdir(), 'gaia-wiki-await-badstate-')
+    );
+    const stateDirAsFile = path.join(badStateRoot, 'not-a-directory');
+    writeFileSync(stateDirAsFile, '', 'utf8');
+
+    let exit = -1;
+
+    expect(() => {
+      exit = run([], {
+        cwd: sandbox!.root,
+        runner,
+        sleep: noSleep,
+        stateDir: stateDirAsFile,
+      });
+    }).not.toThrow();
+
+    expect(exit).toBe(EXIT_CODES.OK);
+    expect(stdio.outputs.join('').trimEnd().split('\n').at(-1)).toBe(
+      'WIKI_AWAIT: pending'
+    );
+
+    rmSync(badStateRoot, {force: true, recursive: true});
   });
 
   test('--help prints usage and touches no git or gh command', () => {

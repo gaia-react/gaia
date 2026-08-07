@@ -188,7 +188,7 @@ Exit codes:
 
 Do NOT inline branch logic, manual `gh pr` calls, or any push narrative. The CLI is authoritative.
 
-The command is branch-aware: on `main`/`master` it cuts a branch, opens its own PR, and queues auto-merge, then takes one bounded in-CLI wait; normally it returns with the local cleanup outstanding, because the merge gate outlasts any wait that fits in one call; on any feature branch it commits in place. The no-arg `/gaia-wiki` full chain pre-cuts a `wiki-sync/<date>-<sha>` branch before sync runs, so this same step commits in place there and the chain opens one PR for all stages at the end. The parent router (`references/wiki.md`) owns the in-session await after this step returns, on both the standalone and full-chain path; this step's obligations are unchanged.
+The command is branch-aware: on `main`/`master` it cuts a branch, opens its own PR, and queues auto-merge, then takes one bounded in-CLI wait; normally it returns with the local cleanup outstanding, because the merge gate outlasts any wait that fits in one call; on any feature branch it commits in place. The no-arg `/gaia-wiki` full chain pre-cuts a `wiki-sync/<date>-<sha>` branch before sync runs, so this same step commits in place there and the chain opens one PR for all stages at the end. The in-session await belongs to the parent router (`references/wiki.md`), not to this step; this step's obligations are unchanged.
 
 ## Step 8: Report
 
