@@ -45,6 +45,23 @@ const CEILING_ENV_VAR = 'GAIA_WIKI_AWAIT_CEILING_SECONDS';
 const CEILING_DEFAULT_SECONDS = 660;
 const CEILING_FLOOR_SECONDS = 60;
 
+const HELP_TEXT = `Usage: gaia wiki sync await
+
+  Self-discovering local catch-up for a merged wiki-sync branch: waits (up
+  to a bounded ceiling) for its PR to merge, then returns to the base
+  branch, deletes the local branch, and prunes. Silent no-op when no
+  wiki-sync/* branch is pending. Takes no arguments.
+
+  Environment:
+    GAIA_WIKI_AWAIT_CEILING_SECONDS  wait ceiling in seconds (default 660,
+                                      floor 60, 0 disables the await)
+
+  Exit code:
+    0  always; pending/exhausted are reports, not errors
+`;
+
+const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+
 const STATE_DIR_SEGMENTS = ['.gaia', 'local', 'cache', 'shared'] as const;
 const STATE_FILENAME = 'wiki-await.json';
 
@@ -61,7 +78,11 @@ const safeOutput = (value: null | string | undefined): string => value ?? '';
  */
 const resolveCeilingSeconds = (raw: string | undefined): number => {
   if (raw === '0') return 0;
-  if (raw === undefined) return CEILING_DEFAULT_SECONDS;
+  // `Number('')` (and whitespace-only) is `0`, which would otherwise slip
+  // past the `Number.isInteger` / `< 0` checks below and clamp to the floor
+  // instead of falling back to the default, same as any other non-numeric
+  // override.
+  if (raw === undefined || raw.trim() === '') return CEILING_DEFAULT_SECONDS;
 
   const parsed = Number(raw);
 
@@ -118,9 +139,16 @@ const discoverBranch = (
   return remaining.toSorted((a, b) => a.localeCompare(b)).at(-1);
 };
 
-type PrLookup = 'closed' | 'merged' | 'open';
+type PrLookup = 'closed' | 'merged' | 'open' | 'unknown';
 
-/** `gh pr view <branch>`: the same call `waitForMerge` polls with. */
+/**
+ * `gh pr view <branch>`: the same call `waitForMerge` polls with. A command
+ * failure (transient network/auth, or a `gh` call that raced the PR's
+ * creation) is not the same signal as a real `CLOSED` state, and must not be
+ * treated as one: `waitForMerge` itself reads a failing call as "not yet"
+ * and keeps polling, so a definitive give-up here on the very first look
+ * would contradict that reading of the identical failure.
+ */
 const lookupPrState = (
   branch: string,
   cwd: string,
@@ -129,14 +157,14 @@ const lookupPrState = (
   const args = ['pr', 'view', branch, '--json', 'state', '--jq', '.state'];
   const result = runner('gh', args, {cwd});
 
-  if (!commandSucceeded(result)) return 'closed'; // command failed / no PR found
+  if (!commandSucceeded(result)) return 'unknown'; // command failed; not a real signal
 
   const state = safeOutput(result.stdout).trim();
 
   if (state === 'MERGED') return 'merged';
   if (state === 'OPEN') return 'open';
 
-  return 'closed'; // CLOSED, or any other unexpected value
+  return 'closed'; // a real CLOSED, or any other unexpected value
 };
 
 type AwaitState = {
@@ -211,11 +239,39 @@ type CleanUpAndReportMergedOptions = {
   runner: CommandRunner;
 };
 
+/**
+ * Gate the local catch-up on HEAD already sitting on base, the same
+ * precondition the janitor's own fast-forward requires
+ * (`.claude/hooks/local-janitor.sh` sweep #1d). `discoverBranch` only
+ * excludes the branch HEAD is currently on, not every other branch, so a
+ * merged-but-not-yet-reaped `wiki-sync/*` branch can be discovered while
+ * HEAD sits on a third, unrelated branch. Switching the checkout in that
+ * case would yank the caller's session onto base mid-workflow; skip the
+ * catch-up instead and leave it to the janitor, which re-checks the same
+ * gate on a later session.
+ */
 const cleanUpAndReportMerged = (
   options: CleanUpAndReportMergedOptions
 ): number => {
   const {branch, cwd, filePath, runner} = options;
-  cleanupAfterMerge({base: defaultBranch(cwd, runner), branch, cwd, runner});
+  const base = defaultBranch(cwd, runner);
+  const headResult = runner(
+    'git',
+    ['symbolic-ref', '--quiet', '--short', 'HEAD'],
+    {cwd}
+  );
+  const head =
+    commandSucceeded(headResult) ?
+      safeOutput(headResult.stdout).trim()
+    : undefined;
+
+  if (head !== base) {
+    printPending(branch);
+
+    return EXIT_CODES.OK;
+  }
+
+  cleanupAfterMerge({base, branch, cwd, runner});
   deleteAwaitState(filePath);
   printMerged(branch);
 
@@ -231,12 +287,18 @@ export type RunOptions = {
 };
 
 export const run = (
-  _argv: readonly string[],
+  argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  // No branch argument: self-discovery is the only source of the branch
-  // name, so any positional token is ignored rather than risking a ref
-  // parsed out of prose reaching a destructive git call.
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+    process.stdout.write(HELP_TEXT);
+
+    return EXIT_CODES.OK;
+  }
+
+  // No branch argument otherwise: self-discovery is the only source of the
+  // branch name, so any other positional token is ignored rather than
+  // risking a ref parsed out of prose reaching a destructive git call.
   const ceilingSeconds = resolveCeilingSeconds(process.env[CEILING_ENV_VAR]);
 
   if (ceilingSeconds === 0) return EXIT_CODES.OK; // opt-out: silent no-op
@@ -279,9 +341,11 @@ export const run = (
     return cleanUpAndReportMerged({branch, cwd: repoRoot, filePath, runner});
   }
 
-  // lookup === 'open': the durable ceiling lives in state because each
-  // invocation is a separate process. Reset when the branch changes (a
-  // mismatched prior state is treated as no prior state).
+  // lookup === 'open' or 'unknown': the durable ceiling lives in state
+  // because each invocation is a separate process. Reset when the branch
+  // changes (a mismatched prior state is treated as no prior state). An
+  // 'unknown' lookup rides the same bounded ceiling as 'open' rather than
+  // giving up immediately, per the comment on `lookupPrState`.
   const startedAt = priorStartedAt ?? now();
 
   if (priorStartedAt === undefined) {

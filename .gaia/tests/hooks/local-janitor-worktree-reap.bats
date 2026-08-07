@@ -31,7 +31,11 @@ teardown() {
 # Stand up a repo with a real bare origin so upstream-track state is faithful.
 make_repo() {
   ORIGIN=$(mktemp -d -t gaia-janitor-wt-origin-XXXXXX)
-  git init -q --bare "$ORIGIN"
+  # --initial-branch=main: an unpinned bare init follows ambient
+  # init.defaultBranch, which is unset on CI (falls back to "master"); a
+  # fetch or set-head against that name then cannot resolve. Pin it
+  # explicitly, matching local-janitor.bats's make_repo_default_branch.
+  git init -q --bare --initial-branch=main "$ORIGIN"
   REPO=$(mktemp -d -t gaia-janitor-wt-repo-XXXXXX)
   git -C "$REPO" init -q --initial-branch=main
   git -C "$REPO" config user.email test@example.com
@@ -50,7 +54,8 @@ make_repo() {
 # not quote the path, so a naive awk $2 split truncates at the first space.
 make_repo_spaced() {
   ORIGIN=$(mktemp -d -t gaia-janitor-wt-origin-XXXXXX)
-  git init -q --bare "$ORIGIN"
+  # --initial-branch=main: same ambient-config hazard as make_repo above.
+  git init -q --bare --initial-branch=main "$ORIGIN"
   REPO=$(mktemp -d -t 'gaia janitor wt repo XXXXXX')
   git -C "$REPO" init -q --initial-branch=main
   git -C "$REPO" config user.email test@example.com

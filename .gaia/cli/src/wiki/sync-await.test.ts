@@ -201,7 +201,7 @@ describe('wiki sync await', () => {
       [
         forEachRefRule([older, newer]),
         symbolicRefHeadRule(newer),
-        prViewFailsRule(older),
+        prViewRule(older, ['CLOSED']),
       ],
       recordedFirst
     );
@@ -273,10 +273,31 @@ describe('wiki sync await', () => {
     expect(maintainerSource).toContain('sync land|sync await');
   });
 
-  test('a wiki-sync branch with no open PR: silent no-op', () => {
+  test('a wiki-sync branch with a real CLOSED PR: silent no-op', () => {
     sandbox = setupSandbox();
     const branch = 'wiki-sync/2026-08-07-aaaaaaa';
     const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        forEachRefRule([branch]),
+        symbolicRefHeadFailsRule(),
+        prViewRule(branch, ['CLOSED']),
+      ],
+      recorded
+    );
+
+    const exit = run([], {cwd: sandbox.root, runner, sleep: noSleep});
+
+    expect(exit).toBe(EXIT_CODES.OK);
+    expect(stdio.outputs.join('')).toBe('');
+  });
+
+  test('a failing gh pr view is not treated as a real CLOSED: keeps polling and reports pending', () => {
+    sandbox = setupSandbox();
+    const branch = 'wiki-sync/2026-08-07-aaaaaaa';
+    const recorded: RecordedCall[] = [];
+    // `prViewFailsRule` simulates a command failure (transient network/auth,
+    // or a lookup that races the PR's creation), not a real CLOSED state.
     const runner = buildRunner(
       [
         forEachRefRule([branch]),
@@ -289,7 +310,15 @@ describe('wiki sync await', () => {
     const exit = run([], {cwd: sandbox.root, runner, sleep: noSleep});
 
     expect(exit).toBe(EXIT_CODES.OK);
-    expect(stdio.outputs.join('')).toBe('');
+    // A real CLOSED gives up silently; a command failure must not: it rides
+    // the same ceiling-bound poll as an OPEN PR (waitForMerge's own "keep
+    // polling" reading of an identical gh failure), so it reports pending.
+    expect(stdio.outputs.join('').trimEnd().split('\n').at(-1)).toBe(
+      'WIKI_AWAIT: pending'
+    );
+    expect(recorded.filter((c) => c.command === 'gh').length).toBeGreaterThan(
+      1
+    );
   });
 
   test('a branch name that does not match the landing shape is ignored', () => {
@@ -312,10 +341,12 @@ describe('wiki sync await', () => {
     sandbox = setupSandbox();
     const branch = 'wiki-sync/2026-08-07-aaaaaaa';
     const recorded: RecordedCall[] = [];
+    // HEAD is on base ('main', the default when no origin/HEAD rule is
+    // given): the precondition the merged-cleanup gate requires.
     const runner = buildRunner(
       [
         forEachRefRule([branch]),
-        symbolicRefHeadFailsRule(),
+        symbolicRefHeadRule('main'),
         prViewRule(branch, ['OPEN', 'MERGED']),
       ],
       recorded
@@ -331,12 +362,42 @@ describe('wiki sync await', () => {
       'WIKI_AWAIT: merged'
     );
 
-    const gitAfterPoll = recorded.filter((c) => c.command === 'git').slice(2); // past for-each-ref and symbolic-ref HEAD
-    expect(gitAfterPoll.map((c) => c.args[0])).toEqual(
+    // arrayContaining tolerates the extra HEAD/base resolution calls the
+    // merged-cleanup gate makes ahead of the actual cleanup steps.
+    const gitCalls = recorded.filter((c) => c.command === 'git');
+    expect(gitCalls.map((c) => c.args[0])).toEqual(
       expect.arrayContaining(['checkout', 'pull', 'branch', 'fetch'])
     );
-    const branchDelete = gitAfterPoll.find((c) => c.args[0] === 'branch');
+    const branchDelete = gitCalls.find((c) => c.args[0] === 'branch');
     expect(branchDelete?.args).toEqual(['branch', '-D', '--', branch]);
+  });
+
+  test('HEAD on a third, unrelated branch: merged cleanup is deferred, never switches the checkout', () => {
+    sandbox = setupSandbox();
+    const branch = 'wiki-sync/2026-08-07-aaaaaaa';
+    // Neither the candidate branch nor base: a session working on unrelated
+    // feature work while a merged-but-unreaped wiki-sync branch lingers from
+    // an earlier session.
+    const unrelated = 'feature/unrelated-work';
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        forEachRefRule([branch]),
+        symbolicRefHeadRule(unrelated),
+        prViewRule(branch, ['MERGED']),
+      ],
+      recorded
+    );
+
+    const exit = run([], {cwd: sandbox.root, runner, sleep: noSleep});
+
+    expect(exit).toBe(EXIT_CODES.OK);
+    expect(stdio.outputs.join('').trimEnd().split('\n').at(-1)).toBe(
+      'WIKI_AWAIT: pending'
+    );
+    expect(recorded.find((c) => c.args[0] === 'checkout')).toBeUndefined();
+    expect(recorded.find((c) => c.args[0] === 'pull')).toBeUndefined();
+    expect(recorded.find((c) => c.args.includes('-D'))).toBeUndefined();
   });
 
   test('already MERGED on the first look: cleans up without waiting', () => {
@@ -347,7 +408,7 @@ describe('wiki sync await', () => {
     const runner = buildRunner(
       [
         forEachRefRule([branch]),
-        symbolicRefHeadFailsRule(),
+        symbolicRefHeadRule('main'),
         prViewRule(branch, ['MERGED']),
       ],
       recorded
@@ -364,6 +425,9 @@ describe('wiki sync await', () => {
     expect(exit).toBe(EXIT_CODES.OK);
     expect(sleepCalls).toBe(0);
     expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(1);
+    expect(stdio.outputs.join('').trimEnd().split('\n').at(-1)).toBe(
+      'WIKI_AWAIT: merged'
+    );
   });
 
   test('slice exhausts: reports pending, never an error', () => {
@@ -443,6 +507,61 @@ describe('wiki sync await', () => {
     expect(exit).toBe(EXIT_CODES.OK);
     expect(stdio.outputs.join('')).toBe('');
     expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(0);
+  });
+
+  test('--help prints usage and touches no git or gh command', () => {
+    sandbox = setupSandbox();
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner([], recorded);
+
+    const exit = run(['--help'], {cwd: sandbox.root, runner, sleep: noSleep});
+
+    expect(exit).toBe(EXIT_CODES.OK);
+    expect(stdio.outputs.join('')).toContain('Usage: gaia wiki sync await');
+    expect(recorded).toHaveLength(0);
+  });
+
+  test('an empty ceiling override falls back to the default, not the floor', () => {
+    sandbox = setupSandbox();
+    const branch = 'wiki-sync/2026-08-07-aaaaaaa';
+    const nowMs = 1_700_000_000_000;
+    // Strictly between the 60s floor and the 660s default: elapsed exceeds
+    // the floor (would report exhausted if the empty override collapsed to
+    // it) but not the default (must report pending if it correctly falls
+    // back to the default).
+    const elapsedMs = 100_000;
+
+    process.env.GAIA_WIKI_AWAIT_CEILING_SECONDS = '';
+    const stateDir = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-await-empty-'));
+    writeFileSync(
+      path.join(stateDir, 'wiki-await.json'),
+      JSON.stringify({branch, started_at: nowMs - elapsedMs}),
+      'utf8'
+    );
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        forEachRefRule([branch]),
+        symbolicRefHeadFailsRule(),
+        prViewRule(branch, ['OPEN']),
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      now: () => nowMs,
+      runner,
+      sleep: noSleep,
+      stateDir,
+    });
+
+    expect(exit).toBe(EXIT_CODES.OK);
+    expect(stdio.outputs.join('').trimEnd().split('\n').at(-1)).toBe(
+      'WIKI_AWAIT: pending'
+    );
+
+    rmSync(stateDir, {force: true, recursive: true});
   });
 
   test('the ceiling knob is floor-clamped', () => {

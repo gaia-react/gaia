@@ -303,7 +303,7 @@ wiki_catchup_state_unset() {
   local key="$1" tmp
   [ -f "$wiki_catchup_state_file" ] || return 0
   tmp="${wiki_catchup_state_file}.tmp.$$"
-  grep -v "^${key}=" "$wiki_catchup_state_file" 2>/dev/null >"$tmp" \
+  { grep -v "^${key}=" "$wiki_catchup_state_file" 2>/dev/null || true; } >"$tmp" \
     && mv -f "$tmp" "$wiki_catchup_state_file" 2>/dev/null
   rm -f "$tmp" 2>/dev/null
   return 0
@@ -508,8 +508,17 @@ if [ "$wiki_sync_present" -eq 1 ]; then
         # direction, bounded by the minimum-interval knob, and the durable
         # catch-up obligation is carried by a breadcrumb, not by the branch,
         # so a lingering branch never blocks the fast-forward.
-        unpushed=$(git -C "$root" cherry --end-of-options "origin/$base" "$ref" 2>/dev/null | grep -c '^+' || true)
-        [ "${unpushed:-1}" -eq 0 ] || continue
+        # Capture cherry's own exit status, not grep's: a missing origin/$base
+        # (origin/HEAD unset locally, base falls back to a literal "main" that
+        # does not exist on this remote) makes cherry fail and print nothing,
+        # which is indistinguishable from a genuine zero-commits-ahead result
+        # once piped through `grep -c` alone. Only a clean cherry run answers
+        # the question; anything else keeps the branch, per the comment above.
+        cherry_out=$(git -C "$root" cherry --end-of-options "origin/$base" "$ref" 2>/dev/null)
+        cherry_status=$?
+        [ "$cherry_status" -eq 0 ] || continue
+        unpushed=$(printf '%s\n' "$cherry_out" | grep -c '^+')
+        [ "$unpushed" -eq 0 ] || continue
 
         git -C "$root" branch -D -- "$ref" >/dev/null 2>&1 || true
       done <<EOF

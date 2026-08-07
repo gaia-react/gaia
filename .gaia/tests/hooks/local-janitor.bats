@@ -42,7 +42,13 @@ teardown() {
 # greens on the skip path regardless of what it is meant to exercise.
 make_repo() {
   ORIGIN=$(mktemp -d -t gaia-janitor-origin-XXXXXX)
-  git init -q --bare "$ORIGIN"
+  # --initial-branch=main: a bare repo initialized without it keeps whatever
+  # init.defaultBranch the local git config supplies, which is unset on CI
+  # (falls back to "master"). `remote set-head origin -a` below asks the
+  # remote for its own HEAD and cannot resolve a branch that was never
+  # created, so this pins the name explicitly rather than relying on ambient
+  # config -- same hazard make_repo_default_branch documents just below.
+  git init -q --bare --initial-branch=main "$ORIGIN"
   REPO=$(mktemp -d -t gaia-janitor-repo-XXXXXX)
   git -C "$REPO" init -q --initial-branch=main
   git -C "$REPO" config user.email test@example.com
@@ -597,6 +603,41 @@ SHIM
   [ "$(git -C "$REPO" rev-parse main)" = "$(git -C "$REPO" rev-parse origin/main)" ]
 }
 
+# Reproduces the fail-open the reap's cherry check used to have: with
+# origin/HEAD unset AND a non-main default branch, base's fallback ("main")
+# never resolves on this remote (origin/main does not exist -- the remote's
+# default is trunk). `git cherry` against that unresolvable base fails and
+# prints nothing, which `grep -c` alone cannot distinguish from a genuine
+# zero-unpushed-commits answer. An unanswerable question must keep the
+# branch, per the reap's own comment, not read the failure as "fully
+# represented upstream" and delete it.
+@test "sweep 1: an unresolvable base keeps a gone wiki-sync branch and its unmerged commit" {
+  make_repo_default_branch trunk
+  git -C "$REPO" remote set-head origin --delete
+  local br="wiki-sync/2026-08-08-b00b00b"
+  git -C "$REPO" checkout -qb "$br"
+  echo "unmerged wiki work" >> "$REPO/f"
+  git -C "$REPO" add f
+  git -C "$REPO" commit -q -m "unmerged wiki-sync work"
+  local tip; tip=$(git -C "$REPO" rev-parse "$br")
+  git -C "$REPO" push -q -u origin "$br"
+  git -C "$REPO" checkout -q trunk
+  # Mirrors a squash-merged, auto-deleted PR: the remote head vanishes via a
+  # SEPARATE clone (see make_gone_branch_unpruned above for why), so REPO's
+  # own upstream-track state still needs the hook's own fetch --prune to
+  # resolve to [gone].
+  local clone; clone=$(mktemp -d -t gaia-janitor-b00b-clone-XXXXXX)
+  git clone -q "$ORIGIN" "$clone"
+  git -C "$clone" push -q origin --delete "$br"
+  rm -rf "$clone"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "$br" || return 1
+  [ "$(git -C "$REPO" rev-parse "$br")" = "$tip" ] || return 1
+  return 0
+}
+
 @test "sweep 1: an unmerged wiki-sync branch leaves base byte-identical" {
   make_repo
   make_live_branch "wiki-sync/2026-08-01-aaaa001"
@@ -712,6 +753,24 @@ SHIM
   [ "$(grep -c '^last_fetch_at=' "$dir/wiki-base-catchup.state")" -eq 1 ]
 }
 
+# wiki_catchup_state_unset's file rewrite is grep-driven: removing a key that
+# is the file's ONLY line leaves grep with empty output and a non-zero exit,
+# which a naive `grep -v ... >tmp && mv` reads as "the rewrite failed" and
+# skips the mv, so the key survives its own deletion. seed_catchup_owed
+# produces exactly that single-key file, and base is already caught up with
+# origin (make_repo pushes and never advances either side), so the drain-first
+# read (a purely local is-ancestor check, no branch or fetch required) unsets
+# catchup_owed directly.
+@test "sweep 1: a single-key catchup_owed breadcrumb is fully drained once base is caught up" {
+  make_repo
+  seed_catchup_owed
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  catchup_owed_is_set && return 1
+  return 0
+}
+
 @test "sweep 1: an owed obligation with NO branch present writes the report and emits nothing" {
   make_repo
   diverge_base_and_origin main
@@ -764,17 +823,23 @@ SHIM
 
 @test "sweep 1: a shallow clone degrades without error" {
   make_repo
-  local shallow before after
+  local shallow before after br
+  br="wiki-sync/2026-08-09-77777a9"
   shallow=$(mktemp -d -t gaia-janitor-shallow-XXXXXX)
-  git clone -q --depth 1 "$ORIGIN" "$shallow"
+  # file://: a bare path clone makes git silently ignore --depth ("--depth is
+  # ignored in local clones; use file:// instead"), which would leave this
+  # fixture cloning a full repo and the shallow-repository precondition below
+  # would never have caught it.
+  git clone -q --depth 1 "file://$ORIGIN" "$shallow"
+  [ "$(git -C "$shallow" rev-parse --is-shallow-repository)" = "true" ] || return 1
   git -C "$shallow" config user.email test@example.com
   git -C "$shallow" config user.name Test
   git -C "$shallow" config commit.gpgsign false
   git -C "$shallow" remote set-head origin -a
   mkdir -p "$shallow/.gaia/local"
-  git -C "$shallow" branch "wiki-sync/2026-08-09-77777a9"
-  git -C "$shallow" push -q -u origin "wiki-sync/2026-08-09-77777a9"
-  git -C "$shallow" push -q origin --delete "wiki-sync/2026-08-09-77777a9"
+  git -C "$shallow" branch "$br"
+  git -C "$shallow" push -q -u origin "$br"
+  git -C "$shallow" push -q origin --delete "$br"
   advance_origin_main main
   before=$(git -C "$shallow" rev-parse main)
   cd "$shallow"
@@ -785,6 +850,14 @@ SHIM
   if [ "$after" != "$before" ]; then
     [ "$after" = "$(git -C "$shallow" rev-parse origin/main)" ] || return 1
   fi
+  # --depth 1 implies --single-branch: remote.origin.fetch covers only main,
+  # so wiki-sync/*'s upstream is never mapped to a local tracking ref at all
+  # -- %(upstream:track) reads empty, not "[gone]", for a ref outside that
+  # refspec. The reap loop's own `[ "$track" = "[gone]" ] || continue` gate
+  # (line 494, .claude/hooks/local-janitor.sh) then never treats it as a reap
+  # candidate, so it survives untouched: the "degrades without error" case
+  # for this fixture is skip, not delete.
+  git -C "$shallow" rev-parse --verify --quiet "refs/heads/$br" >/dev/null 2>&1 || return 1
   rm -rf "$shallow"
 }
 
