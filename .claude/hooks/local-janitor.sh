@@ -122,7 +122,12 @@
 #      (gated again there on cost representation).
 #   4. empty leftover dirs under .gaia/local, EXCEPT the structural drop-zones
 #      tooling expects to find. Pruned with `rmdir`, so a non-empty dir can
-#      never be removed even if the logic is wrong.
+#      never be removed even if the logic is wrong. The drop-zone list is not
+#      hardcoded here: it is read from the state registry
+#      (.gaia/state-registry.json), which is what lets a keyed per-tree subdir
+#      match a declared glob row rather than needing a literal. A drop-zone
+#      list this sweep cannot read skips the sweep outright, keeping every
+#      empty dir rather than rmdir a structural one it could not identify.
 #   5. stale SPEC-workflow cache artifacts (gate1-*.json, draft-*.md,
 #      spec-session-*.json, spec-session-*.lock, spec-chain-*.json, audit-*/)
 #      and react-perf run dirs
@@ -163,9 +168,23 @@
 #      it), so this delegation currently has no candidates to act on.
 #   8. orphaned GAIA worktrees under .claude/worktrees/ whose branch upstream
 #      is [gone] (the same upstream-absent signal sweep #1 reads for
-#      wiki-sync/* branches), whose working tree is clean, AND whose branch
-#      is not named by a live RUNNING plan sentinel. The sentinel is
-#      gitignored, so it is invisible to both git-level checks above it; a
+#      wiki-sync/* branches), whose working tree is clean, whose branch
+#      is not named by a live RUNNING plan sentinel, AND whose work is
+#      provably upstream. That last condition is the strongest one here, for
+#      the reason sweep #1 (c) states: [gone] does NOT prove a merge, and a
+#      pull request closed without merging and then branch-deleted reads
+#      identically. So the reap additionally requires the branch's COMBINED
+#      diff to reproduce, by whitespace-verbatim patch id, some commit in a
+#      bounded scan of <merge-base>..origin/<base>. Combined rather than
+#      per-commit because a squash merge lands the whole branch as one
+#      upstream commit. Every read this evidence needs that cannot be
+#      answered keeps the worktree, so no failure anywhere in it can widen
+#      what gets deleted. A candidate the scan declines is memoized under the
+#      branch tip and origin/<base> tip that produced the answer, so the same
+#      bounded scan does not repeat every session while neither tip moves;
+#      only the negative answer is memoized, so a stale entry can only ever
+#      cause a keep. The RUNNING sentinel is gitignored, so it is invisible to
+#      the [gone] and clean-tree checks alike; a
 #      crashed session with an in-flight plan can otherwise read as
 #      provably dead. Checked in both the worktree's own .gaia/local/ and
 #      main's: for a properly linked worktree these are the same physical
@@ -186,7 +205,9 @@
 #      run far more often than it would on its own. Its own guards are what
 #      bound that: only worktrees under the main checkout's .claude/worktrees/,
 #      never the current checkout, never a detached HEAD, a clean working tree
-#      required, and never a branch a live RUNNING plan sentinel names.
+#      required, never a branch a live RUNNING plan sentinel names, and never
+#      a branch whose combined diff the bounded upstream patch-id scan does
+#      not match.
 #   9. off-pattern outlier residue: at the top level of .gaia/local plus the
 #      direct children (maxdepth-1, mindepth-1, no deeper) of audit/ and
 #      cache/, every child is put to the state registry
@@ -1296,6 +1317,31 @@ wt_current="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
 wt_current="$(cd "$wt_current" 2>/dev/null && pwd -P || printf '%s' "$wt_current")"
 wt_base="$wt_main/.claude/worktrees"
 if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
+  # The negative merge-evidence memo. The upstream scan below is this sweep's
+  # one expensive read, and its answer is a pure function of two tips: the
+  # branch's and origin/<base>'s. While neither moves, a candidate the scan
+  # declined cannot start matching, yet a declined candidate is precisely the
+  # one that stays put -- an abandoned branch is kept, correctly, and then
+  # re-walks the identical range at every session start for as long as its
+  # worktree sits there. Memoizing the negative answer under both tips is what
+  # stops bounded work from repeating when its answer provably cannot change.
+  #
+  # Only the NEGATIVE answer is recorded, which makes a stale entry harmless by
+  # construction: a memo hit skips the scan and KEEPS the worktree, the same
+  # direction every unanswerable question in this sweep already fails toward.
+  # No memo can cause a reap, and no memo can hold a worktree past the point
+  # its merge becomes provable -- landing that merge moves origin/<base>, which
+  # is itself half the key.
+  #
+  # Anchored at MAIN's cache, never the invoking tree's, for the same reason
+  # sweep #5b is: worktrees register in main, this sweep already resolved main,
+  # and the entry is registry main-only (worktree-reap-miss-memo in
+  # .gaia/state-registry.json).
+  wt_memo_file="$wt_main/.gaia/local/cache/worktree-reap-misses.txt"
+  wt_memo_dir="${wt_memo_file%/*}"
+  wt_memo_prev=""
+  [ -f "$wt_memo_file" ] && wt_memo_prev=$(cat "$wt_memo_file" 2>/dev/null || true)
+  wt_memo_next=""
   # Enumerate worktrees from the main checkout: porcelain emits `worktree
   # <path>` then (for an attached checkout) `branch refs/heads/<name>`, or
   # `detached`. Emit `<path>\t<branch>` per worktree; a detached worktree
@@ -1438,6 +1484,32 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
       # zero-commits-ahead reap above unreachable.
       wt_pid=${wt_pid_out%%[[:space:]]*}
       [ -n "$wt_pid" ] || continue
+      # The memo's key: the two tips whose movement is exactly the condition
+      # that could turn this candidate's non-match into a match. Precise rather
+      # than heuristic -- nothing else about the repository can change the
+      # answer. A read that fails leaves the key empty, which matches no line
+      # and records none, so the scan simply runs: the memo optimizes the scan
+      # away, it never stands in for it.
+      wt_tip=$(git -C "$wt_main" rev-parse --verify --quiet \
+        "refs/heads/$wt_branch" 2>/dev/null || true)
+      wt_base_tip=$(git -C "$wt_main" rev-parse --verify --quiet \
+        "refs/remotes/origin/$base" 2>/dev/null || true)
+      wt_memo_key=""
+      if [ -n "$wt_tip" ] && [ -n "$wt_base_tip" ]; then
+        wt_memo_key="$wt_branch $wt_tip $wt_base_tip"
+      fi
+      # A memoized miss: a completed scan already answered this exact question
+      # and found nothing. Carry the entry forward so it survives the rewrite
+      # below, and keep the worktree. Matched with a herestring, never
+      # `printf ... | grep -q`: under pipefail `grep -q` exits the instant it
+      # matches, printf takes SIGPIPE, and the pipeline reports 141 -- a HIT
+      # would read as a miss, which would merely cost a scan here, but the
+      # herestring is the idiom this file already uses for the same reason.
+      if [ -n "$wt_memo_key" ] && [ -n "$wt_memo_prev" ] \
+        && grep -qxF -- "$wt_memo_key" <<< "$wt_memo_prev"; then
+        wt_memo_next="$wt_memo_next$wt_memo_key"$'\n'
+        continue
+      fi
       # One bounded pipeline over <merge-base>..origin/$base rather than a
       # per-commit show loop, with --no-merges so a merge commit cannot
       # contribute a spurious id. The bound is git log's own -n: `head -n`
@@ -1466,7 +1538,15 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
       done <<UPSTREAM_IDS
 $wt_up_ids
 UPSTREAM_IDS
-      [ "$wt_match" -eq 1 ] || continue
+      if [ "$wt_match" -ne 1 ]; then
+        # A scan that completed and found no match: the one answer this sweep
+        # can memoize. Every earlier `continue` in this block is a FAILED read,
+        # which proves nothing and is deliberately not recorded -- memoizing a
+        # transient failure would suppress the real scan for as long as both
+        # tips held, and the reap would go silently inert.
+        [ -n "$wt_memo_key" ] && wt_memo_next="$wt_memo_next$wt_memo_key"$'\n'
+        continue
+      fi
     fi
     # Tear down inline: remove the worktree, delete its now-detached branch,
     # and prune the empty parent dirs a slashed name leaves behind. $wt_branch
@@ -1509,6 +1589,33 @@ UPSTREAM_IDS
       END{ if(p!="") print p "\t" b }
     '
   )
+  # Rewrite the memo from THIS run's own misses rather than appending to it, so
+  # an entry never outlives the worktree it describes: a candidate that was
+  # reaped, removed by hand, or has since moved either tip contributes no line
+  # this run and is gone from the file. Appending would grow it without bound,
+  # since both tips move over a repository's life and every pair either one
+  # ever held would accumulate. The loop is fed by process substitution, not a
+  # pipe, so it ran in this shell and wt_memo_next survives it.
+  #
+  # Written through a temp file in the same directory and renamed, so a
+  # concurrent session-start janitor reads either the whole old file or the
+  # whole new one, never a half-written one. A torn read would only ever cost a
+  # scan, but the atomic form is free. Every failure here is swallowed: the
+  # memo is an optimization, and a sweep that cannot write it still reaps
+  # correctly, just without the saving.
+  if [ -n "$wt_memo_next" ]; then
+    mkdir -p "$wt_memo_dir" 2>/dev/null || true
+    if [ -d "$wt_memo_dir" ]; then
+      wt_memo_tmp="$wt_memo_file.$$.tmp"
+      if printf '%s' "$wt_memo_next" > "$wt_memo_tmp" 2>/dev/null; then
+        mv -f "$wt_memo_tmp" "$wt_memo_file" 2>/dev/null || true
+      fi
+      [ -e "$wt_memo_tmp" ] && { rm -f "$wt_memo_tmp" 2>/dev/null || true; }
+    fi
+  else
+    # No candidate recorded a miss this run: the memo has nothing left to say.
+    rm -f "$wt_memo_file" 2>/dev/null || true
+  fi
 fi
 
 # --- 9. Off-pattern outlier residue ----------------------------------------
