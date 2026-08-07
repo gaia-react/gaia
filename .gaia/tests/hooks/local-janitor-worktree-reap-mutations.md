@@ -25,7 +25,7 @@ Every checksum below is the same value, because the file returns to its one ship
 every entry:
 
 ```
-a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6
+363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808
 ```
 
 ## Mutation 1: the clean-tree read's own exit status
@@ -50,8 +50,8 @@ alongside the failing one (`debt/407-control`), which still reaps normally in th
 mutation is attributable to this arm because UAT-008's shim fails only the status read scoped to
 one worktree's path; nothing else in the run is touched.
 
-Checksum before: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`.
-Checksum after revert: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`. Match.
+Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
+Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
 
 ## Mutation 3: commits-ahead disposition on an empty diff
 
@@ -79,8 +79,8 @@ is already true and so is unaffected by loosening the check to always pass. The 
 attributable to this arm because only a candidate that is ahead with an empty diff exercises the
 arm this check exists to refuse.
 
-Checksum before: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`.
-Checksum after revert: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`. Match.
+Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
+Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
 
 ## Mutation 4: the combined-diff read's exit status
 
@@ -107,8 +107,8 @@ slipping past the deleted status check still lands on `[ "$wt_ahead" -eq 0 ]`, w
 it, and the worktree is kept there too. Only the zero-ahead isolation fixture (UAT-007d) reaches the
 reap and exposes the missing check, which is exactly the isolation this row exists to prove.
 
-Checksum before: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`.
-Checksum after revert: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`. Match.
+Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
+Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
 
 ## Mutation 5: the patch-id read's exit status
 
@@ -134,8 +134,8 @@ without this check) falls through to `[ -n "$wt_pid" ] || continue` in the non-e
 still refuses it. Only the zero-ahead isolation fixture (UAT-007e) takes the empty-diff arm, where
 that downstream check does not run, and exposes the missing status check.
 
-Checksum before: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`.
-Checksum after revert: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`. Match.
+Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
+Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
 
 ## Mutation 7: whitespace-verbatim comparison, both patch-id reads together
 
@@ -175,8 +175,8 @@ while the upstream-scan read stays verbatim, so the two ids become incomparable,
 matches, the worktree is kept regardless, and UAT-003b would stay green for a reason that has
 nothing to do with the arm under test.
 
-Checksum before: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`.
-Checksum after revert: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`. Match.
+Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
+Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
 
 ## Mutation 8: the scan bound is applied by `git log`'s own `-n`
 
@@ -200,8 +200,8 @@ the merge-evidence scan runs when no cheap gate refuses` asserts the same litera
 token as a positive-control witness assertion, so it reds alongside UAT-009 rather than in place of
 it. Both reds are attributable to the one literal this mutation changes; nothing unrelated turned.
 
-Checksum before: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`.
-Checksum after revert: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`. Match.
+Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
+Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
 
 ## Mutation 9: gate ordering, the merge-evidence block moves ahead of the cheap refusals
 
@@ -230,8 +230,8 @@ candidates (a dirty tree, a live RUNNING sentinel) are the only fixtures built s
 the merge-evidence reads never ran on them; moving those reads ahead of the gates that were supposed
 to spare them is exactly what turns this test's witness counts positive.
 
-Checksum before: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`.
-Checksum after revert: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`. Match.
+Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
+Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
 
 ## Mutation 10: the patch-id comparison itself
 
@@ -257,8 +257,8 @@ line (its combined diff, computed `--verbatim`, does not match the upstream squa
 the comparison to always match reaps it too, for the identical reason UAT-003a reds. Both are direct
 consequences of the one condition this mutation changes, not an unrelated test turning.
 
-Checksum before: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`.
-Checksum after revert: `a0b1d759ccb546ecf72483c2d2c15bfb88b0e8424c18bc226fb9404c4bbfaab6`. Match.
+Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
+Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
 
 ## Arms with no test that reds them
 

@@ -1405,6 +1405,15 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
     # the default mode would reap and destroy that commit. The diff lives in a
     # shell variable rather than a temp file, so there is no predictable path
     # to guard and nothing to clean up.
+    #
+    # --verbatim raises this sweep's git floor to 2.39, above the repo-wide
+    # >= 2.31 that main-root-lib.sh declares, and that floor is stated in both
+    # places on purpose. Below 2.39 git rejects the option, this read exits
+    # non-zero, and the sweep declines every candidate: fail-safe, since
+    # nothing is destroyed, but silent, so the reap simply stops reclaiming
+    # anything. There is deliberately no version probe here. A probe would buy
+    # nothing a refusal does not already buy, and this comment is what tells a
+    # reader why an older git sees the sweep do nothing.
     wt_pid_out=$(printf '%s\n' "$wt_diff" | git -C "$wt_main" patch-id --verbatim 2>/dev/null)
     wt_pid_rc=$?
     [ "$wt_pid_rc" -eq 0 ] || continue
@@ -1430,10 +1439,11 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
       # contribute a spurious id. The bound is git log's own -n: `head -n`
       # would close the pipe and raise SIGPIPE 141 under this file's pipefail,
       # silently disabling the guard. wt_up_rc covers the whole two-command
-      # pipeline, which pipefail makes sufficient -- $? is the leftmost
-      # non-zero status, so neither read can be masked by the other -- and
-      # splitting it would mean materializing up to 1000 commits' patches into
-      # a shell variable. This is the one status here derived from a pipeline.
+      # pipeline, which pipefail makes sufficient -- it reports the RIGHTMOST
+      # non-zero status, so a failure of either read still surfaces as non-zero
+      # and neither can be masked by the other succeeding -- and splitting it
+      # would mean materializing up to 1000 commits' patches into a shell
+      # variable. This is the one status here derived from a pipeline.
       wt_up_ids=$(git -C "$wt_main" log -p --no-merges --no-ext-diff --no-textconv \
         --format='commit %H' -n 1000 --end-of-options "$wt_mb..origin/$base" 2>/dev/null \
         | git -C "$wt_main" patch-id --verbatim 2>/dev/null)
