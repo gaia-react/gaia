@@ -965,15 +965,19 @@ if [ -d "$audit_dir" ]; then
   for marker in "$audit_dir"/*.ok "$audit_dir"/*.refused "$audit_dir"/*.carried \
                 "$audit_dir"/*.dispositions.json "$audit_dir"/*.progress.log; do
     [ -e "$marker" ] || continue          # glob did not match
-    base=${marker##*/}
+    # marker_base, not base: $base is the shape-validated default branch
+    # resolved once at the top of this file, and sweeps below this one still
+    # read it. This loop runs at file top level, so a plain `base=` here is
+    # not loop-local, it overwrites that value for the rest of the run.
+    marker_base=${marker##*/}
     # An object id never contains a dot, so strip from the FIRST one -- the
     # same idiom the old tree/sha scheme used, now isolating the digest: the
     # plain <digest>.ok, the per-member <digest>.<member>.ok, and
     # <digest>.dispositions.json all resolve correctly.
-    key=${base%%.*}
+    key=${marker_base%%.*}
     keep=0
 
-    case "$base" in
+    case "$marker_base" in
       *.ok | *.refused)
         if [ "$have_jq" -eq 1 ] && janitor_digest_key "$key"; then
           fields=$(janitor_new_scheme_fields "$marker" "$key")
@@ -1014,7 +1018,7 @@ if [ -d "$audit_dir" ]; then
             # Keep-arm C: the frontend earned marker for a still-open
             # receipt. Only the infix-free <digest>.ok family files a
             # sidecar, so this never fires for a specialist or a refusal.
-            if [ "$keep" -eq 0 ] && [ "$base" = "${key}.ok" ] \
+            if [ "$keep" -eq 0 ] && [ "$marker_base" = "${key}.ok" ] \
                && [ -n "$open_receipt_digests" ] \
                && grep -qxF -- "$key" <<< "$open_receipt_digests"; then
               keep=1

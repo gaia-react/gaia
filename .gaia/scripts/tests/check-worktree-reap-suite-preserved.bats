@@ -49,7 +49,7 @@ PRESERVED_TEST_LINES=(
 )
 
 # The suite's test count as of this change; a future edit may only grow it.
-PRESERVED_TEST_FLOOR=37
+PRESERVED_TEST_FLOOR=38
 
 @test "the reap suite file exists" {
   [ -f "$SUITE" ]

@@ -25,7 +25,7 @@ Every checksum below is the same value, because the file returns to its one ship
 every entry:
 
 ```
-363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808
+8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4
 ```
 
 ## Mutation 1: the clean-tree read's own exit status
@@ -45,13 +45,13 @@ Edit: delete that line, leaving only `[ -z "$wt_status_out" ] || continue` after
 Test that goes red: `keeps a candidate that would otherwise be reaped when the status read fails`
 (UAT-008).
 
-What stays green, and why: all 36 other tests, including the sibling reap candidate UAT-008 builds
+What stays green, and why: every other test in the suite, including the sibling reap candidate UAT-008 builds
 alongside the failing one (`debt/407-control`), which still reaps normally in the same run. The
 mutation is attributable to this arm because UAT-008's shim fails only the status read scoped to
 one worktree's path; nothing else in the run is touched.
 
-Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
-Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
+Checksum before: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`.
+Checksum after revert: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`. Match.
 
 ## Mutation 3: commits-ahead disposition on an empty diff
 
@@ -73,14 +73,14 @@ Edit: replace that line with `true`.
 Test that goes red: `keeps a [gone]-branch worktree whose two commits cancel out to an empty
 combined diff` (UAT-005).
 
-What stays green, and why: all 36 other tests, including the zero-commits-ahead reap
+What stays green, and why: every other test in the suite, including the zero-commits-ahead reap
 (`reaps a [gone]-branch worktree zero commits ahead of the merge base`), whose own `$wt_ahead -eq 0`
 is already true and so is unaffected by loosening the check to always pass. The mutation is
 attributable to this arm because only a candidate that is ahead with an empty diff exercises the
 arm this check exists to refuse.
 
-Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
-Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
+Checksum before: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`.
+Checksum after revert: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`. Match.
 
 ## Mutation 4: the combined-diff read's exit status
 
@@ -100,15 +100,15 @@ Edit: delete that line.
 Test that goes red: `keeps a zero-commits-ahead candidate when the combined-diff read fails`
 (UAT-007d).
 
-What stays green, and why: all 36 other tests, including UAT-007a
+What stays green, and why: every other test in the suite, including UAT-007a
 (`keeps a candidate carrying unpushed work when the combined-diff read fails`), which stays green
 for a different reason than this check: that fixture is one or more commits ahead, so a failed read
 slipping past the deleted status check still lands on `[ "$wt_ahead" -eq 0 ]`, which is false for
 it, and the worktree is kept there too. Only the zero-ahead isolation fixture (UAT-007d) reaches the
 reap and exposes the missing check, which is exactly the isolation this row exists to prove.
 
-Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
-Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
+Checksum before: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`.
+Checksum after revert: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`. Match.
 
 ## Mutation 5: the patch-id read's exit status
 
@@ -127,15 +127,15 @@ Edit: delete that line.
 
 Test that goes red: `keeps a zero-commits-ahead candidate when the patch-id read fails` (UAT-007e).
 
-What stays green, and why: all 36 other tests, including UAT-007b
+What stays green, and why: every other test in the suite, including UAT-007b
 (`keeps a candidate carrying unpushed work when the patch-id read fails`), which stays green because
 that fixture is ahead of the merge base, so the failed read (empty `$wt_pid_out`, silently accepted
 without this check) falls through to `[ -n "$wt_pid" ] || continue` in the non-empty-diff arm, which
 still refuses it. Only the zero-ahead isolation fixture (UAT-007e) takes the empty-diff arm, where
 that downstream check does not run, and exposes the missing status check.
 
-Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
-Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
+Checksum before: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`.
+Checksum after revert: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`. Match.
 
 ## Mutation 7: whitespace-verbatim comparison, both patch-id reads together
 
@@ -162,7 +162,7 @@ pipeline).
 Test that goes red: `keeps a squash-merged worktree carrying an unpushed whitespace-only follow-up
 commit` (UAT-003b).
 
-What stays green, and why: all 36 other tests, including the substantive-follow-up sibling
+What stays green, and why: every other test in the suite, including the substantive-follow-up sibling
 (`keeps a squash-merged worktree carrying an unpushed substantive follow-up commit`, UAT-003a),
 whose follow-up changes real content rather than only whitespace, so its combined diff never
 normalizes to the squash's id under either mode and it is kept either way. The mutation is
@@ -175,8 +175,8 @@ while the upstream-scan read stays verbatim, so the two ids become incomparable,
 matches, the worktree is kept regardless, and UAT-003b would stay green for a reason that has
 nothing to do with the arm under test.
 
-Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
-Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
+Checksum before: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`.
+Checksum after revert: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`. Match.
 
 ## Mutation 8: the scan bound is applied by `git log`'s own `-n`
 
@@ -194,14 +194,14 @@ Edit: change `-n 1000` to `-n 500`.
 
 Test that goes red: `UAT-009: the upstream scan bound is applied by git log's own -n option`.
 
-What stays green, and why: 35 of the remaining 36 tests. One other test also reds under this
+What stays green, and why: every other test in the suite bar one. One other test also reds under this
 mutation, for the same underlying reason rather than a masking failure: `UAT-010 positive control:
 the merge-evidence scan runs when no cheap gate refuses` asserts the same literal `-n 1000` argv
 token as a positive-control witness assertion, so it reds alongside UAT-009 rather than in place of
 it. Both reds are attributable to the one literal this mutation changes; nothing unrelated turned.
 
-Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
-Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
+Checksum before: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`.
+Checksum after revert: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`. Match.
 
 ## Mutation 9: gate ordering, the merge-evidence block moves ahead of the cheap refusals
 
@@ -222,7 +222,7 @@ with the merge-evidence block's.
 
 Test that goes red: `UAT-010: the merge-evidence scan runs only after the cheap refusal gates`.
 
-What stays green, and why: all 36 other tests, including `UAT-010 positive control: the
+What stays green, and why: every other test in the suite, including `UAT-010 positive control: the
 merge-evidence scan runs when no cheap gate refuses` and `UAT-009: the upstream scan bound is
 applied by git log's own -n option`, both of which build candidates with no cheap gate to refuse on,
 so reordering which gate runs first changes nothing they assert. UAT-010's own two negative-count
@@ -230,8 +230,8 @@ candidates (a dirty tree, a live RUNNING sentinel) are the only fixtures built s
 the merge-evidence reads never ran on them; moving those reads ahead of the gates that were supposed
 to spare them is exactly what turns this test's witness counts positive.
 
-Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
-Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
+Checksum before: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`.
+Checksum after revert: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`. Match.
 
 ## Mutation 10: the patch-id comparison itself
 
@@ -250,15 +250,15 @@ Edit: change the condition to `if true; then`.
 Test that goes red: `keeps a squash-merged worktree carrying an unpushed substantive follow-up
 commit` (UAT-003a).
 
-What stays green, and why: 35 of the remaining 36 tests. One other test also reds under this
+What stays green, and why: every other test in the suite bar one. One other test also reds under this
 mutation, attributably rather than vacuously: `keeps a squash-merged worktree carrying an unpushed
 whitespace-only follow-up commit` (UAT-003b) is kept in the shipped guard by the same comparison
 line (its combined diff, computed `--verbatim`, does not match the upstream squash's id), so forcing
 the comparison to always match reaps it too, for the identical reason UAT-003a reds. Both are direct
 consequences of the one condition this mutation changes, not an unrelated test turning.
 
-Checksum before: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`.
-Checksum after revert: `363454f800cff10026a123ceb8a11af3e1214ad317e227ffc91a33fe5262c808`. Match.
+Checksum before: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`.
+Checksum after revert: `8eaf437cb60cf3e68f73e39d90a8d1521a45ae3994ba51b2b84405e120e332c4`. Match.
 
 ## Arms with no test that reds them
 
@@ -272,8 +272,8 @@ observed, not assumed: `git merge-base` against a deleted `origin/main` (the fix
 removed, `wt_mb` is the empty string and every downstream read that interpolates it
 (`"$wt_mb..refs/heads/$wt_branch"`, `"$wt_mb" "refs/heads/$wt_branch"`, `"$wt_mb..origin/$base"`)
 becomes a malformed git invocation that itself fails, and the next read's own status check (mutation
-4's and 5's arms, still intact) refuses on that failure instead. Running the full 37-test suite
-against this double deletion showed all 37 tests green, including UAT-006, confirming the pair is
+4's and 5's arms, still intact) refuses on that failure instead. Running the full suite
+against this double deletion showed every test green, including UAT-006, confirming the pair is
 masked rather than reachable. This is one condition expressed twice (an absent `origin/<base>`
 producing a failed AND empty read simultaneously), not two independent checks, so it is recorded as
 one unproven arm rather than split into two.

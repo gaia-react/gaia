@@ -1073,3 +1073,24 @@ SHIM
   branch_exists "plan/spec-913-silent-reap" && return 1
   [ ! -e "$wt" ]
 }
+
+# The default branch resolved once at the top of the hook has to survive every
+# sweep that runs between that resolution and this one. Sweep #4's audit-marker
+# walk runs in between and iterates over whatever `.gaia/local/audit/` holds, so
+# a checkout carrying even one marker is the ordinary case, not an edge case:
+# every real one does. If that walk leaves its own loop variable behind in the
+# name this sweep reads, the merge-base read below resolves nothing, every
+# candidate is declined, and the reap goes silently inert while still exiting 0.
+@test "reaps a [gone]-branch worktree when the audit directory holds markers" {
+  make_repo
+  make_gone_worktree "debt/500-marker" "debt/500-marker"
+  wt="$REPO/.claude/worktrees/debt/500-marker"
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{}\n' > "$REPO/.gaia/local/audit/deadbeefcafe.ok"
+  [ -d "$wt" ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "debt/500-marker" && return 1
+  [ ! -e "$wt" ]
+}
