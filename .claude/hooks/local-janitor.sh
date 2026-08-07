@@ -471,21 +471,18 @@ if [ "$wiki_sync_present" -eq 1 ]; then
       # fetch's own locks, never index.lock (a concurrent human `git` may
       # legitimately hold that one). The two locks live in different
       # directories from a linked worktree: FETCH_HEAD.lock is per-worktree
-      # (--absolute-git-dir), while shallow.lock belongs to the shared clone
-      # state in the common dir (--git-common-dir, the main checkout's .git
-      # for a linked worktree). Targeting --absolute-git-dir for both would
-      # strand the main checkout's shallow.lock behind a worktree-invoked
-      # kill, at a path that cannot exist under the worktree's own git dir.
+      # (--absolute-git-dir on $root), while shallow.lock belongs to the
+      # shared clone state that lives in the main checkout's own .git dir.
+      # Targeting --absolute-git-dir on $root for both would strand the main
+      # checkout's shallow.lock behind a worktree-invoked kill, at a path
+      # that cannot exist under the worktree's own git dir. Reached via
+      # $main_root (the shared resolver's answer, from the top of this file)
+      # rather than a hand-rolled --git-common-dir derivation: $main_root is
+      # by construction never itself a linked worktree, so its own
+      # --absolute-git-dir already IS the common dir shallow.lock lives in,
+      # with no relative/absolute normalization needed.
       git_dir=$(git -C "$root" rev-parse --absolute-git-dir 2>/dev/null || true)
-      # --git-common-dir is relative to $root from the main checkout itself
-      # (prints plain ".git"), but already absolute from a linked worktree
-      # (git resolves it against the main checkout it points back to) --
-      # normalize to absolute either way rather than assume one shape.
-      git_common_dir=$(git -C "$root" rev-parse --git-common-dir 2>/dev/null || true)
-      case "$git_common_dir" in
-        /*) ;;
-        ?*) git_common_dir="$root/$git_common_dir" ;;
-      esac
+      git_common_dir=$(git -C "$main_root" rev-parse --absolute-git-dir 2>/dev/null || true)
       [ -n "$git_dir" ] && rm -f "$git_dir/FETCH_HEAD.lock" 2>/dev/null
       [ -n "$git_common_dir" ] && rm -f "$git_common_dir/shallow.lock" 2>/dev/null
       true
