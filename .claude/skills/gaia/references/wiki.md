@@ -110,7 +110,8 @@ blocks while it polls, and the Bash tool's DEFAULT timeout is 120000, not its ma
 timeout must be passed at the call site or the slice is killed early. A killed slice is treated
 as still pending and falls through to the session-start janitor, leaving no partial branch state.
 
-Read the last line of stdout:
+Read the last two lines of stdout. The `WIKI_AWAIT: <state>` marker is the last line, and the
+verb's human-readable summary is the line before it, which is the one to relay:
 
 - empty output: nothing to await. Say nothing and move on.
 - `WIKI_AWAIT: merged`: relay the verb's summary line. The local branch is deleted and base is

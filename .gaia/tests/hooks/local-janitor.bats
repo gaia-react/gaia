@@ -360,10 +360,11 @@ SHIM
   # 08 and 09 are the only values the digits-only guard admits and bare
   # arithmetic rejects, as invalid octal. The first run records last_fetch_at;
   # the second is the one that evaluates the interval against it. Read as base
-  # 8 that expansion is a fatal shell error, and because the sweep body is a
-  # subshell it dies there while the parent walks on: no fetch either way, so
-  # neither the exit status nor the fetch count can see it. The diagnostic on
-  # stderr is what separates a rate limit that held from a sweep that aborted.
+  # 8 that expansion is an error bash handles by unwinding out of every
+  # enclosing compound command, so half A is abandoned mid-sweep and no fetch
+  # happens either way: neither the exit status nor the fetch count can see it.
+  # The diagnostic on stderr is what separates a rate limit that held from a
+  # sweep that was abandoned.
   export GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES=08
   PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
   [ "$status" -eq 0 ] || return 1
@@ -711,12 +712,41 @@ SHIM
   advance_origin_main main
   local before; before=$(git -C "$REPO" rev-parse main)
   git -C "$REPO" checkout -q --detach main
+  local detached_before; detached_before=$(git -C "$REPO" rev-parse HEAD)
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
+  # Same hazard the on-base sibling above documents, in its detached form: with
+  # the gate gone the fast-forward advances the detached HEAD itself, which
+  # leaves the `main` ref untouched, so main alone staying put proves nothing.
+  [ "$(git -C "$REPO" rev-parse HEAD)" = "$detached_before" ] || return 1
   [ -f "$(catchup_report_file)" ] && return 1
   return 0
+}
+
+@test "sweep 1: a timed-out fetch does not fast-forward on a stale tracking ref" {
+  make_repo
+  make_live_branch "wiki-sync/2026-08-06-dddd006"
+  advance_origin_main main
+  # A PRIOR fetch succeeded, so origin/main is genuinely ahead of main. That is
+  # what keeps the drain's is-ancestor read from discharging the obligation
+  # before the gate under test is ever reached: without this, catchup_owed
+  # clears on its own and the arm proves nothing either way.
+  git -C "$REPO" fetch -q origin
+  seed_catchup_owed
+  local before; before=$(git -C "$REPO" rev-parse main)
+  make_hanging_fetch_shim 60
+  cd "$REPO"
+  export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=2
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ] || return 1
+  # THIS session's fetch timed out, so nothing it could read is known fresh and
+  # the fast-forward is declined even though every other gate passes and the
+  # tracking ref happens to be ahead. The obligation survives for a session
+  # whose fetch completes.
+  [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
+  catchup_owed_is_set || return 1
 }
 
 @test "sweep 1: base with no upstream skips" {

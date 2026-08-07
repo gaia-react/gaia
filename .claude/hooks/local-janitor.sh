@@ -400,13 +400,15 @@ if [ "$wiki_sync_present" -eq 1 ]; then
     last_fetch_at=$(wiki_catchup_state_get last_fetch_at)
     case "$last_fetch_at" in '' | *[!0-9]*) last_fetch_at="" ;; esac
     if [ -n "$last_fetch_at" ]; then
-      elapsed=$(($(date -u +%s) - last_fetch_at))
-      # 10# forces base 10. The digits-only guard above admits a zero-padded
-      # value, and bare arithmetic reads 08 and 09 as invalid octal, which is a
-      # FATAL expansion error rather than a failed assignment: this sweep runs
-      # in a subshell, so it dies right here, silently skipping its own fetch,
-      # reap, and fast-forward while the parent walks on into sweep 2. Nothing
-      # non-zero escapes, so the loss is invisible from the exit status.
+      # 10# forces base 10 on both operands below. The digits-only guards above
+      # admit a zero-padded value, and bare arithmetic reads 08 and 09 as
+      # invalid octal. That is an expansion error, not a failed assignment:
+      # bash unwinds to the top level, abandoning every enclosing compound
+      # command, so the rest of half A (this fetch and the reap below) is
+      # skipped outright while execution resumes at the next top-level block.
+      # Half B and sweeps 2 through 9 still run, and nothing non-zero escapes,
+      # so the loss is invisible from the exit status.
+      elapsed=$(($(date -u +%s) - 10#$last_fetch_at))
       min_interval_secs=$((10#$wiki_fetch_min_interval * 60))
       [ "$elapsed" -lt "$min_interval_secs" ] && do_fetch=0
     fi
