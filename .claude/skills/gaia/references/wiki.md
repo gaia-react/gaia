@@ -112,7 +112,7 @@ as still pending and falls through to the session-start janitor, leaving no part
 
 Read the last line of stdout:
 
-- empty output: nothing was pending. Say nothing and move on.
+- empty output: nothing to await. Say nothing and move on.
 - `WIKI_AWAIT: merged`: relay the verb's summary line. The local branch is deleted and base is
   caught up.
 - `WIKI_AWAIT: pending`: run the same command again, same explicit timeout, but re-run at most

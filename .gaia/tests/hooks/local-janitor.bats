@@ -352,6 +352,27 @@ SHIM
   [ "$elapsed" -lt 45 ] || return 1
 }
 
+@test "sweep 1: a zero-padded min-interval still rate-limits the fetch" {
+  make_repo
+  make_live_branch "wiki-sync/2026-07-11-5555555"
+  make_argv_witness_shim
+  cd "$REPO"
+  # 08 and 09 are the only values the digits-only guard admits and bare
+  # arithmetic rejects, as invalid octal. The first run records last_fetch_at;
+  # the second is the one that evaluates the interval against it. Read as base
+  # 8 that expansion is a fatal shell error, and because the sweep body is a
+  # subshell it dies there while the parent walks on: no fetch either way, so
+  # neither the exit status nor the fetch count can see it. The diagnostic on
+  # stderr is what separates a rate limit that held from a sweep that aborted.
+  export GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES=08
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ] || return 1
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ] || return 1
+  [ "$(grep -c 'fetch' "$witness")" -eq 1 ] || return 1
+  case "$output" in *'value too great for base'*) return 1 ;; esac
+}
+
 @test "sweep 1: no origin remote skips the fetch outright" {
   make_repo
   make_live_branch "wiki-sync/2026-07-10-4444444"

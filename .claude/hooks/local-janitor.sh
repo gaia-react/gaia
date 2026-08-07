@@ -38,7 +38,9 @@
 #           nothing for any of it.
 #        b. a bounded, rate-limited `git fetch --prune` of origin. Bounded by
 #           GAIA_WIKI_FETCH_TIMEOUT_SECONDS (default 5, floor 1, ceiling 30;
-#           0 disables the fetch outright) and rate-limited by
+#           0 disables the fetch outright, and with it the reap in (c) and
+#           the fast-forward in (d), both of which require evidence only a
+#           completed fetch establishes) and rate-limited by
 #           GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES (default 60, floor 5; 0
 #           removes the rate limit rather than disabling anything), with the
 #           attempt timestamped BEFORE launch so a hung remote cannot buy an
@@ -399,7 +401,13 @@ if [ "$wiki_sync_present" -eq 1 ]; then
     case "$last_fetch_at" in '' | *[!0-9]*) last_fetch_at="" ;; esac
     if [ -n "$last_fetch_at" ]; then
       elapsed=$(($(date -u +%s) - last_fetch_at))
-      min_interval_secs=$((wiki_fetch_min_interval * 60))
+      # 10# forces base 10. The digits-only guard above admits a zero-padded
+      # value, and bare arithmetic reads 08 and 09 as invalid octal, which is a
+      # FATAL expansion error rather than a failed assignment: this sweep runs
+      # in a subshell, so it dies right here, silently skipping its own fetch,
+      # reap, and fast-forward while the parent walks on into sweep 2. Nothing
+      # non-zero escapes, so the loss is invisible from the exit status.
+      min_interval_secs=$((10#$wiki_fetch_min_interval * 60))
       [ "$elapsed" -lt "$min_interval_secs" ] && do_fetch=0
     fi
   fi
