@@ -956,3 +956,120 @@ SHIM
   grep -qE "merge-base .*refs/heads/debt/408-nobase" "$witness" && return 1
   branch_exists "debt/408-nobase"
 }
+
+# --- Observability: the scan bound, the gate order, and output silence ----
+#
+# Both properties below concern what the guard does NOT do, so they cannot be
+# observed behaviorally: the upstream scan's bound has to come from git log's
+# own -n option, never a downstream `head -n` (which would close the pipe and
+# raise SIGPIPE 141 under this file's pipefail, silently disabling the guard
+# again), and the merge-evidence reads must run only after the cheap refusal
+# gates (dirty tree, live RUNNING sentinel) have already declined.
+
+# UAT-009: the bound is applied by git log's own -n option. Asserts the
+# literal count, not just the flag, so a re-tuned bound has to be published in
+# this test's diff. The patch-id assertion guards against a vacuous green: a
+# fixture that never reached the scan would record neither.
+@test "UAT-009: the upstream scan bound is applied by git log's own -n option" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-908-bound" "plan/spec-908-bound" 1
+  wt="$REPO/.claude/worktrees/plan/spec-908-bound"
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "plan/spec-908-bound" && return 1
+  [ ! -e "$wt" ]
+  grep -qE "log .*-n 1000" "$witness"
+  [ "$(grep -c 'patch-id' "$witness")" -ge 1 ]
+}
+
+# UAT-010: the expensive merge-evidence scan runs only after the cheap
+# refusal gates. Both candidates are built with make_squash_merged_worktree,
+# the same builder UAT-009 uses -- a candidate built with make_gone_branch is
+# zero commits ahead and reaps through the empty-diff arm without ever
+# reaching the upstream scan, which would make this test's negative counts
+# true for a reason that has nothing to do with gate ordering.
+@test "UAT-010: the merge-evidence scan runs only after the cheap refusal gates" {
+  make_repo
+  ignore_local_state
+  make_squash_merged_worktree "plan/spec-909-dirty" "plan/spec-909-dirty" 1
+  make_squash_merged_worktree "plan/spec-910-sentinel" "plan/spec-910-sentinel" 1
+  dirty_wt="$REPO/.claude/worktrees/plan/spec-909-dirty"
+  sentinel_wt="$REPO/.claude/worktrees/plan/spec-910-sentinel"
+  echo dirty > "$dirty_wt/dirty.txt"
+  write_plan_sentinel "$sentinel_wt" "plans/PLAN-920" "plan/spec-910-sentinel"
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$dirty_wt" ]
+  [ -d "$sentinel_wt" ]
+  branch_exists "plan/spec-909-dirty"
+  branch_exists "plan/spec-910-sentinel"
+  [ "$(grep -c 'patch-id' "$witness")" -eq 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -eq 0 ]
+  [ "$(grep -cE "merge-base .*refs/heads/plan/spec-909-dirty" "$witness")" -eq 0 ]
+  [ "$(grep -cE "merge-base .*refs/heads/plan/spec-910-sentinel" "$witness")" -eq 0 ]
+  [ "$(grep -cE "rev-list .*refs/heads/plan/spec-909-dirty" "$witness")" -eq 0 ]
+  [ "$(grep -cE "rev-list .*refs/heads/plan/spec-910-sentinel" "$witness")" -eq 0 ]
+  [ "$(grep -cE "diff .*refs/heads/plan/spec-909-dirty" "$witness")" -eq 0 ]
+  [ "$(grep -cE "diff .*refs/heads/plan/spec-910-sentinel" "$witness")" -eq 0 ]
+}
+
+# UAT-010 positive control, same fixture shape with the dirty file and the
+# sentinel removed. Without this the negative counts above could green
+# vacuously through an early short-circuit further up the sweep and prove
+# nothing about gate ordering.
+@test "UAT-010 positive control: the merge-evidence scan runs when no cheap gate refuses" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-911-control-a" "plan/spec-911-control-a" 1
+  make_squash_merged_worktree "plan/spec-912-control-b" "plan/spec-912-control-b" 1
+  wt_a="$REPO/.claude/worktrees/plan/spec-911-control-a"
+  wt_b="$REPO/.claude/worktrees/plan/spec-912-control-b"
+  [ -d "$wt_a" ]
+  [ -d "$wt_b" ]
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "plan/spec-911-control-a" && return 1
+  branch_exists "plan/spec-912-control-b" && return 1
+  [ ! -e "$wt_a" ]
+  [ ! -e "$wt_b" ]
+  [ "$(grep -c 'patch-id' "$witness")" -gt 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -gt 0 ]
+  [ "$(grep -cE "merge-base .*refs/heads/plan/spec-911-control-a" "$witness")" -gt 0 ]
+  [ "$(grep -cE "merge-base .*refs/heads/plan/spec-912-control-b" "$witness")" -gt 0 ]
+  [ "$(grep -cE "rev-list .*refs/heads/plan/spec-911-control-a" "$witness")" -gt 0 ]
+  [ "$(grep -cE "rev-list .*refs/heads/plan/spec-912-control-b" "$witness")" -gt 0 ]
+  [ "$(grep -cE "diff .*refs/heads/plan/spec-911-control-a" "$witness")" -gt 0 ]
+  [ "$(grep -cE "diff .*refs/heads/plan/spec-912-control-b" "$witness")" -gt 0 ]
+}
+
+# COV-006: the sweep emits nothing at all, on any path. Two arms, keep and
+# reap, on fixtures already established above.
+@test "COV-006: a kept worktree produces no output" {
+  make_repo
+  make_gone_worktree "debt/410-silent-keep" "debt/410-silent-keep"
+  wt="$REPO/.claude/worktrees/debt/410-silent-keep"
+  echo dirty > "$wt/dirty.txt"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -d "$wt" ]
+  branch_exists "debt/410-silent-keep"
+}
+
+@test "COV-006: a reaped squash-merged worktree produces no output" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-913-silent-reap" "plan/spec-913-silent-reap" 1
+  wt="$REPO/.claude/worktrees/plan/spec-913-silent-reap"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  branch_exists "plan/spec-913-silent-reap" && return 1
+  [ ! -e "$wt" ]
+}
