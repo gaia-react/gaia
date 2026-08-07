@@ -194,18 +194,21 @@ EOF
   printf '[wiki base] fast-forward of main to origin/main refused (git error); local base is behind. Resolve by hand; the next qualifying session retries.\n' \
     > .gaia/local/cache/shared/wiki-base-catchup.report
 
-  SHIM_DIR=$(mktemp -d -t gaia-drift-shim-XXXXXX)
-  cat > "$SHIM_DIR/jq" <<'SHIM'
-#!/bin/bash
-exit 127
-SHIM
-  chmod +x "$SHIM_DIR/jq"
+  # `command -v jq` only checks that an executable NAMED jq is on PATH; a shim
+  # that fails when run still satisfies it. To genuinely simulate "jq
+  # unavailable" the PATH below carries no jq at all -- only symlinks to the
+  # handful of external binaries the drain block itself needs (head, rm) plus
+  # bash to run the hook.
+  nojq_bin=$(mktemp -d -t gaia-drift-nojq-XXXXXX)
+  ln -sf "$(command -v bash)" "$nojq_bin/bash"
+  ln -sf "$(command -v head)" "$nojq_bin/head"
+  ln -sf "$(command -v rm)" "$nojq_bin/rm"
 
-  run bash -c 'PATH="$1:$PATH" bash "$2" < /dev/null' _ "$SHIM_DIR" "$HOOK_ABS"
+  run bash -c 'PATH="$1" bash "$2" < /dev/null' _ "$nojq_bin" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   grep -qF -- '[wiki base] fast-forward of main to origin/main refused' <<<"$output" || return 1
   [ ! -f .gaia/local/cache/shared/wiki-base-catchup.report ] || return 1
-  rm -rf "$SHIM_DIR"
+  rm -rf "$nojq_bin"
 }
 
 @test "no report file is a silent no-op" {

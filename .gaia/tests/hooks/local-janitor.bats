@@ -103,10 +103,23 @@ make_gone_branch() {
 # real checkout is in right after a wiki landing's PR squash-merges: exactly
 # the state sweep #1's own prune-fetch has to resolve.
 make_gone_branch_unpruned() {
-  local br="$1"
+  local br="$1" clone
   git -C "$REPO" branch "$br"
   git -C "$REPO" push -q -u origin "$br"
-  git -C "$REPO" push -q origin --delete "$br"
+  # Delete the remote branch from a SEPARATE clone, not through REPO's own
+  # push: `git push origin --delete` updates the pushing repo's OWN
+  # remote-tracking ref as part of that same push, so a delete issued from
+  # REPO itself would already read [gone] before REPO's own fetch ever runs
+  # -- REPO never observes the delay this fixture exists to model. A second
+  # clone has no such side channel back to REPO: REPO's own
+  # refs/remotes/origin/$br stays exactly as it was (present, live) until
+  # REPO's own `git fetch --prune` resolves it, which is the real shape of a
+  # checkout that has not yet caught up with a squash-merged PR's
+  # auto-deleted branch.
+  clone=$(mktemp -d -t gaia-janitor-unpruned-clone-XXXXXX)
+  git clone -q "$ORIGIN" "$clone"
+  git -C "$clone" push -q origin --delete "$br"
+  rm -rf "$clone"
 }
 
 # A branch with a live, in-sync upstream (tracking ref still present).
@@ -617,10 +630,15 @@ SHIM
   advance_origin_main main
   local before; before=$(git -C "$REPO" rev-parse main)
   git -C "$REPO" checkout -qb feature/off-base
+  local checkout_before; checkout_before=$(git -C "$REPO" rev-parse feature/off-base)
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
+  # Without the on-base gate, the fast-forward still runs but advances
+  # whatever IS checked out (feature/off-base), not main; main alone staying
+  # put does not prove the gate held.
+  [ "$(git -C "$REPO" rev-parse feature/off-base)" = "$checkout_before" ] || return 1
   [ -f "$(catchup_report_file)" ] && return 1
   return 0
 }
@@ -684,7 +702,14 @@ SHIM
   done
   local dir; dir="$REPO/.gaia/local/cache/shared"
   [ "$(find "$dir" -maxdepth 1 -name 'wiki-base-catchup.state' | wc -l | tr -d ' ')" -eq 1 ] || return 1
-  [ "$(grep -c '^catchup_owed=1$' "$dir/wiki-base-catchup.state")" -eq 1 ]
+  [ "$(grep -c '^catchup_owed=1$' "$dir/wiki-base-catchup.state")" -eq 1 ] || return 1
+  # catchup_owed is drained (unset then reset) by every invocation, which
+  # would mask a `wiki_catchup_state_set` regression that appends instead of
+  # rewriting: the drain's own correct unset clears the prior line before the
+  # broken set appends a new one. last_fetch_at is never unset by anything, so
+  # it is the key that actually proves the read-modify-write, not just the
+  # AND-list's occurrence count.
+  [ "$(grep -c '^last_fetch_at=' "$dir/wiki-base-catchup.state")" -eq 1 ]
 }
 
 @test "sweep 1: an owed obligation with NO branch present writes the report and emits nothing" {

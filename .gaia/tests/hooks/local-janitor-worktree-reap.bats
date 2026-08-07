@@ -342,7 +342,7 @@ push_upstream_then_delete() {
   git -C "$REPO" push -q origin --delete "$br"
 }
 
-@test "sweep 1: a worktree invocation leaves main's HEAD unchanged" {
+@test "sweep 1: a worktree checked out on base fast-forwards main via its own tree, not main_root's" {
   make_repo
   git -C "$REPO" push -q -u origin main
   git -C "$REPO" remote set-head origin -a
@@ -362,10 +362,17 @@ push_upstream_then_delete() {
   git -C "$clone" push -q origin main
   rm -rf "$clone"
 
+  # Free `main` for the worktree: git refuses the same branch checked out in
+  # two working trees at once, so REPO's own checkout has to move off it
+  # first. Detaching leaves REPO's checkout on the same commit main was on
+  # before the advance above -- a worktree checked out on some OTHER branch
+  # would never reach the merge command at all, since the on-base gate
+  # declines before it, which is exactly what made the previous fixture here
+  # unable to tell `-C "$root"` from `-C "$main_root"` apart.
+  git -C "$REPO" checkout -q --detach main
   mkdir -p "$REPO/.claude/worktrees"
-  git -C "$REPO" branch other-work
-  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/other-work" other-work
-  wt="$REPO/.claude/worktrees/other-work"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/main-side" main
+  wt="$REPO/.claude/worktrees/main-side"
 
   main_before=$(git -C "$REPO" rev-parse main)
   cd "$wt"
@@ -373,12 +380,16 @@ push_upstream_then_delete() {
   [ "$status" -eq 0 ]
   # The fetch and the reap are NOT tree-scoped -- refs and the object store
   # are shared, so this invocation, run from the worktree, still fetches and
-  # still reaps the wiki-sync branch. What stays scoped is the fast-forward:
-  # main's own HEAD, a branch this worktree never has checked out, is
-  # untouched, because the merge command only ever targets $root (the
-  # worktree), never main's separate checkout.
+  # still reaps the wiki-sync branch.
   branch_exists "wiki-sync/2026-08-13-6666663" && return 1
-  [ "$(git -C "$REPO" rev-parse main)" = "$main_before" ]
+  # `main` is a single ref shared across every worktree of this repo, and it
+  # only advances when the merge runs where main is actually checked out
+  # (the worktree, $root). Targeting main_root's own checkout instead --
+  # detached at an unrelated commit -- fast-forwards that detached HEAD in
+  # place without ever touching the `main` ref, leaving it exactly where it
+  # started; that divergence is what proves the merge is scoped to $root.
+  [ "$(git -C "$REPO" rev-parse main)" != "$main_before" ] || return 1
+  [ "$(git -C "$REPO" rev-parse main)" = "$(git -C "$REPO" rev-parse origin/main)" ]
 }
 
 @test "sweep 8: a worktree that is the current checkout survives the newly routine [gone] trigger" {
