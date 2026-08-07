@@ -165,9 +165,16 @@ export type CleanupAfterMergeOptions = {
 export const cleanupAfterMerge = (options: CleanupAfterMergeOptions): void => {
   const {base, branch, cwd, runner} = options;
 
-  runner('git', ['checkout', base], {cwd});
+  // `checkout` treats a bare `--` as the revision/pathspec divider (it would
+  // reinterpret `base` as a pathspec, not a ref), so only `--end-of-options`
+  // closes the option-injection vector here. `git pull` offers no working
+  // separator at all: it strips `--` and re-execs its internal `git fetch`
+  // without it (confirmed via `GIT_TRACE=1`), so a flag-shaped `base` still
+  // reaches fetch as an option; that call is left as-is. `branch -D` accepts
+  // the plan's `--` form.
+  runner('git', ['checkout', '--end-of-options', base], {cwd});
   runner('git', ['pull', '--ff-only', 'origin', base], {cwd});
-  runner('git', ['branch', '-D', branch], {cwd});
+  runner('git', ['branch', '-D', '--', branch], {cwd});
   runner('git', ['fetch', '--prune', 'origin'], {cwd});
 };
 

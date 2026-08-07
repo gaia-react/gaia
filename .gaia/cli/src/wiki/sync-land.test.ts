@@ -297,9 +297,9 @@ describe('wiki sync land', () => {
       ['gh', 'pr', 'create'],
       ['gh', 'pr', 'merge', '--squash', '--auto', '--delete-branch'],
       ['gh', 'pr', 'view', 'wiki-sync/2026-05-07-bbbbbbb'],
-      ['git', 'checkout', 'main'],
+      ['git', 'checkout', '--end-of-options', 'main'],
       ['git', 'pull', '--ff-only', 'origin', 'main'],
-      ['git', 'branch', '-D', 'wiki-sync/2026-05-07-bbbbbbb'],
+      ['git', 'branch', '-D', '--', 'wiki-sync/2026-05-07-bbbbbbb'],
       ['git', 'fetch', '--prune', 'origin'],
     ] as const;
 

@@ -74,9 +74,9 @@ describe('cleanupAfterMerge', () => {
     });
 
     expect(seen).toEqual([
-      {args: ['checkout', 'main'], command: 'git'},
+      {args: ['checkout', '--end-of-options', 'main'], command: 'git'},
       {args: ['pull', '--ff-only', 'origin', 'main'], command: 'git'},
-      {args: ['branch', '-D', 'wiki-sync/x'], command: 'git'},
+      {args: ['branch', '-D', '--', 'wiki-sync/x'], command: 'git'},
       {args: ['fetch', '--prune', 'origin'], command: 'git'},
     ]);
   });

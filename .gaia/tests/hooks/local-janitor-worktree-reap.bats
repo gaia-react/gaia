@@ -319,3 +319,122 @@ write_plan_sentinel() {
   branch_exists "debt/109-other" && return 1
   [ ! -e "$wt" ]
 }
+
+# --- UAT-017 / UAT-019: sweep #1's fast-forward, run from a linked worktree,
+# and sweep #8's guards under the newly routine [gone] trigger -------------
+#
+# Sweep #1's own prune-fetch (task-janitor-fetch.md) now runs a real
+# `git fetch --prune` whenever ANY wiki-sync/* branch is present, not on some
+# rarer schedule -- and that fetch is never tree-scoped: refs and the object
+# store are shared across every worktree of the same repo, so it can flip an
+# UNRELATED branch's upstream-track to [gone] as a side effect. Sweep #8's
+# existing guards (current checkout, dirty tree, live RUNNING sentinel) have
+# to keep holding under this now much more frequent trigger.
+
+# push_upstream_then_delete <branch>: creates <branch>, pushes it (tracking
+# ref created), then deletes the remote head WITHOUT a local prune -- so its
+# upstream-track only flips to [gone] once something else (sweep #1's own
+# fetch --prune) resolves it, mirroring UAT-019's premise exactly.
+push_upstream_then_delete() {
+  local br="$1"
+  git -C "$REPO" branch "$br"
+  git -C "$REPO" push -q -u origin "$br"
+  git -C "$REPO" push -q origin --delete "$br"
+}
+
+@test "sweep 1: a worktree invocation leaves main's HEAD unchanged" {
+  make_repo
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
+  make_gone_branch "wiki-sync/2026-08-13-6666663"
+
+  # Advance origin/main beyond what REPO's own main currently has, via a
+  # throwaway clone so REPO's own history is never touched directly.
+  local clone
+  clone=$(mktemp -d -t gaia-janitor-wt-adv-XXXXXX)
+  git clone -q "$ORIGIN" "$clone"
+  git -C "$clone" config user.email test@example.com
+  git -C "$clone" config user.name Test
+  git -C "$clone" config commit.gpgsign false
+  echo advanced >> "$clone/f"
+  git -C "$clone" add f
+  git -C "$clone" commit -q -m advance
+  git -C "$clone" push -q origin main
+  rm -rf "$clone"
+
+  mkdir -p "$REPO/.claude/worktrees"
+  git -C "$REPO" branch other-work
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/other-work" other-work
+  wt="$REPO/.claude/worktrees/other-work"
+
+  main_before=$(git -C "$REPO" rev-parse main)
+  cd "$wt"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  # The fetch and the reap are NOT tree-scoped -- refs and the object store
+  # are shared, so this invocation, run from the worktree, still fetches and
+  # still reaps the wiki-sync branch. What stays scoped is the fast-forward:
+  # main's own HEAD, a branch this worktree never has checked out, is
+  # untouched, because the merge command only ever targets $root (the
+  # worktree), never main's separate checkout.
+  branch_exists "wiki-sync/2026-08-13-6666663" && return 1
+  [ "$(git -C "$REPO" rev-parse main)" = "$main_before" ]
+}
+
+@test "sweep 8: a worktree that is the current checkout survives the newly routine [gone] trigger" {
+  make_repo
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
+  make_gone_branch "wiki-sync/2026-08-14-7777774"
+
+  push_upstream_then_delete "debt/300-current"
+  mkdir -p "$REPO/.claude/worktrees"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/debt/300-current" "debt/300-current"
+  wt="$REPO/.claude/worktrees/debt/300-current"
+  mkdir -p "$wt/.gaia/local"
+
+  cd "$wt"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/300-current"
+}
+
+@test "sweep 8: a worktree with a dirty tree survives the newly routine [gone] trigger" {
+  make_repo
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
+  make_gone_branch "wiki-sync/2026-08-15-8888885"
+
+  push_upstream_then_delete "debt/301-dirty"
+  mkdir -p "$REPO/.claude/worktrees"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/debt/301-dirty" "debt/301-dirty"
+  wt="$REPO/.claude/worktrees/debt/301-dirty"
+  echo dirty > "$wt/dirty.txt"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/301-dirty"
+}
+
+@test "sweep 8: a worktree named by a live RUNNING plan survives the newly routine [gone] trigger" {
+  make_repo
+  ignore_local_state
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
+  make_gone_branch "wiki-sync/2026-08-16-9999996"
+
+  push_upstream_then_delete "debt/302-live"
+  mkdir -p "$REPO/.claude/worktrees"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/debt/302-live" "debt/302-live"
+  wt="$REPO/.claude/worktrees/debt/302-live"
+  write_plan_sentinel "$wt" "plans/PLAN-910" "debt/302-live"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/302-live"
+}

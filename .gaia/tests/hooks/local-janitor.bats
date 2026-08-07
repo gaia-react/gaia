@@ -1,5 +1,10 @@
 #!/usr/bin/env bats
 #
+# TST-012's stderr-vs-stdout separation below needs `run --separate-stderr`
+# (bats >= 1.5.0); this declaration alters `run` semantics for every test in
+# this file, not just the ones that use the separated form.
+bats_require_minimum_version 1.5.0
+#
 # Sweep #1 of local-janitor.sh: merged-and-gone wiki-sync branch cleanup.
 #
 # The wiki landing CLI cuts a throwaway `wiki-sync/<date>-<sha>` branch and
@@ -35,7 +40,12 @@ make_repo() {
   git -C "$REPO" config commit.gpgsign false
   git -C "$REPO" remote add origin "$ORIGIN"
   echo init > "$REPO/f"
-  git -C "$REPO" add f
+  # .gaia/local is gitignored in every real GAIA checkout; committing the same
+  # entry here is what makes `git status --porcelain` clean reachable at all
+  # once mkdir -p below creates the directory -- load-bearing for the
+  # fast-forward's working-tree-clean gate.
+  printf '.gaia/local/\n' > "$REPO/.gitignore"
+  git -C "$REPO" add f .gitignore
   git -C "$REPO" commit -q -m init
   git -C "$REPO" push -q -u origin main
   git -C "$REPO" remote set-head origin -a
@@ -47,7 +57,12 @@ make_repo() {
 make_repo_default_branch() {
   local base="$1"
   ORIGIN=$(mktemp -d -t gaia-janitor-origin-XXXXXX)
-  git init -q --bare "$ORIGIN"
+  # The bare repo's own HEAD symref must already name $base: `remote set-head
+  # origin -a` below asks the remote for its own HEAD, and a bare repo
+  # initialized without --initial-branch keeps whatever init.defaultBranch
+  # the local git config supplies (often "main"), which never gets created
+  # here when $base is something else -- "Cannot determine remote HEAD".
+  git init -q --bare --initial-branch="$base" "$ORIGIN"
   REPO=$(mktemp -d -t gaia-janitor-repo-XXXXXX)
   git -C "$REPO" init -q --initial-branch="$base"
   git -C "$REPO" config user.email test@example.com
@@ -55,7 +70,8 @@ make_repo_default_branch() {
   git -C "$REPO" config commit.gpgsign false
   git -C "$REPO" remote add origin "$ORIGIN"
   echo init > "$REPO/f"
-  git -C "$REPO" add f
+  printf '.gaia/local/\n' > "$REPO/.gitignore"
+  git -C "$REPO" add f .gitignore
   git -C "$REPO" commit -q -m init
   git -C "$REPO" push -q -u origin "$base"
   git -C "$REPO" remote set-head origin -a
@@ -435,6 +451,327 @@ SHIM
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ ! -d "$REPO/.gaia/local" ]
+}
+
+# --- Half B: the durable-obligation fast-forward, breadcrumb, and refusal ---
+# report (UAT-008 to UAT-015, UAT-018, UAT-020). See task-janitor-catchup's
+# `### The fast-forward gate chain` and `### The durable-obligation mechanism`.
+
+catchup_state_file() { printf '%s' "$REPO/.gaia/local/cache/shared/wiki-base-catchup.state"; }
+catchup_report_file() { printf '%s' "$REPO/.gaia/local/cache/shared/wiki-base-catchup.report"; }
+
+catchup_owed_is_set() {
+  local f; f=$(catchup_state_file)
+  [ -f "$f" ] && grep -qF -- "catchup_owed=1" "$f"
+}
+
+# advance_origin_main [base]: pushes a NEW commit to $ORIGIN's own [base]
+# (default main) via a throwaway clone, so REPO's local [base] is left
+# strictly BEHIND origin/[base] without ever touching REPO's own working
+# tree or history. The new commit writes wiki/.state.json, so a test can
+# assert the fast-forward's working-tree content, not just its ref.
+advance_origin_main() {
+  local base="${1:-main}" clone
+  clone=$(mktemp -d -t gaia-janitor-adv-XXXXXX)
+  git clone -q "$ORIGIN" "$clone"
+  git -C "$clone" config user.email test@example.com
+  git -C "$clone" config user.name Test
+  git -C "$clone" config commit.gpgsign false
+  mkdir -p "$clone/wiki"
+  echo '{"advanced":true}' > "$clone/wiki/.state.json"
+  git -C "$clone" add wiki/.state.json
+  git -C "$clone" commit -q -m "advance $base"
+  git -C "$clone" push -q origin "$base"
+  rm -rf "$clone"
+}
+
+# diverge_base_and_origin [base]: local [base] gets ONE commit never pushed;
+# origin's [base] gets a DIFFERENT commit, pushed via a throwaway clone taken
+# BEFORE the local commit exists. Neither side is an ancestor of the other --
+# genuine divergence, the shape `merge --ff-only` refuses outright.
+diverge_base_and_origin() {
+  local base="${1:-main}" clone
+  echo "local only" >> "$REPO/f"
+  git -C "$REPO" add f
+  git -C "$REPO" commit -q -m "local-only change"
+
+  clone=$(mktemp -d -t gaia-janitor-div-XXXXXX)
+  git clone -q "$ORIGIN" "$clone"
+  git -C "$clone" config user.email test@example.com
+  git -C "$clone" config user.name Test
+  git -C "$clone" config commit.gpgsign false
+  echo "origin only" >> "$clone/f"
+  git -C "$clone" add f
+  git -C "$clone" commit -q -m "origin-only change"
+  git -C "$clone" push -q origin "$base"
+  rm -rf "$clone"
+}
+
+# seed_catchup_owed: writes catchup_owed=1 directly, bypassing a real reap --
+# UAT-012's "no branch present" arm needs the breadcrumb already on file
+# BEFORE the session under test ever runs.
+seed_catchup_owed() {
+  mkdir -p "$REPO/.gaia/local/cache/shared"
+  printf 'catchup_owed=1\n' > "$(catchup_state_file)"
+}
+
+# make_status_clean_shim: a PATH-shimmed `git` whose `status --porcelain`
+# call always reports clean, while every other call (fetch, merge, branch,
+# ...) passes through to the real binary. Simulates the TOCTOU window
+# between the gate's own status read and the merge attempt: a real
+# untracked-collision failure needs a file on disk `git status --porcelain`
+# would otherwise show, which would fail the clean-tree gate before the
+# merge is ever attempted.
+make_status_clean_shim() {
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  local real_git
+  real_git=$(command -v git)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+case "\$*" in
+  *"status --porcelain"*) exit 0 ;;
+esac
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git"
+}
+
+@test "sweep 1: fast-forwards base with a checkout-aware --ff-only" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-11-4444441"
+  make_argv_witness_shim
+  advance_origin_main main
+  cd "$REPO"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse main)" = "$(git -C "$REPO" rev-parse origin/main)" ] || return 1
+  [ -z "$(git -C "$REPO" status --porcelain 2>/dev/null)" ] || return 1
+  [ "$(cat "$REPO/wiki/.state.json" 2>/dev/null)" = '{"advanced":true}' ] || return 1
+  [ "$(grep -c 'fetch' "$witness")" -eq 1 ] || return 1
+  grep -qF -- 'pull' "$witness" && return 1
+  branch_exists "wiki-sync/2026-08-11-4444441" && return 1
+  return 0
+}
+
+@test "sweep 1: base resolution honors a non-main default branch" {
+  make_repo_default_branch trunk
+  make_gone_branch "wiki-sync/2026-08-07-ffff007"
+  advance_origin_main trunk
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse trunk)" = "$(git -C "$REPO" rev-parse origin/trunk)" ]
+}
+
+@test "sweep 1: base resolution falls back when origin/HEAD is unset" {
+  make_repo
+  git -C "$REPO" remote set-head origin --delete
+  make_gone_branch "wiki-sync/2026-08-08-00000a8"
+  advance_origin_main main
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse main)" = "$(git -C "$REPO" rev-parse origin/main)" ]
+}
+
+@test "sweep 1: an unmerged wiki-sync branch leaves base byte-identical" {
+  make_repo
+  make_live_branch "wiki-sync/2026-08-01-aaaa001"
+  advance_origin_main main
+  local before; before=$(git -C "$REPO" rev-parse main)
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
+  branch_exists "wiki-sync/2026-08-01-aaaa001"
+}
+
+@test "sweep 1: dirty tree skips the fast-forward silently" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-02-cccc002"
+  advance_origin_main main
+  local before; before=$(git -C "$REPO" rev-parse main)
+  echo dirty > "$REPO/dirty.txt"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
+  [ -f "$(catchup_report_file)" ] && return 1
+  branch_exists "wiki-sync/2026-08-02-cccc002" && return 1
+  return 0
+}
+
+@test "sweep 1: HEAD off base skips" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-03-cccc003"
+  advance_origin_main main
+  local before; before=$(git -C "$REPO" rev-parse main)
+  git -C "$REPO" checkout -qb feature/off-base
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
+  [ -f "$(catchup_report_file)" ] && return 1
+  return 0
+}
+
+@test "sweep 1: detached HEAD skips" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-04-cccc004"
+  advance_origin_main main
+  local before; before=$(git -C "$REPO" rev-parse main)
+  git -C "$REPO" checkout -q --detach main
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
+  [ -f "$(catchup_report_file)" ] && return 1
+  return 0
+}
+
+@test "sweep 1: base with no upstream skips" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-05-cccc005"
+  advance_origin_main main
+  local before; before=$(git -C "$REPO" rev-parse main)
+  git -C "$REPO" branch --unset-upstream main
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
+  [ -f "$(catchup_report_file)" ] && return 1
+  return 0
+}
+
+@test "sweep 1: the obligation survives a session that cannot discharge it" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-06-dddd006"
+  advance_origin_main main
+  cd "$REPO"
+  echo dirty > "$REPO/dirty.txt"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse main)" != "$(git -C "$REPO" rev-parse origin/main)" ] || return 1
+  catchup_owed_is_set || return 1
+
+  rm -f "$REPO/dirty.txt"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse main)" = "$(git -C "$REPO" rev-parse origin/main)" ] || return 1
+  catchup_owed_is_set && return 1
+  return 0
+}
+
+@test "sweep 1: the obligation marker cannot accumulate" {
+  make_repo
+  export GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES=0
+  echo dirty > "$REPO/dirty.txt"
+  cd "$REPO"
+  for n in 1 2 3 4 5; do
+    make_gone_branch "wiki-sync/2026-08-2$n-eeee00$n"
+    run bash "$HOOK_ABS"
+    [ "$status" -eq 0 ]
+  done
+  local dir; dir="$REPO/.gaia/local/cache/shared"
+  [ "$(find "$dir" -maxdepth 1 -name 'wiki-base-catchup.state' | wc -l | tr -d ' ')" -eq 1 ] || return 1
+  [ "$(grep -c '^catchup_owed=1$' "$dir/wiki-base-catchup.state")" -eq 1 ]
+}
+
+@test "sweep 1: an owed obligation with NO branch present writes the report and emits nothing" {
+  make_repo
+  diverge_base_and_origin main
+  git -C "$REPO" fetch -q origin
+  seed_catchup_owed
+  cd "$REPO"
+  run --separate-stderr bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ] || return 1
+  [ -z "$stderr" ] || return 1
+  local report; report=$(catchup_report_file)
+  [ -f "$report" ] || return 1
+  grep -qE '^\[wiki base\] fast-forward of main to origin/main refused' "$report"
+}
+
+@test "sweep 1: a divergent base is REPORTED, exactly one line, and never blocks" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-12-5555552"
+  diverge_base_and_origin main
+  local before; before=$(git -C "$REPO" rev-parse main)
+  cd "$REPO"
+  run --separate-stderr bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
+  local report; report=$(catchup_report_file)
+  [ -f "$report" ] || return 1
+  [ "$(wc -l < "$report" | tr -d ' ')" -eq 1 ] || return 1
+  grep -qE '^\[wiki base\] fast-forward of main to origin/main refused' "$report" || return 1
+  branch_exists "wiki-sync/2026-08-12-5555552" && return 1
+  return 0
+}
+
+@test "sweep 1: a non-divergence failure is reported by the same rule" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-13-6666663"
+  advance_origin_main main
+  mkdir -p "$REPO/wiki"
+  echo "collision" > "$REPO/wiki/.state.json"
+  make_status_clean_shim
+  cd "$REPO"
+  PATH="$SHIM_DIR:$PATH" run --separate-stderr bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  local report; report=$(catchup_report_file)
+  [ -f "$report" ] || return 1
+  grep -qF -- "refused (untracked collision)" "$report" || return 1
+  # The UAT-011 skip arms above never write a report; this arm's failure is
+  # a TRIED-and-failed fast-forward, the only case the report exists for.
+  [ "$(wc -l < "$report" | tr -d ' ')" -eq 1 ]
+}
+
+@test "sweep 1: a shallow clone degrades without error" {
+  make_repo
+  local shallow before after
+  shallow=$(mktemp -d -t gaia-janitor-shallow-XXXXXX)
+  git clone -q --depth 1 "$ORIGIN" "$shallow"
+  git -C "$shallow" config user.email test@example.com
+  git -C "$shallow" config user.name Test
+  git -C "$shallow" config commit.gpgsign false
+  git -C "$shallow" remote set-head origin -a
+  mkdir -p "$shallow/.gaia/local"
+  git -C "$shallow" branch "wiki-sync/2026-08-09-77777a9"
+  git -C "$shallow" push -q -u origin "wiki-sync/2026-08-09-77777a9"
+  git -C "$shallow" push -q origin --delete "wiki-sync/2026-08-09-77777a9"
+  advance_origin_main main
+  before=$(git -C "$shallow" rev-parse main)
+  cd "$shallow"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ] || return 1
+  after=$(git -C "$shallow" rev-parse main)
+  if [ "$after" != "$before" ]; then
+    [ "$after" = "$(git -C "$shallow" rev-parse origin/main)" ] || return 1
+  fi
+  rm -rf "$shallow"
+}
+
+@test "sweep 1: two concurrent runs degrade safely" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-10-8888884"
+  advance_origin_main main
+  local old_main
+  old_main=$(git -C "$REPO" rev-parse main)
+  cd "$REPO"
+  bash "$HOOK_ABS" & local pid1=$!
+  bash "$HOOK_ABS" & local pid2=$!
+  wait "$pid1"; local s1=$?
+  wait "$pid2"; local s2=$?
+  [ "$s1" -eq 0 ] || return 1
+  [ "$s2" -eq 0 ] || return 1
+  [ -z "$(git -C "$REPO" status --porcelain 2>/dev/null)" ] || return 1
+  git -C "$REPO" fsck --no-progress >/dev/null 2>&1 || return 1
+  local final_main origin_main
+  final_main=$(git -C "$REPO" rev-parse main)
+  origin_main=$(git -C "$REPO" rev-parse origin/main)
+  [ "$final_main" = "$old_main" ] || [ "$final_main" = "$origin_main" ]
 }
 
 # --- Migration trigger: ledger-status-migrate.sh runs before the reap sweeps ---

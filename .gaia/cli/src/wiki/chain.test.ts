@@ -536,10 +536,12 @@ describe('wiki chain', () => {
       const pollIndex = ordered.findIndex((c) =>
         c.startsWith('gh pr view wiki-sync/2026-05-07-bbbbbbb')
       );
-      const checkoutBaseIndex = ordered.indexOf('git checkout main');
+      const checkoutBaseIndex = ordered.indexOf(
+        'git checkout --end-of-options main'
+      );
       const pullIndex = ordered.indexOf('git pull --ff-only origin main');
       const branchDeleteIndex = ordered.indexOf(
-        'git branch -D wiki-sync/2026-05-07-bbbbbbb'
+        'git branch -D -- wiki-sync/2026-05-07-bbbbbbb'
       );
       const pruneIndex = ordered.indexOf('git fetch --prune origin');
       expect(pushIndex).toBeGreaterThanOrEqual(0);

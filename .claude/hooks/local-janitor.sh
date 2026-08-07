@@ -279,6 +279,14 @@ esac
 fetch_attempted=0
 fetch_ok=0
 
+# Set when THIS session's reap loop below encounters a [gone] wiki-sync/*
+# branch, whether it deletes it or the cherry check refuses to. Read by
+# half B further down this file: it is one of the two triggers ("owed OR
+# half A reconciled a branch") for attempting the fast-forward, alongside a
+# `catchup_owed=1` breadcrumb a previous session left behind. Same
+# initialize-before-any-branch requirement as the two flags above.
+branch_reconciled=0
+
 wiki_sync_present=0
 if [ -n "$branch_tracks" ]; then
   while IFS= read -r line; do
@@ -414,6 +422,8 @@ if [ "$wiki_sync_present" -eq 1 ]; then
         esac
         [ "$ref" = "$current" ] && continue
         [ "$track" = "[gone]" ] || continue
+        # shellcheck disable=SC2034 # read by half B, further down this file
+        branch_reconciled=1
 
         # Refuse the reap when the branch carries work no remote-tracking ref
         # has. `git cherry` compares by PATCH ID, not by ancestry, the only
@@ -436,6 +446,107 @@ if [ "$wiki_sync_present" -eq 1 ]; then
 $branch_tracks
 EOF
     fi
+  fi
+fi
+
+# --- Half B: the durable-obligation fast-forward ---------------------------
+# Advances base to origin/base with a checkout-aware `git merge --ff-only`.
+# Purely local -- no network call under any circumstance -- so it is attempted
+# whether or not this session holds a wiki-sync/* branch at all: half A's
+# fetch already updated origin/$base when it ran, and nothing here re-hits the
+# network. Two independent triggers, per the frozen gate chain: THIS session's
+# reap loop reconciled a [gone] branch (branch_reconciled=1), OR a previous
+# session left the catchup_owed=1 breadcrumb because it could not complete the
+# fast-forward. Git-scoped like the rest of sweep #1, so it runs above the
+# .gaia/local existence guard just below.
+#
+# Safety argument (and the one this comment does NOT make): --ff-only against
+# base's own upstream can only advance base to a commit the remote already
+# has. This is NOT built on "[gone] proves a merge" -- [gone] proves only that
+# the remote head ref is absent; a PR closed without merging then
+# branch-deleted reads identically. The fast-forward's own safety comes from
+# --ff-only itself, not from the reap that happened to precede it.
+#
+# Drain first, independent of any fast-forward attempt: a purely local,
+# no-network read of whether base is already at or ahead of its upstream. Safe
+# to run whether or not this session is even checked out on base.
+owed=$(wiki_catchup_state_get catchup_owed)
+if [ "$owed" = "1" ] && [ -n "$base" ] \
+  && git -C "$root" rev-parse --verify --quiet "refs/heads/$base" >/dev/null 2>&1 \
+  && git -C "$root" rev-parse --verify --quiet "origin/$base" >/dev/null 2>&1 \
+  && git -C "$root" merge-base --is-ancestor --end-of-options \
+       "origin/$base" "refs/heads/$base" 2>/dev/null; then
+  wiki_catchup_state_unset catchup_owed
+  rm -f "$main_root/.gaia/local/cache/shared/wiki-base-catchup.report" 2>/dev/null || true
+  owed=""
+fi
+
+attempt_ff=0
+[ "$owed" = "1" ] && attempt_ff=1
+[ "$branch_reconciled" -eq 1 ] && attempt_ff=1
+
+if [ "$attempt_ff" -eq 1 ] && [ -n "$base" ]; then
+  # Gates, all cheap and local, all silent when they fail (a failing gate is a
+  # SKIP: no report, exit 0, base byte-identical, index and working tree
+  # untouched -- distinct from a TRIED-and-failed fast-forward, which reports).
+  ff_ready=1
+  [ "$current" = "$base" ] || ff_ready=0   # empty $current (detached) fails here too
+
+  if [ "$ff_ready" -eq 1 ]; then
+    [ -z "$(git -C "$root" status --porcelain 2>/dev/null)" ] || ff_ready=0
+  fi
+
+  base_upstream=""
+  if [ "$ff_ready" -eq 1 ]; then
+    if git -C "$root" rev-parse --verify --quiet "origin/$base" >/dev/null 2>&1; then
+      base_upstream=$(git -C "$root" for-each-ref \
+        --format='%(upstream)' "refs/heads/$base" 2>/dev/null)
+    fi
+    [ -n "$base_upstream" ] || ff_ready=0
+  fi
+
+  if [ "$ff_ready" -eq 1 ] && [ "$fetch_attempted" -eq 1 ] && [ "$fetch_ok" -ne 1 ]; then
+    ff_ready=0
+  fi
+
+  if [ "$ff_ready" -eq 1 ]; then
+    # SEC-011: $base was shape-validated once, above, before any git call
+    # interpolated it; --end-of-options additionally stops a ref that starts
+    # with `-` from ever being read as a flag. Capture stderr only (the
+    # `2>&1 >/dev/null` order): stdout is discarded, stderr lands in $ff_stderr
+    # for the report below, and NOTHING reaches this hook's own stdout/stderr
+    # either way.
+    ff_stderr=$(git -C "$root" merge --ff-only --end-of-options "origin/$base" 2>&1 >/dev/null)
+    ff_status=$?
+    if [ "$ff_status" -eq 0 ]; then
+      wiki_catchup_state_unset catchup_owed
+      rm -f "$main_root/.gaia/local/cache/shared/wiki-base-catchup.report" 2>/dev/null || true
+    else
+      # Coverage is every non-skip FAILURE, not divergence alone: an untracked
+      # file the incoming commit would overwrite, a held index.lock, and a
+      # transient git error all reproduce the same silent stale base. Derived
+      # from the failed merge's own stderr; defaults to "git error".
+      reason="git error"
+      case "$ff_stderr" in
+        *"Not possible to fast-forward"*) reason="divergence" ;;
+        *"untracked working tree files would be overwritten"*) reason="untracked collision" ;;
+        *"index.lock"*) reason="index locked" ;;
+      esac
+      wiki_catchup_state_set catchup_owed 1
+      # Same never-create-.gaia/local rule as the breadcrumb helpers: this
+      # write is skipped silently on a checkout that never had .gaia/local.
+      if [ -d "$main_root/.gaia/local" ]; then
+        mkdir -p "$main_root/.gaia/local/cache/shared" 2>/dev/null
+        printf '[wiki base] fast-forward of %s to origin/%s refused (%s); local base is behind. Resolve by hand; the next qualifying session retries.\n' \
+          "$base" "$base" "$reason" \
+          > "$main_root/.gaia/local/cache/shared/wiki-base-catchup.report" 2>/dev/null || true
+      fi
+    fi
+  else
+    # A gate declined the attempt outright: the obligation persists (or is
+    # newly recorded) so a later qualifying session retries. Silent: no
+    # report, nothing on stdout or stderr.
+    wiki_catchup_state_set catchup_owed 1
   fi
 fi
 
