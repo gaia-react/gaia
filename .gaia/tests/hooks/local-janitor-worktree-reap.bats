@@ -46,6 +46,12 @@ make_repo() {
   git -C "$REPO" add f
   git -C "$REPO" commit -q -m init
   mkdir -p "$REPO/.gaia/local"
+  # Push main and pin origin/HEAD so origin/<base> resolves: sweep #8's
+  # cherry-based reap guard treats an unresolvable base as unanswerable and
+  # keeps the worktree, so a fixture that never establishes one can never
+  # exercise a genuine reap.
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
 }
 
 # make_repo_spaced: identical to make_repo, but REPO's absolute path contains
@@ -66,6 +72,9 @@ make_repo_spaced() {
   git -C "$REPO" add f
   git -C "$REPO" commit -q -m init
   mkdir -p "$REPO/.gaia/local"
+  # Same rationale as make_repo above: pin a resolvable origin/<base>.
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
 }
 
 # A branch whose upstream is [gone]: pushed (tracking ref created), then the
@@ -117,6 +126,12 @@ ignore_local_state() {
   printf '.gaia/local/\n' > "$REPO/.gitignore"
   git -C "$REPO" add .gitignore
   git -C "$REPO" commit -q -m "ignore local state"
+  # Keep origin/main current with this new commit: sweep #8's cherry-based
+  # reap guard compares a candidate branch against origin/<base>, and a
+  # branch cut from local main after this commit would otherwise carry a
+  # commit origin/main does not have, reading as unanswerable regardless of
+  # the branch's own merge state.
+  git -C "$REPO" push -q origin main
 }
 
 # write_plan_sentinel <root> <plan-rel> <branch>: a RUNNING plan sentinel at
@@ -453,4 +468,39 @@ push_upstream_then_delete() {
   [ "$status" -eq 0 ]
   [ -d "$wt" ]
   branch_exists "debt/302-live"
+}
+
+# Regression: sweep #1's prune-fetch is repo-global and flips EVERY branch
+# whose remote head is absent to [gone], not only wiki-sync/* ones. A branch
+# whose pull request squash-merged reads [gone] the moment sweep #1's fetch
+# resolves it, exactly like a genuinely abandoned one -- ancestry cannot tell
+# the two apart, only a PATCH-ID (`git cherry`) comparison against
+# origin/<base> can. This models a developer who pushed the branch, its PR
+# squash-merged (GitHub auto-deletes the head branch), and then kept
+# committing follow-ups locally without pushing again: before the hook runs
+# the branch reads [ahead 1]; the hook's own fetch is what makes it [gone].
+# Sweep #8 must refuse to reap it, the same way sweep #1's own reap already
+# refuses a wiki-sync/* branch in the identical shape.
+@test "sweep 8: a worktree branch with an unpushed follow-up commit survives its upstream going [gone]" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-17-1111112"
+
+  push_upstream_then_delete "debt/303-followup"
+  mkdir -p "$REPO/.claude/worktrees"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/debt/303-followup" "debt/303-followup"
+  wt="$REPO/.claude/worktrees/debt/303-followup"
+
+  # The unpushed follow-up commit: made locally after the squash merge, never
+  # pushed, and reachable from no remote-tracking ref.
+  echo followup > "$wt/followup.txt"
+  git -C "$wt" add followup.txt
+  git -C "$wt" commit -q -m followup
+  followup_sha=$(git -C "$wt" rev-parse HEAD)
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/303-followup"
+  git -C "$REPO" cat-file -e "$followup_sha" 2>/dev/null
 }

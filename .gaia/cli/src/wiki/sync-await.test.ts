@@ -12,6 +12,8 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
 import {
+  existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -23,6 +25,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {run} from './sync-await.js';
+import {defaultRunner} from './util/branch.js';
 import type {CommandRunner} from './util/branch.js';
 
 type Sandbox = {
@@ -39,6 +42,57 @@ const setupSandbox = (): Sandbox => {
       rmSync(root, {force: true, recursive: true});
     },
     root,
+  };
+};
+
+// Set explicitly so commits succeed in CI environments without a configured
+// git user.
+const GIT_IDENTITY_ENV = {
+  GIT_AUTHOR_EMAIL: 'gaia-test@example.com',
+  GIT_AUTHOR_NAME: 'GAIA Test',
+  GIT_COMMITTER_EMAIL: 'gaia-test@example.com',
+  GIT_COMMITTER_NAME: 'GAIA Test',
+};
+
+type WorktreeSandbox = {
+  cleanup: () => void;
+  /** Path to the linked worktree. */
+  linkedRoot: string;
+  /** Path to the main checkout. Shared (`cache/shared/`) state must resolve here. */
+  mainRoot: string;
+};
+
+/**
+ * Real main checkout + real linked worktree (mirrors
+ * `setup/__tests__/setup-worktree.test.ts`'s `setupWorktreeSandbox`), for
+ * exercising `resolveMainWorktreeRoot` and `git worktree`-visible refs for
+ * real. `resolveMainWorktreeRoot`/`resolveRepoRoot` shell out directly
+ * (`execGaiaGit`), not through the injected `CommandRunner`, so this needs an
+ * actual on-disk worktree pair rather than a mock.
+ */
+const setupWorktreeSandbox = (branch: string): WorktreeSandbox => {
+  const parent = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-await-wt-'));
+  const mainRoot = path.join(parent, 'main');
+  const linkedRoot = path.join(parent, 'linked');
+
+  mkdirSync(mainRoot, {recursive: true});
+  execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: mainRoot});
+  execFileSync('git', ['commit', '--allow-empty', '-q', '-m', 'init'], {
+    cwd: mainRoot,
+    env: {...process.env, ...GIT_IDENTITY_ENV},
+  });
+  execFileSync('git', ['branch', branch], {cwd: mainRoot});
+  execFileSync('git', ['worktree', 'add', '-q', linkedRoot, branch], {
+    cwd: mainRoot,
+    env: {...process.env, ...GIT_IDENTITY_ENV},
+  });
+
+  return {
+    cleanup: () => {
+      rmSync(parent, {force: true, recursive: true});
+    },
+    linkedRoot,
+    mainRoot,
   };
 };
 
@@ -855,5 +909,166 @@ describe('wiki sync await', () => {
     // the `callCount` matches; the definition line does not match (it reads
     // `cleanupAfterMerge = (`, with a space before the paren).
     expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+
+  test('the durable state file resolves to the MAIN checkout, not a linked worktree calling from elsewhere', () => {
+    const branch = 'wiki-sync/2026-08-07-aaaaaaa';
+    const worktree = setupWorktreeSandbox(branch);
+
+    try {
+      const recorded: RecordedCall[] = [];
+      // Only the OTHER wiki-sync candidate is discovered here, so this run
+      // takes the still-pending path (writes the durable state file) rather
+      // than the merged-cleanup path, which is enough to prove where the
+      // state file lands.
+      const runner = buildRunner(
+        [
+          forEachRefRule([branch]),
+          symbolicRefHeadFailsRule(),
+          prViewRule(branch, ['OPEN']),
+        ],
+        recorded
+      );
+
+      const exit = run([], {
+        cwd: worktree.linkedRoot,
+        runner,
+        sleep: noSleep,
+      });
+
+      expect(exit).toBe(EXIT_CODES.OK);
+
+      const mainStatePath = path.join(
+        worktree.mainRoot,
+        '.gaia',
+        'local',
+        'cache',
+        'shared',
+        'wiki-await.json'
+      );
+      const linkedStatePath = path.join(
+        worktree.linkedRoot,
+        '.gaia',
+        'local',
+        'cache',
+        'shared',
+        'wiki-await.json'
+      );
+
+      expect(existsSync(mainStatePath)).toBe(true);
+      expect(existsSync(linkedStatePath)).toBe(false);
+    } finally {
+      worktree.cleanup();
+    }
+  });
+
+  test('a merged branch still checked out in another worktree: branch -D is refused, so the report is exhausted, not merged, and the branch survives', () => {
+    const branch = 'wiki-sync/2026-08-07-aaaaaaa';
+    const worktree = setupWorktreeSandbox(branch);
+
+    try {
+      // Real git for the git half (so `branch -D` genuinely hits the
+      // worktree-checkout refusal), scripted `gh` for the merged PR lookup.
+      const runner: CommandRunner = (command, args, options) => {
+        if (command === 'gh') {
+          if (args[0] === 'pr' && args[1] === 'view' && args[2] === branch)
+            return {
+              output: ['', 'MERGED\n', ''] as never,
+              pid: 0,
+              signal: null,
+              status: 0,
+              stderr: '',
+              stdout: 'MERGED\n',
+            };
+
+          return {
+            output: ['', '', ''] as never,
+            pid: 0,
+            signal: null,
+            status: 0,
+            stderr: '',
+            stdout: '',
+          };
+        }
+
+        return defaultRunner(command, args, options);
+      };
+
+      const exit = run([], {
+        cwd: worktree.mainRoot,
+        runner,
+        sleep: noSleep,
+      });
+
+      expect(exit).toBe(EXIT_CODES.OK);
+      const output = stdio.outputs.join('');
+      expect(output.trimEnd().split('\n').at(-1)).toBe('WIKI_AWAIT: exhausted');
+      expect(output).toContain('could not be deleted');
+
+      // `branch -D` was refused; the branch is still there, still checked
+      // out by the linked worktree.
+      const branchList = execFileSync('git', ['branch', '--list', branch], {
+        cwd: worktree.mainRoot,
+        encoding: 'utf8',
+      });
+      expect(branchList).toContain(branch);
+    } finally {
+      worktree.cleanup();
+    }
+  });
+
+  test('a future started_at in the durable state is treated as no prior state, restarting the clock instead of disabling the ceiling', () => {
+    sandbox = setupSandbox();
+    const branch = 'wiki-sync/2026-08-07-aaaaaaa';
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        forEachRefRule([branch]),
+        symbolicRefHeadFailsRule(),
+        prViewRule(branch, ['OPEN']),
+      ],
+      recorded
+    );
+
+    const stateDir = mkdtempSync(
+      path.join(tmpdir(), 'gaia-wiki-await-future-')
+    );
+    const nowMs = 1_700_000_000_000;
+    // Clock skew or a corrupted/hand-edited file: `started_at` is AFTER
+    // `now`. `now() - startedAt` would be negative, so a ceiling comparison
+    // against it can never trip.
+    const futureStartedAt = nowMs + 1_000_000_000;
+    const statePath = path.join(stateDir, 'wiki-await.json');
+    writeFileSync(
+      statePath,
+      JSON.stringify({branch, started_at: futureStartedAt}),
+      'utf8'
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      now: () => nowMs,
+      runner,
+      sleep: noSleep,
+      stateDir,
+    });
+
+    expect(exit).toBe(EXIT_CODES.OK);
+    expect(stdio.outputs.join('').trimEnd().split('\n').at(-1)).toBe(
+      'WIKI_AWAIT: pending'
+    );
+
+    // The bug: a future `started_at` is accepted as valid prior state, so it
+    // is never rewritten (the write is gated on "no prior state") and the
+    // corrupted future value sits there forever, permanently defeating the
+    // ceiling. The fix rejects it as prior state and restarts the clock at
+    // `now()`.
+    const rewritten = JSON.parse(readFileSync(statePath, 'utf8')) as {
+      branch: string;
+      started_at: number;
+    };
+    expect(rewritten.started_at).toBe(nowMs);
+
+    rmSync(stateDir, {force: true, recursive: true});
   });
 });

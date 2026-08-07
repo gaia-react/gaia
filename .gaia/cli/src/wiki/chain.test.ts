@@ -608,7 +608,7 @@ describe('wiki chain', () => {
       );
       expect(pollCalls).toHaveLength(3);
       expect(gitCalls(recorded)).toContainEqual({
-        args: ['checkout', 'main'],
+        args: ['checkout', '--end-of-options', 'main'],
         command: 'git',
       });
       expect(recorded.find((c) => c.args[0] === 'branch')).toBeUndefined();

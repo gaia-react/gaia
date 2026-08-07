@@ -448,21 +448,47 @@ if [ "$wiki_sync_present" -eq 1 ]; then
     done
 
     if kill -0 "$fetch_pid" 2>/dev/null; then
-      # Expired. Kill the whole subtree via the negated pid (the process
-      # GROUP `set -m` put the job in above); fall back to the direct pid if
-      # the group signal is refused for any reason.
+      # Expired. `disown` first: on bash 3.2, `set -m` job control prints an
+      # unsuppressible "<pid> Terminated: 15" line to the shell's own stderr
+      # (not the backgrounded command's, so no per-command redirect catches
+      # it) the moment the kill below signals the job; bash 5 stays silent
+      # for the same sequence. Dropping the job-table entry before the kill
+      # avoids the notification outright, and it is safe only here: this
+      # timeout branch never reads the backgrounded fetch's own exit status
+      # (the `wait` below is `|| true`), unlike the non-timeout branch further
+      # down, which needs a real exit status from `wait` to set fetch_ok and
+      # would silently always read success if disowned the same way.
+      disown "$fetch_pid" 2>/dev/null || true
+      # Kill the whole subtree via the negated pid (the process GROUP
+      # `set -m` put the job in above); fall back to the direct pid if the
+      # group signal is refused for any reason.
       kill -TERM -"$fetch_pid" 2>/dev/null || kill -TERM "$fetch_pid" 2>/dev/null || true
       sleep 1
       kill -KILL -"$fetch_pid" 2>/dev/null || kill -KILL "$fetch_pid" 2>/dev/null || true
       wait "$fetch_pid" 2>/dev/null || true
-      # A killed fetch can leave .git/shallow.lock or FETCH_HEAD.lock behind
+      # A killed fetch can leave .git/FETCH_HEAD.lock or shallow.lock behind
       # for a later sweep in this same process to trip over. Remove only the
       # fetch's own locks, never index.lock (a concurrent human `git` may
-      # legitimately hold that one).
+      # legitimately hold that one). The two locks live in different
+      # directories from a linked worktree: FETCH_HEAD.lock is per-worktree
+      # (--absolute-git-dir), while shallow.lock belongs to the shared clone
+      # state in the common dir (--git-common-dir, the main checkout's .git
+      # for a linked worktree). Targeting --absolute-git-dir for both would
+      # strand the main checkout's shallow.lock behind a worktree-invoked
+      # kill, at a path that cannot exist under the worktree's own git dir.
       git_dir=$(git -C "$root" rev-parse --absolute-git-dir 2>/dev/null || true)
-      if [ -n "$git_dir" ]; then
-        rm -f "$git_dir/FETCH_HEAD.lock" "$git_dir/shallow.lock" 2>/dev/null || true
-      fi
+      # --git-common-dir is relative to $root from the main checkout itself
+      # (prints plain ".git"), but already absolute from a linked worktree
+      # (git resolves it against the main checkout it points back to) --
+      # normalize to absolute either way rather than assume one shape.
+      git_common_dir=$(git -C "$root" rev-parse --git-common-dir 2>/dev/null || true)
+      case "$git_common_dir" in
+        /*) ;;
+        ?*) git_common_dir="$root/$git_common_dir" ;;
+      esac
+      [ -n "$git_dir" ] && rm -f "$git_dir/FETCH_HEAD.lock" 2>/dev/null
+      [ -n "$git_common_dir" ] && rm -f "$git_common_dir/shallow.lock" 2>/dev/null
+      true
     else
       wait "$fetch_pid" 2>/dev/null && fetch_ok=1
     fi
@@ -619,9 +645,18 @@ if [ "$attempt_ff" -eq 1 ] && [ -n "$base" ]; then
       # write is skipped silently on a checkout that never had .gaia/local.
       if [ -d "$main_root/.gaia/local" ]; then
         mkdir -p "$main_root/.gaia/local/cache/shared" 2>/dev/null
+        # Temp-file-plus-mv, same idiom wiki_catchup_state_set uses above: a
+        # plain truncating redirect leaves a window where wiki-drift-check.sh
+        # (a separate process draining this file: read, then delete) can
+        # observe it mid-truncate as blank and lose the refusal permanently.
+        # `mv -f` is atomic, so a concurrent drain either sees the old
+        # content or the new content, never neither.
+        report_file="$main_root/.gaia/local/cache/shared/wiki-base-catchup.report"
+        report_tmp="${report_file}.tmp.$$"
         printf '[wiki base] fast-forward of %s to origin/%s refused (%s); local base is behind. Resolve by hand; the next qualifying session retries.\n' \
           "$base" "$base" "$reason" \
-          > "$main_root/.gaia/local/cache/shared/wiki-base-catchup.report" 2>/dev/null || true
+          > "$report_tmp" 2>/dev/null && mv -f "$report_tmp" "$report_file" 2>/dev/null
+        rm -f "$report_tmp" 2>/dev/null
       fi
     fi
   else
@@ -1266,6 +1301,25 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
     wt_track="$(git -C "$wt_main" for-each-ref \
       --format='%(upstream:track)' "refs/heads/$wt_branch" 2>/dev/null || true)"
     [ "$wt_track" = "[gone]" ] || continue
+    # [gone] does NOT prove a merge: it proves only that the remote head ref
+    # is absent, and sweep #1's own repo-global prune-fetch (above) now
+    # manufactures this signal for EVERY branch whose remote head is gone,
+    # not only wiki-sync/* ones. A branch whose PR squash-merged (GitHub
+    # auto-deletes the head branch) reads identically to one whose PR closed
+    # without merging; ancestry cannot tell them apart, only a PATCH-ID
+    # comparison against origin/$base can, the same `git cherry` test sweep
+    # #1's own reap uses on itself. Refuse the reap when the branch carries
+    # work no remote-tracking ref has. Fail-safe: an unresolvable/unsafely-
+    # shaped $base (cleared to empty above) or an unanswerable cherry read
+    # keeps the worktree, and so does any unpushed commit.
+    if [ -z "$base" ]; then
+      continue
+    fi
+    wt_cherry_out=$(git -C "$wt_main" cherry --end-of-options "origin/$base" "$wt_branch" 2>/dev/null)
+    wt_cherry_status=$?
+    [ "$wt_cherry_status" -eq 0 ] || continue
+    wt_unpushed=$(printf '%s\n' "$wt_cherry_out" | grep -c '^+')
+    [ "$wt_unpushed" -eq 0 ] || continue
     # Never discard uncommitted working-tree changes.
     [ -z "$(git -C "$wt_path" status --porcelain 2>/dev/null)" ] || continue
     # Never reap a branch named by a live RUNNING plan sentinel. The

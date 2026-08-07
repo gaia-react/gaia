@@ -161,21 +161,34 @@ export type CleanupAfterMergeOptions = {
  * the just-merged commit, delete the local landing branch, and prune the
  * deleted remote ref. Best-effort by design: the merge already succeeded, so a
  * stale local checkout or an already-pruned ref must not surface as an error.
+ *
+ * Returns whether the branch delete itself succeeded. `refs/heads/*` is
+ * shared across worktrees, so `branch -D` is refused when `branch` is
+ * checked out in another worktree; callers that report a terminal "cleaned
+ * up" state to something else (e.g. a router) must not do so on a refusal,
+ * or that something else reads "deleted" for a branch git still has
+ * checked out elsewhere.
  */
-export const cleanupAfterMerge = (options: CleanupAfterMergeOptions): void => {
+export const cleanupAfterMerge = (
+  options: CleanupAfterMergeOptions
+): boolean => {
   const {base, branch, cwd, runner} = options;
 
   // `checkout` treats a bare `--` as the revision/pathspec divider (it would
   // reinterpret `base` as a pathspec, not a ref), so only `--end-of-options`
-  // closes the option-injection vector here. `git pull` offers no working
-  // separator at all: it strips `--` and re-execs its internal `git fetch`
-  // without it (confirmed via `GIT_TRACE=1`), so a flag-shaped `base` still
-  // reaches fetch as an option; that call is left as-is. `branch -D` accepts
-  // the plan's `--` form.
+  // closes the option-injection vector here. Both `base` checkouts in this
+  // module (this one and `finalizeMerge`'s timeout-path checkout below) take
+  // `base` from the same sources, so both need it. `git pull` offers no
+  // working separator at all: it strips `--` and re-execs its internal `git
+  // fetch` without it (confirmed via `GIT_TRACE=1`), so a flag-shaped `base`
+  // still reaches fetch as an option; that call is left as-is. `branch -D`
+  // accepts the plan's `--` form.
   runner('git', ['checkout', '--end-of-options', base], {cwd});
   runner('git', ['pull', '--ff-only', 'origin', base], {cwd});
-  runner('git', ['branch', '-D', '--', branch], {cwd});
+  const deleteResult = runner('git', ['branch', '-D', '--', branch], {cwd});
   runner('git', ['fetch', '--prune', 'origin'], {cwd});
+
+  return commandSucceeded(deleteResult);
 };
 
 export type FinalizeMergeOptions = MergeWaitOptions & {
@@ -210,7 +223,7 @@ export const finalizeMerge = (options: FinalizeMergeOptions): number => {
   // in the same session, and the session-start janitor, which prune-fetches,
   // reaps the merged-and-gone branch, and fast-forwards base on a later
   // session. Neither depends on this wait succeeding.
-  runner('git', ['checkout', base], {cwd});
+  runner('git', ['checkout', '--end-of-options', base], {cwd});
   process.stdout.write(
     `${prefix}: opened PR for ${branch}; auto-merge queued but not yet merged, local cleanup deferred\n`
   );

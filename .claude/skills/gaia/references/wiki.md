@@ -118,15 +118,18 @@ Read the last line of stdout:
 - `WIKI_AWAIT: pending`: run the same command again, same explicit timeout, but re-run at most
   once. If the second call still reports `WIKI_AWAIT: pending`, stop, do not call a third time,
   and hand off to the session-start janitor: it catches base up on a later session.
-- `WIKI_AWAIT: exhausted`: relay the verb's summary line, which names why the verb stopped: the
-  wait ran out with the merge still pending, or the merge landed somewhere the local catch-up
-  cannot run from. Either way the session-start janitor catches base up on a later session, and
-  either way this is a report, not a failure: the landing already succeeded.
+- `WIKI_AWAIT: exhausted`: relay the verb's summary line, which names why the verb stopped: either
+  the wait ran out with the merge still pending, or the merge landed but the local catch-up could
+  not run from this checkout. Either way the session-start janitor catches base up on a later
+  session. Relay the line rather than restating it, so a reason added later still reaches the
+  reader.
 
-The two-call bound above is what actually ends this prose loop; do not rely on the verb's own
-ceiling to do that job instead, not every path reads it before reporting `pending`. The ceiling,
-`GAIA_WIKI_AWAIT_CEILING_SECONDS`, still bounds the verb's own internal wait on the paths that do
-read it; setting it to `0` disables the await entirely and leaves the catch-up to the janitor.
+The two-call bound above is what actually ends this prose loop, not the verb's own ceiling. The
+default `GAIA_WIKI_AWAIT_CEILING_SECONDS` (660 seconds) is measured from the first call, while each
+call's own merge-poll is a separate, shorter budget (up to 4 minutes) that takes no ceiling
+argument, so the ceiling has usually not elapsed by the second call; it typically first fires on
+the third or fourth. Setting it to `0` disables the await entirely and leaves the catch-up to the
+janitor.
 
 ## Consolidate
 

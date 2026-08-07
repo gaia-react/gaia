@@ -19,13 +19,20 @@
  *
  * Never fails: every situation this verb can observe (nothing pending,
  * merged, still pending, loop ceiling reached) exits 0. Pending and
- * exhausted are reports, not errors; the landing already succeeded and only
- * the local catch-up is outstanding, and the janitor covers it either way.
+ * exhausted are reports, not errors, but they do not all mean the same
+ * thing: on the still-open-PR paths (`pending`, and `exhausted` from a
+ * ceiling reached while the PR is still open) the merge has NOT landed yet,
+ * only the wait has run out for this invocation. `exhausted` also covers a
+ * merge that DID land but whose local catch-up could not complete here
+ * (HEAD was off base, or the local branch could not be deleted, e.g.
+ * because it is checked out in another worktree). Either way the janitor
+ * covers what is left on a later session.
  */
 import {existsSync, mkdirSync, readFileSync, unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {resolveMainWorktreeRoot} from '../util/main-root.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 import {defaultBranch, defaultRunner} from './util/branch.js';
 import type {CommandRunner} from './util/branch.js';
@@ -53,8 +60,13 @@ const HELP_TEXT = `Usage: gaia wiki sync await
   wiki-sync/* branch is pending. Takes no arguments.
 
   Environment:
-    GAIA_WIKI_AWAIT_CEILING_SECONDS  wait ceiling in seconds (default 660,
-                                      floor 60, 0 disables the await)
+    GAIA_WIKI_AWAIT_CEILING_SECONDS  cumulative wait ceiling in seconds,
+                                      checked BETWEEN invocations (default
+                                      660, floor 60, 0 disables the await).
+                                      Does not cap one invocation's own
+                                      blocking wait, which is a separate,
+                                      larger budget (up to ~240s) regardless
+                                      of this setting
 
   Exit code:
     0  always; pending/exhausted are reports, not errors
@@ -201,13 +213,17 @@ type AwaitState = {
   started_at: number;
 };
 
-const stateFilePath = (repoRoot: string, stateDir: string | undefined) => {
-  const dir = stateDir ?? path.join(repoRoot, ...STATE_DIR_SEGMENTS);
+// `mainRoot`, not the calling tree's own root: `cache/shared/` is scoped to
+// the clone (`.gaia/state-registry.json`, id `cache-shared`), and
+// `util/repo-root.ts` requires `resolveMainWorktreeRoot` for anything
+// deciding where shared state lives. See the call site in `run`.
+const stateFilePath = (mainRoot: string, stateDir: string | undefined) => {
+  const dir = stateDir ?? path.join(mainRoot, ...STATE_DIR_SEGMENTS);
 
   return path.join(dir, STATE_FILENAME);
 };
 
-const readAwaitState = (filePath: string): AwaitState | null => {
+const readAwaitState = (filePath: string, now: number): AwaitState | null => {
   if (!existsSync(filePath)) return null;
 
   try {
@@ -220,6 +236,12 @@ const readAwaitState = (filePath: string): AwaitState | null => {
       typeof parsed.started_at !== 'number'
     )
       return null;
+
+    // A future `started_at` (clock skew, a hand-edited or corrupted file)
+    // would make `now() - startedAt` negative, so the ceiling never trips
+    // and the await runs forever; treat it the same as no prior state so
+    // the clock restarts from here instead.
+    if (parsed.started_at > now) return null;
 
     return {branch: parsed.branch, started_at: parsed.started_at};
   } catch {
@@ -275,6 +297,13 @@ const printMergedButNotOnBase = (branch: string): void => {
   process.stdout.write('WIKI_AWAIT: exhausted\n');
 };
 
+const printMergedButBranchStillExists = (branch: string): void => {
+  process.stdout.write(
+    `sync-await: merged PR for ${branch}, but the local branch could not be deleted (likely checked out in another worktree); the session-start janitor catches base up on a later session\n`
+  );
+  process.stdout.write('WIKI_AWAIT: exhausted\n');
+};
+
 type CleanUpAndReportMergedOptions = {
   branch: string;
   cwd: string;
@@ -303,6 +332,14 @@ type CleanUpAndReportMergedOptions = {
  * catch-up on a later session", is exactly true here, with its own summary
  * line so the reason is not misreported as a ceiling that was never
  * reached.
+ *
+ * `discoverBranch` only excludes the branch checked out in THIS tree, not
+ * `refs/heads/*` checked out in some other worktree of the same clone, so a
+ * merged branch discovered here can still be checked out elsewhere and
+ * refuse `branch -D`. `cleanupAfterMerge`'s return reports that refusal;
+ * this reuses `exhausted` for the same reason as the not-on-base branch
+ * above rather than reporting `merged` for a branch git still has checked
+ * out.
  */
 const cleanUpAndReportMerged = (
   options: CleanUpAndReportMergedOptions
@@ -326,8 +363,16 @@ const cleanUpAndReportMerged = (
     return EXIT_CODES.OK;
   }
 
-  cleanupAfterMerge({base, branch, cwd, runner});
+  const deleted = cleanupAfterMerge({base, branch, cwd, runner});
+
   deleteAwaitState(filePath);
+
+  if (!deleted) {
+    printMergedButBranchStillExists(branch);
+
+    return EXIT_CODES.OK;
+  }
+
   printMerged(branch);
 
   return EXIT_CODES.OK;
@@ -371,7 +416,21 @@ export const run = (
     return EXIT_CODES.OK;
   }
 
-  const filePath = stateFilePath(repoRoot, options.stateDir);
+  // The state file lives under `cache/shared/`, which is scoped to the
+  // clone, not the calling tree, so it must anchor to main even when this
+  // verb runs from a linked worktree. Falls back to the calling tree's own
+  // root on throw (e.g. an unlinked worktree main cannot be resolved from)
+  // so the never-fails contract holds; the only cost is a per-tree ceiling
+  // clock in that case, same as before this fix.
+  let mainRoot: string;
+
+  try {
+    mainRoot = resolveMainWorktreeRoot(repoRoot);
+  } catch {
+    mainRoot = repoRoot;
+  }
+
+  const filePath = stateFilePath(mainRoot, options.stateDir);
   const branch = discoverBranch(repoRoot, runner);
 
   if (branch === undefined) {
@@ -380,7 +439,7 @@ export const run = (
     return EXIT_CODES.OK;
   }
 
-  const prior = readAwaitState(filePath);
+  const prior = readAwaitState(filePath, now());
   const priorStartedAt =
     prior !== null && prior.branch === branch ? prior.started_at : undefined;
 

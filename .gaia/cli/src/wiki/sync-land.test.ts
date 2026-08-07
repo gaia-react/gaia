@@ -423,7 +423,7 @@ describe('wiki sync land', () => {
     expect(pollCalls).toHaveLength(3);
     const gitCalls = recorded.filter((c) => c.command === 'git');
     expect(gitCalls).toContainEqual({
-      args: ['checkout', 'main'],
+      args: ['checkout', '--end-of-options', 'main'],
       command: 'git',
     });
     expect(recorded.find((c) => c.args[0] === 'branch')).toBeUndefined();
