@@ -265,8 +265,16 @@ jobs:
               - '.claude/skills/gaia/references/forensics*'
               - '.github/forensics/**'
               # The statusline suite (.gaia/tests/statusline/) exercises the
-              # shipped .gaia/statusline/gaia-statusline.sh worktree detection;
-              # trigger on both the test dir and the script it guards.
+              # shipped .gaia/statusline/gaia-statusline.sh worktree gate and
+              # segment rendering, and it runs real copies of the two
+              # refreshers that feed those segments:
+              # .gaia/scripts/check-updates.sh (the hardenUnclassifiedCount
+              # segment, and the audit nudge's project_drift suppression) and
+              # .gaia/scripts/debt-count-refresh.sh (the coveredPaths that
+              # suppression keys on). Both refreshers are already covered by
+              # the .gaia/scripts/** glob above, so only the two statusline
+              # dirs need listing here -- but narrowing that glob would stop
+              # arming this suite on two of the three sources it guards.
               - '.gaia/statusline/**'
               - '.gaia/tests/statusline/**'
               # retrigger-reachability.bats (.gaia/scripts/tests/) reads every
