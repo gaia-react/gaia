@@ -22,6 +22,9 @@ teardown() {
 }
 
 # Stand up a repo with a real bare origin so upstream-track state is faithful.
+# Pushes main and points origin/HEAD at it (RT-014): without this, base has no
+# upstream and every base-related sweep-#1 arm is an unreachable no-op that
+# greens on the skip path regardless of what it is meant to exercise.
 make_repo() {
   ORIGIN=$(mktemp -d -t gaia-janitor-origin-XXXXXX)
   git init -q --bare "$ORIGIN"
@@ -34,6 +37,28 @@ make_repo() {
   echo init > "$REPO/f"
   git -C "$REPO" add f
   git -C "$REPO" commit -q -m init
+  git -C "$REPO" push -q -u origin main
+  git -C "$REPO" remote set-head origin -a
+  mkdir -p "$REPO/.gaia/local"
+}
+
+# A repo whose default branch is NOT `main`, with origin/HEAD pointing at it
+# (UAT-009, consumed by the fast-forward task that lands beside this one).
+make_repo_default_branch() {
+  local base="$1"
+  ORIGIN=$(mktemp -d -t gaia-janitor-origin-XXXXXX)
+  git init -q --bare "$ORIGIN"
+  REPO=$(mktemp -d -t gaia-janitor-repo-XXXXXX)
+  git -C "$REPO" init -q --initial-branch="$base"
+  git -C "$REPO" config user.email test@example.com
+  git -C "$REPO" config user.name Test
+  git -C "$REPO" config commit.gpgsign false
+  git -C "$REPO" remote add origin "$ORIGIN"
+  echo init > "$REPO/f"
+  git -C "$REPO" add f
+  git -C "$REPO" commit -q -m init
+  git -C "$REPO" push -q -u origin "$base"
+  git -C "$REPO" remote set-head origin -a
   mkdir -p "$REPO/.gaia/local"
 }
 
@@ -45,6 +70,17 @@ make_gone_branch() {
   git -C "$REPO" push -q -u origin "$br"
   git -C "$REPO" push -q origin --delete "$br"
   git -C "$REPO" fetch -q --prune
+}
+
+# A branch whose remote head is deleted but which has NOT been pruned
+# locally, so its upstream-track state is not yet [gone]. This is the state a
+# real checkout is in right after a wiki landing's PR squash-merges: exactly
+# the state sweep #1's own prune-fetch has to resolve.
+make_gone_branch_unpruned() {
+  local br="$1"
+  git -C "$REPO" branch "$br"
+  git -C "$REPO" push -q -u origin "$br"
+  git -C "$REPO" push -q origin --delete "$br"
 }
 
 # A branch with a live, in-sync upstream (tracking ref still present).
@@ -125,6 +161,280 @@ branch_exists() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   branch_exists "main"
+}
+
+# --- Sweep #1's bounded prune-fetch and guarded reap (TST-003: reuse the
+# PATH-shim-plus-witness idiom used elsewhere in this file rather than
+# inventing a second one) --------------------------------------------------
+
+# PATH-shimmed `git`: appends every invocation's argv to a witness file, then
+# passes through to the real binary.
+make_argv_witness_shim() {
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIR/witness"
+  : > "$witness"
+  local real_git
+  real_git=$(command -v git)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+echo "\$*" >> "$witness"
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git"
+}
+
+# PATH-shimmed `git` whose fetch arm hangs for $1 seconds (default 60); every
+# other call passes through to the real binary.
+make_hanging_fetch_shim() {
+  local sleep_secs="${1:-60}"
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  local real_git
+  real_git=$(command -v git)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+case "\$*" in
+  *fetch*) sleep $sleep_secs; exit 0 ;;
+esac
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git"
+}
+
+# PATH-shimmed `git` whose fetch arm backgrounds a long-sleeping grandchild
+# and records both its own pid and the grandchild's into a witness file, so a
+# test can assert BOTH are gone after the hook's kill path runs. Every other
+# call passes through to the real binary.
+make_hanging_fetch_pid_witness_shim() {
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIR/pids"
+  : > "$witness"
+  local real_git
+  real_git=$(command -v git)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+case "\$*" in
+  *fetch*)
+    sleep 3600 &
+    child=\$!
+    echo "\$\$ \$child" >> "$witness"
+    wait
+    exit 0
+    ;;
+esac
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git"
+}
+
+# PATH-shimmed `git` that records argv plus the four prompt-suppression
+# variables' values into a witness file (one line per invocation), then
+# passes through to the real binary.
+make_env_witness_shim() {
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIR/envlog"
+  : > "$witness"
+  local real_git
+  real_git=$(command -v git)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+printf 'ARGV=%s GIT_TERMINAL_PROMPT=%s GIT_ASKPASS=%s SSH_ASKPASS=%s GIT_SSH_COMMAND=%s\n' \
+  "\$*" "\${GIT_TERMINAL_PROMPT:-}" "\${GIT_ASKPASS:-}" "\${SSH_ASKPASS:-}" "\${GIT_SSH_COMMAND:-}" >> "$witness"
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git"
+}
+
+@test "sweep 1: no wiki-sync branch makes ZERO fetch calls (positive argv witness)" {
+  make_repo
+  make_argv_witness_shim
+  cd "$REPO"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(grep -c 'fetch' "$witness")" -eq 0 ]
+}
+
+@test "sweep 1: a hanging origin is bounded by the ceiling" {
+  make_repo
+  make_live_branch "wiki-sync/2026-07-07-1111111"
+  make_hanging_fetch_shim 60
+  cd "$REPO"
+  export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=2
+  start=$(date +%s)
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  end=$(date +%s)
+  [ "$status" -eq 0 ]
+  [ "$((end - start))" -lt 10 ]
+}
+
+@test "sweep 1: GAIA_WIKI_FETCH_TIMEOUT_SECONDS=0 disables the fetch" {
+  make_repo
+  make_live_branch "wiki-sync/2026-07-08-2222222"
+  make_argv_witness_shim
+  cd "$REPO"
+  export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=0
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'fetch' "$witness")" -eq 0 ]
+}
+
+@test "sweep 1: a mistyped ceiling clamps rather than blowing the budget" {
+  make_repo
+  make_live_branch "wiki-sync/2026-07-09-3333333"
+  make_hanging_fetch_shim 3600
+  cd "$REPO"
+  # Neutralize the min-interval knob for both sub-cases below: this test's
+  # second invocation must actually re-attempt the fetch, not be skipped by
+  # the first invocation's own recorded last_fetch_at.
+  export GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES=0
+
+  export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=abc
+  start=$(date +%s)
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  end=$(date +%s)
+  [ "$status" -eq 0 ]
+  elapsed=$((end - start))
+  [ "$elapsed" -ge 4 ] || return 1
+  [ "$elapsed" -lt 10 ] || return 1
+
+  export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=9999
+  start=$(date +%s)
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  end=$(date +%s)
+  [ "$status" -eq 0 ]
+  elapsed=$((end - start))
+  [ "$elapsed" -ge 25 ] || return 1
+  [ "$elapsed" -lt 45 ] || return 1
+}
+
+@test "sweep 1: no origin remote skips the fetch outright" {
+  make_repo
+  make_live_branch "wiki-sync/2026-07-10-4444444"
+  git -C "$REPO" remote remove origin
+  make_argv_witness_shim
+  cd "$REPO"
+  start=$(date +%s)
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  end=$(date +%s)
+  [ "$status" -eq 0 ]
+  [ "$((end - start))" -lt 10 ]
+  [ "$(grep -c 'fetch' "$witness")" -eq 0 ]
+}
+
+@test "sweep 1: the kill path leaves no descendant and no stale git lock" {
+  make_repo
+  make_gone_branch_unpruned "wiki-sync/2026-07-11-5555555"
+  make_hanging_fetch_pid_witness_shim
+  cd "$REPO"
+  export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=2
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -s "$witness" ] || return 1
+  read -r shim_pid child_pid < "$witness"
+  kill -0 "$shim_pid" 2>/dev/null && return 1
+  kill -0 "$child_pid" 2>/dev/null && return 1
+  [ ! -e "$REPO/.git/FETCH_HEAD.lock" ]
+  [ ! -e "$REPO/.git/shallow.lock" ]
+  branch_exists "wiki-sync/2026-07-11-5555555"
+}
+
+@test "sweep 1: prompt suppression is per-invocation and never leaks" {
+  make_repo
+  make_live_branch "wiki-sync/2026-07-12-6666666"
+  git -C "$REPO" config core.askPass /custom/adopter-askpass
+  make_env_witness_shim
+  cd "$REPO"
+  GIT_SSH_COMMAND="ssh -i /custom/key" PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -s "$witness" ] || return 1
+
+  fetch_line=$(grep 'ARGV=.*fetch' "$witness")
+  [ -n "$fetch_line" ] || return 1
+  grep -qF -- "GIT_TERMINAL_PROMPT=0" <<<"$fetch_line" || return 1
+  grep -qF -- "GIT_ASKPASS=true" <<<"$fetch_line" || return 1
+  grep -qF -- "SSH_ASKPASS=true" <<<"$fetch_line" || return 1
+  grep -qF -- "BatchMode=yes" <<<"$fetch_line" || return 1
+  grep -qF -- "ConnectTimeout=" <<<"$fetch_line" || return 1
+  grep -qF -- "-i /custom/key" <<<"$fetch_line" || return 1
+
+  # No LATER invocation carries any of the three boolean suppression
+  # variables: they are a per-invocation prefix on the fetch call only, never
+  # exported, so every git call after it must see them unset.
+  after_fetch=$(sed -n '/ARGV=.*fetch/,$p' "$witness" | tail -n +2)
+  if [ -n "$after_fetch" ]; then
+    printf '%s\n' "$after_fetch" | grep -qF -- "GIT_TERMINAL_PROMPT=0" && return 1
+    printf '%s\n' "$after_fetch" | grep -qF -- "GIT_ASKPASS=true" && return 1
+    printf '%s\n' "$after_fetch" | grep -qF -- "SSH_ASKPASS=true" && return 1
+  fi
+
+  # The adopter's own git config file is never rewritten; core.askPass= was
+  # an inline -c override scoped to the fetch call only.
+  [ "$(git -C "$REPO" config core.askPass)" = "/custom/adopter-askpass" ]
+}
+
+@test "sweep 1: an unpruned merged-and-gone branch is reaped after the sweep's own fetch" {
+  make_repo
+  make_gone_branch_unpruned "wiki-sync/2026-07-13-7777777"
+  make_argv_witness_shim
+  cd "$REPO"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "wiki-sync/2026-07-13-7777777" && return 1
+  [ "$(grep -c 'fetch' "$witness")" -eq 1 ]
+}
+
+@test "sweep 1: the reap REFUSES a gone branch carrying commits the remote never had" {
+  make_repo
+  make_gone_branch_unpruned "wiki-sync/2026-07-14-8888888"
+  git -C "$REPO" checkout -q "wiki-sync/2026-07-14-8888888"
+  echo more >> "$REPO/f"
+  git -C "$REPO" add f
+  git -C "$REPO" commit -q -m more
+  git -C "$REPO" checkout -q main
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "wiki-sync/2026-07-14-8888888"
+}
+
+@test "sweep 1: repeat fetch attempts are bounded by a minimum interval" {
+  make_repo
+  make_live_branch "wiki-sync/2026-07-15-9999999"
+  make_argv_witness_shim
+  cd "$REPO"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'fetch' "$witness")" -eq 1 ] || return 1
+
+  export GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES=0
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'fetch' "$witness")" -eq 2 ]
+}
+
+@test "sweep 1: the WHOLE hook stays inside the SessionStart budget on a hanging remote" {
+  make_repo
+  make_live_branch "wiki-sync/2026-07-16-aaaaaaa"
+  make_hanging_fetch_shim 60
+  cd "$REPO"
+  start=$(date +%s)
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  end=$(date +%s)
+  [ "$status" -eq 0 ]
+  elapsed=$((end - start))
+  [ "$elapsed" -lt 20 ] || return 1
+}
+
+@test "sweep 1: a checkout with no .gaia/local is not recreated by the breadcrumb write" {
+  make_repo
+  make_gone_branch_unpruned "wiki-sync/2026-07-17-bbbbbbb"
+  rm -rf "$REPO/.gaia/local"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -d "$REPO/.gaia/local" ]
 }
 
 # --- Migration trigger: ledger-status-migrate.sh runs before the reap sweeps ---

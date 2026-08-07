@@ -21,10 +21,11 @@
 #      branch, pushes it, and enables auto-merge with `gh pr merge --auto`, a
 #      call that returns BEFORE the merge lands, so the local branch can never be
 #      deleted inline and nothing else reconciles it. Once the PR squash-merges,
-#      GitHub deletes the remote head branch and a later `git fetch --prune`
-#      drops the tracking ref, leaving the local branch upstream marked [gone].
-#      That [gone] marker on a machine-generated, disposable wiki-sync/* branch
-#      is the provable-death signal (the normal per-branch PR-merge cleanup runs
+#      GitHub deletes the remote head branch, and this sweep's own bounded,
+#      rate-limited `git fetch --prune` of origin (below) drops the tracking
+#      ref, leaving the local branch upstream marked [gone]. That [gone]
+#      marker on a machine-generated, disposable wiki-sync/* branch is the
+#      provable-death signal (the normal per-branch PR-merge cleanup runs
 #      no `git branch -D` here because the landing is fire-and-forget). This
 #      sweep is git-scoped, so it runs before the .gaia/local guard below.
 #   2. audit/<digest>.ok, the per-member audit/<digest>.<member>.ok, and
@@ -189,31 +190,253 @@ if command -v gaia_resolve_main_root >/dev/null 2>&1; then
 fi
 [ -n "$main_root" ] || main_root="$root"
 
+# --- Breadcrumb helpers for the durable wiki-base catch-up obligation ------
+# Shared by this sweep (last_fetch_at) and the fast-forward further down this
+# same file (catchup_owed). Read-modify-write via a temp file + `mv`, so a
+# concurrent session never observes a half-written file. Deliberately never
+# create .gaia/local: sweep #1 runs ABOVE the `[ -d "$local_dir" ] || exit 0`
+# guard just below, so that a fresh clone carrying an orphaned wiki-sync
+# branch is still swept; a `mkdir -p` from in here would recreate the
+# directory that guard tests and silently arm every later sweep on a checkout
+# that previously exited early. A skipped write is a silent no-op, never a
+# sweep abort: a fresh clone with no .gaia/local is not a machine
+# accumulating session-start cost, so its fetch simply runs on every session.
+wiki_catchup_state_file="$main_root/.gaia/local/cache/shared/wiki-base-catchup.state"
+
+# Prints one key's value, or nothing when the file, its directory, or the key
+# itself is absent. Never fails.
+wiki_catchup_state_get() {
+  local key="$1"
+  [ -f "$wiki_catchup_state_file" ] || return 0
+  sed -n "s/^${key}=//p" "$wiki_catchup_state_file" 2>/dev/null | head -1
+  return 0
+}
+
+# Sets one key, preserving every other key already on file.
+wiki_catchup_state_set() {
+  local key="$1" value="$2" tmp
+  [ -d "$main_root/.gaia/local" ] || return 0
+  mkdir -p "$main_root/.gaia/local/cache/shared" 2>/dev/null || return 0
+  tmp="${wiki_catchup_state_file}.tmp.$$"
+  { [ -f "$wiki_catchup_state_file" ] && grep -v "^${key}=" "$wiki_catchup_state_file" 2>/dev/null
+    printf '%s=%s\n' "$key" "$value"
+  } >"$tmp" 2>/dev/null && mv -f "$tmp" "$wiki_catchup_state_file" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
+  return 0
+}
+
+# Removes one key, preserving every other key. Same no-op rule as `_set`.
+# Not called from this sweep: it drains `catchup_owed`, which the
+# durable-obligation fast-forward further down this file writes and reads.
+# shellcheck disable=SC2329
+wiki_catchup_state_unset() {
+  local key="$1" tmp
+  [ -f "$wiki_catchup_state_file" ] || return 0
+  tmp="${wiki_catchup_state_file}.tmp.$$"
+  grep -v "^${key}=" "$wiki_catchup_state_file" 2>/dev/null >"$tmp" \
+    && mv -f "$tmp" "$wiki_catchup_state_file" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
+  return 0
+}
+
 # --- 1. Merged-and-gone wiki-sync branches ---------------------------------
 # Git-scoped: independent of .gaia/local, so it runs before that guard (a fresh
 # clone can carry an orphaned wiki-sync branch before any .gaia/local exists).
-# List every local branch with its upstream-track state, filter to the
-# disposable wiki-sync/* class whose upstream is [gone], and hard-delete it.
-# `git branch -D` (not -d): a squash merge leaves the branch tip un-merged by
-# ancestry, so `-d` would refuse. Fail-safe: the current branch is never a
-# delete candidate (checkout-protected by git anyway), an empty/[]/[ahead]/
-# [behind] track is skipped (remote head still present), and any git failure
+# List every local branch with its upstream-track state. `[gone]` only
+# materializes after a `git fetch --prune`, so when a wiki-sync/* branch is
+# present at all this sweep runs its own bounded, rate-limited prune-fetch of
+# `origin` (below) before re-reading that state, then hard-deletes each
+# `[gone]` branch whose work is already fully represented upstream (checked
+# via `git cherry`, since a squash merge leaves the branch tip unreachable by
+# ancestry alone). `git branch -D` (not -d): ancestry would refuse a squash
+# merge anyway. Fail-safe throughout: the current branch is never a delete
+# candidate, an empty/[ahead]/[behind] track is skipped (remote head still
+# present), an unanswerable cherry read keeps the branch, and any git failure
 # leaves the branch untouched.
 current=$(git -C "$root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
 branch_tracks=$(git -C "$root" for-each-ref \
   --format='%(refname:short) %(upstream:track)' refs/heads/ 2>/dev/null || true)
+
+# Resolved once, unconditionally -- consumed by this sweep's guarded reap
+# below AND by the durable-obligation fast-forward further down this file,
+# which runs even in a session holding no wiki-sync/* branch at all (D2:
+# origin/HEAD with a main fallback, matching defaultBranch's convention).
+# SEC-011: shape-validated immediately, before any git call interpolates it.
+# An unresolvable or unsafely-shaped base clears $base to empty; every
+# consumer below treats an empty $base as "unanswerable, skip".
+base=$(git -C "$root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
+base=${base#origin/}
+[ -n "$base" ] || base=main
+case "$base" in
+  -* | *' '* | '') base="" ;;
+  *[!A-Za-z0-9._/-]*) base="" ;;
+esac
+
+# The two fetch-state flags, initialized before any branch of this sweep can
+# be taken: the hook runs `set -uo pipefail`, so a later read of an unset
+# variable is fatal, and the fast-forward further down needs both even in a
+# session that takes none of the branches below.
+fetch_attempted=0
+fetch_ok=0
+
+wiki_sync_present=0
 if [ -n "$branch_tracks" ]; then
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    ref=${line%% *}                        # branch name (no spaces in a ref)
-    track=${line#"$ref"}; track=${track# }  # remainder: [gone]/[ahead N]/... token
-    case "$ref" in wiki-sync/*) ;; *) continue ;; esac
-    [ "$ref" = "$current" ] && continue
-    [ "$track" = "[gone]" ] || continue
-    git -C "$root" branch -D "$ref" >/dev/null 2>&1 || true
+    ref=${line%% *}
+    case "$ref" in wiki-sync/*) wiki_sync_present=1; break ;; esac
   done <<EOF
 $branch_tracks
 EOF
+fi
+
+if [ "$wiki_sync_present" -eq 1 ]; then
+  # Knobs, the janitor's shipped clamp idiom (see GAIA_AUDIT_FINDINGS_RETENTION_HOURS
+  # and GAIA_CACHE_ARTIFACT_RETENTION_DAYS elsewhere in this file for the exact
+  # idiom this copies). `0` is special-cased on BOTH knobs before the floor
+  # clamp, but means something different on each: the timeout knob's `0`
+  # disables the fetch outright, while the min-interval knob's `0` removes the
+  # rate limit rather than disabling anything -- a `0` swallowed by the floor
+  # clamp would suppress the very fetch UAT-016's second arm asserts appears.
+  wiki_fetch_timeout="${GAIA_WIKI_FETCH_TIMEOUT_SECONDS:-5}"
+  case "$wiki_fetch_timeout" in '' | *[!0-9]*) wiki_fetch_timeout=5 ;; esac
+  if [ "$wiki_fetch_timeout" -ne 0 ]; then
+    [ "$wiki_fetch_timeout" -lt 1 ] && wiki_fetch_timeout=1
+    [ "$wiki_fetch_timeout" -gt 30 ] && wiki_fetch_timeout=30
+  fi
+
+  wiki_fetch_min_interval="${GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES:-60}"
+  case "$wiki_fetch_min_interval" in '' | *[!0-9]*) wiki_fetch_min_interval=60 ;; esac
+  if [ "$wiki_fetch_min_interval" -ne 0 ]; then
+    [ "$wiki_fetch_min_interval" -lt 5 ] && wiki_fetch_min_interval=5
+  fi
+
+  do_fetch=1
+  [ "$wiki_fetch_timeout" -ne 0 ] || do_fetch=0
+  if [ "$do_fetch" -eq 1 ]; then
+    git -C "$root" remote get-url origin >/dev/null 2>&1 || do_fetch=0
+  fi
+  if [ "$do_fetch" -eq 1 ] && [ "$wiki_fetch_min_interval" -ne 0 ]; then
+    last_fetch_at=$(wiki_catchup_state_get last_fetch_at)
+    case "$last_fetch_at" in '' | *[!0-9]*) last_fetch_at="" ;; esac
+    if [ -n "$last_fetch_at" ]; then
+      elapsed=$(($(date -u +%s) - last_fetch_at))
+      min_interval_secs=$((wiki_fetch_min_interval * 60))
+      [ "$elapsed" -lt "$min_interval_secs" ] && do_fetch=0
+    fi
+  fi
+
+  if [ "$do_fetch" -eq 1 ]; then
+    # Record the attempt BEFORE launching, so a hung remote whose kill path
+    # itself misbehaves does not buy an unbounded retry every session.
+    wiki_catchup_state_set last_fetch_at "$(date -u +%s)"
+    # shellcheck disable=SC2034 # read by the fast-forward gate further down this file
+    fetch_attempted=1
+
+    # Prompt suppression is a PER-INVOCATION PREFIX on this one command.
+    # Never `export` any of it: this process runs six delegated `bash`
+    # children and every later sweep's own git calls, and an exported
+    # GIT_TERMINAL_PROMPT / GIT_SSH_COMMAND would reach all of them.
+    # GIT_SSH_COMMAND EXTENDS the adopter's own value rather than replacing
+    # it, and GIT_ASKPASS/SSH_ASKPASS point at `true` (a no-op binary) so a
+    # credential helper cannot open a dialog. `core.askPass` in the adopter's
+    # own git config is overridden for this invocation only, via `-c`; their
+    # config file is never written. An agent-mediated confirmation (a
+    # 1Password/Secretive SSH agent, a FIDO `sk-` key wanting a physical
+    # touch) is NOT suppressible this way; the bounded wait below is the only
+    # guaranteed bound against it.
+    #
+    # `set -m` (job control) around the background launch, restored right
+    # after: verified empirically against this repo's supported bash range
+    # (3.2 and 5.x on macOS, both put the backgrounded job in its own process
+    # group) that this is what lets `kill -TERM -$fetch_pid` below reach a
+    # grandchild (`git-remote-https` / `ssh`) too, not just the immediate git
+    # process. A non-interactive shell does not do this by default.
+    set -m
+    GIT_TERMINAL_PROMPT=0 \
+      GIT_ASKPASS=true \
+      SSH_ASKPASS=true \
+      SSH_ASKPASS_REQUIRE=never \
+      GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new" \
+      git -C "$root" -c core.askPass= fetch --prune --quiet origin >/dev/null 2>&1 &
+    fetch_pid=$!
+    set +m
+
+    waited=0
+    while [ "$waited" -lt "$wiki_fetch_timeout" ]; do
+      kill -0 "$fetch_pid" 2>/dev/null || break
+      sleep 1
+      waited=$((waited + 1))
+    done
+
+    if kill -0 "$fetch_pid" 2>/dev/null; then
+      # Expired. Kill the whole subtree via the negated pid (the process
+      # GROUP `set -m` put the job in above); fall back to the direct pid if
+      # the group signal is refused for any reason.
+      kill -TERM -"$fetch_pid" 2>/dev/null || kill -TERM "$fetch_pid" 2>/dev/null || true
+      sleep 1
+      kill -KILL -"$fetch_pid" 2>/dev/null || kill -KILL "$fetch_pid" 2>/dev/null || true
+      wait "$fetch_pid" 2>/dev/null || true
+      # A killed fetch can leave .git/shallow.lock or FETCH_HEAD.lock behind
+      # for a later sweep in this same process to trip over. Remove only the
+      # fetch's own locks, never index.lock (a concurrent human `git` may
+      # legitimately hold that one).
+      git_dir=$(git -C "$root" rev-parse --git-dir 2>/dev/null || true)
+      if [ -n "$git_dir" ]; then
+        rm -f "$git_dir/FETCH_HEAD.lock" "$git_dir/shallow.lock" 2>/dev/null || true
+      fi
+    else
+      wait "$fetch_pid" 2>/dev/null && fetch_ok=1
+    fi
+  fi
+
+  # The reap depends on [gone] having been freshly established by THIS
+  # sweep's own fetch (a stale pre-fetch enumeration cannot be reused), so it
+  # is gated on fetch_ok=1 alone. On the timeout path (fetch_attempted=1,
+  # fetch_ok=0) this performs neither the reap nor -- further down this same
+  # file -- the durable-obligation fast-forward: a fetch that did not
+  # complete has established nothing.
+  if [ "$fetch_ok" -eq 1 ]; then
+    branch_tracks=$(git -C "$root" for-each-ref \
+      --format='%(refname:short) %(upstream:track)' refs/heads/ 2>/dev/null || true)
+    if [ -n "$branch_tracks" ] && [ -n "$base" ]; then
+      while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        ref=${line%% *}                        # branch name (no spaces in a ref)
+        track=${line#"$ref"}; track=${track# }  # remainder: [gone]/[ahead N]/... token
+        # The glob mirrors the CLI verb's WIKI_SYNC_BRANCH regex exactly (a
+        # hex-only suffix), so a branch this sweep would reap is never one
+        # the await verb cannot see, and the reverse. Validated before any
+        # destructive step (SEC-011).
+        case "$ref" in
+          wiki-sync/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9a-f]*) ;;
+          *) continue ;;
+        esac
+        [ "$ref" = "$current" ] && continue
+        [ "$track" = "[gone]" ] || continue
+
+        # Refuse the reap when the branch carries work no remote-tracking ref
+        # has. `git cherry` compares by PATCH ID, not by ancestry, the only
+        # test that can tell a squash-merged branch (its patch is upstream
+        # under a new sha) from one whose PR closed without merging (its
+        # patch is upstream nowhere) -- an ancestry test cannot, a squash
+        # merge leaves the branch tip unreachable from origin/$base exactly
+        # like an abandoned branch. Fail-safe: an unanswerable question keeps
+        # the branch. Known limitation: a chain branch carrying several
+        # commits whose squash does not patch-match any single commit reads
+        # as `+` and lingers rather than being reaped; lingering is the safe
+        # direction, bounded by the minimum-interval knob, and the durable
+        # catch-up obligation is carried by a breadcrumb, not by the branch,
+        # so a lingering branch never blocks the fast-forward.
+        unpushed=$(git -C "$root" cherry --end-of-options "origin/$base" "$ref" 2>/dev/null | grep -c '^+' || true)
+        [ "${unpushed:-1}" -eq 0 ] || continue
+
+        git -C "$root" branch -D -- "$ref" >/dev/null 2>&1 || true
+      done <<EOF
+$branch_tracks
+EOF
+    fi
+  fi
 fi
 
 local_dir="$root/.gaia/local"

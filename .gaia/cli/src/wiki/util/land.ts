@@ -67,11 +67,32 @@ export const passthroughFailure = (
   return UNEXPECTED_EXIT;
 };
 
-/** Number of `gh pr view` polls before the merge wait gives up. */
-const MERGE_POLL_ATTEMPTS = 10;
+/** Total blocking sleep budget for one merge-wait slice. */
+export const MERGE_WAIT_BUDGET_MS = 240_000;
 
 /** Pause between merge-state polls. */
-const MERGE_POLL_INTERVAL_MS = 30_000;
+export const MERGE_POLL_INTERVAL_MS = 30_000;
+
+/**
+ * Attempts derived from the budget, never tuned beside it. The loop sleeps
+ * only BETWEEN polls, so N attempts spend (N - 1) x interval sleeping.
+ */
+export const mergePollAttempts = (
+  budgetMs: number = MERGE_WAIT_BUDGET_MS,
+  intervalMs: number = MERGE_POLL_INTERVAL_MS
+): number => Math.floor(budgetMs / intervalMs) + 1;
+
+/** Assumed worst case for one `gh pr view` round trip. */
+export const GH_CALL_CEILING_MS = 10_000;
+
+/** Assumed worst case for the merged path's network pull + fetch. */
+export const CLEANUP_CEILING_MS = 60_000;
+
+/**
+ * Pinned upper bound for the whole blocking path of one CLI invocation.
+ * Strictly below the 600_000 ms timeout every call site passes.
+ */
+export const MAX_SLICE_MS = 540_000;
 
 /**
  * Block the current thread for `ms` without spinning, so the merge poll can
@@ -103,9 +124,9 @@ export type MergeWaitOptions = {
  * (transient network / auth) counts as "not yet" and keeps polling rather than
  * aborting the wait.
  */
-const waitForMerge = (options: MergeWaitOptions): boolean => {
+export const waitForMerge = (options: MergeWaitOptions): boolean => {
   const {
-    attempts = MERGE_POLL_ATTEMPTS,
+    attempts = mergePollAttempts(),
     branch,
     cwd,
     runner,
@@ -128,7 +149,7 @@ const waitForMerge = (options: MergeWaitOptions): boolean => {
   return false;
 };
 
-type CleanupAfterMergeOptions = {
+export type CleanupAfterMergeOptions = {
   base: string;
   branch: string;
   cwd: string;
@@ -141,7 +162,7 @@ type CleanupAfterMergeOptions = {
  * deleted remote ref. Best-effort by design: the merge already succeeded, so a
  * stale local checkout or an already-pruned ref must not surface as an error.
  */
-const cleanupAfterMerge = (options: CleanupAfterMergeOptions): void => {
+export const cleanupAfterMerge = (options: CleanupAfterMergeOptions): void => {
   const {base, branch, cwd, runner} = options;
 
   runner('git', ['checkout', base], {cwd});
@@ -176,9 +197,11 @@ export const finalizeMerge = (options: FinalizeMergeOptions): number => {
 
   // The merge did not land within the wait (slow/pending checks, a stuck
   // queue). Auto-merge stays queued and GitHub completes it once checks pass;
-  // return to base so the session-start janitor can prune the branch after the
-  // merge (it never deletes the current branch), and defer the pull/delete to
-  // that janitor.
+  // return to base and leave the local catch-up to two places that own it: the
+  // `/gaia-wiki` router's `sync await` verb, which takes another bounded slice
+  // in the same session, and the session-start janitor, which prune-fetches,
+  // reaps the merged-and-gone branch, and fast-forwards base on a later
+  // session. Neither depends on this wait succeeding.
   runner('git', ['checkout', base], {cwd});
   process.stdout.write(
     `${prefix}: opened PR for ${branch}; auto-merge queued but not yet merged, local cleanup deferred\n`
