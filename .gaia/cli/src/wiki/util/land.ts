@@ -184,9 +184,10 @@ export type FinalizeMergeOptions = MergeWaitOptions & {
 };
 
 /**
- * Finish a protected-branch landing like any other PR: wait for the auto-merge
- * to land, then either clean up locally (on `MERGED`) or return to `base` and
- * defer cleanup to the session-start janitor (on timeout). Writes a one-line
+ * Finish a protected-branch landing like any other PR: take one bounded wait
+ * on the auto-merge, then either clean up locally (on `MERGED`) or return to
+ * `base` and leave the local catch-up to the `sync await` verb and the
+ * session-start janitor (on timeout). Writes a one-line
  * `prefix`-tagged summary and returns `EXIT_CODES.OK`. Shared by `chain finish`
  * and `sync land`'s protected-branch path.
  */

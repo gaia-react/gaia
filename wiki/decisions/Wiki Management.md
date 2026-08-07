@@ -32,13 +32,15 @@ The wiki is critical infrastructure; it decays when drift between code and docum
 
 **`gaia wiki dead-paths`**: Lists backticked repo paths in `wiki/` body prose that don't exist on disk. Used by `/gaia-wiki lint` to catch zombie filename references after merges and renames.
 
-**`gaia wiki sync land`**: Branch-aware landing of staged wiki changes: commits in place on a feature branch; on `main`, stages a branch and opens a PR. Used by `/gaia-wiki sync` as the deterministic write step.
+**`gaia wiki sync land`**: Branch-aware landing of staged wiki changes: commits in place on a feature branch; on `main`, stages a branch, opens a PR, queues auto-merge, and takes one bounded wait on it. When the merge lands inside that wait the command cleans up locally (returns to base, pulls, deletes the branch, prunes); on the common path the merge gate outlasts any wait that fits in a single invocation, so it returns with the local cleanup outstanding and `sync await` or the session-start janitor completes it. Used by `/gaia-wiki sync` as the deterministic write step.
+
+**`gaia wiki sync await`**: Takes another bounded wait on an outstanding landing, in the same session, and completes the local catch-up when the merge lands: deletes the `wiki-sync/*` branch and leaves the base branch at `origin/<base>`. It takes no branch argument and discovers the pending branch itself rather than trusting a name parsed out of prose, so a call is correct whether or not a landing is outstanding; nothing pending is a silent no-op. The `/gaia-wiki` router therefore calls it unconditionally after the landing stage and loops while the verb reports the merge still pending, stopping once the verb reports the merge landed or the await exhausted. `GAIA_WIKI_AWAIT_CEILING_SECONDS` caps that loop's total wall clock, floor-clamped, and `0` disables the await outright and leaves the catch-up to the janitor. Never fails: every situation it can observe exits 0, because the landing itself already succeeded and only the local catch-up is at stake.
 
 **`gaia wiki chain <begin|commit|finish>`**: Manages the branch lifecycle for the `/gaia-wiki` full chain so all stages (sync, consolidate, lint) land in one PR rather than opening separate PRs.
 
 - `begin` (before sync): cuts a `wiki-sync/<date>-<sha>` branch from `main`; no-op on a feature branch, where stages commit in place.
 - `commit` (after each stage): commits that stage's `wiki/` changes in place; gracefully no-ops when nothing changed; refuses non-wiki changes.
-- `finish` (after lint): pushes the branch, opens one PR for all stage commits, enables auto-merge, then returns to base. Drops the branch if it is empty. Leaves an aborted dirty tree in place for review. No-op for in-place runs on a feature branch.
+- `finish` (after lint): pushes the branch, opens one PR for all stage commits, enables auto-merge, and takes one bounded wait on the merge. When it lands inside that wait, `finish` cleans up locally; on the common path the merge gate outlasts the wait, so it returns to base with the local cleanup outstanding for `sync await` or the session-start janitor. Drops the branch if it is empty. Leaves an aborted dirty tree in place for review. No-op for in-place runs on a feature branch.
 
 Standalone `/gaia-wiki sync`, `/gaia-wiki consolidate`, and `/gaia-wiki lint` are unaffected; the chain commands are invoked only by the no-arg `/gaia-wiki` full-chain wrapper.
 

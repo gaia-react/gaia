@@ -5,14 +5,24 @@
 # this file, not just the ones that use the separated form.
 bats_require_minimum_version 1.5.0
 #
-# Sweep #1 of local-janitor.sh: merged-and-gone wiki-sync branch cleanup.
+# Sweep #1 of local-janitor.sh: the wiki landing's local catch-up.
 #
 # The wiki landing CLI cuts a throwaway `wiki-sync/<date>-<sha>` branch and
-# lands it with `gh pr merge --auto`, which returns before the merge completes,
-# so the local branch is never deleted inline. Once the PR squash-merges the
-# remote head branch is deleted and a `git fetch --prune` marks the local
-# branch's upstream `[gone]`. The janitor deletes exactly that: a wiki-sync/*
-# branch with a `[gone]` upstream, and nothing else.
+# lands it with `gh pr merge --auto`, which returns before the merge completes.
+# The merge gate routinely outlasts the CLI's own bounded wait, so on the
+# common path the local branch is not deleted inline and the local base branch
+# does not advance either. Sweep #1 covers both, in four steps: an existence
+# gate on a local `wiki-sync/*` branch, a bounded and rate-limited
+# `git fetch --prune` of origin, a reap of each `[gone]` `wiki-sync/*` branch
+# whose work `git cherry` confirms is already represented upstream, and a
+# durable `--ff-only` fast-forward of the base branch to `origin/<base>`.
+#
+# `[gone]` is not read here as proof of a merge: it proves only that the remote
+# head ref is absent, which is why the reap carries its own patch-id check and
+# the fast-forward rests on `--ff-only` rather than on the reap preceding it.
+# A fast-forward the gates decline is a silent skip; one that is attempted and
+# fails records a durable obligation and reports one line. This suite covers
+# all four steps, both knobs, and every gate.
 
 setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/local-janitor.sh

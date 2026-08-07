@@ -1,33 +1,89 @@
 #!/bin/bash
-# local-janitor.sh, bounded GC for .gaia/local working-state residue.
+# local-janitor.sh, bounded session-start GC and reconciliation for GAIA's
+# machine-local working state.
 #
-# Side-effect only: deletes working-state that GAIA subsystems leave behind and
-# never self-prune. Invoked from wiki-session-start.sh (a type:command
+# Side-effect only, and two kinds of side effect. It deletes working state that
+# GAIA subsystems leave behind and never self-prune, and it reconciles the one
+# residue deletion alone cannot resolve: a wiki landing whose merge outlasts the
+# CLI's own bounded wait leaves both a local branch and a stale local base
+# branch, and neither is fixed by removing a file. That reconciliation is the
+# hook's only network call and its only advance of a branch somebody has
+# checked out; both are confined to sweep #1 and both are bounded. Invoked
+# from wiki-session-start.sh (a type:command
 # SessionStart hook, the side-effect form Anthropic still permits; it injects
 # NOTHING into context). Also runnable directly for testing:
 #   bash .claude/hooks/local-janitor.sh
 #
 # This is the BACKSTOP, not the owner. Each subsystem still owns its own
 # lifecycle (audit.md prunes its KNOWLEDGE reports; plan.md self-cleans on
-# merge). The janitor only removes residue whose death is PROVABLE, so it is
-# safe to run unconditionally every session. Before the sweeps below, it also
+# merge). The janitor only removes residue whose death is PROVABLE, and its one
+# reconciling step is gated and --ff-only, so it is safe to run unconditionally
+# every session. Before the sweeps below, it also
 # best-effort runs two one-time, guarded cleanups: ledger-status-migrate.sh, so
 # every sweep that reads a ledger row's status sees the unified vocabulary, and
 # the residue sweep its own block further down documents. It then sweeps
 # exactly nine things:
 #
-#   1. local wiki-sync/<date>-<sha> branches whose upstream is [gone]. The wiki
-#      landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway
-#      branch, pushes it, and enables auto-merge with `gh pr merge --auto`, a
-#      call that returns BEFORE the merge lands, so the local branch can never be
-#      deleted inline and nothing else reconciles it. Once the PR squash-merges,
-#      GitHub deletes the remote head branch, and this sweep's own bounded,
-#      rate-limited `git fetch --prune` of origin (below) drops the tracking
-#      ref, leaving the local branch upstream marked [gone]. That [gone]
-#      marker on a machine-generated, disposable wiki-sync/* branch is the
-#      provable-death signal (the normal per-branch PR-merge cleanup runs
-#      no `git branch -D` here because the landing is fire-and-forget). This
-#      sweep is git-scoped, so it runs before the .gaia/local guard below.
+#   1. the wiki landing's local residue: a merged-and-gone
+#      wiki-sync/<date>-<sha> branch, AND the base branch that landing left
+#      behind. The wiki landing CLI (`gaia wiki chain finish` /
+#      `wiki sync land`) cuts a throwaway branch, pushes it, and enables
+#      auto-merge with `gh pr merge --auto`, a call that returns BEFORE the
+#      merge lands. The merge gate routinely outlasts any wait that fits in one
+#      CLI invocation, so on the common path the local branch is not deleted
+#      inline and the local base branch does not advance. This sweep does four
+#      things, in order:
+#        a. an existence gate. Everything below runs only when a local
+#           wiki-sync/* branch is present at all, so an ordinary session pays
+#           nothing for any of it.
+#        b. a bounded, rate-limited `git fetch --prune` of origin. Bounded by
+#           GAIA_WIKI_FETCH_TIMEOUT_SECONDS (default 5, floor 1, ceiling 30;
+#           0 disables the fetch outright) and rate-limited by
+#           GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES (default 60, floor 5; 0
+#           removes the rate limit rather than disabling anything), with the
+#           attempt timestamped BEFORE launch so a hung remote cannot buy an
+#           unbounded retry every session. This fetch's effect is REPO-GLOBAL:
+#           refs and the object store are shared across every linked worktree,
+#           so a worktree-invoked fetch mutates state every tree observes. Tree
+#           locality applies to the fast-forward in (d), which acts on $root,
+#           and to nothing else.
+#        c. a guarded reap of each wiki-sync/* branch whose upstream now reads
+#           [gone]. [gone] does NOT prove a merge: it proves only that the
+#           remote head ref is absent, and a pull request closed without
+#           merging and then branch-deleted reads identically. So the reap
+#           refuses any branch carrying work no remote-tracking ref has, tested
+#           by PATCH ID with `git cherry` (the only test that can tell a
+#           squash-merged branch from an abandoned one; ancestry cannot). That
+#           refusal is what (b) makes necessary: with the sweep establishing
+#           [gone] itself on every qualifying session, the state arrives
+#           routinely rather than incidentally, so the reap needs its own
+#           evidence that the work survived rather than inheriting it from
+#           whatever else happened to prune. `git branch -D` (not -d):
+#           ancestry would refuse a squash merge anyway. Gated on the fetch
+#           having COMPLETED, since a stale pre-fetch enumeration establishes
+#           nothing.
+#        d. a durable `--ff-only` fast-forward of the base branch to
+#           origin/<base>, so the landing's own commit is actually present
+#           locally. Purely local, no network call under any circumstance:
+#           (b) already updated origin/<base> when it ran. Gated on HEAD being
+#           on base, a clean working tree, base having an upstream, and the
+#           fetch not being in an unknown state. Its safety comes from
+#           --ff-only itself and not from the reap that happens to precede it:
+#           a fast-forward against base's own upstream can only advance base to
+#           a commit the remote already has, and it is a checkout-aware merge,
+#           never a bare ref write.
+#      The catch-up obligation is DURABLE. A session that cannot discharge (d),
+#      a failing gate or a refused merge, records catchup_owed=1 in
+#      .gaia/local/cache/shared/wiki-base-catchup.state, and a later qualifying
+#      session retries with no new landing required. The obligation is one
+#      idempotent fact, so however many landings occur it collapses to at most
+#      one file; that is what bounds it, with no cap and no retention window.
+#      A fast-forward that was TRIED and failed additionally writes one line to
+#      .gaia/local/cache/shared/wiki-base-catchup.report, drained (read, then
+#      deleted, so it surfaces exactly once) by wiki-drift-check.sh, a
+#      UserPromptSubmit hook whose stdout reaches the conversation. A merely
+#      SKIPPED attempt is silent and leaves base byte-identical. This sweep is
+#      git-scoped, so it runs before the .gaia/local guard below.
 #   2. audit/<digest>.ok, the per-member audit/<digest>.<member>.ok, and
 #      audit/<digest>.refused (and their per-member forms) -- the Code Audit
 #      Team's earned and refused clearance markers. <digest> is a content
@@ -104,7 +160,7 @@
 #      `abandoned` today (the status is reserved but no shipped path sets
 #      it), so this delegation currently has no candidates to act on.
 #   8. orphaned GAIA worktrees under .claude/worktrees/ whose branch upstream
-#      is [gone] (the same provable-death signal sweep #1 uses for
+#      is [gone] (the same upstream-absent signal sweep #1 reads for
 #      wiki-sync/* branches), whose working tree is clean, AND whose branch
 #      is not named by a live RUNNING plan sentinel. The sentinel is
 #      gitignored, so it is invisible to both git-level checks above it; a
@@ -123,6 +179,12 @@
 #      creation and removal for a live session, but this sweep reaps worktrees
 #      no session is in, so there is no session-scoped hook to delegate to,
 #      and the janitor does its own remove + branch-delete + parent-prune.
+#      Sweep #1's prune-fetch runs earlier in this same process and makes
+#      [gone] routinely resolvable, so this sweep fires from a session-start
+#      run far more often than it would on its own. Its own guards are what
+#      bound that: only worktrees under the main checkout's .claude/worktrees/,
+#      never the current checkout, never a detached HEAD, a clean working tree
+#      required, and never a branch a live RUNNING plan sentinel names.
 #   9. off-pattern outlier residue: at the top level of .gaia/local plus the
 #      direct children (maxdepth-1, mindepth-1, no deeper) of audit/ and
 #      cache/, every child is put to the state registry
@@ -146,9 +208,17 @@
 #      covers the pre-4.2 unkeyed cache/gh-artifact-pr.json some machines
 #      may still carry -- see sweep #5's own comment for why).
 #
-# Fail-safe by construction: any inability to PROVE death (no git, unreadable
-# HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
-# always exits 0 so it cannot block a session start.
+# Fail-safe by construction, on both kinds of side effect. On the deleting
+# side: any inability to PROVE death (no git, unreadable HEAD, unparseable
+# sentinel) SKIPS that item, so live state is never deleted. On the
+# reconciling side, where a working-tree mutation is not a deletion and that
+# argument does not reach: every gate is cheap and local, the fast-forward is
+# --ff-only against base's own upstream so it can only advance base to a
+# commit the remote already has, a failing gate is a silent skip that leaves
+# base byte-identical with the index and working tree untouched, and an
+# attempt that was made and failed is reported through a channel that reaches
+# the maintainer rather than swallowed. Either way the hook always exits 0, so
+# it cannot block a session start.
 set -uo pipefail
 
 # --- Two questions, not one: which tree am I, and where is main ------------
@@ -305,7 +375,7 @@ if [ "$wiki_sync_present" -eq 1 ]; then
   # clamp, but means something different on each: the timeout knob's `0`
   # disables the fetch outright, while the min-interval knob's `0` removes the
   # rate limit rather than disabling anything -- a `0` swallowed by the floor
-  # clamp would suppress the very fetch UAT-016's second arm asserts appears.
+  # clamp would suppress the very fetch that knob's opt-out exists to allow.
   wiki_fetch_timeout="${GAIA_WIKI_FETCH_TIMEOUT_SECONDS:-5}"
   case "$wiki_fetch_timeout" in '' | *[!0-9]*) wiki_fetch_timeout=5 ;; esac
   if [ "$wiki_fetch_timeout" -ne 0 ]; then
