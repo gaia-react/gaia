@@ -25,6 +25,7 @@ setup() {
 teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
   [ -n "${ORIGIN:-}" ] && rm -rf "$ORIGIN"
+  [ -n "${SHIM_DIR:-}" ] && rm -rf "$SHIM_DIR"
   return 0
 }
 
@@ -147,6 +148,95 @@ write_plan_sentinel() {
     printf 'branch: %s\n' "$br" >> "$file"
   fi
   printf 'status: RUNNING\n' >> "$file"
+}
+
+# PATH-shimmed `git`: appends every invocation's argv to a witness file, then
+# passes through to the real binary. Deliberate duplicate of the identical
+# helper in local-janitor.bats: bats helpers are file-scoped and this suite
+# has no `load`, so the idiom is duplicated rather than shared.
+make_argv_witness_shim() {
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIR/witness"
+  : > "$witness"
+  local real_git
+  real_git=$(command -v git)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+echo "\$*" >> "$witness"
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git"
+}
+
+# advance_base <message>: pushes one unrelated commit to origin/<base> via a
+# throwaway clone, without touching REPO's own history, then fetches so
+# origin/main is current in REPO. Load-bearing per the SPEC's fixture-shape
+# requirement: a fixture whose base never moves does not model a real merge.
+advance_base() {
+  local message="$1" clone
+  ADVANCE_BASE_SEQ=$(( ${ADVANCE_BASE_SEQ:-0} + 1 ))
+  clone=$(mktemp -d -t gaia-janitor-wt-adv-XXXXXX)
+  git clone -q "$ORIGIN" "$clone"
+  git -C "$clone" config user.email test@example.com
+  git -C "$clone" config user.name Test
+  git -C "$clone" config commit.gpgsign false
+  echo "$message" >> "$clone/advance-$ADVANCE_BASE_SEQ.txt"
+  git -C "$clone" add -A
+  git -C "$clone" commit -q -m "$message"
+  git -C "$clone" push -q origin main
+  rm -rf "$clone"
+  git -C "$REPO" fetch -q origin
+}
+
+# make_squash_merged_worktree <rel> <branch> <substantive-count>: builds a
+# branch in the shape a real squash-merged candidate has -- N substantive
+# commits plus the audit gate's empty trailer commit, base advanced between
+# the branch cut and the merge, genuinely squash-merged into origin/main, the
+# remote head deleted and pruned -- and checks it out into a linked worktree
+# at $REPO/.claude/worktrees/<rel>.
+make_squash_merged_worktree() {
+  local rel="$1" br="$2" count="$3" i
+  git -C "$REPO" branch "$br"
+  git -C "$REPO" checkout -q "$br"
+  i=1
+  while [ "$i" -le "$count" ]; do
+    echo "commit $i" > "$REPO/${br//\//-}-$i.txt"
+    git -C "$REPO" add "${br//\//-}-$i.txt"
+    git -C "$REPO" commit -q -m "substantive commit $i"
+    i=$((i + 1))
+  done
+  git -C "$REPO" commit -q --allow-empty -m "chore: code review audit passed"
+  git -C "$REPO" push -q -u origin "$br"
+
+  advance_base "advance base for $br"
+
+  # Fast-forward REPO's own main onto the advanced base. advance_base only
+  # fetches into REPO, so REPO's local main is one commit behind origin/main
+  # here; without this step the squash-merge push below is rejected
+  # non-fast-forward, origin/main never carries the squash commit, and the
+  # guard finds no matching upstream patch id.
+  git -C "$REPO" checkout -q main
+  git -C "$REPO" merge -q --ff-only origin/main
+
+  # Squash-merge for real, so origin/main carries a commit whose diff equals
+  # the branch's combined diff -- the upstream patch id the guard looks for.
+  git -C "$REPO" merge -q --squash "$br"
+  git -C "$REPO" commit -q -m "$br (#1)"
+  git -C "$REPO" push -q origin main
+
+  git -C "$REPO" push -q origin --delete "$br"
+  git -C "$REPO" fetch -q --prune
+
+  mkdir -p "$(dirname "$REPO/.claude/worktrees/$rel")"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/$rel" "$br"
+}
+
+# combined_patch_id <rev-a> <rev-b>: reads a patch id the same way the guard
+# will. `git patch-id` prints two whitespace-separated fields, the patch id
+# and a commit id that differs between reads, so only field one is compared.
+combined_patch_id() {
+  git -C "$REPO" diff --no-ext-diff --no-textconv --end-of-options "$1" "$2" \
+    | git -C "$REPO" patch-id --verbatim | awk '{print $1}'
 }
 
 @test "reaps a [gone]-branch worktree with a clean working tree" {
@@ -503,4 +593,504 @@ push_upstream_then_delete() {
   [ -d "$wt" ]
   branch_exists "debt/303-followup"
   git -C "$REPO" cat-file -e "$followup_sha" 2>/dev/null
+}
+
+# Fixture-integrity check for make_squash_merged_worktree: proves the helper
+# builds a branch whose combined diff really does reproduce the upstream
+# squash commit's patch id -- the shape a real squash-merged candidate has,
+# and the reproduction the repaired guard depends on. Asserts nothing about
+# sweep #8 and never invokes local-janitor.sh.
+@test "fixture: make_squash_merged_worktree builds a branch whose combined patch id matches the upstream squash" {
+  make_repo
+  make_squash_merged_worktree "squash/900-fixture" "squash/900-fixture" 2
+  wt="$REPO/.claude/worktrees/squash/900-fixture"
+
+  track=$(git -C "$REPO" for-each-ref --format='%(upstream:track)' "refs/heads/squash/900-fixture")
+  [ "$track" = "[gone]" ]
+
+  [ -d "$wt" ]
+  [ -z "$(git -C "$wt" status --porcelain)" ]
+
+  mb=$(git -C "$REPO" merge-base origin/main refs/heads/squash/900-fixture)
+  ahead=$(git -C "$REPO" rev-list --count "$mb..refs/heads/squash/900-fixture")
+  [ "$ahead" -eq 3 ]
+
+  branch_pid=$(combined_patch_id "$mb" refs/heads/squash/900-fixture)
+  squash_pid=$(combined_patch_id origin/main~1 origin/main)
+  [ -n "$branch_pid" ]
+  [ "$branch_pid" = "$squash_pid" ]
+}
+
+# --- Combined-diff patch-id merge evidence ---------------------------------
+#
+# Sweep #8 proves a merge by comparing the candidate branch's COMBINED diff,
+# by whitespace-verbatim patch id, against the patch ids of
+# <merge-base>..origin/<base>. A per-commit comparison answers the wrong
+# question: a squash merge lands the whole branch as ONE upstream commit, so
+# it matches none of a two-commit branch's commits and nothing at all for the
+# audit gate's empty trailer commit.
+#
+# Every question the guard cannot answer from git keeps the worktree: an
+# unresolvable base, an unresolvable merge base, a failed rev-list, diff,
+# patch-id, or log read, an empty patch id on a branch that is ahead, and a
+# bounded scan that ends without a match.
+
+# make_failing_git_shim <extended-regex> [exit-code]: extends the argv-witness
+# idiom above. Every invocation's argv is appended to $witness; the ONE
+# invocation whose argv matches <extended-regex> prints nothing and exits
+# <exit-code> (default 1) instead of running git, while every other invocation
+# execs the real binary untouched. Matching narrowly is load-bearing twice
+# over: a shim that broke git wholesale would keep every worktree and green
+# these tests for entirely the wrong reason, and `status --porcelain` is not
+# unique to sweep #8 -- sweep #1 reads it against the main checkout in the
+# same hook process, so that shim is scoped by `-C <path>` as well.
+make_failing_git_shim() {
+  local match="$1" code="${2:-1}" real_git
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIR/witness"
+  : > "$witness"
+  real_git=$(command -v git)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+echo "\$*" >> "$witness"
+if printf '%s' "\$*" | grep -qE -- '$match'; then
+  exit $code
+fi
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git"
+}
+
+# UAT-001: the shape a real candidate has -- one substantive commit plus the
+# audit gate's empty trailer, a base that advanced between the branch cut and
+# the merge, a genuine squash merge, and a slashed worktree name whose empty
+# parent directory has to be pruned along with the leaf.
+@test "reaps a squash-merged worktree carrying one substantive commit plus the audit trailer" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-901-a" "plan/spec-901-a" 1
+  wt="$REPO/.claude/worktrees/plan/spec-901-a"
+  [ -d "$wt" ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "plan/spec-901-a" && return 1
+  [ ! -d "$REPO/.claude/worktrees/plan" ]
+  [ -d "$REPO/.claude/worktrees" ]
+  [ ! -e "$wt" ]
+}
+
+# UAT-002: two substantive commits plus the trailer. The squash collapses all
+# three into one upstream commit, so a per-commit patch-id comparison matches
+# none of them and refuses a candidate that is provably merged.
+@test "reaps a squash-merged worktree carrying two substantive commits plus the audit trailer" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-902-b" "plan/spec-902-b" 2
+  wt="$REPO/.claude/worktrees/plan/spec-902-b"
+  [ -d "$wt" ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "plan/spec-902-b" && return 1
+  [ ! -e "$wt" ]
+}
+
+# UAT-003a: a merged branch that kept moving. The follow-up commit reached no
+# remote-tracking ref, so the branch's combined diff no longer reproduces the
+# upstream squash's patch id and the scan ends without a match. Built on a
+# genuinely squash-merged branch so the keep comes from a walk that actually
+# walked, not from an empty upstream range.
+@test "keeps a squash-merged worktree carrying an unpushed substantive follow-up commit" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-903-a" "plan/spec-903-a" 1
+  wt="$REPO/.claude/worktrees/plan/spec-903-a"
+  echo followup > "$wt/followup.txt"
+  git -C "$wt" add followup.txt
+  git -C "$wt" commit -q -m "unpushed follow-up"
+  followup_sha=$(git -C "$wt" rev-parse HEAD)
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "plan/spec-903-a"
+  git -C "$REPO" cat-file -e "$followup_sha" 2>/dev/null
+}
+
+# UAT-003b: the same shape, but the unpushed commit changes only whitespace on
+# a line the squash already carries. Under the default whitespace-normalizing
+# patch-id mode this branch's combined diff reproduces the upstream squash's
+# id exactly and the commit is reaped and destroyed; --verbatim is the whole
+# reason it survives.
+@test "keeps a squash-merged worktree carrying an unpushed whitespace-only follow-up commit" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-904-b" "plan/spec-904-b" 1
+  wt="$REPO/.claude/worktrees/plan/spec-904-b"
+  printf 'commit 1 \n' > "$wt/plan-spec-904-b-1.txt"
+  git -C "$wt" add plan-spec-904-b-1.txt
+  git -C "$wt" commit -q -m "whitespace-only follow-up"
+  ws_sha=$(git -C "$wt" rev-parse HEAD)
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "plan/spec-904-b"
+  git -C "$REPO" cat-file -e "$ws_sha" 2>/dev/null
+}
+
+# UAT-004: the zero-commits-ahead reap arm. The branch's tree IS the merge
+# base's tree, so it holds nothing a deletion could lose and no upstream match
+# is owed. Regression duplicate of the suite's first test, guarding the arm
+# through the rewrite.
+@test "reaps a [gone]-branch worktree zero commits ahead of the merge base" {
+  make_repo
+  make_gone_worktree "debt/400-zero" "debt/400-zero"
+  wt="$REPO/.claude/worktrees/debt/400-zero"
+  [ "$(git -C "$REPO" rev-list --count origin/main..refs/heads/debt/400-zero)" -eq 0 ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "debt/400-zero" && return 1
+  [ ! -e "$wt" ]
+}
+
+# UAT-005: commits that cancel out. The combined diff is empty while the
+# branch holds two real commits, whose content becomes unreachable the moment
+# the branch is deleted -- so emptiness on a branch that is ahead is an
+# unanswerable question, never a reap signal.
+@test "keeps a [gone]-branch worktree whose two commits cancel out to an empty combined diff" {
+  make_repo
+  make_gone_worktree "debt/401-cancel" "debt/401-cancel"
+  wt="$REPO/.claude/worktrees/debt/401-cancel"
+  echo cancelled > "$wt/cancelled.txt"
+  git -C "$wt" add cancelled.txt
+  git -C "$wt" commit -q -m "adds a file"
+  add_sha=$(git -C "$wt" rev-parse HEAD)
+  git -C "$wt" rm -q cancelled.txt
+  git -C "$wt" commit -q -m "reverts it exactly"
+  mb=$(git -C "$REPO" merge-base origin/main refs/heads/debt/401-cancel)
+  [ "$(git -C "$REPO" rev-list --count "$mb..refs/heads/debt/401-cancel")" -eq 2 ]
+  [ -z "$(git -C "$REPO" diff "$mb" refs/heads/debt/401-cancel)" ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/401-cancel"
+  git -C "$REPO" cat-file -e "$add_sha" 2>/dev/null
+}
+
+# UAT-006: an unresolvable merge base. The remote-tracking ref is deleted
+# outright, so the merge-base read exits non-zero and the worktree stays.
+# Deliberately built with NO wiki-sync/* branch: sweep #1's repo-global
+# prune-fetch fires whenever one is present and would recreate
+# refs/remotes/origin/main before sweep #8 ever reads it, leaving this test
+# passing while proving nothing. The witness assertion pins the refusal to the
+# merge-base read rather than to an earlier gate.
+@test "keeps a [gone]-branch worktree when the merge-base read fails" {
+  make_repo
+  make_gone_worktree "debt/402-nomb" "debt/402-nomb"
+  wt="$REPO/.claude/worktrees/debt/402-nomb"
+  git -C "$REPO" update-ref -d refs/remotes/origin/main
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/402-nomb"
+  grep -qE "merge-base .*refs/heads/debt/402-nomb" "$witness"
+}
+
+# UAT-007a: the combined-diff read fails while printing nothing. A guard that
+# read emptiness rather than exit status would take the failed read for an
+# empty diff. The sibling candidate proves the shim is narrow enough that git
+# still works for everything else in the same run.
+@test "keeps a candidate carrying unpushed work when the combined-diff read fails" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-905-diff" "plan/spec-905-diff" 1
+  make_gone_worktree "debt/409-control" "debt/409-control"
+  wt="$REPO/.claude/worktrees/plan/spec-905-diff"
+  ctl="$REPO/.claude/worktrees/debt/409-control"
+  echo followup > "$wt/followup.txt"
+  git -C "$wt" add followup.txt
+  git -C "$wt" commit -q -m "unpushed follow-up"
+  followup_sha=$(git -C "$wt" rev-parse HEAD)
+  make_failing_git_shim "diff .*refs/heads/plan/spec-905-diff"
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "plan/spec-905-diff"
+  git -C "$REPO" cat-file -e "$followup_sha" 2>/dev/null
+  branch_exists "debt/409-control" && return 1
+  [ ! -e "$ctl" ]
+}
+
+# UAT-007b: the patch-id read fails while printing nothing. The shim matches
+# every patch-id invocation, so no sibling candidate can serve as a positive
+# control here; the witness assertions instead pin the refusal past the cheap
+# gates and onto the shimmed read.
+@test "keeps a candidate carrying unpushed work when the patch-id read fails" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-906-pid" "plan/spec-906-pid" 1
+  wt="$REPO/.claude/worktrees/plan/spec-906-pid"
+  echo followup > "$wt/followup.txt"
+  git -C "$wt" add followup.txt
+  git -C "$wt" commit -q -m "unpushed follow-up"
+  followup_sha=$(git -C "$wt" rev-parse HEAD)
+  make_failing_git_shim "patch-id"
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "plan/spec-906-pid"
+  grep -qE "merge-base .*refs/heads/plan/spec-906-pid" "$witness"
+  grep -qF "patch-id" "$witness"
+  git -C "$REPO" cat-file -e "$followup_sha" 2>/dev/null
+}
+
+# UAT-007c: patch-id exits ZERO while printing nothing. An empty patch id is a
+# failed read, never a match -- the branch is one or more commits ahead, so
+# there is real content a deletion would lose.
+@test "keeps a candidate carrying unpushed work when the patch-id read returns an empty id" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-907-empty" "plan/spec-907-empty" 1
+  wt="$REPO/.claude/worktrees/plan/spec-907-empty"
+  echo followup > "$wt/followup.txt"
+  git -C "$wt" add followup.txt
+  git -C "$wt" commit -q -m "unpushed follow-up"
+  followup_sha=$(git -C "$wt" rev-parse HEAD)
+  make_failing_git_shim "patch-id" 0
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "plan/spec-907-empty"
+  grep -qE "merge-base .*refs/heads/plan/spec-907-empty" "$witness"
+  grep -qF "patch-id" "$witness"
+  git -C "$REPO" cat-file -e "$followup_sha" 2>/dev/null
+}
+
+# UAT-007d: the isolating shape for the combined-diff read's exit status. On a
+# ZERO-commits-ahead candidate a failed diff read lands in the empty-diff arm
+# with nothing left to refuse it, so dropping that read's status check reaps a
+# worktree on a read that failed. UAT-007a cannot show this: its fixture is
+# ahead, so the empty-diff arm refuses it anyway.
+@test "keeps a zero-commits-ahead candidate when the combined-diff read fails" {
+  make_repo
+  make_gone_worktree "debt/403-diffrc" "debt/403-diffrc"
+  make_gone_worktree "debt/404-control" "debt/404-control"
+  wt="$REPO/.claude/worktrees/debt/403-diffrc"
+  ctl="$REPO/.claude/worktrees/debt/404-control"
+  [ "$(git -C "$REPO" rev-list --count origin/main..refs/heads/debt/403-diffrc)" -eq 0 ]
+  make_failing_git_shim "diff .*refs/heads/debt/403-diffrc"
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/403-diffrc"
+  branch_exists "debt/404-control" && return 1
+  [ ! -e "$ctl" ]
+}
+
+# UAT-007e: the isolating shape for the patch-id read's exit status, same
+# reasoning as UAT-007d. On a zero-commits-ahead candidate a failed patch-id
+# read reaches the empty-diff arm unopposed.
+@test "keeps a zero-commits-ahead candidate when the patch-id read fails" {
+  make_repo
+  make_gone_worktree "debt/405-pidrc" "debt/405-pidrc"
+  wt="$REPO/.claude/worktrees/debt/405-pidrc"
+  [ "$(git -C "$REPO" rev-list --count origin/main..refs/heads/debt/405-pidrc)" -eq 0 ]
+  make_failing_git_shim "patch-id"
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/405-pidrc"
+  grep -qE "merge-base .*refs/heads/debt/405-pidrc" "$witness"
+  grep -qF "patch-id" "$witness"
+}
+
+# UAT-008: the working-tree status read fails while printing nothing. Reading
+# that silence as "clean" permits the reap of a worktree nobody can see into.
+# The shim is scoped by `-C <worktree path>` so sweep #1's own
+# `status --porcelain` against the main checkout passes through untouched, and
+# the sibling candidate proves the rest of the run still reaps normally.
+@test "keeps a candidate that would otherwise be reaped when the status read fails" {
+  make_repo
+  make_gone_worktree "debt/406-status" "debt/406-status"
+  make_gone_worktree "debt/407-control" "debt/407-control"
+  wt="$REPO/.claude/worktrees/debt/406-status"
+  ctl="$REPO/.claude/worktrees/debt/407-control"
+  # Scoped by the worktree's own -C argument, but matched on the path's tail:
+  # the janitor reads its roots through git, which resolves symlinks, so the
+  # argv carries the physical path while $REPO carries the one mktemp handed
+  # back (on macOS, /private/var/... against /var/...).
+  make_failing_git_shim "-C .*/\.claude/worktrees/debt/406-status status --porcelain"
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  branch_exists "debt/406-status"
+  branch_exists "debt/407-control" && return 1
+  [ ! -e "$ctl" ]
+}
+
+# The unresolvable-base keep-condition. $base is read from
+# refs/remotes/origin/HEAD and then shape-validated: a name carrying a
+# character outside [A-Za-z0-9._/-] clears it to empty. Deleting
+# refs/remotes/origin/HEAD outright would NOT do it -- the resolution falls
+# back to `main` -- so the fixture repoints it at an unsafely-shaped name.
+@test "keeps a [gone]-branch worktree when the base cannot be resolved to a safe name" {
+  make_repo
+  make_gone_worktree "debt/408-nobase" "debt/408-nobase"
+  wt="$REPO/.claude/worktrees/debt/408-nobase"
+  git -C "$REPO" branch 'odd+base' main
+  git -C "$REPO" push -q -u origin 'odd+base'
+  git -C "$REPO" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/odd+base
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  # The base gate is what refused, and it refused before any merge-evidence
+  # read: sweep #8 enumerated the worktrees but never reached its merge base.
+  grep -qF "worktree list --porcelain" "$witness"
+  grep -qE "merge-base .*refs/heads/debt/408-nobase" "$witness" && return 1
+  branch_exists "debt/408-nobase"
+}
+
+# --- Observability: the scan bound, the gate order, and output silence ----
+#
+# Both properties below concern what the guard does NOT do, so they cannot be
+# observed behaviorally: the upstream scan's bound has to come from git log's
+# own -n option, never a downstream `head -n` (which would close the pipe and
+# raise SIGPIPE 141 under this file's pipefail, silently disabling the guard
+# again), and the merge-evidence reads must run only after the cheap refusal
+# gates (dirty tree, live RUNNING sentinel) have already declined.
+
+# UAT-009: the bound is applied by git log's own -n option. Asserts the
+# literal count, not just the flag, so a re-tuned bound has to be published in
+# this test's diff. The patch-id assertion guards against a vacuous green: a
+# fixture that never reached the scan would record neither.
+@test "UAT-009: the upstream scan bound is applied by git log's own -n option" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-908-bound" "plan/spec-908-bound" 1
+  wt="$REPO/.claude/worktrees/plan/spec-908-bound"
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "plan/spec-908-bound" && return 1
+  [ ! -e "$wt" ]
+  grep -qE "log .*-n 1000" "$witness"
+  [ "$(grep -c 'patch-id' "$witness")" -ge 1 ]
+}
+
+# UAT-010: the expensive merge-evidence scan runs only after the cheap
+# refusal gates. Both candidates are built with make_squash_merged_worktree,
+# the same builder UAT-009 uses -- a candidate built with make_gone_branch is
+# zero commits ahead and reaps through the empty-diff arm without ever
+# reaching the upstream scan, which would make this test's negative counts
+# true for a reason that has nothing to do with gate ordering.
+@test "UAT-010: the merge-evidence scan runs only after the cheap refusal gates" {
+  make_repo
+  ignore_local_state
+  make_squash_merged_worktree "plan/spec-909-dirty" "plan/spec-909-dirty" 1
+  make_squash_merged_worktree "plan/spec-910-sentinel" "plan/spec-910-sentinel" 1
+  dirty_wt="$REPO/.claude/worktrees/plan/spec-909-dirty"
+  sentinel_wt="$REPO/.claude/worktrees/plan/spec-910-sentinel"
+  echo dirty > "$dirty_wt/dirty.txt"
+  write_plan_sentinel "$sentinel_wt" "plans/PLAN-920" "plan/spec-910-sentinel"
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$dirty_wt" ]
+  [ -d "$sentinel_wt" ]
+  branch_exists "plan/spec-909-dirty"
+  branch_exists "plan/spec-910-sentinel"
+  [ "$(grep -c 'patch-id' "$witness")" -eq 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -eq 0 ]
+  [ "$(grep -cE "merge-base .*refs/heads/plan/spec-909-dirty" "$witness")" -eq 0 ]
+  [ "$(grep -cE "merge-base .*refs/heads/plan/spec-910-sentinel" "$witness")" -eq 0 ]
+  [ "$(grep -cE "rev-list .*refs/heads/plan/spec-909-dirty" "$witness")" -eq 0 ]
+  [ "$(grep -cE "rev-list .*refs/heads/plan/spec-910-sentinel" "$witness")" -eq 0 ]
+  [ "$(grep -cE "diff .*refs/heads/plan/spec-909-dirty" "$witness")" -eq 0 ]
+  [ "$(grep -cE "diff .*refs/heads/plan/spec-910-sentinel" "$witness")" -eq 0 ]
+}
+
+# UAT-010 positive control, same fixture shape with the dirty file and the
+# sentinel removed. Without this the negative counts above could green
+# vacuously through an early short-circuit further up the sweep and prove
+# nothing about gate ordering.
+@test "UAT-010 positive control: the merge-evidence scan runs when no cheap gate refuses" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-911-control-a" "plan/spec-911-control-a" 1
+  make_squash_merged_worktree "plan/spec-912-control-b" "plan/spec-912-control-b" 1
+  wt_a="$REPO/.claude/worktrees/plan/spec-911-control-a"
+  wt_b="$REPO/.claude/worktrees/plan/spec-912-control-b"
+  [ -d "$wt_a" ]
+  [ -d "$wt_b" ]
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "plan/spec-911-control-a" && return 1
+  branch_exists "plan/spec-912-control-b" && return 1
+  [ ! -e "$wt_a" ]
+  [ ! -e "$wt_b" ]
+  [ "$(grep -c 'patch-id' "$witness")" -gt 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -gt 0 ]
+  [ "$(grep -cE "merge-base .*refs/heads/plan/spec-911-control-a" "$witness")" -gt 0 ]
+  [ "$(grep -cE "merge-base .*refs/heads/plan/spec-912-control-b" "$witness")" -gt 0 ]
+  [ "$(grep -cE "rev-list .*refs/heads/plan/spec-911-control-a" "$witness")" -gt 0 ]
+  [ "$(grep -cE "rev-list .*refs/heads/plan/spec-912-control-b" "$witness")" -gt 0 ]
+  [ "$(grep -cE "diff .*refs/heads/plan/spec-911-control-a" "$witness")" -gt 0 ]
+  [ "$(grep -cE "diff .*refs/heads/plan/spec-912-control-b" "$witness")" -gt 0 ]
+}
+
+# COV-006: the sweep emits nothing at all, on any path. Two arms, keep and
+# reap, on fixtures already established above.
+@test "COV-006: a kept worktree produces no output" {
+  make_repo
+  make_gone_worktree "debt/410-silent-keep" "debt/410-silent-keep"
+  wt="$REPO/.claude/worktrees/debt/410-silent-keep"
+  echo dirty > "$wt/dirty.txt"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -d "$wt" ]
+  branch_exists "debt/410-silent-keep"
+}
+
+@test "COV-006: a reaped squash-merged worktree produces no output" {
+  make_repo
+  make_squash_merged_worktree "plan/spec-913-silent-reap" "plan/spec-913-silent-reap" 1
+  wt="$REPO/.claude/worktrees/plan/spec-913-silent-reap"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  branch_exists "plan/spec-913-silent-reap" && return 1
+  [ ! -e "$wt" ]
+}
+
+# The default branch resolved once at the top of the hook has to survive every
+# sweep that runs between that resolution and this one. Sweep #4's audit-marker
+# walk runs in between and iterates over whatever `.gaia/local/audit/` holds, so
+# a checkout carrying even one marker is the ordinary case, not an edge case:
+# every real one does. If that walk leaves its own loop variable behind in the
+# name this sweep reads, the merge-base read below resolves nothing, every
+# candidate is declined, and the reap goes silently inert while still exiting 0.
+@test "reaps a [gone]-branch worktree when the audit directory holds markers" {
+  make_repo
+  make_gone_worktree "debt/500-marker" "debt/500-marker"
+  wt="$REPO/.claude/worktrees/debt/500-marker"
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{}\n' > "$REPO/.gaia/local/audit/deadbeefcafe.ok"
+  [ -d "$wt" ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "debt/500-marker" && return 1
+  [ ! -e "$wt" ]
 }

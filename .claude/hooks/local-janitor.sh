@@ -965,15 +965,19 @@ if [ -d "$audit_dir" ]; then
   for marker in "$audit_dir"/*.ok "$audit_dir"/*.refused "$audit_dir"/*.carried \
                 "$audit_dir"/*.dispositions.json "$audit_dir"/*.progress.log; do
     [ -e "$marker" ] || continue          # glob did not match
-    base=${marker##*/}
+    # marker_base, not base: $base is the shape-validated default branch
+    # resolved once at the top of this file, and sweeps below this one still
+    # read it. This loop runs at file top level, so a plain `base=` here is
+    # not loop-local, it overwrites that value for the rest of the run.
+    marker_base=${marker##*/}
     # An object id never contains a dot, so strip from the FIRST one -- the
     # same idiom the old tree/sha scheme used, now isolating the digest: the
     # plain <digest>.ok, the per-member <digest>.<member>.ok, and
     # <digest>.dispositions.json all resolve correctly.
-    key=${base%%.*}
+    key=${marker_base%%.*}
     keep=0
 
-    case "$base" in
+    case "$marker_base" in
       *.ok | *.refused)
         if [ "$have_jq" -eq 1 ] && janitor_digest_key "$key"; then
           fields=$(janitor_new_scheme_fields "$marker" "$key")
@@ -1014,7 +1018,7 @@ if [ -d "$audit_dir" ]; then
             # Keep-arm C: the frontend earned marker for a still-open
             # receipt. Only the infix-free <digest>.ok family files a
             # sidecar, so this never fires for a specialist or a refusal.
-            if [ "$keep" -eq 0 ] && [ "$base" = "${key}.ok" ] \
+            if [ "$keep" -eq 0 ] && [ "$marker_base" = "${key}.ok" ] \
                && [ -n "$open_receipt_digests" ] \
                && grep -qxF -- "$key" <<< "$open_receipt_digests"; then
               keep=1
@@ -1314,21 +1318,30 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
     # not only wiki-sync/* ones. A branch whose PR squash-merged (GitHub
     # auto-deletes the head branch) reads identically to one whose PR closed
     # without merging; ancestry cannot tell them apart, only a PATCH-ID
-    # comparison against origin/$base can, the same `git cherry` test sweep
-    # #1's own reap uses on itself. Refuse the reap when the branch carries
-    # work no remote-tracking ref has. Fail-safe: an unresolvable/unsafely-
-    # shaped $base (cleared to empty above) or an unanswerable cherry read
-    # keeps the worktree, and so does any unpushed commit.
-    if [ -z "$base" ]; then
-      continue
-    fi
-    wt_cherry_out=$(git -C "$wt_main" cherry --end-of-options "origin/$base" "$wt_branch" 2>/dev/null)
-    wt_cherry_status=$?
-    [ "$wt_cherry_status" -eq 0 ] || continue
-    wt_unpushed=$(printf '%s\n' "$wt_cherry_out" | grep -c '^+')
-    [ "$wt_unpushed" -eq 0 ] || continue
-    # Never discard uncommitted working-tree changes.
-    [ -z "$(git -C "$wt_path" status --porcelain 2>/dev/null)" ] || continue
+    # comparison against origin/$base can. That comparison is over the
+    # branch's COMBINED diff, because a squash merge lands the whole branch as
+    # ONE upstream commit: a per-commit test matches none of a branch's
+    # commits once the squash collapses two of them, and matches nothing at
+    # all for the audit gate's empty trailer commit. Refuse the reap when the
+    # branch carries work no remote-tracking ref has. Fail-safe: every
+    # question this cannot answer from git keeps the worktree -- an
+    # unresolvable/unsafely-shaped $base (cleared to empty above), an
+    # unresolvable merge base, a failed read of any kind, an empty patch id on
+    # a branch that is ahead, and a bounded scan that ends without a match.
+    #
+    # The cheap refusals run first. A dirty working tree and a live plan
+    # sentinel each refuse outright, so an ordinary session pays nothing for
+    # the merge-evidence reads on a candidate they already spare. Every gate
+    # here is a refusal, so their order changes cost and nothing else.
+    #
+    # Never discard uncommitted working-tree changes. This read's own exit
+    # status is checked before its output: git status exits non-zero on a
+    # worktree it cannot read while printing nothing, and taking that silence
+    # for "clean" would PERMIT the reap.
+    wt_status_out=$(git -C "$wt_path" status --porcelain 2>/dev/null)
+    wt_status_rc=$?
+    [ "$wt_status_rc" -eq 0 ] || continue
+    [ -z "$wt_status_out" ] || continue
     # Never reap a branch named by a live RUNNING plan sentinel. The
     # sentinel is gitignored, so it is invisible to both git checks above:
     # a plan can be genuinely in-flight on a branch that reads [gone] +
@@ -1368,6 +1381,93 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
       esac
     done
     [ "$wt_live" -eq 0 ] || continue
+    # An unresolvable or unsafely-shaped base answers nothing.
+    [ -n "$base" ] || continue
+    # The fork point the branch is measured from.
+    wt_mb=$(git -C "$wt_main" merge-base --end-of-options \
+      "origin/$base" "refs/heads/$wt_branch" 2>/dev/null)
+    wt_mb_rc=$?
+    [ "$wt_mb_rc" -eq 0 ] || continue
+    [ -n "$wt_mb" ] || continue
+    # How much the branch carries, and what it carries as one combined diff.
+    # --no-ext-diff/--no-textconv neutralize user diff configuration: an
+    # external differ or a textconv filter could otherwise empty the diff at
+    # exit 0 and manufacture the reap signal below. Each read's success is its
+    # own exit status, never inherited and never softened with `|| true`,
+    # which would turn a failed read back into the empty-output case.
+    wt_ahead=$(git -C "$wt_main" rev-list --count --end-of-options \
+      "$wt_mb..refs/heads/$wt_branch" 2>/dev/null)
+    wt_ahead_rc=$?
+    [ "$wt_ahead_rc" -eq 0 ] || continue
+    wt_diff=$(git -C "$wt_main" diff --no-ext-diff --no-textconv --end-of-options \
+      "$wt_mb" "refs/heads/$wt_branch" 2>/dev/null)
+    wt_diff_rc=$?
+    [ "$wt_diff_rc" -eq 0 ] || continue
+    # --verbatim, never the default whitespace-normalizing mode (and never
+    # --stable, which git rejects alongside it): normalization gives an
+    # unpushed formatting-only commit the same id as the upstream squash, so
+    # the default mode would reap and destroy that commit. The diff lives in a
+    # shell variable rather than a temp file, so there is no predictable path
+    # to guard and nothing to clean up.
+    #
+    # --verbatim raises this sweep's git floor to 2.39, above the repo-wide
+    # >= 2.31 that main-root-lib.sh declares, and that floor is stated in both
+    # places on purpose. Below 2.39 git rejects the option, this read exits
+    # non-zero, and the sweep declines every candidate: fail-safe, since
+    # nothing is destroyed, but silent, so the reap simply stops reclaiming
+    # anything. There is deliberately no version probe here. A probe would buy
+    # nothing a refusal does not already buy, and this comment is what tells a
+    # reader why an older git sees the sweep do nothing.
+    wt_pid_out=$(printf '%s\n' "$wt_diff" | git -C "$wt_main" patch-id --verbatim 2>/dev/null)
+    wt_pid_rc=$?
+    [ "$wt_pid_rc" -eq 0 ] || continue
+    if [ -z "$wt_diff" ]; then
+      # Zero commits ahead: the branch's tree IS the merge base's tree, it
+      # holds nothing a deletion could lose, and both reads above succeeded,
+      # so the reap proceeds without an upstream match. One or more commits
+      # ahead with an empty combined diff means the branch holds commits that
+      # cancel out, whose content is real and unreachable once the branch is
+      # deleted, so that question is unanswerable and the worktree stays.
+      # Emptiness alone is never the signal, in either arm.
+      [ "$wt_ahead" -eq 0 ] || continue
+    else
+      # patch-id prints two fields and only the first is the id; the second
+      # differs between reads. An empty id is a failed read, never a match --
+      # and that check belongs HERE rather than above, because patch-id over
+      # an empty diff prints nothing at exit 0, which would make the
+      # zero-commits-ahead reap above unreachable.
+      wt_pid=${wt_pid_out%%[[:space:]]*}
+      [ -n "$wt_pid" ] || continue
+      # One bounded pipeline over <merge-base>..origin/$base rather than a
+      # per-commit show loop, with --no-merges so a merge commit cannot
+      # contribute a spurious id. The bound is git log's own -n: `head -n`
+      # would close the pipe and raise SIGPIPE 141 under this file's pipefail,
+      # silently disabling the guard. wt_up_rc covers the whole two-command
+      # pipeline, which pipefail makes sufficient -- it reports the RIGHTMOST
+      # non-zero status, so a failure of either read still surfaces as non-zero
+      # and neither can be masked by the other succeeding -- and splitting it
+      # would mean materializing up to 1000 commits' patches into a shell
+      # variable. This is the one status here derived from a pipeline.
+      wt_up_ids=$(git -C "$wt_main" log -p --no-merges --no-ext-diff --no-textconv \
+        --format='commit %H' -n 1000 --end-of-options "$wt_mb..origin/$base" 2>/dev/null \
+        | git -C "$wt_main" patch-id --verbatim 2>/dev/null)
+      wt_up_rc=$?
+      [ "$wt_up_rc" -eq 0 ] || continue
+      # The ids are materialized before this loop reads them: breaking out of
+      # a loop fed by a LIVE pipe closes it and raises SIGPIPE 141 on git log,
+      # the same silently-disabled-guard failure `head -n` would cause.
+      wt_match=0
+      while read -r wt_up_id _; do
+        [ -n "$wt_up_id" ] || continue
+        if [ "$wt_up_id" = "$wt_pid" ]; then
+          wt_match=1
+          break
+        fi
+      done <<UPSTREAM_IDS
+$wt_up_ids
+UPSTREAM_IDS
+      [ "$wt_match" -eq 1 ] || continue
+    fi
     # Tear down inline: remove the worktree, delete its now-detached branch,
     # and prune the empty parent dirs a slashed name leaves behind. $wt_branch
     # is already in hand from the porcelain parse above, so there is no

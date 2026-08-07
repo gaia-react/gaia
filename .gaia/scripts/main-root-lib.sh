@@ -17,6 +17,14 @@
 # the logical/physical mismatch this resolver exists to close. Empirically
 # probed against git 2.55.0.
 #
+# This floor is this library's own, not a repo-wide guarantee that every
+# consumer holds to it. One shipped surface sits above it: the orphaned-worktree
+# reap in .claude/hooks/local-janitor.sh proves a squash merge with
+# `git patch-id --verbatim`, which needs git >= 2.39. Below that its reads fail
+# and the sweep declines every candidate, which destroys nothing but reclaims
+# nothing either. Named here so the two floors are reconciled in one place
+# rather than each looking authoritative on its own.
+#
 # Physical resolution: every path this library treats as an answer is passed
 # through `cd <path> && pwd -P` (never `realpath`/`readlink -f`, which are not
 # guaranteed present on macOS). `git`'s own absolute-path flags are NOT trusted
