@@ -11,6 +11,17 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-07 28dcb4e8 WORTHY - wiki-landing base catch-up (janitor prune-fetch + fast-forward, sync await verb), already documented in-commit across wiki/concepts/GAIA CLI.md, Local Working State.md, Wiki Sync.md, wiki/decisions/Wiki Management.md
+- 2026-08-07 6f3cab08 SKIP - comment-only paths-filter documentation fix naming the statusline suite's full guarded surface
+- 2026-08-07 1a874476 WORTHY - audit nudge's over-budget signal suppressed once a path is filed as tech-debt → wiki/concepts/GAIA Audit.md
+- 2026-08-07 603aca9d WORTHY - code-audit-maintainer-node claims the CLI's own tool configs, already documented in-commit in wiki/decisions/Code Audit Team.md
+- 2026-08-07 0ef4e4a1 SKIP - comment-only clarification of redundant paths-filter entries, parsed filter unchanged
+- 2026-08-07 51113ec6 SKIP - comment-only clarification of distribution pre-flight's mirror scope, behavior unchanged, existing wiki claim already narrow and accurate
+- 2026-08-07 9f9b4ddc WORTHY - minimumReleaseAgeStrict added to both pnpm workspaces, already documented in-commit in wiki/decisions/pnpm.md
+- 2026-08-07 dbff69b9 WORTHY - code-audit-maintainer-node claims .gaia/cli/pnpm-workspace.yaml, already documented in-commit in wiki/decisions/Code Audit Team.md
+- 2026-08-07 fb253390 WORTHY - gaia init rename quote-matching + language-value precondition fix, already documented in-commit in wiki/concepts/GAIA Init Workflow.md
+- 2026-08-07 5824d76c WORTHY - rate-overlay shape validation tightened (non-empty array of objects, not just array type) → wiki/concepts/Token Cost Readout.md
+- 2026-08-07 cc9542b0 SKIP - prior sync's own landing commit; already advanced state to 09a0c93 and updated wiki/log.md + Release Workflow.md in-commit
 - 2026-08-06 09a0c932 WORTHY - NUL-delimit changed-file diff on both distribution gates (#1228, #1230) -> wiki/concepts/Release Workflow.md
 - 2026-08-06 297771f6 SKIP - tests-only
 - 2026-08-06 4d0bc9a2 SKIP - tests-only

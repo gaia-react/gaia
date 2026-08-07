@@ -16,7 +16,7 @@ tags: [concept, claude, skill, knowledge, hygiene]
 - After an ingestion spree that may have introduced overlap
 - When auto-load payload starts feeling heavy (CLAUDE.md, `wiki/hot.md`, or rules growing)
 - Periodic hygiene pass
-- When the statusline shows `Run /gaia-audit (<reason>)`: GAIA nudges on per-machine memory drift, an auto-load file over budget, or a pending draft to resume
+- When the statusline shows `Run /gaia-audit (<reason>)`: GAIA nudges on per-machine memory drift, an auto-load file over budget, or a pending draft to resume. The over-budget signal is a live recompute with no debounce of its own, so filing the file as a `tech-debt` issue rather than trimming it suppresses the nudge for that path (recorded in the debt refresh's `coveredPaths` cache) until the file grows past the size it was filed at.
 
 ## Two-stage execution with a decision gate
 
