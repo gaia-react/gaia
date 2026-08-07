@@ -25,6 +25,7 @@ setup() {
 teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
   [ -n "${ORIGIN:-}" ] && rm -rf "$ORIGIN"
+  [ -n "${SHIM_DIR:-}" ] && rm -rf "$SHIM_DIR"
   return 0
 }
 
@@ -147,6 +148,95 @@ write_plan_sentinel() {
     printf 'branch: %s\n' "$br" >> "$file"
   fi
   printf 'status: RUNNING\n' >> "$file"
+}
+
+# PATH-shimmed `git`: appends every invocation's argv to a witness file, then
+# passes through to the real binary. Deliberate duplicate of the identical
+# helper in local-janitor.bats: bats helpers are file-scoped and this suite
+# has no `load`, so the idiom is duplicated rather than shared.
+make_argv_witness_shim() {
+  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIR/witness"
+  : > "$witness"
+  local real_git
+  real_git=$(command -v git)
+  cat > "$SHIM_DIR/git" <<SHIM
+#!/bin/bash
+echo "\$*" >> "$witness"
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$SHIM_DIR/git"
+}
+
+# advance_base <message>: pushes one unrelated commit to origin/<base> via a
+# throwaway clone, without touching REPO's own history, then fetches so
+# origin/main is current in REPO. Load-bearing per the SPEC's fixture-shape
+# requirement: a fixture whose base never moves does not model a real merge.
+advance_base() {
+  local message="$1" clone
+  ADVANCE_BASE_SEQ=$(( ${ADVANCE_BASE_SEQ:-0} + 1 ))
+  clone=$(mktemp -d -t gaia-janitor-wt-adv-XXXXXX)
+  git clone -q "$ORIGIN" "$clone"
+  git -C "$clone" config user.email test@example.com
+  git -C "$clone" config user.name Test
+  git -C "$clone" config commit.gpgsign false
+  echo "$message" >> "$clone/advance-$ADVANCE_BASE_SEQ.txt"
+  git -C "$clone" add -A
+  git -C "$clone" commit -q -m "$message"
+  git -C "$clone" push -q origin main
+  rm -rf "$clone"
+  git -C "$REPO" fetch -q origin
+}
+
+# make_squash_merged_worktree <rel> <branch> <substantive-count>: builds a
+# branch in the shape a real squash-merged candidate has -- N substantive
+# commits plus the audit gate's empty trailer commit, base advanced between
+# the branch cut and the merge, genuinely squash-merged into origin/main, the
+# remote head deleted and pruned -- and checks it out into a linked worktree
+# at $REPO/.claude/worktrees/<rel>.
+make_squash_merged_worktree() {
+  local rel="$1" br="$2" count="$3" i
+  git -C "$REPO" branch "$br"
+  git -C "$REPO" checkout -q "$br"
+  i=1
+  while [ "$i" -le "$count" ]; do
+    echo "commit $i" > "$REPO/${br//\//-}-$i.txt"
+    git -C "$REPO" add "${br//\//-}-$i.txt"
+    git -C "$REPO" commit -q -m "substantive commit $i"
+    i=$((i + 1))
+  done
+  git -C "$REPO" commit -q --allow-empty -m "chore: code review audit passed"
+  git -C "$REPO" push -q -u origin "$br"
+
+  advance_base "advance base for $br"
+
+  # Fast-forward REPO's own main onto the advanced base. advance_base only
+  # fetches into REPO, so REPO's local main is one commit behind origin/main
+  # here; without this step the squash-merge push below is rejected
+  # non-fast-forward, origin/main never carries the squash commit, and the
+  # guard finds no matching upstream patch id.
+  git -C "$REPO" checkout -q main
+  git -C "$REPO" merge -q --ff-only origin/main
+
+  # Squash-merge for real, so origin/main carries a commit whose diff equals
+  # the branch's combined diff -- the upstream patch id the guard looks for.
+  git -C "$REPO" merge -q --squash "$br"
+  git -C "$REPO" commit -q -m "$br (#1)"
+  git -C "$REPO" push -q origin main
+
+  git -C "$REPO" push -q origin --delete "$br"
+  git -C "$REPO" fetch -q --prune
+
+  mkdir -p "$(dirname "$REPO/.claude/worktrees/$rel")"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/$rel" "$br"
+}
+
+# combined_patch_id <rev-a> <rev-b>: reads a patch id the same way the guard
+# will. `git patch-id` prints two whitespace-separated fields, the patch id
+# and a commit id that differs between reads, so only field one is compared.
+combined_patch_id() {
+  git -C "$REPO" diff --no-ext-diff --no-textconv --end-of-options "$1" "$2" \
+    | git -C "$REPO" patch-id --verbatim | awk '{print $1}'
 }
 
 @test "reaps a [gone]-branch worktree with a clean working tree" {
@@ -503,4 +593,30 @@ push_upstream_then_delete() {
   [ -d "$wt" ]
   branch_exists "debt/303-followup"
   git -C "$REPO" cat-file -e "$followup_sha" 2>/dev/null
+}
+
+# Fixture-integrity check for make_squash_merged_worktree: proves the helper
+# builds a branch whose combined diff really does reproduce the upstream
+# squash commit's patch id -- the shape a real squash-merged candidate has,
+# and the reproduction the repaired guard depends on. Asserts nothing about
+# sweep #8 and never invokes local-janitor.sh.
+@test "fixture: make_squash_merged_worktree builds a branch whose combined patch id matches the upstream squash" {
+  make_repo
+  make_squash_merged_worktree "squash/900-fixture" "squash/900-fixture" 2
+  wt="$REPO/.claude/worktrees/squash/900-fixture"
+
+  track=$(git -C "$REPO" for-each-ref --format='%(upstream:track)' "refs/heads/squash/900-fixture")
+  [ "$track" = "[gone]" ]
+
+  [ -d "$wt" ]
+  [ -z "$(git -C "$wt" status --porcelain)" ]
+
+  mb=$(git -C "$REPO" merge-base origin/main refs/heads/squash/900-fixture)
+  ahead=$(git -C "$REPO" rev-list --count "$mb..refs/heads/squash/900-fixture")
+  [ "$ahead" -eq 3 ]
+
+  branch_pid=$(combined_patch_id "$mb" refs/heads/squash/900-fixture)
+  squash_pid=$(combined_patch_id origin/main~1 origin/main)
+  [ -n "$branch_pid" ]
+  [ "$branch_pid" = "$squash_pid" ]
 }
