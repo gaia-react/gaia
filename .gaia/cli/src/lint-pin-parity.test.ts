@@ -36,12 +36,21 @@
  * `tseslint.configs.*` preset comes from there.
  *
  * The mechanism is the arrival path rather than the package, so the guard covers
- * every package that arrives that way: 30 rule providers resolve in both
- * lockfiles today and any of them can float apart the same way. Which ones earn
- * parity is decided by the naming convention at `RULE_PACKAGE_PATTERN` below, not
- * by a list, so a plugin that arrives later is guarded on arrival; a package that
- * should NOT be compared is named in `PARITY_EXEMPT` with its reason, and that is
- * the only way out.
+ * the packages that arrive that way AND announce themselves as rule providers by
+ * name: 30 of them resolve in both lockfiles today and any can float apart the
+ * same way. Which ones earn parity is decided by the naming convention at
+ * `RULE_PACKAGE_PATTERN` below, not by a list, so a plugin that arrives later is
+ * guarded on arrival; a package that should NOT be compared by version is named
+ * in `PARITY_EXEMPT` with its reason, and that is the only way out.
+ *
+ * The convention is the selector, so a package arriving by the same caret under a
+ * different naming family is outside this guard. That is a boundary rather than a
+ * clean bill of health, and it is not hypothetical: the import resolvers
+ * (`eslint-import-resolver-typescript`) and `eslint-module-utils` decide whether
+ * `import/no-unresolved` can resolve a specifier at all, they arrive exactly the
+ * same way, and they are divergent today. Widening the convention to a fourth
+ * family is a decision about the criterion rather than a missing entry, so it is
+ * tracked (#1269) rather than taken here.
  *
  * The criterion behind both, worth stating once: parity is worth enforcing for a
  * package whose rules a workspace actually runs, and worth nothing for one whose
@@ -108,10 +117,16 @@ const LINT_PACKAGE = '@gaia-react/lint';
 const RULE_PACKAGE_PATTERN =
   /^(?:@[^/]+\/eslint-(?:plugin|config)|eslint-(?:plugin|config)-|typescript-eslint$)/;
 
-// The escape hatch, and the ONLY one: a package named here is not compared, and
-// its entry must say why. Absent from this map means guarded, which is the
-// inverse of a hand-written inclusion list and the reason the pattern above is
-// safe to leave broad.
+// The escape hatch, and the ONLY one: a package named here is not compared **by
+// version**, and its entry must say why. Absent from this map means guarded,
+// which is the inverse of a hand-written inclusion list and the reason the
+// pattern above is safe to leave broad.
+//
+// Presence parity still applies to an exempt package, deliberately: the
+// population test below compares the two lockfiles' whole name sets with no
+// exemption filter, so an exempt package leaving one workspace still reds. An
+// exemption says "these two versions need not agree", never "this package may
+// vanish from one side unnoticed", and the second is the drift that hides.
 //
 // The rationale is data rather than a comment so a stale entry can explain
 // itself in the failure message, and the hygiene test below reds when an
