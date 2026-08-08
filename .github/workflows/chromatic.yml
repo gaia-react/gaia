@@ -123,14 +123,16 @@ jobs:
       # correct: a substitution that publishes nothing is not the failure. Both
       # cases are executed rather than reasoned about.
       #
-      # The sentinels are every key `schema` in `app/env.server.ts` requires
+      # The sentinels are every key `schema` in `app/env.server.ts` declares
       # except `NODE_ENV`, which is excluded because the build needs its real
-      # value. That is the four `clientSchema` admits to a browser, which is what
-      # a substitution map would name, plus `SESSION_SECRET` and `SITE_URL`, which
+      # value. Declares, not requires: `COMMIT_SHA` and `MSW_ENABLED` are
+      # `.optional()` and carry sentinels anyway, since what decides coverage is
+      # what a map could name. That is the four remaining keys `clientSchema`
+      # admits to a browser, plus `SESSION_SECRET` and `SITE_URL`, which
       # `clientSchema` omits: a map inlining one of those publishes into the
-      # preview a value the client is never meant to see, which is the worse
-      # failure of the two and so the one least worth leaving uncovered. No other
-      # step in this job sets any of them. A map reads these with
+      # preview a value the client is never meant to see, the worse of the two
+      # failures and so the one least worth leaving uncovered. No other step in
+      # this job sets any of them. A map reads these with
       # `loadEnv(mode, cwd, '')` and an empty prefix matches every key, so a
       # sentinel set here reaches the map wherever it lives.
       #
