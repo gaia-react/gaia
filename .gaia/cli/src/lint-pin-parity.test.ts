@@ -252,6 +252,14 @@ const readRulePackageVersions = (
   return resolved;
 };
 
+// Sorted so both the population comparison and the version record report a
+// stable diff rather than one that reorders with pnpm's own key order.
+const sortedNames = (packages: Map<string, string[]>): string[] => {
+  const names = [...packages.keys()];
+
+  return names.toSorted((left, right) => left.localeCompare(right));
+};
+
 // The two scalars are asserted for equality; the two exclusion lists are asserted
 // for CONTAINMENT, not equality, because the files state a containment relation
 // rather than a shared one. Equality would be wrong: root legitimately carries
@@ -383,15 +391,22 @@ describe('rule-package resolution parity', () => {
     path.join(repoRoot, '.gaia', 'cli', 'pnpm-lock.yaml')
   );
 
-  // Compared over the INTERSECTION, because only a package both workspaces
-  // install can drift BETWEEN them. Root legitimately resolves rule providers
-  // `.gaia/cli` never installs, since it spreads four presets the CLI omits
-  // (storybook, playwright, reactRouter, betterTailwind); that is a difference
-  // of preset scope, not a drift, and demanding equality of the two populations
-  // would red on the config both files already state.
-  const shared = [...rootPackages.keys()]
-    .filter((name) => cliPackages.has(name))
-    .toSorted((left, right) => left.localeCompare(right));
+  // Compared over the INTERSECTION, because a version comparison is only defined
+  // for a package both lockfiles carry. The two populations are identical today,
+  // measured rather than assumed: `@gaia-react/lint` depends on every provider it
+  // exposes, so both workspaces resolve all of them regardless of which presets
+  // each spreads, and the CLI's lockfile carries the storybook, playwright and
+  // better-tailwindcss plugins even though its config omits those presets.
+  //
+  // So the intersection is not there to absorb a legitimate difference; it is
+  // there to keep the comparison well-defined while the population test below
+  // reds. Enforcing the populations rather than allowing for a gap is what stops
+  // a provider LEAVING one workspace from silently narrowing coverage: it would
+  // drop out of the intersection, take the assertion with it, and lint one
+  // workspace without those rules with nothing red.
+  const shared = sortedNames(rootPackages).filter((name) =>
+    cliPackages.has(name)
+  );
 
   const guarded = shared.filter((name) => !(name in PARITY_EXEMPT));
 
@@ -435,6 +450,23 @@ describe('rule-package resolution parity', () => {
     expect(cliPackages.has('typescript-eslint')).toBe(true);
   });
 
+  // Presence parity, which the version comparison structurally cannot see: a
+  // provider that leaves one lockfile leaves the intersection with it, so its
+  // assertion disappears rather than failing, and that workspace lints without
+  // those rules exactly as silently as a version drift would have. The floor
+  // above does not catch it either, since one provider leaving takes the count
+  // from 30 to 29 and the floor is 20.
+  //
+  // Asserted as equality rather than allowing a one-sided provider, because a
+  // one-sided one is itself the drift this file exists to report: it means a
+  // workspace took a direct rule-provider dependency the other does not have,
+  // which is a difference in what each considers an error. Making that a
+  // deliberate test edit a reviewer sees is the same friction the hardening
+  // floor above already applies to the release-age window.
+  test('both lockfiles resolve the same set of rule-bearing packages', () => {
+    expect(sortedNames(cliPackages)).toStrictEqual(sortedNames(rootPackages));
+  });
+
   // Two copies of one rule provider in a single workspace is drift the parity
   // test cannot express: it would have to pick a version to compare, and picking
   // either asserts something untrue about the other.
@@ -447,10 +479,18 @@ describe('rule-package resolution parity', () => {
   // left alone it becomes a licence sitting in the file for whatever takes that
   // name later. This is the property that makes the broad pattern above safe:
   // the escape hatch cannot outlive its subject silently.
+  //
+  // Asserted over ENTRIES rather than keys so the stale entry's own stated reason
+  // lands in the failure output. Reading the key alone would print a bare package
+  // name and leave the maintainer to go find out why it was ever exempt, which is
+  // exactly what a comment would have delivered and the reason the rationale is
+  // data in the first place.
   test('every parity exemption still names a package both workspaces install', () => {
     expect(
-      Object.keys(PARITY_EXEMPT).filter((name) => !shared.includes(name))
-    ).toEqual([]);
+      Object.fromEntries(
+        Object.entries(PARITY_EXEMPT).filter(([name]) => !shared.includes(name))
+      )
+    ).toStrictEqual({});
   });
 
   // The guard proper. Compared as one record rather than per package so a
