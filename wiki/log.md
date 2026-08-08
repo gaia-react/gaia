@@ -11,6 +11,10 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-08 b4ac2c03 SKIP - test-only, proves an existing memo-removal arm
+- 2026-08-08 00d04417 WORTHY - sweep #8 memoizes its declined merge-evidence scan → wiki/concepts/Local Working State.md
+- 2026-08-08 41d024af WORTHY - sweep #8 worktree reap now proves merge by combined-diff patch id, not git cherry → wiki/concepts/Local Working State.md
+- 2026-08-08 c839dbcd SKIP - prior wiki-sync's own commit, self-referential, nothing new to reflect
 - 2026-08-07 28dcb4e8 WORTHY - wiki-landing base catch-up (janitor prune-fetch + fast-forward, sync await verb), already documented in-commit across wiki/concepts/GAIA CLI.md, Local Working State.md, Wiki Sync.md, wiki/decisions/Wiki Management.md
 - 2026-08-07 6f3cab08 SKIP - comment-only paths-filter documentation fix naming the statusline suite's full guarded surface
 - 2026-08-07 1a874476 WORTHY - audit nudge's over-budget signal suppressed once a path is filed as tech-debt → wiki/concepts/GAIA Audit.md
