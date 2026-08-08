@@ -109,7 +109,7 @@ grep -qF "<short_sha>" wiki/log.md && continue
 .gaia/cli/gaia wiki log-prepend --sha <short_sha> --decision <WORTHY|SKIP> --reason "<one-line reason>"
 ```
 
-The dedup guard matters most on the recovery path (Step 1): the resolved `suggested_base` is time-anchored, so it can sit one or two commits behind a boundary a prior sync already logged. Skip any commit whose short SHA is already in `wiki/log.md` rather than appending a duplicate line.
+The dedup guard matters most on the recovery path (Step 1), where the resolved `suggested_base` can sit behind commits a prior sync already logged. Skip any commit whose short SHA is already in `wiki/log.md` rather than appending a duplicate line.
 
 The CLI inserts a single canonical line `- <YYYY-MM-DD> <sha> <decision>, <reason>` at the top of `wiki/log.md` (after frontmatter), atomically, newest entries on top. Examples:
 

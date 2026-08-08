@@ -44,7 +44,7 @@ Wiki updates lag the code deliberately. The drift-check hook is the convergence 
 
 `last_evaluated_sha` is the commit through which `/gaia-wiki sync` has fully evaluated. Drift = `git rev-list --count <last_evaluated_sha>..HEAD`.
 
-`last_evaluated_at` is the timestamp of that evaluation, and it anchors recovery. Because a SHA is fragile under squash- and rebase-merge, the recorded commit is replaced and becomes unreachable, the timestamp provides a stable second anchor: `gaia wiki state` resolves the newest commit reachable from HEAD at or older than `last_evaluated_at` and reports it as `suggested_base`, the baseline a recovering sync resumes from.
+`last_evaluated_at` is the timestamp of that evaluation, and it anchors recovery. Because a SHA is fragile under squash- and rebase-merge, the recorded commit is replaced and becomes unreachable, the timestamp provides a stable second anchor: `gaia wiki state` resolves a reachable baseline from it and reports it as `suggested_base`, the baseline a recovering sync resumes from. The Orphaned baseline failure mode below is where that resolution is described.
 
 `last_consolidated_sha` is owned by `/gaia-wiki consolidate`. On the first sync that bootstraps this field, it is set to the new HEAD value, giving the consolidate gate a baseline to accumulate from.
 
