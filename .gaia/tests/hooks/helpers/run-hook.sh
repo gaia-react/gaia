@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared harness for the .gaia/tests/hooks bats suites: one quote-safe hook
-# invocation, and one assertion pair per deny mechanism.
+# invocation, and one assertion form per decision mechanism.
 #
 # The directive below is the one thing this file needs that a suite does not:
 # `status` and `output` are set by bats' own `run`, which is invisible to the
@@ -28,10 +28,13 @@
 # the wrong reason, or never parses the payload at all, and the test greens
 # having proved nothing about the case it is named for.
 #
-# ASSERTION PAIRS ARE NAMED FOR THE MECHANISM, not for the verdict, because the
-# suites here test hooks with two incompatible deny contracts. A generic
-# `assert_denied` hides which contract is under test, and a suite that picks the
-# wrong one asserts against a mechanism its hook never uses.
+# ASSERTIONS ARE NAMED FOR THE MECHANISM, not for the verdict, because the
+# suites here test hooks with three incompatible decision contracts: the exit
+# code carries the verdict, JSON on stdout carries it, or JSON on stdout defers
+# it to the human. A generic `assert_denied` hides which contract is under test,
+# and a suite that picks the wrong one asserts against a mechanism its hook never
+# uses. Mechanisms 1 and 2 come as pairs; mechanism 3 is a single function,
+# because a hook that asks has no allow verdict of its own to assert.
 #
 # Every form below is bash-3.2 safe per .claude/rules/bats-assertions.md: `[ ]`
 # for status and emptiness, `grep -qF` for a substring, `<positive> && return 1`
