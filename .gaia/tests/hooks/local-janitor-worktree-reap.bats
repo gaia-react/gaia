@@ -1186,6 +1186,10 @@ land_squash() {
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   branch_exists "plan/spec-923-lands" && return 1
+  # The reap left this run with no misses to record, so the memo has nothing left
+  # to say and the file is removed rather than left holding an entry for a
+  # worktree that no longer exists.
+  [ ! -f "$(memo_file)" ]
   [ ! -e "$wt" ]
 }
 
