@@ -1,9 +1,9 @@
 /**
  * Maintainer drift-guards for the three things the two workspaces must agree on,
  * each asserted against the file that actually states it: the `@gaia-react/lint`
- * pin on each manifest, the `typescript-eslint` version on each lockfile because
- * no manifest states it, and the supply-chain hardening settings on each
- * `pnpm-workspace.yaml`.
+ * pin on each manifest, the resolved version of every shared rule-bearing package
+ * on each lockfile because no manifest states those, and the supply-chain
+ * hardening settings on each `pnpm-workspace.yaml`.
  *
  * They share one cause. `.gaia/cli` is its own pnpm workspace root, so it
  * inherits nothing from the repository root and every one of these values exists
@@ -24,32 +24,42 @@
  * `prettier`, `typescript`, `vitest`, `@types/node`). Those move without
  * changing what either workspace considers an error.
  *
- * One rule-bearing package cannot be guarded on the manifest pin at all, so the
- * second describe block below asserts on the lockfile instead.
- * `typescript-eslint` is a direct dependency of neither workspace and is not
- * pinned by the preset; it arrives transitively through
- * `eslint-config-airbnb-extended`, whose own range for it is a caret, so each
- * workspace's lockfile freezes it independently at whatever that caret resolved
- * to on the day the lockfile was last written. The two can therefore sit on
- * different versions with every manifest assertion green, which matters because
- * every `@typescript-eslint/*` rule implementation and every `tseslint.configs.*`
- * preset comes from there.
+ * A whole class of rule-bearing package cannot be guarded on the manifest pin at
+ * all, so the second describe block below asserts on the lockfiles instead.
+ * `typescript-eslint` is the clearest case: a direct dependency of neither
+ * workspace and pinned by neither the preset nor a manifest, it arrives
+ * transitively through `eslint-config-airbnb-extended`, whose own range for it is
+ * a caret, so each workspace's lockfile freezes it independently at whatever that
+ * caret resolved to on the day the lockfile was last written. The two can
+ * therefore sit on different versions with every manifest assertion green, which
+ * matters because every `@typescript-eslint/*` rule implementation and every
+ * `tseslint.configs.*` preset comes from there.
  *
- * Guarded for this package alone, which is a deliberate narrowing rather than an
- * oversight. The preset reaches at least eight other rule-bearing packages by the
- * same caret mechanism, and two of them are live divergences today, so the general
- * form is real work with a real decision inside it: parity is worth enforcing for
- * a package whose rules both workspaces actually run, and worth nothing for one
- * whose rules neither enables. Widening this constant without settling that turns
- * a guard into noise. Tracked separately (#1205).
+ * The mechanism is the arrival path rather than the package, so the guard covers
+ * every package that arrives that way: 30 rule providers resolve in both
+ * lockfiles today and any of them can float apart the same way. Which ones earn
+ * parity is decided by the naming convention at `RULE_PACKAGE_PATTERN` below, not
+ * by a list, so a plugin that arrives later is guarded on arrival; a package that
+ * should NOT be compared is named in `PARITY_EXEMPT` with its reason, and that is
+ * the only way out.
+ *
+ * The criterion behind both, worth stating once: parity is worth enforcing for a
+ * package whose rules a workspace actually runs, and worth nothing for one whose
+ * rules neither enables. That question is answered per package by reading the
+ * resolved configs (`eslint --print-config`) and recording the answer as an
+ * exemption, rather than by computing it here. Computing it would need the ROOT
+ * workspace installed, and the job that runs this file installs `.gaia/cli` alone
+ * (`cli-tests.yml`), so the check would have to add a full root install to a
+ * required context to compare version strings.
  *
  * Repair, when the lockfile parity test goes red: re-resolve the LAGGING
- * workspace, `pnpm update typescript-eslint` from its own root, and fix what the
- * newly-arrived rules surface. Do not reach for an exact pin to hold the two
- * together. A direct dependency outside `eslint-config-airbnb-extended`'s range
- * does not error, it installs a second copy while the rules keep coming from
- * airbnb-extended's, so the pin goes decorative and this guard reads it and
- * passes. Asserting on the resolved version is what keeps the failure loud.
+ * workspace for the package the failure names, `pnpm update <package>` from its
+ * own root, and fix what the newly-arrived rules surface. Do not reach for an
+ * exact pin to hold the two together. A direct dependency outside
+ * `eslint-config-airbnb-extended`'s range does not error, it installs a second
+ * copy while the rules keep coming from airbnb-extended's, so the pin goes
+ * decorative and this guard reads it and passes. Asserting on the resolved
+ * version is what keeps the failure loud.
  *
  * Fires on the pull request that causes the drift: root `package.json`,
  * `pnpm-lock.yaml` and `pnpm-workspace.yaml` are all three in the `code` paths
@@ -73,7 +83,62 @@ import {resolveRepoRootFromImportMeta} from './util/repo-root-fixture.js';
 
 const LINT_PACKAGE = '@gaia-react/lint';
 
-const RULE_PACKAGE = 'typescript-eslint';
+// Which packages earn resolution parity, expressed as the npm naming convention
+// for an ESLint rule provider rather than as a list of names. A list is the
+// failure mode: it makes the DEFAULT silence, so a plugin that arrives later
+// through the same caret is unguarded until someone remembers it, which is how
+// the audit roster lost four files to #813 and three more to #1243. A pattern
+// makes the default coverage, closes the family permanently, and over-matches
+// only in the safe direction, since a package it catches that neither workspace
+// enables costs an exemption below rather than a missed drift.
+//
+// Three arms, each matching something today (asserted, so a broken arm cannot
+// pass vacuously): a scoped provider (`@stylistic/eslint-plugin`,
+// `@typescript-eslint/eslint-plugin`), an unscoped one (`eslint-plugin-unicorn`,
+// `eslint-config-prettier`), and the bare `typescript-eslint` meta-package, which
+// follows no convention because it is the flat-config entry point rather than a
+// plugin. `eslint-config-*` is in deliberately: a shared config decides which
+// rules exist at all (`eslint-config-airbnb-extended`) or turns them off
+// wholesale (`eslint-config-prettier`), so it changes the effective rule set as
+// surely as a plugin does.
+//
+// `@typescript-eslint/parser` is absent by name and covered anyway: the
+// `typescript-eslint` meta-package depends on the parser and the plugin at its
+// own exact version, so the parser cannot float away from a guarded meta-package.
+const RULE_PACKAGE_PATTERN =
+  /^(?:@[^/]+\/eslint-(?:plugin|config)|eslint-(?:plugin|config)-|typescript-eslint$)/;
+
+// The escape hatch, and the ONLY one: a package named here is not compared, and
+// its entry must say why. Absent from this map means guarded, which is the
+// inverse of a hand-written inclusion list and the reason the pattern above is
+// safe to leave broad.
+//
+// The rationale is data rather than a comment so a stale entry can explain
+// itself in the failure message, and the hygiene test below reds when an
+// exemption stops naming a package both workspaces install, so this map cannot
+// quietly outlive its subject.
+const PARITY_EXEMPT: Record<string, string> = {
+  // Neither workspace is a Next.js app and neither loads this plugin: it appears
+  // in NEITHER resolved config, verified with `eslint --print-config` against
+  // `app/root.tsx` and `.gaia/cli/src/exit.ts` rather than inferred from the
+  // absence of a preset. So its two lockfiles can differ without changing a
+  // single rule in either workspace.
+  //
+  // Exempted rather than converged because converging does not hold. It arrives
+  // transitively through `eslint-config-airbnb-extended`'s caret, so the next
+  // re-resolve floats it apart again, and each recurrence would red a required
+  // check over a package whose rules nobody runs. That is how a guard becomes
+  // noise a maintainer learns to re-resolve past, which costs more than the
+  // drift it reports.
+  '@next/eslint-plugin-next':
+    'loaded by neither workspace, so a version difference changes no rule; converging it is churn that re-diverges on the next re-resolve',
+};
+
+// Anti-vacuity floor for the shared population, not a pin on its size. 30
+// packages match today, so this cannot churn on ordinary preset movement; what
+// it catches is the pattern or the reader silently matching (almost) nothing,
+// which would leave every comparison below passing over an empty set.
+const SHARED_FLOOR = 20;
 
 // Read from `devDependencies` alone rather than searching every section: a
 // lint preset belongs nowhere else, so a pin that turns up in `dependencies`
@@ -137,28 +202,54 @@ const asList = (
 // defensiveness: this reader exists to make a drift LOUD, and a lockfile format
 // change that silently yielded `[]` on both sides would satisfy the parity test
 // below while checking nothing. A thrown error fails the suite and names the file.
-const readResolvedRuleVersions = (lockfilePath: string): string[] => {
+const readRulePackageVersions = (
+  lockfilePath: string
+): Map<string, string[]> => {
   const lockfile: unknown = parseYaml(readFileSync(lockfilePath, 'utf8'));
   const packages = isMapping(lockfile) ? lockfile.packages : undefined;
 
   // `Array.isArray` is not redundant beside `isMapping`: `typeof [] === 'object'`,
   // so a `packages:` emitted as a YAML sequence would pass the mapping test,
-  // yield array indices from `Object.keys`, and fail two lines down as a bare
-  // length mismatch naming no file. That is the diagnostic this throw promises.
+  // yield array indices from `Object.keys`, and produce a bare empty population
+  // naming no file. That is the diagnostic this throw promises.
   if (!isMapping(packages) || Array.isArray(packages)) {
     throw new Error(
       `${lockfilePath}: no \`packages\` map; the pnpm lockfile format has changed and this guard needs updating`
     );
   }
 
-  const prefix = `${RULE_PACKAGE}@`;
+  const resolved = new Map<string, string[]>();
 
-  // Deliberately unsorted. The count assertions below pin each side at exactly
-  // one entry, so there is no order for a second element to be in; a sort here
-  // would only tidy an array whose own test has already gone red.
-  return Object.keys(packages)
-    .filter((key) => key.startsWith(prefix))
-    .map((key) => key.slice(prefix.length));
+  // A key is `name@version`, and a SCOPED name carries its own leading `@`, so
+  // the version splits on the LAST `@` rather than the first. Splitting on the
+  // first would name every scoped package the empty string and collapse five of
+  // them into one entry, which compares nothing while looking green. Index 0 is
+  // that leading scope `@`, so the filter demands `> 0` rather than `!== -1`.
+  const ruleEntries = Object.keys(packages)
+    .map((key) => {
+      const separator = key.lastIndexOf('@');
+
+      return {
+        name: key.slice(0, separator),
+        separator,
+        version: key.slice(separator + 1),
+      };
+    })
+    .filter(
+      ({name, separator}) => separator > 0 && RULE_PACKAGE_PATTERN.test(name)
+    );
+
+  for (const {name, version} of ruleEntries) {
+    // Accumulated rather than overwritten: pnpm can resolve two copies of one
+    // package, and the single-copy test below exists to say so. Overwriting here
+    // would hide the second copy from the test written to find it.
+    const versions = resolved.get(name) ?? [];
+
+    versions.push(version);
+    resolved.set(name, versions);
+  }
+
+  return resolved;
 };
 
 // The two scalars are asserted for equality; the two exclusion lists are asserted
@@ -283,31 +374,93 @@ describe('@gaia-react/lint pin parity', () => {
   });
 });
 
-describe('typescript-eslint resolution parity', () => {
+describe('rule-package resolution parity', () => {
   const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
-  const rootVersions = readResolvedRuleVersions(
+  const rootPackages = readRulePackageVersions(
     path.join(repoRoot, 'pnpm-lock.yaml')
   );
-  const cliVersions = readResolvedRuleVersions(
+  const cliPackages = readRulePackageVersions(
     path.join(repoRoot, '.gaia', 'cli', 'pnpm-lock.yaml')
   );
 
-  // Exactly one, on both sides, before the versions are compared at all. Two
-  // entries means the workspace installs two copies of the rule set, which the
-  // parity test cannot express: it would have to pick one, and picking either
-  // asserts something untrue about the other. Zero means the transitive path
-  // through `eslint-config-airbnb-extended` has gone, and comparing [] to []
-  // would pass while the guard's whole subject was absent.
-  test('pnpm-lock.yaml resolves exactly one typescript-eslint', () => {
-    expect(rootVersions).toHaveLength(1);
+  // Compared over the INTERSECTION, because only a package both workspaces
+  // install can drift BETWEEN them. Root legitimately resolves rule providers
+  // `.gaia/cli` never installs, since it spreads four presets the CLI omits
+  // (storybook, playwright, reactRouter, betterTailwind); that is a difference
+  // of preset scope, not a drift, and demanding equality of the two populations
+  // would red on the config both files already state.
+  const shared = [...rootPackages.keys()]
+    .filter((name) => cliPackages.has(name))
+    .toSorted((left, right) => left.localeCompare(right));
+
+  const guarded = shared.filter((name) => !(name in PARITY_EXEMPT));
+
+  const versionsOf = (
+    packages: Map<string, string[]>
+  ): Record<string, string> =>
+    Object.fromEntries(
+      guarded.map((name) => [name, (packages.get(name) ?? []).join(', ')])
+    );
+
+  // Every guarded package resolved more than once in one lockfile, as a map, so
+  // the failure names the package and both of its versions rather than a count.
+  const duplicates = (
+    packages: Map<string, string[]>
+  ): Record<string, string[]> =>
+    Object.fromEntries(
+      guarded
+        .map((name) => [name, packages.get(name) ?? []] as const)
+        .filter(([, versions]) => versions.length > 1)
+    );
+
+  // The population is asserted before anything is compared over it. Each of the
+  // pattern's three arms is pinned by a live match, so dropping an arm reds here
+  // rather than silently narrowing every comparison below: without this, deleting
+  // the scoped arm would leave 25 of 30 packages guarded and every test green.
+  test('the shared rule-bearing population is non-vacuous and every pattern arm matches', () => {
+    expect(shared.length).toBeGreaterThanOrEqual(SHARED_FLOOR);
+    expect(shared.some((name) => name.startsWith('@'))).toBe(true);
+    expect(shared.some((name) => name.startsWith('eslint-plugin-'))).toBe(true);
+    expect(shared.some((name) => name.startsWith('eslint-config-'))).toBe(true);
   });
 
-  test('.gaia/cli/pnpm-lock.yaml resolves exactly one typescript-eslint', () => {
-    expect(cliVersions).toHaveLength(1);
+  // Kept from the single-package guard this widened, because it is the one
+  // subject whose ABSENCE is the interesting event: `typescript-eslint` is a
+  // direct dependency of neither workspace and is stated by no manifest, so if
+  // the transitive path through `eslint-config-airbnb-extended` ever goes, it
+  // simply leaves both lockfiles and drops out of the intersection above with
+  // every comparison still green.
+  test('both lockfiles still resolve typescript-eslint at all', () => {
+    expect(rootPackages.has('typescript-eslint')).toBe(true);
+    expect(cliPackages.has('typescript-eslint')).toBe(true);
   });
 
-  test('both workspaces resolve the same typescript-eslint version', () => {
-    expect(cliVersions).toStrictEqual(rootVersions);
+  // Two copies of one rule provider in a single workspace is drift the parity
+  // test cannot express: it would have to pick a version to compare, and picking
+  // either asserts something untrue about the other.
+  test('no guarded package resolves more than once in either lockfile', () => {
+    expect(duplicates(rootPackages)).toStrictEqual({});
+    expect(duplicates(cliPackages)).toStrictEqual({});
+  });
+
+  // An exemption that no longer names a shared package is exempting nothing, and
+  // left alone it becomes a licence sitting in the file for whatever takes that
+  // name later. This is the property that makes the broad pattern above safe:
+  // the escape hatch cannot outlive its subject silently.
+  test('every parity exemption still names a package both workspaces install', () => {
+    expect(
+      Object.keys(PARITY_EXEMPT).filter((name) => !shared.includes(name))
+    ).toEqual([]);
+  });
+
+  // The guard proper. Compared as one record rather than per package so a
+  // multi-package drift reports every offender at once with both versions,
+  // instead of reddening on the alphabetically-first and hiding the rest.
+  //
+  // Repair: re-resolve the LAGGING workspace for the named package, from its own
+  // root, and fix what the newly-arrived rules surface.
+  test('both workspaces resolve the same version of every guarded rule-bearing package', () => {
+    expect(versionsOf(cliPackages)).toStrictEqual(versionsOf(rootPackages));
   });
 });
 
