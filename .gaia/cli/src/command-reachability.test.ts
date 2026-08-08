@@ -483,16 +483,31 @@ const invokerText =
 // the pattern itself can be exercised against fixture strings. Reading the
 // oracle only through the whole repository's text cannot show the difference
 // between "this form is unmatchable" and "no such invocation exists here".
-const matchesInvocation = (commandPath: string, text: string): boolean => {
+// `quoteClass` is a parameter for exactly one reason: the skills-surface test
+// needs the pre-widening shape as a control, and a hand-copied second regex
+// would drift from this one silently. Only two callers exist, both below, and
+// both pin the value.
+const invocationPattern = (commandPath: string, quoteClass: string): RegExp => {
   const tokens = commandPath
     .split(' ')
     .map(escapeRegExp)
     .join(String.raw`\s+`);
 
   return new RegExp(
-    String.raw`(?<![\w-])gaia(?:-maintainer)?["']?\s+${tokens}(?![\w-])`
-  ).test(text);
+    String.raw`(?<![\w-])gaia(?:-maintainer)?${quoteClass}\s+${tokens}(?![\w-])`
+  );
 };
+
+const matchesInvocation = (commandPath: string, text: string): boolean =>
+  invocationPattern(commandPath, '["\']?').test(text);
+
+// The same matcher without the quote class, i.e. the shape that could not see
+// a release-resolved invocation. Used only as the control described in the
+// skills-surface test below; never as a reachability oracle.
+const matchesUnquotedInvocation = (
+  commandPath: string,
+  text: string
+): boolean => invocationPattern(commandPath, '').test(text);
 
 // A command is reachable when an invocation-shaped string for it exists in the
 // invoker text.
@@ -578,6 +593,24 @@ describe('CLI subcommand reachability guard', () => {
 
       expect(matchesInvocation('update merge-region', skillsText)).toBe(true);
       expect(matchesInvocation('update regen-regions', skillsText)).toBe(true);
+
+      // The control is what makes the two assertions above evidence about the
+      // *quoted* call site rather than about whatever a skill happens to
+      // mention. `matchesInvocation` accepts bare and quoted alike, so without
+      // this they would also pass on a bare mention, and reverting the quote
+      // class would leave them green with the property they exist to protect
+      // silently gone.
+      //
+      // A red here is not necessarily a regression: it means some skill now
+      // carries a bare form too, so this haystack no longer isolates the quoted
+      // one. Narrow the haystack to the skill under test rather than deleting
+      // the control.
+      expect(matchesUnquotedInvocation('update merge-region', skillsText)).toBe(
+        false
+      );
+      expect(
+        matchesUnquotedInvocation('update regen-regions', skillsText)
+      ).toBe(false);
     }
   );
 
