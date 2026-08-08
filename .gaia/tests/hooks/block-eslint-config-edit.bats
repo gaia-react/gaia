@@ -2,31 +2,32 @@
 
 # Tests for .claude/hooks/block-eslint-config-edit.sh.
 #
-# The guard protects eslint.config.{js,cjs,mjs,ts,mts,cts} at any path, and it is
-# a BLANKET DENY on the filename: every edit to the file is refused, whatever the
-# edit does. So the suite has two halves and neither is decoration.
+# The guard protects eslint.config.{js,cjs,mjs,ts,mts,cts} at any path, and what
+# it does on a match is ASK: every edit to the file prompts the operator,
+# whatever the edit does. So the suite has two halves and neither is decoration.
 #
 # The first half is the path gate, which is the only thing that decides anything:
-# a file that is not an eslint config passes, every guarded extension at every
-# depth does not. It is pinned in both directions on purpose. The extension set
+# a file that is not an eslint config passes silently, every guarded extension at
+# every depth asks. It is pinned in both directions on purpose. The extension set
 # is ESLint's own `FLAT_CONFIG_FILENAMES`, so a missing member is a config the
 # resolver loads and the guard ignores; and the pattern's `(^|/)` boundary is
 # what keeps an ordinary source file named `my-eslint.config.mjs` out of the
-# deny, a dimension no fixture varies unless one is written for it.
+# prompt, a dimension no fixture varies unless one is written for it.
 #
-# The second half is the message, and it carries more weight than a message
-# usually does. A blunt guard that says nothing useful is indistinguishable from
-# a broken one to whoever hits it, and the denial reaches a legitimate edit: the
-# `...lint.reactRouter` migration the CHANGELOG's Action required tells adopters
-# to make is denied here like everything else. The message has to name that,
-# admit the denial is on the filename alone, and say how the edit gets made. Those
-# three are pinned individually, because a message that loses any one of them has
-# lost the thing that makes the bluntness honest rather than merely broad.
+# The second half is the reason string, and it carries more weight than a message
+# usually does, because here it is the whole basis on which a human answers. The
+# operator is being asked precisely because the hook cannot tell the two cases
+# apart, so the reason has to hand them what the hook could not use: that the
+# prompt is on the filename alone, which edit is legitimate, and where the common
+# case belongs instead. Those three are pinned individually, because a reason
+# that loses any one of them turns an informed confirmation into a rubber stamp.
 #
-# The deny cases below deliberately include the shapes an allowlist would admit,
-# a comment-only change, an added bare preset spread, a blank-line-only change.
-# They are the cases where a guard that starts judging edits again would first
-# diverge, so they are what pins the blanket deny in place.
+# The ask cases below deliberately include both extremes, a comment-only change
+# and a whole-file replacement, an added bare preset spread and an added rule
+# override. They are the cases where a guard that started judging edits again
+# would first diverge, and judging is what this hook exists not to do: the
+# legitimate shape and the silencing shape are the same shape, so the uniform ask
+# is the contract rather than a coarse approximation of one.
 #
 # shellcheck disable=SC2317
 # SC2317 (command appears unreachable) is a structural false positive on every
@@ -155,13 +156,13 @@ run_tool() {
 #
 # So the payload is assembled into files and reaches jq by --rawfile and the
 # hook by stdin redirection, crossing no argv boundary at any size.
-@test "denies a guarded path arriving with megabytes of trailing payload" {
+@test "asks on a guarded path arriving with megabytes of trailing payload" {
   { printf '%s\n' "$(cfg)"; head -c 1000000 /dev/zero | tr '\0' 'x'; } >"$TMP/path.txt"
   jq -n --rawfile p "$TMP/path.txt" \
     '{tool_name: "Edit", tool_input: {file_path: $p, old_string: "a", new_string: "b"}}' \
     >"$TMP/payload.json"
   run bash -c 'bash "$2" <"$1"' _ "$TMP/payload.json" "$HOOK_ABS"
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
 # Every other fixture builds its path under $TMP, so all of them carry a slash
@@ -169,7 +170,7 @@ run_tool() {
 # case, narrowing the group to `(/)` is undetected.
 @test "guards a config named with no directory component at all" {
   run_tool Edit '{"file_path": "eslint.config.mjs", "old_string": "a", "new_string": "b"}'
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
 @test "guards every extension ESLint resolves, at any depth" {
@@ -178,115 +179,142 @@ run_tool() {
     eslint.config.mts eslint.config.cts apps/web/eslint.config.mjs; do
     run_edit "$(cfg "$DEFAULT_BODY" "$name")" '  ...lint.react,' "  ...lint.react,
   rules: {'no-empty-pattern': 'off'},"
-    [ "$status" -eq 2 ] || return 1
+    [ "$status" -eq 0 ] || return 1
+    grep -qF -- '"permissionDecision": "ask"' <<<"$output" || return 1
   done
 }
 
-# --- the deny is blanket, including every shape an allowlist would admit ----
+# --- the ask is uniform, across every shape a judging guard would split -----
 
-@test "denies the reactRouter migration, which is legitimate and denied anyway" {
+@test "asks on the reactRouter migration rather than refusing it" {
   run_edit "$(cfg)" '  ...lint.react,' '  ...lint.react,
   ...lint.reactRouter,'
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
-@test "denies a comment-only change" {
+@test "asks on a comment-only change" {
   run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config for the app.'
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
-@test "denies a blank-line-only change" {
+@test "asks on a blank-line-only change" {
   run_edit "$(cfg)" "const lint = gaiaLint();
 
 export default" "const lint = gaiaLint();
 
 
 export default"
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
-@test "denies a Write whose content only changes a comment" {
+@test "asks on a Write whose content only changes a comment" {
   run_write "$(cfg)" "${DEFAULT_BODY/Config for the app./ESLint config for the app.}"
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
-@test "denies a MultiEdit whose every pair is a comment or an added spread" {
+@test "asks on a MultiEdit whose every pair is a comment or an added spread" {
   run_tool MultiEdit "$(jq -n --arg p "$(cfg)" \
     '{file_path: $p,
       edits: [{old_string: " * Config for the app.", new_string: " * ESLint config."},
               {old_string: "  ...lint.react,", new_string: "  ...lint.react,\n  ...lint.reactRouter,"}]}')"
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
-# --- and every shape it would deny too, so the floor is pinned --------------
+# --- including the shapes that are usually silencing, so the floor is pinned -
 
-@test "denies adding a rule override" {
+@test "asks on adding a rule override" {
   run_edit "$(cfg)" "    rules: {'no-console': 'off'}," \
     "    rules: {'no-console': 'off', 'no-empty-pattern': 'off'},"
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
-@test "denies removing a preset spread" {
+@test "asks on removing a preset spread" {
   run_edit "$(cfg)" '  ...lint.guardrails,
 ' ''
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
-@test "denies a Write that replaces the whole config" {
+@test "asks on a Write that replaces the whole config" {
   run_write "$(cfg)" 'export default [];'
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
-# --- the message is what makes the bluntness honest -------------------------
+# The hook never rules on a config edit, in either direction. Asserting the ask
+# positively does not pin this: a hook that emitted BOTH an ask and a deny, or
+# that regressed to the exit-2 contract while still printing an ask, satisfies
+# every test above. The two failure directions are opposite, so they are pinned
+# separately.
+@test "never denies a config edit, and never blocks by exit code" {
+  run_edit "$(cfg)" "    rules: {'no-console': 'off'}," \
+    "    rules: {'no-console': 'off', 'no-empty-pattern': 'off'},"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  return 0
+}
 
-@test "the message names the sanctioned migration it is denying" {
+# The decision is machine-read, so a reason string that broke out of the JSON
+# would take the whole decision with it and the hook would report nothing at
+# all, which is the fail-open direction. `jq -n --arg` is what guarantees this;
+# a hand-built JSON string is the shape that loses it.
+@test "emits one well-formed JSON object a parser accepts" {
+  run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config.'
+  [ "$status" -eq 0 ]
+  jq -e '.hookSpecificOutput.hookEventName == "PreToolUse"' <<<"$output" >/dev/null
+}
+
+# --- the reason is what the operator answers on ----------------------------
+
+@test "the reason names the sanctioned migration it is asking about" {
   run_edit "$(cfg)" '  ...lint.react,' '  ...lint.react,
   ...lint.reactRouter,'
-  [ "$status" -eq 2 ]
+  assert_asked_by_json
   grep -qF -- '...lint.reactRouter' <<<"$output"
 }
 
-@test "the message admits the denial is on the filename alone" {
+@test "the reason admits the prompt is on the filename alone" {
   run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config.'
-  [ "$status" -eq 2 ]
+  assert_asked_by_json
   grep -qF -- 'filename alone' <<<"$output"
 }
 
-@test "the message says where the edit is made instead" {
+@test "the reason tells the operator the answer is theirs to give" {
   run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config.'
-  [ "$status" -eq 2 ]
-  grep -qF -- 'by hand' <<<"$output"
-  grep -qF -- '.claude/settings.json' <<<"$output"
-  # Naming where the switch lives is only safe while the message also says whose
-  # switch it is. Nothing in .claude/hooks/ guards writes to .claude/settings.json,
-  # so without this clause a denied agent can follow the message literally, drop
-  # the registration, and leave the guard off. The two assertions above cannot
-  # see that: both strings appear in the wording that invited it.
-  grep -qF -- 'do not disable it yourself' <<<"$output"
+  assert_asked_by_json
+  grep -qF -- 'Approve only if you meant this edit' <<<"$output"
+  # Asking is only safe while the reason also refuses the workaround. Nothing in
+  # .claude/hooks/ guards writes to .claude/settings.json, so an agent that reads
+  # a prompt as an obstacle can drop the registration and leave the guard off.
+  # The assertion above cannot see that: a reason inviting a workaround still
+  # contains the approve clause.
+  grep -qF -- 'do not disable this hook' <<<"$output"
 }
 
-@test "the message keeps pointing at the source file for the common case" {
+@test "the reason keeps pointing at the source file for the common case" {
   run_edit "$(cfg)" "    rules: {'no-console': 'off'}," \
     "    rules: {'no-console': 'off', 'no-empty-pattern': 'off'},"
-  [ "$status" -eq 2 ]
+  assert_asked_by_json
   grep -qF -- 'source file where it occurs' <<<"$output"
 }
 
-# --- uncertainty on a guarded path resolves to deny -------------------------
+# --- an unreadable payload on a guarded path still asks ---------------------
+# The path gate is the entire decision, so a tool shape the hook cannot parse
+# changes nothing: the file is a config, so the operator is asked. These pin
+# that the ask does not depend on reading the edit, which is the property that
+# would erode first if a judging guard crept back in.
 
-@test "denies a tool shape it cannot otherwise read on a guarded path" {
+@test "asks on a tool shape it cannot otherwise read on a guarded path" {
   run_tool NotebookEdit "$(jq -n --arg p "$(cfg)" '{file_path: $p}')"
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
-@test "denies an Edit on a guarded path carrying no strings at all" {
+@test "asks on an Edit on a guarded path carrying no strings at all" {
   run_tool Edit "$(jq -n --arg p "$(cfg)" '{file_path: $p}')"
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
-@test "denies a Write on a guarded path that does not exist yet" {
+@test "asks on a Write on a guarded path that does not exist yet" {
   run_write "$TMP/eslint.config.ts" 'export default [];'
-  assert_blocked_by_exit
+  assert_asked_by_json
 }
 
 # --- a payload naming no file cannot be judged, and is not an exemption -----

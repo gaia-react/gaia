@@ -83,3 +83,16 @@ assert_allowed_by_json() {
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
   return 0
 }
+
+# --- mechanism 3: JSON on stdout defers the verdict to the human -----------
+# The hook always exits 0 and writes `"permissionDecision": "ask"`, which
+# prompts the operator instead of ruling. It is a separate mechanism rather
+# than a third verdict under mechanism 2 because the two failure directions are
+# opposite: `assert_allowed_by_json` passes on an `ask` (there is no deny in the
+# output), so a suite that reached for it to mean "not blocked" would green on a
+# hook that had stopped asking entirely. Assert the ask positively.
+
+assert_asked_by_json() {
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "ask"' <<<"$output"
+}
