@@ -249,6 +249,98 @@ describe('wiki state', () => {
     expect(json.suggested_base).toBe(shortShaOf(sandbox.root, shaB));
   }, 15_000);
 
+  test('suggested_base does not skip a stale-dated commit that lands via a merge after the marker timestamp', () => {
+    // The recovery baseline is resolved by committer date, but a commit's date
+    // is not when it arrived on the trunk. A true merge commit preserves the
+    // merged branch's original dates, so a commit can be older than
+    // `last_evaluated_at` and still reach the trunk after it. Resolving over
+    // every ancestor picks that commit as the baseline and, because the window
+    // is `suggested_base..HEAD`, excludes the very commit that needs
+    // evaluating. Resolving along the first-parent chain picks an integration
+    // point instead, which is at or older than the trunk position the sync
+    // stopped at, so the window still contains it.
+    const gitAt = (isoDate: string, ...args: string[]): void => {
+      execFileSync('git', args, {
+        cwd: sandbox.root,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: isoDate,
+          GIT_COMMITTER_DATE: isoDate,
+        },
+      });
+    };
+
+    sandbox.commitAt('C0', {'wiki/seed.md': 'seed\n'}, '2026-01-01T00:00:00Z');
+    const shaC1 = sandbox.commitAt(
+      'C1',
+      {'app/f1.ts': '1\n'},
+      '2026-01-02T00:00:00Z'
+    );
+
+    // Branch B: committed Jan 3, still unmerged when the sync runs.
+    execFileSync('git', ['checkout', '-q', '-b', 'feat-b', shaC1], {
+      cwd: sandbox.root,
+    });
+    sandbox.commitAt(
+      'B1-work-needing-evaluation',
+      {'app/f2.ts': '2\n'},
+      '2026-01-03T00:00:00Z'
+    );
+
+    // Branch A: the sync runs here at Jan 5 and records its own tip.
+    execFileSync('git', ['checkout', '-q', '-b', 'feat-a', shaC1], {
+      cwd: sandbox.root,
+    });
+    const orphan = sandbox.commitAt(
+      'A1',
+      {'app/f3.ts': '3\n'},
+      '2026-01-04T00:00:00Z'
+    );
+    execFileSync('git', ['checkout', '-q', 'main'], {cwd: sandbox.root});
+
+    // B lands as a MERGE commit on Jan 6: B1 keeps its Jan-3 committer date
+    // but only becomes reachable from main now, after the Jan-5 marker.
+    gitAt(
+      '2026-01-06T00:00:00Z',
+      'merge',
+      '-q',
+      '--no-ff',
+      'feat-b',
+      '-m',
+      'Merge pull request: B'
+    );
+    // A lands SQUASHED on Jan 7, which orphans the recorded marker SHA.
+    execFileSync('git', ['merge', '-q', '--squash', 'feat-a'], {
+      cwd: sandbox.root,
+    });
+    gitAt('2026-01-07T00:00:00Z', 'commit', '-q', '-m', 'Squash merge A');
+
+    writeStateFileAt(sandbox.root, orphan, '2026-01-05T00:00:00Z');
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(json.reachable).toBe(false);
+
+    // The baseline is the integration point C1, not the stale-dated B1.
+    expect(json.suggested_base).toBe(shortShaOf(sandbox.root, shaC1));
+
+    // The assertion that states the defect: the un-evaluated commit must fall
+    // inside the window the sync would evaluate. Asserting the range rather
+    // than only the baseline SHA keeps this test pinned to the behaviour
+    // rather than to one way of producing it.
+    const window = execFileSync(
+      'git',
+      ['log', '--format=%s', `${json.suggested_base as string}..HEAD`],
+      {cwd: sandbox.root, encoding: 'utf8'}
+    );
+    expect(window).toContain('B1-work-needing-evaluation');
+  }, 15_000);
+
   test('suggested_base is empty when last_evaluated_at predates all history', () => {
     const sha = sandbox.commitAt(
       'A',

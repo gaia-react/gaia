@@ -28898,7 +28898,7 @@ var isReachable = (sha, cwd) => {
 };
 var ancestorBefore = (isoTimestamp, cwd) => {
   const result = tryRunGit(
-    ["rev-list", "-1", `--before=${isoTimestamp}`, "HEAD"],
+    ["rev-list", "-1", "--first-parent", `--before=${isoTimestamp}`, "HEAD"],
     { cwd }
   );
   if (result === null) return "";

@@ -65,19 +65,37 @@ export const isReachable = (sha: string, cwd: string): boolean => {
 };
 
 /**
- * Resolve the newest commit reachable from HEAD whose committer date is at or
- * older than `isoTimestamp` (`git rev-list -1 --before=<ts> HEAD`).
+ * Resolve the newest commit on HEAD's **first-parent chain** whose committer
+ * date is at or older than `isoTimestamp`
+ * (`git rev-list -1 --first-parent --before=<ts> HEAD`).
  *
  * Used to recover a reachable evaluation baseline after a squash- or
  * rebase-merge orphans the recorded `last_evaluated_sha`: the orphaned SHA is
  * gone from HEAD's history, but the timestamp it was recorded with still maps
- * to the commit the last sync stopped at. Returns '' when nothing matches (the
+ * to roughly where the last sync stopped. Returns '' when nothing matches (the
  * timestamp predates all history) or on git failure; the caller falls back to
  * the lossy jump-to-HEAD re-anchor in that case.
+ *
+ * `--first-parent` is load-bearing, not a tidy-up. A commit's committer date is
+ * not when it reached the trunk: a true merge commit preserves the merged
+ * branch's original dates, so a commit can be older than `isoTimestamp` and
+ * still become reachable after it. Resolving over every ancestor can then pick
+ * that commit as the baseline, and because the caller evaluates
+ * `suggested_base..HEAD`, the commit that most needs evaluating is the one
+ * excluded. Walking the first-parent chain picks an integration point instead.
+ *
+ * The trade is deliberate and one-directional: a first-parent baseline is at or
+ * older than the all-ancestor one, so the failure mode becomes re-evaluating
+ * commits already evaluated rather than silently omitting commits that were
+ * not. It is an improvement, not a soundness proof — a sync run from a branch
+ * that did not contain a trunk merge predating its own timestamp can still
+ * leave that merge's contents outside the recovered window. That is the case
+ * `/gaia-wiki sync`'s main-only rule already forbids, and the same case that
+ * orphans the marker to begin with.
  */
 export const ancestorBefore = (isoTimestamp: string, cwd: string): string => {
   const result = tryRunGit(
-    ['rev-list', '-1', `--before=${isoTimestamp}`, 'HEAD'],
+    ['rev-list', '-1', '--first-parent', `--before=${isoTimestamp}`, 'HEAD'],
     {cwd}
   );
 
