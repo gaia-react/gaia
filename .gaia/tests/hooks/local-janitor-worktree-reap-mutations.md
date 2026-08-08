@@ -331,6 +331,36 @@ provable.
 Checksum before: `190bc11fbccfb6d28b76b05ab4e3dcc5e107b18f7abd689389efb3ea5228b5d3`.
 Checksum after revert: `190bc11fbccfb6d28b76b05ab4e3dcc5e107b18f7abd689389efb3ea5228b5d3`. Match.
 
+## Mutation 13: a run with no misses removes the memo file
+
+The memo is rewritten from scratch on every run rather than appended to, so a run that records no
+miss at all must leave no memo behind. Keeping the previous file in that case would hold entries for
+candidates the run no longer saw — including a worktree it just reaped — and those stale entries
+suppress the upstream scan for as long as both memoized tips sit still. This is the sweep's one
+destructive path arriving at its quietest moment: nothing to record is the state in which a stale
+record is easiest to leave and hardest to notice.
+
+Guard line, verbatim:
+
+```
+    rm -f "$wt_memo_file" 2>/dev/null || true
+```
+
+Edit: replace that line with `true`, leaving the `else` arm reached but inert.
+
+Test that goes red: `reaps a memoized candidate once its work genuinely lands upstream`.
+
+What stays green, and why: every other test in the suite, all 45 of them. The arm is only reached by
+a run in which no candidate records a miss, and the reap in that fixture's second run is what
+produces the condition: the memoized candidate's work has landed upstream, so it is reaped rather
+than declined, and no other candidate remains to record one. Every other fixture either records at
+least one miss — taking the non-empty arm, which this mutation does not touch — or never writes a
+memo in the first place. The red is attributable to this arm alone: the reap itself still happens
+under the mutation, and the failing assertion is the memo file's continued existence afterwards.
+
+Checksum before: `190bc11fbccfb6d28b76b05ab4e3dcc5e107b18f7abd689389efb3ea5228b5d3`.
+Checksum after revert: `190bc11fbccfb6d28b76b05ab4e3dcc5e107b18f7abd689389efb3ea5228b5d3`. Match.
+
 ## Arms with no test that reds them
 
 ### Row 2: the merge-base read's status and emptiness, together
