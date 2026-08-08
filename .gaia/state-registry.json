@@ -220,6 +220,18 @@
       "source": "SPEC-061 §main-only"
     },
     {
+      "id": "worktree-reap-miss-memo",
+      "path": "cache/worktree-reap-misses.txt|cache/worktree-reap-misses.txt.*.tmp",
+      "match": "glob",
+      "kind": "file",
+      "scope": "main-only",
+      "keyed_by": null,
+      "why": "The orphaned-worktree reap's record of which candidates a completed upstream scan already declined, one line per candidate under the branch tip and origin/<base> tip that produced the answer. Main-anchored because worktrees register in main and the sweep resolves main before reading them. The .tmp alternative is the same-directory staging name the rewrite renames from, so a concurrent sweep never reports it as an unrecognized cache child.",
+      "writer": "code",
+      "reaped_by": "orphaned worktree reap sweep, which rewrites the file from each run's own misses",
+      "source": "SPEC-061 §main-only, applied to a later main-anchored coordination store"
+    },
+    {
       "id": "project-id",
       "path": ".project-id",
       "match": "exact",

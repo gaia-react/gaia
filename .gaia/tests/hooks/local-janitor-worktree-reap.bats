@@ -1047,6 +1047,220 @@ SHIM
   [ "$(grep -cE "diff .*refs/heads/plan/spec-912-control-b" "$witness")" -gt 0 ]
 }
 
+# --- The negative merge-evidence memo --------------------------------------
+#
+# The upstream scan is the sweep's one expensive read, and its answer is a
+# pure function of the branch tip and the origin/<base> tip. A candidate that
+# is kept because no upstream commit matches -- an abandoned branch, or a
+# merged one carrying unpushed follow-up work -- re-walks the identical range
+# at every session start for as long as its worktree sits there. The memo
+# records that negative answer under both tips and skips the repeat.
+#
+# Only the negative answer is memoized, so a stale entry can only ever cause a
+# keep, the direction every unanswerable question in this sweep already fails
+# toward. The tests below assert both halves: the repeat is skipped while
+# neither tip moves, AND the scan comes back the moment either one does.
+
+# memo_file: where the sweep anchors the memo, at MAIN's cache, matching the
+# registry's worktree-reap-miss-memo entry.
+memo_file() {
+  printf '%s' "$REPO/.gaia/local/cache/worktree-reap-misses.txt"
+}
+
+# make_unmerged_worktree <rel> <branch>: the candidate shape whose walk repeats
+# every session -- a [gone]-upstream branch carrying real work that never
+# landed, the way a pull request closed without merging and then branch-deleted
+# reads. Identical to make_squash_merged_worktree up to the merge, which it
+# deliberately never performs, so the scan walks a genuinely non-empty upstream
+# range (the advanced base) and ends without a match. The keep therefore comes
+# from a completed scan, never from a short-circuit above it.
+make_unmerged_worktree() {
+  local rel="$1" br="$2"
+  git -C "$REPO" branch "$br"
+  git -C "$REPO" checkout -q "$br"
+  echo "commit 1" > "$REPO/${br//\//-}-1.txt"
+  git -C "$REPO" add "${br//\//-}-1.txt"
+  git -C "$REPO" commit -q -m "substantive commit 1"
+  git -C "$REPO" commit -q --allow-empty -m "chore: code review audit passed"
+  git -C "$REPO" push -q -u origin "$br"
+
+  advance_base "advance base for $br"
+
+  git -C "$REPO" checkout -q main
+  git -C "$REPO" merge -q --ff-only origin/main
+
+  git -C "$REPO" push -q origin --delete "$br"
+  git -C "$REPO" fetch -q --prune
+
+  mkdir -p "$(dirname "$REPO/.claude/worktrees/$rel")"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/$rel" "$br"
+}
+
+# land_squash <branch>: squash-merge the branch as it now stands into
+# origin/<base>, the event that turns a previously unmatched candidate into a
+# provably merged one. Moves the base tip, which is exactly the condition that
+# has to invalidate a memoized miss.
+land_squash() {
+  local br="$1"
+  git -C "$REPO" checkout -q main
+  git -C "$REPO" merge -q --ff-only origin/main
+  git -C "$REPO" merge -q --squash "$br"
+  git -C "$REPO" commit -q -m "$br (#1)"
+  git -C "$REPO" push -q origin main
+  git -C "$REPO" fetch -q --prune
+}
+
+@test "does not repeat the upstream scan for an unmatched candidate while neither tip moves" {
+  make_repo
+  make_unmerged_worktree "plan/spec-920-memo" "plan/spec-920-memo"
+  wt="$REPO/.claude/worktrees/plan/spec-920-memo"
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  # The first run walks, exactly once, and records the miss.
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -eq 1 ]
+  [ -f "$(memo_file)" ]
+  grep -qF -- "plan/spec-920-memo" "$(memo_file)"
+  # The second run answers from the memo: the cumulative count on the shared
+  # witness does not move, and the worktree is still kept.
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -eq 1 ]
+  [ -d "$wt" ]
+  branch_exists "plan/spec-920-memo"
+}
+
+@test "walks again for an unmatched candidate once the base tip moves" {
+  make_repo
+  make_unmerged_worktree "plan/spec-921-basemove" "plan/spec-921-basemove"
+  wt="$REPO/.claude/worktrees/plan/spec-921-basemove"
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -eq 1 ]
+  # origin/<base> moves, so the memoized answer no longer covers the question.
+  advance_base "advance base past the memo"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -eq 2 ]
+  [ -d "$wt" ]
+  branch_exists "plan/spec-921-basemove"
+}
+
+@test "walks again for an unmatched candidate once the branch tip moves" {
+  make_repo
+  make_unmerged_worktree "plan/spec-922-tipmove" "plan/spec-922-tipmove"
+  wt="$REPO/.claude/worktrees/plan/spec-922-tipmove"
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -eq 1 ]
+  # The branch moves, so the memoized answer no longer covers the question.
+  echo second > "$wt/second.txt"
+  git -C "$wt" add second.txt
+  git -C "$wt" commit -q -m "second unpushed follow-up"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -eq 2 ]
+  [ -d "$wt" ]
+  branch_exists "plan/spec-922-tipmove"
+}
+
+# The memo can never hold a worktree past the point its merge becomes
+# provable. The candidate is memoized as unmatched, then its follow-up work
+# genuinely lands upstream; the next run re-walks (the base moved) and reaps.
+@test "reaps a memoized candidate once its work genuinely lands upstream" {
+  make_repo
+  make_unmerged_worktree "plan/spec-923-lands" "plan/spec-923-lands"
+  wt="$REPO/.claude/worktrees/plan/spec-923-lands"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  grep -qF -- "plan/spec-923-lands" "$(memo_file)"
+  land_squash "plan/spec-923-lands"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "plan/spec-923-lands" && return 1
+  [ ! -e "$wt" ]
+}
+
+# Two candidates sharing one base each pay their own walk in the first run,
+# and neither pays again in the second. The cited case for the repeat cost:
+# the gate-order positive control already records two distinct walks.
+@test "memoizes each of two candidates sharing a base, so neither walks twice" {
+  make_repo
+  make_unmerged_worktree "plan/spec-924-pair-a" "plan/spec-924-pair-a"
+  make_unmerged_worktree "plan/spec-925-pair-b" "plan/spec-925-pair-b"
+  make_argv_witness_shim
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -eq 2 ]
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(grep -cE 'log .*-n 1000' "$witness")" -eq 2 ]
+  [ -d "$REPO/.claude/worktrees/plan/spec-924-pair-a" ]
+  [ -d "$REPO/.claude/worktrees/plan/spec-925-pair-b" ]
+}
+
+# The memo is rewritten from each run's own misses, so an entry for a worktree
+# that is gone does not outlive it. Without this the file only ever grows: a
+# branch tip and a base tip both move over a repo's life, and every pair either
+# ever held would accumulate forever.
+@test "drops a memo entry for a candidate that is no longer present" {
+  make_repo
+  make_unmerged_worktree "plan/spec-926-stays" "plan/spec-926-stays"
+  make_unmerged_worktree "plan/spec-927-goes" "plan/spec-927-goes"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  grep -qF -- "plan/spec-926-stays" "$(memo_file)"
+  grep -qF -- "plan/spec-927-goes" "$(memo_file)"
+  # Remove one candidate the way a person would, outside the sweep.
+  git -C "$REPO" worktree remove --force "$REPO/.claude/worktrees/plan/spec-927-goes"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  grep -qF -- "plan/spec-926-stays" "$(memo_file)"
+  grep -qF -- "plan/spec-927-goes" "$(memo_file)" && return 1
+  [ -d "$REPO/.claude/worktrees/plan/spec-926-stays" ]
+}
+
+# The memo records only a COMPLETED scan that found no match. A failed upstream
+# read proves nothing, so it must not be recorded: otherwise one transient
+# failure would suppress the guard's real scan for as long as both tips held,
+# and the reap would go silently inert.
+@test "records no memo entry when the upstream scan itself fails" {
+  make_repo
+  make_unmerged_worktree "plan/spec-928-failed" "plan/spec-928-failed"
+  wt="$REPO/.claude/worktrees/plan/spec-928-failed"
+  make_failing_git_shim "log .*-n 1000"
+  cd "$REPO"
+  run env PATH="$SHIM_DIR:$PATH" bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ]
+  grep -qE "log .*-n 1000" "$witness"
+  [ ! -f "$(memo_file)" ]
+}
+
+# The memo file is the only cache child this sweep writes, and sweep #9 puts
+# every cache/ child to the state registry: an unrecognized one is reported on
+# stderr at every session start, forever. The sweep is silent on every path, so
+# a memo write that the registry does not recognize would surface here.
+@test "the memo write leaves the sweep silent and the cache registry-clean" {
+  make_repo
+  make_unmerged_worktree "plan/spec-929-quiet" "plan/spec-929-quiet"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -f "$(memo_file)" ]
+}
+
 # COV-006: the sweep emits nothing at all, on any path. Two arms, keep and
 # reap, on fixtures already established above.
 @test "COV-006: a kept worktree produces no output" {
