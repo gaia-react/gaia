@@ -123,13 +123,14 @@ jobs:
       # correct: a substitution that publishes nothing is not the failure. Both
       # cases are executed rather than reasoned about.
       #
-      # The sentinels are the keys `clientSchema` in `app/env.server.ts` admits to
-      # a browser, which is what a substitution map would name. `NODE_ENV` is
-      # excluded, the build needs its real value. `SITE_URL` is not one of them
-      # and is carried for a reason of its own: `schema` requires it while
-      # `clientSchema` omits it, so it is a server-only key, and a map that inlined
-      # one of those would publish into the preview a value the client is never
-      # meant to see. No other step in this job sets it. A map reads these with
+      # The sentinels are every key `schema` in `app/env.server.ts` requires
+      # except `NODE_ENV`, which is excluded because the build needs its real
+      # value. That is the four `clientSchema` admits to a browser, which is what
+      # a substitution map would name, plus `SESSION_SECRET` and `SITE_URL`, which
+      # `clientSchema` omits: a map inlining one of those publishes into the
+      # preview a value the client is never meant to see, which is the worse
+      # failure of the two and so the one least worth leaving uncovered. No other
+      # step in this job sets any of them. A map reads these with
       # `loadEnv(mode, cwd, '')` and an empty prefix matches every key, so a
       # sentinel set here reaches the map wherever it lives.
       #
@@ -145,6 +146,7 @@ jobs:
           COMMIT_SHA: gaia-preview-env-sentinel-commit-sha
           MSW_ENABLED: gaia-preview-env-sentinel-msw-enabled
           npm_package_version: gaia-preview-env-sentinel-version
+          SESSION_SECRET: gaia-preview-env-sentinel-session-secret
           SITE_URL: gaia-preview-env-sentinel-site-url
         run: |
           set -euo pipefail
