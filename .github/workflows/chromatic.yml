@@ -123,13 +123,18 @@ jobs:
       # correct: a substitution that publishes nothing is not the failure. Both
       # cases are executed rather than reasoned about.
       #
-      # The sentinels are the keys `clientSchema` in `app/env.server.ts` admits to
-      # a browser, which is what a substitution map would name. `NODE_ENV` is
-      # excluded, the build needs its real value. `SITE_URL` is not one of them
-      # and is carried for a reason of its own: it is the only secret-backed value
-      # still entering this build. A map reads these with `loadEnv(mode, cwd, '')`
-      # and an empty prefix matches every key, so a sentinel set here reaches the
-      # map wherever it lives.
+      # The sentinels are every key `schema` in `app/env.server.ts` declares
+      # except `NODE_ENV`, which is excluded because the build needs its real
+      # value. Declares, not requires: `COMMIT_SHA` and `MSW_ENABLED` are
+      # `.optional()` and carry sentinels anyway, since what decides coverage is
+      # what a map could name. That is the four remaining keys `clientSchema`
+      # admits to a browser, plus `SESSION_SECRET` and `SITE_URL`, which
+      # `clientSchema` omits: a map inlining one of those publishes into the
+      # preview a value the client is never meant to see, the worse of the two
+      # failures and so the one least worth leaving uncovered. No other step in
+      # this job sets any of them. A map reads these with
+      # `loadEnv(mode, cwd, '')` and an empty prefix matches every key, so a
+      # sentinel set here reaches the map wherever it lives.
       #
       # `pnpm exec` rather than the `build-storybook` script, deliberately:
       # `pnpm run` sets `npm_package_version` from `package.json` and overwrites
@@ -143,6 +148,7 @@ jobs:
           COMMIT_SHA: gaia-preview-env-sentinel-commit-sha
           MSW_ENABLED: gaia-preview-env-sentinel-msw-enabled
           npm_package_version: gaia-preview-env-sentinel-version
+          SESSION_SECRET: gaia-preview-env-sentinel-session-secret
           SITE_URL: gaia-preview-env-sentinel-site-url
         run: |
           set -euo pipefail
@@ -172,10 +178,3 @@ jobs:
           autoAcceptChanges: 'main'
           onlyChanged: true
           externals: 'app/styles/tailwind.css'
-        env:
-          SB: 1
-          # Storybook never signs a cookie, so this only has to satisfy the
-          # required z.string() in app/env.server.ts. Keep it a literal: the real
-          # secret has no reason to enter a build that publishes a public artifact.
-          SESSION_SECRET: 'storybook-placeholder-not-used-for-signing'
-          SITE_URL: ${{ secrets.SITE_URL || 'http://localhost:3000' }}
