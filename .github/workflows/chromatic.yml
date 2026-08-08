@@ -126,10 +126,12 @@ jobs:
       # The sentinels are the keys `clientSchema` in `app/env.server.ts` admits to
       # a browser, which is what a substitution map would name. `NODE_ENV` is
       # excluded, the build needs its real value. `SITE_URL` is not one of them
-      # and is carried for a reason of its own: it is the only secret-backed value
-      # still entering this build. A map reads these with `loadEnv(mode, cwd, '')`
-      # and an empty prefix matches every key, so a sentinel set here reaches the
-      # map wherever it lives.
+      # and is carried for a reason of its own: `schema` requires it while
+      # `clientSchema` omits it, so it is a server-only key, and a map that inlined
+      # one of those would publish into the preview a value the client is never
+      # meant to see. No other step in this job sets it. A map reads these with
+      # `loadEnv(mode, cwd, '')` and an empty prefix matches every key, so a
+      # sentinel set here reaches the map wherever it lives.
       #
       # `pnpm exec` rather than the `build-storybook` script, deliberately:
       # `pnpm run` sets `npm_package_version` from `package.json` and overwrites
@@ -172,10 +174,3 @@ jobs:
           autoAcceptChanges: 'main'
           onlyChanged: true
           externals: 'app/styles/tailwind.css'
-        env:
-          SB: 1
-          # Storybook never signs a cookie, so this only has to satisfy the
-          # required z.string() in app/env.server.ts. Keep it a literal: the real
-          # secret has no reason to enter a build that publishes a public artifact.
-          SESSION_SECRET: 'storybook-placeholder-not-used-for-signing'
-          SITE_URL: ${{ secrets.SITE_URL || 'http://localhost:3000' }}
