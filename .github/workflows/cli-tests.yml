@@ -78,15 +78,15 @@ jobs:
               # guard on the PR that breaks it -- it would first fire on some
               # later, unrelated .gaia/cli/** change instead (#1051).
               - 'package.json'
-              # Same guard, second subject. Its typescript-eslint half asserts
-              # both workspaces RESOLVE the same version, which no manifest
-              # states: the package is a direct dependency of neither and
-              # arrives transitively through a caret, so the only record of it
-              # is each lockfile. A root-only re-resolve is what floats that
-              # caret, and it moves no manifest, so without this entry the
-              # root-lockfile side of the guard is unreachable on the pull
-              # request that breaks it. The .gaia/cli side already lands under
-              # '.gaia/cli/**'.
+              # Same guard, second subject. Its resolution half asserts both
+              # workspaces RESOLVE the same version of every shared rule-bearing
+              # package, which no manifest states: they are direct dependencies
+              # of neither workspace and arrive transitively through a caret, so
+              # the only record of them is each lockfile. A root-only re-resolve
+              # is what floats that caret, and it moves no manifest, so without
+              # this entry the root-lockfile side of the guard is unreachable on
+              # the pull request that breaks it. The .gaia/cli side already lands
+              # under '.gaia/cli/**'.
               - 'pnpm-lock.yaml'
               # Third subject of the same guard: both workspaces must harden on
               # the same terms (minimumReleaseAge, its strict flag, and
