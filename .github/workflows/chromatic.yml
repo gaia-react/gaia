@@ -108,10 +108,60 @@ jobs:
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Install dependencies
         run: pnpm install --frozen-lockfile
+      # The preview must publish no environment values, and until now nothing on
+      # the build path said so. `test/preview-env.test.ts` pins the Vitest worker;
+      # the Storybook build is a separate Vite pipeline that suite never touches,
+      # so a substitution re-added to `.storybook/main.ts`, `.storybook/vite.config.ts`,
+      # a third config or a plugin would bake values into a public artifact with
+      # nothing failing. Build with sentinel values in the environment and fail if
+      # one survives into the output.
+      #
+      # What it asserts, exactly: no environment value reaches the published
+      # artifact. It does not assert that no substitution map exists. `define`
+      # replaces literal reference sites, so a re-added map whose keys nothing in
+      # the story graph reads inlines nothing and this step stays green, which is
+      # correct: a substitution that publishes nothing is not the failure. Both
+      # cases are executed rather than reasoned about.
+      #
+      # The sentinels are the keys `clientSchema` in `app/env.server.ts` admits to
+      # a browser, which is what a substitution map would name. `NODE_ENV` is
+      # excluded, the build needs its real value. `SITE_URL` is not one of them
+      # and is carried for a reason of its own: it is the only secret-backed value
+      # still entering this build. A map reads these with `loadEnv(mode, cwd, '')`
+      # and an empty prefix matches every key, so a sentinel set here reaches the
+      # map wherever it lives.
+      #
+      # `pnpm exec` rather than the `build-storybook` script, deliberately:
+      # `pnpm run` sets `npm_package_version` from `package.json` and overwrites
+      # that sentinel, which would drop one of the four keys from the guard's
+      # reach while still reporting green. Flag parity with the script is not
+      # load-bearing; producing `storybook-static/` from the real config is.
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
-        name: get-npm-version
-        id: package-version
-        uses: martinbeentjes/npm-get-version-action@3cf273023a0dda27efcd3164bdfb51908dd46a5b # v1.3.1
+        name: Assert the built preview inlines no environment values
+        env:
+          API_URL: gaia-preview-env-sentinel-api-url
+          COMMIT_SHA: gaia-preview-env-sentinel-commit-sha
+          MSW_ENABLED: gaia-preview-env-sentinel-msw-enabled
+          npm_package_version: gaia-preview-env-sentinel-version
+          SITE_URL: gaia-preview-env-sentinel-site-url
+        run: |
+          set -euo pipefail
+          pnpm exec storybook build --test
+          # `grep -r` exits 2 on a missing directory, and an `if` condition
+          # absorbs that as "no match" rather than as an error, so a build that
+          # produced no output would report this guard green having read nothing.
+          if [ ! -d storybook-static ]; then
+            echo "::error::The Storybook build produced no storybook-static/, so this guard inspected nothing."
+            exit 1
+          fi
+          if grep -rl 'gaia-preview-env-sentinel-' storybook-static; then
+            echo "::error::The Storybook build inlined environment values into the preview (files listed above). Remove the substitution and pass a story the values it needs as args."
+            exit 1
+          fi
+          # Do not leave a sentinel-bearing artifact beside the publish step.
+          # chromaui/action builds its own and clears this directory first, so
+          # this is a belt on top of that brace rather than a load-bearing step.
+          rm -rf storybook-static
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Run Chromatic
         uses: chromaui/action@8d925269a481085d451544f6bd9aa2ab3af55b5d # v16.9.1
@@ -124,10 +174,6 @@ jobs:
           externals: 'app/styles/tailwind.css'
         env:
           SB: 1
-          API_URL: ${{ secrets.API_URL || 'http://localhost:3000/api' }}
-          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          MSW_ENABLED: ${{ secrets.MSW_ENABLED || 'true' }}
-          npm_package_version: ${{ steps.package-version.outputs.current-version}}
           # Storybook never signs a cookie, so this only has to satisfy the
           # required z.string() in app/env.server.ts. Keep it a literal: the real
           # secret has no reason to enter a build that publishes a public artifact.
