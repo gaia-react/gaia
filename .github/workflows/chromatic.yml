@@ -116,11 +116,20 @@ jobs:
       # nothing failing. Build with sentinel values in the environment and fail if
       # one survives into the output.
       #
-      # Sentinels reach any such map wherever it lives, because the idiom for
-      # reading them is `loadEnv(mode, cwd, '')` and an empty prefix matches every
-      # key. The four are the keys `clientSchema` in `app/env.server.ts` admits to
-      # a browser, which is what a map would name. `NODE_ENV` is excluded: the
-      # build needs its real value.
+      # What it asserts, exactly: no environment value reaches the published
+      # artifact. It does not assert that no substitution map exists. `define`
+      # replaces literal reference sites, so a re-added map whose keys nothing in
+      # the story graph reads inlines nothing and this step stays green, which is
+      # correct: a substitution that publishes nothing is not the failure. Both
+      # cases are executed rather than reasoned about.
+      #
+      # The sentinels are the keys `clientSchema` in `app/env.server.ts` admits to
+      # a browser, which is what a substitution map would name. `NODE_ENV` is
+      # excluded, the build needs its real value. `SITE_URL` is not one of them
+      # and is carried for a reason of its own: it is the only secret-backed value
+      # still entering this build. A map reads these with `loadEnv(mode, cwd, '')`
+      # and an empty prefix matches every key, so a sentinel set here reaches the
+      # map wherever it lives.
       #
       # `pnpm exec` rather than the `build-storybook` script, deliberately:
       # `pnpm run` sets `npm_package_version` from `package.json` and overwrites
@@ -134,9 +143,17 @@ jobs:
           COMMIT_SHA: gaia-preview-env-sentinel-commit-sha
           MSW_ENABLED: gaia-preview-env-sentinel-msw-enabled
           npm_package_version: gaia-preview-env-sentinel-version
+          SITE_URL: gaia-preview-env-sentinel-site-url
         run: |
           set -euo pipefail
           pnpm exec storybook build --test
+          # `grep -r` exits 2 on a missing directory, and an `if` condition
+          # absorbs that as "no match" rather than as an error, so a build that
+          # produced no output would report this guard green having read nothing.
+          if [ ! -d storybook-static ]; then
+            echo "::error::The Storybook build produced no storybook-static/, so this guard inspected nothing."
+            exit 1
+          fi
           if grep -rl 'gaia-preview-env-sentinel-' storybook-static; then
             echo "::error::The Storybook build inlined environment values into the preview (files listed above). Remove the substitution and pass a story the values it needs as args."
             exit 1
