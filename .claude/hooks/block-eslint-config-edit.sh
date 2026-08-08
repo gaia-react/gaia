@@ -50,14 +50,14 @@
 # One consequence of asking rather than refusing, recorded because the mechanism
 # implies it and nothing here establishes otherwise. A refusal needs no prompt,
 # while an `ask` does, so a session running with no human at the prompt (`claude
-# -p --permission-mode bypassPermissions`, the shape this repo's own wiki-sync
-# smoke scenarios use) may resolve the ask to allow. Whether it does is the
-# permission engine's behaviour rather than this hook's, it is not executed
-# anywhere here, and the published hook reference does not document the
-# interaction, so this is an open property of the mechanism rather than a settled
-# behaviour in either direction. What is settled is the direction of the risk: an
-# unattended session is where this guard is weaker than a flat refusal, and it is
-# also where nobody is reading the reason string above.
+# -p --permission-mode bypassPermissions`, the shape GAIA's own maintainer smoke
+# tests run) may resolve the ask to allow. Whether it does is the permission
+# engine's behaviour rather than this hook's, it is not executed anywhere here,
+# and the published hook reference does not document the interaction, so this is
+# an open property of the mechanism rather than a settled behaviour in either
+# direction. What is settled is the bound rather than the outcome: an ask is at
+# best no stronger than a refusal, and an unattended session is also where nobody
+# is reading the reason string above.
 #
 # Beyond an ordinary path-gate miss, one further case exits 0 silently and it is
 # not an exemption: a payload with no readable file_path says nothing about
