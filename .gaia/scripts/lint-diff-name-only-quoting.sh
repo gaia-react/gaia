@@ -122,7 +122,12 @@ scan_file() {
         quoted_ok = (index(window, " -z") == 1)
 
         if (invoked && !inspan && !quoted_ok)
-          printf "%s:%d: git diff --name-only without -z; git C-quotes a non-ASCII path and the consumer stops matching\n", file, NR
+          # The message deliberately does NOT read "git diff --name-only": with
+          # the binary name in front of the call, this very line matches the
+          # detector and the gate flags its own diagnostic. Caught by running
+          # the gate over its own tree, which is the cheapest possible proof
+          # that the "invoked" discrimination works.
+          printf "%s:%d: diff --name-only without -z: a C-quoted non-ASCII path stops matching in the consumer\n", file, NR
         consumed = abs + calllen - 1
         rest = substr($0, consumed + 1)
       }
@@ -139,7 +144,13 @@ done
 
 if [ -n "$report" ]; then
   printf '%s' "$report"
-  echo "Fix each: changed=\"\$(git diff --name-only -z \"\${base}...HEAD\" | tr '\\0' '\\n')\"" >&2
+  # printf, not echo: the hint text carries backslash escapes (`tr` operands),
+  # and echo may expand them depending on the shell (SC2028). The format string
+  # is single-quoted so the `$(...)` and `${base}` inside it stay literal -- it
+  # is sample code being printed, not code being run. Disabled on this line
+  # rather than file-wide, so a genuine SC2016 anywhere else here still fires.
+  # shellcheck disable=SC2016
+  printf 'Fix each: changed="$(git diff --name-only -z "${base}...HEAD" | tr %s\\0%s %s\\n%s)"\n' "'" "'" "'" "'" >&2
   exit 1
 fi
 

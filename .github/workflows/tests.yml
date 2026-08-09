@@ -125,7 +125,13 @@ jobs:
           CHECK_BASE: ${{ steps.base.outputs.base }}
         run: |
           set -eu
-          changed=$(git diff --name-only "${CHECK_BASE}...HEAD")
+          # -z, so a non-ASCII path is not C-quoted into a string the ERE below
+          # cannot match: without it a change under app/ can read as no relevant
+          # change at all, and this step reports the required check green having
+          # run no tests. `$(...)` discards NUL bytes, so the `tr` must stay
+          # inside the substitution; the subshell sets pipefail so a git failure
+          # still aborts the step under `set -e` as it did before the pipe.
+          changed=$(set -o pipefail; git diff --name-only -z "${CHECK_BASE}...HEAD" | tr '\0' '\n')
           pattern='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.github/workflows/tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
