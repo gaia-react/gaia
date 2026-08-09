@@ -166,6 +166,17 @@ if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-array-guard.sh
   status=1
 fi
 
+# Fold in the diff-quoting guard, for the same reason as the array guard: the
+# linter above cannot model it, and the class has been fixed five times by hand
+# and never once by a check. It reaches further than the passes above -- its
+# scan surface includes .github/workflows/*.yml, whose `run:` blocks are shell
+# that no *.sh glob sees. Run from the repo root so its `git ls-files` resolves
+# and the file:line it prints is repo-relative.
+echo "--> lint-diff-name-only-quoting (C-quoted paths from an unquoted diff)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-diff-name-only-quoting.sh"); then
+  status=1
+fi
+
 if [ "$status" -ne 0 ]; then
   echo "==> shell-lint FAILED" >&2
   exit 1
