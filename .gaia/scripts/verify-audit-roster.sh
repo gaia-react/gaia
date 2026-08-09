@@ -990,10 +990,18 @@ if [ -n "$coverage_top" ] && [ "$(cd "$coverage_top" 2>/dev/null && pwd -P)" = "
 else
   # Say so. A skipped invariant and a satisfied one both end in `roster clean`
   # on stdout, and a caller that cannot tell them apart will read the second
-  # meaning from the first: .gaia/tests/distribution/16-audit-remit-parity.sh
-  # runs the scrubbed checker against a non-git staging directory and takes
-  # exactly this path. stderr rather than a finding, because not-run is not a
-  # violation, and the exit status stays untouched.
+  # meaning from the first. A run against a staging directory that is not
+  # itself a checkout takes exactly this path. stderr rather than a finding,
+  # because not-run is not a violation, and the exit status stays untouched.
+# The marker pair below stays at column 0. The lockstep tests model the strip
+# with a line-anchored match, which is stricter than the shipped stripper's
+# substring match, so an indented pair survives their model and fails them;
+# this file's other pairs sit at column 0 for the same reason.
+# gaia:maintainer-only:start
+  # The concrete such caller in this repo is
+  # .gaia/tests/distribution/16-audit-remit-parity.sh, which runs the scrubbed
+  # checker against the staged bundle.
+# gaia:maintainer-only:end
   printf 'verify-audit-roster: coverage invariant SKIPPED, %s is not a repository root\n' "$root" >&2
 fi
 
