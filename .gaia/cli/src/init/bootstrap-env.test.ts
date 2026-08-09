@@ -1,7 +1,7 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia init bootstrap-env`.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   existsSync,
   mkdtempSync,

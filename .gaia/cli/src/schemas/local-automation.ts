@@ -1,4 +1,3 @@
-import {z} from 'zod';
 /**
  * Zod schema + read helpers for `.gaia/local/automation.json`, the
  * gitignored personal nudge state.
@@ -7,6 +6,7 @@ import {z} from 'zod';
  * `/setup-gaia` (a later slice). The path constant + read helper
  * exist now so all later slices share one canonical source.
  */
+import {z} from 'zod';
 import {existsSync, readFileSync} from 'node:fs';
 import {localAutomationPath} from '../automation/paths.js';
 import {summarizeZodError} from './zod-error.js';

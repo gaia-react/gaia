@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia init wire-statusline`.
  *
@@ -6,6 +5,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * (the merged result is byte-stable) and a global-mode test that uses a
  * temp $HOME so we never touch the real one.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   existsSync,
   mkdirSync,

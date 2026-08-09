@@ -1,5 +1,3 @@
-import {load as parseYaml} from 'js-yaml';
-import {z} from 'zod';
 /**
  * Classifier, exclude-pattern parsing, manifest build, and drift engine for
  * `gaia-maintainer release manifest`.
@@ -21,6 +19,8 @@ import {z} from 'zod';
  * The CLI flag grammar, `--check` report rendering, and the `run` entrypoint
  * that consume the pieces here live in `manifest-cli.ts`.
  */
+import {load as parseYaml} from 'js-yaml';
+import {z} from 'zod';
 import {execFileSync} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';

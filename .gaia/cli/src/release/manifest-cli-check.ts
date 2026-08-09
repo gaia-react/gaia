@@ -1,4 +1,3 @@
-import {z} from 'zod';
 /**
  * `gaia-maintainer release manifest --check`: report rendering and the check
  * itself.
@@ -14,6 +13,7 @@ import {z} from 'zod';
  * `manifest-cli.ts`'s emit/answer-gate path, which reads the same committed
  * manifest before validating answers against it.
  */
+import {z} from 'zod';
 import {existsSync, readFileSync} from 'node:fs';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';

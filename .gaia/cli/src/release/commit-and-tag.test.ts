@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release commit-and-tag`.
  *
@@ -6,6 +5,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * runners (for the tag-push path, where pushing to a remote isn't
  * portable in CI).
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
 import {

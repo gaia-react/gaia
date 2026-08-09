@@ -1,4 +1,3 @@
-import {describe, expect, test} from 'vitest';
 /**
  * Unit tests for the pure answer machinery behind the `release manifest`
  * refusal gate.
@@ -9,6 +8,7 @@ import {describe, expect, test} from 'vitest';
  * is X" or "the file has twelve categories" would be a test of today's
  * distribution boundary rather than of this module.
  */
+import {describe, expect, test} from 'vitest';
 import {
   applyWithholds,
   parseExcludeCategories,

@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 /**
  * Tests for the `gaia-maintainer release manifest` classifier, exclude
  * parsing, build, and lints.
@@ -9,6 +8,7 @@ import {afterEach, beforeEach, describe, expect, test} from 'vitest';
  *
  * The CLI (`run`) tests live in `manifest-cli.test.ts`.
  */
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   existsSync,

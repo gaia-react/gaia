@@ -1,4 +1,3 @@
-import {describe, expect, test} from 'vitest';
 /**
  * Tests for `region-markers.ts`'s whole-line marker parser.
  *
@@ -6,6 +5,7 @@ import {describe, expect, test} from 'vitest';
  * `maskRegion` against them directly. Pure functions, no I/O and nothing to
  * set up or tear down.
  */
+import {describe, expect, test} from 'vitest';
 import {maskRegion, REGION_PLACEHOLDER, scanRegion} from './region-markers.js';
 
 const START = '<!-- gaia:test:start -->';

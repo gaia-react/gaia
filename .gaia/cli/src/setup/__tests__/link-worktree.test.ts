@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia setup link-worktree` (SPEC-005 Phase 1).
  *
@@ -6,6 +5,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * a real main checkout + linked worktree under one `mkdtemp`'d parent so
  * `git rev-parse --git-common-dir` resolves correctly.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   copyFileSync,

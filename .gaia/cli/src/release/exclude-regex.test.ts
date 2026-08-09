@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release exclude-regex`.
  *
@@ -12,6 +11,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * here that reach the emit path deliberately avoid rejected metacharacters
  * so they don't collide with the fail-closed / UAT-006 assertions below.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';

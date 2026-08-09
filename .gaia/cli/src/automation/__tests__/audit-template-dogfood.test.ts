@@ -1,4 +1,3 @@
-import {describe, expect, test} from 'vitest';
 /**
  * Maintainer drift-guard: asserts that the in-tree
  * `.github/workflows/code-review-audit.yml` is byte-identical to the
@@ -9,6 +8,7 @@ import {describe, expect, test} from 'vitest';
  * must match; any divergence means either the live gate or the install
  * source was edited without updating the other.
  */
+import {describe, expect, test} from 'vitest';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';

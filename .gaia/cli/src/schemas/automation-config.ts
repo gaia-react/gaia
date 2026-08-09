@@ -1,4 +1,3 @@
-import {z} from 'zod';
 /**
  * Zod schema + read helpers for `.gaia/automation.json`, the committed
  * file carrying GAIA CI configuration and team-level GAIA preferences.
@@ -8,6 +7,7 @@ import {z} from 'zod';
  * result. The `read*` helpers therefore never throw; callers branch on
  * the discriminated `status` field.
  */
+import {z} from 'zod';
 import {existsSync, readFileSync} from 'node:fs';
 import {automationConfigPath} from '../automation/paths.js';
 import {summarizeZodError} from './zod-error.js';

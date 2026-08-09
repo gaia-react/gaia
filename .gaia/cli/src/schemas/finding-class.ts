@@ -1,5 +1,3 @@
-import {z} from 'zod';
-
 /**
  * A `finding_class` is a stable, machine-stable identifier for a kind of
  * code-audit-frontend finding. Recurrence (the policy-memory loop) keys on it,
@@ -16,6 +14,7 @@ import {z} from 'zod';
  *   finding only becomes a countable class once it has a seeded member; an
  *   unseeded member is rejected so free-text drift never reaches the tally.
  */
+import {z} from 'zod';
 
 export const FINDING_CLASS_PREFIXES = [
   'react-doctor',

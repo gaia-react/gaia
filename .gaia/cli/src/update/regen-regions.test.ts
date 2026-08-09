@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia update regen-regions`.
  *
@@ -10,6 +9,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * Numbered tests below map to the task doc's "Hostile-input coverage" /
  * "Behavior coverage" obligation list (1-22).
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   chmodSync,

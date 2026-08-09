@@ -1,4 +1,3 @@
-import {describe, expect, test} from 'vitest';
 /**
  * Tests for the determinism classifier AST helper
  * (`.gaia/scripts/classifier/classify-determinism.mjs`).
@@ -18,6 +17,7 @@ import {describe, expect, test} from 'vitest';
  * supplies the bytes). The three named real fixtures are classified from disk by
  * repo-relative path.
  */
+import {describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';

@@ -1,9 +1,3 @@
-import {describe, expect, test} from 'vitest';
-import {existsSync, readdirSync, readFileSync} from 'node:fs';
-import path from 'node:path';
-import type {ToolId} from '../../schemas/automation-config.js';
-import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
-import {workflowTemplatePath} from '../paths.js';
 /**
  * Maintainer drift-guard for the outbound references in the four
  * `gaia-ci-*` workflow templates.
@@ -49,6 +43,12 @@ import {workflowTemplatePath} from '../paths.js';
  * checkout where the templates or routers are missing, mirroring the
  * sibling guards.
  */
+import {describe, expect, test} from 'vitest';
+import {existsSync, readdirSync, readFileSync} from 'node:fs';
+import path from 'node:path';
+import type {ToolId} from '../../schemas/automation-config.js';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
+import {workflowTemplatePath} from '../paths.js';
 
 type TemplateContract = {
   readonly cli: readonly string[];

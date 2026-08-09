@@ -1,4 +1,3 @@
-import {load as parseYaml} from 'js-yaml';
 /**
  * `gaia update merge-workspace --baseline <file> --latest <file> --current <file>`
  * handler.
@@ -28,6 +27,7 @@ import {load as parseYaml} from 'js-yaml';
  *
  * Object-map dispatch and no-switch style per the project's typescript rules.
  */
+import {load as parseYaml} from 'js-yaml';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';

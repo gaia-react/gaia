@@ -1,4 +1,3 @@
-import {describe, expect, test} from 'vitest';
 /**
  * Tests for the merge-wait budget arithmetic and `cleanupAfterMerge` reuse.
  *
@@ -9,6 +8,7 @@ import {describe, expect, test} from 'vitest';
  * judgment. `cleanupAfterMerge` must stay reusable (exported, callable with
  * an injected runner) and singly-defined across the repository.
  */
+import {describe, expect, test} from 'vitest';
 import type {SpawnSyncReturns} from 'node:child_process';
 import type {CommandRunner} from './branch.js';
 import {

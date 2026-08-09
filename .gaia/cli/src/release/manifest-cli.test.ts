@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for the `gaia-maintainer release manifest` CLI's emit/answer-gate
  * path: `run(...)` (the refusal/answer gate, `--ship`/`--withhold`/
@@ -9,6 +8,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * flags) live in `manifest-cli-args.test.ts`. The classifier / build / lint
  * tests live in `manifest.test.ts`.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   existsSync,
