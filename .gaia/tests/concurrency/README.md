@@ -906,7 +906,11 @@ the next unrelated PR the first to notice.
   when any test fails; this one exits zero with scenarios red.
 - `lib/concurrency-harness.sh` — the fixture builder: a main checkout plus N linked
   worktrees off one base, seeded `.gaia/local` state, real hooks/scripts/libs copied in
-  at their repo-relative paths, and a run-in-tree helper. Sourced by the suite.
+  at their repo-relative paths, the `run_in` / `run_with` runners, and
+  `gaia_deliver_hook`, the suite's one quote-safe hook-invocation idiom. Sourced by the
+  suite. A scenario driving a hook composes a runner with the delivery rather than
+  hand-rolling a `bash -c` pipeline; the helper's own comment says why the payload must
+  stay positional, and names its `.gaia/tests/hooks/helpers/run-hook.sh` twin.
 
 ## Model
 
