@@ -79,8 +79,8 @@ const blockCommentEnd = (lines: readonly string[], start: number): number => {
  * `// eslint-disable-line` added by ordinary editing would have disabled this
  * guard for that whole file, silently.
  *
- * Two shapes are outside it, both known and both failing silent-green (#1273's
- * sibling, tracked): a trailing block comment left open to a later line, and a
+ * Two shapes are outside it, both known and both failing silent-green (tracked
+ * in #1275): a trailing block comment left open to a later line, and a
  * `;` appearing inside a comment on a continuation line of a multi-line import,
  * which terminates that import early. Closing either means stripping comment
  * content before the test, and doing that correctly needs string awareness as
@@ -91,12 +91,15 @@ const blockCommentEnd = (lines: readonly string[], start: number): number => {
 const STATEMENT_END = /;\s*(?:\/\/.*|\/\*.*\*\/)?$/;
 
 /**
- * `import` as a whole word, so neither `importantThing();` nor `import.meta`
- * is read as an import declaration. `\b` is not enough: it matches between `t`
- * and `.`, so `import.meta.hot?.accept();` would hold the header open and the
- * docblock below it would be reported stranded when it is not.
+ * An import DECLARATION at the start of a line.
+ *
+ * The three excluded characters are the three ways `import` starts something
+ * that is not a declaration, and each one misread the header differently:
+ * `\w` for `importantThing();`, `.` for `import.meta.hot?.accept();`, and `(`
+ * for a dynamic `import('./x');`. No import declaration is ever followed by any
+ * of them. `\b` alone is not enough, since it matches between `t` and `.`.
  */
-const IMPORT_START = /^import(?![.\w])/;
+const IMPORT_START = /^import(?![.\w(])/;
 
 /**
  * Line index of the last line of the import statement opening at `start`.
@@ -353,6 +356,20 @@ describe('module docblock placement', () => {
       ' */',
       '',
       'export const value = 1;',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBeNull();
+  });
+
+  // A dynamic `import(...)` is an expression, not a declaration, so the
+  // docblock above it is JSDoc for that call and the header has closed.
+  test('a dynamic import call closes the header', () => {
+    const source = [
+      "import {z} from 'zod';",
+      '/**',
+      ' * Doc for the dynamic import below.',
+      ' */',
+      "import('./side-effect.js');",
     ].join('\n');
 
     expect(findStrandedDocblock(source)).toBeNull();
