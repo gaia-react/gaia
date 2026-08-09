@@ -21,6 +21,7 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.husky/**`
 - `.gaia/*.yml`
 - `.gaia/*.json`
+- `.gaia/scripts/token-rates.json`
 - `.gaia/release-exclude`
 - `.gaia/VERSION`
 - `.claude/settings.json`

@@ -133,6 +133,13 @@ auditors:
       # tsconfig and lockfile stay with the node member below.
       - ".gaia/*.yml"
       - ".gaia/*.json"
+      # The model-pricing table the bash cost tooling reads at runtime
+      # (cost-reprice.sh, cost-unpriced-scan.sh, the token-tally chain). It
+      # carries dated per-model rates, so it is actively edited and a wrong
+      # entry silently misprices every tally. Named as a literal because
+      # `.gaia/scripts/**/*.json` is otherwise all test fixtures; see the
+      # `unowned:` note on that exemption below.
+      - ".gaia/scripts/token-rates.json"
       - ".gaia/release-exclude"
       - ".gaia/VERSION"
       - ".claude/settings.json"
@@ -247,7 +254,11 @@ unowned:
   - ".gaia/cli/test-fixtures/**/*.json"
   - ".gaia/cli/test-fixtures/**/*.md"
   - ".gaia/cli/test-fixtures/**/*.ts"
-  - ".gaia/scripts/**/*.json"
+  # Scoped to `tests/` rather than the whole subtree: `.gaia/scripts/**/*.json`
+  # also reaches `.gaia/scripts/token-rates.json`, the shipped rate table the
+  # cost tooling reads, and exempting it would not merely leave it ownerless but
+  # assert it is meant to be. It is granted to the shell member above instead.
+  - ".gaia/scripts/tests/**/*.json"
   - ".gaia/scripts/**/*.jsonl"
   - ".gaia/scripts/**/*.txt"
   - ".gaia/scripts/**/*.yml"
@@ -259,7 +270,11 @@ unowned:
   - ".gaia/tests/**/*.txt"
   - ".gaia/tests/**/*.json"
   - ".gaia/tests/**/*.tsv"
-  - ".gaia/tests/**/*.py"
+  # Pinned to the one file rather than the extension: this is an executable
+  # scanner, not fixture data, and it is exempt only because no Python auditor
+  # exists to give it to. An extension glob would hand that exemption to a
+  # second Python tool silently; a literal makes the next one report ownerless.
+  - ".gaia/tests/observability/serena/usage_scan.py"
   - ".github/forensics/**/*.md"
   - ".serena/**"
   - ".specify/extensions/gaia/**/*.md"

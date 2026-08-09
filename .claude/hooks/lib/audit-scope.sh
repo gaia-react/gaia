@@ -142,6 +142,7 @@ auditors:
       - ".husky/**"
       - ".gaia/*.yml"
       - ".gaia/*.json"
+      - ".gaia/scripts/token-rates.json"
       - ".gaia/release-exclude"
       - ".gaia/VERSION"
       - ".claude/settings.json"
