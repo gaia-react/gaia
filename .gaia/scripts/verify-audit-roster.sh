@@ -60,6 +60,15 @@
 #      reaches neither position. The region's SENTENCE text is deliberately not
 #      compared here; the writer (write-audit-remits.sh) owns the region's exact
 #      form, and re-running it is the repair for every finding in this group.
+#   7. Coverage: every tracked path resolves an owner, or is declared in the
+#      roster's `unowned:` list. The inverse of (1) through (6), which all ask
+#      whether the roster's entries are well-formed and none of which asks
+#      whether they reach the repository at all. An `unowned:` entry reaching an
+#      owned path fails as overbroad, and one no ownerless path needs fails as
+#      redundant; together those are what stop the list being a free opt-out. A
+#      dead entry fails too, on the maintainer repo only. The section's own
+#      docblock below carries the reasoning, including why the universe is the
+#      tracked files of the repository ROOTED AT --root and nothing wider.
 #
 # THE BOUNDED DIALECT, and why intersection is decidable over it at all. The
 # classifier compiles three constructs (glob_to_regex, in the roster module

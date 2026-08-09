@@ -7,15 +7,22 @@ name: Audit Roster Drift
 # pair the bounded dialect cannot decide, that every roster member has an
 # agent file on disk registered in both machinery lists, that every
 # member's name carries the `code-audit-` prefix the self-heal repair
-# boundary keys off of, and remit region parity (region vs roster entry,
-# ordered; the region-shape rules; the region-glob dialect rule). The
+# boundary keys off of, remit region parity (region vs roster entry,
+# ordered; the region-shape rules; the region-glob dialect rule), and
+# coverage -- that every tracked path resolves an owner or is declared in
+# the roster's `unowned:` list, with that list held narrow by failing an
+# entry that reaches an owned path, one no ownerless path needs, and one
+# matching nothing at all. The
 # roster is meant to grow as a project adds languages and surfaces, and
 # these failure modes are otherwise silent: an unregistered agent file
 # rotates no member's content digest and merges unaudited, a glob overlap
 # between two claimant members hands a path to whichever member the roster
 # happens to list first, an off-convention member name escapes the
-# self-heal repair boundary silently, and a remit region that disagrees
-# with its roster entry misdescribes what the member actually reviews.
+# self-heal repair boundary silently, a remit region that disagrees
+# with its roster entry misdescribes what the member actually reviews, and
+# a path the roster reaches with no glob at all dispatches nobody, which
+# the merge gate reads as "nobody is owed a clearance" -- so it merges
+# having been reviewed by no one.
 #
 # Deliberately NOT added to the required set: registering this (or any
 # check) as a required status check is a maintainer-run, ask-first cutover
@@ -34,12 +41,10 @@ name: Audit Roster Drift
 #
 # Pinned action SHAs match the sibling maintainer workflows:
 #   actions/checkout   @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
-#   dorny/paths-filter @ fbd0ab8f3e69293af611ebaee6363fc25e6d187d (v4.0.1)
 
-# No `push:` trigger, matching verify-required-checks.yml and shell-lint.yml:
-# the job only ever has something to say about a proposed change to the
-# roster or its machinery, and a push-to-main run would be a skipped no-op
-# cluttering the dashboard. Merges all land via PR, so the PR run is the gate.
+# No `push:` trigger, matching verify-required-checks.yml and shell-lint.yml.
+# Merges all land via PR, so the PR run is the gate and a push-to-main run
+# would re-report a verdict the PR run already gave.
 on:
   pull_request:
     branches: [ main ]
@@ -52,35 +57,23 @@ jobs:
   verify-audit-roster:
     name: Audit roster drift (advisory)
     runs-on: ubuntu-latest
-    # Read-only token: this job reads the roster and its machinery lists and
-    # reports, it never writes to the repo.
-    #
-    # `pull-requests: read` is load-bearing, not decoration (same reasoning
-    # spelled out in shell-lint.yml). Naming any scope here sets every unlisted
-    # one to `none`, and dorny/paths-filter resolves a PR's changed files
-    # through the API, which needs it. Omitting it works only while this repo is
-    # public (the token can still read public PR data); the day it went private,
-    # every run would 403 with "Resource not accessible by integration".
+    # Read-only token, and `contents: read` alone: the job reads the checked-out
+    # tree and reports. Naming any scope here sets every unlisted one to `none`,
+    # so this grants nothing else. It needs no `pull-requests: read` because it
+    # asks the API nothing about the pull request -- it runs on every PR and
+    # reads the tracked tree rather than the changed-file list.
     permissions:
       contents: read
-      pull-requests: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
-      # PRs that touch none of the roster's inputs report this check green
-      # without running anything.
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
-        id: filter
-        with:
-          filters: |
-            roster:
-              - '.gaia/audit-ci.yml'
-              - '.claude/agents/code-audit-*.md'
-              - '.claude/hooks/lib/audit-scope.sh'
-              - '.claude/hooks/lib/audit-machinery.sh'
-              - '.gaia/scripts/audit-machinery-complete.sh'
-              - '.gaia/scripts/verify-audit-roster.sh'
-              - '.gaia/scripts/write-audit-remits.sh'
-              - '.github/workflows/audit-roster.yml'
-      - if: steps.filter.outputs.roster == 'true'
-        name: Verify roster invariants
+      # No paths filter, unlike the sibling advisory workflows, and the coverage
+      # invariant is why. Its input is the TRACKED TREE rather than any list of
+      # files, so the pull request that most needs this job is one adding a
+      # single file somewhere the roster has never mentioned -- precisely what a
+      # filter over roster inputs would skip. A file-based filter cannot decide
+      # whether this check has something to say, so it does not get to try.
+      #
+      # Running it on every pull request is what makes that affordable: the
+      # checker is read-only and finishes in well under a second on this tree.
+      - name: Verify roster invariants
         run: bash .gaia/scripts/verify-audit-roster.sh

@@ -82,6 +82,19 @@ const MANAGED_WHOLE_VALUE_KEYS: readonly string[] = [
   'retrigger_workflows',
 ];
 
+/**
+ * `unowned` is deliberately absent from every managed set above, so this
+ * command ignores it and `/update-gaia` leaves an adopter's list alone.
+ *
+ * That is a design decision rather than an omission. The list declares which
+ * paths in *this tree* are meant to dispatch no auditor, so it is a statement
+ * about the adopter's own repository from the moment they scaffold: GAIA seeds
+ * it and stops. Merging it whole-value would delete the entries an adopter adds
+ * for their own unowned regions, and the roster's coverage invariant already
+ * reports anything the list stops covering, so a missed seed entry surfaces as
+ * an actionable finding rather than as silence.
+ */
+
 /** The adopter-shared section: a space-separated `login=mode` string. */
 const AUTHORS_SECTION = 'audit_authors';
 
