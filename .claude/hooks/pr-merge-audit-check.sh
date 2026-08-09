@@ -59,7 +59,7 @@
 #      markdown. These mirror the surfaces code-review-audit.yml treats as out
 #      of scope via its `has_source` check. Evaluated fail-closed: any in-scope
 #      path (app/, test/, configs, .github/workflows/) makes the marker
-#      mandatory again. An in-scope-but-ownerless path (a root Dockerfile,
+#      mandatory again. An in-scope-but-ownerless path (a root .editorconfig,
 #      public/**) is folded into the frontend member's digest input set, so a
 #      stale marker computed for a prior digest never matches such a change
 #      either; this bypass and that digest fold close the same band from two
@@ -738,7 +738,7 @@ if [ -z "$members" ]; then
   # absent/unusable: fall through to the legacy single-signal gate verbatim.
   # NOT an unconditional allow, FC-4's auditable-base is strictly narrower
   # than check_out_of_scope_pr's denylist, so an ownerless-but-in-scope file
-  # (root Dockerfile, public/**, ...) still denies here without a marker.
+  # (root .editorconfig, public/**, ...) still denies here without a marker.
   if frontend_cleared; then
     _gate_frontend_disposition_denial
     exit 0

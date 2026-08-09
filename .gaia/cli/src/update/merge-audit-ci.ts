@@ -89,8 +89,11 @@ const MANAGED_WHOLE_VALUE_KEYS: readonly string[] = [
  * That is a design decision rather than an omission. The list declares which
  * paths in *this tree* are meant to dispatch no auditor, so what GAIA ships is
  * a seed for its own tree, and the entries carry no authority over an
- * adopter's. Managing it would mean re-proposing them on every update against
- * a repository whose unowned regions GAIA cannot see.
+ * adopter's. Managing it would mean re-proposing them on every update that
+ * touches the list, against a repository whose unowned regions GAIA cannot
+ * see. (Not on every update: with the adopter value absent and baseline equal
+ * to latest, the verdict is `noop`, so a release that does not edit GAIA's own
+ * list re-proposes nothing.)
  *
  * Two consequences, stated because neither is what "unmanaged" first suggests:
  *

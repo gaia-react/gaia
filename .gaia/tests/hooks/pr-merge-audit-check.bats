@@ -498,15 +498,19 @@ assert_not_in_set() {
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
 }
 
-@test "AND-aggregator: root Dockerfile-only diff denies without a marker (zero-match falls through to the legacy gate, not an auto-allow)" {
-  commit_files "Dockerfile" "FROM scratch"
+# The witness here must be a root path in scope that NO member claims, or the
+# pair below stops exercising the zero-match legacy branch and silently becomes
+# two more member-aware cases. `Dockerfile` is not that path: the default member
+# claims it, along with the rest of the root tooling.
+@test "AND-aggregator: root .editorconfig-only diff denies without a marker (zero-match falls through to the legacy gate, not an auto-allow)" {
+  commit_files ".editorconfig" "root = true"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
 }
 
-@test "AND-aggregator: root Dockerfile-only diff allows once the legacy marker is present" {
-  commit_files "Dockerfile" "FROM scratch"
+@test "AND-aggregator: root .editorconfig-only diff allows once the legacy marker is present" {
+  commit_files ".editorconfig" "root = true"
   write_marker "code-audit-frontend"
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -678,10 +682,10 @@ assert_not_in_set() {
 # (earned before an ownerless in-scope path was added) no longer validates.
 # ---------------------------------------------------------------------------
 
-@test "UAT-011: a stale frontend marker does not clear a merge that adds an in-scope-but-ownerless Dockerfile" {
+@test "UAT-011: a stale frontend marker does not clear a merge that adds an in-scope-but-ownerless .editorconfig" {
   commit_files "app/x.ts" "export const x = 1"
   write_marker "code-audit-frontend"
-  commit_files "Dockerfile" "FROM scratch"
+  commit_files ".editorconfig" "root = true"
 
   run_merge_hook
   assert_denied_by_json

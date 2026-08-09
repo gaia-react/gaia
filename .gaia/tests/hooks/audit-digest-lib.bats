@@ -198,19 +198,28 @@ mutate_commit() {
 
 # ---------------------------------------------------------------------------
 # Determinism: the frontend digest folds the in-scope-but-ownerless set, so a
-# root Dockerfile change rotates it while a wiki file (allowlisted) does not.
+# root .editorconfig change rotates it while a wiki file (allowlisted) does not.
+#
+# The witness must be a root file that is in scope AND that no member's globs
+# claim, or this test rotates the digest through the ordinary owned-glob branch
+# and asserts nothing about the fold. `.editorconfig` is that file: it appears
+# in no roster glob, and it is not on the out-of-scope allowlist. Do not
+# substitute a root path the default member owns -- `Dockerfile`, `.npmrc`,
+# `.nvmrc`, `.prettierignore` and the rest of the root tooling are all claimed,
+# and using one leaves this guard hollow: deleting the fold from the digest
+# engine outright would still leave this suite green.
 # ---------------------------------------------------------------------------
 
-@test "determinism: an in-scope-but-ownerless root Dockerfile rotates the frontend digest; a wiki file does not" {
+@test "determinism: an in-scope-but-ownerless root .editorconfig rotates the frontend digest; a wiki file does not" {
   ROOT="$BATS_TEST_TMPDIR/ownerless"
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
-  echo "FROM scratch" > "$ROOT/Dockerfile"
-  git -C "$ROOT" add Dockerfile
-  git -C "$ROOT" commit --quiet -m "add Dockerfile"
+  echo "root = true" > "$ROOT/.editorconfig"
+  git -C "$ROOT" add .editorconfig
+  git -C "$ROOT" commit --quiet -m "add .editorconfig"
 
-  # A Dockerfile edit rotates the frontend digest (folded in).
-  refs="$(mutate_commit "$ROOT" "Dockerfile")"
+  # An .editorconfig edit rotates the frontend digest (folded in).
+  refs="$(mutate_commit "$ROOT" ".editorconfig")"
   a="${refs% *}"; b="${refs#* }"
   [ "$(digest_of "$ROOT" code-audit-frontend "$a")" != "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
 

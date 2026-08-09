@@ -310,9 +310,13 @@ golden_run_hook() {
   true
 }
 
-@test "golden table: ownerless-but-in-scope root Dockerfile denies" {
+# The witness must be a root file in scope that no member's globs claim, or the
+# table loses its ownerless-in-scope row entirely. `.editorconfig` is that file.
+# The root tooling beside it (`Dockerfile`, `.npmrc`, `.nvmrc`, `.prettierignore`)
+# is claimed by the default member and would exercise the owned branch instead.
+@test "golden table: ownerless-but-in-scope root .editorconfig denies" {
   golden_setup
-  golden_commit "Dockerfile" "FROM scratch"
+  golden_commit ".editorconfig" "root = true"
   golden_run_hook
   golden_teardown
   [ "$status" -eq 0 ]
