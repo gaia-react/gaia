@@ -172,6 +172,7 @@ auditors:
   - name: code-audit-maintainer-prose
     globs:
       - ".claude/skills/**/*.md"
+      - ".claude/agents/*/**"
     scope: maintainer-only
     push_fixes: false
   # gaia:maintainer-only:end

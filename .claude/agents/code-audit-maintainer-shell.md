@@ -163,14 +163,18 @@ This lens activates only for `.bats` files.
 
 ## Conditional declarative-surface lens
 
-Six paths in your remit are not scripts: `.gaia/*.yml`, `.gaia/*.json`, `.gaia/scripts/token-rates.json`, `.gaia/release-exclude`, `.claude/settings.json`, and `.github/CODEOWNERS`. The correctness core above and the shellcheck oracle both assume a script, so a diff touching only these would otherwise dispatch you with no stated lens. They are here because each one *decides* something the scripts merely execute, and that is what to review.
+Several paths in your remit are not scripts, and the correctness core above and the shellcheck oracle both assume a script, so a diff touching only these would otherwise dispatch you with no stated lens. Read the remit region as the authority on which; deliberately no count here, because a number in this sentence rots the next time the roster grants one. They fall in two groups.
+
+**The declarative surfaces** — `.gaia/*.yml`, `.gaia/*.json`, `.gaia/scripts/token-rates.json`, `.gaia/release-exclude`, `.gaia/VERSION`, `.claude/settings.json`, `.github/CODEOWNERS` — are here because each one *decides* something the scripts merely execute, and that is what to review.
 
 - **What the change decides, not how it is spelled.** Read the diff as a policy change and name its consequence: which file now ships or stops shipping (`.gaia/release-exclude`, the manifest), which hook now runs or stops running and with what permission (`.claude/settings.json`), who is required to review what (`.github/CODEOWNERS`, `.gaia/audit-ci.yml`), what a computation is now based on (`.gaia/scripts/token-rates.json`). A syntactically clean edit that quietly widens one of those is the defect this lens exists for.
 - **Loosening that reads as tidying.** A removed `release-exclude` entry, a widened permission or a dropped hook registration, a deleted CODEOWNERS rule, an auditor glob narrowed so it no longer reaches a path it used to: each makes a gate smaller while the diff looks like cleanup. Require the change to say why.
 - **The readers.** These files are parsed by scripts that mostly do not validate them, so a key the reader ignores fails silently rather than loudly. `git grep` the key or filename and read every consumer against the new value; a stale or dated entry (`token-rates.json` carries per-model `effective_through` dates) is wrong without being malformed.
 - **Deterministic checks instead of shellcheck.** `.gaia/audit-ci.yml` has `bash .gaia/scripts/verify-audit-roster.sh`; the manifest and `release-exclude` have the distribution harness. Run whichever applies and fold the result in, on the same advisory footing as shellcheck.
 
-This lens activates only for those six paths, and it is additive: a diff carrying both a script and one of them gets both lenses.
+**The instruction prose** — `.claude/agents/code-audit-*.md` and `.claude/rules/**` — governs what this team reviews and how, so a diff touching only it changes the gate itself with no code to shellcheck. Review it as a contract: does a stated claim still hold against the machinery it describes (a glob list, a hook registration, an exit code), and does a widened or dropped instruction quietly retire a check? A sentence falsified by a roster or hook change is a finding here even though nothing executes it, because these files are what a dispatched member reads instead of deriving the answer.
+
+This lens activates only for the non-script paths above, and it is additive: a diff carrying both a script and one of them gets both lenses.
 
 ## Findings grading
 

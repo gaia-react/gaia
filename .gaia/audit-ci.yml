@@ -91,6 +91,13 @@ auditors:
       # environment contract, and the Node version CI and local must agree on.
       # Editor preferences, VCS bookkeeping, the licence and the root prose are
       # deliberately NOT here; they are declared in `unowned:` instead.
+      #
+      # REVIEWED here, REPAIRED nowhere. This member is the roster's only
+      # `push_fixes: true` one, so granting it a path that decides what the
+      # gates check would let it rewrite the gate in the same self-heal commit
+      # as its repair. All seven are therefore also in the self-heal refusal set
+      # (`.claude/hooks/lib/audit-selfheal-paths.sh`), matching every sibling
+      # root config this member owns; the grant buys review, not write access.
       - ".npmrc"
       - ".lintstagedrc.json"
       - ".prettierignore"
@@ -194,6 +201,14 @@ auditors:
   - name: code-audit-maintainer-prose
     globs:
       - ".claude/skills/**/*.md"
+      # The Code Audit Team's own review lenses. This glob reaches exactly
+      # `.claude/agents/code-audit-frontend/`, whose five files decide what that
+      # member checks, so leaving them ownerless meant a commit deleting a check
+      # from one of them rotated no digest and dispatched nobody. They are
+      # instruction prose, which is this member's remit; the per-member agent
+      # definitions beside them (`.claude/agents/code-audit-*.md`) are machinery
+      # and stay with the shell member, and the two globs are disjoint.
+      - ".claude/agents/*/**"
     scope: maintainer-only
     push_fixes: false
   # gaia:maintainer-only:end
@@ -243,7 +258,6 @@ unowned:
   # entry would reach it and fail as overbroad.
   - ".claude/commands/**"
   - ".claude/instructions/**"
-  - ".claude/agents/*/**"
   - ".claude/agents/worthiness-evaluator.md"
   - ".claude/skills/release-notes/eval/**"
   - ".gaia/cli/.gitignore"

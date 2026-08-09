@@ -11,6 +11,7 @@ You audit GAIA's own instruction prose: the natural-language skill files under `
 
 <!-- gaia:audit-remit:start -->
 - `.claude/skills/**/*.md`
+- `.claude/agents/*/**`
 
 Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.
 <!-- gaia:audit-remit:end -->

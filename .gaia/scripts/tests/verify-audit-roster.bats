@@ -5,7 +5,7 @@
 # shellcheck disable=SC2016
 # SC2317 and SC2329 likewise: shellcheck does not model bats' `@test` dispatch,
 # so it reads a block following an early `return 0` as unreachable and the
-# helpers as uncalled. All 81 tests run; shell-lint gates `.bats` at
+# helpers as uncalled. All 83 tests run; shell-lint gates `.bats` at
 # severity=warning, above these two, so this only quiets an ad-hoc run.
 # shellcheck disable=SC2317,SC2329
 # Tests for .gaia/scripts/verify-audit-roster.sh, the roster's deterministic
