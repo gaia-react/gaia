@@ -6,19 +6,18 @@
  * snapshot the suggestion + reason for each commit and assert against it.
  */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {COMMIT_TYPES} from '../util/conventional-commit.js';
 import {execGaiaGit} from '../util/git-env.js';
+import {
+  autoMaintenanceSpawns,
+  detachedSpawns,
+  MAINTENANCE_GATE_DEFAULTS,
+  MAINTENANCE_GATES,
+} from '../util/git-maintenance.js';
 import {run} from './commit-classify.js';
 import type {CommitClassification} from './commit-classify.js';
 
@@ -117,7 +116,14 @@ const sandboxGit = (root: string, args: string[]): string => {
  *
  * Measured on git 2.55, over the whole list rather than per entry: one spawned
  * maintenance run per commit with none of these set, zero with them. The test
- * at the bottom of this file is what keeps that true.
+ * at the bottom of this file is what keeps that true, and it clears
+ * `GIT_CONFIG_COUNT` so that what it measures is this list.
+ *
+ * A second mechanism covers the same hazard for the whole run,
+ * `util/git-maintenance-env.ts`, which puts the four maintenance keys in the
+ * environment so the eighteen other files building a sandbox get them without
+ * opting in. This list is not redundant under it: it is what this fixture's own
+ * hermeticity rests on, and it is the thing the test at the bottom measures.
  */
 const SANDBOX_GIT_CONFIG: [string, string][] = [
   ['user.email', 'test@example.com'],
@@ -128,29 +134,6 @@ const SANDBOX_GIT_CONFIG: [string, string][] = [
   ['gc.autoDetach', 'false'],
   ['maintenance.autoDetach', 'false'],
 ];
-
-/**
- * The gates, paired with the value that explicitly turns each one off.
- *
- * The control repository cannot establish "ungated" by leaving these out.
- * Repo-local config beats global, so the sandbox is immune to whatever the
- * machine's own `~/.gitconfig` says, but a control that merely omits these
- * keys inherits it, and `gc.auto = 0` is a common thing to carry in a personal
- * dotfile. The control would then spawn nothing and the arm asserting git
- * still spawns maintenance would fail against a fixture behaving perfectly.
- * Writing git's own defaults into the control makes its condition its own.
- *
- * Named beside the list it subtracts from so the two cannot drift into
- * disagreeing about which entries are the gates.
- */
-const MAINTENANCE_GATE_DEFAULTS: [string, string][] = [
-  ['gc.auto', '6700'],
-  ['maintenance.auto', 'true'],
-];
-
-const MAINTENANCE_GATES = new Set(
-  MAINTENANCE_GATE_DEFAULTS.map(([key]) => key)
-);
 
 /** Initialize one repository this fixture owns, suppression included. */
 const initSandboxRepo = (root: string, omit?: ReadonlySet<string>): void => {
@@ -804,28 +787,6 @@ describe('wiki commit-classify', () => {
 });
 
 /**
- * Every auto-maintenance child process git's own trace recorded.
- *
- * `GIT_TRACE2_EVENT` writes a `child_start` event, carrying the child's argv,
- * into the trace of the process that spawned it, so a run detached with
- * `--detach` is still visible without waiting on it or racing its exit. An
- * absent file means git spawned nothing and so wrote nothing.
- *
- * Both spellings count. Modern git spawns `git maintenance run --auto`; git
- * predating that task set spawns `git gc --auto`, which the config list above
- * names as a version it suppresses, so a filter matching only the first would
- * assert nothing on exactly the git the second entry exists for.
- */
-const autoMaintenanceSpawns = (tracePath: string): string[] =>
-  (existsSync(tracePath) ? readFileSync(tracePath, 'utf8') : '')
-    .split('\n')
-    .filter(
-      (line) =>
-        line.includes('"child_start"') &&
-        (line.includes('"maintenance"') || line.includes('"gc"'))
-    );
-
-/**
  * The fixture's own hermeticity. Every scenario above takes it on faith that
  * the repository it commits into is the one `setupSandbox` created; nothing
  * asserted it, and a bare `execFileSync('git', ...)` hands that assumption to
@@ -873,6 +834,14 @@ describe('commit-classify sandbox fixture', () => {
     let sandbox: Sandbox | undefined;
 
     try {
+      // Opt out of the run-wide suppression (`util/git-maintenance-env.ts`) for
+      // the whole test, so what runs here is this file's own config list and
+      // nothing else. An environment entry outranks repo-local config the way
+      // `git -c` does, so without this the control below would inherit the
+      // gates it exists to leave off and report a fixture that spawns nothing,
+      // which is the vacuous green this test was written to prevent.
+      vi.stubEnv('GIT_CONFIG_COUNT', '0');
+
       // Everything the sandbox sets except the gates, which are then written
       // back at git's own defaults so the control's ungated state is its own
       // rather than inherited from the machine's global config. `gc.autoDetach`
@@ -902,9 +871,7 @@ describe('commit-classify sandbox fixture', () => {
       // git predating the task set spawns `git gc --auto`, which carries no
       // detach flag at all and passes, while modern git catches a
       // `maintenance.autoDetach` that a later edit dropped as redundant.
-      expect(controlSpawns.some((line) => line.includes('"--detach"'))).toBe(
-        false
-      );
+      expect(detachedSpawns(controlSpawns)).toEqual([]);
 
       const sandboxTrace = path.join(traceRoot, 'sandbox.json');
       vi.stubEnv('GIT_TRACE2_EVENT', sandboxTrace);
