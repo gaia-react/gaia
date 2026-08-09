@@ -1,4 +1,3 @@
-import {describe, expect, test} from 'vitest';
 /**
  * Maintainer guards for the CLI subcommand surface. Two of them, sharing one
  * router scan: a reachability guard (is each command invoked from anywhere?)
@@ -66,6 +65,7 @@ import {describe, expect, test} from 'vitest';
  * for those lines this guard checks only that the command is documented and
  * dispatched, never that the verbs after it are complete.
  */
+import {describe, expect, test} from 'vitest';
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from './util/repo-root-fixture.js';

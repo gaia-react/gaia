@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia update merge-workspace`.
  *
@@ -8,6 +7,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * there are no on-disk side effects to assert (the `/update-gaia` skill
  * applies `applied[]` via the Edit tool to preserve comments and order).
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';

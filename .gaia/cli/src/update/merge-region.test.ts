@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia update merge-region`.
  *
@@ -8,6 +7,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * verdict is the assertable surface, the working-tree consequences are the
  * skill's prose and are prose-verified elsewhere.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';

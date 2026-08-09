@@ -1,8 +1,3 @@
-import {describe, expect, test} from 'vitest';
-import {existsSync, readFileSync} from 'node:fs';
-import path from 'node:path';
-import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
-
 /**
  * Static text-scan guards for the maintainer-side ship-or-withhold command.
  *
@@ -18,6 +13,10 @@ import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
  * sandbox: every assertion below reads a committed file's text and matches
  * against it.
  */
+import {describe, expect, test} from 'vitest';
+import {existsSync, readFileSync} from 'node:fs';
+import path from 'node:path';
+import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const commandPath = path.join(

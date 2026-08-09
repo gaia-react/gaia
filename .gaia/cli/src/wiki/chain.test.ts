@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki chain <begin|commit|finish>`.
  *
@@ -8,6 +7,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * keyed off argv. Each test asserts the handler's exit code and the exact
  * sequence of git/gh invocations the fake observed.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
 import {

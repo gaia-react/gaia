@@ -1,4 +1,3 @@
-import {z} from 'zod';
 /**
  * The path vocabulary `commit-classify`'s rules 6/7 discriminate on, declared
  * as a repo-configurable input instead of `app/**` literals.
@@ -20,6 +19,7 @@ import {z} from 'zod';
  * heuristic pre-filter ahead of an expensive per-commit read, so a malformed
  * config must degrade to the shipped behavior rather than fail a sync.
  */
+import {z} from 'zod';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {summarizeZodError} from '../schemas/zod-error.js';

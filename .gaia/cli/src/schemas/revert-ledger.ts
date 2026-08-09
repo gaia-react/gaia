@@ -1,4 +1,3 @@
-import {z} from 'zod';
 /**
  * Zod schema + read/write helpers for the revert-attempt ledger.
  *
@@ -11,6 +10,7 @@ import {z} from 'zod';
  * consults `attempts[<original_pr>]` before doing any git/`gh` work and
  * refuses to re-open if an entry already exists.
  */
+import {z} from 'zod';
 import {
   existsSync,
   mkdirSync,

@@ -1,7 +1,7 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release bump`.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
 import {

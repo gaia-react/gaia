@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 /**
  * Tests for `region-registry.ts`: the hand-authored region declarations and
  * `rosterAgentPaths`, the roster-derived `rewrites` set for the `audit-remit`
@@ -7,6 +6,7 @@ import {afterEach, beforeEach, describe, expect, test} from 'vitest';
  * Fixtures are built in a temp dir, not against the real repo, so the roster-
  * shape cases are hermetic.
  */
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';

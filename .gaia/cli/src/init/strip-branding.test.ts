@@ -1,7 +1,7 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia init strip-branding`.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   existsSync,
   mkdirSync,

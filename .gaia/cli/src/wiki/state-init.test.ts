@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki state-init`.
  *
@@ -6,6 +5,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * commit so refs resolve, then exercise the handler against that
  * sandbox via the `cwd` option.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   existsSync,

@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki sync await`.
  *
@@ -9,6 +8,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * polls). `sleep` is always a no-op; the real `waitForMerge` budget is
  * minutes long and no test should block on it.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
 import {

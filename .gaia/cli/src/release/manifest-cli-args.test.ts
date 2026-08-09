@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for the `gaia-maintainer release manifest` CLI's flag grammar: argv
  * parsing, unknown-flag rejection, and flag-combination validation, all
@@ -7,6 +6,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * The check/emit execution tests (manifest content, `--check` reporting, the
  * answer gate) live in `manifest-cli.test.ts`.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';

@@ -1,7 +1,7 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia init configure-i18n`.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   mkdirSync,
   mkdtempSync,

@@ -1,4 +1,3 @@
-import {describe, expect, test} from 'vitest';
 /**
  * Tests for `inspectWorkingTree`.
  *
@@ -10,6 +9,7 @@ import {describe, expect, test} from 'vitest';
  * wiki page (nearly every GAIA wiki page has a space in its filename) on the
  * wiki side of the split.
  */
+import {describe, expect, test} from 'vitest';
 import type {SpawnSyncReturns} from 'node:child_process';
 import {inspectWorkingTree} from './branch.js';
 import type {CommandRunner} from './branch.js';

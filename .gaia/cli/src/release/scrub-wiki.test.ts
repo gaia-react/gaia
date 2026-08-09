@@ -1,7 +1,7 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release scrub-wiki`.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   mkdirSync,
   mkdtempSync,

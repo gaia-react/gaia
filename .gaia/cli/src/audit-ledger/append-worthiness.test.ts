@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 /**
  * Tests for the worthiness-audit ledger writer
  * (`.gaia/scripts/audit-ledger/append-worthiness.mjs`).
@@ -17,6 +16,7 @@ import {afterEach, beforeEach, describe, expect, test} from 'vitest';
  * from `node_modules`; this `.gaia/cli` workspace carries its own `typescript`
  * devDependency, so the test runner can exec it.
  */
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';

@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for the `gaia react-perf reduce` Reduce layer.
  *
@@ -7,6 +6,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * cover file reading, alien-shape rejection, determinism, and the frame-budget
  * flag. Fixtures live in `test-fixtures/react-perf/`.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';

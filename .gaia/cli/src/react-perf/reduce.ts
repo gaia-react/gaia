@@ -1,4 +1,3 @@
-import type {z} from 'zod';
 /**
  * `gaia react-perf reduce <raw.json> [--frame-budget-ms <n>]`.
  *
@@ -15,6 +14,7 @@ import type {z} from 'zod';
  * flag, which false-positives. Timing filters out the trivial; it never flags
  * a cheap memo defeat on its own.
  */
+import type {z} from 'zod';
 import {readFileSync} from 'node:fs';
 import {EXIT_CODES} from '../exit.js';
 import {

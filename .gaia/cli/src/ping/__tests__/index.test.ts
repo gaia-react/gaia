@@ -1,7 +1,7 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia ping` argument parsing and per-event payload shape.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';

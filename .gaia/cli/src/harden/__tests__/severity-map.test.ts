@@ -1,10 +1,3 @@
-import {describe, expect, test} from 'vitest';
-import {readdirSync, readFileSync} from 'node:fs';
-import path from 'node:path';
-import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
-import {SEVERITIES} from '../parse-findings-block.js';
-import {SEVERITY_BY_GRADING} from '../severity-map.js';
-
 /**
  * UAT-035's divergence test. Every `code-audit-*.md` agent file carries one
  * machine-readable declaration of the gradings it can emit (README FC-7):
@@ -26,6 +19,12 @@ import {SEVERITY_BY_GRADING} from '../severity-map.js';
  * its byte-identical check: there is no context in which this file runs with
  * only the two adopter-scope agents on disk.
  */
+import {describe, expect, test} from 'vitest';
+import {readdirSync, readFileSync} from 'node:fs';
+import path from 'node:path';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
+import {SEVERITIES} from '../parse-findings-block.js';
+import {SEVERITY_BY_GRADING} from '../severity-map.js';
 
 const GRADINGS_MARKER = '<!-- gaia-audit:gradings:';
 

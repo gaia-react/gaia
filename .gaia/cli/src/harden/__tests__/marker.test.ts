@@ -1,4 +1,3 @@
-import {describe, expect, test} from 'vitest';
 /**
  * Guard for the frozen provenance marker (`marker.ts`).
  *
@@ -8,6 +7,7 @@ import {describe, expect, test} from 'vitest';
  * every copy plus the regex to `markerComment(...)` so a drifted copy fails the
  * suite instead of silently breaking one binder.
  */
+import {describe, expect, test} from 'vitest';
 import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';

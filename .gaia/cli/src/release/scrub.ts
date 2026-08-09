@@ -1,5 +1,3 @@
-import {load as parseYaml} from 'js-yaml';
-import {z} from 'zod';
 /**
  * `gaia-maintainer release scrub` handler.
  *
@@ -34,6 +32,8 @@ import {z} from 'zod';
  *       staging dir, malformed config flags)
  *   2: unexpected (config parse error, filesystem IO failure)
  */
+import {load as parseYaml} from 'js-yaml';
+import {z} from 'zod';
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';

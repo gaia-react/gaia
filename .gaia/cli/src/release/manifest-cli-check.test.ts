@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for the `gaia-maintainer release manifest --check` path: drift
  * reporting (missing/extra/class/version drift), classifier-set overlap and
@@ -8,6 +7,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * `--out`/`--stdout`) live in `manifest-cli.test.ts`. The flag-grammar tests
  * live in `manifest-cli-args.test.ts`.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   mkdirSync,

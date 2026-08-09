@@ -1,4 +1,3 @@
-import {describe, expect, test} from 'vitest';
 /**
  * Tests for `region-scan.ts`'s `scanRegionDeclarations`.
  *
@@ -12,6 +11,7 @@ import {describe, expect, test} from 'vitest';
  * and that an unparseable roster reaches the maintainer as a YAML error. Both
  * still build their fixtures in the temp dir.
  */
+import {describe, expect, test} from 'vitest';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';

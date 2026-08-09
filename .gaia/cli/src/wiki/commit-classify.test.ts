@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki commit-classify`.
  *
@@ -6,6 +5,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * then ask the handler to classify them since the initial baseline. We
  * snapshot the suggestion + reason for each commit and assert against it.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   existsSync,
   mkdirSync,

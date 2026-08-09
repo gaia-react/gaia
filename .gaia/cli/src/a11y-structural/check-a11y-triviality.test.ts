@@ -1,4 +1,3 @@
-import {afterEach, describe, expect, test} from 'vitest';
 /**
  * Tests for the structural a11y-triviality floor AST helper
  * (`.gaia/scripts/a11y-structural/check-a11y-triviality.mjs`).
@@ -22,6 +21,7 @@ import {afterEach, describe, expect, test} from 'vitest';
  * bytes); a stories fixture is written to a temp file and passed via
  * `--stories <path>`.
  */
+import {afterEach, describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';

@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Worktree-aware coverage for the `gaia setup` CLI surface.
  *
@@ -10,6 +9,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * Strategy: each test gets a fresh `setupWorktreeSandbox()` that creates BOTH
  * a main checkout and a linked worktree under one `mkdtemp`'d parent.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   existsSync,

@@ -1,4 +1,3 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for the `gaia sandbox` CLI surface (detect/seed/apply/record/status).
  *
@@ -6,6 +5,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  * `resolveMainWorktreeRoot`, which shells `git`), exercise the verbs against
  * `.claude/settings.local.json` and `.gaia/local/sandbox.json`.
  */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   existsSync,
