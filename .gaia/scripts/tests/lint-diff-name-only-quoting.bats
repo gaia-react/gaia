@@ -217,8 +217,43 @@ run_linter() {
 
 @test "an untracked script is not scanned" {
   fixture_repo
-  mkdir -p "$TMP"
+  # A tracked file is required, else the empty-scan-set guard below fires and
+  # this test would pass for the wrong reason.
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
   printf '%s\n' $'#!/usr/bin/env bash\nchanged=$(git diff --name-only "${base}...HEAD")' > "$TMP/untracked.sh"
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# An empty scan set means the discovery is wrong, never that the tree is clean.
+# Without this the gate prints `clean` and exits 0 having scanned nothing, which
+# is the lie-green failure it exists to stop elsewhere.
+@test "an empty scan set is a hard error, not a clean tree" {
+  fixture_repo
+  fixture_file README.md $'nothing scannable here'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "nothing was scanned" <<<"$output"
+  grep -qF -- "clean" <<<"$output" && return 1
+  true
+}
+
+# The command-position test recognizes `=` and `(` and nothing else. Both error
+# directions are pinned here so neither can drift unnoticed: parenthetical prose
+# is flagged (fail-closed, the repair is to reword), and a substitution opening
+# after a quote is missed (fail-open, tokenizer-bound). The docblock states this
+# as a rule; these two tests are that rule's oracle.
+@test "parenthetical prose before a backtick is flagged, fail-closed by design" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\necho "Step 1 (`git diff --name-only origin/main...HEAD`) lists the files."'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a substitution opening after a quote is missed, fail-open by design" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nif [ -n "`git diff --name-only $B`" ]; then :; fi'
   run_linter
   [ "$status" -eq 0 ]
 }
@@ -232,6 +267,10 @@ run_linter() {
 # the evidence the class exists.
 @test "a bats suite is outside the scan surface" {
   fixture_repo
+  # A tracked, scannable, clean file so the empty-scan-set guard cannot make
+  # this pass for the wrong reason: the exit 0 must come from the .bats file
+  # being unscanned, not from there being nothing to scan.
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
   fixture_file probe.bats $'@test "x" {\n  quoted="$(git diff --name-only "${base}...HEAD")"\n}'
   run_linter
   [ "$status" -eq 0 ]

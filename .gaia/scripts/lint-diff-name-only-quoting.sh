@@ -68,6 +68,20 @@ while IFS= read -r f; do
   scan_files+=("$f")
 done < <(git ls-files '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workflows/*.yaml' | LC_ALL=C sort)
 
+# An empty scan set is a hard error, never a clean tree. The loop above reads
+# from a process substitution, whose failure `set -o pipefail` cannot see, so a
+# `git ls-files` that errors (run outside a repository, a broken object store)
+# leaves the array empty and every check below vacuously passes. This gate would
+# then print `clean` and exit 0 having scanned nothing, which is precisely the
+# lie-green failure the gate itself exists to stop elsewhere. Every real tree
+# carries tracked `*.sh`, so an empty result means the discovery is wrong rather
+# than the tree. `.gaia/tests/shell-lint.sh` treats the identical condition as a
+# hard error for its own discovery, and this is that reasoning applied here.
+if [ "${#scan_files[@]}" -eq 0 ]; then
+  echo "lint-diff-name-only-quoting: ERROR: no tracked files matched the scan surface; nothing was scanned" >&2
+  exit 1
+fi
+
 # scan_file <path>: print one `file:line: message` per unquoted call.
 #
 # Three discriminations, each earning its place on a real line in this
@@ -93,20 +107,33 @@ done < <(git ls-files '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workf
 # WAY they fail, because that is the part that matters and an earlier draft of
 # this block got it wrong by calling them all fail-closed.
 #
-# FALSE POSITIVES, which fail CLOSED. They demand `-z`, which is never wrong on
-# a call whose output is parsed, so each costs a correct edit and never a missed
-# defect:
+# The backtick boundary is stated as a RULE rather than as a list of shapes,
+# deliberately. An enumeration of shapes is always one shape short, and each
+# round of extending it invites the next; the rule below is closed, so it cannot
+# be incomplete:
+#
+#   The command-position test recognizes a backtick opening immediately after
+#   `=` or `(`, and NOTHING ELSE. Every other position is treated as a markdown
+#   code span.
+#
+# Both of that rule's error directions follow from it and neither is a separate
+# discovery:
+#   - FAIL-OPEN: a backtick command substitution opening after anything else --
+#     a quote, a pipe, a separator, or bare command position -- is missed. That
+#     is a real miss, and closing it needs a shell tokenizer, which is more
+#     machinery than this gate is worth.
+#   - FAIL-CLOSED: parenthetical prose whose parenthesis is followed by a
+#     backtick is flagged as an invocation. The repair is to reword the prose.
+#
+# The other boundaries, both FALSE POSITIVES, so both fail CLOSED. They demand
+# `-z`, which is never wrong on a call whose output is parsed, so each costs a
+# correct edit and never a missed defect:
 #   - `-z` written on a line continuation after the call reads as missing.
 #   - A single-quoted string containing a literal `git diff --name-only` reads
 #     as an invocation. This is the sharper reason `*.bats` is out of scope.
 #
-# FALSE NEGATIVES, which fail OPEN. These are real misses, and both need a
-# shell tokenizer to close, which is more machinery than this gate is worth:
+# One further FALSE NEGATIVE, unrelated to backticks and equally tokenizer-bound:
 #   - A call assembled through a variable (`$GIT diff --name-only`).
-#   - A legacy backtick command substitution in ordinary command position
-#     (`echo `git diff --name-only``). The assignment and subshell forms are
-#     caught by the command-position test in the scan below; a bare command
-#     position is indistinguishable from a markdown code span on a raw line.
 #
 # Out of scope entirely: `-z` does not, on its own, survive a path containing a
 # literal newline when the consumer re-splits on newlines via `tr`. That is a
@@ -140,10 +167,11 @@ scan_file() {
         # reading `changed=`git diff --name-only "$B"`` as prose is a fail-OPEN
         # miss rather than the fail-closed kind this scan is happy to make. A
         # backtick opening immediately after `=` or `(` is in command position,
-        # so it is substitution rather than prose. This does not close the class
-        # (a substitution in ordinary command position, `echo `git diff …``,
-        # still reads as prose); the blind-spot block below says so plainly
-        # rather than implying the boundary is tighter than it is.
+        # so it is substitution rather than prose. Those two characters are the
+        # whole rule, in both directions: every other opening position is missed
+        # (fail-open) and parenthetical prose is flagged (fail-closed). The
+        # blind-spot block above states that as a rule rather than enumerating
+        # the shapes it produces.
         if (prefix ~ /[=(]`/) inspan = 0
 
         quoted_ok = (index(window, " -z") == 1)
