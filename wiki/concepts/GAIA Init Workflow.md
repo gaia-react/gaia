@@ -30,6 +30,10 @@ The language-file keys carry the same precondition shape as the `CLAUDE.md` head
 
 **`resume`**: Resumes an interrupted init flow. If a previous init ran and failed partway, re-runs from where it left off without re-running completed phases.
 
+## Target guard
+
+The router refuses to run any subcommand in the wrong tree, before dispatching to the step: a tree with no `.gaia/manifest.json` is not a GAIA project (`not_a_gaia_project`), and a tree carrying `.gaia/cli/src` is the GAIA template source itself rather than a project scaffolded from it (`gaia_template_source`, since adopters receive only the compiled `.gaia/cli/gaia` binary, never the source). The guard lives on the router rather than on any one step because all eight steps resolve their target identically from ambient state, and it hands the step the same resolved path it checked so the two cannot disagree.
+
 ## Integration
 
 All subcommands are called by `/gaia-init` (the skill), which prompts the user through each phase and dispatches the matching subcommand. The init workflow can also be run manually via `gaia init <subcommand>` from the project root.

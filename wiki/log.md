@@ -11,6 +11,16 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-09 74b6af95 SKIP - new shell-lint guard for unquoted diff --name-only call sites, wired into CI; internal hardening below the wiki's stated gate-description level
+- 2026-08-09 4f2fcf54 SKIP - adds a structural guard for docblock-before-import placement and sweeps 74 files; internal hygiene test, no wiki-tracked fact
+- 2026-08-09 c9b5cbc8 SKIP - internal reachability-guard regex widened to admit a quoted invocation; maintainer test-infra hardening, no documented contract change
+- 2026-08-09 141160d7 SKIP - wiki-sync recovery baseline resolution corrected to the first-parent chain; already documented in-commit across wiki/concepts/Wiki Sync.md, Release Workflow.md, wiki/decisions/Wiki Management.md; verified accurate
+- 2026-08-09 d434b96f SKIP - lockfile parity guard widened from one pinned package to every rule-provider package; already documented in-commit across wiki/decisions/pnpm.md and wiki/dependencies/gaia-lint.md; verified accurate
+- 2026-08-09 e883bf87 WORTHY - widens the Chromatic preview-env sentinel set to every schema-declared key (adds SESSION_SECRET, generalizes SITE_URL) → wiki/dependencies/Chromatic.md
+- 2026-08-09 47a42940 WORTHY - gaia init router refuses to run outside the adopter scaffold (no manifest, or template source present) → wiki/concepts/GAIA Init Workflow.md
+- 2026-08-09 573cf1c8 SKIP - eslint.config guard rewrite (ask not deny) already documented in-commit in wiki/concepts/Claude Hooks.md; verified accurate
+- 2026-08-09 6f9cee79 WORTHY - Chromatic preview build asserts no environment value reaches the artifact, replacing the dead define-pipeline env block → wiki/dependencies/Chromatic.md
+- 2026-08-09 0ed84b38 SKIP - self-referential prior wiki-sync commit (wiki: sync through b4ac2c0), no further wiki action
 - 2026-08-08 b4ac2c03 SKIP - test-only, proves an existing memo-removal arm
 - 2026-08-08 00d04417 WORTHY - sweep #8 memoizes its declined merge-evidence scan → wiki/concepts/Local Working State.md
 - 2026-08-08 41d024af WORTHY - sweep #8 worktree reap now proves merge by combined-diff patch id, not git cherry → wiki/concepts/Local Working State.md
