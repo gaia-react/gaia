@@ -62,10 +62,24 @@
  * `git -c` does, so a repository that writes the gates at git's defaults still
  * inherits the suppression from here.
  *
- * The assignment below overwrites an ambient `GIT_CONFIG_*` rather than
- * appending to it, which is deliberate: the run owns its own git configuration,
- * and appending would make which slots this file writes depend on what the
- * calling shell happened to set.
+ * ## Ambient `GIT_CONFIG_*` is overwritten, not appended to
+ *
+ * Stated as a tradeoff rather than left to be inferred from the code. The
+ * assignment below forces the count and writes slots 0-3, so an entry the
+ * environment already supplied is dropped for this run. The case that would
+ * bite is a containerized runner exporting `safe.directory` this way: every git
+ * command in the suite would then fail on ownership. Nothing in this repository
+ * or its CI sets `GIT_CONFIG_*`, and the failure would be loud rather than a
+ * silent behaviour change.
+ *
+ * Appending at the ambient count is the alternative and it does work. It does
+ * not compound across the suite, because vitest evaluates a setup file once per
+ * test file in a **fresh process** (measured: three test files, three pids,
+ * each seeing its own first run), so `process.env` never carries an earlier
+ * file's count forward. It is declined here as machinery for a condition this
+ * repository does not produce, and taking it would also mean the two opt-out
+ * call sites restoring an ambient count rather than the literal `0` they can
+ * hard-code today.
  */
 const MAINTENANCE_SUPPRESSION: [string, string][] = [
   ['gc.auto', '0'],

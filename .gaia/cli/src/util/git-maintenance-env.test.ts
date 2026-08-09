@@ -9,9 +9,13 @@
  *
  * Two arms, because a bare "no maintenance was spawned" assertion passes just
  * as well when the trace recorded nothing at all. The control arm clears
- * `GIT_CONFIG_COUNT` for one commit into the same repository, which is the only
- * variable that changes between the arms, so a spawn there proves both that the
- * repository is genuinely ungated and that the trace can see a spawn.
+ * `GIT_CONFIG_COUNT` and commits into an identically configured repository, so
+ * a spawn there proves both that such a repository is genuinely ungated and
+ * that the trace can see a spawn. What holds every other variable fixed is the
+ * shared `beforeEach`, not a shared repository: each arm gets its own
+ * `mkdtempSync` repo, built from the same list and deleted in `afterEach`. They
+ * are deliberately not hoisted into a `beforeAll`, which would let the control
+ * arm's own maintenance run touch the object store the subject arm measures.
  */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdtempSync, rmSync} from 'node:fs';
