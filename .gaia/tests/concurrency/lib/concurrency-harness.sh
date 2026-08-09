@@ -151,13 +151,34 @@ run_in() {
 # It exists for one reason: `env` is an external binary and cannot invoke a
 # shell function, so a scenario needing both an environment override and
 # gaia_deliver_hook below has no way to compose the two without this.
+# Misuse exits 64 rather than returning, and the checks are not decoration. Under
+# bats' `run` errexit is off, so a bare `shift` on an empty list and a `"$@"` that
+# expands to zero words both yield status 0: dropping the `--` would eat the
+# command as assignments, never invoke the hook, and leave `status` 0 with the
+# scenario green. That is the vacuous pass this whole primitive exists to prevent,
+# so the separator is enforced rather than merely documented, and `exit` is used so
+# the failure is fatal whatever the caller's errexit state.
 run_with() {
   (
-    while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
-      export "${1?}"
+    # The separator is checked BEFORE anything is exported, by an exact scan
+    # rather than a pattern over "$*", so that a missing `--` reports itself
+    # instead of surfacing as whichever later word first failed to parse as an
+    # assignment, and so that no word is exported on the way to that refusal.
+    _rw_found=0
+    for _rw_arg in "$@"; do
+      if [ "$_rw_arg" = "--" ]; then
+        _rw_found=1
+        break
+      fi
+    done
+    [ "$_rw_found" -eq 1 ] || { printf 'run_with: missing -- separator\n' >&2; exit 64; }
+
+    while [ "$1" != "--" ]; do
+      export "${1:?run_with: empty assignment}" || exit 64
       shift
     done
     shift
+    [ "$#" -gt 0 ] || { printf 'run_with: no command after --\n' >&2; exit 64; }
     "$@"
   )
 }
