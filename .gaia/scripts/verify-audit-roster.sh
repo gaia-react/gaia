@@ -1005,6 +1005,20 @@ else
   printf 'verify-audit-roster: coverage invariant SKIPPED, %s is not a repository root\n' "$root" >&2
 fi
 
+# The same skip, for the other way this invariant can end up answering about a
+# roster nobody asked about. audit_scope_init falls back to the BUILTIN roster
+# whenever the config yields no records, so a --config naming an `auditors:`-less
+# file would classify every path against the builtin while the findings above
+# print the injected config's name. No wrong green is reachable -- such a roster
+# fails default-member-count first, so the exit status is already 1 -- but the
+# coverage findings would misattribute, naming a roster that did not produce
+# them. Not-run is not a violation, so this is stderr and the exit status stays
+# untouched.
+if [ -n "$coverage_universe" ] && [ -z "$class_records" ]; then
+  coverage_universe=""
+  printf 'verify-audit-roster: coverage invariant SKIPPED, %s carries no auditors\n' "$config" >&2
+fi
+
 # A dead entry -- one matching no tracked path at all -- is a maintainer-only
 # assertion, and the flag rather than the finding is what carries the marker so
 # the scrubbed script stays syntactically whole. The shipped `unowned:` list

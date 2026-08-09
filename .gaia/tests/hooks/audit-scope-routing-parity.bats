@@ -20,10 +20,12 @@
 #
 # The last four are the ownerless-path triage, and their direction is the whole
 # content of that change: every row they move goes from `-` to a member, and no
-# row moves between members. The `before` column records it. One row inside
-# them does not move at all: `.gaia/audit-ci.yml` was already granted to the
-# shell member explicitly, and `.gaia/*.yml` generalizes that grant rather than
-# adding one, so it reads `code-audit-maintainer-shell` on both sides.
+# row moves between members. Those four arms assert that direction rather than
+# describing it, by matching only when the `before` column reads `-`. One row
+# inside them does not move at all: `.gaia/audit-ci.yml` was already granted to
+# the shell member explicitly, and `.gaia/*.yml` generalizes that grant rather
+# than adding one, so it reads `code-audit-maintainer-shell` on both sides and
+# carries its own arm.
 #
 #   .playwright/**                                -> code-audit-frontend
 #   the root tooling that decides what runs        -> code-audit-frontend
@@ -31,8 +33,8 @@
 #      .prettierignore, .env.example)
 #   .gaia/scripts/**/*.mjs                         -> code-audit-maintainer-node
 #   the distribution and governance surface        -> code-audit-maintainer-shell
-#     (.gaia/*.yml, .gaia/*.json, .gaia/release-exclude, .claude/settings.json,
-#      .github/CODEOWNERS)
+#     (.gaia/*.yml, .gaia/*.json, .gaia/scripts/token-rates.json,
+#      .gaia/release-exclude, .claude/settings.json, .github/CODEOWNERS)
 #
 # This is stable and does not rot: the test iterates FIXTURE ROWS, so a file
 # added to the repo later neither breaks it nor silently escapes it. It is a
@@ -83,13 +85,22 @@ setup() {
       expected="code-audit-maintainer-prose"
     elif [[ "$path" =~ ^\.husky/ ]]; then
       expected="code-audit-maintainer-shell"
-    elif [[ "$path" =~ ^\.playwright/ ]]; then
+    # The four ownerless-triage arms below are guarded on `before = -` rather
+    # than on the path alone, so the header's claim about their DIRECTION is
+    # asserted instead of narrated. A future change that moved one of these
+    # rows from one member to another would no longer match its arm, fall to
+    # the `else` below, and be reported as a mismatch. `.gaia/audit-ci.yml` is
+    # the one row inside these sets that legitimately does not move, so it gets
+    # its own literal arm ahead of them.
+    elif [ "$path" = ".gaia/audit-ci.yml" ]; then
+      expected="code-audit-maintainer-shell"
+    elif [ "$before" = "-" ] && [[ "$path" =~ ^\.playwright/ ]]; then
       expected="code-audit-frontend"
-    elif [[ "$path" =~ ^(Dockerfile|\.npmrc|\.nvmrc|\.node-version|\.lintstagedrc\.json|\.prettierignore|\.env\.example)$ ]]; then
+    elif [ "$before" = "-" ] && [[ "$path" =~ ^(Dockerfile|\.npmrc|\.nvmrc|\.node-version|\.lintstagedrc\.json|\.prettierignore|\.env\.example)$ ]]; then
       expected="code-audit-frontend"
-    elif [[ "$path" =~ ^\.gaia/scripts/.*\.mjs$ ]]; then
+    elif [ "$before" = "-" ] && [[ "$path" =~ ^\.gaia/scripts/.*\.mjs$ ]]; then
       expected="code-audit-maintainer-node"
-    elif [[ "$path" =~ ^(\.gaia/[^/]*\.(yml|json)|\.gaia/release-exclude|\.claude/settings\.json|\.github/CODEOWNERS)$ ]]; then
+    elif [ "$before" = "-" ] && [[ "$path" =~ ^(\.gaia/[^/]*\.(yml|json)|\.gaia/scripts/token-rates\.json|\.gaia/release-exclude|\.claude/settings\.json|\.github/CODEOWNERS)$ ]]; then
       expected="code-audit-maintainer-shell"
     else
       expected="$before"

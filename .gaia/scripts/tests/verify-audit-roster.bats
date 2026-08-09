@@ -1,4 +1,8 @@
 #!/usr/bin/env bats
+# SC2016 is intentional file-wide, matching the script under test: the fixture
+# writers use single-quoted printf format strings where a $ is literal output
+# text (the heredoc line they emit into a fixture), not a shell expansion.
+# shellcheck disable=SC2016
 # Tests for .gaia/scripts/verify-audit-roster.sh, the roster's deterministic
 # check.
 #
@@ -284,6 +288,7 @@ YAML
   pair_root 'zz-no-such-tree/**' 'zz-no-such-tree/deep/*.zz'
   local witness
   witness="$(grep -F 'witness:' <<<"$output" | awk '{ print $2 }')"
+  # shellcheck source=/dev/null
   . "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
   local rx_a rx_b
   rx_a="$(printf 'auditors:\n  - name: m\n    globs:\n      - "zz-no-such-tree/**"\n' |
@@ -1411,4 +1416,26 @@ YAML
   run_root "$r"
   grep -qF "outside.md" <<<"$output" && return 1
   [ "$status" -eq 0 ]
+}
+
+@test "coverage: a roster carrying no auditors skips rather than answering for the builtin" {
+  # audit_scope_init falls back to the BUILTIN roster when the config yields no
+  # records, so without the skip this fixture's paths get classified against
+  # GAIA's own roster while every finding prints the injected config's name. The
+  # exit status is 1 either way (default-member-count fires first), so nothing
+  # green is at stake; what the skip protects is attribution, which is the whole
+  # value of a finding that names a roster.
+  local r="$BATS_TEST_TMPDIR/cov-no-auditors"
+  scaffold_root "$r" <<'YAML'
+default_mode: local
+YAML
+  git init -q "$r"
+  git -C "$r" add -A
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "default-member-count"
+  assert_contains "carries no auditors"
+  # The misattributed finding the skip exists to suppress.
+  grep -qF "ownerless-path" <<<"$output" && return 1
+  return 0
 }
