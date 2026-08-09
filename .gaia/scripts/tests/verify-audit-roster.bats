@@ -1304,6 +1304,12 @@ YAML
   tracked_roster '.claude/**' '.gaia/**' | scaffold_tracked_root "$r" \
     app/a.ts lib/b.ts docs/orphan.md
   run_root "$r"
+  # Anchor on the finding this test controls for before asserting the absences.
+  # Two `grep … && return 1` checks plus `return 0` pass on ANY output that
+  # happens not to name the owned paths -- an exit-2 usage error, or an empty
+  # run -- so without these two lines the vacuity guard is itself vacuous.
+  [ "$status" -eq 1 ]
+  assert_contains "docs/orphan.md"
   grep -qF "app/a.ts" <<<"$output" && return 1
   grep -qF "lib/b.ts" <<<"$output" && return 1
   return 0
@@ -1358,6 +1364,34 @@ YAML
   [ "$status" -eq 1 ]
   assert_contains "redundant-unowned-glob"
   assert_contains "docs/sub/**"
+}
+
+@test "coverage: an unowned: glob outside the classifier dialect fails as undecidable" {
+  # `docs**` spells `**` inside a segment rather than as a whole one, so the
+  # classifier escapes it into `^docs.*$`, which crosses `/`. The entry then
+  # exempts docsextra/note.md as well, silently, and the run reports clean --
+  # the exact fail-open every sibling glob position already refuses (a claimant
+  # pair fails undecidable-glob-pair, a region glob undecidable-remit-glob).
+  local r="$BATS_TEST_TMPDIR/cov-dialect"
+  tracked_roster '.claude/**' '.gaia/**' 'docs**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts docs/orphan.md docsextra/note.md
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "undecidable-unowned-glob"
+  assert_contains "docs**"
+}
+
+@test "coverage: an in-dialect unowned: glob is not reported as undecidable" {
+  # The negative control. The gate above must reject the dialect's rejects and
+  # nothing else; a gate that failed every entry would pass its own test while
+  # making the list unusable.
+  local r="$BATS_TEST_TMPDIR/cov-dialect-ok"
+  tracked_roster '.claude/**' '.gaia/**' 'docs/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$r"
+  [ "$status" -eq 0 ]
+  grep -qF "undecidable-unowned-glob" <<<"$output" && return 1
+  return 0
 }
 
 @test "coverage: a non-git fixture root has no universe, so the invariant is silent" {

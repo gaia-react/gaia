@@ -109,7 +109,11 @@
 # on grep and comparison exit status without aborting the script.
 #
 # Bash 3.2 compatible (macOS default): no associative arrays, no `mapfile`, no
-# `${var^^}`. Never `cd` outside the source-time lib resolution.
+# `${var^^}`. The script's own working directory never moves: both `cd`s are
+# inside command substitutions, so each ends with its subshell -- the source-time
+# lib resolution, and the coverage guard's `$(cd … && pwd -P)` pair, whose `-P`
+# is what makes that a symlink-normalized comparison rather than a string
+# compare. Never `cd` in the script's own shell.
 set -uo pipefail
 
 usage() {
@@ -338,6 +342,12 @@ fi
 
 region_records="$(_verify_roster_read_regions "$root" "$raw_records")"
 
+# The `unowned:` list, read ONCE for the two readers that need it: the dialect
+# gate in the pairwise awk below, and the coverage invariant at the bottom. Not
+# an optimization -- both must see the same entries, and a second call is a
+# second chance for the two to disagree about which lines the block holds.
+unowned_records="$(_audit_scope_parse_unowned < "$config")"
+
 # --- Invariant: exactly one default member -----------------------------------
 
 default_count="$(printf '%s\n' "$class_records" | awk '$1 == "DEFAULT" { n++ } END { print n + 0 }')"
@@ -521,9 +531,14 @@ done < <(printf '%s\n' "$region_records")
 # --- Invariants: pairwise claimant disjointness, and undecidable pairs -------
 #
 # The decision and the witness synthesis live in one awk pass, which is where
-# the classifier's own glob compiler lives too. It reads both record streams,
+# the classifier's own glob compiler lives too. It reads the record streams,
 # tab-normalized, and emits one machine-readable line per violation for the
 # shell to verify and render.
+#
+# The `unowned:` stream is here for one reason: this pass holds the single copy
+# of glob_items(), and the dialect gate must not become a second one. Its entries
+# take no part in the pairwise walk -- they name regions that dispatch NOBODY, so
+# there is no claimant to compare them against -- they are only classified.
 
 pair_records="$(
   {
@@ -531,6 +546,7 @@ pair_records="$(
       awk '{ k = $1; m = $2; r = $0; sub(/^[^ ]+[ ]+[^ ]+[ ]*/, "", r); printf "%s\t%s\t%s\n", k, m, r }'
     printf '%s\n' "$raw_records"
     printf '%s\n' "$region_records"
+    printf '%s\n' "$unowned_records"
   } | awk -F'\t' '
     # --- The segment-pattern layer -------------------------------------------
     #
@@ -720,6 +736,9 @@ pair_records="$(
     # skips it.
     $1 == "REGIONOK" { hasreg[$2] = 1; next }
     $1 == "REGION" { nreg[$2]++; reg[$2, nreg[$2]] = $3; next }
+    # Field 3 is the compiled regex, which this pass never reads: it classifies
+    # the raw glob, exactly as the claimant and region positions do.
+    $1 == "UNOWNED" { nun++; unow[nun] = $2; next }
 
     END {
       # The scrape and the classifier agree about how many globs each member
@@ -808,6 +827,25 @@ pair_records="$(
             }
           }
         }
+      }
+
+      # --- The `unowned:` dialect ---------------------------------------------
+      #
+      # The one glob position that had no bounded-dialect gate. Every sibling has
+      # one -- a claimant pair fails undecidable-glob-pair, a region glob fails
+      # undecidable-remit-glob -- and this position needs it MORE than either,
+      # because an exemption that compiles wider than its author read it does not
+      # merely misdescribe a remit, it SUPPRESSES the ownerless finding for every
+      # extra path it reaches. `docs**` is the concrete shape: `**` inside a
+      # segment rather than as a whole one, which the classifier escapes into
+      # `^docs.*$`, crossing `/` and quietly exempting `docsextra/` too.
+      #
+      # Reached only past the reader-drift exit above, like every other verdict
+      # here: two readers that disagree about the roster are the finding to fix
+      # first, and nothing downstream of them is worth trusting.
+      for (i = 1; i <= (nun + 0); i++) {
+        if (glob_items(unow[i], IU) < 0)
+          printf "UNOWNEDUNDECIDABLE\t%s\t%s\n", unow[i], REJ
       }
     }
   '
@@ -929,6 +967,22 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4 f5 f6 f7; do
       printf '  comparison ever reaches. Express the glob in the dialect, or\n'
       printf '  teach the classifier and this check the new construct together.\n'
       printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
+      printf '\n'
+      ;;
+    UNOWNEDUNDECIDABLE)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL undecidable-unowned-glob\n'
+      printf '  glob:    %s\n' "$f1"
+      printf '  roster:  %s\n' "$config"
+      printf '  reason:  %s\n' "$f2"
+      printf '  This check decides the classifier three-construct dialect only:\n'
+      printf '  literals, `*` within one segment, and a whole-segment `**`. An\n'
+      printf '  `unowned:` entry outside it compiles to something wider than it\n'
+      printf '  reads -- `docs**` becomes `^docs.*$`, which crosses `/` -- and a\n'
+      printf '  wider exemption does not misdescribe anything, it SUPPRESSES the\n'
+      printf '  ownerless finding for every extra path it reaches. That is the\n'
+      printf '  silent green this invariant exists to delete, so the entry fails\n'
+      printf '  rather than being read. Express it in the dialect.\n'
       printf '\n'
       ;;
   esac
@@ -1069,7 +1123,7 @@ if [ -n "$coverage_universe" ]; then
       # stays a path: it cannot become a live exemption regex. Bounded
       # mis-reporting rather than tree-wide suppression, and no such path is
       # tracked here.
-      _audit_scope_parse_unowned < "$config"
+      printf '%s\n' "$unowned_records"
       printf '%s\n' "$coverage_universe" | audit_owners_for_paths |
         awk -F'\t' '{ printf "P\t%s\t%s\n", $1, $2 }'
     } | awk -F'\t' -v cap=25 -v checkdead="$coverage_check_dead" '
