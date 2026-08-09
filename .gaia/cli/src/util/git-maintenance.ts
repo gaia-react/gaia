@@ -21,6 +21,14 @@ import {existsSync, readFileSync} from 'node:fs';
  * personal dotfile. The control would then spawn nothing and the arm asserting
  * git still spawns maintenance would fail against a fixture behaving perfectly.
  * Writing git's own defaults into the control makes its condition its own.
+ *
+ * Measured on git 2.55: `maintenance.auto` is the entry that decides here, and
+ * an explicit `maintenance.auto = true` spawns a run even alongside
+ * `gc.auto = 0`, which is what makes a control carrying both genuinely ungated.
+ * `gc.auto` is not dead weight; it is what leaves a control ungated on git
+ * predating the maintenance task set, where it is the only spelling. It is also
+ * why mutating this entry on its own cannot red either guard on 2.55, the
+ * sibling still forces the spawn, while mutating `maintenance.auto` reds both.
  */
 export const MAINTENANCE_GATE_DEFAULTS: [string, string][] = [
   ['gc.auto', '6700'],
