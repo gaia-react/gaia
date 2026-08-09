@@ -20,6 +20,14 @@
 # Assertion style (`.claude/rules/bats-assertions.md`): POSIX `[ ]` and explicit
 # `return 1`, never a bare `[[ ]]`, so these fail correctly under macOS's bash
 # 3.2 as well as CI's bash 5.
+#
+# The misuse arms pin the exact status 64 rather than merely a non-zero one, and
+# each names the refusal it expects. A `-ne 0` check greens on 127 or 1 as
+# readily as on 64, so the documented status would drift unnoticed; and a test
+# that names no message can be satisfied by a different arm firing, which is how
+# a guard disappears with its own test still green. Test 11 is the exception: its
+# message is bash's own `not a valid identifier` wording, which is not safe to
+# pin across bash versions.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -103,12 +111,12 @@ SH
 # --- run_with, the misuse arms. Each must fail LOUDLY, never green ----------
 #
 # These are the assertions that would have caught the silent-green defect. Each
-# checks a non-zero status AND that the command never ran, because a status
-# check alone would pass on any failure including the wrong one.
+# checks the exact status AND that the command never ran, because a status check
+# alone would pass on any failure including the wrong one.
 
 @test "run_with refuses a missing -- separator rather than eating the command" {
   run run_with STUBVAR=x gaia_deliver_hook '{"c":3}' "$HOOK"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 64 ]
   grep -qF -- 'missing -- separator' <<<"$output"
   # The hook must not have run: its output would carry PAYLOAD=.
   grep -qF -- 'PAYLOAD=' <<<"$output" && return 1
@@ -117,20 +125,24 @@ SH
 
 @test "run_with refuses when nothing follows the separator" {
   run run_with STUBVAR=x --
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 64 ]
   grep -qF -- 'no command after --' <<<"$output"
 }
 
 @test "run_with refuses an empty assignment rather than running without it" {
   run run_with "" -- gaia_deliver_hook 'x' "$HOOK"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 64 ]
+  # Name the arm. Without this the `case` arm could be deleted and this test
+  # would stay green, because `export ""` fails on its own and the `|| exit 64`
+  # beside it would catch that instead.
+  grep -qF -- 'not an assignment' <<<"$output"
   grep -qF -- 'PAYLOAD=' <<<"$output" && return 1
   return 0
 }
 
 @test "run_with refuses a malformed assignment rather than running without it" {
   run run_with 'FOO-BAR=1' -- gaia_deliver_hook 'x' "$HOOK"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 64 ]
   grep -qF -- 'PAYLOAD=' <<<"$output" && return 1
   return 0
 }
@@ -140,7 +152,7 @@ SH
   # and applies no value, so without an explicit check the command would run
   # with its override silently absent, which is this suite's whole subject.
   run run_with STUBVAR -- gaia_deliver_hook 'x' "$HOOK"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 64 ]
   grep -qF -- 'not an assignment' <<<"$output"
   grep -qF -- 'PAYLOAD=' <<<"$output" && return 1
   return 0
