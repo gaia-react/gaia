@@ -314,11 +314,13 @@ assert_not_in_set() {
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
   # .claude/commands/*.md is ownerless docs. Skills prose (.claude/skills/**/*.md)
   # is audited by the prose member, so it belongs to the owned-surface cases below,
-  # not here among the no-audit-needed docs.
+  # not here among the no-audit-needed docs. The .gaia/ file is a README for the
+  # same reason: the roster grants .gaia/*.json to the shell member, so the
+  # manifest is audited metadata rather than the unaudited kind this case is about.
   commit_files \
     ".claude/commands/gaia-spec.md" "updated" \
     "wiki/concepts/PR Merge Workflow.md" "updated" \
-    ".gaia/manifest.json" "{}"
+    ".gaia/templates/README.md" "updated"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
@@ -1009,15 +1011,20 @@ assert_not_in_set() {
   assert_allowed_by_json
 }
 
-@test "FC-4 no-deadlock: ownerless Dockerfile riding with a specialized member spawns the specialized member only" {
+@test "FC-4 no-deadlock: an ownerless in-scope file riding with a specialized member spawns the specialized member only" {
   # The dispatched set here is non-empty (the shell member owns y.sh), so the
   # hook takes the member-aware path and never reaches its legacy out-of-scope
-  # gate: the Dockerfile is audited by nobody. This is the gate's own
+  # gate: the .editorconfig is audited by nobody. This is the gate's own
   # documented behavior (FC-4's ownerless-plus-specialized row), not a defect,
   # and the oracle mirrors it exactly. Do NOT "fix" the oracle to add the
   # default member here: that would spawn a member the gate does not require,
   # breaking the no-useless-spawn half of the invariant.
-  commit_files "Dockerfile" "FROM scratch" ".gaia/scripts/y.sh" "#!/bin/bash"
+  #
+  # The witness must be BOTH ownerless and in-scope, which is a narrow set: the
+  # legacy gate allowlists wiki/, .claude/, .specify/, .gaia/, docs/ and root
+  # *.md outright, so none of those reaches this path. .editorconfig qualifies
+  # because the roster declares it unowned while the allowlist does not cover it.
+  commit_files ".editorconfig" "root = true" ".gaia/scripts/y.sh" "#!/bin/bash"
   set=$(spawn_set)
   [ "$set" = "code-audit-maintainer-shell" ]
   write_markers_for_spawn_set "$set"

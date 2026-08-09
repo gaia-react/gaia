@@ -954,10 +954,10 @@ done < <(printf '%s\n' "$pair_records")
 # objection this design has to answer rather than dodge, since a freely
 # appendable opt-out reproduces the current situation with more machinery:
 #
-#   * Appending is REVIEWED. The list lives in .gaia/audit-ci.yml, a path
-#     code-audit-maintainer-shell already claims, so adding an exemption
-#     dispatches an auditor. Adding an ownerless file today dispatches nobody.
-#     That is the whole asymmetry: the silent move becomes the loud one.
+#   * Appending is REVIEWED. The list lives in .gaia/audit-ci.yml, a path the
+#     roster already grants to a member, so adding an exemption dispatches an
+#     auditor. Adding an ownerless file today dispatches nobody. That is the
+#     whole asymmetry: the silent move becomes the loud one.
 #   * A blanket exemption CANNOT PASS. An entry that reaches a path some member
 #     already owns is broader than the ownerless region it exists to describe,
 #     and fails as overbroad -- which `**`, the one move that would neuter this
@@ -1078,8 +1078,8 @@ if [ -n "$coverage_universe" ]; then
     printf '  merge gate reads as "nobody is owed a clearance", so a change to it\n'
     printf '  merges having been reviewed by no one. Either grant it to a member\n'
     printf '  in `auditors:`, or declare it in `unowned:` -- which is a reviewed\n'
-    printf '  edit to a path code-audit-maintainer-shell owns, where adding the\n'
-    printf '  file was not.\n'
+    printf '  edit to a path the roster itself grants to a member, where adding\n'
+    printf '  the file was not.\n'
     printf '\n'
   fi
 
