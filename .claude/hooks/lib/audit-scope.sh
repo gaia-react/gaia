@@ -192,14 +192,20 @@ YAML
 # Member names and the compiled regexes contain no spaces, so downstream
 # `read -r kind a b` splits them cleanly.
 
-# The three-construct glob compiler, as awk source rather than as a function
-# inside one awk program. Two awk programs in this module need it (the roster
-# parser below and the `unowned:` parser after it), and a second hand-written
-# copy is exactly the silent drift the roster's own reader-drift invariant
-# exists to catch: a compiler that disagreed with itself would classify the
-# same glob two ways and no check would notice. Concatenated into each program
-# at the call site, so there is one copy of the transformation in the repo.
+# The awk source both parsers in this module share: the YAML scalar unquoter
+# and the three-construct glob compiler. Two awk programs need each of them
+# (the roster parser below and the `unowned:` parser after it), and a second
+# hand-written copy is exactly the silent drift the roster's own reader-drift
+# invariant exists to catch: a compiler that disagreed with itself would
+# classify the same glob two ways, or accept a quoted glob one reader rejects,
+# and no check would notice. Concatenated into each program at the call site,
+# so there is one copy of each transformation.
 _AUDIT_SCOPE_GLOB_AWK='
+    function unq(s) {
+      if (s ~ /^".*"$/) return substr(s, 2, length(s) - 2)
+      if (s ~ /^'\''.*'\''$/) return substr(s, 2, length(s) - 2)
+      return s
+    }
     # Convert a posix glob (**, *) into an anchored ERE, matched against
     # repo-relative POSIX paths. Mirrors scrub.ts globToRegex: escape ERE
     # specials (not *), then handle **/, **, * via sentinels so single-* is
@@ -229,11 +235,6 @@ _AUDIT_SCOPE_GLOB_AWK='
 
 _audit_scope_parse_auditors() {
   awk "$_AUDIT_SCOPE_GLOB_AWK"'
-    function unq(s) {
-      if (s ~ /^".*"$/) return substr(s, 2, length(s) - 2)
-      if (s ~ /^'\''.*'\''$/) return substr(s, 2, length(s) - 2)
-      return s
-    }
     function flush(   i) {
       if (have_member) {
         if (is_default) {
@@ -315,11 +316,6 @@ _audit_scope_parse_auditors() {
 
 _audit_scope_parse_unowned() {
   awk "$_AUDIT_SCOPE_GLOB_AWK"'
-    function unq(s) {
-      if (s ~ /^".*"$/) return substr(s, 2, length(s) - 2)
-      if (s ~ /^'\''.*'\''$/) return substr(s, 2, length(s) - 2)
-      return s
-    }
     BEGIN { OFS = "\t"; in_block = 0 }
     {
       raw = $0

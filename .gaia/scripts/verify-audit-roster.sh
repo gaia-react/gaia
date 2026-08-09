@@ -1006,10 +1006,29 @@ if [ -n "$coverage_universe" ]; then
   # must never acquire a second opinion about who owns a path. Both injection
   # points are honored, which is why audit_scope_init takes the config here
   # rather than deriving it from the root.
+  #
+  # This call is the script's dominant cost, roughly 0.6s of its ~0.8s on this
+  # tree, because audit_owners_for_paths matches in bash across every tracked
+  # path rather than in the awk pass below, and the obvious optimization is to
+  # interpolate the compiled regexes into that awk and match there. DO NOT. The
+  # compiler would still be shared, but the PRECEDENCE ALGORITHM would not:
+  # every claimant first in roster order, then the default member's own tier,
+  # then ownerless. Reimplementing that here is precisely the second opinion the
+  # paragraph above forbids, and a coverage check that disagrees with dispatch
+  # about who owns a path reports the wrong set in both directions. Sub-second
+  # on a read-only advisory job is not worth buying with that.
   audit_scope_init "$root" "$config"
 
   coverage_records="$(
     {
+      # The `P` tag looks redundant -- exemption records already carry three
+      # fields and owner records two, so the merge below could branch on NF and
+      # save a process. It is deliberate, and the tab-in-a-path residue noted
+      # above is why: an untagged owner record for such a path arrives with
+      # three fields and is read as an EXEMPTION, whose third field then becomes
+      # a live regex matched against every other path. That fails toward
+      # suppressing findings. Tagged, the same path is still misparsed, but it
+      # stays a path and can only mis-report itself.
       _audit_scope_parse_unowned < "$config"
       printf '%s\n' "$coverage_universe" | audit_owners_for_paths |
         awk -F'\t' '{ printf "P\t%s\t%s\n", $1, $2 }'
