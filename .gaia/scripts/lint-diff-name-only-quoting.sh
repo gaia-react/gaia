@@ -89,19 +89,29 @@ done < <(git ls-files '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workf
 # Full-line comments are skipped outright, which covers both a shell comment and
 # a `#` line inside a workflow `run:` block.
 #
-# Known blind spots, stated rather than discovered later. All three FALSE
-# POSITIVES fail CLOSED -- they demand `-z`, which is never wrong on a call
-# whose output is parsed -- so the boundary costs a correct edit, never a missed
+# Known blind spots, stated rather than discovered later, and split by which
+# WAY they fail, because that is the part that matters and an earlier draft of
+# this block got it wrong by calling them all fail-closed.
+#
+# FALSE POSITIVES, which fail CLOSED. They demand `-z`, which is never wrong on
+# a call whose output is parsed, so each costs a correct edit and never a missed
 # defect:
 #   - `-z` written on a line continuation after the call reads as missing.
 #   - A single-quoted string containing a literal `git diff --name-only` reads
 #     as an invocation. This is the sharper reason `*.bats` is out of scope.
-#   - A call assembled through a variable (`$GIT diff --name-only`) is invisible
-#     to the scan. That one is a false NEGATIVE, and it is the boundary a raw
-#     line scanner cannot close without becoming a shell tokenizer.
-# `-z` also does not, on its own, survive a path containing a literal newline
-# when the consumer re-splits on newlines via `tr`. That is a separate and far
-# rarer class than the one this gate closes, and it is not asserted here.
+#
+# FALSE NEGATIVES, which fail OPEN. These are real misses, and both need a
+# shell tokenizer to close, which is more machinery than this gate is worth:
+#   - A call assembled through a variable (`$GIT diff --name-only`).
+#   - A legacy backtick command substitution in ordinary command position
+#     (`echo `git diff --name-only``). The assignment and subshell forms are
+#     caught by the command-position test in the scan below; a bare command
+#     position is indistinguishable from a markdown code span on a raw line.
+#
+# Out of scope entirely: `-z` does not, on its own, survive a path containing a
+# literal newline when the consumer re-splits on newlines via `tr`. That is a
+# separate and far rarer class than the one this gate closes, and nothing here
+# asserts otherwise.
 scan_file() {
   local f="$1"
   awk -v file="$f" '
@@ -116,9 +126,26 @@ scan_file() {
         prefix = substr($0, 1, abs - 1)
         window = substr($0, abs + calllen)
 
-        invoked = (prefix ~ /(^|[^[:alnum:]_.-])git( +-[cC] +[^ ]+)* +$/)
+        # Any leading git global option, not just -c/-C: `git --no-pager diff
+        # --name-only` is as much an invocation as `git -C "$root" diff`, and a
+        # selector naming two options by hand misses the rest of an open set.
+        # An option token is anything starting with `-`; the optional following
+        # token is the value form -c/-C take.
+        invoked = (prefix ~ /(^|[^[:alnum:]_.-])git( +-[^ ]+( +[^- ][^ ]*)?)* +$/)
+
         ticks = gsub(/`/, "`", prefix)
         inspan = (ticks % 2 == 1)
+        # An odd backtick count alone cannot tell a markdown code span from a
+        # LEGACY COMMAND SUBSTITUTION -- the two are textually identical, and
+        # reading `changed=`git diff --name-only "$B"`` as prose is a fail-OPEN
+        # miss rather than the fail-closed kind this scan is happy to make. A
+        # backtick opening immediately after `=` or `(` is in command position,
+        # so it is substitution rather than prose. This does not close the class
+        # (a substitution in ordinary command position, `echo `git diff …``,
+        # still reads as prose); the blind-spot block below says so plainly
+        # rather than implying the boundary is tighter than it is.
+        if (prefix ~ /[=(]`/) inspan = 0
+
         quoted_ok = (index(window, " -z") == 1)
 
         if (invoked && !inspan && !quoted_ok)

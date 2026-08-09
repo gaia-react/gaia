@@ -140,6 +140,42 @@ run_linter() {
   grep -qF -- "probe.sh:2" <<<"$output"
 }
 
+# A legacy backtick command substitution is textually identical to a markdown
+# code span, and reading it as prose is a fail-OPEN miss. A backtick opening in
+# command position (after `=` or `(`) is substitution, not prose.
+@test "a backtick command substitution in assignment position is flagged" {
+  fixture_repo
+  fixture_file .github/workflows/ci.yml \
+    $'jobs:\n  a:\n    steps:\n      - run: |\n          changed=`git diff --name-only "${BASE}...HEAD"`'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".github/workflows/ci.yml:5" <<<"$output"
+}
+
+@test "a backtick command substitution in subshell position is flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nchanged=$(`git diff --name-only "$B"`)'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+# The `invoked` prefix must admit any git global option, not a hand-named pair.
+@test "a git --no-pager form is recognized as an invocation" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nchanged=$(git --no-pager diff --name-only "$B")'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a git --no-pager form carrying -z passes" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nchanged=$(git --no-pager diff --name-only -z "$B" | tr \'\\0\' \'\\n\')'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
 @test "a full-line comment is skipped" {
   fixture_repo
   fixture_file probe.sh $'#!/usr/bin/env bash\n# changed=$(git diff --name-only "${base}...HEAD")'

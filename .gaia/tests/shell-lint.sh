@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
-# husky hook, then the hook array-guard (.gaia/scripts/lint-hook-array-guard.sh).
+# husky hook, then two repo-authored guards shellcheck cannot model: the hook
+# array-guard (.gaia/scripts/lint-hook-array-guard.sh) and the diff-quoting
+# guard (.gaia/scripts/lint-diff-name-only-quoting.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
 #
