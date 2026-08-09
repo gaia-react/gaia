@@ -19,10 +19,13 @@ import {describe, expect, test} from 'vitest';
  * two binary entrypoints and the domain routers, then asserts each one is
  * reachable from at least one EXTERNAL invoker: an invocation-shaped string
  * (`gaia <path>` / `gaia-maintainer <path>`) in a skill, command, hook,
- * agent, CI workflow (committed or bundled template), or wiki page. A
- * command's own router (its help text) and its own test are never in the
- * haystack, so they cannot vouch for it. Commands that are invoker-less by
- * design or pending triage are listed in `INTERNAL_COMMANDS` with a reason.
+ * agent, CI workflow (committed or bundled template), or wiki page. The
+ * binary may carry a path prefix and may be quoted, so a release-resolved
+ * `"$LATEST_DIR/.gaia/cli/gaia" <path>` counts on its own; see
+ * `matchesInvocation`. A command's own router (its help text) and its own
+ * test are never in the haystack, so they cannot vouch for it. Commands that
+ * are invoker-less by design or pending triage are listed in
+ * `INTERNAL_COMMANDS` with a reason.
  *
  * Maintainer-only by construction: `.gaia/cli/src` is release-excluded, so
  * adopters carry neither these routers nor this test. On any clone where the
@@ -456,19 +459,60 @@ const invokerText =
     ).join('\n')
   : '';
 
-// A command is reachable when an invocation-shaped string for it exists in the
-// invoker text: the binary name, then the space-separated path, bounded so
+// An invocation-shaped string for `commandPath` in `text`: the binary name,
+// optionally closed by a quote, then the space-separated path, bounded so
 // `wiki state` never matches inside `wiki state-bump`.
-const isReachable = (commandPath: string): boolean => {
+//
+// The quote class is what lets a **release-resolved** invocation count. A
+// subcommand invoked only as `"$LATEST_DIR/.gaia/cli/gaia" update merge-region`
+// puts a closing quote exactly where the separator is required, so without the
+// class the guard reads a live command as dead and the author has to mention
+// its bare form somewhere else to clear a red. Note the narrower fix does not
+// exist: an *unquoted* path prefix already matched, because `/` is neither
+// `\w` nor `-`, so the quote is the whole of the blind spot.
+//
+// This is not a loosening. The docstring's stated floor already counts an
+// invocation-shaped string in operator-facing prose, and an invocation that is
+// actually executed is stronger evidence than one that is merely written down.
+// What stays excluded is a bare path with no separator at all, so the quote is
+// admitted beside the separator and never instead of it.
+// `.gaia/tests/distribution/17-gaia-update-merge-region.sh` reached the same
+// `gaia"?` shape for the same reason.
+//
+// Takes its haystack as an argument rather than closing over `invokerText`, so
+// the pattern itself can be exercised against fixture strings. Reading the
+// oracle only through the whole repository's text cannot show the difference
+// between "this form is unmatchable" and "no such invocation exists here".
+// `quoteClass` is a parameter for exactly one reason: the skills-surface test
+// needs the pre-widening shape as a control, and a hand-copied second regex
+// would drift from this one silently. Only two callers exist, both below, and
+// both pin the value.
+const invocationPattern = (commandPath: string, quoteClass: string): RegExp => {
   const tokens = commandPath
     .split(' ')
     .map(escapeRegExp)
     .join(String.raw`\s+`);
 
   return new RegExp(
-    String.raw`(?<![\w-])gaia(?:-maintainer)?\s+${tokens}(?![\w-])`
-  ).test(invokerText);
+    String.raw`(?<![\w-])gaia(?:-maintainer)?${quoteClass}\s+${tokens}(?![\w-])`
+  );
 };
+
+const matchesInvocation = (commandPath: string, text: string): boolean =>
+  invocationPattern(commandPath, '["\']?').test(text);
+
+// The same matcher without the quote class, i.e. the shape that could not see
+// a release-resolved invocation. Used only as the control described in the
+// skills-surface test below; never as a reachability oracle.
+const matchesUnquotedInvocation = (
+  commandPath: string,
+  text: string
+): boolean => invocationPattern(commandPath, '').test(text);
+
+// A command is reachable when an invocation-shaped string for it exists in the
+// invoker text.
+const isReachable = (commandPath: string): boolean =>
+  matchesInvocation(commandPath, invokerText);
 
 describe('CLI subcommand reachability guard', () => {
   // Maintainer-only guard: `routersPresent` is false on an adopter clone
@@ -488,6 +532,85 @@ describe('CLI subcommand reachability guard', () => {
       // The oracle must be able to return false, else everything looks
       // reachable.
       expect(isReachable('zzz fabricated-command')).toBe(false);
+    }
+  );
+
+  // No `skipIf`: this exercises the pattern against fixture strings only, and
+  // the pattern travels in this file, so it is runnable wherever the file is.
+  test('the invocation pattern reads a quoted binary path', () => {
+    // A release-resolved invocation is frozen in quoted form. Why that counts
+    // is argued once, in `matchesInvocation`'s comment.
+    expect(
+      matchesInvocation(
+        'update merge-region',
+        '"$LATEST_DIR/.gaia/cli/gaia" update merge-region'
+      )
+    ).toBe(true);
+    expect(
+      matchesInvocation(
+        'release scrub',
+        "'/opt/g/.gaia/cli/gaia-maintainer' release scrub"
+      )
+    ).toBe(true);
+
+    // Regression controls for the two forms that already worked: a bare name,
+    // and an unquoted path prefix.
+    expect(
+      matchesInvocation('update merge-region', 'gaia update merge-region')
+    ).toBe(true);
+    expect(
+      matchesInvocation(
+        'update merge-region',
+        '$LATEST_DIR/.gaia/cli/gaia update merge-region'
+      )
+    ).toBe(true);
+
+    // The quote is permitted beside the separator, never instead of it.
+    expect(
+      matchesInvocation('update merge-region', 'gaia"update merge-region')
+    ).toBe(false);
+    // Both boundaries survive: a longer command name is not a prefix match,
+    // and a longer binary name is not the binary.
+    expect(
+      matchesInvocation('wiki state', '"$D/.gaia/cli/gaia" wiki state-bump')
+    ).toBe(false);
+    expect(
+      matchesInvocation('update merge-region', 'notgaia update merge-region')
+    ).toBe(false);
+  });
+
+  test.skipIf(!routersPresent)(
+    'the release-resolved invocations in the update skill are reachability evidence',
+    () => {
+      // `/update-gaia` invokes these two through a quoted `$LATEST_DIR` path,
+      // which is their frozen invocation contract (an adopter whose installed
+      // binary predates the subcommand cannot reach it any other way), and
+      // `.gaia/tests/distribution/17-gaia-update-merge-region.sh` pins that
+      // form. Asserting against the skills surface **alone** is the point: the
+      // whole-repo `invokerText` also carries these commands' bare forms in
+      // `wiki/`, so it greens whether or not the quoted call site is legible.
+      const skillsText = collectText(path.join(repoRoot, '.claude', 'skills'));
+
+      expect(matchesInvocation('update merge-region', skillsText)).toBe(true);
+      expect(matchesInvocation('update regen-regions', skillsText)).toBe(true);
+
+      // The control is what makes the two assertions above evidence about the
+      // *quoted* call site rather than about whatever a skill happens to
+      // mention. `matchesInvocation` accepts bare and quoted alike, so without
+      // this they would also pass on a bare mention, and reverting the quote
+      // class would leave them green with the property they exist to protect
+      // silently gone.
+      //
+      // A red here is not necessarily a regression: it means some skill now
+      // carries a bare form too, so this haystack no longer isolates the quoted
+      // one. Narrow the haystack to the skill under test rather than deleting
+      // the control.
+      expect(matchesUnquotedInvocation('update merge-region', skillsText)).toBe(
+        false
+      );
+      expect(
+        matchesUnquotedInvocation('update regen-regions', skillsText)
+      ).toBe(false);
     }
   );
 
