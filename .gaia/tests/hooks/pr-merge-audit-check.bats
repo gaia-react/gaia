@@ -980,14 +980,21 @@ assert_not_in_set() {
   assert_allowed_by_json
 }
 
-@test "FC-4 no-deadlock: root Dockerfile (in-scope, ownerless) denies unmarked and allows once spawned" {
-  commit_files "Dockerfile" "FROM scratch"
+@test "FC-4 no-deadlock: a root in-scope ownerless file denies unmarked and allows once spawned" {
+  commit_files ".editorconfig" "root = true"
   set=$(spawn_set)
   [ "$set" = "code-audit-frontend" ]
 
-  # The hazard, made concrete: the dispatched set is empty (nothing OWNS a
-  # Dockerfile), but the legacy out-of-scope gate still denies because
-  # Dockerfile is in-scope. Writing no markers must still deny.
+  # The hazard, made concrete: the dispatched set is empty (nothing OWNS
+  # .editorconfig -- the roster declares it unowned), but the legacy
+  # out-of-scope gate still denies, because a root file that is not *.md is
+  # in-scope. Writing no markers must still deny.
+  #
+  # The witness is a root file the roster declares `unowned:`, not merely one
+  # no glob happens to reach. Dockerfile used to serve here and no longer can:
+  # the default member claims it now, so the deny would come from the
+  # member-aware branch and this case would stop exercising the legacy gate at
+  # all while still passing.
   run_merge_hook
   assert_denied_by_json
 

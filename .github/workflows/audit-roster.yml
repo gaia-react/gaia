@@ -12,8 +12,9 @@ name: Audit Roster Drift
 # coverage -- that every tracked path resolves an owner or is declared in
 # the roster's `unowned:` list, with that list held narrow by failing an
 # entry that reaches an owned path, one no ownerless path needs, and one
-# matching nothing at all. The
-# roster is meant to grow as a project adds languages and surfaces, and
+# matching nothing at all.
+#
+# The roster is meant to grow as a project adds languages and surfaces, and
 # these failure modes are otherwise silent: an unregistered agent file
 # rotates no member's content digest and merges unaudited, a glob overlap
 # between two claimant members hands a path to whichever member the roster
@@ -42,12 +43,26 @@ name: Audit Roster Drift
 # Pinned action SHAs match the sibling maintainer workflows:
 #   actions/checkout   @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
 
-# No `push:` trigger, matching verify-required-checks.yml and shell-lint.yml.
-# Merges all land via PR, so the PR run is the gate and a push-to-main run
-# would re-report a verdict the PR run already gave.
+# A `push:` arm as well as the pull-request one, unlike the sibling advisory
+# workflows, and the coverage invariant is why: its verdict is a property of the
+# MERGE-RESULT TREE, not of a pull request's own files, so two pull requests
+# that are each green in isolation compose into a red `main`. One removes a
+# member glob or an `unowned:` entry (its merge-result tree does not yet carry
+# the other's file, so it passes); the other adds a file under that path (its
+# merge-result tree still carries the roster that owns it, so it passes too).
+# Both merge, `main` now has a path that dispatches nobody, and with a
+# pull-request-only trigger nothing says so until an unrelated third pull
+# request happens to open. That is the same argument this job already makes for
+# carrying no paths filter, one level up.
+#
+# `workflow_dispatch:` for the same reason: a maintainer must be able to ask
+# `main` the question directly rather than waiting for the next pull request.
 on:
   pull_request:
     branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

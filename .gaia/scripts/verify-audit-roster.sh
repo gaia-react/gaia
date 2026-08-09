@@ -987,6 +987,14 @@ coverage_universe=""
 coverage_top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -n "$coverage_top" ] && [ "$(cd "$coverage_top" 2>/dev/null && pwd -P)" = "$(cd "$root" 2>/dev/null && pwd -P)" ]; then
   coverage_universe="$(git -C "$root" ls-files -z 2>/dev/null | tr '\0' '\n')"
+else
+  # Say so. A skipped invariant and a satisfied one both end in `roster clean`
+  # on stdout, and a caller that cannot tell them apart will read the second
+  # meaning from the first: .gaia/tests/distribution/16-audit-remit-parity.sh
+  # runs the scrubbed checker against a non-git staging directory and takes
+  # exactly this path. stderr rather than a finding, because not-run is not a
+  # violation, and the exit status stays untouched.
+  printf 'verify-audit-roster: coverage invariant SKIPPED, %s is not a repository root\n' "$root" >&2
 fi
 
 # A dead entry -- one matching no tracked path at all -- is a maintainer-only
@@ -1026,9 +1034,19 @@ if [ -n "$coverage_universe" ]; then
       # save a process. It is deliberate, and the tab-in-a-path residue noted
       # above is why: an untagged owner record for such a path arrives with
       # three fields and is read as an EXEMPTION, whose third field then becomes
-      # a live regex matched against every other path. That fails toward
-      # suppressing findings. Tagged, the same path is still misparsed, but it
-      # stays a path and can only mis-report itself.
+      # a live regex matched against every other path, failing toward
+      # SUPPRESSING findings across the whole tree.
+      #
+      # The tag does not make such a path harmless, and it is worth being exact
+      # about what it does buy, because the damage is wider than the path
+      # itself: the record still splits, the segment after the first tab is read
+      # as the owner, and since that is not `-` the path counts as OWNED. So a
+      # genuine orphan is hidden, and every `unowned:` entry matching the
+      # segment before the tab takes an `OWNHIT` and is reported overbroad on a
+      # witness that is not a real path. What the tag buys is that the record
+      # stays a path: it cannot become a live exemption regex. Bounded
+      # mis-reporting rather than tree-wide suppression, and no such path is
+      # tracked here.
       _audit_scope_parse_unowned < "$config"
       printf '%s\n' "$coverage_universe" | audit_owners_for_paths |
         awk -F'\t' '{ printf "P\t%s\t%s\n", $1, $2 }'
