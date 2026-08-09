@@ -104,7 +104,7 @@ count_autocommits() {
   # target naming a different tree.
   json="$(jq -n --arg c "$B" --arg p "$A/README.md" \
     '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$MAIN/.claude/hooks/block-worktree-path-mismatch.sh"
+  run gaia_deliver_hook "$json" "$MAIN/.claude/hooks/block-worktree-path-mismatch.sh"
   [ "$status" -eq 0 ]
 
   # Target: denied (payload cwd names B, target resolves to a different real
@@ -138,7 +138,7 @@ count_autocommits() {
   # treeA and allowed, even though the hook process runs in treeB.
   json="$(jq -n --arg c "$A" --arg p "$A/README.md" \
     '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<< "$output" && return 1
 
@@ -148,7 +148,7 @@ count_autocommits() {
   # from its own process cwd would see treeB writing into treeB and allow it.
   json="$(jq -n --arg c "$A" --arg p "$B/README.md" \
     '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<< "$output" || return 1
 
@@ -157,7 +157,7 @@ count_autocommits() {
   # falls back to the process cwd, treeB, and a target in treeA is denied.
   json="$(jq -n --arg c "$outside" --arg p "$A/README.md" \
     '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<< "$output" || return 1
 
@@ -167,7 +167,7 @@ count_autocommits() {
   # an identity it could not confirm. The contract every block-*.sh guard shares.
   json="$(jq -n --arg c "$outside" --arg p "$A/README.md" \
     '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run run_in "$outside" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  run run_in "$outside" -- gaia_deliver_hook "$json" "$guard"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -672,7 +672,8 @@ test("adds two numbers c407", () => {
     local payload
     payload=$(jq -nc --arg c "pnpm test --run $test_rel" --arg d "$tree" \
       '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d, tool_response:{stdout:"", stderr:"", interrupted:false}}')
-    run bash -c "cd '$tree' && export RED_CAPTURE_JSON_OVERRIDE='$canned'; printf '%s' '$payload' | bash '$tree/.claude/hooks/capture-red-observations.sh'"
+    run run_in "$tree" -- run_with RED_CAPTURE_JSON_OVERRIDE="$canned" -- \
+      gaia_deliver_hook "$payload" "$tree/.claude/hooks/capture-red-observations.sh"
   }
 
   # Drive the REAL check hook for a `git commit` PreToolUse, FROM <tree>'s OWN
@@ -684,7 +685,7 @@ test("adds two numbers c407", () => {
     local payload
     payload=$(jq -nc --arg c "git commit -m change" --arg d "$tree" \
       '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}')
-    run bash -c "cd '$tree' && printf '%s' '$payload' | bash '$tree/.claude/hooks/red-verify-commit-check.sh'"
+    run run_in "$tree" -- gaia_deliver_hook "$payload" "$tree/.claude/hooks/red-verify-commit-check.sh"
   }
 
   # ---------------------------------------------------------------------------
@@ -917,7 +918,7 @@ test("adds two numbers c407", () => {
   # Half A, the kept nudge.
   mkdir -p "$MAIN/.gaia/local"
   jq -n '{completed_at: null}' > "$MAIN/.gaia/local/setup-state.json"
-  run env HOME="$home_dir" bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$B/.gaia/statusline/gaia-statusline.sh"
+  run run_with HOME="$home_dir" -- gaia_deliver_hook "$json" "$B/.gaia/statusline/gaia-statusline.sh"
   [ "$status" -eq 0 ]
   grep -qF 'setup-gaia' <<< "$output"
 
@@ -926,7 +927,7 @@ test("adds two numbers c407", () => {
   jq -n '{completed_at: "2026-01-01T00:00:00Z"}' > "$MAIN/.gaia/local/setup-state.json"
   jq -n '{schema: 1, openCount: 3, computedAt: 0}' > "$MAIN/.gaia/local/debt/count.json"
   jq -n '{outdatedCount: 3}' > "$MAIN/.gaia/local/cache/shared/update-check.json"
-  run env HOME="$home_dir" bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$B/.gaia/statusline/gaia-statusline.sh"
+  run run_with HOME="$home_dir" -- gaia_deliver_hook "$json" "$B/.gaia/statusline/gaia-statusline.sh"
   [ "$status" -eq 0 ]
   grep -qF 'gaia-debt' <<< "$output" && return 1
   grep -qF 'update-deps' <<< "$output" && return 1
@@ -960,12 +961,12 @@ test("adds two numbers c407", () => {
   # 1. wiki-drift-check.sh: real drift exists; a live hook prints the
   # reminder and stamps its own marker.
   json="$(jq -n '{session_id: "S1"}')"
-  out="$(run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$MAIN/.claude/hooks/wiki-drift-check.sh")"
+  out="$(run_in "$B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-drift-check.sh")"
   grep -qF '[wiki state]' <<< "$out" || dead="$dead wiki-drift-check"
 
   # 2. wiki-commit-nudge.sh: fires on a Bash `git commit` PostToolUse call.
   json="$(jq -n --arg c 'git commit -m "x"' '{tool_name: "Bash", tool_input: {command: $c}}')"
-  out="$(run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$MAIN/.claude/hooks/wiki-commit-nudge.sh")"
+  out="$(run_in "$B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-commit-nudge.sh")"
   grep -qF '[wiki nudge]' <<< "$out" || dead="$dead wiki-commit-nudge"
 
   # 3. wiki-session-stop.sh: a session-start marker recording HEAD before a
@@ -976,7 +977,7 @@ test("adds two numbers c407", () => {
   git -C "$B" add wiki/page.md
   git -C "$B" commit -q -m "wiki page"
   json="$(jq -n '{session_id: "S1"}')"
-  out="$(run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$MAIN/.claude/hooks/wiki-session-stop.sh")"
+  out="$(run_in "$B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-session-stop.sh")"
   grep -qF 'WIKI_CHANGED' <<< "$out" || dead="$dead wiki-session-stop"
 
   # 4. wiki-squash-autocommits.sh: two consecutive `wiki: auto-commit` commits
@@ -1201,7 +1202,7 @@ test("adds two numbers c407", () => {
   # where settings.json names it by a path relative to the session's cwd.
   reentry_payload="$(jq -nc --arg p "$B" \
     '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
-  ( cd "$B" && printf '%s' "$reentry_payload" | bash "$B/.claude/hooks/provision-worktree.sh" ) >/dev/null 2>&1
+  run_in "$B" -- gaia_deliver_hook "$reentry_payload" "$B/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
 
   # Target: repaired to a correct symlink at main's real .gaia/local, on
   # re-entry, without manual intervention.
@@ -1256,7 +1257,7 @@ SH
   # worktree and whose tool_response names the path outright.
   entry_payload="$(jq -nc --arg p "$wt" \
     '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
-  ( cd "$wt" && printf '%s' "$entry_payload" | bash "$wt/.claude/hooks/provision-worktree.sh" ) >/dev/null 2>&1
+  run_in "$wt" -- gaia_deliver_hook "$entry_payload" "$wt/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
 
   # Target: generated build types are present and current before first use.
   [ -f "$wt/.react-router/types/.stamp" ]
@@ -1290,7 +1291,7 @@ SH
   # tracked file main carries) names "gaia", exactly the name the registry
   # would resolve to main. Denied, naming B's own root as the correct value.
   json="$(jq -n --arg c "$B" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: "gaia"}}')"
-  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<< "$output"
   grep -qF -- "$B" <<< "$output"
@@ -1298,7 +1299,7 @@ SH
   # (2) PATH ARM, the main checkout. The same silent-wrong-tree shape by
   # absolute path instead of by name.
   json="$(jq -n --arg c "$B" --arg p "$MAIN" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
-  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<< "$output"
   grep -qF -- "$B" <<< "$output"
@@ -1306,13 +1307,13 @@ SH
   # (3) PATH ARM, a sibling worktree -- the case the original simulated
   # scenario named (tree A, not only main).
   json="$(jq -n --arg c "$B" --arg p "$A" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
-  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<< "$output"
 
   # (4) PATH ARM, B's own root: the correct activation, allowed.
   json="$(jq -n --arg c "$B" --arg p "$B" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
-  run run_in "$B" -- bash -c 'printf %s "$1" | bash "$2"' _ "$json" "$guard"
+  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<< "$output" && return 1
   return 0
@@ -1380,7 +1381,8 @@ SH
   # step.
   entry_payload="$(jq -nc --arg p "$B" \
     '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
-  ( cd "$B" && printf '%s' "$entry_payload" | PATH="$stub_dir:$PATH" bash "$B/.claude/hooks/provision-worktree.sh" ) >/dev/null 2>&1
+  run_in "$B" -- run_with PATH="$stub_dir:$PATH" -- \
+    gaia_deliver_hook "$entry_payload" "$B/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
 
   # Target: a test run inside B resolves its dependencies from B's own tree,
   # never silently against main's when they differ. A bare "resolution

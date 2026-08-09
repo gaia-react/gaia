@@ -6,7 +6,8 @@
 # linked worktrees off one base, seeds .gaia/local/, copies the real registry
 # and whichever hooks/scripts/libs a scenario drives into the fixture at their
 # real repo-relative paths (so their own internal `source`/relative-path calls
-# resolve exactly as they do in the real repo), and provides a run_in helper.
+# resolve exactly as they do in the real repo), and provides the run_in /
+# run_with runners plus the suite's one hook-delivery idiom, gaia_deliver_hook.
 #
 # GAIA_REPO_ROOT_REAL is resolved once from this file's own location:
 # lib/ -> concurrency/ -> tests/ -> .gaia/ -> repo root (four levels up).
@@ -139,6 +140,59 @@ run_in() {
     shift
   fi
   ( cd "$dir" && "$@" )
+}
+
+# run_with <VAR=VALUE> [...] -- <cmd...>: run <cmd...> with the given
+# environment assignments applied, in a subshell so the caller's own
+# environment is never disturbed. The environment analogue of run_in, and the
+# `--` separator is REQUIRED here rather than optional, because an assignment
+# list is otherwise indistinguishable from the command that follows it.
+#
+# It exists for one reason: `env` is an external binary and cannot invoke a
+# shell function, so a scenario needing both an environment override and
+# gaia_deliver_hook below has no way to compose the two without this.
+run_with() {
+  (
+    while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
+      export "${1?}"
+      shift
+    done
+    shift
+    "$@"
+  )
+}
+
+# gaia_deliver_hook <payload> <hook>: deliver <payload> on stdin to <hook>.
+# This is the ONE hook-invocation idiom for this suite; reach for it rather
+# than hand-rolling a delivery, and compose it with whichever runner the
+# scenario needs. It calls neither bats' `run` nor `cd` itself, so the caller
+# supplies that:
+#
+#   run gaia_deliver_hook "$json" "$hook"                    status + output
+#   run run_in "$B" -- gaia_deliver_hook "$json" "$hook"     ... from a tree
+#   run run_with HOME="$h" -- gaia_deliver_hook "$json" "$hook"   ... with env
+#   out="$(run_in "$B" -- gaia_deliver_hook "$json" "$hook")"     stdout alone
+#   run_in "$B" -- gaia_deliver_hook "$json" "$hook" >/dev/null   side effect
+#
+# WHY THE PAYLOAD IS POSITIONAL, which is not a style preference. The payload
+# and the hook path are ARGUMENTS to the inner `bash -c`, never interpolated
+# into its script. A payload spliced into a quoted string terminates that
+# string early the moment a fixture carries a quote of its own, and the hook
+# then reads a DIFFERENT payload than the one the fixture spells: it denies for
+# the wrong reason, or never parses the payload at all, and the scenario greens
+# having proved nothing about the property it is named for. This suite is the
+# hardest place to notice that, because its assertions are about WHICH TREE a
+# guard attributes a write to rather than about payload text.
+#
+# THE TWIN, deliberately not shared. .gaia/tests/hooks/helpers/run-hook.sh's
+# `invoke_hook` is the same one-line idiom for the .gaia/tests/hooks/ suites.
+# It calls `run` itself, which those suites want and this one cannot use: only
+# one scenario here invokes a hook with no runner wrapped around it, while the
+# rest need run_in, run_with, a `$( )` capture, or no capture at all. Two
+# implementations of one line is the accepted cost of two harnesses with
+# different composition needs; keep them in step by name.
+gaia_deliver_hook() {
+  bash -c 'printf %s "$1" | bash "$2"' _ "$1" "$2"
 }
 
 # gaia_teardown: remove every registered worktree (force, best-effort), then

@@ -41,6 +41,15 @@
 # for an absence. A bare `[[ ]]` and a `!`-negation both fail to fail on a
 # non-final assertion line.
 
+# THE TWIN, deliberately not shared. The INV-7 concurrency meter carries the
+# same one-line idiom as `gaia_deliver_hook` in
+# .gaia/tests/concurrency/lib/concurrency-harness.sh. The two are not merged
+# because the forms below call bats' `run` themselves, which every suite here
+# wants and that suite cannot use: its scenarios wrap delivery in a
+# tree-scoped or environment-scoped runner, capture stdout alone, or drive a
+# hook purely for its side effect. Keep the two in step by name; a change to
+# the invocation below almost certainly applies there too.
+
 # invoke_hook PAYLOAD HOOK
 # Pipes PAYLOAD to HOOK, capturing status/output through bats' `run`.
 invoke_hook() {
