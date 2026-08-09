@@ -1351,8 +1351,8 @@ YAML
 }
 
 @test "coverage: a non-git fixture root has no universe, so the invariant is silent" {
-  # What keeps the other 70 tests in this suite green. Asserted rather than
-  # assumed: this fixture's own scaffolding is ownerless under its roster.
+  # What keeps the other 70 tests in this suite green: they scaffold bare
+  # directories, and this is why that costs them nothing.
   local r="$BATS_TEST_TMPDIR/cov-nongit"
   scaffold_root "$r" <<'YAML'
 auditors:
@@ -1365,6 +1365,29 @@ YAML
   [ "$status" -eq 0 ]
   grep -qF "ownerless-path" <<<"$output" && return 1
   return 0
+}
+
+@test "coverage: that silence is the missing universe, not a vacuous invariant" {
+  # The negative control for the test above, and the one this suite most needs:
+  # if the invariant were simply never firing, that test would pass for the
+  # wrong reason and every other fixture's green would mean nothing. Same
+  # scaffolding, same roster, the ONLY difference being that this root is a
+  # repository -- and it must report, because a scaffolded fixture's own roster
+  # and agent files are ownerless under a roster that claims `app/**` alone.
+  local r="$BATS_TEST_TMPDIR/cov-nonvacuous"
+  scaffold_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+YAML
+  git init -q "$r"
+  git -C "$r" add -A
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "ownerless-path"
+  assert_contains ".gaia/audit-ci.yml"
 }
 
 @test "coverage: a --root inside a repository does not enumerate that repository" {
