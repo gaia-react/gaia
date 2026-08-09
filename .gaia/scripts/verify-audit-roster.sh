@@ -925,6 +925,195 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4 f5 f6 f7; do
   esac
 done < <(printf '%s\n' "$pair_records")
 
+# --- Invariant: every tracked path resolves an owner -------------------------
+#
+# The inverse of every invariant above. Those ask whether the roster's entries
+# are well-formed; this asks whether the roster's entries COVER the repository,
+# which is the one question the dispatch resolver structurally cannot answer for
+# itself. A path no member's globs match resolves an empty dispatched set, falls
+# to the merge gate's legacy branch, is out-of-scope-allowlisted, and merges
+# unreviewed -- and that is silent by construction, because an empty member set
+# is also the legitimate answer for a genuinely out-of-remit diff. Nothing else
+# distinguishes "nothing here needs an owner" from "this needs one and has none".
+#
+# So the roster declares the difference, in an `unowned:` list beside `auditors:`,
+# and this invariant is the ledger over the two together. The list is read only
+# here: no dispatch path consults it, so an entry can never suppress a review it
+# would otherwise have forced.
+#
+# WHY AN EXEMPTION LIST IS NOT THE RUBBER STAMP IT LOOKS LIKE, which is the
+# objection this design has to answer rather than dodge, since a freely
+# appendable opt-out reproduces the current situation with more machinery:
+#
+#   * Appending is REVIEWED. The list lives in .gaia/audit-ci.yml, a path
+#     code-audit-maintainer-shell already claims, so adding an exemption
+#     dispatches an auditor. Adding an ownerless file today dispatches nobody.
+#     That is the whole asymmetry: the silent move becomes the loud one.
+#   * A blanket exemption CANNOT PASS. An entry that reaches a path some member
+#     already owns is broader than the ownerless region it exists to describe,
+#     and fails as overbroad -- which `**`, the one move that would neuter this
+#     invariant in a single line, necessarily does.
+#   * The list cannot rot into scenery. An entry no ownerless path needs (every
+#     path it covers is covered by another entry too) fails as redundant, so the
+#     list cannot grow by accretion.
+#
+# THE UNIVERSE is the tracked file list of the repository ROOTED AT $root:
+# `git ls-files`, so untracked scratch files and ignored build output are not
+# the roster's problem. It is deliberately not "$root looks like it is inside a
+# checkout": a --root naming a SUBDIRECTORY of a repository would otherwise
+# enumerate the enclosing repository and report every path outside the injected
+# tree as ownerless, answering a question nobody asked. When $root is not itself
+# a repository root the universe is empty and this invariant does not run. That
+# is not a fail-open on the real path: with no --root the root is derived from
+# `git rev-parse --show-toplevel` above, so a default run is always at a
+# repository root, and the injected case is a caller who has explicitly named
+# the tree to describe.
+#
+# Residue, bounded and stated rather than silently carried: a tracked path
+# containing a literal TAB misaligns the fields of the record stream below. The
+# roster's own dialect rejects whitespace in a glob for the same reason, and no
+# such path exists here.
+
+coverage_universe=""
+coverage_top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$coverage_top" ] && [ "$(cd "$coverage_top" 2>/dev/null && pwd -P)" = "$(cd "$root" 2>/dev/null && pwd -P)" ]; then
+  coverage_universe="$(git -C "$root" ls-files -z 2>/dev/null | tr '\0' '\n')"
+fi
+
+# A dead entry -- one matching no tracked path at all -- is a maintainer-only
+# assertion, and the flag rather than the finding is what carries the marker so
+# the scrubbed script stays syntactically whole. The shipped `unowned:` list
+# names paths from GAIA's own tree, and an adopter clone legitimately lacks some
+# of them (or deletes a directory the template shipped), so on an adopter this
+# would be a red check reporting nothing they did wrong. In this repo it is the
+# anti-rot half of the design and it runs.
+coverage_check_dead=0
+# gaia:maintainer-only:start
+coverage_check_dead=1
+# gaia:maintainer-only:end
+
+if [ -n "$coverage_universe" ]; then
+  # The classifier decides ownership, exactly as dispatch does: this invariant
+  # must never acquire a second opinion about who owns a path. Both injection
+  # points are honored, which is why audit_scope_init takes the config here
+  # rather than deriving it from the root.
+  audit_scope_init "$root" "$config"
+
+  coverage_records="$(
+    {
+      _audit_scope_parse_unowned < "$config"
+      printf '%s\n' "$coverage_universe" | audit_owners_for_paths |
+        awk -F'\t' '{ printf "P\t%s\t%s\n", $1, $2 }'
+    } | awk -F'\t' -v cap=25 -v checkdead="$coverage_check_dead" '
+      $1 == "UNOWNED" {
+        n++; G[n] = $2; R[n] = $3
+        TOTAL[n] = 0; OWNHIT[n] = 0; SOLE[n] = 0
+        next
+      }
+      $1 == "P" {
+        p = $2; o = $3
+        # cnt counts only the OWNERLESS matches, because that is the tier the
+        # list exists to describe; TOTAL counts every match, which is what makes
+        # an overbroad entry and a dead one distinguishable.
+        cnt = 0; last = 0
+        for (i = 1; i <= n; i++) {
+          if (p ~ R[i]) {
+            TOTAL[i]++
+            if (o != "-") {
+              if (OWNHIT[i] == 0) { OWNW[i] = p; OWNO[i] = o }
+              OWNHIT[i]++
+            } else { cnt++; last = i }
+          }
+        }
+        if (o == "-") {
+          if (cnt == 0) { orphans++; if (orphans <= cap) ORPH[orphans] = p }
+          else if (cnt == 1) SOLE[last]++
+        }
+        next
+      }
+      END {
+        if (orphans > 0) {
+          printf "ORPHANCOUNT\t%d\t%d\n", orphans, cap
+          for (k = 1; k <= orphans && k <= cap; k++) printf "ORPHAN\t%s\n", ORPH[k]
+        }
+        # One finding per entry, in this order: a dead entry is also trivially
+        # non-sole, and reporting it twice would describe one defect as two.
+        for (i = 1; i <= n; i++) {
+          if (TOTAL[i] == 0) {
+            if (checkdead == 1) printf "DEADUNOWNED\t%s\n", G[i]
+            continue
+          }
+          if (OWNHIT[i] > 0) { printf "OVERBROAD\t%s\t%s\t%s\n", G[i], OWNW[i], OWNO[i]; continue }
+          if (SOLE[i] == 0) { printf "REDUNDANT\t%s\n", G[i]; continue }
+        }
+      }
+    '
+  )"
+
+  # The ownerless set is ONE finding, not one per path: the repair is a single
+  # decision over the set (give these an owner, or declare them unowned), and a
+  # directory added with two hundred files in it would otherwise bury every
+  # other invariant's output under two hundred blocks.
+  if printf '%s\n' "$coverage_records" | grep -q '^ORPHANCOUNT'; then
+    findings=$((findings + 1))
+    orphan_count="$(printf '%s\n' "$coverage_records" | awk -F'\t' '$1 == "ORPHANCOUNT" { print $2 }')"
+    orphan_cap="$(printf '%s\n' "$coverage_records" | awk -F'\t' '$1 == "ORPHANCOUNT" { print $3 }')"
+    printf 'verify-audit-roster: FAIL ownerless-path\n'
+    printf '  roster: %s\n' "$config"
+    printf '  tracked paths dispatching no member and matching no `unowned:` entry: %s\n' "$orphan_count"
+    printf '%s\n' "$coverage_records" | awk -F'\t' '$1 == "ORPHAN" { printf "    %s\n", $2 }'
+    if [ "$orphan_count" -gt "$orphan_cap" ]; then
+      printf '    ... and %d more\n' "$((orphan_count - orphan_cap))"
+    fi
+    printf '  A path no member owns resolves an empty dispatched set, which the\n'
+    printf '  merge gate reads as "nobody is owed a clearance", so a change to it\n'
+    printf '  merges having been reviewed by no one. Either grant it to a member\n'
+    printf '  in `auditors:`, or declare it in `unowned:` -- which is a reviewed\n'
+    printf '  edit to a path code-audit-maintainer-shell owns, where adding the\n'
+    printf '  file was not.\n'
+    printf '\n'
+  fi
+
+  while IFS=$'\t' read -r kind f1 f2 f3; do
+    case "$kind" in
+      DEADUNOWNED)
+        findings=$((findings + 1))
+        printf 'verify-audit-roster: FAIL dead-unowned-glob\n'
+        printf '  glob:   %s\n' "$f1"
+        printf '  roster: %s\n' "$config"
+        printf '  This entry matches no tracked path, so it exempts nothing and\n'
+        printf '  documents nothing. An exemption list that keeps entries after\n'
+        printf '  the paths they described are gone is how it stops being read.\n'
+        printf '  Remove it.\n'
+        printf '\n'
+        ;;
+      OVERBROAD)
+        findings=$((findings + 1))
+        printf 'verify-audit-roster: FAIL overbroad-unowned-glob\n'
+        printf '  glob:    %s\n' "$f1"
+        printf '  witness: %s (owned by %s)\n' "$f2" "$f3"
+        printf '  An `unowned:` entry describes a region that dispatches nobody,\n'
+        printf '  so one reaching a path a member already owns is broader than the\n'
+        printf '  region it exists to describe. This is what stops the list from\n'
+        printf '  becoming a rubber stamp: a blanket entry covers owned paths by\n'
+        printf '  construction and cannot pass here. Narrow it to the ownerless\n'
+        printf '  region.\n'
+        printf '\n'
+        ;;
+      REDUNDANT)
+        findings=$((findings + 1))
+        printf 'verify-audit-roster: FAIL redundant-unowned-glob\n'
+        printf '  glob:   %s\n' "$f1"
+        printf '  roster: %s\n' "$config"
+        printf '  No ownerless path needs this entry: every path it covers is\n'
+        printf '  covered by another entry too. Two entries covering the same set\n'
+        printf '  both report, because either one may be the one to remove.\n'
+        printf '\n'
+        ;;
+    esac
+  done < <(printf '%s\n' "$coverage_records")
+fi
+
 # gaia:maintainer-only:start
 # --- The built-in fallback lockstep ------------------------------------------
 #

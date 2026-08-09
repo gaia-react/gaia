@@ -176,13 +176,14 @@ YAML
 # Member names and the compiled regexes contain no spaces, so downstream
 # `read -r kind a b` splits them cleanly.
 
-_audit_scope_parse_auditors() {
-  awk '
-    function unq(s) {
-      if (s ~ /^".*"$/) return substr(s, 2, length(s) - 2)
-      if (s ~ /^'\''.*'\''$/) return substr(s, 2, length(s) - 2)
-      return s
-    }
+# The three-construct glob compiler, as awk source rather than as a function
+# inside one awk program. Two awk programs in this module need it (the roster
+# parser below and the `unowned:` parser after it), and a second hand-written
+# copy is exactly the silent drift the roster's own reader-drift invariant
+# exists to catch: a compiler that disagreed with itself would classify the
+# same glob two ways and no check would notice. Concatenated into each program
+# at the call site, so there is one copy of the transformation in the repo.
+_AUDIT_SCOPE_GLOB_AWK='
     # Convert a posix glob (**, *) into an anchored ERE, matched against
     # repo-relative POSIX paths. Mirrors scrub.ts globToRegex: escape ERE
     # specials (not *), then handle **/, **, * via sentinels so single-* is
@@ -207,6 +208,15 @@ _audit_scope_parse_auditors() {
       gsub(/@@STAR@@/,   ".*", g)
       gsub(/@@DIRSTAR@@/, "(.*/)?", g)
       return "^" g "$"
+    }
+'
+
+_audit_scope_parse_auditors() {
+  awk "$_AUDIT_SCOPE_GLOB_AWK"'
+    function unq(s) {
+      if (s ~ /^".*"$/) return substr(s, 2, length(s) - 2)
+      if (s ~ /^'\''.*'\''$/) return substr(s, 2, length(s) - 2)
+      return s
     }
     function flush(   i) {
       if (have_member) {
@@ -271,18 +281,70 @@ _audit_scope_parse_auditors() {
   '
 }
 
-# --- audit_scope_init <root> --------------------------------------------------
+# --- The `unowned:` exemption list -------------------------------------------
+#
+# The roster answers "who owns this path". The `unowned:` list answers the
+# question the roster structurally cannot: which paths are MEANT to dispatch
+# nobody. Ownership and exemption are read by the same compiler and are matched
+# the same way, but they are not the same tier and this list is never consulted
+# to decide an owner: it exists so a completeness check over the tracked tree
+# can tell "nothing here needs an auditor" apart from "this needs one and has
+# none", which the dispatch resolver's empty member set cannot distinguish.
+#
+# Read only by .gaia/scripts/verify-audit-roster.sh's coverage invariant. No
+# dispatch path consults it, so an entry here never suppresses a review.
+#
+# Emits, tab-separated so a glob may legally contain a space:
+#   UNOWNED <glob> <compiled-regex>
+
+_audit_scope_parse_unowned() {
+  awk "$_AUDIT_SCOPE_GLOB_AWK"'
+    function unq(s) {
+      if (s ~ /^".*"$/) return substr(s, 2, length(s) - 2)
+      if (s ~ /^'\''.*'\''$/) return substr(s, 2, length(s) - 2)
+      return s
+    }
+    BEGIN { OFS = "\t"; in_block = 0 }
+    {
+      raw = $0
+      if (raw ~ /^unowned[[:space:]]*:/) { in_block = 1; next }
+      if (!in_block) next
+      # Any other top-level key closes the block. Blank lines and comments
+      # (the maintainer-only markers included) never do.
+      if (raw ~ /^[A-Za-z_]/) { in_block = 0; next }
+      if (raw ~ /^[[:space:]]*$/) next
+      if (raw ~ /^[[:space:]]*#/) next
+      if (raw ~ /^[[:space:]]*-[[:space:]]+/) {
+        g = raw
+        sub(/^[[:space:]]*-[[:space:]]+/, "", g)
+        sub(/[[:space:]]+#.*$/, "", g)
+        sub(/^[[:space:]]+/, "", g); sub(/[[:space:]]+$/, "", g)
+        g = unq(g)
+        if (g != "") print "UNOWNED", g, glob_to_regex(g)
+        next
+      }
+    }
+  '
+}
+
+# --- audit_scope_init <root> [config-file] ------------------------------------
 #
 # Parses the roster ONCE per run: <root>/.gaia/audit-ci.yml when it defines
 # an `auditors:` block, else the built-in default roster above. Populates
 # the module's internal state consumed by audit_owner_for_path /
 # audit_owners_for_paths. Safe to call more than once (each call resets and
 # re-parses); callers should still call it only once per run.
+#
+# The optional second argument overrides which roster file is read, for a
+# caller that resolves the roster itself. verify-audit-roster.sh is the one
+# such caller: it takes `--config` and `--root` as SEPARATE injection points,
+# so deriving the roster from the root here would silently answer from a file
+# it was told not to read.
 
 audit_scope_init() {
-  local root="$1" config_file records
+  local root="$1" config_file="${2:-}" records
 
-  config_file="${root}/.gaia/audit-ci.yml"
+  [ -n "$config_file" ] || config_file="${root}/.gaia/audit-ci.yml"
 
   _AUDIT_SCOPE_DEFAULT_MEMBER=""
   _AUDIT_SCOPE_SPEC_COUNT=0

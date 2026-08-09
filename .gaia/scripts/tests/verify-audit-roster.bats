@@ -1233,3 +1233,159 @@ YAML
   grep -qE '^[^#]*git [a-z -]*(commit|push|checkout|add|reset)' "$SCRIPT" && return 1
   return 0
 }
+
+# ---------------------------------------------------------------------------
+# Invariant 7: every tracked path resolves an owner (#1245).
+#
+# The universe is the tracked file list of the repository ROOTED AT --root, so
+# these fixtures `git init` and `git add` rather than being bare directories.
+# The sibling fixtures above deliberately stay non-git: the invariant has no
+# universe there and does not run, which is what keeps it from re-reddening
+# every other test in this suite.
+# ---------------------------------------------------------------------------
+
+# Scaffolds a fixture root as scaffold_root does, then makes it a repository
+# and stages everything, so `git ls-files` has an answer. Extra tracked files
+# are passed as trailing arguments and created empty.
+scaffold_tracked_root() {
+  local r="$1"
+  shift
+  scaffold_root "$r"
+  local f
+  for f in "$@"; do
+    mkdir -p "$r/$(dirname "$f")"
+    : > "$r/$f"
+  done
+  git init -q "$r"
+  git -C "$r" add -A
+}
+
+# The roster every test in this section starts from: two claimants plus the
+# default, and an `unowned:` list covering the scaffolding itself (the roster,
+# the agent files and both machinery lists) so a fixture is clean unless the
+# test deliberately adds an unowned path.
+tracked_roster() {
+  cat <<'YAML'
+auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    default: true
+  - name: code-audit-alpha
+    globs:
+      - "lib/**"
+YAML
+  printf 'unowned:\n'
+  printf '  - "%s"\n' "$@"
+}
+
+@test "coverage: a tracked path owned by nobody and exempted by nobody fails" {
+  local r="$BATS_TEST_TMPDIR/cov-orphan"
+  tracked_roster '.claude/**' '.gaia/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "ownerless-path"
+  assert_contains "docs/orphan.md"
+}
+
+@test "coverage: an owned path is not reported, so the finding is not vacuous" {
+  local r="$BATS_TEST_TMPDIR/cov-owned"
+  tracked_roster '.claude/**' '.gaia/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$r"
+  grep -qF "app/a.ts" <<<"$output" && return 1
+  grep -qF "lib/b.ts" <<<"$output" && return 1
+  return 0
+}
+
+@test "coverage: an unowned: glob covering the path clears it" {
+  local r="$BATS_TEST_TMPDIR/cov-exempt"
+  tracked_roster '.claude/**' '.gaia/**' 'docs/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$r"
+  [ "$status" -eq 0 ]
+  assert_contains "roster clean"
+}
+
+@test "coverage: an unowned: glob matching no tracked path fails as dead" {
+  local r="$BATS_TEST_TMPDIR/cov-dead"
+  tracked_roster '.claude/**' '.gaia/**' 'nothing/here/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "dead-unowned-glob"
+  assert_contains "nothing/here/**"
+}
+
+@test "coverage: an unowned: glob reaching an OWNED path fails as overbroad" {
+  # The anti-rubber-stamp assertion. A blanket exemption is the one move that
+  # would turn this invariant into a formality, and it fails here because it
+  # necessarily also covers a path some member already owns.
+  local r="$BATS_TEST_TMPDIR/cov-overbroad"
+  tracked_roster '**' | scaffold_tracked_root "$r" app/a.ts lib/b.ts
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "overbroad-unowned-glob"
+}
+
+@test "coverage: the overbroad finding cites the owned witness and its owner" {
+  local r="$BATS_TEST_TMPDIR/cov-overbroad-witness"
+  tracked_roster '.claude/**' '.gaia/**' 'app/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "overbroad-unowned-glob"
+  assert_contains "app/a.ts"
+  assert_contains "code-audit-frontend"
+}
+
+@test "coverage: an unowned: glob no path needs it for fails as redundant" {
+  local r="$BATS_TEST_TMPDIR/cov-redundant"
+  tracked_roster '.claude/**' '.gaia/**' 'docs/**' 'docs/sub/**' \
+    | scaffold_tracked_root "$r" app/a.ts docs/sub/x.md
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "redundant-unowned-glob"
+  assert_contains "docs/sub/**"
+}
+
+@test "coverage: a non-git fixture root has no universe, so the invariant is silent" {
+  # What keeps the other 70 tests in this suite green. Asserted rather than
+  # assumed: this fixture's own scaffolding is ownerless under its roster.
+  local r="$BATS_TEST_TMPDIR/cov-nongit"
+  scaffold_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+YAML
+  run_root "$r"
+  [ "$status" -eq 0 ]
+  grep -qF "ownerless-path" <<<"$output" && return 1
+  return 0
+}
+
+@test "coverage: a --root inside a repository does not enumerate that repository" {
+  # --root names the tree the answer describes. A subdirectory of a checkout is
+  # not a repository root, so enumerating the enclosing repo's tracked files
+  # would answer a question nobody asked, with every path outside the fixture
+  # reported ownerless.
+  local sb="$BATS_TEST_TMPDIR/enclosing"
+  mkdir -p "$sb"
+  git init -q "$sb"
+  : > "$sb/outside.md"
+  git -C "$sb" add -A
+  local r="$sb/nested"
+  scaffold_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+YAML
+  run_root "$r"
+  grep -qF "outside.md" <<<"$output" && return 1
+  [ "$status" -eq 0 ]
+}
