@@ -170,7 +170,15 @@ describe('module docblock placement', () => {
   test.skipIf(!sourcesPresent)(
     'every module docblock precedes the first import',
     () => {
-      const stranded = collectSourceFiles(cliSrc).flatMap((relative) => {
+      const sources = collectSourceFiles(cliSrc);
+
+      // A scan that reaches nothing reports nothing, so the empty result below
+      // would read as a clean corpus. `.gaia/cli/src` has held hundreds of
+      // `.ts` files for the life of the CLI; a count this low means the walk
+      // or the extension filter broke, not that the tree shrank.
+      expect(sources.length).toBeGreaterThan(50);
+
+      const stranded = sources.flatMap((relative) => {
         const line = findStrandedDocblock(
           readFileSync(path.join(cliSrc, relative), 'utf8')
         );
