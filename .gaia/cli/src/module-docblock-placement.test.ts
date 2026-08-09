@@ -69,6 +69,21 @@ const blockCommentEnd = (lines: readonly string[], start: number): number => {
 };
 
 /**
+ * A statement terminator, tolerating a trailing line or block comment.
+ *
+ * A bare `endsWith(';')` misses `import x from 'y'; // note`, and missing it is
+ * not a near-miss: the scan then runs past the docblock below that import to
+ * the NEXT import's terminator, steps over the docblock entirely, and the guard
+ * reports the file clean on exactly the defect it exists to catch. One
+ * `// eslint-disable-line` added by ordinary editing would have disabled this
+ * guard for that whole file, silently.
+ */
+const STATEMENT_END = /;\s*(?:\/\/.*|\/\*.*\*\/)?$/;
+
+/** `import` as a whole word, so `importantThing();` is not read as an import. */
+const IMPORT_START = /^import\b/;
+
+/**
  * Line index of the last line of the import statement opening at `start`.
  * A multi-line `import {…} from '…';` ends on its own closing line, so the
  * scan runs to the first line that terminates a statement.
@@ -76,7 +91,7 @@ const blockCommentEnd = (lines: readonly string[], start: number): number => {
 const importEnd = (lines: readonly string[], start: number): number => {
   let end = start;
 
-  while (end < lines.length && !(lines[end] ?? '').trimEnd().endsWith(';')) {
+  while (end < lines.length && !STATEMENT_END.test((lines[end] ?? '').trim())) {
     end += 1;
   }
 
@@ -92,9 +107,9 @@ const nextStatement = (lines: readonly string[], from: number): number => {
   let index = from;
 
   while (index < lines.length) {
-    const line = lines[index] ?? '';
+    const line = (lines[index] ?? '').trim();
 
-    if (line.trim() === '' || line.startsWith('//')) {
+    if (line === '' || line.startsWith('//')) {
       index += 1;
     } else if (line.startsWith('/*')) {
       index = blockCommentEnd(lines, index) + 1;
@@ -118,22 +133,27 @@ const nextStatement = (lines: readonly string[], from: number): number => {
  */
 const detachesDocblock = (lines: readonly string[], end: number): boolean =>
   (lines[end + 1] ?? '').trim() === '' ||
-  (lines[nextStatement(lines, end + 1)] ?? '').startsWith('import');
+  IMPORT_START.test((lines[nextStatement(lines, end + 1)] ?? '').trim());
 
 /**
  * Reports the 1-based line of the first stranded module docblock, or `null`
- * when the file's header is well-formed. Exported for the fixture tests below,
- * which are what prove this can report anything at all.
+ * when the file's header is well-formed.
+ *
+ * Every line is classified on its trimmed form. Classifying on the raw line
+ * fails open in both directions: an indented `/**` falls through to the closing
+ * branch and ends the header early, so a docblock stranded below it reads as
+ * clean, while `importantThing();` matches a bare `startsWith('import')` and
+ * holds the header open past where it closes.
  */
-export const findStrandedDocblock = (source: string): null | number => {
+const findStrandedDocblock = (source: string): null | number => {
   const lines = source.split('\n');
   let index = 0;
   let sawImport = false;
 
   while (index < lines.length) {
-    const line = lines[index] ?? '';
+    const line = (lines[index] ?? '').trim();
 
-    if (line.trim() === '' || line.startsWith('//')) {
+    if (line === '' || line.startsWith('//')) {
       index += 1;
     } else if (line.startsWith('/*')) {
       const end = blockCommentEnd(lines, index);
@@ -143,7 +163,7 @@ export const findStrandedDocblock = (source: string): null | number => {
       }
 
       index = end + 1;
-    } else if (line.startsWith('import')) {
+    } else if (IMPORT_START.test(line)) {
       sawImport = true;
       index = importEnd(lines, index) + 1;
     } else {
@@ -237,6 +257,89 @@ describe('module docblock placement', () => {
     ].join('\n');
 
     expect(findStrandedDocblock(source)).toBe(2);
+  });
+
+  // A trailing comment on the import above means the line does not end with
+  // `;`. Scanning for a bare `;` ran past this docblock to the next import's
+  // terminator and stepped over it, so the guard reported clean on the defect
+  // it exists to catch.
+  test('reports a docblock stranded below a commented import line', () => {
+    const source = [
+      "import {z} from 'zod'; // eslint-disable-line",
+      '/**',
+      ' * What this module is.',
+      ' */',
+      "import fs from 'node:fs';",
+      '',
+      'export const value = 1;',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBe(2);
+  });
+
+  test('reports a docblock stranded below a block-commented import line', () => {
+    const source = [
+      "import {z} from 'zod'; /* keep */",
+      '/**',
+      ' * What this module is.',
+      ' */',
+      "import fs from 'node:fs';",
+      '',
+      'export const value = 1;',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBe(2);
+  });
+
+  // Classifying on the raw line let an indented `/**` close the header early,
+  // so anything stranded below it read as clean.
+  test('does not let an indented block comment close the header', () => {
+    const source = [
+      "import {z} from 'zod';",
+      '  /* an indented note */',
+      '/**',
+      ' * What this module is.',
+      ' */',
+      "import fs from 'node:fs';",
+      '',
+      'export const value = 1;',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBe(3);
+  });
+
+  // The mirror image: a bare `startsWith('import')` matched `importantThing();`
+  // and held the header open past the statement that closes it, so the docblock
+  // below was reported as stranded when the header had in fact already ended.
+  // The trailing blank line is what makes this discriminate: without it the
+  // docblock binds to the declaration and both readings agree on `null`.
+  test('an import-prefixed identifier closes the header', () => {
+    const source = [
+      "import {z} from 'zod';",
+      'importantThing();',
+      '/**',
+      ' * Not a module docblock: the header closed above.',
+      ' */',
+      '',
+      'export const value = 1;',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBeNull();
+  });
+
+  // Same word-boundary bug reached through the other caller: if the next
+  // statement below a docblock is read as an import, the docblock is reported
+  // stranded when it is really JSDoc for the call it sits on.
+  test('an import-prefixed identifier does not detach the docblock above it', () => {
+    const source = [
+      "import {z} from 'zod';",
+      '/**',
+      ' * Doc for the call below.',
+      ' */',
+      'importantThing();',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBeNull();
   });
 
   test('accepts a docblock above the first import', () => {
