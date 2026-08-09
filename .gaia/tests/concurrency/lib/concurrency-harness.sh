@@ -151,13 +151,17 @@ run_in() {
 # It exists for one reason: `env` is an external binary and cannot invoke a
 # shell function, so a scenario needing both an environment override and
 # gaia_deliver_hook below has no way to compose the two without this.
-# Misuse exits 64 rather than returning, and the checks are not decoration. Under
-# bats' `run` errexit is off, so a bare `shift` on an empty list and a `"$@"` that
-# expands to zero words both yield status 0: dropping the `--` would eat the
-# command as assignments, never invoke the hook, and leave `status` 0 with the
-# scenario green. That is the vacuous pass this whole primitive exists to prevent,
-# so the separator is enforced rather than merely documented, and `exit` is used so
-# the failure is fatal whatever the caller's errexit state.
+# Every misuse fails with status 64 and runs no command, and the checks are not
+# decoration. Under bats' `run` errexit is off, so a bare `shift` on an empty list
+# and a `"$@"` that expands to zero words both yield status 0: dropping the `--`
+# would eat the command as assignments, never invoke the hook, and leave `status` 0
+# with the scenario green. That is the vacuous pass this whole primitive exists to
+# prevent, so every arm is enforced rather than merely documented.
+#
+# On the status: `exit` ends run_with's OWN subshell, so run_with then RETURNS 64 to
+# its caller. Under `run` that is captured into `$status`; at an unwrapped call site
+# it is bats' own errexit that makes it fatal. `exit` rather than `return` is still
+# the right verb, because it cannot be swallowed by the `||` it sits behind.
 run_with() {
   (
     # The separator is checked BEFORE anything is exported, by an exact scan
@@ -174,7 +178,19 @@ run_with() {
     [ "$_rw_found" -eq 1 ] || { printf 'run_with: missing -- separator\n' >&2; exit 64; }
 
     while [ "$1" != "--" ]; do
-      export "${1:?run_with: empty assignment}" || exit 64
+      # A bare name carrying no `=` is the one malformed shape `export` accepts:
+      # `export STUBVAR` succeeds and applies nothing, so the command would run
+      # with the override silently absent. Refuse it here rather than let it
+      # through. This also catches the empty string, which matches no `*=*`.
+      case "$1" in
+        *=*) ;;
+        *) printf 'run_with: not an assignment: %s\n' "$1" >&2; exit 64 ;;
+      esac
+      # `${1?}` rather than a bare `$1` is shellcheck's own documented way to
+      # quiet SC2163 on a deliberate export-by-word. It asserts nothing here:
+      # the `case` above is what validates, and `|| exit 64` is what catches an
+      # export that still fails (a value-carrying but invalid name, `1FOO=x`).
+      export "${1?}" || exit 64
       shift
     done
     shift

@@ -73,9 +73,20 @@ SH
 }
 
 @test "run_with leaks no assignment into the caller" {
-  run run_with STUBVAR=leaked -- gaia_deliver_hook 'x' "$HOOK"
-  [ "$status" -eq 0 ]
-  [ -z "${STUBVAR:-}" ]
+  # Deliberately NOT wrapped in `run`. bats' `run` executes its command inside a
+  # command-substitution subshell, which isolates the export on its own however
+  # `run_with` is written, so a `run`-wrapped version of this test passes even
+  # against a `run_with` whose own `( )` has been removed. It is this suite's
+  # only coverage of the containment, and the meter depends on it: C5-01, C5-04
+  # and C7-02 each carry later assertions inside the same @test body that a
+  # leaked HOME or PATH would silently change.
+  run_with STUBVAR=leaked -- gaia_deliver_hook 'x' "$HOOK" >/dev/null
+
+  [ -z "${STUBVAR:-}" ] || return 1
+  # The helper's own loop variables are contained by the same `( )`.
+  [ -z "${_rw_found:-}" ] || return 1
+  [ -z "${_rw_arg:-}" ] || return 1
+  return 0
 }
 
 @test "run_with composes inside run_in without losing either the cwd or the env" {
@@ -120,6 +131,17 @@ SH
 @test "run_with refuses a malformed assignment rather than running without it" {
   run run_with 'FOO-BAR=1' -- gaia_deliver_hook 'x' "$HOOK"
   [ "$status" -ne 0 ]
+  grep -qF -- 'PAYLOAD=' <<<"$output" && return 1
+  return 0
+}
+
+@test "run_with refuses a bare name rather than applying nothing" {
+  # The one malformed shape `export` itself accepts: `export STUBVAR` succeeds
+  # and applies no value, so without an explicit check the command would run
+  # with its override silently absent, which is this suite's whole subject.
+  run run_with STUBVAR -- gaia_deliver_hook 'x' "$HOOK"
+  [ "$status" -ne 0 ]
+  grep -qF -- 'not an assignment' <<<"$output"
   grep -qF -- 'PAYLOAD=' <<<"$output" && return 1
   return 0
 }
