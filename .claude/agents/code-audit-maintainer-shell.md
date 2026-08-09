@@ -19,8 +19,12 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.github/**/*.sh`
 - `.github/**/*.bats`
 - `.husky/**`
-- `.gaia/audit-ci.yml`
+- `.gaia/*.yml`
+- `.gaia/*.json`
+- `.gaia/release-exclude`
 - `.gaia/VERSION`
+- `.claude/settings.json`
+- `.github/CODEOWNERS`
 - `.claude/agents/code-audit-*.md`
 - `.claude/rules/**`
 

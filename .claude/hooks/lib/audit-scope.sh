@@ -111,6 +111,14 @@ auditors:
       - "*.config.mjs"
       - "*.config.cjs"
       - "*.config.js"
+      - ".playwright/**"
+      - ".npmrc"
+      - ".lintstagedrc.json"
+      - ".prettierignore"
+      - "Dockerfile"
+      - ".env.example"
+      - ".nvmrc"
+      - ".node-version"
     scope: adopter
     push_fixes: true
     default: true
@@ -132,8 +140,12 @@ auditors:
       - ".github/**/*.sh"
       - ".github/**/*.bats"
       - ".husky/**"
-      - ".gaia/audit-ci.yml"
+      - ".gaia/*.yml"
+      - ".gaia/*.json"
+      - ".gaia/release-exclude"
       - ".gaia/VERSION"
+      - ".claude/settings.json"
+      - ".github/CODEOWNERS"
       - ".claude/agents/code-audit-*.md"
       - ".claude/rules/**"
     scope: maintainer-only
@@ -149,7 +161,11 @@ auditors:
       - ".gaia/cli/pnpm-workspace.yaml"
       - ".gaia/cli/tsconfig*.json"
       - ".gaia/cli/*.config.ts"
+      - ".gaia/cli/*.config.mts"
       - ".gaia/cli/*.config.mjs"
+      - ".gaia/cli/*.config.cjs"
+      - ".gaia/cli/*.config.js"
+      - ".gaia/scripts/**/*.mjs"
     scope: maintainer-only
     push_fixes: false
   - name: code-audit-maintainer-prose

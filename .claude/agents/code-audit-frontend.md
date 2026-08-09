@@ -23,6 +23,14 @@ You conduct comprehensive code audits for production React 19 / React Router 7 S
 - `*.config.mjs`
 - `*.config.cjs`
 - `*.config.js`
+- `.playwright/**`
+- `.npmrc`
+- `.lintstagedrc.json`
+- `.prettierignore`
+- `Dockerfile`
+- `.env.example`
+- `.nvmrc`
+- `.node-version`
 
 Your globs above are a **second precedence tier**: every claimant member's globs are matched first, first-match-wins over roster order, and a path any claimant claims belongs to that claimant even when a glob above also matches it. Only a path no claimant claims reaches you. The roster is the whole truth about your reach; nothing outside this region grants you a file it does not declare.
 <!-- gaia:audit-remit:end -->
