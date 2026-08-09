@@ -57,58 +57,73 @@ import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from './util/repo-root-fixture.js';
 
+/** Line index of the `*\/` closing the block comment opened at `start`. */
+const blockCommentEnd = (lines: readonly string[], start: number): number => {
+  let end = start;
+
+  while (end < lines.length && !(lines[end] ?? '').includes('*/')) {
+    end += 1;
+  }
+
+  return end;
+};
+
+/**
+ * Line index of the last line of the import statement opening at `start`.
+ * A multi-line `import {…} from '…';` ends on its own closing line, so the
+ * scan runs to the first line that terminates a statement.
+ */
+const importEnd = (lines: readonly string[], start: number): number => {
+  let end = start;
+
+  while (end < lines.length && !(lines[end] ?? '').trimEnd().endsWith(';')) {
+    end += 1;
+  }
+
+  return end;
+};
+
+/**
+ * Whether the line following a docblock leaves it attached to nothing. A blank
+ * line detaches it outright, and an `import` makes it JSDoc for a dependency.
+ */
+const detachesDocblock = (next: string): boolean =>
+  next.trim() === '' || next.startsWith('import');
+
 /**
  * Reports the 1-based line of the first stranded module docblock, or `null`
  * when the file's header is well-formed. Exported for the fixture tests below,
  * which are what prove this can report anything at all.
  */
-export const findStrandedDocblock = (source: string): number | null => {
+export const findStrandedDocblock = (source: string): null | number => {
   const lines = source.split('\n');
   let index = 0;
-  let firstImport = -1;
+  let sawImport = false;
 
   while (index < lines.length) {
     const line = lines[index] ?? '';
 
     if (line.trim() === '' || line.startsWith('//')) {
       index += 1;
-      continue;
-    }
+    } else if (line.startsWith('/*')) {
+      const end = blockCommentEnd(lines, index);
 
-    if (line.startsWith('/*')) {
-      let end = index;
-
-      while (end < lines.length && !(lines[end] ?? '').includes('*/')) {
-        end += 1;
-      }
-
-      const next = lines[end + 1] ?? '';
-      const stranded =
+      if (
+        sawImport &&
         line.startsWith('/**') &&
-        firstImport >= 0 &&
-        (next.trim() === '' || next.startsWith('import'));
-
-      if (stranded) return index + 1;
-
-      index = end + 1;
-      continue;
-    }
-
-    if (line.startsWith('import')) {
-      if (firstImport < 0) firstImport = index;
-
-      let end = index;
-
-      while (end < lines.length && !(lines[end] ?? '').trimEnd().endsWith(';')) {
-        end += 1;
+        detachesDocblock(lines[end + 1] ?? '')
+      ) {
+        return index + 1;
       }
 
       index = end + 1;
-      continue;
+    } else if (line.startsWith('import')) {
+      sawImport = true;
+      index = importEnd(lines, index) + 1;
+    } else {
+      // The first non-import statement closes the header region.
+      return null;
     }
-
-    // The first non-import statement closes the header region.
-    return null;
   }
 
   return null;
@@ -117,7 +132,7 @@ export const findStrandedDocblock = (source: string): number | null => {
 const collectSourceFiles = (root: string): readonly string[] =>
   (readdirSync(root, {recursive: true}) as string[])
     .filter((entry) => entry.endsWith('.ts'))
-    .sort();
+    .toSorted((a, b) => a.localeCompare(b));
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const cliSrc = path.join(repoRoot, '.gaia', 'cli', 'src');
@@ -224,9 +239,13 @@ describe('module docblock placement', () => {
   });
 
   test('ignores a file with no imports at all', () => {
-    const source = ['/**', ' * Constants.', ' */', '', 'export const x = 1;'].join(
-      '\n'
-    );
+    const source = [
+      '/**',
+      ' * Constants.',
+      ' */',
+      '',
+      'export const x = 1;',
+    ].join('\n');
 
     expect(findStrandedDocblock(source)).toBeNull();
   });
