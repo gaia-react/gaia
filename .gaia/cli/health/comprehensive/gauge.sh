@@ -44,14 +44,17 @@ TAG="$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || true)"
 # table's .gaia/** (all other) -> TIDY row is a reachable partition member.
 # The manifest is release-generated (an audit target, not a change trigger);
 # .gaia/local is gitignored but excluded defensively.
+# -z, because classify_lens below matches each path against a glob: git's
+# default core.quotePath would C-quote a non-ASCII path and every glob would
+# miss it, silently dropping the file from the lens counts.
 changed_files=()
 churn_files=0
 if [ -n "$TAG" ]; then
   while IFS= read -r f; do
     [ -n "$f" ] && changed_files+=("$f")
-  done < <(git diff --name-only "$TAG"..HEAD -M -- \
+  done < <(git diff --name-only -z "$TAG"..HEAD -M -- \
     .claude .gaia .specify/extensions/gaia \
-    ':!.gaia/manifest.json' ':!.gaia/local')
+    ':!.gaia/manifest.json' ':!.gaia/local' | tr '\0' '\n')
   churn_files=${#changed_files[@]}
 fi
 

@@ -482,7 +482,12 @@ check_out_of_scope_pr() {
     || true)
   [ -n "$base" ] || return 1
 
-  changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null) || return 1
+  # -z, so git's default core.quotePath cannot C-quote a non-ASCII path into a
+  # form the classifier below reads as an unrecognized string. The `tr` has to
+  # live inside the substitution because `$(...)` discards NUL bytes, and the
+  # pipeline runs under its own `set -o pipefail` so a git failure still reaches
+  # the `|| return 1` exactly as it did before the pipe existed.
+  changed=$(set -o pipefail; git diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n') || return 1
   [ -n "$changed" ] || return 1
 
   # First path the shared classifier does not allowlist makes the marker
@@ -530,7 +535,10 @@ check_self_mod_only_update_pr() {
     || true)
   [ -n "$base" ] || return 1
 
-  changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null) || return 1
+  # -z for the reason the sibling derivation above gives: a C-quoted path is an
+  # unrecognized string to the classifier, and the pipefail subshell keeps the
+  # `|| return 1` live across the pipe.
+  changed=$(set -o pipefail; git diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n') || return 1
   [ -n "$changed" ] || return 1
 
   # Classify every changed path via the shared ORDERED THREE-WAY classifier

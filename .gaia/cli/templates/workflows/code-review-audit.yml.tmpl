@@ -167,7 +167,12 @@ jobs:
           # ancestor, so once a code commit is audited clean a later prose-only
           # commit reviews an empty auditable delta and skips. origin/main (no
           # audited ancestor) → full PR diff, preserving first-audit behavior.
-          changed=$(git diff --name-only "${AUDIT_BASE}...HEAD")
+          # -z, so a non-ASCII path is not C-quoted past the patterns below:
+          # unquoted, an in-scope change can read as has_source=false and skip
+          # the audit entirely. The `tr` stays inside the substitution because
+          # `$(...)` discards NUL bytes, and the subshell sets pipefail so a git
+          # failure still aborts under `set -e` as it did before the pipe.
+          changed=$(set -o pipefail; git diff --name-only -z "${AUDIT_BASE}...HEAD" | tr '\0' '\n')
           dir_pattern='^(app|test|\.storybook|\.github/workflows)/'
           file_pattern='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'
           if printf '%s\n' "$changed" | grep -qE "${dir_pattern}|${file_pattern}"; then
@@ -193,7 +198,11 @@ jobs:
           # touches the workflow itself, the audit cannot run, so skip
           # cleanly and surface a truthful comment instead of letting
           # the abort path post a misleading message.
-          changed=$(git diff --name-only "${BASE_SHA}..${HEAD_SHA}")
+          # -z for the same reason as the scope gate above. The path this one
+          # matches is pure ASCII and git would never quote it, so this is
+          # uniformity rather than a live defect; the class is cheaper to hold
+          # everywhere than to re-argue per call site.
+          changed=$(set -o pipefail; git diff --name-only -z "${BASE_SHA}..${HEAD_SHA}" | tr '\0' '\n')
           if printf '%s\n' "$changed" | grep -qE '^\.github/workflows/code-review-audit\.yml$'; then
             echo "self_modified=true" >> "$GITHUB_OUTPUT"
           else
@@ -353,8 +362,13 @@ jobs:
           # recorded base tip directly.
           # No pathspec: a finding on a non-TypeScript file this pull request
           # touched must read 1, not 0.
-          git diff --name-only "${PR_BASE_SHA}...HEAD" \
-            > "$out/pr-changed-files.txt" 2>/dev/null \
+          # -z so the recorded list carries real path bytes rather than a
+          # C-quoted rendering of them. No pipefail subshell here, unlike the
+          # gates above: this call already tolerates its own failure through the
+          # `|| :` fallback, and a git failure still yields the empty file that
+          # fallback exists to create.
+          git diff --name-only -z "${PR_BASE_SHA}...HEAD" 2>/dev/null \
+            | tr '\0' '\n' > "$out/pr-changed-files.txt" \
             || : > "$out/pr-changed-files.txt"
 
       - name: Run code-review-audit (claude-code-action)
@@ -614,11 +628,16 @@ jobs:
           # changed reaches origin.
           # shellcheck source=/dev/null
           . .claude/hooks/lib/audit-selfheal-paths.sh
+          # -z on both halves, with one `tr` after the group: the refuse-set ERE
+          # below is matched against these paths, so a C-quoted path would slip
+          # past the refusal and let a self-heal edit a surface this gate exists
+          # to protect. Failure posture is unchanged -- the second call keeps its
+          # own `|| true`, and the group already tolerated an empty first half.
           self_heal_paths="$(
             {
-              git diff --name-only
-              git diff --name-only "origin/${PR_BRANCH}..HEAD" 2>/dev/null || true
-            } | sort -u
+              git diff --name-only -z
+              git diff --name-only -z "origin/${PR_BRANCH}..HEAD" 2>/dev/null || true
+            } | tr '\0' '\n' | sort -u
           )"
           if printf '%s\n' "$self_heal_paths" \
               | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then

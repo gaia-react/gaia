@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
-# husky hook, then the hook array-guard (.gaia/scripts/lint-hook-array-guard.sh).
+# husky hook, then two repo-authored guards shellcheck cannot model: the hook
+# array-guard (.gaia/scripts/lint-hook-array-guard.sh) and the diff-quoting
+# guard (.gaia/scripts/lint-diff-name-only-quoting.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
 #
@@ -163,6 +165,17 @@ fi
 # the repo root so its cwd-relative .claude/hooks/*.sh scan resolves.
 echo "--> lint-hook-array-guard (bash-3.2 empty-array class under set -u)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-array-guard.sh"); then
+  status=1
+fi
+
+# Fold in the diff-quoting guard, for the same reason as the array guard: the
+# linter above cannot model it, and the class has been fixed five times by hand
+# and never once by a check. It reaches further than the passes above -- its
+# scan surface includes .github/workflows/*.yml, whose `run:` blocks are shell
+# that no *.sh glob sees. Run from the repo root so its `git ls-files` resolves
+# and the file:line it prints is repo-relative.
+echo "--> lint-diff-name-only-quoting (C-quoted paths from an unquoted diff)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-diff-name-only-quoting.sh"); then
   status=1
 fi
 

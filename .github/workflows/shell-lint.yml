@@ -62,6 +62,16 @@ jobs:
               # resolves `shell=false`, skips the install and the gate, and
               # greens the check having linted nothing.
               - '.husky/**'
+              # The gate now folds in lint-diff-name-only-quoting.sh, whose scan
+              # surface includes the workflow `run:` blocks. Without this line a
+              # PR that changes only a workflow resolves `shell=false`, skips the
+              # gate and greens the check having linted the very files it just
+              # changed -- the same gap the .husky/** line above closes, one file
+              # type over.
+              - '.github/workflows/**'
+              # Subsumed by the glob above and kept deliberately: it is the
+              # explicit record that this gate re-runs on a change to itself,
+              # which survives any later narrowing of that glob.
               - '.github/workflows/shell-lint.yml'
       # Install a pinned release binary rather than `apt-get install shellcheck`:
       # Ubuntu ships 0.9.0 while a maintainer's Homebrew ships newer, and their
