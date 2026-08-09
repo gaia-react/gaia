@@ -69,7 +69,8 @@ const blockCommentEnd = (lines: readonly string[], start: number): number => {
 };
 
 /**
- * A statement terminator, tolerating a trailing line or block comment.
+ * A statement terminator, tolerating a trailing comment that closes on the same
+ * line.
  *
  * A bare `endsWith(';')` misses `import x from 'y'; // note`, and missing it is
  * not a near-miss: the scan then runs past the docblock below that import to
@@ -77,11 +78,25 @@ const blockCommentEnd = (lines: readonly string[], start: number): number => {
  * reports the file clean on exactly the defect it exists to catch. One
  * `// eslint-disable-line` added by ordinary editing would have disabled this
  * guard for that whole file, silently.
+ *
+ * Two shapes are outside it, both known and both failing silent-green (#1273's
+ * sibling, tracked): a trailing block comment left open to a later line, and a
+ * `;` appearing inside a comment on a continuation line of a multi-line import,
+ * which terminates that import early. Closing either means stripping comment
+ * content before the test, and doing that correctly needs string awareness as
+ * well, since `import x from 'https://cdn/x.js';` would otherwise have its
+ * specifier eaten. That is a tokenizer, and a tokenizer is the argument for
+ * reading this from the TypeScript AST rather than from lines at all.
  */
 const STATEMENT_END = /;\s*(?:\/\/.*|\/\*.*\*\/)?$/;
 
-/** `import` as a whole word, so `importantThing();` is not read as an import. */
-const IMPORT_START = /^import\b/;
+/**
+ * `import` as a whole word, so neither `importantThing();` nor `import.meta`
+ * is read as an import declaration. `\b` is not enough: it matches between `t`
+ * and `.`, so `import.meta.hot?.accept();` would hold the header open and the
+ * docblock below it would be reported stranded when it is not.
+ */
+const IMPORT_START = /^import(?![.\w])/;
 
 /**
  * Line index of the last line of the import statement opening at `start`.
@@ -317,6 +332,22 @@ describe('module docblock placement', () => {
     const source = [
       "import {z} from 'zod';",
       'importantThing();',
+      '/**',
+      ' * Not a module docblock: the header closed above.',
+      ' */',
+      '',
+      'export const value = 1;',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBeNull();
+  });
+
+  // `\b` matches between `t` and `.`, so a word-boundary test alone reads
+  // `import.meta` as an import declaration and holds the header open.
+  test('an import.meta statement closes the header', () => {
+    const source = [
+      "import {z} from 'zod';",
+      'import.meta.hot?.accept();',
       '/**',
       ' * Not a module docblock: the header closed above.',
       ' */',
