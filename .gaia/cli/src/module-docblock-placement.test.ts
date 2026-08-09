@@ -84,11 +84,41 @@ const importEnd = (lines: readonly string[], start: number): number => {
 };
 
 /**
- * Whether the line following a docblock leaves it attached to nothing. A blank
- * line detaches it outright, and an `import` makes it JSDoc for a dependency.
+ * Line index of the first line that carries a statement, skipping the content
+ * the header treats as transparent: blank lines, `//` notes, and further block
+ * comments. Returns `lines.length` when the file ends first.
  */
-const detachesDocblock = (next: string): boolean =>
-  next.trim() === '' || next.startsWith('import');
+const nextStatement = (lines: readonly string[], from: number): number => {
+  let index = from;
+
+  while (index < lines.length) {
+    const line = lines[index] ?? '';
+
+    if (line.trim() === '' || line.startsWith('//')) {
+      index += 1;
+    } else if (line.startsWith('/*')) {
+      index = blockCommentEnd(lines, index) + 1;
+    } else {
+      return index;
+    }
+  }
+
+  return lines.length;
+};
+
+/**
+ * Whether a docblock closing at `end` is left attached to nothing.
+ *
+ * A blank line immediately below detaches it outright. Otherwise the question
+ * is what it actually binds to, which is the next STATEMENT rather than the
+ * next line: an `import` makes it JSDoc for a dependency, and any other
+ * statement is the ambiguous case the scope boundary leaves alone. Reading the
+ * next line alone would let a `// group banner` between the docblock and its
+ * import hide the very thing this guard exists to report.
+ */
+const detachesDocblock = (lines: readonly string[], end: number): boolean =>
+  (lines[end + 1] ?? '').trim() === '' ||
+  (lines[nextStatement(lines, end + 1)] ?? '').startsWith('import');
 
 /**
  * Reports the 1-based line of the first stranded module docblock, or `null`
@@ -108,11 +138,7 @@ export const findStrandedDocblock = (source: string): null | number => {
     } else if (line.startsWith('/*')) {
       const end = blockCommentEnd(lines, index);
 
-      if (
-        sawImport &&
-        line.startsWith('/**') &&
-        detachesDocblock(lines[end + 1] ?? '')
-      ) {
+      if (sawImport && line.startsWith('/**') && detachesDocblock(lines, end)) {
         return index + 1;
       }
 
@@ -185,6 +211,24 @@ describe('module docblock placement', () => {
     ].join('\n');
 
     expect(findStrandedDocblock(source)).toBe(3);
+  });
+
+  // A comment between the docblock and its import must not hide it. Reading
+  // only the line below the docblock reported `null` here, which is the shape
+  // an `import/order` group banner or an `eslint-disable-next-line` produces.
+  test('reports a docblock stranded above a commented import', () => {
+    const source = [
+      "import {z} from 'zod';",
+      '/**',
+      ' * What this module is.',
+      ' */',
+      '// Node builtins',
+      "import fs from 'node:fs';",
+      '',
+      'export const value = 1;',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBe(2);
   });
 
   test('accepts a docblock above the first import', () => {
