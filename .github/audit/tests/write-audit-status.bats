@@ -36,10 +36,19 @@ setup() {
   WORKDIR="$BATS_TEST_TMPDIR/elsewhere"
   mkdir -p "$WORKDIR"
 
-  # No `gh` on PATH. If a refusal path ever grew a POST, it would fail loudly
-  # here rather than silently succeeding against a mock.
+  # `gh` neutralized. If a refusal path ever grew a POST, it fails loudly here
+  # rather than silently succeeding against a mock.
+  #
+  # A stub, not an empty directory: prepending an empty dir shadows nothing, so
+  # a real `gh` further down PATH would still resolve, and on a runner (where
+  # `gh` is preinstalled and GITHUB_REPOSITORY is set) that would make this
+  # suite issue a REAL commit-status write instead of failing.
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
+  printf '%s\n' '#!/usr/bin/env bash' \
+    'echo "write-audit-status.bats: gh must never be reached from this suite" >&2' \
+    'exit 127' > "$GH_BIN/gh"
+  chmod +x "$GH_BIN/gh"
   PATH="$GH_BIN:$PATH"
   export PATH
 }

@@ -548,7 +548,11 @@ run_comment_step() {
   # The other half, since the gate call moved: the shared writer is what turns
   # --base into a member query, and it must use the value it was handed rather
   # than resolve a base of its own.
-  grep -qF -- 'gate-pending-members.sh --base "$base"' "$WRITER" || return 1
+  # Regex, not -F: the writer anchors its sibling lookups to "$repo_root", so the
+  # path is quoted and a fixed string would pin the quoting rather than the
+  # claim. Adjacency is what matters -- the base handed in must go to THIS
+  # script -- so it stays in one pattern rather than two independent greps.
+  grep -qE -- 'gate-pending-members\.sh"? --base "\$base"' "$WRITER" || return 1
 }
 
 @test "the local-mode stand-down and the two skip-path stamps take their sha from the event payload, not git rev-parse HEAD" {

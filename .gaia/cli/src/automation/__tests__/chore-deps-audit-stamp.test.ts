@@ -23,7 +23,7 @@ import yaml from 'js-yaml';
 import {describe, expect, test} from 'vitest';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {workflowAuditTemplatePath} from '../paths.js';
 
 type AuditWorkflow = {
@@ -38,15 +38,11 @@ type WorkflowStep = {
   run?: string;
 };
 
-// .gaia/cli/src/automation/__tests__ -> repo root.
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-  '..',
-  '..',
-  '..'
-);
+// Walks up to `.git` rather than counting `..` levels, so moving this file
+// cannot silently land on the wrong directory and surface as an opaque ENOENT
+// on write-audit-status.sh. Same helper the sibling audit-template-dogfood
+// test resolves the identical root with.
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
 const loadWriter = (): string =>
   readFileSync(

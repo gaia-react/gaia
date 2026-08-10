@@ -85,24 +85,31 @@ setup() {
   run grep -F -- '--require-marker' "$STEP"
   [ "$status" -eq 0 ]
 
-  run grep -F 'bash .gaia/scripts/audit-member-digest.sh' "$WRITER"
+  run grep -F 'audit-member-digest.sh' "$WRITER"
   [ "$status" -eq 0 ]
-  run grep -F -- '--ref "${sha}")"; then' "$WRITER"
+  # The digest is recomputed for the sha being stamped. Pinned WITHOUT the
+  # `)"; then` tail that used to ride along: that tail asserted the call sits in
+  # a fail-closed `if`, which is a behavioral claim and is asserted behaviorally
+  # (ci-status-member-gate.bats executes the step with the digest engine removed
+  # and requires it to stop before the marker branch). Pinning it here as source
+  # text meant a behavior-preserving reformat reddened this suite with a message
+  # reading as a lost fail-closed guard.
+  run grep -F -- '--ref "${sha}"' "$WRITER"
   [ "$status" -eq 0 ]
-  run grep -F 'marker=".gaia/local/audit/${frontend_digest}.ok"' "$WRITER"
+  run grep -F 'marker="$repo_root/.gaia/local/audit/${frontend_digest}.ok"' "$WRITER"
   [ "$status" -eq 0 ]
 
   # The tree- or commit-keyed marker paths must not return.
-  run grep -F 'marker=".gaia/local/audit/${tree_sha}.ok"' "$WRITER"
+  run grep -F '.gaia/local/audit/${tree_sha}.ok"' "$WRITER"
   [ "$status" -ne 0 ]
-  run grep -F 'marker=".gaia/local/audit/${sha}.ok"' "$WRITER"
+  run grep -F '.gaia/local/audit/${sha}.ok"' "$WRITER"
   [ "$status" -ne 0 ]
 
   # Ordering guard: the digest must be resolved above the marker lookup, or
   # the guard tests an empty key and every clean audit silently stops
   # stamping.
-  digest_line=$(grep -nF 'bash .gaia/scripts/audit-member-digest.sh' "$WRITER" | head -1 | cut -d: -f1)
-  marker_line=$(grep -nF 'marker=".gaia/local/audit/${frontend_digest}.ok"' "$WRITER" | head -1 | cut -d: -f1)
+  digest_line=$(grep -nF 'audit-member-digest.sh' "$WRITER" | head -1 | cut -d: -f1)
+  marker_line=$(grep -nF 'marker="$repo_root/.gaia/local/audit/${frontend_digest}.ok"' "$WRITER" | head -1 | cut -d: -f1)
   [ -n "$digest_line" ]
   [ -n "$marker_line" ]
   [ "$digest_line" -lt "$marker_line" ]

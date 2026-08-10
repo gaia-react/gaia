@@ -37,9 +37,10 @@
 #                               rejected. See "POST fatality" below.
 #
 # Step outputs. When $GITHUB_OUTPUT is set this writes `members_pending`,
-# `success_stamped`, and (on a stand-down) `success_live` / `read_failed`, which
-# the terminal comment step reads so it can never claim a stamp that did not
-# happen. Callers with no `id:` simply have no one reading them.
+# `success_stamped`, and, from the shared non-clobber read, `success_live` /
+# `read_failed`, which the terminal comment step reads so it can never claim a
+# stamp that did not happen. Callers with no `id:` simply have no one reading
+# them, which is why only the two skip paths consume the last two.
 #
 # POST FATALITY IS A PARAMETER, NOT A POLICY, AND THAT IS DELIBERATE. The four
 # success writers do not agree today and neither unification is behavior-
@@ -156,6 +157,24 @@ if [ -z "$sha" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 1b. The repo root, resolved ONCE, for every sibling this script reaches.
+#
+# Inline in a workflow `run:` body the CWD is the workspace root, so a bare
+# `.github/audit/...` and a root-anchored one are the same path. Standalone they
+# are not, and resolving the digest against `--show-toplevel` while looking its
+# marker up relative to CWD would compute one tree's digest and read another
+# tree's marker -- the same silent divergence between two copies of one fact
+# that this file exists to remove, one level up. Same spelling the siblings use
+# (gate-pending-members.sh, resolve-audit-base.sh).
+#
+# No guard on an empty result, deliberately. It stays byte-for-byte the current
+# behavior: an empty root makes the sibling lookups miss and the digest
+# recompute fail, so gated mode still reds the step and stand-down mode still
+# reaches `decline`. A guard here would convert one of those into the other.
+# ---------------------------------------------------------------------------
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+# ---------------------------------------------------------------------------
 # 2. Which members CI cannot clear.
 #
 # Gate on the member SET, not on marker files: CI runs code-audit-frontend
@@ -171,7 +190,7 @@ fi
 # two skip paths already ordered it this way.
 # ---------------------------------------------------------------------------
 if [ "$have_base" -eq 1 ]; then
-  pending="$(bash .github/audit/gate-pending-members.sh --base "$base")"
+  pending="$(bash "$repo_root/.github/audit/gate-pending-members.sh" --base "$base")"
   emit "members_pending=${pending}"
   # The tree is a plain data field in the success description. Resolved here,
   # in the position the four gated callers already resolved it, so a bad sha
@@ -194,8 +213,8 @@ fi
 # vouches for. A status posted without it would vouch for content nothing
 # verified.
 # ---------------------------------------------------------------------------
-if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
-    --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
+if ! frontend_digest="$(bash "$repo_root/.gaia/scripts/audit-member-digest.sh" \
+    --root "$repo_root" --member code-audit-frontend \
     --ref "${sha}")"; then
   if [ "$have_base" -eq 1 ]; then
     decline "could not recompute the frontend digest for ${sha}; skipping status."
@@ -214,7 +233,7 @@ fi
 # gitignored, so it exists only in this runner's workspace and only for this run.
 # ---------------------------------------------------------------------------
 if [ "$require_marker" -eq 1 ]; then
-  marker=".gaia/local/audit/${frontend_digest}.ok"
+  marker="$repo_root/.gaia/local/audit/${frontend_digest}.ok"
   if [ ! -f "$marker" ]; then
     decline "clean marker ${marker} absent; audit not proven clean, not stamping."
   fi
@@ -265,7 +284,7 @@ if [ -n "$pending" ]; then
   emit "success_stamped=false"
 
   _live=0
-  bash .github/audit/audit-success-present.sh "${sha}" "${frontend_digest}" || _live=$?
+  bash "$repo_root/.github/audit/audit-success-present.sh" "${sha}" "${frontend_digest}" || _live=$?
 
   if [ "$_live" -eq 0 ]; then
     echo "code-review-audit: ${ctx}, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
@@ -311,7 +330,7 @@ fi
 # the substitution yields "". Neither shape trips `set -e`, so both land on the
 # guard below having posted NOTHING.
 # ---------------------------------------------------------------------------
-version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
+version="$(tr -d '\r' < "$repo_root/.gaia/VERSION" | awk 'NF{print; exit}')"
 version="${version#"${version%%[![:space:]]*}"}"
 version="${version%"${version##*[![:space:]]}"}"
 if [ -z "$version" ]; then
