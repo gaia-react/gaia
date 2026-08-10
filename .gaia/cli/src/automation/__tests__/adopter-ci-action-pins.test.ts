@@ -16,9 +16,15 @@
  * below is the mechanism that keeps them moving: it asserts each template pin
  * against the pin the maintainer's own workflows run, which Dependabot bumps
  * weekly. A bump lands in `.github/workflows/` first and turns this red until
- * the same pin is mirrored into the template, and the mirrored pin reaches
- * adopters on the next `/update-gaia`. That is the same red-then-mirror flow
- * `dependabot.yml` already documents for `code-review-audit.yml`.
+ * the same pin is mirrored into the template. That is the same red-then-mirror
+ * flow `dependabot.yml` already documents for `code-review-audit.yml`.
+ *
+ * The mirrored template reaches adopters on their next `/update-gaia`, which
+ * does NOT re-render an installed workflow: `/update-gaia` refreshes
+ * `code-review-audit.yml` alone, and the `gaia-ci-*` workflows this partial
+ * feeds are re-rendered only by `/setup-gaia`, whose drift check offers that
+ * path. So the pin reaches an adopter's running CI on their next `/setup-gaia`,
+ * not before.
  *
  * Repair, when the parity test goes red: copy the `<sha> # <tag>` the failure
  * message names from the maintainer workflows into the template site it names,
@@ -80,17 +86,19 @@ const extractPins = (text: string, source: string): readonly ActionPin[] =>
 
 const collectPins = (
   dir: string,
-  extension: string,
+  extensions: readonly string[],
   prefix: string
 ): readonly ActionPin[] =>
   readdirSync(dir, {withFileTypes: true}).flatMap((entry) => {
     const full = path.join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      return collectPins(full, extension, `${prefix}${entry.name}/`);
+      return collectPins(full, extensions, `${prefix}${entry.name}/`);
     }
 
-    if (!entry.name.endsWith(extension)) return [];
+    if (!extensions.some((extension) => entry.name.endsWith(extension))) {
+      return [];
+    }
 
     return extractPins(readFileSync(full, 'utf8'), `${prefix}${entry.name}`);
   });
@@ -114,9 +122,26 @@ const liveWorkflowsDir = githubWorkflowsDirectory(repoRoot);
 // different repairs.
 const templatePins = collectPins(
   sourceTemplatesDir,
-  '.tmpl',
+  ['.tmpl'],
   'src/automation/templates/workflows/'
 );
+
+// GitHub honors both spellings, so scanning `.yml` alone would let a `.yaml`
+// workflow be the sole live site pinning an action and leave the template pin
+// compared against nothing.
+const liveWorkflowPins =
+  existsSync(liveWorkflowsDir) ?
+    collectPins(liveWorkflowsDir, ['.yml', '.yaml'], '')
+  : [];
+
+const livePins = new Map<string, Set<string>>();
+
+for (const pin of liveWorkflowPins) {
+  const seen = livePins.get(pin.action) ?? new Set<string>();
+
+  seen.add(pinIdentity(pin));
+  livePins.set(pin.action, seen);
+}
 
 describe('adopter CI action pins', () => {
   test('every third-party action is pinned to a full commit SHA with its resolved tag', () => {
@@ -127,18 +152,26 @@ describe('adopter CI action pins', () => {
     expect(unpinned).toEqual([]);
   });
 
+  // Without this, the parity test below is satisfiable by a straggler. It
+  // accepts any pin the live set holds, so one workflow left on an older SHA
+  // would keep a template that also lags green, and the bump-lands-here-first
+  // mechanism would never fire.
+  test.skipIf(!existsSync(liveWorkflowsDir))(
+    'the maintainer workflows agree with each other on every action pin',
+    () => {
+      const disagreed = [...livePins.entries()]
+        .filter(([, identities]) => identities.size > 1)
+        .map(
+          ([action, identities]) => `${action}: ${[...identities].join(', ')}`
+        );
+
+      expect(disagreed).toEqual([]);
+    }
+  );
+
   test.skipIf(!existsSync(liveWorkflowsDir))(
     'every template pin matches the pin the maintainer workflows run',
     () => {
-      const livePins = new Map<string, Set<string>>();
-
-      for (const pin of collectPins(liveWorkflowsDir, '.yml', '')) {
-        const seen = livePins.get(pin.action) ?? new Set<string>();
-
-        seen.add(pinIdentity(pin));
-        livePins.set(pin.action, seen);
-      }
-
       const drifted = templatePins.flatMap((pin) => {
         const live = livePins.get(pin.action);
 
