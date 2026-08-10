@@ -317,6 +317,13 @@ trap 'rm -f "$body_file"' EXIT
 # -----------------------------------------------------------------------------
 # 6. Post or update EXACTLY ONE comment: locate an existing one by the start
 #    sentinel and edit it; create one only when none exists.
+#
+#    The body goes over as `-F body=@<file>`: per `gh api --help`, only
+#    `-F/--field` reads the value from the file behind `@<path>`, while
+#    `-f/--raw-field` would send that path as a literal string. The API returns
+#    200 for either, so the wrong flag posts a path where the block belongs and
+#    reports success, and the sentinel lookup above then never matches its own
+#    comment.
 # -----------------------------------------------------------------------------
 
 repo="$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)"
@@ -331,7 +338,7 @@ existing_id="$(gh api "repos/${repo}/issues/${PR}/comments" --paginate \
 
 if [ -n "$existing_id" ]; then
   if gh api --method PATCH "repos/${repo}/issues/comments/${existing_id}" \
-    -f body=@"$body_file" >/dev/null 2>&1; then
+    -F body=@"$body_file" >/dev/null 2>&1; then
     printf 'findings: updated %s finding(s) from %s member(s) on PR #%s\n' "$n" "$m" "$PR"
     exit 0
   fi
@@ -340,7 +347,7 @@ if [ -n "$existing_id" ]; then
 fi
 
 if gh api --method POST "repos/${repo}/issues/${PR}/comments" \
-  -f body=@"$body_file" >/dev/null 2>&1; then
+  -F body=@"$body_file" >/dev/null 2>&1; then
   printf 'findings: posted %s finding(s) from %s member(s) to PR #%s\n' "$n" "$m" "$PR"
   exit 0
 fi

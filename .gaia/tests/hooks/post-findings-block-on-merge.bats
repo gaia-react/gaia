@@ -127,12 +127,23 @@ case "$1" in
         exit 0
         ;;
       POST|PATCH)
+        # Real `gh api` expands `@<path>` for `-F/--field` only; `-f/--raw-field`
+        # sends the value as the literal string it is (`gh api --help`). Both
+        # answer 200, so a stub blind to the difference greens a caller that
+        # posts the temp path instead of the block.
         body_path=""
+        body_literal=""
         while [ "$#" -gt 0 ]; do
           case "$1" in
-            -f)
+            -F|--field)
               case "$2" in
                 body=@*) body_path="${2#body=@}" ;;
+              esac
+              shift 2
+              ;;
+            -f|--raw-field)
+              case "$2" in
+                body=*) body_literal="${2#body=}" ;;
               esac
               shift 2
               ;;
@@ -140,6 +151,7 @@ case "$1" in
           esac
         done
         [ -n "$body_path" ] && cp "$body_path" "$STATE/comment_body"
+        [ -n "$body_literal" ] && printf '%s' "$body_literal" > "$STATE/comment_body"
         if [ "$method" = "POST" ]; then
           echo 1000 > "$STATE/comment_id"
           c=$(( $(cat "$STATE/post_count" 2>/dev/null || echo 0) + 1 ))

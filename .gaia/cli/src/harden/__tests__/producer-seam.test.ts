@@ -49,7 +49,9 @@ const CLASSLESS_FINDING = {
 // comment lookup) runs the REAL `--jq` filter against an empty comment list
 // via the real `jq` (so it resolves to "no existing comment", same as gh
 // itself would), and an `api --method ...` call captures the posted body to
-// `postedBodyFile` and reports success. Modeled on the stub in
+// `postedBodyFile` and reports success, following real `gh api` field
+// semantics: `-F/--field` expands a leading `@` to the file's contents,
+// `-f/--raw-field` sends the value as a literal string. Modeled on the stub in
 // `.gaia/scripts/tests/post-findings-block.bats`.
 const fakeGh = (postedBodyFile: string): string => `#!/usr/bin/env bash
 case "$1 $2" in
@@ -71,10 +73,21 @@ case "$1" in
     if [ -z "$method" ]; then
       printf '%s' '[]' | jq -r "$filter"
     else
+      prev=""
       for a in "$@"; do
-        case "$a" in
-          body=@*) cp "\${a#body=@}" "${postedBodyFile}" ;;
+        case "$prev" in
+          -F|--field)
+            case "$a" in
+              body=@*) cp "\${a#body=@}" "${postedBodyFile}" ;;
+            esac
+            ;;
+          -f|--raw-field)
+            case "$a" in
+              body=*) printf '%s' "\${a#body=}" > "${postedBodyFile}" ;;
+            esac
+            ;;
         esac
+        prev="$a"
       done
       echo '{"id":999}'
     fi

@@ -499,10 +499,21 @@ case "\$1" in
     if [ -z "\$method" ]; then
       printf '%s' '[]'
     else
+      prev=""
       for a in "\$@"; do
-        case "\$a" in
-          body=@*) cp "\${a#body=@}" "$repo/posted_body.txt" ;;
+        case "\$prev" in
+          -F|--field)
+            case "\$a" in
+              body=@*) cp "\${a#body=@}" "$repo/posted_body.txt" ;;
+            esac
+            ;;
+          -f|--raw-field)
+            case "\$a" in
+              body=*) printf '%s' "\${a#body=}" > "$repo/posted_body.txt" ;;
+            esac
+            ;;
         esac
+        prev="\$a"
       done
       echo '{"id":999}'
     fi

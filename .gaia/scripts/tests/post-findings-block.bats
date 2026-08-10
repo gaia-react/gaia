@@ -48,9 +48,17 @@ write_sidecar() {
 # (echoes PR 42), `repo view` (echoes acme/widgets), and `api`: a call with no
 # --method is a list, answered by applying the REAL --jq filter (via the real
 # jq) against <comments-json>, exactly what a real `gh api --jq` would return;
-# a call WITH --method records its method and the file behind `-f body=@...`
-# for assertions, and always "succeeds" (prints a fake comment id). Every
+# a call WITH --method records its method and the body value it was handed for
+# assertions, and always "succeeds" (prints a fake comment id). Every
 # invocation is appended to GH_LOG.
+#
+# The body value follows real `gh api` field semantics (`gh api --help`):
+# `-F/--field` expands a leading `@` to the named file's CONTENTS, while
+# `-f/--raw-field` sends the value as the literal STRING it is. Modelling both
+# flags the same way would green a caller that posts a temp path instead of the
+# findings block, so the distinction is the point of this stub, not a detail.
+# A body arriving in any other shape is recorded nowhere, which fails closed:
+# every assertion downstream reads posted_body.txt.
 stub_gh() {
   local comments_json="${1:-[]}"
   cat > "$SANDBOX/bin/gh" <<STUB
@@ -78,10 +86,21 @@ case "\$1" in
     if [ -z "\$method" ]; then
       printf '%s' '$comments_json' | jq -r "\$filter"
     else
+      prev=""
       for a in "\$@"; do
-        case "\$a" in
-          body=@*) cp "\${a#body=@}" "$SANDBOX/posted_body.txt" ;;
+        case "\$prev" in
+          -F|--field)
+            case "\$a" in
+              body=@*) cp "\${a#body=@}" "$SANDBOX/posted_body.txt" ;;
+            esac
+            ;;
+          -f|--raw-field)
+            case "\$a" in
+              body=*) printf '%s' "\${a#body=}" > "$SANDBOX/posted_body.txt" ;;
+            esac
+            ;;
         esac
+        prev="\$a"
       done
       echo "\$method" > "$SANDBOX/last_method.txt"
       echo '{"id":999}'
@@ -276,6 +295,31 @@ extract_payload() {
   return 0
 }
 
+@test "the body a create actually posts is what the upsert lookup finds, so a second run updates it" {
+  # The two halves of the upsert are only consistent if the body that reaches
+  # the API carries the start sentinel: the lookup at the top of the post step
+  # selects an existing comment by that sentinel. A create whose posted body
+  # lacks it succeeds with a 200 and still leaves nothing for the next run to
+  # find, so every run creates another comment. Asserting the exit status
+  # cannot see that; feeding the REAL posted body back as the existing comment
+  # can, which is why this test round-trips it rather than hand-writing one.
+  write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
+  stub_gh '[]'
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$SANDBOX/last_method.txt")" = "POST" ]
+
+  existing="$(jq -Rsc '[{id: 7, body: .}]' < "$SANDBOX/posted_body.txt")"
+  stub_gh "$existing"
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  grep -qF "updated 1 finding(s)" <<<"$output"
+  [ "$(cat "$SANDBOX/last_method.txt")" = "PATCH" ]
+  # One POST across both runs (the first), never a second.
+  post_calls="$(grep -c -- '--method POST' "$GH_LOG")"
+  [ "$post_calls" -eq 1 ]
+}
+
 # =============================================================================
 # AC4: zero sidecars declines cleanly, before any gh call
 # =============================================================================
@@ -443,6 +487,16 @@ extract_payload() {
 
 @test "structural: no hardcoded /Users or /home paths" {
   grep -E '/Users/|/home/' "$SCRIPT" && return 1
+  return 0
+}
+
+@test "structural: a file-valued field is passed with -F, the only flag gh expands @<path> for" {
+  # Per `gh api --help`, -F/--field reads the value from the file behind
+  # `@<path>` while -f/--raw-field sends `@<path>` as the literal string it is,
+  # and the API answers 200 either way, so the wrong flag fails invisibly. The
+  # stub above models the difference for the calls a test drives; this reads the
+  # script, so a new call site is covered the moment it is written.
+  grep -nE -- '-f[[:space:]]*[a-zA-Z_]+=@' "$SCRIPT" && return 1
   return 0
 }
 
