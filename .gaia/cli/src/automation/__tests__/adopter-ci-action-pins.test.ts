@@ -137,13 +137,20 @@ const templatePins = collectPins(
 // otherwise sit outside every comparison below: the agreement test would not
 // see it drift from the workflows, and a template pinning the same action
 // would be compared against a live set that does not contain it.
+// Kept separate from the workflow pins because the SHA-shape test below asserts
+// over these too. A composite action pinned to a moving major tag and used by no
+// workflow would otherwise pass every test here: it agrees with itself, and no
+// template pins it, so neither comparison reaches it.
+const liveActionPins =
+  existsSync(liveActionsDir) ?
+    collectPins(liveActionsDir, ['.yml', '.yaml'], '../actions/')
+  : [];
+
 const liveWorkflowPins = [
   ...(existsSync(liveWorkflowsDir) ?
     collectPins(liveWorkflowsDir, ['.yml', '.yaml'], '')
   : []),
-  ...(existsSync(liveActionsDir) ?
-    collectPins(liveActionsDir, ['.yml', '.yaml'], '../actions/')
-  : []),
+  ...liveActionPins,
 ];
 
 const livePins = new Map<string, Set<string>>();
@@ -157,7 +164,7 @@ for (const pin of liveWorkflowPins) {
 
 describe('adopter CI action pins', () => {
   test('every third-party action is pinned to a full commit SHA with its resolved tag', () => {
-    const unpinned = templatePins
+    const unpinned = [...templatePins, ...liveActionPins]
       .filter((pin) => !SHA_PATTERN.test(pin.ref) || pin.tag === '')
       .map(describePin);
 

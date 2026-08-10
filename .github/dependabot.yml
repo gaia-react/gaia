@@ -8,8 +8,9 @@
 #
 # Maintainer-only, release-excluded: it opens pull requests on a schedule
 # against a .github/ tree that is overwhelmingly maintainer-only (11 of 13
-# workflows, the audit helpers, the composite actions) and does not exist on an
-# adopter clone. GAIA's adopter-facing CI installs on demand through
+# workflows, the audit helpers) and does not exist on an adopter clone. The
+# composite actions are the exception, and gaia-setup-node is why this file
+# now names a second directory: they ship, so their pins are adopter-facing. GAIA's adopter-facing CI installs on demand through
 # /setup-gaia precisely so a clone never inherits automation nobody asked for,
 # and the two workflows adopters do receive (tests.yml, chromatic.yml) get their
 # pin bumps through GAIA's own release channel, as an /update-gaia merge.
@@ -56,6 +57,15 @@ updates:
     # under .github/workflows/ arms Audit CI Tests, which averages ~13 minutes,
     # so five ungrouped bumps would pay that five times over to make one
     # week's worth of changes.
+    #
+    # Grouping across the two directories above is not something to assume.
+    # The same pnpm/action-setup and actions/setup-node SHAs are pinned in both,
+    # and adopter-ci-action-pins.test.ts requires every site to agree, so if a
+    # bump arrives as one pull request per directory then each is red until its
+    # sibling lands. That is the same red-then-mirror flow this file already
+    # documents for code-review-audit.yml, and the failure message names the
+    # SHA and the site to copy it into, so it is a nuisance rather than a
+    # puzzle. Confirm which shape the first bump after this takes.
     groups:
       github-actions:
         patterns:

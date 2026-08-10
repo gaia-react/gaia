@@ -293,6 +293,41 @@ EOF
   export PATH="$GH_BIN:$PATH"
 }
 
+# Same stub, but `gh pr view` returns $1 as the PR title, so the chore(deps)
+# bypass can actually fire. Every other case above leaves the title empty, which
+# is why no test here exercised the bypass's allow path.
+install_gh_stub_with_title() {
+  local title="$1"
+  install_gh_stub "${2:-[]}"
+  printf '%s' "$title" > "$BATS_TEST_TMPDIR/pr-title.txt"
+  cat > "$GH_BIN/gh" <<EOF
+#!/usr/bin/env bash
+issues_file="$BATS_TEST_TMPDIR/issues.json"
+title_file="$BATS_TEST_TMPDIR/pr-title.txt"
+EOF
+  cat >> "$GH_BIN/gh" <<'EOF'
+case "$1" in
+  auth) exit 0 ;;
+  repo) printf 'gaia-react/gaia\n'; exit 0 ;;
+  pr) cat "$title_file"; printf '\n'; exit 0 ;;
+  issue) cat "$issues_file"; exit 0 ;;
+  api) printf 'null\n'; exit 0 ;;
+  *) exit 0 ;;
+esac
+EOF
+  chmod +x "$GH_BIN/gh"
+}
+
+# Put the real chore(deps) predicate in the sandbox's ACTING tree, which is
+# where the hook resolves it from.
+install_chore_deps_predicate() {
+  local src
+  src=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh
+  mkdir -p "$REPO/.gaia/scripts"
+  cp "$src" "$REPO/.gaia/scripts/chore-deps-skip.sh"
+  chmod +x "$REPO/.gaia/scripts/chore-deps-skip.sh"
+}
+
 # Assert the most recent run_merge_hook call allowed the merge.
 
 # Assert the most recent run_merge_hook call denied the merge.
@@ -1173,4 +1208,55 @@ teardown_linked_worktree() {
   teardown_linked_worktree
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# chore(deps) bypass, allow path
+#
+# Every case above stubs `gh pr view` to an empty title, so the bypass never
+# fires and its allow path went untested. These three cover it, and the third
+# is the reason: the predicate is executable code, so it must be resolved from
+# the ACTING tree. Resolving it from the main checkout instead looks correct in
+# an ordinary clone, where the two are the same directory, and silently denies
+# every chore(deps) merge from a linked worktree.
+# ---------------------------------------------------------------------------
+
+@test "chore(deps): a dep-bump PR is allowed with no marker at all" {
+  install_gh_stub_with_title "chore(deps): bump the github-actions group"
+  install_chore_deps_predicate
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook
+  assert_allowed_by_json
+}
+
+@test "chore(deps): an ordinary PR title still requires a marker" {
+  install_gh_stub_with_title "feat: add a thing"
+  install_chore_deps_predicate
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook
+  assert_denied_by_json
+}
+
+@test "chore(deps): the bypass fires from a linked worktree, where main lacks the predicate" {
+  install_gh_stub_with_title "chore(deps): bump the github-actions group"
+  commit_files "app/x.ts" "export const x = 1"
+  setup_linked_worktree
+
+  # The predicate lands in the WORKTREE only. REPO stands in for a main
+  # checkout whose branch does not carry it, which is what origin/main looks
+  # like before this change merges. A gate resolving the script from the main
+  # checkout finds nothing here and denies.
+  mkdir -p "$WT/.gaia/scripts"
+  cp "$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh" \
+    "$WT/.gaia/scripts/chore-deps-skip.sh"
+  chmod +x "$WT/.gaia/scripts/chore-deps-skip.sh"
+  [ ! -f "$REPO/.gaia/scripts/chore-deps-skip.sh" ]
+
+  run_merge_hook_in_worktree
+  teardown_linked_worktree
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<<"$output" && return 1
+  true
 }

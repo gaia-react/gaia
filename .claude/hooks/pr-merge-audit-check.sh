@@ -447,8 +447,11 @@ check_chore_deps_pr() {
   command -v gh >/dev/null 2>&1 || return 1
   pr_title=$(gh pr view --json title --jq .title 2>/dev/null || true)
   [ -n "$pr_title" ] || return 1
-  [ -n "$root" ] || return 1
-  [ "$(bash "$root/.gaia/scripts/chore-deps-skip.sh" "$pr_title")" = "true" ]
+  # tree_root, not root: the predicate is executable code, so it comes from the
+  # ACTING tree that carries it. root is the main checkout, which from a linked
+  # worktree is a different branch entirely and need not have the script at all.
+  [ -n "$tree_root" ] || return 1
+  [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_title")" = "true" ]
 }
 
 # Out-of-scope bypass: accept the merge when every file this PR changes lives

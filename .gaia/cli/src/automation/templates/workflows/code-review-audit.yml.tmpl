@@ -121,8 +121,14 @@ jobs:
           set -eu
           # Pre-verified dep-bump PRs (the /update-deps wrapper runs the full
           # quality gate locally before pushing) skip the audit. Predicate
-          # lives in .gaia/scripts/chore-deps-skip.sh.
-          echo "skip=$(bash .gaia/scripts/chore-deps-skip.sh "$PR_TITLE")" >> "$GITHUB_OUTPUT"
+          # lives in .gaia/scripts/chore-deps-skip.sh. Assigned first, then
+          # echoed: a substitution inside echo's argument is a status `set -e`
+          # cannot see, so a predicate that failed to run would write an empty
+          # `skip` that satisfies neither the skip=='true' nor the skip=='false'
+          # arms below, firing no terminal status writer and no terminal
+          # comment step, and leaving the merge gate unsatisfiable in silence.
+          skip="$(bash .gaia/scripts/chore-deps-skip.sh "$PR_TITLE")"
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve audit base
         id: base

@@ -76,7 +76,12 @@ jobs:
         run: |
           set -eu
           subject=$(git log -1 --format=%s HEAD)
-          echo "skip=$(bash .gaia/scripts/chore-deps-skip.sh "$subject")" >> "$GITHUB_OUTPUT"
+          # Assigned first, then echoed. A substitution inside echo's argument
+          # is a status `set -e` cannot see, so a predicate that failed to run
+          # would write an empty `skip` that matches neither gate below and
+          # green this job having published nothing.
+          skip="$(bash .gaia/scripts/chore-deps-skip.sh "$subject")"
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
       # Allowlist of paths that can affect a Storybook build. Anything outside
       # this list reports the required check green without running Chromatic.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
