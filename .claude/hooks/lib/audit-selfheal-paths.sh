@@ -5,11 +5,27 @@
 #
 # Exports exactly one thing: AUDIT_SELFHEAL_REFUSE_ERE, an anchored ERE
 # matching every path a self-healing member must never touch -- the tests
-# that would catch its own bad repair, the CI pipeline, the gate machinery
-# and roster under .gaia/, the instruction/convention surfaces, and
+# that would catch its own bad repair, the whole .github/ tree, the gate
+# machinery and roster under .gaia/, the instruction/convention surfaces, and
 # root-level build/lint/test/typecheck configuration. A repair reaching any
 # of these is confined by a deterministic gate, not by an instruction alone,
 # whether or not the member was told not to.
+#
+# .github/ is refused WHOLE, not narrowed to .github/workflows/. The workflow
+# YAML is not the only thing there that decides a gate outcome:
+# .github/audit/ holds the executables code-review-audit.yml runs after the
+# audit step to decide whether it posts GAIA-Audit success --
+# gate-pending-members.sh computes the members still owing a clearance and
+# audit-success-present.sh reads the status already posted. A member that can
+# edit gate-pending-members.sh into printing nothing empties the pending set,
+# and the merge gate then reports success while a co-dispatched member never
+# wrote its clearance: the gate failing OPEN, which is the one direction it
+# must never fail. .github/ carries no legitimate self-heal target to trade
+# away for that -- a member repairs app source, and every other .github/
+# resident (the composite actions, the forensics triage scripts, CODEOWNERS,
+# the issue and PR templates) decides what CI does rather than what the app
+# does. Refusing the tree whole also covers a sibling directory added later
+# on the day it lands, instead of on the day an audit notices it.
 #
 # "The tests" is EVERY test surface, not just test/. .playwright/ holds the
 # e2e specs, the a11y assertions, and the react-perf harness. .storybook/
@@ -71,4 +87,4 @@
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
 # shellcheck disable=SC2034 # consumed by both sourcing consumers named above
-AUDIT_SELFHEAL_REFUSE_ERE='^(\.claude|\.specify|wiki|test|\.playwright|\.storybook|\.github/workflows)/|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.lintstagedrc\.json|\.prettierignore|Dockerfile|\.env\.example|\.nvmrc|\.node-version)$'
+AUDIT_SELFHEAL_REFUSE_ERE='^(\.claude|\.specify|wiki|test|\.playwright|\.storybook|\.github)/|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.lintstagedrc\.json|\.prettierignore|Dockerfile|\.env\.example|\.nvmrc|\.node-version)$'
