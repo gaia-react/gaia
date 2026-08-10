@@ -20,10 +20,10 @@ name: Audit CI Tests
 # See .gaia/tests/concurrency/README.md.
 #
 # Pinned action SHAs match .github/workflows/cli-tests.yml:
-#   actions/checkout    @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
-#   dorny/paths-filter  @ fbd0ab8f3e69293af611ebaee6363fc25e6d187d (v4.0.1)
-#   pnpm/action-setup   @ 8912a9102ac27614460f54aedde9e1e7f9aec20d (v6.0.5)
-#   actions/setup-node  @ a0853c24544627f65ddf259abe73b1d18a591444 (v5.0.0)
+#   actions/checkout    @ 3d3c42e5aac5ba805825da76410c181273ba90b1 (v7.0.1)
+#   dorny/paths-filter  @ ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d (v4.0.3)
+#   pnpm/action-setup   @ 0977fd99725f1db4007ccb2928dbb4e90d06cc86 (v6.0.10)
+#   actions/setup-node  @ 820762786026740c76f36085b0efc47a31fe5020 (v7.0.0)
 
 # `workflow_dispatch:` is the CI-mode self-heal lane. A GITHUB_TOKEN-authored
 # self-heal push fires no `pull_request` event, so code-review-audit.yml

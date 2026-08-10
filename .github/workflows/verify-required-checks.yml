@@ -20,7 +20,7 @@ name: Required Checks Drift
 # silent passenger at best and a confusing red check at worst.
 #
 # Pinned action SHA matches the sibling maintainer workflows:
-#   actions/checkout @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
+#   actions/checkout @ 3d3c42e5aac5ba805825da76410c181273ba90b1 (v7.0.1)
 
 # No `push:` trigger, matching distribution-audit-pr.yml and shell-lint.yml:
 # the job only ever has something to say about a proposed change to the
