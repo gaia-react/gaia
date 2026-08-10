@@ -113,6 +113,7 @@ const pinIdentity = (pin: ActionPin): string => `${pin.ref} # ${pin.tag}`;
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const sourceTemplatesDir = path.dirname(workflowTemplatePath('wiki'));
 const liveWorkflowsDir = githubWorkflowsDirectory(repoRoot);
+const liveActionsDir = path.join(repoRoot, '.github', 'actions');
 
 // The source templates only. `/setup-gaia` installs from the bundled artifact
 // under `.gaia/cli/templates/workflows/`, so that copy's pins are what an
@@ -129,10 +130,28 @@ const templatePins = collectPins(
 // GitHub honors both spellings, so scanning `.yml` alone would let a `.yaml`
 // workflow be the sole live site pinning an action and leave the template pin
 // compared against nothing.
-const liveWorkflowPins =
-  existsSync(liveWorkflowsDir) ?
-    collectPins(liveWorkflowsDir, ['.yml', '.yaml'], '')
+//
+// `.github/actions/` is scanned alongside `.github/workflows/` because a
+// composite action pins third-party actions of its own, and most of this
+// repository's setup steps run through one. A pin that lives only there would
+// otherwise sit outside every comparison below: the agreement test would not
+// see it drift from the workflows, and a template pinning the same action
+// would be compared against a live set that does not contain it.
+// Kept separate from the workflow pins because the SHA-shape test below asserts
+// over these too. A composite action pinned to a moving major tag and used by no
+// workflow would otherwise pass every test here: it agrees with itself, and no
+// template pins it, so neither comparison reaches it.
+const liveActionPins =
+  existsSync(liveActionsDir) ?
+    collectPins(liveActionsDir, ['.yml', '.yaml'], '../actions/')
   : [];
+
+const liveWorkflowPins = [
+  ...(existsSync(liveWorkflowsDir) ?
+    collectPins(liveWorkflowsDir, ['.yml', '.yaml'], '')
+  : []),
+  ...liveActionPins,
+];
 
 const livePins = new Map<string, Set<string>>();
 
@@ -145,7 +164,7 @@ for (const pin of liveWorkflowPins) {
 
 describe('adopter CI action pins', () => {
   test('every third-party action is pinned to a full commit SHA with its resolved tag', () => {
-    const unpinned = templatePins
+    const unpinned = [...templatePins, ...liveActionPins]
       .filter((pin) => !SHA_PATTERN.test(pin.ref) || pin.tag === '')
       .map(describePin);
 

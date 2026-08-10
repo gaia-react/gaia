@@ -129,17 +129,11 @@ jobs:
               # template `diff -rq`, inverting a `cmp` -- is invisible to it.
               - '.gaia/scripts/verify-cli-bundle-fresh.sh'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        name: Setup Node and install the CLI workspace
+        uses: ./.github/actions/gaia-setup-node
         with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
+          install: cli
           cache-dependency-path: '.gaia/cli/pnpm-lock.yaml'
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Install CLI dependencies
-        run: pnpm -C .gaia/cli install --frozen-lockfile
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Typecheck
         run: pnpm -C .gaia/cli typecheck
@@ -225,13 +219,10 @@ jobs:
               - '.gaia/tests/distribution/**'
               - '.github/workflows/cli-tests.yml'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: ./.github/actions/gaia-setup-node
         with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
+          install: none
           # Scenarios 04/05 run `pnpm install` against the extracted staging
           # tree, which resolves the root lockfile; warm the pnpm store on it.
           cache-dependency-path: 'pnpm-lock.yaml'

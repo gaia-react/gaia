@@ -186,6 +186,16 @@ jobs:
               # looks identical to a clean tree. Same test-dir/source-dir pairing
               # as the entries above.
               - '.gaia/tests/shell-lint.sh'
+              # run-bats-parallel.sh is the runner the bats step below invokes,
+              # and it sits at the top of .gaia/tests/ too, matching none of the
+              # four .gaia/tests/*/ globs below, exactly like the gate above.
+              # Without this line an edit to the runner -- to its per-PID wait,
+              # its replay order, or its fail-closed table handling -- would
+              # report `code=false`, skip the bats step, and green this job
+              # having run the six suite directories zero times. Its own
+              # adversarial suite lives in .gaia/tests/lib/, already listed
+              # below, so it needs no entry of its own.
+              - '.gaia/tests/run-bats-parallel.sh'
               # The audit-guard-structural suite (.gaia/scripts/tests/) greps the
               # prose of these three instruction files for the no-op-guard wiring
               # (SPEC-025 plan DP-005). An instruction-only edit touches none of
@@ -438,15 +448,20 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch'
         name: Install bats and YAML parser
         run: sudo apt-get update && sudo apt-get install -y bats python3-yaml zsh
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Run .github/audit bats suites
-        run: bats .github/audit/tests/
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Run .gaia/scripts bats suites
-        run: bats .gaia/scripts/tests/
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Run .gaia/tests/forensics bats suites
-        run: bash .gaia/tests/forensics/run-all.sh
+      # The six bats suite directories run CONCURRENTLY in this one step: one
+      # step rather than six, and one job rather than six jobs.
+      # .gaia/tests/run-bats-parallel.sh forks each directory, captures its
+      # stdout and stderr to a log of its own, and waits on each PID
+      # INDIVIDUALLY, so any suite's non-zero exit fails this step -- a bare
+      # `wait` returns only the last job's status and would green a real
+      # failure. It then replays the logs in a fixed table order, independent of
+      # which suite finished first, and prints a per-suite exit-code and timing
+      # summary that recovers what the Actions UI loses when six steps become
+      # one. Staying inside one job keeps this a single hop, so the chain
+      # ceiling .gaia/scripts/tests/retrigger-reachability.bats computes over
+      # the `needs:` graph is unaffected. The runner's own adversarial suite is
+      # .gaia/tests/lib/run-bats-parallel.bats, one of the directories it forks.
+      #
       # The hook suites are authored/run locally on macOS bash 3.2.57, where a
       # false mid-test `[[ ... ]]` does NOT fail the test (bash 3.2 skips it
       # under set -e), so a broken assertion can green locally. Ubuntu bats runs
@@ -454,23 +469,18 @@ jobs:
       # for token-tally-git-op.bats, token-rollup-merge.bats, and siblings. The
       # four node-dependent RED-verify suites self-skip here (no node_modules on
       # this lean box); see their setup() guards.
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Run .gaia/tests/hooks bats suites
-        run: bats .gaia/tests/hooks/
+      #
       # The SPEC-ledger lib suites (.specify/extensions/gaia/lib/ scripts):
       # spec-archive-merged.sh + the shared cost-consolidate.sh routine, the
       # spec/plan allocators, folderize, renumber, reconcile, ledger-update,
-      # with-ledger-lock. Same bash-5 rationale as the hooks step above. On this
+      # with-ledger-lock. Same bash-5 rationale as the hook suites above. On this
       # lean box flock is present (the mkdir-fallback test's flock branch runs
       # instead of self-skipping) and the real project ledger is absent
       # (.gaia/local/ is gitignored), so spec-ledger-status's project-ledger
       # test self-skips; both are green outcomes.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Run .gaia/tests/lib bats suites
-        run: bats .gaia/tests/lib/
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Run .gaia/tests/statusline bats suites
-        run: bats .gaia/tests/statusline/
+        name: Run the six bats suite directories in parallel
+        run: bash .gaia/tests/run-bats-parallel.sh
       # The sandbox-enablement conformance tree. Gated on the `sandbox` filter
       # output rather than `code`, so a PR touching only a file this tree reads
       # runs it without arming the two pnpm installs and the concurrency meter
@@ -515,25 +525,15 @@ jobs:
       # program is judged by rather than as the environment gap it is.
       #
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Install pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Install Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        name: Setup Node and install both workspaces
+        uses: ./.github/actions/gaia-setup-node
         with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
+          install: both
           # Both lockfiles: the meter installs both workspaces, so warming the
           # store on only one leaves the other cold.
           cache-dependency-path: |
             pnpm-lock.yaml
             .gaia/cli/pnpm-lock.yaml
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Install root dependencies (C4-04 and C4-07 resolve typescript here)
-        run: pnpm install --frozen-lockfile
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Install .gaia/cli dependencies (C3-05 runs the CLI's own tsx)
-        run: pnpm -C .gaia/cli install --frozen-lockfile
       # Runs the WHOLE suite and adjudicates every scenario against
       # .gaia/tests/concurrency/expected-status.txt, so any scenario the
       # manifest marks red by design does not wedge this required check while

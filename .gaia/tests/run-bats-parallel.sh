@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# run-bats-parallel.sh: run the bats suite directories concurrently in one job,
+# capture each to its own log, and replay the logs in a fixed order.
+#
+# `.github/workflows/audit-ci-tests.yml` calls this once, in place of the six
+# serial `Run ... bats suites` steps it used to carry. The six directories are
+# concurrency-safe in a shared workspace, so the wall clock collapses to roughly
+# the slowest suite instead of the sum of all six.
+#
+# Maintainer-only. `.gaia/tests` is wholesale release-excluded via
+# `.gaia/release-exclude`, so this never reaches an adopter.
+#
+# Usage:
+#   bash .gaia/tests/run-bats-parallel.sh [--table <file>] [--log-dir <dir>]
+#
+#   --table <file>    Tab-delimited suite table to run instead of the built-in
+#                     six. Test seam only; CI passes no --table.
+#   --log-dir <dir>   Where per-suite logs land. Omitted, the runner creates a
+#                     fresh unique directory of its own.
+#
+# Exit codes:
+#   0  every suite exited 0
+#   1  at least one suite exited non-zero (after full log replay)
+#   2  usage / precondition error (unreadable, empty or malformed table;
+#      missing log)
+#
+# Table format, one suite per line, exactly three tab-separated fields:
+#
+#   <slug><TAB><label><TAB><command words, space separated>
+#
+# <slug> names the log file, <label> is the human-readable name in the group
+# header and the failure summary. The command field is split on whitespace into
+# an argv array, so a command must contain NO quoting, NO globbing, and NO
+# argument containing a space. There is deliberately no `eval` here: the table is
+# data, and word-splitting a fixed data field is the whole of the parsing.
+#
+# The default log directory is unique per invocation, which matters concretely:
+# this runner's own bats suite lives in `.gaia/tests/lib/`, one of the six
+# directories the runner forks, so on CI an inner invocation runs concurrently
+# with the outer live one. A shared default would let the fail-closed missing-log
+# rule below red a declared-required check. The runner also never removes a
+# directory it did not create.
+#
+# Portability: linted by `.gaia/tests/shell-lint.sh` at the `style` floor, runs
+# on CI's bash 5 and on macOS `/bin/bash` 3.2.57. No `mapfile`, no `declare -A`,
+# no `${var^^}`, no `wait -n`.
+set -euo pipefail
+
+TABLE_FILE=''
+LOG_DIR=''
+
+usage() {
+  printf 'Usage: bash .gaia/tests/run-bats-parallel.sh [--table <file>] [--log-dir <dir>]\n'
+}
+
+die_usage() {
+  printf 'run-bats-parallel: %s\n' "$1" >&2
+  usage >&2
+  exit 2
+}
+
+# Built-in suite table, in the order the six serial steps ran and therefore the
+# order the logs replay in. One printf argument group per row. The bats suite in
+# .gaia/tests/lib/run-bats-parallel.bats sources this file and calls this
+# function to read the table back out, so it stays a function with no side
+# effects beyond its stdout.
+builtin_table() {
+  printf '%s\t%s\t%s\n' \
+    'github-audit' '.github/audit bats suites' 'bats .github/audit/tests/' \
+    'gaia-scripts' '.gaia/scripts bats suites' 'bats .gaia/scripts/tests/' \
+    'forensics' '.gaia/tests/forensics bats suites' 'bash .gaia/tests/forensics/run-all.sh' \
+    'hooks' '.gaia/tests/hooks bats suites' 'bats .gaia/tests/hooks/' \
+    'lib' '.gaia/tests/lib bats suites' 'bats .gaia/tests/lib/' \
+    'statusline' '.gaia/tests/statusline bats suites' 'bats .gaia/tests/statusline/'
+}
+
+# Reads the table on stdin into the parallel slugs/labels/cmds arrays. Runs in
+# the current shell so the arrays survive; a pipeline would lose them.
+slugs=()
+labels=()
+cmds=()
+parse_table() {
+  local line lineno slug label cmd
+  lineno=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    lineno=$((lineno + 1))
+    # A whitespace-only line carries no suite. Blank lines are skipped, never
+    # counted, so a table of nothing but blanks reaches the empty-table guard.
+    if [ -z "${line//[[:space:]]/}" ]; then
+      continue
+    fi
+    IFS=$'\t' read -r slug label cmd <<<"$line"
+    if [ -z "$slug" ] || [ -z "$label" ] || [ -z "${cmd//[[:space:]]/}" ]; then
+      printf 'run-bats-parallel: malformed table row %s: %s\n' "$lineno" "$line" >&2
+      exit 2
+    fi
+    slugs+=("$slug")
+    labels+=("$label")
+    cmds+=("$cmd")
+  done
+}
+
+main() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --table)
+        [ $# -ge 2 ] || die_usage '--table needs a value'
+        TABLE_FILE="$2"
+        shift 2
+        ;;
+      --log-dir)
+        [ $# -ge 2 ] || die_usage '--log-dir needs a value'
+        LOG_DIR="$2"
+        shift 2
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        die_usage "unknown argument: $1"
+        ;;
+    esac
+  done
+
+  if [ -n "$TABLE_FILE" ]; then
+    [ -r "$TABLE_FILE" ] || die_usage "table not readable: $TABLE_FILE"
+    parse_table <"$TABLE_FILE"
+  else
+    parse_table < <(builtin_table)
+  fi
+
+  local count
+  count=${#slugs[@]}
+  # Fail closed on an empty table. A green "all passed" over zero suites is the
+  # lie-green class .gaia/scripts/lint-diff-name-only-quoting.sh hard-errors on
+  # for its own empty scan set, and .gaia/tests/shell-lint.sh for its discovery.
+  if [ "$count" -eq 0 ]; then
+    printf 'run-bats-parallel: suite table yielded zero suites, refusing to report success\n' >&2
+    exit 2
+  fi
+
+  if [ -n "$LOG_DIR" ]; then
+    # Caller-supplied: used as-is, created if absent, and never removed.
+    mkdir -p "$LOG_DIR"
+  else
+    LOG_DIR=$(mktemp -d "${RUNNER_TEMP:-/tmp}/bats-parallel.XXXXXX")
+  fi
+
+  local i argv log pids
+  pids=()
+  i=0
+  while [ "$i" -lt "$count" ]; do
+    log="$LOG_DIR/${slugs[$i]}.log"
+    # No eval: the command field is word-split by `read -ra`, which performs no
+    # globbing and no quote processing, then invoked as an argv array.
+    read -ra argv <<<"${cmds[$i]}"
+    # Each suite runs in its own subshell, which stamps its own elapsed seconds
+    # so the summary reports real per-suite time. Waiting in table order would
+    # otherwise charge every suite the elapsed time of the slowest one before it.
+    (
+      suite_start=$(date +%s)
+      suite_rc=0
+      "${argv[@]}" >"$log" 2>&1 || suite_rc=$?
+      printf '%s\n' "$(($(date +%s) - suite_start))" >"$LOG_DIR/${slugs[$i]}.secs"
+      exit "$suite_rc"
+    ) &
+    pids+=("$!")
+    i=$((i + 1))
+  done
+
+  # Collect PER PID. A bare `wait` returns only the LAST job's status and would
+  # green a failure in any other suite; that is the exact bug the adversarial
+  # fixtures F1/F2 in .gaia/tests/lib/run-bats-parallel.bats exist to catch.
+  # `|| suite_rc=$?` rather than `if ! wait ...`, because inside an `if !` body
+  # $? is the negated status (0), not the command's. Nothing aborts early: every
+  # suite is waited on and every log replays even when the first one failed.
+  local rc suite_rc failed codes
+  rc=0
+  failed=()
+  codes=()
+  i=0
+  while [ "$i" -lt "$count" ]; do
+    suite_rc=0
+    wait "${pids[$i]}" || suite_rc=$?
+    codes+=("$suite_rc")
+    if [ "$suite_rc" -ne 0 ]; then
+      rc=1
+      failed+=("${labels[$i]}")
+    fi
+    i=$((i + 1))
+  done
+
+  # Replay in TABLE order, never completion order.
+  i=0
+  while [ "$i" -lt "$count" ]; do
+    log="$LOG_DIR/${slugs[$i]}.log"
+    if [ ! -f "$log" ]; then
+      printf 'run-bats-parallel: missing log for suite %s at %s\n' "${slugs[$i]}" "$log" >&2
+      exit 2
+    fi
+    printf '::group::%s\n' "${labels[$i]}"
+    cat "$log"
+    printf '::endgroup::\n'
+    i=$((i + 1))
+  done
+
+  # Per-suite timing, recovering what the Actions UI loses when six steps
+  # become one.
+  local secs_file secs
+  printf '\nPer-suite results:\n'
+  i=0
+  while [ "$i" -lt "$count" ]; do
+    secs_file="$LOG_DIR/${slugs[$i]}.secs"
+    secs='?'
+    if [ -f "$secs_file" ]; then
+      secs=$(cat "$secs_file")
+    fi
+    printf '  %s: %s in %ss\n' "${labels[$i]}" "${codes[$i]}" "$secs"
+    i=$((i + 1))
+  done
+
+  if [ "$rc" -ne 0 ]; then
+    local joined
+    joined=''
+    i=0
+    while [ "$i" -lt "${#failed[@]}" ]; do
+      if [ -z "$joined" ]; then
+        joined="${failed[$i]}"
+      else
+        joined="$joined, ${failed[$i]}"
+      fi
+      i=$((i + 1))
+    done
+    printf '::error::bats suites failed: %s\n' "$joined"
+    exit 1
+  fi
+}
+
+# Sourcing guard: the bats suite sources this file to read builtin_table back out
+# without running the six suites. Direct invocation is unaffected.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

@@ -211,6 +211,7 @@
     ".gaia/scripts/check-registry-runtime.sh": "owned",
     ".gaia/scripts/check-registry-settings-permissions.sh": "owned",
     ".gaia/scripts/check-updates.sh": "owned",
+    ".gaia/scripts/chore-deps-skip.sh": "owned",
     ".gaia/scripts/classifier/classify-determinism.mjs": "owned",
     ".gaia/scripts/cost-backfill.sh": "owned",
     ".gaia/scripts/cost-represented.sh": "owned",
@@ -253,6 +254,7 @@
     ".github/actions/gaia-ci-merge-and-watch/lib/wait-for-ci.sh": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/wait-for-merge.sh": "owned",
     ".github/actions/gaia-ci-stale-pr-skip/action.yml": "owned",
+    ".github/actions/gaia-setup-node/action.yml": "owned",
     ".github/audit/audit-success-present.sh": "owned",
     ".github/audit/check-trailer.sh": "owned",
     ".github/audit/cra-status-upsert.sh": "owned",
@@ -642,7 +644,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-10T07:06:49.383Z",
+  "generated": "2026-08-10T22:31:24.542Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

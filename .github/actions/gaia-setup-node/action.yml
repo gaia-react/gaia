@@ -1,0 +1,57 @@
+name: 'GAIA Setup Node'
+description: |
+  Install pnpm, set up Node from .node-version with the pnpm store cached, and
+  optionally run the frozen-lockfile install for one or both workspaces.
+
+  Deliberately excludes `actions/checkout`: `fetch-depth` differs across
+  callers, and a local action is resolved from the already-checked-out
+  workspace, so folding checkout in would be both behavior-changing and
+  self-defeating.
+
+  Deliberately excludes `code-review-audit.yml`: it exists as three
+  byte-identical copies (live workflow, source template, build artifact), and
+  a suite pins that workflow's exact ordered guarded-step set and each step's
+  `if:` expression, so replacing three steps with one here would rewrite a
+  suite that exists to detect exactly that kind of rewrite. That is not
+  because `.github/actions/**` fails to reach adopters; other composite
+  actions in this same directory already do.
+
+  Deliberately excludes one workflow that has no `cache:` input at all and
+  gates two steps behind a narrow multi-clause `if:` with no install step.
+  Adding a `cache` toggle to serve that single caller would widen this
+  contract for no shared benefit.
+
+  Every step here shares one `if:` with its caller: a composite action cannot
+  gate its own steps individually from the outside, but the caller's `uses:`
+  step can carry that `if:`, and the whole composite skips as a unit.
+inputs:
+  install:
+    description: >-
+      Which workspace(s) to install. One of: none, root, cli, both.
+    required: false
+    default: 'root'
+  cache-dependency-path:
+    description: >-
+      Passed through to actions/setup-node. Lockfile path(s) whose hash keys the
+      pnpm store cache; newline-separated for more than one. Empty means the
+      action's own default.
+    required: false
+    default: ''
+runs:
+  using: 'composite'
+  steps:
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+    - name: Setup Node
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version-file: '.node-version'
+        cache: 'pnpm'
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+    - name: Install root dependencies
+      if: inputs.install == 'root' || inputs.install == 'both'
+      shell: bash
+      run: pnpm install --frozen-lockfile
+    - name: Install CLI dependencies
+      if: inputs.install == 'cli' || inputs.install == 'both'
+      shell: bash
+      run: pnpm -C .gaia/cli install --frozen-lockfile

@@ -435,20 +435,23 @@ check_github_status() {
 # chore(deps) bypass: PRs whose title matches `^chore\(deps(-dev)?\):` are
 # pre-verified by the /update-deps wrapper's local quality gate (typecheck +
 # lint + vitest + playwright + build), so the audit-marker requirement is
-# waived for this PR class. Same skip narrowing as the CI workflows
+# waived for this PR class. The predicate itself lives in one place,
+# .gaia/scripts/chore-deps-skip.sh, shared with the CI workflows
 # (code-review-audit.yml, tests.yml, chromatic.yml).
 #
 # Title is queried via `gh pr view`. On any failure (no gh, no auth, no PR
-# for the current branch, network error) the bypass does not fire and the
-# normal deny path runs, the bypass is opt-in proof, not a fallback.
+# for the current branch, network error, or an unresolved repo root) the
+# bypass does not fire and the normal deny path runs, the bypass is opt-in
+# proof, not a fallback.
 check_chore_deps_pr() {
   command -v gh >/dev/null 2>&1 || return 1
   pr_title=$(gh pr view --json title --jq .title 2>/dev/null || true)
   [ -n "$pr_title" ] || return 1
-  case "$pr_title" in
-    'chore(deps):'*|'chore(deps-dev):'*) return 0 ;;
-    *) return 1 ;;
-  esac
+  # tree_root, not root: the predicate is executable code, so it comes from the
+  # ACTING tree that carries it. root is the main checkout, which from a linked
+  # worktree is a different branch entirely and need not have the script at all.
+  [ -n "$tree_root" ] || return 1
+  [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_title")" = "true" ]
 }
 
 # Out-of-scope bypass: accept the merge when every file this PR changes lives

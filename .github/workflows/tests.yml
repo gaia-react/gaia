@@ -80,12 +80,12 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -eu
-          if [ "${{ github.event_name }}" = "pull_request" ] \
-              && printf '%s' "$PR_TITLE" | grep -qE '^chore\(deps(-dev)?\):'; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            skip="$(bash .gaia/scripts/chore-deps-skip.sh "$PR_TITLE")"
           else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            skip=false
           fi
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
       # Incremental scope: resolve the most recent ancestor of HEAD on which
       # "Vitest and Playwright" already passed, then gate the suite on whether
       # the delta SINCE that green run touches a test-relevant file. A code
@@ -143,16 +143,8 @@ jobs:
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
-        name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
-      - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
-        name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        name: Setup Node and install
+        uses: ./.github/actions/gaia-setup-node
       # Reads the version inline rather than through a Marketplace action. The
       # Marketplace option here is a CONTAINER action, and GitHub builds a
       # container action's image during job setup, before any step-level `if:`

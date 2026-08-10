@@ -76,16 +76,10 @@ jobs:
         # normalizes dates out, and writes nothing.
         run: ./.gaia/cli/gaia-maintainer release scrub-wiki --check
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Setup Node and install the CLI workspace
+        uses: ./.github/actions/gaia-setup-node
         with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
-
-      - name: Install CLI dependencies
-        run: pnpm -C .gaia/cli install --frozen-lockfile
+          install: cli
 
       # Tag-push half of the bundle-freshness gate; cli-tests.yml runs the same
       # script on every PR that touches the CLI. This is the last check before a
