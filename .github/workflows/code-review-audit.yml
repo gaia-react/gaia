@@ -209,6 +209,42 @@ jobs:
             echo "self_modified=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve audit phase
+        id: phase
+        # The shared audit-phase precondition, computed once. Every step below
+        # that runs only when the job has reached the audit phase reads this one
+        # output instead of restating the chain, so tightening the preconditions
+        # is a single edit rather than one edit per guarded step. A site that
+        # missed such an edit would guard on a strict subset of its siblings and
+        # fire on a path the new precondition was meant to exclude. Because the
+        # guarded steps are the ones that write the `GAIA-Audit` commit status
+        # `.claude/hooks/pr-merge-audit-check.sh` gates merges on, that is the
+        # merge gate failing OPEN, and CI cannot catch it: each guard covers a
+        # different code path and one PR exercises only one of them.
+        #
+        # No `if:`, so the output is always defined on every path that reaches
+        # here. Each input is compared against its passing literal rather than
+        # tested for non-emptiness: a skipped upstream step yields the empty
+        # string, which must read as "did not reach the audit phase", never as a
+        # pass. Fail-closed is the safe direction for a merge gate.
+        #
+        # Guarded by .github/audit/tests/ci-guard-paths.bats, which evaluates
+        # every step's `if:` against each terminal path's state and asserts the
+        # exact set of steps that fire.
+        env:
+          GATED: ${{ steps.gate.outputs.gated }}
+          HAS_SOURCE: ${{ steps.source-changes.outputs.has_source }}
+          SELF_MODIFIED: ${{ steps.workflow-self-mod.outputs.self_modified }}
+        run: |
+          set -eu
+          if [ "$GATED" = 'false' ] \
+              && [ "$HAS_SOURCE" = 'true' ] \
+              && [ "$SELF_MODIFIED" = 'false' ]; then
+            echo "reached_audit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "reached_audit=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Resolve audit decision
         id: decision
         # Per-author mode resolution. Subordinate to the scope gates above:
@@ -226,10 +262,8 @@ jobs:
         # override, not a fork, in scope) means CI stands down and the local
         # path runs the audit instead.
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.chore-deps.outputs.skip == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false'
+          steps.phase.outputs.reached_audit == 'true' &&
+          steps.chore-deps.outputs.skip == 'false'
         env:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           OVERRIDE_LABEL: ${{ steps.config.outputs.override_label }}
@@ -258,26 +292,20 @@ jobs:
       - name: Check audit trailer
         id: trailer
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true'
         run: bash .github/audit/check-trailer.sh >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
 
       - name: Setup Node
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
@@ -287,9 +315,7 @@ jobs:
 
       - name: Install dependencies
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         run: pnpm install --frozen-lockfile
@@ -297,9 +323,7 @@ jobs:
       - name: Compute audit step timeout
         id: timeout
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         env:
@@ -330,9 +354,7 @@ jobs:
         # Same precedent as the audit step below.
         continue-on-error: true
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         env:
@@ -374,9 +396,7 @@ jobs:
       - name: Run code-review-audit (claude-code-action)
         id: audit
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         # Continue on failure: max-turns / SDK / API errors must not strand
@@ -525,9 +545,7 @@ jobs:
         # Always exits 0: a missing/empty file must never fail the required
         # check.
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         env:
@@ -566,9 +584,7 @@ jobs:
       - name: Commit and push self-heal
         id: push-fixes
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.config.outputs.push_fixes == 'true' &&
@@ -746,9 +762,7 @@ jobs:
 
       - name: Write GAIA-Audit commit status
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome == 'success' &&
@@ -885,9 +899,7 @@ jobs:
 
       - name: Write GAIA-Audit commit status (clean, no push)
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.config.outputs.push_fixes == 'true' &&
@@ -1040,10 +1052,8 @@ jobs:
 
       - name: Stand down (local-mode, no override)
         if: |
-          steps.gate.outputs.gated == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.chore-deps.outputs.skip == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.decision.outputs.should_run == 'false'
         env:
           # The PUSHED PR head sha, straight from the event payload, exactly as
@@ -1396,9 +1406,7 @@ jobs:
 
       - name: Re-trigger and stamp required checks on new HEAD
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome == 'success' &&
           steps.push-fixes.outputs.pushed == 'true'
@@ -1555,45 +1563,6 @@ jobs:
             cat "$log"
           done
 
-      - name: Prepare status-comment upserter
-        # Write the single-comment upsert helper to a run-scoped temp path. Every
-        # terminal status step below invokes it so the workflow upserts ONE
-        # code-review-audit status comment per PR (located by the stable marker)
-        # instead of appending a fresh comment on every push/synchronize.
-        # always(): the helper must exist before whichever terminal status step
-        # fires, on every code path.
-        if: always()
-        run: |
-          cat > "$RUNNER_TEMP/cra-status-upsert.sh" <<'UPSERT_EOF'
-          #!/usr/bin/env bash
-          # Upsert the single code-review-audit status comment on a PR.
-          # Usage: cra-status-upsert.sh <pr-number> <body>
-          set -eu
-          MARKER='<!-- gaia:cra-status -->'
-          pr="$1"
-          body="$2"
-          full_body="$(printf '%s\n%s' "$MARKER" "$body")"
-          if ! comments="$(MARKER="$MARKER" gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/issues/${pr}/comments" \
-              --jq '.[] | select(.body | contains(env.MARKER)) | .id')"; then
-            echo "cra-status-upsert: comment lookup failed (non-fatal); skipping upsert to avoid posting a duplicate comment." >&2
-            exit 0
-          fi
-          existing_id="$(printf '%s\n' "$comments" | head -n1)"
-          if [ -n "$existing_id" ]; then
-            if ! gh api --method PATCH \
-                "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_id}" \
-                -f body="$full_body" >/dev/null; then
-              echo "cra-status-upsert: PATCH of comment ${existing_id} failed (non-fatal); this comment is advisory only." >&2
-            fi
-          else
-            if ! gh pr comment "$pr" --body "$full_body"; then
-              echo "cra-status-upsert: posting the status comment failed (non-fatal); this comment is advisory only." >&2
-            fi
-          fi
-          UPSERT_EOF
-          chmod +x "$RUNNER_TEMP/cra-status-upsert.sh"
-
       # ----------------------------------------------------------------
       # Terminal status steps. Exactly one fires per run; together they
       # guarantee the job reaches a clean conclusion on every code path
@@ -1609,7 +1578,7 @@ jobs:
           GATE_LABEL: ${{ steps.config.outputs.gate_label }}
         run: |
           set -eu
-          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
             "code-review-audit skipped: gate_label '$GATE_LABEL' not present on PR"
 
       - name: Status - skipped (chore-deps PR)
@@ -1637,7 +1606,7 @@ jobs:
           # local marker, so the pending branch below would otherwise tell the
           # author to clear an already-green gate.
           if [ "${SUCCESS_LIVE:-}" = "true" ]; then
-            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: chore(deps) PRs are pre-verified by the /update-deps local quality gate. GAIA-Audit is already green for this commit's tree, every dispatched member has cleared. No action needed"
             exit 0
           fi
@@ -1645,7 +1614,7 @@ jobs:
           # the stamp step stood down having posted nothing; the gate's true state
           # is unknown.
           if [ "${READ_FAILED:-}" = "true" ]; then
-            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: chore(deps) PR, but this diff dispatches ${MEMBERS_PENDING}, and the current GAIA-Audit status could not be read, so its state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
             exit 0
           fi
@@ -1654,7 +1623,7 @@ jobs:
           # step posted `pending`, not `success`, and a local audit of that member
           # is required.
           if [ -n "${MEMBERS_PENDING:-}" ]; then
-            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: chore(deps) PR, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
             exit 0
           fi
@@ -1662,11 +1631,11 @@ jobs:
           # digest, or .gaia/VERSION missing/empty). The gate fails closed, so a
           # bare "skipped" line would claim the opposite of what happened.
           if [ "${SUCCESS_STAMPED:-}" != "true" ]; then
-            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: chore(deps) PR, but NO GAIA-Audit commit status was stamped on HEAD, so the merge gate is NOT satisfied. Most likely .gaia/VERSION is missing/empty or the frontend digest could not be recomputed; see the 'Write GAIA-Audit commit status (chore-deps skip)' step log. Restore .gaia/VERSION, or run a local audit, to clear the gate"
             exit 0
           fi
-          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
             "code-review-audit skipped: chore(deps) / chore(deps-dev) PRs are pre-verified by the /update-deps local quality gate; GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied"
 
       - name: Status - skipped (no source changes)
@@ -1689,7 +1658,7 @@ jobs:
           # therefore tell the author to clear a gate that is already green.
           # Under-claiming is as much a lie as over-claiming here.
           if [ "${SUCCESS_LIVE:-}" = "true" ]; then
-            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: no files in the frontend auditor's scope. GAIA-Audit is already green for this commit's tree, every dispatched member has cleared. No action needed"
             exit 0
           fi
@@ -1700,7 +1669,7 @@ jobs:
           # green", a claim this step never verified on this exit; the gate's
           # true state is exactly what the guard could not read.
           if [ "${READ_FAILED:-}" = "true" ]; then
-            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, and the current GAIA-Audit status could not be read, so its state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
             exit 0
           fi
@@ -1711,7 +1680,7 @@ jobs:
           # Report that instead of the free-skip message, which would otherwise
           # tell the author the button is open while it is shut.
           if [ -n "${MEMBERS_PENDING:-}" ]; then
-            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
             exit 0
           fi
@@ -1723,18 +1692,16 @@ jobs:
           # `true` is read as no-stamp, so a future reshape that drops the output
           # degrades to the cautious message rather than a false green.
           if [ "${SUCCESS_STAMPED:-}" != "true" ]; then
-            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit), but NO GAIA-Audit commit status was stamped on HEAD, so the merge gate is NOT satisfied. Most likely .gaia/VERSION is missing or empty; see the 'Write GAIA-Audit commit status (out-of-scope skip)' step log. Restore .gaia/VERSION, or run a local audit, to clear the gate"
             exit 0
           fi
-          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
             "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit); GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied with no local audit run"
 
       - name: Status - skipped (trailer matches)
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.trailer.outputs.skip == 'true'
         env:
           MATCHED_VERSION: ${{ steps.trailer.outputs.matched_version }}
@@ -1742,7 +1709,7 @@ jobs:
         run: |
           set -eu
           short_tree="$(printf '%s' "$MATCHED_TREE" | cut -c1-7)"
-          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
             "code-review-audit skipped: GAIA-Audit trailer matches version $MATCHED_VERSION tree $short_tree"
 
       - name: Status - skipped (workflow self-modification)
@@ -1752,7 +1719,7 @@ jobs:
           steps.workflow-self-mod.outputs.self_modified == 'true'
         run: |
           set -eu
-          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
             "code-review-audit skipped: PR modifies the audit workflow itself; claude-code-action's workflow-validation guardrail would refuse to run"
 
       - name: Status - local-mode stand-down
@@ -1769,16 +1736,14 @@ jobs:
         # Gated identically to the stand-down step so exactly one terminal
         # status step fires per run.
         if: |
-          steps.gate.outputs.gated == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.chore-deps.outputs.skip == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.decision.outputs.should_run == 'false'
         env:
           OVERRIDE_LABEL: ${{ steps.config.outputs.override_label }}
         run: |
           set -eu
-          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
             "code-review-audit standing down for this author (local mode). Merge via Claude (which runs the audit locally) or add the '${OVERRIDE_LABEL}' label to force a CI audit."
 
       - name: Status - audit aborted
@@ -1794,23 +1759,19 @@ jobs:
         # green-check-plus-aborted-comment combo silently hides real
         # audit failures from PR authors.
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome != 'success'
         run: |
           set -eu
-          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
             "code-review-audit aborted: workflow validation refusal, max-turns, SDK error, or transient API failure (see workflow run logs)"
           exit 1
 
       - name: Status - audit complete
         if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome == 'success'
@@ -1835,5 +1796,5 @@ jobs:
           else
             mode="no fixes needed"
           fi
-          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
             "code-review-audit complete: $mode"
