@@ -255,6 +255,7 @@
     ".github/actions/gaia-ci-stale-pr-skip/action.yml": "owned",
     ".github/audit/audit-success-present.sh": "owned",
     ".github/audit/check-trailer.sh": "owned",
+    ".github/audit/cra-status-upsert.sh": "owned",
     ".github/audit/gate-pending-members.sh": "owned",
     ".github/audit/resolve-audit-base.sh": "owned",
     ".github/audit/resolve-check-base.sh": "owned",
@@ -640,7 +641,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-04T10:21:55.078Z",
+  "generated": "2026-08-10T02:48:11.751Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

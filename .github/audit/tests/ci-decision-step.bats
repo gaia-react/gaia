@@ -191,42 +191,45 @@ audit_authors: \"stevensacks=local\""
 
 # ---------------------------------------------------------------------------
 # UAT-026 subordination: the decision step and the stand-down step are BOTH
-# gated on `has_source == 'true' && self_modified == 'false'`, so out-of-scope
+# gated on the audit phase having been reached, so out-of-scope
 # (has_source==false) and self-mod (self_modified==true) PRs never reach the
 # decision/stand-down at all; they take the existing success-stamp paths and
 # never double-stamp. This test documents that trace and proves it executably:
 # the decision step does not even run when out-of-scope, so `should_run` is
 # never produced and the stand-down's `should_run == 'false'` is unsatisfiable.
+#
+# The two scope predicates are computed once, by the `Resolve audit phase` step,
+# into `reached_audit`; the guards read that output. So the assertion here is
+# that both steps gate on the derived output AND that the output is derived from
+# the two scope signals. Per-terminal-path evaluation of every guard lives in
+# .github/audit/tests/ci-guard-paths.bats.
 # ---------------------------------------------------------------------------
 
 @test "ci decision step does not fire on out-of-scope or self-mod (subordination, UAT-026)" {
   [ -f "$WORKFLOW" ] || skip "in-tree workflow absent (adopter clone)"
 
-  # Documented YAML trace: both the decision step and the stand-down step carry
-  # the scope-gate predicates in their `if:`. Assert those predicates are
-  # present on both so the subordination holds by construction.
-  #
-  # The decision step is `id: decision`; the stand-down is the step posting the
-  # pending status. Each must include the two scope-gate lines.
-  local has_source_line="steps.source-changes.outputs.has_source == 'true' &&"
-  local self_mod_line="steps.workflow-self-mod.outputs.self_modified == 'false'"
+  # The shared precondition both steps gate on.
+  local phase_line="steps.phase.outputs.reached_audit == 'true' &&"
 
-  # Both lines appear in the decision step block and the stand-down step block.
-  # (Count >= 2 each: at minimum decision + stand-down carry them; the rest of
-  # the expensive steps share the predicates too.)
-  local has_source_count self_mod_count
-  has_source_count=$(grep -cF "$has_source_line" "$WORKFLOW")
-  self_mod_count=$(grep -cF "$self_mod_line" "$WORKFLOW")
-  [ "$has_source_count" -ge 2 ]
-  [ "$self_mod_count" -ge 2 ]
+  # Count >= 2: at minimum the decision step and the stand-down carry it; the
+  # rest of the expensive steps share the precondition too.
+  local phase_count
+  phase_count=$(grep -cF "$phase_line" "$WORKFLOW")
+  [ "$phase_count" -ge 2 ]
+
+  # The precondition is only as strong as its derivation, so pin that the phase
+  # step consumes both scope signals. Without this, the guards above could gate
+  # on an output that no longer means "in scope and not self-modifying".
+  grep -qF 'HAS_SOURCE: ${{ steps.source-changes.outputs.has_source }}' "$WORKFLOW"
+  grep -qF 'SELF_MODIFIED: ${{ steps.workflow-self-mod.outputs.self_modified }}' "$WORKFLOW"
 
   # The stand-down's pending status POST is gated on should_run == 'false'
-  # AND the scope gates, so an out-of-scope run (decision skipped, should_run
-  # empty) can never satisfy it.
+  # AND the phase precondition, so an out-of-scope run (decision skipped,
+  # should_run empty) can never satisfy it.
   grep -qF "steps.decision.outputs.should_run == 'false'" "$WORKFLOW"
 
   # Executable proxy: the out-of-scope success-stamp path is gated on
-  # has_source == 'false', which is mutually exclusive with the decision step's
-  # has_source == 'true' guard, so the two never co-fire.
+  # has_source == 'false', which is mutually exclusive with the phase step's
+  # has_source == 'true' precondition, so the two never co-fire.
   grep -qF "steps.source-changes.outputs.has_source == 'false'" "$WORKFLOW"
 }
