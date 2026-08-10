@@ -23,14 +23,15 @@ paths:
 
 1. Make the identical change to the **source** template `.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl` (edit source + live together, in the same commit).
 2. Regenerate the build artifact: `pnpm -C .gaia/cli bundle:adopter` (its `cp -r src/automation/templates/workflows/. templates/workflows/` step rewrites `.gaia/cli/templates/workflows/`). Never hand-edit the artifact — the bundle overwrites it.
-3. Verify byte-identity: `pnpm -C .gaia/cli test --run` runs `audit-template-dogfood.test.ts`, which asserts live == source. `cli-tests.yml` re-runs it on any edit to `.github/workflows/code-review-audit.yml`, so a one-sided change fails CI.
+3. Verify byte-identity: `pnpm -C .gaia/cli test --run` runs `audit-template-dogfood.test.ts`, which asserts live == source. `cli-tests.yml` re-runs it on any edit under `.github/workflows/`, so a one-sided change fails CI.
 
 **Invariant — nothing maintainer-only in this workflow.** `code-review-audit.yml` is fully portable and identical to what an adopter renders. Never add a maintainer-only path, comment, or conditional to it. The release leak-checks (`maintainer-paths`, `excluded-workflow-ref` in `.gaia/release-scrub.yml`) fail the build if a shipped workflow surface references a maintainer-only path (this class already regressed once — a comment cross-referencing `forensics-triage.yml` leaked onto adopters). If a change genuinely needs to differ for the maintainer repo, it does not belong in this workflow.
 
 ## Every other workflow — no template to mirror
 
 - **Ships verbatim** (manifest `shared`, no template): `tests.yml`, `chromatic.yml`. Keep their comments free of maintainer-only paths and keep any path filters as allowlists, never `paths-ignore:`/inverted `!` fail-quiet shapes (leak-checks `maintainer-paths`, `workflow-denylist`).
-- **Maintainer-only, release-excluded, no template** — edit freely, nothing to mirror: `release.yml`, `cli-tests.yml`, `audit-ci-tests.yml`, `distribution.yml`, `forensics-triage.yml`.
+- **Maintainer-only, release-excluded, no template** — edit freely, no *file* to mirror: `release.yml`, `cli-tests.yml`, `audit-ci-tests.yml`, `distribution.yml`, `forensics-triage.yml`.
+- **One value every workflow does mirror: its action pins.** No workflow here has a template counterpart beyond `code-review-audit.yml`, but `adopter-ci-action-pins.test.ts` holds the pins in `.gaia/cli/src/automation/templates/workflows/**/*.tmpl` equal to the pins these workflows run, and requires the workflows to agree with each other. So bumping an action SHA in any workflow above, including the edit-freely ones, reddens that guard until the same `<sha> # <tag>` is mirrored into the templates and the artifact regenerated (step 2's `bundle:adopter`). Dependabot's weekly grouped bump is the ordinary case; the guard's failure message names both the SHA and the site to copy it into.
 - **Adopter-only templates, no `.github/workflows` counterpart here**: `gaia-ci-{pnpm-audit,stale-branches,update-deps,wiki}.yml.tmpl` (rendered per adopter from `.gaia/automation.json`). The maintainer runs none of them, so there is nothing to diff against — a *different* drift surface (you'd be changing the render source / automation skills, not a workflow file), tracked separately as tech-debt, not by this rule.
 
 ## Reference
