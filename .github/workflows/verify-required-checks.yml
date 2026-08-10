@@ -60,7 +60,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PRs that touch neither the workflows directory nor the script itself
       # report this check green without running anything: neither in-repo input
       # -- the declared-required set, the check-producing job list -- could have
@@ -75,7 +75,7 @@ jobs:
       # drift class #807 targets -- a check that reports red but was never in the
       # required set -- necessarily touches .github/workflows/** on the very PR
       # that introduces it, so the filter always fires for it.
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |

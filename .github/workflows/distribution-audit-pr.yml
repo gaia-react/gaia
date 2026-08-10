@@ -75,7 +75,7 @@ jobs:
       # fetch-depth: 0 so both the base and head commits are present for the
       # diff below. The default merge-ref checkout has both as parents, but a
       # shallow clone would not contain them.
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Gate unanswered newly-shipping files
