@@ -63,6 +63,7 @@ setup() {
   WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
   GATE="$REPO_ROOT/.github/audit/gate-pending-members.sh"
   PRESENT="$REPO_ROOT/.github/audit/audit-success-present.sh"
+  WRITER="$REPO_ROOT/.github/audit/write-audit-status.sh"
 
   # Every spelling `gh` accepts for the pending-state field: the long `--field`
   # and the `-f` / `-F` short forms, whole-pair quoting (`-f 'state=pending'`),
@@ -94,6 +95,7 @@ setup() {
   [ -f "$WORKFLOW" ] || skip "code-review-audit.yml not found"
   [ -f "$GATE" ] || skip "gate-pending-members.sh not found"
   [ -f "$PRESENT" ] || skip "audit-success-present.sh not found"
+  [ -f "$WRITER" ] || skip "write-audit-status.sh not found"
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/.gaia"
@@ -113,9 +115,11 @@ setup() {
   cp "$REPO_ROOT/.gaia/scripts/resolve-audit-members.sh" "$SANDBOX/.gaia/scripts/"
   cp "$GATE" "$SANDBOX/.github/audit/"
   cp "$PRESENT" "$SANDBOX/.github/audit/"
+  cp "$WRITER" "$SANDBOX/.github/audit/"
   chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-members.sh" \
            "$SANDBOX/.github/audit/gate-pending-members.sh" \
-           "$SANDBOX/.github/audit/audit-success-present.sh"
+           "$SANDBOX/.github/audit/audit-success-present.sh" \
+           "$SANDBOX/.github/audit/write-audit-status.sh"
 
   # The resolver copy resolves its libs relative to ITSELF
   # ($SANDBOX/.claude/hooks/lib/), so provision the shared ownership
@@ -257,7 +261,7 @@ remove_guard_script() {
 # real fifth writer, the same silent blinding this test exists to prevent,
 # arriving through the front door. Strip the comments; keep the match loose.
 count_pending_writers() {
-  grep -v '^[[:space:]]*#' "$WORKFLOW" | grep -cE -- "$PENDING_WRITER_RE"
+  grep -v '^[[:space:]]*#' "${1:-$WORKFLOW}" | grep -cE -- "$PENDING_WRITER_RE"
 }
 
 # Stub the PR-comment upsert the terminal status steps shell out to, recording
@@ -524,9 +528,13 @@ run_comment_step() {
     "Write GAIA-Audit commit status (chore-deps skip)"
   do
     body="$(extract_step_body "$step")"
-    grep -qF 'gate-pending-members.sh --base "${PR_BASE_SHA}"' "$body" || return 1
+    # The four gated writers hand the base to write-audit-status.sh, which is
+    # the only caller of gate-pending-members.sh now. Both halves are asserted:
+    # the step passes the FULL-PR base, and (below the loop) the shared writer
+    # is what feeds it to the gate.
+    grep -qF -- '--base "${PR_BASE_SHA}"' "$body" || return 1
     # The incremental audit base must never decide membership.
-    grep -qF 'gate-pending-members.sh --base "${AUDIT_BASE}"' "$body" && return 1
+    grep -qF -- '--base "${AUDIT_BASE}"' "$body" && return 1
 
     # PR_BASE_SHA is the PR's base sha from the event payload, asserted in this
     # step's own block rather than as a whole-file tally. A file-wide count of
@@ -536,6 +544,11 @@ run_comment_step() {
     block="$(extract_step_block "$step")"
     grep -qF 'PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}' "$block" || return 1
   done
+
+  # The other half, since the gate call moved: the shared writer is what turns
+  # --base into a member query, and it must use the value it was handed rather
+  # than resolve a base of its own.
+  grep -qF -- 'gate-pending-members.sh --base "$base"' "$WRITER" || return 1
 }
 
 @test "the local-mode stand-down and the two skip-path stamps take their sha from the event payload, not git rev-parse HEAD" {
@@ -551,7 +564,7 @@ run_comment_step() {
     "Write GAIA-Audit commit status (chore-deps skip)"
   do
     body="$(extract_step_body "$step")"
-    grep -qF 'head_sha="${HEAD_SHA}"' "$body" || return 1
+    grep -qF -- '--sha "${HEAD_SHA}"' "$body" || return 1
     grep -qF 'git rev-parse HEAD)"' "$body" && return 1
   done
 
@@ -1482,11 +1495,41 @@ run_comment_step() {
   [ "$status" -eq 2 ]
 }
 
-@test "every step that POSTs pending consults the guard and posts only on a definitive 1" {
-  # The structural lock, and the one assertion that would have caught the gap the
-  # behavioral tests above missed for a release: a guard is only as good as the
-  # set of callers that use it, and a suite that tests three of four writers says
-  # nothing about the fourth. Pin the whole set.
+@test "one pending writer exists, it consults the guard, and all five status steps route through it" {
+  # THE STRUCTURAL LOCK. Its intent is unchanged and is the one assertion that
+  # would have caught the gap the behavioral tests missed for a release: a guard
+  # is only as good as the set of callers that use it, and a suite that tests
+  # three of four writers says nothing about the fourth.
+  #
+  # What changed is where the writers live. The five steps used to carry five
+  # copies of the pending POST and its guard, so the lock looped over the step
+  # bodies and pinned the count at 5. They now route through one shared writer
+  # (#1286), so the same intent is pinned in three parts -- and the result is a
+  # STRICTER lock than the one it replaces, because a sixth writer no longer
+  # passes by carrying its own correct copy of the guard: the workflow may not
+  # POST pending at all.
+  #
+  # Do not "fix" a red here by bumping a count. That is the tempting repair that
+  # would permanently blind the lock, which is the failure it exists to prevent.
+
+  # 1. The workflow itself POSTs pending nowhere. Every terminal path delegates.
+  run count_pending_writers "$WORKFLOW"
+  [ "$output" -eq 0 ]
+
+  # 2. There is exactly ONE pending POST anywhere, and it is in the shared
+  #    writer. A second one added there is as much a divergence as a sixth step.
+  run count_pending_writers "$WRITER"
+  [ "$output" -eq 1 ]
+
+  # 3. That one writer is guarded. Enumerating the stand-down codes is the bug:
+  #    `-eq 2` alone lets 127 (and every other unexpected exit) fall through to
+  #    the POST, so the test must be for a DEFINITIVE 1.
+  if grep -qF -- '"$_live" -eq 2' "$WRITER"; then return 1; fi
+  grep -qF -- "audit-success-present.sh" "$WRITER" || return 1
+  grep -qF -- '"$_live" -ne 1' "$WRITER" || return 1
+
+  # 4. ...and all five terminal steps actually go through it, so none of them
+  #    has quietly grown a status POST of its own by another spelling.
   local step body
   for step in \
     "Write GAIA-Audit commit status" \
@@ -1496,18 +1539,8 @@ run_comment_step() {
     "Stand down (local-mode, no override)"
   do
     body="$(extract_step_body "$step")"
-    # Enumerating the stand-down codes is the bug: `-eq 2` alone lets 127 (and
-    # every other unexpected exit) fall through to the POST.
-    if grep -qF -- '"$_live" -eq 2' "$body"; then return 1; fi
-    grep -qE -- "$PENDING_WRITER_RE" "$body" || return 1
-    grep -qF -- "audit-success-present.sh" "$body" || return 1
-    grep -qF -- '"$_live" -ne 1' "$body" || return 1
+    grep -qF -- "write-audit-status.sh" "$body" || return 1
   done
-
-  # ...and these five are the WHOLE set, so the loop above covers every pending
-  # writer there is. A sixth added without a guard trips this count.
-  run count_pending_writers
-  [ "$output" -eq 5 ]
 }
 
 # -----------------------------------------------------------------------------

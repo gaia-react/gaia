@@ -22,6 +22,15 @@
 # in-tree step block (the same approach required-check-registration.bats uses).
 # It lives under .github/audit/tests/ so the CI bats runner (audit-ci-tests.yml,
 # check name "Audit CI Tests") executes it.
+#
+# BOTH PROPERTIES NOW LIVE IN TWO PLACES, AND THIS SUITE PINS BOTH ENDS. #1286
+# moved the shared status-writing logic out of the five terminal steps and into
+# .github/audit/write-audit-status.sh, so the step supplies the inputs
+# (--sha from the event payload, --require-marker, --success-post-non-fatal) and
+# the writer implements them. Asserting only the step would leave the writer
+# free to ignore a flag; asserting only the writer would leave this path free to
+# stop passing one. The behavioral counterpart -- these steps actually EXECUTED
+# against a gh mock -- is ci-status-member-gate.bats.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -32,6 +41,9 @@ setup() {
   # Extract only the "clean, no push" step block: from its `- name:` line up to
   # (not including) the next step's `- name:` line. index() matches a literal
   # substring so the parens in the step name need no escaping.
+  WRITER="$REPO_ROOT/.github/audit/write-audit-status.sh"
+  [ -f "$WRITER" ] || skip "write-audit-status.sh not found"
+
   STEP="$BATS_TEST_TMPDIR/clean-no-push.step"
   awk '
     index($0, "- name: Write GAIA-Audit commit status (clean, no push)") { grab=1; print; next }
@@ -47,11 +59,18 @@ setup() {
 }
 
 @test "clean-no-push step stamps the pushed head sha, not the runner's HEAD" {
-  run grep -F 'statuses/${HEAD_SHA}' "$STEP"
+  # The step hands the event-payload sha to the writer...
+  run grep -F -- '--sha "${HEAD_SHA}"' "$STEP"
   [ "$status" -eq 0 ]
+  # ...and the writer stamps the sha it was handed, never one it resolves itself.
+  run grep -F 'statuses/${sha}' "$WRITER"
+  [ "$status" -eq 0 ]
+
   # The buggy pattern -- resolving the stamp target from `git rev-parse HEAD` --
-  # must not return.
+  # must not return, at either end.
   run grep -F 'head_sha="$(git rev-parse HEAD)"' "$STEP"
+  [ "$status" -ne 0 ]
+  run grep -F 'git rev-parse HEAD)"' "$WRITER"
   [ "$status" -ne 0 ]
 }
 
@@ -61,30 +80,42 @@ setup() {
   # digest it audited, so a commit- or tree-keyed lookup here would never
   # find it. The digest must therefore be recomputed (--ref "${HEAD_SHA}",
   # the pushed head's exact content) BEFORE the marker path is built.
-  run grep -F 'bash .gaia/scripts/audit-member-digest.sh' "$STEP"
+  # This is the path that requires a marker at all -- the writer only looks one
+  # up when asked -- so the step must keep asking.
+  run grep -F -- '--require-marker' "$STEP"
   [ "$status" -eq 0 ]
-  run grep -F -- '--ref "${HEAD_SHA}")"; then' "$STEP"
+
+  run grep -F 'bash .gaia/scripts/audit-member-digest.sh' "$WRITER"
   [ "$status" -eq 0 ]
-  run grep -F 'marker=".gaia/local/audit/${frontend_digest}.ok"' "$STEP"
+  run grep -F -- '--ref "${sha}")"; then' "$WRITER"
+  [ "$status" -eq 0 ]
+  run grep -F 'marker=".gaia/local/audit/${frontend_digest}.ok"' "$WRITER"
   [ "$status" -eq 0 ]
 
   # The tree- or commit-keyed marker paths must not return.
-  run grep -F 'marker=".gaia/local/audit/${tree_sha}.ok"' "$STEP"
+  run grep -F 'marker=".gaia/local/audit/${tree_sha}.ok"' "$WRITER"
   [ "$status" -ne 0 ]
-  run grep -F 'marker=".gaia/local/audit/${HEAD_SHA}.ok"' "$STEP"
+  run grep -F 'marker=".gaia/local/audit/${sha}.ok"' "$WRITER"
   [ "$status" -ne 0 ]
 
   # Ordering guard: the digest must be resolved above the marker lookup, or
   # the guard tests an empty key and every clean audit silently stops
   # stamping.
-  digest_line=$(grep -nF 'bash .gaia/scripts/audit-member-digest.sh' "$STEP" | head -1 | cut -d: -f1)
-  marker_line=$(grep -nF 'marker=".gaia/local/audit/${frontend_digest}.ok"' "$STEP" | head -1 | cut -d: -f1)
+  digest_line=$(grep -nF 'bash .gaia/scripts/audit-member-digest.sh' "$WRITER" | head -1 | cut -d: -f1)
+  marker_line=$(grep -nF 'marker=".gaia/local/audit/${frontend_digest}.ok"' "$WRITER" | head -1 | cut -d: -f1)
   [ -n "$digest_line" ]
   [ -n "$marker_line" ]
   [ "$digest_line" -lt "$marker_line" ]
 }
 
 @test "clean-no-push status POST is non-fatal (guarded, never reds a clean audit)" {
-  run grep -F 'if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}"' "$STEP"
+  # Non-fatality is now a flag this path asks for and the writer honours, and
+  # this path is the ONLY one that asks: the other three success writers leave
+  # the POST bare on purpose. Both ends asserted, because a flag nobody reads
+  # and a flag nobody passes fail the same way -- silently, and only on the
+  # transient API error this guard exists for.
+  run grep -F -- '--success-post-non-fatal' "$STEP"
+  [ "$status" -eq 0 ]
+  run grep -F 'if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}"' "$WRITER"
   [ "$status" -eq 0 ]
 }
