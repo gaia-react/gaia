@@ -142,7 +142,7 @@ jobs:
       # reach while still reporting green. Flag parity with the script is not
       # load-bearing; producing `storybook-static/` from the real config is.
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
-        name: Assert the built preview inlines no environment values
+        name: Build the preview and assert it inlines no environment values
         env:
           API_URL: gaia-preview-env-sentinel-api-url
           COMMIT_SHA: gaia-preview-env-sentinel-commit-sha
@@ -152,7 +152,7 @@ jobs:
           SITE_URL: gaia-preview-env-sentinel-site-url
         run: |
           set -euo pipefail
-          pnpm exec storybook build --test
+          pnpm exec storybook build --test --stats-json
           # `grep -r` exits 2 on a missing directory, and an `if` condition
           # absorbs that as "no match" rather than as an error, so a build that
           # produced no output would report this guard green having read nothing.
@@ -164,10 +164,19 @@ jobs:
             echo "::error::The Storybook build inlined environment values into the preview (files listed above). Remove the substitution and pass a story the values it needs as args."
             exit 1
           fi
-          # Do not leave a sentinel-bearing artifact beside the publish step.
-          # chromaui/action builds its own and clears this directory first, so
-          # this is a belt on top of that brace rather than a load-bearing step.
-          rm -rf storybook-static
+          # storybook-static/ is left in place: it is the artifact `Run Chromatic`
+          # publishes below. Publishing it is safe only because every check above
+          # already ran against this exact tree and this step aborts before the
+          # publish step on either a missing build or a leaked sentinel, so an
+          # unproven tree can never reach that step.
+      # storybookBuildDir points Chromatic at the tree the step above already
+      # built and verified sentinel-free, instead of letting chromaui/action
+      # shell out to its own `build-storybook` run. `--stats-json` in that
+      # build is what keeps onlyChanged (TurboSnap) alive here: Chromatic only
+      # passes `--stats-json` to a build it runs itself, so a prebuilt
+      # directory needs the stats file baked in already. The measured saving
+      # is the ~5s Chromatic's own build otherwise costs, on runs that clear
+      # the path filter above.
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Run Chromatic
         uses: chromaui/action@14cfaef73576e69f95f47f60058063f46ca38719 # v18.1.0
@@ -178,3 +187,4 @@ jobs:
           autoAcceptChanges: 'main'
           onlyChanged: true
           externals: 'app/styles/tailwind.css'
+          storybookBuildDir: 'storybook-static'
