@@ -134,7 +134,7 @@ The **trailer stamp**, landed by whichever dispatched member clears last, is an 
 
 #### The repair boundary
 
-A member's self-heal is confined by a **deterministic gate**, not by an instruction alone, on whichever producer runs the audit. Both producers read one sourced refusal set (`.claude/hooks/lib/audit-selfheal-paths.sh`) naming the paths no member may edit: the instruction/convention surfaces (`.claude/`, `.specify/`, `wiki/`), `test/**`, the rest of `.gaia/**`, `.github/workflows/**`, and the root package/build/lint config the default member's own glob list already covers (`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `tsconfig*.json`, `*.config.*`).
+A member's self-heal is confined by a **deterministic gate**, not by an instruction alone, on whichever producer runs the audit. Both producers read one sourced refusal set (`.claude/hooks/lib/audit-selfheal-paths.sh`) naming the paths no member may edit: the instruction/convention surfaces (`.claude/`, `.specify/`, `wiki/`), `test/**`, the rest of `.gaia/**`, `.github/**` (the whole tree, so the executables the audit workflow runs to decide its own success status are covered alongside the workflow YAML), and the root package/build/lint config the default member's own glob list already covers (`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `tsconfig*.json`, `*.config.*`).
 
 - **CI** enforces it at push time: the self-heal step's `run:` body checks the staged diff against the refusal set before committing.
 - **Local** enforces it at edit time: a `PreToolUse` hook (`.claude/hooks/block-selfheal-paths.sh`) denies a matching edit the moment a dispatched Code Audit Team member (an `agent_type` carrying the `code-audit-` prefix) attempts it.

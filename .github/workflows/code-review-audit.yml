@@ -626,7 +626,7 @@ jobs:
           # local producer's PreToolUse hook
           # (.claude/hooks/block-selfheal-paths.sh), names every domain a
           # self-healing member must never touch: the tests that would catch
-          # its own bad repair, the CI pipeline (.github/workflows/**), the
+          # its own bad repair, the CI pipeline and the rest of .github/**, the
           # gate machinery and roster under .gaia/, instruction/convention
           # surfaces (.claude/**, .specify/**, wiki/**), which are the rules
           # this audit enforces and the agent's own definition, and root-level

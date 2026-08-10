@@ -51,7 +51,7 @@ setup() {
   # untracked new file never appears in `git diff --name-only`, so a fixture
   # that creates one instead of modifying a baseline file would silently
   # exercise nothing.
-  mkdir -p "$SANDBOX/app" "$SANDBOX/test" "$SANDBOX/.gaia" "$SANDBOX/.github/workflows"
+  mkdir -p "$SANDBOX/app" "$SANDBOX/test" "$SANDBOX/.gaia" "$SANDBOX/.github/workflows" "$SANDBOX/.github/audit"
   echo "export const x = 1;" > "$SANDBOX/app/x.ts"
   echo "export default {};" > "$SANDBOX/app/foo.config.ts"
   for i in 1 2 3 4 5 6 7 8 9 10 11; do
@@ -60,6 +60,7 @@ setup() {
   echo "test('x', () => {});" > "$SANDBOX/test/x.test.ts"
   echo "auditors: []" > "$SANDBOX/.gaia/audit-ci.yml"
   echo "name: tests" > "$SANDBOX/.github/workflows/tests.yml"
+  echo "echo pending" > "$SANDBOX/.github/audit/gate-pending-members.sh"
   echo '{"name":"pkg"}' > "$SANDBOX/package.json"
   git -C "$SANDBOX" add -A
   git -C "$SANDBOX" commit --quiet -m "init"
@@ -160,6 +161,25 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   grep -qF '.github/workflows/tests.yml' <<<"$output"
   output_has "refused=true"
   output_has "refused_reason=governance-surface"
+}
+
+@test "a self-heal touching .github/audit/ is refused and names the path" {
+  # gate-pending-members.sh is run by code-review-audit.yml AFTER the audit
+  # step to decide whether GAIA-Audit success is posted. A self-heal that
+  # empties its output passes the merge gate while a co-dispatched member
+  # never cleared, so the refusal covers .github whole, not .github/workflows
+  # alone.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  echo "echo # emptied" > "$SANDBOX/.github/audit/gate-pending-members.sh"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF '.github/audit/gate-pending-members.sh' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  [ ! -s "$PUSH_LOG" ]
+  git -C "$SANDBOX" diff --cached --quiet
 }
 
 @test "UAT-027: a self-heal touching .gaia/ is refused and names the path" {

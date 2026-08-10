@@ -163,6 +163,49 @@ run_hook_bash() {
   assert_denied_by_json
 }
 
+# --- the whole .github tree is refused, not just .github/workflows/ ---
+#
+# .github/audit/ holds the executables code-review-audit.yml runs AFTER the
+# audit step to decide whether it posts GAIA-Audit success:
+# gate-pending-members.sh computes the members still owing a clearance and
+# audit-success-present.sh reads the status already there. A member free to
+# edit either can empty the pending set and make the merge gate pass while a
+# co-dispatched member never cleared, which is the gate failing OPEN. The
+# refusal covers .github whole, the same way test/ is refused whole, so a
+# sibling directory added later is covered on arrival rather than on the next
+# audit that notices it.
+
+@test "code-audit-frontend editing .github/audit/gate-pending-members.sh is denied and names the path" {
+  run_hook_edit "code-audit-frontend" "Edit" ".github/audit/gate-pending-members.sh"
+  assert_denied_by_json
+  grep -qF -- '.github/audit/gate-pending-members.sh' <<<"$output"
+}
+
+@test "code-audit-frontend editing .github/audit/audit-success-present.sh is denied" {
+  run_hook_edit "code-audit-frontend" "Edit" ".github/audit/audit-success-present.sh"
+  assert_denied_by_json
+}
+
+@test "code-audit-frontend editing .github/audit/cra-status-upsert.sh is denied" {
+  run_hook_edit "code-audit-frontend" "Edit" ".github/audit/cra-status-upsert.sh"
+  assert_denied_by_json
+}
+
+@test "code-audit-frontend editing .github/forensics/parse-verdict.sh is denied (the whole tree, not just audit/)" {
+  run_hook_edit "code-audit-frontend" "Edit" ".github/forensics/parse-verdict.sh"
+  assert_denied_by_json
+}
+
+@test "Bash: code-audit-frontend redirecting into .github/audit/gate-pending-members.sh is denied" {
+  run_hook_bash "code-audit-frontend" "echo x > .github/audit/gate-pending-members.sh"
+  assert_denied_by_json
+}
+
+@test "code-audit-frontend editing app/.github/foo.yml is allowed (the arm is anchored at the repo root)" {
+  run_hook_edit "code-audit-frontend" "Edit" "app/.github/foo.yml"
+  assert_allowed_by_json
+}
+
 # --- an app-only edit still allowed, criterion 3 ---
 
 @test "code-audit-frontend editing app/foo.ts is allowed" {
