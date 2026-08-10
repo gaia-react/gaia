@@ -24,7 +24,11 @@ updates:
     # NOT covered, and known not to be: the action pins inside
     # .gaia/cli/src/automation/templates/workflows/*.tmpl, the adopter CI that
     # /setup-gaia renders. They are `.tmpl` files outside .github/workflows/, so
-    # Dependabot cannot see them and they stay hand-maintained.
+    # Dependabot cannot see them. They are SHA-pinned to whatever the workflows
+    # below run, and adopter-ci-action-pins.test.ts asserts that equality, so a
+    # bump here turns that test red until the same pin is mirrored into the
+    # templates and their bundled copy regenerated. Adopters receive the
+    # mirrored pin on their next /update-gaia.
     #
     # One consequence to expect rather than debug. code-review-audit.yml is one
     # of three byte-identical copies (live, source template, build artifact),

@@ -101,6 +101,17 @@ jobs:
               # of that equality, so a workflow-only edit must re-run the guard
               # or template drift lands silently.
               - '.github/workflows/code-review-audit.yml'
+              # Same shape, wider subject, which is why this glob subsumes the
+              # entry above rather than replacing its rationale. The adopter-CI
+              # pin guard (automation/__tests__/adopter-ci-action-pins.test.ts)
+              # asserts the workflow templates pin the same action SHAs every
+              # workflow here runs, and Dependabot lands its weekly bump here
+              # first, so any workflow-only edit must re-run that guard or the
+              # bump merges with the templates left behind. A glob rather than
+              # an itemized list: the guard reads the whole directory, so an
+              # itemized one would silently stop covering a workflow added
+              # later.
+              - '.github/workflows/**'
               # The region-marker conformance suite binds the TypeScript parser
               # to the two bash readers it inherits its semantics from. It runs
               # in this job (see the step below), so an edit to either bash side
