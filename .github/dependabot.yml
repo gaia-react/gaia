@@ -1,0 +1,61 @@
+# Bump automation for the full-SHA action pins in .github/workflows/.
+#
+# There are 43 of them across 13 workflows, all hand-maintained, and five
+# workflow headers assert "Pinned action SHAs match <sibling>" in prose with
+# nothing checking it. Dependabot understands a SHA pin and rewrites the
+# trailing `# vX.Y.Z` comment along with it, so a bump stays atomic across every
+# site that pins the same action instead of drifting one file at a time.
+#
+# Maintainer-only, release-excluded: it opens pull requests on a schedule
+# against a .github/ tree that is overwhelmingly maintainer-only (11 of 13
+# workflows, the audit helpers, the composite actions) and does not exist on an
+# adopter clone. GAIA's adopter-facing CI installs on demand through
+# /setup-gaia precisely so a clone never inherits automation nobody asked for,
+# and the two workflows adopters do receive (tests.yml, chromatic.yml) get their
+# pin bumps through GAIA's own release channel, as an /update-gaia merge.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    # `/` is the whole ecosystem for GitHub Actions: it resolves to
+    # .github/workflows/. The two composite actions under .github/actions/
+    # reference no external action, so they need no directory of their own.
+    #
+    # NOT covered, and known not to be: the action pins inside
+    # .gaia/cli/src/automation/templates/workflows/*.tmpl, the adopter CI that
+    # /setup-gaia renders. They are `.tmpl` files outside .github/workflows/, so
+    # Dependabot cannot see them and they stay hand-maintained.
+    #
+    # One consequence to expect rather than debug. code-review-audit.yml is one
+    # of three byte-identical copies (live, source template, build artifact),
+    # and only the live one is in .github/workflows/. A bump that touches it
+    # turns cli-tests.yml's dogfood equality test red until the same bump is
+    # mirrored into the source template and the artifact regenerated on the
+    # Dependabot branch. That red is the drift guard doing its job; the
+    # mirroring procedure is in .claude/rules/maintainers/.
+    directory: /
+    schedule:
+      interval: weekly
+    # One grouped pull request rather than one per action. Editing anything
+    # under .github/workflows/ arms Audit CI Tests, which averages ~13 minutes,
+    # so five ungrouped bumps would pay that five times over to make one
+    # week's worth of changes.
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+    # Renders `ci(deps): bump ...`. The scope comes from `include: scope`
+    # rather than from a parenthesis written into the prefix, because whether
+    # Dependabot inserts the colon depends on the prefix's last character and
+    # this spelling does not have to be right about that rule.
+    #
+    # `ci`, not `chore`, because two gates read this subject and want different
+    # answers. pr-title.yml requires a declared commit type, and Dependabot's
+    # unprefixed default (`Bump ...`) has none, so it would go red on every
+    # bump. tests.yml, meanwhile, reads `chore(deps):` as the signal that a
+    # human already ran the full quality gate locally before pushing, and skips
+    # its suite on that basis. Dependabot runs no local gate, so it must not
+    # borrow that skip.
+    commit-message:
+      prefix: ci
+      include: scope

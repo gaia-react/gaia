@@ -34,10 +34,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. Each job below grants exactly what it needs.
+permissions: {}
+
 jobs:
   verify-required-checks:
     name: Required checks drift (advisory)
     runs-on: ubuntu-latest
+    # A checkout plus one read-only ruleset query, measured at 13s. Five minutes
+    # is a ~23x margin, so a run that hits it has hung on the API call rather
+    # than slowed. Same reasoning audit-roster.yml spells out for itself: no cap
+    # means a hang holds a runner for the 6-hour default.
+    timeout-minutes: 5
     # Read-only token: this job reads the ruleset and reports, it never
     # writes to the repo or the ruleset.
     #

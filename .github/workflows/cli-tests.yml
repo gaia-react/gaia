@@ -108,6 +108,15 @@ jobs:
               - '.gaia/scripts/tests/region-marker-conformance.bats'
               - '.gaia/scripts/write-audit-remits.sh'
               - '.gaia/scripts/verify-audit-roster.sh'
+              # The bundle-freshness gate below is this script, so an edit to
+              # it must re-run the gate on its own pull request. Without this
+              # line a change touching only the script resolves `code=false`,
+              # skips the step, and reports this required check green having
+              # run nothing. release.yml runs the same script and so is no
+              # independent second opinion; shell-lint.yml catches only what
+              # shellcheck can see, and a semantic weakening -- dropping the
+              # template `diff -rq`, inverting a `cmp` -- is invisible to it.
+              - '.gaia/scripts/verify-cli-bundle-fresh.sh'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
@@ -142,48 +151,17 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run region-marker conformance suite
         run: bats .gaia/scripts/tests/region-marker-conformance.bats
-      # PR-time mirror of release.yml's "Verify committed CLI binaries and
-      # templates are rebuilt from src" gate. The committed
-      # .gaia/cli/gaia{,-maintainer} bundles are what the runtime and the
-      # release tarball actually execute, so a PR that edits .gaia/cli/src/**
-      # without rebuilding them would merge a stale binary that only the
-      # release cut later catches. Rebuilding is deterministic (esbuild), so a
-      # fresh bundle that differs from the committed one means the commit is
-      # stale; bundle is idempotent and fast.
-      #
-      # Keep this step in lockstep with release.yml's copy. A gap here is not
-      # caught anywhere else in the PR lane, and this job is a required check,
-      # so what it misses merges.
+      # PR-time half of the bundle-freshness gate; release.yml runs the same
+      # script at tag-push. A PR that edits .gaia/cli/src/** without rebuilding
+      # the committed bundles would otherwise merge a stale binary that only the
+      # release cut later catches, and this job is a required check, so what it
+      # misses merges. Both callers run one script rather than a copy each,
+      # which is what keeps them from drifting: a comment asking a human to hold
+      # two copies in lockstep is not an enforcement mechanism. Full rationale
+      # lives in the script's docblock.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Verify committed CLI binaries and templates are rebuilt from src
-        run: |
-          cp .gaia/cli/gaia /tmp/gaia-committed
-          cp .gaia/cli/gaia-maintainer /tmp/gaia-maintainer-committed
-          # bundle:adopter regenerates .gaia/cli/templates/ from src as a side
-          # effect (rm -rf templates && cp -r src/scaffold/templates ...),
-          # decoupled from the bundled binary bytes. Snapshot the committed copy
-          # before the bundle overwrites it so the diff below can see drift.
-          rm -rf /tmp/templates-committed
-          cp -r .gaia/cli/templates /tmp/templates-committed
-          pnpm -C .gaia/cli bundle
-          if ! cmp -s /tmp/gaia-committed .gaia/cli/gaia; then
-            echo "::error::.gaia/cli/gaia is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
-            exit 1
-          fi
-          if ! cmp -s /tmp/gaia-maintainer-committed .gaia/cli/gaia-maintainer; then
-            echo "::error::.gaia/cli/gaia-maintainer is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
-            exit 1
-          fi
-          # Template content resolves at runtime via import.meta.url and never
-          # enters the bundled binary, so the byte-cmp above cannot catch a
-          # stale committed template. The dogfood drift-guard in the Vitest step
-          # covers only templates/workflows/; component/, hook/, route/, and
-          # service/ have no other guard in this lane. Diff the regenerated tree
-          # against the snapshot taken before the bundle.
-          if ! diff -rq /tmp/templates-committed .gaia/cli/templates; then
-            echo "::error::.gaia/cli/templates is stale: regenerating from src (pnpm -C .gaia/cli bundle) produces different template files. Run the bundle and commit the result." >&2
-            exit 1
-          fi
+        run: bash .gaia/scripts/verify-cli-bundle-fresh.sh
 
   # PR-gated distribution harness. Before this job, the harness (run-all.sh,
   # its scenarios, lib/) ran only at tag-push (release.yml) and manual

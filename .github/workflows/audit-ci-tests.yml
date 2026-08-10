@@ -72,8 +72,9 @@ jobs:
     # runner default. The cap is derived from that 25-minute poller window, not
     # from an observed runtime: this job also does two full dependency installs
     # and a concurrency suite that creates real git worktrees, so do not treat
-    # any figure quoted here as a measurement. Issue #1030 tracks machine-
-    # checking these caps against real run durations.
+    # any figure quoted here as a measurement. Nothing machine-checks this cap
+    # against real run durations, so a job that slows past it fails on the cap
+    # rather than reporting that it got slower.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1

@@ -68,6 +68,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. Each job below grants exactly what it needs.
+permissions: {}
+
 jobs:
   verify-audit-roster:
     name: Audit roster drift (advisory)
