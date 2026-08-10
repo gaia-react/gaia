@@ -5,13 +5,20 @@ on:
     tags:
       - 'v*.*.*'
 
-permissions:
-  contents: write
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. This is the one workflow in the directory whose token can
+# write to the repository, so an inherited grant here is the widest one an
+# unreviewed job could pick up. The job below grants exactly what it needs.
+permissions: {}
 
 jobs:
   release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
+    # `gh release create` in the last step publishes the release and uploads
+    # the tarball; nothing else here writes.
+    permissions:
+      contents: write
     # The distribution-gate step below carries its own cap; this one bounds
     # everything else -- the CLI install, the bundle rebuild, the staging,
     # `gh release create` -- so a hang in any of them cannot hold a runner for

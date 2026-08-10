@@ -108,6 +108,15 @@ jobs:
               - '.gaia/scripts/tests/region-marker-conformance.bats'
               - '.gaia/scripts/write-audit-remits.sh'
               - '.gaia/scripts/verify-audit-roster.sh'
+              # The bundle-freshness gate below is this script, so an edit to
+              # it must re-run the gate on its own pull request. Without this
+              # line a change touching only the script resolves `code=false`,
+              # skips the step, and reports this required check green having
+              # run nothing. release.yml runs the same script and so is no
+              # independent second opinion; shell-lint.yml catches only what
+              # shellcheck can see, and a semantic weakening -- dropping the
+              # template `diff -rq`, inverting a `cmp` -- is invisible to it.
+              - '.gaia/scripts/verify-cli-bundle-fresh.sh'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
