@@ -27,7 +27,9 @@
 #                           `pending`. The local-mode stand-down, where CI runs
 #                           no audit at all, so there is nothing to clear.
 #
-# Modifiers:
+# Modifiers, gated mode only. Both qualify the success path, which stand-down
+# mode does not have, so passing either with --force-pending is refused rather
+# than ignored:
 #   --require-marker            Post nothing unless the frontend member's clean
 #                               marker exists for the recomputed digest. The
 #                               clean-no-push path's proven-clean check.
@@ -46,12 +48,11 @@
 # non-fatality is half the fix for #726 (an HTTP 422 on an unpushed sha turning
 # an otherwise clean audit red). Consolidating the writers must not silently
 # pick a winner, so the divergence is carried as a flag and pinned per path by
-# .github/audit/tests/ci-status-member-gate.bats. Whether the four SHOULD agree
-# is a real question and a separate one.
+# this repo's bats suites. Whether the four SHOULD agree is a real question and
+# a separate one.
 #
-# Covered by .github/audit/tests/write-audit-status.bats (this script directly)
-# and by .github/audit/tests/ci-status-member-gate.bats (the five call sites,
-# executed as the workflow runs them).
+# Two suites cover this script: one drives it directly for its argument
+# contract, and one executes all five call sites as the workflow runs them.
 
 set -eu
 
@@ -110,12 +111,35 @@ if [ "$have_force_pending" -eq 1 ] && [ -z "$force_pending" ]; then
   exit 2
 fi
 
+# Both modifiers qualify the SUCCESS path, and stand-down mode has none: it can
+# only ever post pending. Accepting them there would be a well-spelled,
+# meaningless combination sitting next to a parser that refuses a misspelled
+# one, so refuse it on the same fail-closed grounds. This also keeps the flag
+# space honest -- every combination the parser accepts is one a caller uses.
+if [ "$have_force_pending" -eq 1 ] \
+  && { [ "$require_marker" -eq 1 ] || [ "$success_post_non_fatal" -eq 1 ]; }; then
+  echo "write-audit-status: --require-marker / --success-post-non-fatal qualify the success path and are meaningless with --force-pending" >&2
+  exit 2
+fi
+
 # Publish a step output when running under Actions. No-op elsewhere, so the
 # script is directly testable outside a runner.
 emit() {
   if [ -n "${GITHUB_OUTPUT:-}" ]; then
     printf '%s\n' "$1" >> "$GITHUB_OUTPUT"
   fi
+}
+
+# Decline to stamp, for a stated reason. Every fail-closed exit in this script
+# is the same two facts -- say why, and record that nothing was stamped -- and
+# writing them out per site is how one of them eventually drifts, which is the
+# class of defect this file exists to remove. Exit 0, not non-zero: declining is
+# a decision, not an error, and it already fails CLOSED because an absent
+# required check blocks the merge just as a `pending` one does.
+decline() {
+  echo "code-review-audit: $1" >&2
+  emit "success_stamped=false"
+  exit 0
 }
 
 # ---------------------------------------------------------------------------
@@ -174,12 +198,10 @@ if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
     --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
     --ref "${sha}")"; then
   if [ "$have_base" -eq 1 ]; then
-    echo "code-review-audit: could not recompute the frontend digest for ${sha}; skipping status." >&2
+    decline "could not recompute the frontend digest for ${sha}; skipping status."
   else
-    echo "code-review-audit: could not recompute the frontend digest for ${sha}; standing down." >&2
+    decline "could not recompute the frontend digest for ${sha}; standing down."
   fi
-  emit "success_stamped=false"
-  exit 0
 fi
 
 # ---------------------------------------------------------------------------
@@ -194,9 +216,7 @@ fi
 if [ "$require_marker" -eq 1 ]; then
   marker=".gaia/local/audit/${frontend_digest}.ok"
   if [ ! -f "$marker" ]; then
-    echo "code-review-audit: clean marker ${marker} absent; audit not proven clean, not stamping." >&2
-    emit "success_stamped=false"
-    exit 0
+    decline "clean marker ${marker} absent; audit not proven clean, not stamping."
   fi
 fi
 
@@ -295,9 +315,7 @@ version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
 version="${version#"${version%%[![:space:]]*}"}"
 version="${version%"${version##*[![:space:]]}"}"
 if [ -z "$version" ]; then
-  echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
-  emit "success_stamped=false"
-  exit 0
+  decline ".gaia/VERSION missing/empty; skipping status."
 fi
 
 if [ "$success_post_non_fatal" -eq 1 ]; then
@@ -306,9 +324,7 @@ if [ "$success_post_non_fatal" -eq 1 ]; then
       --field state=success \
       --field context=GAIA-Audit \
       --field description="${version} ${frontend_digest} ${tree_sha}"; then
-    echo "code-review-audit: GAIA-Audit status POST to ${sha} failed (non-fatal); local merge path will re-stamp." >&2
-    emit "success_stamped=false"
-    exit 0
+    decline "GAIA-Audit status POST to ${sha} failed (non-fatal); local merge path will re-stamp."
   fi
 else
   gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \

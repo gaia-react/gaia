@@ -84,6 +84,26 @@ run_writer() {
   grep -qF "requires a non-empty description" <<<"$output"
 }
 
+@test "a success-path modifier is refused in stand-down mode, not ignored" {
+  # Both modifiers qualify the success path and stand-down mode has none, so
+  # every such combination is meaningless. Refusing them keeps the flag space
+  # honest -- each combination the parser accepts is one a caller actually uses
+  # -- and it applies the same fail-closed reasoning the unrecognized-argument
+  # branch already uses: this script decides whether a merge gate opens, so a
+  # well-spelled nonsense combination should stop as surely as a typo does.
+  run run_writer --sha deadbeef --force-pending "local mode" --require-marker
+  [ "$status" -eq 2 ]
+  grep -qF "meaningless with --force-pending" <<<"$output"
+
+  run run_writer --sha deadbeef --force-pending "local mode" --success-post-non-fatal
+  [ "$status" -eq 2 ]
+  grep -qF "meaningless with --force-pending" <<<"$output"
+
+  # ...and they stay legal in the mode that has a success path.
+  run run_writer --sha "" --base cafebabe --require-marker --success-post-non-fatal
+  [ "$status" -eq 0 ]
+}
+
 # -----------------------------------------------------------------------------
 # Malformed arguments stop; they never become a different decision
 # -----------------------------------------------------------------------------

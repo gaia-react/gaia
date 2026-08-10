@@ -12,10 +12,18 @@
  * Reads only the canonical template (always present in the maintainer clone;
  * the whole file is release-excluded on an adopter clone), matching the
  * findings-block contract guard in audit-template-dogfood.test.ts.
+ *
+ * The POST itself now lives in the shared writer that all five terminal paths
+ * route through (#1286), so the stamp is pinned at both ends: this step must
+ * still invoke the writer member-awarely, and the writer must still POST the
+ * required context. Asserting only the step would let the writer stop posting;
+ * asserting only the writer would let this path stop calling it.
  */
 import yaml from 'js-yaml';
 import {describe, expect, test} from 'vitest';
 import {readFileSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {workflowAuditTemplatePath} from '../paths.js';
 
 type AuditWorkflow = {
@@ -29,6 +37,22 @@ type WorkflowStep = {
   name?: string;
   run?: string;
 };
+
+// .gaia/cli/src/automation/__tests__ -> repo root.
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  '..',
+  '..'
+);
+
+const loadWriter = (): string =>
+  readFileSync(
+    path.join(repoRoot, '.github', 'audit', 'write-audit-status.sh'),
+    'utf8'
+  );
 
 const loadSteps = (): WorkflowStep[] => {
   const doc = yaml.load(
@@ -49,16 +73,25 @@ describe('chore(deps) GAIA-Audit stamp', () => {
 
   test('the chore(deps) skip path posts a member-aware GAIA-Audit status', () => {
     const run = stampStep?.run ?? '';
+    const writer = loadWriter();
 
-    // The gap this closes: the required GAIA-Audit context must be POSTed, not
-    // skipped away with the audit.
-    expect(run).toContain('context=GAIA-Audit');
+    // The step's half: it delegates to the shared writer, and it passes the
+    // FULL-PR base, which is what makes the stamp member-aware. A stamp step
+    // that stopped passing --base would clear the gate for a diff a required
+    // auditor never read.
+    expect(run).toContain('write-audit-status.sh');
+    // eslint-disable-next-line no-template-curly-in-string -- literal shell `${ }` syntax, not JS interpolation
+    expect(run).toContain('--base "${PR_BASE_SHA}"');
+
+    // The writer's half. The gap this closes: the required GAIA-Audit context
+    // must be POSTed, not skipped away with the audit.
+    expect(writer).toContain('context=GAIA-Audit');
     // success when the frontend bypass suffices; pending when a specialized
     // member CI cannot run is co-dispatched. Membership resolved over the full
     // PR diff via the one shared gate.
-    expect(run).toContain('state=success');
-    expect(run).toContain('state=pending');
-    expect(run).toContain('gate-pending-members.sh');
+    expect(writer).toContain('state=success');
+    expect(writer).toContain('state=pending');
+    expect(writer).toContain('gate-pending-members.sh');
   });
 
   test('the chore(deps) terminal comment reports the actual stamp outcome', () => {
