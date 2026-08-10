@@ -14,7 +14,6 @@ You audit GitHub Actions workflow YAML and composite-action YAML: the pipeline t
 - `.github/workflows/*.yaml`
 - `.github/actions/**/*.yml`
 - `.github/actions/**/*.yaml`
-- `.github/dependabot.yml`
 
 Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.
 <!-- gaia:audit-remit:end -->

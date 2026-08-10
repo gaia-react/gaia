@@ -114,7 +114,6 @@ auditors:
       - ".github/workflows/*.yaml"
       - ".github/actions/**/*.yml"
       - ".github/actions/**/*.yaml"
-      - ".github/dependabot.yml"
     scope: adopter
     push_fixes: false
   # gaia:maintainer-only:start
@@ -152,6 +151,14 @@ auditors:
       - ".gaia/VERSION"
       - ".claude/settings.json"
       - ".github/CODEOWNERS"
+      # Same shape as CODEOWNERS above: a maintainer-only `.github/`
+      # governance file that is not shell, granted here rather than to the
+      # workflows member because that member's roster entry and agent
+      # definition both ship. A shipped surface naming a release-excluded path
+      # is what `release runtime-deps` fails the build on, and it decides which
+      # action versions land here, so leaving it unowned would merge a
+      # supply-chain change nobody reviewed.
+      - ".github/dependabot.yml"
       - ".claude/agents/code-audit-*.md"
       - ".claude/rules/**"
     scope: maintainer-only

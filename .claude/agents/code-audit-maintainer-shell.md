@@ -26,6 +26,7 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.gaia/VERSION`
 - `.claude/settings.json`
 - `.github/CODEOWNERS`
+- `.github/dependabot.yml`
 - `.claude/agents/code-audit-*.md`
 - `.claude/rules/**`
 

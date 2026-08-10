@@ -128,7 +128,6 @@ auditors:
       - ".github/workflows/*.yaml"
       - ".github/actions/**/*.yml"
       - ".github/actions/**/*.yaml"
-      - ".github/dependabot.yml"
     scope: adopter
     push_fixes: false
   # gaia:maintainer-only:start
@@ -148,6 +147,7 @@ auditors:
       - ".gaia/VERSION"
       - ".claude/settings.json"
       - ".github/CODEOWNERS"
+      - ".github/dependabot.yml"
       - ".claude/agents/code-audit-*.md"
       - ".claude/rules/**"
     scope: maintainer-only
