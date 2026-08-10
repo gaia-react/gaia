@@ -63,6 +63,7 @@ setup() {
   WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
   GATE="$REPO_ROOT/.github/audit/gate-pending-members.sh"
   PRESENT="$REPO_ROOT/.github/audit/audit-success-present.sh"
+  WRITER="$REPO_ROOT/.github/audit/write-audit-status.sh"
 
   # Every spelling `gh` accepts for the pending-state field: the long `--field`
   # and the `-f` / `-F` short forms, whole-pair quoting (`-f 'state=pending'`),
@@ -94,6 +95,7 @@ setup() {
   [ -f "$WORKFLOW" ] || skip "code-review-audit.yml not found"
   [ -f "$GATE" ] || skip "gate-pending-members.sh not found"
   [ -f "$PRESENT" ] || skip "audit-success-present.sh not found"
+  [ -f "$WRITER" ] || skip "write-audit-status.sh not found"
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/.gaia"
@@ -113,9 +115,11 @@ setup() {
   cp "$REPO_ROOT/.gaia/scripts/resolve-audit-members.sh" "$SANDBOX/.gaia/scripts/"
   cp "$GATE" "$SANDBOX/.github/audit/"
   cp "$PRESENT" "$SANDBOX/.github/audit/"
+  cp "$WRITER" "$SANDBOX/.github/audit/"
   chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-members.sh" \
            "$SANDBOX/.github/audit/gate-pending-members.sh" \
-           "$SANDBOX/.github/audit/audit-success-present.sh"
+           "$SANDBOX/.github/audit/audit-success-present.sh" \
+           "$SANDBOX/.github/audit/write-audit-status.sh"
 
   # The resolver copy resolves its libs relative to ITSELF
   # ($SANDBOX/.claude/hooks/lib/), so provision the shared ownership
@@ -195,7 +199,15 @@ case "$1" in
         exit 0
         ;;
     esac
+    # Simulate a WRITE that GitHub rejects (422 on an unknown sha, a rate limit,
+    # an auth blip). Recorded before failing, so a test can assert both that the
+    # POST was attempted and what the caller did with the failure. Reads are
+    # served above and never reach here, so this fails writes alone.
     printf '%s\n' "$*" >> "$record"
+    if [ -n "${GH_POST_FAILS:-}" ]; then
+      echo "gh: status POST failed" >&2
+      exit 1
+    fi
     exit 0
     ;;
   *) exit 0 ;;
@@ -216,6 +228,14 @@ canned_success_for_digest() {
 # Make the combined-status READ fail, standing in for a transient API/auth error.
 status_read_fails() {
   export GH_STATUS_READ_FAILS=1
+}
+
+# Make the status POST (the WRITE) fail, standing in for the HTTP 422 that
+# turned a clean audit red before #726, or any transient API error. The four
+# writers do NOT agree on what that means -- three let it fail the step, one
+# logs and carries on -- so this fixture is what pins the divergence.
+status_post_fails() {
+  export GH_POST_FAILS=1
 }
 
 # Delete the non-clobber guard from the sandbox, so a caller's
@@ -241,7 +261,7 @@ remove_guard_script() {
 # real fifth writer, the same silent blinding this test exists to prevent,
 # arriving through the front door. Strip the comments; keep the match loose.
 count_pending_writers() {
-  grep -v '^[[:space:]]*#' "$WORKFLOW" | grep -cE -- "$PENDING_WRITER_RE"
+  grep -v '^[[:space:]]*#' "${1:-$WORKFLOW}" | grep -cE -- "$PENDING_WRITER_RE"
 }
 
 # Stub the PR-comment upsert the terminal status steps shell out to, recording
@@ -368,13 +388,16 @@ run_gate() { ( cd "$SANDBOX" && bash .github/audit/gate-pending-members.sh "$@" 
 
 # Run an extracted step body in the sandbox with the CI env it reads, including a
 # real $GITHUB_OUTPUT (declared in setup, asserted on via $STEP_OUTPUT).
+# $3 overrides AUDIT_SHA alone (defaulting to $2), because the self-heal push
+# path is the one step whose sha comes from a step output rather than the event
+# payload, so it is the only one that can legitimately receive an EMPTY one.
 run_step() {
   local body="$1" sha="$2"
   ( cd "$SANDBOX" \
     && GITHUB_REPOSITORY="gaia-react/gaia" \
        GITHUB_OUTPUT="$STEP_OUTPUT" \
        HEAD_SHA="$sha" \
-       AUDIT_SHA="$sha" \
+       AUDIT_SHA="${3-$sha}" \
        PR_BASE_SHA="$(base_sha)" \
        bash "$body" )
 }
@@ -505,9 +528,13 @@ run_comment_step() {
     "Write GAIA-Audit commit status (chore-deps skip)"
   do
     body="$(extract_step_body "$step")"
-    grep -qF 'gate-pending-members.sh --base "${PR_BASE_SHA}"' "$body" || return 1
+    # The four gated writers hand the base to write-audit-status.sh, which is
+    # the only caller of gate-pending-members.sh now. Both halves are asserted:
+    # the step passes the FULL-PR base, and (below the loop) the shared writer
+    # is what feeds it to the gate.
+    grep -qF -- '--base "${PR_BASE_SHA}"' "$body" || return 1
     # The incremental audit base must never decide membership.
-    grep -qF 'gate-pending-members.sh --base "${AUDIT_BASE}"' "$body" && return 1
+    grep -qF -- '--base "${AUDIT_BASE}"' "$body" && return 1
 
     # PR_BASE_SHA is the PR's base sha from the event payload, asserted in this
     # step's own block rather than as a whole-file tally. A file-wide count of
@@ -517,6 +544,15 @@ run_comment_step() {
     block="$(extract_step_block "$step")"
     grep -qF 'PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}' "$block" || return 1
   done
+
+  # The other half, since the gate call moved: the shared writer is what turns
+  # --base into a member query, and it must use the value it was handed rather
+  # than resolve a base of its own.
+  # Regex, not -F: the writer anchors its sibling lookups to "$repo_root", so the
+  # path is quoted and a fixed string would pin the quoting rather than the
+  # claim. Adjacency is what matters -- the base handed in must go to THIS
+  # script -- so it stays in one pattern rather than two independent greps.
+  grep -qE -- 'gate-pending-members\.sh"? --base "\$base"' "$WRITER" || return 1
 }
 
 @test "the local-mode stand-down and the two skip-path stamps take their sha from the event payload, not git rev-parse HEAD" {
@@ -532,7 +568,7 @@ run_comment_step() {
     "Write GAIA-Audit commit status (chore-deps skip)"
   do
     body="$(extract_step_body "$step")"
-    grep -qF 'head_sha="${HEAD_SHA}"' "$body" || return 1
+    grep -qF -- '--sha "${HEAD_SHA}"' "$body" || return 1
     grep -qF 'git rev-parse HEAD)"' "$body" && return 1
   done
 
@@ -1463,11 +1499,41 @@ run_comment_step() {
   [ "$status" -eq 2 ]
 }
 
-@test "every step that POSTs pending consults the guard and posts only on a definitive 1" {
-  # The structural lock, and the one assertion that would have caught the gap the
-  # behavioral tests above missed for a release: a guard is only as good as the
-  # set of callers that use it, and a suite that tests three of four writers says
-  # nothing about the fourth. Pin the whole set.
+@test "one pending writer exists, it consults the guard, and all five status steps route through it" {
+  # THE STRUCTURAL LOCK. Its intent is unchanged and is the one assertion that
+  # would have caught the gap the behavioral tests missed for a release: a guard
+  # is only as good as the set of callers that use it, and a suite that tests
+  # three of four writers says nothing about the fourth.
+  #
+  # What changed is where the writers live. The five steps used to carry five
+  # copies of the pending POST and its guard, so the lock looped over the step
+  # bodies and pinned the count at 5. They now route through one shared writer
+  # (#1286), so the same intent is pinned in three parts -- and the result is a
+  # STRICTER lock than the one it replaces, because a sixth writer no longer
+  # passes by carrying its own correct copy of the guard: the workflow may not
+  # POST pending at all.
+  #
+  # Do not "fix" a red here by bumping a count. That is the tempting repair that
+  # would permanently blind the lock, which is the failure it exists to prevent.
+
+  # 1. The workflow itself POSTs pending nowhere. Every terminal path delegates.
+  run count_pending_writers "$WORKFLOW"
+  [ "$output" -eq 0 ]
+
+  # 2. There is exactly ONE pending POST anywhere, and it is in the shared
+  #    writer. A second one added there is as much a divergence as a sixth step.
+  run count_pending_writers "$WRITER"
+  [ "$output" -eq 1 ]
+
+  # 3. That one writer is guarded. Enumerating the stand-down codes is the bug:
+  #    `-eq 2` alone lets 127 (and every other unexpected exit) fall through to
+  #    the POST, so the test must be for a DEFINITIVE 1.
+  if grep -qF -- '"$_live" -eq 2' "$WRITER"; then return 1; fi
+  grep -qF -- "audit-success-present.sh" "$WRITER" || return 1
+  grep -qF -- '"$_live" -ne 1' "$WRITER" || return 1
+
+  # 4. ...and all five terminal steps actually go through it, so none of them
+  #    has quietly grown a status POST of its own by another spelling.
   local step body
   for step in \
     "Write GAIA-Audit commit status" \
@@ -1477,18 +1543,8 @@ run_comment_step() {
     "Stand down (local-mode, no override)"
   do
     body="$(extract_step_body "$step")"
-    # Enumerating the stand-down codes is the bug: `-eq 2` alone lets 127 (and
-    # every other unexpected exit) fall through to the POST.
-    if grep -qF -- '"$_live" -eq 2' "$body"; then return 1; fi
-    grep -qE -- "$PENDING_WRITER_RE" "$body" || return 1
-    grep -qF -- "audit-success-present.sh" "$body" || return 1
-    grep -qF -- '"$_live" -ne 1' "$body" || return 1
+    grep -qF -- "write-audit-status.sh" "$body" || return 1
   done
-
-  # ...and these five are the WHOLE set, so the loop above covers every pending
-  # writer there is. A sixth added without a guard trips this count.
-  run count_pending_writers
-  [ "$output" -eq 5 ]
 }
 
 # -----------------------------------------------------------------------------
@@ -1503,3 +1559,231 @@ run_comment_step() {
 # behavior. This file keeps only install_upsert_stub(), the fixture the terminal
 # status steps shell out to when a test asserts what the AUTHOR is told.
 # -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Fail-closed preconditions, pinned on EVERY path rather than on the paths that
+# happened to get a test.
+#
+# All five writers share three preconditions -- a usable target sha, a
+# recomputable frontend digest, and a readable .gaia/VERSION -- and each one
+# skips the POST rather than guessing. The suite pinned them unevenly: the two
+# skip paths carried version guards, only the chore-deps path carried a digest
+# guard, and the sha guard was pinned nowhere. That is the same shape as the
+# fourth-writer gap the structural lock above exists to prevent: a property
+# tested on some members of a set says nothing about the others.
+#
+# These run BEFORE the writers are consolidated and must stay green after, so
+# they are the equivalence oracle for that change rather than a description of
+# it. They assert the OUTCOME (no status was written) rather than the shape of
+# the code that produced it, so consolidating the five bodies cannot green them
+# by construction.
+# -----------------------------------------------------------------------------
+
+@test "push path: an EMPTY audit sha posts nothing (the only writer that can get one)" {
+  # This step's sha comes from steps.push-fixes.outputs.audit_sha, not from the
+  # event payload, so it is empty whenever push-fixes did not resolve one. The
+  # other four take github.event.pull_request.head.sha and cannot be empty.
+  body="$(extract_step_body 'Write GAIA-Audit commit status')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha" ""
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "push path: an unrecomputable frontend digest posts no status" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  rm -f "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "push path: an empty .gaia/VERSION posts no status" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  : > "$SANDBOX/.gaia/VERSION"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "push path: a missing .gaia/VERSION posts no status" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  rm -f "$SANDBOX/.gaia/VERSION"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "clean-no-push: an unrecomputable frontend digest stops BEFORE the marker lookup" {
+  # ASSERTING "no status posted" IS NOT ENOUGH ON THIS PATH, and writing it that
+  # way first is how this test was caught being hollow. The digest KEYS the
+  # marker lookup, so a step that lost its fail-closed guard would carry on with
+  # an empty or bogus digest, find no marker under that name, and post nothing
+  # anyway -- identical outcome, reached for the wrong reason, and green either
+  # way. Mutation-proved: replacing this step's fail-closed `exit 0` with a
+  # made-up digest left the outcome-only version of this test passing.
+  #
+  # So assert where it STOPPED. A correct step never reaches the marker branch;
+  # one that fell through logs the marker it looked for.
+  body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
+  commit_app_only_diff
+  write_frontend_marker
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  rm -f "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "could not recompute the frontend digest" <<<"$output"
+  # The discriminating half: it must not have gone looking for a marker keyed by
+  # a digest it could not compute.
+  grep -qF "clean marker" <<<"$output" && return 1
+  return 0
+}
+
+@test "clean-no-push: an empty .gaia/VERSION posts no status even with a clean marker" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
+  commit_app_only_diff
+  write_frontend_marker
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  : > "$SANDBOX/.gaia/VERSION"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "clean-no-push: a missing .gaia/VERSION posts no status even with a clean marker" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
+  commit_app_only_diff
+  write_frontend_marker
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  rm -f "$SANDBOX/.gaia/VERSION"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "local-mode stand-down: an unrecomputable frontend digest posts nothing at all" {
+  # The stand-down cannot verify whether a live success already covers this
+  # content without the digest, so it must stand down rather than post pending
+  # over a success it cannot see. Standing down still fails CLOSED: an absent
+  # required check blocks the merge exactly as a pending one does.
+  body="$(extract_step_body 'Stand down (local-mode, no override)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  rm -f "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "out-of-scope skip: an unrecomputable frontend digest posts no status and publishes success_stamped=false" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
+  commit_docs_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  rm -f "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
+# -----------------------------------------------------------------------------
+# What a FAILED success POST does, pinned per writer because they do not agree.
+#
+# THIS SECTION PINS A DIVERGENCE, NOT A RULE. Three of the four success writers
+# leave the `gh api` bare, so a rejected POST fails the step under `set -e` and
+# reds the job. The clean-no-push writer wraps it in `if ! ... ; then <log>`,
+# deliberately: #726 was an HTTP 422 on an unpushed sha turning an otherwise
+# clean audit red, and non-fatality is half of that fix
+# (.github/audit/tests/ci-clean-no-push-status.bats states both halves).
+#
+# Recorded here as the current answer on each path, so consolidating the writers
+# cannot quietly pick one. Whether the four SHOULD agree, and on which answer,
+# is a separate question from whether they agree today; neither unification is
+# behavior-preserving, because the two skip paths' `success_stamped` output
+# ordering depends on the bare POST failing the step.
+# -----------------------------------------------------------------------------
+
+@test "push path: a rejected success POST fails the step (bare gh api under set -e)" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_post_fails
+
+  run run_step "$body" "$sha"
+  [ "$status" -ne 0 ]
+
+  # It really did attempt the success POST; the step failed on the rejection
+  # rather than short-circuiting somewhere earlier.
+  grep -qF "state=success" "$POST_LOG"
+}
+
+@test "clean-no-push: a rejected success POST does NOT fail the step (#726 non-fatality)" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
+  commit_app_only_diff
+  write_frontend_marker
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_post_fails
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  grep -qF "state=success" "$POST_LOG"
+  # ...and it says so, rather than swallowing the failure silently.
+  grep -qF "non-fatal" <<<"$output"
+}
+
+@test "out-of-scope skip: a rejected success POST fails the step" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
+  commit_docs_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_post_fails
+
+  run run_step "$body" "$sha"
+  [ "$status" -ne 0 ]
+
+  grep -qF "state=success" "$POST_LOG"
+  # success_stamped is written AFTER the POST precisely so a rejected POST
+  # leaves no claim of a stamp behind.
+  grep -qF "success_stamped=true" "$STEP_OUTPUT" && return 1
+  return 0
+}
+
+@test "chore-deps skip: a rejected success POST fails the step" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_post_fails
+
+  run run_step "$body" "$sha"
+  [ "$status" -ne 0 ]
+
+  grep -qF "state=success" "$POST_LOG"
+  grep -qF "success_stamped=true" "$STEP_OUTPUT" && return 1
+  return 0
+}

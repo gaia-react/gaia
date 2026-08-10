@@ -772,126 +772,21 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -eu
-          # Write a GAIA-Audit commit status on the SHA that already carries
-          # the audit's check runs. A status (unlike a pushed empty commit)
-          # does not advance the branch HEAD, so branch protection stays
-          # satisfied and the check-name skip logic still has a durable
-          # signal to read on a re-run.
-          if [ -z "${AUDIT_SHA:-}" ]; then
-            echo "code-review-audit: no audit_sha to stamp; skipping status." >&2
-            exit 0
-          fi
-
-          # Recompute the frontend member's content digest (C1) for the exact
-          # sha being stamped, and resolve its real tree as a plain data
-          # field. Fail closed: never post a status (pending or success) on
-          # an unrecomputable digest -- mirrors the .gaia/VERSION guard
-          # below, which also skips the POST and logs rather than guessing.
-          tree_sha="$(git rev-parse "${AUDIT_SHA}^{tree}")"
-          if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
-              --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
-              --ref "${AUDIT_SHA}")"; then
-            echo "code-review-audit: could not recompute the frontend digest for ${AUDIT_SHA}; skipping status." >&2
-            exit 0
-          fi
-
-          # Member-aware gate: never stamp success on the frontend's clearance
-          # alone. .github/audit/gate-pending-members.sh carries the full
-          # rationale (CI runs one auditor; every co-dispatched member clears
-          # locally) and fails open, loudly, on an unusable resolver.
+          # Self-heal push path. Stamp the sha that already carries the audit's
+          # check runs: a status, unlike a pushed empty commit, does not advance
+          # the branch HEAD, so branch protection stays satisfied and the
+          # check-name skip logic still has a durable signal to read on a re-run.
           #
-          # Gate on the member SET, not on marker files. CI is not the member
-          # that would have written them: it runs code-audit-frontend alone, and
-          # every specialized member clears locally, so no maintainer marker can
-          # exist in this runner's workspace to look up. The member SET is the
-          # only signal here that can name a member CI cannot clear.
-          # NON-CLOBBERING PENDING POST. Read before writing.
+          # This is the one writer whose sha comes from a step output rather than
+          # the event payload, so it is the only one that can arrive EMPTY. The
+          # writer skips rather than stamping nothing in particular.
           #
-          # A GitHub commit status has no compare-and-set: for a given context
-          # the newest write wins outright. CI runs the default member alone, so
-          # it cannot clear a co-dispatched specialized member and correctly
-          # declines to post success, posting `pending` instead. But the LOCAL
-          # member-aware producer (.claude/hooks/post-audit-status.sh) posts
-          # `success` once EVERY dispatched member has cleared, and nothing
-          # sequences the two writers. When CI's `pending` lands last it
-          # overwrites a legitimate `success`: the required check reverts to
-          # pending, `gh pr merge` is rejected by branch protection, and nothing
-          # re-posts, so the gate stays shut until a human notices and re-runs
-          # the producer by hand. Any PR whose dispatched set includes a member
-          # CI cannot run reaches this path, so it is a routine shape, not an
-          # edge case.
-          #
-          # So: skip the pending POST when a GAIA-Audit `success` is already the
-          # LIVE status on this sha AND carries THIS EXACT FRONTEND DIGEST. Such
-          # a success means every dispatched member has already cleared this
-          # content, so CI has nothing truer to say than the answer already
-          # there. A success naming a DIFFERENT digest is correctly ignored (the
-          # digest is the marker's identity), and a sha nobody has cleared has
-          # no such success, so this still fails closed in every direction.
-          #
-          # Residual race, deliberately accepted and not papered over: if the
-          # local POST lands between this read and the write below, `pending`
-          # still wins and the gate stays shut until the producer is re-run.
-          # That window is sub-second, and it fails CLOSED, so it is strictly
-          # safer than the unconditional overwrite it replaces.
-          #
-          # .github/audit/audit-success-present.sh owns the read and its contract:
-          # 0 = a success for this digest IS live, 1 = definitively not, 2 = could
-          # NOT ask. A caller must never collapse 2 into 1 -- posting `pending`
-          # over a status we merely failed to read is precisely the clobber this
-          # guard exists to prevent, and it would reintroduce the bug on exactly
-          # the flaky runs where it is hardest to diagnose. Standing down on 2
-          # still fails CLOSED: an absent required check blocks the merge just as
-          # a `pending` one does. All FOUR steps that POST `pending` (the three
-          # stamp steps and the local-mode stand-down) consult the one script
-          # rather than each carrying a copy of the predicate.
-          #
-          # Every caller therefore tests for a DEFINITIVE 1 before posting, never
-          # for "not 0 and not 2". The exit space is open: the invocation itself
-          # can fail outside the script's own contract -- 127 when the file is
-          # absent or unreadable, a signal death, some exit code a future version
-          # adds -- and each of those is MORE unanswerable than a 2, not less. A
-          # caller that enumerates the stand-down codes lets every unenumerated
-          # one fall through to the POST, which silently restores the clobber on
-          # exactly the runs where the guard is broken. Inverting the test makes
-          # the stand-down the default and the POST the exception.
-          pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
-          if [ -n "$pending" ]; then
-            _live=0; bash .github/audit/audit-success-present.sh "${AUDIT_SHA}" "${frontend_digest}" || _live=$?
-            if [ "$_live" -eq 0 ]; then
-              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
-              exit 0
-            fi
-            if [ "$_live" -ne 1 ]; then
-              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
-              exit 0
-            fi
-            echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
-            # GitHub caps a status description at 140 chars; truncate so a large
-            # roster cannot 422 the POST. Non-fatal either way: if this POST
-            # fails no status lands, the required check stays unfulfilled, and
-            # the button stays shut. Fail-safe in every direction.
-            desc="$(printf 'members pending: %s' "$pending" | cut -c1-140)"
-            gh api "repos/${GITHUB_REPOSITORY}/statuses/${AUDIT_SHA}" \
-              --method POST \
-              --field state=pending \
-              --field context=GAIA-Audit \
-              --field description="${desc}" || true
-            exit 0
-          fi
-
-          version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
-          version="${version#"${version%%[![:space:]]*}"}"
-          version="${version%"${version##*[![:space:]]}"}"
-          if [ -z "$version" ]; then
-            echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
-            exit 0
-          fi
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/${AUDIT_SHA}" \
-            --method POST \
-            --field state=success \
-            --field context=GAIA-Audit \
-            --field description="${version} ${frontend_digest} ${tree_sha}"
+          # .github/audit/write-audit-status.sh owns the fail-closed rule these
+          # five terminal paths share -- never stamp on an unrecomputable digest,
+          # never clobber a live success -- as one copy rather than five (#1286).
+          bash .github/audit/write-audit-status.sh \
+            --sha "${AUDIT_SHA:-}" \
+            --base "${PR_BASE_SHA}"
 
       - name: Write GAIA-Audit commit status (clean, no push)
         if: |
@@ -916,135 +811,39 @@ jobs:
         run: |
           set -eu
           # Genuinely-clean-but-no-commit path. A clean audit that makes no
-          # self-heal commits AND no empty trailer commit leaves push-fixes
-          # with neither `pushed` nor `marker_only` set, so the stamp step
-          # above is skipped and the PR head carries no GAIA-Audit status. The
-          # merge hook (.claude/hooks/pr-merge-audit-check.sh) then finds no
-          # signal and blocks the merge even though the audit passed; the only
-          # escape used to be a local agent pushing an empty trailer commit, the
-          # very HEAD-moving workaround the design avoids. Close that gap by
-          # stamping the GAIA-Audit status DIRECTLY on the pushed PR head.
+          # self-heal commits AND no empty trailer commit leaves push-fixes with
+          # neither `pushed` nor `marker_only` set, so the stamp step above is
+          # skipped and the PR head carries no GAIA-Audit status. The merge hook
+          # (.claude/hooks/pr-merge-audit-check.sh) then finds no signal and
+          # blocks the merge even though the audit passed; the only escape used to
+          # be a local agent pushing an empty trailer commit, the very HEAD-moving
+          # workaround this design avoids.
           #
-          # Target the pushed head from the event ($HEAD_SHA), NOT `git rev-parse
-          # HEAD`. The runner's HEAD is not always the pushed head by this step:
-          # the audit runs with Bash(git:*) and may leave a local commit (an
-          # empty marker, or a refused self-heal edit) that was intentionally not
-          # pushed, so `git rev-parse HEAD` can resolve to a commit GitHub never
-          # received. Stamping that sha 422s ("No commit found for SHA") and,
-          # under set -eu, reds an otherwise-clean audit. The pushed head is also
-          # the tree that will actually merge (nothing was pushed), so its tree
-          # is exactly what we vouch for.
+          # This path also covers a REFUSED self-heal. `refused` means the
+          # self-heal was off-limits -- an instruction/convention surface
+          # (.claude/**, .specify/**, wiki/**) or a >10-file sprawl -- NOT that
+          # the audit failed or the tree is dirty, so it must not gate this stamp.
           #
-          # This path also covers a REFUSED self-heal: when the audit is clean
-          # but its only tree delta is off-limits to auto-fix -- an
-          # instruction/convention surface (.claude/**, .specify/**, wiki/**) or
-          # a >10-file sprawl -- push-fixes sets refused=true and pushes nothing.
-          # `refused` means the self-heal was off-limits, NOT that the audit
-          # failed or the tree is dirty, so it must not gate this stamp; the
-          # .ok-marker guard below is the sole proven-clean check for every
-          # no-push case (clean-no-commit and refused alike).
+          # --require-marker is therefore the sole proven-clean check for every
+          # no-push case, clean and refused alike: the agent writes
+          # .gaia/local/audit/<digest>.ok ONLY when the review is clean. A dirty
+          # audit reaches this step too (it pushed nothing) and its marker is
+          # absent, so nothing is stamped and the merge stays blocked.
           #
-          # Proven-clean guard (must never false-pass): the audit agent writes
-          # the local marker file .gaia/local/audit/<digest>.ok ONLY when the
-          # review is clean (no Critical, every Important addressed, every
-          # Suggestion fixed or none). It is NEVER written while findings
-          # remain. A dirty audit also reaches this step (it pushed nothing), but
-          # its marker is absent, so no status is stamped and the merge stays
-          # blocked until a local audit clears it. This is the same artifact the
-          # merge hook trusts as its first accepted signal. The marker lives
-          # under .gaia/local/ (gitignored), so it exists only in this runner's
-          # workspace and only for this run.
+          # Nothing was pushed here, so the pushed head's tree IS the tree that
+          # will merge, even if the agent left an unpushed local commit that moved
+          # the runner's HEAD off it without changing content.
           #
-          # The marker is keyed to the frontend member's content digest (C1), so
-          # recompute it for the pushed head's tree and look it up by that,
-          # rather than by $HEAD_SHA or the tree directly. Nothing was pushed on
-          # this path, so the pushed head's tree IS the tree that will merge, and
-          # its digest is exactly what the agent vouched for -- even if the agent
-          # left an unpushed local commit (a declined trailer stamp, a refused
-          # self-heal) that moved the runner's HEAD off the pushed head without
-          # changing content. Fail closed: never stamp on an unrecomputable
-          # digest.
-          tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"
-          if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
-              --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
-              --ref "${HEAD_SHA}")"; then
-            echo "code-review-audit: could not recompute the frontend digest for ${HEAD_SHA}; skipping status." >&2
-            exit 0
-          fi
-          marker=".gaia/local/audit/${frontend_digest}.ok"
-          if [ ! -f "$marker" ]; then
-            echo "code-review-audit: clean marker ${marker} absent; audit not proven clean, not stamping." >&2
-            exit 0
-          fi
-
-          # Member-aware gate. The marker above proves only the FRONTEND member is
-          # clean -- it is code-audit-frontend's own marker, and CI runs no other
-          # auditor. .github/audit/gate-pending-members.sh names every
-          # co-dispatched member CI cannot clear; each clears locally instead.
-          #
-          # The pending description deliberately carries NO "<version>
-          # <frontend-digest> <tree>" cleared shape, so even a state-blind reader
-          # cannot mistake it for cleared (same defense-in-depth as the
-          # local-mode stand-down).
-          # Non-clobbering pending POST. Same rationale as the "Write GAIA-Audit
-          # commit status" step above: a commit status has no compare-and-set,
-          # so an unconditional `pending` here would overwrite the `success` the
-          # local member-aware producer posts once every dispatched member has
-          # cleared, and the merge gate would never re-open on its own. Skip the
-          # POST when a GAIA-Audit success for THIS EXACT FRONTEND DIGEST is
-          # already live. Post `pending` ONLY on a definitive 1 ("no success
-          # live"). Every other exit is unanswerable and stands down -- 2
-          # ("could not ask"), 127 (the guard script absent), anything else --
-          # because collapsing an unanswerable read into "no success live" is the
-          # clobber this guard exists to prevent; the first stamp step carries
-          # the full rationale. $frontend_digest is already resolved above,
-          # where it keyed the marker lookup.
-          pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
-          if [ -n "$pending" ]; then
-            _live=0; bash .github/audit/audit-success-present.sh "${HEAD_SHA}" "${frontend_digest}" || _live=$?
-            if [ "$_live" -eq 0 ]; then
-              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
-              exit 0
-            fi
-            if [ "$_live" -ne 1 ]; then
-              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
-              exit 0
-            fi
-            echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
-            # GitHub caps a status description at 140 chars; truncate so a large
-            # roster cannot 422 the POST. Non-fatal either way: if this POST
-            # fails no status lands, the required check stays unfulfilled, and
-            # the button stays shut. Fail-safe in every direction.
-            desc="$(printf 'members pending: %s' "$pending" | cut -c1-140)"
-            gh api "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
-              --method POST \
-              --field state=pending \
-              --field context=GAIA-Audit \
-              --field description="${desc}" || true
-            exit 0
-          fi
-
-          version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
-          version="${version#"${version%%[![:space:]]*}"}"
-          version="${version%"${version##*[![:space:]]}"}"
-          if [ -z "$version" ]; then
-            echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
-            exit 0
-          fi
-          # $frontend_digest and $tree_sha are already resolved above, where the
-          # digest keyed the marker lookup.
-          # Non-fatal POST: a failed status side-effect must never red a clean
-          # audit. The gate is the GAIA-Audit status itself -- if this POST
-          # fails, the status simply does not land and the local merge path
-          # re-stamps it; the check stays green either way. `if !` keeps set -eu
-          # from aborting on a non-zero exit.
-          if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
-              --method POST \
-              --field state=success \
-              --field context=GAIA-Audit \
-              --field description="${version} ${frontend_digest} ${tree_sha}"; then
-            echo "code-review-audit: GAIA-Audit status POST to ${HEAD_SHA} failed (non-fatal); local merge path will re-stamp." >&2
-          fi
+          # --success-post-non-fatal: #726 was an HTTP 422 on an unpushed sha
+          # turning an otherwise-clean audit RED under `set -eu`. A failed status
+          # side-effect must never red a clean audit; the local merge path
+          # re-stamps. This writer is the only one that takes that answer, and
+          # .github/audit/write-audit-status.sh explains why it is a parameter.
+          bash .github/audit/write-audit-status.sh \
+            --sha "${HEAD_SHA}" \
+            --base "${PR_BASE_SHA}" \
+            --require-marker \
+            --success-post-non-fatal
 
       - name: Stand down (local-mode, no override)
         if: |
@@ -1059,74 +858,34 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
-          # Local-mode stand-down: this author's resolved mode is `local` with
-          # no override label, and the change is in audit scope. CI does NOT run
-          # the audit (no tokens spent); the local merge path runs it instead.
-          # Post a `pending` GAIA-Audit status on HEAD so the required check
-          # blocks the merge button until the local audit clears it. The
-          # description deliberately carries NO `<version> <frontend-digest>
-          # <tree>` cleared shape -- a fixed sentinel that cannot match any real
-          # digest -- so even a state-blind reader cannot mistake it for cleared
-          # (defense in depth behind the state-aware readers, which reject any
-          # non-success state). Subordinate to the scope gates (has_source ==
-          # true && self_modified == false): out-of-scope / self-mod PRs take
-          # the existing success-stamp paths and never reach here, so exactly
-          # one terminal status lands per run.
-          head_sha="${HEAD_SHA}"
-
-          # Non-clobbering pending POST, exactly as the three stamp steps above
-          # do it -- and this is the step where the clobber bites HARDEST, not
-          # least. Local mode is the common maintainer path, and this step's `if:`
+          # Local-mode stand-down: this author's resolved mode is `local` with no
+          # override label, and the change is in audit scope. CI does NOT run the
+          # audit (no tokens spent); the local merge path runs it instead. Post a
+          # `pending` GAIA-Audit status on HEAD so the required check blocks the
+          # merge button until the local audit clears it.
+          #
+          # --force-pending rather than --base: CI dispatched no members here, so
+          # there is no member set to resolve and success is never this step's to
+          # post. The description deliberately carries NO "<version>
+          # <frontend-digest> <tree>" cleared shape -- a fixed sentinel that
+          # cannot match any real digest -- so even a state-blind reader cannot
+          # mistake it for cleared (defense in depth behind the state-aware
+          # readers, which reject any non-success state).
+          #
+          # Subordinate to the scope gates (has_source == true && self_modified
+          # == false): out-of-scope / self-mod PRs take the stamp paths and never
+          # reach here, so exactly one terminal status lands per run.
+          #
+          # This is the writer where the non-clobber read bites HARDEST, not
+          # least. Local mode is the common maintainer path; this step's `if:`
           # depends only on the label gate, chore-deps, has_source, self_modified
-          # and should_run: NONE of those change once a `success` is live. The
-          # workflow also triggers on `labeled`/`unlabeled`, which re-run it on
-          # the SAME head sha with no new push. So: the author runs the audit
-          # locally, every dispatched member clears, post-audit-status.sh posts
-          # `success` -- and then any label touched on the PR re-fires this step,
-          # which unguarded overwrites that success with `pending`. Branch
-          # protection then rejects the merge and nothing re-posts, so the gate
-          # stays shut until a human re-runs the producer by hand.
-          #
-          # The frontend digest, not the sha, is the marker's identity: a success
-          # naming a DIFFERENT digest vouches for content that is no longer what
-          # would merge and correctly does NOT stand this step down. Nothing is
-          # pushed on this path (CI does not run the audit here), so the
-          # runner's HEAD is the pushed head and its digest is the digest that
-          # would merge. Fail closed on an unrecomputable digest: stand down
-          # rather than risk posting pending without being able to verify
-          # whether a live success already covers this exact content.
-          #
-          # Post `pending` ONLY on a definitive 1 ("no success live"); stand down
-          # on 0, on 2 ("could not ask"), and on every other exit (127 when the
-          # guard script is absent, and anything else). Standing down fails
-          # CLOSED: with no status posted the required GAIA-Audit check is absent,
-          # which blocks the merge just as a `pending` one does. The first stamp
-          # step carries the full rationale.
-          if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
-              --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
-              --ref "${head_sha}")"; then
-            echo "code-review-audit: could not recompute the frontend digest for ${head_sha}; standing down." >&2
-            exit 0
-          fi
-          _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${frontend_digest}" || _live=$?
-          if [ "$_live" -eq 0 ]; then
-            echo "code-review-audit: local mode, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
-            exit 0
-          fi
-          if [ "$_live" -ne 1 ]; then
-            echo "code-review-audit: local mode, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
-            exit 0
-          fi
-
-          # Non-fatal, like the three sibling pending POSTs: a transient POST
-          # failure must not red an otherwise-green job. If it fails no status
-          # lands, the required check stays unfulfilled, and the button stays
-          # shut. Fail-safe in every direction.
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
-            --method POST \
-            --field state=pending \
-            --field context=GAIA-Audit \
-            --field description="local mode: local producer owns the whole audit; CI dispatched zero members" || true
+          # and should_run, NONE of which change once a `success` is live; and the
+          # workflow triggers on `labeled`/`unlabeled`, re-running it on the SAME
+          # head sha with no new push. Unguarded, any label touched on the PR would
+          # overwrite the success the local producer had just posted.
+          bash .github/audit/write-audit-status.sh \
+            --sha "${HEAD_SHA}" \
+            --force-pending "local mode: local producer owns the whole audit; CI dispatched zero members"
 
       - name: Write GAIA-Audit commit status (out-of-scope skip)
         id: oos-status
@@ -1146,133 +905,32 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -eu
-          # Out-of-scope skip path: the un-audited delta touches no
-          # audit-relevant files, so the agent never runs and a local audit
-          # would find nothing in scope. Stamp a GAIA-Audit commit status on
-          # HEAD anyway so the merge hook (.claude/hooks/pr-merge-audit-check.sh)
-          # is satisfied without a ceremonial local run. has_source=='false'
-          # structurally excludes the already-audited path (has_source=='true'
-          # && trailer.skip) and the self-modification path (has_source=='true'
-          # && self_modified), both require has_source=='true', so neither
-          # auto-stamps. The description carries HEAD's tree (the merge hook
-          # checks tree equality against the content being merged), not a
-          # base/audit-sha tree.
-
-          # Member-aware gate. "Out of scope" here means out of scope for the
-          # FRONTEND member: has_source mirrors that member's auditable-base set
-          # exactly. A SPECIALIZED member's globs sit outside that set, so a diff
-          # touching only, say, framework CLI source or framework bash yields
-          # has_source == 'false' while the resolver still dispatches a member
-          # that owns every changed file. Stamping success here would clear the
-          # required check -- and the github.com merge button -- for a diff a
-          # required auditor never read, which is the same AND-aggregator bypass
-          # the two stamp paths above close. Any dispatched member means this is
-          # NOT a free skip: post `pending` and let the local, member-aware
-          # producer clear it once every marker exists.
-          # Non-clobbering pending POST. Same rationale as the two stamp steps
-          # above: a commit status has no compare-and-set, so an unconditional
-          # `pending` here would overwrite the `success` the local member-aware
-          # producer posts once every dispatched member has cleared, and the
-          # merge gate would never re-open on its own. This is the step that
-          # fires when the ONLY dispatched members are ones CI cannot run (their
-          # globs sit outside has_source), so it is the most common way to hit
-          # the clobber.
-          # Post `pending` ONLY on a definitive 1 ("no success live"). Every other
-          # exit is unanswerable and stands down -- 2 ("could not ask"), 127 (the
-          # guard script absent), anything else -- because collapsing an
-          # unanswerable read into "no success live" is the clobber this guard
-          # exists to prevent; the first stamp step carries the full rationale.
-          head_sha="${HEAD_SHA}"
-          pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
-          # Publish the gate result so the terminal comment step reports the
-          # truth. Without this the author is told "the merge gate is satisfied
-          # with no local audit run" while the status is `pending` and the button
-          # is shut, which is the same class of misleading green the workflow
-          # already guards against elsewhere.
-          echo "members_pending=${pending}" >> "$GITHUB_OUTPUT"
-
-          # Recompute the frontend digest for HEAD's tree (C1); the non-clobber
-          # read and the eventual success description are both keyed to it.
-          # Computed once, ahead of the branch below, since both the pending
-          # path and the success path need it. Fail closed: never post a
-          # status (pending or success) on an unrecomputable digest.
-          tree_sha="$(git rev-parse "${head_sha}^{tree}")"
-          if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
-              --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
-              --ref "${head_sha}")"; then
-            echo "code-review-audit: could not recompute the frontend digest for ${head_sha}; skipping status." >&2
-            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Publish whether the SUCCESS status actually landed, on every exit
-          # path, for the same reason members_pending exists: the terminal comment
-          # step must never claim a stamp that did not happen. `false` here is not
-          # a failure, it means "the merge gate is NOT cleared by this step".
-          if [ -n "$pending" ]; then
-            # Hoisted above the non-clobber guard: THIS step stamps nothing on
-            # either exit below, so `false` is honest for both. Under-claiming is
-            # the safe direction (a live success posted by the local producer
-            # still clears the gate); over-claiming a stamp is the failure this
-            # output exists to prevent.
-            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
-            _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${frontend_digest}" || _live=$?
-            if [ "$_live" -eq 0 ]; then
-              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
-              # Publish the stand-down so the terminal comment step tells the
-              # truth. members_pending stays non-empty here (CI cannot see a
-              # local marker, so it still names those members), and the comment
-              # step branches on members_pending FIRST -- so without this output
-              # the author is told "GAIA-Audit is pending, run the dispatched
-              # member(s) locally to clear the merge gate" while the gate is in
-              # fact already green. That is the same misleading-comment class the
-              # other branches guard against, merely inverted.
-              echo "success_live=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            if [ "$_live" -ne 1 ]; then
-              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
-              # Publish the unanswerable read so the terminal comment step can
-              # tell the author the gate's true state is unknown, rather than
-              # asserting "pending, not green" -- a claim this step never
-              # verified on this exit. Under-claiming (this branch already
-              # stamped nothing) is safe; a false assertion about the state a
-              # failed read could not establish is not.
-              echo "read_failed=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "code-review-audit: out-of-scope for the frontend member, but members pending ${pending}; posting pending, not success." >&2
-            desc="$(printf 'members pending: %s' "$pending" | cut -c1-140)"
-            gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
-              --method POST \
-              --field state=pending \
-              --field context=GAIA-Audit \
-              --field description="${desc}" || true
-            exit 0
-          fi
-
-          # A missing .gaia/VERSION reaches here identically to an empty one: the
-          # read is a PIPELINE, so a failed redirect still leaves awk exiting 0 on
-          # no input and the substitution yields "". Neither shape trips `set -e`,
-          # so both land on the exit below having posted NOTHING.
-          version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
-          version="${version#"${version%%[![:space:]]*}"}"
-          version="${version%"${version##*[![:space:]]}"}"
-          if [ -z "$version" ]; then
-            echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
-            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
-            --method POST \
-            --field state=success \
-            --field context=GAIA-Audit \
-            --field description="${version} ${frontend_digest} ${tree_sha}"
-          # Last, so it records a POST that returned non-zero as no-stamp: the
-          # unguarded `gh api` above fails the step under `set -e`, which skips the
-          # comment step outright, but an output written first would outlive a
-          # later reshape that tolerated the failure.
-          echo "success_stamped=true" >> "$GITHUB_OUTPUT"
+          # Out-of-scope skip path: the un-audited delta touches no audit-relevant
+          # files, so the agent never runs and a local audit would find nothing in
+          # scope. Stamp a GAIA-Audit status on HEAD anyway so the merge hook
+          # (.claude/hooks/pr-merge-audit-check.sh) is satisfied without a
+          # ceremonial local run. has_source == 'false' structurally excludes the
+          # already-audited path (has_source && trailer.skip) and the
+          # self-modification path (has_source && self_modified), since both
+          # require has_source == 'true', so neither auto-stamps.
+          #
+          # "Out of scope" here means out of scope for the FRONTEND member:
+          # has_source mirrors that member's auditable-base set exactly. A
+          # SPECIALIZED member's globs sit outside that set, so a diff touching
+          # only framework CLI source or framework bash yields has_source ==
+          # 'false' while the resolver still dispatches a member that owns every
+          # changed file. Stamping success here would clear the required check --
+          # and the github.com merge button -- for a diff a required auditor never
+          # read. --base is what stops that: any dispatched member downgrades this
+          # to `pending` and lets the local, member-aware producer clear it.
+          #
+          # This step carries an `id:`, so the writer's members_pending /
+          # success_stamped / success_live / read_failed outputs are read by the
+          # terminal comment step. They exist so the author is never told the gate
+          # is satisfied while the status says otherwise.
+          bash .github/audit/write-audit-status.sh \
+            --sha "${HEAD_SHA}" \
+            --base "${PR_BASE_SHA}"
 
       - name: Write GAIA-Audit commit status (chore-deps skip)
         id: chore-deps-status
@@ -1291,114 +949,31 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -eu
-          # chore(deps) fast-path stamp. A `chore(deps):` / `chore(deps-dev):`
-          # PR skips the expensive frontend audit: the /update-deps wrapper runs
-          # the full quality gate locally before pushing, so the bump is
-          # pre-verified and the frontend member's clearance is implicit for this
-          # PR class (the same bypass the local merge gate applies, and the same
-          # narrowing tests.yml and chromatic.yml apply). But skipping the audit
-          # must NOT also skip the STAMP: the required GAIA-Audit check is a
-          # POSTed commit status, not a job conclusion, so unlike the other
-          # required checks it is not satisfied by a job-level skip conclusion.
-          # With no stamp the required context is unsatisfiable and the merge
-          # button never opens. Stamp it here.
+          # chore(deps) fast-path stamp. A `chore(deps):` / `chore(deps-dev):` PR
+          # skips the expensive frontend audit: the /update-deps wrapper runs the
+          # full quality gate locally before pushing, so the bump is pre-verified
+          # and the frontend member's clearance is implicit for this PR class (the
+          # same bypass the local merge gate applies, and the same narrowing
+          # tests.yml and chromatic.yml apply). But skipping the audit must NOT
+          # also skip the STAMP: the required GAIA-Audit check is a POSTed commit
+          # status, not a job conclusion, so unlike the other required checks it is
+          # not satisfied by a job-level skip conclusion. With no stamp the
+          # required context is unsatisfiable and the merge button never opens.
           #
-          # Member-aware, exactly as the out-of-scope stamp above: the chore(deps)
-          # bypass clears ONLY the frontend member. gate-pending-members.sh
-          # filters the frontend member out and names every co-dispatched
-          # SPECIALIZED member CI cannot run; the pre-verified rationale does not
-          # cover those, so any of them means this is NOT a free clear -- post
-          # `pending` and let the local member-aware producer clear it once every
-          # marker exists. Only when no specialized member is dispatched (the
-          # common case, and every adopter case, where a dep bump touches just the
-          # frontend member's surface) does frontend's implicit clearance suffice,
-          # so stamp `success`.
+          # Member-aware for the same reason as the out-of-scope stamp: the
+          # chore(deps) bypass clears ONLY the frontend member. Any co-dispatched
+          # specialized member is not covered by the pre-verified rationale, so
+          # --base downgrades this to `pending` and the local producer clears it.
+          # Only when none is dispatched -- the common case, and every adopter
+          # case, where a dep bump touches just the frontend member's surface --
+          # does frontend's implicit clearance suffice and success is stamped.
           #
-          # Target the pushed head from the event ($HEAD_SHA), NOT `git rev-parse
-          # HEAD` (a 422 on a sha GitHub does not have). Nothing is pushed on this
-          # path, so the pushed head's tree is the tree that will merge and its
-          # frontend digest is what the success description vouches for. Fail
-          # closed on an unrecomputable digest or a missing .gaia/VERSION.
-          head_sha="${HEAD_SHA}"
-          pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
-          # Publish the gate result so the terminal comment step reports the
-          # truth: a bare "skipped" line would read as green even on the pending
-          # / not-stamped paths.
-          echo "members_pending=${pending}" >> "$GITHUB_OUTPUT"
-
-          # Recompute the frontend digest for HEAD's tree (C1); the non-clobber
-          # read and the success description are both keyed to it. Fail closed:
-          # never post a status (pending or success) on an unrecomputable digest.
-          tree_sha="$(git rev-parse "${head_sha}^{tree}")"
-          if ! frontend_digest="$(bash .gaia/scripts/audit-member-digest.sh \
-              --root "$(git rev-parse --show-toplevel)" --member code-audit-frontend \
-              --ref "${head_sha}")"; then
-            echo "code-review-audit: could not recompute the frontend digest for ${head_sha}; skipping status." >&2
-            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ -n "$pending" ]; then
-            # Non-clobbering pending POST. Same rationale as the stamp steps
-            # above: a commit status has no compare-and-set, and this workflow
-            # re-fires on labeled/unlabeled against the same head sha with no new
-            # push, so an unconditional `pending` would overwrite the `success`
-            # the local member-aware producer posts once every dispatched member
-            # has cleared, and the merge gate would never re-open on its own.
-            # Post `pending` ONLY on a definitive 1 ("no success live"); stand
-            # down on 0 (already live), on 2 ("could not ask"), and on every other
-            # exit, because collapsing an unanswerable read into "no success live"
-            # is the clobber this guard exists to prevent. Standing down still
-            # fails CLOSED: an absent required check blocks the merge just as a
-            # `pending` one does. The first stamp step carries the full rationale.
-            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
-            _live=0; bash .github/audit/audit-success-present.sh "${head_sha}" "${frontend_digest}" || _live=$?
-            if [ "$_live" -eq 0 ]; then
-              echo "code-review-audit: members pending ${pending}, but a GAIA-Audit success for frontend digest ${frontend_digest} is already live; not clobbering it with pending." >&2
-              echo "success_live=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            if [ "$_live" -ne 1 ]; then
-              echo "code-review-audit: members pending ${pending}, but the current GAIA-Audit status could not be read (guard exit ${_live}); standing down rather than risk clobbering a success we cannot see. The gate still fails closed." >&2
-              echo "read_failed=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "code-review-audit: chore(deps) skip, but members pending ${pending}; posting pending, not success." >&2
-            # GitHub caps a status description at 140 chars; truncate so a large
-            # roster cannot 422 the POST. Non-fatal either way: if this POST fails
-            # no status lands, the required check stays unfulfilled, and the button
-            # stays shut. Fail-safe in every direction.
-            desc="$(printf 'members pending: %s' "$pending" | cut -c1-140)"
-            gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
-              --method POST \
-              --field state=pending \
-              --field context=GAIA-Audit \
-              --field description="${desc}" || true
-            exit 0
-          fi
-
-          # A missing .gaia/VERSION reaches here identically to an empty one: the
-          # read is a PIPELINE, so a failed redirect still leaves awk exiting 0 on
-          # no input and the substitution yields "". Neither shape trips `set -e`,
-          # so both land on the exit below having posted NOTHING.
-          version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
-          version="${version#"${version%%[![:space:]]*}"}"
-          version="${version%"${version##*[![:space:]]}"}"
-          if [ -z "$version" ]; then
-            echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
-            echo "success_stamped=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
-            --method POST \
-            --field state=success \
-            --field context=GAIA-Audit \
-            --field description="${version} ${frontend_digest} ${tree_sha}"
-          # Last, so it records a POST that returned non-zero as no-stamp: the
-          # unguarded `gh api` above fails the step under `set -e`, which skips the
-          # comment step outright, but an output written first would outlive a
-          # later reshape that tolerated the failure.
-          echo "success_stamped=true" >> "$GITHUB_OUTPUT"
+          # Nothing is pushed on this path, so the pushed head's tree is the tree
+          # that will merge and its frontend digest is what the success
+          # description vouches for.
+          bash .github/audit/write-audit-status.sh \
+            --sha "${HEAD_SHA}" \
+            --base "${PR_BASE_SHA}"
 
       - name: Re-trigger and stamp required checks on new HEAD
         if: |

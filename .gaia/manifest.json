@@ -259,6 +259,7 @@
     ".github/audit/gate-pending-members.sh": "owned",
     ".github/audit/resolve-audit-base.sh": "owned",
     ".github/audit/resolve-check-base.sh": "owned",
+    ".github/audit/write-audit-status.sh": "owned",
     ".github/FUNDING.yml": "shared",
     ".github/ISSUE_TEMPLATE/bug_report.yml": "owned",
     ".github/ISSUE_TEMPLATE/config.yml": "owned",
@@ -641,7 +642,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-10T02:48:11.751Z",
+  "generated": "2026-08-10T07:06:49.383Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
