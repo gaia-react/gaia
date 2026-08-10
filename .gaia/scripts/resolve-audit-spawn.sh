@@ -98,7 +98,7 @@
 #   to a LEGACY single-signal gate that still requires the default member's
 #   clearance unless the diff passes its own out-of-scope allowlist (wiki/,
 #   .claude/, .specify/, .gaia/, docs/, root-level *.md). So a diff touching
-#   an IN-SCOPE-BUT-OWNERLESS file (a root Dockerfile, .gitignore, anything
+#   an IN-SCOPE-BUT-OWNERLESS file (a root .editorconfig, .gitignore, anything
 #   under public/**) resolves to an EMPTY dispatched set yet STILL denies the
 #   merge without that clearance. Answering "spawn nobody" there would
 #   deadlock the merge: the gate demands a marker that nothing is ever

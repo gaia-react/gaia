@@ -82,6 +82,38 @@ const MANAGED_WHOLE_VALUE_KEYS: readonly string[] = [
   'retrigger_workflows',
 ];
 
+/**
+ * `unowned` is deliberately absent from every managed set above, so this
+ * command ignores it and `/update-gaia` leaves an adopter's list alone.
+ *
+ * That is a design decision rather than an omission. The list declares which
+ * paths in *this tree* are meant to dispatch no auditor, so what GAIA ships is
+ * a seed for its own tree, and the entries carry no authority over an
+ * adopter's. Managing it would mean re-proposing them on every update that
+ * touches the list, against a repository whose unowned regions GAIA cannot
+ * see. (Not on every update: with the adopter value absent and baseline equal
+ * to latest, the verdict is `noop`, so a release that does not edit GAIA's own
+ * list re-proposes nothing.)
+ *
+ * Two consequences, stated because neither is what "unmanaged" first suggests:
+ *
+ * 1. **It is not merged, and it is also not lost.** No verdict row in the table
+ *    above deletes an adopter value: a key present in latest and absent from
+ *    baseline is a suggestion that writes nothing, a diverged one is a conflict
+ *    that keeps the adopter's, and the command is read-only regardless. So
+ *    managing it would not be destructive either; it is declined on ownership,
+ *    not on risk.
+ * 2. **An adopter who scaffolded before this key existed is never seeded at
+ *    all.** `.gaia/audit-ci.yml` is manifest class `shared` and merges through
+ *    this command key by key, so an unmanaged key never arrives on an update.
+ *    Their roster carries no `unowned:` block, and a hand run of
+ *    `.gaia/scripts/verify-audit-roster.sh` therefore reports every prose,
+ *    asset and root-markdown path as ownerless in bulk rather than reporting
+ *    one missed entry. That is the intended prompt to author the block, not a
+ *    partial seed drifting: the workflow that runs the checker is
+ *    release-excluded, so nothing reports it until they run it themselves.
+ */
+
 /** The adopter-shared section: a space-separated `login=mode` string. */
 const AUTHORS_SECTION = 'audit_authors';
 

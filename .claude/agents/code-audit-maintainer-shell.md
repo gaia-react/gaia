@@ -19,8 +19,13 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.github/**/*.sh`
 - `.github/**/*.bats`
 - `.husky/**`
-- `.gaia/audit-ci.yml`
+- `.gaia/*.yml`
+- `.gaia/*.json`
+- `.gaia/scripts/token-rates.json`
+- `.gaia/release-exclude`
 - `.gaia/VERSION`
+- `.claude/settings.json`
+- `.github/CODEOWNERS`
 - `.claude/agents/code-audit-*.md`
 - `.claude/rules/**`
 
@@ -115,7 +120,7 @@ They cannot be collapsed back into one value. Your marker is invalid at HEAD exa
 
 **If no `full_changed` path matches, skip cleanly**: write no marker (there is nothing to gate), do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, and return a one-line note that no changed file fell in your remit. This arm requires a resolved `FULL_BASE`. An empty one makes `full_changed` empty too, at status 0, so an unresolvable membership scope is indistinguishable here from a genuine no-match; the guard in the snippet above stops before this point rather than letting that read as a clean skip. Skip only on an empty `full_changed` that a real base produced.
 
-A narrower `changed` shifts one risk onto you: it can begin after a commit this PR already cleared, so a file your delta breaks may not appear in the delta at all. When a changed lib is sourced (`. .gaia/scripts/some-lib.sh`) or run (`bash .gaia/scripts/some-script.sh`) from elsewhere, `git grep` its path across the tree and read every caller against the new contract, changed or not. Two callers never announce themselves in a diff. A `.bats` suite can pin a script's stdout verbatim, so rewording a printed verdict line breaks a suite the diff does not touch (`.gaia/scripts/check-audit-key-callers.sh` marks such a pin in its own header, naming the suite that asserts the wording). And a hook's only caller is the `command` string in `.claude/settings.json`, which no glob of yours reaches. Renaming a function, changing an exit code, or moving a hook file breaks those silently.
+A narrower `changed` shifts one risk onto you: it can begin after a commit this PR already cleared, so a file your delta breaks may not appear in the delta at all. When a changed lib is sourced (`. .gaia/scripts/some-lib.sh`) or run (`bash .gaia/scripts/some-script.sh`) from elsewhere, `git grep` its path across the tree and read every caller against the new contract, changed or not. Two callers never announce themselves in a diff. A `.bats` suite can pin a script's stdout verbatim, so rewording a printed verdict line breaks a suite the diff does not touch (`.gaia/scripts/check-audit-key-callers.sh` marks such a pin in its own header, naming the suite that asserts the wording). And a hook's only caller is the `command` string in `.claude/settings.json`. Renaming a function, changing an exit code, or moving a hook file breaks those silently.
 
 ## Review dimensions (shared correctness core)
 
@@ -155,6 +160,21 @@ When a changed file is a `.bats` suite, the shared correctness core above still 
 - **`skip` that hides a failure.** A `skip` added to a previously-running test, or a guard broad enough to skip in CI (a missing-binary check that is always true there), silently retires coverage. A legitimate skip names a genuine unavailable precondition.
 
 This lens activates only for `.bats` files.
+
+## Conditional declarative-surface lens
+
+Several paths in your remit are not scripts, and the correctness core above and the shellcheck oracle both assume a script, so a diff touching only these would otherwise dispatch you with no stated lens. Read the remit region as the authority on which; deliberately no count here, because a number in this sentence rots the next time the roster grants one. They fall in two groups.
+
+**The declarative surfaces** — `.gaia/*.yml`, `.gaia/*.json`, `.gaia/scripts/token-rates.json`, `.gaia/release-exclude`, `.gaia/VERSION`, `.claude/settings.json`, `.github/CODEOWNERS` — are here because each one *decides* something the scripts merely execute, and that is what to review.
+
+- **What the change decides, not how it is spelled.** Read the diff as a policy change and name its consequence: which file now ships or stops shipping (`.gaia/release-exclude`, the manifest), which hook now runs or stops running and with what permission (`.claude/settings.json`), who is required to review what (`.github/CODEOWNERS`, `.gaia/audit-ci.yml`), what a computation is now based on (`.gaia/scripts/token-rates.json`). A syntactically clean edit that quietly widens one of those is the defect this lens exists for.
+- **Loosening that reads as tidying.** A removed `release-exclude` entry, a widened permission or a dropped hook registration, a deleted CODEOWNERS rule, an auditor glob narrowed so it no longer reaches a path it used to: each makes a gate smaller while the diff looks like cleanup. Require the change to say why.
+- **The readers.** These files are parsed by scripts that mostly do not validate them, so a key the reader ignores fails silently rather than loudly. `git grep` the key or filename and read every consumer against the new value; a stale or dated entry (`token-rates.json` carries per-model `effective_through` dates) is wrong without being malformed.
+- **Deterministic checks instead of shellcheck.** `.gaia/audit-ci.yml` has `bash .gaia/scripts/verify-audit-roster.sh`; the manifest and `release-exclude` have the distribution harness. Run whichever applies and fold the result in, on the same advisory footing as shellcheck.
+
+**The instruction prose** — `.claude/agents/code-audit-*.md` and `.claude/rules/**` — governs what this team reviews and how, so a diff touching only it changes the gate itself with no code to shellcheck. Review it as a contract: does a stated claim still hold against the machinery it describes (a glob list, a hook registration, an exit code), and does a widened or dropped instruction quietly retire a check? A sentence falsified by a roster or hook change is a finding here even though nothing executes it, because these files are what a dispatched member reads instead of deriving the answer.
+
+This lens activates only for the non-script paths above, and it is additive: a diff carrying both a script and one of them gets both lenses.
 
 ## Findings grading
 

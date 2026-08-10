@@ -83,6 +83,28 @@ auditors:
       - "*.config.mjs"
       - "*.config.cjs"
       - "*.config.js"
+      # The Playwright suite is executed test code and the sibling of test/**,
+      # which this member already owns. It dispatched nobody until now.
+      - ".playwright/**"
+      # Root tooling that decides what runs: the registry and install policy,
+      # what the pre-commit gate formats and lints, what the image builds, the
+      # environment contract, and the Node version CI and local must agree on.
+      # Editor preferences, VCS bookkeeping, the licence and the root prose are
+      # deliberately NOT here; they are declared in `unowned:` instead.
+      #
+      # REVIEWED here, REPAIRED nowhere. This member is the roster's only
+      # `push_fixes: true` one, so granting it a path that decides what the
+      # gates check would let it rewrite the gate in the same self-heal commit
+      # as its repair. All seven are therefore also in the self-heal refusal set
+      # (`.claude/hooks/lib/audit-selfheal-paths.sh`), matching every sibling
+      # root config this member owns; the grant buys review, not write access.
+      - ".npmrc"
+      - ".lintstagedrc.json"
+      - ".prettierignore"
+      - "Dockerfile"
+      - ".env.example"
+      - ".nvmrc"
+      - ".node-version"
     scope: adopter
     push_fixes: true
     default: true
@@ -107,8 +129,28 @@ auditors:
       # them. .husky/pre-commit is the Quality Gate floor for every commit, so
       # it gets the shell lens and the shellcheck oracle like any other script.
       - ".husky/**"
-      - ".gaia/audit-ci.yml"
+      # The distribution and governance surface beside the scripts: the roster
+      # and the release scrub's own config (`.gaia/*.yml`, which generalizes the
+      # bare `.gaia/audit-ci.yml` this line used to carry), the manifest that
+      # decides what ships plus the state and hook-scope registries and their
+      # schemas (`.gaia/*.json`), the release exclusion list, the hook
+      # registrations, and the review-ownership file. Each decides what is
+      # shipped, executed, or reviewed, and each dispatched nobody until now.
+      # None of these globs crosses a `/`, so the CLI's own package.json,
+      # tsconfig and lockfile stay with the node member below.
+      - ".gaia/*.yml"
+      - ".gaia/*.json"
+      # The model-pricing table the bash cost tooling reads at runtime
+      # (cost-reprice.sh, cost-unpriced-scan.sh, the token-tally chain). It
+      # carries dated per-model rates, so it is actively edited and a wrong
+      # entry silently misprices every tally. Named as a literal because
+      # `.gaia/scripts/**/*.json` is otherwise all test fixtures; see the
+      # `unowned:` note on that exemption below.
+      - ".gaia/scripts/token-rates.json"
+      - ".gaia/release-exclude"
       - ".gaia/VERSION"
+      - ".claude/settings.json"
+      - ".github/CODEOWNERS"
       - ".claude/agents/code-audit-*.md"
       - ".claude/rules/**"
     scope: maintainer-only
@@ -130,17 +172,127 @@ auditors:
       # merges with no code-audit review. The default member's own
       # `pnpm-workspace.yaml` and bare `*.config.*` globs never cross a `/`, so
       # they claim the repository-root files only and reach these not at all.
+      #
+      # The config family is enumerated across the five JS/TS extensions,
+      # matching what the default member declares at the repository root, and
+      # NOT collapsed to a single `.gaia/cli/*.config.*`. That one-glob form is
+      # unavailable rather than unwanted: `*` matches any run within a segment,
+      # so it also spells `.gaia/cli/x.config.sh`, which the shell member's
+      # `.gaia/**/*.sh` already claims, and the roster's disjointness invariant
+      # decides claimant overlap as GLOB LANGUAGES rather than over the files
+      # that happen to exist. The dialect has no way to subtract an extension.
+      # What retires the hand-enumeration defect is the coverage invariant
+      # below, not this line: a sixth config extension added here without a
+      # roster entry is now reported ownerless instead of merging unreviewed.
       - ".gaia/cli/package.json"
       - ".gaia/cli/pnpm-lock.yaml"
       - ".gaia/cli/pnpm-workspace.yaml"
       - ".gaia/cli/tsconfig*.json"
       - ".gaia/cli/*.config.ts"
+      - ".gaia/cli/*.config.mts"
       - ".gaia/cli/*.config.mjs"
+      - ".gaia/cli/*.config.cjs"
+      - ".gaia/cli/*.config.js"
+      # The framework's executable Node beside the shell scripts. The shell
+      # member's `.gaia/**/*.sh` never reaches these, so they dispatched nobody.
+      - ".gaia/scripts/**/*.mjs"
     scope: maintainer-only
     push_fixes: false
   - name: code-audit-maintainer-prose
     globs:
       - ".claude/skills/**/*.md"
+      # The Code Audit Team's own review lenses. This glob reaches exactly
+      # `.claude/agents/code-audit-frontend/`, whose five files decide what that
+      # member checks, so leaving them ownerless meant a commit deleting a check
+      # from one of them rotated no digest and dispatched nobody. They are
+      # instruction prose, which is this member's remit; the per-member agent
+      # definitions beside them (`.claude/agents/code-audit-*.md`) are machinery
+      # and stay with the shell member, and the two globs are disjoint.
+      - ".claude/agents/*/**"
     scope: maintainer-only
     push_fixes: false
+  # gaia:maintainer-only:end
+
+# Paths that are MEANT to dispatch no auditor. The roster above answers "who
+# owns this path"; this list answers the question the dispatch resolver
+# structurally cannot, because an empty dispatched set is both "nothing here
+# needs an owner" and "this needs one and has none". Only
+# .gaia/scripts/verify-audit-roster.sh's coverage invariant reads it: no
+# dispatch path consults it, so an entry here never suppresses a review.
+#
+# This is not a free opt-out, and the checker enforces that rather than trusting
+# it. An entry reaching a path some member already owns fails as OVERBROAD,
+# which is what a blanket `**` does by construction. An entry no ownerless path
+# needs fails as REDUNDANT. And editing this file dispatches an auditor, where
+# adding an unowned file dispatched nobody -- that asymmetry is the point.
+#
+# Adding a path here is a claim that nothing about it is worth a specialist's
+# review. Prefer granting it to a member.
+#
+# NOTE FOR ADOPTER CLONES. The maintainer-only entries below are stripped at
+# release, and so are the roster's maintainer-only members -- which means the
+# machinery those members own (.gaia/**, .claude/rules/**, and the rest) has no
+# owner on an adopter clone and the coverage invariant reports it. That is
+# accurate rather than a defect: on your clone GAIA's own machinery is not
+# yours to audit. Declare it with entries of your own (`.gaia/**`,
+# `.claude/**`) alongside whatever else your tree legitimately leaves unowned.
+unowned:
+  # Prose, assets and bookkeeping: read by people, executed by nothing. Root
+  # `*.md` never crosses a `/`, so it reaches the repository-root documents
+  # only.
+  - "*.md"
+  - "LICENSE"
+  - ".editorconfig"
+  - ".gitignore"
+  - "wiki/**"
+  - "docs/**"
+  - "public/**"
+  - ".github/FUNDING.yml"
+  - ".github/ISSUE_TEMPLATE/**"
+  - ".github/pull_request_template.md"
+  # gaia:maintainer-only:start
+  # GAIA's own instruction prose, fixtures, generated bundles and test data.
+  # Several are extension-qualified rather than whole-subtree because a member
+  # already owns a sibling inside the same tree (`.gaia/**/*.sh`,
+  # `.gaia/**/*.bats`, `.specify/extensions/gaia/lib/*.sh`), and a whole-subtree
+  # entry would reach it and fail as overbroad.
+  - ".claude/commands/**"
+  - ".claude/instructions/**"
+  - ".claude/agents/worthiness-evaluator.md"
+  - ".claude/skills/release-notes/eval/**"
+  - ".gaia/cli/.gitignore"
+  - ".gaia/cli/gaia"
+  - ".gaia/cli/gaia-maintainer"
+  - ".gaia/cli/health/**/*.md"
+  - ".gaia/cli/templates/**"
+  - ".gaia/cli/test-fixtures/**/*.json"
+  - ".gaia/cli/test-fixtures/**/*.md"
+  - ".gaia/cli/test-fixtures/**/*.ts"
+  # Scoped to `tests/` rather than the whole subtree: `.gaia/scripts/**/*.json`
+  # also reaches `.gaia/scripts/token-rates.json`, the shipped rate table the
+  # cost tooling reads, and exempting it would not merely leave it ownerless but
+  # assert it is meant to be. It is granted to the shell member above instead.
+  - ".gaia/scripts/tests/**/*.json"
+  - ".gaia/scripts/**/*.jsonl"
+  - ".gaia/scripts/**/*.txt"
+  - ".gaia/scripts/**/*.yml"
+  - ".gaia/scripts/**/*.md"
+  - ".gaia/scripts/**/.gitkeep"
+  - ".gaia/templates/**"
+  - ".gaia/tests/**/*.md"
+  - ".gaia/tests/**/*.ts"
+  - ".gaia/tests/**/*.txt"
+  - ".gaia/tests/**/*.json"
+  - ".gaia/tests/**/*.tsv"
+  # Pinned to the one file rather than the extension: this is an executable
+  # scanner, not fixture data, and it is exempt only because no Python auditor
+  # exists to give it to. An extension glob would hand that exemption to a
+  # second Python tool silently; a literal makes the next one report ownerless.
+  - ".gaia/tests/observability/serena/usage_scan.py"
+  - ".github/forensics/**/*.md"
+  - ".serena/**"
+  - ".specify/extensions/gaia/**/*.md"
+  - ".specify/extensions/gaia/**/*.yml"
+  - ".specify/extensions/gaia/**/*.tmpl"
+  - ".specify/presets/**"
   # gaia:maintainer-only:end

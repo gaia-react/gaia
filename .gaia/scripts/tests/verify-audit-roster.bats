@@ -1,4 +1,13 @@
 #!/usr/bin/env bats
+# SC2016 is intentional file-wide, matching the script under test: the fixture
+# writers use single-quoted printf format strings where a $ is literal output
+# text (the heredoc line they emit into a fixture), not a shell expansion.
+# shellcheck disable=SC2016
+# SC2317 and SC2329 likewise: shellcheck does not model bats' `@test` dispatch,
+# so it reads a block following an early `return 0` as unreachable and the
+# helpers as uncalled. All 83 tests run; shell-lint gates `.bats` at
+# severity=warning, above these two, so this only quiets an ad-hoc run.
+# shellcheck disable=SC2317,SC2329
 # Tests for .gaia/scripts/verify-audit-roster.sh, the roster's deterministic
 # check.
 #
@@ -284,6 +293,7 @@ YAML
   pair_root 'zz-no-such-tree/**' 'zz-no-such-tree/deep/*.zz'
   local witness
   witness="$(grep -F 'witness:' <<<"$output" | awk '{ print $2 }')"
+  # shellcheck source=/dev/null
   . "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
   local rx_a rx_b
   rx_a="$(printf 'auditors:\n  - name: m\n    globs:\n      - "zz-no-such-tree/**"\n' |
@@ -1231,5 +1241,240 @@ YAML
   # state and must never acquire a writer.
   grep -qE 'gh api .*--method (POST|PUT|PATCH|DELETE)' "$SCRIPT" && return 1
   grep -qE '^[^#]*git [a-z -]*(commit|push|checkout|add|reset)' "$SCRIPT" && return 1
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Invariant 7: every tracked path resolves an owner (#1245).
+#
+# The universe is the tracked file list of the repository ROOTED AT --root, so
+# these fixtures `git init` and `git add` rather than being bare directories.
+# The sibling fixtures above deliberately stay non-git: the invariant has no
+# universe there and does not run, which is what keeps it from re-reddening
+# every other test in this suite.
+# ---------------------------------------------------------------------------
+
+# Scaffolds a fixture root as scaffold_root does, then makes it a repository
+# and stages everything, so `git ls-files` has an answer. Extra tracked files
+# are passed as trailing arguments and created empty.
+scaffold_tracked_root() {
+  local r="$1"
+  shift
+  scaffold_root "$r"
+  local f
+  for f in "$@"; do
+    mkdir -p "$r/$(dirname "$f")"
+    : > "$r/$f"
+  done
+  git init -q "$r"
+  git -C "$r" add -A
+}
+
+# The roster every test in this section starts from: two claimants plus the
+# default, and an `unowned:` list covering the scaffolding itself (the roster,
+# the agent files and both machinery lists) so a fixture is clean unless the
+# test deliberately adds an unowned path.
+tracked_roster() {
+  cat <<'YAML'
+auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    default: true
+  - name: code-audit-alpha
+    globs:
+      - "lib/**"
+YAML
+  printf 'unowned:\n'
+  printf '  - "%s"\n' "$@"
+}
+
+@test "coverage: a tracked path owned by nobody and exempted by nobody fails" {
+  local r="$BATS_TEST_TMPDIR/cov-orphan"
+  tracked_roster '.claude/**' '.gaia/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "ownerless-path"
+  assert_contains "docs/orphan.md"
+}
+
+@test "coverage: an owned path is not reported, so the finding is not vacuous" {
+  local r="$BATS_TEST_TMPDIR/cov-owned"
+  tracked_roster '.claude/**' '.gaia/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$r"
+  # Anchor on the finding this test controls for before asserting the absences.
+  # Two `grep … && return 1` checks plus `return 0` pass on ANY output that
+  # happens not to name the owned paths -- an exit-2 usage error, or an empty
+  # run -- so without these two lines the vacuity guard is itself vacuous.
+  [ "$status" -eq 1 ]
+  assert_contains "docs/orphan.md"
+  grep -qF "app/a.ts" <<<"$output" && return 1
+  grep -qF "lib/b.ts" <<<"$output" && return 1
+  return 0
+}
+
+@test "coverage: an unowned: glob covering the path clears it" {
+  local r="$BATS_TEST_TMPDIR/cov-exempt"
+  tracked_roster '.claude/**' '.gaia/**' 'docs/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$r"
+  [ "$status" -eq 0 ]
+  assert_contains "roster clean"
+}
+
+@test "coverage: an unowned: glob matching no tracked path fails as dead" {
+  local r="$BATS_TEST_TMPDIR/cov-dead"
+  tracked_roster '.claude/**' '.gaia/**' 'nothing/here/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "dead-unowned-glob"
+  assert_contains "nothing/here/**"
+}
+
+@test "coverage: an unowned: glob reaching an OWNED path fails as overbroad" {
+  # The anti-rubber-stamp assertion. A blanket exemption is the one move that
+  # would turn this invariant into a formality, and it fails here because it
+  # necessarily also covers a path some member already owns.
+  local r="$BATS_TEST_TMPDIR/cov-overbroad"
+  tracked_roster '**' | scaffold_tracked_root "$r" app/a.ts lib/b.ts
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "overbroad-unowned-glob"
+}
+
+@test "coverage: the overbroad finding cites the owned witness and its owner" {
+  local r="$BATS_TEST_TMPDIR/cov-overbroad-witness"
+  tracked_roster '.claude/**' '.gaia/**' 'app/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "overbroad-unowned-glob"
+  assert_contains "app/a.ts"
+  assert_contains "code-audit-frontend"
+}
+
+@test "coverage: an unowned: glob no path needs it for fails as redundant" {
+  local r="$BATS_TEST_TMPDIR/cov-redundant"
+  tracked_roster '.claude/**' '.gaia/**' 'docs/**' 'docs/sub/**' \
+    | scaffold_tracked_root "$r" app/a.ts docs/sub/x.md
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "redundant-unowned-glob"
+  assert_contains "docs/sub/**"
+}
+
+@test "coverage: an unowned: glob outside the classifier dialect fails as undecidable" {
+  # `docs**` spells `**` inside a segment rather than as a whole one, so the
+  # classifier escapes it into `^docs.*$`, which crosses `/`. The entry then
+  # exempts docsextra/note.md as well, silently, and the run reports clean --
+  # the exact fail-open every sibling glob position already refuses (a claimant
+  # pair fails undecidable-glob-pair, a region glob undecidable-remit-glob).
+  local r="$BATS_TEST_TMPDIR/cov-dialect"
+  tracked_roster '.claude/**' '.gaia/**' 'docs**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts docs/orphan.md docsextra/note.md
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "undecidable-unowned-glob"
+  assert_contains "docs**"
+}
+
+@test "coverage: an in-dialect unowned: glob is not reported as undecidable" {
+  # The negative control. The gate above must reject the dialect's rejects and
+  # nothing else; a gate that failed every entry would pass its own test while
+  # making the list unusable.
+  local r="$BATS_TEST_TMPDIR/cov-dialect-ok"
+  tracked_roster '.claude/**' '.gaia/**' 'docs/**' | scaffold_tracked_root "$r" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$r"
+  [ "$status" -eq 0 ]
+  grep -qF "undecidable-unowned-glob" <<<"$output" && return 1
+  return 0
+}
+
+@test "coverage: a non-git fixture root has no universe, so the invariant is silent" {
+  # What keeps the other 70 tests in this suite green: they scaffold bare
+  # directories, and this is why that costs them nothing.
+  local r="$BATS_TEST_TMPDIR/cov-nongit"
+  scaffold_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+YAML
+  run_root "$r"
+  [ "$status" -eq 0 ]
+  grep -qF "ownerless-path" <<<"$output" && return 1
+  return 0
+}
+
+@test "coverage: that silence is the missing universe, not a vacuous invariant" {
+  # The negative control for the test above, and the one this suite most needs:
+  # if the invariant were simply never firing, that test would pass for the
+  # wrong reason and every other fixture's green would mean nothing. Same
+  # scaffolding, same roster, the ONLY difference being that this root is a
+  # repository -- and it must report, because a scaffolded fixture's own roster
+  # and agent files are ownerless under a roster that claims `app/**` alone.
+  local r="$BATS_TEST_TMPDIR/cov-nonvacuous"
+  scaffold_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+YAML
+  git init -q "$r"
+  git -C "$r" add -A
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "ownerless-path"
+  assert_contains ".gaia/audit-ci.yml"
+}
+
+@test "coverage: a --root inside a repository does not enumerate that repository" {
+  # --root names the tree the answer describes. A subdirectory of a checkout is
+  # not a repository root, so enumerating the enclosing repo's tracked files
+  # would answer a question nobody asked, with every path outside the fixture
+  # reported ownerless.
+  local sb="$BATS_TEST_TMPDIR/enclosing"
+  mkdir -p "$sb"
+  git init -q "$sb"
+  : > "$sb/outside.md"
+  git -C "$sb" add -A
+  local r="$sb/nested"
+  scaffold_root "$r" <<'YAML'
+auditors:
+  - name: code-audit-default
+    globs:
+      - "app/**"
+    default: true
+YAML
+  run_root "$r"
+  grep -qF "outside.md" <<<"$output" && return 1
+  [ "$status" -eq 0 ]
+}
+
+@test "coverage: a roster carrying no auditors skips rather than answering for the builtin" {
+  # audit_scope_init falls back to the BUILTIN roster when the config yields no
+  # records, so without the skip this fixture's paths get classified against
+  # GAIA's own roster while every finding prints the injected config's name. The
+  # exit status is 1 either way (default-member-count fires first), so nothing
+  # green is at stake; what the skip protects is attribution, which is the whole
+  # value of a finding that names a roster.
+  local r="$BATS_TEST_TMPDIR/cov-no-auditors"
+  scaffold_root "$r" <<'YAML'
+default_mode: local
+YAML
+  git init -q "$r"
+  git -C "$r" add -A
+  run_root "$r"
+  [ "$status" -eq 1 ]
+  assert_contains "default-member-count"
+  assert_contains "carries no auditors"
+  # The misattributed finding the skip exists to suppress.
+  grep -qF "ownerless-path" <<<"$output" && return 1
   return 0
 }

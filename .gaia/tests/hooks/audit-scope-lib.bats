@@ -310,9 +310,13 @@ golden_run_hook() {
   true
 }
 
-@test "golden table: ownerless-but-in-scope root Dockerfile denies" {
+# The witness must be a root file in scope that no member's globs claim, or the
+# table loses its ownerless-in-scope row entirely. `.editorconfig` is that file.
+# The root tooling beside it (`Dockerfile`, `.npmrc`, `.nvmrc`, `.prettierignore`)
+# is claimed by the default member and would exercise the owned branch instead.
+@test "golden table: ownerless-but-in-scope root .editorconfig denies" {
   golden_setup
-  golden_commit "Dockerfile" "FROM scratch"
+  golden_commit ".editorconfig" "root = true"
   golden_run_hook
   golden_teardown
   [ "$status" -eq 0 ]
@@ -626,4 +630,30 @@ EOF
   expected="code-audit-frontend
 code-audit-github-workflows"
   [ "$output" = "$expected" ]
+}
+
+@test "the shared awk source carries exactly one copy of each transformation" {
+  # The module concatenates $_AUDIT_SCOPE_GLOB_AWK into both of its awk
+  # programs precisely so the glob compiler and the YAML unquoter exist once.
+  # That is a claim in the file's own prose, and a second copy would reintroduce
+  # the silent-drift failure the sharing exists to prevent while every test here
+  # still passed, so it is asserted rather than trusted.
+  local lib="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
+  [ "$(grep -c '^ *function glob_to_regex(' "$lib")" -eq 1 ]
+  [ "$(grep -c '^ *function unq(' "$lib")" -eq 1 ]
+}
+
+@test "the unowned: reader compiles a glob to the same regex the roster reader does" {
+  # The sharing above is only worth asserting if the two readers actually agree,
+  # so this pins the outcome rather than the arrangement: one glob spelling, fed
+  # through each parser, must compile identically.
+  local yaml_roster yaml_unowned from_roster from_unowned
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIB"
+  yaml_roster="$(printf 'auditors:\n  - name: code-audit-x\n    globs:\n      - ".gaia/**/*.sh"\n')"
+  yaml_unowned="$(printf 'unowned:\n  - ".gaia/**/*.sh"\n')"
+  from_roster="$(printf '%s\n' "$yaml_roster" | _audit_scope_parse_auditors | awk '$1 == "GLOB" { print $3 }')"
+  from_unowned="$(printf '%s\n' "$yaml_unowned" | _audit_scope_parse_unowned | cut -f3)"
+  [ -n "$from_roster" ]
+  [ "$from_roster" = "$from_unowned" ]
 }
