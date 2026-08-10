@@ -139,6 +139,13 @@ wiki/decisions/Forensics Triage Workflow.md
 .gaia/cli/node_modules
 .gaia/cli/dist
 .gaia/cli/gaia-maintainer
+# Lives under `.gaia/scripts/` but belongs to this category by its inputs: it
+# asserts the committed bundles and templates are what rebuilding from
+# `.gaia/cli/src` produces, and both that source and `gaia-maintainer` are
+# excluded above. On an adopter clone there is nothing to rebuild from, so the
+# check could only fail or mislead. Its two callers (cli-tests.yml,
+# release.yml) are maintainer-only and release-excluded in category 9.
+.gaia/scripts/verify-cli-bundle-fresh.sh
 
 # --- 5. Release-time maintainer tooling ---
 # This file itself: adopters don't run GAIA releases. The release-scrub
@@ -228,6 +235,14 @@ wiki/decisions/Forensics Triage Workflow.md
 # PRs against a list they never agreed to; the `gaia ci-check-subject`
 # subcommand it calls does ship, so an adopter who wants the gate can wire it.
 .github/workflows/pr-title.yml
+# `dependabot.yml` schedules weekly bumps of the full-SHA action pins in
+# `.github/workflows/`, a directory that on this clone is 11 maintainer-only
+# workflows plus the two shipped ones. An adopter clone has neither those
+# workflows nor a reason to inherit a bot that opens pull requests against them
+# on a schedule; GAIA's adopter-facing CI installs on demand via `/setup-gaia`
+# for exactly that reason, and the pins inside `tests.yml` and `chromatic.yml`
+# reach adopters as an `/update-gaia` merge once they are bumped here.
+.github/dependabot.yml
 .github/forensics
 
 # --- 10. Maintainer-only health-audit infrastructure ---

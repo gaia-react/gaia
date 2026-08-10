@@ -30,10 +30,20 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. Each job below grants exactly what it needs.
+permissions: {}
+
 jobs:
   shell-lint:
     name: shellcheck (tracked *.sh + *.bats)
     runs-on: ubuntu-latest
+    # A checkout, one pinned-tarball download, and a whole-tree shellcheck run,
+    # averaging 58s. Ten minutes is a ~10x margin -- wider than the ratio alone
+    # suggests because the one step that can hang is a network fetch from
+    # github.com, not the linter. Without a cap a stalled download burns the
+    # 6-hour default; the same reasoning audit-roster.yml spells out for itself.
+    timeout-minutes: 10
     # Read-only token: this job lints and reports, it never writes to the repo.
     # Bounds the blast radius of the third-party binary it installs below.
     #

@@ -128,6 +128,7 @@ auditors:
       - ".github/workflows/*.yaml"
       - ".github/actions/**/*.yml"
       - ".github/actions/**/*.yaml"
+      - ".github/dependabot.yml"
     scope: adopter
     push_fixes: false
   # gaia:maintainer-only:start

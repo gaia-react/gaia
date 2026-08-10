@@ -12,6 +12,15 @@ jobs:
   release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
+    # The distribution-gate step below carries its own cap; this one bounds
+    # everything else -- the CLI install, the bundle rebuild, the staging,
+    # `gh release create` -- so a hang in any of them cannot hold a runner for
+    # the 6-hour default while holding `contents: write`, the widest token any
+    # workflow in this directory carries. Thirty minutes is a wide margin over a
+    # real cut: the gate is 3-4 minutes against its own 15-minute cap and
+    # everything around it is checkout, install, and staging. Same reasoning
+    # audit-roster.yml spells out for itself.
+    timeout-minutes: 30
     steps:
       - name: Checkout at tag
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -71,33 +80,12 @@ jobs:
       - name: Install CLI dependencies
         run: pnpm -C .gaia/cli install --frozen-lockfile
 
+      # Tag-push half of the bundle-freshness gate; cli-tests.yml runs the same
+      # script on every PR that touches the CLI. This is the last check before a
+      # tarball publishes, so it stays here rather than relying on the PR lane
+      # having run. Rationale lives in the script's docblock.
       - name: Verify committed CLI binaries and templates are rebuilt from src
-        run: |
-          cp .gaia/cli/gaia /tmp/gaia-committed
-          cp .gaia/cli/gaia-maintainer /tmp/gaia-maintainer-committed
-          # bundle:adopter regenerates .gaia/cli/templates/ from src as a side
-          # effect (rm -rf templates && cp -r src/scaffold/templates ...),
-          # decoupled from the bundled binary bytes. Snapshot the committed copy
-          # before the bundle overwrites it so the diff below can see drift.
-          rm -rf /tmp/templates-committed
-          cp -r .gaia/cli/templates /tmp/templates-committed
-          pnpm -C .gaia/cli bundle
-          if ! cmp -s /tmp/gaia-committed .gaia/cli/gaia; then
-            echo "::error::.gaia/cli/gaia is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
-            exit 1
-          fi
-          if ! cmp -s /tmp/gaia-maintainer-committed .gaia/cli/gaia-maintainer; then
-            echo "::error::.gaia/cli/gaia-maintainer is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
-            exit 1
-          fi
-          # Template content resolves at runtime via import.meta.url and never
-          # enters the bundled binary, so the byte-cmp above cannot catch a
-          # stale committed template. Diff the regenerated tree against the
-          # snapshot taken before the bundle.
-          if ! diff -rq /tmp/templates-committed .gaia/cli/templates; then
-            echo "::error::.gaia/cli/templates is stale: regenerating from src (pnpm -C .gaia/cli bundle) produces different template files. Run the bundle and commit the result." >&2
-            exit 1
-          fi
+        run: bash .gaia/scripts/verify-cli-bundle-fresh.sh
 
       - name: Stage release tree
         run: |
