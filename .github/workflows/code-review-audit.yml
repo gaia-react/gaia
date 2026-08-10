@@ -227,10 +227,6 @@ jobs:
         # tested for non-emptiness: a skipped upstream step yields the empty
         # string, which must read as "did not reach the audit phase", never as a
         # pass. Fail-closed is the safe direction for a merge gate.
-        #
-        # Guarded by .github/audit/tests/ci-guard-paths.bats, which evaluates
-        # every step's `if:` against each terminal path's state and asserts the
-        # exact set of steps that fire.
         env:
           GATED: ${{ steps.gate.outputs.gated }}
           HAS_SOURCE: ${{ steps.source-changes.outputs.has_source }}

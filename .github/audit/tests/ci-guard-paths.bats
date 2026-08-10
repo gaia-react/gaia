@@ -493,9 +493,12 @@ Status - audit complete"
 # ---------------------------------------------------------------------------
 
 @test "invariant: exactly one terminal status comment fires on every path" {
-  local scenario count
+  local scenario count fired
   for scenario in $SCENARIOS; do
-    count="$( fired_in "$scenario" | grep -c '^Status - ' )"
+    # Capture first so a harness abort fails the test rather than being read as
+    # a scenario that fired no status comment.
+    fired="$( fired_in "$scenario" )" || return 1
+    count="$( printf '%s\n' "$fired" | grep -c '^Status - ' || true )"
     if [ "$count" -ne 1 ]; then
       printf 'scenario %s fired %s terminal status comments, expected 1\n' \
         "$scenario" "$count" >&2
@@ -505,12 +508,17 @@ Status - audit complete"
 }
 
 @test "invariant: at most one GAIA-Audit status writer fires on every path" {
-  local scenario count
+  local scenario count fired
   for scenario in $SCENARIOS; do
-    # `|| true`: a zero count is a legitimate result here (the gated path posts
-    # no GAIA-Audit status at all), and grep exits 1 on no match, which would
-    # otherwise abort the assignment under bats' `set -e`.
-    count="$( fired_in "$scenario" \
+    # Capture first, count second. Piping `fired_in` straight into grep discards
+    # its exit status, and the `|| true` the zero-count case needs would then
+    # also swallow a harness abort (status 2, no output), leaving count=0 and
+    # this assertion vacuously green on a suite that evaluated nothing.
+    fired="$( fired_in "$scenario" )" || return 1
+    # `|| true` stays on the grep alone: a zero count is a legitimate result
+    # here (the gated path posts no GAIA-Audit status at all), and grep exits 1
+    # on no match, which would otherwise abort under bats' `set -e`.
+    count="$( printf '%s\n' "$fired" \
       | grep -c -e '^Write GAIA-Audit commit status' -e '^Stand down (local-mode' || true )"
     if [ "$count" -gt 1 ]; then
       printf 'scenario %s fired %s GAIA-Audit writers, expected at most 1\n' \
@@ -521,10 +529,14 @@ Status - audit complete"
 }
 
 @test "invariant: the audit runs on exactly the two complete paths and the abort path" {
-  local scenario ran
+  local scenario ran fired
   for scenario in $SCENARIOS; do
+    # Capture first: piped, a harness abort yields no output and reads as
+    # ran=no, which passes vacuously on every scenario that expects ran=no.
+    fired="$( fired_in "$scenario" )" || return 1
     ran=no
-    fired_in "$scenario" | grep -qxF 'Run code-review-audit (claude-code-action)' && ran=yes
+    printf '%s\n' "$fired" \
+      | grep -qxF 'Run code-review-audit (claude-code-action)' && ran=yes
     case "$scenario" in
       aborted|complete-pushed|complete-clean) [ "$ran" = yes ] || return 1 ;;
       *)                                      [ "$ran" = no ]  || return 1 ;;

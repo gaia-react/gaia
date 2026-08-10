@@ -12,9 +12,8 @@
 # job over a comment would turn an advisory surface into a merge blocker. The
 # cost of that choice is that a regression degrades silently to "the status
 # comment stops updating" while CI stays green, which is why this lives in a
-# committed file covered by .gaia/tests/shell-lint.sh and
-# .github/audit/tests/cra-status-upsert.bats rather than inside the workflow YAML
-# where neither guard can see it.
+# committed file the repository's shell linter and test suites can reach, rather
+# than inside the workflow YAML where neither guard can see it.
 #
 # Reads GITHUB_REPOSITORY from the environment, as the workflow runner sets it.
 set -eu

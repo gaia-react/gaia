@@ -18,7 +18,13 @@ setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   SCRIPT="$REPO_ROOT/.github/audit/cra-status-upsert.sh"
-  [ -f "$SCRIPT" ] || skip "cra-status-upsert.sh absent"
+  WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
+  # A hard assertion, not the adopter-clone `skip` its sibling suites use for
+  # the workflow: `.github/audit/tests` is release-excluded, so this suite never
+  # runs on an adopter clone and the only way the script goes missing is a commit
+  # deleting or renaming it. Skipping there would report the whole suite
+  # green-by-absence in exactly the case it exists to catch.
+  [ -f "$SCRIPT" ]
 
   STUB_DIR="$BATS_TEST_TMPDIR/bin"
   GH_LOG="$BATS_TEST_TMPDIR/gh.log"
@@ -132,26 +138,71 @@ run_upsert() {
 # invokes is exactly the invisible-breakage shape this extraction removes.
 # ---------------------------------------------------------------------------
 
-@test "upsert: the workflow invokes the committed script, not a temp copy" {
-  local workflow="$REPO_ROOT/.github/workflows/code-review-audit.yml"
-  [ -f "$workflow" ] || skip "in-tree workflow absent (adopter clone)"
+# terminal_status_steps: the job's `Status - *` step names, in file order.
+terminal_status_steps() {
+  awk '/^      - name: Status - / { print substr($0, index($0, "name: ") + 6) }' \
+    "$WORKFLOW"
+}
 
-  grep -qF 'bash .github/audit/cra-status-upsert.sh' "$workflow" || return 1
+# step_body <step-name>: that step's `run:` block.
+step_body() {
+  awk -v want="$1" '
+    /^      - name: / {
+      cur = substr($0, index($0, "name: ") + 6)
+      instep = (cur == want)
+      inrun = 0
+      next
+    }
+    !instep { next }
+    /^        run: \|/ { inrun = 1; next }
+    inrun && /^        [^[:space:]]/ { inrun = 0; next }
+    inrun { print }
+  ' "$WORKFLOW"
+}
+
+@test "upsert: the workflow invokes the committed script, not a temp copy" {
+  [ -f "$WORKFLOW" ] || skip "in-tree workflow absent (adopter clone)"
+
+  grep -qF 'bash .github/audit/cra-status-upsert.sh' "$WORKFLOW" || return 1
 
   # No step may write the helper into RUNNER_TEMP any more: a temp copy is
   # invisible to shell-lint and to this suite, which is the defect being closed.
-  grep -qF 'RUNNER_TEMP/cra-status-upsert' "$workflow" && return 1
+  grep -qF 'RUNNER_TEMP/cra-status-upsert' "$WORKFLOW" && return 1
   true
 }
 
 @test "upsert: every terminal status step reaches the committed script" {
-  local workflow="$REPO_ROOT/.github/workflows/code-review-audit.yml"
-  [ -f "$workflow" ] || skip "in-tree workflow absent (adopter clone)"
+  [ -f "$WORKFLOW" ] || skip "in-tree workflow absent (adopter clone)"
 
-  # One invocation per terminal status step at minimum. The count is a floor
-  # rather than an equality because several steps branch internally and call it
-  # from more than one arm.
-  local calls
-  calls="$( grep -cF 'bash .github/audit/cra-status-upsert.sh' "$workflow" )"
-  [ "$calls" -ge 8 ]
+  # Asserted per step, not as a total-count floor. A floor is satisfied by the
+  # steps that do call the script, so dropping the call from any single step
+  # leaves the count above the floor and the assertion green: exactly the step
+  # whose comment then silently stops updating. Only a per-step check can see it.
+  local step body missing count
+  missing=""
+  count=0
+  while IFS= read -r step; do
+    [ -n "$step" ] || continue
+    count=$(( count + 1 ))
+    body="$( step_body "$step" )"
+    if [ -z "$body" ]; then
+      printf 'no run: body extracted for step: %s\n' "$step" >&2
+      return 1
+    fi
+    printf '%s\n' "$body" \
+      | grep -qF 'bash .github/audit/cra-status-upsert.sh' \
+      || missing="${missing}${step}"$'\n'
+  done <<EOF
+$( terminal_status_steps )
+EOF
+
+  if [ -n "$missing" ]; then
+    printf 'terminal status steps not reaching the committed script:\n%s' \
+      "$missing" >&2
+    return 1
+  fi
+
+  # Floor on the step count itself, so an extractor that silently matched
+  # nothing cannot pass this test vacuously.
+  [ "$count" -ge 8 ]
 }
