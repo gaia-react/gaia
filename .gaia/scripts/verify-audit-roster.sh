@@ -981,8 +981,11 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4 f5 f6 f7; do
       printf '  reads -- `docs**` becomes `^docs.*$`, which crosses `/` -- and a\n'
       printf '  wider exemption does not misdescribe anything, it SUPPRESSES the\n'
       printf '  ownerless finding for every extra path it reaches. That is the\n'
-      printf '  silent green this invariant exists to delete, so the entry fails\n'
-      printf '  rather than being read. Express it in the dialect.\n'
+      printf '  silent green this invariant exists to delete, so the entry is\n'
+      printf '  REPORTED here and the run fails. Reporting is not quarantine:\n'
+      printf '  the coverage pass below still compiles and matches the entry, so\n'
+      printf '  it goes on exempting every path it reaches until you fix it.\n'
+      printf '  Express it in the dialect.\n'
       printf '\n'
       ;;
   esac
@@ -1032,10 +1035,10 @@ done < <(printf '%s\n' "$pair_records")
 # repository root, and the injected case is a caller who has explicitly named
 # the tree to describe.
 #
-# Residue, bounded and stated rather than silently carried: a tracked path
-# containing a literal TAB misaligns the fields of the record stream below. The
-# roster's own dialect rejects whitespace in a glob for the same reason, and no
-# such path exists here.
+# Residue, bounded and stated rather than silently carried: the record stream
+# below is TAB-separated and newline-delimited, so a tracked path containing
+# either character misaligns its fields. The roster's own dialect rejects
+# whitespace in a glob for the same reason, and no such path exists here.
 
 coverage_universe=""
 coverage_top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
