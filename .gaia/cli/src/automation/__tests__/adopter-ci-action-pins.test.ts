@@ -113,6 +113,7 @@ const pinIdentity = (pin: ActionPin): string => `${pin.ref} # ${pin.tag}`;
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const sourceTemplatesDir = path.dirname(workflowTemplatePath('wiki'));
 const liveWorkflowsDir = githubWorkflowsDirectory(repoRoot);
+const liveActionsDir = path.join(repoRoot, '.github', 'actions');
 
 // The source templates only. `/setup-gaia` installs from the bundled artifact
 // under `.gaia/cli/templates/workflows/`, so that copy's pins are what an
@@ -129,10 +130,21 @@ const templatePins = collectPins(
 // GitHub honors both spellings, so scanning `.yml` alone would let a `.yaml`
 // workflow be the sole live site pinning an action and leave the template pin
 // compared against nothing.
-const liveWorkflowPins =
-  existsSync(liveWorkflowsDir) ?
+//
+// `.github/actions/` is scanned alongside `.github/workflows/` because a
+// composite action pins third-party actions of its own, and most of this
+// repository's setup steps run through one. A pin that lives only there would
+// otherwise sit outside every comparison below: the agreement test would not
+// see it drift from the workflows, and a template pinning the same action
+// would be compared against a live set that does not contain it.
+const liveWorkflowPins = [
+  ...(existsSync(liveWorkflowsDir) ?
     collectPins(liveWorkflowsDir, ['.yml', '.yaml'], '')
-  : [];
+  : []),
+  ...(existsSync(liveActionsDir) ?
+    collectPins(liveActionsDir, ['.yml', '.yaml'], '../actions/')
+  : []),
+];
 
 const livePins = new Map<string, Set<string>>();
 

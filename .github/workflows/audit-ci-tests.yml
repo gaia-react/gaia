@@ -525,25 +525,15 @@ jobs:
       # program is judged by rather than as the environment gap it is.
       #
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Install pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Install Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        name: Setup Node and install both workspaces
+        uses: ./.github/actions/gaia-setup-node
         with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
+          install: both
           # Both lockfiles: the meter installs both workspaces, so warming the
           # store on only one leaves the other cold.
           cache-dependency-path: |
             pnpm-lock.yaml
             .gaia/cli/pnpm-lock.yaml
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Install root dependencies (C4-04 and C4-07 resolve typescript here)
-        run: pnpm install --frozen-lockfile
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Install .gaia/cli dependencies (C3-05 runs the CLI's own tsx)
-        run: pnpm -C .gaia/cli install --frozen-lockfile
       # Runs the WHOLE suite and adjudicates every scenario against
       # .gaia/tests/concurrency/expected-status.txt, so any scenario the
       # manifest marks red by design does not wedge this required check while

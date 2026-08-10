@@ -94,16 +94,8 @@ jobs:
               - 'vite.config.*'
               - '.github/workflows/chromatic.yml'
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
-        name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
-      - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
-        name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        name: Setup Node and install
+        uses: ./.github/actions/gaia-setup-node
       # The preview must publish no environment values, and until now nothing on
       # the build path said so. `test/preview-env.test.ts` pins the Vitest worker;
       # the Storybook build is a separate Vite pipeline that suite never touches,

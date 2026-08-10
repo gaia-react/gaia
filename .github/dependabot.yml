@@ -18,8 +18,13 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     # `/` is the whole ecosystem for GitHub Actions: it resolves to
-    # .github/workflows/. The two composite actions under .github/actions/
-    # reference no external action, so they need no directory of their own.
+    # .github/workflows/. A composite action under .github/actions/ is a
+    # separate directory Dependabot does not reach from `/`, so each one that
+    # pins a third-party action needs its own entry. gaia-setup-node holds the
+    # pnpm/action-setup and actions/setup-node pins that six workflows run,
+    # and it ships to adopters, so leaving it out would freeze the pin that
+    # most of this repository's CI actually executes. The other two composite
+    # actions reference no external action and need no entry.
     #
     # NOT covered, and known not to be: the action pins inside
     # .gaia/cli/src/automation/templates/workflows/*.tmpl, the adopter CI that
@@ -42,7 +47,9 @@ updates:
     # mirrored into the source template and the artifact regenerated on the
     # Dependabot branch. That red is the drift guard doing its job; the
     # mirroring procedure is in .claude/rules/maintainers/.
-    directory: /
+    directories:
+      - /
+      - /.github/actions/gaia-setup-node
     schedule:
       interval: weekly
     # One grouped pull request rather than one per action. Editing anything
