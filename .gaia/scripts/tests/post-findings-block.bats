@@ -495,8 +495,12 @@ extract_payload() {
   # `@<path>` while -f/--raw-field sends `@<path>` as the literal string it is,
   # and the API answers 200 either way, so the wrong flag fails invisibly. The
   # stub above models the difference for the calls a test drives; this reads the
-  # script, so a new call site is covered the moment it is written.
-  grep -nE -- '-f[[:space:]]*[a-zA-Z_]+=@' "$SCRIPT" && return 1
+  # script, so a new call site is covered the moment it is written. Both
+  # spellings of the raw flag are matched, in separated and attached form
+  # (`-f x=@`, `--raw-field x=@`, `-fx=@`, `--raw-field=x=@`), since a guard
+  # that only knew the short form would go quiet on the very rewrite most
+  # likely to reintroduce this.
+  grep -nE -- '(^|[[:space:]])(-f|--raw-field)[[:space:]=]*[a-zA-Z_]+=@' "$SCRIPT" && return 1
   return 0
 }
 
