@@ -69,18 +69,14 @@ jobs:
       # Pre-verified dep-bump PRs (the /update-deps wrapper runs the full
       # quality gate locally before pushing) skip Chromatic. This workflow
       # triggers on `push`, so the gate inspects the HEAD commit subject
-      # rather than the PR title. Pattern is restricted to `chore(deps):`
-      # and `chore(deps-dev):` so other chore commits still run Chromatic.
+      # rather than the PR title. Predicate lives in
+      # .gaia/scripts/chore-deps-skip.sh.
       - name: Check chore-deps commit
         id: chore-deps
         run: |
           set -eu
           subject=$(git log -1 --format=%s HEAD)
-          if printf '%s' "$subject" | grep -qE '^chore\(deps(-dev)?\):'; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "skip=$(bash .gaia/scripts/chore-deps-skip.sh "$subject")" >> "$GITHUB_OUTPUT"
       # Allowlist of paths that can affect a Storybook build. Anything outside
       # this list reports the required check green without running Chromatic.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
