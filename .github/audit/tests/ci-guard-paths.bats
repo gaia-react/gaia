@@ -325,22 +325,41 @@ scenario_ctx() {
 
 SCENARIOS="gated chore-deps no-source self-modified trailer-match stand-down aborted complete-pushed complete-clean"
 
+# phase_step_body: the "Resolve audit phase" step's `run:` block, dedented to a
+# runnable script. Matches the `- name:` line exactly and stops at the next one.
+phase_step_body() {
+  local out="$BATS_TEST_TMPDIR/phase-step.sh"
+  awk '
+    !grab && $0 == "      - name: Resolve audit phase" { grab = 1; next }
+    grab && /^      - name: / { exit }
+    grab && !inrun && /^        run: \|[[:space:]]*$/ { inrun = 1; next }
+    inrun { print }
+  ' "$WORKFLOW" | sed 's/^          //' > "$out"
+  [ -s "$out" ] || return 1
+  printf '%s' "$out"
+}
+
 # reached_audit <gated> <has_source> <self_modified>
 #
-# Mirror of the "Resolve audit phase" step's run: block in the workflow. The
-# step computes the shared audit-phase precondition once so the guards below it
-# state it once; this reproduces that computation so the scenarios stay
-# expressed in the upstream signals a run actually produces rather than in the
-# derived output. The structural test below pins that the step's inputs are
-# exactly the three mirrored here, so this mirror cannot drift silently.
+# The audit-phase precondition the guards below read, obtained by EXECUTING the
+# workflow step that computes it. A hand-written mirror of that block would pin
+# only the shape a structural test can see -- its inputs and its two output
+# literals -- and not the condition choosing between them, so dropping a clause
+# from the real step would leave every scenario below green. Running the step's
+# own shell removes the second copy that could drift.
+#
+# The step's inputs are exported the way the runner supplies them: always
+# defined, empty when the upstream step was skipped, which is what lets the
+# fail-closed cases below exercise the real `set -eu` body rather than a
+# stand-in.
 reached_audit() {
-  # --- begin: mirror of the workflow step's run: block ---
-  if [ "$1" = 'false' ] && [ "$2" = 'true' ] && [ "$3" = 'false' ]; then
-    printf 'true\n'
-  else
-    printf 'false\n'
-  fi
-  # --- end: mirror of the workflow step's run: block ---
+  local body out
+  body="$( phase_step_body )" || return 1
+  out="$BATS_TEST_TMPDIR/phase-output.txt"
+  : > "$out"
+  GATED="$1" HAS_SOURCE="$2" SELF_MODIFIED="$3" GITHUB_OUTPUT="$out" \
+    bash "$body" || return 1
+  sed -n 's/^reached_audit=//p' "$out"
 }
 
 # fired_with <pair>...: derive the audit-phase output from the upstream signals
@@ -675,10 +694,12 @@ assert_stood_down() {
   [ "$( reached_audit '' true false )" = 'false' ]
 }
 
-@test "audit phase: the workflow step derives from exactly the mirrored inputs" {
-  # Drift guard for reached_audit() above. If the workflow's phase step gains or
-  # loses an input, this fails and the mirror gets updated with it, instead of
-  # the suite quietly asserting a stale contract.
+@test "audit phase: the workflow step derives from exactly the supplied inputs" {
+  # reached_audit() above runs the step's own shell, so the step's LOGIC needs no
+  # drift guard. Its INTERFACE still does: the harness supplies three named
+  # inputs, and a fourth the harness left unset would abort the step's `set -u`
+  # body or, worse, read as a value nothing here varies. Pin the interface so a
+  # new input arrives as a failure rather than as untested behavior.
   local block
   block="$( awk '
     /^      - name: Resolve audit phase$/ { inblock = 1 }
