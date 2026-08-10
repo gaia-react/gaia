@@ -53,7 +53,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Maintainer-only surface. PRs that don't touch the CLI source report
       # this required check green without installing or running anything.
       #
@@ -62,7 +62,7 @@ jobs:
       # step entirely and every step below falls back to running unconditionally.
       # That is the intent of a re-trigger: it exists to produce a real green on
       # the self-heal HEAD, and a full run is the only thing that proves one.
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         if: github.event_name == 'pull_request'
         id: filter
         with:
@@ -118,10 +118,10 @@ jobs:
               # template `diff -rq`, inverting a `cmp` -- is invisible to it.
               - '.gaia/scripts/verify-cli-bundle-fresh.sh'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
@@ -197,11 +197,11 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PRs that touch neither the bundle inputs nor the harness report this
       # check green without installing or running anything. Skipped on the
       # dispatch lane for the same reason as the sibling job above.
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         if: github.event_name == 'pull_request'
         id: filter
         with:
@@ -214,10 +214,10 @@ jobs:
               - '.gaia/tests/distribution/**'
               - '.github/workflows/cli-tests.yml'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'

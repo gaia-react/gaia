@@ -16,8 +16,8 @@ name: Shell Lint
 # `jq -n` injection safety); this job keeps the mechanics from regressing.
 #
 # Pinned action SHAs match .github/workflows/audit-ci-tests.yml:
-#   actions/checkout    @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
-#   dorny/paths-filter  @ fbd0ab8f3e69293af611ebaee6363fc25e6d187d (v4.0.1)
+#   actions/checkout    @ 3d3c42e5aac5ba805825da76410c181273ba90b1 (v7.0.1)
+#   dorny/paths-filter  @ ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d (v4.0.3)
 
 # No `push:` trigger. The job only ever has something to say about a proposed
 # change, and a push-to-main run would be a skipped no-op cluttering the
@@ -56,10 +56,10 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PRs that touch no shell script report this check green without
       # installing or running anything.
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |

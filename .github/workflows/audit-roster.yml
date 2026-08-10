@@ -41,7 +41,7 @@ name: Audit Roster Drift
 # 9 in .gaia/release-exclude).
 #
 # Pinned action SHAs match the sibling maintainer workflows:
-#   actions/checkout   @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
+#   actions/checkout   @ 3d3c42e5aac5ba805825da76410c181273ba90b1 (v7.0.1)
 
 # A `push:` arm as well as the pull-request one, unlike the sibling advisory
 # workflows, and the coverage invariant is why: its verdict is a property of the
@@ -91,7 +91,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # No paths filter, unlike the sibling advisory workflows, and the coverage
       # invariant is why. Its input is the TRACKED TREE rather than any list of
       # files, so the pull request that most needs this job is one adding a
