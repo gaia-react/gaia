@@ -52,9 +52,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      # actions/checkout v5.0.1, SHA-pinned to match the sibling maintainer
-      # workflows.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The title goes in through the environment, never interpolated into the
       # run script: an inline `${{ github.event.pull_request.title }}` would
       # let a crafted title close the quoting and run as shell.
