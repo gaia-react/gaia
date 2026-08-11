@@ -315,12 +315,14 @@ jobs:
   # `pull-requests: read` API round trip, and a failure mode of its own: the 403
   # that scope earns the day this repo goes private would redden the job for a
   # reason unrelated to any leak. The complement -- everything except the
-  # maintainer-only paths -- is a denylist, and this repo forbids that shape
-  # twice over: .gaia/release-scrub.yml's `workflow-denylist` leak check rejects
-  # `paths-ignore:`/`!` shapes in workflows, and
-  # .gaia/scripts/tests/workflow-filter-coverage.bats fails CLOSED on a leading
-  # `!` because a negation is the false-bless direction. So the real choice is
-  # between a filter that lies about being narrowable and no filter at all.
+  # maintainer-only paths -- is a denylist, and
+  # .gaia/scripts/tests/workflow-filter-coverage.bats rejects that shape
+  # repo-wide: it fails CLOSED on a leading `!` because a negation is the
+  # false-bless direction. .gaia/release-scrub.yml's `workflow-denylist` leak
+  # check rejects the same shape, but it scans the STAGING tree and this file is
+  # release-excluded, so it never sees this workflow; it backstops the shipped
+  # ones only. So the real choice is between a filter that lies about being
+  # narrowable and no filter at all.
   #
   # The cost, stated where the filter would have been: a checkout, a Node setup,
   # and roughly a second of build-staging.sh on every pull request. What that

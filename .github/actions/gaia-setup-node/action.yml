@@ -16,10 +16,20 @@ description: |
   because `.github/actions/**` fails to reach adopters; other composite
   actions in this same directory already do.
 
-  Deliberately excludes one workflow that has no `cache:` input at all and
-  gates two steps behind a narrow multi-clause `if:` with no install step.
-  Adding a `cache` toggle to serve that single caller would widen this
+  Deliberately excludes two callers, both of which want the pinned Node
+  runtime and nothing else. One gates two steps behind a narrow multi-clause
+  `if:` with no install step; the other runs a single script against a
+  committed binary. Adding a `cache` toggle to serve them would widen this
   contract for no shared benefit.
+
+  The rule that puts a caller in that set: `cache: 'pnpm'` below is
+  unconditional, and setup-node's post step saves that cache without checking
+  the store exists on disk. A job that never runs pnpm never creates the
+  store, and no pnpm restore keys are passed, so the first cache miss --
+  guaranteed by any change to the lockfile that keys it -- resolves zero paths
+  and fails the job on a caching error unrelated to its actual work. So a
+  caller passing `install: none` that also runs no pnpm of its own belongs on
+  `actions/setup-node` directly, at the same pin, rather than here.
 
   Every step here shares one `if:` with its caller: a composite action cannot
   gate its own steps individually from the outside, but the caller's `uses:`
