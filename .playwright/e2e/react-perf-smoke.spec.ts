@@ -102,8 +102,6 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
     true
   );
 
-  // The canary carries the expected memo flag and a non-zero subtree timing;
-  // the toggle drives it on an update render.
   const canaryRecords = dump.all.filter(
     (record) => record.componentName === CANARY
   );
