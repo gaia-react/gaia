@@ -1,6 +1,4 @@
 /**
- * `gaia setup-ci finalize` handler.
- *
  * Sets `setup_complete: true` in `.gaia/automation.json` via the
  * schema-typed write helper. The only primitive that flips
  * `setup_complete`. Idempotent; re-running on an already-finalized

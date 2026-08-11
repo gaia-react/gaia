@@ -1,6 +1,3 @@
-/**
- * Tests for `classifyCapability`.
- */
 import {describe, expect, test} from 'vitest';
 import {classifyCapability} from '../capability.js';
 

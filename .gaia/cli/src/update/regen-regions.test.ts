@@ -1,13 +1,8 @@
 /**
- * Tests for `gaia update regen-regions`.
- *
  * Strategy: hermetic fixture trees under `mkdtempSync`, a synthetic manifest,
  * and a synthetic regeneration program (a small `sh` script the test writes).
  * Never spawns the real `write-audit-remits.sh`; that script's own behavior
- * is covered by its bats suite and by the Phase 4b convergence test.
- *
- * Numbered tests below map to the task doc's "Hostile-input coverage" /
- * "Behavior coverage" obligation list (1-22).
+ * is covered by its bats suite.
  */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';

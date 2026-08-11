@@ -1,11 +1,4 @@
 /**
- * Tests for the `gaia-maintainer release manifest` classifier, exclude
- * parsing, build, and lints.
- *
- * Includes a byte-identity snapshot against the legacy
- * `.gaia/scripts/generate-manifest.mjs` script for the current repo
- * state, plus structural tests for the classifier.
- *
  * The CLI (`run`) tests live in `manifest-cli.test.ts`.
  */
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';

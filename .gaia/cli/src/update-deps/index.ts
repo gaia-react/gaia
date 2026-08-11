@@ -1,13 +1,7 @@
 /**
- * `gaia update-deps` subcommand router.
- *
  * Replicates Phases 1-3 of `.claude/skills/update-deps/SKILL.md` as a
  * deterministic shell primitive so the GAIA CI dependabot workflow can
  * split major bumps into per-group PRs before the LLM-driven flow runs.
- *
- * The `run` subcommand is currently the only entry, but the namespace is
- * structured to admit additional subcommands (e.g. discovery-only,
- * cap-only, group-resolve) without restructuring the dispatcher.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';

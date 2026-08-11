@@ -1,9 +1,5 @@
 /**
- * `gaia wiki diff-size` handler.
- *
- * Computes how much of `wiki/**` changed between a base ref (default
- * `HEAD~1`) and `HEAD`, expressed as a percentage of the base tree's line
- * count. Used by the auto-merge partial in
+ * Used by the auto-merge partial in
  * `automation/templates/workflows/partials/auto-merge.yml.tmpl` to gate
  * automatic merging when a CI run produces an outsized wiki diff.
  *

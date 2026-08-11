@@ -1,8 +1,4 @@
 /**
- * Tests for the `gaia-maintainer release manifest --check` path: drift
- * reporting (missing/extra/class/version drift), classifier-set overlap and
- * scan-scope lint surfacing, and the malformed/missing-manifest error cases.
- *
  * The emit/answer-gate tests (`--ship`/`--withhold`/`--allow-undecided`,
  * `--out`/`--stdout`) live in `manifest-cli.test.ts`. The flag-grammar tests
  * live in `manifest-cli-args.test.ts`.

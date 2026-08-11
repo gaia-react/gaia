@@ -1,6 +1,3 @@
-/**
- * Tests for `gaia init configure-automation`.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import assert from 'node:assert/strict';
 import {existsSync, mkdtempSync, readFileSync, rmSync} from 'node:fs';

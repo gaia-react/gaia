@@ -1,6 +1,4 @@
 /**
- * Tests for `inspectWorkingTree`.
- *
  * Focus: the classification is only as trustworthy as the parse behind it.
  * Both callers refuse to act on a working tree carrying non-wiki changes, so a
  * path git reports in a shape the parse mishandles does not merely print

@@ -1,22 +1,16 @@
 /**
- * `gaia init configure-automation` handler.
+ * Codifies the Phase A scaffold step of `/gaia-init`. Phase B
+ * (`/setup-gaia`) flips `setup_complete` to `true` after the user creates
+ * the GitHub repo and pushes.
  *
- * Codifies the Phase A scaffold step of `/gaia-init`. Writes
- * `.gaia/automation.json` with the user's tool-mode selections and
- * `setup_complete: false`. Phase B (`/setup-gaia`) flips
- * `setup_complete` to `true` after the user creates the GitHub repo
- * and pushes.
- *
- * Headless: the skill prose collects values via AskUserQuestion and
- * passes them through as flags. No defaults at the CLI layer; every
- * flag is required so an adopter who skipped the prompt cannot be
- * silently configured.
+ * Headless: the skill prose collects values via AskUserQuestion and passes
+ * them through as flags. No defaults at the CLI layer; every flag is
+ * required so an adopter who skipped the prompt cannot be silently
+ * configured.
  *
  * Idempotent: re-running with the same flags overwrites the file with
- * byte-identical content. The atomic temp + rename mirrors the
- * surrounding init handlers (`state.ts`, `finalize.ts`).
- *
- * Stdout: nothing on success. Exit codes: 0 / 1 / 2 / 11.
+ * byte-identical content. The atomic temp + rename mirrors the surrounding
+ * init handlers (`state.ts`, `finalize.ts`).
  */
 import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';

@@ -1,9 +1,3 @@
-/**
- * Tests for `gaia wiki state-bump`.
- *
- * Strategy: build a sandbox repo with a bare git init and a `wiki/.state.json`
- * file, then exercise the handler against that sandbox via the `cwd` option.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {

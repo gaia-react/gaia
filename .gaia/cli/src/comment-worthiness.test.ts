@@ -42,6 +42,15 @@
  * the named suffix, which is how a partial path like a skill's reference page
  * is written in prose.
  *
+ * A third limit is NOT deliberate and is worth knowing before trusting an
+ * empty baseline. Backticked spans are paired within a line, so a span that
+ * wraps across a line break leaves an odd number of delimiters on each half
+ * and shifts every pairing after it. A pointer sitting on such a line is
+ * invisible here, and reflowing the paragraph is what exposes it: one dead
+ * path survived this file's own baselining that way, and surfaced only when a
+ * later sweep rewrapped the sentence around it. Pairing across the whole
+ * comment range would close the gap.
+ *
  * # Why comments come from the parser
  *
  * Backticked tokens are read out of real comment ranges, not out of raw lines.
@@ -558,100 +567,10 @@ const collectIdentifiers = (source: string, into: Set<string>): void => {
  * because the token is part of the key). Every baselined file is swept to zero
  * in this same pull request, so the lists empty and the gap closes with them.
  */
-const BASELINE_DEAD_POINTERS: readonly string[] = [
-  '.gaia/cli/src/release/manifest.test.ts#.gaia/scripts/generate-manifest.mjs',
-  '.gaia/cli/src/release/manifest.ts#.gaia/scripts/generate-manifest.mjs',
-];
+const BASELINE_DEAD_POINTERS: readonly string[] = [];
 
 /** Same ratchet, same key discipline. See the note above. */
-const BASELINE_CEREMONIAL: readonly string[] = [
-  '.gaia/cli/src/a11y-structural/check-a11y-triviality.test.ts',
-  '.gaia/cli/src/audit-ledger/append-worthiness.test.ts',
-  '.gaia/cli/src/automation/index.ts',
-  '.gaia/cli/src/classifier/classify-determinism.test.ts',
-  '.gaia/cli/src/fitness/index.ts',
-  '.gaia/cli/src/fitness/render-card.ts',
-  '.gaia/cli/src/init/bootstrap-env.test.ts',
-  '.gaia/cli/src/init/bootstrap-env.ts',
-  '.gaia/cli/src/init/configure-automation.test.ts',
-  '.gaia/cli/src/init/configure-automation.ts',
-  '.gaia/cli/src/init/configure-i18n.test.ts',
-  '.gaia/cli/src/init/finalize.test.ts',
-  '.gaia/cli/src/init/finalize.ts',
-  '.gaia/cli/src/init/index.test.ts',
-  '.gaia/cli/src/init/index.ts',
-  '.gaia/cli/src/init/rename.test.ts',
-  '.gaia/cli/src/init/resume.test.ts',
-  '.gaia/cli/src/init/strip-branding.test.ts',
-  '.gaia/cli/src/init/wire-statusline.test.ts',
-  '.gaia/cli/src/ping/__tests__/index.test.ts',
-  '.gaia/cli/src/ping/__tests__/send.test.ts',
-  '.gaia/cli/src/ping/index.ts',
-  '.gaia/cli/src/react-perf/index.ts',
-  '.gaia/cli/src/react-perf/reduce.test.ts',
-  '.gaia/cli/src/release/bump.test.ts',
-  '.gaia/cli/src/release/changelog.test.ts',
-  '.gaia/cli/src/release/commit-and-tag.test.ts',
-  '.gaia/cli/src/release/exclude-regex.test.ts',
-  '.gaia/cli/src/release/manifest-cli-args.test.ts',
-  '.gaia/cli/src/release/manifest-cli-check.test.ts',
-  '.gaia/cli/src/release/manifest-cli.test.ts',
-  '.gaia/cli/src/release/manifest.test.ts',
-  '.gaia/cli/src/release/preflight.test.ts',
-  '.gaia/cli/src/release/region-registry.test.ts',
-  '.gaia/cli/src/release/region-scan.test.ts',
-  '.gaia/cli/src/release/runtime-deps.test.ts',
-  '.gaia/cli/src/release/scrub-wiki.test.ts',
-  '.gaia/cli/src/release/scrub.test.ts',
-  '.gaia/cli/src/sandbox/__tests__/apply.test.ts',
-  '.gaia/cli/src/sandbox/__tests__/capability.test.ts',
-  '.gaia/cli/src/sandbox/__tests__/index.test.ts',
-  '.gaia/cli/src/sandbox/__tests__/marker.test.ts',
-  '.gaia/cli/src/sandbox/__tests__/seed.test.ts',
-  '.gaia/cli/src/scaffold/component.test.ts',
-  '.gaia/cli/src/scaffold/index.ts',
-  '.gaia/cli/src/setup-ci/dismiss-personal.ts',
-  '.gaia/cli/src/setup-ci/finalize.ts',
-  '.gaia/cli/src/setup-ci/index.ts',
-  '.gaia/cli/src/setup-ci/opt-out-team.ts',
-  '.gaia/cli/src/setup-ci/write-isolation-policy.ts',
-  '.gaia/cli/src/setup-ci/write-tool-mode.ts',
-  '.gaia/cli/src/setup/__tests__/link-worktree.test.ts',
-  '.gaia/cli/src/setup/__tests__/setup.test.ts',
-  '.gaia/cli/src/setup/__tests__/state-file.test.ts',
-  '.gaia/cli/src/setup/finalize.ts',
-  '.gaia/cli/src/setup/index.ts',
-  '.gaia/cli/src/setup/mark-step.ts',
-  '.gaia/cli/src/update-deps/decline.ts',
-  '.gaia/cli/src/update-deps/index.ts',
-  '.gaia/cli/src/update/index.test.ts',
-  '.gaia/cli/src/update/index.ts',
-  '.gaia/cli/src/update/merge-audit-ci.test.ts',
-  '.gaia/cli/src/update/merge-region.test.ts',
-  '.gaia/cli/src/update/merge-workspace.test.ts',
-  '.gaia/cli/src/update/regen-regions.test.ts',
-  '.gaia/cli/src/update/region-markers.test.ts',
-  '.gaia/cli/src/util/git-status.test.ts',
-  '.gaia/cli/src/wiki/chain.test.ts',
-  '.gaia/cli/src/wiki/commit-classify.test.ts',
-  '.gaia/cli/src/wiki/dead-paths.ts',
-  '.gaia/cli/src/wiki/diff-size.ts',
-  '.gaia/cli/src/wiki/empty-sections.test.ts',
-  '.gaia/cli/src/wiki/frontmatter.test.ts',
-  '.gaia/cli/src/wiki/index.ts',
-  '.gaia/cli/src/wiki/log-prepend.test.ts',
-  '.gaia/cli/src/wiki/near-collisions.test.ts',
-  '.gaia/cli/src/wiki/orphans.test.ts',
-  '.gaia/cli/src/wiki/page-index.test.ts',
-  '.gaia/cli/src/wiki/state-bump.test.ts',
-  '.gaia/cli/src/wiki/state-init.test.ts',
-  '.gaia/cli/src/wiki/state.test.ts',
-  '.gaia/cli/src/wiki/sync-await.test.ts',
-  '.gaia/cli/src/wiki/sync-await.ts',
-  '.gaia/cli/src/wiki/sync-land.test.ts',
-  '.gaia/cli/src/wiki/util/branch.test.ts',
-  '.gaia/cli/src/wiki/util/land.test.ts',
-];
+const BASELINE_CEREMONIAL: readonly string[] = [];
 
 /** Same ratchet, same key discipline. See the note above. */
 const BASELINE_ASCII_RULES: readonly string[] = [];

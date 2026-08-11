@@ -1,14 +1,10 @@
 /**
- * `gaia setup-ci` subcommand router.
- *
  * The Phase B remote-integration surface for GAIA CI. Every primitive
  * the `/setup-gaia` slash command shells out to lives under this
  * namespace: remote detection, admin permission probe,
  * workflow_dispatch verification, and the `setup_complete` flip.
  *
- * Object-map dispatch (no `switch`) per the project's typescript
- * conventions; mirrors the shape of `setup/index.ts` and
- * `automation/index.ts`.
+ * Mirrors the shape of `setup/index.ts` and `automation/index.ts`.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';

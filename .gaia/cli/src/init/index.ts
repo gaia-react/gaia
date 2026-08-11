@@ -1,16 +1,12 @@
 /**
- * `gaia init` subcommand router.
- *
- * Dispatches to per-step handlers under `./<step>.ts`. Each handler
- * reads and writes `.gaia/init-state.json` so the `/gaia-init` skill
- * can resume on failure (network drop, user cancellation, IDE crash).
+ * Each per-step handler under `./<step>.ts` reads and writes
+ * `.gaia/init-state.json` so the `/gaia-init` skill can resume on failure
+ * (network drop, user cancellation, IDE crash).
  *
  * Also owns the target guard: every step rewrites the tree it runs in, and
  * every per-step precondition asks only whether its own rewrite is doable,
  * never where it is running. The guard is here rather than in any one step
  * because all eight resolve the target identically from ambient state.
- *
- * Object-map dispatch (no `switch`) per the project's typescript skill rules.
  */
 import {existsSync} from 'node:fs';
 import path from 'node:path';

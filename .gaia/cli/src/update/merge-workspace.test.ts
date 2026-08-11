@@ -1,6 +1,4 @@
 /**
- * Tests for `gaia update merge-workspace`.
- *
  * Strategy: write three temporary `pnpm-workspace.yaml` files (baseline /
  * latest / current), run the handler, and assert the JSON verdict report.
  * The command is a read-only verdict oracle: it never writes the YAML, so

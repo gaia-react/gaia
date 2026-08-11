@@ -1,6 +1,3 @@
-/**
- * Tests for `mergeSandboxSettings`.
- */
 import {describe, expect, test} from 'vitest';
 import {mergeSandboxSettings} from '../apply.js';
 import {seedSandboxConfig} from '../seed.js';

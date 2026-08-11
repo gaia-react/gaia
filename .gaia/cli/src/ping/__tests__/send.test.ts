@@ -1,6 +1,3 @@
-/**
- * Tests for the shared `postPing` core.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {

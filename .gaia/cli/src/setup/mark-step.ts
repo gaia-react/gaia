@@ -1,10 +1,3 @@
-/**
- * `gaia setup mark-step <step>` handler.
- *
- * Records a setup step as complete in `.gaia/local/setup-state.json`.
- * Idempotent; re-running with the same step is a no-op. Creates the
- * state file lazily (with `started_at` stamped to "now") on first call.
- */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {resolveMainWorktreeRoot} from '../util/main-root.js';

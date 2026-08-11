@@ -6,10 +6,6 @@
  * and adopter-owned sentinels, classifies each remaining path, and returns
  * a deterministic (alphabetically sorted) manifest shape.
  *
- * Port of `.gaia/scripts/generate-manifest.mjs`. Output is byte-identical
- * to the script for the current repo state; see the snapshot test in
- * `manifest.test.ts`.
- *
  * Also lints the classifier sets for entries that are dead code because
  * release-exclude already masks them, and lints every owned `.sh`-bearing
  * directory against the scrub `maintainer-paths` scope and `runtime-deps`'s

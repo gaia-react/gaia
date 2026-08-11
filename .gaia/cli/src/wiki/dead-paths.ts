@@ -1,6 +1,4 @@
 /**
- * `gaia wiki dead-paths` handler.
- *
  * Scans `wiki/**` markdown files for backticked repo-relative paths that
  * reference files no longer present on disk. Detects rot like a wiki page
  * citing a hook script after that hook has been deleted or renamed. Also

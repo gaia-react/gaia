@@ -1,6 +1,3 @@
-/**
- * Tests for the `.gaia/local/sandbox.json` marker reader/writer.
- */
 /* eslint-disable no-bitwise -- POSIX file modes are bitfields; `& 0o777` is
    the standard idiom for masking off the permission bits. */
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';

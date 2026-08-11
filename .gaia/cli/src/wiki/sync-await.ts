@@ -1,6 +1,4 @@
 /**
- * `gaia wiki sync await` handler.
- *
  * The `/gaia-wiki` router's same-session counterpart to the session-start
  * janitor (`.claude/hooks/local-janitor.sh`). A wiki landing's in-CLI merge
  * wait (`sync land --branch-aware`, `chain finish`) is structurally shorter

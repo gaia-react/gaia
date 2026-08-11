@@ -1,20 +1,9 @@
 /**
- * `gaia init finalize` handler.
- *
- * Codifies the cleanup that closes the final step of `/gaia-init`:
- * deletes `.claude/commands/gaia-init.md` so the command cannot be run a
- * second time.
- *
- * `pnpm install` is intentionally NOT performed here; it is a side
- * effect handled by the orchestrating skill before the CLI runs. The
- * adoption ping is likewise not sent here; the `/gaia-init`
- * Step 11 skill call sends it via `gaia ping --event init` (see
- * `../ping/index.ts`) after this handler returns.
- *
- * Idempotent: re-running is safe; an already-deleted command file stays
- * gone.
- *
- * Stdout: nothing on success. Exit codes: 0 / 1 / 2.
+ * `pnpm install` is intentionally NOT performed here; it is a side effect
+ * handled by the orchestrating skill before the CLI runs. The adoption ping
+ * is likewise not sent here; the `/gaia-init` Step 11 skill call sends it via
+ * `gaia ping --event init` (see `../ping/index.ts`) after this handler
+ * returns.
  */
 import {existsSync, rmSync} from 'node:fs';
 import path from 'node:path';

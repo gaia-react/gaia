@@ -1,12 +1,8 @@
 /**
- * `gaia wiki` subcommand router.
- *
  * Wiki-state primitives consumed by `wiki/sync.md`, `wiki/lint.md`, and
  * `wiki/consolidate.md` under `.claude/skills/gaia/references/`. The
  * `/gaia-wiki` router (`references/wiki.md`) dispatches subagents that
  * orchestrate these primitives.
- *
- * Object-map dispatch (no `switch`) per the project's typescript skill rules.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';

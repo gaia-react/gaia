@@ -1,12 +1,8 @@
 /**
- * `gaia fitness` subcommand router.
- *
  * Presentation helpers for the /gaia-fitness health check. The skill runs the
  * checks inline (greps / `jq` / `gaia wiki ...`) and computes grades, then
  * pipes the assembled report JSON through `render-card` to produce the ASCII
  * report card it pastes into chat.
- *
- * Object-map dispatch (no `switch`) per the project's typescript skill rules.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';

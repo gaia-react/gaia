@@ -1,20 +1,20 @@
 /**
- * Tests for the worthiness-audit ledger writer
- * (`.gaia/scripts/audit-ledger/append-worthiness.mjs`).
+ * Exercises the worthiness-audit ledger writer
+ * (`.gaia/scripts/audit-ledger/append-worthiness.mjs`), which appends one
+ * JSON Lines record per judged test to the append-only worthiness ledger.
+ * Its identity field (`signal`) is the SAME sha256-of-normalized-test-call
+ * the RED ledger computes via
+ * `.gaia/scripts/red-ledger/extract-test-signals.mjs`; the writer reuses
+ * that helper so the two signals byte-match and the merge presence gate's
+ * recompute lines up. A non-keep verdict carries a machine-checkable
+ * `artifact`.
  *
- * The writer appends one JSON Lines record per judged test to the append-only
- * worthiness ledger. Its identity field (`signal`) is the SAME
- * sha256-of-normalized-test-call the RED ledger computes via
- * `.gaia/scripts/red-ledger/extract-test-signals.mjs`; the writer reuses that
- * helper so the two signals byte-match and the merge presence gate's recompute
- * lines up. A non-keep verdict carries a machine-checkable `artifact`.
- *
- * Maintainer-only by construction: `.gaia/scripts` is release-excluded, so the
- * writer and this test never ship to adopters.
+ * Maintainer-only by construction: `.gaia/scripts` is release-excluded, so
+ * the writer and this test never ship to adopters.
  *
  * The writer resolves its sibling signal helper, which resolves `typescript`
- * from `node_modules`; this `.gaia/cli` workspace carries its own `typescript`
- * devDependency, so the test runner can exec it.
+ * from `node_modules`; this `.gaia/cli` workspace carries its own
+ * `typescript` devDependency, so the test runner can exec it.
  */
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';

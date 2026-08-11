@@ -1,6 +1,4 @@
 /**
- * Tests for `region-scan.ts`'s `scanRegionDeclarations`.
- *
  * Fixtures are built in a temp dir with a fabricated registry entry (not the
  * real `audit-remit` markers), so these cases are hermetic and independent
  * of `.gaia/audit-ci.yml` / `region-registry.ts`, which has its own suite.

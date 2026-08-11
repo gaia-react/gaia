@@ -1,6 +1,3 @@
-/**
- * Tests for `extractRegistryHost` and `seedSandboxConfig`.
- */
 import {describe, expect, test} from 'vitest';
 import {extractRegistryHost, seedSandboxConfig} from '../seed.js';
 

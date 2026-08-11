@@ -1,19 +1,8 @@
 /**
- * `gaia fitness render-card` handler.
- *
- * Reads a /gaia-fitness report JSON document on stdin and writes a
- * width-aware ASCII report card to stdout. The /gaia-fitness skill builds the
- * JSON from its adjudicated findings and computed grades, then pastes the
- * rendered card into its chat reply.
- *
- * The box width self-sizes to the longest content line, clamped to a
- * 120-column ceiling and to the terminal width (`--cols`), so the card grows
- * to one line per finding on a wide terminal and wraps remediation text on a
- * narrow one. Categories render alphabetically; the per-category note column
- * is derived from the findings. The card carries no footer; the skill prints
- * post-heal instructions as prose beneath it.
- *
- * Object-map dispatch and no `switch` per the project's typescript rules.
+ * The /gaia-fitness skill builds the input JSON from its adjudicated findings
+ * and computed grades, then pastes the rendered card into its chat reply and
+ * prints post-heal instructions as prose beneath it; the card itself carries
+ * no footer.
  */
 import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';

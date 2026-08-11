@@ -1,6 +1,4 @@
 /**
- * Tests for `gaia-maintainer release exclude-regex`.
- *
  * Fixtures live in a `mkdtempSync` sandbox and are passed via
  * `--exclude-file`; none of these tests depend on the repo's real
  * `.gaia/release-exclude`.

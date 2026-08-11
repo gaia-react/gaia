@@ -1,8 +1,4 @@
 /**
- * Tests for `region-registry.ts`: the hand-authored region declarations and
- * `rosterAgentPaths`, the roster-derived `rewrites` set for the `audit-remit`
- * entry.
- *
  * Fixtures are built in a temp dir, not against the real repo, so the roster-
  * shape cases are hermetic.
  */

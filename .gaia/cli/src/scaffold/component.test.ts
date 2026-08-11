@@ -1,6 +1,4 @@
 /**
- * Tests for the `gaia scaffold component` handler.
- *
  * Strategy: copy the three component templates into a temp dir's
  * `templates/component/` so the handler can resolve them via the same
  * `fileURLToPath(import.meta.url)`-relative scheme it uses in production,

@@ -1,10 +1,3 @@
-/**
- * Tests for `gaia wiki state-init`.
- *
- * Strategy mirrors `state-bump.test.ts`: a tmp git repo with an initial
- * commit so refs resolve, then exercise the handler against that
- * sandbox via the `cwd` option.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {

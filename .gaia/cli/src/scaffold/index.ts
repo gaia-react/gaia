@@ -1,13 +1,3 @@
-/**
- * `gaia scaffold` subcommand router.
- *
- * This file ships:
- *   1. The public re-exports of the scaffold shared API.
- *   2. The router that dispatches to per-kind handlers
- *      (component/hook/route/service).
- *
- * Object-map dispatch (no `switch`) per the project's typescript skill rules.
- */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {run as runComponent} from './component.js';

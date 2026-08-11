@@ -1,9 +1,3 @@
-/**
- * Tests for the `gaia setup` CLI surface.
- *
- * Strategy: tmp git repo per test, exercise status / mark-step / finalize
- * sequentially against `.gaia/local/setup-state.json`.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {

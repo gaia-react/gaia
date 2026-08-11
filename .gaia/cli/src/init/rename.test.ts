@@ -1,6 +1,3 @@
-/**
- * Tests for `gaia init rename`.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   copyFileSync,

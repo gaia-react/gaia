@@ -1,7 +1,4 @@
 /**
- * Tests for `porcelainZPaths`, the shared `git status --porcelain -z` record
- * parser.
- *
  * Focus: the two hazards that make `-z` load-bearing rather than a formatting
  * preference. Under the default (non-`-z`) output git applies C-style quoting,
  * so a path carrying a space, a quote, or a non-ASCII byte arrives wrapped in

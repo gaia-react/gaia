@@ -1,6 +1,4 @@
 /**
- * Tests for the `gaia init` router, and specifically for its target guard.
- *
  * The guard answers "where is this running", which every per-step precondition
  * leaves unasked: they all ask only whether their own rewrite is doable.
  */
