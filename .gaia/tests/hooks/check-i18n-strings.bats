@@ -127,6 +127,24 @@ run_hook_edit() {
   [ -z "$output" ]
 }
 
+@test "an unwritable working state directory never blocks the edit" {
+  # The hook runs `set -euo pipefail` with `trap 'exit 0' ERR`, so a failed
+  # `mkdir -p .claude` or marker write costs the once-per-session bookkeeping
+  # rather than the operator's Edit call. Without a scenario that makes one of
+  # those fail, that trap can be deleted with every other test here still
+  # green. Status is the whole contract: the reminder itself is written to
+  # stderr before the failure, so $output is not empty.
+  chmod 555 "$WORK"
+  if [ -w "$WORK" ]; then
+    chmod 755 "$WORK"
+    echo "precondition unavailable: \$WORK stayed writable at mode 555, so the fail-open path cannot be exercised (running as root?)" >&2
+    return 1
+  fi
+  run_hook_edit "app/pages/Public/HomePage/index.tsx" S1
+  chmod 755 "$WORK"
+  [ "$status" -eq 0 ]
+}
+
 @test "malformed JSON on stdin never blocks the edit" {
   # The contract, not the mechanism: a payload-shape change must never turn an
   # advisory nudge into a failed tool call. Two independent guards uphold it --
