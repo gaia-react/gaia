@@ -95,6 +95,25 @@ seed_hot_cache() {
   [ ! -f "$SENTINEL" ]
 }
 
+# --- fail-open: an internal failure never disrupts the compaction ---
+
+@test "an unwritable working state directory never fails the compaction" {
+  # The hook runs `set -euo pipefail` with `trap 'exit 0' ERR` precisely so a
+  # failed mkdir or write costs the restoration rather than the compaction
+  # event. Without a scenario that makes an internal step fail, that trap can
+  # be deleted with every other test in this suite still green.
+  seed_hot_cache
+  chmod 555 "$WORK"
+  # Under root the mode is ignored and the mkdir succeeds, which would green
+  # this test without exercising the fail-open path at all. Fail loudly rather
+  # than vacuously.
+  if [ -w "$WORK" ]; then chmod 755 "$WORK"; return 1; fi
+  invoke_hook_in "$WORK" '' "$HOOK_ABS"
+  chmod 755 "$WORK"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
 # --- structural ---
 
 @test "wiki-recompact-sentinel.sh is executable" {

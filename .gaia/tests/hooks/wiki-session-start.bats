@@ -142,6 +142,10 @@ stub_script() {
   # the baseline with it.
   REPO=$("$HELPERS/tmp-git-repo.sh")
   mkdir -p "$REPO/.claude/hooks"
+  # `$PWD` stays unexpanded on purpose: the generated stub must evaluate it
+  # when the hook runs it, not when this printf writes it, or the assertion
+  # would read the bats process's cwd instead of the hook's.
+  # shellcheck disable=SC2016
   printf '#!/usr/bin/env bash\n[ -s "$PWD/.git/claude-session-start" ] || exit 1\n: > "%s/order.ok"\n' "$REPO" \
     > "$REPO/.claude/hooks/local-janitor.sh"
   chmod +x "$REPO/.claude/hooks/local-janitor.sh"

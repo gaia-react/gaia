@@ -129,9 +129,14 @@ arm_sentinel() {
 }
 
 @test "an unreadable hot cache never blocks the prompt" {
+  # This is the only scenario here that exercises the ERR trap, so it must not
+  # be allowed to pass vacuously: under root chmod 000 is ignored, the cat
+  # succeeds, and the hook exits 0 for the ordinary reason with the fail-open
+  # path never reached. Fail loudly in that case instead.
   seed_hot_cache
   arm_sentinel
   chmod 000 "$WORK/wiki/hot.md"
+  if [ -r "$WORK/wiki/hot.md" ]; then chmod 644 "$WORK/wiki/hot.md"; return 1; fi
   invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
   chmod 644 "$WORK/wiki/hot.md"
   [ "$status" -eq 0 ]

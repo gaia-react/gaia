@@ -128,8 +128,11 @@ run_hook_edit() {
 }
 
 @test "malformed JSON on stdin never blocks the edit" {
-  # The hook traps ERR to exit 0; an advisory nudge must not turn a payload
-  # shape change into a failed tool call.
+  # The contract, not the mechanism: a payload-shape change must never turn an
+  # advisory nudge into a failed tool call. Two independent guards uphold it --
+  # the jq reads absorb their own failure, and an ERR trap catches whatever
+  # they miss -- so this asserts the outcome rather than either one of them.
+  # Removing both is what reddens it.
   invoke_hook_in "$WORK" 'not json' "$HOOK_ABS"
   [ "$status" -eq 0 ]
 }
