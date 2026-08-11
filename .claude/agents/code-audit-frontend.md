@@ -147,7 +147,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 - **Magic values**: Unexplained numbers, strings used as identifiers without constants
 - **Dead code**: Unused exports, unreachable branches, commented-out code left behind
 - **Coupling**: Changes that would ripple across many files, tight coupling to implementation details
-- **Comments**: A comment that is about the file itself rather than about something the file does not contain, a comment naming a file, symbol, or ticket that no longer resolves, or a comment restating the line or signature below it. Do not flag missing comments.
+- **Comments**: Judge every comment against `.claude/rules/code-comments.md`, which states the standard; do not restate it here, a second copy drifts from the first. Flag a comment that fails it, most often one naming a file, symbol, or ticket that no longer resolves, or one restating the line or signature below it. Do not flag missing comments.
 
 ## Project-Specific Rules to Enforce
 

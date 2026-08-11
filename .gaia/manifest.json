@@ -76,6 +76,7 @@
     ".claude/rules/accessibility.md": "owned",
     ".claude/rules/api-service.md": "owned",
     ".claude/rules/bats-assertions.md": "owned",
+    ".claude/rules/code-comments.md": "owned",
     ".claude/rules/code-search.md": "owned",
     ".claude/rules/coding-guidelines.md": "owned",
     ".claude/rules/dep-audit.md": "owned",
@@ -644,7 +645,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-10T22:31:24.542Z",
+  "generated": "2026-08-11T22:11:55.709Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
