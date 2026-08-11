@@ -231,6 +231,14 @@ jobs:
       # PRs that touch neither the bundle inputs nor the harness report this
       # check green without installing or running anything. Skipped on the
       # dispatch lane for the same reason as the sibling job above.
+      #
+      # This list stays narrow on purpose, and the narrowness is now backstopped
+      # rather than merely tolerated: the scenario suite is the expensive part of
+      # this job and its inputs really are these paths. The one thing the
+      # narrowness used to be able to skip -- the release leak check, whose real
+      # input is every file that ships -- runs unconditionally in the
+      # shipped-surface job below, so a pull request touching only some other
+      # shipped file can no longer green a leak.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         if: github.event_name == 'pull_request'
         id: filter
@@ -286,3 +294,86 @@ jobs:
         # Intentionally no CLAUDE_CODE_OAUTH_TOKEN: keeps the Docker/secret
         # scenarios out of the required PR lane (they self-skip as soft PASS).
         run: bash .gaia/tests/distribution/run-all.sh
+
+  # The cheap half of the harness above, split out so it can run over the whole
+  # shipped surface. build-staging.sh stages every tracked file that
+  # .gaia/release-exclude does not withhold, resets the wiki sentinels, and runs
+  # the scrub and runtime-dependency leak checks over the result, so its honest
+  # input is the entire tree minus that exclude list, not the handful of paths
+  # the harness filter above names. Every scenario builds that same tree, which
+  # is what made the mismatch live rather than theoretical: a comment added to a
+  # SHIPPED workflow naming a maintainer-only path failed the leak check in all
+  # of them, and was caught only because that pull request happened to also touch
+  # this file. An edit confined to that shipped workflow would have resolved the
+  # harness filter false, skipped the job, greened it having validated nothing,
+  # and surfaced the leak at tag push in release.yml, where the fix is far more
+  # expensive.
+  #
+  # No paths-filter here, and the absence is the decision rather than an
+  # oversight. An allowlist that honestly described this job's inputs is `'**'`,
+  # which gates nothing while still costing a paths-filter step, a
+  # `pull-requests: read` API round trip, and a failure mode of its own: the 403
+  # that scope earns the day this repo goes private would redden the job for a
+  # reason unrelated to any leak. The complement -- everything except the
+  # maintainer-only paths -- is a denylist, and this repo forbids that shape
+  # twice over: .gaia/release-scrub.yml's `workflow-denylist` leak check rejects
+  # `paths-ignore:`/`!` shapes in workflows, and
+  # .gaia/scripts/tests/workflow-filter-coverage.bats fails CLOSED on a leading
+  # `!` because a negation is the false-bless direction. So the real choice is
+  # between a filter that lies about being narrowable and no filter at all.
+  #
+  # The cost, stated where the filter would have been: a checkout, a Node setup,
+  # and roughly a second of build-staging.sh on every pull request. What that
+  # buys is a leak check no pull request can skip by changing only a shipped file
+  # the harness filter above does not name.
+  shipped-surface-leak-check:
+    name: Shipped-surface leak check
+    # Advisory, not a declared-required context, and it must not become one. It
+    # admits `workflow_dispatch` for the same reason the harness above does: one
+    # dispatch runs every job in this workflow and the audit stamps a check run
+    # per JOB, so a job left gated to `pull_request` alone stamps a bare
+    # `skipped` onto the self-heal HEAD, which reads as a regression rather than
+    # the "not evaluated" it actually is.
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # `contents: read` and nothing more: checkout needs it to clone, and
+    # setup-node defaults its `token` input to `github.token` for the
+    # node-versions download. The `pull-requests: read` the two jobs above hold
+    # is paths-filter's alone, and no paths-filter runs here, so granting it
+    # would be scope this job never spends.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # build-staging.sh shells out to the committed .gaia/cli/gaia-maintainer,
+      # a bundled binary with a `#!/usr/bin/env node` shebang, so the runtime has
+      # to be the pinned `.node-version` one rather than whatever ubuntu-latest
+      # happens to preinstall. `install: none`: nothing in this job runs pnpm.
+      - name: Setup Node
+        uses: ./.github/actions/gaia-setup-node
+        with:
+          install: none
+          # The composite action has no switch for its pnpm-store cache, and
+          # widening its contract to add one for a single caller is what its own
+          # docblock refuses, so the only lever here is which lockfile keys the
+          # cache. The root lockfile, matching the harness job above: sharing
+          # that key means the ordinary outcome is a restore that saves nothing
+          # back, where a key no other job writes would miss on every run and
+          # then store this job's empty pnpm store under it.
+          cache-dependency-path: 'pnpm-lock.yaml'
+      # No binary-presence step, unlike the harness job above. That job checks
+      # both committed binaries because its scenarios drive `gaia` as well;
+      # here build-staging.sh is the only consumer, and its first act is to test
+      # .gaia/cli/gaia-maintainer for the executable bit and exit 1 naming both
+      # the path and the `pnpm -C .gaia/cli bundle` that fixes it. A step
+      # asserting what the script already asserts adds a second place to drift,
+      # not a second signal.
+      - name: Stage the release tree and prove no shipped file leaks
+        # build-staging.sh requires an output dir that exists and is EMPTY, and
+        # $RUNNER_TEMP is neither guaranteed empty nor exclusively this step's,
+        # hence mktemp beneath it rather than the directory itself. $RUNNER_TEMP
+        # rather than a hardcoded /tmp path so the runner cleans it up.
+        run: |
+          staging="$(mktemp -d "$RUNNER_TEMP/release-staging.XXXXXX")"
+          bash .gaia/tests/distribution/lib/build-staging.sh "$staging"
