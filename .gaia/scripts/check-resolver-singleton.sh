@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Check A -- one canonical main-root resolver PER LANGUAGE (per-language
-# extension per DECISIONS.md D-M3-2).
+# Check A -- one canonical main-root resolver PER LANGUAGE.
 #
 # Over TRACKED SOURCE: asserts exactly one `gaia_resolve_main_root` shell
 # function DEFINITION and exactly one `resolveMainWorktreeRoot` TypeScript
@@ -15,7 +14,7 @@
 # Why two, and why counted separately: GAIA's main-root resolution has two
 # implementations, one per language, because making a TypeScript caller reach
 # the bash resolver at runtime costs a subprocess on a hot path. That is a
-# deliberate, blessed position (D-M3-2). Counting only shell definitions
+# deliberate, blessed position. Counting only shell definitions
 # would silently miss a second derivation serving TypeScript call sites, so
 # counting per language is what makes the guarantee say what its name
 # promises.

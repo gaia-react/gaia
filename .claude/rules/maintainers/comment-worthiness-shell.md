@@ -222,13 +222,16 @@ Both cross a directory boundary, and neither is discoverable from the file that 
 
 ## 6. Coverage gaps on the shell surface
 
-The fail-quiet shape this repo hardens against does not apply here. 75 of the 78 shell files are named by at least one bats suite, and a comment-only change to this surface does arm its own tests: `.gaia/audit-ci.yml`'s `code-audit-maintainer-shell` member globs `.gaia/**/*.sh`, `.gaia/**/*.bats`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh`, `.github/**/*.bats`, and `.husky/**`, and `shell-lint.yml` runs on every pull request with a `shell:` filter matching `**/*.sh` and `**/*.bats`, so any edit here arms shellcheck over the whole tree.
+The fail-quiet shape this repo hardens against does not apply here. 75 of the 78 shell files are named by at least one bats suite, and a comment-only change to this surface does arm its own tests: `.gaia/audit-ci.yml`'s `code-audit-maintainer-shell` member globs the executable surface as `.gaia/**/*.sh`, `.gaia/**/*.bats`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh`, `.github/**/*.bats`, and `.husky/**`, and carries a further declarative surface beyond those (config, roster, and rule files), so read the roster rather than this list when the question is whether an edit arms the member. `shell-lint.yml` runs on every pull request with a `shell:` filter matching `**/*.sh` and `**/*.bats`, so any edit here arms shellcheck over the whole tree.
 
-Three files are the real risk surface:
+**The 78-file surface below is `.gaia/scripts` plus `.gaia/statusline` plus the spec-kit lib. This rule also activates on `.claude/hooks/**/*.sh`, a further 54 files**, so a hook is in scope for the rule while sitting outside the inventory that follows. Read the fourth bullet before concluding a hook is covered.
+
+Four files are the real risk surface:
 
 - **`.gaia/scripts/verify-cli-bundle-fresh.sh`**, the CLI-bundle freshness check. No bats suite, but two CI workflows execute it and it has its own paths-filter entry, so a comment edit does arm it.
 - **`.specify/extensions/gaia/lib/uat-write.sh`**, the UAT writer. Around a hundred comment lines behind a smoke script only: not bats, not CI-gated. Exclude it from any mechanical sweep and hand-review instead.
 - **`.gaia/statusline/preferred-base.sh`**, the statusline preferred-base helper. Genuinely zero automated coverage, nine `#` lines in total, release-excluded. The least interesting file on the surface.
+- **`.claude/hooks/lib/gaia-ci-defer.sh`**, on the hooks half of this rule's activation scope. No bats suite names it, so it is the hook-side equivalent of the three above and the reason the inventory cannot stop at 78 files.
 
 **The surface's real extent is 78 files**, and the arithmetic is worth stating because a plausible reading double-counts one file. `git ls-files '.gaia/scripts/*.sh'` returns 56, and that 56 **already includes** `.gaia/scripts/lib/serena-lang.sh`, because `*` in a git pathspec matches `/` where a shell glob would not. So the surface is 56 under `.gaia/scripts` (55 flat plus one nested) plus 2 under `.gaia/statusline` plus 20 under the spec-kit extension lib. Adding a separate `.gaia/scripts/lib/*.sh` glob to the first one counts `serena-lang.sh` twice; conversely, a plain shell glob in a `for` loop sees only 55 and misses it. Check with:
 

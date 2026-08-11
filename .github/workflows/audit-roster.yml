@@ -80,8 +80,8 @@ jobs:
     # minute, so five minutes is a wide margin and a hung run reads as a hang
     # rather than a slow tree. Worth naming here because this job's triggers
     # were widened to every pull request, every push to main, and dispatch:
-    # without a cap a hang burns the 6-hour default on each of them, and 9 of
-    # the other 12 workflows in this directory cap for the same reason.
+    # without a cap a hang burns the 6-hour default on each of them, and every
+    # other workflow in this directory caps for the same reason.
     timeout-minutes: 5
     # Read-only token, and `contents: read` alone: the job reads the checked-out
     # tree and reports. Naming any scope here sets every unlisted one to `none`,

@@ -89,7 +89,9 @@
 #
 # A refusal (audit-team-member only) is proof of life, never a no-op: see the
 # refusal arm in that shape's case arm below for why it is checked before the
-# earned family and why the lost-report gate does not apply to it.
+# earned family. The lost-report gate does not apply to it because a refusal
+# with no sidecar is a differently-broken run, and re-dispatching returns the
+# identical empty hand.
 #
 # Exit code IS the boolean: 0 = REAL (not a no-op), 1 = NO-OP, 2 = usage
 # error (unknown --shape, missing --shape/--path). Also prints `real`,

@@ -302,9 +302,8 @@ value_allowed() {
 # The SIZE cap is the one that bounds the work. It is measured on the MATCHING
 # material rather than on the content, because what costs is the judging, and
 # the feeder grep skips an ordinary large file before any judging happens. The
-# line cap alone leaves per-line cost free, since the executable-tail rescan
-# spawns a grep per `;`/`&&`/`||` fragment, so the size cap is what actually
-# holds the wall clock down.
+# line cap stays alongside it because it names the ordinary case in the terms
+# its author will recognize.
 #
 # What the caps bound is process SPAWNS, not seconds: seconds are one
 # machine's unit, where a spawn count is the same regardless of host, just

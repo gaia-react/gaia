@@ -25,9 +25,9 @@ const contrastRatio = (lum1: number, lum2: number): number => {
 
 // Primary-scale luminances
 //
-// C1 spec defines each shade as oklch(L% 0 0deg) - zero chroma, neutral gray.
-// For oklch(L, 0, *) the XYZ Y channel = L³ (within 0.1 % error), and for
-// neutral grays WCAG relative luminance equals the linear sRGB value which
+// Each primary shade is defined as oklch(L% 0 0deg) - zero chroma, neutral
+// gray. For oklch(L, 0, *) the XYZ Y channel = L³ (within 0.1 % error), and
+// for neutral grays WCAG relative luminance equals the linear sRGB value which
 // also equals L³.  All values verified below.
 //
 // L values (from tailwind.css, divide % by 100):

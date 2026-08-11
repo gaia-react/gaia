@@ -420,8 +420,8 @@ describe('computeMissing: paths named after Object.prototype keys', () => {
   // to reach `lookupClass` through the path a committed manifest actually
   // takes. Only four are, and the two cases below are what make the list say
   // so rather than merely be true. The surrounding convention settles the
-  // shape: `ManifestSchema: regions` and `byte-identity vs
-  // generate-manifest.mjs` both assert through a real parse.
+  // shape: `ManifestSchema: regions` and `buildManifest: region round trip`
+  // both assert through a real parse.
   //
   // Every key below is written computed. A bare `{__proto__: 'owned'}` object
   // literal sets the PROTOTYPE instead of defining an own property, which
@@ -599,9 +599,7 @@ describe('buildManifest: region round trip', () => {
 });
 
 // Seeds a sandbox with a small slice of the real repo layout, picking paths
-// that exercise every classifier branch so any drift in either
-// implementation manifests as a diff in the output, then builds the manifest
-// against it. Shared by both tests below.
+// that exercise every classifier branch, then builds the manifest against it.
 const seedManifestSandbox = (): {
   manifest: ReturnType<typeof buildManifest>;
   sandbox: Sandbox;
@@ -650,7 +648,7 @@ const seedManifestSandbox = (): {
   return {manifest, sandbox};
 };
 
-describe('byte-identity vs generate-manifest.mjs', () => {
+describe('classifier category assignment', () => {
   // Regression guard on the classifier's category assignments, independent
   // of whether the legacy script is still around to compare against.
   test('classifies every category correctly', () => {
