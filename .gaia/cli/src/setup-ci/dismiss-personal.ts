@@ -1,6 +1,4 @@
 /**
- * `gaia setup-ci dismiss-personal` handler.
- *
  * Writes `.gaia/local/automation.json` with `nudge_dismissed: true`.
  * The file is gitignored; this is the per-machine "stop nudging me"
  * record. Idempotent: re-running on an already-dismissed local writes

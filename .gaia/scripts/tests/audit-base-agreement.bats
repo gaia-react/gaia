@@ -32,9 +32,7 @@
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
 # .gaia/scripts/tests/audit-base-agreement.bats`.
 #
-# Assertion style follows .claude/rules/bats-assertions.md: POSIX `[ ... ]`
-# for equality/status, `grep -qF` for substrings, explicit `return 1`
-# branches, never a non-final `!`-negation.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 # require_jq
 #

@@ -1,5 +1,5 @@
 /**
- * Injectable machine sandbox-capability classifier (UAT-003/004/005).
+ * Injectable machine sandbox-capability classifier.
  *
  * Pure: takes a fully-supplied `DetectionInput` and returns a
  * `DetectionResult` with no host I/O. `gaia sandbox detect` (./index.ts)

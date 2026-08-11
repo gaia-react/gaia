@@ -13,11 +13,7 @@
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
 # .gaia/scripts/tests/state-registry-lib.bats`.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# absence checks use a positive match for the bad case plus an explicit
-# `return 1`, never `!`-negation; equality/numeric/empty checks use POSIX
-# `[ ... ]`, which fails correctly on every bash version; substring checks use
-# `grep -qF`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"

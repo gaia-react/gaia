@@ -1,9 +1,6 @@
 /**
- * `gaia automation` subcommand router.
- *
  * The slice-1 surface for GAIA CI's local-side primitives. Mirrors the
- * shape of `wiki/index.ts`: object-map dispatch (no `switch`), exported
- * `run` returns `Promise<number>`, structured error on unknown subcommand.
+ * shape of `wiki/index.ts`.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';

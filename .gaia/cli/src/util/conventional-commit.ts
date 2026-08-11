@@ -53,9 +53,9 @@ export type ConventionalCommitHeader = {
 
 // A type, an optional `(scope)`, an optional `!` breaking marker, then `:`.
 // `breaking` is written `(?<breaking>!?)` rather than as an optional group so
-// it always participates and captures `''` or `'!'`: `noUncheckedIndexedAccess`
-// is off, so an optional group's `undefined` is invisible to the type checker
-// and a `!== undefined` test would be statically meaningless.
+// it always participates and captures `''` or `'!'`: an optional group's
+// `undefined` would be invisible to the type checker, making a
+// `!== undefined` test statically meaningless.
 const HEADER_PATTERN =
   /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<breaking>!?):/u;
 

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Check D -- the hook tree-scope manifest's own conformance (INV-5, task 3.6
-# design analysis/task-3.6-hook-scope-design.md §7).
+# Check D -- the hook tree-scope manifest's own conformance (INV-5).
 #
 # Over TRACKED SOURCE: the manifest (.gaia/hook-scopes.json) declares, for
 # every GAIA hook under .claude/hooks/**, which tree its state belongs to
@@ -35,8 +34,7 @@
 #                  grows a state access.
 #
 # Dual-mode, mirroring the repo's other check/lib scripts: source it for the
-# four functions below, or run it directly (see "Executable entry" at the
-# bottom).
+# four functions below, or run it directly.
 
 GAIA_HOOKCHECK_MANIFEST_REL=".gaia/hook-scopes.json"
 GAIA_HOOKCHECK_SCHEMA_REL=".gaia/hook-scopes.schema.json"
@@ -309,7 +307,6 @@ gaia_check_hook_scope_manifest() {
   return $rc
 }
 
-# Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   repo_root="${1:-}"
   if [ -z "$repo_root" ]; then

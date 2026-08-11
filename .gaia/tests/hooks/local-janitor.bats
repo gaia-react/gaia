@@ -1708,7 +1708,6 @@ SHIM
   [ -f "$REPO/.gaia/local/audit/$digest.dispositions.json" ]
 }
 
-# --- TST-006: the janitor never recomputes a per-member digest -------------
 
 @test "TST-006 tripwire: the janitor source never references audit_member_digest or the digest CLI" {
   run grep -En "audit_member_digest|audit-member-digest\.sh|audit_digests_all" "$HOOK_ABS"

@@ -243,7 +243,6 @@ ph_patterns=(
 )
 for pat in "${ph_patterns[@]}"; do
   if grep -nE "$pat" "$spec_file" > /dev/null; then
-    # Capture first occurrence line for the finding.
     first_hit=$(grep -nE "$pat" "$spec_file" | head -n 1 | cut -d: -f1)
     add_finding "placeholder" "Placeholder text matching '$pat' detected" "line:$first_hit"
   fi

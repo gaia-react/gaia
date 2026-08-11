@@ -3,7 +3,7 @@
  *   --start-marker <text> --end-marker <text>` handler.
  *
  * Region-aware verdict oracle for a declared generated region inside an owned
- * file (SPEC-057). The merge walk's per-file decision table currently
+ * file. The merge walk's per-file decision table currently
  * compares an owned file whole-file with `cmp -s`, so any divergence
  * anywhere in the file, including inside a marker-delimited block a shipped
  * command regenerates, becomes a full-file conflict patch. This oracle masks

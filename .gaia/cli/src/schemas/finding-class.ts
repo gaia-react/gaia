@@ -98,9 +98,7 @@ export type RuleFindingClass = (typeof RULE_FINDING_CLASSES)[number];
 /**
  * Closed-vocabulary members for the workflow bucket. Seeded from the
  * workflow-security surface the `code-audit-github-workflows` member owns
- * (GitHub-Actions supply-chain, injection, and permission defects). Small and
- * defensible by design: seed only classes the agent can reliably and repeatably
- * assign. When in doubt, leave a class out.
+ * (GitHub-Actions supply-chain, injection, and permission defects).
  */
 export const WORKFLOW_FINDING_CLASSES = [
   'workflow/script-injection',
@@ -116,9 +114,7 @@ export type WorkflowFindingClass = (typeof WORKFLOW_FINDING_CLASSES)[number];
  * prose-complexity dimensions the `code-audit-maintainer-prose` member owns
  * (excessive reducible length, deep nesting, high cross-reference indirection,
  * redundant instruction duplicated across files). Each is a prose-level root
- * cause, never a subsystem tag. Small and defensible by design: seed only
- * classes the agent can reliably and repeatably assign. When in doubt, leave a
- * class out.
+ * cause, never a subsystem tag.
  */
 export const PROSE_FINDING_CLASSES = [
   'prose/excessive-length',

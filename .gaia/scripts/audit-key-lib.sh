@@ -1,8 +1,6 @@
 # shellcheck shell=bash
 #
-# GAIA shared key lib (task 4.1, analysis/task-4.1-audit-key-design.md
-# §2a-2c; generalized by task 4.2, analysis/task-4.2-gh-artifact-key-design.md
-# §2a). Houses one audit-specific key, gaia_audit_key, and one general rule,
+# GAIA shared key lib. Houses one audit-specific key, gaia_audit_key, and one general rule,
 # gaia_key_slug, that every worktree-partitioning key in GAIA builds on --
 # a rule promoted to public and shared rather than copied per caller.
 #

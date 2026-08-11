@@ -368,7 +368,6 @@ test("mixed assertions", () => {
   [[ "$output" == *"mixed assertions"* ]]
 }
 
-# --- Forward-compat: a ledger line with an unknown schema is ignored ---
 
 @test "ignores a ledger line with an unrecognized schema version" {
   stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"

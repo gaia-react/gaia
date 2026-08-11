@@ -1,10 +1,3 @@
-/**
- * Tests for `region-markers.ts`'s whole-line marker parser.
- *
- * Strategy: build small multi-line fixtures and assert `scanRegion` /
- * `maskRegion` against them directly. Pure functions, no I/O and nothing to
- * set up or tear down.
- */
 import {describe, expect, test} from 'vitest';
 import {maskRegion, REGION_PLACEHOLDER, scanRegion} from './region-markers.js';
 

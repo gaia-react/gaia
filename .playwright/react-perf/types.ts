@@ -1,7 +1,8 @@
-// Contract A — the wire format the bippy harness emits and the reduce CLI
-// (Phase 2) consumes. Records hold only serialized primitives: never a live
-// fiber, DOM node, or fiber.type. Change entries carry TYPE LABELS, never raw
-// values (privacy + size).
+// Contract A: the wire format the bippy harness emits and the reduce CLI
+// (Phase 2) consumes, named to match the parsing half in
+// `.gaia/cli/src/schemas/react-perf-summary.ts`. Records hold only serialized
+// primitives: never a live fiber, DOM node, or fiber.type. Change entries carry
+// TYPE LABELS, never raw values (privacy + size).
 
 // In-browser diagnostics channel the harness writes and the capture helper
 // reads. It carries the browser-derived subset of RawDumpMeta plus an internal

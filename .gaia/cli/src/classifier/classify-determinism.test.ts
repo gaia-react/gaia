@@ -1,21 +1,20 @@
 /**
- * Tests for the determinism classifier AST helper
- * (`.gaia/scripts/classifier/classify-determinism.mjs`).
- *
- * The helper labels a touched source file STRICT (deterministic; goes under the
- * RED gate) or EMERGENT (clock-/entropy-/I-O-bound or tree-dependent; advisory
- * audit only). Path scopes the candidate set; content decides. The bias is
+ * Exercises the determinism classifier AST helper
+ * (`.gaia/scripts/classifier/classify-determinism.mjs`), which labels a
+ * touched source file STRICT (deterministic; goes under the RED gate) or
+ * EMERGENT (clock-/entropy-/I-O-bound or tree-dependent; advisory audit
+ * only). Path scopes the candidate set; content decides. The bias is
  * deliberate: err EMERGENT. Over-strict is the worse failure.
  *
- * Maintainer-only by construction: `.gaia/scripts` is release-excluded, so the
- * helper and this test never ship to adopters.
+ * Maintainer-only by construction: `.gaia/scripts` is release-excluded, so
+ * the helper and this test never ship to adopters.
  *
  * The helper resolves `typescript` from `node_modules`; this `.gaia/cli`
- * workspace carries its own `typescript` devDependency, so the test runner can
- * exec it. Synthetic fixtures are fed through `--stdin` (the path argument names
- * the file identity for path scoping and `.ts`-vs-`.tsx` script kind; stdin
- * supplies the bytes). The three named real fixtures are classified from disk by
- * repo-relative path.
+ * workspace carries its own `typescript` devDependency, so the test runner
+ * can exec it. Synthetic fixtures are fed through `--stdin` (the path
+ * argument names the file identity for path scoping and `.ts`-vs-`.tsx`
+ * script kind; stdin supplies the bytes). The three named real fixtures are
+ * classified from disk by repo-relative path.
  */
 import {describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';

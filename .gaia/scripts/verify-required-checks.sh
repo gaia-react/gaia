@@ -40,7 +40,7 @@ REQUIRED_CONTEXTS=(
   "GAIA-Audit"                        # custom status posted by the code-audit gate itself
   "Audit CI Tests"                    # .github/workflows/audit-ci-tests.yml
   "Run Chromatic"                     # .github/workflows/chromatic.yml
-  "Distribution Audit"                # .github/workflows/distribution-audit-pr.yml (SPEC-044)
+  "Distribution Audit"                # .github/workflows/distribution-audit-pr.yml
   "Vitest and Playwright"             # .github/workflows/tests.yml
   "Vitest (.gaia/cli)"                # .github/workflows/cli-tests.yml; its
                                       # reproducibility step is the only

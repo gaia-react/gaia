@@ -1,10 +1,10 @@
 /**
- * Tests for `.gaia/cli/src/setup/util/state-file.ts`'s retired-step
- * migration: `readStateFile` must tolerate a persisted
+ * `readStateFile`'s retired-step migration must tolerate a persisted
  * `'mentorship-decision'` entry (dropping it from the returned
  * `completed_steps`) while still throwing on a genuinely unrecognized step.
- * Also covers `resolveMainWorktreeRoot`'s validation hardening (task 8.3);
- * that resolver now lives in `.gaia/cli/src/util/main-root.ts`.
+ *
+ * Also covers `resolveMainWorktreeRoot`'s validation hardening; that
+ * resolver lives in `.gaia/cli/src/util/main-root.ts`.
  */
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';

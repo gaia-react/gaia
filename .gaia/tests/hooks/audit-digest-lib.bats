@@ -15,9 +15,7 @@
 # shell, code-audit-maintainer-node. Membership is proved by ROTATION: a path is
 # in member M's digest set iff flipping one byte in it rotates M's digest.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS system bash 3.2 does
-# not fail a @test on a false bare `[[ ]]` that is not the last command, so
-# non-final checks use POSIX `[ ]`, `grep -q`, or an explicit `|| return 1`.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

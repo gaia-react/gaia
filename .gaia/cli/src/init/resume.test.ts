@@ -1,9 +1,7 @@
 /**
- * Tests for `gaia init resume`.
- *
- * Mostly drives the resume orchestrator with stubbed step runners so we
- * can assert ordering + skip-if-complete + argv reconstruction without
- * spinning up real filesystem fixtures for each step.
+ * Mostly drives the resume orchestrator with stubbed step runners so we can
+ * assert ordering + skip-if-complete + argv reconstruction without spinning
+ * up real filesystem fixtures for each step.
  */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdtempSync, rmSync} from 'node:fs';

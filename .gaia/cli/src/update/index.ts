@@ -1,6 +1,4 @@
 /**
- * `gaia update` subcommand router.
- *
  * Hosts the field-aware `merge-workspace` verdict oracle the
  * `/update-gaia` skill invokes for `pnpm-workspace.yaml` (Step 7b), the
  * `merge-audit-ci` oracle it invokes for `.gaia/audit-ci.yml` (Step 7c), the
@@ -11,8 +9,6 @@
  * hand-walks the per-file decision table (Step 7) and field-merges
  * `package.json` (Step 7a) itself, so the router carries no generic
  * whole-file merge command.
- *
- * Object-map dispatch (no `switch`) per the project's typescript skill rules.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';

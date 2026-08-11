@@ -1,6 +1,3 @@
-/**
- * Tests for `gaia-maintainer release scrub`.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   mkdirSync,
@@ -1043,9 +1040,7 @@ describe('parseKeyPath', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Derived wikilink-to-excluded check
-// ---------------------------------------------------------------------------
 
 const WIKILINK_DERIVED_CONFIG = `
 transforms:
@@ -1251,9 +1246,7 @@ transforms:
   });
 });
 
-// ---------------------------------------------------------------------------
 // Derived excluded-workflow-ref check
-// ---------------------------------------------------------------------------
 
 const WORKFLOW_DERIVED_CONFIG = String.raw`
 transforms:
@@ -1293,10 +1286,8 @@ const seedWorkflowSource = (sandbox: Sandbox): void => {
   );
 };
 
-// ---------------------------------------------------------------------------
-// SPEC-034 Code Audit Team: audit-ci.yml / shipped-shell marker-strip +
+// Code Audit Team: audit-ci.yml / shipped-shell marker-strip +
 // maintainer-audit-members leak-check
-// ---------------------------------------------------------------------------
 
 const AUDIT_CI_MARKER_CONFIG = `
 transforms:
@@ -1603,9 +1594,7 @@ describe('excluded-workflow-ref derived check', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Derived excluded-titles check
-// ---------------------------------------------------------------------------
 
 const TITLE_DERIVED_CONFIG = `
 transforms:

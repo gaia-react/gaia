@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# Requires Bats >= 1.5.0 (RT-006 coverage below uses `run --separate-stderr`).
+# RT-006 coverage below uses `run --separate-stderr`.
 bats_require_minimum_version 1.5.0
 
 # Tests for .github/audit/resolve-audit-base.sh.
@@ -31,26 +31,6 @@ bats_require_minimum_version 1.5.0
 # (see install_gh_mock), keyed by commit SHA so a multi-commit walk can
 # return different statuses per commit.
 #
-# Coverage:
-#   1.  No signal anywhere                         → main ref (fallback)
-#   2.  Trailer on parent, version matches         → that parent SHA
-#   3.  Trailer on parent, version mismatch        → main ref
-#   4.  Newest of several audited commits wins     → newest matching SHA
-#   5.  Status on parent, version matches          → that parent SHA
-#   6.  Status on parent, version mismatch         → main ref
-#   7.  Trailer beats older status (newest wins)   → newer trailer SHA
-#   8.  .gaia/VERSION missing                      → main ref
-#   9.  .gaia/VERSION empty                        → main ref
-#   10. HEAD's own trailer is never the base       → main ref
-#   11. Single-commit PR (only HEAD)               → main ref
-#   12. Malformed trailer (short digest) ignored   → main ref
-#   13. gh absent / no token (status unreachable)  → main ref
-#   14. Pending status on ancestor → not a usable base → main ref
-#   15. Success status on ancestor → usable base       → ancestor SHA
-#   16. RT-006: machinery change between base and HEAD → main ref (reset)
-#   17. RT-006: no machinery change → candidate still returned
-#   18. RT-006: libs unavailable → fail-open, version-only selection
-#   19. RT-006: machinery change on a non-ASCII path → main ref (reset)
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -232,10 +212,6 @@ EOF
   export GITHUB_REPOSITORY="gaia-react/gaia"
 }
 
-# -----------------------------------------------------------------------------
-# 1. No signal anywhere → main ref
-# -----------------------------------------------------------------------------
-
 @test "no audit signal on any PR commit → main ref" {
   add_commit a
   add_commit b
@@ -243,10 +219,6 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
 }
-
-# -----------------------------------------------------------------------------
-# 2. Trailer on the parent, version matches → that parent SHA
-# -----------------------------------------------------------------------------
 
 @test "trailer on parent with matching version → parent SHA" {
   add_commit a
@@ -257,10 +229,6 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = "$base" ]
 }
-
-# -----------------------------------------------------------------------------
-# 3. Trailer on the parent, version mismatch → main ref (full re-audit)
-# -----------------------------------------------------------------------------
 
 @test "trailer on parent with version mismatch → main ref" {
   add_commit a
@@ -289,10 +257,6 @@ EOF
   [ "$output" != "$older" ]
 }
 
-# -----------------------------------------------------------------------------
-# 5. Commit status on the parent, version matches → that parent SHA
-# -----------------------------------------------------------------------------
-
 @test "status on parent with matching version → parent SHA" {
   add_commit a
   base="$(sha_of HEAD)"
@@ -302,10 +266,6 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = "$base" ]
 }
-
-# -----------------------------------------------------------------------------
-# 6. Commit status on the parent, version mismatch → main ref
-# -----------------------------------------------------------------------------
 
 @test "status on parent with version mismatch → main ref" {
   add_commit a
@@ -334,10 +294,6 @@ EOF
   [ "$output" = "$trailer_sha" ]
 }
 
-# -----------------------------------------------------------------------------
-# 8. .gaia/VERSION missing → main ref
-# -----------------------------------------------------------------------------
-
 @test ".gaia/VERSION missing → main ref" {
   add_commit a
   amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
@@ -350,10 +306,6 @@ EOF
   [ "$output" = "main" ]
 }
 
-# -----------------------------------------------------------------------------
-# 9. .gaia/VERSION empty → main ref
-# -----------------------------------------------------------------------------
-
 @test ".gaia/VERSION empty → main ref" {
   add_commit a
   amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
@@ -365,10 +317,6 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
 }
-
-# -----------------------------------------------------------------------------
-# 10. A matching trailer on HEAD itself is never chosen as the base
-# -----------------------------------------------------------------------------
 
 @test "matching trailer on HEAD is not used as its own base" {
   add_commit a
@@ -389,10 +337,6 @@ EOF
   [ "$output" = "main" ]
 }
 
-# -----------------------------------------------------------------------------
-# 12. Malformed trailer (truncated digest) is ignored as if absent
-# -----------------------------------------------------------------------------
-
 @test "malformed trailer (short digest) on parent is ignored → main ref" {
   add_commit a
   amend_head_with_raw_message "a
@@ -404,10 +348,6 @@ GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
 }
-
-# -----------------------------------------------------------------------------
-# 13. No gh / no token → status unreachable, trailer-only → main ref
-# -----------------------------------------------------------------------------
 
 @test "no GH_TOKEN → status path skipped, no trailer → main ref" {
   add_commit a
@@ -422,10 +362,6 @@ GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
   [ "$output" = "main" ]
 }
 
-# -----------------------------------------------------------------------------
-# 14. A pending GAIA-Audit status on an ancestor is not a usable base
-# -----------------------------------------------------------------------------
-
 @test "status base: pending GAIA-Audit ancestor is not a usable base" {
   add_commit a
   base="$(sha_of HEAD)"
@@ -439,10 +375,6 @@ GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
 }
-
-# -----------------------------------------------------------------------------
-# 15. A success GAIA-Audit status on an ancestor IS a usable base
-# -----------------------------------------------------------------------------
 
 @test "status base: success GAIA-Audit ancestor is a usable base" {
   add_commit a

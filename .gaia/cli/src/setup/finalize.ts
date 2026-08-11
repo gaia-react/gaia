@@ -1,6 +1,4 @@
 /**
- * `gaia setup finalize` handler.
- *
  * Stamps `.gaia/local/setup-state.json` with `completed_at = now`. The
  * statusline indicator hides once `completed_at` is set, so this is the
  * single canonical signal that the per-machine setup is done.

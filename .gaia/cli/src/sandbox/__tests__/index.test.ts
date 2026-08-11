@@ -1,6 +1,4 @@
 /**
- * Tests for the `gaia sandbox` CLI surface (detect/seed/apply/record/status).
- *
  * Strategy: tmp git repo per test (apply/record/status resolve repoRoot via
  * `resolveMainWorktreeRoot`, which shells `git`), exercise the verbs against
  * `.claude/settings.local.json` and `.gaia/local/sandbox.json`.

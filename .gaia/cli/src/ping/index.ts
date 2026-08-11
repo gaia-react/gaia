@@ -1,15 +1,8 @@
 /**
- * `gaia ping` handler.
- *
- * Flat handler (no `SUBCOMMAND_HANDLERS` map): the single shared entry
- * point the `/gaia-init`, `/setup-gaia`, and `/update-gaia` skills call to
- * fire the adoption ping. Parses `--event <init|setup|update>`
- * plus the per-event field flags, then hands the payload to `postPing`
- * (`./send.ts`), which injects `projectId`/`gaiaVersion`/`platform` and is
- * itself fire-and-forget.
- *
- * Only argument-parsing failures return a non-zero exit code; the network
- * send is best-effort inside `postPing` and never affects the exit code.
+ * The single shared entry point the `/gaia-init`, `/setup-gaia`, and
+ * `/update-gaia` skills call to fire the adoption ping. Hands the parsed
+ * payload to `postPing` (`./send.ts`), which injects
+ * `projectId`/`gaiaVersion`/`platform` and is itself fire-and-forget.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -85,9 +78,6 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as
-  // `string`, not `string | undefined`; check the bound explicitly instead
-  // of comparing the indexed value to `undefined`.
   if (index >= argv.length || argv[index].startsWith('--')) {
     return {message: `${flag} requires a value`, ok: false};
   }

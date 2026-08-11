@@ -85,9 +85,8 @@ const SUBCOMMAND_HANDLERS: Readonly<
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {
-  // argv[0] is undefined when no subcommand is supplied. Node's typings
-  // model argv as `string[]` (no `noUncheckedIndexedAccess`), so we cast
-  // to express the runtime reality.
+  // argv[0] is undefined when no subcommand is supplied; the cast expresses
+  // that runtime reality against Node's `string[]` typing.
   const subcommand = argv[0] as string | undefined;
   const rest = argv.slice(1);
 

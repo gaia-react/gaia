@@ -1,10 +1,3 @@
-/**
- * Tests for `gaia wiki commit-classify`.
- *
- * Strategy: build a sandbox repo, commit a deterministic series of changes,
- * then ask the handler to classify them since the initial baseline. We
- * snapshot the suggestion + reason for each commit and assert against it.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';

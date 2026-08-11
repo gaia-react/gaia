@@ -12,9 +12,8 @@
 # This suite asserts coverage of the shipped table itself. A model added to the
 # fleet gets a row here at the same time it gets a row in the table.
 #
-# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md -- `[ ... ]`
-# and `jq -e` (own exit code) for every non-final assertion, never a bare
-# `[[ ... ]]`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md. Uses `jq -e`
+# (own exit code) for every non-final JSON assertion.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"

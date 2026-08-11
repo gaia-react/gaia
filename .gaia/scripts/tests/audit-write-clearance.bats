@@ -12,9 +12,7 @@
 # carried family, no --anchor-tree, and every write lands unconditionally
 # (overwrites a stale body at the same path).
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS's system bash 3.2
-# does not fail a @test on a false bare `[[ ]]` that is not the last command,
-# so non-final checks use POSIX `[ ]`, `grep -q`, or an explicit `return 1`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -48,9 +46,7 @@ member_digest() {
   bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIB" "$root" "$member"
 }
 
-# -----------------------------------------------------------------------------
 # Required --root, digest resolved from the root, atomic write, body
-# -----------------------------------------------------------------------------
 
 @test "UAT-020: omitting --root exits 2 with a usage message on stderr" {
   run bash "$WRITER" --member code-audit-frontend --provenance earned
@@ -189,11 +185,9 @@ member_digest() {
   [ "$status" -eq 0 ]
 }
 
-# -----------------------------------------------------------------------------
 # Body escaping: the body is built by `jq -n`, so every value is escaped by
 # construction. `version` is the only field read from a file (.gaia/VERSION),
 # which makes it the field a stray `"` or `\` actually reaches.
-# -----------------------------------------------------------------------------
 
 @test "escaping: a version carrying a quote and a backslash still produces valid parseable JSON" {
   # shellcheck disable=SC1003  # the backslash is a literal, which is the point
@@ -274,10 +268,8 @@ member_digest() {
   [ -z "$stray" ]
 }
 
-# -----------------------------------------------------------------------------
 # Clean, zero-finding earned write lands for ALL THREE members. No report, no
 # detector; each member's filename stem equals its own body .digest.
-# -----------------------------------------------------------------------------
 
 @test "clean zero-finding earned write lands for all three members, no detector involved" {
   for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
@@ -303,9 +295,7 @@ member_digest() {
   return 0
 }
 
-# -----------------------------------------------------------------------------
 # Hard cutover: carried / anchor-tree are gone. Rejected as usage errors.
-# -----------------------------------------------------------------------------
 
 @test "usage: --provenance carried is rejected, no marker written" {
   run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance carried
@@ -326,9 +316,7 @@ member_digest() {
   [ "$status" -eq 2 ]
 }
 
-# -----------------------------------------------------------------------------
 # Fail-closed: the digest must derive, or nothing is written (SC7/UAT-013).
-# -----------------------------------------------------------------------------
 
 @test "fails closed (exit non-zero, no marker) when the digest cannot be derived" {
   sha256sum() { return 1; }
@@ -354,9 +342,7 @@ member_digest() {
   [ "$(jq -r .digest "$AUDIT_DIR/${digest}.ok")" = "$digest" ]
 }
 
-# -----------------------------------------------------------------------------
 # Refusals: a first-class, digest-keyed artifact; not evidence-gated
-# -----------------------------------------------------------------------------
 
 @test "refusal: --provenance refused lands at the digest-keyed .refused filename" {
   m="code-audit-maintainer-shell"
@@ -392,10 +378,8 @@ member_digest() {
   return 0
 }
 
-# -----------------------------------------------------------------------------
 # Reader: clearance_member_cleared is earned-only, no carried fallback
 # (the .carried family and clearance_carried_path no longer exist).
-# -----------------------------------------------------------------------------
 
 @test "structural: clearance_carried_path is deleted from the reader" {
   # shellcheck source=/dev/null
@@ -421,10 +405,8 @@ member_digest() {
   return 0
 }
 
-# -----------------------------------------------------------------------------
 # Acceptance, end to end: the reader accepts writer-produced earned markers
 # only, matched to the exact digest and member (UAT-007).
-# -----------------------------------------------------------------------------
 
 @test "acceptance: a writer-produced earned marker satisfies clearance_acceptable; legacy, digest-mismatch, member-mismatch, refused do not" {
   # shellcheck source=/dev/null
@@ -485,11 +467,9 @@ member_digest() {
   [ "$status2" -eq 1 ]
 }
 
-# -----------------------------------------------------------------------------
 # The adopter shape. The release scrub strips the maintainer-only blocks; the
 # roster collapses to the single default member, and the shipped writer
 # produces a valid digest-keyed marker with no maintainer member.
-# -----------------------------------------------------------------------------
 
 # Strip # gaia:maintainer-only:start ... :end blocks (inclusive), as the
 # bundle-time scrub does to shipped files.
@@ -571,7 +551,6 @@ scrub_maintainer_only() {
   [ "$(jq -r .member "$out")" = "code-audit-frontend" ]
 }
 
-# -----------------------------------------------------------------------------
 # --supersede-refusal: a member's explicit, reasoned reversal of its OWN prior
 # same-digest refusal.
 #
@@ -581,7 +560,6 @@ scrub_maintainer_only() {
 # anti-gaming invariant is the second test below: a PLAIN earned write must
 # never clear a refusal, or refusal-precedence decays into "newest marker
 # wins" and re-running an auditor until it passes becomes a merge bypass.
-# -----------------------------------------------------------------------------
 
 @test "supersede: earned + --supersede-refusal removes the sibling refusal and records the reason" {
   m="code-audit-maintainer-shell"
@@ -678,7 +656,6 @@ scrub_maintainer_only() {
   jq -e '.supersedes == null' "$out" >/dev/null
 }
 
-# =============================================================================
 # Re-run carry-forward ledger (--base)
 #
 # The ledger is what makes a refusal self-describing. A refusal blocks a merge
@@ -687,7 +664,6 @@ scrub_maintainer_only() {
 # pin that a refusal writes a ledger carrying the actionable detail, that the
 # ledger is derived from the member's own findings sidecar, and that it never
 # gets in the way of the marker write it rides along with.
-# =============================================================================
 
 # ledger_setup: a base commit, a branch off it, and the audit key both artifacts
 # share. Sets LBASE, LEDGER, and defines sidecar_for.

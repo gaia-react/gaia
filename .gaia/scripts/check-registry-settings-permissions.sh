@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# settings.json <-> registry permission conformance check (task 3.4, the
-# third of D-009's enumerating copies -- after the janitor allowlists
-# (task 3.1/2.3) and block-rm-rf's whitelist (task 3.3), now converted).
+# settings.json <-> registry permission conformance check (the third of
+# D-009's enumerating copies -- after the janitor allowlists and
+# block-rm-rf's whitelist, now converted).
 #
 # .claude/settings.json is static JSON the Claude Code harness reads at
 # startup; nothing at runtime can read the registry and inject permission
@@ -26,8 +26,7 @@
 # check over runtime writers; duplicating it here is scope this task does
 # not own.
 #
-# Dual-mode: source it for the function below, or run it directly (see
-# "Executable entry" at the bottom).
+# Dual-mode: source it for the function below, or run it directly.
 #
 # gaia_check_registry_settings_permissions <repo_root>
 #   Reads .permissions.allow[] and .permissions.deny[] from
@@ -130,7 +129,6 @@ gaia_check_registry_settings_permissions() {
   return $rc
 }
 
-# Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   repo_root="${1:-}"
   if [ -z "$repo_root" ]; then

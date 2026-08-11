@@ -25,11 +25,7 @@
 # re-derivable at any point in the run, which keeps the byte-identity gate honest
 # across a restart.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
-# where a false non-final bare `[[ ]]` does not fail the test, and a `!`-negated
-# command never fails a non-final line on any bash. Absence checks are written as
-# `<positive-condition-for-the-bad-case> && return 1`, which means a test whose
-# LAST statement is such a check must end with an explicit `true`.
+# Assertion style: .claude/rules/bats-assertions.md.
 #
 # Self-exclusion (precedent: the `*-absence.bats` suite under .gaia/scripts/tests/,
 # which documents this same trap; it is deliberately named by glob here, because

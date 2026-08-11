@@ -172,8 +172,8 @@ const buildExactIndex = (
 };
 
 // A `Map` (not `Record<string, string>`) so a lookup miss types as
-// `string | undefined`: with `noUncheckedIndexedAccess` off, a `Record`
-// index would type as `string`, hiding the genuine "not in any group" case.
+// `string | undefined`; a `Record` index would type as `string`, hiding the
+// genuine "not in any group" case.
 const EXACT_INDEX: ReadonlyMap<string, string> = buildExactIndex(GROUP_RULES);
 
 type PrefixMatch = {

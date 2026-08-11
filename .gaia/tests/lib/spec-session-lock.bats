@@ -12,11 +12,7 @@
 # subtree that the walk climbs to the host and that the resolved pid outlives
 # the resolving shell (RT-002).
 #
-# Assertion style (`.claude/rules/bats-assertions.md`): macOS `/bin/bash` (3.2)
-# does not fail a bats @test on a false bare `[[ ... ]]` that is not the test's
-# last command, so non-final substring checks use `grep -qF` via assert_contains
-# and everything else uses POSIX `[ ... ]`. Run under bash 5 via
-# `.gaia/scripts/bats5.sh` so local matches CI.
+# Assertion style: .claude/rules/bats-assertions.md.
 #
 # The walk needs no ledger/repo fixture -- it operates on live process ancestry
 # -- so this suite does NOT use helpers/tmp-spec-repo.sh. Cases 2 and 3 spawn a
@@ -149,7 +145,6 @@ SP
   }
 }
 
-# --- 1: the pinned default ERE matches the host, rejects the .claude/ wrapper ---
 @test "1: default host pattern matches the claude host and rejects the .claude/ wrapper" {
   # Ground-truth level 2 (THE HOST) matches.
   run bash "$SCRIPT" match-host 'claude --dangerously-skip-permissions'
@@ -176,7 +171,7 @@ SP
   [ "$status" -eq 1 ]
 }
 
-# --- 2: resolve-host climbs a real spawned subtree to the host (RT-002 seed) ---
+# RT-002 seed
 @test "2: resolve-host climbs a real spawned subtree to the host" {
   _spawn_fake_host
 
@@ -195,7 +190,7 @@ SP
   [ "$got_lstart" = "$(ps -o lstart= -p "$HOST")" ]
 }
 
-# --- 3: the resolved pid outlives the shell that resolved it (RT-002 e2e seed) ---
+# RT-002 e2e seed
 @test "3: the resolved pid survives the resolving shell's exit" {
   _spawn_fake_host
 
@@ -210,7 +205,6 @@ SP
   kill -0 "$captured"
 }
 
-# --- 4: no matching ancestor -> exit 1, empty stdout ---
 @test "4: no matching ancestor exits 1 with empty stdout" {
   # An unmatchable pattern: the real ancestry never matches it, so the walk
   # climbs to init and reports no host found.
@@ -220,7 +214,6 @@ SP
   [ -z "$output" ]
 }
 
-# --- 5: the walk is bounded and never hangs ---
 @test "5: the walk is bounded and returns without hanging" {
   # No timeout(1) on stock macOS, so bound it by hand: background the call, poll
   # briefly, kill on hang. The unmatchable pattern forces a full climb to init,
@@ -243,7 +236,6 @@ SP
   [ "$exit_status" -eq 1 ]
 }
 
-# --- 6: unknown subcommand -> exit 1 with a usage message ---
 @test "6: unknown subcommand exits 1 with a usage message" {
   run bash "$SCRIPT" not-a-subcommand
   [ "$status" -eq 1 ]
@@ -273,7 +265,6 @@ SP
   [ "$output" = "dormant" ]
 }
 
-# --- 9: status = dormant, no lock file at all ---
 @test "9: status reports dormant when no lock file exists" {
   run bash "$SCRIPT" status "$REPO" "SPEC-952"
   [ "$status" -eq 0 ]
@@ -297,7 +288,6 @@ SP
   [ "$output" = "dormant" ]
 }
 
-# --- 11: acquire records a pid that outlives its own acquiring shell ---
 @test "11: acquire records the fixture host pid and status reads live after the acquiring shell exits" {
   _spawn_fake_host
 
@@ -395,7 +385,7 @@ SP
   [ "$status" -eq 0 ]
 }
 
-# --- 17: acquire --override force-reclaims a live foreign lock (COV-001/DP-001) ---
+# COV-001/DP-001
 @test "17: acquire --override exits 0 and reclaims a live foreign lock" {
   _spawn_alive
   _write_lock "$REPO" "SPEC-962" "$(uname -n)" "$ALIVE_PID" "$ALIVE_LSTART" "foreign-nonce"

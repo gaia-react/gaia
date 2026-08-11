@@ -317,7 +317,6 @@ _snapshot() {
   assert_files_identical "$REPO/.gaia/local/specs/SPEC-003/REPORT.md" "$fold_before"
 }
 
-# --- 13: idempotent re-run after sibling migration ---------------------------
 
 @test "13: re-running folderize after sibling migration is a no-op" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" \
@@ -354,7 +353,6 @@ _snapshot() {
   assert_files_identical "$REPO/.gaia/local/specs/archived/SPEC-000/REPORT.md" "$c_report"
 }
 
-# --- 10: read-only modes take no lock and create no folder -------------------
 
 @test "10: highest / in_progress over foldered specs take no lock, create no folder" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-007)"

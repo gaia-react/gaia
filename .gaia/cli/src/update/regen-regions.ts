@@ -3,7 +3,7 @@
  *   [--conflicted <repo-relative-path>]... [--absent-path <repo-relative-path>]...
  *   [--skip-region <id>]... [--json]` handler.
  *
- * Regeneration runner for SPEC-057's declared generated regions. `merge-region.ts`
+ * Regeneration runner for declared generated regions. `merge-region.ts`
  * only classifies a region's divergence; this command is what makes a declared
  * region correct again after an update, by running its shipped regeneration
  * command against the adopter's OWN post-merge tree. Unlike the oracle, this
@@ -1661,8 +1661,6 @@ const processRegion = (
   }
 
   const decl = parsedDecl.declaration;
-  // parseDeclaration already recorded decl.id in seenIds as soon as it was
-  // confirmed non-empty and unique; nothing further to record here.
   const commandArgv = [decl.interpreter, decl.operand, ...decl.args];
 
   const skipReason = computeSkipReason(decl, {
@@ -1887,10 +1885,9 @@ export const run = (
     backupDir,
     conflictedSet: new Set(parsed.flags.conflicted),
     realRoot,
-    // Resolved here, once, rather than at each status call: it is a property
-    // of `--root` alone, so no region can move it. Not resolved at all when
-    // there is no region to process, which is the ordinary shape of a release
-    // predating the region mechanism, and the value is then unreachable.
+    // Not resolved at all when there is no region to process, which is the
+    // ordinary shape of a release predating the region mechanism, and the
+    // value is then unreachable.
     repoPrefix: rawRegions.length > 0 ? resolveRepoPrefix(root) : null,
     report: {
       backedUp: [],
@@ -1919,10 +1916,6 @@ export const run = (
   // `(manifest)` names the manifest itself rather than a region: the refusal
   // is run-level, and the parentheses keep it clear of a real declared id,
   // which `parseDeclaration` requires to be a non-empty string.
-  //
-  // Two shapes reach the same refusal. A manifest that is not an object at
-  // all has no `regions` key to inspect, so it is caught by shape; a manifest
-  // that is an object carrying a wrong-typed `regions` is caught by the key.
   if (manifestShape !== null)
     context.report.refused.push({
       kind: 'manifest',

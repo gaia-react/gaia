@@ -17,10 +17,7 @@
 # token-cost-e2e.bats (tally -> rollup) in shape and non-circular,
 # hand-computed-oracle discipline.
 #
-# Assertion style note (`.claude/rules/bats-assertions.md`): macOS's system
-# `/bin/bash` (3.2) does not fail a bats @test on a false bare `[[ ... ]]`
-# that is not the test's last command, so this suite uses `[ ]`, `grep -qF`,
-# or an explicit `return 1` for every non-final assertion.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # ---------- fixtures reused from task-tally-core (never re-derived) ----------
 # fixtures/token-tally/auditreview/projects (session fixtureauditreview0001):
@@ -140,10 +137,8 @@ ledger_path() {
   printf '%s/.gaia/local/telemetry/cost.jsonl' "$REPO"
 }
 
-# =====================================================================
 # 1 + 1b. Adversarial-audit nesting via the REAL breadcrumb WRITER (DP-001,
 # UAT-001, UAT-002)
-# =====================================================================
 @test "1+1b: gaia_audit_window_write produces the FC-1 spec breadcrumb, and the real spec tally nests audit.adversarial from it" {
   CACHE="$BATS_TEST_TMPDIR/cache-1"
   mkdir -p "$CACHE"
@@ -226,9 +221,7 @@ ledger_path() {
   [ "$(led '.total')" -eq 214 ]
 }
 
-# =====================================================================
 # 2. UAT-003: subset invariant, phase totals unaffected, no double-count
-# =====================================================================
 @test "2: audit buckets are a strict subset, phase total/buckets are IDENTICAL with vs without the nesting, one row only" {
   # Without any breadcrumb (empty cache dir).
   NOBC_CACHE="$BATS_TEST_TMPDIR/nobc-cache"
@@ -277,9 +270,7 @@ ledger_path() {
   [ "$output" -eq 0 ]
 }
 
-# =====================================================================
 # 3. UAT-004: elapsed_seconds is the union span, <= sum of individual spans
-# =====================================================================
 @test "3: elapsed_seconds equals the union span of overlapping sub-agents, strictly less than the sum of their individual spans" {
   CACHE="$BATS_TEST_TMPDIR/cache-3"
   mkdir -p "$CACHE"
@@ -314,9 +305,7 @@ ledger_path() {
   [ "$(led '.total')" -eq 54 ]
 }
 
-# =====================================================================
 # 4. UAT-009 degrade: absent breadcrumb / session_id mismatch omit .audit
-# =====================================================================
 @test "4: degrade -- absent breadcrumb and a session_id-mismatched breadcrumb both omit .audit while the phase record is still written" {
   # Absent: no breadcrumb file at all for SPEC-032 in this cache dir.
   EMPTY_CACHE="$BATS_TEST_TMPDIR/empty-cache"
@@ -352,10 +341,8 @@ ledger_path() {
   [ ! -f "$bc_path" ]
 }
 
-# =====================================================================
 # 5/6/7/10. Review records: resolver association (UAT-008), counted once
 # (UAT-006), ad-hoc (UAT-007), counted-once across triggers, spurious guard
-# =====================================================================
 @test "5: --action review with no association is ad-hoc (null/null), not partial, and never surfaces under any feature's rollup (UAT-007/UAT-010)" {
   LEDGER="$BATS_TEST_TMPDIR/ledger-adhoc.jsonl"
   run bash "$TALLY" --action review \
@@ -441,10 +428,8 @@ ledger_path() {
   [ ! -f "$(ledger_path)" ]
 }
 
-# =====================================================================
 # 9. UAT-010: back-compat -- pre-existing rows untouched, schema_version 1,
 # cost-represented and token-rollup unaffected by the new audit/review rows
-# =====================================================================
 write_legacy_row() {
   # write_legacy_row <ledger> <kind> <spec_id> <session_id> <f> <cw> <cr> <o> <ts>
   local ledger="$1" kind="$2" spec_id="$3" sid="$4" f="$5" cw="$6" cr="$7" o="$8" ts="$9"

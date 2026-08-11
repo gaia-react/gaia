@@ -1,6 +1,4 @@
 /**
- * Tests for the `gaia update` subcommand router.
- *
  * The router hosts only the field-aware `merge-workspace` oracle. The
  * generic whole-file `merge` walk is retired: the `/update-gaia` skill
  * hand-walks the decision table (Step 7) and field-merges `package.json`

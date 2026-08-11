@@ -5,8 +5,7 @@
 # asserts every file in the hardcoded lockstep consumer set is matched by
 # audit_path_is_machinery, and turns any gap into a caught error.
 #
-# Assertion style (.claude/rules/bats-assertions.md): non-final checks use POSIX
-# `[ ]`, `grep -q`, or an explicit `|| return 1`, never a bare `[[ ]]`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -16,21 +15,17 @@ setup() {
   [ -f "$CHECK" ] || skip "audit-machinery-complete.sh not present"
 }
 
-# ---------------------------------------------------------------------------
 # Positive: against the intended final machinery list, the check exits 0.
-# ---------------------------------------------------------------------------
 
 @test "positive: the completeness check passes against the committed machinery list" {
   run bash "$CHECK"
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # Negative: remove a gate file's entry from AUDIT_MACHINERY_PATHS in a sandbox
 # copy and prove the check names it and exits non-zero. post-audit-status.sh is
 # chosen because it is covered ONLY by its exact entry (no `/**` prefix also
 # covers .claude/hooks/*.sh), so removing that one line makes it unmatched.
-# ---------------------------------------------------------------------------
 
 @test "negative: a gate file removed from AUDIT_MACHINERY_PATHS is named and exits non-zero" {
   SB="$BATS_TEST_TMPDIR/sandbox"
@@ -48,13 +43,11 @@ setup() {
   grep -qF "post-audit-status.sh" <<<"$err"
 }
 
-# ---------------------------------------------------------------------------
 # Negative: remove the code-audit-github-workflows agent file's entry from
 # AUDIT_MACHINERY_PATHS in a sandbox copy and prove the check names it and
 # exits non-zero. Chosen because it is covered ONLY by its exact entry (no
 # `/**` prefix also covers .claude/agents/*.md), so removing that one line
 # makes it unmatched: exactly the fail-open a forgotten registration produces.
-# ---------------------------------------------------------------------------
 
 @test "negative: code-audit-github-workflows.md removed from AUDIT_MACHINERY_PATHS is named and exits non-zero" {
   SB="$BATS_TEST_TMPDIR/sandbox-workflows"
@@ -72,10 +65,8 @@ setup() {
   grep -qF "code-audit-github-workflows.md" <<<"$err"
 }
 
-# ---------------------------------------------------------------------------
 # Fail-closed on an unloadable machinery lib: a sandbox copy with no lib/ at all
 # cannot classify, so it must exit non-zero, never falsely pass.
-# ---------------------------------------------------------------------------
 
 @test "fail-closed: a copy with no machinery lib exits non-zero" {
   SB="$BATS_TEST_TMPDIR/nolib"

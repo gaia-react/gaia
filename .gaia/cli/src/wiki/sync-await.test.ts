@@ -1,6 +1,4 @@
 /**
- * Tests for `gaia wiki sync await`.
- *
  * Strategy mirrors `sync-land.test.ts`: a real (empty) git repo so
  * `resolveRepoRoot` has something to resolve, then an injected fake
  * `CommandRunner` keyed off argv (with per-argv call sequencing, so a

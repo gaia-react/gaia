@@ -1,8 +1,4 @@
 /**
- * Tests for the `gaia-maintainer release manifest` CLI's flag grammar: argv
- * parsing, unknown-flag rejection, and flag-combination validation, all
- * exercised through `run(...)`.
- *
  * The check/emit execution tests (manifest content, `--check` reporting, the
  * answer gate) live in `manifest-cli.test.ts`.
  */

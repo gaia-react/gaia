@@ -1,6 +1,4 @@
 /**
- * Tests for `gaia setup link-worktree` (SPEC-005 Phase 1).
- *
  * Strategy: each test gets a fresh `setupWorktreeSandbox()` that creates
  * a real main checkout + linked worktree under one `mkdtemp`'d parent so
  * `git rev-parse --git-common-dir` resolves correctly.

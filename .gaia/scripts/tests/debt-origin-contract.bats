@@ -23,12 +23,9 @@
 # .claude/rules/bats-assertions.md):
 #   source .gaia/scripts/bats5.sh && bats5 .gaia/scripts/tests/debt-origin-contract.bats
 #
-# Assertion style follows .claude/rules/bats-assertions.md: POSIX `[ ... ]`
-# for equality/status/empty checks, `grep -qF` for substring checks, a
-# non-final absence check is written as a positive match plus an explicit
-# `return 1` (never a `!`-negation, which `set -e` exempts on every bash
-# version), and every expected value is a literal rather than a value this
-# suite recomputes from the same source it is checking.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
+# Every expected value is a literal rather than a value this suite
+# recomputes from the same source it is checking.
 
 require_jq() {
   command -v jq >/dev/null 2>&1 && return 0
@@ -182,6 +179,10 @@ strip_common_indent() {
   # concept page, or CHANGELOG.md. A new emitter appearing with no decision
   # made about it is exactly what this half catches.
   #
+  # The maintainer comment-worthiness rule carries the token in its inventory
+  # of comment-shaped data a prose sweep must not touch. Naming the marker is
+  # the point of that row: a sweeper cannot avoid what the rule will not spell.
+  #
   # CHANGELOG.md carries the token because task-docs must reproduce the
   # rollout command byte-identically, and that command's --jq program
   # contains the literal `<!-- gaia-debt-origin:`. It is a release note
@@ -200,6 +201,7 @@ strip_common_indent() {
         ".claude/skills/file-tech-debt/SKILL.md" | \
         ".gaia/scripts/debt-origin-lib.sh" | \
         "wiki/concepts/Audit Disposition and Debt Fix.md" | \
+        ".claude/rules/maintainers/comment-worthiness-shell.md" | \
         "CHANGELOG.md") ;;
       *)
         printf 'unaccounted-for file names gaia-debt-origin: %s\n' "$f" >&2

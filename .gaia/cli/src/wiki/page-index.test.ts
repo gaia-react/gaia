@@ -1,6 +1,3 @@
-/**
- * Tests for `gaia wiki page-index`.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
@@ -241,11 +238,8 @@ No outbound links.
     expect(titles).not.toContain('Hot');
 
     const byTitle = new Map(index.pages.map((page) => [page.title, page]));
-    // Solo: 1 from index + 1 from hot = 2 inbound, no orphan.
     expect(byTitle.get('Solo')?.inbound_links).toBe(2);
-    // AlsoSolo: 1 from index + 1 from hot = 2 inbound, no orphan.
     expect(byTitle.get('AlsoSolo')?.inbound_links).toBe(2);
-    // Overviewed: 1 from overview only.
     expect(byTitle.get('Overviewed')?.inbound_links).toBe(1);
   });
 

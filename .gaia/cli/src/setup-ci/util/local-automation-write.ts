@@ -2,10 +2,8 @@
  * Atomic-write helper for `.gaia/local/automation.json` (the gitignored
  * personal nudge state).
  *
- * Slice 1 ships only the read; slice 4 adds the write (per Phase B's
- * personal-dismiss flow). Mirrors the `writeFileSync(tmp);
- * renameSync(tmp, target)` idiom used by `automation/util/state-write.ts`
- * and the wiki state writers.
+ * Mirrors the `writeFileSync(tmp); renameSync(tmp, target)` atomic-write
+ * idiom used by the other state writers in this CLI.
  *
  * Validates against `LocalAutomationSchema` before writing; no caller
  * can persist a malformed shape.

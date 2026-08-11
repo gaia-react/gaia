@@ -35,7 +35,7 @@ describe('exclude-parser parity (#839)', () => {
   });
 
   test('renderExcludeRegex is byte-identical to the reference pipeline for the full escape class, multi-segment paths, comments, and blanks', () => {
-    // Covers every metacharacter `escapeRegExp` handles (UAT-002): . + $ (
+    // Covers every metacharacter `escapeRegExp` handles: . + $ (
     // ) { } [ ] ^ | ? * \. Also covers a multi-segment `/` dir-prefix entry
     // (`.gaia/scripts`), a `+`-bearing literal mirroring GAIA's own
     // `app/routes/_public+/`, a comment line, and a blank line.

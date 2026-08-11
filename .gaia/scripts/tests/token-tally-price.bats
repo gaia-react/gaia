@@ -9,9 +9,8 @@
 # lesson from token-cost-e2e.bats: a silently-guarded jq pipeline can mask a
 # wrong answer).
 #
-# Assertion style: bash-3.2-safe (grep -qF / `[ ... ]` / explicit `return 1`),
-# per .claude/rules/bats-assertions.md and the token-cost-e2e.bats reference
-# pattern -- no bare `[[ ... ]]` for anything but the test's final command.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md. Follows the
+# token-cost-e2e.bats reference pattern.
 #
 # Fixtures:
 #
@@ -117,7 +116,7 @@ setup() {
   done
 }
 
-# ---------- 2. UAT-005: rate table missing sonnet -> opus-only price ----------
+# UAT-005
 @test "UAT-005: rate table missing sonnet -> opus-only dollars via cost.json" {
   run bash "$SCRIPT" --action execute --spec-id SPEC-022 --plan-slug spec-022-dollar-cost \
     --out-dir "$OUTDIR" --session-id fixturemultimodel0001 \

@@ -13,10 +13,7 @@
 # the guard line's byte-identity across every dispatch prompt, the
 # retry-prefix template, and the absence of any machine-specific path.
 #
-# Assertion style note (`.claude/rules/bats-assertions.md`): macOS's system
-# `/bin/bash` (3.2) does not fail a bats @test on a false bare `[[ ... ]]`
-# that isn't the test's last command, so assertions below use `grep -q` /
-# `[ ]` (real exit codes) or an explicit `return 1`, never a bare `[[ ]]`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -82,9 +79,7 @@ assert_predicate_retry_fallback() {
   grep -qF -- "inline fallback" <<<"$content"
 }
 
-# ---------------------------------------------------------------------------
 # 0. The edited surfaces exist
-# ---------------------------------------------------------------------------
 
 @test "edited surfaces exist: spec.md, plan.md, code-audit-frontend.md, helper" {
   [ -f "$SPEC_MD" ]
@@ -93,9 +88,7 @@ assert_predicate_retry_fallback() {
   [ -f "$HELPER" ]
 }
 
-# ---------------------------------------------------------------------------
 # 1. Guard-line byte-identity across all 7 FC-6 prompts (FC-3; UAT-004)
-# ---------------------------------------------------------------------------
 
 @test "guard line: spec.md 6a self-review dispatch prompt" {
   content="$(section_between "$SPEC_MD" '^#### 6a' '^#### 6b')"
@@ -139,12 +132,10 @@ assert_predicate_retry_fallback() {
   grep -qF -- "$GUARD_LINE" <<<"$content"
 }
 
-# ---------------------------------------------------------------------------
 # 2. Predicate + one-retry + inline-fallback in each of the 9 FC-7 sites
 #    (Directive #8). Sites 3/4/5 are delimited by the `##### 7b-i/ii/iii`
 #    sub-headings; an empty section here is a real Phase-2 gap, not a
 #    fallback to a whole-7b grep.
-# ---------------------------------------------------------------------------
 
 @test "wiring: spec.md 6a self-review site" {
   content="$(section_between "$SPEC_MD" '^#### 6a' '^#### 6b')"
@@ -200,9 +191,7 @@ assert_predicate_retry_fallback() {
   assert_predicate_retry_fallback "$content"
 }
 
-# ---------------------------------------------------------------------------
 # 2b. FC-4 retry-prefix template present in each edited file (UAT-002)
-# ---------------------------------------------------------------------------
 
 @test "retry-prefix template embedded verbatim in spec.md" {
   grep -qF -- "$RETRY_PREFIX" "$SPEC_MD"
@@ -216,18 +205,14 @@ assert_predicate_retry_fallback() {
   grep -qF -- "$RETRY_PREFIX" "$CRA_MD"
 }
 
-# ---------------------------------------------------------------------------
 # 4. No machine-specific paths in the changed files (UAT-004)
-# ---------------------------------------------------------------------------
 
 @test "portability: no /Users/ or /home/ literal paths in the edited surfaces" {
   run grep -REn "/Users/|/home/" "$SPEC_MD" "$PLAN_MD" "$CRA_MD" "$HELPER"
   [ "$status" -ne 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # 5. The helper is referenced, not reinvented
-# ---------------------------------------------------------------------------
 
 @test "helper reference: spec.md calls the real audit-noop-detect.sh path" {
   grep -qF -- ".gaia/scripts/audit-noop-detect.sh" "$SPEC_MD"
@@ -241,14 +226,12 @@ assert_predicate_retry_fallback() {
   grep -qF -- ".gaia/scripts/audit-noop-detect.sh" "$CRA_MD"
 }
 
-# ---------------------------------------------------------------------------
 # 6. Shared clearance writer: each Code Audit Team member's definition invokes
 #    the ONE shared writer, and NONE still carries the inline marker `printf`
 #    or the `[ ! -f "$marker" ]` idempotence guard. This negative assertion is
 #    load-bearing: a missed producer keeps writing a legacy-bodied marker that
 #    every existence-only consumer honors, so the gate passes and the only
 #    symptom is a member that silently never carries forward.
-# ---------------------------------------------------------------------------
 
 @test "writer surfaces exist: the three agent definitions and the writer script" {
   [ -f "$CRA_MD" ]
@@ -270,12 +253,10 @@ assert_predicate_retry_fallback() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # 7. PLAN-001: CI's agent tool policy must grant the writer, or the required
 #    GAIA-Audit check never stamps. The `--allowedTools` line names the writer
 #    in the live workflow AND both byte-identical bundled templates, and all
 #    three agree.
-# ---------------------------------------------------------------------------
 
 @test "PLAN-001: --allowedTools names the writer in the workflow and both templates, all three identical" {
   local line_wf line_src line_art
@@ -297,13 +278,11 @@ assert_predicate_retry_fallback() {
   [ "$a" = "$b" ]
 }
 
-# ---------------------------------------------------------------------------
 # UAT-013: the frontend member's self-skip block invokes the UNFILTERED spawn
 # oracle (resolve-audit-spawn.sh --no-carry-forward). A filtered self-skip would
 # stand the member down on "I was pre-cleared", disabling the one lever that can
 # catch a bad carry. The block must contain ZERO bare resolve-audit-spawn.sh
 # calls (every occurrence carries --no-carry-forward).
-# ---------------------------------------------------------------------------
 
 @test "UAT-013: the frontend self-skip invokes resolve-audit-spawn.sh --no-carry-forward" {
   block="$(section_between "$CRA_MD" '^## Remit and self-skip' '^## Extension Loading')"

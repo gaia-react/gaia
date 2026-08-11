@@ -159,8 +159,8 @@ jobs:
       # Marketplace option here is a CONTAINER action, and GitHub builds a
       # container action's image during job setup, before any step-level `if:`
       # can gate it off. That cost is paid on entering the job rather than on
-      # reaching the step: measured at 15s of a 24s run in which every step
-      # below was filtered out and nothing else ran at all.
+      # reaching the step, so it is not avoided even on a run where every step
+      # below gets filtered out and nothing else runs at all.
       #
       # Same step id and same `current-version` output name, so the two
       # `npm_package_version:` consumers below (Vitest, Playwright) read

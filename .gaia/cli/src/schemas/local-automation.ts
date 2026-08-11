@@ -2,9 +2,9 @@
  * Zod schema + read helpers for `.gaia/local/automation.json`, the
  * gitignored personal nudge state.
  *
- * Slice 1 only reads this file; the dismissal write lands in
- * `/setup-gaia` (a later slice). The path constant + read helper
- * exist now so all later slices share one canonical source.
+ * The path constant and read helper are shared with the write helper in
+ * `setup-ci/util/local-automation-write.ts`, so both sides agree on one
+ * canonical source.
  */
 import {z} from 'zod';
 import {existsSync, readFileSync} from 'node:fs';

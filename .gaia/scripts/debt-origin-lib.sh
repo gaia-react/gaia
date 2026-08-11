@@ -345,7 +345,6 @@ gaia_debt_origin_line() {
   return 0
 }
 
-# Executable entry.
 if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
   gaia_debt_origin_line "$@"
   exit 0

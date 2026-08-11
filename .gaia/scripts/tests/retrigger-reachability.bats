@@ -31,8 +31,7 @@
 # `GAIA-Audit` is exempt: it is a commit STATUS the audit posts about itself,
 # not a workflow job, so it has no workflow to dispatch.
 #
-# Assertion style (.claude/rules/bats-assertions.md): non-final checks use
-# POSIX `[ ]`, `grep -q`, or an explicit `return 1`, never a bare `[[ ]]`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # The negative tests below point `VERIFY` at a doctored copy and restore it on
 # every exit path. bats runs each `@test` body in its own subshell and re-runs
@@ -99,10 +98,8 @@ setup() {
   require_repo_path -f "$READ_CONFIG" "read-audit-ci-config.sh" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # Helpers. Each takes the workflows dir as an argument so the negative test can
 # point them at a doctored sandbox copy and prove the assertions are not hollow.
-# ---------------------------------------------------------------------------
 
 # Every context `REQUIRED_CONTEXTS` declares, scraped by literal shape.
 declared_contexts() {
@@ -176,7 +173,6 @@ workflow_for_context() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # YAML extraction, python3 + PyYAML.
 #
 # Workflow structure is parsed rather than scraped. Every shape a line-oriented
@@ -204,7 +200,6 @@ workflow_for_context() {
 # an unresolved context precisely because section 1 already reports it. So a
 # narrow scrape costs a false alarm here, never the false green a silent drop-out
 # would cost. Parsing buys nothing these four do not already have.
-# ---------------------------------------------------------------------------
 
 # Gate only the tests that parse YAML, so the REQUIRED_CONTEXTS tests still run
 # where PyYAML is absent. On CI the parser is a precondition rather than a maybe:
@@ -506,7 +501,6 @@ poller_window_minutes() {
   ' "$1"
 }
 
-# ---------------------------------------------------------------------------
 # 0. This suite's own two gates. Each is a single point where a whole population
 #    of tests below can be turned off at once, and on a CI runner each has to
 #    FAIL rather than skip. Nothing else in this file would notice if either
@@ -523,7 +517,6 @@ poller_window_minutes() {
 #    Between them these two are the only place this file stands a test down. A
 #    bare `skip` anywhere else would be a third gate reporting `ok ... # skip`
 #    with nothing watching it.
-# ---------------------------------------------------------------------------
 
 @test "the parser gate fails on a CI runner and still skips off CI" {
   local shim="$BATS_TEST_TMPDIR/retrigger-no-parser" rc
@@ -593,9 +586,7 @@ assert_repo_path_gate() {
   assert_repo_path_gate -d "$BATS_TEST_TMPDIR/a-file"
 }
 
-# ---------------------------------------------------------------------------
 # 1. Every declared-required context's workflow can be dispatched at all.
-# ---------------------------------------------------------------------------
 
 @test "every declared-required context's workflow declares workflow_dispatch" {
   local ctx file gaps=""
@@ -614,11 +605,9 @@ assert_repo_path_gate() {
   [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
 }
 
-# ---------------------------------------------------------------------------
 # 2. The job actually RUNS on a dispatch. A job gated to `pull_request` reports
 #    `skipped`, and the stamp mirrors that conclusion onto the self-heal HEAD,
 #    where it satisfies nothing.
-# ---------------------------------------------------------------------------
 
 @test "every declared-required context's job admits workflow_dispatch in its if:" {
   local ctx file expr gaps=""
@@ -648,7 +637,6 @@ assert_repo_path_gate() {
   [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
 }
 
-# ---------------------------------------------------------------------------
 # 2b. The job's own steps have to run too, or the job concludes `success`
 #     having done nothing and the audit stamps a vacuously green required check
 #     onto the self-heal HEAD.
@@ -660,7 +648,6 @@ assert_repo_path_gate() {
 #     output alone silently skips. A job whose filter is a `run:` step that
 #     computes its own base (tests.yml, chromatic.yml) still populates the
 #     output on a dispatch and is correctly not subject to this rule.
-# ---------------------------------------------------------------------------
 
 # How the job gates its `dorny/paths-filter` step: `pull_request` (so the outputs
 # it produces are unset on the dispatch lane), `other` for any other gate, or
@@ -729,10 +716,8 @@ job_filter_dependent_step_ifs() {
   [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
 }
 
-# ---------------------------------------------------------------------------
 # 3. Something actually dispatches it: the workflow's display name is listed in
 #    retrigger_workflows.
-# ---------------------------------------------------------------------------
 
 @test "every declared-required context's workflow is listed in retrigger_workflows" {
   local ctx file wf_name names gaps=""
@@ -752,7 +737,6 @@ job_filter_dependent_step_ifs() {
   [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
 }
 
-# ---------------------------------------------------------------------------
 # 4. Every dispatched workflow finishes inside the poller's window. The poller
 #    waits on the RUN, and a run completes only when all of its jobs do, so one
 #    uncapped job holds the whole run past the window: the poller logs `did not
@@ -772,7 +756,6 @@ job_filter_dependent_step_ifs() {
 #    while each hop of a chain also waits in the queue. A workflow's own hop
 #    count therefore sets its ceiling: one job clears at 20m under a 25m window,
 #    while a two-job chain has to fit 15m.
-# ---------------------------------------------------------------------------
 
 # Every timeout gap the workflow named <workflow-name> presents under a
 # <window>-minute poll window, one line per gap, empty when it has none.
@@ -858,13 +841,11 @@ workflow_timeout_gaps() {
   [ -z "$gaps" ] || { printf '%s\n' "$gaps" >&2; return 1; }
 }
 
-# ---------------------------------------------------------------------------
 # Negative: prove the assertions above are not hollow. Strip the
 # `workflow_dispatch:` trigger and re-gate the job to `pull_request` in a
 # sandbox copy, then re-run both checks against it and require them to catch it.
 # cli-tests.yml is the subject because `Vitest (.gaia/cli)` is a declared-
 # required context whose absence on a self-heal HEAD blocks the merge.
-# ---------------------------------------------------------------------------
 
 @test "negative: a required context's workflow that cannot be dispatched is caught" {
   local sb="$BATS_TEST_TMPDIR/workflows"
@@ -894,13 +875,11 @@ workflow_timeout_gaps() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # Negative: a job whose `if:` is a folded scalar. A line-oriented read of the
 # gate returns the literal `>-`, which matches no condition and no event, so the
 # job silently leaves the scope of the two tests that read its gate while both
 # keep reporting green. Parsing is what makes the folded and inline spellings the
 # same condition, so prove they read identically.
-# ---------------------------------------------------------------------------
 
 @test "negative: a folded if: is read as its value, not as the fold marker" {
   local sb="$BATS_TEST_TMPDIR/folded"
@@ -936,13 +915,11 @@ YAML
   printf '%s' "$folded" | grep -qF -- "workflow_dispatch"
 }
 
-# ---------------------------------------------------------------------------
 # Negative: an unreadable workflow must be loud at every helper that reads one.
 # Returning empty output with a zero status is what lets a malformed workflow
 # drop out of a loop while the test reports green, so every mode has to fail
 # instead. `subject` is valid YAML that is not a workflow, plus a file that does
 # not parse at all.
-# ---------------------------------------------------------------------------
 
 @test "negative: an unparseable or job-less workflow fails every extractor" {
   local sb="$BATS_TEST_TMPDIR/unreadable"
@@ -981,11 +958,9 @@ YAML
   [ "$status" -ne 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # Negative: a cosmetic reformat of REQUIRED_CONTEXTS defeats the literal scrape.
 # Without the extraction guard this empties every loop above and the whole suite
 # reports green having asserted nothing, so prove the guard catches it.
-# ---------------------------------------------------------------------------
 
 @test "negative: a REQUIRED_CONTEXTS reformat that defeats the scrape is caught" {
   local original="$VERIFY"
@@ -1003,12 +978,10 @@ YAML
   [ "$status" -ne 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # Negative: two entries sharing one line. The scrape emits only the first of
 # them, so every loop above silently stops covering the second. A line-based
 # count agrees with that partial scrape and the guard passes; counting quoted
 # tokens is what makes the two disagree.
-# ---------------------------------------------------------------------------
 
 @test "negative: two REQUIRED_CONTEXTS entries on one line are caught" {
   local original="$VERIFY" want ctx
@@ -1056,11 +1029,9 @@ YAML
   [ "$status" -ne 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # Negative: an unquoted entry. Valid bash, and invisible to the scrape's `^  "`
 # anchor, so a counter that only recognized quoted tokens would agree with the
 # partial scrape and pass while that context went unchecked by every loop above.
-# ---------------------------------------------------------------------------
 
 @test "negative: an unquoted REQUIRED_CONTEXTS entry is caught" {
   local original="$VERIFY" want
@@ -1097,11 +1068,9 @@ YAML
   [ "$status" -ne 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # Negative: both shapes the timeout assertion exists to catch. A job capped past
 # the poller window and a job with no cap at all both leave the poller stamping
 # nothing, so prove the scrape reports each rather than reading them as capped.
-# ---------------------------------------------------------------------------
 
 @test "negative: a dispatched job with no cap, or one past the window, is caught" {
   local sb="$BATS_TEST_TMPDIR/workflows"
@@ -1148,7 +1117,6 @@ YAML
   [ -z "$cap" ]
 }
 
-# ---------------------------------------------------------------------------
 # Negative: `workflow_timeout_gaps`'s own decisions. Its only other caller reads
 # the real repo, where every branch it takes is the healthy one, so each decision
 # there can be neutered with the whole suite still green. Drive every gap shape
@@ -1156,7 +1124,6 @@ YAML
 # returns a constant would satisfy the other four. Four of the five arms, not
 # all five: the critical-path arm cannot be reached while `ids` and `path` read
 # the same file behind the same guards, which the helper's own comment states.
-# ---------------------------------------------------------------------------
 
 @test "negative: every timeout gap shape is reported, and a clean workflow reports none" {
   local sb="$BATS_TEST_TMPDIR/gapshapes"
@@ -1239,12 +1206,10 @@ YAML
   [ -z "$gaps" ]
 }
 
-# ---------------------------------------------------------------------------
 # Negative: the poll window is derived from the poller, not restated. Nothing
 # else executes that derivation against a known input, so replacing it with the
 # number it happens to produce today would pass every other test in the suite
 # while the ceiling stopped tracking the poller it is meant to follow.
-# ---------------------------------------------------------------------------
 
 # A stub in the shape `poller_window_minutes` reads: a short run-id loop, then
 # the completion loop whose cadence is the answer, then the warning the
@@ -1306,7 +1271,6 @@ write_poller_fixture() {
   [ -z "$(poller_window_minutes "$sb/reworded.sh")" ]
 }
 
-# ---------------------------------------------------------------------------
 # Negative: a `needs:` chain whose jobs are each individually under the ceiling
 # but whose SUM is not. Comparing caps one at a time reads this as safe, which
 # is the whole reason the critical path is what gets compared.
@@ -1315,7 +1279,6 @@ write_poller_fixture() {
 # list, and a block sequence at either the parent key's own indentation or nested
 # under it, and all of them parse to the same list. Anchoring on one spelling is
 # what let a chain read as the larger single cap instead of the sum.
-# ---------------------------------------------------------------------------
 
 # A two-job chain, `second` needing `first`, with `needs:` written the named way
 # and each job capped at $2 minutes.
@@ -1380,12 +1343,10 @@ write_chain_fixture() {
   done
 }
 
-# ---------------------------------------------------------------------------
 # Negative: the per-hop margin is load-bearing, not decorative. A chain can clear
 # the flat one-margin-per-run ceiling and still overrun the poller, because every
 # hop waits in the queue on its own. Three jobs capped 6 total 18m, inside a flat
 # 20m ceiling, and past the 10m that three hops actually leave.
-# ---------------------------------------------------------------------------
 
 @test "negative: a chain inside the flat ceiling but past its per-hop ceiling is caught" {
   local sb="$BATS_TEST_TMPDIR/perhop"
@@ -1450,7 +1411,6 @@ YAML
   }
 }
 
-# ---------------------------------------------------------------------------
 # Negative: the worst chain is selected by minutes + margin x hops, not by
 # minutes alone. This is the ONLY fixture in the suite where those two rules
 # disagree, and without it the selection rule is unguarded: every other fixture
@@ -1463,7 +1423,6 @@ YAML
 # Selecting by minutes returns `14 1`, which clears a one-hop 20m ceiling and
 # reports nothing. Selecting by minutes + margin x hops returns `12 3`, which
 # breaches the 10m a three-hop chain actually leaves.
-# ---------------------------------------------------------------------------
 
 @test "negative: the worst chain is chosen by per-hop weight, not by minutes alone" {
   local sb="$BATS_TEST_TMPDIR/fanout"
@@ -1537,12 +1496,10 @@ YAML
   }
 }
 
-# ---------------------------------------------------------------------------
 # Negative: the chain walk has to survive a `needs:` graph that is not a simple
 # line. A diamond must price the longer branch, a `needs:` naming a job the
 # workflow does not declare must not crash or count, and a cyclic `needs:` must
 # terminate rather than spin.
-# ---------------------------------------------------------------------------
 
 @test "negative: diamond, dangling, and cyclic needs graphs are priced sanely" {
   local sb="$BATS_TEST_TMPDIR/graphs"
@@ -1598,12 +1555,10 @@ YAML
   }
 }
 
-# ---------------------------------------------------------------------------
 # Negative: an unparsed workflow must be loud. A trailing comment on `jobs:`
 # used to empty the scrape for that one file, which contributed nothing to the
 # gap list while the other workflows kept the run-wide counter above zero, so
 # uncapped jobs merged under a green test.
-# ---------------------------------------------------------------------------
 
 @test "negative: comments and quoting around job ids do not empty the job list" {
   local sb="$BATS_TEST_TMPDIR/commented"
@@ -1653,12 +1608,10 @@ YAML
   [ -z "$(job_timeout_minutes "$subject" "charlie")" ]
 }
 
-# ---------------------------------------------------------------------------
 # Negative: the filter-gate detector reads a condition, not one spelling of it.
 # Both forms GitHub accepts must match, and an unrelated gate must not, or the
 # normalization has widened into a match-anything that would pull jobs whose
 # filter does run on a dispatch into the caller's scope.
-# ---------------------------------------------------------------------------
 
 # A one-job fixture whose dorny/paths-filter step carries the given `if:` lines,
 # already indented for a step mapping. `-` means the step declares no gate.
@@ -1743,12 +1696,10 @@ YAML
   [ "$gate" = "none" ]
 }
 
-# ---------------------------------------------------------------------------
 # Negative: a step is "gated on the filter" by its own `if:`, not by mentioning
 # the output anywhere. A step that passes `steps.filter.outputs.*` as an input or
 # an env value runs on a dispatch regardless, so reading it as gated would report
 # a gap that is not one.
-# ---------------------------------------------------------------------------
 
 @test "negative: only a step's own if: counts as gated on the filter output" {
   local sb="$BATS_TEST_TMPDIR/gated-steps"

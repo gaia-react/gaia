@@ -8,10 +8,7 @@
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
 # .gaia/scripts/tests/main-only-lib.bats`.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# absence checks use a positive match for the bad case plus an explicit
-# `return 1`, never `!`-negation; equality/numeric/empty checks use POSIX
-# `[ ... ]`, which fails correctly on every bash version.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # Fixture idiom matched from main-root-lib.bats (make_repo / make_worktree,
 # canonicalized via `pwd -P` since macOS resolves /tmp -> /private/tmp inside

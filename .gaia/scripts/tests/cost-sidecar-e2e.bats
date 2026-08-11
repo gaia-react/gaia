@@ -10,10 +10,7 @@
 # fail-open. Mirrors token-cost-e2e.bats (tally -> rollup); read it as the
 # model for this file's shape.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# assertions avoid bare `[[ ... ]]` and `!`-negation (both silently skip a
-# false case under bash 3.2 / set -e). This suite uses `[ ... ]`, the
-# assert_contains/refute_contains helpers, and explicit `return 1`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # Fixtures (both reused from .gaia/scripts/tests/fixtures/token-tally/,
 # authored for token-tally.bats, never re-derived here):

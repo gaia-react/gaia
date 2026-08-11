@@ -71,9 +71,7 @@ const userError = (message: string, subcommand: string): number => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-// ---------------------------------------------------------------------------
 // Argument parsing
-// ---------------------------------------------------------------------------
 
 type FlagMap = {
   endpoints?: string;
@@ -134,13 +132,12 @@ const ZOD_TYPE_BUILDERS: Record<string, () => string> = {
   string: () => 'z.string()',
 };
 
-// `ZOD_TYPE_BUILDERS` is a Record<string, ...> and the project does not
-// enable `noUncheckedIndexedAccess`, so TS treats every key as present; `base`
-// is caller-controlled and may genuinely not be a builder key. A function's
-// declared return type (unlike a local variable annotation, which TS narrows
-// back to the initializer's type via control flow) is honored at call sites,
-// so wrapping the read here widens it without loosening the lookup table's
-// own type.
+// `ZOD_TYPE_BUILDERS` is a Record<string, ...>, so TS treats every key as
+// present, but `base` is caller-controlled and may genuinely not be a
+// builder key. A function's declared return type (unlike a local variable
+// annotation, which TS narrows back to the initializer's type via control
+// flow) is honored at call sites, so wrapping the read here widens it
+// without loosening the lookup table's own type.
 const getZodTypeBuilder = (base: string): (() => string) | undefined =>
   ZOD_TYPE_BUILDERS[base];
 
@@ -264,9 +261,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   };
 };
 
-// ---------------------------------------------------------------------------
 // Name derivation
-// ---------------------------------------------------------------------------
 
 type DerivedNames = {
   /** kebab-case service name (input) */
@@ -342,9 +337,7 @@ const deriveNames = (name: string): DerivedNames => {
   };
 };
 
-// ---------------------------------------------------------------------------
 // Field rendering
-// ---------------------------------------------------------------------------
 
 const camelToSnake = (camel: string): string =>
   camel.replaceAll(/[A-Z]/gu, (match) => `_${match.toLowerCase()}`);
@@ -360,9 +353,7 @@ const renderServerFields = (fields: SchemaField[]): string[] =>
     return `  ${key}: ${zodExpression},`;
   });
 
-// ---------------------------------------------------------------------------
 // Mock barrel composition
-// ---------------------------------------------------------------------------
 
 const MOCK_IMPORT_LINES: Record<Endpoint, string> = {
   delete: "import del from './delete';",
@@ -389,9 +380,7 @@ const composeMockBarrel = (endpoints: ReadonlySet<Endpoint>): TemplateVars => {
   return {handlersArray, imports};
 };
 
-// ---------------------------------------------------------------------------
 // Database barrel insert
-// ---------------------------------------------------------------------------
 
 const insertImportAlphabetically = (
   source: string,
@@ -593,9 +582,7 @@ const updateDatabaseBarrel = (
   return {written: true};
 };
 
-// ---------------------------------------------------------------------------
 // Emit
-// ---------------------------------------------------------------------------
 
 type EmitContext = {
   derived: DerivedNames;
@@ -746,9 +733,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   }
 };
 
-// ---------------------------------------------------------------------------
 // Public entry
-// ---------------------------------------------------------------------------
 
 export type ServiceRunOptions = {
   /** Override repo root; tests pass a sandbox dir. Defaults to `process.cwd()`. */

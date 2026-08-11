@@ -177,7 +177,7 @@ const isMapping = (value: unknown): value is Record<string, unknown> =>
 
 // An ABSENT exclusion list reads as an empty one, which is the truth: exempting
 // nothing is what "no list" means. Anything present but not a sequence throws, on
-// the same reasoning `readResolvedRuleVersions` throws below, and it is not
+// the same reasoning `readRulePackageVersions` throws below, and it is not
 // hypothetical tidiness. pnpm iterates this value with `for..of`, so a scalar
 // string iterates CHARACTER BY CHARACTER: `minimumReleaseAgeExclude: '*'` written
 // without the leading dash yields the single pattern `*`, exempting every package.

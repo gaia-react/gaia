@@ -9,10 +9,10 @@
 # stays quiet on each guarded form (offset-guard, count-guard, no-set-u,
 # comment), and assert the real scanned tree is clean so a regression fails CI.
 #
-# Assertion style (.claude/rules/bats-assertions.md): grep -qF / [ ] / explicit
-# return 1, never a bare [[ ]] as a non-final line. The linter is invoked as
-# `bash "$LINTER"` from a fixture cwd, matching how CI runs it from the repo
-# root; it scans `.claude/hooks/*.sh` and `.gaia/scripts/**/*.sh` relative to cwd.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
+# The linter is invoked as `bash "$LINTER"` from a fixture cwd, matching
+# how CI runs it from the repo root; it scans `.claude/hooks/*.sh` and
+# `.gaia/scripts/**/*.sh` relative to cwd.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -43,18 +43,14 @@ fixture_script() {
   printf '%s\n' "$2" > "$TMP/.gaia/scripts/$1"
 }
 
-# ---------------------------------------------------------------------------
 # 1. The real scanned tree is clean (regression gate)
-# ---------------------------------------------------------------------------
 
 @test "the real scanned tree (.claude/hooks + .gaia/scripts) passes the lint" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # 2. The detector fires on an unguarded bare expansion under set -u
-# ---------------------------------------------------------------------------
 
 @test "flags an unguarded bare \${arr[@]} under set -u" {
   fixture_hook $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" "${arr[@]}"'
@@ -71,9 +67,7 @@ fixture_script() {
   grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
 }
 
-# ---------------------------------------------------------------------------
 # 3. Guarded / out-of-scope forms are NOT flagged
-# ---------------------------------------------------------------------------
 
 @test "offset-guarded expansion passes" {
   fixture_hook $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" ${arr[@]+"${arr[@]}"}'
@@ -99,9 +93,7 @@ fixture_script() {
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # 4. The widened surface: .gaia/scripts/** is scanned too, recursively
-# ---------------------------------------------------------------------------
 
 @test "flags an unguarded bare \${arr[@]} in a .gaia/scripts file under set -u" {
   fixture_script probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" "${arr[@]}"'

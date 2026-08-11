@@ -1,6 +1,4 @@
 /**
- * Tests for `gaia update merge-audit-ci`.
- *
  * Strategy: write three temporary `.gaia/audit-ci.yml` files (baseline /
  * latest / current), run the handler, and assert the JSON verdict report. The
  * command is a read-only verdict oracle: it never writes the YAML, so there are

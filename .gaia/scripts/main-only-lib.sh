@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# GAIA main-only-flow refusal helper (single-sourced), task 5.3.
+# GAIA main-only-flow refusal helper (single-sourced).
 #
 # The one place that renders the "this flow is main-checkout-only" refusal.
 # Three flows write `.gaia/VERSION` / a lockfile / cache state and open or

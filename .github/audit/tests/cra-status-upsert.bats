@@ -11,8 +11,7 @@
 # `gh` is stubbed on PATH so no test touches the network. Each stub logs its
 # invocation so the test can assert which API call the script chose.
 #
-# Assertion style follows .claude/rules/bats-assertions.md: POSIX `[ ]` and
-# explicit `return 1`, so a false assertion fails on bash 3.2 too.
+# Assertion style follows .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

@@ -22,28 +22,6 @@
 # PATH (see `install_gh_mock`). It runs only when HEAD has no GAIA-Audit
 # trailer, the default sandbox commit gives that state.
 #
-# Coverage:
-#   1. No trailer present                          → skip=false reason=no-trailer
-#   2. Trailer matches version + digest             → skip=true  reason=trailer-matches
-#   3. Trailer matches version, digest mismatch     → skip=false reason=digest-mismatch
-#   4. Trailer matches digest, version mismatch     → skip=false reason=version-mismatch
-#   5. Two trailers, last one matches               → skip=true
-#   6. Two trailers, last one mismatches             → skip=false
-#   7. Malformed trailer (truncated digest)          → skip=false reason=no-trailer
-#   8. .gaia/VERSION missing                         → skip=false reason=version-file-missing
-#   9. .gaia/VERSION empty                           → skip=false reason=version-file-missing
-#  10. Status present + matching                     → skip=true  reason=status-matches
-#  11. Status present, version drift                 → skip=false reason=status-version-mismatch
-#  12. Status present, digest drift                  → skip=false reason=status-digest-mismatch
-#  13. Status API failure                            → skip=false reason=no-trailer
-#  14. No GAIA-Audit status on HEAD                   → skip=false reason=no-trailer
-#  15. Malformed status description                  → skip=false reason=no-trailer
-#  16. Pending status, matching version+digest        → skip=false reason=no-trailer
-#  17. Success status, matching version+digest        → skip=true  reason=status-matches
-#  18. Newest = success, older failure present        → skip=true  (newest wins)
-#  19. Newest = failure, older success present        → skip=false (newest shadows)
-#  20. Out-of-glob change leaves the digest unchanged → skip=true still (UAT-014)
-#  21. Digest recompute unavailable                   → skip=false reason=digest-recompute-failed
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -201,10 +179,6 @@ reason=no-trailer"
   [ "$output" = "$expected" ]
 }
 
-# -----------------------------------------------------------------------------
-# 2. Trailer matches version + digest
-# -----------------------------------------------------------------------------
-
 @test "trailer matches version + digest: skip=true reason=trailer-matches" {
   digest=$(current_digest)
   tree=$(current_tree)
@@ -224,10 +198,6 @@ reason=trailer-matches"
   [ "$output" = "$expected" ]
 }
 
-# -----------------------------------------------------------------------------
-# 3. Trailer version matches, digest mismatch
-# -----------------------------------------------------------------------------
-
 @test "trailer version match + digest mismatch: skip=false reason=digest-mismatch" {
   fake_digest="$(fake_digest_zeros)"
   tree=$(current_tree)
@@ -242,10 +212,6 @@ reason=digest-mismatch"
   [ "$output" = "$expected" ]
 }
 
-# -----------------------------------------------------------------------------
-# 4. Trailer digest matches, version mismatch
-# -----------------------------------------------------------------------------
-
 @test "trailer digest match + version mismatch: skip=false reason=version-mismatch" {
   digest=$(current_digest)
   tree=$(current_tree)
@@ -259,10 +225,6 @@ matched_tree=${tree}
 reason=version-mismatch"
   [ "$output" = "$expected" ]
 }
-
-# -----------------------------------------------------------------------------
-# 5. Two trailers, last one matches → skip=true
-# -----------------------------------------------------------------------------
 
 @test "two trailers, last one matches: skip=true (last wins)" {
   fake_digest="$(fake_digest_ones)"
@@ -283,10 +245,6 @@ reason=trailer-matches"
   [ "$output" = "$expected" ]
 }
 
-# -----------------------------------------------------------------------------
-# 6. Two trailers, last one mismatches → skip=false
-# -----------------------------------------------------------------------------
-
 @test "two trailers, last one mismatches: skip=false (last wins, even when wrong)" {
   digest=$(current_digest)
   tree=$(current_tree)
@@ -306,10 +264,6 @@ reason=digest-mismatch"
   [ "$output" = "$expected" ]
 }
 
-# -----------------------------------------------------------------------------
-# 7. Malformed trailer (truncated digest) is ignored as if absent
-# -----------------------------------------------------------------------------
-
 @test "malformed trailer (short digest) is ignored: skip=false reason=no-trailer" {
   # `git commit --trailer` would re-format the value but still write the
   # raw bytes; to guarantee a regex-non-conforming line in the message we
@@ -327,10 +281,6 @@ matched_tree=
 reason=no-trailer"
   [ "$output" = "$expected" ]
 }
-
-# -----------------------------------------------------------------------------
-# 8. .gaia/VERSION missing → skip=false reason=version-file-missing
-# -----------------------------------------------------------------------------
 
 @test ".gaia/VERSION missing: skip=false reason=version-file-missing" {
   rm "$SANDBOX/.gaia/VERSION"
@@ -354,10 +304,6 @@ reason=version-file-missing"
   [ "$output" = "$expected" ]
 }
 
-# -----------------------------------------------------------------------------
-# 9. .gaia/VERSION empty → also version-file-missing (defensive)
-# -----------------------------------------------------------------------------
-
 @test ".gaia/VERSION empty: skip=false reason=version-file-missing" {
   : > "$SANDBOX/.gaia/VERSION"
   git -C "$SANDBOX" add -A
@@ -371,10 +317,6 @@ matched_tree=
 reason=version-file-missing"
   [ "$output" = "$expected" ]
 }
-
-# -----------------------------------------------------------------------------
-# 10. Status present + matching → skip=true reason=status-matches
-# -----------------------------------------------------------------------------
 
 @test "status present + matching → skip=true reason=status-matches" {
   digest=$(current_digest)
@@ -390,10 +332,6 @@ reason=status-matches"
   [ "$output" = "$expected" ]
 }
 
-# -----------------------------------------------------------------------------
-# 11. Status present, version drift → skip=false reason=status-version-mismatch
-# -----------------------------------------------------------------------------
-
 @test "status present + version drift → skip=false reason=status-version-mismatch" {
   digest=$(current_digest)
   tree=$(current_tree)
@@ -407,10 +345,6 @@ matched_tree=${tree}
 reason=status-version-mismatch"
   [ "$output" = "$expected" ]
 }
-
-# -----------------------------------------------------------------------------
-# 12. Status present, digest drift → skip=false reason=status-digest-mismatch
-# -----------------------------------------------------------------------------
 
 @test "status present + digest drift → skip=false reason=status-digest-mismatch" {
   fake_digest="$(fake_digest_zeros)"
@@ -426,10 +360,6 @@ reason=status-digest-mismatch"
   [ "$output" = "$expected" ]
 }
 
-# -----------------------------------------------------------------------------
-# 13. Status API failure → skip=false reason=no-trailer (audit still runs)
-# -----------------------------------------------------------------------------
-
 @test "status API failure → skip=false reason=no-trailer (audit runs)" {
   install_gh_mock fail
 
@@ -441,10 +371,6 @@ matched_tree=
 reason=no-trailer"
   [ "$output" = "$expected" ]
 }
-
-# -----------------------------------------------------------------------------
-# 14. No GAIA-Audit status on HEAD → skip=false reason=no-trailer
-# -----------------------------------------------------------------------------
 
 @test "no GAIA-Audit status on HEAD → skip=false reason=no-trailer" {
   install_gh_mock empty
@@ -458,10 +384,6 @@ reason=no-trailer"
   [ "$output" = "$expected" ]
 }
 
-# -----------------------------------------------------------------------------
-# 15. Malformed status description (no digest/tree tokens) → skip=false reason=no-trailer
-# -----------------------------------------------------------------------------
-
 @test "malformed status description (no digest/tree tokens) → skip=false reason=no-trailer" {
   install_gh_mock match "1.2.3"
 
@@ -473,10 +395,6 @@ matched_tree=
 reason=no-trailer"
   [ "$output" = "$expected" ]
 }
-
-# -----------------------------------------------------------------------------
-# 16. Pending GAIA-Audit with matching version+digest does NOT skip
-# -----------------------------------------------------------------------------
 
 @test "status fallback: pending GAIA-Audit with matching version+digest does NOT skip" {
   digest=$(current_digest)
@@ -493,10 +411,6 @@ reason=no-trailer"
   [ "$output" = "$expected" ]
 }
 
-# -----------------------------------------------------------------------------
-# 17. Success GAIA-Audit with matching version+digest skips (no regression)
-# -----------------------------------------------------------------------------
-
 @test "status fallback: success GAIA-Audit with matching version+digest skips" {
   digest=$(current_digest)
   tree=$(current_tree)
@@ -511,10 +425,6 @@ matched_tree=${tree}
 reason=status-matches"
   [ "$output" = "$expected" ]
 }
-
-# -----------------------------------------------------------------------------
-# 18. Newest = success, older failure present → skip=true (newest wins)
-# -----------------------------------------------------------------------------
 
 @test "status fallback: newest success with older failure present skips" {
   digest=$(current_digest)

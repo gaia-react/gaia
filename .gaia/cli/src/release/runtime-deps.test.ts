@@ -1,6 +1,3 @@
-/**
- * Tests for `gaia-maintainer release runtime-deps`.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   chmodSync,

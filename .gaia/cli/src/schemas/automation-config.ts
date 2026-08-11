@@ -2,10 +2,9 @@
  * Zod schema + read helpers for `.gaia/automation.json`, the committed
  * file carrying GAIA CI configuration and team-level GAIA preferences.
  *
- * Per the SPEC-001 slice 1 contract: a missing config file means
- * "GAIA CI not configured"; every defer / cron read returns a no-op
- * result. The `read*` helpers therefore never throw; callers branch on
- * the discriminated `status` field.
+ * A missing config file means "GAIA CI not configured"; every defer / cron
+ * read returns a no-op result. The `read*` helpers therefore never throw;
+ * callers branch on the discriminated `status` field.
  */
 import {z} from 'zod';
 import {existsSync, readFileSync} from 'node:fs';

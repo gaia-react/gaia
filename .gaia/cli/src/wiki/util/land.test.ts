@@ -1,6 +1,4 @@
 /**
- * Tests for the merge-wait budget arithmetic and `cleanupAfterMerge` reuse.
- *
  * Focus: `mergePollAttempts` is the single source of truth for the poll
  * count, `MERGE_WAIT_BUDGET_MS` is the single source of truth for the sleep
  * budget, and the worst-case invariant that ties the whole blocking path to

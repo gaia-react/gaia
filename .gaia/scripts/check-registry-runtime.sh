@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Check C -- registry <-> runtime directory (state-registry conformance
-# model, foundations task 2.3, design analysis/registry-design.md §4.4).
+# Check C -- registry <-> runtime directory.
 #
 # LOCAL ONLY. `.gaia/local/` is gitignored and empty (or absent) on a CI
 # checkout, so this check is meaningless there (D-024) -- it runs against
 # real, on-disk state, as a session-start or on-demand hook, never as a CI
 # gate.
 #
-# Contract (SPEC-061 UAT-006, the report-not-delete rule; D-019's adopter
+# Contract (the report-not-delete rule; D-019's adopter
 # valve): ALWAYS report, NEVER delete or block. A real child matching a live
 # registry entry (via gaia_registry_classify) is conformant. A child
 # matching the registry's `residue` block is known dead-feature residue --
@@ -19,7 +18,7 @@
 # the registry is complete by construction, so an unknown child is real
 # drift worth fixing) or an adopter clone (where it is likely the adopter's
 # own state) -- the check cannot tell those apart, so its behavior is the
-# same in both (design §4.4).
+# same in both.
 #
 # Recursion rule: a filesystem node classifies via gaia_registry_classify.
 # When a DIRECTORY classifies as anything other than "unknown", the whole
@@ -38,8 +37,7 @@
 # treated as drift -- that guarantee falls out of the walk-what-exists
 # design rather than needing a special case.
 #
-# Dual-mode: source it for gaia_check_registry_runtime, or run it directly
-# (see "Executable entry" at the bottom).
+# Dual-mode: source it for gaia_check_registry_runtime, or run it directly.
 #
 # gaia_check_registry_runtime [local_dir]
 #   Walks <local_dir> (default: the MAIN checkout's .gaia/local/, located via
@@ -115,7 +113,6 @@ gaia_check_registry_runtime() {
   return 0
 }
 
-# Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   gaia_check_registry_runtime "${1:-}"
   exit 0

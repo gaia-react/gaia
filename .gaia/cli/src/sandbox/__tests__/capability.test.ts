@@ -1,6 +1,3 @@
-/**
- * Tests for `classifyCapability` (UAT-003/004/005).
- */
 import {describe, expect, test} from 'vitest';
 import {classifyCapability} from '../capability.js';
 

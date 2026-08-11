@@ -9,10 +9,7 @@
 # (UAT-001/UAT-007), plus the `--audit-md` companion check and the usage-
 # error paths.
 #
-# Assertion style note (`.claude/rules/bats-assertions.md`): macOS's system
-# `/bin/bash` (3.2) does not fail a bats @test on a false bare `[[ ... ]]`
-# that isn't the test's last command, so non-final substring/prefix checks
-# below use `grep -qF` via the `assert_contains` helper, not `[[ ]]`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 assert_contains() {
   grep -qF -- "$1" <<<"$output"
@@ -25,9 +22,7 @@ setup() {
   FIX="$THIS_DIR/fixtures/audit-noop"
 }
 
-# ---------------------------------------------------------------------------
 # Usage errors (exit 2)
-# ---------------------------------------------------------------------------
 
 @test "usage error: unknown --shape exits 2" {
   run "$SCRIPT" --shape not-a-real-shape --path "$FIX/shared/reminder-echo.txt"
@@ -49,9 +44,7 @@ setup() {
   [ "$status" -eq 2 ]
 }
 
-# ---------------------------------------------------------------------------
 # spec-selfreview-file (file-backed)
-# ---------------------------------------------------------------------------
 
 @test "spec-selfreview-file: bare top-level array is REAL" {
   run "$SCRIPT" --shape spec-selfreview-file --path "$FIX/spec-selfreview/real-array.json"
@@ -77,9 +70,7 @@ setup() {
   [ "$output" = "noop" ]
 }
 
-# ---------------------------------------------------------------------------
 # spec-findings-file (file-backed) -- covers both 7a lens and completeness critic
-# ---------------------------------------------------------------------------
 
 @test "spec-findings-file: non-empty .findings array is REAL" {
   run "$SCRIPT" --shape spec-findings-file --path "$FIX/spec-findings/real.json"
@@ -105,10 +96,8 @@ setup() {
   [ "$output" = "noop" ]
 }
 
-# ---------------------------------------------------------------------------
 # spec-verdict-file (file-backed) -- covers both 7b refuter and the
 # completeness-critic refuter (identical shape)
-# ---------------------------------------------------------------------------
 
 @test "spec-verdict-file: confirmed is REAL" {
   run "$SCRIPT" --shape spec-verdict-file --path "$FIX/spec-verdict/real-confirmed.json"
@@ -140,9 +129,7 @@ setup() {
   [ "$output" = "noop" ]
 }
 
-# ---------------------------------------------------------------------------
 # applier-summary (return-conformance) -- optional --audit-md companion check
-# ---------------------------------------------------------------------------
 
 @test "applier-summary: .counts present is REAL" {
   run "$SCRIPT" --shape applier-summary --path "$FIX/applier-summary/real-counts.json"
@@ -186,9 +173,7 @@ setup() {
   [ "$output" = "real" ]
 }
 
-# ---------------------------------------------------------------------------
 # plan-findings (return-conformance)
-# ---------------------------------------------------------------------------
 
 @test "plan-findings: .dimension + .findings array is REAL" {
   run "$SCRIPT" --shape plan-findings --path "$FIX/plan-findings/real.json"
@@ -208,9 +193,7 @@ setup() {
   [ "$output" = "noop" ]
 }
 
-# ---------------------------------------------------------------------------
 # cra-specialist (return-conformance)
-# ---------------------------------------------------------------------------
 
 @test "cra-specialist: exact 'No violations found.' sentinel is REAL (a legit clean result, never a no-op)" {
   run "$SCRIPT" --shape cra-specialist --path "$FIX/cra-specialist/clean.txt"
@@ -254,9 +237,7 @@ setup() {
   [ "$output" = "real" ]
 }
 
-# ---------------------------------------------------------------------------
 # cra-refuter (return-conformance)
-# ---------------------------------------------------------------------------
 
 @test "cra-refuter: STANDS is REAL" {
   run "$SCRIPT" --shape cra-refuter --path "$FIX/cra-refuter/stands.txt"
@@ -293,9 +274,7 @@ setup() {
   [ "$output" = "real" ]
 }
 
-# ---------------------------------------------------------------------------
 # audit-team-member (return-conformance, optional --marker companion check)
-# ---------------------------------------------------------------------------
 
 # A writer-produced EARNED clearance short-circuits to real regardless of the
 # --path content. Marker EXISTENCE alone no longer suffices: the body must be a
@@ -335,14 +314,12 @@ setup() {
   [ "$output" = "noop" ]
 }
 
-# ---------------------------------------------------------------------------
 # audit-team-member: the marker short-circuit fires ONLY on a writer-produced
 # EARNED clearance whose body digest equals the filename key. A refused
 # artifact (distinct filename, never handed as the .ok marker), a
 # legacy/hand-written body, and no marker all fall through to the content
 # inspection, which on text carrying neither a backticked path:line token nor
 # "Remaining in-scope:" is noop.
-# ---------------------------------------------------------------------------
 
 # _noop_digest: a fixed, deterministic 64-hex string (the new-scheme filename
 # key shape), built with printf repetition rather than hand-counted so it can
@@ -479,9 +456,7 @@ _noop_write_clearance() {
   [ "$output" = "real" ]
 }
 
-# ---------------------------------------------------------------------------
 # Cross-cutting: exit-code-is-the-boolean contract, purity
-# ---------------------------------------------------------------------------
 
 @test "exit code is the boolean; stdout is human-readable only" {
   run "$SCRIPT" --shape cra-refuter --path "$FIX/cra-refuter/stands.txt"
@@ -499,7 +474,6 @@ _noop_write_clearance() {
   [ "$after" = "0" ]
 }
 
-# ---------------------------------------------------------------------------
 # audit-team-member --findings: LOST-REPORT detection.
 #
 # A member that completes, writes a valid earned marker, and whose report never
@@ -510,7 +484,6 @@ _noop_write_clearance() {
 # it, the marker short-circuit requires BOTH. Omitting --findings preserves the
 # marker-only behavior for the default member and for a run whose base sha did
 # not resolve (which writes no sidecar at all).
-# ---------------------------------------------------------------------------
 
 # _noop_write_findings <path> [json]: a member's findings sidecar. Defaults to
 # the clean-pass shape, an EMPTY findings array, which is a real record.

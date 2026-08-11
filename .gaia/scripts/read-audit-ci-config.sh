@@ -421,7 +421,6 @@ normalize_mode() {
     return 0
   fi
   local lower
-  # Trim surrounding whitespace, then case-fold.
   lower=$(printf '%s' "$raw" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
   case "$lower" in
     ci|local)

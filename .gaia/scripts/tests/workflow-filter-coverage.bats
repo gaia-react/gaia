@@ -21,9 +21,7 @@
 # added to close. Those two globs carry the repo's own written record that this
 # recurs.
 #
-# ---------------------------------------------------------------------------
 # What this guard asserts, and what it deliberately does not
-# ---------------------------------------------------------------------------
 #
 # A gated step's real inputs are not statically knowable: a `run:` block is
 # arbitrary shell and may read anything. So this is a FLOOR, not a complete
@@ -68,9 +66,7 @@
 # out of the coverage assertion. Section 4 pins the exempt set so a new workflow
 # cannot evade this guard by hand-rolling its filter.
 #
-# Assertion style (.claude/rules/bats-assertions.md): non-final checks use POSIX
-# `[ ]`, `grep -q`, or an explicit `return 1`, never a bare `[[ ]]`; an absence
-# assertion is written as the positive bad case followed by `&& return 1`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # The negative tests below point the extractor at synthetic fixtures written into
 # $BATS_TEST_TMPDIR. bats runs each `@test` body in its own subshell and re-runs
@@ -137,7 +133,6 @@ setup() {
   require_repo_path -d "$WORKFLOWS_DIR" ".github/workflows" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # Extraction, python3 + PyYAML.
 #
 # Workflow structure is parsed rather than scraped, for the reason the sibling
@@ -164,7 +159,6 @@ setup() {
 # **Exits 2 when a file will not parse or declares no jobs mapping.** A caller
 # must check the status: reading empty output as an answer is how an unreadable
 # workflow drops out of a loop while the test stays green.
-# ---------------------------------------------------------------------------
 filter_coverage() {
   python3 - "$@" <<'PY'
 import os
@@ -446,14 +440,12 @@ workflow_files() {
   done
 }
 
-# ---------------------------------------------------------------------------
 # 0. This suite's own two gates. Each is a single point where a whole population
 #    of tests below can be turned off at once, and on a CI runner each has to
 #    FAIL rather than skip. Nothing else in this file would notice if either
 #    stopped: weakening one back to a bare `skip` would red nothing, and the
 #    affected tests would report `ok ... # skip` and green the job. These two
 #    tests are what make that weakening red. Neither is parser-gated itself.
-# ---------------------------------------------------------------------------
 
 @test "the parser gate fails on a CI runner and still skips off CI" {
   local shim="$BATS_TEST_TMPDIR/no-parser" rc
@@ -510,13 +502,11 @@ workflow_files() {
   [ "$rc" -ne 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # 1. Extraction-intact. Every assertion below loops over what the extractor
 #    emits, so an extraction that silently goes empty turns the whole suite green
 #    having asserted nothing -- the hollow-guard failure this file exists to
 #    catch, turned on the file itself. Pin both ends: the live tree does gate
 #    steps on paths-filter outputs, and those steps do resolve literal inputs.
-# ---------------------------------------------------------------------------
 
 @test "the live tree still has paths-filter-gated steps to check" {
   require_yaml_parser
@@ -560,9 +550,7 @@ workflow_files() {
   }
 }
 
-# ---------------------------------------------------------------------------
 # 2. The invariant itself, over the live tree.
-# ---------------------------------------------------------------------------
 
 @test "every gated step's literal inputs are reachable by the filter gating it" {
   require_yaml_parser
@@ -591,13 +579,11 @@ workflow_files() {
   fi
 }
 
-# ---------------------------------------------------------------------------
 # 3. Self-coverage, called out separately from section 2 because it is the half
 #    with a distinct failure story: a gate that cannot re-run on a change to its
 #    own definition lets a weakening of the gate merge unchecked by the gate. It
 #    is the property shell-lint.yml and audit-ci-tests.yml both record by hand
 #    today, in comments, with nothing enforcing it.
-# ---------------------------------------------------------------------------
 
 @test "every gated step's filter reaches its own workflow file" {
   require_yaml_parser
@@ -624,7 +610,6 @@ workflow_files() {
   fi
 }
 
-# ---------------------------------------------------------------------------
 # 4. No silent escape hatch. A workflow that gates a step on its own `run:`-
 #    emitted `filter` output has no glob list for section 2 to read, so it is
 #    invisible to every assertion above. That shape is legitimate (tests.yml
@@ -637,7 +622,6 @@ workflow_files() {
 #    `chore(deps)` title check, a config read, a poller verdict -- so a rule
 #    reading "any output this guard cannot parse" would report those too and
 #    bury the one shape that matters.
-# ---------------------------------------------------------------------------
 
 @test "only the exempt workflows gate a step on a hand-rolled filter output" {
   require_yaml_parser
@@ -673,11 +657,9 @@ workflow_files() {
   }
 }
 
-# ---------------------------------------------------------------------------
 # 5. Negatives. A guard for this class that cannot show red is the same false
 #    green it exists to catch, one level up. Each fixture below is the smallest
 #    workflow that exhibits one failure shape.
-# ---------------------------------------------------------------------------
 
 # Write a fixture workflow and its tracked-file list into the current test's
 # tmpdir. <globs> is the filter's glob list, one per line.

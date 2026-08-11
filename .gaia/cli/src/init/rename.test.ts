@@ -1,6 +1,3 @@
-/**
- * Tests for `gaia init rename`.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   copyFileSync,
@@ -98,7 +95,7 @@ const evaluateDefaultExport = (source: string): Record<string, unknown> => {
     .trim()
     .replace(/;$/u, '');
 
-  // eslint-disable-next-line sonarjs/code-eval -- see comment above
+  // eslint-disable-next-line sonarjs/code-eval -- fixture text this file defines, evaluated in a fresh context with no access to this module's scope
   return runInNewContext(`(${expression})`) as Record<string, unknown>;
 };
 

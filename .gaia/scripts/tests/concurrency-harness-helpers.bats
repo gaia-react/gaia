@@ -17,9 +17,7 @@
 # against a hook that never ran. That is the vacuous green the whole primitive
 # exists to prevent, so it is asserted directly here.
 #
-# Assertion style (`.claude/rules/bats-assertions.md`): POSIX `[ ]` and explicit
-# `return 1`, never a bare `[[ ]]`, so these fail correctly under macOS's bash
-# 3.2 as well as CI's bash 5.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # The misuse arms pin the exact status 64 rather than merely a non-zero one, and
 # each names the refusal it expects. A `-ne 0` check greens on 127 or 1 as

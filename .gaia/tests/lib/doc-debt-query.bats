@@ -38,12 +38,7 @@
 # engine is on PATH and skips with a message if neither is present; GitHub's
 # ubuntu-latest image ships `jq`, so the arm runs in CI.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
-# where a false non-final bare `[[ ]]` does not fail the test, and a
-# `!`-negated command never fails a non-final line on any bash. Absence checks
-# are written as `<positive-condition-for-the-bad-case> && return 1`, which
-# means a test whose LAST statement is such a check ends with an explicit
-# `true`.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

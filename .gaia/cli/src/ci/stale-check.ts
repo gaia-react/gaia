@@ -2,9 +2,9 @@
  * `gaia ci-stale-check --label <name> --base <branch> [--author <login>] [--json]`
  *
  * The pre-run skip primitive consumed by `gaia-ci-stale-pr-skip`
- * (Phase 2 composite action). UAT-019 requires both `--label` AND
- * `--author` predicates to fire a skip; a label-only or author-only
- * match must NOT skip. We delegate predicate evaluation to `gh pr list`
+ * (Phase 2 composite action). Both `--label` AND `--author` predicates
+ * are required to fire a skip; a label-only or author-only match must
+ * NOT skip. We delegate predicate evaluation to `gh pr list`
  * (it does the filtering server-side); the CLI's only job is to ask the
  * question with both predicates and report the answer.
  */

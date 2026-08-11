@@ -270,8 +270,8 @@ FEATURE="${SPEC_ID_OUT:-$PLAN_ID_OUT}"
 # degrade to partial rather than crash. --action review/command are exempt from
 # the feature-identity and --out-dir checks (COV-001): both kinds are
 # legitimately unattributed (both ids null is valid, not a defect) and write no
-# cost.json sidecar, so neither absence may mark them partial (UAT-007, the
-# SPEC's never-mark-partial clause).
+# cost.json sidecar, so neither absence may mark them partial (the
+# never-mark-partial clause).
 if [[ "$ACTION" != "review" && "$ACTION" != "command" ]]; then
   [[ -z "$FEATURE" ]] && { log "token-tally: no feature identity (--spec-id SPEC-* or --plan-id PLAN-*)"; partial=1; }
   [[ -z "$OUT_DIR" ]] && { log "token-tally: missing --out-dir"; partial=1; }
@@ -343,7 +343,7 @@ fi
 # deduped within the file (last-wins) and tmin/tmax range over EVERY usage line
 # (not the deduped survivors). `m` carries `.message.model` (null when absent),
 # threaded through alongside the usage object so the aggregate step can attribute
-# buckets per model AFTER the same dedup (see FC-1 in the SPEC-019 plan). A file
+# buckets per model AFTER the same dedup. A file
 # that fails to parse flips `partial` and contributes nothing, but never aborts
 # the run or the other files.
 tmp="$(mktemp 2>/dev/null)" || tmp=""
@@ -363,7 +363,7 @@ tmp="$(mktemp 2>/dev/null)" || tmp=""
 # emit_file <path> <bkt> <file_id>: <file_id> stamps the FILE's own identity
 # ("" for the main transcript, the sidecar basename sans .jsonl for a sidecar)
 # alongside <bkt> (the FILE's agent type: "main" or the sidecar's agentType),
-# so the audit-window-lib (SPEC-032 FC-5) can select records by sidecar
+# so the audit-window-lib can select records by sidecar
 # identity/window. The per-usage-entry `b` tag (compaction override included)
 # is untouched -- only two new FILE-level keys are added to the emitted line.
 emit_file() {
@@ -774,7 +774,7 @@ fi
 #            parsing transcript timestamps to epoch, which stays jq-only) ----------
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# ---------- dollar pricing of this section's own by_model (SPEC-022) ----------
+# ---------- dollar pricing of this section's own by_model ----------
 # Each run's cost.json record prices its OWN in-process BY_MODEL at the rate
 # whose effective window covers TS (this run's generation stamp) -- a frozen
 # snapshot, deliberately distinct from token-rollup.sh's read-time reprice.
@@ -898,7 +898,7 @@ if [[ "$ACTION" == "spec" || "$ACTION" == "plan" ]]; then
         # Computed from $tmp_phase (the SAME deduped survivor stream the phase
         # total above aggregates), never a fresh re-read: because the subset is
         # a window-filtered subset of the same sidecar files, each audit bucket
-        # is <= the phase bucket by construction (UAT-003).
+        # is <= the phase bucket by construction.
         audit_subset="$(gaia_window_subset "$tmp_phase" "$bc_started" "$bc_ended")"
         audit_count="$(jq -r '.count' <<<"$audit_subset" 2>/dev/null)"
         is_uint "$audit_count" || audit_count=0
@@ -943,7 +943,7 @@ if [[ "$ACTION" == "spec" || "$ACTION" == "plan" ]]; then
         # zero-filled/fabricated object).
       fi
       # else: breadcrumb session_id != this tally's session -> omit (resume/
-      # degrade, UAT-009); never attribute another session's audit.
+      # degrade); never attribute another session's audit.
 
       # Consume the breadcrumb: the phase tally is its only reader, and it has
       # now made its decision either way (nested, or omitted because the
@@ -1031,7 +1031,7 @@ else
   log "token-tally: could not resolve ledger path; skipping ledger append"
 fi
 
-# ---------- cutover (UAT-014): start a fresh cost.jsonl, move the old ledger aside
+# ---------- cutover: start a fresh cost.jsonl, move the old ledger aside
 # Fires only when the resolved ledger basename is cost.jsonl, a sibling
 # tokens.jsonl exists, and cost.jsonl does not yet exist -- so it is idempotent
 # (never re-fires once cost.jsonl exists) and leaves non-cost.jsonl --ledger test
@@ -1046,11 +1046,11 @@ if [[ -n "$ledger" && "$(basename "$ledger")" == "cost.jsonl" ]]; then
   fi
 fi
 
-# ---------- project identity (UAT-008; git_branch is computed earlier, before
-#            the CACHE_DIR/FC-2/FC-6 breadcrumb block, which needs it) ----------
+# ---------- project identity (git_branch is computed earlier, before the
+#            CACHE_DIR/FC-2/FC-6 breadcrumb block, which needs it) ----------
 PROJECT_ID="$(compute_project_id 2>/dev/null || true)"
 
-# ---------- seq (UAT-009) ----------
+# ---------- seq ----------
 # spec/plan: one row per session -> seq 0. execute: one cumulative row per commit
 # -> seq = count of PRIOR same-(feature,session) execute rows already on the
 # ledger; the new row is always final:true and clears prior finals after append.

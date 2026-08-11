@@ -5,7 +5,7 @@
 #
 # The one definition of "main checkout root": the working tree that owns
 # git's common directory. Dual-mode: source it for the two functions below,
-# or run it directly as a script (see "Executable entry" at the bottom).
+# or run it directly as a script.
 #
 # Git version floor: git >= 2.31. `--absolute-git-dir` (used below) shipped in
 # git 2.13 and `--git-common-dir` in git 2.5; 2.31 is named as the floor
@@ -36,9 +36,9 @@
 # _gaia_git below). Those three, when exported by a caller (a git hook, a
 # `git rebase -x` step), override repository discovery for every `git`
 # subprocess regardless of `-C`, which would let an ambient override stand in
-# for the checkout's own on-disk layout -- exactly what SPEC-058's validation
-# step exists to reject. Stripping them makes every answer here purely
-# layout-derived, matching the resolver's own validation contract.
+# for the checkout's own on-disk layout -- exactly what this resolver's
+# validation step exists to reject. Stripping them makes every answer here
+# purely layout-derived, matching the resolver's own validation contract.
 #
 # gaia_resolve_main_root [dir]
 #   Resolves the main-checkout root for `dir` (default: the process working
@@ -337,7 +337,6 @@ gaia_tree_key() {
   return 0
 }
 
-# Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   if [[ "${1:-}" == "--is-worktree" ]]; then
     shift

@@ -24,8 +24,7 @@
 # expected to be non-empty until every sibling task's edits land alongside
 # this one, at which point it goes empty.
 #
-# Assertion style note: bare `[[ ... ]]` is avoided for any non-terminal
-# assertion per .claude/rules/bats-assertions.md.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

@@ -26,11 +26,7 @@
 # teardown uses the explicit-if form (the && idiom is a bats teardown
 # footgun: a falsy first clause makes teardown itself "fail").
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# assertions avoid bare `[[ ... ]]` (a false one is silently skipped on
-# macOS's system bash 3.2). This suite uses `[ ... ]` and the
-# assert_contains/refute_contains grep helpers below for everything but a
-# test's last statement.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
@@ -234,7 +230,6 @@ _clear_merged_at() {
   [ ! -e "$REPO/$SPECS/archived" ]
 }
 
-# --- 7: skip a merged row with no folder -------------------------------------
 
 @test "7: a merged row with no active folder is a no-op" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged SPEC-005)"
@@ -291,7 +286,6 @@ _clear_merged_at() {
   [ ! -e "$REPO/$SPECS/SPEC-002" ]
 }
 
-# --- 11: no archived/ tree, ever, across delete/block/skip in one run -------
 
 @test "11: no specs/archived/ tree appears across delete, block, and skip paths" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" \
@@ -332,7 +326,6 @@ _clear_merged_at() {
   [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
 }
 
-# --- 14: age gate, past window + represented -> reaped -----------------------
 
 @test "14: a merged folder past the retention window with represented cost is reaped" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
@@ -348,7 +341,6 @@ _clear_merged_at() {
   [ "$(jq -r '.specs[0].status' "$REPO/$SPECS/ledger.json")" = "merged" ]
 }
 
-# --- 15: age gate, past window but unrepresented -> kept ---------------------
 
 @test "15: a folder past the retention window but unrepresented is kept" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
@@ -418,7 +410,6 @@ _clear_merged_at() {
   [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
 }
 
-# --- 20: a non-numeric knob value falls back to the 30-day default ----------
 
 @test "20: a non-numeric GAIA_SPEC_RETENTION_DAYS falls back to the 30-day default" {
   export GAIA_SPEC_RETENTION_DAYS="abc"

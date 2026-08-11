@@ -39,11 +39,7 @@
 # times and reports `ok`. Do not delete or weaken that test to quiet a roster
 # change; add the new member to it.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
-# where a false non-final bare `[[ ]]` does not fail the test and a `!`-negated
-# command never fails a non-final line on any bash. Every absence check below
-# is written as `<positive-condition-for-the-bad-case> && return 1`, and a test
-# whose last statement is such a check ends with an explicit `true`.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

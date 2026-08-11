@@ -43,7 +43,6 @@ runbook_surrogate() {
   local class="${2:-init}"
   local timestamp="20260508T143022Z"
 
-  # Create allowed directories
   mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
   mkdir -p "$workdir/.gaia/local/telemetry"
 

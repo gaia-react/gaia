@@ -8,10 +8,7 @@
 # cost ledger to the sandbox's own .gaia/local/telemetry/cost.jsonl, never the
 # real repo's.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# assertions avoid a bare `[[ ... ]]` (a false one is silently skipped on
-# macOS's system bash 3.2). This suite uses `[ ... ]` and `grep -qF` for
-# everything but each test's last statement.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -54,7 +51,6 @@ setup() {
   : > "$LEDGER"
 }
 
-# Run the script with cwd inside the sandbox. Args pass through.
 run_in_sandbox() {
   ( cd "$SANDBOX" && "$SCRIPT" "$@" )
 }

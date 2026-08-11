@@ -10,10 +10,7 @@
 # enforces the agreement so the enumeration cannot silently drift when a
 # sweep is added, removed, or renumbered.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# absence checks use a positive match for the bad case plus an explicit
-# `return 1`, never `!`-negation; final-line absence uses `!`-negation since
-# its own status is the test result there.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/local-janitor.sh

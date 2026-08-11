@@ -1,8 +1,8 @@
 /**
  * `gaia ci-revert {open|mark-failed|is-cap-reached}`
  *
- * Owner of the SPEC's hard-cap rule: one revert attempt per original PR
- * (UAT-009/UAT-010). The CLI is the single enforcement surface; the
+ * Owner of the SPEC's hard-cap rule: one revert attempt per original PR.
+ * The CLI is the single enforcement surface; the
  * Phase 2 composite action trusts the CLI's exit codes and never
  * inspects the ledger directly.
  *
@@ -100,11 +100,11 @@ const ensureLedger = (
   return result.ledger;
 };
 
-// `ledger.attempts` is a Record<string, RevertAttempt> and the project does
-// not enable `noUncheckedIndexedAccess`, so TS treats every key as present.
-// The key here is a user-supplied PR number that may genuinely be absent
-// from the ledger; narrow at this read site instead of loosening the
-// shared ledger schema type (owned by `schemas/`, outside this cluster).
+// `ledger.attempts` is a Record<string, RevertAttempt>, typed as if every
+// key is present. The key here is a user-supplied PR number that may
+// genuinely be absent from the ledger; narrow at this read site instead of
+// loosening the shared ledger schema type (owned by `schemas/`, outside
+// this cluster).
 const getAttempt = (
   ledger: RevertLedger,
   key: string

@@ -67,7 +67,6 @@ _tag_subject() {
   [ -z "$(git -C "$ORIGIN" tag -l 'spec/004')" ]
 }
 
-# --- UAT-002: two clones racing; distinct ids, loser strictly greater -------
 
 @test "UAT-002: two clones racing next; distinct ids, loser id > winner id (retry fired)" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --with-origin)"

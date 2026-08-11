@@ -46,11 +46,10 @@
 # genuine regression pin on the routing change, not a snapshot that needs
 # feeding.
 #
-# Assertion style (`.claude/rules/bats-assertions.md`): macOS bash 3.2 does
-# not fail a bats @test on a false bare `[[ ... ]]` that is not the test's
-# last command. The `[[ =~ ]]` uses below are branch conditionals that pick
-# an `expected` value, never the pass/fail signal itself; the actual
-# assertion is the final `[ "$fail" -eq 0 ]`.
+# Assertion style: .claude/rules/bats-assertions.md. The `[[ =~ ]]` uses
+# below are branch conditionals that pick an `expected` value, never the
+# pass/fail signal itself; the actual assertion is the final
+# `[ "$fail" -eq 0 ]`.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

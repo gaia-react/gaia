@@ -58,7 +58,6 @@ type DecideArgs = {
 const decide = (args: DecideArgs): CronDecision => {
   const {tool, toolConfig} = args;
 
-  // 1. tool_off
   if (toolConfig.mode === 'off') {
     return {
       decision: 'skip',
@@ -78,7 +77,6 @@ const decide = (args: DecideArgs): CronDecision => {
     };
   }
 
-  // 2. enabled: a configured wiki tool always runs.
   return {decision: 'run', reason: 'enabled', skip_log_line: null};
 };
 

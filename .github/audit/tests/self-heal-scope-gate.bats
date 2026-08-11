@@ -20,9 +20,7 @@
 # self-heal can run the step to completion without a real network call; every
 # other git subcommand reaches the real binary.
 #
-# Assertion style per .claude/rules/bats-assertions.md: POSIX `[ ]` and
-# `grep -qF` for presence; a positive match plus an explicit `return 1` for
-# absence (a `!`-negated non-final line never fails a test under `set -e`).
+# Assertion style per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -127,10 +125,6 @@ run_push_fixes_step() {
 
 output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
 
-# -----------------------------------------------------------------------------
-# UAT-026: a self-heal touching app/ AND test/ is refused, naming the test/ path.
-# -----------------------------------------------------------------------------
-
 @test "UAT-026: app/ + test/ self-heal is refused and names the test/ path" {
   local body
   body="$(extract_step_body 'Commit and push self-heal')"
@@ -206,10 +200,6 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   output_has "refused_reason=governance-surface"
 }
 
-# -----------------------------------------------------------------------------
-# Criterion 3: an app/-only pass of <=10 files still commits and pushes.
-# -----------------------------------------------------------------------------
-
 @test "an app/-only self-heal still commits and pushes (unchanged)" {
   local body
   body="$(extract_step_body 'Commit and push self-heal')"
@@ -223,11 +213,6 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   grep -qF "origin" "$PUSH_LOG"
   grep -qF "chore: code-review-audit self-heal" <<<"$(git -C "$SANDBOX" log -1 --format='%B' pr-branch)"
 }
-
-# -----------------------------------------------------------------------------
-# Criterion 4: a nested (non-root) build config file does not trigger the
-# root-build-config arm.
-# -----------------------------------------------------------------------------
 
 @test "app/foo.config.ts (nested) does not trigger the root-build-config arm" {
   local body
@@ -271,10 +256,6 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
 @test "the workflow sources the shared refusal-set lib" {
   grep -qF ". .claude/hooks/lib/audit-selfheal-paths.sh" "$WORKFLOW"
 }
-
-# -----------------------------------------------------------------------------
-# Criterion 9: the three workflow copies are byte-identical.
-# -----------------------------------------------------------------------------
 
 @test "the three code-review-audit.yml copies are byte-identical" {
   local src="$REPO_ROOT/.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl"

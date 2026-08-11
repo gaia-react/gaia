@@ -9,21 +9,18 @@
 #     plans-ledger-tracked plan, not a legacy free-form slug): this
 #     best-effort advances that plan's plans-ledger row to status "merged"
 #     with a merged_at timestamp, through plan-ledger-update.sh, before the
-#     disposition decision. The folder is then kept: reduced to its
-#     consolidated SUMMARY.md + cost.json and cleared of its RUNNING
-#     sentinel, gated on every cost phase section under it being
-#     value-represented in cost.jsonl (cost-represented.sh); a folder that
-#     fails the gate, or carries no consolidated SUMMARY.md yet, is left in
-#     place untouched. A kept folder survives for later age-reap
+#     disposition decision, which is gated on every cost phase section under
+#     it being value-represented in cost.jsonl (cost-represented.sh); a
+#     folder that fails the gate, or carries no consolidated SUMMARY.md yet,
+#     is left in place untouched. A kept folder survives for later age-reap
 #     (plan-archive-merged.sh) instead of being deleted outright.
 #   - Legacy free-form plan slug at .gaia/local/plans/<slug>/: no
 #     plans-ledger row exists to anchor an age-reap, so this deletes outright
 #     unchanged, gated on the same representation check.
 #   - Spec-colocated plan at .gaia/local/specs/<SPEC-ID>/plan[-N]/: the same
-#     representation gate applies, keyed on the parent SPEC's identity. Only
-#     the plan[-N] subfolder is deleted, and only once the parent SPEC's own
-#     consolidated SUMMARY.md exists; the SPEC folder is the archival unit
-#     for everything else and is untouched here.
+#     representation gate applies, keyed on the parent SPEC's identity; the
+#     SPEC folder is the archival unit for everything else and is untouched
+#     here.
 #
 # Encapsulating the delete in a subprocess keeps the destructive rm out of
 # the caller's own tool-call stream, so the block-rm-rf.sh PreToolUse hook
@@ -36,7 +33,7 @@
 #
 # <plan_dir> is normally a repo-relative path to the plan folder (trailing
 # slash tolerated), e.g. .gaia/local/plans/my-slug or
-# .gaia/local/specs/SPEC-005/plan. An absolute path under the repo root is
+# .gaia/local/specs/SPEC-NNN/plan. An absolute path under the repo root is
 # also accepted and normalized to repo-relative before matching: callers
 # that cache an absolute plan dir (the orchestrator) or iterate
 # $root-anchored absolute paths (local-janitor.sh) both hand this script an

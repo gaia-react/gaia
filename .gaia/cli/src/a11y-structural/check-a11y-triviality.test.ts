@@ -1,25 +1,24 @@
 /**
- * Tests for the structural a11y-triviality floor AST helper
- * (`.gaia/scripts/a11y-structural/check-a11y-triviality.mjs`).
+ * Exercises the structural a11y-triviality floor AST helper
+ * (`.gaia/scripts/a11y-structural/check-a11y-triviality.mjs`), the
+ * judge-INDEPENDENT producer of the non-triviality signal. It inspects an
+ * a11y test file (one calling the emergent-signal a11y helpers
+ * `expectNoA11yViolations` / `runAxe`) and flags a vacuous render as an
+ * advisory non-triviality fix, with no LLM judge in the loop: EITHER its
+ * `render(...)` passes no props / only defaults, OR its rendered markup
+ * carries no interactive or landmark node while the component's stories
+ * declare interactive variants. The floor is ADVISORY: it surfaces a `fix`,
+ * it never blocks.
  *
- * The helper is the judge-INDEPENDENT producer of the non-triviality signal. It
- * inspects an a11y test file (one calling the emergent-signal a11y helpers
- * `expectNoA11yViolations` / `runAxe`) and flags a vacuous render as an advisory
- * non-triviality fix, with no LLM judge in the loop. It flags an a11y test when
- * EITHER its `render(...)` passes no props / only defaults, OR its rendered
- * markup carries no interactive or landmark node while the component's stories
- * declare interactive variants. The floor is ADVISORY: it surfaces a `fix`, it
- * never blocks.
- *
- * Maintainer-only by construction: `.gaia/scripts` is release-excluded, so the
- * helper and this test never ship to adopters.
+ * Maintainer-only by construction: `.gaia/scripts` is release-excluded, so
+ * the helper and this test never ship to adopters.
  *
  * The helper resolves `typescript` from `node_modules`; this `.gaia/cli`
- * workspace carries its own `typescript` devDependency, so the test runner can
- * exec it. Synthetic test fixtures feed through `--stdin` (the path argument
- * names the file identity for `.ts`-vs-`.tsx` script kind; stdin supplies the
- * bytes); a stories fixture is written to a temp file and passed via
- * `--stories <path>`.
+ * workspace carries its own `typescript` devDependency, so the test runner
+ * can exec it. Synthetic test fixtures feed through `--stdin` (the path
+ * argument names the file identity for `.ts`-vs-`.tsx` script kind; stdin
+ * supplies the bytes); a stories fixture is written to a temp file and
+ * passed via `--stories <path>`.
  */
 import {afterEach, describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';

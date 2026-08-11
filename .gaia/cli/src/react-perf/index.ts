@@ -1,12 +1,7 @@
 /**
- * `gaia react-perf` subcommand router.
- *
  * The deterministic Reduce layer of the `/gaia-react-perf` render-performance
- * diagnostic. Currently dispatches a single subcommand, `reduce`, which turns
- * a raw bippy render dump into a small ranked summary the skill consumes.
- *
- * Object-map dispatch (no `switch`) per the project's typescript skill rules,
- * mirroring `wiki/index.ts`.
+ * diagnostic; the skill consumes this dispatcher's single `reduce`
+ * subcommand. Mirrors `wiki/index.ts`.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';

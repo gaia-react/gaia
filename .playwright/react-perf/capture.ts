@@ -1,5 +1,5 @@
-// Contract D — the committed Playwright capture helper. installRenderCapture
-// bundles the bippy harness to an IIFE and addInitScript's it before React runs;
+// The committed Playwright capture helper. installRenderCapture bundles the
+// bippy harness to an IIFE and addInitScript's it before React runs;
 // collectRenderDump reads window.__renders / window.__bippyMeta and writes the
 // RawDump to .gaia/local/cache/<run>/renders.json (gitignored, auto-deleted on
 // process exit unless kept). The raw dump must never enter the model context;

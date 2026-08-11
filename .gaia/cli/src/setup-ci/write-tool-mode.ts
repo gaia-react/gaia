@@ -1,6 +1,4 @@
 /**
- * `gaia setup-ci write-tool-mode <tool> <mode>` handler.
- *
  * Updates a single tool's `mode` field in `.gaia/automation.json`.
  * The per-tool state files are separate from the committed config: the
  * tool's `mode` lives in `.gaia/automation.json`, a different file with

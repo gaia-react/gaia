@@ -1,6 +1,4 @@
 /**
- * `gaia setup-ci write-isolation-policy <policy>` handler.
- *
  * Writes `isolation_policy` to `.gaia/automation.json` (the committed
  * config). Read-merges the new value onto the RAW parsed JSON via
  * `readAutomationConfigRaw`, never onto Zod's stripped `config`, so a key

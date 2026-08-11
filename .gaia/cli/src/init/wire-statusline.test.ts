@@ -1,6 +1,4 @@
 /**
- * Tests for `gaia init wire-statusline`.
- *
  * Includes a snapshot-style assertion against a fixture settings.json
  * (the merged result is byte-stable) and a global-mode test that uses a
  * temp $HOME so we never touch the real one.

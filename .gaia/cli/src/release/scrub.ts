@@ -68,9 +68,7 @@ const RELEASE_EXCLUDE_PATH = '.gaia/release-exclude';
 const WORKFLOWS_DIR = '.github/workflows';
 const SHIPPED_WORKFLOW_TEMPLATES_DIR = '.gaia/cli/templates/workflows';
 
-// ---------------------------------------------------------------------------
 // Config schema
-// ---------------------------------------------------------------------------
 
 const MarkerStripSchema = z.object({
   end: z.string().min(1),
@@ -189,9 +187,7 @@ type MarkerStripTransform = z.infer<typeof MarkerStripSchema>;
 type StaticLeakCheck = z.infer<typeof StaticLeakCheckSchema>;
 type TitleDerivedLeakCheck = z.infer<typeof TitleDerivedLeakCheckSchema>;
 
-// ---------------------------------------------------------------------------
 // Glob → regex
-// ---------------------------------------------------------------------------
 
 const REGEX_SPECIAL = /[.+^$()[\]{}|\\]/g;
 const SENTINEL_DIRSTAR = ' DIRSTAR ';
@@ -218,9 +214,7 @@ const matchesAnyGlob = (
   globs: readonly string[]
 ): boolean => globs.some((glob) => globToRegex(glob).test(relativePath));
 
-// ---------------------------------------------------------------------------
 // Walk
-// ---------------------------------------------------------------------------
 
 const walkFiles = (root: string, current: string = root): string[] => {
   const out: string[] = [];
@@ -238,9 +232,7 @@ const walkFiles = (root: string, current: string = root): string[] => {
   return out;
 };
 
-// ---------------------------------------------------------------------------
 // Marker strip
-// ---------------------------------------------------------------------------
 
 export type MarkerStripResult = {
   blocksStripped: number;
@@ -299,9 +291,7 @@ const applyMarkerStrip = (
   return {blocksStripped, filesTouched, unbalanced};
 };
 
-// ---------------------------------------------------------------------------
 // JSON strip
-// ---------------------------------------------------------------------------
 
 export type JsonStripResult = {
   filesTouched: readonly string[];
@@ -443,9 +433,7 @@ const applyJsonStrip = (
   return {filesTouched, keysRemoved};
 };
 
-// ---------------------------------------------------------------------------
 // JSON strip array element
-// ---------------------------------------------------------------------------
 
 export type JsonStripArrayElementResult = {
   elementsRemoved: number;
@@ -625,9 +613,7 @@ const applyJsonStripArrayElement = (
   return {elementsRemoved, filesTouched};
 };
 
-// ---------------------------------------------------------------------------
 // Leak check
-// ---------------------------------------------------------------------------
 
 export type Leak = {
   check: string;
@@ -707,9 +693,7 @@ const runLeakCheck = (
   );
 };
 
-// ---------------------------------------------------------------------------
 // Derived wikilink-to-excluded check
-// ---------------------------------------------------------------------------
 
 const isDerivedCheck = (check: LeakCheckEntry): check is DerivedLeakCheck =>
   'derive' in check;
@@ -726,25 +710,14 @@ const isDirectory = (absolutePath: string): boolean => {
 };
 
 /**
- * Build the set of release-excluded wiki slugs from `.gaia/release-exclude`
- * resolved against `cwd`, the source repo.
- *
- * Reading from `cwd` is load-bearing: `release-exclude` excludes itself, so it
- * never reaches the staging tree the other checks scan. Deriving from staging
- * would yield an empty set and pass silently, worse than the drift this fix
- * removes.
- *
  * A `.md` exclude contributes its basename slug directly. A bare-directory
  * exclude contributes the directory's own slug plus the slug of every `.md`
  * page beneath it, the entity pages and dated audit artifacts that are never
- * enumerated as their own exclude lines. Slugs are lowercased for the
- * case-insensitive matching Obsidian uses to resolve wikilinks.
+ * enumerated as their own exclude lines.
+ *
+ * Guard-clause early returns (not `continue`): this runs once per line from
+ * a plain `for` loop in the caller, not from inside a loop itself.
  */
-// Adds the slug(s) contributed by one `.gaia/release-exclude` line: a `.md`
-// exclude contributes its own basename slug; a bare-directory exclude
-// contributes the directory's own slug plus every `.md` page beneath it.
-// Guard-clause early returns (not `continue`): this runs once per line from
-// a plain `for` loop in the caller, not from inside a loop itself.
 const addSlugsForExcludeLine = (
   line: string,
   cwd: string,
@@ -769,6 +742,18 @@ const addSlugsForExcludeLine = (
   }
 };
 
+/**
+ * Build the set of release-excluded wiki slugs from `.gaia/release-exclude`
+ * resolved against `cwd`, the source repo.
+ *
+ * Reading from `cwd` is load-bearing: `release-exclude` excludes itself, so it
+ * never reaches the staging tree the other checks scan. Deriving from staging
+ * would yield an empty set and pass silently, worse than the drift this fix
+ * removes.
+ *
+ * Slugs are lowercased for the case-insensitive matching Obsidian uses to
+ * resolve wikilinks.
+ */
 const buildExcludedSlugSet = (cwd: string): Set<string> => {
   const lines = parseExcludeLines(
     readFileSync(path.join(cwd, RELEASE_EXCLUDE_PATH), 'utf8')
@@ -815,9 +800,7 @@ const runDerivedWikilinkCheck = ({
   );
 };
 
-// ---------------------------------------------------------------------------
 // Derived excluded-workflow check
-// ---------------------------------------------------------------------------
 
 /**
  * Build the set of release-excluded `.github/workflows/*.yml` paths that never
@@ -851,9 +834,6 @@ const buildNeverPresentWorkflowSet = (cwd: string): Set<string> => {
         `${path.basename(line)}.tmpl`
       );
 
-      // A shipped `.tmpl` means the workflow is rendered onto adopters on
-      // demand, so a reference to it is not a boundary leak; keep it out of
-      // the set.
       if (!existsSync(templatePath)) {
         paths.add(line);
       }
@@ -887,9 +867,7 @@ const runDerivedWorkflowCheck = ({
   );
 };
 
-// ---------------------------------------------------------------------------
 // Derived excluded-titles check
-// ---------------------------------------------------------------------------
 
 // Literal regex-escape set for a title body. Matches `escapeRegExp` in
 // `manifest.js`: `-` is deliberately absent, harmless as a literal outside a
@@ -1001,9 +979,6 @@ const findTitleLeaksInFile = (
   const leaks: Leak[] = [];
   const lines = file.content.split('\n');
 
-  // Line indices inside a CLOSED fence pair. Delimiters pair left-to-right; a
-  // final lone (odd) delimiter closes nothing and is deliberately left out, so
-  // it and every line after it stays scannable.
   const fenceIndices = lines.flatMap((line, index) =>
     isFenceDelimiter(line) ? [index] : []
   );
@@ -1093,9 +1068,7 @@ const runDerivedTitleCheck = ({
   return leaks;
 };
 
-// ---------------------------------------------------------------------------
 // Config loading
-// ---------------------------------------------------------------------------
 
 export const loadConfig = (configPath: string): ScrubConfig => {
   const raw = readFileSync(configPath, 'utf8');
@@ -1104,9 +1077,7 @@ export const loadConfig = (configPath: string): ScrubConfig => {
   return ConfigSchema.parse(parsed);
 };
 
-// ---------------------------------------------------------------------------
 // Flags
-// ---------------------------------------------------------------------------
 
 type FlagParseFailure = {message: string; ok: false};
 
@@ -1161,9 +1132,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   return {flags: {configPath, json, stagingDir}, ok: true};
 };
 
-// ---------------------------------------------------------------------------
 // Run
-// ---------------------------------------------------------------------------
 
 type Report = {
   json_strip: {

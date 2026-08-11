@@ -53,9 +53,7 @@
 # against a sandbox repo with the real resolver and a mocked `gh`, so they
 # exercise shipped code rather than grepping for a string.
 #
-# Assertion style per .claude/rules/bats-assertions.md: POSIX `[ ]` and `grep -qF`
-# for presence; a positive match plus an explicit `return 1` for absence (a
-# `!`-negated non-final line never fails a test under `set -e`).
+# Assertion style per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

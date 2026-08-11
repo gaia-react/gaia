@@ -4,10 +4,8 @@
 // but crashes in node. Pure value-math works fine in happy-dom.
 import {describe, expect, test} from 'vitest';
 
-// ---------------------------------------------------------------------------
 // WCAG relative-luminance helpers
 // https://www.w3.org/TR/WCAG20/#relativeluminancedef
-// ---------------------------------------------------------------------------
 
 /** Convert a single sRGB channel (0-1) to linear light. */
 const linearize = (c: number): number =>
@@ -25,13 +23,12 @@ const contrastRatio = (lum1: number, lum2: number): number => {
   return (lighter + 0.05) / (darker + 0.05);
 };
 
-// ---------------------------------------------------------------------------
 // Primary-scale luminances
 //
-// C1 spec (README.md §C1) defines each shade as oklch(L% 0 0deg) - zero
-// chroma, neutral gray.  For oklch(L, 0, *) the XYZ Y channel = L³ (within
-// 0.1 % error), and for neutral grays WCAG relative luminance equals the
-// linear sRGB value which also equals L³.  All values verified below.
+// Each primary shade is defined as oklch(L% 0 0deg) - zero chroma, neutral
+// gray. For oklch(L, 0, *) the XYZ Y channel = L³ (within 0.1 % error), and
+// for neutral grays WCAG relative luminance equals the linear sRGB value which
+// also equals L³.  All values verified below.
 //
 // L values (from tailwind.css, divide % by 100):
 //   primary-200 → L = 0.922  → lum ≈ 0.922³ ≈ 0.7838
@@ -41,7 +38,6 @@ const contrastRatio = (lum1: number, lum2: number): number => {
 //   primary-600 → L = 0.439  → lum ≈ 0.439³ ≈ 0.0846
 //   primary-700 → L = 0.371  → lum ≈ 0.371³ ≈ 0.0511
 //   primary-950 → L = 0.145  → lum ≈ 0.145³ ≈ 0.0030
-// ---------------------------------------------------------------------------
 
 const primaryLum = (L: number): number => L ** 3;
 
@@ -59,9 +55,7 @@ const LUM = {
   white: 1,
 } as const;
 
-// ---------------------------------------------------------------------------
 // Text contrast (≥ 4.5:1)
-// ---------------------------------------------------------------------------
 
 describe('primary-contrast - text (≥ 4.5:1)', () => {
   test('white on primary-600 primary button fill - light + dark', () => {
@@ -99,9 +93,7 @@ describe('primary-contrast - text (≥ 4.5:1)', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Non-text contrast (≥ 3:1)
-// ---------------------------------------------------------------------------
 
 describe('primary-contrast - non-text (≥ 3:1)', () => {
   // Focus ring: focus-visible:border-primary-600 (light) / dark:focus-visible:border-primary-400 (dark)

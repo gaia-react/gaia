@@ -1,6 +1,4 @@
 /**
- * Tests for `gaia update merge-region`.
- *
  * Strategy: `computeRegionMerge` is pure (no I/O), so most of the coverage
  * calls it directly with in-memory fixtures. `run` is covered only for flag
  * parsing and the error/exit paths, per AUDIT directive 3: the one-line JSON

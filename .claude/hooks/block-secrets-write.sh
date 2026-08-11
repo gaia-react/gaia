@@ -138,10 +138,9 @@ mask_xrun=x
 #
 # The x-run is taken from a doubling cache rather than from `${body//?/x}`.
 # Bash's pattern substitution rescans the whole body per replacement, which is
-# quadratic: on bash 3.2.57 an 8000-character body costs 26 seconds where the
-# cache costs 53 milliseconds. This registration carries no `timeout`, and a
-# hook killed before it reaches its `deny` lets the write through, so that cost
-# is a fail-OPEN and the wrong direction for a guard.
+# quadratic in body length. This registration carries no `timeout`, and a hook
+# killed before it reaches its `deny` lets the write through, so that cost is a
+# fail-OPEN and the wrong direction for a guard.
 #
 # `sed 's/./x/g'` also preserves character length, multibyte included, and would
 # fix that axis. The cache is used instead because it spawns nothing: the walk's
@@ -302,35 +301,19 @@ value_allowed() {
 #
 # The SIZE cap is the one that bounds the work. It is measured on the MATCHING
 # material rather than on the content, because what costs is the judging, and
-# the feeder grep skips an ordinary large file before any judging happens. Cost
-# tracks that material's size closely, about 1.4 ms per character on bash 3.2 at
-# the densest shape, so the size is what the bound has to read. The line cap
-# stays alongside it because it names the ordinary case in the terms its author
-# will recognize.
+# the feeder grep skips an ordinary large file before any judging happens. The
+# line cap stays alongside it because it names the ordinary case in the terms
+# its author will recognize.
 #
-# The worst payload either cap admits measures about 90 seconds on bash 3.2, and
-# the shape that reaches it is MULTI-line rather than single: 200 lines, exactly
-# at the line cap, together packed with minimal-width `;`-separated fragments to just
-# under the size cap. Roughly fifteen processes of fixed per-line overhead ride
-# on top of the per-fragment cost, so spreading the material across the line cap
-# costs more than concentrating it on one line. The margin is small: the densest
-# SINGLE line reaches about 84 seconds, so the line cap is what the last few
-# seconds come from, not most of the cost.
-#
-# Seconds are the wrong unit to state that bound in, because they are one
-# machine's. What the caps bound is process SPAWNS, about 40000 of them at the
-# ceiling, roughly 0.6 per judged character; the wall clock is that count times
-# whatever a spawn costs on the host, and a runner slower than a maintainer's
-# laptop multiplies the 90 seconds while leaving the 40000 alone.
-#
-# That ceiling, not the caps themselves, is what a `timeout` on this
-# registration has to clear on the SLOWEST machine the guard runs on. So
-# anything near two minutes is unsafe even now, and that is why the caps have to
-# land before any `timeout` does. This registration carries none, so the
-# runtime's own 600-second default is what holds the deadline out of reach today,
-# and it clears the ceiling by better than 6x on spawn cost: it holds on any host
-# within 6x of a maintainer laptop, which is every host worth naming. The caps are
-# what make the worst case a known quantity rather than an open one.
+# What the caps bound is process SPAWNS, not seconds: seconds are one
+# machine's unit, where a spawn count is the same regardless of host, just
+# costed differently. At the ceiling that is about 40000 spawns, roughly 0.6
+# per judged character against the size cap below, and that count is what a
+# `timeout` on this registration would have to clear on the SLOWEST machine
+# the guard runs on. The caps are what make that worst case a known, bounded
+# quantity rather than an open one. This registration carries no `timeout`;
+# the runtime's own 600-second default is what holds the deadline out of reach
+# today.
 #
 # This exact bound is pinned from both sides. A boundary pair in the suite spends
 # exactly 65536 characters of matching material and asserts ALLOW, then 65537 and
@@ -372,25 +355,9 @@ if [ "${#matched}" -gt "$max_judged" ]; then
 fi
 
 # `.env.example` is judged by SHAPE alone, skipping the placeholder allowlist
-# below. It is a committed file whose entire purpose is to carry placeholder
-# assignments, and both sibling guards already treat it that way:
-# `block-env-read.sh` exempts it while denying the rest of the dotenv family,
-# and `block-env-write.sh` exempts it by this same basename on this same
-# matcher. This rule was the holdout, so the one file that exists to hold
-# placeholders was the one file whose assignments could not be edited, and the
-# deny told its author to use a gitignored `.env` instead, which is backwards
-# for exactly this file. Its own `SESSION_SECRET` line is the worked example:
-# five letters, so it clears no placeholder arm at all.
-#
-# Dropping the allowlist is not the same as dropping the rule, and the
-# difference is what keeps a committed file from becoming the soft spot. The
-# allowlist asks "is this value a recognized placeholder", which every honest
-# `.env.example` value fails: `local`, `development`, `3001`, a localhost URL.
-# Shape asks "is this an unbroken 13+ alphanumeric run mixing letters and
-# digits", which every one of those passes and a pasted `sk-live-…`, JWT, or
-# bare API key does not. So the file's real content writes freely while the
-# paste that actually matters is still refused, alongside the three
-# high-confidence pattern rules above, which run here as everywhere.
+# below: a committed file whose purpose is placeholders, so the allowlist
+# elsewhere would refuse its own real content. `block-env-read.sh` and
+# `block-env-write.sh` exempt it by the same basename, on the same matcher.
 #
 # Its honest limit is the shape rule's own, stated where that rule is defined:
 # the bound is on the RUN, so a value whose every alphanumeric run is under 13
@@ -400,14 +367,6 @@ fi
 # the same value stays denied at every other path. The cost runs the other way
 # too, and is accepted rather than hidden: an ordinary value carrying a 13+
 # mixed run, say a hostname like `myapp123456789.example.com`, is refused here.
-#
-# Dropping the allowlist drops the executable-tail rescan with it, since that
-# rescan exists to allowlist-judge a SECOND assignment parked after `;`, `&&`,
-# or `||`. Here the whole post-`=` remainder is shape-tested as one string, so a
-# tail assignment carrying a weak value clears where the general path denies it,
-# and one carrying a secret-shaped value is refused the same as the first. That
-# follows from the shape-only rule rather than qualifying it, but it inverts
-# what the general path's own tests pin, so the suite pins it here too.
 #
 # The match is this exact basename, so `.env`, `.env.local`, and
 # `.env.example.local` reach the full allowlist below as before. `basename --`

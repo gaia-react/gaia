@@ -16,12 +16,9 @@
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
 # .gaia/scripts/tests/audit-respawn-report.bats`.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# absence checks use a positive match for the bad case plus an explicit
-# `return 1`, never `!`-negation; equality/numeric/empty checks use POSIX
-# `[ ... ]`, which fails correctly on every bash version. Every expected
-# count below is a literal worked out by hand from its fixture: no test
-# recomputes the query's own predicates.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
+# Every expected count below is a literal worked out by hand from its
+# fixture: no test recomputes the query's own predicates.
 
 setup() {
   THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
@@ -38,9 +35,7 @@ setup() {
   LEDGER="$(gaia_respawn_ledger_path "$ROOT")"
 }
 
-# ---------------------------------------------------------------------------
 # Shared fixture + assertion helpers
-# ---------------------------------------------------------------------------
 
 # ts_ago <seconds>: an ISO-8601 UTC timestamp <seconds> in the past. Built
 # from `date -u +%s` arithmetic plus jq's `todateiso8601`, matching the
@@ -91,9 +86,7 @@ path_without_jq() {
   printf '%s' "$d"
 }
 
-# ---------------------------------------------------------------------------
 # 1. --help
-# ---------------------------------------------------------------------------
 
 @test "criterion 1: --help prints usage and exits 0" {
   run "$SCRIPT" --help
@@ -101,9 +94,7 @@ path_without_jq() {
   grep -qF "Usage: audit-respawn-report.sh" <<<"$output" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # 2-3. Absent / empty ledger
-# ---------------------------------------------------------------------------
 
 @test "criterion 2: absent ledger reports all-zero counts, exit 0, text names window and ledger path" {
   run "$SCRIPT" --root "$ROOT"
@@ -128,9 +119,7 @@ path_without_jq() {
   [ "$(jq -r '.records' <<<"$output")" = "0" ]
 }
 
-# ---------------------------------------------------------------------------
 # 4-6. Unanswerable queries: exit 1, stderr diagnostic, nothing on stdout
-# ---------------------------------------------------------------------------
 
 @test "criterion 4: an unknown flag exits 1 with a stderr diagnostic and no stdout" {
   run "$SCRIPT" --root "$ROOT" --bogus
@@ -180,9 +169,7 @@ path_without_jq() {
   [ -z "$(PATH="$nojq" "$SCRIPT" --root "$ROOT" 2>/dev/null)" ]
 }
 
-# ---------------------------------------------------------------------------
 # 7. UAT-004 headline case
-# ---------------------------------------------------------------------------
 
 @test "criterion 7: two branches each carrying a peer-merge transition report peer_merge_respawns=2, text and json" {
   rec "A" "memberX" "$(ts_ago 3600)" "d1" "m1" true
@@ -199,9 +186,7 @@ path_without_jq() {
   [ "$(extract_num 'peer-merge re-spawns:')" = "2" ]
 }
 
-# ---------------------------------------------------------------------------
 # 8. Own-change vs peer-merge, both directions in one fixture
-# ---------------------------------------------------------------------------
 
 @test "criterion 8: an own-change transition counts in own_change_respawns and not in peer_merge_respawns" {
   rec "A" "memberX" "$(ts_ago 3600)" "d1" "m1" true
@@ -213,9 +198,7 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "0" ]
 }
 
-# ---------------------------------------------------------------------------
 # 9. merge_base moves, digest doesn't: rotated is false, counts nowhere
-# ---------------------------------------------------------------------------
 
 @test "criterion 9: merge_base moves but digest is unchanged counts nowhere" {
   rec "A" "memberX" "$(ts_ago 3600)" "dsame" "m1" true
@@ -229,9 +212,7 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_rotations_upper' <<<"$output")" = "0" ]
 }
 
-# ---------------------------------------------------------------------------
 # 10. Never cleared: counts in the upper bound, not the respawn count
-# ---------------------------------------------------------------------------
 
 @test "criterion 10: a member never cleared counts in peer_merge_rotations_upper but not peer_merge_respawns" {
   rec "A" "memberX" "$(ts_ago 3600)" "d1" "m1" false
@@ -243,9 +224,7 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "0" ]
 }
 
-# ---------------------------------------------------------------------------
 # 11. Two members on the same branch pair independently
-# ---------------------------------------------------------------------------
 
 @test "criterion 11: two members on the same branch pair independently, not across each other" {
   # Interleaved chronologically: X1, Y1, X2, Y2. Each member's OWN pair is
@@ -268,9 +247,7 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "0" ]
 }
 
-# ---------------------------------------------------------------------------
 # 12. The same member on two branches pairs independently
-# ---------------------------------------------------------------------------
 
 @test "criterion 12: the same member on two branches pairs independently, not across each other" {
   # Same shape of proof as criterion 11, with branch and member swapped:
@@ -287,9 +264,7 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "0" ]
 }
 
-# ---------------------------------------------------------------------------
 # 13. Window boundary
-# ---------------------------------------------------------------------------
 
 @test "criterion 13: a pair is counted iff its LATER record falls inside the window" {
   # In-window pair: earlier record outside a 1-day window, later inside.
@@ -305,9 +280,7 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "1" ]
 }
 
-# ---------------------------------------------------------------------------
 # 14. records is independent of transitions
-# ---------------------------------------------------------------------------
 
 @test "criterion 14: records counts records in window independently of transitions" {
   rec "SOLO" "memberX" "$(ts_ago 1800)" "d1" "m1" true # no partner: +1 records, +0 transitions
@@ -320,9 +293,7 @@ path_without_jq() {
   [ "$(jq -r '.transitions' <<<"$output")" = "1" ]
 }
 
-# ---------------------------------------------------------------------------
 # 15. Out-of-order input sorts by ts within each group
-# ---------------------------------------------------------------------------
 
 @test "criterion 15: out-of-order input lines produce the same counts as sorted input" {
   local l1 l2 l3 l4
@@ -341,9 +312,7 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "2" ]
 }
 
-# ---------------------------------------------------------------------------
 # 16. Malformed line skipped
-# ---------------------------------------------------------------------------
 
 @test "criterion 16: a malformed line is skipped; the remaining records still produce correct counts" {
   rec "A" "memberX" "$(ts_ago 3600)" "d1" "m1" true
@@ -355,9 +324,7 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "1" ]
 }
 
-# ---------------------------------------------------------------------------
 # 17. Empty digest / merge_base never satisfy rotated / base_moved
-# ---------------------------------------------------------------------------
 
 @test "criterion 17: an empty merge_base or digest never satisfies base_moved / rotated" {
   # Empty merge_base on both records of the pair: base_moved stays false
@@ -378,9 +345,7 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_rotations_upper' <<<"$output")" = "0" ]
 }
 
-# ---------------------------------------------------------------------------
 # 18. --json parses under jq -e . with numeric counts
-# ---------------------------------------------------------------------------
 
 @test "criterion 18: --json output parses under jq -e . and all five counts are numbers" {
   run "$SCRIPT" --root "$ROOT" --json
@@ -390,9 +355,7 @@ path_without_jq() {
     >/dev/null 2>&1 <<<"$output" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # 19. Text output prints all three caveats
-# ---------------------------------------------------------------------------
 
 @test "criterion 19: text output prints all three caveats" {
   run "$SCRIPT" --root "$ROOT"
@@ -402,7 +365,6 @@ path_without_jq() {
   grep -qF "attribution is a query over recorded facts" <<<"$output" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # 24. The one end-to-end join: a real oracle ledger, not a fixture.
 #
 # Every criterion above runs on a hand-written fixture. This rebuilds
@@ -411,7 +373,6 @@ path_without_jq() {
 # resolve-audit-spawn.bats's own setup -- then runs THIS script against the
 # ledger those oracle runs actually produced. No hand-written line appears
 # in that ledger.
-# ---------------------------------------------------------------------------
 
 e2e_write_full_roster() {
   local sb="$1"

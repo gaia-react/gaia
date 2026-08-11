@@ -1,22 +1,9 @@
 /**
- * Tests for the `gaia-maintainer release manifest` classifier, exclude
- * parsing, build, and lints.
- *
- * Includes a byte-identity snapshot against the legacy
- * `.gaia/scripts/generate-manifest.mjs` script for the current repo
- * state, plus structural tests for the classifier.
- *
  * The CLI (`run`) tests live in `manifest-cli.test.ts`.
  */
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {
@@ -433,8 +420,8 @@ describe('computeMissing: paths named after Object.prototype keys', () => {
   // to reach `lookupClass` through the path a committed manifest actually
   // takes. Only four are, and the two cases below are what make the list say
   // so rather than merely be true. The surrounding convention settles the
-  // shape: `ManifestSchema: regions` and `byte-identity vs
-  // generate-manifest.mjs` both assert through a real parse.
+  // shape: `ManifestSchema: regions` and `buildManifest: region round trip`
+  // both assert through a real parse.
   //
   // Every key below is written computed. A bare `{__proto__: 'owned'}` object
   // literal sets the PROTOTYPE instead of defining an own property, which
@@ -611,17 +598,8 @@ describe('buildManifest: region round trip', () => {
   });
 });
 
-// Materialize the legacy script's path once at module scope: `test.skipIf`
-// below needs it at test-definition time, before any test body runs.
-const LEGACY_SCRIPT_PATH = path.resolve(
-  __dirname,
-  '../../../scripts/generate-manifest.mjs'
-);
-
 // Seeds a sandbox with a small slice of the real repo layout, picking paths
-// that exercise every classifier branch so any drift in either
-// implementation manifests as a diff in the output, then builds the manifest
-// against it. Shared by both tests below.
+// that exercise every classifier branch, then builds the manifest against it.
 const seedManifestSandbox = (): {
   manifest: ReturnType<typeof buildManifest>;
   sandbox: Sandbox;
@@ -670,7 +648,7 @@ const seedManifestSandbox = (): {
   return {manifest, sandbox};
 };
 
-describe('byte-identity vs generate-manifest.mjs', () => {
+describe('classifier category assignment', () => {
   // Regression guard on the classifier's category assignments, independent
   // of whether the legacy script is still around to compare against.
   test('classifies every category correctly', () => {
@@ -696,46 +674,4 @@ describe('byte-identity vs generate-manifest.mjs', () => {
       sandbox.cleanup();
     }
   });
-
-  /**
-   * Snapshot test: invoke the legacy script and `buildManifest` against
-   * the same sandbox. Output must be byte-identical aside from the
-   * `generated` timestamp (which we pin in `buildManifest`). Skipped once
-   * the legacy script is removed (post-migration); the structural test
-   * above remains meaningful as a regression guard on its own.
-   */
-  test.skipIf(!existsSync(LEGACY_SCRIPT_PATH))(
-    'produces same JSON shape as the legacy script',
-    () => {
-      const {manifest, sandbox} = seedManifestSandbox();
-
-      try {
-        // Materialize the legacy script into the sandbox and run it
-        // there, so it sees the sandbox's `git ls-files` and reads from
-        // the sandbox's `.gaia/VERSION` + `.gaia/release-exclude`.
-        const legacyOutput = execFileSync('node', [LEGACY_SCRIPT_PATH], {
-          cwd: sandbox.root,
-          encoding: 'utf8',
-        });
-        const legacyParsed = JSON.parse(legacyOutput) as {
-          files: Record<string, string>;
-          generated: string;
-          version: string;
-        };
-
-        // Pin generated to make output deterministic.
-        legacyParsed.generated = manifest.generated;
-
-        expect(legacyParsed.files).toEqual(manifest.files);
-        expect(legacyParsed.version).toEqual(manifest.version);
-
-        // Byte-identity: serialize both with the same shape and compare.
-        const ourSerialized = `${JSON.stringify(manifest, null, 2)}\n`;
-        const theirSerialized = `${JSON.stringify(legacyParsed, null, 2)}\n`;
-        expect(ourSerialized).toEqual(theirSerialized);
-      } finally {
-        sandbox.cleanup();
-      }
-    }
-  );
 });

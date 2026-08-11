@@ -149,7 +149,6 @@ export type Commit = {
 export const classifyCommit = (commit: Commit): BumpKind | null => {
   const {body, subject} = commit;
 
-  // Breaking change: major.
   if (/(^|\n)BREAKING CHANGE: /u.test(body)) return 'major';
 
   const header = parseConventionalCommitHeader(subject);

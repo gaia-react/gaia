@@ -1,15 +1,3 @@
-/**
- * `gaia update-deps decline` handler.
- *
- * Records (snoozes) update groups the human skipped in the interactive
- * `/update-deps` preview, so the statusline nudge stops counting them. Reads
- * the emitted updates payload (`run --emit-updates`) to resolve each skipped
- * name to its whole companion group and snapshot the group's current target
- * versions, then writes `.gaia/local/declined-updates.json` (full-replace).
- *
- * `--clear` empties the ledger (used when the human chose "update all"). The
- * snooze is local-statusline only and gitignored; CI never reads it.
- */
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
@@ -43,9 +31,6 @@ type ParsedArgs =
 
 type ParseError = {error: string};
 
-// `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as `string`,
-// not `string | undefined`; check the bound explicitly instead of comparing
-// the indexed value to `undefined`.
 const takeSourceValue = (
   argv: readonly string[],
   index: number

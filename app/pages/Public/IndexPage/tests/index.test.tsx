@@ -10,9 +10,7 @@ import Meta, {Default} from './index.stories';
 const IndexPageStory = composeStory(Default, Meta);
 
 describe('IndexPage', () => {
-  // ------------------------------------------------------------------
   // Present: required content
-  // ------------------------------------------------------------------
 
   test('renders exactly one <h1> with the configured site name', () => {
     render(<IndexPageStory />);
@@ -31,9 +29,7 @@ describe('IndexPage', () => {
     ).toBeInTheDocument();
   });
 
-  // ------------------------------------------------------------------
   // Conditional: language select tracks LANGUAGES (LanguageSelect guard)
-  // ------------------------------------------------------------------
 
   // LanguageSelect renders nothing with a single configured language and the
   // <select> only once a second locale is added (add-locale grows LANGUAGES).
@@ -59,9 +55,7 @@ describe('IndexPage', () => {
     }
   );
 
-  // ------------------------------------------------------------------
-  // Absent: removed brand surface (C5)
-  // ------------------------------------------------------------------
+  // Absent: removed brand surface
 
   test('has no GitHub CTA link', () => {
     render(<IndexPageStory />);
@@ -77,7 +71,6 @@ describe('IndexPage', () => {
 
   test('has no GaiaLogo image', () => {
     render(<IndexPageStory />);
-    // GaiaLogo was deleted; no img referencing gaia branding should exist
     expect(screen.queryByRole('img', {name: /gaia/i})).not.toBeInTheDocument();
   });
 

@@ -1,6 +1,3 @@
-/**
- * Tests for `gaia init finalize`.
- */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   existsSync,

@@ -1,6 +1,4 @@
 /**
- * Tests for the `gaia react-perf reduce` Reduce layer.
- *
  * `reduceDump` (the pure algorithm) is asserted directly against the committed
  * fixtures; `run` (the CLI handler) is asserted by capturing stdout/stderr to
  * cover file reading, alien-shape rejection, determinism, and the frame-budget

@@ -1,12 +1,7 @@
 /**
- * `gaia init bootstrap-env` handler.
- *
- * Copies `.env.example` to `.env` when `.env` does not already exist.
  * Runs as a CLI subprocess so it bypasses Claude Code's Write(.env) deny
- * rule; the deny rule guards against Claude writing secrets into .env,
- * not against the init scaffolding seeding it from the example file.
- *
- * Idempotent: re-running is safe. Exit codes: 0 / 2.
+ * rule; the deny rule guards against Claude writing secrets into .env, not
+ * against the init scaffolding seeding it from the example file.
  */
 import {copyFileSync, existsSync} from 'node:fs';
 import path from 'node:path';

@@ -95,7 +95,6 @@ _no_gh_path() {
   [ "$(jq -r '.specs[] | select(.id=="SPEC-006") | .merged_at' "$REPO/.gaia/local/specs/ledger.json")" = "2026-05-01T00:00:00Z" ]
 }
 
-# --- 7: no matching merged PR; SPEC-006 stays ready, no-op ---
 @test "7: no matching merged PR; SPEC-006 stays ready, no-op, exit 0" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
   _promote_to_ready SPEC-006
@@ -133,7 +132,6 @@ _no_gh_path() {
   assert_files_identical "$before" "$after"
 }
 
-# --- 9: a retired 'specified' row is off-vocab, never a merge candidate ---
 @test "9: a retired 'specified' row is not a merge candidate; logged unrecognized, left as-is" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
   tmp="$(mktemp)"

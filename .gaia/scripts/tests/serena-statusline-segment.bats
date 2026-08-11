@@ -19,8 +19,7 @@
 # so the statusline's background-refresh forks are inert. Nothing touches the
 # real repo cache.
 #
-# Assertion style follows .claude/rules/bats-assertions.md: `grep -qF` for
-# substrings, POSIX `[ ]` for status, explicit `return 1` branches.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 SEGMENT='Run /gaia-serena-sync (Serena missing:'
 

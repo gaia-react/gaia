@@ -4,13 +4,13 @@
 // is load-bearing). It records per-render attribution to window.__renders and
 // diagnostics to window.__bippyMeta, both serialized to primitives only.
 //
-// Safeguards (bippy-safeguards.md): a manual canProfile gate (dev-build +
-// minimum React 19 check) plus a non-throwing guard() wrapper stand in for
-// bippy's removed secure() helper, backed by a 5000ms install-check timeout
-// (defuses the window.stop() landmine); it stays on the onCommitFiberRoot
-// chaining path (never injectProfilingHooks/lite); it gates real renders via
-// didFiberRender (traverseRenderedFibers) and keys cross-commit identity by
-// getFiberId; it retains no fibers, DOM nodes, or fiber.type objects.
+// Safeguards: a manual canProfile gate (dev-build + minimum React 19 check)
+// plus a non-throwing guard() wrapper stand in for bippy's removed secure()
+// helper, backed by a 5000ms install-check timeout (defuses the window.stop()
+// landmine); it stays on the onCommitFiberRoot chaining path (never
+// injectProfilingHooks/lite); it gates real renders via didFiberRender
+// (traverseRenderedFibers) and keys cross-commit identity by getFiberId; it
+// retains no fibers, DOM nodes, or fiber.type objects.
 
 /* eslint-disable no-underscore-dangle -- window.__renders / __bippyMeta are the
    harness wire contract this file publishes for capture.ts to read. */

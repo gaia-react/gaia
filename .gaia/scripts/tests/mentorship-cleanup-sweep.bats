@@ -15,10 +15,7 @@
 # the /var -> /private/var symlink, and git reports the resolved one, so an
 # unresolved fixture path would derive a slug the sweep never looks for.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, a non-final absence
-# assertion is written as a positive match for the BAD case followed by an
-# explicit `return 1`, never as a `!`-negation (POSIX `set -e` exempts an
-# inverted status, so a `!`-negated non-final line can never fail a test).
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

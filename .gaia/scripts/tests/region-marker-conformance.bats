@@ -12,8 +12,7 @@
 # written fresh into `$BATS_TEST_TMPDIR` for every probe so the writer's
 # in-place rewrite of one probe's copy never contaminates another's.
 #
-# Assertion style follows .claude/rules/bats-assertions.md: POSIX `[ ]` for
-# equality/status, `grep -qF` for substrings, explicit `return 1` branches.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
@@ -156,9 +155,7 @@ classify_check() {
   printf 'REGIONOK'
 }
 
-# ---------------------------------------------------------------------------
 # ok: one start, one end, in order, two bullet lines between.
-# ---------------------------------------------------------------------------
 
 @test "ok fixture: TypeScript region, writer replace, check REGIONOK" {
   local body ts_dir writer_dir check_dir
@@ -180,10 +177,8 @@ classify_check() {
   [ "$output" = "REGIONOK" ]
 }
 
-# ---------------------------------------------------------------------------
 # absent: no markers. Not a failure for any of the three: it is the expected
 # pre-region adopter state, before the region is ever generated.
-# ---------------------------------------------------------------------------
 
 @test "absent fixture: TypeScript absent, writer insert, check REGIONMISSING (not a failure)" {
   local body ts_dir writer_dir check_dir
@@ -212,9 +207,7 @@ classify_check() {
   [ "$output" = "REGIONMISSING" ]
 }
 
-# ---------------------------------------------------------------------------
 # dup-start: two starts, one end.
-# ---------------------------------------------------------------------------
 
 @test "dup-start fixture: TypeScript duplicate-start, writer fail, check REGIONDUP" {
   local body ts_dir writer_dir check_dir
@@ -236,9 +229,7 @@ classify_check() {
   [ "$output" = "REGIONDUP" ]
 }
 
-# ---------------------------------------------------------------------------
 # unbalanced: one start, no end.
-# ---------------------------------------------------------------------------
 
 @test "unbalanced fixture: TypeScript unbalanced, writer fail, check REGIONUNBALANCED" {
   local body ts_dir writer_dir check_dir
@@ -260,11 +251,9 @@ classify_check() {
   [ "$output" = "REGIONUNBALANCED" ]
 }
 
-# ---------------------------------------------------------------------------
 # substring: one line embedding the marker text inside longer prose, no real
 # marker. All three see no region: the whole-line contract. A substring-
 # matching implementation (marker-strip.ts's semantics) fails here.
-# ---------------------------------------------------------------------------
 
 @test "substring fixture: all three see no region (whole-line contract)" {
   local body ts_dir writer_dir check_dir
@@ -286,7 +275,6 @@ classify_check() {
   [ "$output" = "REGIONMISSING" ]
 }
 
-# ---------------------------------------------------------------------------
 # inverted: end line before start line.
 #
 # NOT a divergence. Both bash parsers already detect reversed marker order
@@ -294,7 +282,6 @@ classify_check() {
 # start_line/end_line comparison, REGIONREVERSED) and refuse it exactly as
 # the TypeScript parser does. All three implementations converge on treating
 # an inverted pair as malformed; none judges by count alone.
-# ---------------------------------------------------------------------------
 
 @test "inverted fixture: all three reject the reversed pair (convergence, not divergence)" {
   local body ts_dir writer_dir check_dir fixture before

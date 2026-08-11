@@ -4,11 +4,7 @@
 # for the GitHub pull-request artifact a run produced. Sourced, not executed:
 # every test sources the lib in setup() and calls its functions directly.
 #
-# Assertion style note (`.claude/rules/bats-assertions.md`): macOS's system
-# `/bin/bash` (3.2) does not fail a bats @test on a false bare `[[ ... ]]`
-# that isn't the test's last command, so non-final assertions below use
-# POSIX `[ ]`, `grep -qF`, or an explicit `return 1`, never a bare mid-test
-# `[[ ]]` and never a non-final `!`-negation.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"

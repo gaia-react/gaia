@@ -1,34 +1,30 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Check A -- one canonical main-root resolver PER LANGUAGE (state-registry
-# conformance model, foundations task 2.3, design analysis/registry-design.md
-# §4.1; per-language extension by task 3.11, DECISIONS.md D-M3-2).
+# Check A -- one canonical main-root resolver PER LANGUAGE.
 #
 # Over TRACKED SOURCE: asserts exactly one `gaia_resolve_main_root` shell
 # function DEFINITION and exactly one `resolveMainWorktreeRoot` TypeScript
 # DEFINITION exist in the whole tree. This is the narrow "one canonical
 # definition" guard, not the repo-wide "does every call site use it" scan --
-# that broader derivation scan is Phase 3's and stays red until then
-# (analysis/registry-design.md §0, PROGRAM.md §2 gate). A second file defining
-# either name is exactly the residue this guards against: a second copy of the
-# resolver, hand-written instead of imported.
+# that broader derivation scan is Phase 3's and stays red until then. A
+# second file defining either name is exactly the residue this guards
+# against: a second copy of the resolver, hand-written instead of imported.
 #
 # Why two, and why counted separately: GAIA's main-root resolution has two
 # implementations, one per language, because making a TypeScript caller reach
 # the bash resolver at runtime costs a subprocess on a hot path. That is a
-# deliberate, blessed position (D-M3-2) -- but before task 3.11 this check
-# counted only shell definitions, so "one resolver, forever" was silently
-# shell-only while a second derivation served seven TypeScript call sites.
-# Counting per language is what makes the guarantee say what its name promises.
+# deliberate, blessed position. Counting only shell definitions
+# would silently miss a second derivation serving TypeScript call sites, so
+# counting per language is what makes the guarantee say what its name
+# promises.
 #
 # Current-tree resolvers are deliberately NOT counted, in either language:
 # `gaia_resolve_tree_root` and TypeScript's `--show-toplevel` helpers answer
 # "which tree is this", a different question from "where is main".
 #
 # Dual-mode, mirroring the repo's other check/lib scripts: source it for
-# gaia_check_resolver_singleton, or run it directly as a script (see
-# "Executable entry" at the bottom).
+# gaia_check_resolver_singleton, or run it directly as a script.
 #
 # gaia_check_resolver_singleton <repo_root>
 #   Runs `git -C <repo_root> grep` for each language's resolver definition
@@ -109,7 +105,6 @@ gaia_check_resolver_singleton() {
   [ "$shell_failed" -eq 0 ] && [ "$ts_failed" -eq 0 ]
 }
 
-# Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   repo_root="${1:-}"
   if [ -z "$repo_root" ]; then

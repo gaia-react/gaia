@@ -98,8 +98,9 @@ export const writeDeclineLedger = (
   ledger: DeclineLedger
 ): void => {
   const target = declineLedgerPath(repoRoot);
-  // Mode 755 matches the in-project dir convention (`ensureInProjectDirectory`
-  // in storage/paths.ts).
+  // Mode 755 matches the other `.gaia/local` state writers (setup-state, the
+  // sandbox marker, project-id), so the directory stays traversable by a
+  // subprocess running as another user.
   mkdirSync(path.dirname(target), {mode: 0o755, recursive: true});
 
   const serialized = `${JSON.stringify(ledger, null, 2)}\n`;

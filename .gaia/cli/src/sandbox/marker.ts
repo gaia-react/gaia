@@ -1,6 +1,5 @@
 /**
- * Per-machine sandbox resolution marker at `.gaia/local/sandbox.json`
- * (UAT-012 mechanism).
+ * Per-machine sandbox resolution marker at `.gaia/local/sandbox.json`.
  *
  * Records how THIS machine resolved the sandbox-enablement prompt: enabled
  * (applied), declined (offered, said no), or incapable (detection said

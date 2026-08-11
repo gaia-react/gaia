@@ -30,12 +30,7 @@
 # pinned by `doc-audit-remedy-set.bats` in this directory. The two suites
 # meet at `source_action: replace` and neither restates the other.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
-# where a false non-final bare `[[ ]]` does not fail the test, and a
-# `!`-negated command never fails a non-final line on any bash. Every absence
-# check below is written as `<positive-condition-for-the-bad-case> &&
-# return 1`, and a test whose last statement is such a check ends with an
-# explicit `true`.
+# Assertion style: .claude/rules/bats-assertions.md.
 #
 # `.gaia/tests/` is release-excluded and outside `wiki-style.md`'s scope, so
 # the failure-mode narration above is correct here in a way it would not be

@@ -1,6 +1,4 @@
 /**
- * Tests for `gaia wiki chain <begin|commit|finish>`.
- *
  * Strategy mirrors `sync-land.test.ts`: stand up a real (empty) git repo so
  * `git rev-parse --show-toplevel` resolves the sandbox root, then inject a
  * fake `CommandRunner` that returns canned `SpawnSyncReturns<string>` values

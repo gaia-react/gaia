@@ -11,8 +11,7 @@
 # and stays fast: the only real work left is the array-guard scanning the real
 # .claude/hooks tree, which lint-hook-array-guard.bats already asserts clean.
 #
-# Assertion style (.claude/rules/bats-assertions.md): grep -qF / [ ], never a
-# bare [[ ]] as a non-final line.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -46,9 +45,7 @@ teardown() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # The gate runs the hook array-guard as one of its passes and reports it.
-# ---------------------------------------------------------------------------
 
 @test "shell-lint folds in the hook array-guard pass and stays green on a clean tree" {
   run env PATH="$STUB_DIR:$PATH" bash "$GATE"
@@ -61,11 +58,9 @@ teardown() {
   grep -qF -- "shell-lint passed" <<<"$output"
 }
 
-# ---------------------------------------------------------------------------
 # The same wiring assertion for the diff-quoting guard. Its own correctness is
 # covered by lint-diff-name-only-quoting.bats; this covers only that the gate
 # still invokes it, which is the class the sibling assertion above exists for.
-# ---------------------------------------------------------------------------
 
 @test "shell-lint folds in the diff-quoting guard pass and stays green on a clean tree" {
   run env PATH="$STUB_DIR:$PATH" bash "$GATE"
@@ -76,12 +71,10 @@ teardown() {
   grep -qF -- "lint-diff-name-only-quoting: clean" <<<"$output"
 }
 
-# ---------------------------------------------------------------------------
 # The husky hooks are extensionless, so they match neither the *.sh nor the
 # *.bats discovery glob and need a pass of their own. Husky runs them as
 # `sh -e`, so that pass pins the dialect: shellcheck takes one dialect per
 # invocation, which is why this cannot fold into the *.sh pass.
-# ---------------------------------------------------------------------------
 
 @test "shell-lint lints the tracked husky hooks as sh" {
   run env PATH="$STUB_DIR:$PATH" SHELLCHECK_LOG="$STUB_DIR/argv.log" bash "$GATE"

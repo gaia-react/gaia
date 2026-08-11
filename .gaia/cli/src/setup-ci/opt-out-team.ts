@@ -1,6 +1,4 @@
 /**
- * `gaia setup-ci opt-out-team` handler.
- *
  * Writes `setup_opted_out: true` to `.gaia/automation.json` (the
  * committed config). The CLI does NOT check admin permission; that's
  * the slash command's responsibility. By the time this primitive is

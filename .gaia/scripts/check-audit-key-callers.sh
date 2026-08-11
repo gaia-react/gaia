@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Check the audit-key meter (`C4-01`/`C4-02`) cannot see on its own -- task
-# 4.1, analysis/task-4.1-audit-key-design.md §5.2. The meter's fixtures prove
+# Check the audit-key meter (`C4-01`/`C4-02`) cannot see on its own. The
+# meter's fixtures prove
 # that `gaia_audit_key` (`.gaia/scripts/audit-key-lib.sh`) itself partitions
 # two worktrees correctly; they cannot prove the five Code Audit Team agent
 # definitions that name a findings sidecar or the re-run ledger actually
@@ -48,8 +48,7 @@
 # gaia:maintainer-only:end
 #
 # Dual-mode, like the repo's other check scripts: source it for
-# gaia_check_audit_key_callers, or run it directly as a script (see
-# "Executable entry" at the bottom).
+# gaia_check_audit_key_callers, or run it directly as a script.
 #
 # gaia_check_audit_key_callers <repo_root>
 #   Runs `git -C <repo_root> grep` for both patterns across `.claude/agents/`
@@ -151,7 +150,6 @@ gaia_check_audit_key_callers() {
   [ "$literal_failed" -eq 0 ] && [ "$caller_failed" -eq 0 ]
 }
 
-# Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   repo_root="${1:-}"
   if [ -z "$repo_root" ]; then

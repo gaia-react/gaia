@@ -85,7 +85,7 @@ run_hook() {
   run env GAIA_TALLY_PROJECTS_ROOT="$proot" bash -c "echo '$input' | '$HOOK_ABS'"
 }
 
-# ---------- 1. Git commit with active plan folder -> keyed execute record (UAT-001) ----------
+# UAT-001
 @test "git commit with active plan folder records a keyed execute record" {
   build_repo
   cd "$REPO"
@@ -109,7 +109,6 @@ run_hook() {
   [ "$(jq -r '.session_id' "$LEDGER")" = "$SESSION" ]
 }
 
-# ---------- 2. git push also records ----------
 @test "git push also records an execute row" {
   build_repo
   cd "$REPO"
@@ -421,7 +420,6 @@ run_hook() {
   [ "$(jq -r '.partial' "$LEDGER")" = "true" ]
 }
 
-# ---------- 10. Worktree run: the plan folder lives ONLY in the main checkout ----------
 # The fixture's worktree is deliberately never linked, so it has no .gaia/local of
 # its own at all. The RUNNING sentinel therefore exists only in the main checkout
 # and is invisible to a cwd-relative glob run in the worktree.
@@ -473,7 +471,6 @@ run_hook() {
   [ -f "$MAIN_LEDGER" ]
 }
 
-# ---------- 11. Direct resolver unit: anchors to the main checkout from a worktree ----------
 # Unit test of the shared resolver in isolation: sourced and called from a
 # worktree cwd, with the RUNNING sentinel present only in the main checkout, it
 # must return the absolute main-checkout plan dir. RED before the anchor fix (the

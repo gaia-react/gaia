@@ -60,8 +60,7 @@
 #   the seam that matters.
 #
 # Dual-mode, like the repo's other check scripts: source it for
-# gaia_check_wiki_state_collision, or run it directly as a script (see
-# "Executable entry" at the bottom).
+# gaia_check_wiki_state_collision, or run it directly as a script.
 #
 # gaia_check_wiki_state_collision <repo_root>
 #   Runs both scans. Prints one verdict line per scan. Returns 0 when both
@@ -128,7 +127,6 @@ gaia_check_wiki_state_collision() {
   [ "$tracked_failed" -eq 0 ] && [ "$attr_failed" -eq 0 ]
 }
 
-# Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   repo_root="${1:-}"
   if [ -z "$repo_root" ]; then

@@ -25,10 +25,7 @@
 # proof at the bottom of this file; see the comment there for why those are
 # meaning-changing edits rather than deletions of the pinned string.
 #
-# Assertion style note (`.claude/rules/bats-assertions.md`): macOS's system
-# `/bin/bash` (3.2) does not fail a bats @test on a false bare `[[ ... ]]`
-# that isn't the test's last command, so assertions below use `grep -qF` /
-# `[ ]` (real exit codes) or an explicit `return 1`, never a bare `[[ ]]`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

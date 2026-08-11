@@ -6,10 +6,6 @@
  * and adopter-owned sentinels, classifies each remaining path, and returns
  * a deterministic (alphabetically sorted) manifest shape.
  *
- * Port of `.gaia/scripts/generate-manifest.mjs`. Output is byte-identical
- * to the script for the current repo state; see the snapshot test in
- * `manifest.test.ts`.
- *
  * Also lints the classifier sets for entries that are dead code because
  * release-exclude already masks them, and lints every owned `.sh`-bearing
  * directory against the scrub `maintainer-paths` scope and `runtime-deps`'s
@@ -291,9 +287,7 @@ export const buildManifest = (
 export const serialize = (manifest: ManifestShape): string =>
   `${JSON.stringify(manifest, null, 2)}\n`;
 
-// ---------------------------------------------------------------------------
 // Classifier-set lint
-// ---------------------------------------------------------------------------
 
 export type ClassifierOverlap = {
   entry: string;
@@ -338,9 +332,7 @@ export const lintClassifierSets = (
   return overlaps;
 };
 
-// ---------------------------------------------------------------------------
 // Scan-scope lint
-// ---------------------------------------------------------------------------
 
 const RELEASE_SCRUB_PATH = '.gaia/release-scrub.yml';
 const MAINTAINER_PATHS_CHECK_ID = 'maintainer-paths';
@@ -463,9 +455,7 @@ export const lintScanScopes = (
     .toSorted((a, b) => a.dir.localeCompare(b.dir));
 };
 
-// ---------------------------------------------------------------------------
 // Check
-// ---------------------------------------------------------------------------
 
 export type ManifestDrift = {
   classifierOverlaps: readonly ClassifierOverlap[];

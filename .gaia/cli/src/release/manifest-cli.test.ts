@@ -1,8 +1,4 @@
 /**
- * Tests for the `gaia-maintainer release manifest` CLI's emit/answer-gate
- * path: `run(...)` (the refusal/answer gate, `--ship`/`--withhold`/
- * `--allow-undecided`, emit, `--out`/`--stdout`).
- *
  * The `--check` report-path tests live in `manifest-cli-check.test.ts`. The
  * flag-grammar tests (argv parsing, flag-combination validation, unknown
  * flags) live in `manifest-cli-args.test.ts`. The classifier / build / lint

@@ -1,10 +1,8 @@
 /**
- * `gaia wiki dead-paths` handler.
- *
  * Scans `wiki/**` markdown files for backticked repo-relative paths that
  * reference files no longer present on disk. Detects rot like a wiki page
- * citing `.claude/hooks/wiki-stop-safety-net.sh` after that hook has been
- * deleted or renamed. Also flags any reference to sibling-monorepo paths
+ * citing a hook script after that hook has been deleted or renamed. Also
+ * flags any reference to sibling-monorepo paths
  * (`studio/`, `website/`); those reach outside the GAIA repo and never
  * resolve on a single-repo clone.
  *
@@ -171,8 +169,7 @@ const collectDeadPathsInLine = (
 
   for (const match of line.matchAll(PATH_TOKEN_PATTERN)) {
     // The capture group `([^`\n]+?)` isn't inside an optional quantifier or
-    // alternation, so it always participates once `match` exists; without
-    // `noUncheckedIndexedAccess`, TS already types `match[1]` as `string`.
+    // alternation, so it always participates once `match` exists.
     const token = match[1];
 
     if (isTrackedPath(token) && isDeadToken(ctx.cwd, token)) {

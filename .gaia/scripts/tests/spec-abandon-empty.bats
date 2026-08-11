@@ -4,10 +4,7 @@
 # ledger status. Every test runs the real script against an isolated fixture
 # ledger, never the GAIA repo's own `.gaia/local/specs/ledger.json`.
 #
-# Assertion style note: no bare `[[ ... ]]` for substring/prefix checks (see
-# .claude/rules/bats-assertions.md) -- a failing one does not fail the test on
-# macOS's default bash 3.2. This suite uses only `[ ... ]`, `grep`, and an
-# explicit `return 1`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   LIB_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.specify/extensions/gaia/lib" && pwd)"

@@ -250,10 +250,6 @@ commit_mixed_diff() {
   [ ! -f "$POST_LOG" ]
 }
 
-# -----------------------------------------------------------------------------
-# 2. gh unauthenticated → marker stays, no POST (fail-safe asymmetry)
-# -----------------------------------------------------------------------------
-
 @test "local producer: gh unauthenticated → marker stays, no status post (fail-safe asymmetry)" {
   install_gh_mock fail
   head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
@@ -541,11 +537,6 @@ commit_mixed_diff() {
   grep -qF -- "carried" "$POST_LOG" && return 1
   return 0
 }
-
-# -----------------------------------------------------------------------------
-# Frontend digest unavailable (masked sha256 tool): declines fail-closed,
-# never posts a status with a missing or empty digest field.
-# -----------------------------------------------------------------------------
 
 @test "frontend digest unavailable (sha256 tool masked): declines fail-closed, no POST" {
   install_gh_mock ok

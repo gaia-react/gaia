@@ -138,7 +138,6 @@ SH
   [ "$target_real" = "$main_real" ]
 }
 
-# ---------- 2. The EnterWorktree payload names the tree ----------
 @test "the EnterWorktree tool_response names the tree to provision" {
   make_main
   WT="$(add_worktree feat-enter)"
@@ -161,7 +160,6 @@ SH
   [ -L "$WT/.gaia/local" ] || return 1
 }
 
-# ---------- 4. The main checkout is never provisioned ----------
 # The predicate, not the caller, is what decides. A SessionStart in the main
 # checkout fires this hook on every startup, and it must do nothing there.
 @test "the main checkout is left alone" {
@@ -238,8 +236,8 @@ SH
 
 # ---------- 8. Typed routes are generated in the worktree, not in main ----------
 # The fallback arm: no lockfile means the install step never runs, so the tree
-# has no CLI of its own and typegen borrows main's. The prefers-its-own arm is
-# test 32, below.
+# has no CLI of its own and typegen borrows main's. Its pair, below, covers
+# the prefers-its-own arm.
 @test "typegen falls back to the main checkout's CLI when the tree has none of its own" {
   make_main
   stub_typegen
@@ -255,7 +253,6 @@ SH
   return 0
 }
 
-# ---------- 9. Typed routes are refreshed, not merely created ----------
 # The property a create-time-only run cannot hold: the types must be CURRENT,
 # so a stale copy is regenerated rather than left because a file exists.
 @test "stale typed routes are regenerated on entry" {
@@ -275,7 +272,6 @@ SH
   [ "$(cat "$WT/.react-router/types/.stamp")" = "$WT" ]
 }
 
-# ---------- 10. A checkout with nothing installed is not a failure ----------
 @test "a main checkout with no installed CLI provisions links and skips typegen" {
   make_main
   WT="$(add_worktree feat-nocli)"
@@ -410,7 +406,6 @@ SH
   [ "$(cat "$backup_dir/red-ledger/observations.jsonl")" = "stale" ]
 }
 
-# ---------- 16. A symlinked .gaia/local disables the step entirely ----------
 # The gate this test exercises exists for a change not yet landed: a linked
 # worktree's whole .gaia/local becomes one symlink to main's. Simulated here
 # with a symlink to an independent directory (not MAIN's own .gaia/local) so
@@ -441,7 +436,6 @@ SH
   return 0
 }
 
-# ---------- 17. The main checkout's own unkeyed data is rescued too ----------
 # The case the early gate would otherwise miss: nothing else runs at main's
 # own session start to carry this forward.
 @test "the main checkout's own unkeyed data is carried forward" {
@@ -460,7 +454,6 @@ SH
   return 0
 }
 
-# ---------- 18. Nothing to migrate is silent ----------
 @test "nothing to migrate is a silent no-op" {
   make_main
   WT="$(add_worktree feat-carry-nothing)"
@@ -578,7 +571,6 @@ SH
   [ "$(cat "$WT/.gaia/local/forensics/$key/20260101T000000Z-hook.md")" = "forensic-body" ]
 }
 
-# ---------- 24. migrate_keyed_subtrees_to_main is idempotent ----------
 @test "migrate_keyed_subtrees_to_main is idempotent: a second run changes nothing" {
   make_main
   WT="$(add_worktree feat-migrate-idempotent)"
@@ -600,7 +592,6 @@ SH
   [ "$(cat "$WT/.gaia/local/red-ledger/$key/observations.jsonl")" = "line-one" ]
 }
 
-# ---------- 25. A destination that already exists is skipped, not merged ----------
 @test "a destination that already exists in main is skipped, not overwritten, not merged, and logged loudly" {
   make_main
   WT="$(add_worktree feat-migrate-conflict)"
@@ -631,7 +622,6 @@ SH
   [ "$(cat "$backup_dir/red-ledger/$key/observations.jsonl")" = "worktree-data" ]
 }
 
-# ---------- 26. The main checkout itself is never migrated ----------
 @test "the main checkout itself is never migrated -- it is not a linked worktree" {
   make_main
   key="$(tree_key_for "$MAIN")"
@@ -648,7 +638,6 @@ SH
   return 0
 }
 
-# ---------- 27. Dependencies are installed on entry when a lockfile is present ----------
 @test "dependencies are installed on entry when a lockfile is present" {
   make_main
   add_lockfile
@@ -662,7 +651,6 @@ SH
   [ "$(cat "$PNPM_LOG")" = "$WT" ]
 }
 
-# ---------- 28. The install runs on EVERY entry, not only when node_modules is absent ----------
 @test "dependencies are installed on every entry, not only when node_modules is absent" {
   make_main
   add_lockfile
@@ -679,7 +667,6 @@ SH
   [ "$(wc -l < "$PNPM_LOG" | tr -d ' ')" = "2" ]
 }
 
-# ---------- 29. No lockfile: no install attempted, linking and typegen still happen ----------
 @test "no lockfile means no install is attempted, and linking plus typegen still happen" {
   make_main
   stub_typegen
@@ -693,7 +680,6 @@ SH
   [ -f "$WT/.react-router/types/.stamp" ]
 }
 
-# ---------- 30. pnpm absent from PATH: logged, non-fatal, typegen still runs ----------
 @test "pnpm absent from PATH: install is skipped, logged, non-fatal, and typegen still runs" {
   make_main
   add_lockfile
@@ -721,7 +707,6 @@ SH
   [ -f "$WT/.react-router/types/.stamp" ]
 }
 
-# ---------- 31. The install exiting non-zero is logged, non-fatal, typegen still runs ----------
 @test "the install exiting non-zero is logged, non-fatal, and typegen still runs" {
   make_main
   add_lockfile
@@ -735,7 +720,6 @@ SH
   [ -f "$WT/.react-router/types/.stamp" ]
 }
 
-# ---------- 32. Typegen prefers the tree's own CLI when one is present ----------
 # The other half of test 8's pair: when the tree HAS its own CLI, it is used
 # instead of main's borrowed one, even though main's is also present here.
 @test "typegen prefers the tree's own CLI when one is present" {

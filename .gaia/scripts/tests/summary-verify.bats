@@ -10,8 +10,7 @@
 # Fixtures are inline heredocs written to $BATS_TEST_TMPDIR; this suite never
 # touches real .gaia/local.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# assertions avoid bare `[[ ... ]]`. This suite uses `[ ... ]` throughout.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

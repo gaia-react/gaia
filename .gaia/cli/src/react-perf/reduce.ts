@@ -326,9 +326,6 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
     if (HELP_TOKENS.has(token)) return {kind: 'help'};
 
     if (token === '--frame-budget-ms') {
-      // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as
-      // `string`, not `string | undefined`; check the bound explicitly
-      // instead of comparing the indexed value to `undefined`.
       if (index + 1 >= argv.length) {
         return {
           code: 'invalid_arguments',
