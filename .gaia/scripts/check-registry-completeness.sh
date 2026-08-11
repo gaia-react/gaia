@@ -2,8 +2,6 @@
 # shellcheck shell=bash
 #
 # Check B-completeness -- registry <-> frozen inventory denominator
-# (state-registry conformance model, foundations task 2.3, design
-# analysis/registry-design.md §4.3).
 #
 # Mechanizes SPEC-061 UAT-002: the union of live `entries` and `residue`
 # equals the frozen inventory denominator, every live entry sits in exactly
