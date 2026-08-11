@@ -53,13 +53,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Read-only token: this job checks out, runs the committed maintainer binary,
-# and reports. It never writes to the repo. On a fork PR the `pull_request`
-# trigger exposes no secrets, so the worst a hostile PR-controlled binary can do
-# is misbehave on an ephemeral runner with a read-only token, the same bound
-# cli-tests.yml accepts when it runs PR-controlled `.gaia/cli/**` code.
-permissions:
-  contents: read
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. Each job below grants exactly what it needs.
+permissions: {}
 
 jobs:
   distribution-audit-pr:
@@ -71,6 +67,13 @@ jobs:
     # under that window so a hung fetch fails fast instead of inheriting the
     # 6-hour runner default; the real runtime is well under a minute.
     timeout-minutes: 15
+    # Read-only token: this job checks out, runs the committed maintainer binary,
+    # and reports. It never writes to the repo. On a fork PR the `pull_request`
+    # trigger exposes no secrets, so the worst a hostile PR-controlled binary can
+    # do is misbehave on an ephemeral runner with a read-only token, the same
+    # bound cli-tests.yml accepts when it runs PR-controlled `.gaia/cli/**` code.
+    permissions:
+      contents: read
     steps:
       # fetch-depth: 0 so both the base and head commits are present for the
       # diff below. The default merge-ref checkout has both as parents, but a

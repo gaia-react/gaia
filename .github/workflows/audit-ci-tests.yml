@@ -47,17 +47,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# The job checks out, resolves changed files via dorny/paths-filter, and runs
-# bats; it needs no write scopes, so pin GITHUB_TOKEN to least privilege instead
-# of inheriting the repo-default scope. `pull-requests: read` is load-bearing,
-# not decoration: naming any scope here sets every unlisted one to `none`, and
-# dorny/paths-filter resolves a PR's changed files through the API, which needs
-# it. Omitting it works only while this repo is public; the day it went private,
-# every run would 403 with "Resource not accessible by integration". Mirrors
-# shell-lint.yml, which runs the same action on the same trigger.
-permissions:
-  contents: read
-  pull-requests: read
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. Each job below grants exactly what it needs.
+permissions: {}
 
 jobs:
   audit-ci-tests:
@@ -76,6 +68,18 @@ jobs:
     # against real run durations, so a job that slows past it fails on the cap
     # rather than reporting that it got slower.
     timeout-minutes: 15
+    # Read-only token: the job checks out, resolves changed files via
+    # dorny/paths-filter, and runs bats; it needs no write scopes.
+    #
+    # `pull-requests: read` is load-bearing, not decoration: naming any scope
+    # here sets every unlisted one to `none`, and dorny/paths-filter resolves a
+    # PR's changed files through the API, which needs it. Omitting it works only
+    # while this repo is public; the day it went private, every run would 403
+    # with "Resource not accessible by integration". Mirrors shell-lint.yml,
+    # which runs the same action on the same trigger.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PRs that don't touch the audit scripts report this check green
