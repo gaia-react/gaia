@@ -127,10 +127,11 @@ jobs:
       # install every later step depends on. Without the alternation an
       # action-only pull request reports `code=false` and greens this required
       # check having run no tests. The sibling workflows express the same
-      # coverage as a `.github/actions/**` entry in their paths-filter; this
-      # gate is hand-rolled, so it is the one instance
-      # .gaia/scripts/tests/workflow-filter-coverage.bats is structurally unable
-      # to report and has to be maintained here by hand.
+      # coverage as a `.github/actions/**` entry in a declarative paths-filter,
+      # where a check can compare the declared globs against what the gated
+      # steps actually read. This gate is hand-rolled, so no such check can see
+      # it: the alternation above is maintained by hand, and adding a step that
+      # reads a new path means adding that path here in the same edit.
       - name: Detect test-relevant changes in the incremental delta
         id: filter
         if: steps.chore-deps.outputs.skip == 'false'
