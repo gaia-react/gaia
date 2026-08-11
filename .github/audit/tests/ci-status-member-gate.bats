@@ -1529,7 +1529,10 @@ run_comment_step() {
   #    `-eq 2` alone lets 127 (and every other unexpected exit) fall through to
   #    the POST, so the test must be for a DEFINITIVE 1.
   if grep -qF -- '"$_live" -eq 2' "$WRITER"; then return 1; fi
-  grep -qF -- "audit-success-present.sh" "$WRITER" || return 1
+  # Regex, not -F: the writer names this script in the rationale comment above
+  # the call, so a bare substring is satisfiable by prose and stays green with
+  # the guard call deleted. The `bash ` prefix binds it to the real invocation.
+  grep -qE -- 'bash "?[^"]*audit-success-present\.sh' "$WRITER" || return 1
   grep -qF -- '"$_live" -ne 1' "$WRITER" || return 1
 
   # 4. ...and all five terminal steps actually go through it, so none of them
@@ -1543,7 +1546,12 @@ run_comment_step() {
     "Stand down (local-mode, no override)"
   do
     body="$(extract_step_body "$step")"
-    grep -qF -- "write-audit-status.sh" "$body" || return 1
+    # Regex, not -F: two of these five steps name the writer in a rationale
+    # comment above their call, so a substring pin already passes for them on
+    # prose alone -- which would hollow out the one clause this lock says would
+    # have caught the gap the behavioral tests missed. `bash ` binds it to the
+    # real invocation.
+    grep -qE -- 'bash "?[^"]*write-audit-status\.sh' "$body" || return 1
   done
 }
 
