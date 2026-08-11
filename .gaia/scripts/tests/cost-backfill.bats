@@ -10,10 +10,8 @@
 # with no Est. cost line, a section with the italic "unavailable" marker, a
 # `## Total` grand-sum that must never be emitted).
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# assertions avoid bare `[[ ... ]]` (a false one is silently skipped on
-# macOS's system bash 3.2). This suite uses `jq -e` (own exit code) and `[
-# ... ]`/grep for everything but the test's last statement.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md. Uses `jq -e` (own exit
+# code) for JSON checks.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

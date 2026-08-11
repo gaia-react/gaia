@@ -9,10 +9,7 @@ bats_require_minimum_version 1.5.0
 # the live-required set and `--workflows-dir` points at a fixture directory,
 # so the suite is fully offline and deterministic.
 #
-# Assertion style note (`.claude/rules/bats-assertions.md`): macOS's system
-# `/bin/bash` (3.2) does not fail a bats @test on a false bare `[[ ... ]]`
-# that isn't the test's last command, so non-final substring/prefix checks
-# below use `grep -qF` via the `assert_contains` helper, not `[[ ]]`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 assert_contains() {
   grep -qF -- "$1" <<<"$output"
@@ -31,9 +28,7 @@ Vitest and Playwright
 Vitest (.gaia/cli)"
 }
 
-# ---------------------------------------------------------------------------
 # Usage errors (exit 2)
-# ---------------------------------------------------------------------------
 
 @test "usage error: unknown flag exits 2" {
   run "$SCRIPT" --not-a-real-flag foo
@@ -61,9 +56,7 @@ Vitest (.gaia/cli)"
   [ "$exit_status" -eq 2 ]
 }
 
-# ---------------------------------------------------------------------------
 # Clean pass: every declared-required context is in the live ruleset
-# ---------------------------------------------------------------------------
 
 @test "clean pass: exits 0 when every required context is present" {
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
@@ -119,9 +112,7 @@ Vitest (.gaia/cli)"
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # Drift: a declared-required context is missing from the live ruleset
-# ---------------------------------------------------------------------------
 
 @test "drift: exits 1 when a required context is missing live" {
   local partial="Audit CI Tests
@@ -173,9 +164,7 @@ Vitest (.gaia/cli)"
   assert_contains "Vitest (.gaia/cli)"
 }
 
-# ---------------------------------------------------------------------------
 # gh api failure on the live ruleset read (exit 2, not a drift verdict) (#809)
-# ---------------------------------------------------------------------------
 
 @test "gh api failure reading the live ruleset exits 2 with a loud diagnostic, not a false drift verdict" {
   mkdir -p "$BATS_TEST_TMPDIR/bin"
@@ -189,9 +178,7 @@ EOF
   assert_contains "could not read the live ruleset"
 }
 
-# ---------------------------------------------------------------------------
 # Workflows dir edge cases
-# ---------------------------------------------------------------------------
 
 @test "no advisory section when the workflows dir has no job files" {
   run "$SCRIPT" --repo gaia-react/gaia --branch main \

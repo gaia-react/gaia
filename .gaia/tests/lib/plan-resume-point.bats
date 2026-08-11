@@ -144,7 +144,6 @@ EOF
   [ "${#lines[@]}" -eq 1 ]
 }
 
-# --- 009d: legacy live SUMMARY.md fallback (no PROGRESS.md present) ---------
 # A plan folder crossing the rename boundary mid-run has only the legacy
 # live ledger; the helper falls back to it and resumes at the same integer
 # it would from an equivalent PROGRESS.md fixture (test 013).
@@ -195,7 +194,6 @@ EOF
   [ "${#lines[@]}" -eq 4 ]
 }
 
-# --- 011: HALTED block superseded by a later completion (last-block-wins) ---
 
 @test "011: HALTED Phase 2 block superseded by a later completion block -> resume 3, COMPLETE 1 2" {
   sha1=$(_commit p1)

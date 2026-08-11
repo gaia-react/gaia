@@ -44,13 +44,7 @@
 # print MAIN's path) and fails loudly if that basic precondition does not
 # hold, so a fixture bug is never mistaken for a real red.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
-# where a false non-final bare `[[ ]]` does not fail the test, and a
-# `!`-negated command never fails a non-final line on any bash. Absence
-# checks are written as `<positive-condition-for-the-bad-case> && return 1`
-# (or `case`+`return 1`), and POSIX `[ ]` covers equality/numeric/empty/file
-# checks. A test whose LAST statement is such a check ends with an explicit
-# `true`.
+# Assertion style: .claude/rules/bats-assertions.md.
 #
 # WHAT EACH TEST CATCHES. Test 1 catches a bare-relative folder creation in
 # the preset: run with cwd=worktree it creates the folder IN the worktree, not

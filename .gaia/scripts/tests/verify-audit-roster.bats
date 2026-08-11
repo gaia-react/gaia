@@ -17,10 +17,7 @@
 # real machinery lists; UAT-024 is the one test that reads them, and it only
 # reads.
 #
-# Assertion style (.claude/rules/bats-assertions.md): non-final checks use POSIX
-# `[ ]` or `grep -qF`, never a bare `[[ ]]`, which macOS's bash 3.2 does not fail
-# on. Absence is asserted as `<positive-condition> && return 1`, never as a
-# non-final `!`-negation, which `set -e` exempts on every bash version.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -211,9 +208,7 @@ YAML
   run_root "$r"
 }
 
-# ---------------------------------------------------------------------------
 # Usage surface
-# ---------------------------------------------------------------------------
 
 @test "usage: --help exits 0 and prints the usage" {
   run bash "$SCRIPT" --help
@@ -236,10 +231,8 @@ YAML
   [ "$status" -eq 2 ]
 }
 
-# ---------------------------------------------------------------------------
 # UAT-024: the roster this SPEC ships passes. If this fails, either the check
 # or the roster is wrong; do not relax the check to fit the roster.
-# ---------------------------------------------------------------------------
 
 @test "UAT-024: the shipped roster passes the check" {
   run bash "$SCRIPT"
@@ -263,10 +256,8 @@ YAML
   [ "$claimants" -ge 2 ]
 }
 
-# ---------------------------------------------------------------------------
 # UAT-020: two claimants whose globs overlap AS GLOB LANGUAGES, with no such
 # file anywhere in the repo. That is the case the invariant exists for.
-# ---------------------------------------------------------------------------
 
 @test "UAT-020: overlapping claimants fail, naming the pair and a witness" {
   pair_root 'zz-no-such-tree/**' 'zz-no-such-tree/deep/*.zz'
@@ -306,12 +297,10 @@ YAML
   [[ "$witness" =~ $rx_b ]] || return 1
 }
 
-# ---------------------------------------------------------------------------
 # UAT-021: the default member is excluded from the pairwise comparison. Its
 # tier is reached only after every claimant has failed to match, so an overlap
 # with a claimant is what the precedence tier MEANS, not a defect. The shipped
 # roster has exactly this overlap by design.
-# ---------------------------------------------------------------------------
 
 @test "UAT-021: a default whose globs overlap a claimant's does not fail" {
   local r="$BATS_TEST_TMPDIR/default-overlap"
@@ -360,10 +349,8 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # UAT-022: machinery registration, each list tested independently, via fixture
 # lists injected under --root.
-# ---------------------------------------------------------------------------
 
 @test "UAT-022: a member missing from AUDIT_MACHINERY_PATHS fails, naming the file and the list" {
   local r="$BATS_TEST_TMPDIR/unreg-machinery"
@@ -480,13 +467,11 @@ YAML
   assert_contains ".claude/agents/code-audit-a.md"
 }
 
-# ---------------------------------------------------------------------------
 # Member name convention: every member's name carries the `code-audit-` prefix.
 # The local self-heal hook (block-selfheal-paths.sh) binds a dispatched member
 # to its repair boundary by that prefix, so a member named off-convention
 # escapes the boundary silently. scaffold_root registers every member and gives
 # it an agent file, so an off-convention member fails for the name reason alone.
-# ---------------------------------------------------------------------------
 
 @test "member name convention: an off-convention member fails, naming it" {
   local r="$BATS_TEST_TMPDIR/off-convention"
@@ -526,9 +511,7 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # UAT-023: exactly one default member.
-# ---------------------------------------------------------------------------
 
 @test "UAT-023: zero members carrying default: true fails, naming the count" {
   local r="$BATS_TEST_TMPDIR/no-default"
@@ -576,10 +559,8 @@ YAML
   assert_contains "default-member-count"
 }
 
-# ---------------------------------------------------------------------------
 # UAT-025: a pair the bounded dialect cannot decide FAILS, naming the pair. The
 # check never fails open on the assertion it exists to make.
-# ---------------------------------------------------------------------------
 
 @test "UAT-025: a '?' glob is undecidable and fails, naming the pair" {
   pair_root 'a/?.ts' 'a/*.ts'
@@ -616,10 +597,8 @@ YAML
   [ "$status" -eq 1 ]
 }
 
-# ---------------------------------------------------------------------------
 # The disjointness table. The interesting cases are pairs, and the witness is
 # what makes an overlap actionable, so each overlapping row asserts its witness.
-# ---------------------------------------------------------------------------
 
 @test "pairs: a/** vs a/b/*.ts overlap, witness a/b/<x>.ts" {
   pair_root 'a/**' 'a/b/*.ts'
@@ -742,13 +721,11 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # SPEC-056 UAT-001/002/003: remit region parity. The roster is the authority on
 # what each member owns; its definition's region must say the same thing, in
 # the same order. Every case asserts the specific slug by name rather than a
 # process-wide exit code: the check emits one block per violation across
 # independent invariants, so an unrelated one firing would mask the case.
-# ---------------------------------------------------------------------------
 
 @test "SPEC-056 UAT-001: a roster glob missing from the region fails, naming the glob" {
   local r="$BATS_TEST_TMPDIR/remit-missing"
@@ -801,11 +778,9 @@ YAML
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # SPEC-056 UAT-004: the region's SHAPE. A region that cannot be read leaves
 # nothing to compare, so each of the three is its own finding and none of them
 # is reported as parity-clean.
-# ---------------------------------------------------------------------------
 
 @test "SPEC-056 UAT-004: a definition with no region fails" {
   local r="$BATS_TEST_TMPDIR/remit-shape-missing"
@@ -873,13 +848,11 @@ YAML
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # SPEC-056 UAT-005: a region glob the bounded dialect cannot decide FAILS. The
 # only way a rejected glob reaches a region is a roster that grants one, and
 # the two fixtures below are exactly the positions the pairwise invariant never
 # reaches: the default member, and a lone claimant (zero pairs). A default plus
 # one claimant is the whole adopter roster shape.
-# ---------------------------------------------------------------------------
 
 undecidable_remit_root() {
   # <fixture-dir> <default-glob> <claimant-glob>
@@ -933,11 +906,9 @@ YAML
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # SPEC-056 UAT-009: the committed tree. Every shipped definition's region is
 # its roster entry, verbatim and in order. Read from the roster through
 # --emit-roster, never from a list or a count written down here.
-# ---------------------------------------------------------------------------
 
 @test "SPEC-056 UAT-009: every committed definition's region equals its roster globs, in order" {
   run bash "$SCRIPT"
@@ -962,9 +933,7 @@ YAML
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # The raw-glob scrape is held in lockstep with the classifier
-# ---------------------------------------------------------------------------
 
 # Reading the raw globs with a second reader is a deliberate exception to the
 # no-second-parser rule, and the per-member glob-count comparison is what makes
@@ -1034,11 +1003,9 @@ YAML
   assert_contains "roster-reader-drift"
 }
 
-# ---------------------------------------------------------------------------
 # SPEC-056 UAT-011: the writer reads the roster through THIS check's scrape,
 # so there is one scrape between the two scripts, not two. Perturbing it must
 # change what both observe.
-# ---------------------------------------------------------------------------
 
 drift_writer_fixture() {
   scaffold_root "$1" <<'YAML'
@@ -1099,9 +1066,7 @@ YAML
   grep -qF 'in_globs' "$SCRIPT"
 }
 
-# ---------------------------------------------------------------------------
 # The maintainer-only lockstep block
-# ---------------------------------------------------------------------------
 
 @test "lockstep: a --config-injected run does not evaluate the builtin-fallback lockstep" {
   # Load-bearing: every fixture roster differs from the builtin fallback by
@@ -1194,9 +1159,7 @@ YAML
   assert_contains "claimant-glob-overlap"
 }
 
-# ---------------------------------------------------------------------------
 # Read-only
-# ---------------------------------------------------------------------------
 
 @test "the check never writes: the fixture root is byte-identical after a run" {
   local r="$BATS_TEST_TMPDIR/readonly"
@@ -1244,7 +1207,6 @@ YAML
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # Invariant 7: every tracked path resolves an owner (#1245).
 #
 # The universe is the tracked file list of the repository ROOTED AT --root, so
@@ -1252,7 +1214,6 @@ YAML
 # The sibling fixtures above deliberately stay non-git: the invariant has no
 # universe there and does not run, which is what keeps it from re-reddening
 # every other test in this suite.
-# ---------------------------------------------------------------------------
 
 # Scaffolds a fixture root as scaffold_root does, then makes it a repository
 # and stages everything, so `git ls-files` has an answer. Extra tracked files

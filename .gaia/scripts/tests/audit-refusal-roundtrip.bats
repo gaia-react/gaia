@@ -25,10 +25,7 @@
 #   2. the carry-forward ledger is written
 #   3. the classifier answers "refused", not "noop"
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS's system bash 3.2
-# does not fail a @test on a false bare `[[ ]]` that is not the last command,
-# so non-final checks use POSIX `[ ]`, `grep -q`, or an explicit `return 1`, and
-# an absence assertion is written as `<bad-case> && return 1`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -114,10 +111,8 @@ classify() {
     --path "$RETURN_TEXT" --marker "$MARKER" "$@"
 }
 
-# =============================================================================
 # The round-trip: all three assertions in one test, because the point is that
 # they hold TOGETHER. Any one of them alone still leaves the operator stuck.
-# =============================================================================
 
 @test "a staged refusal round-trips: report with file and line, ledger written, classifier says refused" {
   stage_refusal
@@ -145,10 +140,8 @@ classify() {
   [ "$output" = "refused" ]
 }
 
-# =============================================================================
 # Each assertion again on its own, so a regression names itself instead of
 # arriving as one failing composite.
-# =============================================================================
 
 @test "1. the report locates every finding and names its defect, evidence, and repair" {
   stage_refusal
@@ -213,9 +206,7 @@ JSON
   [ "$output" = "noop" ]
 }
 
-# =============================================================================
 # The loop this closes: what the orchestrator can do with the artifacts alone.
-# =============================================================================
 
 @test "the operator can name every finding from artifacts alone, with the return discarded" {
   stage_refusal

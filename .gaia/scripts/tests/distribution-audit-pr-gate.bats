@@ -22,9 +22,7 @@
 # the workflow itself uses. That is the shipped code running unmodified, which
 # is the point; nothing else in this repo's suites reads those two names.
 #
-# Assertion style (.claude/rules/bats-assertions.md): POSIX `[ ]` and `grep -qF`
-# for presence; a positive match plus an explicit `return 1` for absence, since a
-# `!`-negated non-final line never fails a test under `set -e`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 # require <label> <test-expression...>
 #

@@ -17,16 +17,6 @@
 # BOTH the queried SHA (in the URL) and the check name (embedded in the --jq
 # filter) appear in the call's args, else 0. This exercises the name filter.
 #
-# Coverage:
-#   1. No green check on any PR commit            → main ref (fallback)
-#   2. Green check on parent                      → that parent SHA
-#   3. Non-green parent, green grandparent        → grandparent (last GREEN)
-#   4. Newest of several green commits wins        → newest green SHA
-#   5. Green check on HEAD itself is never base   → main ref
-#   6. Single-commit PR (only HEAD)               → main ref
-#   7. No gh / no token (API unreachable)         → main ref
-#   8. A different check's green is ignored        → main ref (name filter)
-#   9. Missing check-name argument                → main ref
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -113,10 +103,6 @@ EOF
   export GITHUB_REPOSITORY="gaia-react/gaia"
 }
 
-# -----------------------------------------------------------------------------
-# 1. No green check on any PR commit → main ref
-# -----------------------------------------------------------------------------
-
 @test "no green check on any PR commit → main ref" {
   add_commit a
   add_commit b
@@ -156,10 +142,6 @@ EOF
   [ "$output" = "$green" ]
 }
 
-# -----------------------------------------------------------------------------
-# 4. Newest green commit wins over an older green commit
-# -----------------------------------------------------------------------------
-
 @test "newest green commit wins over an older green commit" {
   add_commit a
   older="$(sha_of HEAD)"
@@ -172,10 +154,6 @@ EOF
   [ "$output" = "$newer" ]
   [ "$output" != "$older" ]
 }
-
-# -----------------------------------------------------------------------------
-# 5. A green check on HEAD itself is never chosen as its own base
-# -----------------------------------------------------------------------------
 
 @test "green check on HEAD is not used as its own base" {
   add_commit a
@@ -197,10 +175,6 @@ EOF
   [ "$output" = "main" ]
 }
 
-# -----------------------------------------------------------------------------
-# 7. No gh / no token → API unreachable → main ref
-# -----------------------------------------------------------------------------
-
 @test "no GH_TOKEN → API unreachable → main ref" {
   add_commit a
   base="$(sha_of HEAD)"
@@ -214,10 +188,6 @@ EOF
   [ "$output" = "main" ]
 }
 
-# -----------------------------------------------------------------------------
-# 8. A different check's green is ignored (name filter) → main ref
-# -----------------------------------------------------------------------------
-
 @test "green check for a different context is ignored → main ref" {
   add_commit a
   base="$(sha_of HEAD)"
@@ -227,10 +197,6 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
 }
-
-# -----------------------------------------------------------------------------
-# 9. Missing check-name argument → main ref
-# -----------------------------------------------------------------------------
 
 @test "missing check-name argument → main ref" {
   add_commit a

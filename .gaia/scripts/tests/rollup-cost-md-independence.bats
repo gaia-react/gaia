@@ -9,10 +9,7 @@
 # numbers never surface: the reader takes no folder/spec-root argument at
 # all, so nothing about its invocation could ever reach the decoy file.
 #
-# Assertion style note: bare `[[ ... ]]` is avoided for any non-terminal
-# assertion per .claude/rules/bats-assertions.md (a false `[[ ... ]]` is
-# silently skipped under bash 3.2's `set -e`, what macOS's default `/bin/bash`
-# resolves to for bats-core).
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"

@@ -482,10 +482,8 @@ push_fixes: false"
   [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Chromatic"$'\n'"Tests"$'\n'"__GAIA_END__"* ]]
 }
 
-# ===========================================================================
 # Per-author audit-mode resolver: new keys, --resolve-author, precedence,
 # normalization, required-check confirmation (advisory-only).
-# ===========================================================================
 
 # --- 24. New keys: absent → defaults in the emit-all path -------------------
 
@@ -745,11 +743,9 @@ audit_authors: \"stevensacks=local\""
   [ "$status" -ne 0 ]
 }
 
-# ===========================================================================
 # required_check_confirmed: classic branch protection + ruleset fallback
 # (UAT-007/008). Classic protection is unchanged; the ruleset branch is new
 # and is only consulted when classic protection does not confirm.
-# ===========================================================================
 
 # stub_gh_ruleset_confirms: classic protection is unconfirmable (simulates a
 # 404 on a ruleset-protected repo -- empty stdout, non-zero exit), but the
@@ -863,11 +859,9 @@ audit_authors: \"alice=local\""
   [ "$mode_a" = "resolved_mode=local" ]
 }
 
-# ===========================================================================
 # Write-side round-trip: prove the reader parses exactly what the setup
 # prompts write (default_mode/override_label via /setup-gaia; audit_authors
 # via /setup-gaia through the append-audit-author.sh helper).
-# ===========================================================================
 
 # Install the append helper alongside the reader inside the sandbox's
 # `.gaia/scripts/`, so the helper's sibling-script lookup finds the reader and

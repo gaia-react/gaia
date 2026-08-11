@@ -23,12 +23,9 @@
 # .claude/rules/bats-assertions.md):
 #   source .gaia/scripts/bats5.sh && bats5 .gaia/scripts/tests/debt-origin-contract.bats
 #
-# Assertion style follows .claude/rules/bats-assertions.md: POSIX `[ ... ]`
-# for equality/status/empty checks, `grep -qF` for substring checks, a
-# non-final absence check is written as a positive match plus an explicit
-# `return 1` (never a `!`-negation, which `set -e` exempts on every bash
-# version), and every expected value is a literal rather than a value this
-# suite recomputes from the same source it is checking.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
+# Every expected value is a literal rather than a value this suite
+# recomputes from the same source it is checking.
 
 require_jq() {
   command -v jq >/dev/null 2>&1 && return 0

@@ -16,10 +16,7 @@
 # reaps as one unit, but a pending wiki-promote defer flag is purged rather
 # than orphaned (test 8 below).
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# assertions avoid bare `[[ ... ]]`. This suite uses `[ ... ]` and the
-# assert_contains/refute_contains grep helpers below for everything but a
-# test's last statement.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -242,7 +239,6 @@ _seed_cost_row() {
   [ -f "$PLANS/PLAN-001/PLAN.md" ]
 }
 
-# --- 4: skip an abandoned row with no folder ---------------------------------
 
 @test "4: an abandoned row with no active folder is a no-op" {
   _seed_abandoned_row_only PLAN-005
@@ -269,7 +265,6 @@ _seed_cost_row() {
   [ "$before" = "$after" ]
 }
 
-# --- 6: a merged row is never touched by the abandoned sweep ----------------
 
 @test "6: a merged row is never touched by the abandoned sweep" {
   _seed_abandoned_plan PLAN-001
@@ -283,7 +278,6 @@ _seed_cost_row() {
   [ -f "$PLANS/PLAN-002/SUMMARY.md" ]
 }
 
-# --- 7: a folder without an abandoned ledger row is never deleted -----------
 
 @test "7: a folder without an abandoned ledger row is never deleted" {
   _seed_abandoned_plan PLAN-001
@@ -314,7 +308,6 @@ _seed_cost_row() {
   [ -d "$SANDBOX/.gaia/local/cache/wiki-promote" ]
 }
 
-# --- 9: a wiki-promote defer flag survives when a gate keeps the folder ----
 
 @test "9: a wiki-promote defer flag survives when the age gate keeps the folder" {
   _seed_abandoned_plan PLAN-001
@@ -354,7 +347,6 @@ _seed_cost_row() {
   [ -f "$PLANS/PLAN-001/PLAN.md" ]
 }
 
-# --- 12: age gate, past window + represented -> reaped -----------------------
 
 @test "12: an abandoned folder past the retention window with represented cost is reaped" {
   _seed_abandoned_plan PLAN-001
@@ -369,7 +361,6 @@ _seed_cost_row() {
   [ "$(jq -r '.plans[0].status' "$LEDGER")" = "abandoned" ]
 }
 
-# --- 13: age gate, past window but unrepresented -> kept ---------------------
 
 @test "13: a folder past the retention window but unrepresented is kept" {
   _seed_abandoned_plan PLAN-001
@@ -439,7 +430,6 @@ _seed_cost_row() {
   [ -f "$PLANS/PLAN-001/PLAN.md" ]
 }
 
-# --- 18: a non-numeric knob value falls back to the 30-day default ---------
 
 @test "18: a non-numeric GAIA_SPEC_RETENTION_DAYS falls back to the 30-day default" {
   export GAIA_SPEC_RETENTION_DAYS="abc"

@@ -9,11 +9,7 @@
 # Every test runs against an isolated sandbox with a stub `gh` on PATH, never
 # a real network call.
 #
-# Assertion style (`.claude/rules/bats-assertions.md`): macOS's system bash
-# 3.2 does not fail a bats @test on a false bare `[[ ... ]]` that is not the
-# test's last command, so non-final checks use POSIX `[ ]`, `grep -qF`, or an
-# explicit `return 1`, never a bare mid-test `[[ ]]` and never a non-final
-# `!`-negation.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -190,9 +186,7 @@ extract_payload() {
   sed -n '3p' "$SANDBOX/posted_body.txt"
 }
 
-# =============================================================================
 # Usage
-# =============================================================================
 
 @test "usage: --help exits 0 with usage text" {
   run bash "$SCRIPT" --help
@@ -211,9 +205,7 @@ extract_payload() {
   [ "$status" -eq 2 ]
 }
 
-# =============================================================================
 # UAT-034: one block, every dispatched member's findings
-# =============================================================================
 
 @test "UAT-034: multiple sidecars merge into exactly one posted block carrying every member's findings" {
   write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
@@ -231,9 +223,7 @@ extract_payload() {
   [ "$(jq '.findings | length' <<<"$payload")" = "2" ]
 }
 
-# =============================================================================
 # UAT-037: structural shape the tally's parser accepts
-# =============================================================================
 
 @test "UAT-037: the rendered block carries the sentinels and a structurally valid payload" {
   write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
@@ -280,9 +270,7 @@ extract_payload() {
   [ "$(jq -r '.findings[0].suggested_fix' "$sidecar")" = "bound each path segment" ]
 }
 
-# =============================================================================
 # AC3: a second run with the same base updates, never duplicates
-# =============================================================================
 
 @test "a second run with the same base updates the existing comment rather than creating a second" {
   write_sidecar code-audit-frontend '[]'
@@ -320,9 +308,7 @@ extract_payload() {
   [ "$post_calls" -eq 1 ]
 }
 
-# =============================================================================
 # AC4: zero sidecars declines cleanly, before any gh call
-# =============================================================================
 
 @test "zero sidecars: declines cleanly, exit 0, nothing posted" {
   stub_gh '[]'
@@ -333,9 +319,7 @@ extract_payload() {
   [ ! -e "$GH_LOG" ]
 }
 
-# =============================================================================
 # AC5: every sidecar carries findings: [] -> still one meaningful post
-# =============================================================================
 
 @test "all sidecars carry findings: [] -> one block is still posted, with an empty array" {
   write_sidecar code-audit-frontend '[]'
@@ -348,9 +332,7 @@ extract_payload() {
   [ "$(jq -c '.findings' <<<"$payload")" = "[]" ]
 }
 
-# =============================================================================
 # AC6: a malformed sidecar is skipped, named, and never silently vanishes
-# =============================================================================
 
 @test "a malformed sidecar (invalid JSON) is skipped, named on stderr, and the rest still posts" {
   write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
@@ -403,9 +385,7 @@ extract_payload() {
   return 0
 }
 
-# =============================================================================
 # AC7: gh absent / unauthenticated, fail-safe asymmetry
-# =============================================================================
 
 @test "gh absent: declines, exit 0, nothing touched" {
   write_sidecar code-audit-frontend '[]'
@@ -447,9 +427,7 @@ extract_payload() {
   grep -qF "jq is required" <<<"$output"
 }
 
-# =============================================================================
 # AC9: the sidecar glob is provably distinct from every clearance/marker key
-# =============================================================================
 
 @test "the sidecar glob never matches a clearance marker, refusal, dispositions sidecar, or rerun ledger" {
   # A marker/refusal/dispositions family is keyed to a 64-hex content DIGEST;
@@ -475,9 +453,7 @@ extract_payload() {
   return 0
 }
 
-# =============================================================================
 # AC10/11: structural hygiene
-# =============================================================================
 
 @test "structural: never invokes cd, per .claude/rules/shell-cwd.md" {
   code_lines="$(grep -vE '^[[:space:]]*#' "$SCRIPT")"

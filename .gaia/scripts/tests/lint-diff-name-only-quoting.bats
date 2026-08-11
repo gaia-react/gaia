@@ -14,9 +14,7 @@
 # it asserts nothing about the class it was written for; "reds against the
 # pre-fix worthiness-presence-check.sh derivation" is that test.
 #
-# Assertion style (.claude/rules/bats-assertions.md): grep -qF / [ ] / an
-# explicit `return 1`, never a bare [[ ]] as a non-final line, and never a
-# `!`-negated absence assertion off the final line.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # The linter resolves its scan surface with `git ls-files` relative to cwd, so
 # every fixture is a real git repository with its files added. That is also
@@ -54,18 +52,14 @@ run_linter() {
   run bash -c "cd '$TMP' && bash '$LINTER'"
 }
 
-# ---------------------------------------------------------------------------
 # 1. The real scanned tree is clean (regression gate)
-# ---------------------------------------------------------------------------
 
 @test "the real scanned tree (shell + husky + workflow YAML) passes the lint" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # 2. The detector fires, once per scanned file type
-# ---------------------------------------------------------------------------
 
 @test "flags an unquoted diff --name-only in a shell script" {
   fixture_repo
@@ -113,9 +107,7 @@ run_linter() {
   [ "$(grep -cF -- "probe.sh:2" <<<"$output")" -eq 2 ]
 }
 
-# ---------------------------------------------------------------------------
 # 3. Legitimate shapes are NOT flagged
-# ---------------------------------------------------------------------------
 
 @test "a call carrying -z passes" {
   fixture_repo
@@ -276,9 +268,7 @@ run_linter() {
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # 4. Reporting contract
-# ---------------------------------------------------------------------------
 
 @test "a clean tree reports clean and exits 0" {
   fixture_repo

@@ -8,11 +8,7 @@
 # SEC-007 (every machinery path is roster-claimed) and the scrub-marker
 # survival check.
 #
-# Assertion style (`.claude/rules/bats-assertions.md`): macOS's system
-# `/bin/bash` (3.2) does not fail a bats @test on a false bare `[[ ... ]]`
-# that isn't the test's last command, so assertions below use `grep -q` /
-# `[ ]` (real exit codes) or an explicit `return 1`, never a bare `[[ ]]`
-# unless it is the test's last command.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"

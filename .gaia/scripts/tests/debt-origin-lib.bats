@@ -20,12 +20,10 @@
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
 # .gaia/scripts/tests/debt-origin-lib.bats`.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final absence
-# checks use a positive match for the bad case plus an explicit `return 1`,
-# never `!`-negation; equality/numeric/empty checks use POSIX `[ ... ]`, which
-# fails correctly on every bash version. Every expected value below is written
-# as a literal: an assertion that recomputes the derivation in its own body
-# would be testing its own arithmetic.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
+# Every expected value below is written as a literal: an assertion that
+# recomputes the derivation in its own body would be testing its own
+# arithmetic.
 
 setup() {
   LIB="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/debt-origin-lib.sh"

@@ -22,9 +22,8 @@ bats_require_minimum_version 1.5.0
 #     fixture from token-tally.bats) carries NO code-review-audit sidecar at
 #     all -- the "nothing to record" no-op case.
 #
-# Assertion style note (`.claude/rules/bats-assertions.md`): non-final
-# assertions avoid bare `[[ ... ]]` and `!`-negation; this suite uses
-# `[ ... ]`, `jq -e` + explicit status checks, and explicit `return 1`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md. Uses `jq -e`
+# plus explicit status checks for JSON assertions.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"

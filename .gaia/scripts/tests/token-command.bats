@@ -28,10 +28,8 @@ bats_require_minimum_version 1.5.0
 #     the only fixture with a recorded code-review-audit window, needed to
 #     exercise --action review in test 29.
 #
-# Assertion style (.claude/rules/bats-assertions.md): non-final assertions
-# avoid bare `[[ ... ]]` and `!`-negation; this suite uses `[ ... ]`, `grep -q`
-# with an explicit status check, `jq -e` plus an explicit status check, and
-# explicit `return 1` for the bad-case branch of every absence assertion.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md. Uses `jq -e`
+# (own exit code) alongside POSIX `[ ... ]` and `grep -q`.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"

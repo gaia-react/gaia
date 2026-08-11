@@ -45,13 +45,11 @@ setup() {
   grep -qF -- 'spec-session-${SPEC_ID}.lock' "$SPEC_MD"
 }
 
-# --- 2. "open in another session" reframe string ----------------------------
 
 @test "doc-grep: the 'open in another session' reframe string is present" {
   grep -qF -- 'open in another session' "$SPEC_MD"
 }
 
-# --- 3. Acquire-points phrase (fresh allocation + resume) -------------------
 
 @test "doc-grep: the acquire-points phrase names fresh allocation and resume of a dormant draft" {
   grep -qF -- 'Fresh allocation (step 3) and resume of a dormant draft (step 2 Resume branch)' "$SPEC_MD"
@@ -64,7 +62,6 @@ setup() {
   grep -qF -- 'dormant-or-ghost lock it does not own' "$SPEC_MD"
 }
 
-# --- 5. Not-mtime / live-process-check rule ---------------------------------
 
 @test "doc-grep: the not-mtime / live-process-check rule phrase is present" {
   grep -qF -- 'live-process check, never by file mtime' "$SPEC_MD"

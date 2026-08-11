@@ -21,9 +21,7 @@
 # unit cases; only UAT-011/012 run check-updates.sh, and those neuter its
 # gh/curl/gaia side effects (stubbed gh/curl, absent GAIA_BIN).
 #
-# Assertion style follows .claude/rules/bats-assertions.md: POSIX `[ ]` for
-# equality/status, `grep -qF` for substrings, explicit `return 1` branches, so
-# a false mid-test check fails on macOS's bash 3.2 as well as CI's bash 5.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # Valid-YAML reparse: the apply tests assert byte-identity structurally with
 # `diff` (always), and additionally reparse the result with python3 + PyYAML to
@@ -115,9 +113,7 @@ PY
 diff_added() { diff "$1" "$2" | grep -c '^> '; }
 diff_removed() { diff "$1" "$2" | grep -c '^< '; }
 
-# ============================================================
 # Detection (serena_lang_drift / the `drift` subcommand)
-# ============================================================
 
 @test "UAT-001 drift: registered + git-tracked go.mod + config lists only typescript -> [go]" {
   local r; r="$(new_repo repo001)"
@@ -323,9 +319,7 @@ JSON
   [ "$(jq -r '.checkedAt' "$cache")" != "1000000000" ]
 }
 
-# ============================================================
 # Subcommand dispatch (the surface /gaia-serena-sync calls)
-# ============================================================
 
 @test "dispatch registered: exit 0 when ~/.claude.json registers Serena, non-zero when it does not" {
   local r; r="$(new_repo dispatch-reg)"
@@ -381,9 +375,7 @@ JSON
   [ "$status" -ne 0 ]
 }
 
-# ============================================================
 # Apply path (serena_lang_append / the `append` subcommand)
-# ============================================================
 
 @test "UAT-019 append: 0-indent block gains '- go' at 0-indent, valid YAML, every other line byte-identical" {
   local f="$TMPROOT/a0.yml" snap="$TMPROOT/a0.snap"

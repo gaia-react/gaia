@@ -18,13 +18,6 @@
 # repo. Both toplevels are canonicalised with `pwd -P`, so the macOS
 # /var → /private/var symlink under BATS_TEST_TMPDIR does not matter.
 #
-# Coverage:
-#   1. quoted `git -C "<sibling>"` push           → foreign (regression)
-#   2. quoted `cd '<sibling>' &&` push            → foreign (regression)
-#   3. unquoted `git -C <sibling>` push           → foreign (guard)
-#   4. quoted `git -C "<home>"` push              → home (quote-strip safe)
-#   5. plain home `git push origin main`          → home (enforce)
-#   6. literal `$CG` token `git -C "$CG"` push    → home (unexpandable var, enforce)
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -58,27 +51,15 @@ in_home() {
   ( cd "$HOME_REPO" && cmd_targets_foreign_repo "$1" )
 }
 
-# -----------------------------------------------------------------------------
-# 1. Quoted `git -C "<sibling>"` resolves as foreign.
-# -----------------------------------------------------------------------------
-
 @test "quoted git -C sibling push: foreign (allow)" {
   run in_home "git -C \"$SIBLING_REPO\" push origin main"
   [ "$status" -eq 0 ]
 }
 
-# -----------------------------------------------------------------------------
-# 2. Quoted `cd '<sibling>' &&` resolves as foreign.
-# -----------------------------------------------------------------------------
-
 @test "quoted cd sibling && git push: foreign (allow)" {
   run in_home "cd '$SIBLING_REPO' && git push origin main"
   [ "$status" -eq 0 ]
 }
-
-# -----------------------------------------------------------------------------
-# 3. Unquoted `git -C <sibling>` still resolves as foreign (guard).
-# -----------------------------------------------------------------------------
 
 @test "unquoted git -C sibling push: foreign (allow)" {
   run in_home "git -C $SIBLING_REPO push origin main"
@@ -93,10 +74,6 @@ in_home() {
   run in_home "git -C \"$HOME_REPO\" push origin main"
   [ "$status" -ne 0 ]
 }
-
-# -----------------------------------------------------------------------------
-# 5. Plain home `git push origin main` resolves as HOME (enforce).
-# -----------------------------------------------------------------------------
 
 @test "plain git push from home: home (enforce)" {
   run in_home "git push origin main"

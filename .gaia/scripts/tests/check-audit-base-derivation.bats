@@ -16,10 +16,7 @@
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
 # .gaia/scripts/tests/check-audit-base-derivation.bats`.
 #
-# Assertion style follows .claude/rules/bats-assertions.md: non-final
-# absence checks use a positive match for the bad case plus an explicit
-# `return 1`, never `!`-negation; equality/numeric/empty checks use POSIX
-# `[ ... ]`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"

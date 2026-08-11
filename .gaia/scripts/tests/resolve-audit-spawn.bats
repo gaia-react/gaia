@@ -19,9 +19,7 @@
 # oracle's filter is a plain digest-marker-presence check (a member is
 # skipped iff its own valid current-digest earned marker already exists).
 #
-# Assertion style (bash-3.2 safe, per .claude/rules/bats-assertions.md):
-# exact/empty/status checks use POSIX `[ ... ]`; substring checks use
-# `grep -qF ... <<<"$output" || return 1`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -295,9 +293,7 @@ advance_origin_main_with_change() {
   git -C "$SANDBOX" update-ref refs/remotes/origin/main "$new_commit"
 }
 
-# ---------------------------------------------------------------------------
 # 1. app-only diff -> code-audit-frontend
-# ---------------------------------------------------------------------------
 
 @test "app-only diff spawns code-audit-frontend" {
   write_full_roster
@@ -308,9 +304,7 @@ advance_origin_main_with_change() {
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 2. framework shell only -> the shell member only, no frontend
-# ---------------------------------------------------------------------------
 
 @test "framework shell diff spawns the shell member only, not frontend" {
   write_full_roster
@@ -323,9 +317,7 @@ advance_origin_main_with_change() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # 3. framework CLI TypeScript -> the node member only
-# ---------------------------------------------------------------------------
 
 @test "framework CLI TypeScript diff spawns the node member only" {
   write_full_roster
@@ -336,9 +328,7 @@ advance_origin_main_with_change() {
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-# ---------------------------------------------------------------------------
 # 4. app + framework shell -> both names, sorted, verbatim passthrough
-# ---------------------------------------------------------------------------
 
 @test "app + framework shell diff spawns both, sorted" {
   write_full_roster
@@ -351,9 +341,7 @@ code-audit-maintainer-shell"
   [ "$output" = "$expected" ]
 }
 
-# ---------------------------------------------------------------------------
 # 5. wiki + .claude + root *.md only -> empty
-# ---------------------------------------------------------------------------
 
 @test "wiki + .claude + root markdown only diff spawns nobody" {
   write_full_roster
@@ -364,9 +352,7 @@ code-audit-maintainer-shell"
   [ -z "$output" ]
 }
 
-# ---------------------------------------------------------------------------
 # 6. root Dockerfile (ownerless in-scope) -> code-audit-frontend
-# ---------------------------------------------------------------------------
 
 @test "root Dockerfile (ownerless in-scope) spawns code-audit-frontend" {
   write_full_roster
@@ -377,9 +363,7 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 7. public/logo.svg (ownerless in-scope, nested) -> code-audit-frontend
-# ---------------------------------------------------------------------------
 
 @test "nested ownerless public asset spawns code-audit-frontend" {
   write_full_roster
@@ -390,10 +374,8 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 8. wiki/x.md + root Dockerfile (mixed out-of-scope + ownerless) ->
 #    code-audit-frontend (fail-closed on ANY in-scope path)
-# ---------------------------------------------------------------------------
 
 @test "mixed out-of-scope + ownerless diff fails closed to code-audit-frontend" {
   write_full_roster
@@ -404,10 +386,8 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 9. root tsconfig.json (auditable-base, via the resolver) ->
 #    code-audit-frontend
-# ---------------------------------------------------------------------------
 
 @test "root tsconfig.json spawns code-audit-frontend via the resolver" {
   write_full_roster
@@ -418,10 +398,8 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 10. --base is genuinely honored: commit A = app/x.tsx, commit B = wiki/y.md.
 #     Run with --base HEAD~1 -> only commit B is in the diff -> empty.
-# ---------------------------------------------------------------------------
 
 @test "--base is honored: overriding to HEAD~1 isolates the wiki-only commit" {
   write_full_roster
@@ -434,11 +412,9 @@ code-audit-maintainer-shell"
   [ -z "$output" ]
 }
 
-# ---------------------------------------------------------------------------
 # 10b. Same two commits, but commit B = root Dockerfile; --base HEAD~1
 #      proves the ownerless probe honors --base too, not just the resolver
 #      delegation.
-# ---------------------------------------------------------------------------
 
 @test "--base is honored by the ownerless probe too" {
   write_full_roster
@@ -451,9 +427,7 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 11. --help exits 0 with usage
-# ---------------------------------------------------------------------------
 
 @test "--help exits 0 and prints usage" {
   run run_oracle --help
@@ -461,10 +435,8 @@ code-audit-maintainer-shell"
   grep -qF -- "Usage: resolve-audit-spawn.sh" <<<"$output" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # 12. unknown flag: exit 0, stdout is exactly code-audit-frontend
 #     (fail-closed), warning on stderr.
-# ---------------------------------------------------------------------------
 
 @test "unknown flag fails closed to code-audit-frontend with a stderr warning" {
   # bats' `run` merges stdout+stderr into $output by default, so the stdout
@@ -483,12 +455,10 @@ code-audit-maintainer-shell"
   grep -qF -- "resolve-audit-spawn" <<<"$stderr_out" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # 13. not in a git repo -> exit 0, stdout is exactly code-audit-frontend
 #     (fail-closed), diagnostic on stderr. The merge deny-hook denies when its
 #     own member query cannot be answered, so answering "nobody owed" here
 #     would name a spawn set that gate rejects.
-# ---------------------------------------------------------------------------
 
 @test "not in a git repo fails closed to code-audit-frontend" {
   notrepo="$BATS_TEST_TMPDIR/notrepo"
@@ -507,10 +477,8 @@ code-audit-maintainer-shell"
   grep -qF -- "resolve-audit-spawn" <<<"$stderr_out" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # 14. resolver removed from the sandbox, diff is app/x.tsx -> ownerless
 #     probe fires -> code-audit-frontend
-# ---------------------------------------------------------------------------
 
 @test "a dispatch resolver that CANNOT answer fails closed to code-audit-frontend" {
   # Absent and failed are different states. Absent falls to the ownerless
@@ -538,9 +506,7 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 15. resolver removed, diff is wiki/x.md only -> empty
-# ---------------------------------------------------------------------------
 
 @test "resolver absent falls to the ownerless probe (out-of-scope path)" {
   write_full_roster
@@ -552,9 +518,7 @@ code-audit-maintainer-shell"
   [ -z "$output" ]
 }
 
-# ---------------------------------------------------------------------------
 # 15b. resolver removed, diff is a non-ASCII out-of-scope path -> still empty
-# ---------------------------------------------------------------------------
 #
 # The probe's own `changed` derivation reads `git diff --name-only`, which
 # C-quotes any path carrying non-ASCII or control bytes under git's default
@@ -594,11 +558,9 @@ code-audit-maintainer-shell"
   }
 }
 
-# ---------------------------------------------------------------------------
 # 16. resolver present but exec bit cleared, diff is .gaia/scripts/y.sh ->
 #     the [ -x ] guard falls to the ownerless probe; .gaia/* is out-of-scope
 #     allowlisted, so nothing is owed (M2 mirror test).
-# ---------------------------------------------------------------------------
 
 @test "resolver present without exec bit falls to the ownerless probe" {
   write_full_roster
@@ -647,12 +609,10 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # The digest-marker-presence filter (C1/C2, UAT-016). The oracle drops a
 # member whose valid CURRENT-digest earned marker is already present, MINTS
 # NOTHING, and is a simple presence check: no anchor selection, no delta, no
 # ancestry.
-# ---------------------------------------------------------------------------
 
 @test "UAT-016: a member whose valid current-digest marker is present is skipped from the spawn list" {
   write_full_roster
@@ -805,13 +765,11 @@ code-audit-maintainer-shell"
   grep -qxF "code-audit-frontend" <<<"$unfiltered" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # The behind-origin/main freshness advisory. A branch that drifts behind main
 # during a long run audits clean, then needs a rebase to merge, and the rebase
 # rotates the digests of every member owning a file main touched, burning the
 # whole audit round. The advisory is stderr-only: it must never alter the
 # member set on stdout and never alter the exit status.
-# ---------------------------------------------------------------------------
 
 @test "behind origin/main warns on stderr naming the commit count" {
   write_full_roster
@@ -895,7 +853,6 @@ code-audit-maintainer-shell"
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # The re-spawn breadcrumb ledger. The digest-marker filter already computes,
 # per considered member, both halves of the question this ledger measures
 # (the member's content digest and whether a valid current-digest marker
@@ -904,7 +861,6 @@ code-audit-maintainer-shell"
 # must stay exactly as proven by every test above -- these tests add
 # coverage for the ledger's own shape and fail-open behavior, never for a
 # changed dispatch answer.
-# ---------------------------------------------------------------------------
 
 @test "UAT-001: the ledger holds exactly one line per considered member, mixing cleared and uncleared" {
   write_full_roster

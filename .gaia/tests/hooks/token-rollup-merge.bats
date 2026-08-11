@@ -123,7 +123,6 @@ run_hook() {
   [[ "$output" == *"Est. cost (USD):"* ]]
 }
 
-# ---------- 1b. Colocated spec-plan layout resolves the merge readout key ----------
 # Spec-derived plans colocate at specs/<SPEC-ID>/plan[-N] rather than
 # plans/<slug>. The merge-readout hook's PRIMARY path resolves the feature key
 # from the active plan folder via the shared resolver, whose union globs cover
@@ -150,7 +149,7 @@ run_hook() {
   [[ "$output" == *"600"* ]]
 }
 
-# ---------- 2. Spec-less plan omits the spec line (UAT-007) ----------
+# UAT-007
 @test "spec-less plan omits the spec line" {
   build_repo
   cd "$REPO"
@@ -187,7 +186,6 @@ run_hook() {
   [[ "$output" == *"300"* ]]
 }
 
-# ---------- 4. Fallback picks the most-recent execute feature ----------
 @test "fallback picks the execute record with the latest ts" {
   build_repo
   cd "$REPO"
@@ -200,7 +198,6 @@ run_hook() {
   [[ "$output" != *"Cycle cost (SPEC-001)"* ]]
 }
 
-# ---------- 5. Primary resolver wins over a newer unrelated execute row ----------
 @test "active plan folder wins over a newer unrelated feature's execute row" {
   build_repo
   cd "$REPO"

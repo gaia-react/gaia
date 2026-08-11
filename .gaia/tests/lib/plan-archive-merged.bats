@@ -15,11 +15,7 @@
 # is SUMMARY.md-only (no SPEC.md); the consolidation-gate tests below add
 # SPEC.md back in to exercise the defensive keep case.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# assertions avoid bare `[[ ... ]]` (a false one is silently skipped on
-# macOS's system bash 3.2). This suite uses `[ ... ]` and the
-# assert_contains/refute_contains grep helpers below for everything but a
-# test's last statement.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -241,7 +237,6 @@ _seed_cost_row() {
   [ -f "$PLANS/PLAN-001/SUMMARY.md" ]
 }
 
-# --- 6: skip a merged row with no folder -------------------------------------
 
 @test "6: a merged row with no active folder is a no-op" {
   _seed_merged_row_only PLAN-005
@@ -316,7 +311,6 @@ _seed_cost_row() {
   [ -f "$PLANS/PLAN-001/SUMMARY.md" ]
 }
 
-# --- 12: age gate, past window + represented -> reaped -----------------------
 
 @test "12: a merged folder past the retention window with represented cost is reaped" {
   _seed_merged_plan PLAN-001
@@ -331,7 +325,6 @@ _seed_cost_row() {
   [ "$(jq -r '.plans[0].status' "$LEDGER")" = "merged" ]
 }
 
-# --- 13: age gate, past window but unrepresented -> kept ---------------------
 
 @test "13: a folder past the retention window but unrepresented is kept" {
   _seed_merged_plan PLAN-001
@@ -401,7 +394,6 @@ _seed_cost_row() {
   [ -f "$PLANS/PLAN-001/SUMMARY.md" ]
 }
 
-# --- 18: a non-numeric knob value falls back to the 30-day default ----------
 
 @test "18: a non-numeric GAIA_SPEC_RETENTION_DAYS falls back to the 30-day default" {
   export GAIA_SPEC_RETENTION_DAYS="abc"
@@ -440,7 +432,6 @@ _seed_cost_row() {
   [ ! -e "$PLANS/PLAN-007" ]
 }
 
-# --- 20: --close never bypasses the cost or consolidation gates -------------
 
 @test "20: --close does not bypass the cost gate or the consolidation gate" {
   _seed_merged_plan PLAN-001

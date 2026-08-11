@@ -48,12 +48,7 @@
 # that page states the criterion in a paragraph with no stable heading
 # anchor; see the `setup()` comment for what keeps that non-vacuous.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
-# where a false non-final bare `[[ ]]` does not fail the test, and a
-# `!`-negated command never fails a non-final line on any bash. Every absence
-# check below is written as `<positive-condition-for-the-bad-case>
-# && return 1`, and a test whose last statement is such a check ends with an
-# explicit `true`.
+# Assertion style: .claude/rules/bats-assertions.md.
 #
 # `audit.md` is `manifest: owned`, so the shipped prose cites no issue number;
 # `doc-audit-remedy-set.bats` already asserts that file-wide and this suite

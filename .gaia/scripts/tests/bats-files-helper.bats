@@ -13,9 +13,7 @@
 # from both sides, so `a\n` and `a\n\n\n` compare EQUAL through `$(cat …)` and
 # differ under `cmp`. Test 2 pins that difference directly.
 #
-# Assertion style note (`.claude/rules/bats-assertions.md`): assertions use
-# POSIX `[ ]` and explicit `return 1`, never a bare `[[ ]]`, so they fail
-# correctly under macOS's bash 3.2 as well as CI's bash 5.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

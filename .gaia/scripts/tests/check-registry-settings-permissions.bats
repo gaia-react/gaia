@@ -10,10 +10,7 @@
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
 # .gaia/scripts/tests/check-registry-settings-permissions.bats`.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# absence checks use a positive match for the bad case plus an explicit
-# `return 1`, never `!`-negation; equality/numeric/empty checks use POSIX
-# `[ ... ]`, which fails correctly on every bash version.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # Fixture approach for the RED/carve-out cases: gaia_registry_recognizes
 # (called inside the function under test) resolves the registry via

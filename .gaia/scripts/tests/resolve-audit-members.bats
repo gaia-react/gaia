@@ -9,9 +9,7 @@
 # tree's `.gaia/audit-ci.yml`, so a test's config need not be committed; only
 # the CHANGED files it asserts on are committed.
 #
-# Assertion style (bash-3.2 safe, per .claude/rules/bats-assertions.md):
-# exact/empty/status checks use POSIX `[ ... ]`; substring checks use
-# `grep -qF ... <<<"$output" || return 1`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -113,9 +111,7 @@ auditors:
 YAML
 }
 
-# ---------------------------------------------------------------------------
 # 1. app-only diff → frontend only
-# ---------------------------------------------------------------------------
 
 @test "app-only diff dispatches code-audit-frontend only" {
   write_full_roster
@@ -126,9 +122,7 @@ YAML
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 2. app + .gaia/**/*.sh diff → frontend + maintainer-shell (deduped, sorted)
-# ---------------------------------------------------------------------------
 
 @test "app + .gaia shell diff dispatches frontend and maintainer-shell, sorted" {
   write_full_roster
@@ -141,9 +135,7 @@ code-audit-maintainer-shell"
   [ "$output" = "$expected" ]
 }
 
-# ---------------------------------------------------------------------------
 # 3. .gaia/**/*.sh only → maintainer-shell only
-# ---------------------------------------------------------------------------
 
 @test ".gaia shell-only diff dispatches maintainer-shell only" {
   write_full_roster
@@ -154,9 +146,7 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-shell" ]
 }
 
-# ---------------------------------------------------------------------------
 # 3b. a non-ASCII path is classified, not C-quoted into ownerlessness
-# ---------------------------------------------------------------------------
 #
 # Under git's default `core.quotePath`, `diff --name-only` wraps any path
 # carrying non-ASCII or control bytes in double quotes and backslash-escapes
@@ -189,9 +179,7 @@ code-audit-maintainer-shell"
   }
 }
 
-# ---------------------------------------------------------------------------
 # 4. .claude/hooks/lib/*.sh → maintainer-shell (nested ** under hooks)
-# ---------------------------------------------------------------------------
 
 @test "nested .claude/hooks/lib shell file dispatches maintainer-shell" {
   write_full_roster
@@ -202,9 +190,7 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-shell" ]
 }
 
-# ---------------------------------------------------------------------------
 # 5. .gaia/cli/src/*.ts → maintainer-node
-# ---------------------------------------------------------------------------
 
 @test ".gaia/cli/src TypeScript dispatches maintainer-node" {
   write_full_roster
@@ -215,9 +201,7 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-# ---------------------------------------------------------------------------
 # 6. Framework CONFIG/DATA only (.gaia/audit-ci.yml, VERSION, manifest) → empty
-# ---------------------------------------------------------------------------
 
 @test "framework config/data only diff dispatches nothing (out of scope)" {
   write_full_roster
@@ -231,9 +215,7 @@ code-audit-maintainer-shell"
   [ -z "$output" ]
 }
 
-# ---------------------------------------------------------------------------
 # 7. .github/workflows/*.yml only → frontend (default catch-all)
-# ---------------------------------------------------------------------------
 
 @test ".github/workflows yaml dispatches frontend via the default catch-all" {
   write_full_roster
@@ -244,9 +226,7 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 8. Root build-config files (tsconfig*.json, *.config.ts) → frontend
-# ---------------------------------------------------------------------------
 
 @test "root tsconfig and *.config.ts dispatch frontend (default's own declared root globs)" {
   write_full_roster
@@ -257,9 +237,7 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 9. wiki/docs-only diff → empty
-# ---------------------------------------------------------------------------
 
 @test "wiki and docs only diff dispatches nothing (out of scope)" {
   write_full_roster
@@ -270,11 +248,9 @@ code-audit-maintainer-shell"
   [ -z "$output" ]
 }
 
-# ---------------------------------------------------------------------------
 # 10. .github/x.sh (top-level under .github) → maintainer-shell
 #     Glob-semantics decision: `.github/**/*.sh`'s `**/` collapses to zero
 #     segments, so a shell script directly under `.github/` is matched.
-# ---------------------------------------------------------------------------
 
 @test "top-level .github shell script matches .github shell glob (zero-segment **)" {
   write_full_roster
@@ -285,9 +261,7 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-shell" ]
 }
 
-# ---------------------------------------------------------------------------
 # 11. .specify/extensions/gaia/lib/*.sh matches direct children only
-# ---------------------------------------------------------------------------
 
 @test ".specify lib glob matches a direct-child shell file but not a nested one" {
   write_full_roster
@@ -300,10 +274,8 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-shell" ]
 }
 
-# ---------------------------------------------------------------------------
 # 12. Adopter roster (maintainer entries removed) + .gaia/cli/src → empty
 #     Proves the resolver never emits a member the roster does not define.
-# ---------------------------------------------------------------------------
 
 @test "adopter roster never dispatches a maintainer member for framework source" {
   write_adopter_roster
@@ -314,9 +286,7 @@ code-audit-maintainer-shell"
   [ -z "$output" ]
 }
 
-# ---------------------------------------------------------------------------
 # 13. Missing auditors: key → built-in default roster (app → frontend)
-# ---------------------------------------------------------------------------
 
 @test "missing auditors key falls back to the built-in default roster" {
   # A config with other knobs but no `auditors:` block.
@@ -328,10 +298,8 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 14. Built-in default roster still dispatches the maintainer members
 #     (the in-tree script carries them; only the release scrub removes them).
-# ---------------------------------------------------------------------------
 
 @test "built-in default roster dispatches maintainer-node for framework source" {
   # No config file at all → the script's built-in roster applies.
@@ -343,7 +311,6 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-# ---------------------------------------------------------------------------
 # 14b. Built-in roster: the CLI build/config surface dispatches maintainer-node.
 #      package.json carries the bundle build scripts + runtime deps,
 #      pnpm-lock.yaml the resolved dependency tree, tsconfig*.json the build
@@ -352,7 +319,6 @@ code-audit-maintainer-shell"
 #      before maintainer-node claims it a change to any merges with no
 #      code-audit review. One file per test on purpose: a combined stage would
 #      still emit maintainer-node if only one of them were owned.
-# ---------------------------------------------------------------------------
 
 @test "built-in roster dispatches maintainer-node for .gaia/cli/package.json" {
   rm -f "$SANDBOX/.gaia/audit-ci.yml"
@@ -422,10 +388,8 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-# ---------------------------------------------------------------------------
 # 15. Novel member (extensibility): a fabricated roster member is dispatched
 #     purely from its config entry, proving generic roster iteration.
-# ---------------------------------------------------------------------------
 
 @test "a novel roster member is dispatched for its own glob (generic iteration)" {
   cat > "$SANDBOX/.gaia/audit-ci.yml" <<'YAML'
@@ -449,9 +413,7 @@ YAML
   [ "$output" = "code-audit-example" ]
 }
 
-# ---------------------------------------------------------------------------
 # 16. --base <ref> override
-# ---------------------------------------------------------------------------
 
 @test "--base <ref> overrides the diff base" {
   write_full_roster
@@ -462,9 +424,7 @@ YAML
   [ "$output" = "code-audit-frontend" ]
 }
 
-# ---------------------------------------------------------------------------
 # 17. --help exits 0 without crashing
-# ---------------------------------------------------------------------------
 
 @test "--help exits 0 and prints usage" {
   run run_resolver --help
@@ -472,9 +432,7 @@ YAML
   grep -qF "Usage: resolve-audit-members.sh" <<<"$output" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # 18. Unknown flag exits 0 with empty stdout (fail-safe for consumers)
-# ---------------------------------------------------------------------------
 
 @test "unknown flag exits 0 with empty stdout" {
   run bash -c '( cd "$1" && "$2" --bogus 2>/dev/null )' _ "$SANDBOX" "$SCRIPT"
@@ -482,9 +440,7 @@ YAML
   [ -z "$output" ]
 }
 
-# ---------------------------------------------------------------------------
 # 19. Empty diff (feature == main) → empty stdout, exit 0
-# ---------------------------------------------------------------------------
 
 @test "empty diff dispatches nothing and exits 0" {
   write_full_roster
@@ -494,13 +450,11 @@ YAML
   [ -z "$output" ]
 }
 
-# ---------------------------------------------------------------------------
 # 20. Not in a git repo → exit 2, empty stdout, one stderr diagnostic.
 #     An unresolvable root is a query this resolver cannot answer, and empty
 #     stdout is reserved for a real answer ("nothing in this diff is in audit
 #     scope"). A caller that read the unanswerable case as an empty member set
 #     would clear a diff no dispatched member read.
-# ---------------------------------------------------------------------------
 
 @test "not in a git repo exits 2 with empty stdout and a stderr diagnostic" {
   notrepo="$BATS_TEST_TMPDIR/notrepo"
@@ -515,13 +469,11 @@ YAML
   grep -qF -- "resolve-audit-members" <<<"$err" || return 1
 }
 
-# ---------------------------------------------------------------------------
 # 21. Bats-only diff under .gaia/ → maintainer-shell
 #     The suites guarding the framework's own bash are owned, not out of scope:
 #     a commit that weakens, skips, or deletes one is gated like any other
 #     shell change. Both bats trees under .gaia/ are covered by the one
 #     `.gaia/**/*.bats` glob.
-# ---------------------------------------------------------------------------
 
 @test "bats-only diff under .gaia dispatches maintainer-shell" {
   write_full_roster
@@ -532,11 +484,9 @@ YAML
   [ "$output" = "code-audit-maintainer-shell" ]
 }
 
-# ---------------------------------------------------------------------------
 # 22. Bats-only diff under .github/ → maintainer-shell
 #     `.github/**/*.bats` mirrors the `.github/**/*.sh` glob: the suites that
 #     test the CI-side shell are owned by the member that owns that shell.
-# ---------------------------------------------------------------------------
 
 @test "bats-only diff under .github dispatches maintainer-shell" {
   write_full_roster
@@ -547,13 +497,11 @@ YAML
   [ "$output" = "code-audit-maintainer-shell" ]
 }
 
-# ---------------------------------------------------------------------------
 # 23. Built-in default roster also owns the bats suites.
 #     Pins the SECOND literal copy of the roster (the one inside the script).
 #     Without a bats glob there, a bats-only diff on a clone carrying no
 #     audit-ci.yml resolves to an empty member set and rides the merge gate's
 #     out-of-scope bypass.
-# ---------------------------------------------------------------------------
 
 @test "built-in default roster dispatches maintainer-shell for a bats-only diff" {
   # No config file at all → the script's built-in roster applies.
@@ -565,11 +513,9 @@ YAML
   [ "$output" = "code-audit-maintainer-shell" ]
 }
 
-# ---------------------------------------------------------------------------
 # 24. An adopter clone (maintainer entries scrubbed) never dispatches a
 #     maintainer member for a bats file, and the suites are not in the default
 #     member's auditable-base set, so the diff is correctly out of scope there.
-# ---------------------------------------------------------------------------
 
 @test "adopter roster dispatches nothing for a bats-only diff" {
   write_adopter_roster
@@ -580,10 +526,8 @@ YAML
   [ -z "$output" ]
 }
 
-# ---------------------------------------------------------------------------
 # 25. --root: authoritative when supplied, validated, fail-closed when it does
 #     not name a git checkout.
-# ---------------------------------------------------------------------------
 
 @test "--root pointing at a non-repository exits 2 with empty stdout" {
   # cwd is a real repo, so only --root can produce the failure: this pins that

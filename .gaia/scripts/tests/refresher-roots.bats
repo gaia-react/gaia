@@ -20,8 +20,7 @@
 # Run under bash 5 (see .claude/rules/bats-assertions.md):
 #   source .gaia/scripts/bats5.sh && bats5 .gaia/scripts/tests/refresher-roots.bats
 #
-# Assertion style per .claude/rules/bats-assertions.md: non-final absence
-# checks use a positive match plus an explicit `return 1`, never `!`-negation.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   SCRIPTS_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"

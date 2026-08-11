@@ -861,9 +861,7 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(led '.session_cwd')" = "$workdir" ]
 }
 
-# =====================================================================
 # 24. FC-2 adversarial-audit nesting + FC-4 double-count guard (SPEC-032)
-# =====================================================================
 # All tests below use the auditreview/ fixture (see the header comment). Every
 # test copies the checked-in breadcrumb fixture(s) into an isolated per-test
 # cache dir first: the phase tally consumes (deletes) a matched breadcrumb, so
@@ -1053,7 +1051,6 @@ setup_auditreview() {
   grep -qF "$(printf 'spec\tREPRESENTED')" <<<"$output"
 }
 
-# =====================================================================
 # 25. Task 3.5 differential oracle: compute_project_id's path fallback and the
 # CACHE_DIR derivation now both resolve main_root through the shared resolver
 # (.gaia/scripts/main-root-lib.sh) instead of hand-deriving it from
@@ -1062,7 +1059,6 @@ setup_auditreview() {
 # the resolver physically resolves (pwd -P) where the old derivation used a
 # plain pwd, so the expected-value side below canonicalizes with pwd -P too,
 # the same fix applied to gh-artifact-lib.bats test 3.
-# =====================================================================
 
 @test "25.1: project id path-fallback (no origin remote) hashes the resolver's physically-resolved main_root" {
   repo="$BATS_TEST_TMPDIR/projrepo"

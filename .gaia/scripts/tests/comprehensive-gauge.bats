@@ -11,8 +11,7 @@
 # per .claude/rules/shell-cwd.md the gauge script itself never `cd`s; this
 # suite's `run_gauge` helper does the cd inside a throwaway subshell.
 #
-# Assertion style follows .claude/rules/bats-assertions.md: POSIX `[ ]` for
-# equality/status, `grep -qF` for substrings, explicit `return 1` branches.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"

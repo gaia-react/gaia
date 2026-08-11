@@ -12,10 +12,7 @@
 # and nothing else in this repo would catch it: .claude/commands/gaia-init.md
 # appeared in no workflow path filter before this suite landed.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
-# where a false non-final bare `[[ ]]` does not fail the test, and a
-# `!`-negated command never fails a non-final line on any bash. Absence
-# checks are written as `<positive-condition-for-the-bad-case> && return 1`.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

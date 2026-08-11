@@ -22,11 +22,7 @@
 # the REAL repository's `.claude/agents/*.md`. Neither shipped script is
 # ever modified; only the fixture copies under BATS_TEST_TMPDIR are.
 #
-# Assertion style (.claude/rules/bats-assertions.md): non-final checks use
-# POSIX `[ ]` or `grep -qF`, never a bare `[[ ]]`, which macOS's bash 3.2
-# does not fail on. Absence is asserted as `<positive-condition> && return
-# 1`, never as a non-final `!`-negation, which `set -e` exempts on every
-# bash version.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -111,9 +107,7 @@ remit_parity_names_member() {
     | grep -qE "FAIL remit-glob-(missing|ungranted|order)"
 }
 
-# ---------------------------------------------------------------------------
 # Convergence and parity, without the process-wide exit status
-# ---------------------------------------------------------------------------
 
 @test "writer repairs a perturbed region and the check's parity finding for that member is gone" {
   local sb="$BATS_TEST_TMPDIR/sb"
@@ -270,9 +264,7 @@ YAML
   true
 }
 
-# ---------------------------------------------------------------------------
 # Byte-identical convergence on a second run
-# ---------------------------------------------------------------------------
 
 @test "a second writer run is byte-identical to the first (idempotent)" {
   local sb="$BATS_TEST_TMPDIR/sb"
@@ -313,9 +305,7 @@ YAML
   cmp "$first" "$agent"
 }
 
-# ---------------------------------------------------------------------------
 # Ordering: regeneration runs after the roster merge, not before
-# ---------------------------------------------------------------------------
 #
 # Every other case in this suite keeps the roster fixed across the writer
 # invocation, so an implementation that regenerates BEFORE the field-aware

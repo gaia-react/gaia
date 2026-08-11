@@ -22,8 +22,7 @@
 # The eight terminal paths are the eight ways the job can conclude, named in the
 # workflow's own "Terminal status steps" comment.
 #
-# Assertion style follows .claude/rules/bats-assertions.md: POSIX `[ ]` and
-# explicit `return 1`, so a false assertion fails on bash 3.2 too.
+# Assertion style follows .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

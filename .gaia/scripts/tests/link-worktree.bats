@@ -70,7 +70,6 @@ run_in() {
   [[ "$output" == *"linked: $LINKED/.gaia/local"* ]] || return 1
 }
 
-# ---------- 1b. .gaia gets exactly one child: local ----------
 @test "fresh worktree: .gaia gets exactly one child, local, and it is the symlink" {
   run run_in "$LINKED"
   [ "$status" -eq 0 ]
@@ -222,7 +221,6 @@ FAKE
   [ "$(cat "$MAIN/.gaia/local/harden/declines.json")" = '{"version":1,"declines":[{"finding_class":"x"}]}' ]
 }
 
-# ---------- 10. Fresh worktree shares root .env files, skips .env.example ----------
 @test "env files: fresh worktree shares .env and .env.local, skips .env.example" {
   printf 'ENV_VAR=main' > "$MAIN/.env"
   printf 'LOCAL_VAR=local' > "$MAIN/.env.local"
@@ -243,7 +241,6 @@ FAKE
   [ "$(cat "$LINKED/.env")" = "ENV_VAR=main" ]
 }
 
-# ---------- 11. No env files in main -> no env symlinks, still exit 0 ----------
 @test "env files: no env files in main means no env symlinks, still exit 0" {
   run run_in "$LINKED"
   [ "$status" -eq 0 ]
@@ -253,7 +250,6 @@ FAKE
   [ -L "$LINKED/.gaia/local" ]
 }
 
-# ---------- 12. Idempotent re-run: env symlink logs "already-linked" ----------
 @test "env files: idempotent re-run logs already-linked with no backups" {
   printf 'ENV_VAR=main' > "$MAIN/.env"
   run_in "$LINKED"
@@ -265,7 +261,6 @@ FAKE
   [ -z "$output" ]
 }
 
-# ---------- 13. Pre-existing plain .env in worktree is backed up then linked ----------
 @test "env files: pre-existing plain .env in worktree is backed up then linked" {
   printf 'ENV_VAR=main' > "$MAIN/.env"
   printf 'STRAY_VAR=stray' > "$LINKED/.env"
@@ -291,7 +286,6 @@ FAKE
   grep -qF -- "APPENDED_VAR=appended" "$LINKED/.env" || return 1
 }
 
-# ---------- 15. Editor cruft under the .env.* glob is rejected by the regex guard ----------
 @test "env files: editor cruft under .env.* glob is rejected by the regex guard" {
   printf 'ENV_VAR=main' > "$MAIN/.env"
   printf 'STRAY_CRUFT=1' > "$MAIN/.env.local~"

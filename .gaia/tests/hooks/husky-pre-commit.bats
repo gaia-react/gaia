@@ -74,9 +74,7 @@ stage_deletion_and_run() {
     sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABS"
 }
 
-# Substring assertions use grep, not `[[ ]]`: a false bare `[[ ]]` that is not
-# the test's last command does not fail the test on bash 3.2, which is what a
-# stock macOS bats resolves to. See .claude/rules/bats-assertions.md.
+# Assertion style: .claude/rules/bats-assertions.md.
 assert_gate_ran() {
   [ "$status" -eq 0 ]
   grep -qF -- "running lint-staged" <<<"$output"
@@ -143,7 +141,6 @@ assert_gate_skipped() {
   assert_gate_ran
 }
 
-# --- a change outside every lintable directory skips the gate ---
 
 @test "a change matching no lintable directory skips the gate" {
   stage_and_run "docs/notes.md"

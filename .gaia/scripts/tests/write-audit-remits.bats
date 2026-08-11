@@ -5,11 +5,7 @@
 # Every case runs against fixtures scaffolded into $BATS_TEST_TMPDIR. No test
 # mutates the repo's real roster or its real agent definitions.
 #
-# Assertion style (.claude/rules/bats-assertions.md): non-final checks use
-# POSIX `[ ]` or `grep -qF`, never a bare `[[ ]]`, which macOS's bash 3.2 does
-# not fail on. Absence is asserted as `<positive-condition> && return 1`,
-# never as a non-final `!`-negation, which `set -e` exempts on every bash
-# version.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -117,9 +113,7 @@ region_sentence_lines() {
   ' "$1"
 }
 
-# ---------------------------------------------------------------------------
 # Usage surface
-# ---------------------------------------------------------------------------
 
 @test "usage: --help exits 0 and prints the usage" {
   run bash "$WRITER" --help
@@ -127,9 +121,7 @@ region_sentence_lines() {
   assert_contains "Usage: write-audit-remits.sh"
 }
 
-# ---------------------------------------------------------------------------
 # UAT-006: the writer repairs a drifted region.
-# ---------------------------------------------------------------------------
 
 @test "UAT-006: repair restores a deleted glob, matching the fixture roster in order" {
   local r="$BATS_TEST_TMPDIR/uat006-order"
@@ -252,9 +244,7 @@ YAML
   esac
 }
 
-# ---------------------------------------------------------------------------
 # UAT-007: insertion into a definition with no markers.
-# ---------------------------------------------------------------------------
 
 @test "UAT-007: insertion at the primary anchor (heading-bearing stub)" {
   local r="$BATS_TEST_TMPDIR/uat007-heading"
@@ -320,9 +310,7 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
 # UAT-008: idempotence.
-# ---------------------------------------------------------------------------
 
 @test "UAT-008: two repair runs in succession converge to the same tree" {
   local r="$BATS_TEST_TMPDIR/uat008"
@@ -356,9 +344,7 @@ YAML
   [ "$after_first" = "$after_second" ]
 }
 
-# ---------------------------------------------------------------------------
 # UAT-016: the generated sentences.
-# ---------------------------------------------------------------------------
 
 @test "UAT-016: the claimant region carries the canonical claimant sentence" {
   local r="$BATS_TEST_TMPDIR/uat016-claimant"
@@ -418,9 +404,7 @@ YAML
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # Malformed markers are refused, not repaired.
-# ---------------------------------------------------------------------------
 
 @test "malformed markers: two start markers are refused, the file left byte-identical" {
   local r="$BATS_TEST_TMPDIR/malformed-dup-start"
@@ -543,9 +527,7 @@ MD
   grep -qxF -- "THIS TAIL MUST SURVIVE" "$f"
 }
 
-# ---------------------------------------------------------------------------
 # Neither anchor present.
-# ---------------------------------------------------------------------------
 
 @test "neither anchor present: the writer is refused, naming the member and the file, byte-identical" {
   local r="$BATS_TEST_TMPDIR/no-anchor"
@@ -571,9 +553,7 @@ YAML
   assert_files_identical "$before" "$after"
 }
 
-# ---------------------------------------------------------------------------
 # Robustness.
-# ---------------------------------------------------------------------------
 
 @test "robustness: an unusable TMPDIR is refused before any definition is touched" {
   # Without the guard this is destructive and silent: an empty $tmpdir makes
@@ -702,9 +682,7 @@ YAML
   grep -qxF -- '<!-- gaia:audit-remit:start -->' "$r/.claude/agents/code-audit-default.md"
 }
 
-# ---------------------------------------------------------------------------
 # The writer carries no second scrape (UAT-011's structural half).
-# ---------------------------------------------------------------------------
 
 @test "UAT-011: the writer carries no second scrape, and obtains globs from the check" {
   grep -qF 'in_globs' "$WRITER" && return 1

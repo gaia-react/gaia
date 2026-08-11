@@ -24,10 +24,7 @@
 # line: the difference between this suite finishing in under a second and
 # taking the better part of a minute.
 #
-# Assertion style (bash-3.2 safe, .claude/rules/bats-assertions.md):
-# equality/status/emptiness/file checks use POSIX `[ ... ]`; substring checks
-# use `grep -qF -- "needle" <<<"$output" || return 1`; a `!`-negated command
-# is used only as a test's final line.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real):
 #   source .gaia/scripts/bats5.sh && bats5 .gaia/scripts/tests/audit-respawn-prune.bats

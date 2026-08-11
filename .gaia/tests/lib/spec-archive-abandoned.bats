@@ -17,10 +17,7 @@
 # Each test spins up its own tmp git repo via helpers/tmp-spec-repo.sh and
 # tears it down; hermetic, no reliance on the real project ledger.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# assertions avoid bare `[[ ... ]]`. This suite uses `[ ... ]` and the
-# assert_contains/refute_contains grep helpers below for everything but a
-# test's last statement.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
@@ -167,7 +164,6 @@ _clear_abandoned_at() {
   [ -f "$REPO/$SPECS/SPEC-001/AUDIT.md" ]
 }
 
-# --- 4: skip an abandoned row with no folder -----------------------------------
 
 @test "4: an abandoned row with no active folder is a no-op" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned SPEC-005)"
@@ -209,7 +205,6 @@ _clear_abandoned_at() {
   [ -f "$REPO/$SPECS/SPEC-002/SPEC.md" ]
 }
 
-# --- 7: a folder without an abandoned ledger row is never deleted -------------
 
 @test "7: a folder without an abandoned ledger row is never deleted" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001 --seed-folder SPEC-002)"
@@ -259,7 +254,6 @@ _clear_abandoned_at() {
   [ -f "$REPO/$SPECS/SPEC-001/AUDIT.md" ]
 }
 
-# --- 11: age gate, past window + represented -> reaped ---------------------------
 
 @test "11: an abandoned folder past the retention window with represented cost is reaped" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
@@ -274,7 +268,6 @@ _clear_abandoned_at() {
   [ "$(jq -r '.specs[0].status' "$REPO/$SPECS/ledger.json")" = "abandoned" ]
 }
 
-# --- 12: age gate, past window but unrepresented -> kept -------------------------
 
 @test "12: a folder past the retention window but unrepresented is kept" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
@@ -343,7 +336,6 @@ _clear_abandoned_at() {
   [ -f "$REPO/$SPECS/SPEC-001/AUDIT.md" ]
 }
 
-# --- 17: a non-numeric knob value falls back to the 30-day default --------------
 
 @test "17: a non-numeric GAIA_SPEC_RETENTION_DAYS falls back to the 30-day default" {
   export GAIA_SPEC_RETENTION_DAYS="abc"
@@ -394,7 +386,6 @@ _clear_abandoned_at() {
   [ -d "$REPO/.gaia/local/cache/wiki-promote" ]
 }
 
-# --- 21: a wiki-promote defer flag survives when a gate keeps the folder -----
 
 @test "21: a wiki-promote defer flag survives when the age gate keeps the folder" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"

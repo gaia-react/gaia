@@ -10,10 +10,7 @@
 # cost-backfill.sh append (buckets{fresh_input,cache_write,cache_read,output} +
 # total + session_id + kind + identity field).
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# assertions avoid bare `[[ ... ]]` (a false one is silently skipped on macOS's
-# system bash 3.2). This suite uses `[ ... ]` and `grep -qF` for everything but
-# the test's last statement.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

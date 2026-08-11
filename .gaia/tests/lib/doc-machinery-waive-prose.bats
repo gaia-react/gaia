@@ -44,12 +44,7 @@
 # task-tests-abuse-check's fixture case asserting a contract-shaped
 # orchestrator waive on a `.gaia/cli/src/` path clears the abuse-check.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is
-# 3.2, where a false non-final bare `[[ ]]` does not fail the test, and a
-# `!`-negated command never fails a non-final line on any bash. Every
-# absence check below is written as `<positive-condition-for-the-bad-case>
-# && return 1`, and a test whose last statement is such a check ends with an
-# explicit `true`.
+# Assertion style: .claude/rules/bats-assertions.md.
 #
 # `.gaia/tests/` is out of `wiki-style.md`'s scope entirely and release-
 # excluded, so SPEC traceability above and in test names below is correct

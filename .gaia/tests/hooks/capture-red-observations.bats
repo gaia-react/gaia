@@ -230,7 +230,6 @@ ledger_lines() {
   [ "$(ledger_lines)" -eq 0 ]
 }
 
-# --- append-only: a second failing run appends, never truncates ---------------
 
 @test "a second failing run appends rather than overwriting" {
   run_capture "Bash" \

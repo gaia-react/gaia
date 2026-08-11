@@ -9,10 +9,7 @@
 # writer REFUSING an entry that cannot name its file, line, defect,
 # verification, and repair.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS's system bash 3.2
-# does not fail a @test on a false bare `[[ ]]` that is not the last command,
-# so non-final checks use POSIX `[ ]`, `grep -q`, or an explicit `return 1`, and
-# an absence assertion is written as `<bad-case> && return 1`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -59,9 +56,7 @@ write() {
   printf '%s' "$1" | bash "$WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" --findings -
 }
 
-# -----------------------------------------------------------------------------
 # Usage
-# -----------------------------------------------------------------------------
 
 @test "usage: --help exits 0 with usage text" {
   run bash "$WRITER" --help
@@ -99,9 +94,7 @@ write() {
   grep -qF "does not exist" <<<"$output"
 }
 
-# -----------------------------------------------------------------------------
 # The happy path: keying, shape, atomicity
-# -----------------------------------------------------------------------------
 
 @test "writes the sidecar at the gaia_audit_key path (base sha + branch slug + member)" {
   out="$(write "[$(complete_finding)]")"
@@ -169,11 +162,9 @@ write() {
   grep -qF "mv -f" "$WRITER"
 }
 
-# -----------------------------------------------------------------------------
 # The point of the writer: an entry that cannot brief a repair is REJECTED, and
 # nothing is written. One test per rule, each derived from the complete finding
 # so it can only fail for the reason it names.
-# -----------------------------------------------------------------------------
 
 @test "rejects a finding with no path" {
   run write "[$(complete_finding | jq -c 'del(.path)')]"
@@ -338,9 +329,7 @@ STUB
   [ ! -f "$EXPECTED" ]
 }
 
-# -----------------------------------------------------------------------------
 # Fail-open: an unresolvable key declines instead of inventing a path
-# -----------------------------------------------------------------------------
 
 @test "detached HEAD: declines audit key unresolved, exit 0, writes nothing" {
   git -C "$ROOT" checkout --quiet --detach HEAD
@@ -379,9 +368,7 @@ STUB
   [ -f "$other_out" ]
 }
 
-# -----------------------------------------------------------------------------
 # Repo hygiene
-# -----------------------------------------------------------------------------
 
 @test "structural: never invokes cd, per .claude/rules/shell-cwd.md" {
   grep -nE '(^|[^[:alnum:]_])cd[[:space:]]' "$WRITER" | grep -vF 'dirname' | grep -vF '#' && return 1

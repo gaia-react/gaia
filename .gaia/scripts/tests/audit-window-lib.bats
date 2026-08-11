@@ -7,10 +7,7 @@
 # $tmp-shaped record files; every expected sum below is HAND-COMPUTED in
 # the comment next to it, never derived by running the lib.
 #
-# Assertion style note (`.claude/rules/bats-assertions.md`): macOS's system
-# `/bin/bash` (3.2) does not fail a bats @test on a false bare `[[ ... ]]`
-# that isn't the test's last command, so assertions below use POSIX `[ ]`,
-# `grep -q`, or an explicit `return 1`, never a bare mid-test `[[ ]]`.
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # ---------- fixtures/audit-window/basic.jsonl (AC1) ----------
 # 4 records: sidecar A, sidecar B (both in-window), sidecar C (out-of-window,
@@ -231,7 +228,7 @@ setup() {
   [ -z "$output" ]
 }
 
-# ---------- 9. every function degrades cleanly on malformed/empty input (AC9) ----------
+# AC9
 @test "every function exits 0 and degrades cleanly on malformed or empty input" {
   run gaia_window_subset "$FIX/malformed.jsonl" "2026-01-01T00:00:00Z" "2026-01-02T00:00:00Z"
   [ "$status" -eq 0 ]

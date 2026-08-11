@@ -9,10 +9,7 @@
 # lib dir). Each test spins up its own tmp git repo and tears it down;
 # hermetic, no reliance on the real project ledger/specs tree.
 #
-# Assertion style note: per .claude/rules/bats-assertions.md, non-final
-# assertions avoid bare `[[ ... ]]` (a false one is silently skipped on
-# macOS's system bash 3.2). This suite uses `[ ... ]` for everything but a
-# test's last statement.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"

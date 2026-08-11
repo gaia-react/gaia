@@ -18,10 +18,7 @@
 # to the filter by hand, or the suite never runs on the edits it exists to
 # catch.
 #
-# Assertion style (.claude/rules/bats-assertions.md): macOS /bin/bash is 3.2,
-# where a false non-final bare `[[ ]]` does not fail the test, and a
-# `!`-negated command never fails a non-final line on any bash. Absence checks
-# are written as `<positive-condition-for-the-bad-case> && return 1`.
+# Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

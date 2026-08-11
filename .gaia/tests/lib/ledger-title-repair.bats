@@ -197,7 +197,6 @@ EOF
   [ "$subj_guard" = "Committed the parser cleanly." ]
 }
 
-# --- 2c. Plans subject repair from a consolidated SUMMARY.md H1 -------------
 
 @test "2c: plans subject repair recovers the title from a consolidated SUMMARY.md H1, exact string match" {
   cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'
@@ -231,7 +230,6 @@ EOF
   [ "$(_plans_field PLAN-200 subject)" = "Add real-time collaboration cursors" ]
 }
 
-# --- 2d. Plans subject repair falls back to PROGRESS.md ---------------------
 
 @test "2d: plans subject repair falls back to PROGRESS.md when no SUMMARY.md is present" {
   cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'
@@ -262,7 +260,6 @@ EOF
   [ "$(_plans_field PLAN-201 subject)" = "Recovered from the live PROGRESS.md ledger mid-run." ]
 }
 
-# --- 2e. Plans subject repair falls back to README.md -----------------------
 
 @test "2e: plans subject repair falls back to README.md when no SUMMARY.md or PROGRESS.md is present" {
   cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'
