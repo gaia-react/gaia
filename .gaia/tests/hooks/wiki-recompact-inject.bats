@@ -136,7 +136,11 @@ arm_sentinel() {
   seed_hot_cache
   arm_sentinel
   chmod 000 "$WORK/wiki/hot.md"
-  if [ -r "$WORK/wiki/hot.md" ]; then chmod 644 "$WORK/wiki/hot.md"; return 1; fi
+  if [ -r "$WORK/wiki/hot.md" ]; then
+    chmod 644 "$WORK/wiki/hot.md"
+    echo "precondition unavailable: hot.md stayed readable at mode 000, so the fail-open path cannot be exercised (running as root?)" >&2
+    return 1
+  fi
   invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
   chmod 644 "$WORK/wiki/hot.md"
   [ "$status" -eq 0 ]

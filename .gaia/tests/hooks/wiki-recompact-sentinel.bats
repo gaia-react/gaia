@@ -106,12 +106,21 @@ seed_hot_cache() {
   chmod 555 "$WORK"
   # Under root the mode is ignored and the mkdir succeeds, which would green
   # this test without exercising the fail-open path at all. Fail loudly rather
-  # than vacuously.
-  if [ -w "$WORK" ]; then chmod 755 "$WORK"; return 1; fi
+  # than vacuously, naming the cause so the red reads as an unexercisable
+  # precondition rather than a hook regression.
+  if [ -w "$WORK" ]; then
+    chmod 755 "$WORK"
+    echo "precondition unavailable: \$WORK stayed writable at mode 555, so the fail-open path cannot be exercised (running as root?)" >&2
+    return 1
+  fi
   invoke_hook_in "$WORK" '' "$HOOK_ABS"
   chmod 755 "$WORK"
+  # Exit status is the whole contract here. The failing mkdir writes its own
+  # "Permission denied" to stderr, which bats' `run` merges into $output, so
+  # asserting silence would red this test on every non-root host for a reason
+  # that has nothing to do with the trap. Ordinary-path silence is pinned by
+  # "the drop is silent on stdout and stderr" above.
   [ "$status" -eq 0 ]
-  [ -z "$output" ]
 }
 
 # --- structural ---
