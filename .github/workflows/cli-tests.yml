@@ -122,6 +122,16 @@ jobs:
               # directory is where shared composite actions go, so an itemized
               # entry would silently stop covering the next one.
               - '.github/actions/**'
+              # The action's own inputs, one hop past the action file itself.
+              # It resolves the runtime from `.node-version` and installs under
+              # `.npmrc`, and neither matches anything else here, so a bump to
+              # either would resolve `code=false` and green this required check
+              # having run the suite zero times under the new pin.
+              # `pnpm-workspace.yaml` is already listed above for the parity
+              # guard and covers the third. audit-ci-tests.yml lists the same
+              # two for the same reason.
+              - '.node-version'
+              - '.npmrc'
               # The region-marker conformance suite binds the TypeScript parser
               # to the two bash readers it inherits its semantics from. It runs
               # in this job (see the step below), so an edit to either bash side
@@ -235,6 +245,13 @@ jobs:
               # entry above; the two filters are separate lists, so it is needed
               # in both.
               - '.github/actions/**'
+              # The action's own inputs, same reasoning as the sibling job's
+              # entries. This job's scenarios additionally run `pnpm install`
+              # against the extracted staging tree, so the install settings are
+              # load-bearing here too.
+              - '.node-version'
+              - '.npmrc'
+              - 'pnpm-workspace.yaml'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node
         uses: ./.github/actions/gaia-setup-node

@@ -122,6 +122,15 @@ jobs:
       # are here because pnpm 11 reads install behavior from them that the
       # lockfile's own `settings:` block does not carry, so a change to either
       # can break `--frozen-lockfile` for the next unrelated PR.
+      # `.github/actions/` is here because the setup step below `uses:` a
+      # composite action from it, which resolves the runtime and runs the
+      # install every later step depends on. Without the alternation an
+      # action-only pull request reports `code=false` and greens this required
+      # check having run no tests. The sibling workflows express the same
+      # coverage as a `.github/actions/**` entry in their paths-filter; this
+      # gate is hand-rolled, so it is the one instance
+      # .gaia/scripts/tests/workflow-filter-coverage.bats is structurally unable
+      # to report and has to be maintained here by hand.
       - name: Detect test-relevant changes in the incremental delta
         id: filter
         if: steps.chore-deps.outputs.skip == 'false'
@@ -136,7 +145,7 @@ jobs:
           # inside the substitution; the subshell sets pipefail so a git failure
           # still aborts the step under `set -e` as it did before the pipe.
           changed=$(set -o pipefail; git diff --name-only -z "${CHECK_BASE}...HEAD" | tr '\0' '\n')
-          pattern='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.github/workflows/tests\.yml$'
+          pattern='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.github/workflows/tests\.yml$|^\.github/actions/'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else

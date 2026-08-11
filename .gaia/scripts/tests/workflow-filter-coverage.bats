@@ -48,6 +48,14 @@
 #      expansion is invisible to a token scan, and always will be.
 #   3. Composite-action bodies. A local action's own `run:` steps are not
 #      descended into; only its `action.yml` is checked.
+#   4. A filter propagated across jobs. The gate scan reads
+#      `steps.<id>.outputs.<name>`, so a paths-filter run in a setup job and
+#      exposed through that job's `outputs:` for a downstream job to gate on as
+#      `needs.<job>.outputs.<name>` is invisible here -- to the coverage
+#      assertions AND to the section-4 escape-hatch pin, with no exemption
+#      entry required. Nothing in the tree uses that shape today. Recorded
+#      rather than left implied absent, because section 4 exists precisely so
+#      that coverage cannot be dropped silently, and this is a second exit.
 #
 # Under-reaching is the deliberate bias: a path this suite cannot see is a path it
 # says nothing about, never a path it silently blesses. The extraction-intact
@@ -178,6 +186,22 @@ def die(msg):
     sys.exit(2)
 
 
+# Picomatch syntax this translator does not implement. A negation (`!foo/**`)
+# SUBTRACTS from a filter's reach, and brace expansion, extglobs, and character
+# classes each stand for a set the loop below would flatten to literals. Escaped
+# through `re.escape`, every one of them yields a pattern that matches nothing
+# real, and `reaches()` would then decide coverage from the surviving positive
+# entries alone -- reporting a path the filter does not actually reach as `ok`.
+#
+# That is the one failure direction this guard must not have. Under-reaching is
+# its deliberate bias everywhere else: a path it cannot see is a path it says
+# nothing about. A mistranslated negation is the opposite, a path it actively
+# blesses, which is the false green it exists to catch, one level up. So this
+# fails closed and names the glob: a red is the correct answer from a comparator
+# that cannot decide.
+UNSUPPORTED_GLOB = re.compile(r'[{}()\[\]]')
+
+
 def glob_to_re(pattern):
     """Translate one picomatch-style glob into a regex.
 
@@ -187,6 +211,8 @@ def glob_to_re(pattern):
     an uncovered nested path covered, and a `**/` that could not match zero
     segments would call `**/*.sh` blind to a root-level `x.sh`.
     """
+    if pattern.startswith('!') or UNSUPPORTED_GLOB.search(pattern):
+        die('unsupported glob syntax, this guard cannot decide coverage: %r' % pattern)
     out = ['^']
     i = 0
     while i < len(pattern):
@@ -755,7 +781,12 @@ YAML
     echo "a path named only in a comment was counted as an input; the guard reds on prose" >&2
     return 1
   }
-  return 0
+  # An explicit `true` rather than `return 0`: shellcheck reads the `return` as
+  # ending the file's reachable flow and reports every following `@test` body as
+  # unreachable (SC2317). This is also the spelling .claude/rules/bats-assertions.md
+  # prescribes for closing a test whose last assertion is the `<bad-case> && return 1`
+  # form.
+  true
 }
 
 @test "negative: a hand-rolled id: filter gate is reported, a descriptive id is not" {
@@ -839,4 +870,35 @@ YAML
   # A literal entry is exactly itself.
   run filter_coverage glob 'package.json' '.gaia/cli/package.json'
   [ "$output" = "no-match" ]
+}
+
+@test "negative: glob syntax the translator cannot decide fails closed, not open" {
+  require_yaml_parser
+
+  # A negation SUBTRACTS from a filter's reach. Flattened to literals it would
+  # match nothing, the positive entries would carry the verdict alone, and a path
+  # the filter does not reach would report `ok` -- the one direction this guard
+  # must never fail in.
+  run filter_coverage glob '!vendor/**' 'vendor/x.sh'
+  [ "$status" -eq 2 ] || {
+    echo "a negation glob exited ${status}; it must fail closed, not silently match nothing" >&2
+    return 1
+  }
+
+  # Brace expansion, an extglob, and a character class each stand for a set the
+  # translator would flatten the same way.
+  run filter_coverage glob 'src/{a,b}/**' 'src/a/x.ts'
+  [ "$status" -eq 2 ] || { echo "brace expansion did not fail closed" >&2; return 1; }
+
+  run filter_coverage glob 'src/@(a|b).ts' 'src/a.ts'
+  [ "$status" -eq 2 ] || { echo "an extglob did not fail closed" >&2; return 1; }
+
+  run filter_coverage glob 'src/[ab].ts' 'src/a.ts'
+  [ "$status" -eq 2 ] || { echo "a character class did not fail closed" >&2; return 1; }
+
+  # The refusal must be narrow: every shape the live filters actually use still
+  # decides. A guard that failed closed on ordinary globs would red the tree.
+  run filter_coverage glob '.github/actions/**' '.github/actions/gaia-setup-node/action.yml'
+  [ "$status" -eq 0 ] || { echo "a supported glob was refused; the check is too broad" >&2; return 1; }
+  [ "$output" = "match" ]
 }
