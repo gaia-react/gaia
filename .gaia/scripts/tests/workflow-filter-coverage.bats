@@ -399,6 +399,11 @@ for path in sys.argv[3:]:
             inputs = literal_inputs(step, workflow_rel)
             for step_id, output in gates:
                 globs = filters[step_id].get(output)
+                # dorny/paths-filter accepts a filter value as a bare scalar, not
+                # only a list. Left as a string, `reaches()` below iterates its
+                # characters and translates each one as a standalone glob.
+                if isinstance(globs, str):
+                    globs = [globs]
                 gate = '%s.%s' % (step_id, output)
                 if globs is None:
                     # The step is gated on a filter output the filter never
@@ -766,6 +771,49 @@ YAML
 
   printf '%s\n' "$output" | grep -q "^unreached" || {
     echo "a step gated on an undeclared filter name reported clean" >&2
+    return 1
+  }
+}
+
+@test "negative: a filter value written as a bare scalar, not a list, is honored" {
+  require_yaml_parser
+  local dir="$BATS_TEST_TMPDIR/sb"
+  mkdir -p "$dir/.github/workflows"
+  # dorny/paths-filter's own schema allows a filter's value to be a single
+  # string rather than a list; nothing else in this tree uses that shape, so a
+  # regression here would go unnoticed by every other fixture in this file.
+  cat > "$dir/.github/workflows/fixture.yml" <<'YAML'
+name: Fixture
+on:
+  pull_request:
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            code: '.github/workflows/fixture.yml'
+      - if: steps.filter.outputs.code == 'true'
+        name: Gated step
+        run: bash scripts/guard.sh
+YAML
+  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$dir/tracked"
+
+  run filter_coverage pairs "$dir/tracked" "$dir/.github/workflows/fixture.yml"
+  [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
+
+  # The listed workflow file grades ok. Before the fix, the scalar is iterated
+  # character by character and none of those single-character globs reach it.
+  printf '%s\n' "$output" | grep -q "^ok.*fixture.yml" || {
+    echo "a scalar filter value reported its own listed path as unreached" >&2
+    return 1
+  }
+  # The omitted script still grades unreached, so the fix normalizes the
+  # scalar to a one-element list rather than blessing every path.
+  printf '%s\n' "$output" | grep -q "^unreached.*scripts/guard.sh" || {
+    echo "a scalar filter value blessed a path it does not list" >&2
     return 1
   }
 }
