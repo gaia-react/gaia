@@ -349,19 +349,25 @@ jobs:
       # build-staging.sh shells out to the committed .gaia/cli/gaia-maintainer,
       # a bundled binary with a `#!/usr/bin/env node` shebang, so the runtime has
       # to be the pinned `.node-version` one rather than whatever ubuntu-latest
-      # happens to preinstall. `install: none`: nothing in this job runs pnpm.
+      # happens to preinstall. That is the whole of this job's Node requirement.
+      #
+      # actions/setup-node directly rather than ./.github/actions/gaia-setup-node,
+      # the same exception forensics-triage.yml already takes and the composite's
+      # own docblock records. The composite passes `cache: 'pnpm'`
+      # unconditionally, and setup-node's post step saves that cache with no
+      # on-disk check: it reads the store path from `pnpm store path`, which
+      # prints a path without creating it, so on a cache MISS the save resolves
+      # zero paths and fails the job on a caching error unrelated to any leak.
+      # A hit returns early and a job that runs `pnpm install` creates the store
+      # first, which is why the two jobs above never see it; this job runs no
+      # pnpm at all, and setup-node passes no pnpm restore keys, so every pull
+      # request that moves the root lockfile is a guaranteed miss. Dropping the
+      # cache also drops the pnpm bootstrap this job never uses. The pin is
+      # unchanged, which is what keeps adopter-ci-action-pins.test.ts green.
       - name: Setup Node
-        uses: ./.github/actions/gaia-setup-node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          install: none
-          # The composite action has no switch for its pnpm-store cache, and
-          # widening its contract to add one for a single caller is what its own
-          # docblock refuses, so the only lever here is which lockfile keys the
-          # cache. The root lockfile, matching the harness job above: sharing
-          # that key means the ordinary outcome is a restore that saves nothing
-          # back, where a key no other job writes would miss on every run and
-          # then store this job's empty pnpm store under it.
-          cache-dependency-path: 'pnpm-lock.yaml'
+          node-version-file: '.node-version'
       # No binary-presence step, unlike the harness job above. That job checks
       # both committed binaries because its scenarios drive `gaia` as well;
       # here build-staging.sh is the only consumer, and its first act is to test
