@@ -182,6 +182,10 @@ strip_common_indent() {
   # concept page, or CHANGELOG.md. A new emitter appearing with no decision
   # made about it is exactly what this half catches.
   #
+  # The maintainer comment-worthiness rule carries the token in its inventory
+  # of comment-shaped data a prose sweep must not touch. Naming the marker is
+  # the point of that row: a sweeper cannot avoid what the rule will not spell.
+  #
   # CHANGELOG.md carries the token because task-docs must reproduce the
   # rollout command byte-identically, and that command's --jq program
   # contains the literal `<!-- gaia-debt-origin:`. It is a release note
@@ -200,6 +204,7 @@ strip_common_indent() {
         ".claude/skills/file-tech-debt/SKILL.md" | \
         ".gaia/scripts/debt-origin-lib.sh" | \
         "wiki/concepts/Audit Disposition and Debt Fix.md" | \
+        ".claude/rules/maintainers/comment-worthiness-shell.md" | \
         "CHANGELOG.md") ;;
       *)
         printf 'unaccounted-for file names gaia-debt-origin: %s\n' "$f" >&2

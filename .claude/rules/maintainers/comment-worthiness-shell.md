@@ -29,7 +29,7 @@ A tool parses the **content or shape** of every line below. None of them is judg
 | both forms together, all file types | 71 files | | |
 | `<!-- gaia:audit-remit:start -->` / `:end` | 19 files | the region registry and the update-time region markers | build-time failure; an adopter's update degrades to whole-file conflicts |
 | `<!-- gaia-harden: promoted from recurring finding_class … -->` | | the harden covered-classes reader | silently un-suppresses a finding class in the tally |
-| `<!-- gaia-debt-key: … -->`, `<!-- gaia-debt-origin: … -->` | | the debt-origin and debt-count helpers | dedup breaks and duplicate issues get filed; provenance is lost |
+| `<!-- gaia-debt-key: … -->`, `<!-- gaia-debt-origin: … -->` | | the debt-origin and debt-count helpers; both tokens are owned by `.claude/skills/file-tech-debt/SKILL.md` | dedup breaks and duplicate issues get filed; provenance is lost |
 | `<!-- gaia-audit:gradings: … -->` | | the harden severity map | severity mapping breaks |
 | `# shellcheck disable=` / `shell=` / `source=` | 212 directives across 117 files on this rule's activation surface (115 across 63 of them on the 78 shell files of section 6) | shellcheck, via the shell-lint gate | CI red, or a file silently unlinted |
 | `#` lines inside the `AUDIT_MACHINERY_PATHS` heredoc | four marker pairs, eight lines | the machinery-completeness script itself | see section 2 |

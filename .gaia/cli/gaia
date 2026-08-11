@@ -28721,10 +28721,9 @@ var run57 = (argv, options = {}) => {
     backupDir,
     conflictedSet: new Set(parsed.flags.conflicted),
     realRoot,
-    // Resolved here, once, rather than at each status call: it is a property
-    // of `--root` alone, so no region can move it. Not resolved at all when
-    // there is no region to process, which is the ordinary shape of a release
-    // predating the region mechanism, and the value is then unreachable.
+    // Not resolved at all when there is no region to process, which is the
+    // ordinary shape of a release predating the region mechanism, and the
+    // value is then unreachable.
     repoPrefix: rawRegions.length > 0 ? resolveRepoPrefix(root) : null,
     report: {
       backedUp: [],
