@@ -85,7 +85,14 @@ setup() {
   run grep -F -- '--require-marker' "$STEP"
   [ "$status" -eq 0 ]
 
-  run grep -F 'audit-member-digest.sh' "$WRITER"
+  # Regex, not -F: a bare substring is satisfiable by any line that merely names
+  # the script, so one rationale comment above the call would hollow this pin
+  # out while reading green. `bash ` immediately before the path is what binds
+  # the assertion to the real invocation, and the path itself stays unpinned
+  # because the writer anchors its sibling lookups behind "$repo_root" -- a
+  # fixed string would pin the quoting rather than the claim. Same treatment
+  # ci-status-member-gate.bats gives its own gate-call pin.
+  run grep -E 'bash "?[^"]*audit-member-digest\.sh' "$WRITER"
   [ "$status" -eq 0 ]
   # The digest is recomputed for the sha being stamped. Pinned WITHOUT the
   # `)"; then` tail that used to ride along: that tail asserted the call sits in
@@ -107,8 +114,10 @@ setup() {
 
   # Ordering guard: the digest must be resolved above the marker lookup, or
   # the guard tests an empty key and every clean audit silently stops
-  # stamping.
-  digest_line=$(grep -nF 'audit-member-digest.sh' "$WRITER" | head -1 | cut -d: -f1)
+  # stamping. Same regex as the presence pin: with `head -1`, a substring match
+  # would return the line number of the first *mention* (a rationale comment)
+  # rather than the call, and compare that against the marker lookup.
+  digest_line=$(grep -nE 'bash "?[^"]*audit-member-digest\.sh' "$WRITER" | head -1 | cut -d: -f1)
   marker_line=$(grep -nF 'marker="$repo_root/.gaia/local/audit/${frontend_digest}.ok"' "$WRITER" | head -1 | cut -d: -f1)
   [ -n "$digest_line" ]
   [ -n "$marker_line" ]

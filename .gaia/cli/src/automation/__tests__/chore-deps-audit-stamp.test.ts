@@ -75,7 +75,10 @@ describe('chore(deps) GAIA-Audit stamp', () => {
     // FULL-PR base, which is what makes the stamp member-aware. A stamp step
     // that stopped passing --base would clear the gate for a diff a required
     // auditor never read.
-    expect(run).toContain('write-audit-status.sh');
+    // toMatch, not toContain: sibling steps in this workflow name the writer in
+    // a rationale comment above their call, so a bare substring is satisfiable
+    // by prose. The `bash ` prefix binds the assertion to the real invocation.
+    expect(run).toMatch(/bash "?[^"]*write-audit-status\.sh/);
     // eslint-disable-next-line no-template-curly-in-string -- literal shell `${ }` syntax, not JS interpolation
     expect(run).toContain('--base "${PR_BASE_SHA}"');
 
@@ -87,7 +90,11 @@ describe('chore(deps) GAIA-Audit stamp', () => {
     // PR diff via the one shared gate.
     expect(writer).toContain('state=success');
     expect(writer).toContain('state=pending');
-    expect(writer).toContain('gate-pending-members.sh');
+    // toMatch, not toContain: the writer names this script in comments above
+    // the call too, so a substring pin is satisfiable by prose. The `bash `
+    // prefix binds it to the real invocation, and `--base` is pinned because
+    // feeding the base through is the member-awareness claim itself.
+    expect(writer).toMatch(/bash "?[^"]*gate-pending-members\.sh"? --base /);
   });
 
   test('the chore(deps) terminal comment reports the actual stamp outcome', () => {
