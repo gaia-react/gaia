@@ -1,7 +1,6 @@
 /**
  * The grading-declaration divergence test. Every `code-audit-*.md` agent file
- * carries one machine-readable declaration of the gradings it can emit
- * (README FC-7):
+ * carries one machine-readable declaration of the gradings it can emit:
  *
  *   <!-- gaia-audit:gradings: Critical, Important, Suggestion -->
  *
@@ -30,7 +29,7 @@ import {SEVERITY_BY_GRADING} from '../severity-map.js';
 const GRADINGS_MARKER = '<!-- gaia-audit:gradings:';
 
 // Index-based scan (no regex) rather than a `\s*...\s*...-->` pattern: the
-// declaration format is frozen (README FC-7) to one exact shape, so a
+// declaration format is frozen to one exact shape, so a
 // backtracking-prone regex would buy flexibility nothing here needs.
 const extractGradings = (fileContent: string): null | string[] => {
   const start = fileContent.indexOf(GRADINGS_MARKER);

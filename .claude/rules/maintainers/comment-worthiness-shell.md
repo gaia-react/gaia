@@ -6,6 +6,9 @@ paths:
   - '.claude/hooks/**/*.sh'
   - '.gaia/tests/**/*.bats'
   - '.gaia/tests/**/*.sh'
+  - '.gaia/scripts/**/*.bats'
+  - '.github/**/*.bats'
+  - '.github/**/*.sh'
 ---
 
 # Comment worthiness on shell and bats (maintainer-only)
@@ -31,7 +34,7 @@ A tool parses the **content or shape** of every line below. None of them is judg
 | `<!-- gaia-harden: promoted from recurring finding_class … -->` | | the harden covered-classes reader | silently un-suppresses a finding class in the tally |
 | `<!-- gaia-debt-key: … -->`, `<!-- gaia-debt-origin: … -->` | | the debt-origin and debt-count helpers; both tokens are owned by `.claude/skills/file-tech-debt/SKILL.md` | dedup breaks and duplicate issues get filed; provenance is lost |
 | `<!-- gaia-audit:gradings: … -->` | | the harden severity map | severity mapping breaks |
-| `# shellcheck disable=` / `shell=` / `source=` | 212 directives across 117 files on this rule's activation surface (115 across 63 of them on the 78 shell files of section 6) | shellcheck, via the shell-lint gate | CI red, or a file silently unlinted |
+| `# shellcheck disable=` / `shell=` / `source=` | 321 directives across 157 files on this rule's activation surface (115 across 63 of them on the 78 shell files of section 6, and the 40 inner-script `SC1090` directives section 5 step 1 depends on) | shellcheck, via the shell-lint gate | CI red, or a file silently unlinted |
 | `#` lines inside the `AUDIT_MACHINERY_PATHS` heredoc | four marker pairs, eight lines | the machinery-completeness script itself | see section 2 |
 | `uses: …@<sha> # vN` pin glosses | | Dependabot **writes** them and a CLI test **parses** them as a typed `tag` field | a parsed field disappears |
 

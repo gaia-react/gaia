@@ -55,7 +55,7 @@ describe('IndexPage', () => {
     }
   );
 
-  // Absent: removed brand surface (C5)
+  // Absent: removed brand surface
 
   test('has no GitHub CTA link', () => {
     render(<IndexPageStory />);
@@ -71,7 +71,6 @@ describe('IndexPage', () => {
 
   test('has no GaiaLogo image', () => {
     render(<IndexPageStory />);
-    // GaiaLogo was deleted; no img referencing gaia branding should exist
     expect(screen.queryByRole('img', {name: /gaia/i})).not.toBeInTheDocument();
   });
 

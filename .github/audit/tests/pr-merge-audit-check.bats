@@ -185,8 +185,8 @@ EOF
 # -----------------------------------------------------------------------------
 
 @test "merge hook: newest GAIA-Audit success over an older entry allows gh pr merge" {
-  # Mirror of test 4: the newest entry is the matching success, with an older
-  # non-matching entry behind it. Confirms latest-per-context does not
+  # The newest entry is the matching success, with an older non-matching entry
+  # behind it. Confirms latest-per-context does not
   # regress the happy path when the statuses list has more than one entry.
   tree=$(current_tree)
   digest=$(current_frontend_digest)

@@ -51,6 +51,23 @@
  * later sweep rewrapped the sentence around it. Pairing across the whole
  * comment range would close the gap.
  *
+ * The ceremonial detector carries a limit of the same kind, and it is the one
+ * an empty BASELINE_CEREMONIAL most overstates. Novelty is judged per word
+ * after punctuation is flattened to spaces, so a CLI placeholder contributes
+ * an ordinary word: an opener reading `gaia setup-ci <verb> [flags]` handler.
+ * yields verb and flags, neither of which the filename supplies, and the
+ * opener is therefore not reported. That shape is the archetype the style
+ * rule itself names, so the detector under-fires on the rule's own canonical
+ * example, and the 26 openers of that shape on this surface are unbaselined
+ * because they were never detected rather than because they were judged to
+ * earn their place. The sweep did judge them: a placeholder that documents a
+ * real verb-and-flag signature says something the filename cannot, which is
+ * why they survive. Both facts hold at once, and the honest reading of an
+ * empty baseline is a floor for this detector too. Deciding whether a
+ * placeholder word should count as novel is a change to what the detector
+ * flags, so it belongs to a pass that can re-open the baseline, not to one
+ * that must leave it empty.
+ *
  * # Why comments come from the parser
  *
  * Backticked tokens are read out of real comment ranges, not out of raw lines.

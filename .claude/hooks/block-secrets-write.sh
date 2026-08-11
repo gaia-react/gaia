@@ -307,11 +307,13 @@ value_allowed() {
 #
 # What the caps bound is process SPAWNS, not seconds: seconds are one
 # machine's unit, where a spawn count is the same regardless of host, just
-# costed differently. A `timeout` on this registration would have to clear the
-# worst case on the SLOWEST machine the guard runs on, and the caps are what
-# make that worst case a known, bounded quantity rather than an open one. This
-# registration carries no `timeout`; the runtime's own 600-second default is
-# what holds the deadline out of reach today.
+# costed differently. At the ceiling that is about 40000 spawns, roughly 0.6
+# per judged character against the size cap below, and that count is what a
+# `timeout` on this registration would have to clear on the SLOWEST machine
+# the guard runs on. The caps are what make that worst case a known, bounded
+# quantity rather than an open one. This registration carries no `timeout`;
+# the runtime's own 600-second default is what holds the deadline out of reach
+# today.
 #
 # This exact bound is pinned from both sides. A boundary pair in the suite spends
 # exactly 65536 characters of matching material and asserts ALLOW, then 65537 and

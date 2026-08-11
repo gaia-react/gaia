@@ -343,7 +343,7 @@ fi
 # deduped within the file (last-wins) and tmin/tmax range over EVERY usage line
 # (not the deduped survivors). `m` carries `.message.model` (null when absent),
 # threaded through alongside the usage object so the aggregate step can attribute
-# buckets per model AFTER the same dedup (see FC-1). A file
+# buckets per model AFTER the same dedup. A file
 # that fails to parse flips `partial` and contributes nothing, but never aborts
 # the run or the other files.
 tmp="$(mktemp 2>/dev/null)" || tmp=""
@@ -363,7 +363,7 @@ tmp="$(mktemp 2>/dev/null)" || tmp=""
 # emit_file <path> <bkt> <file_id>: <file_id> stamps the FILE's own identity
 # ("" for the main transcript, the sidecar basename sans .jsonl for a sidecar)
 # alongside <bkt> (the FILE's agent type: "main" or the sidecar's agentType),
-# so the audit-window-lib (FC-5) can select records by sidecar
+# so the audit-window-lib can select records by sidecar
 # identity/window. The per-usage-entry `b` tag (compaction override included)
 # is untouched -- only two new FILE-level keys are added to the emitted line.
 emit_file() {

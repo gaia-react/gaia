@@ -236,8 +236,8 @@ SH
 
 # ---------- 8. Typed routes are generated in the worktree, not in main ----------
 # The fallback arm: no lockfile means the install step never runs, so the tree
-# has no CLI of its own and typegen borrows main's. The prefers-its-own arm is
-# test 32, below.
+# has no CLI of its own and typegen borrows main's. Its pair, below, covers
+# the prefers-its-own arm.
 @test "typegen falls back to the main checkout's CLI when the tree has none of its own" {
   make_main
   stub_typegen

@@ -46,7 +46,6 @@ describe('primary-token', () => {
 
       const {value} = decl!;
 
-      // Require oklch() form (C1 spec mandates oklch)
       expect(
         value,
         `primary-${shade}: expected oklch() form, got "${value}"`

@@ -200,8 +200,6 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   output_has "refused_reason=governance-surface"
 }
 
-# Criterion 3
-
 @test "an app/-only self-heal still commits and pushes (unchanged)" {
   local body
   body="$(extract_step_body 'Commit and push self-heal')"
@@ -215,8 +213,6 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   grep -qF "origin" "$PUSH_LOG"
   grep -qF "chore: code-review-audit self-heal" <<<"$(git -C "$SANDBOX" log -1 --format='%B' pr-branch)"
 }
-
-# Criterion 4
 
 @test "app/foo.config.ts (nested) does not trigger the root-build-config arm" {
   local body
@@ -260,8 +256,6 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
 @test "the workflow sources the shared refusal-set lib" {
   grep -qF ". .claude/hooks/lib/audit-selfheal-paths.sh" "$WORKFLOW"
 }
-
-# Criterion 9
 
 @test "the three code-review-audit.yml copies are byte-identical" {
   local src="$REPO_ROOT/.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl"
