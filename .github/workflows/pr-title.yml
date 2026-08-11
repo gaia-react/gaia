@@ -44,10 +44,10 @@ jobs:
   pr-title:
     name: Conventional-commit PR title
     runs-on: ubuntu-latest
-    # A checkout and one string match against a compiled binary, measured at
-    # 12s. Five minutes is a ~25x margin, so a run that hits it has hung rather
-    # than slowed. Same reasoning audit-roster.yml spells out for itself: no cap
-    # means a hang holds a runner for the 6-hour default.
+    # A checkout and one string match against a compiled binary, ordinarily
+    # brief. Five minutes is a wide margin, so a run that hits it has hung
+    # rather than slowed. Same reasoning audit-roster.yml spells out for
+    # itself: no cap means a hang holds a runner for the 6-hour default.
     timeout-minutes: 5
     permissions:
       contents: read

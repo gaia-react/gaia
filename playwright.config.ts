@@ -1,9 +1,6 @@
 import {defineConfig, devices} from '@playwright/test';
 import {config} from 'dotenv';
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
+
 config();
 
 /**
@@ -36,15 +33,12 @@ const otherBrowsers =
     ]
   : [];
 
-// See https://playwright.dev/docs/test-configuration.
 export default defineConfig({
   expect: {
     timeout: 10_000,
   },
-  // Fail the build on CI if you accidentally left test.only in the source code.
   forbidOnly: !!process.env.CI,
 
-  // Run tests in files in parallel
   fullyParallel: true,
 
   // Serial `/` warm-up after the dev server boots, so the first parallel spec
@@ -63,8 +57,6 @@ export default defineConfig({
     ...otherBrowsers,
   ],
 
-  // Reporter to use. See https://playwright.dev/docs/test-reporters
-  // Once you have a lot of tests, you can change this to 'github' or 'dot' on CI
   reporter: 'list',
 
   // No local retries: the global-setup warm-up and the hydration helper's
@@ -77,22 +69,16 @@ export default defineConfig({
   testDir: './.playwright/e2e',
   testMatch: '**/*.spec.ts',
 
-  // Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions.
   use: {
-    // Base URL to use in actions like `await page.goto('/')`.
     baseURL: 'http://localhost:5173',
 
-    // Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer
     trace: 'retain-on-failure',
   },
 
-  // Run your local dev server before starting the tests
   webServer: {
     command: 'pnpm dev',
     reuseExistingServer: !process.env.CI,
     timeout: 15_000,
-    // enable stdout pipe when you need to debug server-side logs
-    //stdout: 'pipe',
     url: 'http://localhost:5173',
   },
 

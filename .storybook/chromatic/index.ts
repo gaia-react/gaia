@@ -5,7 +5,6 @@ import ToastDecorator from '../decorators/ToastDecorator';
 import WrapDecorator from '../decorators/WrapDecorator';
 import ChromaticDecorator from './decorator';
 
-// render dark mode in chromatic snapshots
 export const isChromaticSnapshot =
   isChromatic() ||
   (process.env.NODE_ENV === 'production' ?
@@ -16,7 +15,6 @@ export const isChromaticSnapshot =
   : false);
 
 if (!isChromaticSnapshot) {
-  // listen for dark mode toggle changes
   const channel = addons.getChannel();
   channel.on(DARK_MODE_EVENT_NAME, (isDark: boolean) => {
     // eslint-disable-next-line unicorn/prevent-abbreviations

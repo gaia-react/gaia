@@ -76,12 +76,12 @@ jobs:
   verify-audit-roster:
     name: Audit roster drift (advisory)
     runs-on: ubuntu-latest
-    # A checkout plus a read-only script measured at 0.845s across 1523 files, so
-    # five minutes is a ~350x margin and a hung run is a hang rather than a slow
-    # tree. Worth naming here because this job's triggers were widened to every
-    # pull request, every push to main, and dispatch: without a cap a hang burns
-    # the 6-hour default on each of them, and 9 of the other 12 workflows in
-    # this directory cap for the same reason.
+    # A checkout plus a read-only script normally finishes well inside a
+    # minute, so five minutes is a wide margin and a hung run reads as a hang
+    # rather than a slow tree. Worth naming here because this job's triggers
+    # were widened to every pull request, every push to main, and dispatch:
+    # without a cap a hang burns the 6-hour default on each of them, and 9 of
+    # the other 12 workflows in this directory cap for the same reason.
     timeout-minutes: 5
     # Read-only token, and `contents: read` alone: the job reads the checked-out
     # tree and reports. Naming any scope here sets every unlisted one to `none`,
