@@ -26,7 +26,7 @@
  * script counterpart always exits 0 because it must not break worktree
  * creation).
  *
- * Frozen JSON shape; see SPEC-005 plan README.md for the contract.
+ * Frozen JSON shape.
  */
 import {
   existsSync,
@@ -114,7 +114,7 @@ const GAIA_LOCAL_SPEC: SharedPathSpec = {
 // Shareable env-file basename set: `.env` and any `.env.*` variant under the
 // checkout root, except the committed `.env.example`. Mirrors .gitignore's
 // `.env` / `.env.*` / `!.env.example` and the `is_dotenv_path` definition in
-// `.claude/hooks/block-env-read.sh`. See SPEC-005 plan README.md.
+// `.claude/hooks/block-env-read.sh`.
 const ENV_BASENAME_RE = /^\.env(\.[A-Za-z0-9_-]+)*$/;
 const isShareableEnvironmentFile = (base: string): boolean =>
   ENV_BASENAME_RE.test(base) && base !== '.env.example';

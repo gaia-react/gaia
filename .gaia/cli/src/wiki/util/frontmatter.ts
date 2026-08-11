@@ -35,10 +35,7 @@ const stripQuotes = (raw: string): string => {
   return raw;
 };
 
-// A YAML scalar parser inherently returns heterogeneous JS types
-// (null/boolean/number/string/array) by design; `FrontmatterValue` already
-// declares that exact union, so this isn't inconsistent, it's the contract.
-// eslint-disable-next-line sonarjs/function-return-type -- see comment above
+// eslint-disable-next-line sonarjs/function-return-type -- a YAML scalar parser inherently returns heterogeneous JS types (null/boolean/number/string/array) by design; `FrontmatterValue` already declares that exact union, so this isn't inconsistent, it's the contract
 const parseScalar = (raw: string): FrontmatterValue => {
   const trimmed = raw.trim();
 

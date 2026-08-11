@@ -504,9 +504,7 @@ const loadManifest = (manifestPath: string): ReadonlySet<string> => {
   return new Set(Object.keys(parsed.files));
 };
 
-// ---------------------------------------------------------------------------
 // Flags
-// ---------------------------------------------------------------------------
 
 type FlagParseFailure = {message: string; ok: false};
 
@@ -563,9 +561,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   return {flags: {json, manifestPath, stagingDir}, ok: true};
 };
 
-// ---------------------------------------------------------------------------
 // Run
-// ---------------------------------------------------------------------------
 
 type Leak = {
   file: string;

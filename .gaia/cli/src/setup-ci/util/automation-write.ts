@@ -3,8 +3,8 @@
  * CI configuration).
  *
  * Used by the `opt-out-team` and `finalize` primitives. Mirrors the
- * `writeFileSync(tmp); renameSync(tmp, target)` idiom from
- * `automation/util/state-write.ts`. Validates the payload against
+ * `writeFileSync(tmp); renameSync(tmp, target)` atomic-write idiom used
+ * elsewhere in this CLI. Validates the payload against
  * `AutomationConfigSchema` before any I/O so callers cannot persist a
  * malformed shape.
  */

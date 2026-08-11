@@ -1,6 +1,5 @@
 /**
- * `gaia sandbox` subcommand router (SPEC-030 tier two: per-machine
- * enablement).
+ * `gaia sandbox` subcommand router (tier two: per-machine enablement).
  *
  * `/setup-gaia` (task-setup-gaia-prose) shells these verbs to classify the
  * machine's sandbox capability, resolve the developer's decision, write the
@@ -63,8 +62,6 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  // `noUncheckedIndexedAccess` is off, so `argv[index]` types as `string`;
-  // check the bound explicitly instead of comparing to `undefined`.
   if (index >= argv.length || argv[index].startsWith('--')) {
     return {message: `${flag} requires a value`, ok: false};
   }

@@ -23,8 +23,8 @@ export type RegionDeclaration = {
 };
 
 /**
- * The self-repairing message UAT-020's loud failure requires. The reachable
- * non-defect route into this branch is a maintainer removing a roster
+ * This is the self-repairing message a loud failure here requires. The
+ * reachable non-defect route into this branch is a maintainer removing a roster
  * member from `.gaia/audit-ci.yml` without stripping that member's region
  * from its agent definition, which would otherwise block every PR and
  * tag-time release with no way out. Names the path, the region id, and both

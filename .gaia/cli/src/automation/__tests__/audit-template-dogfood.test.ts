@@ -53,8 +53,8 @@ describe('audit-template dogfood drift-guard', () => {
  * `.gaia/cli/templates/workflows/` is a committed *build artifact*, a
  * byte-identical copy of `.gaia/cli/src/automation/templates/workflows/`
  * produced by `bundle:adopter`'s `cp -r .../workflows/. templates/workflows/`
- * step. Phase 2 of SPEC-045 makes these twelve files deliberately ownerless
- * for the Code Audit Team (a script pins them, so no member reviews them);
+ * step. These twelve files are deliberately ownerless for the Code Audit
+ * Team (a script pins them, so no member reviews them);
  * this suite is the pin that trade rests on. Both directories are tracked,
  * committed, maintainer-only paths (`.gaia/cli/src` is release-excluded
  * wholesale, which is also why this whole test file never runs on an

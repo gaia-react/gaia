@@ -89,14 +89,11 @@ describe('wiki state-bump', () => {
     const initial = `${JSON.stringify(
       {
         version: 1,
-        // Key order below is load-bearing: the assertion below checks that
-        // `Object.keys(parsed)` preserves this exact insertion order through
-        // the read-modify-write cycle, so it must not be alphabetized.
-        // eslint-disable-next-line perfectionist/sort-objects -- see comment above
+        // eslint-disable-next-line perfectionist/sort-objects -- key order is load-bearing for the Object.keys(parsed) insertion-order assertion below, must not be alphabetized
         last_evaluated_sha: 'aaaaaaa',
-        // eslint-disable-next-line perfectionist/sort-objects -- see comment above
+        // eslint-disable-next-line perfectionist/sort-objects -- key order is load-bearing for the Object.keys(parsed) insertion-order assertion below, must not be alphabetized
         last_evaluated_at: '2026-01-01T00:00:00Z',
-        // eslint-disable-next-line perfectionist/sort-objects -- see comment above
+        // eslint-disable-next-line perfectionist/sort-objects -- key order is load-bearing for the Object.keys(parsed) insertion-order assertion below, must not be alphabetized
         last_consolidated_sha: 'bbbbbbb',
       },
       null,
@@ -122,9 +119,7 @@ describe('wiki state-bump', () => {
   });
 
   test('appends a new field at the end when absent', () => {
-    // Key order is load-bearing (see `Object.keys(parsed)` assertion below);
-    // `foo` must stay after `version`, not be alphabetized before it.
-    // eslint-disable-next-line perfectionist/sort-objects -- see comment above
+    // eslint-disable-next-line perfectionist/sort-objects -- key order is load-bearing for the Object.keys(parsed) assertion below; `foo` must stay after `version`, not be alphabetized before it
     const initial = `${JSON.stringify({version: 1, foo: 'bar'}, null, 2)}\n`;
     sandbox = setupSandbox(initial);
 

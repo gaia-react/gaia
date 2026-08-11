@@ -1,6 +1,5 @@
 /**
- * Tests for the `.gaia/local/sandbox.json` marker reader/writer
- * (UAT-012 mechanism).
+ * Tests for the `.gaia/local/sandbox.json` marker reader/writer.
  */
 /* eslint-disable no-bitwise -- POSIX file modes are bitfields; `& 0o777` is
    the standard idiom for masking off the permission bits. */

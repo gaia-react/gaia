@@ -3,10 +3,9 @@
  * producer, spawned as a subprocess with a stubbed `gh`) -> `parseFindingsBlock`
  * -> `computeTally`. Every other suite in this directory feeds `computeTally`
  * or `run()` from hand-written fixtures; this one proves the loop also fires
- * on a REAL producer run over a REAL sidecar file (UAT-009), and that a
- * sidecar's classless finding survives the seam stamped `holistic/unclassified`
- * (UAT-004). No network: `gh` is a local stub script that never leaves the
- * sandbox.
+ * on a REAL producer run over a REAL sidecar file, and that a sidecar's
+ * classless finding survives the seam stamped `holistic/unclassified`. No
+ * network: `gh` is a local stub script that never leaves the sandbox.
  */
 import {describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
@@ -165,8 +164,8 @@ const runProducer = (args: {
   }
 };
 
-// Three plain hand-authored block bodies (not producer output), for UAT-006:
-// the parse-then-tally seam is exercised on its own, distinct from the
+// Three plain hand-authored block bodies (not producer output): the
+// parse-then-tally seam is exercised on its own, distinct from the
 // producer-composed path the tests below cover.
 const handWrittenBlock = (prNumber: number, findings: RawFinding[]): string =>
   [

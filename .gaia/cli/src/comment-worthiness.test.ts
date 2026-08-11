@@ -559,69 +559,8 @@ const collectIdentifiers = (source: string, into: Set<string>): void => {
  * in this same pull request, so the lists empty and the gap closes with them.
  */
 const BASELINE_DEAD_POINTERS: readonly string[] = [
-  '.gaia/cli/src/automation/__tests__/audit-template-dogfood.test.ts#SPEC-045',
-  '.gaia/cli/src/automation/__tests__/gaia-ci-template-refs.test.ts#wiki/sync.ts',
-  '.gaia/cli/src/automation/install-audit-workflow.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/automation/render-workflows.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/ci/index.ts#SPEC-001',
-  '.gaia/cli/src/ci/revert.ts#UAT-009',
-  '.gaia/cli/src/ci/revert.ts#UAT-010',
-  '.gaia/cli/src/ci/revert.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/ci/stale-check.ts#UAT-019',
-  '.gaia/cli/src/fitness/render-card.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/harden/__tests__/producer-seam.test.ts#UAT-004',
-  '.gaia/cli/src/harden/__tests__/producer-seam.test.ts#UAT-006',
-  '.gaia/cli/src/harden/__tests__/producer-seam.test.ts#UAT-009',
-  '.gaia/cli/src/harden/__tests__/severity-map.test.ts#UAT-035',
-  '.gaia/cli/src/index.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/init/configure-automation.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/init/configure-i18n.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/init/rename.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/init/resume.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/init/strip-branding.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/init/wire-statusline.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/lint-pin-parity.test.ts#readResolvedRuleVersions',
-  '.gaia/cli/src/ping/index.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/react-perf/reduce.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/release/exclude-parser-parity.test.ts#UAT-002',
-  '.gaia/cli/src/release/exclude-regex.test.ts#UAT-002',
-  '.gaia/cli/src/release/exclude-regex.test.ts#UAT-006',
   '.gaia/cli/src/release/manifest.test.ts#.gaia/scripts/generate-manifest.mjs',
   '.gaia/cli/src/release/manifest.ts#.gaia/scripts/generate-manifest.mjs',
-  '.gaia/cli/src/release/region-scan.ts#UAT-020',
-  '.gaia/cli/src/release/scrub.test.ts#SPEC-034',
-  '.gaia/cli/src/sandbox/__tests__/apply.test.ts#UAT-007',
-  '.gaia/cli/src/sandbox/__tests__/capability.test.ts#UAT-003',
-  '.gaia/cli/src/sandbox/__tests__/marker.test.ts#UAT-012',
-  '.gaia/cli/src/sandbox/__tests__/seed.test.ts#UAT-008',
-  '.gaia/cli/src/sandbox/apply.ts#UAT-007',
-  '.gaia/cli/src/sandbox/capability.ts#UAT-003',
-  '.gaia/cli/src/sandbox/index.ts#SPEC-030',
-  '.gaia/cli/src/sandbox/index.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/sandbox/marker.ts#UAT-012',
-  '.gaia/cli/src/sandbox/seed.ts#UAT-008',
-  '.gaia/cli/src/scaffold/service.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/scaffold/template.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/schemas/automation-config.ts#SPEC-001',
-  '.gaia/cli/src/schemas/decline-ledger.ts#ensureInProjectDirectory',
-  '.gaia/cli/src/schemas/revert-ledger.ts#UAT-010',
-  '.gaia/cli/src/setup-ci/util/automation-write.ts#automation/util/state-write.ts',
-  '.gaia/cli/src/setup/__tests__/link-worktree.test.ts#SPEC-005',
-  '.gaia/cli/src/setup/link-worktree.ts#SPEC-005',
-  '.gaia/cli/src/update-deps/decline.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/update-deps/groups.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/update-deps/run.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/update/merge-audit-ci.ts#UAT-038',
-  '.gaia/cli/src/update/merge-region.ts#SPEC-057',
-  '.gaia/cli/src/update/regen-regions.ts#SPEC-057',
-  '.gaia/cli/src/util/conventional-commit.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/wiki/chain.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/wiki/commit-classify.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/wiki/dead-paths.ts#.claude/hooks/wiki-stop-safety-net.sh',
-  '.gaia/cli/src/wiki/dead-paths.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/wiki/diff-size.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/wiki/log-prepend.ts#noUncheckedIndexedAccess',
-  '.gaia/cli/src/wiki/near-collisions.ts#noUncheckedIndexedAccess',
 ];
 
 /** Same ratchet, same key discipline. See the note above. */
@@ -715,13 +654,7 @@ const BASELINE_CEREMONIAL: readonly string[] = [
 ];
 
 /** Same ratchet, same key discipline. See the note above. */
-const BASELINE_ASCII_RULES: readonly string[] = [
-  '.gaia/cli/src/release/manifest.ts',
-  '.gaia/cli/src/release/runtime-deps.ts',
-  '.gaia/cli/src/release/scrub.test.ts',
-  '.gaia/cli/src/release/scrub.ts',
-  '.gaia/cli/src/scaffold/service.ts',
-];
+const BASELINE_ASCII_RULES: readonly string[] = [];
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const cliSrc = path.join(repoRoot, '.gaia', 'cli', 'src');

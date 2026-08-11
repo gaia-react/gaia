@@ -3,7 +3,7 @@
  *   [--conflicted <repo-relative-path>]... [--absent-path <repo-relative-path>]...
  *   [--skip-region <id>]... [--json]` handler.
  *
- * Regeneration runner for SPEC-057's declared generated regions. `merge-region.ts`
+ * Regeneration runner for declared generated regions. `merge-region.ts`
  * only classifies a region's divergence; this command is what makes a declared
  * region correct again after an update, by running its shipped regeneration
  * command against the adopter's OWN post-merge tree. Unlike the oracle, this

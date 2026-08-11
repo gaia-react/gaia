@@ -43,9 +43,6 @@ type ParsedArgs =
 
 type ParseError = {error: string};
 
-// `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as `string`,
-// not `string | undefined`; check the bound explicitly instead of comparing
-// the indexed value to `undefined`.
 const takeSourceValue = (
   argv: readonly string[],
   index: number

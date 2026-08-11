@@ -41,9 +41,6 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
     const token = argv[index];
 
     if (token === '--out-dir') {
-      // `noUncheckedIndexedAccess` is off, so TS types `argv[index + 1]` as
-      // `string`, not `string | undefined`; check the bound explicitly
-      // instead of comparing the indexed value to `undefined`.
       if (index + 1 >= argv.length || argv[index + 1].startsWith('--')) {
         return {error: '--out-dir requires a path argument'};
       }

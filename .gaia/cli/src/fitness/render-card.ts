@@ -265,9 +265,6 @@ const parseCols = (args: readonly string[]): number | undefined => {
     const arg = args[index];
 
     if (arg === '--cols') {
-      // `noUncheckedIndexedAccess` is off, so TS types `args[index]` as
-      // `string`, not `string | undefined`; check the bound explicitly
-      // instead of comparing the indexed value to `undefined`.
       if (index + 1 >= args.length) return undefined;
 
       const parsed = Number.parseInt(args[index + 1], 10);

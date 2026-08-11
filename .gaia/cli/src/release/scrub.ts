@@ -68,9 +68,7 @@ const RELEASE_EXCLUDE_PATH = '.gaia/release-exclude';
 const WORKFLOWS_DIR = '.github/workflows';
 const SHIPPED_WORKFLOW_TEMPLATES_DIR = '.gaia/cli/templates/workflows';
 
-// ---------------------------------------------------------------------------
 // Config schema
-// ---------------------------------------------------------------------------
 
 const MarkerStripSchema = z.object({
   end: z.string().min(1),
@@ -189,9 +187,7 @@ type MarkerStripTransform = z.infer<typeof MarkerStripSchema>;
 type StaticLeakCheck = z.infer<typeof StaticLeakCheckSchema>;
 type TitleDerivedLeakCheck = z.infer<typeof TitleDerivedLeakCheckSchema>;
 
-// ---------------------------------------------------------------------------
 // Glob → regex
-// ---------------------------------------------------------------------------
 
 const REGEX_SPECIAL = /[.+^$()[\]{}|\\]/g;
 const SENTINEL_DIRSTAR = ' DIRSTAR ';
@@ -218,9 +214,7 @@ const matchesAnyGlob = (
   globs: readonly string[]
 ): boolean => globs.some((glob) => globToRegex(glob).test(relativePath));
 
-// ---------------------------------------------------------------------------
 // Walk
-// ---------------------------------------------------------------------------
 
 const walkFiles = (root: string, current: string = root): string[] => {
   const out: string[] = [];
@@ -238,9 +232,7 @@ const walkFiles = (root: string, current: string = root): string[] => {
   return out;
 };
 
-// ---------------------------------------------------------------------------
 // Marker strip
-// ---------------------------------------------------------------------------
 
 export type MarkerStripResult = {
   blocksStripped: number;
@@ -299,9 +291,7 @@ const applyMarkerStrip = (
   return {blocksStripped, filesTouched, unbalanced};
 };
 
-// ---------------------------------------------------------------------------
 // JSON strip
-// ---------------------------------------------------------------------------
 
 export type JsonStripResult = {
   filesTouched: readonly string[];
@@ -443,9 +433,7 @@ const applyJsonStrip = (
   return {filesTouched, keysRemoved};
 };
 
-// ---------------------------------------------------------------------------
 // JSON strip array element
-// ---------------------------------------------------------------------------
 
 export type JsonStripArrayElementResult = {
   elementsRemoved: number;
@@ -625,9 +613,7 @@ const applyJsonStripArrayElement = (
   return {elementsRemoved, filesTouched};
 };
 
-// ---------------------------------------------------------------------------
 // Leak check
-// ---------------------------------------------------------------------------
 
 export type Leak = {
   check: string;
@@ -707,9 +693,7 @@ const runLeakCheck = (
   );
 };
 
-// ---------------------------------------------------------------------------
 // Derived wikilink-to-excluded check
-// ---------------------------------------------------------------------------
 
 const isDerivedCheck = (check: LeakCheckEntry): check is DerivedLeakCheck =>
   'derive' in check;
@@ -815,9 +799,7 @@ const runDerivedWikilinkCheck = ({
   );
 };
 
-// ---------------------------------------------------------------------------
 // Derived excluded-workflow check
-// ---------------------------------------------------------------------------
 
 /**
  * Build the set of release-excluded `.github/workflows/*.yml` paths that never
@@ -887,9 +869,7 @@ const runDerivedWorkflowCheck = ({
   );
 };
 
-// ---------------------------------------------------------------------------
 // Derived excluded-titles check
-// ---------------------------------------------------------------------------
 
 // Literal regex-escape set for a title body. Matches `escapeRegExp` in
 // `manifest.js`: `-` is deliberately absent, harmless as a literal outside a
@@ -1093,9 +1073,7 @@ const runDerivedTitleCheck = ({
   return leaks;
 };
 
-// ---------------------------------------------------------------------------
 // Config loading
-// ---------------------------------------------------------------------------
 
 export const loadConfig = (configPath: string): ScrubConfig => {
   const raw = readFileSync(configPath, 'utf8');
@@ -1104,9 +1082,7 @@ export const loadConfig = (configPath: string): ScrubConfig => {
   return ConfigSchema.parse(parsed);
 };
 
-// ---------------------------------------------------------------------------
 // Flags
-// ---------------------------------------------------------------------------
 
 type FlagParseFailure = {message: string; ok: false};
 
@@ -1161,9 +1137,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   return {flags: {configPath, json, stagingDir}, ok: true};
 };
 
-// ---------------------------------------------------------------------------
 // Run
-// ---------------------------------------------------------------------------
 
 type Report = {
   json_strip: {

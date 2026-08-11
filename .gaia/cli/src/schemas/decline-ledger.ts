@@ -98,8 +98,8 @@ export const writeDeclineLedger = (
   ledger: DeclineLedger
 ): void => {
   const target = declineLedgerPath(repoRoot);
-  // Mode 755 matches the in-project dir convention (`ensureInProjectDirectory`
-  // in storage/paths.ts).
+  // Mode 755 matches the in-project dir convention used at every
+  // `.gaia/local/**` mkdir call site.
   mkdirSync(path.dirname(target), {mode: 0o755, recursive: true});
 
   const serialized = `${JSON.stringify(ledger, null, 2)}\n`;

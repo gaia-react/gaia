@@ -333,8 +333,8 @@ type VerdictInputs = {
   a: Presence;
   /**
    * The verdict for the `in L, not in B` row: every section defaults to
-   * `suggest-add`, except the `auditors` roster (UAT-038, see the
-   * roster-merge call site), which passes `apply`.
+   * `suggest-add`, except the `auditors` roster (see the roster-merge call
+   * site), which passes `apply`.
    */
   addedVerdict?: 'apply' | 'suggest-add';
   b: Presence;
@@ -466,7 +466,7 @@ const computeReport = (
   // leaving it a suggestion would mean a new GAIA-authored member (e.g.
   // code-audit-github-workflows) reaches no existing adopter. This is a
   // named, deliberate divergence from every other section's added-row
-  // semantics (UAT-038), not an inconsistency to "fix". Bounded precisely: an
+  // semantics, not an inconsistency to "fix". Bounded precisely: an
   // adopter's *edit* to a GAIA-authored member is still a conflict below, and
   // an adopter's *own* member (present only in current) is never visited.
   const baseRoster = parseRoster(baseline[ROSTER_SECTION]);

@@ -1,5 +1,5 @@
 /**
- * Injectable sandbox seed-config builder (UAT-008).
+ * Injectable sandbox seed-config builder.
  *
  * Pure: `extractRegistryHost` parses a package-registry URL down to its
  * host only (never credentials); `seedSandboxConfig` builds the minimal

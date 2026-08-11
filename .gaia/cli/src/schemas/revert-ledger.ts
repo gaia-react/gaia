@@ -6,7 +6,7 @@
  *
  * The ledger file lives at `.gaia/automation.state-revert-attempts.json`.
  * It is **the** source of truth for the SPEC's hard cap of one revert
- * attempt per original PR (UAT-010). The CLI's `ci-revert open` handler
+ * attempt per original PR. The CLI's `ci-revert open` handler
  * consults `attempts[<original_pr>]` before doing any git/`gh` work and
  * refuses to re-open if an entry already exists.
  */

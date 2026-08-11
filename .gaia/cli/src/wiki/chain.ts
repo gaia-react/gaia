@@ -168,9 +168,6 @@ const parseCommitFlags = (argv: readonly string[]): CommitParse => {
       return {message: `unknown flag: ${token}`, ok: false};
     }
 
-    // `noUncheckedIndexedAccess` is off, so TS types `argv[index + 1]` as
-    // `string`, not `string | undefined`; check the bound explicitly instead
-    // of comparing the indexed value to `undefined`.
     if (index + 1 >= argv.length) {
       return {message: '--label requires a value', ok: false};
     }

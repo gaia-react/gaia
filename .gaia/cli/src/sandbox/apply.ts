@@ -1,5 +1,5 @@
 /**
- * Deep-merge helper for `gaia sandbox apply` (UAT-007).
+ * Deep-merge helper for `gaia sandbox apply`.
  *
  * Pure: merges the sandbox seed fragment into an arbitrary existing
  * settings object, preserving every unrelated top-level key and any

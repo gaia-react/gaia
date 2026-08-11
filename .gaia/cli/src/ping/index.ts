@@ -85,9 +85,6 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as
-  // `string`, not `string | undefined`; check the bound explicitly instead
-  // of comparing the indexed value to `undefined`.
   if (index >= argv.length || argv[index].startsWith('--')) {
     return {message: `${flag} requires a value`, ok: false};
   }

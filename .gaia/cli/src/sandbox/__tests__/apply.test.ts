@@ -1,5 +1,5 @@
 /**
- * Tests for `mergeSandboxSettings` (UAT-007).
+ * Tests for `mergeSandboxSettings`.
  */
 import {describe, expect, test} from 'vitest';
 import {mergeSandboxSettings} from '../apply.js';

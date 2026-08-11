@@ -291,9 +291,7 @@ export const buildManifest = (
 export const serialize = (manifest: ManifestShape): string =>
   `${JSON.stringify(manifest, null, 2)}\n`;
 
-// ---------------------------------------------------------------------------
 // Classifier-set lint
-// ---------------------------------------------------------------------------
 
 export type ClassifierOverlap = {
   entry: string;
@@ -338,9 +336,7 @@ export const lintClassifierSets = (
   return overlaps;
 };
 
-// ---------------------------------------------------------------------------
 // Scan-scope lint
-// ---------------------------------------------------------------------------
 
 const RELEASE_SCRUB_PATH = '.gaia/release-scrub.yml';
 const MAINTAINER_PATHS_CHECK_ID = 'maintainer-paths';
@@ -463,9 +459,7 @@ export const lintScanScopes = (
     .toSorted((a, b) => a.dir.localeCompare(b.dir));
 };
 
-// ---------------------------------------------------------------------------
 // Check
-// ---------------------------------------------------------------------------
 
 export type ManifestDrift = {
   classifierOverlaps: readonly ClassifierOverlap[];

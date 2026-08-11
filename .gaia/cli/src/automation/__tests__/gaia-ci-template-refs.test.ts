@@ -92,7 +92,7 @@ const readFileOrEmpty = (filePath: string): string =>
 // `index.ts`, keeps the resolver robust to a sub-dispatch handler being
 // extracted to its own file: `wiki sync land`'s `=== 'land'` branch lives
 // inline in `wiki/index.ts` today but resolves equally if `runSync` moves to
-// `wiki/sync.ts`.
+// a dedicated file.
 const readDomainSources = (cliSrc: string, domain: string): string => {
   const dir = path.join(cliSrc, domain);
 

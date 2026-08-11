@@ -71,9 +71,6 @@ const parseTools = (raw: string): ParseToolsResult => {
 
 type FlagValueResult = {error: string} | {value: string};
 
-// `noUncheckedIndexedAccess` is off, so TS types `argv[index + 1]` as
-// `string`, not `string | undefined`; check the bound explicitly instead of
-// comparing the indexed value to `undefined`.
 const readFlagValue = (
   argv: readonly string[],
   index: number,

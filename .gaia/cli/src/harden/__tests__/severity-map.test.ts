@@ -1,6 +1,7 @@
 /**
- * UAT-035's divergence test. Every `code-audit-*.md` agent file carries one
- * machine-readable declaration of the gradings it can emit (README FC-7):
+ * The grading-declaration divergence test. Every `code-audit-*.md` agent file
+ * carries one machine-readable declaration of the gradings it can emit
+ * (README FC-7):
  *
  *   <!-- gaia-audit:gradings: Critical, Important, Suggestion -->
  *

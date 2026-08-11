@@ -5,11 +5,11 @@
  * `--exclude-file`; none of these tests depend on the repo's real
  * `.gaia/release-exclude`.
  *
- * UAT-002's full-escape-class byte-equality is proven in
+ * The full-escape-class byte-equality is proven in
  * `exclude-parser-parity.test.ts` (which calls `renderExcludeRegex` and the
  * reference pipeline directly, neither of which validate); the fixtures
  * here that reach the emit path deliberately avoid rejected metacharacters
- * so they don't collide with the fail-closed / UAT-006 assertions below.
+ * so they don't collide with the fail-closed assertions below.
  */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';

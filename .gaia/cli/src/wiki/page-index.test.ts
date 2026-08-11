@@ -241,7 +241,6 @@ No outbound links.
     expect(titles).not.toContain('Hot');
 
     const byTitle = new Map(index.pages.map((page) => [page.title, page]));
-    // Solo: 1 from index + 1 from hot = 2 inbound, no orphan.
     expect(byTitle.get('Solo')?.inbound_links).toBe(2);
     // AlsoSolo: 1 from index + 1 from hot = 2 inbound, no orphan.
     expect(byTitle.get('AlsoSolo')?.inbound_links).toBe(2);
