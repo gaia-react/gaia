@@ -94,15 +94,20 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
     }
   }
 
-  // The canary resolves a real name, the expected memo flag, and a non-zero
-  // subtree timing; the toggle drives it on an update render.
+  // Name resolution is asserted over the whole dump, not the canary slice: a
+  // slice selected BY componentName can never contain 'Unknown', so asking it
+  // that question answers itself. Only composite fibers are recorded, so an
+  // 'Unknown' here is a real getDisplayName failure rather than a host node.
+  expect(dump.all.every((record) => record.componentName !== 'Unknown')).toBe(
+    true
+  );
+
+  // The canary carries the expected memo flag and a non-zero subtree timing;
+  // the toggle drives it on an update render.
   const canaryRecords = dump.all.filter(
     (record) => record.componentName === CANARY
   );
   expect(canaryRecords.length).toBeGreaterThan(0);
-  expect(
-    canaryRecords.every((record) => record.componentName !== 'Unknown')
-  ).toBe(true);
   expect(canaryRecords.every((record) => !record.isMemo)).toBe(true);
   expect(canaryRecords.some((record) => record.totalTime > 0)).toBe(true);
   expect(canaryRecords.some((record) => record.phase === 'update')).toBe(true);
