@@ -240,16 +240,6 @@ const expandPath = (
   };
 };
 
-/**
- * When a `.gaia/...` (or `.claude/...`, `.specify/...`, `.github/...`)
- * occurrence is preceded by a path-body character (typically `/`), we
- * usually want to skip it as a substring inside an unrelated absolute
- * path. The exception is variable-expansion idioms like
- * `"$PROJECT_ROOT/.gaia/scripts/check-updates.sh"`, those resolve to a
- * project-relative path at runtime, so the static portion IS the
- * project path. Detect those by scanning back through path-like chars
- * for a `$`.
- */
 const isVariableExpansionContext = (line: string, found: number): boolean => {
   let cursor = found - 1;
 
