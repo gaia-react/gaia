@@ -17,8 +17,9 @@ name: Distribution
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. Each job below grants exactly what it needs.
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,6 +30,8 @@ jobs:
     name: Distribution tests (Layers 0+1+2)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
