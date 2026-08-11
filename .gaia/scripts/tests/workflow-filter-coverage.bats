@@ -38,8 +38,9 @@
 # an input of itself, which is the self-coverage half: a gate must re-run on a
 # change to its own definition.
 #
-# Three things are deliberately out of scope, because each needs a mechanism this
-# floor does not have and a decision this suite should not make on its own:
+# The following are deliberately out of scope, because each needs a mechanism
+# this floor does not have and a decision this suite should not make on its own
+# (unnumbered as a set, so adding one cannot rot a count in this sentence):
 #
 #   1. Transitive inputs. A step invoking `run-all.sh` gets that script checked,
 #      not the files the scenarios inside it inspect. Reaching those needs either
@@ -186,20 +187,37 @@ def die(msg):
     sys.exit(2)
 
 
-# Picomatch syntax this translator does not implement. A negation (`!foo/**`)
-# SUBTRACTS from a filter's reach, and brace expansion, extglobs, and character
-# classes each stand for a set the loop below would flatten to literals. Escaped
-# through `re.escape`, every one of them yields a pattern that matches nothing
-# real, and `reaches()` would then decide coverage from the surviving positive
-# entries alone -- reporting a path the filter does not actually reach as `ok`.
+# Picomatch syntax this translator does not implement. All of it fails closed,
+# but the two groups fail in opposite directions, and only one of them is
+# dangerous, so keep them distinguished rather than lumped:
 #
-# That is the one failure direction this guard must not have. Under-reaching is
-# its deliberate bias everywhere else: a path it cannot see is a path it says
-# nothing about. A mistranslated negation is the opposite, a path it actively
-# blesses, which is the false green it exists to catch, one level up. So this
-# fails closed and names the glob: a red is the correct answer from a comparator
-# that cannot decide.
+#   A NEGATION (`!foo/**`) is subtractive: it REMOVES paths from a filter's
+#   reach. Flattened through `re.escape` it matches nothing, `reaches()` decides
+#   from the surviving positive entries alone, and a path the filter genuinely
+#   does not reach reports `ok`. That is a false BLESS, the one direction this
+#   guard must not have, since it is the false green it exists to catch, one
+#   level up.
+#
+#   BRACE EXPANSION, EXTGLOBS, and CHARACTER CLASSES are additive, and
+#   `reaches()` ORs across entries, so flattening one can only ever REMOVE
+#   reach. Pre-guard those produced a false `unreached`: a red naming a path the
+#   filter does in fact cover. That is the safe direction, and failing closed on
+#   them buys legibility rather than safety, a refusal that names the glob
+#   instead of a red that misattributes the cause.
+#
+# Under-reaching is this guard's deliberate bias everywhere else: a path it
+# cannot see is a path it says nothing about. So a red is the correct answer
+# from a comparator that cannot decide.
 UNSUPPORTED_GLOB = re.compile(r'[{}()\[\]]')
+
+# `**` is a globstar only as a WHOLE segment. picomatch degrades a `**` adjacent
+# to any other character in its segment (`a**b.ts`) to a plain `*`, which does
+# not cross `/`; the loop below would translate it to `.*`, which does. That
+# over-reach is the false-bless direction again: a gated step reading `a/z/b.ts`
+# would grade `ok` against a glob that never matches it, and a pull request
+# changing only that file would skip the step and green the check. Refused for
+# the same reason a negation is.
+NON_SEGMENT_GLOBSTAR = re.compile(r'(?:[^/]\*\*|\*\*[^/])')
 
 
 def glob_to_re(pattern):
@@ -211,7 +229,11 @@ def glob_to_re(pattern):
     an uncovered nested path covered, and a `**/` that could not match zero
     segments would call `**/*.sh` blind to a root-level `x.sh`.
     """
-    if pattern.startswith('!') or UNSUPPORTED_GLOB.search(pattern):
+    if (
+        pattern.startswith('!')
+        or UNSUPPORTED_GLOB.search(pattern)
+        or NON_SEGMENT_GLOBSTAR.search(pattern)
+    ):
         die('unsupported glob syntax, this guard cannot decide coverage: %r' % pattern)
     out = ['^']
     i = 0
@@ -895,6 +917,18 @@ YAML
 
   run filter_coverage glob 'src/[ab].ts' 'src/a.ts'
   [ "$status" -eq 2 ] || { echo "a character class did not fail closed" >&2; return 1; }
+
+  # A `**` that is not a whole segment degrades to `*` in picomatch and does not
+  # cross `/`. Translating it to `.*` would bless a nested path the filter never
+  # reaches, the same false-bless direction as a negation.
+  run filter_coverage glob 'a**b.ts' 'a/z/b.ts'
+  [ "$status" -eq 2 ] || {
+    echo "a non-segment ** exited ${status}; it must fail closed, not over-reach across /" >&2
+    return 1
+  }
+
+  run filter_coverage glob 'src/**.ts' 'src/a/b.ts'
+  [ "$status" -eq 2 ] || { echo "a trailing non-segment ** did not fail closed" >&2; return 1; }
 
   # The refusal must be narrow: every shape the live filters actually use still
   # decides. A guard that failed closed on ordinary globs would red the tree.

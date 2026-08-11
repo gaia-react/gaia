@@ -130,6 +130,11 @@ jobs:
               # `pnpm-workspace.yaml` is already listed above for the parity
               # guard and covers the third. audit-ci-tests.yml lists the same
               # two for the same reason.
+              # Hand-maintained, and not covered by the coverage guard: it
+              # checks that the action file itself is reachable but does not
+              # descend into the action's body, so a fourth file the action
+              # starts reading is a gap that guard cannot see. Revisit these
+              # entries whenever the action's inputs change.
               - '.node-version'
               - '.npmrc'
               # The region-marker conformance suite binds the TypeScript parser
@@ -248,7 +253,9 @@ jobs:
               # The action's own inputs, same reasoning as the sibling job's
               # entries. This job's scenarios additionally run `pnpm install`
               # against the extracted staging tree, so the install settings are
-              # load-bearing here too.
+              # load-bearing here too. Hand-maintained on the same terms as the
+              # sibling job's entries: the coverage guard reaches the action
+              # file, not the files the action itself reads.
               - '.node-version'
               - '.npmrc'
               - 'pnpm-workspace.yaml'
