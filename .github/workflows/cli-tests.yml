@@ -112,6 +112,31 @@ jobs:
               # itemized one would silently stop covering a workflow added
               # later.
               - '.github/workflows/**'
+              # The composite action the Node setup step below `uses:`. It lives
+              # outside .github/workflows/, so it matches nothing else here, and
+              # without this line a pull request changing only the action -- its
+              # node version, its install arms, its cache key -- would report
+              # `code=false`, skip every step gated on this filter, and green
+              # `Vitest (.gaia/cli)` having run nothing. A glob rather than the
+              # one path, the same reasoning as the workflows glob above: the
+              # directory is where shared composite actions go, so an itemized
+              # entry would silently stop covering the next one.
+              - '.github/actions/**'
+              # The action's own inputs, one hop past the action file itself.
+              # It resolves the runtime from `.node-version` and installs under
+              # `.npmrc`, and neither matches anything else here, so a bump to
+              # either would resolve `code=false` and green this required check
+              # having run the suite zero times under the new pin.
+              # `pnpm-workspace.yaml` is already listed above for the parity
+              # guard and covers the third. audit-ci-tests.yml lists the same
+              # two for the same reason.
+              # Hand-maintained, and not covered by the coverage guard: it
+              # checks that the action file itself is reachable but does not
+              # descend into the action's body, so a fourth file the action
+              # starts reading is a gap that guard cannot see. Revisit these
+              # entries whenever the action's inputs change.
+              - '.node-version'
+              - '.npmrc'
               # The region-marker conformance suite binds the TypeScript parser
               # to the two bash readers it inherits its semantics from. It runs
               # in this job (see the step below), so an edit to either bash side
@@ -218,6 +243,22 @@ jobs:
               # The harness itself: a scenario, lib, or runner edit must re-run.
               - '.gaia/tests/distribution/**'
               - '.github/workflows/cli-tests.yml'
+              # The composite action this job's Node setup step `uses:`. Nothing
+              # else here reaches it, so without this line an action-only change
+              # would resolve `code=false` and skip the harness, greening the job
+              # having run no scenario. Same reasoning as the sibling job's own
+              # entry above; the two filters are separate lists, so it is needed
+              # in both.
+              - '.github/actions/**'
+              # The action's own inputs, same reasoning as the sibling job's
+              # entries. This job's scenarios additionally run `pnpm install`
+              # against the extracted staging tree, so the install settings are
+              # load-bearing here too. Hand-maintained on the same terms as the
+              # sibling job's entries: the coverage guard reaches the action
+              # file, not the files the action itself reads.
+              - '.node-version'
+              - '.npmrc'
+              - 'pnpm-workspace.yaml'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node
         uses: ./.github/actions/gaia-setup-node
