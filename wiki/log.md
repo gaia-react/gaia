@@ -11,6 +11,19 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-11 6d795010 SKIP - maintainer-only release-scrub scope widening (excluded-workflow-ref now scans .github/actions/**); existing wiki/decisions/Bundle-time Scrub.md prose remains accurate
+- 2026-08-11 ca3fc02b SKIP - CI perf/plumbing (parallel bats suites, single Storybook build, shared setup-node composite); wiki/dependencies/Chromatic.md already describes the resulting behavior
+- 2026-08-11 f67f5e11 SKIP - bug fix restoring the already-documented findings-block posting behavior (gh api -f vs -F); no architecture change
+- 2026-08-11 bcc550fe WORTHY - adopter gaia-ci-* CI action pinning by SHA + parity guard, previously undocumented → wiki/concepts/Update Workflow.md
+- 2026-08-11 cc67e8bc SKIP - ci: dependency bump only
+- 2026-08-11 b415a22a SKIP - ci: CI plumbing (job runtime bounds, workflow token default-deny, bundle-gate dedup)
+- 2026-08-11 bca83b6a SKIP - internal code-review-audit.yml refactor (five GAIA-Audit status writers consolidated to one); behavior unchanged per commit message
+- 2026-08-11 23c73016 WORTHY - widened self-heal refusal from .github/workflows to the whole .github tree; commit self-edited wiki/concepts/PR Merge Workflow.md directly, already current
+- 2026-08-11 356b0c61 SKIP - internal code-review-audit.yml refactor (preconditions computed once, status-comment upserter extracted to its own script); behavior unchanged, no prior wiki coverage to correct
+- 2026-08-11 711b66a7 WORTHY - added Code Audit Team roster ownerless-path coverage invariant; commit self-edited wiki/decisions/Code Audit Team.md directly, already current
+- 2026-08-11 5d7179bf SKIP - CLI test-infra hardening (git auto-maintenance suppression during test runs); no wiki-visible architecture change
+- 2026-08-11 7af22fc2 SKIP - tests-only: bats hook-delivery idiom consolidation in the concurrency suite
+- 2026-08-11 285b5511 SKIP - prior wiki-sync's own landed commit; wiki edits already merged, nothing further to sync
 - 2026-08-09 74b6af95 SKIP - new shell-lint guard for unquoted diff --name-only call sites, wired into CI; internal hardening below the wiki's stated gate-description level
 - 2026-08-09 4f2fcf54 SKIP - adds a structural guard for docblock-before-import placement and sweeps 74 files; internal hygiene test, no wiki-tracked fact
 - 2026-08-09 c9b5cbc8 SKIP - internal reachability-guard regex widened to admit a quoted invocation; maintainer test-infra hardening, no documented contract change

@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-08-03
+updated: 2026-08-11
 tags: [release, claude, adopter, drift]
 ---
 
@@ -113,6 +113,8 @@ The refresh is a **3-way text classify** (the audit template is static, so there
 | `conflict` | `A` matches neither, or baseline unavailable        | Write `.gaia-merge/code-review-audit.yml.patch`; never write. |
 
 The audit workflow is **adopter-tunable**: `conflict` never clobbers adopter edits (self-hosted runners, extra secrets wiring, concurrency, extra steps), it emits a sidecar patch and defers to a manual `/setup-gaia` refresh, mirroring the `shared` drift rule. The scheduled `gaia-ci-*` workflows stay disposable (regenerated wholesale on `/setup-gaia --reconfigure`); only the audit workflow gets the 3-way.
+
+The `gaia-ci-*` templates pin their third-party actions (checkout, setup-node, and siblings) by full commit SHA with a resolved-tag comment, not by a mutable major tag, so a force-moved upstream tag cannot execute in an adopter's job holding that job's token. A CLI guard keeps the pins from drifting from the maintainer's own live workflows: it asserts every template action is SHA-pinned and that each pin equals the one the corresponding live workflow runs, so a weekly action bump has to land in the live workflow first and fails the guard until the template pin is mirrored to match. `/setup-gaia` (not `/update-gaia`) is what delivers a re-rendered `gaia-ci-*` workflow to an adopter, since these templates regenerate wholesale rather than merge.
 
 Re-rendering the workflow makes the update PR self-modifying, so [[Code Review Audit CI]]'s `claude-code-action` refuses to audit it and the run self-mod-skips. This is a UX/ordering cleanup: it replaces a wasted full audit under the stale workflow plus a manual refresh step with one expected skip. It does **not** earn a clean CI `GAIA-Audit` stamp; the merge proceeds on a local audit marker / trailer or the out-of-scope bypass (see [[PR Merge Workflow]]).
 
