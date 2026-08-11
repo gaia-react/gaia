@@ -3,7 +3,7 @@
 #
 # Check B-completeness -- registry <-> frozen inventory denominator
 #
-# Mechanizes SPEC-061 UAT-002: the union of live `entries` and `residue`
+# Mechanizes: the union of live `entries` and `residue`
 # equals the frozen inventory denominator, every live entry sits in exactly
 # one scope, and none is unclassified or double-placed. The
 # scope/dup/enum-validity half of that invariant is already asserted
@@ -15,23 +15,23 @@
 # the one thing they do not cover: whether the registry's OWN id set still
 # matches what it was authored against.
 #
-# The inventory denominator (analysis/gaia-local-state-inventory.md) lives in
+# The inventory denominator lives in
 # the sibling program repo, one level above this checkout, and is never read
 # at runtime here -- a conformance check that reaches across repos is not
 # meaningful in CI, where only this repo is checked out. Instead this script
 # embeds the expected id set as a checked-in snapshot, taken from the
-# registry as task 2.3 built it. A later hand-edit that silently drops an
+# registry as originally built. A later hand-edit that silently drops an
 # id, duplicates one under a new name, or adds one without updating this
 # snapshot fails here -- which is the point: this is the one-time-frozen half
-# of Check B (design §4.3), not a perpetual gate against the registry ever
-# growing. A deliberate registry change (a later phase adding a
+# of Check B, not a perpetual gate against the registry ever growing. A
+# deliberate registry change (a later phase adding a
 # newly-scoped entry) updates GAIA_REGISTRY_COMPLETENESS_ENTRY_IDS /
 # GAIA_REGISTRY_COMPLETENESS_RESIDUE_IDS below in the same change, exactly as
 # the denominator spot-check array in state-registry-lib.bats is updated
 # when the registry's shape changes.
 #
 # Dual-mode: source it for gaia_check_registry_completeness, or run it
-# directly (see "Executable entry" at the bottom). Relies on
+# directly. Relies on
 # gaia_registry_path resolving against the process cwd (via
 # main-root-lib.sh), same as every other state-registry-lib.sh consumer --
 # run it from inside the repo whose registry is under test.
@@ -40,7 +40,7 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SELF_DIR/state-registry-lib.sh"
 
-# Frozen at task 2.3's build, one id per line, sorted -- matches
+# Frozen at initial build, one id per line, sorted -- matches
 # `jq -r '.entries[].id' .gaia/state-registry.json | sort`.
 GAIA_REGISTRY_COMPLETENESS_ENTRY_IDS='
 audit-clearance-markers
@@ -79,7 +79,7 @@ wiki-promote-and-uat-write-scratch
 worktree-reap-miss-memo
 '
 
-# Frozen at task 2.3's build, one id per line, sorted -- matches
+# Frozen at initial build, one id per line, sorted -- matches
 # `jq -r '.residue[].id' .gaia/state-registry.json | sort`.
 GAIA_REGISTRY_COMPLETENESS_RESIDUE_IDS='
 audit-carried-markers-residue
@@ -125,7 +125,6 @@ gaia_check_registry_completeness() {
   return $rc
 }
 
-# Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   gaia_check_registry_completeness
   exit $?

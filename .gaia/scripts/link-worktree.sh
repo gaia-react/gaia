@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GAIA worktree shared-state symlink hook (SPEC-005).
+# GAIA worktree shared-state symlink hook.
 #
 # A linked worktree's whole .gaia/local is ONE symlink to the main checkout's
 # own .gaia/local, so nothing under it diverges per-worktree: the registry's

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # audit-write-clearance.sh: the ONE shared writer for every Code Audit Team
-# clearance artifact. Replaces the byte-identical inline `printf` each of the
-# three agent definitions used to carry.
+# clearance artifact, replacing a byte-identical inline `printf` duplicated
+# across the three agent definitions.
 #
 # Usage:
 #   audit-write-clearance.sh --root <path> --member <name> \
@@ -292,18 +292,9 @@ fi
 #
 #   sidecar               does this member file a FINDINGS sidecar, its report
 #                         of record? Every member does, so this is always true.
-#                         It used to be true only for the default member, which
-#                         was contradicted by the store itself: most of the
-#                         findings sidecars on disk belong to specialized
-#                         members. Anything reasoning from this field about
-#                         whether a report exists was therefore wrong for four
-#                         of the five members, and a wrong answer here reads as
-#                         "this refusal has no report", which is the state that
-#                         makes a refusal look unrepairable.
 #   dispositions_sidecar  does this member file the out-of-scope DISPOSITION
 #                         sidecar the merge gate's backstop reads? Only the
-#                         default member does. This is the distinction the old
-#                         single field was actually carrying.
+#                         default member does.
 sidecar="true"
 if [ "$MEMBER" = "$DEFAULT_MEMBER" ]; then
   dispositions_sidecar="true"

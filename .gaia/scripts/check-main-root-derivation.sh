@@ -9,7 +9,7 @@
 # ever writing `gaia_resolve_main_root` or `resolveMainWorktreeRoot`.
 #
 # Deliberately narrow, not the full "every hand-derivation shape" repo-wide
-# scan the SPEC originally wanted (analysis/registry-design.md §0). That
+# scan the SPEC originally wanted. That
 # scan stays undeliverable: a real derivation is multi-line at nearly every
 # site, which defeats a line-scoped detector, and the committed CLI bundles
 # (.gaia/cli/gaia, .gaia/cli/gaia-maintainer) are esbuild output with
@@ -73,8 +73,7 @@
 # has never appeared there.
 #
 # Dual-mode, mirroring check-resolver-singleton.sh: source it for
-# gaia_check_main_root_derivation, or run it directly as a script (see
-# "Executable entry" at the bottom).
+# gaia_check_main_root_derivation, or run it directly as a script.
 #
 # gaia_check_main_root_derivation <repo_root>
 #   Runs all three scans over tracked source. Prints every match line, then
@@ -220,7 +219,6 @@ gaia_check_main_root_derivation() {
   [ "$common_dir_failed" -eq 0 ] && [ "$surgery_failed" -eq 0 ] && [ "$porcelain_failed" -eq 0 ]
 }
 
-# Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   repo_root="${1:-}"
   if [ -z "$repo_root" ]; then

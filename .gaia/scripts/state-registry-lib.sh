@@ -4,13 +4,13 @@
 # GAIA state-registry reader (single-sourced).
 #
 # Reads .gaia/state-registry.json, the one classification of every
-# .gaia/local entry (SPEC-061), transcribed by hand into the tracked
+# .gaia/local entry, transcribed by hand into the tracked
 # .gaia/state-registry.json + .gaia/state-registry.schema.json pair. This
 # library is the ONLY place that parses the registry; every consumer (link
 # twins, the janitor, conformance checks) calls these functions instead of
 # re-reading or hand-restating the registry's shape. Dual-mode, mirroring
 # .gaia/scripts/main-root-lib.sh: source it for the reader functions below, or
-# run it directly as a script (see "Executable entry" at the bottom).
+# run it directly as a script.
 #
 # Location: the registry lives at the MAIN checkout's .gaia/, never a linked
 # worktree's (it describes .gaia/local, which cannot live inside what it
@@ -106,7 +106,7 @@
 #   FAILURE CONTRACT (fail-SAFE): when jq is unavailable or the registry
 #   cannot be located/read, this returns 0 (recognized), never 1. A caller
 #   that cannot classify a child must never reap it -- an unreadable
-#   registry is exactly the case SPEC-061's report-not-delete rule exists
+#   registry is exactly the case this registry's report-not-delete rule exists
 #   to protect, and failing shut here would turn a broken registry into an
 #   outlier-reap trigger, the opposite of the intended safety property.
 #   Residue entries are checked before live entries, so a residue leaf
@@ -338,7 +338,6 @@ gaia_registry_classify() {
   return 0
 }
 
-# Executable entry.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   case "${1:-}" in
     path)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # audit-noop-detect.sh: shared deterministic no-op detection predicate for
 # the three adversarial-audit fan-out surfaces (/gaia-spec SPEC audit,
-# /gaia-plan decomposition audit, pre-merge code-review-audit). SPEC-025.
+# /gaia-plan decomposition audit, pre-merge code-review-audit).
 #
 # When a dispatched `general-purpose` Agent no-ops (zero tool uses, its
 # whole return is a harness-reminder-echo / output-style fragment), no
@@ -26,39 +26,18 @@
 #                 passed, that AUDIT.md path must also exist for a REAL
 #                 classification (the 7c-with-directives dispatch). Ignored
 #                 for every other shape.
-#   --marker      optional; honored ONLY for --shape audit-team-member. A
-#                 writer-produced EARNED clearance at this path short-circuits
-#                 classification to REAL without inspecting --path: the
-#                 dispatched member already wrote its clearance marker (a clean
-#                 pass, or an advisory member's non-Critical dirty pass). When
-#                 --findings is also passed, that durable report must be
-#                 present too before the marker authorizes REAL. The marker's
-#                 REFUSAL sibling (the same path with `.ok` replaced by
-#                 `.refused`) is checked FIRST and classifies REFUSED, see the
-#                 audit-team-member shape below. Ignored for every other shape.
+#   --marker      optional; honored ONLY for --shape audit-team-member. Its
+#                 mechanics (the EARNED short-circuit, the REFUSAL sibling
+#                 checked first) live in that shape's case arm below. Ignored
+#                 for every other shape.
 #   --findings    optional; honored ONLY for --shape audit-team-member. The
 #                 member's findings sidecar
 #                 (.gaia/local/audit/<audit-key>.<member>.findings.json --
 #                 audit-key is the incremental base sha plus the acting tree's
-#                 branch, .gaia/scripts/audit-key-lib.sh), the durable report
-#                 of record a specialized member writes on every LOCAL pass,
-#                 clean or withheld. When passed, the --marker
-#                 short-circuit additionally requires this file to exist and,
-#                 with jq available, to parse with a `.findings` array AND a
-#                 `.member` equal to the member the marker filename names. That
-#                 identity binding matters: the orchestrator hand-builds one
-#                 sidecar path per dispatched member and those paths differ
-#                 only by the member infix, so a shape-only check would let one
-#                 member's sidecar vouch for another's lost report.
-#                 A member whose report never reached the orchestrator leaves
-#                 its marker present and this artifact absent, so requiring
-#                 BOTH is what makes a LOST REPORT detectable instead of
-#                 indistinguishable from a clean pass: marker-presence alone
-#                 would authorize REAL and suppress the retry, leaving the
-#                 orchestrator holding a green gate and zero visible findings.
-#                 Omit it to keep the marker-only short-circuit: the default
-#                 member keys its durable detail to a different artifact, and a
-#                 run whose base sha did not resolve writes no sidecar at all.
+#                 branch, .gaia/scripts/audit-key-lib.sh); see the case arm
+#                 below for the lost-report gate this argument enables when
+#                 passed, and its member-identity binding. Omit it to keep the
+#                 marker-only short-circuit. Ignored for every other shape.
 #
 # Caller shapes (FC-2), REAL iff:
 #   spec-selfreview-file  file exists AND `jq -e .` parses AND (top-level is
@@ -108,24 +87,9 @@
 #                         style echo carries none of the three and classifies
 #                         NO-OP.
 #
-# A REFUSAL IS PROOF OF LIFE, NEVER A NO-OP (audit-team-member only)
-#   A member that reviewed the content fully and withheld its clearance writes
-#   `<digest>[.<member>].refused` and no `.ok`. Keying only on the earned
-#   family classifies that member NO-OP, which spends the protocol's single
-#   hardened re-dispatch on a member that was never broken and hands the
-#   operator "no-op'd twice" when what happened is "refused twice, with cause".
-#   The refusal is a deliberately-written blocking artifact, so it settles the
-#   classification on its own: REFUSED, exit 0 (do not retry), and it is
-#   checked BEFORE the earned family, matching the merge gate's own
-#   refusal-first precedence for the window where a crash leaves both markers
-#   on disk.
-#
-#   The lost-report gate (--findings) deliberately does NOT apply to a refusal.
-#   A refusal with no sidecar beside it is a differently-broken run, not a
-#   no-op, and re-dispatching it returns the identical empty hand -- that loop
-#   is the failure this arm exists to end. The report a refusal must carry is
-#   made durable by the member's own remit (its findings sidecar and the
-#   carry-forward ledger the refusal write produces), not by a retry here.
+# A refusal (audit-team-member only) is proof of life, never a no-op: see the
+# refusal arm in that shape's case arm below for why it is checked before the
+# earned family and why the lost-report gate does not apply to it.
 #
 # Exit code IS the boolean: 0 = REAL (not a no-op), 1 = NO-OP, 2 = usage
 # error (unknown --shape, missing --shape/--path). Also prints `real`,

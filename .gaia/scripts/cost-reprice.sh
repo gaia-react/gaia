@@ -109,10 +109,9 @@ log() { printf '%s\n' "$*" >&2; }
 
 # rate_table_id comes from token-pricing-lib.sh, which token-tally.sh's own
 # helper of the same name also delegates to, so a re-priced row's identity is
-# computed exactly the way the writer computes it. It used to be a deliberate
-# copy of the writer's definition because the writer's lived inside that
-# executable rather than in a sourceable lib; it lives in the lib now, and the
-# machine-local overlay is precisely the input a second copy would drift on.
+# computed exactly the way the writer computes it. Delegating to the shared
+# lib rather than keeping a local copy matters because the machine-local
+# overlay is precisely the input a second copy would drift on.
 rate_table_id() {
   gaia_rate_table_id "$@"
 }

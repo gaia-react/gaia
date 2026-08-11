@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # summary-verify.sh: deterministic verify-gate for the consolidated
-# wiki-purposed SUMMARY.md artifact produced at merge (SPEC-031). Every
+# wiki-purposed SUMMARY.md artifact produced at merge. Every
 # consolidation producer (plan-close / spec-close / pre-flight backstop / the
 # warm orchestrator) calls this before the irreversible removal of
 # SPEC.md / AUDIT.md: a failed or malformed consolidation keeps the layers

@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# GAIA shared dollar-pricing lib (SPEC-019 arithmetic, single-sourced).
+# GAIA shared dollar-pricing lib (single-sourced).
 # Sourced by token-rollup.sh and token-tally.sh. Defines the rate-table
 # resolution/load helpers and the rate_window / priced_row jq definitions.
 # No side effects at source time; defines functions + one jq-defs variable.

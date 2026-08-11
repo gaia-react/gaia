@@ -12,31 +12,24 @@
 #
 # Right side in linked worktrees: the one blocking, per-clone nudge
 # (`/setup-gaia`) still renders from every tree, so the statusline does not go
-# dark on the case this comment used to worry about. The rest of the right
-# side is a task queue for the main checkout, and a linked worktree cannot act
-# on any of it, so it is gated out there. Every right-side segment still reads
-# SHARED state -- the update-check cache, the debt count and the setup marker
-# are all scope "shared" in `.gaia/state-registry.json`, one physical copy
-# under the main checkout's `.gaia/local` -- which is exactly why the setup
-# nudge is correct from a worktree: the answer it reads is main's answer.
+# dark. The rest of the right side is a task queue for the main checkout, and
+# a linked worktree cannot act on any of it, so it is gated out there. Every
+# right-side segment still reads SHARED state -- the update-check cache, the
+# debt count and the setup marker are all scope "shared" in
+# `.gaia/state-registry.json`, one physical copy under the main checkout's
+# `.gaia/local` -- which is exactly why the setup nudge is correct from a
+# worktree: the answer it reads is main's answer.
 # A flow that genuinely must run on the main checkout refuses out loud when it
 # is invoked, which is where the harder guarantee belongs.
 #
-# So this script resolves the MAIN checkout root from the SESSION's directory
-# and reads shared state there, rather than from its own install path: a
-# maintainer wrapper execs this script from the main checkout while the session
-# runs in a linked worktree, so the install path answers for the wrong checkout.
-#
 # The hot path stays no-network: no network calls, no `pnpm` calls. It is no
-# longer under 50ms, and that target is retired rather than quietly missed.
-# Measured on an M-series Mac under bash 3.2, 20 runs: 31ms before, 56ms after,
-# of which one `gaia_resolve_main_root` call is ~38ms (it runs five `git`
-# invocations behind an env scrub, where the two hand-rolled `git rev-parse`
-# forks it replaces cost ~9ms together). That is the price of one canonical
-# answer to "where is main" instead of a seventeenth hand-rolled derivation of
-# it, paid once per render, and it is the right trade at this size. Making the
-# resolver itself cheaper would return most of it and is worth doing, but it is
-# the resolver library's change to make, not this consumer's.
+# longer under 50ms, and that target is retired rather than quietly missed:
+# resolving the main checkout root canonically (`gaia_resolve_main_root`, a
+# handful of `git` invocations behind an env scrub) costs more than the
+# hand-rolled `git rev-parse` forks it replaces, and that is the right trade
+# at this size. Making the resolver itself cheaper would return most of it
+# and is worth doing, but it is the resolver library's change to make, not
+# this consumer's.
 # A background refresher (.gaia/scripts/check-updates.sh) writes the cache.
 #
 # Partial failures are silent; a broken statusline disappears in Claude Code,
@@ -44,8 +37,8 @@
 
 # Resolve script directory so the resolver library is found regardless of
 # caller cwd. This is the script's INSTALL path, which is not necessarily the
-# session's checkout (see the wrapper case above); the state paths below are
-# anchored on the resolved main root instead.
+# session's checkout; the state paths below are anchored on the resolved main
+# root instead.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"

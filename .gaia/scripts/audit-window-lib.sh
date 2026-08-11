@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# GAIA shared audit-window lib (SPEC-032 FC-5, single-sourced).
+# GAIA shared audit-window lib (single-sourced).
 #
 # Sourced by token-tally.sh to bracket adversarial-audit and code-audit-frontend
 # spend by TIME WINDOW rather than by agentType: a Deep spec audit spans

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GAIA token roll-up reader (SPEC-017).
+# GAIA token roll-up reader.
 #
 # Reads the durable ledger token-tally.sh appends to
 # (.gaia/local/telemetry/cost.jsonl) and renders a full-cycle cost readout
@@ -134,9 +134,9 @@ fi
 # ---------- corrupt-line-tolerant parse + feature filter ----------
 # A line that is not a well-formed JSON object -- unparseable, or valid JSON
 # that is not an object (a bare scalar or array) -- is skipped and bumps `bad`;
-# it never aborts the read, and a single bad line never drops the good ones
-# (UAT-010). The non-object coercion matters because `try fromjson` only rescues
-# parse failures: a bare `42` survives it, then indexing `.spec_id` on a number
+# it never aborts the read, and a single bad line never drops the good ones.
+# The non-object coercion matters because `try fromjson` only rescues parse
+# failures: a bare `42` survives it, then indexing `.spec_id` on a number
 # throws and aborts the whole filter, silently dropping every good row.
 corrupt=0
 parsed="$(jq -R -s --arg fk "$FEATURE_KEY" '
@@ -235,7 +235,7 @@ actions_len="$(jq -r '.actions | length' <<<"$summary" 2>/dev/null)"
 is_uint "$actions_len" || actions_len=0
 (( actions_len == 0 )) && no_records
 
-# ---------- dollar pricing (SPEC-019) ----------
+# ---------- dollar pricing ----------
 # Prices each winning row's by_model breakdown against the rate table:
 # cache_read at input*0.1, cache_write_5m at input*1.25, cache_write_1h at
 # input*2.0 (see token-rates.json's cache_multipliers). Degrades to a marked
@@ -366,7 +366,7 @@ if (( corrupt == 1 )) || [[ "$grand_elapsed_partial" == "true" ]] || [[ "$grand_
   printf '  (partial: some ledger input was unreadable or lacked timing; figures are a lower bound)\n'
 fi
 
-# ---------- dollar cost render (SPEC-019) ----------
+# ---------- dollar cost render ----------
 # Additive: appended after EVERYTHING the token block prints above,
 # including its own trailing "(partial: ...)" marker, so the existing
 # output stays an exact prefix.
