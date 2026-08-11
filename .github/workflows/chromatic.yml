@@ -98,6 +98,17 @@ jobs:
               - 'tsconfig*.json'
               - 'vite.config.*'
               - '.github/workflows/chromatic.yml'
+              # The composite action the Node setup step below `uses:`. It
+              # matches nothing else here, so without this line a pull request
+              # changing only the action -- its node version, its install arms,
+              # its cache key -- would report `code=false`, skip the build and
+              # the upload, and green `Run Chromatic` having published nothing.
+              # A glob rather than the one path: the directory is where shared
+              # composite actions go, so an itemized entry would silently stop
+              # covering the next one. This does widen what re-runs a paid
+              # build, which is the deliberate trade: the alternative is a
+              # required check that cannot see a change to how it builds.
+              - '.github/actions/**'
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Setup Node and install
         uses: ./.github/actions/gaia-setup-node

@@ -302,6 +302,15 @@ jobs:
               # workflows glob self-maintains as the declared-required set
               # changes, the same reasoning as the code-audit-*.md glob above.
               - '.github/workflows/**'
+              # The composite action the Node setup step below `uses:`. It lives
+              # outside .github/workflows/, so it matches nothing else here, and
+              # without this line a pull request changing only the action -- its
+              # node version, its install arms, its cache key -- would report
+              # `code=false`, skip every step gated on this filter, and green a
+              # declared-required context having run nothing. A glob rather than
+              # the one path: the directory is where shared composite actions go,
+              # so an itemized entry would silently stop covering the next one.
+              - '.github/actions/**'
               - '.gaia/audit-ci.yml'
               # check-hook-scope-manifest.bats (.gaia/scripts/tests/) asserts
               # coverage + conformance of the hook tree-scope manifest; a
