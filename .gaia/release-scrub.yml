@@ -297,6 +297,11 @@ transforms:
           - "wiki/**"
           - ".gaia/statusline/**"
           - ".github/workflows/**"
+          # Adopter-shipped composite actions, same surface `maintainer-paths`
+          # scans above. Their descriptions explain which workflows they do and
+          # do not cover, so a cross-workflow prose reference is exactly the
+          # shape this check exists to catch.
+          - ".github/actions/**"
           - ".gaia/cli/templates/**"
           - ".specify/extensions/gaia/README.md"
           - ".specify/extensions/gaia/commands/**"
