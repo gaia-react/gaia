@@ -2,6 +2,8 @@
 paths:
   - 'wiki/**/*.md'
   - 'app/**/*.{ts,tsx,js,jsx,css}'
+  - '.gaia/**/*.ts'
+  - '.gaia/**/*.sh'
   - '.claude/instructions/**/*.md'
   - '.claude/skills/**/*.md'
   - '.claude/commands/**/*.md'
@@ -27,6 +29,7 @@ Body prose and code comments describe **what is** in present tense. The historic
 - **No unreleased or speculative roadmap as current behavior.** Body prose describes what ships today. Do not document a planned, deferred, or not-yet-built feature as if it already exists, a reader cannot tell aspiration from shipped fact. State current behavior; keep forward-looking notes out of the page, or label them plainly as deferred and not yet built.
   <!-- gaia:maintainer-only:start -->
   GAIA maintainers: two kinds of content go inside the HTML-comment maintainer-only markers, the same pair wrapping this note. First, roadmap or forward-looking content that must live in the source repo but not reach adopter scaffolds. Second, any statement specific to the maintainer repo itself, how `gaia-react/gaia` is configured or operated (its branch-protection / ruleset setup, per-author audit mode, secrets, in-tree-only workflows): on an adopter clone that reads as a claim about the reader's own repo and is false there, so wrap it. Keep the general behavior in the visible body and confine the maintainer-repo specifics to the wrapped block. The bundle-time scrub strips marker-delimited blocks from markdown under `wiki/`, `.claude/`, and `.specify/extensions/gaia/` before tar, so the source repo stays a superset of the adopter bundle; unbalanced markers fail the release build. See [[Bundle-time Scrub]].
+  The `.gaia/**/*.sh` activation glob above reaches shell files under `.gaia/tests/` as well, but that directory's content stays exempt under the `.gaia/tests/` bullet in Exceptions regardless of what activates this rule.
   <!-- gaia:maintainer-only:end -->
 
 ## Why

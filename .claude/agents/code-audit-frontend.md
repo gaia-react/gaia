@@ -147,7 +147,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 - **Magic values**: Unexplained numbers, strings used as identifiers without constants
 - **Dead code**: Unused exports, unreachable branches, commented-out code left behind
 - **Coupling**: Changes that would ripple across many files, tight coupling to implementation details
-- **Documentation**: Complex logic without comments explaining WHY (not what), but don't flag missing obvious comments
+- **Comments**: A comment that is about the file itself rather than about something the file does not contain, a comment naming a file, symbol, or ticket that no longer resolves, or a comment restating the line or signature below it. Do not flag missing comments.
 
 ## Project-Specific Rules to Enforce
 
