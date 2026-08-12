@@ -144,6 +144,7 @@ auditors:
       - ".gaia/*.json"
       - ".gaia/scripts/token-rates.json"
       - ".gaia/release-exclude"
+      - ".gaia/tests/vendor/**"
       - ".gaia/VERSION"
       - ".claude/settings.json"
       - ".github/CODEOWNERS"
