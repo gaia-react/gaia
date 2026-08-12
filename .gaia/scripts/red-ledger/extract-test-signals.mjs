@@ -376,4 +376,9 @@ visit(sourceFile, []);
 if (lines.length > 0) {
   process.stdout.write(lines.join('\n') + '\n');
 }
-process.exit(0);
+// No process.exit() here. Every consumer reads this through a pipe, and a
+// pipe-backed stdout is asynchronous on macOS: exiting explicitly discards
+// whatever has not flushed past the 64KB pipe buffer, while still reporting
+// success. A large enough test file would hand the RED gate a truncated
+// record set and clear it on the tests whose records were cut.
+process.exitCode = 0;
