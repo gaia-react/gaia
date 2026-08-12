@@ -46,6 +46,15 @@
 # Portability: runs on CI bash 5 and macOS /bin/bash 3.2.57. No mapfile, no
 # declare -A, no ${var^^}, no wait -n, no eval. Every list is LC_ALL=C sorted
 # so ordering never depends on the invoking locale.
+#
+# Every array expansion below is written ${arr[@]+"${arr[@]}"} rather than
+# "${arr[@]}", which is not style: on bash 3.2 an EMPTY array expanded bare
+# under `set -u` aborts with `arr[@]: unbound variable`. A seam directory that
+# resolves zero .bats files hits exactly that, and the script would exit 1 on
+# an unbound variable instead of taking the documented fail-closed exit 2 path
+# below, defeating the zero-files guard. bash 5 does not reproduce it, so the
+# guard suite is blind to the class; .gaia/scripts/lint-hook-array-guard.sh is
+# the repo's detector for it.
 set -euo pipefail
 
 HOOKS_DIR="${HOOKS_DIR:-.gaia/tests/hooks}"
@@ -148,7 +157,7 @@ files_hooks1() {
   read_lines < <(discover_bats "$HOOKS_DIR")
   for pinned in "${PINNED_HOOKS[@]}"; do
     found=0
-    for p in "${lines[@]}"; do
+    for p in ${lines[@]+"${lines[@]}"}; do
       base="${p##*/}"
       if [ "$base" = "$pinned" ]; then
         printf '%s\n' "$p"
@@ -168,14 +177,14 @@ hooks_round_robin() {
   local target="$1" p base i mod rest
   read_lines < <(discover_bats "$HOOKS_DIR")
   rest=()
-  for p in "${lines[@]}"; do
+  for p in ${lines[@]+"${lines[@]}"}; do
     base="${p##*/}"
     if ! is_pinned_hook "$base"; then
       rest+=("$p")
     fi
   done
   i=0
-  for p in "${rest[@]}"; do
+  for p in ${rest[@]+"${rest[@]}"}; do
     mod=$((i % 3 + 2))
     if [ "$mod" -eq "$target" ]; then
       printf '%s\n' "$p"
@@ -190,7 +199,7 @@ scripts_round_robin() {
   local target="$1" p i mod
   read_lines < <(discover_bats "$SCRIPTS_TESTS_DIR")
   i=0
-  for p in "${lines[@]}"; do
+  for p in ${lines[@]+"${lines[@]}"}; do
     mod=$((i % 2 + 1))
     if [ "$mod" -eq "$target" ]; then
       printf '%s\n' "$p"
@@ -249,13 +258,21 @@ cmd_run() {
   if [ "$rc" -ne 0 ]; then
     exit "$rc"
   fi
+  # `files` prints repo-relative paths for display, but bats resolves its
+  # arguments against $PWD, so handing those through unchanged would make `run`
+  # work only from the repo root while discovery itself is $PWD-independent.
+  # Re-absolutize here, so both halves of the script agree. An absolute seam
+  # override already prints absolute and is passed through untouched.
   argv=()
   while IFS= read -r line || [ -n "$line" ]; do
-    argv+=("$line")
+    case "$line" in
+      /*) argv+=("$line") ;;
+      *) argv+=("$REPO_ROOT/$line") ;;
+    esac
   done <<EOF
 $out
 EOF
-  bats "${argv[@]}"
+  bats ${argv[@]+"${argv[@]}"}
 }
 
 main() {

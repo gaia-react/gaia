@@ -129,7 +129,13 @@ copy_sharder() {
 doctor_dropped_file() {
   local dest anchor
   dest="$(copy_sharder a1-dropped.sh)"
-  anchor="$(grep -nF 'for p in "${rest[@]}"; do' "$dest" | head -1 | cut -d: -f1)"
+  # Matched by shape, not by one exact spelling: the loop it anchors on is
+  # written with bash 3.2's empty-array offset guard, and a -F anchor pinned to
+  # the bare "${rest[@]}" form silently stops matching the moment that guard is
+  # added or removed. A no-match would splice nothing, leaving an undoctored
+  # copy that proves nothing.
+  anchor="$(grep -nE 'for p in .*\$\{rest\[@\]' "$dest" | head -1 | cut -d: -f1)"
+  [ -n "$anchor" ] || return 1
   awk -v a="$anchor" '
     { print }
     NR == a { print "    if [ \"$i\" -eq 0 ]; then i=$((i + 1)); continue; fi" }
@@ -145,6 +151,7 @@ doctor_duplicated_file() {
   local dest anchor
   dest="$(copy_sharder a2-duplicated.sh)"
   anchor="$(grep -nF 'mod=$((i % 2 + 1))' "$dest" | head -1 | cut -d: -f1)"
+  [ -n "$anchor" ] || return 1
   awk -v a="$anchor" '
     { print }
     NR == a { print "    if [ \"$target\" -eq 2 ] && [ \"$i\" -eq 0 ]; then printf \"%s\\n\" \"$p\"; fi" }
@@ -161,6 +168,7 @@ doctor_bypassed_zero_guard() {
   local dest start end
   dest="$(copy_sharder a3-bypassed-guard.sh)"
   start="$(grep -nF 'if [ -z "$out" ]; then' "$dest" | head -1 | cut -d: -f1)"
+  [ -n "$start" ] || return 1
   end=$((start + 4))
   awk -v s="$start" -v e="$end" '
     NR == s { print "  [ -z \"$out\" ] || printf \"%s\\n\" \"$out\""; next }

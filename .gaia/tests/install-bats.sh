@@ -114,6 +114,13 @@ else
   "$extracted/install.sh" /usr/local
 fi
 
+# The version probe above ran `bats` before the install, and a successful
+# lookup enters bash's command hash table. On a machine that already carries a
+# different bats -- a maintainer's laptop, not the CI runner -- the check below
+# would otherwise re-run the OLD binary and report a mismatch against an
+# install that actually succeeded.
+hash -r 2>/dev/null || true
+
 if [ "$(installed_version)" != "$BATS_VERSION" ]; then
   printf 'install-bats: post-install version mismatch: expected %s, got %s\n' \
     "$BATS_VERSION" "$(installed_version)" >&2
