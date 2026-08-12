@@ -45,15 +45,14 @@ describe('computeTally', () => {
     expect(result.candidate_count).toBe(1);
     expect(result.window_days).toBe(90);
 
-    const [candidate] = result.candidates;
-    expect(candidate.finding_class).toBe(
-      'react-doctor/no-generic-handler-names'
-    );
-    expect(candidate.distinct_pr_count).toBe(3);
-    expect(candidate.severity_max).toBe('warning');
-    expect(candidate.pr_numbers).toEqual([1201, 1188, 1175]);
-    expect(candidate.area_tags).toEqual(['app/components', 'app/hooks']);
-    expect(candidate.is_oracle).toBe(true);
+    expect(result.candidates[0]).toMatchObject({
+      area_tags: ['app/components', 'app/hooks'],
+      distinct_pr_count: 3,
+      finding_class: 'react-doctor/no-generic-handler-names',
+      is_oracle: true,
+      pr_numbers: [1201, 1188, 1175],
+      severity_max: 'warning',
+    });
   });
 
   test('sets is_oracle false for a closed-vocabulary (non-oracle) class', () => {
@@ -126,8 +125,10 @@ describe('computeTally', () => {
       windowDays: 90,
     });
     expect(suggestionOnly.candidate_count).toBe(1);
-    expect(suggestionOnly.candidates[0]?.distinct_pr_count).toBe(3);
-    expect(suggestionOnly.candidates[0]?.severity_max).toBe('suggestion');
+    expect(suggestionOnly.candidates[0]).toMatchObject({
+      distinct_pr_count: 3,
+      severity_max: 'suggestion',
+    });
     expect(suggestionOnly.unclassified).toBeNull();
 
     const atWarning = computeTally({
@@ -205,12 +206,11 @@ describe('computeTally', () => {
       windowDays: 90,
     });
 
-    expect(result.candidates[0]?.distinct_pr_count).toBe(3);
-    expect(result.candidates[0]?.severity_max).toBe('error');
-    expect(result.candidates[0]?.area_tags).toEqual([
-      'app/routes',
-      'app/pages',
-    ]);
+    expect(result.candidates[0]).toMatchObject({
+      area_tags: ['app/routes', 'app/pages'],
+      distinct_pr_count: 3,
+      severity_max: 'error',
+    });
   });
 
   test('ignores class-less / invalid findings entirely', () => {
@@ -427,8 +427,10 @@ describe('computeTally', () => {
       windowDays: 90,
     });
 
-    expect(result.candidates[0]?.is_oracle).toBe(true);
-    expect(result.candidates[0]?.severity_max).toBe('suggestion');
+    expect(result.candidates[0]).toMatchObject({
+      is_oracle: true,
+      severity_max: 'suggestion',
+    });
   });
 
   test('Directive #4: a recorded recurring class counts regardless of self-heal (the tally has no self-heal notion)', () => {

@@ -78,13 +78,14 @@ describe('reduceDump (pure algorithm)', () => {
 
     test('produces exactly one memoDefeated finding for StatusBadge, ranked #1', () => {
       expect(summary.findings).toHaveLength(1);
-      const [finding] = summary.findings;
-      expect(finding.componentName).toBe('StatusBadge');
-      expect(finding.rank).toBe(1);
-      expect(finding.isMemo).toBe(true);
-      expect(finding.memoDefeatedCount).toBe(2);
-      expect(finding.reactDoctorRule).toBe('jsx-no-new-object-as-prop');
-      expect(finding.unstableInputs).toEqual(['prop:status']);
+      expect(summary.findings[0]).toMatchObject({
+        componentName: 'StatusBadge',
+        isMemo: true,
+        memoDefeatedCount: 2,
+        rank: 1,
+        reactDoctorRule: 'jsx-no-new-object-as-prop',
+        unstableInputs: ['prop:status'],
+      });
     });
 
     test('does NOT flag the legitimate parent state change (SpikePanel)', () => {

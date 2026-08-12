@@ -88,7 +88,10 @@ vi.mock('node:fs', async (importOriginal) => {
 
 const START_MARKER = '<!-- gaia:test:start -->';
 const END_MARKER = '<!-- gaia:test:end -->';
-const DECLARED_PATHS = ['.claude/agents/one.md', '.claude/agents/two.md'];
+const DECLARED_PATHS = [
+  '.claude/agents/one.md',
+  '.claude/agents/two.md',
+] as const;
 const REGEN_SCRIPT_REL = '.gaia/scripts/write-regions.sh';
 const DEFAULT_FILES: Record<string, unknown> = {[REGEN_SCRIPT_REL]: 'owned'};
 

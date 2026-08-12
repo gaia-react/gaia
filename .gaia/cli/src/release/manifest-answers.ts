@@ -139,7 +139,11 @@ const parseCategoryLines = (lines: readonly string[]): ExcludeCategory[] =>
 
     if (match === null) return [];
 
-    return [{headerLineIndex, number: Number(match[1]), title: match[2]}];
+    const [, numberText, title] = match;
+
+    if (numberText === undefined || title === undefined) return [];
+
+    return [{headerLineIndex, number: Number(numberText), title}];
   });
 
 /** Parse `# --- <N>. <title> ---` headers out of a release-exclude body. */
@@ -261,7 +265,9 @@ const findBlockEnd = (
     index < lines.length;
     index += 1
   ) {
-    if (CATEGORY_HEADER.test(lines[index])) return index;
+    const line = lines[index];
+
+    if (line !== undefined && CATEGORY_HEADER.test(line)) return index;
   }
 
   return lines.length;
@@ -275,7 +281,9 @@ const findLastNonBlankLine = (
   let last = start;
 
   for (let index = start; index < end; index += 1) {
-    if (lines[index].trim().length > 0) last = index;
+    const line = lines[index];
+
+    if (line !== undefined && line.trim().length > 0) last = index;
   }
 
   return last;

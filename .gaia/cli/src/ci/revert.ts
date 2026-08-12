@@ -151,15 +151,15 @@ const parsePrUrlNumber = (urlOrText: string): null | number => {
   // /pull/<digits> or /<digits>.
   const tokens = urlOrText.split(/\s+/u).filter((token) => token.length > 0);
 
-  for (let index = tokens.length - 1; index >= 0; index -= 1) {
-    const token = tokens[index];
-    const pullMatch = /\/pull\/(\d+)$/u.exec(token);
+  for (const token of tokens.toReversed()) {
+    const pullDigits = /\/pull\/(\d+)$/u.exec(token)?.[1];
 
-    if (pullMatch !== null) return Number.parseInt(pullMatch[1], 10);
+    if (pullDigits !== undefined) return Number.parseInt(pullDigits, 10);
 
-    const trailingMatch = /\/(\d+)$/u.exec(token);
+    const trailingDigits = /\/(\d+)$/u.exec(token)?.[1];
 
-    if (trailingMatch !== null) return Number.parseInt(trailingMatch[1], 10);
+    if (trailingDigits !== undefined)
+      return Number.parseInt(trailingDigits, 10);
   }
 
   return null;
@@ -767,13 +767,17 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
+  const firstArgument = argv[0];
+
+  if (firstArgument === undefined || HELP_TOKENS.has(firstArgument)) {
     process.stdout.write(HELP_TEXT);
 
-    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+    return firstArgument === undefined ?
+        EXIT_CODES.UNKNOWN_SUBCOMMAND
+      : EXIT_CODES.OK;
   }
 
-  const sub = argv[0];
+  const sub = firstArgument;
   const rest = argv.slice(1);
 
   if (sub === 'open') return handleOpen(rest, options);

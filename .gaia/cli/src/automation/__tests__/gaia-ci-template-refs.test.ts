@@ -109,6 +109,9 @@ const readDomainSources = (cliSrc: string, domain: string): string => {
 // token somewhere in the domain's sources.
 const cliCommandExists = (cliSrc: string, commandPath: string): boolean => {
   const [domain, ...rest] = commandPath.split(' ');
+
+  if (domain === undefined) return false;
+
   const rootRouter = readFileOrEmpty(path.join(cliSrc, 'index.ts'));
 
   if (!isDispatchToken(rootRouter, domain)) return false;
@@ -129,8 +132,8 @@ const SKILL_REF_PATTERN = /(?<=[\s`])\/([a-z][a-z0-9-]*)/gu;
 const extractSkillRefs = (templateText: string): Set<string> => {
   const refs = new Set<string>();
 
-  for (const match of templateText.matchAll(SKILL_REF_PATTERN)) {
-    refs.add(match[1]);
+  for (const [, slug] of templateText.matchAll(SKILL_REF_PATTERN)) {
+    if (slug !== undefined) refs.add(slug);
   }
 
   return refs;

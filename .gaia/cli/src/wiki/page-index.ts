@@ -87,7 +87,7 @@ const extractTitle = (body: string, fallback: string): string => {
   return fallback;
 };
 
-const stringValue = (value: Frontmatter[string]): null | string => {
+const stringValue = (value: Frontmatter[string] | undefined): null | string => {
   if (typeof value === 'string') return value;
   if (typeof value === 'number') return String(value);
   if (typeof value === 'boolean') return value ? 'true' : 'false';
@@ -95,7 +95,7 @@ const stringValue = (value: Frontmatter[string]): null | string => {
   return null;
 };
 
-const arrayOfStrings = (value: Frontmatter[string]): string[] => {
+const arrayOfStrings = (value: Frontmatter[string] | undefined): string[] => {
   if (Array.isArray(value))
     return value.filter((entry) => typeof entry === 'string');
   if (typeof value === 'string' && value.length > 0) return [value];

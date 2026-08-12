@@ -249,6 +249,41 @@ const validateFlagCombination = (state: ParseState): FlagParseResult => {
   };
 };
 
+type ApplyFlagTokenArgs = {
+  argv: readonly string[];
+  index: number;
+  state: ParseState;
+  token: string;
+};
+
+const applyFlagToken = (
+  args: ApplyFlagTokenArgs
+): FlagParseFailure | {nextIndex: number} => {
+  const {argv, index, state, token} = args;
+  const bare = lookUpFlagHandler(BARE_FLAGS, token);
+  const valued = lookUpFlagHandler(VALUE_FLAGS, token);
+
+  if (bare !== undefined) {
+    bare(state);
+
+    return {nextIndex: index + 1};
+  }
+
+  if (valued === undefined) {
+    return {message: `unknown flag: ${token}`, ok: false};
+  }
+
+  const taken = takeValue(argv, index + 1, token);
+
+  if (!taken.ok) return taken;
+
+  const error = valued(state, taken.value);
+
+  if (error !== undefined) return {message: error, ok: false};
+
+  return {nextIndex: index + 2};
+};
+
 export const parseFlags = (argv: readonly string[]): FlagParseResult => {
   const state: ParseState = {
     allowUndecided: false,
@@ -260,26 +295,18 @@ export const parseFlags = (argv: readonly string[]): FlagParseResult => {
     stdout: false,
     withholds: [],
   };
+  let index = 0;
 
-  for (let index = 0; index < argv.length; index += 1) {
+  while (index < argv.length) {
     const token = argv[index];
-    const bare = lookUpFlagHandler(BARE_FLAGS, token);
-    const valued = lookUpFlagHandler(VALUE_FLAGS, token);
 
-    if (bare !== undefined) {
-      bare(state);
-    } else if (valued === undefined) {
-      return {message: `unknown flag: ${token}`, ok: false};
-    } else {
-      const taken = takeValue(argv, index + 1, token);
-
-      if (!taken.ok) return taken;
-
-      const error = valued(state, taken.value);
-
-      if (error !== undefined) return {message: error, ok: false};
-
+    if (token === undefined) {
       index += 1;
+    } else {
+      const outcome = applyFlagToken({argv, index, state, token});
+
+      if (!('nextIndex' in outcome)) return outcome;
+      index = outcome.nextIndex;
     }
   }
 

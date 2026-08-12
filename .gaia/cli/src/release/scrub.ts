@@ -957,6 +957,26 @@ const stripSkippedSpans = (line: string): string =>
 
 type TitleMatcher = {regex: RegExp; title: string};
 
+const closedFenceLines = (lines: readonly string[]): Set<number> => {
+  const fenceIndices = lines.flatMap((line, index) =>
+    isFenceDelimiter(line) ? [index] : []
+  );
+  const inside = new Set<number>();
+
+  for (let pair = 0; pair + 1 < fenceIndices.length; pair += 2) {
+    const start = fenceIndices[pair];
+    const end = fenceIndices[pair + 1];
+
+    if (start !== undefined && end !== undefined) {
+      for (let index = start; index <= end; index += 1) {
+        inside.add(index);
+      }
+    }
+  }
+
+  return inside;
+};
+
 /**
  * Scan one post-strip staging file for bare-title leaks with its OWN full
  * line-stream walk (not `scanForLeaks`), tracking fenced-code-block spans per
@@ -978,21 +998,7 @@ const findTitleLeaksInFile = (
 ): Leak[] => {
   const leaks: Leak[] = [];
   const lines = file.content.split('\n');
-
-  const fenceIndices = lines.flatMap((line, index) =>
-    isFenceDelimiter(line) ? [index] : []
-  );
-  const insideClosedFence = new Set<number>();
-
-  for (let pair = 0; pair + 1 < fenceIndices.length; pair += 2) {
-    for (
-      let index = fenceIndices[pair];
-      index <= fenceIndices[pair + 1];
-      index += 1
-    ) {
-      insideClosedFence.add(index);
-    }
-  }
+  const insideClosedFence = closedFenceLines(lines);
 
   for (const [index, line] of lines.entries()) {
     const scannable =
@@ -1112,20 +1118,22 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
 
-    if (token === '--config') {
-      const taken = takeValue(argv, index + 1, '--config');
+    if (token !== undefined) {
+      if (token === '--config') {
+        const taken = takeValue(argv, index + 1, '--config');
 
-      if (!taken.ok) return taken;
-      configPath = taken.value;
-      index += 1;
-    } else if (token === '--json') {
-      json = true;
-    } else if (token.startsWith('--')) {
-      return {message: `unknown flag: ${token}`, ok: false};
-    } else if (stagingDir === undefined) {
-      stagingDir = token;
-    } else {
-      return {message: `unexpected positional: ${token}`, ok: false};
+        if (!taken.ok) return taken;
+        configPath = taken.value;
+        index += 1;
+      } else if (token === '--json') {
+        json = true;
+      } else if (token.startsWith('--')) {
+        return {message: `unknown flag: ${token}`, ok: false};
+      } else if (stagingDir === undefined) {
+        stagingDir = token;
+      } else {
+        return {message: `unexpected positional: ${token}`, ok: false};
+      }
     }
   }
 
@@ -1353,7 +1361,9 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [firstArgument] = argv;
+
+  if (firstArgument !== undefined && HELP_TOKENS.has(firstArgument)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

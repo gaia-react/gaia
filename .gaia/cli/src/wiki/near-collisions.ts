@@ -120,22 +120,14 @@ export const findCollisions = (
   const results: Collision[] = [];
 
   for (const {domain, slugs} of domainGroups) {
-    for (let index = 0; index < slugs.length; index += 1) {
-      const slugA = slugs[index];
+    for (const [index, slugA] of slugs.entries()) {
       const normA = normalizeSlug(slugA);
 
-      for (
-        let otherIndex = index + 1;
-        otherIndex < slugs.length;
-        otherIndex += 1
-      ) {
-        const slugB = slugs[otherIndex];
-        const normB = normalizeSlug(slugB);
-
+      for (const slugB of slugs.slice(index + 1)) {
         // Skip true duplicates (identical raw slug); that case can't
         // happen on a real filesystem and is meaningless to flag.
         if (slugA !== slugB) {
-          const distance = levenshtein(normA, normB);
+          const distance = levenshtein(normA, normalizeSlug(slugB));
 
           if (distance <= maxDistance) {
             results.push({distance, domain, slugA, slugB});
@@ -177,11 +169,13 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  if (index >= argv.length) {
+  const value = argv[index];
+
+  if (value === undefined) {
     return {message: `${flag} requires a value`, ok: false};
   }
 
-  return {ok: true, value: argv[index]};
+  return {ok: true, value};
 };
 
 const parseFlags = (
@@ -222,7 +216,9 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const first = argv[0];
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

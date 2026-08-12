@@ -152,6 +152,8 @@ const applyVerifyRunToken = (
 ): ApplyVerifyTokenResult => {
   const token = argv[index];
 
+  if (token === undefined) return {consumed: 0};
+
   if (HELP_TOKENS.has(token)) {
     process.stdout.write(HELP_TEXT);
 

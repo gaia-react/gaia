@@ -192,7 +192,9 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const firstArgument = argv[0];
+
+  if (firstArgument !== undefined && HELP_TOKENS.has(firstArgument)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -229,7 +231,9 @@ export const run = (
 
   let decision: StaleCheckDecision;
 
-  if (entries.length === 0) {
+  const first = entries[0];
+
+  if (first === undefined) {
     decision = {
       decision: 'proceed',
       open_pr_branch: null,
@@ -238,7 +242,6 @@ export const run = (
       skip_log_line: null,
     };
   } else {
-    const first = entries[0];
     decision = {
       decision: 'skip',
       open_pr_branch: first.headRefName,

@@ -81,6 +81,10 @@ export const scanRegion = (
   const [startLine] = startLines;
   const [endLine] = endLines;
 
+  if (startLine === undefined || endLine === undefined) {
+    return {kind: 'malformed', reason: 'unbalanced'};
+  }
+
   // `>=`, not `>`: identical start and end markers put one line in both lists,
   // so `startLine === endLine` describes a zero-length region that masks
   // nothing while duplicating its own marker line. Equal markers are the only

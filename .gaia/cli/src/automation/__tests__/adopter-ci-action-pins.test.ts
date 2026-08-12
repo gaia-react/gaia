@@ -65,6 +65,9 @@ const parseUses = (
   if (match === null) return undefined;
 
   const value = match[1];
+
+  if (value === undefined) return undefined;
+
   const hash = value.indexOf('#');
   const spec = (hash === -1 ? value : value.slice(0, hash)).trim();
   const tag = hash === -1 ? '' : value.slice(hash + 1).trim();

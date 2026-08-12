@@ -60,7 +60,7 @@ type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 const runSync: SubcommandHandler = async (
   args: readonly string[]
 ): Promise<number> => {
-  const subcommand = args[0] as string | undefined;
+  const subcommand = args[0];
   const rest = args.slice(1);
 
   if (subcommand === undefined || HELP_TOKENS.has(subcommand)) {
@@ -106,7 +106,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {
-  const subcommand = argv[0] as string | undefined;
+  const subcommand = argv[0];
   const rest = argv.slice(1);
 
   if (subcommand === undefined || HELP_TOKENS.has(subcommand)) {

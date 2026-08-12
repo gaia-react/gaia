@@ -27,13 +27,13 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0) {
+  const first = argv[0];
+
+  if (first === undefined) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-
-  const first = argv[0];
 
   if (HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);

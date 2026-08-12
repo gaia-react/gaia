@@ -248,6 +248,10 @@ const applyToken = (
 ): ApplyTokenResult => {
   const token = argv[index];
 
+  if (token === undefined) {
+    return {message: 'unexpected end of arguments', ok: false};
+  }
+
   if (token === '--no-story') {
     state.story = false;
 

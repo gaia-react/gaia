@@ -87,18 +87,20 @@ const parseFlags = (argv: readonly string[]): FlagMap => {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
 
-    if (arg === '--mocks') {
-      result.mocks = true;
-    } else if (arg === '--json') {
-      result.json = true;
-    } else if (arg === '--endpoints') {
-      result.endpoints = argv[index + 1];
-      index += 1;
-    } else if (arg === '--schema') {
-      result.schema = argv[index + 1];
-      index += 1;
-    } else if (!arg.startsWith('--')) {
-      result.positional.push(arg);
+    if (arg !== undefined) {
+      if (arg === '--mocks') {
+        result.mocks = true;
+      } else if (arg === '--json') {
+        result.json = true;
+      } else if (arg === '--endpoints') {
+        result.endpoints = argv[index + 1];
+        index += 1;
+      } else if (arg === '--schema') {
+        result.schema = argv[index + 1];
+        index += 1;
+      } else if (!arg.startsWith('--')) {
+        result.positional.push(arg);
+      }
     }
   }
 
@@ -152,9 +154,10 @@ const buildZodExpression = (typeToken: string): null | string => {
 
     expression = builder === undefined ? null : builder();
   } else {
-    // `(.+)` is a mandatory, non-optional group: once `enumMatch` is
-    // non-null, group 1 always participated in the match.
-    const variants = enumMatch[1].split(',').flatMap((value) => {
+    const [, rawVariants] = enumMatch;
+
+    if (rawVariants === undefined) return null;
+    const variants = rawVariants.split(',').flatMap((value) => {
       const trimmed = value.trim();
 
       return trimmed.length > 0 ? [trimmed] : [];
@@ -441,9 +444,10 @@ const insertResetCallAlphabetically = (
   const match = pattern.exec(source);
 
   if (match === null) return source;
-  // `([^\]]*)` is a mandatory, non-optional group: it always participates
-  // in the match (possibly as an empty string), never `undefined`.
-  const inner = match[1].trim();
+  const [, rawInner] = match;
+
+  if (rawInner === undefined) return source;
+  const inner = rawInner.trim();
   const newCall = `reset${derived.Plural}()`;
 
   if (inner.length === 0) {
@@ -482,9 +486,10 @@ const insertCollectionExportAlphabetically = (
   const match = populatedPattern.exec(source);
 
   if (match === null) return source;
-  // `([^}]*)` is a mandatory, non-optional group: it always participates
-  // in the match (possibly as an empty string), never `undefined`.
-  const inner = match[1].trim();
+  const [, rawInner] = match;
+
+  if (rawInner === undefined) return source;
+  const inner = rawInner.trim();
   const collections = inner.split(',').flatMap((token) => {
     const trimmed = token.trim();
 

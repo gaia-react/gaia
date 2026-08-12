@@ -62,6 +62,29 @@ const parseScalar = (raw: string): FrontmatterValue => {
   return stripQuotes(trimmed);
 };
 
+const parseYamlLines = (yamlLines: readonly string[]): Frontmatter => {
+  const frontmatter: Frontmatter = {};
+
+  for (const line of yamlLines) {
+    const trimmedLine = line.trim();
+
+    if (trimmedLine !== '' && !trimmedLine.startsWith('#')) {
+      const match = SCALAR_PATTERN.exec(line);
+
+      if (match !== null) {
+        const key = match[1];
+        const value = match[2];
+
+        if (key !== undefined && value !== undefined) {
+          frontmatter[key] = parseScalar(value.trim());
+        }
+      }
+    }
+  }
+
+  return frontmatter;
+};
+
 export type FrontmatterParseResult = {
   body: string;
   frontmatter: Frontmatter;
@@ -99,23 +122,7 @@ export const parseFrontmatter = (raw: string): FrontmatterParseResult => {
     return {body: raw, frontmatter: {}, hasFrontmatter: false};
   }
 
-  const yamlLines = lines.slice(1, closingIndex);
-  const frontmatter: Frontmatter = {};
-
-  for (const line of yamlLines) {
-    const trimmedLine = line.trim();
-
-    if (trimmedLine !== '' && !trimmedLine.startsWith('#')) {
-      const match = SCALAR_PATTERN.exec(line);
-
-      if (match !== null) {
-        const key = match[1];
-        const value = match[2].trim();
-        frontmatter[key] = parseScalar(value);
-      }
-    }
-  }
-
+  const frontmatter = parseYamlLines(lines.slice(1, closingIndex));
   const body = lines.slice(closingIndex + 1).join('\n');
 
   return {body, frontmatter, hasFrontmatter: true};

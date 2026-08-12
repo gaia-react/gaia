@@ -65,10 +65,9 @@ const parseTwoSegments = (
 
   if (segments.length !== 2) return null;
 
-  // Destructuring a `string[]` of a length already verified above: both
-  // are genuinely always defined here, not just per the (unchecked-access)
-  // type.
   const [owner, repo] = segments;
+
+  if (owner === undefined || repo === undefined) return null;
 
   if (!isValidSegment(owner) || !isValidSegment(repo)) {
     return null;
@@ -88,7 +87,12 @@ export const parseRemoteUrl = (url: string): null | ParsedRemote => {
 
     if (hostMatch === null || restMatch === null) return null;
 
-    return parseTwoSegments(trimmed, hostMatch[1], restMatch[1]);
+    const host = hostMatch[1];
+    const rest = restMatch[1];
+
+    if (host === undefined || rest === undefined) return null;
+
+    return parseTwoSegments(trimmed, host, rest);
   }
 
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
@@ -96,7 +100,12 @@ export const parseRemoteUrl = (url: string): null | ParsedRemote => {
 
     if (match === null) return null;
 
-    return parseTwoSegments(trimmed, match[1], match[2]);
+    const host = match[1];
+    const rest = match[2];
+
+    if (host === undefined || rest === undefined) return null;
+
+    return parseTwoSegments(trimmed, host, rest);
   }
 
   const scpMatch = SCP_SSH_RE.exec(trimmed);
@@ -104,6 +113,8 @@ export const parseRemoteUrl = (url: string): null | ParsedRemote => {
   if (scpMatch !== null) {
     const host = scpMatch[2];
     const rest = scpMatch[3];
+
+    if (host === undefined || rest === undefined) return null;
 
     return parseTwoSegments(trimmed, host, rest);
   }

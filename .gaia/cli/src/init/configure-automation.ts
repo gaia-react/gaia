@@ -95,11 +95,13 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  if (index >= argv.length) {
+  const value = argv[index];
+
+  if (value === undefined) {
     return {message: `${flag} requires a value`, ok: false};
   }
 
-  return {ok: true, value: argv[index]};
+  return {ok: true, value};
 };
 
 const takeMode = (
@@ -273,6 +275,21 @@ const SCALAR_FLAG_HANDLERS = new Map<string, ScalarFlagHandler>([
   ],
 ]);
 
+const applyFlagToken = (
+  argv: readonly string[],
+  index: number,
+  context: {flags: Partial<Flags>; scalars: ScalarFlags; token: string}
+): {message: string; ok: false} | {ok: true} => {
+  const {flags, scalars, token} = context;
+  const scalarHandler = SCALAR_FLAG_HANDLERS.get(token);
+
+  if (scalarHandler === undefined) {
+    return applyToolFlag(argv, index, {flags, token});
+  }
+
+  return scalarHandler(argv, index, scalars);
+};
+
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   const flags: Partial<Flags> = {};
   const scalars: ScalarFlags = {
@@ -282,19 +299,13 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    const scalarHandler = SCALAR_FLAG_HANDLERS.get(token);
 
-    if (scalarHandler === undefined) {
-      const applied = applyToolFlag(argv, index + 1, {flags, token});
-
-      if (!applied.ok) return applied;
-    } else {
-      const applied = scalarHandler(argv, index + 1, scalars);
+    if (token !== undefined) {
+      const applied = applyFlagToken(argv, index + 1, {flags, scalars, token});
 
       if (!applied.ok) return applied;
+      index += 1;
     }
-
-    index += 1;
   }
 
   for (const key of FLAG_SPECS.values()) {
@@ -348,7 +359,9 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [first] = argv;
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

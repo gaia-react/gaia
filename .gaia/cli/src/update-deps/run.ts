@@ -615,10 +615,11 @@ const readMinimumReleaseAge = (cwd: string): number => {
     const match = /^minimumReleaseAge:[ \t]*(\d+)\b/u.exec(line);
 
     if (match) {
-      // The pattern's one capture group `(\d+)` is mandatory (not inside an
-      // optional quantifier or alternation), so a successful match always
-      // captures it.
-      const value = Number.parseInt(match[1], 10);
+      const [, rawValue] = match;
+
+      if (rawValue === undefined) return 0;
+
+      const value = Number.parseInt(rawValue, 10);
 
       return Number.isFinite(value) && value > 0 ? value : 0;
     }
@@ -1305,11 +1306,13 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | ParseError => {
     const token = argv[index];
 
     if (token === '--emit-updates') {
-      if (index + 1 >= argv.length || argv[index + 1].length === 0) {
+      const value = argv[index + 1];
+
+      if (value === undefined || value.length === 0) {
         return {error: '--emit-updates requires a path'};
       }
 
-      emitUpdates = argv[index + 1];
+      emitUpdates = value;
       index += 1;
     } else {
       return {error: `unknown flag: ${token}`};

@@ -162,7 +162,9 @@ describe('schemas/revert-ledger', () => {
       const result = readRevertLedger(sandbox.root);
       expect(result.status).toBe('ok');
       assert.ok(result.status === 'ok');
-      expect(result.ledger.attempts['99'].revert_pr).toBe(137);
+      const attempt = result.ledger.attempts['99'];
+      assert.ok(attempt);
+      expect(attempt.revert_pr).toBe(137);
     });
 
     test('returns {status: "malformed"} for invalid JSON', () => {

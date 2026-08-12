@@ -158,6 +158,15 @@ const FROZEN_TS = new Date('2026-05-08T15:30:45.000Z');
 // the tests check the prefix and existence on disk instead.
 const FROZEN_TS_PREFIX = '.bak.';
 
+type WorktreeAction = {backup?: string; path: string; result: string};
+
+const onlyAction = (actions: WorktreeAction[]): WorktreeAction => {
+  const [action] = actions;
+  if (action === undefined) throw new Error('expected exactly one action');
+
+  return action;
+};
+
 describe('gaia setup link-worktree (linked worktree)', () => {
   let sandbox: WorktreeSandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -265,11 +274,12 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     expect(exit).toBe(0);
 
     const out = JSON.parse(stdio.outputs.join('').trim()) as {
-      actions: {backup?: string; path: string; result: string}[];
+      actions: WorktreeAction[];
     };
 
     expect(out.actions).toHaveLength(1);
-    const action = out.actions[0];
+    const action = onlyAction(out.actions);
+
     expect(action.result).toBe('linked-after-backup');
     expect(action.backup).toBeDefined();
     expect(action.backup).toContain(FROZEN_TS_PREFIX);

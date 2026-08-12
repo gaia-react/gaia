@@ -78,12 +78,17 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  if (index >= argv.length || argv[index].startsWith('--')) {
+  const value = argv[index];
+
+  if (value === undefined || value.startsWith('--')) {
     return {message: `${flag} requires a value`, ok: false};
   }
 
-  return {ok: true, value: argv[index]};
+  return {ok: true, value};
 };
+
+type EventTokenResult =
+  {event: PingEvent; ok: true} | {message: string; ok: false};
 
 type ParseResult =
   {message: string; ok: false} | {ok: true; payload: PingPayload};
@@ -91,6 +96,24 @@ type ParseResult =
 type TokenParseResult =
   | {event: PingEvent; ok: true; provided: Map<string, string>}
   | {message: string; ok: false};
+
+const applyEventToken = (
+  argv: readonly string[],
+  index: number
+): EventTokenResult => {
+  const taken = takeValue(argv, index + 1, '--event');
+
+  if (!taken.ok) return taken;
+
+  if (!isPingEvent(taken.value)) {
+    return {
+      message: `--event must be one of: ${PING_EVENTS.join(', ')}`,
+      ok: false,
+    };
+  }
+
+  return {event: taken.value, ok: true};
+};
 
 const parseArgvTokens = (argv: readonly string[]): TokenParseResult => {
   let event: PingEvent | undefined;
@@ -100,19 +123,12 @@ const parseArgvTokens = (argv: readonly string[]): TokenParseResult => {
     const token = argv[index];
 
     if (token === '--event') {
-      const taken = takeValue(argv, index + 1, '--event');
+      const applied = applyEventToken(argv, index);
 
-      if (!taken.ok) return taken;
-
-      if (!isPingEvent(taken.value)) {
-        return {
-          message: `--event must be one of: ${PING_EVENTS.join(', ')}`,
-          ok: false,
-        };
-      }
-      event = taken.value;
+      if (!applied.ok) return applied;
+      event = applied.event;
       index += 1;
-    } else {
+    } else if (token !== undefined) {
       const taken = takeValue(argv, index + 1, token);
 
       if (!taken.ok) return taken;
@@ -178,7 +194,9 @@ export const run = async (
   argv: readonly string[],
   options: RunOptions = {}
 ): Promise<number> => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const first = argv[0];
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

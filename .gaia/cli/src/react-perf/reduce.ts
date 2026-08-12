@@ -311,61 +311,107 @@ export const reduceDump = (
   };
 };
 
+type AppliedFrameBudget = {frameBudgetMs: number; kind: 'budget'};
+
 type ParsedArgs =
   | {code: string; kind: 'error'; message: string}
   | {filePath: string; frameBudgetMs: number; kind: 'ok'}
   | {kind: 'help'};
 
-const parseArgs = (argv: readonly string[]): ParsedArgs => {
-  let filePath: string | undefined;
-  let frameBudgetMs = DEFAULT_FRAME_BUDGET_MS;
+const applyFrameBudgetToken = (
+  argv: readonly string[],
+  index: number
+): AppliedFrameBudget | ParsedArgs => {
+  if (index + 1 >= argv.length) {
+    return {
+      code: 'invalid_arguments',
+      kind: 'error',
+      message: '--frame-budget-ms requires a positive number, got: undefined',
+    };
+  }
 
-  for (let index = 0; index < argv.length; index += 1) {
+  const value = argv[index + 1];
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return {
+      code: 'invalid_arguments',
+      kind: 'error',
+      message: `--frame-budget-ms requires a positive number, got: ${value}`,
+    };
+  }
+
+  return {frameBudgetMs: parsed, kind: 'budget'};
+};
+
+type ApplyTokenArgs = {
+  argv: readonly string[];
+  index: number;
+  state: ArgumentParseState;
+  token: string;
+};
+
+type ArgumentParseState = {
+  filePath: string | undefined;
+  frameBudgetMs: number;
+};
+
+const applyToken = (args: ApplyTokenArgs): ParsedArgs | {nextIndex: number} => {
+  const {argv, index, state, token} = args;
+
+  if (HELP_TOKENS.has(token)) return {kind: 'help'};
+
+  if (token === '--frame-budget-ms') {
+    const applied = applyFrameBudgetToken(argv, index);
+
+    if (applied.kind !== 'budget') return applied;
+    state.frameBudgetMs = applied.frameBudgetMs;
+
+    return {nextIndex: index + 2};
+  }
+
+  if (token.startsWith('--')) {
+    return {
+      code: 'invalid_arguments',
+      kind: 'error',
+      message: `unknown flag: ${token}`,
+    };
+  }
+
+  if (state.filePath === undefined) {
+    state.filePath = token;
+
+    return {nextIndex: index + 1};
+  }
+
+  return {
+    code: 'invalid_arguments',
+    kind: 'error',
+    message: `unexpected argument: ${token}`,
+  };
+};
+
+const parseArgs = (argv: readonly string[]): ParsedArgs => {
+  const state: ArgumentParseState = {
+    filePath: undefined,
+    frameBudgetMs: DEFAULT_FRAME_BUDGET_MS,
+  };
+  let index = 0;
+
+  while (index < argv.length) {
     const token = argv[index];
 
-    if (HELP_TOKENS.has(token)) return {kind: 'help'};
-
-    if (token === '--frame-budget-ms') {
-      if (index + 1 >= argv.length) {
-        return {
-          code: 'invalid_arguments',
-          kind: 'error',
-          message:
-            '--frame-budget-ms requires a positive number, got: undefined',
-        };
-      }
-
-      const value = argv[index + 1];
-      const parsed = Number(value);
-
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        return {
-          code: 'invalid_arguments',
-          kind: 'error',
-          message: `--frame-budget-ms requires a positive number, got: ${value}`,
-        };
-      }
-
-      frameBudgetMs = parsed;
+    if (token === undefined) {
       index += 1;
-    } else if (token.startsWith('--')) {
-      return {
-        code: 'invalid_arguments',
-        kind: 'error',
-        message: `unknown flag: ${token}`,
-      };
-    } else if (filePath === undefined) {
-      filePath = token;
     } else {
-      return {
-        code: 'invalid_arguments',
-        kind: 'error',
-        message: `unexpected argument: ${token}`,
-      };
+      const outcome = applyToken({argv, index, state, token});
+
+      if (!('nextIndex' in outcome)) return outcome;
+      index = outcome.nextIndex;
     }
   }
 
-  if (filePath === undefined) {
+  if (state.filePath === undefined) {
     return {
       code: 'invalid_arguments',
       kind: 'error',
@@ -373,7 +419,11 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
     };
   }
 
-  return {filePath, frameBudgetMs, kind: 'ok'};
+  return {
+    filePath: state.filePath,
+    frameBudgetMs: state.frameBudgetMs,
+    kind: 'ok',
+  };
 };
 
 export const run = (argv: readonly string[]): number => {

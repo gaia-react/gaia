@@ -146,10 +146,13 @@ const findImportInsertIndex = (
 
   for (const idx of importLines) {
     const existing = lines[idx];
-    const match = /^import\s+(\w+)\s+from/u.exec(existing);
 
-    if (match?.[1] !== undefined && importName.localeCompare(match[1]) < 0) {
-      return idx;
+    if (existing !== undefined) {
+      const match = /^import\s+(\w+)\s+from/u.exec(existing);
+
+      if (match?.[1] !== undefined && importName.localeCompare(match[1]) < 0) {
+        return idx;
+      }
     }
   }
 
@@ -189,10 +192,17 @@ const collectExportEntries = (
 
   for (let idx = bounds.openIndex + 1; idx < bounds.closeIdx; idx += 1) {
     const line = lines[idx];
-    const match = EXPORT_ENTRY_PATTERN.exec(line);
 
-    if (match?.[1] !== undefined) {
-      entries.push({indent: match[1], key: match[2], lineIdx: idx});
+    if (line !== undefined) {
+      const match = EXPORT_ENTRY_PATTERN.exec(line);
+
+      if (match !== null) {
+        const [, indent, key] = match;
+
+        if (indent !== undefined && key !== undefined) {
+          entries.push({indent, key, lineIdx: idx});
+        }
+      }
     }
   }
 
@@ -235,6 +245,8 @@ const insertExportEntry = (
 
   // Ensure the last entry has a trailing comma so insertion is clean.
   const lastLine = lines[lastEntry.lineIdx];
+
+  if (lastLine === undefined) return;
 
   if (!lastLine.endsWith(',')) {
     lines[lastEntry.lineIdx] = `${lastLine},`;

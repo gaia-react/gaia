@@ -149,8 +149,10 @@ describe('check-a11y-triviality', () => {
 
       expect(result.verdict).toBe('trivial');
       expect(result.findings).toHaveLength(1);
-      expect(result.findings[0].fullName).toBe('a11y');
-      expect(result.findings[0].reason).toMatch(/no props|default/i);
+      const [finding] = result.findings;
+
+      expect(finding?.fullName).toBe('a11y');
+      expect(finding?.reason).toMatch(/no props|default/i);
     });
 
     test('flags a self-closing render with zero attributes', () => {
@@ -171,7 +173,9 @@ describe('check-a11y-triviality', () => {
       );
 
       expect(result.verdict).toBe('trivial');
-      expect(result.findings[0].reason).toMatch(/no props|default/i);
+      const [finding] = result.findings;
+
+      expect(finding?.reason).toMatch(/no props|default/i);
     });
 
     test('does NOT flag (condition A) an a11y test whose render passes real props', () => {
@@ -225,9 +229,9 @@ describe('check-a11y-triviality', () => {
       );
 
       expect(result.verdict).toBe('trivial');
-      expect(result.findings[0].reason).toMatch(
-        /interactive|landmark|variant/i
-      );
+      const [finding] = result.findings;
+
+      expect(finding?.reason).toMatch(/interactive|landmark|variant/i);
     });
 
     test('does NOT flag (condition B) when the render itself contains an interactive host node', () => {
@@ -314,7 +318,9 @@ describe('check-a11y-triviality', () => {
 
       expect(result.verdict).toBe('trivial');
       expect(result.findings).toHaveLength(1);
-      expect(result.findings[0].fullName).toBe('Toggle a11y');
+      const [finding] = result.findings;
+
+      expect(finding?.fullName).toBe('Toggle a11y');
     });
   });
 });

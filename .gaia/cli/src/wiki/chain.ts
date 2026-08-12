@@ -367,11 +367,16 @@ const parsePrUrl = (text: string): GhArtifact | undefined => {
 
   if (match === null) return undefined;
 
-  const number = Number.parseInt(match[2], 10);
+  const repo = match[1];
+  const numberToken = match[2];
+
+  if (repo === undefined || numberToken === undefined) return undefined;
+
+  const number = Number.parseInt(numberToken, 10);
 
   if (!Number.isSafeInteger(number) || number <= 0) return undefined;
 
-  return {number, repo: match[1]};
+  return {number, repo};
 };
 
 /**
@@ -555,7 +560,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  const action = argv[0] as string | undefined;
+  const action = argv[0];
   const rest = argv.slice(1);
 
   if (action === undefined || HELP_TOKENS.has(action)) {
