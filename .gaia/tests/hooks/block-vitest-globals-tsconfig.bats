@@ -133,15 +133,18 @@ run_hook_multiedit() {
   assert_blocked_by_exit
 }
 
-@test "a dash-separated tsconfig-base.json is covered" {
-  # The family separator is `.` or `-`: both spellings name a real base config,
-  # and a pattern admitting only the dot would leave the dash one outside a
-  # guard whose reason applies to it identically.
-  run_hook_edit "tsconfig-base.json" '"types": ["vitest/globals"]'
-  assert_blocked_by_exit
+@test "any separator between tsconfig and .json is covered" {
+  # Not an enumeration of the spellings seen so far: the match takes the whole
+  # path segment, so a dot, a dash, an underscore, and no separator at all are
+  # one case rather than four. Enumerating them is unbounded; taking the segment
+  # closes the class.
+  for path in tsconfig-base.json tsconfig_base.json tsconfigbase.json; do
+    run_hook_edit "$path" '"types": ["vitest/globals"]'
+    assert_blocked_by_exit
+  done
 }
 
-@test "a name merely containing tsconfig.json is covered too" {
+@test "a name merely containing tsconfig is covered too" {
   # The match is deliberately a substring rather than a whole-basename anchor:
   # tsc reads whatever config `-p` or `extends` names, so a non-canonical name
   # can be a live config, and this guard blocks with a remedy rather than
