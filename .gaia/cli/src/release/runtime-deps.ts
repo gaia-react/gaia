@@ -43,6 +43,7 @@ import {readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {takeValue} from '../util/argv.js';
 import {ADOPTER_OWNED_SENTINELS as GIT_TRACKED_SENTINELS} from './manifest.js';
 import {stripMarkerBlocks} from './marker-strip.js';
 import {SCAN_GLOBS} from './scan-globs.js';
@@ -504,21 +505,6 @@ type Flags = {
   json: boolean;
   manifestPath: string | undefined;
   stagingDir: string | undefined;
-};
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
-  // which honestly reflects that `index` can run past the end of argv.
-  const value = argv.at(index);
-
-  if (value === undefined)
-    return {message: `${flag} requires a value`, ok: false};
-
-  return {ok: true, value};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {

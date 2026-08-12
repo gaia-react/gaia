@@ -38,6 +38,7 @@ import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {takeValue} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {extractWikilinks} from '../wiki/util/wikilinks.js';
 import {parseExcludeLines} from './manifest.js';
@@ -1093,21 +1094,6 @@ type Flags = {
   configPath: string | undefined;
   json: boolean;
   stagingDir: string | undefined;
-};
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
-  // which honestly reflects that `index` can run past the end of argv.
-  const value = argv.at(index);
-
-  if (value === undefined)
-    return {message: `${flag} requires a value`, ok: false};
-
-  return {ok: true, value};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {

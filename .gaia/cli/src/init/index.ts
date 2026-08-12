@@ -12,6 +12,7 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {lookupOwn} from '../util/argv.js';
 import {run as runBootstrapEnv} from './bootstrap-env.js';
 import {run as runConfigureAutomation} from './configure-automation.js';
 import {run as runConfigureI18n} from './configure-i18n.js';
@@ -117,7 +118,7 @@ export const run = async (
     return EXIT_CODES.OK;
   }
 
-  const handler = SUBCOMMAND_HANDLERS[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS, subcommand);
 
   if (handler !== undefined) {
     const cwd = options.cwd ?? process.cwd();

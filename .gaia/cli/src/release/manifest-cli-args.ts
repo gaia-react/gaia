@@ -5,6 +5,7 @@
  * Consumed by `manifest-cli.ts`, which owns the check/emit execution behind
  * the flags this module parses.
  */
+import {lookupOwn, takeValue} from '../util/argv.js';
 import type {WithholdAnswer} from './manifest-answers.js';
 
 export const HELP_TEXT = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
@@ -85,21 +86,6 @@ type PendingWithhold = {
   category: number | undefined;
   path: string;
   reason: string | undefined;
-};
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
-  // which honestly reflects that `index` can run past the end of argv.
-  const value = argv.at(index);
-
-  if (value === undefined)
-    return {message: `${flag} requires a value`, ok: false};
-
-  return {ok: true, value};
 };
 
 /** Returns an error message, or `undefined` once the record is banked. */
@@ -212,19 +198,6 @@ const BARE_FLAGS: Readonly<
   },
 };
 
-/**
- * Own-property lookup. A bare `Record` index resolves every `Object.prototype`
- * member (`toString`, `constructor`, `__proto__`, …) to a truthy value, so an
- * argv token that happens to name one would slip past the unknown-flag guard:
- * the six method names would be accepted and silently ignored, and `__proto__`
- * would resolve to a non-callable and crash the parse.
- */
-const lookUpFlagHandler = <Handler>(
-  table: Readonly<Partial<Record<string, Handler>>>,
-  token: string
-): Handler | undefined =>
-  Object.hasOwn(table, token) ? table[token] : undefined;
-
 const validateFlagCombination = (state: ParseState): FlagParseResult => {
   const {allowUndecided, check, json, outPath, ships, stdout, withholds} =
     state;
@@ -260,8 +233,8 @@ const applyFlagToken = (
   args: ApplyFlagTokenArgs
 ): FlagParseFailure | {nextIndex: number} => {
   const {argv, index, state, token} = args;
-  const bare = lookUpFlagHandler(BARE_FLAGS, token);
-  const valued = lookUpFlagHandler(VALUE_FLAGS, token);
+  const bare = lookupOwn(BARE_FLAGS, token);
+  const valued = lookupOwn(VALUE_FLAGS, token);
 
   if (bare !== undefined) {
     bare(state);

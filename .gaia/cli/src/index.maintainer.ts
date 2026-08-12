@@ -26,6 +26,7 @@ import {run as runSetup} from './setup/index.js';
 import {structuredError} from './stderr.js';
 import {run as runUpdateDeps} from './update-deps/index.js';
 import {run as runUpdate} from './update/index.js';
+import {lookupOwn} from './util/argv.js';
 import {run as runWiki} from './wiki/index.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer <subcommand> [args]
@@ -79,13 +80,7 @@ export const run = async (argv: readonly string[]): Promise<number> => {
     return EXIT_CODES.OK;
   }
 
-  // Own-property lookup. A bare `Record` index resolves every `Object.prototype`
-  // member, so `gaia-maintainer toString` would otherwise be accepted as a
-  // valid subcommand and exit 0 without running anything.
-  const handler =
-    Object.hasOwn(SUBCOMMAND_HANDLERS, subcommand) ?
-      SUBCOMMAND_HANDLERS[subcommand]
-    : undefined;
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS, subcommand);
 
   if (handler !== undefined) {
     const result = await handler(rest);

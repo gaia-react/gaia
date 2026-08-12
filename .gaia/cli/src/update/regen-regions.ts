@@ -73,6 +73,7 @@ import {
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {lookupOwn, takeValue} from '../util/argv.js';
 import {execGaiaGitRaw} from '../util/git-env.js';
 import {porcelainZPaths} from '../util/git-status.js';
 
@@ -150,6 +151,16 @@ type Flags = {
 type ParsedFlagsResult =
   {flags: Flags; ok: true} | {message: string; ok: false};
 
+type ParseState = {
+  absentPaths: string[];
+  backupDir: string | undefined;
+  conflicted: string[];
+  json: boolean;
+  manifest: string | undefined;
+  root: string | undefined;
+  skipRegions: string[];
+};
+
 type RanEntry = {argv: string[]; regionId: string; rewrote: string[]};
 
 type RefusedEntry = {
@@ -160,29 +171,6 @@ type RefusedEntry = {
 };
 
 type SkippedEntry = {argv: string[]; reason: string; regionId: string};
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv.at(index);
-
-  if (value === undefined)
-    return {message: `${flag} requires a value`, ok: false};
-
-  return {ok: true, value};
-};
-
-type ParseState = {
-  absentPaths: string[];
-  backupDir: string | undefined;
-  conflicted: string[];
-  json: boolean;
-  manifest: string | undefined;
-  root: string | undefined;
-  skipRegions: string[];
-};
 
 type ValueFlagHandler = (state: ParseState, value: string) => void;
 
@@ -207,9 +195,6 @@ const VALUE_FLAGS: Readonly<Record<string, ValueFlagHandler>> = {
   },
 };
 
-const lookupValueFlag = (token: string): undefined | ValueFlagHandler =>
-  Object.hasOwn(VALUE_FLAGS, token) ? VALUE_FLAGS[token] : undefined;
-
 type ApplyTokenArgs = {
   argv: readonly string[];
   index: number;
@@ -231,7 +216,7 @@ const applyToken = ({
     return {advance: 0, ok: true};
   }
 
-  const handler = lookupValueFlag(token);
+  const handler = lookupOwn(VALUE_FLAGS, token);
 
   if (handler === undefined)
     return {message: `unknown flag: ${token}`, ok: false};

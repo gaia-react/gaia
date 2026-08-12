@@ -22,6 +22,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {lookupOwn} from '../util/argv.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 import {
   currentBranch,
@@ -569,7 +570,7 @@ export const run = (
     return EXIT_CODES.OK;
   }
 
-  const handler = ACTIONS[action];
+  const handler = lookupOwn(ACTIONS, action);
 
   if (handler !== undefined) return handler(rest, options);
 

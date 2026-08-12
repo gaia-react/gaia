@@ -15,6 +15,7 @@ import {spawnSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {takeValue} from '../util/argv.js';
 import {run as runWikiState} from '../wiki/state.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release preflight [--branch <name>]
@@ -61,21 +62,6 @@ type FlagParseSuccess = {
 
 type Flags = {
   allowedBranch: string;
-};
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
-  // which honestly reflects that `index` can run past the end of argv.
-  const value = argv.at(index);
-
-  if (value === undefined)
-    return {message: `${flag} requires a value`, ok: false};
-
-  return {ok: true, value};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {

@@ -6,6 +6,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {takeNonFlagValue} from '../util/argv.js';
 import {postPing} from './send.js';
 import type {PingEvent, PingPayload} from './send.js';
 
@@ -73,20 +74,6 @@ const FIELDS_BY_EVENT: Readonly<Record<PingEvent, readonly FieldSpec[]>> = {
 
 const NON_NEGATIVE_INT_RE = /^\d+$/u;
 
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined || value.startsWith('--')) {
-    return {message: `${flag} requires a value`, ok: false};
-  }
-
-  return {ok: true, value};
-};
-
 type EventTokenResult =
   {event: PingEvent; ok: true} | {message: string; ok: false};
 
@@ -101,7 +88,7 @@ const applyEventToken = (
   argv: readonly string[],
   index: number
 ): EventTokenResult => {
-  const taken = takeValue(argv, index + 1, '--event');
+  const taken = takeNonFlagValue(argv, index + 1, '--event');
 
   if (!taken.ok) return taken;
 
@@ -129,7 +116,7 @@ const parseArgvTokens = (argv: readonly string[]): TokenParseResult => {
       event = applied.event;
       index += 1;
     } else if (token !== undefined) {
-      const taken = takeValue(argv, index + 1, token);
+      const taken = takeNonFlagValue(argv, index + 1, token);
 
       if (!taken.ok) return taken;
       provided.set(token, taken.value);

@@ -12,6 +12,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {lookupOwn} from '../util/argv.js';
 import {run as runMergeAuditCi} from './merge-audit-ci.js';
 import {run as runMergeRegion} from './merge-region.js';
 import {run as runMergeWorkspace} from './merge-workspace.js';
@@ -52,7 +53,7 @@ export const run = async (argv: readonly string[]): Promise<number> => {
     return EXIT_CODES.OK;
   }
 
-  const handler = SUBCOMMAND_HANDLERS[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS, subcommand);
 
   if (handler !== undefined) {
     const result = await handler(rest);

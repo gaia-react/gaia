@@ -5,6 +5,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {lookupOwn} from '../util/argv.js';
 import {run as runDecline} from './decline.js';
 import {run as runEmit} from './run.js';
 
@@ -40,7 +41,7 @@ export const run = async (argv: readonly string[]): Promise<number> => {
     return EXIT_CODES.OK;
   }
 
-  const handler = SUBCOMMAND_HANDLERS[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS, subcommand);
 
   if (handler !== undefined) {
     const result = await handler(rest);

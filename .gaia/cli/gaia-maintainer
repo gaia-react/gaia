@@ -25,6 +25,21 @@ var structuredError = (payload) => {
 `);
 };
 
+// src/util/argv.ts
+var lookupOwn = (table, key) => Object.hasOwn(table, key) ? table[key] : void 0;
+var takeValue = (argv, index, flag) => {
+  const value = argv.at(index);
+  if (value === void 0)
+    return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+var takeNonFlagValue = (argv, index, flag) => {
+  const value = argv.at(index);
+  if (value === void 0 || value.startsWith("--"))
+    return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+
 // node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 var external_exports = {};
 __export(external_exports, {
@@ -15331,7 +15346,7 @@ var run5 = async (argv) => {
     process.stdout.write(HELP_TEXT5);
     return EXIT_CODES.OK;
   }
-  const handler = SUBCOMMAND_HANDLERS[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -15574,7 +15589,7 @@ var run7 = async (argv) => {
     process.stdout.write(HELP_TEXT7);
     return EXIT_CODES.OK;
   }
-  const handler = SUBCOMMAND_HANDLERS2[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS2, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -15790,13 +15805,6 @@ var UNEXPECTED_EXIT2 = 2;
 var STEP_NAME2 = "configure-automation";
 var SUBCOMMAND = "init configure-automation";
 var isToolMode = (value) => value === "ci" || value === "local" || value === "off";
-var takeValue = (argv, index, flag) => {
-  const value = argv[index];
-  if (value === void 0) {
-    return { message: `${flag} requires a value`, ok: false };
-  }
-  return { ok: true, value };
-};
 var takeMode = (argv, index, context) => {
   const { current, flag } = context;
   if (current !== void 0) {
@@ -16029,13 +16037,6 @@ var HELP_TEXT10 = `Usage: gaia init configure-i18n --locales <list> --strip <boo
 var HELP_TOKENS10 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT3 = 2;
 var STEP_NAME3 = "configure-i18n";
-var takeValue2 = (argv, index, flag) => {
-  const value = argv[index];
-  if (value === void 0) {
-    return { message: `${flag} requires a value`, ok: false };
-  }
-  return { ok: true, value };
-};
 var parseBool = (raw) => {
   if (raw === "true") return true;
   if (raw === "false") return false;
@@ -16054,14 +16055,14 @@ var parseLocales = (raw) => {
   return [head, ...tail];
 };
 var handleLocalesFlag = (argv, index) => {
-  const taken = takeValue2(argv, index, "--locales");
+  const taken = takeValue(argv, index, "--locales");
   if (!taken.ok) return taken;
   const parsed = parseLocales(taken.value);
   if (parsed === null) return { message: "invalid --locales list", ok: false };
   return { ok: true, outcome: { kind: "locales", value: parsed } };
 };
 var handleStripFlag = (argv, index) => {
-  const taken = takeValue2(argv, index, "--strip");
+  const taken = takeValue(argv, index, "--strip");
   if (!taken.ok) return taken;
   const parsed = parseBool(taken.value);
   if (parsed === null) {
@@ -16286,25 +16287,18 @@ var HELP_TEXT12 = `Usage: gaia init rename --title <T> --kebab <K>
 var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT5 = 2;
 var STEP_NAME5 = "rename";
-var takeValue3 = (argv, index, flag) => {
-  const value = argv[index];
-  if (value === void 0) {
-    return { message: `${flag} requires a value`, ok: false };
-  }
-  return { ok: true, value };
-};
 var parseFlags3 = (argv) => {
   let title;
   let kebab;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--title") {
-      const taken = takeValue3(argv, index + 1, "--title");
+      const taken = takeValue(argv, index + 1, "--title");
       if (!taken.ok) return taken;
       title = taken.value;
       index += 1;
     } else if (token === "--kebab") {
-      const taken = takeValue3(argv, index + 1, "--kebab");
+      const taken = takeValue(argv, index + 1, "--kebab");
       if (!taken.ok) return taken;
       kebab = taken.value;
       index += 1;
@@ -16518,19 +16512,12 @@ var HELP_TEXT13 = `Usage: gaia init strip-branding --title <T>
 var HELP_TOKENS13 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT6 = 2;
 var STEP_NAME6 = "strip-branding";
-var takeValue4 = (argv, index, flag) => {
-  const value = argv[index];
-  if (value === void 0) {
-    return { message: `${flag} requires a value`, ok: false };
-  }
-  return { ok: true, value };
-};
 var parseFlags4 = (argv) => {
   let title;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--title") {
-      const taken = takeValue4(argv, index + 1, "--title");
+      const taken = takeValue(argv, index + 1, "--title");
       if (!taken.ok) return taken;
       title = taken.value;
       index += 1;
@@ -16664,19 +16651,12 @@ var HELP_TOKENS14 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT7 = 2;
 var STEP_NAME7 = "wire-statusline";
 var isMode = (value) => value === "global" || value === "project" || value === "skip";
-var takeValue5 = (argv, index, flag) => {
-  const value = argv[index];
-  if (value === void 0) {
-    return { message: `${flag} requires a value`, ok: false };
-  }
-  return { ok: true, value };
-};
 var parseFlags5 = (argv) => {
   let mode;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--mode") {
-      const taken = takeValue5(argv, index + 1, "--mode");
+      const taken = takeValue(argv, index + 1, "--mode");
       if (!taken.ok) return taken;
       if (!isMode(taken.value)) {
         return {
@@ -16831,19 +16811,12 @@ var HELP_TEXT15 = `Usage: gaia init resume [--from-step <N>]
 `;
 var HELP_TOKENS15 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT8 = 2;
-var takeValue6 = (argv, index, flag) => {
-  const value = argv[index];
-  if (value === void 0) {
-    return { message: `${flag} requires a value`, ok: false };
-  }
-  return { ok: true, value };
-};
 var parseFlags6 = (argv) => {
   let fromStep = 1;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--from-step") {
-      const taken = takeValue6(argv, index + 1, "--from-step");
+      const taken = takeValue(argv, index + 1, "--from-step");
       if (!taken.ok) return taken;
       const parsed = Number.parseInt(taken.value, 10);
       if (!Number.isInteger(parsed) || parsed < 1 || parsed > STEP_ORDER.length) {
@@ -17055,7 +17028,7 @@ var run16 = async (argv, options = {}) => {
     process.stdout.write(HELP_TEXT16);
     return EXIT_CODES.OK;
   }
-  const handler = SUBCOMMAND_HANDLERS3[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS3, subcommand);
   if (handler !== void 0) {
     const cwd = options.cwd ?? process.cwd();
     const [firstRestToken] = rest;
@@ -17499,7 +17472,7 @@ var run18 = async (argv) => {
     process.stdout.write(HELP_TEXT18);
     return EXIT_CODES.OK;
   }
-  const handler = SUBCOMMAND_HANDLERS4[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS4, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -17845,12 +17818,6 @@ var defaultRunner2 = (command, args, options) => spawnSync2(command, args, {
   maxBuffer: MAX_GIT_BUFFER_BYTES,
   stdio: ["ignore", "pipe", "pipe"]
 });
-var takeValue7 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
 var parseFlags8 = (argv) => {
   let draft = false;
   let version2;
@@ -17859,7 +17826,7 @@ var parseFlags8 = (argv) => {
     if (token === "--draft") {
       draft = true;
     } else if (token === "--version") {
-      const taken = takeValue7(argv, index + 1, "--version");
+      const taken = takeValue(argv, index + 1, "--version");
       if (!taken.ok) return taken;
       version2 = taken.value;
       index += 1;
@@ -21480,12 +21447,6 @@ var HELP_TEXT23 = `Usage: gaia-maintainer release manifest [--out <path>] [--std
     2  unexpected (filesystem / git failure)
 `;
 var HELP_TOKENS23 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var takeValue8 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
 var closeWithhold = (pending, withholds) => {
   if (pending === void 0) return void 0;
   if (pending.category === void 0)
@@ -21550,7 +21511,6 @@ var BARE_FLAGS = {
     state.stdout = true;
   }
 };
-var lookUpFlagHandler = (table, token) => Object.hasOwn(table, token) ? table[token] : void 0;
 var validateFlagCombination = (state) => {
   const { allowUndecided, check: check2, json: json2, outPath, ships, stdout, withholds } = state;
   const hasAnswers = allowUndecided || ships.length > 0 || withholds.length > 0;
@@ -21570,8 +21530,8 @@ var validateFlagCombination = (state) => {
 };
 var applyFlagToken2 = (args) => {
   const { argv, index, state, token } = args;
-  const bare = lookUpFlagHandler(BARE_FLAGS, token);
-  const valued = lookUpFlagHandler(VALUE_FLAGS, token);
+  const bare = lookupOwn(BARE_FLAGS, token);
+  const valued = lookupOwn(VALUE_FLAGS, token);
   if (bare !== void 0) {
     bare(state);
     return { nextIndex: index + 1 };
@@ -21579,7 +21539,7 @@ var applyFlagToken2 = (args) => {
   if (valued === void 0) {
     return { message: `unknown flag: ${token}`, ok: false };
   }
-  const taken = takeValue8(argv, index + 1, token);
+  const taken = takeValue(argv, index + 1, token);
   if (!taken.ok) return taken;
   const error51 = valued(state, taken.value);
   if (error51 !== void 0) return { message: error51, ok: false };
@@ -22266,18 +22226,12 @@ var defaultRunner4 = (command, args, options) => spawnSync4(command, args, {
   encoding: "utf8",
   stdio: ["ignore", "pipe", "pipe"]
 });
-var takeValue9 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
 var parseFlags11 = (argv) => {
   let allowedBranch = DEFAULT_BRANCH;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--branch") {
-      const taken = takeValue9(argv, index + 1, "--branch");
+      const taken = takeValue(argv, index + 1, "--branch");
       if (!taken.ok) return taken;
       allowedBranch = taken.value;
       index += 1;
@@ -22686,12 +22640,6 @@ var loadManifest = (manifestPath) => {
   }
   return new Set(Object.keys(parsed.files));
 };
-var takeValue10 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
 var parseFlags12 = (argv) => {
   let json2 = false;
   let manifestPath;
@@ -22699,12 +22647,12 @@ var parseFlags12 = (argv) => {
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--staging") {
-      const taken = takeValue10(argv, index + 1, "--staging");
+      const taken = takeValue(argv, index + 1, "--staging");
       if (!taken.ok) return taken;
       stagingDir = taken.value;
       index += 1;
     } else if (token === "--manifest") {
-      const taken = takeValue10(argv, index + 1, "--manifest");
+      const taken = takeValue(argv, index + 1, "--manifest");
       if (!taken.ok) return taken;
       manifestPath = taken.value;
       index += 1;
@@ -22876,12 +22824,6 @@ var HELP_TEXT27 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>]
 `;
 var HELP_TOKENS27 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT16 = 2;
-var takeValue11 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
 var parseFlags13 = (argv) => {
   let check2 = false;
   let date5;
@@ -22889,12 +22831,12 @@ var parseFlags13 = (argv) => {
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--version") {
-      const taken = takeValue11(argv, index + 1, "--version");
+      const taken = takeValue(argv, index + 1, "--version");
       if (!taken.ok) return taken;
       version2 = taken.value;
       index += 1;
     } else if (token === "--date") {
-      const taken = takeValue11(argv, index + 1, "--date");
+      const taken = takeValue(argv, index + 1, "--date");
       if (!taken.ok) return taken;
       date5 = taken.value;
       index += 1;
@@ -23609,12 +23551,6 @@ var loadConfig = (configPath) => {
   const parsed = load(raw);
   return ConfigSchema.parse(parsed);
 };
-var takeValue12 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
 var parseFlags14 = (argv) => {
   let configPath;
   let json2 = false;
@@ -23623,7 +23559,7 @@ var parseFlags14 = (argv) => {
     const token = argv[index];
     if (token !== void 0) {
       if (token === "--config") {
-        const taken = takeValue12(argv, index + 1, "--config");
+        const taken = takeValue(argv, index + 1, "--config");
         if (!taken.ok) return taken;
         configPath = taken.value;
         index += 1;
@@ -23879,7 +23815,7 @@ var run29 = async (argv) => {
     process.stdout.write(HELP_TEXT29);
     return EXIT_CODES.OK;
   }
-  const handler = Object.hasOwn(SUBCOMMAND_HANDLERS5, subcommand) ? SUBCOMMAND_HANDLERS5[subcommand] : void 0;
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS5, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -24001,20 +23937,13 @@ var parseProps = (raw) => {
     ok: true
   };
 };
-var takeValue13 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0 || value.startsWith("--")) {
-    return { message: `${flag} requires a value`, ok: false };
-  }
-  return { ok: true, value };
-};
 var parseParentFlag = (argv, index) => {
-  const parsedValue = takeValue13(argv, index + 1, "--parent");
+  const parsedValue = takeNonFlagValue(argv, index + 1, "--parent");
   if (!parsedValue.ok) return parsedValue;
   return { ok: true, parent: parsedValue.value };
 };
 var parsePropsFlag = (argv, index) => {
-  const parsedValue = takeValue13(argv, index + 1, "--props");
+  const parsedValue = takeNonFlagValue(argv, index + 1, "--props");
   if (!parsedValue.ok) return parsedValue;
   const parsed = parseProps(parsedValue.value);
   if (!parsed.ok) return parsed;
@@ -24638,7 +24567,7 @@ var templatePaths = () => {
 };
 var resolveNames = (kebabName, group) => {
   const pascal = toPascalCase(kebabName);
-  const segment = GROUP_TO_SEGMENT[group] ?? "";
+  const segment = lookupOwn(GROUP_TO_SEGMENT, group) ?? "";
   return {
     groupSegment: segment,
     i18nKey: toCamelCase(kebabName),
@@ -24888,7 +24817,7 @@ var ZOD_TYPE_BUILDERS = {
   number: () => "z.number()",
   string: () => "z.string()"
 };
-var getZodTypeBuilder = (base) => ZOD_TYPE_BUILDERS[base];
+var getZodTypeBuilder = (base) => lookupOwn(ZOD_TYPE_BUILDERS, base);
 var buildZodExpression = (typeToken) => {
   const optional2 = typeToken.endsWith("?");
   const base = optional2 ? typeToken.slice(0, -1) : typeToken;
@@ -25991,7 +25920,7 @@ var run39 = async (argv) => {
     process.stdout.write(HELP_TEXT38);
     return EXIT_CODES.OK;
   }
-  const handler = SUBCOMMAND_HANDLERS6[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS6, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -27102,7 +27031,7 @@ var run42 = async (argv) => {
     process.stdout.write(HELP_TEXT41);
     return EXIT_CODES.OK;
   }
-  const handler = SUBCOMMAND_HANDLERS7[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS7, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -27120,13 +27049,6 @@ import { existsSync as existsSync27, readFileSync as readFileSync31 } from "node
 import path37 from "node:path";
 
 // src/util/parse-value-flags.ts
-var takeValue14 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
-var lookupValueFlag = (valueFlags, token) => Object.hasOwn(valueFlags, token) ? valueFlags[token] : void 0;
 var applyToken4 = ({
   argv,
   index,
@@ -27138,10 +27060,10 @@ var applyToken4 = ({
     state.json = true;
     return { advance: 0, ok: true };
   }
-  const field = lookupValueFlag(valueFlags, token);
+  const field = lookupOwn(valueFlags, token);
   if (field === void 0)
     return { message: `unknown flag: ${token}`, ok: false };
-  const taken = takeValue14(argv, index + 1, token);
+  const taken = takeValue(argv, index + 1, token);
   if (!taken.ok) return taken;
   state.collected[field] = taken.value;
   return { advance: 1, ok: true };
@@ -27943,12 +27865,6 @@ var HELP_TEXT45 = `Usage: gaia update regen-regions --manifest <path> --root <di
        --manifest / missing --root)
 `;
 var HELP_TOKENS43 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var takeValue15 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
 var VALUE_FLAGS5 = {
   "--absent-path": (state, value) => {
     state.absentPaths.push(value);
@@ -27969,7 +27885,6 @@ var VALUE_FLAGS5 = {
     state.skipRegions.push(value);
   }
 };
-var lookupValueFlag2 = (token) => Object.hasOwn(VALUE_FLAGS5, token) ? VALUE_FLAGS5[token] : void 0;
 var applyToken5 = ({
   argv,
   index,
@@ -27980,10 +27895,10 @@ var applyToken5 = ({
     state.json = true;
     return { advance: 0, ok: true };
   }
-  const handler = lookupValueFlag2(token);
+  const handler = lookupOwn(VALUE_FLAGS5, token);
   if (handler === void 0)
     return { message: `unknown flag: ${token}`, ok: false };
-  const taken = takeValue15(argv, index + 1, token);
+  const taken = takeValue(argv, index + 1, token);
   if (!taken.ok) return taken;
   handler(state, taken.value);
   return { advance: 1, ok: true };
@@ -28778,7 +28693,7 @@ var run47 = async (argv) => {
     process.stdout.write(HELP_TEXT46);
     return EXIT_CODES.OK;
   }
-  const handler = SUBCOMMAND_HANDLERS8[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS8, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -29253,7 +29168,7 @@ var run48 = (argv, options = {}) => {
     process.stdout.write(HELP_TEXT47);
     return EXIT_CODES.OK;
   }
-  const handler = ACTIONS[action];
+  const handler = lookupOwn(ACTIONS, action);
   if (handler !== void 0) return handler(rest, options);
   structuredError({
     code: "unknown_subcommand",
@@ -29319,20 +29234,13 @@ var HELP_TEXT48 = `Usage: gaia wiki commit-classify --since <sha> [--json]
   <sha>..HEAD. Without --json, prints a tabular summary.
 `;
 var HELP_TOKENS46 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var takeValue16 = (argv, index, flag) => {
-  const value = argv[index];
-  if (value === void 0) {
-    return { message: `${flag} requires a value`, ok: false };
-  }
-  return { ok: true, value };
-};
 var parseFlags22 = (argv) => {
   let since;
   let json2 = false;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--since") {
-      const taken = takeValue16(argv, index + 1, "--since");
+      const taken = takeValue(argv, index + 1, "--since");
       if (!taken.ok) return taken;
       since = taken.value;
       index += 1;
@@ -30268,29 +30176,21 @@ var HELP_TEXT53 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKI
 var HELP_TOKENS51 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var VALID_DECISIONS = /* @__PURE__ */ new Set(["RE_ANCHOR", "SKIP", "WORTHY"]);
 var FRONTMATTER_FENCE2 = "---";
-var takeValue17 = (argv, index, flag) => {
-  const value = argv[index];
-  if (value === void 0) {
-    return { message: `${flag} requires a value`, ok: false };
-  }
-  return { ok: true, value };
-};
 var FLAG_BY_TOKEN = {
   "--decision": "decision",
   "--reason": "reason",
   "--sha": "sha"
 };
-var flagKeyFor = (token) => Object.hasOwn(FLAG_BY_TOKEN, token) ? FLAG_BY_TOKEN[token] : void 0;
 var parseFlags23 = (argv) => {
   const values = {};
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token !== void 0) {
-      const key = flagKeyFor(token);
+      const key = lookupOwn(FLAG_BY_TOKEN, token);
       if (key === void 0) {
         return { message: `unknown flag: ${token}`, ok: false };
       }
-      const taken = takeValue17(argv, index + 1, token);
+      const taken = takeValue(argv, index + 1, token);
       if (!taken.ok) return taken;
       values[key] = taken.value;
       index += 1;
@@ -30491,13 +30391,6 @@ var findCollisions = (domainGroups, maxDistance) => {
   });
   return results;
 };
-var takeValue18 = (argv, index, flag) => {
-  const value = argv[index];
-  if (value === void 0) {
-    return { message: `${flag} requires a value`, ok: false };
-  }
-  return { ok: true, value };
-};
 var parseFlags24 = (argv) => {
   let maxDistance = DEFAULT_MAX_DISTANCE;
   for (let index = 0; index < argv.length; index += 1) {
@@ -30505,7 +30398,7 @@ var parseFlags24 = (argv) => {
     if (token !== "--max-distance") {
       return { message: `unknown flag: ${token}`, ok: false };
     }
-    const taken = takeValue18(argv, index + 1, "--max-distance");
+    const taken = takeValue(argv, index + 1, "--max-distance");
     if (!taken.ok) return taken;
     const parsed = Number.parseInt(taken.value, 10);
     if (Number.isNaN(parsed) || parsed < 1) {
@@ -31524,7 +31417,7 @@ var run62 = async (argv) => {
     process.stdout.write(HELP_TEXT61);
     return EXIT_CODES.OK;
   }
-  const handler = SUBCOMMAND_HANDLERS9[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS9, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -31576,7 +31469,7 @@ var run63 = async (argv) => {
     printHelp2();
     return EXIT_CODES.OK;
   }
-  const handler = Object.hasOwn(SUBCOMMAND_HANDLERS10, subcommand) ? SUBCOMMAND_HANDLERS10[subcommand] : void 0;
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS10, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;

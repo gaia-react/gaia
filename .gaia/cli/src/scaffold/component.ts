@@ -31,6 +31,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {takeNonFlagValue} from '../util/argv.js';
 import {writeFileIfAbsent} from './fs.js';
 import {renderTemplate} from './template.js';
 import type {ScaffoldResult} from './types.js';
@@ -177,22 +178,6 @@ const parseProps = (raw: string): FlagParseResult => {
   };
 };
 
-type TakeValueResult = {message: string; ok: false} | {ok: true; value: string};
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): TakeValueResult => {
-  const value = argv.at(index);
-
-  if (value === undefined || value.startsWith('--')) {
-    return {message: `${flag} requires a value`, ok: false};
-  }
-
-  return {ok: true, value};
-};
-
 type ParentFlagResult =
   {message: string; ok: false} | {ok: true; parent: string};
 
@@ -200,7 +185,7 @@ const parseParentFlag = (
   argv: readonly string[],
   index: number
 ): ParentFlagResult => {
-  const parsedValue = takeValue(argv, index + 1, '--parent');
+  const parsedValue = takeNonFlagValue(argv, index + 1, '--parent');
 
   if (!parsedValue.ok) return parsedValue;
 
@@ -214,7 +199,7 @@ const parsePropsFlag = (
   argv: readonly string[],
   index: number
 ): PropsFlagResult => {
-  const parsedValue = takeValue(argv, index + 1, '--props');
+  const parsedValue = takeNonFlagValue(argv, index + 1, '--props');
 
   if (!parsedValue.ok) return parsedValue;
 
