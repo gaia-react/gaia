@@ -10,10 +10,11 @@
 # .gaia/scripts/tests/lint-hook-array-guard.bats runs in the `Audit CI Tests`
 # scripts shard, a declared-required context; it fails when this scan finds a
 # hit and self-tests the detector against a known-bad fixture. That job's `code`
-# filter is what arms it, so every tree this scan walks has to appear there or
-# the suite reports green having run zero assertions -- the reason the filter
-# lists .gaia/tests/distribution/** and .gaia/tests/smoke/** alongside the
-# trees it already named. `Shell Lint` runs the same scan a second way, on any
+# filter is what arms it, so EVERY tree the scan below walks has to be named
+# there; a subtree missing from the filter reports green having run this
+# assertion zero times, which is the failure this gate exists to prevent, one
+# level up. Widening the scan is therefore always two edits, here and in the
+# filter. `Shell Lint` runs the same scan a second way, on any
 # tracked *.sh, through .gaia/tests/shell-lint.sh; it is advisory rather than
 # required, so it reports a regression without blocking the merge. Also runnable
 # directly: `bats .gaia/scripts/tests/lint-hook-array-guard.bats`.
@@ -37,11 +38,16 @@ set -euo pipefail
 # Scan surface: the hook scripts, plus every shipped .gaia/scripts script and
 # every .gaia/tests script (both recursive). All three run under `set -u` and
 # expand arrays, so the empty-array abort class is identical in each; the guard
-# catches it wherever the bash lives. .gaia/tests is release-excluded and never
-# reaches an adopter, but a maintainer runs it on the same stock macOS
-# /bin/bash 3.2.57 the shipped scripts abort on, so the class bites there too:
-# the sharder .gaia/tests/bats-shards.sh took the abort in place of its own
-# documented fail-closed exit, and its bash-5 guard suite saw nothing.
+# catches it wherever the bash lives. A tree absent from this checkout costs
+# nothing: `find` reports it on stderr, which is discarded, and the walk returns
+# the trees that are present.
+# gaia:maintainer-only:start
+# .gaia/tests is release-excluded, so it exists only in the GAIA maintainer
+# repo, where a maintainer runs it on the same stock macOS /bin/bash 3.2.57 the
+# shipped scripts abort on. The class bites there too: the sharder
+# .gaia/tests/bats-shards.sh took the abort in place of its own documented
+# fail-closed exit, and its bash-5 guard suite saw nothing.
+# gaia:maintainer-only:end
 # `find` (not a `**` glob) keeps the recursive walk portable to bash
 # 3.2, which has no globstar. Collected into one array with a read loop rather
 # than mapfile (bash 4+). Paths stay cwd-relative so the printed file:line is
@@ -108,8 +114,6 @@ exit 0
 # `[ -n "$x" ]` guard), so either reads as a hit. When a flagged expansion is
 # genuinely safe, resolve it by applying the same offset-guard the fix uses,
 # `cmd ${arr[@]+"${arr[@]}"}`, so the gate stays zero-exception rather than
-# carrying an inline suppression. The scan surface is `.claude/hooks/*.sh` plus
-# every `.gaia/scripts/**/*.sh` and `.gaia/tests/**/*.sh` (recursive); many of
-# the expansions it flags sit behind a cross-line count-guard, or over an array
-# filled from a literal that cannot be empty, and carry the offset-guard for
-# exactly this reason.
+# carrying an inline suppression. Many of the expansions the scan flags sit
+# behind a cross-line count-guard, or over an array filled from a literal that
+# cannot be empty, and carry the offset-guard for exactly this reason.
