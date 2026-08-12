@@ -10,11 +10,12 @@
 # .gaia/scripts/tests/lint-hook-array-guard.bats runs in the `Audit CI Tests`
 # scripts shard, a declared-required context; it fails when this scan finds a
 # hit and self-tests the detector against a known-bad fixture. That job's `code`
-# filter is what arms it, so EVERY tree the scan below walks has to be named
-# there; a subtree missing from the filter reports green having run this
-# assertion zero times, which is the failure this gate exists to prevent, one
-# level up. Widening the scan is therefore always two edits, here and in the
-# filter. `Shell Lint` runs the same scan a second way, on any
+# filter is what arms it, so EVERY root the scan below walks has to be named
+# there, by a glob broad enough to cover the whole root; a path the scan reads
+# and the filter misses reports green having run this assertion zero times,
+# which is the failure this gate exists to prevent, one level up. Adding a root
+# to the `find` below is therefore always two edits, here and in that filter.
+# `Shell Lint` runs the same scan a second way, on any
 # tracked *.sh, through .gaia/tests/shell-lint.sh; it is advisory rather than
 # required, so it reports a regression without blocking the merge. Also runnable
 # directly: `bats .gaia/scripts/tests/lint-hook-array-guard.bats`.
@@ -44,9 +45,10 @@ set -euo pipefail
 # gaia:maintainer-only:start
 # .gaia/tests is release-excluded, so it exists only in the GAIA maintainer
 # repo, where a maintainer runs it on the same stock macOS /bin/bash 3.2.57 the
-# shipped scripts abort on. The class bites there too: the sharder
-# .gaia/tests/bats-shards.sh took the abort in place of its own documented
-# fail-closed exit, and its bash-5 guard suite saw nothing.
+# shipped scripts abort on. Nothing else covers that tree: its own guard suites
+# run under bash 5, where the class does not reproduce, so before this scan
+# reached it the only thing standing between the class and main was someone
+# noticing it in a diff.
 # gaia:maintainer-only:end
 # `find` (not a `**` glob) keeps the recursive walk portable to bash
 # 3.2, which has no globstar. Collected into one array with a read loop rather
