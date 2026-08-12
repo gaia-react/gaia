@@ -113,29 +113,40 @@ export type Collision = {
   slugB: string;
 };
 
-export const findCollisions = (
-  domainGroups: readonly DomainSlugs[],
+const collectDomainPairs = (
+  domain: string,
+  slugs: readonly string[],
   maxDistance: number
 ): Collision[] => {
-  const results: Collision[] = [];
+  const entries = slugs.map((slug) => ({norm: normalizeSlug(slug), slug}));
+  const pairs: Collision[] = [];
 
-  for (const {domain, slugs} of domainGroups) {
-    for (const [index, slugA] of slugs.entries()) {
-      const normA = normalizeSlug(slugA);
+  for (const [index, left] of entries.entries()) {
+    for (let next = index + 1; next < entries.length; next += 1) {
+      const right = entries[next];
 
-      for (const slugB of slugs.slice(index + 1)) {
-        // Skip true duplicates (identical raw slug); that case can't
-        // happen on a real filesystem and is meaningless to flag.
-        if (slugA !== slugB) {
-          const distance = levenshtein(normA, normalizeSlug(slugB));
+      // Skip true duplicates (identical raw slug); that case can't
+      // happen on a real filesystem and is meaningless to flag.
+      if (right !== undefined && left.slug !== right.slug) {
+        const distance = levenshtein(left.norm, right.norm);
 
-          if (distance <= maxDistance) {
-            results.push({distance, domain, slugA, slugB});
-          }
+        if (distance <= maxDistance) {
+          pairs.push({distance, domain, slugA: left.slug, slugB: right.slug});
         }
       }
     }
   }
+
+  return pairs;
+};
+
+export const findCollisions = (
+  domainGroups: readonly DomainSlugs[],
+  maxDistance: number
+): Collision[] => {
+  const results: Collision[] = domainGroups.flatMap(({domain, slugs}) =>
+    collectDomainPairs(domain, slugs, maxDistance)
+  );
 
   results.sort((left, right) => {
     if (left.domain !== right.domain)

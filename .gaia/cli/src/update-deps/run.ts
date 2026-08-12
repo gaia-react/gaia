@@ -617,7 +617,10 @@ const readMinimumReleaseAge = (cwd: string): number => {
     if (match) {
       const [, rawValue] = match;
 
-      if (rawValue === undefined) return 0;
+      if (rawValue === undefined)
+        throw new Error(
+          'minimumReleaseAge matched without its digit group; refusing to treat a configured cooldown as zero'
+        );
 
       const value = Number.parseInt(rawValue, 10);
 
