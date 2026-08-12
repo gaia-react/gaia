@@ -27559,27 +27559,30 @@ var scanRegion = (source, startMarker, endMarker) => {
   if (startMarker.trim() === "" || endMarker.trim() === "") {
     return { kind: "absent" };
   }
-  const startLines = [];
-  const endLines = [];
-  source.split("\n").forEach((line, index) => {
-    if (line === startMarker) startLines.push(index + 1);
-    if (line === endMarker) endLines.push(index + 1);
-  });
-  if (startLines.length > 1) {
+  let startLine = null;
+  let endLine = null;
+  let startCount = 0;
+  let endCount = 0;
+  for (const [index, line] of source.split("\n").entries()) {
+    if (line === startMarker) {
+      startCount += 1;
+      startLine ??= index + 1;
+    }
+    if (line === endMarker) {
+      endCount += 1;
+      endLine ??= index + 1;
+    }
+  }
+  if (startCount > 1) {
     return { kind: "malformed", reason: "duplicate-start" };
   }
-  if (endLines.length > 1) {
+  if (endCount > 1) {
     return { kind: "malformed", reason: "duplicate-end" };
   }
-  if (startLines.length === 0 && endLines.length === 0) {
+  if (startLine === null && endLine === null) {
     return { kind: "absent" };
   }
-  if (startLines.length !== endLines.length) {
-    return { kind: "malformed", reason: "unbalanced" };
-  }
-  const [startLine] = startLines;
-  const [endLine] = endLines;
-  if (startLine === void 0 || endLine === void 0) {
+  if (startLine === null || endLine === null) {
     return { kind: "malformed", reason: "unbalanced" };
   }
   if (startLine >= endLine) {

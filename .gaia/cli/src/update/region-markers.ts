@@ -54,41 +54,43 @@ export const scanRegion = (
     return {kind: 'absent'};
   }
 
-  const startLines: number[] = [];
-  const endLines: number[] = [];
+  let startLine: null | number = null;
+  let endLine: null | number = null;
+  let startCount = 0;
+  let endCount = 0;
 
-  source.split('\n').forEach((line, index) => {
-    if (line === startMarker) startLines.push(index + 1);
-    if (line === endMarker) endLines.push(index + 1);
-  });
+  for (const [index, line] of source.split('\n').entries()) {
+    if (line === startMarker) {
+      startCount += 1;
+      startLine ??= index + 1;
+    }
 
-  if (startLines.length > 1) {
+    if (line === endMarker) {
+      endCount += 1;
+      endLine ??= index + 1;
+    }
+  }
+
+  if (startCount > 1) {
     return {kind: 'malformed', reason: 'duplicate-start'};
   }
 
-  if (endLines.length > 1) {
+  if (endCount > 1) {
     return {kind: 'malformed', reason: 'duplicate-end'};
   }
 
-  if (startLines.length === 0 && endLines.length === 0) {
+  if (startLine === null && endLine === null) {
     return {kind: 'absent'};
   }
 
-  if (startLines.length !== endLines.length) {
+  if (startLine === null || endLine === null) {
     return {kind: 'malformed', reason: 'unbalanced'};
   }
 
-  const [startLine] = startLines;
-  const [endLine] = endLines;
-
-  if (startLine === undefined || endLine === undefined) {
-    return {kind: 'malformed', reason: 'unbalanced'};
-  }
-
-  // `>=`, not `>`: identical start and end markers put one line in both lists,
-  // so `startLine === endLine` describes a zero-length region that masks
-  // nothing while duplicating its own marker line. Equal markers are the only
-  // way to reach it, since a line cannot equal two different strings.
+  // `>=`, not `>`: identical start and end markers make one line both the start
+  // and the end, so `startLine === endLine` describes a zero-length region that
+  // masks nothing while duplicating its own marker line. Equal markers are the
+  // only way to reach it, since a line cannot equal two different strings.
   if (startLine >= endLine) {
     return {kind: 'malformed', reason: 'inverted'};
   }
