@@ -133,6 +133,24 @@ run_hook_multiedit() {
   assert_blocked_by_exit
 }
 
+@test "a dash-separated tsconfig-base.json is covered" {
+  # The family separator is `.` or `-`: both spellings name a real base config,
+  # and a pattern admitting only the dot would leave the dash one outside a
+  # guard whose reason applies to it identically.
+  run_hook_edit "tsconfig-base.json" '"types": ["vitest/globals"]'
+  assert_blocked_by_exit
+}
+
+@test "a name merely containing tsconfig.json is covered too" {
+  # The match is deliberately a substring rather than a whole-basename anchor:
+  # tsc reads whatever config `-p` or `extends` names, so a non-canonical name
+  # can be a live config, and this guard blocks with a remedy rather than
+  # failing a build. Over-blocking here costs a message; under-blocking costs
+  # the ambient-types erosion the guard exists to stop.
+  run_hook_edit "notatsconfig.json" '"types": ["vitest/globals"]'
+  assert_blocked_by_exit
+}
+
 @test "a json file under a directory called tsconfig is not a tsconfig" {
   # The family pattern cannot cross a path separator, so a directory named
   # tsconfig does not pull every .json beneath it into the guard.
@@ -158,6 +176,17 @@ run_hook_multiedit() {
   # guard into one that blocks every MultiEdit reaching a tsconfig.
   run_hook_multiedit "tsconfig.json" '"strict": true' '"target": "ES2022"'
   assert_allowed_by_exit
+}
+
+@test "an edits[] entry of the wrong type does not swallow a later match" {
+  # Indexing a non-object aborts the whole jq read, which empties the scanned
+  # text and allows the write, so the per-entry read is guarded independently of
+  # the iteration. Unreachable through MultiEdit's real schema, so this pins the
+  # read against a malformed payload rather than a live bypass.
+  local json
+  json=$(jq -n '{tool_name: "MultiEdit", tool_input: {file_path: "tsconfig.json", edits: ["bad", {old_string: "", new_string: "\"types\": [\"vitest/globals\"]"}]}}')
+  invoke_hook "$json" "$HOOK_ABS"
+  assert_blocked_by_exit
 }
 
 # --- structural ---
