@@ -29168,7 +29168,7 @@ var run48 = (argv, options = {}) => {
     process.stdout.write(HELP_TEXT47);
     return EXIT_CODES.OK;
   }
-  const handler = ACTIONS[action];
+  const handler = lookupOwn(ACTIONS, action);
   if (handler !== void 0) return handler(rest, options);
   structuredError({
     code: "unknown_subcommand",
