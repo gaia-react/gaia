@@ -193,6 +193,8 @@ The CI workflow and its local mirror, `.claude/hooks/distribution-preflight-chec
 
 This is the PR-time complement to release Step 10, which regenerates the manifest with `--allow-undecided`: the release path must never start failing on a tree that carries a new file, so it takes the escape hatch by design, while the per-PR gate is where a newly-shipping file is actually answered.
 
+The same workflow runs a second, independent condition: `.gaia/scripts/lint-shipped-issue-refs.sh` scans every shipped non-Markdown file (the committed manifest's file set, minus Markdown) for a bare `#NNN` issue or pull-request reference. `#NNN` resolves against whatever repository the reader is looking at, so an unqualified number in a file GAIA ships silently points an adopter at their own tracker; `.claude/rules/code-comments.md` requires the qualified `gaia-react/gaia#NNN` form on shipped files, and this lint is what makes that requirement checkable. It runs unfiltered because any shipped file can acquire a bare reference, and it composes with the manifest gate above: that gate already fails the PR until every newly-shipping file is acknowledged, so this lint's manifest-derived scan set is never missing a file the PR just added.
+
 ## create-gaia bootstrapper
 
 Separate repo, separate npm package (`create-gaia`). Zero runtime deps. When an adopter runs `npx create-gaia@latest my-app`:

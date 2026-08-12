@@ -11,6 +11,27 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-12 1459d7667 SKIP - moves comment standard into its own rule and deletes the guard; instruction-prose only
+- 2026-08-12 d2016b5fa WORTHY - adds wiki/decisions/Sharded CI Test Matrix.md ADR and wiki/index.md entry
+- 2026-08-12 24bfa7bfe WORTHY - shards Audit CI Tests across a job matrix and pins the bats install; documented by follow-up commit's new ADR wiki/decisions/Sharded CI Test Matrix.md
+- 2026-08-12 ecaff4c5e WORTHY - widens vitest/globals guard to the tsconfig family and MultiEdit payloads -> wiki/concepts/Claude Hooks.md, wiki/modules/Claude Integration.md already updated in the commit
+- 2026-08-12 d1dff2e19 SKIP - fixes SIGPIPE in append-audit-author.sh's config read; internal fix, no doc-visible behavior change
+- 2026-08-12 d475aafb5 SKIP - settles stdout-exit idiom across .gaia/scripts Node helpers (EPIPE robustness); internal fix, no doc-visible behavior change
+- 2026-08-12 533b3d4d2 SKIP - tiny follow-up finishing the issue-reference sweep, one file plus changelog
+- 2026-08-12 173ccb245 WORTHY - adds lint-shipped-issue-refs.sh as a third condition on the Distribution Audit (PR) workflow -> wiki/concepts/Release Workflow.md Per-PR distribution gate section updated
+- 2026-08-12 d98252187 SKIP - issue-reference rule added to .claude/rules/code-comments.md; instruction-prose only
+- 2026-08-12 f8a411f2f WORTHY - red-ledger content signal now computed over comment-free content -> wiki/decisions/TDD RED Verification.md, Worthiness Audit.md, Worthiness Presence Gate.md already updated in the commit
+- 2026-08-12 71ddbe231 WORTHY - comment residue sweep + corrects the audit-cron claim -> wiki/dependencies/pnpm-audit.md already updated in the commit
+- 2026-08-12 f11edcb2a SKIP - fixes prototype-key subcommand dispatch bug (gaia update constructor etc); internal correctness fix, no architecture doc change
+- 2026-08-12 ab20591ee SKIP - CLI internal region-scanner emitter consolidation; implementation detail
+- 2026-08-12 c61ee837e SKIP - CLI internal compiler index-access convention refactor; implementation detail
+- 2026-08-12 157f4ce86 SKIP - adds comment-worthiness rule + guard under .claude/rules; instruction-prose only, reworked by 1459d7667
+- 2026-08-12 72fcb1bd6 SKIP - adds bats coverage for 7 previously-untested hooks, no behavior change
+- 2026-08-12 cf5f5dfa6 WORTHY - adds unskippable shipped-surface leak check + scalar paths-filter fix -> wiki/concepts/Release Workflow.md already updated in the commit
+- 2026-08-12 0e77157d6 SKIP - adds workflow-filter-coverage.bats asserting paths-filter-gated steps see their own inputs; internal CI test infra with no dedicated wiki page
+- 2026-08-12 caba4e016 SKIP - ci plumbing (default-deny token for three workflows), no wiki-worthy architecture change
+- 2026-08-12 ffabe2881 SKIP - hardens existing audit-status-writer bats guards (bash-prefix pin vs bare name match); no new pattern to document
+- 2026-08-12 ed13ca0a8 SKIP - prior wiki-sync landing commit (self-referential); already contains the wiki edits it documents
 - 2026-08-11 6d795010 SKIP - maintainer-only release-scrub scope widening (excluded-workflow-ref now scans .github/actions/**); existing wiki/decisions/Bundle-time Scrub.md prose remains accurate
 - 2026-08-11 ca3fc02b SKIP - CI perf/plumbing (parallel bats suites, single Storybook build, shared setup-node composite); wiki/dependencies/Chromatic.md already describes the resulting behavior
 - 2026-08-11 f67f5e11 SKIP - bug fix restoring the already-documented findings-block posting behavior (gh api -f vs -F); no architecture change
