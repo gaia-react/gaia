@@ -137,11 +137,17 @@ run_hook_multiedit() {
   # Not an enumeration of the spellings seen so far: the match takes the whole
   # path segment, so a dash, an underscore, and no separator at all are one case
   # rather than three (the dot spelling is pinned above). Enumerating them is
-  # unbounded; taking the segment closes the class. The echo names which
-  # spelling failed, which a bare loop assertion cannot report.
+  # unbounded; taking the segment closes the class.
+  #
+  # Both assertions are inlined rather than delegated to assert_blocked_by_exit:
+  # that helper leans on errexit for its status check, and calling a function in
+  # an `||` list disables errexit for the function's whole body, which would
+  # leave the loop asserting only that BLOCKED appeared. Inlined, each failing
+  # branch returns on its own and names the spelling that failed.
   for path in tsconfig-base.json tsconfig_base.json tsconfigbase.json; do
     run_hook_edit "$path" '"types": ["vitest/globals"]'
-    assert_blocked_by_exit || { echo "not blocked for $path" >&2; return 1; }
+    [ "$status" -eq 2 ] || { echo "not blocked for $path (status=$status)" >&2; return 1; }
+    grep -qF -- 'BLOCKED' <<<"$output" || { echo "no BLOCKED reason for $path" >&2; return 1; }
   done
 }
 
@@ -153,7 +159,8 @@ run_hook_multiedit() {
   # decision agree.
   for path in TSConfig.json TSCONFIG.JSON tsconfig.JSON Tsconfig.node.json; do
     run_hook_edit "$path" '"types": ["vitest/globals"]'
-    assert_blocked_by_exit || { echo "not blocked for $path" >&2; return 1; }
+    [ "$status" -eq 2 ] || { echo "not blocked for $path (status=$status)" >&2; return 1; }
+    grep -qF -- 'BLOCKED' <<<"$output" || { echo "no BLOCKED reason for $path" >&2; return 1; }
   done
 }
 

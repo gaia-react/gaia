@@ -24,9 +24,6 @@ file_path=$(echo "$input" | jq -r '.tool_input.file_path // ""')
 # .json beneath it in. Case-insensitive for the same reason the content match
 # below is: on a case-insensitive filesystem TSConfig.json resolves to the real
 # config, so a case-sensitive path match is a bypass rather than a cosmetic gap.
-# The sibling `^tsconfig[^/]*\.json$` idiom in lib/audit-selfheal-paths.sh stays
-# case-sensitive on purpose, matching canonical git-reported paths instead of a
-# tool payload.
 if echo "$file_path" | grep -qiE 'tsconfig[^/]*\.json'; then
   # `new_string?` guards the index as well as the iteration: indexing a
   # non-object edits[] entry aborts the whole read, which would empty the
