@@ -133,14 +133,27 @@ run_hook_multiedit() {
   assert_blocked_by_exit
 }
 
-@test "any separator between tsconfig and .json is covered" {
+@test "any within-segment spelling between tsconfig and .json is covered" {
   # Not an enumeration of the spellings seen so far: the match takes the whole
-  # path segment, so a dot, a dash, an underscore, and no separator at all are
-  # one case rather than four. Enumerating them is unbounded; taking the segment
-  # closes the class.
+  # path segment, so a dash, an underscore, and no separator at all are one case
+  # rather than three (the dot spelling is pinned above). Enumerating them is
+  # unbounded; taking the segment closes the class. The echo names which
+  # spelling failed, which a bare loop assertion cannot report.
   for path in tsconfig-base.json tsconfig_base.json tsconfigbase.json; do
     run_hook_edit "$path" '"types": ["vitest/globals"]'
-    assert_blocked_by_exit
+    assert_blocked_by_exit || { echo "not blocked for $path" >&2; return 1; }
+  done
+}
+
+@test "the path match is case-insensitive" {
+  # On a case-insensitive filesystem a mixed-case path resolves to the real
+  # config, so a case-sensitive match is a live bypass rather than a cosmetic
+  # gap: the write lands in tsconfig.json and describe/expect go ambient. The
+  # content match beside it has always been case-insensitive; both halves of the
+  # decision agree.
+  for path in TSConfig.json TSCONFIG.JSON tsconfig.JSON Tsconfig.node.json; do
+    run_hook_edit "$path" '"types": ["vitest/globals"]'
+    assert_blocked_by_exit || { echo "not blocked for $path" >&2; return 1; }
   done
 }
 

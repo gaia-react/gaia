@@ -21,8 +21,13 @@ file_path=$(echo "$input" | jq -r '.tool_input.file_path // ""')
 # carrying a remedy where under-blocking costs the ambient-types erosion this
 # guard exists to stop. `[^/]*` is the one limit that holds, keeping the pattern
 # inside a single path segment so a directory named tsconfig does not pull every
-# .json beneath it in.
-if echo "$file_path" | grep -qE 'tsconfig[^/]*\.json'; then
+# .json beneath it in. Case-insensitive for the same reason the content match
+# below is: on a case-insensitive filesystem TSConfig.json resolves to the real
+# config, so a case-sensitive path match is a bypass rather than a cosmetic gap.
+# The sibling `^tsconfig[^/]*\.json$` idiom in lib/audit-selfheal-paths.sh stays
+# case-sensitive on purpose, matching canonical git-reported paths instead of a
+# tool payload.
+if echo "$file_path" | grep -qiE 'tsconfig[^/]*\.json'; then
   # `new_string?` guards the index as well as the iteration: indexing a
   # non-object edits[] entry aborts the whole read, which would empty the
   # scanned text and allow the write.
