@@ -3,7 +3,7 @@
 # Requires Bats >= 1.5.0 (the negative `run !` assertions below).
 bats_require_minimum_version 1.5.0
 #
-# Tests for `.gaia/scripts/verify-required-checks.sh` (#807).
+# Tests for `.gaia/scripts/verify-required-checks.sh`.
 #
 # The script never talks to `gh` in these tests: `--ruleset-contexts` injects
 # the live-required set and `--workflows-dir` points at a fixture directory,
