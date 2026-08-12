@@ -77,6 +77,9 @@ const FLAG_BY_TOKEN: Readonly<Record<string, FlagKey | undefined>> = {
   '--sha': 'sha',
 };
 
+const flagKeyFor = (token: string): FlagKey | undefined =>
+  Object.hasOwn(FLAG_BY_TOKEN, token) ? FLAG_BY_TOKEN[token] : undefined;
+
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   const values: Partial<Record<FlagKey, string>> = {};
 
@@ -84,7 +87,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     const token = argv[index];
 
     if (token !== undefined) {
-      const key = FLAG_BY_TOKEN[token];
+      const key = flagKeyFor(token);
 
       if (key === undefined) {
         return {message: `unknown flag: ${token}`, ok: false};

@@ -240,14 +240,15 @@ const insertExportEntry = (
   }
 
   const lastEntry = entries.at(-1);
+  const lastLine =
+    lastEntry === undefined ? undefined : lines[lastEntry.lineIdx];
 
-  if (lastEntry === undefined) return;
+  if (lastEntry === undefined || lastLine === undefined)
+    throw new Error(
+      'insertExportEntry: the export block has no source line for its last entry; refusing to report a skipped registration as done'
+    );
 
   // Ensure the last entry has a trailing comma so insertion is clean.
-  const lastLine = lines[lastEntry.lineIdx];
-
-  if (lastLine === undefined) return;
-
   if (!lastLine.endsWith(',')) {
     lines[lastEntry.lineIdx] = `${lastLine},`;
   }

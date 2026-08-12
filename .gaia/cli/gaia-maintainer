@@ -24584,9 +24584,11 @@ var insertExportEntry = (lines, args) => {
     }
   }
   const lastEntry = entries.at(-1);
-  if (lastEntry === void 0) return;
-  const lastLine = lines[lastEntry.lineIdx];
-  if (lastLine === void 0) return;
+  const lastLine = lastEntry === void 0 ? void 0 : lines[lastEntry.lineIdx];
+  if (lastEntry === void 0 || lastLine === void 0)
+    throw new Error(
+      "insertExportEntry: the export block has no source line for its last entry; refusing to report a skipped registration as done"
+    );
   if (!lastLine.endsWith(",")) {
     lines[lastEntry.lineIdx] = `${lastLine},`;
   }
@@ -30275,12 +30277,13 @@ var FLAG_BY_TOKEN = {
   "--reason": "reason",
   "--sha": "sha"
 };
+var flagKeyFor = (token) => Object.hasOwn(FLAG_BY_TOKEN, token) ? FLAG_BY_TOKEN[token] : void 0;
 var parseFlags23 = (argv) => {
   const values = {};
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token !== void 0) {
-      const key = FLAG_BY_TOKEN[token];
+      const key = flagKeyFor(token);
       if (key === void 0) {
         return { message: `unknown flag: ${token}`, ok: false };
       }
