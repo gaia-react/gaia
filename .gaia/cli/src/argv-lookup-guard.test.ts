@@ -123,9 +123,11 @@ const offendersIn = (relative: string): string[] =>
   );
 
 /**
- * Every file declaring a subcommand dispatch table, derived rather than
- * listed: a dispatcher added later has to earn its own negative control, and a
- * hand-kept list would give it none while still reporting a full sweep.
+ * Every file declaring a `SUBCOMMAND_HANDLERS` table, derived rather than
+ * listed: a dispatcher added later under that name has to earn its own
+ * negative control, and a hand-kept list would give it none while still
+ * reporting a full sweep. A dispatch table spelled otherwise is scanned for a
+ * bare index like any other, but earns no negative control here.
  */
 const dispatchers = (): string[] =>
   sourceFiles().filter((file) =>
