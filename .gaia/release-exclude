@@ -99,6 +99,10 @@ wiki/decisions/Bundle-time Scrub.md
 wiki/decisions/CLI-Binary-Split.md
 wiki/decisions/Folding Shell Scripts into the CLI Binary.md
 wiki/decisions/Forensics Triage Workflow.md
+# Describes .github/workflows/audit-ci-tests.yml, which is itself
+# release-excluded, so on an adopter clone every claim here is about a
+# workflow they do not have.
+wiki/decisions/Sharded CI Test Matrix.md
 
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked

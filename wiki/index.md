@@ -109,6 +109,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[CLI-Binary-Split]]
 - [[Folding Shell Scripts into the CLI Binary]]: considered and declined; the manifest is a never-merged sentinel and the fold is a delete, so it cannot deliver simpler diffs.
 - [[Forensics Triage Workflow]]
+- [[Sharded CI Test Matrix]]: `Audit CI Tests` as an 11-leg fan-out plus a thin aggregator; the zero-headroom 2-hop cap arithmetic any restructuring hits first, how to measure this workflow without the two traps, and the levers already weighed.
 <!-- gaia:maintainer-only:end -->
 - [[Quality Gate]]
 - [[pnpm]]
