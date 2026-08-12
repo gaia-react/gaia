@@ -48,8 +48,16 @@ no matching RED on record.
 
 vitest's `--reporter=json` emits `location: null` for every assertion, so the
 signal is derived from the test file source, not the reporter. The signal binds
-a RED to a specific test body: editing the body changes the signal and
-invalidates the RED, so a fresh failing run must be observed.
+a RED to a specific test body: editing what the test executes changes the
+signal and invalidates the RED, so a fresh failing run must be observed.
+
+Comments are excluded from the signal, so a comment-only edit does not
+invalidate a RED. The guarantee covers a comment's **text**: rewording a
+comment, and deleting a comment that has whitespace on both sides, leave the
+signal byte-identical. Deleting a comment that sits with **no adjacent
+whitespace on one side** leaves the separating space behind and **does** rotate
+the signal, the accepted price of never fusing the two tokens the comment sat
+between.
 
 ## Helper: `extract-test-signals.mjs`
 
@@ -69,9 +77,21 @@ message on a parse failure.
 
 `fullName` is the enclosing describe titles (outermost first) plus the test
 title, single-space-joined. `signal` is `sha256:` plus the lowercase-hex
-sha256 of the test call expression's normalized source; trimmed, with internal
-whitespace runs collapsed to single spaces, so it stays stable across pure
-reformatting and changes when the title, assertion, or body changes.
+sha256 of the test call expression's normalized, comment-free content;
+trimmed, with internal whitespace runs collapsed to single spaces, so it stays
+stable across pure reformatting and across a comment reword. Any change to
+what the test executes still rotates it.
+
+Comment spans come from `ts.getLeadingCommentRanges` /
+`ts.getTrailingCommentRanges` read at parsed token boundaries, which is what
+keeps a doubled forward slash inside a string, template, or regular-expression
+literal out of reach. Every range overlapping a `JsxText` node is discarded
+**before** the ranges are deduplicated and merged (that order is load-bearing:
+the swallow range a `>` token produces in `<div>// alpha</div>` strictly
+contains an adjacent genuine `{/* … */}` comment, and merging first would fuse
+them and then drop both). Each surviving span is replaced by a single space,
+never the empty string, so the two tokens a tight inline comment sat between
+are never fused.
 
 `kind` is `"type-only"` when the test's assertions are all type-level (an
 `expectTypeOf`/`assertType` call, or a `@ts-expect-error` proof) and it carries
