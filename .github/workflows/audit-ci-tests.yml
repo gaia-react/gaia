@@ -52,24 +52,30 @@ concurrency:
 permissions: {}
 
 jobs:
-  audit-ci-tests:
-    name: Audit CI Tests
+  # The fan-out matrix: one leg per bats shard, plus the sandbox conformance
+  # tree and the INV-7 concurrency meter as two further legs that run their
+  # own runners under their own filter gates. `audit-ci-tests` below is the
+  # thin aggregator that carries the declared-required check name; splitting
+  # the name off this job is what lets `fail-fast: false` keep one failing
+  # shard from cancelling its siblings without also cancelling the check
+  # itself.
+  shards:
+    name: shard ${{ matrix.shard }}
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # The self-heal poller in code-review-audit.yml waits 25 minutes for a
-    # dispatched run, then gives up and stamps nothing, which leaves this
-    # required context ABSENT on the self-heal HEAD rather than merely red: the
-    # exact wedge the dispatch lane exists to prevent. Cap well under that
-    # window so a hung `apt-get` fails fast instead of inheriting the 6-hour
-    # runner default. The cap is derived from that 25-minute poller window, not
-    # from an observed runtime: this job also does two full dependency installs
-    # and a concurrency suite that creates real git worktrees, so do not treat
-    # any figure quoted here as a measurement. Nothing machine-checks this cap
-    # against real run durations, so a job that slows past it fails on the cap
-    # rather than reporting that it got slower.
-    timeout-minutes: 15
+    # 13 minutes is sized to the heaviest leg, `concurrency`: it runs the two
+    # full pnpm workspace installs and the meter's real git worktrees, the
+    # work today's shared 15-minute cap was sized for. A matrix takes ONE
+    # integer cap for every leg, so the lighter shards inherit it too. Paired
+    # with the aggregator's 2-minute cap this sums to 15 over the 2-hop
+    # `needs:` chain .gaia/scripts/tests/retrigger-reachability.bats checks,
+    # which is the maximum this repo's 25-minute self-heal poller window
+    # allows at 2 hops -- zero headroom, so raising either cap or adding a
+    # third hop reds that suite immediately.
+    timeout-minutes: 13
     # Read-only token: the job checks out, resolves changed files via
-    # dorny/paths-filter, and runs bats; it needs no write scopes.
+    # dorny/paths-filter, and runs bats or the sandbox/concurrency runners; it
+    # needs no write scopes.
     #
     # `pull-requests: read` is load-bearing, not decoration: naming any scope
     # here sets every unlisted one to `none`, and dorny/paths-filter resolves a
@@ -80,6 +86,16 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    # `fail-fast: false` is load-bearing, not a default preference: one failing
+    # shard must not cancel its siblings, or the aggregator adjudicates a
+    # partial picture and a re-run loses information about every leg GitHub
+    # cancelled rather than ran. The matrix values are the nine bats-shards.sh
+    # shard ids plus the two workflow-level legs; audit-ci-shards.bats' W6
+    # checks the two stay in sync.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, audit, lib, misc, sandbox, concurrency]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PRs that don't touch the audit scripts report this check green
@@ -190,16 +206,35 @@ jobs:
               # looks identical to a clean tree. Same test-dir/source-dir pairing
               # as the entries above.
               - '.gaia/tests/shell-lint.sh'
-              # run-bats-parallel.sh is the runner the bats step below invokes,
-              # and it sits at the top of .gaia/tests/ too, matching none of the
-              # four .gaia/tests/*/ globs below, exactly like the gate above.
-              # Without this line an edit to the runner -- to its per-PID wait,
-              # its replay order, or its fail-closed table handling -- would
-              # report `code=false`, skip the bats step, and green this job
-              # having run the six suite directories zero times. Its own
-              # adversarial suite lives in .gaia/tests/lib/, already listed
-              # below, so it needs no entry of its own.
+              # run-bats-parallel.sh is no longer what a bats step invokes --
+              # .gaia/tests/bats-shards.sh is -- but it remains the hand-run
+              # entry point for the six suite directories, and its own
+              # adversarial suite (.gaia/tests/lib/run-bats-parallel.bats,
+              # already listed below) sources it directly to read
+              # builtin_table() back out. It sits at the top of .gaia/tests/
+              # too, matching none of the four .gaia/tests/*/ globs below,
+              # exactly like the gate above. Without this line an edit to the
+              # runner would report `code=false`, skip every bats step, and
+              # green the job having run that suite's assertions against a
+              # stale copy.
               - '.gaia/tests/run-bats-parallel.sh'
+              # bats-shards.sh is what every non-sandbox, non-concurrency
+              # shard's bats step below invokes, and it sits at the top of
+              # .gaia/tests/ too, matching none of the four .gaia/tests/*/
+              # globs below, the same reasoning as the two entries above.
+              # Without this line an edit to the sharder -- its round-robin
+              # split, its directory seam, its pinned-hook check -- would
+              # report `code=false`, skip every shard's bats step, and green
+              # the job having run the suites zero times.
+              - '.gaia/tests/bats-shards.sh'
+              # install-bats.sh is what the two install steps below call.
+              # Listed here for the `code` output; it is ALSO required in
+              # `sandbox:` below, because that output reaches no `.sh` outside
+              # `.gaia/tests/sandbox/` and the sandbox leg's own install step
+              # calls this script too. Without this line here, an edit to the
+              # pinned bats version or digest would report `code=false` and
+              # skip every non-sandbox leg's install.
+              - '.gaia/tests/install-bats.sh'
               # The audit-guard-structural suite (.gaia/scripts/tests/) greps the
               # prose of these three instruction files for the no-op-guard wiring
               # (SPEC-025 plan DP-005). An instruction-only edit touches none of
@@ -411,6 +446,12 @@ jobs:
             sandbox:
               # LOAD-BEARING: .bats, reached by no broad glob.
               - '.gaia/tests/sandbox/**'
+              # install-bats.sh is what the sandbox leg's own install step
+              # calls. LOAD-BEARING, not redundant: none of the four broad
+              # globs below reach a `.sh` outside `.gaia/tests/sandbox/`, so
+              # without this line an edit to the pinned bats version or digest
+              # would report `sandbox=false` and skip that leg's install too.
+              - '.gaia/tests/install-bats.sh'
               # doc-setup-gaia.bats greps the sandbox-decision block of the
               # /setup-gaia command doc, and pins its `.sandbox_recommended`
               # reader literal byte-identical against the schema writer key, so
@@ -460,84 +501,42 @@ jobs:
       # what enforce this line; this comment only explains it. Pin the package
       # here rather than resting on whatever the runner image happens to
       # preinstall.
-      # Admits `sandbox` as well as `code`, so a PR that arms only that output
-      # still gets bats on the box. This is what puts bats there deterministically:
-      # ubuntu-latest does not preinstall it. run-all.sh does carry an
-      # `npx -y bats@latest` fallback, so dropping this line would not
-      # necessarily red the step, but it would trade an apt package for a
-      # per-run npm download from a second network dependency, inside a
-      # declared-required context. Keep the install here and let the fallback
-      # serve the hand-run case it was written for.
-      - if: steps.filter.outputs.code == 'true' || steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch'
+      #
+      # zsh backs four suites under .gaia/scripts/tests/ (audit-key-lib,
+      # main-only-lib, debt-origin-lib, audit-window-lib), and those `skip`
+      # SILENTLY when it is absent, so its absence looks identical to a clean
+      # tree rather than reporting red. That silent-skip hazard is why every
+      # bats leg gets this identical package set rather than a per-shard list:
+      # a shard-specific install could drop zsh from a leg that happens to draw
+      # one of those four files on a future round-robin reshuffle, and nothing
+      # would notice.
+      #
+      # This step covers only the `code` output: the `sandbox` leg installs
+      # bats through its own step below, with no apt line at all, because
+      # .gaia/tests/sandbox/*.bats needs neither package (W9 in
+      # .gaia/tests/lib/audit-ci-shards.bats pins that as a checked invariant).
+      # Splitting the install this way, rather than admitting both outputs on
+      # one shared step as the pre-shard job did, is what keeps a docs-only PR
+      # (which arms `sandbox` but not `code`) from running `apt-get update` --
+      # the flakiest operation in this job -- on every leg. It also keeps this
+      # step's `workflow-filter-coverage.bats` obligation single: a step gated
+      # on `code || sandbox` would need install-bats.sh listed in both filter
+      # bodies for the SAME step, and this way each step's script is covered by
+      # exactly the filter that gates it.
+      - if: matrix.shard != 'sandbox' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install bats and YAML parser
-        run: sudo apt-get update && sudo apt-get install -y bats python3-yaml zsh
-      # The six bats suite directories run CONCURRENTLY in this one step: one
-      # step rather than six, and one job rather than six jobs.
-      # .gaia/tests/run-bats-parallel.sh forks each directory, captures its
-      # stdout and stderr to a log of its own, and waits on each PID
-      # INDIVIDUALLY, so any suite's non-zero exit fails this step -- a bare
-      # `wait` returns only the last job's status and would green a real
-      # failure. It then replays the logs in a fixed table order, independent of
-      # which suite finished first, and prints a per-suite exit-code and timing
-      # summary that recovers what the Actions UI loses when six steps become
-      # one. Staying inside one job keeps this a single hop, so the chain
-      # ceiling .gaia/scripts/tests/retrigger-reachability.bats computes over
-      # the `needs:` graph is unaffected. The runner's own adversarial suite is
-      # .gaia/tests/lib/run-bats-parallel.bats, one of the directories it forks.
-      #
-      # The hook suites are authored/run locally on macOS bash 3.2.57, where a
-      # false mid-test `[[ ... ]]` does NOT fail the test (bash 3.2 skips it
-      # under set -e), so a broken assertion can green locally. Ubuntu bats runs
-      # under bash 5, which enforces `[[ ]]`, making this the authoritative gate
-      # for token-tally-git-op.bats, token-rollup-merge.bats, and siblings. The
-      # four node-dependent RED-verify suites self-skip here (no node_modules on
-      # this lean box); see their setup() guards.
-      #
-      # The SPEC-ledger lib suites (.specify/extensions/gaia/lib/ scripts):
-      # spec-archive-merged.sh + the shared cost-consolidate.sh routine, the
-      # spec/plan allocators, folderize, renumber, reconcile, ledger-update,
-      # with-ledger-lock. Same bash-5 rationale as the hook suites above. On this
-      # lean box flock is present (the mkdir-fallback test's flock branch runs
-      # instead of self-skipping) and the real project ledger is absent
-      # (.gaia/local/ is gitignored), so spec-ledger-status's project-ledger
-      # test self-skips; both are green outcomes.
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Run the six bats suite directories in parallel
-        run: bash .gaia/tests/run-bats-parallel.sh
-      # The sandbox-enablement conformance tree. Gated on the `sandbox` filter
-      # output rather than `code`, so a PR touching only a file this tree reads
-      # runs it without arming the two pnpm installs and the concurrency meter
-      # below. Invoked through run-all.sh, matching the forensics step above and
-      # the contract that script documents in its own header.
-      #
-      # Two of its 20 tests self-skip here and both are green outcomes, not
-      # gaps: UAT-016 needs a sandbox-capable runner (bubblewrap/socat, which
-      # ubuntu-latest does not have and its header says so), and the docs-link
-      # reachability check skips under CI so a third-party outage cannot red a
-      # declared-required context. The other 18 run.
-      - if: steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch'
-        name: Run .gaia/tests/sandbox bats suites
-        run: bash .gaia/tests/sandbox/run-all.sh
-      # Everything below arms the INV-7 concurrency meter. Note what that
-      # changes about this job's posture, as a deliberate choice rather than a
-      # side effect: a job that previously ran only bats on a lean box now
-      # executes dependency install scripts from a `pull_request` head on every
-      # armed run. Accepted because the exposure is bounded the same way
-      # tests.yml's already is -- a read-only GITHUB_TOKEN, no secrets in
-      # scope, and lifecycle scripts gated by `allowBuilds` in both
-      # pnpm-workspace.yaml files (which is why both are in the path filter
-      # above). Node comes first because three of its scenarios drive real node
-      # code, and none of them can borrow the escape hatch the five sibling
-      # suites under
-      # .gaia/tests/hooks/ use: those guard the same `typescript` dependency
-      # with `|| skip "typescript not installed"`, and the meter BANS `skip` in
-      # its own header on the grounds that a skip reports green, which is the
-      # opposite of what a red-by-design suite means. meter-gate.sh enforces
-      # that ban, so the suite cannot borrow the hatch -- it has to actually
-      # have the dependency.
-      #
-      # TWO installs, not one, and the reason is structural: .gaia/cli is
-      # deliberately its own isolated pnpm workspace
+        run: |
+          bash .gaia/tests/install-bats.sh
+          sudo apt-get update && sudo apt-get install -y python3-yaml zsh
+      # No apt at all: the sandbox tree provably needs neither python3-yaml nor
+      # zsh (W9 above), so this leg only needs the pinned bats binary. A PR
+      # that arms `sandbox` alone therefore runs no apt at all, instead of the
+      # 11x exposure a single shared install step across every leg would carry.
+      - if: matrix.shard == 'sandbox' && (steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch')
+        name: Install bats
+        run: bash .gaia/tests/install-bats.sh
+      # TWO installs across this job, not one, and the reason is structural:
+      # .gaia/cli is deliberately its own isolated pnpm workspace
       # (.gaia/cli/pnpm-workspace.yaml), so a repo-root install does not reach
       # it. The root install is what C4-04 and C4-07 need (their node helpers
       # resolve `typescript` from the repo root); the .gaia/cli install is what
@@ -545,9 +544,12 @@ jobs:
       # .gaia/cli/node_modules, which is gitignored and so absent on a fresh
       # checkout). Skipping either flips a landed, green scenario red for want
       # of an npm install, which would read as a regression in the number this
-      # program is judged by rather than as the environment gap it is.
-      #
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+      # program is judged by rather than as the environment gap it is. Scoped
+      # to the `concurrency` leg alone: no bats suite in any other shard
+      # depends on a Node runtime or an installed workspace dependency, which
+      # is what makes it safe for those legs to run on a box that never sets
+      # Node up at all.
+      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Setup Node and install both workspaces
         uses: ./.github/actions/gaia-setup-node
         with:
@@ -557,12 +559,69 @@ jobs:
           cache-dependency-path: |
             pnpm-lock.yaml
             .gaia/cli/pnpm-lock.yaml
+      # `${{ matrix.shard }}` reaches the script only through `env:`, never
+      # interpolated into the run: body text itself -- the shape this repo's
+      # workflows auditor checks, and what keeps it true when a future edit
+      # drives the matrix from an expression rather than a literal list.
+      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+        name: Run a bats shard
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: bash .gaia/tests/bats-shards.sh run "$SHARD"
+      # The sandbox-enablement conformance tree, on its own leg with its own
+      # filter output. Gated on `sandbox` rather than `code`, so a PR touching
+      # only a file this tree reads runs it without arming the Node install or
+      # the concurrency meter's leg. Invoked through run-all.sh, matching the
+      # contract that script documents in its own header.
+      #
+      # Two of its 20 tests self-skip here and both are green outcomes, not
+      # gaps: UAT-016 needs a sandbox-capable runner (bubblewrap/socat, which
+      # ubuntu-latest does not have and its header says so), and the docs-link
+      # reachability check skips under CI so a third-party outage cannot red a
+      # declared-required context. The other 18 run.
+      - if: matrix.shard == 'sandbox' && (steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch')
+        name: Run .gaia/tests/sandbox bats suites
+        run: bash .gaia/tests/sandbox/run-all.sh
       # Runs the WHOLE suite and adjudicates every scenario against
       # .gaia/tests/concurrency/expected-status.txt, so any scenario the
       # manifest marks red by design does not wedge this required check while
       # still counting in the reading. A `bats --filter` over the armed
       # tranches was the alternative and is worse: it hides the reds and makes
       # a newly added scenario invisible by default.
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Run the INV-7 concurrency meter (gated on its expected-status manifest)
         run: bash .gaia/tests/concurrency/meter-gate.sh
+
+  # The declared-required check. `needs: [shards]` makes it the second hop of a
+  # 2-hop chain the arithmetic above is sized to, and `always()` is what stops
+  # a plain skip-on-dependency-failure from satisfying nothing: a `needs:`
+  # with no `if:` SKIPS when a dependency fails, and a skipped stamp satisfies
+  # no required check.
+  audit-ci-tests:
+    name: Audit CI Tests
+    needs: [shards]
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    # No checkout and no scopes: this job reads one expression off `needs:` and
+    # exits, so it needs nothing a default-deny leaves it without.
+    permissions: {}
+    steps:
+      # `needs.shards.result` is the aggregate over every matrix leg: it reads
+      # `success` only when every leg concluded `success`. A leg whose steps
+      # all skipped because the filter resolved false still concludes
+      # `success`, which is correct and matches today's pre-shard behavior --
+      # a PR touching nothing relevant should report this check green having
+      # run nothing. `skipped` and `cancelled` both fail this check, along with
+      # `failure`, because the comparison is `!= "success"` rather than a
+      # `case` enumerating the failure states it knows about, so a conclusion
+      # GitHub adds later fails closed instead of reading as an unrecognized,
+      # unhandled success.
+      - name: Require every shard to have succeeded
+        env:
+          SHARDS_RESULT: ${{ needs.shards.result }}
+        run: |
+          if [ "$SHARDS_RESULT" != "success" ]; then
+            echo "::error::at least one shard did not conclude success: $SHARDS_RESULT" >&2
+            exit 1
+          fi

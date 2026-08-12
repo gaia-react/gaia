@@ -1,15 +1,20 @@
 #!/usr/bin/env bats
 
-# Adversarial suite for .gaia/tests/run-bats-parallel.sh, the parallel bats
-# runner .github/workflows/audit-ci-tests.yml calls in place of six serial
-# steps. That workflow produces a declared-required check, so the runner's
-# exit-code propagation is load-bearing: a bug that greens a failing suite
-# wedges nothing and lets everything through, which is the worse direction.
+# Adversarial suite for .gaia/tests/run-bats-parallel.sh, the hand-run parallel
+# bats runner for this repo's suite directories. .github/workflows/audit-ci-tests.yml
+# no longer calls it; CI drives .gaia/tests/bats-shards.sh instead, one shard per
+# matrix leg. The exit-code propagation this suite proves is still load-bearing,
+# relocated rather than retired: a bug that greens a failing suite wedges nothing
+# and lets everything through, which is the worse direction, and that same
+# reasoning now lives in the aggregator job (which depends on every shard leg
+# succeeding to report the declared-required check) and in bats-shards.sh's own
+# fail-closed rules (a shard resolving zero files, or a pinned entry gone
+# missing, is an error rather than a silent green).
 #
 # Every fixture drives the runner through its --table seam with trivial commands
 # (true, false, printf, sleep, rm) and never forks bats, so this suite adds no
-# recursion and no meaningful contention when it runs inside the very
-# .gaia/tests/lib/ directory the live runner forks.
+# recursion and no meaningful contention when it runs inside .gaia/tests/lib/,
+# the directory the lib shard runs it from.
 #
 # Every @test that runs the runner as a runner passes an explicit
 # --log-dir "$BATS_TEST_TMPDIR", so nothing here can write into the log

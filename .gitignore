@@ -72,3 +72,9 @@ __pycache__/
 .gaia-backup/
 .gaia-merge/
 
+
+# Scratch copies of .gaia/tests/bats-shards.sh that its guard suite doctors in
+# place. They live inside the repo because the sharder derives its own repo
+# root from git, which fails from outside a working tree. teardown() removes
+# them; this entry covers an interrupted run, where teardown never fires.
+.bats-shards-scratch.*

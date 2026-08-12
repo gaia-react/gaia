@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# run-bats-parallel.sh: run the bats suite directories concurrently in one job,
-# capture each to its own log, and replay the logs in a fixed order.
+# run-bats-parallel.sh: run the bats suite directories concurrently in one
+# invocation, capture each to its own log, and replay the logs in a fixed
+# order.
 #
-# `.github/workflows/audit-ci-tests.yml` calls this once, in place of the six
-# serial `Run ... bats suites` steps it used to carry. The six directories are
-# concurrency-safe in a shared workspace, so the wall clock collapses to roughly
-# the slowest suite instead of the sum of all six.
+# The hand-run entry point for this repo's six bats suite directories.
+# `.github/workflows/audit-ci-tests.yml` does not call this: each shard leg of
+# its matrix calls `.gaia/tests/bats-shards.sh run <shard-id>` instead. The six
+# directories are concurrency-safe in a shared workspace, so running them
+# through this script collapses the wall clock to roughly the slowest suite
+# instead of the sum of all six.
 #
 # Maintainer-only. `.gaia/tests` is wholesale release-excluded via
 # `.gaia/release-exclude`, so this never reaches an adopter.
@@ -14,7 +17,8 @@
 #   bash .gaia/tests/run-bats-parallel.sh [--table <file>] [--log-dir <dir>]
 #
 #   --table <file>    Tab-delimited suite table to run instead of the built-in
-#                     six. Test seam only; CI passes no --table.
+#                     six. Test seam only: .gaia/tests/lib/run-bats-parallel.bats
+#                     is the only caller that passes it.
 #   --log-dir <dir>   Where per-suite logs land. Omitted, the runner creates a
 #                     fresh unique directory of its own.
 #
@@ -36,14 +40,16 @@
 #
 # The default log directory is unique per invocation, which matters concretely:
 # this runner's own bats suite lives in `.gaia/tests/lib/`, one of the six
-# directories the runner forks, so on CI an inner invocation runs concurrently
-# with the outer live one. A shared default would let the fail-closed missing-log
-# rule below red a declared-required check. The runner also never removes a
-# directory it did not create.
+# directories the runner forks, so a hand run of the whole table has an inner
+# invocation (this suite, exercised via its own --table fixtures) running
+# concurrently with the outer live one. A shared default would let the
+# fail-closed missing-log rule below red on that overlap. The runner also
+# never removes a directory it did not create.
 #
 # Portability: linted by `.gaia/tests/shell-lint.sh` at the `style` floor, runs
-# on CI's bash 5 and on macOS `/bin/bash` 3.2.57. No `mapfile`, no `declare -A`,
-# no `${var^^}`, no `wait -n`.
+# on CI's bash 5 (via .gaia/tests/lib/run-bats-parallel.bats, its own guard
+# suite) and on macOS `/bin/bash` 3.2.57. No `mapfile`, no `declare -A`, no
+# `${var^^}`, no `wait -n`.
 set -euo pipefail
 
 TABLE_FILE=''
@@ -59,11 +65,11 @@ die_usage() {
   exit 2
 }
 
-# Built-in suite table, in the order the six serial steps ran and therefore the
-# order the logs replay in. One printf argument group per row. The bats suite in
-# .gaia/tests/lib/run-bats-parallel.bats sources this file and calls this
-# function to read the table back out, so it stays a function with no side
-# effects beyond its stdout.
+# Built-in suite table, in the order the six suite directories are grouped for
+# a hand run and therefore the order the logs replay in. One printf argument
+# group per row. The bats suite in .gaia/tests/lib/run-bats-parallel.bats
+# sources this file and calls this function to read the table back out, so it
+# stays a function with no side effects beyond its stdout.
 builtin_table() {
   printf '%s\t%s\t%s\n' \
     'github-audit' '.github/audit bats suites' 'bats .github/audit/tests/' \
@@ -205,8 +211,8 @@ main() {
     i=$((i + 1))
   done
 
-  # Per-suite timing, recovering what the Actions UI loses when six steps
-  # become one.
+  # Per-suite timing, recovering the per-suite breakdown that running six
+  # suites through one invocation would otherwise lose.
   local secs_file secs
   printf '\nPer-suite results:\n'
   i=0

@@ -38,10 +38,11 @@
 # POST happened and which sha it targeted. Every fixture digest comes from the
 # real digest engine, never a hardcoded value.
 #
-# Ownership. Two suites guard this one hook, run by two separate steps of
-# .github/workflows/audit-ci-tests.yml (`bats .gaia/tests/hooks/` and
-# `bats .github/audit/tests/`, both armed by that job's shared `code` path
-# filter). This suite owns the usage and marker-shape preconditions, the
+# Ownership. Two suites guard this one hook, each run by its own shard leg of
+# .github/workflows/audit-ci-tests.yml's matrix (this file lands in one of the
+# hooks-1..hooks-4 shards; .github/audit/tests/ runs whole as the `audit`
+# shard), both armed by that job's shared `code` path filter. This suite owns
+# the usage and marker-shape preconditions, the
 # divergence guards as enumerated decline lines, and the head_sha fallback
 # paths. Its sibling .github/audit/tests/post-audit-status.bats owns the
 # member-aware gate arms and the status-target arms; it installs the real
