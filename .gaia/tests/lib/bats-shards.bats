@@ -41,6 +41,13 @@ teardown() {
       rm -f "$p"
     fi
   done
+  if [ -f "$BATS_TEST_TMPDIR/scratch-copies" ]; then
+    while IFS= read -r p || [ -n "$p" ]; do
+      if [ -n "$p" ]; then
+        rm -f "$p"
+      fi
+    done <"$BATS_TEST_TMPDIR/scratch-copies"
+  fi
 }
 
 # Every *.bats directly inside repo-relative dir $1, LC_ALL=C sorted. A
@@ -119,6 +126,13 @@ copy_sharder() {
   dest="$(mktemp "$BATS_TEST_DIRNAME/.bats-shards-scratch.XXXXXX")"
   cp "$SCRIPT" "$dest"
   chmod +x "$dest"
+  # Recorded in a FILE rather than a shell array because this function runs
+  # inside a command substitution, and a subshell's array append is lost while
+  # its filesystem writes survive. That is what lets teardown() clean up after
+  # a doctor_* early return, which never reaches the caller that would have
+  # appended. The file is per-test, so this stays correct if the suite is ever
+  # run under `bats --jobs`.
+  printf '%s\n' "$dest" >>"$BATS_TEST_TMPDIR/scratch-copies"
   printf '%s\n' "$dest"
 }
 

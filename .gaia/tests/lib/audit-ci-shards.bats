@@ -676,7 +676,22 @@ PY
 
 @test "W9: no .gaia/tests/sandbox suite references zsh, python3, or require_yaml_parser" {
   local hits
-  hits="$(grep -lE 'zsh|python3|require_yaml_parser' "$REPO_ROOT"/.gaia/tests/sandbox/*.bats 2>/dev/null || true)"
+  local suites
+  # Preconditions, not ceremony. An unmatched glob stays LITERAL rather than
+  # expanding to nothing, so a renamed or emptied sandbox directory would hand
+  # grep a path that does not exist; swallowing that error reports green having
+  # scanned nothing. This is the one check in this suite that can assert
+  # nothing and still pass, and the sandbox leg's reduced package set is what
+  # depends on it, so it fails closed on both an absent directory and an empty
+  # one. Tested by `-e` on the first expansion, which is the only way to tell
+  # a literal pattern from a real match.
+  require_repo_path -d "$REPO_ROOT/.gaia/tests/sandbox" "sandbox suite dir" || return 1
+  suites=("$REPO_ROOT"/.gaia/tests/sandbox/*.bats)
+  [ -e "${suites[0]}" ] || {
+    echo "no .bats suites under .gaia/tests/sandbox: W9 would assert nothing" >&2
+    return 1
+  }
+  hits="$(grep -lE 'zsh|python3|require_yaml_parser' "${suites[@]}" || true)"
   [ -z "$hits" ] || {
     echo "sandbox suite(s) reference a package the sandbox leg's install step does not carry:" >&2
     printf '%s\n' "$hits" >&2
@@ -700,7 +715,7 @@ PY
     printf '}\n'
   } > "$dir/fixture.bats"
 
-  [ -n "$(grep -lE 'zsh|python3|require_yaml_parser' "$dir"/*.bats)" ] || {
+  grep -qE 'zsh|python3|require_yaml_parser' "$dir"/*.bats || {
     echo "a fixture naming zsh was not caught" >&2
     return 1
   }
