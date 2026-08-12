@@ -17,8 +17,20 @@
  * accident, and two of the outcomes are a silent exit 0.
  *
  * Routing every read through `util/argv.ts`'s `lookupOwn` is what makes the
- * guard non-optional; this test is what keeps a future bare index from
- * quietly reintroducing the class.
+ * guard non-optional; this test is what keeps a bare index from reappearing in
+ * the shape that produced the class, a module-level dispatch or flag table.
+ *
+ * # What this does not reach
+ *
+ * A floor, not a proof of absence. The scan reads annotations literally, so
+ * two shapes present in the tree are invisible to it: a table annotated
+ * through a type alias (`const VALUE_FLAGS: ValueFlagMap<…>`, whose alias
+ * resolves to a string-keyed `Record` in another module) and a table declared
+ * inside a function body. Neither is read by a bare index today, and the alias
+ * cases are read only through `parseValueFlags`, which routes to `lookupOwn`.
+ * Resolving an alias means following it across modules, which is a type
+ * checker's job rather than a line scanner's; until something needs it, the
+ * honest statement is that a bare index in those two shapes passes unreported.
  *
  * # What counts as an offense
  *
@@ -62,27 +74,6 @@ const STRING_KEYED = /Record<\s*string\s*,/u;
 
 /** How many lines a declaration head may span before `= `. */
 const HEAD_WINDOW = 8;
-
-/**
- * The dispatchers whose bare index this guard exists to catch. Named rather
- * than discovered: a scan that finds its own subjects reports success when it
- * finds none, which is the failure this list makes impossible.
- */
-const DISPATCHERS = [
-  'automation/index.ts',
-  'fitness/index.ts',
-  'index.maintainer.ts',
-  'index.ts',
-  'init/index.ts',
-  'react-perf/index.ts',
-  'release/index.ts',
-  'sandbox/index.ts',
-  'setup-ci/index.ts',
-  'setup/index.ts',
-  'update-deps/index.ts',
-  'update/index.ts',
-  'wiki/index.ts',
-];
 
 const sourceFiles = (): string[] =>
   (readdirSync(CLI_SRC, {recursive: true}) as string[])
@@ -131,6 +122,18 @@ const offendersIn = (relative: string): string[] =>
     relative
   );
 
+/**
+ * Every file declaring a subcommand dispatch table, derived rather than
+ * listed: a dispatcher added later has to earn its own negative control, and a
+ * hand-kept list would give it none while still reporting a full sweep.
+ */
+const dispatchers = (): string[] =>
+  sourceFiles().filter((file) =>
+    readFileSync(path.join(CLI_SRC, file), 'utf8').includes(
+      'const SUBCOMMAND_HANDLERS:'
+    )
+  );
+
 describe('string-keyed lookup tables are read through lookupOwn', () => {
   test.runIf(existsSync(CLI_SRC))('no bare index remains', () => {
     const offenders = sourceFiles().flatMap((file) => offendersIn(file));
@@ -143,7 +146,8 @@ describe('string-keyed lookup tables are read through lookupOwn', () => {
   });
 
   test.runIf(existsSync(CLI_SRC))('every dispatcher table is seen', () => {
-    const seen = DISPATCHERS.map((file) => ({
+    const found = dispatchers();
+    const seen = found.map((file) => ({
       file,
       tables: tablesIn(
         readFileSync(path.join(CLI_SRC, file), 'utf8').split('\n')
@@ -151,20 +155,31 @@ describe('string-keyed lookup tables are read through lookupOwn', () => {
     }));
 
     expect(seen).toEqual(
-      DISPATCHERS.map((file) => ({file, tables: ['SUBCOMMAND_HANDLERS']}))
+      found.map((file) => ({file, tables: ['SUBCOMMAND_HANDLERS']}))
     );
   });
 
-  test.each(DISPATCHERS)('a bare index in %s is reported', (file) => {
-    const reverted = readFileSync(path.join(CLI_SRC, file), 'utf8')
-      .replace(
-        'lookupOwn(SUBCOMMAND_HANDLERS, subcommand)',
-        'SUBCOMMAND_HANDLERS[subcommand]'
-      )
-      .split('\n');
-
-    expect(offendersInLines(reverted, file)).toHaveLength(1);
+  test.runIf(existsSync(CLI_SRC))('the dispatcher sweep is not empty', () => {
+    expect(dispatchers().length).toBeGreaterThanOrEqual(13);
   });
+
+  test.runIf(existsSync(CLI_SRC))(
+    'reverting any dispatcher to a bare index is reported',
+    () => {
+      const missed = dispatchers().filter((file) => {
+        const reverted = readFileSync(path.join(CLI_SRC, file), 'utf8')
+          .replace(
+            'lookupOwn(SUBCOMMAND_HANDLERS, subcommand)',
+            'SUBCOMMAND_HANDLERS[subcommand]'
+          )
+          .split('\n');
+
+        return offendersInLines(reverted, file).length !== 1;
+      });
+
+      expect(missed).toEqual([]);
+    }
+  );
 
   test('the multi-line declaration form is matched', () => {
     expect(
