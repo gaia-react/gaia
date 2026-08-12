@@ -146,7 +146,13 @@ run_linter() {
 @test "CSS short hex colours do not red the gate" {
   fixture_tree
   fixture_manifest "app/styles.css"
-  fixture_file app/styles.css $'.a { color: #333; }\n.b { background: #0000; }\n.c { border: 1px solid #123456; }'
+  # A colour is rarely the FIRST token of its declaration value, which is the
+  # shape an earlier draft of the exemption was accidentally limited to. Every
+  # line below carries a 3- or 4-digit shorthand in a position that draft
+  # reported, so the suite covers the whole class rather than the easy case:
+  # value-leading, inside a compound value, inside a function argument list,
+  # and closing a declaration that omits its semicolon.
+  fixture_file app/styles.css $'.a { color: #333; }\n.b { background: #0000; }\n.c { border: 1px solid #444; }\n.d { box-shadow: 0 0 4px #555; }\n.e { background: linear-gradient(#666, #777); }\n.f { background: var(--x, #888); }\n.g { outline: 2px dashed #999 }\n.h { border: 1px solid #123456; }'
   run_linter
   [ "$status" -eq 0 ]
 }
@@ -186,7 +192,9 @@ run_linter() {
   fixture_manifest "hooks/probe.sh"
   # Documented FAIL-OPEN limit of the punctuation test, asserted so a future
   # narrowing that closes it fails here and gets read rather than guessed at.
-  fixture_file hooks/probe.sh $'# Fixes: #726;'
+  # Both shapes the script's header names: a reference that satisfies the
+  # opener and the closer at once.
+  fixture_file hooks/probe.sh $'# Fixes: #726;\n# see: the note (#727)'
   run_linter
   [ "$status" -eq 0 ]
 }
@@ -211,15 +219,37 @@ run_linter() {
   grep -qF -- "not found" <<<"$output"
 }
 
-@test "a shipped binary asset does not abort the scan" {
+@test "a shipped binary asset is skipped rather than reported" {
   fixture_tree
-  fixture_manifest "public/icon.png" "hooks/probe.sh"
-  printf '\211PNG\r\n\032\n\000\001\002\003' > "$TMP/public/icon.png" 2>/dev/null \
-    || { mkdir -p "$TMP/public"; printf '\211PNG\r\n\032\n\000\001\002\003' > "$TMP/public/icon.png"; }
+  fixture_manifest "assets/icon.png"
+  mkdir -p "$TMP/assets"
+  # Binary whose bytes happen to spell a reference. Without the content-based
+  # skip this is reported as a hit, naming a line number inside a PNG that the
+  # reader cannot act on and that no edit can repair.
+  #
+  # The byte layout is what makes this observable, and both halves are load
+  # bearing. The reference comes FIRST, because awk ends a record at a NUL and
+  # would never reach a reference sitting after one. The NUL padding comes
+  # after, because that is what `grep -I` keys on: a file of high and control
+  # bytes with no NUL is called text in some environments and binary in others,
+  # so a fixture resting on that would assert nothing here and fail elsewhere.
+  { printf '# see #726\n'; head -c 4096 /dev/zero; } > "$TMP/assets/icon.png"
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a text file after a binary one is still scanned" {
+  fixture_tree
+  # `assets/` so the binary sorts BEFORE the text file: the scan set is
+  # LC_ALL=C sorted, so a `public/` name would sort after `hooks/` and the
+  # ordering this test depends on would not hold.
+  fixture_manifest "assets/icon.png" "hooks/probe.sh"
+  mkdir -p "$TMP/assets"
+  printf '\211PNG\r\n\032\n\000\001\002\003\377\376\375' > "$TMP/assets/icon.png"
   fixture_file hooks/probe.sh $'# a bare #726 after the binary must still be reported'
   run_linter
-  # The binary is skipped by content, and the text file AFTER it is still
-  # scanned: awk aborting on the binary would lose this hit entirely.
+  # An awk that aborts on the binary rather than skipping it would lose this
+  # hit entirely, so the run must survive the binary and keep going.
   [ "$status" -eq 1 ]
   grep -qF -- "hooks/probe.sh:1:" <<<"$output"
 }

@@ -88,18 +88,19 @@ fi
 # this test, having already failed one of the two above: `#0f0` breaks the digit
 # run after one digit, and `#00f` is followed by a hex letter. Only the
 # all-numeric ones are ambiguous. Nothing lexical separates those two readings,
-# so this uses the surrounding punctuation, which is what actually
-# differs: a colour is a VALUE, so it is introduced by `:` or `=` (with an
-# optional quote) and terminated by `;`, `,`, a quote, or `)`. Both sides must
-# hold. A reference does not survive that test -- `(#726)` opens on `(`, `see
-# #726.` closes on `.` -- so the exemption costs no real signal.
+# so this uses the surrounding punctuation, which is what actually differs: a
+# colour sits inside a declaration VALUE. Both sides must hold -- some `:` or
+# `=` opens the value to the left with no `;`/`{`/`}` in between, and a `,`,
+# `;`, `)`, a quote, or a `}` closes it to the right. A reference does not
+# survive that: `(#726)` finds no opener, and `see #726.` finds no closer.
 #
-# The honest limit, stated rather than discovered later: a reference written in
-# exactly the colour shape, `Fixes: #726;`, is exempted and missed. That is a
-# FAIL-OPEN miss and it is accepted, because the alternative direction reds the
-# build on a colour, which is a false positive on a line that has no correct
-# repair. A two-digit candidate cannot be a colour at all and so is never
-# exempted, whatever surrounds it.
+# The honest limit, stated rather than discovered later: a reference that lands
+# inside both halves of that test, `see: the note (#726)`, is exempted and
+# missed. That is a FAIL-OPEN miss and it is accepted. The other direction reds
+# the build on a colour, which is a false positive on a line that has NO
+# correct repair -- the author cannot write `gaia-react/gaia#333` for a shade of
+# grey -- and this gate runs on every pull request. A two-digit candidate cannot
+# be a colour at all and so is never exempted, whatever surrounds it.
 scan_file() {
   local f="$1"
   # Character-set membership is tested with index() against literal sets rather
@@ -119,9 +120,10 @@ scan_file() {
       # (so `gaia-react/gaia#726` and `happy-dom#978` are skipped whole), the
       # path separator, or a second sigil.
       WORDISH  = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/#-"
-      QUOTES   = "\"\047"
       # What terminates a CSS colour value.
       CLOSERS  = ";,\")\047"
+      # What ends a declaration, so the leftward walk knows it has left one.
+      STOPPERS = ";{}"
     }
     {
       i = 1
@@ -144,13 +146,35 @@ scan_file() {
         if (after != "" && index(HEX, after) > 0) { i = j; continue }
 
         if (digits == 3 || digits == 4) {
-          # Left context: skip back over an optional quote, then whitespace,
-          # and ask whether a `:` or `=` introduces the token.
+          # Left context: is the token somewhere inside a declaration VALUE?
+          # Walk back to the nearest `:` or `=`, giving up if a `;`, `{` or `}`
+          # ends the declaration first, or if the line starts. Testing only the
+          # character immediately before the token would recognize a colour
+          # solely where it LEADS the value (`color: #333`) and miss every
+          # compound one (`border: 1px solid #333`, `linear-gradient(#555,
+          # #666)`, `var(--x, #333)`), which is the common shape, so the gate
+          # would red the build on nearly every real stylesheet.
           k = i - 1
-          if (k >= 1 && index(QUOTES, substr($0, k, 1)) > 0) k--
-          while (k >= 1 && (substr($0, k, 1) == " " || substr($0, k, 1) == "\t")) k--
-          opens = (k >= 1 && (substr($0, k, 1) == ":" || substr($0, k, 1) == "="))
+          opens = 0
+          while (k >= 1) {
+            c = substr($0, k, 1)
+            if (c == ":" || c == "=") { opens = 1; break }
+            if (index(STOPPERS, c) > 0) break
+            k--
+          }
+
+          # Right context: a closer immediately after, or trailing whitespace
+          # then `}` for a declaration that omits its final semicolon
+          # (`outline: 2px dashed #999 }`). Whitespace alone is deliberately
+          # NOT a closer: `see #726 for the reason` would otherwise be exempt
+          # on any line that happens to carry an earlier `:`.
           closes = (after != "" && index(CLOSERS, after) > 0)
+          if (!closes) {
+            m = j
+            while (m <= n && (substr($0, m, 1) == " " || substr($0, m, 1) == "\t")) m++
+            closes = (m <= n && substr($0, m, 1) == "}")
+          }
+
           if (opens && closes) { i = j; continue }
         }
 
@@ -169,12 +193,22 @@ for f in ${scan_files[@]+"${scan_files[@]}"}; do
   # a missing-file complaint here would be a distribution-boundary finding
   # wearing this gate's clothes; the release CLI's own `--check` owns that.
   [ -f "$f" ] || continue
-  # GAIA ships binary assets (favicons, fonts, the `gaia` CLI bundle's sibling
-  # images), and awk aborts the whole run with a multibyte conversion error on
-  # the first one rather than skipping it. `grep -I` decides by CONTENT, so a
-  # newly shipped binary of any extension is covered without maintaining a
-  # denylist that would be one extension short. An empty file matches nothing
-  # and is skipped here too, which costs nothing: it has no line to flag.
+  # GAIA ships binary assets (favicons, fonts, images). Their bytes are not
+  # text, but nothing stops a run of them from spelling ` #726`, and a report
+  # naming a line number inside a PNG is noise the reader cannot act on. Skip
+  # them, which also avoids walking megabytes of asset data a character at a
+  # time.
+  #
+  # `grep -I` decides by CONTENT, so a newly shipped binary of any extension is
+  # covered without a denylist that would be one extension short. An empty file
+  # matches nothing and is skipped too, which costs nothing: it has no line to
+  # flag.
+  #
+  # Note for anyone tempted to drop this as belt-and-braces: an earlier draft of
+  # scan_file matched characters with regexes, and awk aborted the whole run
+  # with a multibyte conversion error on the first shipped PNG. The index()
+  # rewrite removed that abort on the awk tested here, so the skip is no longer
+  # what keeps the run alive; it is what keeps the report honest.
   grep -Iq . "$f" || continue
   hits=$(scan_file "$f")
   [ -z "$hits" ] || report+="$hits"$'\n'
