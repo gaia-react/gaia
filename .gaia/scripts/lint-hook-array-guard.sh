@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # lint-hook-array-guard.sh: flag unguarded bare "${arr[@]}" / "${arr[*]}"
 # expansions under `set -u` across the framework's own bash -- the hook bodies
-# in .claude/hooks, every script under .gaia/scripts, and the test bash under
-# .gaia/tests. Exit 1 with a file:line report on any hit, exit 0 when clean. Run
-# it directly from the repo root: `bash .gaia/scripts/lint-hook-array-guard.sh`.
+# in .claude/hooks, plus every script under the scan roots listed below. Exit 1
+# with a file:line report on any hit, exit 0 when clean. Run it directly from
+# the repo root: `bash .gaia/scripts/lint-hook-array-guard.sh`.
 # gaia:maintainer-only:start
 #
 # Enforced twice, and only one of the two blocks a merge. The sibling bats suite
@@ -14,11 +14,11 @@
 # there, by a glob broad enough to cover the whole root; a path the scan reads
 # and the filter misses reports green having run this assertion zero times,
 # which is the failure this gate exists to prevent, one level up. Adding a root
-# to the `find` below is therefore always two edits, here and in that filter.
-# `Shell Lint` runs the same scan a second way, on any
-# tracked *.sh, through .gaia/tests/shell-lint.sh; it is advisory rather than
-# required, so it reports a regression without blocking the merge. Also runnable
-# directly: `bats .gaia/scripts/tests/lint-hook-array-guard.bats`.
+# to the scan below is therefore always two edits, here and in that filter.
+# `Shell Lint` runs the same scan a second way, on any tracked *.sh, through
+# .gaia/tests/shell-lint.sh; it is advisory rather than required, so it reports
+# a regression without blocking the merge. Also runnable directly:
+# `bats .gaia/scripts/tests/lint-hook-array-guard.bats`.
 # gaia:maintainer-only:end
 #
 # Why: on bash 3.2.57 (stock macOS /bin/bash) a bare "${arr[@]}" expansion of
@@ -36,12 +36,20 @@
 
 set -euo pipefail
 
-# Scan surface: the hook scripts, plus every shipped .gaia/scripts script and
-# every .gaia/tests script (both recursive). All three run under `set -u` and
-# expand arrays, so the empty-array abort class is identical in each; the guard
-# catches it wherever the bash lives. A tree absent from this checkout costs
-# nothing: `find` reports it on stderr, which is discarded, and the walk returns
-# the trees that are present.
+# Scan surface: the hook scripts, plus every script under each scan root
+# (recursive). All of them run under `set -u` and expand arrays, so the
+# empty-array abort class is identical in each; the guard catches it wherever
+# the bash lives. `find` (not a `**` glob) keeps the recursive walk portable to
+# bash 3.2, which has no globstar. Collected into one array with a read loop
+# rather than mapfile (bash 4+). Paths stay cwd-relative so the printed
+# file:line is repo-relative when the linter runs from the repo root.
+#
+# The roots are a variable rather than literal `find` arguments because the set
+# differs between this repo and an adopter's. A root that ships must stay on the
+# base assignment; one that does not must be appended inside a maintainer-only
+# block, or the release runtime-dependency check reads it as a shipped script
+# reaching for a path the bundle does not carry, and fails the staging build.
+scan_roots=(.gaia/scripts)
 # gaia:maintainer-only:start
 # .gaia/tests is release-excluded, so it exists only in the GAIA maintainer
 # repo, where a maintainer runs it on the same stock macOS /bin/bash 3.2.57 the
@@ -49,18 +57,15 @@ set -euo pipefail
 # run under bash 5, where the class does not reproduce, so before this scan
 # reached it the only thing standing between the class and main was someone
 # noticing it in a diff.
+scan_roots+=(.gaia/tests)
 # gaia:maintainer-only:end
-# `find` (not a `**` glob) keeps the recursive walk portable to bash
-# 3.2, which has no globstar. Collected into one array with a read loop rather
-# than mapfile (bash 4+). Paths stay cwd-relative so the printed file:line is
-# repo-relative when the linter runs from the repo root.
 scan_files=()
 for f in .claude/hooks/*.sh; do
   scan_files+=("$f")
 done
 while IFS= read -r f; do
   scan_files+=("$f")
-done < <(find .gaia/scripts .gaia/tests -type f -name '*.sh' 2>/dev/null | LC_ALL=C sort)
+done < <(find ${scan_roots[@]+"${scan_roots[@]}"} -type f -name '*.sh' 2>/dev/null | LC_ALL=C sort)
 
 scan_file() {
   local f="$1"
