@@ -235,6 +235,17 @@ jobs:
               # pinned bats version or digest would report `code=false` and
               # skip every non-sandbox leg's install.
               - '.gaia/tests/install-bats.sh'
+              # The vendored archive that install extracts. Redundant today:
+              # the `.gaia/tests/**` catch-all below already matches it.
+              # Listed deliberately anyway, the same convention the entry
+              # above and the `sandbox:` ones use, because that catch-all
+              # carries a standing motive to be narrowed -- its own comment
+              # records that it arms the full matrix, two pnpm installs
+              # included, on any `.gaia/tests` change. A narrowing that
+              # dropped the archive would leave a vendor-only edit skipping
+              # every non-sandbox install, and the digest check that would
+              # have caught a swapped blob runs inside exactly that install.
+              - '.gaia/tests/vendor/**'
               # The audit-guard-structural suite (.gaia/scripts/tests/) greps the
               # prose of these three instruction files for the no-op-guard wiring
               # (SPEC-025 plan DP-005). An instruction-only edit touches none of

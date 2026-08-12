@@ -47,11 +47,15 @@ file_sha256() {
 }
 
 # Match $1 against the script's executable lines only, failing when it matches.
-# Whole-line comments are stripped first: the header documents the re-vendor
-# recipe, which names the very commands V4 exists to keep out of the code, so
-# scanning the raw file would red on its own instructions.
+# Whole-line comments are dropped: the header documents the re-vendor recipe,
+# which names the very commands V4 exists to keep out of the code, so scanning
+# the raw file would red on its own instructions.
+#
+# Number first, then drop, so a hit cites the line it occupies in the script.
+# Stripping first renumbers what survives, and the offset a failure printed
+# would then point a reader at an unrelated line.
 refute_code_match() {
-  grep -vE '^[[:space:]]*#' "$SCRIPT" | grep -nE "$1" && return 1
+  grep -n '^' "$SCRIPT" | grep -vE '^[0-9]+:[[:space:]]*#' | grep -E "$1" && return 1
   return 0
 }
 
@@ -70,8 +74,14 @@ refute_code_match() {
   [ "$actual" = "$BATS_SHA256_PIN" ]
 }
 
+# The alternation covers the fetchers a restored fallback would plausibly
+# reach for, not every command capable of a socket. `npx` and `gh` are in it
+# because they are the local idioms: `.gaia/tests/lib/run-all.sh` already falls
+# back to `npx -y bats@latest` when bats is absent, so that is the likeliest
+# shape of a re-added download, and it names no URL for a host-based pattern to
+# catch. `git` cannot join them: this script resolves the checkout with it.
 @test "V4: the install reaches no network" {
-  refute_code_match '(^|[^[:alnum:]_-])(curl|wget|nc|scp)([^[:alnum:]_-]|$)'
+  refute_code_match '(^|[^[:alnum:]_-])(curl|wget|nc|scp|npx|gh)([^[:alnum:]_-]|$)'
 }
 
 @test "V5: the digest is checked before the archive is extracted" {
