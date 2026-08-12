@@ -33,7 +33,7 @@ Two filters keep the same unfixable transitive advisory from spamming every revi
 
 ## Distinct from the CI blocking path
 
-This local check is read-only. GAIA CI's automation runs its own `pnpm audit` cron that opens review-required security PRs and issues for high/critical advisories; that is the blocking placement, on the network side. The local check duplicates none of it: it opens no PR, files no issue, bumps no package. CI blocks the merge train; the local run only informs one review.
+This local check is read-only. GAIA's automation renders a scheduled `pnpm audit` workflow that opens review-required security PRs and issues for high/critical advisories; that is the blocking placement, on the network side. It is generated per project from `.gaia/automation.json` by `gaia automation render-workflows`, so it runs only where a project has configured it. The local check duplicates none of it: it opens no PR, files no issue, bumps no package. Where that workflow is rendered, CI blocks the merge train; the local run only informs one review.
 
 ## Acting on output
 

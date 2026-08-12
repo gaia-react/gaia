@@ -254,7 +254,7 @@ gaia_registry_integrity_snapshot() {
   jq -r '.integrity_snapshot[]?.path' "$registry"
 }
 
-# gaia_registry_recognizes <relpath> <type: f|d>: see the header contract above.
+# gaia_registry_recognizes: see the header contract above.
 gaia_registry_recognizes() {
   local relpath="${1:-}" reqtype="${2:-}"
   [ -n "$relpath" ] || return 0
@@ -303,7 +303,7 @@ gaia_registry_recognizes() {
   return 1
 }
 
-# gaia_registry_classify <relpath>: see the header contract above.
+# gaia_registry_classify: see the header contract above.
 gaia_registry_classify() {
   local relpath="${1:-}"
   [ -n "$relpath" ] || {

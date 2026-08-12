@@ -22,33 +22,16 @@
  * against an adversary who controls the manifest.
  *
  * **Write confinement.** A region's regeneration command legitimately rewrites
- * every path it owns, but nothing else. Before the spawn, this command hashes
- * every regular file and reads every symlink under the union of the declared
- * paths' parent directories (the "snapshot scope"); after the spawn, any path
- * in scope the spawn newly created is removed, and then anything in scope that
- * is not one of the region's declared paths and no longer matches its pre-image
- * is put back, whether the spawn rewrote it or deleted it. Undoing the
- * creations first is what leaves an ordinary run with real directories to
- * resolve through, so a link the spawn left behind is gone before any pre-image
- * is written near it.
- * Three rules hold the guarantee whatever order anything happens in. Neither
- * snapshot pass traverses a symlink, inside the scope or above it, so a link
- * is recorded and restored as itself and nothing behind one is read or
- * written; a scope directory that is a link, or is reached through one, is
- * recorded but never walked, since reading through a link the writes will not
- * resolve through is what would put an out-of-tree pre-image inside the
- * repository. Every write first asks whether the components between the root
- * and the key are real directories, reporting rather than resolving through one
- * that is not, so a scope key can never name one place while the bytes land in
- * another. And a path is deleted as a spawn creation only where
- * `collectScopeDigests`' removal invariant permits it, stated in full there and
- * not restated here. Anything else is reported rather than deleted.
+ * every path it owns, but nothing else. The guarantee spans two functions and
+ * neither states it alone, so read both before moving either:
+ * `collectScopeDigests` takes the before/after snapshot and owns the removal
+ * invariant, and `sweepScope` reverts what the spawn touched outside the
+ * region's declared paths. Each is stated in full at its own function, with
+ * its limits, rather than restated here.
  *
- * A `git status --porcelain -z` before/after pair also catches a
- * write anywhere else in the tree; that has no pre-image to restore from, so
- * it is only reported, never reverted. The spawn never runs through a shell
- * and never takes a shell-interpreted string: it is always a fixed argv array,
- * and it is bounded in output and runtime.
+ * `reportOutOfScopeWrites` covers the rest of the tree from a
+ * `git status --porcelain -z` before/after pair, which has no pre-image to
+ * restore from.
  *
  * Exit codes: 0 for every refusal, skip, spawn failure, or non-zero program
  * exit; 1 only when the flags or `--manifest` itself are unusable.
