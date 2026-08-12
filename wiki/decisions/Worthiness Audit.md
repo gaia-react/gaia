@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-23
 created: 2026-06-23
-updated: 2026-07-08
+updated: 2026-08-12
 tags: [decision, tdd, testing, audit, quality]
 ---
 
@@ -116,7 +116,11 @@ ledger:
 - `signal` is the SAME `sha256`-of-normalized-test-call the RED ledger computes
   via `.gaia/scripts/red-ledger/extract-test-signals.mjs`. The writer reuses
   that helper, so the signal byte-matches what the merge presence gate
-  recomputes; reinventing the identity primitive would desync the gate.
+  recomputes; reinventing the identity primitive would desync the gate. The
+  hash covers the test's comment-free content, so rewording a comment inside a
+  test does not change the signal and a recorded verdict survives it; a change
+  to what the test executes still rotates the signal and invalidates the
+  recorded verdict.
 - Each non-keep verdict carries a machine-checkable `artifact` (the cited
   sibling for a redundancy delete, the unreachable/missing assertion for a fix),
   so an all-keep run with no artifacts is a detectable contradiction.

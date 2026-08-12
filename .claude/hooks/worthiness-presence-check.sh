@@ -49,7 +49,9 @@
 #   - the deny path is fail-closed ONLY for the clean case: a parseable in-scope
 #     emergent test whose CURRENT signal has no matching worthiness-ledger line.
 #
-# Stale-signal lines (a line written before a later test edit) carry the old
+# The signal covers the test's comment-free content, so a comment reword
+# leaves it unchanged and a matching line still counts. Stale-signal lines (a
+# line written before a later edit to what the test executes) carry the old
 # signal and so never match the recomputed current signal -> rejected, exactly
 # like the RED gate's stale-signal invalidation.
 #
@@ -227,8 +229,9 @@ while IFS= read -r path; do
     [ -n "$full" ] && [ -n "$sig" ] || continue
 
     # Require >=1 ledger line with schema 1, this file, this fullName, and this
-    # CURRENT signal. A matching line at a stale signal (the test was edited after
-    # its verdict) does not count -> stale-signal rejection. A missing ledger file
+    # CURRENT signal. A matching line at a stale signal (the test's executed
+    # content was edited after its verdict; a comment reword does not change the
+    # signal) does not count -> stale-signal rejection. A missing ledger file
     # means zero matches -> deny. Presence is the whole decision; the
     # keep/fix/delete verdict stays advisory and is never read here.
     matched=""
@@ -274,7 +277,7 @@ No worthiness-ledger line matches the current signal for:
 
 ${missing_list}
 
-These emergent tests changed in this PR, but no worthiness verdict was recorded for their current content. The line proves only that the test-identity extractor ran over the current bytes, not that judgement was applied; the human PR rollup carries that. Editing a test after its verdict invalidates the line (the signal changes), so a fresh verdict must be recorded for the current body."
+These emergent tests changed in this PR, but no worthiness verdict was recorded for their current content. The line proves only that the test-identity extractor ran over the current bytes, not that judgement was applied; the human PR rollup carries that. The signal covers the test's comment-free content, so rewording a comment leaves the line intact, but a change to what the test executes invalidates the line (the signal changes), so a fresh verdict must be recorded for the current body."
 fi
 
 reason="${reason}

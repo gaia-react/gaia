@@ -23,12 +23,19 @@
 // fullName: top-level test('foo') -> "foo"; describe('a', describe('b',
 // test('c'))) -> "a b c".
 //
-// signal: "sha256:" + lowercase-hex sha256 of the NORMALIZED source text of
-// the whole test call expression (from the test/it identifier through the
-// matching close paren). Normalization: trim leading/trailing whitespace,
-// then collapse every internal run of whitespace to a single space. Stable
-// under pure reformatting; changes when the title, assertion, or body
-// changes.
+// signal: "sha256:" + lowercase-hex sha256 of the NORMALIZED, COMMENT-FREE
+// content of the whole test call expression (from the test/it identifier
+// through the matching close paren). Comment spans are collected as lexical
+// comment ranges at parsed token boundaries; every range overlapping a
+// JsxText node is discarded BEFORE the ranges are deduplicated and merged;
+// each surviving span is replaced by a single space. Normalization then trims
+// leading/trailing whitespace and collapses every internal run of whitespace
+// to a single space. Stable under pure reformatting and under a comment
+// reword; any change to what the test executes still rotates it. The
+// guarantee covers a comment's TEXT: deleting a comment that sits with no
+// adjacent whitespace on one side leaves the separating space behind and does
+// rotate the signal, the accepted price of never fusing the two tokens the
+// comment sat between.
 //
 // kind: "type-only" when the test's assertions are all type-level (an
 // expectTypeOf(...)/assertType(...) call, or a `@ts-expect-error` proof
@@ -38,6 +45,10 @@
 // exempts it, delegating type correctness to the `tsc` Quality Gate step. The
 // predicate requires a positive type-level signal and defaults to "runtime"
 // (enforce) when unsure, so a no-assertion test is never silently exempted.
+// kind reads the RAW span, comments included, so a directive comment is
+// visible to kind and invisible to signal. Identity and kind deliberately
+// derive from different byte sets; that is an accepted limit, not an
+// oversight.
 
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
@@ -162,12 +173,107 @@ const TYPE_ASSERTION_NAMES = new Set(['expectTypeOf', 'assertType']);
 // it is deliberately NOT treated as a type-only signal.
 const TS_EXPECT_ERROR_DIRECTIVE = /(?:\/\/|\/\*)[^\n]*@ts-expect-error\b/;
 
+// Walk to the leaf tokens. forEachChild skips tokens entirely, so comment
+// trivia can only be reached through getChildren.
+function forEachLeafToken(node, cb) {
+  const children = node.getChildren(sourceFile);
+  if (children.length === 0) {
+    cb(node);
+    return;
+  }
+  for (const child of children) {
+    forEachLeafToken(child, cb);
+  }
+}
+
+// Comment spans excluded from the hashed content, sorted and non-overlapping.
+//
+// The ranges are read at parser-supplied token boundaries, which is what makes
+// a doubled forward slash inside a string, template, or regular-expression
+// literal unreachable: between two tokens there is only trivia. A free-running
+// ts.createScanner loop over the file text does not have that property, it
+// reports the tail of a template literal as a line comment and would delete
+// live code from the hashed content.
+//
+// The JsxText discard MUST run before the merge. In <div>// alpha</div>, the
+// `>` token's trailing range runs to end of line, so it swallows the JSX text,
+// the closing tag, and any genuine {/* … */} comment on the same line, and it
+// strictly CONTAINS that comment's own range. Merging first fuses the range
+// that must be dropped with the range that must be kept, and the drop then
+// takes both, leaving the JSX comment's text inside the signal.
+function collectCommentSpans() {
+  const raw = [];
+  forEachLeafToken(sourceFile, (token) => {
+    const leading = ts.getLeadingCommentRanges(source, token.getFullStart());
+    const trailing = ts.getTrailingCommentRanges(source, token.getEnd());
+    for (const range of leading ?? []) {
+      raw.push([range.pos, range.end]);
+    }
+    for (const range of trailing ?? []) {
+      raw.push([range.pos, range.end]);
+    }
+  });
+
+  const jsxTextSpans = [];
+  const collectJsxText = (node) => {
+    if (node.kind === ts.SyntaxKind.JsxText) {
+      jsxTextSpans.push([node.pos, node.end]);
+    }
+    ts.forEachChild(node, collectJsxText);
+  };
+  ts.forEachChild(sourceFile, collectJsxText);
+
+  const kept = raw.filter(
+    ([a, b]) => !jsxTextSpans.some(([x, y]) => a < y && x < b),
+  );
+
+  // The same block comment arrives twice: once as one token's trailing range,
+  // once as the next token's leading range.
+  kept.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  const merged = [];
+  for (const [a, b] of kept) {
+    const last = merged[merged.length - 1];
+    if (last && a <= last[1]) {
+      if (b > last[1]) {
+        last[1] = b;
+      }
+    } else {
+      merged.push([a, b]);
+    }
+  }
+  return merged;
+}
+
+const commentSpans = collectCommentSpans();
+
+// Rebuild [start, end) with every overlapping comment span replaced by ONE
+// space, never the empty string: empty-string excision fuses the two tokens a
+// tight inline comment sat between, so `typeof/* c */'x'` would hash the same
+// as `typeof'x'`.
+function textWithoutComments(start, end) {
+  let out = '';
+  let cursor = start;
+  for (const [a, b] of commentSpans) {
+    if (b <= start) {
+      continue;
+    }
+    if (a >= end) {
+      break;
+    }
+    const from = Math.max(a, start);
+    const to = Math.min(b, end);
+    out += source.slice(cursor, from) + ' ';
+    cursor = to;
+  }
+  return out + source.slice(cursor, end);
+}
+
 function normalize(text) {
   return text.trim().replace(/\s+/g, ' ');
 }
 
 function signalFor(node) {
-  const text = node.getText(sourceFile);
+  const text = textWithoutComments(node.getStart(sourceFile), node.getEnd());
   const normalized = normalize(text);
   const hex = createHash('sha256').update(normalized, 'utf8').digest('hex');
   return `sha256:${hex}`;
@@ -270,4 +376,9 @@ visit(sourceFile, []);
 if (lines.length > 0) {
   process.stdout.write(lines.join('\n') + '\n');
 }
-process.exit(0);
+// No process.exit() here. Every consumer reads this through a pipe, and a
+// pipe-backed stdout is asynchronous on macOS: exiting explicitly discards
+// whatever has not flushed past the 64KB pipe buffer, while still reporting
+// success. A large enough test file would hand the RED gate a truncated
+// record set and clear it on the tests whose records were cut.
+process.exitCode = 0;
