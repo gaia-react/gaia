@@ -46,17 +46,29 @@ file_sha256() {
   fi
 }
 
-# Match $1 against the script's executable lines only, failing when it matches.
-# Whole-line comments are dropped: the header documents the re-vendor recipe,
-# which names the very commands V4 exists to keep out of the code, so scanning
-# the raw file would red on its own instructions.
+# The script's executable lines, each still carrying its own line number.
 #
-# Number first, then drop, so a hit cites the line it occupies in the script.
-# Stripping first renumbers what survives, and the offset a failure printed
-# would then point a reader at an unrelated line.
+# Whole-line comments are dropped because the header documents the re-vendor
+# recipe, and that recipe quotes the very command lines the assertions below
+# search for. Every assertion that reads the script reads it through here, so
+# a comment can neither trip an absence check nor satisfy an ordering one.
+#
+# Number first and drop after: stripping first renumbers what survives, so a
+# reported line would point a reader at an unrelated part of the script.
+code_lines() {
+  grep -n '^' "$SCRIPT" | grep -vE '^[0-9]+:[[:space:]]*#'
+}
+
+# Fail when $1 matches an executable line.
 refute_code_match() {
-  grep -n '^' "$SCRIPT" | grep -vE '^[0-9]+:[[:space:]]*#' | grep -E "$1" && return 1
+  code_lines | grep -E "$1" && return 1
   return 0
+}
+
+# The script line number of the first executable line matching $1, empty when
+# nothing matches.
+code_line_of() {
+  code_lines | grep -E "$1" | head -1 | cut -d: -f1
 }
 
 @test "V1: the version and digest pins parse out of the script" {
@@ -86,8 +98,8 @@ refute_code_match() {
 
 @test "V5: the digest is checked before the archive is extracted" {
   local verify_line extract_line
-  verify_line="$(grep -n 'sha256sum -c -' "$SCRIPT" | head -1 | cut -d: -f1)"
-  extract_line="$(grep -n 'tar -xzf' "$SCRIPT" | head -1 | cut -d: -f1)"
+  verify_line="$(code_line_of 'sha256sum -c -')"
+  extract_line="$(code_line_of 'tar -xzf')"
   [ -n "$verify_line" ]
   [ -n "$extract_line" ]
   [ "$verify_line" -lt "$extract_line" ]
@@ -95,4 +107,17 @@ refute_code_match() {
 
 @test "V6: nothing is piped into tar" {
   refute_code_match '\|[[:space:]]*(sudo[[:space:]]+)?tar([^[:alnum:]_-]|$)'
+}
+
+# The half of a bump that leaves no other trace. A superseded archive left
+# beside the new one still passes every assertion above, because each of them
+# reads the pinned name and finds it; what a leftover costs is that the
+# directory stops answering which blob is live, and it carries the retired
+# bytes forward in the tree for no reason. Asserting the whole directory,
+# rather than the pinned file's presence, is what makes the script header's
+# claim that this suite reds on a half-finished bump true.
+@test "V7: the vendor directory holds the pinned archive and nothing else" {
+  local found
+  found="$(find "$REPO_ROOT/.gaia/tests/vendor" -maxdepth 1 -name '*.tar.gz' | sort)"
+  [ "$found" = "$VENDORED" ]
 }

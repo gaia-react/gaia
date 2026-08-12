@@ -457,7 +457,7 @@ jobs:
             #
             # Be honest about what that still costs, because it is a real change
             # in this job's posture rather than a free addition. Those four globs
-            # match 459 of 1471 tracked files, a bit under a third, but they are
+            # match a bit under a third of tracked files, but they are
             # the documentation and configuration types, so the PRs that arm
             # `sandbox` alone are the ones that used to run no step at all: a
             # wiki-only change now runs `apt-get update`, unless its paths also
@@ -471,10 +471,13 @@ jobs:
             # exposure is bounded to an apt install.
             # Read the four broad globs at the end of this list first: they
             # cover every committed .json/.md/.yml/.yaml, which is most of what
-            # these suites read. Only three entries above them are load-bearing
-            # on their own, the ones whose file type those globs do not reach:
-            # the suite dir itself (.bats), the CLI schema (.ts), and the .env
-            # guard hook (.sh). Each is marked below. The rest are redundant
+            # these suites read. The entries above them that are load-bearing on
+            # their own are the ones whose file type those globs do not reach,
+            # and each says so at its own entry rather than being counted or
+            # listed here, because a tally in this sentence goes stale the next
+            # time one is added and reads as completeness while it does. The
+            # file types that need such an entry are the ones no broad glob
+            # names: .bats, .ts, .sh, .tar.gz. The rest are redundant
             # today and kept deliberately, so that narrowing the broad globs
             # later cannot silently drop a suite's source; a reader auditing
             # completeness should know which is which rather than assume every
