@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # lint-hook-array-guard.sh: flag unguarded bare "${arr[@]}" / "${arr[*]}"
-# expansions under `set -u` across the framework's shipped bash -- the hook
-# bodies in .claude/hooks and every script under .gaia/scripts. Exit 1 with a
-# file:line report on any hit, exit 0 when clean. Run it directly from the repo
-# root: `bash .gaia/scripts/lint-hook-array-guard.sh`.
+# expansions under `set -u` across the framework's own bash -- the hook bodies
+# in .claude/hooks, every script under .gaia/scripts, and the test bash under
+# .gaia/tests. Exit 1 with a file:line report on any hit, exit 0 when clean. Run
+# it directly from the repo root: `bash .gaia/scripts/lint-hook-array-guard.sh`.
 # gaia:maintainer-only:start
 #
-# Enforced by the sibling bats suite
-# .gaia/scripts/tests/lint-hook-array-guard.bats, which the `Audit CI Tests`
-# CI job runs on every push touching .claude/hooks/** or .gaia/scripts/**. The
-# suite fails when this scan finds a hit and self-tests the detector against a
-# known-bad fixture. Also runnable directly:
+# Enforced twice. The sibling bats suite
+# .gaia/scripts/tests/lint-hook-array-guard.bats runs in the `Audit CI Tests`
+# scripts shard, armed by a change under .claude/hooks/** or .gaia/scripts/**;
+# it fails when this scan finds a hit and self-tests the detector against a
+# known-bad fixture. `Shell Lint` arms on any tracked *.sh and runs
+# .gaia/tests/shell-lint.sh, which folds this scan in as a pass, so a change
+# confined to .gaia/tests still gates on it. Also runnable directly:
 # `bats .gaia/scripts/tests/lint-hook-array-guard.bats`.
 # gaia:maintainer-only:end
 #
@@ -29,10 +31,15 @@
 
 set -euo pipefail
 
-# Scan surface: the hook scripts, plus every shipped .gaia/scripts script
-# (recursive). Both run under `set -u` and expand arrays, so the empty-array
-# abort class is identical in each; the guard catches it wherever the bash
-# ships. `find` (not a `**` glob) keeps the recursive walk portable to bash
+# Scan surface: the hook scripts, plus every shipped .gaia/scripts script and
+# every .gaia/tests script (both recursive). All three run under `set -u` and
+# expand arrays, so the empty-array abort class is identical in each; the guard
+# catches it wherever the bash lives. .gaia/tests is release-excluded and never
+# reaches an adopter, but a maintainer runs it on the same stock macOS
+# /bin/bash 3.2.57 the shipped scripts abort on, so the class bites there too:
+# the sharder .gaia/tests/bats-shards.sh took the abort in place of its own
+# documented fail-closed exit, and its bash-5 guard suite saw nothing.
+# `find` (not a `**` glob) keeps the recursive walk portable to bash
 # 3.2, which has no globstar. Collected into one array with a read loop rather
 # than mapfile (bash 4+). Paths stay cwd-relative so the printed file:line is
 # repo-relative when the linter runs from the repo root.
@@ -42,7 +49,7 @@ for f in .claude/hooks/*.sh; do
 done
 while IFS= read -r f; do
   scan_files+=("$f")
-done < <(find .gaia/scripts -type f -name '*.sh' 2>/dev/null | LC_ALL=C sort)
+done < <(find .gaia/scripts .gaia/tests -type f -name '*.sh' 2>/dev/null | LC_ALL=C sort)
 
 scan_file() {
   local f="$1"
@@ -99,6 +106,7 @@ exit 0
 # genuinely safe, resolve it by applying the same offset-guard the fix uses,
 # `cmd ${arr[@]+"${arr[@]}"}`, so the gate stays zero-exception rather than
 # carrying an inline suppression. The scan surface is `.claude/hooks/*.sh` plus
-# every `.gaia/scripts/**/*.sh` (recursive); several shipped-script expansions
-# it flags sit behind a cross-line count-guard and carry the offset-guard for
+# every `.gaia/scripts/**/*.sh` and `.gaia/tests/**/*.sh` (recursive); many of
+# the expansions it flags sit behind a cross-line count-guard, or over an array
+# filled from a literal that cannot be empty, and carry the offset-guard for
 # exactly this reason.

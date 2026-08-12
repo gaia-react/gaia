@@ -108,7 +108,7 @@ fi
 # Three files exist with expected names.
 expected_files=(uat-001.spec.ts uat-002.spec.ts uat-003.spec.ts)
 all_present=1
-for f in "${expected_files[@]}"; do
+for f in ${expected_files[@]+"${expected_files[@]}"}; do
     if [ ! -f "$SPEC_DIR/$f" ]; then
         all_present=0
         fail "expected spec file missing: $SPEC_DIR/$f"
@@ -119,7 +119,7 @@ if [ "$all_present" -eq 1 ]; then
 fi
 
 # Each file imports playwright + carries the UAT-NNN — SPEC-099 test name.
-for f in "${expected_files[@]}"; do
+for f in ${expected_files[@]+"${expected_files[@]}"}; do
     path="$SPEC_DIR/$f"
     [ -f "$path" ] || continue
     if grep -qF "import {expect, test} from '@playwright/test';" "$path"; then
@@ -196,7 +196,7 @@ fi
 
 # Snapshot all three rendered files for byte-compare after the targeted rewrite.
 mkdir -p "$TMPDIR_RUN/snap1"
-for f in "${expected_files[@]}"; do
+for f in ${expected_files[@]+"${expected_files[@]}"}; do
     cp "$SPEC_DIR/$f" "$TMPDIR_RUN/snap1/$f"
 done
 

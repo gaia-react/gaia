@@ -91,7 +91,7 @@ die_usage() {
 
 is_known_shard() {
   local id="$1" s
-  for s in "${SHARD_IDS[@]}"; do
+  for s in ${SHARD_IDS[@]+"${SHARD_IDS[@]}"}; do
     if [ "$s" = "$id" ]; then
       return 0
     fi
@@ -144,7 +144,7 @@ read_lines() {
 
 is_pinned_hook() {
   local base="$1" pinned
-  for pinned in "${PINNED_HOOKS[@]}"; do
+  for pinned in ${PINNED_HOOKS[@]+"${PINNED_HOOKS[@]}"}; do
     if [ "$base" = "$pinned" ]; then
       return 0
     fi
@@ -155,7 +155,7 @@ is_pinned_hook() {
 files_hooks1() {
   local p base found pinned
   read_lines < <(discover_bats "$HOOKS_DIR")
-  for pinned in "${PINNED_HOOKS[@]}"; do
+  for pinned in ${PINNED_HOOKS[@]+"${PINNED_HOOKS[@]}"}; do
     found=0
     for p in ${lines[@]+"${lines[@]}"}; do
       base="${p##*/}"
@@ -227,7 +227,7 @@ files_for_shard() {
 
 cmd_shards() {
   local s
-  for s in "${SHARD_IDS[@]}"; do
+  for s in ${SHARD_IDS[@]+"${SHARD_IDS[@]}"}; do
     printf '%s\n' "$s"
   done
 }
@@ -236,7 +236,7 @@ cmd_files() {
   local id="$1" out rc
   if ! is_known_shard "$id"; then
     printf 'bats-shards: unknown shard id: %s\n' "$id" >&2
-    printf 'bats-shards: known ids: %s\n' "${SHARD_IDS[*]}" >&2
+    printf 'bats-shards: known ids: %s\n' "${SHARD_IDS[*]+"${SHARD_IDS[*]}"}" >&2
     exit 2
   fi
   rc=0

@@ -14,7 +14,7 @@ setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   # This suite runs the Node signal helper, which resolves `typescript` from
   # node_modules; skip where deps aren't installed (e.g. the lean
-  # audit-ci-tests CI box) so `bats .gaia/tests/hooks/` stays green there.
+  # audit-ci-tests CI box) so this suite's shard stays green there.
   [ -d "$REPO_ROOT/node_modules/typescript" ] || skip "typescript not installed (node-dependent RED suite)"
   HELPER="$REPO_ROOT/.gaia/scripts/red-ledger/extract-test-signals.mjs"
   LIB="$REPO_ROOT/.claude/hooks/lib/red-ledger.sh"

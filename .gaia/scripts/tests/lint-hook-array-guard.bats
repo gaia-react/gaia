@@ -2,17 +2,18 @@
 # Tests for .gaia/scripts/lint-hook-array-guard.sh: the static gate that flags
 # unguarded bare "${arr[@]}" / "${arr[*]}" expansions under `set -u`, the bash
 # 3.2.57 empty-array abort class the bash-5 bats suites are blind to. The gate
-# scans the .claude/hooks bodies and every shipped .gaia/scripts/**/*.sh.
+# scans the .claude/hooks bodies, every shipped .gaia/scripts/**/*.sh, and the
+# framework test bash under .gaia/tests/**/*.sh.
 #
 # Two jobs: prove the detector fires on a known-bad fixture in each scanned tree
-# (including a .gaia/scripts subdirectory, so the recursive walk is covered) and
+# (including a subdirectory of each recursive tree, so the walk is covered) and
 # stays quiet on each guarded form (offset-guard, count-guard, no-set-u,
 # comment), and assert the real scanned tree is clean so a regression fails CI.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 # The linter is invoked as `bash "$LINTER"` from a fixture cwd, matching
-# how CI runs it from the repo root; it scans `.claude/hooks/*.sh` and
-# `.gaia/scripts/**/*.sh` relative to cwd.
+# how CI runs it from the repo root; it scans `.claude/hooks/*.sh`,
+# `.gaia/scripts/**/*.sh` and `.gaia/tests/**/*.sh` relative to cwd.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -43,9 +44,18 @@ fixture_script() {
   printf '%s\n' "$2" > "$TMP/.gaia/scripts/$1"
 }
 
+# fixture_test_script <relpath> <body>: a tmp repo with one .gaia/tests/<relpath>
+# holding <body>. Sets $TMP. <relpath> may name a subdirectory so the recursive
+# walk is exercised. Run the linter from $TMP so its cwd-relative scan resolves.
+fixture_test_script() {
+  TMP="$(mktemp -d -t array-guard-lint-XXXXXX)"
+  mkdir -p "$TMP/.gaia/tests/$(dirname "$1")"
+  printf '%s\n' "$2" > "$TMP/.gaia/tests/$1"
+}
+
 # 1. The real scanned tree is clean (regression gate)
 
-@test "the real scanned tree (.claude/hooks + .gaia/scripts) passes the lint" {
+@test "the real scanned tree (.claude/hooks + .gaia/scripts + .gaia/tests) passes the lint" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
@@ -112,6 +122,32 @@ fixture_script() {
 
 @test "an offset-guarded expansion in a .gaia/scripts file passes" {
   fixture_script probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" ${arr[@]+"${arr[@]}"}'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# 5. The framework test bash under .gaia/tests/** is scanned too, recursively.
+# It runs under the same stock macOS /bin/bash a contributor invokes it with, so
+# the abort class is identical there; the bash-5 bats suites cannot see it, and
+# the sharder that class first bit is itself one of these files.
+
+@test "flags an unguarded bare \${arr[@]} in a .gaia/tests file under set -u" {
+  fixture_test_script probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/tests/probe.sh:4" <<<"$output"
+  grep -qF -- "unguarded" <<<"$output"
+}
+
+@test "recurses into .gaia/tests subdirectories" {
+  fixture_test_script sub/deep.sh $'#!/usr/bin/env bash\nset -u\narr=()\nprintf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/tests/sub/deep.sh:4" <<<"$output"
+}
+
+@test "an offset-guarded expansion in a .gaia/tests file passes" {
+  fixture_test_script probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" ${arr[@]+"${arr[@]}"}'
   run bash -c "cd '$TMP' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }

@@ -167,7 +167,7 @@ main() {
     (
       suite_start=$(date +%s)
       suite_rc=0
-      "${argv[@]}" >"$log" 2>&1 || suite_rc=$?
+      ${argv[@]+"${argv[@]}"} >"$log" 2>&1 || suite_rc=$?
       printf '%s\n' "$(($(date +%s) - suite_start))" >"$LOG_DIR/${slugs[$i]}.secs"
       exit "$suite_rc"
     ) &
