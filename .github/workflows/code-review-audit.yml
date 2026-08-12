@@ -784,7 +784,7 @@ jobs:
           #
           # .github/audit/write-audit-status.sh owns the fail-closed rule these
           # five terminal paths share -- never stamp on an unrecomputable digest,
-          # never clobber a live success -- as one copy rather than five (#1286).
+          # never clobber a live success -- as one copy rather than five (gaia-react/gaia#1286).
           bash .github/audit/write-audit-status.sh \
             --sha "${AUDIT_SHA:-}" \
             --base "${PR_BASE_SHA}"
@@ -835,7 +835,7 @@ jobs:
           # will merge, even if the agent left an unpushed local commit that moved
           # the runner's HEAD off it without changing content.
           #
-          # --success-post-non-fatal: #726 was an HTTP 422 on an unpushed sha
+          # --success-post-non-fatal: gaia-react/gaia#726 was an HTTP 422 on an unpushed sha
           # turning an otherwise-clean audit RED under `set -eu`. A failed status
           # side-effect must never red a clean audit; the local merge path
           # re-stamps. This writer is the only one that takes that answer, and
