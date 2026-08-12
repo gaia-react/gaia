@@ -82,7 +82,7 @@ Worked examples:
 - **paired** — `never seen, so a status posted there 422s and never lands (gaia-react/gaia#726)`
 - **paired** — `Invariant 7: every tracked path resolves an owner (#1245)`
 - **paired** — `forbidden from adding one, that is option A, ruled out in #1053`
-- **unpaired**, the number a grammatical constituent, so the remedy is a rewrite — `half of the rate-overlay auto-heal (#1089 Layer 4)`
+- **unpaired**, the number a grammatical constituent, so the remedy is a rewrite — `Verified against two Sonnet-5-only ledger records; #1088 must not disturb it.`
 - **provenance**, a clause claiming only when the rows arrived — ``No stored `unpriced` at all, which is every row written before #1088 landed``
 - **unpaired**, and dropping the number leaves a title that stands — ``Tests for `.gaia/scripts/verify-required-checks.sh` (#807)``
 
