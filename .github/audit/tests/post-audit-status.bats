@@ -7,11 +7,12 @@
 # The fixture sits here in .github/audit/tests/ so it runs in the same
 # audit-ci-tests.yml suite as the other GAIA-Audit readers/producers.
 #
-# Ownership. Two suites guard this one hook, run by two separate steps of
-# .github/workflows/audit-ci-tests.yml (`bats .github/audit/tests/` and
-# `bats .gaia/tests/hooks/`, both armed by that job's shared `code` path
-# filter). This suite owns the member-aware gate arms and the status-target
-# arms, because only its fixture installs the real resolver (install_resolver)
+# Ownership. Two suites guard this one hook, run by two separate legs of
+# .github/workflows/audit-ci-tests.yml's shard matrix (the `audit` shard and
+# whichever `hooks-*` shard the sharder assigns its sibling, both armed by that
+# job's shared `code` path filter). This suite owns the member-aware gate arms
+# and the status-target arms, because only its fixture installs the real
+# resolver (install_resolver)
 # and only its gh mock rejects a status posted to a sha the bare remote does
 # not carry. .gaia/tests/hooks/post-audit-status.bats owns the usage and
 # marker-shape preconditions, the divergence guards enumerated as decline

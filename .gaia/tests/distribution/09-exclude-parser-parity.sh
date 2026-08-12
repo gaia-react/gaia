@@ -112,7 +112,7 @@ done < "$EXCLUDE_FILE"
 
 if [ "${#LEAKED[@]}" -gt 0 ]; then
   log "Release-excluded fixture path(s) leaked into staging:"
-  for p in "${LEAKED[@]}"; do log "  $p"; done
+  for p in ${LEAKED[@]+"${LEAKED[@]}"}; do log "  $p"; done
   fail "${#LEAKED[@]} release-excluded fixture path(s) leaked; CLI compiler and literal check disagree"
   exit 1
 fi

@@ -147,7 +147,7 @@ if [ "${#staged_agent_defs[@]}" -eq 0 ]; then
   exit 1
 fi
 LEAKED_GLOBS=()
-for def in "${staged_agent_defs[@]}"; do
+for def in ${staged_agent_defs[@]+"${staged_agent_defs[@]}"}; do
   while IFS= read -r g; do
     [ -z "$g" ] && continue
     if printf '%s\n' "$stripped_globs" | grep -qxF "$g"; then
@@ -157,7 +157,7 @@ for def in "${staged_agent_defs[@]}"; do
 done
 if [ "${#LEAKED_GLOBS[@]}" -gt 0 ]; then
   log "Shipped regions naming a stripped member's glob:"
-  for entry in "${LEAKED_GLOBS[@]}"; do log "  $entry"; done
+  for entry in ${LEAKED_GLOBS[@]+"${LEAKED_GLOBS[@]}"}; do log "  $entry"; done
   fail "${#LEAKED_GLOBS[@]} shipped region(s) name a glob belonging to a stripped maintainer-only member"
   exit 1
 fi

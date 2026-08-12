@@ -288,6 +288,31 @@ jobs:
               - '.gaia/tests/forensics/**'
               - '.gaia/tests/hooks/**'
               - '.gaia/tests/lib/**'
+              # lint-hook-array-guard.bats (.gaia/scripts/tests/) asserts the
+              # real scanned tree is clean, and that scan walks every
+              # .gaia/tests/**/*.sh, so the WHOLE tree is a source this suite
+              # guards rather than one it merely runs from. A PR touching a part
+              # of it that no glob names -- reintroducing the bash-3.2
+              # empty-array class the gate exists to catch -- would report
+              # `code=false`, skip every bats step, and green this required
+              # check having run that assertion zero times. `Shell Lint` runs
+              # the same scan on any tracked *.sh, but it is advisory rather
+              # than a declared-required context, so it reports such a
+              # regression without blocking the merge.
+              #
+              # One self-maintaining glob rather than a subtree list, matching
+              # what `.claude/hooks/**` and `.gaia/scripts/**` above already do
+              # for the scan's other two roots. An itemized list has to be
+              # extended the first time a new subdirectory gains a `.sh`, and
+              # nothing forces that edit: adding a file to a new subtree does
+              # not read as widening the scan, so the omission would be silent
+              # and would reopen exactly this gap. The cost is that any
+              # `.gaia/tests` change arms the full matrix, including the two
+              # pnpm installs on the concurrency leg. The entries above stay as
+              # they are: each documents its own test-dir/source-dir pairing,
+              # which this glob does not express, and the file already keeps
+              # redundant-but-documented entries for that reason.
+              - '.gaia/tests/**'
               # The cross-directory bats helper (.gaia/tests/helpers/) is sourced
               # by suites in .gaia/scripts/tests/, .gaia/tests/lib/ and
               # .gaia/tests/hooks/, and it holds the byte-identity assertion

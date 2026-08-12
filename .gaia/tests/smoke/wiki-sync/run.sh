@@ -38,7 +38,7 @@ fi
 results=()
 overall=0
 
-for s in "${scenarios[@]}"; do
+for s in ${scenarios[@]+"${scenarios[@]}"}; do
   name="$(basename "$s")"
   printf '\n=== %s (up to %d attempt(s)) ===\n' "$name" "$MAX_ATTEMPTS"
   attempt=1
@@ -65,7 +65,7 @@ for s in "${scenarios[@]}"; do
 done
 
 printf '\n=== wiki-sync advisory summary ===\n'
-for r in "${results[@]}"; do
+for r in ${results[@]+"${results[@]}"}; do
   printf '%s\n' "$r"
 done
 

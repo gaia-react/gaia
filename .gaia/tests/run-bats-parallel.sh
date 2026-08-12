@@ -167,7 +167,16 @@ main() {
     (
       suite_start=$(date +%s)
       suite_rc=0
-      "${argv[@]}" >"$log" 2>&1 || suite_rc=$?
+      # Fail closed rather than run nothing. parse_table already rejects an
+      # empty command field, so this cannot fire today; without it, an empty
+      # argv would degenerate to a bare redirection that truncates the log and
+      # exits 0, reporting a pass over zero work -- the same lie-green the
+      # empty-table guard above refuses, one level down.
+      if [ "${#argv[@]}" -eq 0 ]; then
+        printf 'run-bats-parallel: suite %s resolved an empty command, refusing to report success\n' "${slugs[$i]}" >&2
+        exit 2
+      fi
+      ${argv[@]+"${argv[@]}"} >"$log" 2>&1 || suite_rc=$?
       printf '%s\n' "$(($(date +%s) - suite_start))" >"$LOG_DIR/${slugs[$i]}.secs"
       exit "$suite_rc"
     ) &

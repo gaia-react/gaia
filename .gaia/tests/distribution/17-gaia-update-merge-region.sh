@@ -207,9 +207,9 @@ S5_ARGS=(update merge-region \
   --current "$FIXTURES/s1-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json)
-S5_FIRST="$(run_cli "$GAIA" "${S5_ARGS[@]}")" \
+S5_FIRST="$(run_cli "$GAIA" ${S5_ARGS[@]+"${S5_ARGS[@]}"})" \
   || fail_with_stderr "scenario 5: first invocation exited non-zero"
-S5_SECOND="$(run_cli "$GAIA" "${S5_ARGS[@]}")" \
+S5_SECOND="$(run_cli "$GAIA" ${S5_ARGS[@]+"${S5_ARGS[@]}"})" \
   || fail_with_stderr "scenario 5: second invocation exited non-zero"
 [ "$S5_FIRST" = "$S5_SECOND" ] \
   || { fail "scenario 5 (idempotence): two invocations on the same inputs produced different output"; exit 1; }
@@ -247,9 +247,9 @@ S6_ARGS=(update merge-region \
   --current "$FIXTURES/s6-current.txt" \
   --start-marker "$START_MARKER" --end-marker "$END_MARKER" \
   --json)
-S6_FIRST="$(run_cli "$GAIA" "${S6_ARGS[@]}")" \
+S6_FIRST="$(run_cli "$GAIA" ${S6_ARGS[@]+"${S6_ARGS[@]}"})" \
   || fail_with_stderr "scenario 6: first post-update invocation exited non-zero"
-S6_SECOND="$(run_cli "$GAIA" "${S6_ARGS[@]}")" \
+S6_SECOND="$(run_cli "$GAIA" ${S6_ARGS[@]+"${S6_ARGS[@]}"})" \
   || fail_with_stderr "scenario 6: second post-update invocation exited non-zero"
 
 printf '%s' "$S6_FIRST" | node -e '

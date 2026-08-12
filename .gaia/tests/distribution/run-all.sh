@@ -16,7 +16,7 @@ candidates=("$DIST_DIR"/*.sh)
 shopt -u nullglob
 
 scenarios=()
-for s in "${candidates[@]}"; do
+for s in ${candidates[@]+"${candidates[@]}"}; do
   name="$(basename "$s")"
   [ "$name" = "run-all.sh" ] && continue
   scenarios+=("$s")
@@ -30,7 +30,7 @@ fi
 results=()
 overall=0
 
-for s in "${scenarios[@]}"; do
+for s in ${scenarios[@]+"${scenarios[@]}"}; do
   name="$(basename "$s")"
   printf '\n=== %s ===\n' "$name"
   if bash "$s"; then
@@ -42,7 +42,7 @@ for s in "${scenarios[@]}"; do
 done
 
 printf '\n=== Summary ===\n'
-for r in "${results[@]}"; do
+for r in ${results[@]+"${results[@]}"}; do
   printf '%s\n' "$r"
 done
 

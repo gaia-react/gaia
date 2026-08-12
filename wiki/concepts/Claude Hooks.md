@@ -108,4 +108,8 @@ Ask Claude to add a hook; Claude will drop the script into `.claude/hooks/` and 
 
 A CI gate (`.gaia/scripts/lint-hook-array-guard.sh`, run over `.claude/hooks/` and the shipped `.gaia/scripts/` on every push) flags a bare `"${arr[@]}"` / `"${arr[*]}"` expansion in a `set -u` body: on stock macOS `/bin/bash` (3.2.57) that expansion aborts with `unbound variable` over an empty array before any trailing `|| true` can catch it, a failure class the bash-5 test suites in CI cannot see. Guard the expansion (`"${arr[@]+"${arr[@]}"}"`) or check the array is non-empty first.
 
+<!-- gaia:maintainer-only:start -->
+In the GAIA maintainer repo the gate also scans `.gaia/tests/`, which a maintainer runs on that same stock `/bin/bash` and which therefore carries the identical class. It reaches that tree through two gates: the `Shell Lint` job, which arms on any tracked `*.sh` and folds the scan into `.gaia/tests/shell-lint.sh`, and the gate's own bats suite in the `Audit CI Tests` scripts shard.
+<!-- gaia:maintainer-only:end -->
+
 See [[Quality Gate]], [[Pre-commit Hooks]], [[Git Workflow]], [[Claude Integration Conventions]], [[TDD RED Verification]].

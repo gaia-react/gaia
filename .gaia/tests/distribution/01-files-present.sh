@@ -28,7 +28,7 @@ done < <(jq -r '.files | keys[]' "$STAGING/.gaia/manifest.json")
 
 if [ "${#MISSING[@]}" -gt 0 ]; then
   log "Manifest claims paths missing from staging tree:"
-  for p in "${MISSING[@]}"; do log "  $p"; done
+  for p in ${MISSING[@]+"${MISSING[@]}"}; do log "  $p"; done
   fail "${#MISSING[@]} manifest path(s) missing from staging"
   exit 1
 fi
@@ -50,7 +50,7 @@ done < "$PROJECT_ROOT/.gaia/release-exclude"
 
 if [ "${#LEAKED[@]}" -gt 0 ]; then
   log "Release-excluded paths present in staging tree:"
-  for p in "${LEAKED[@]}"; do log "  $p"; done
+  for p in ${LEAKED[@]+"${LEAKED[@]}"}; do log "  $p"; done
   fail "${#LEAKED[@]} release-excluded path(s) leaked into staging"
   exit 1
 fi

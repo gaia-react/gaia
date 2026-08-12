@@ -132,13 +132,13 @@ status=0
 
 echo "--> shellcheck *.sh (severity=$SH_SEVERITY): ${#sh_scripts[@]} tracked scripts"
 # Run from the repo root so the paths the linter prints are repo-relative.
-if ! (cd "$REPO_ROOT" && shellcheck --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" "${sh_scripts[@]}"); then
+if ! (cd "$REPO_ROOT" && shellcheck --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" ${sh_scripts[@]+"${sh_scripts[@]}"}); then
   status=1
 fi
 
 if [ "${#bats_scripts[@]}" -gt 0 ]; then
   echo "--> shellcheck *.bats (severity=$BATS_SEVERITY): ${#bats_scripts[@]} tracked suites"
-  if ! (cd "$REPO_ROOT" && shellcheck --severity="$BATS_SEVERITY" --exclude="$TOOLING_EXCLUDE" "${bats_scripts[@]}"); then
+  if ! (cd "$REPO_ROOT" && shellcheck --severity="$BATS_SEVERITY" --exclude="$TOOLING_EXCLUDE" ${bats_scripts[@]+"${bats_scripts[@]}"}); then
     status=1
   fi
 fi
@@ -151,7 +151,7 @@ fi
 # because shellcheck takes one dialect per run.
 if [ "${#husky_hooks[@]}" -gt 0 ]; then
   echo "--> shellcheck .husky/* (dialect=sh, severity=$SH_SEVERITY): ${#husky_hooks[@]} tracked hooks"
-  if ! (cd "$REPO_ROOT" && shellcheck -s sh --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" "${husky_hooks[@]}"); then
+  if ! (cd "$REPO_ROOT" && shellcheck -s sh --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" ${husky_hooks[@]+"${husky_hooks[@]}"}); then
     status=1
   fi
 fi
