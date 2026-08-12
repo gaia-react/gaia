@@ -153,6 +153,17 @@ jobs:
               # shellcheck can see, and a semantic weakening -- dropping the
               # template `diff -rq`, inverting a `cmp` -- is invisible to it.
               - '.gaia/scripts/verify-cli-bundle-fresh.sh'
+              # src/red-ledger/extract-test-signals.test.ts spawns this helper
+              # to pin its stdout-exit contract: a reader that stops before EOF
+              # must leave it exiting 0 silently. Removing that helper's EPIPE
+              # listener is a change to this file and nothing else, so without
+              # this line such a pull request resolves `code=false`, skips the
+              # Vitest step, and reports this required check green having run
+              # the assertion zero times. The bats copy of the same assertion is
+              # no fallback: it sits in a suite whose setup() needs
+              # node_modules/typescript, which audit-ci-tests.yml's lean box
+              # does not install, so it self-skips there on every run.
+              - '.gaia/scripts/red-ledger/extract-test-signals.mjs'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node and install the CLI workspace
         uses: ./.github/actions/gaia-setup-node
