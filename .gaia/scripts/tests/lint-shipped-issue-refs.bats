@@ -192,9 +192,12 @@ run_linter() {
   fixture_manifest "hooks/probe.sh"
   # Documented FAIL-OPEN limit of the punctuation test, asserted so a future
   # narrowing that closes it fails here and gets read rather than guessed at.
-  # Both shapes the script's header names: a reference that satisfies the
-  # opener and the closer at once.
-  fixture_file hooks/probe.sh $'# Fixes: #726;\n# see: the note (#727)'
+  # These are the shapes the script's header names, chosen because they are
+  # what someone actually writes: any line carrying an earlier `:` or `=` where
+  # a `,`, `;`, `)` or quote follows the reference. Pinning realistic shapes
+  # rather than a contrived one is the point, so the fail-open surface is not
+  # underestimated by whoever reads this next.
+  fixture_file hooks/probe.sh $'# Fixes: #726;\n# TODO: fix #727, then remove\n# Why: the hook denies (#728).'
   run_linter
   [ "$status" -eq 0 ]
 }
@@ -254,12 +257,21 @@ run_linter() {
   grep -qF -- "hooks/probe.sh:1:" <<<"$output"
 }
 
-@test "a manifest entry with no file on disk is skipped, not reported" {
+@test "a manifest entry with no file on disk is skipped without stopping the scan" {
   fixture_tree
+  # `absent.sh` sorts before `probe.sh` under LC_ALL=C, so a `break` where the
+  # loop has a `continue` would truncate the scan at the first missing entry
+  # and still print `clean`: the same lie-green the empty-scan-set guard exists
+  # to prevent, reached by another route. The reference below is what makes a
+  # truncating loop observable; without it this test passes either way.
   fixture_manifest "hooks/probe.sh" "hooks/absent.sh"
-  fixture_file hooks/probe.sh $'# nothing to see'
+  fixture_file hooks/probe.sh $'# a bare #726 after the missing entry'
   run_linter
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
+  grep -qF -- "hooks/probe.sh:1:" <<<"$output"
+  # The absent entry is skipped silently rather than reported as a finding.
+  grep -qF -- "absent.sh" <<<"$output" && return 1
+  true
 }
 
 # 6. Reporting contract
