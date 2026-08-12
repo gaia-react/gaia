@@ -42,6 +42,13 @@
 # one it replaces. `.gaia/tests/lib/install-bats.bats` reds on a bump that
 # skips any of those steps.
 #
+# Derive the digest from that fresh download and nowhere else, because no
+# check in the tree can catch it if you do not. The archive and the pin are
+# committed together and are therefore self-consistent by construction: a
+# wrong blob committed beside a digest taken from it satisfies the check
+# below, the guard suite, and every other check here. Upstream is the only
+# thing that disagrees, which is why the recipe above starts by asking it.
+#
 # Maintainer-only. `.gaia/tests` is wholesale release-excluded via
 # `.gaia/release-exclude`, so neither this script nor the vendored archive
 # reaches an adopter.
