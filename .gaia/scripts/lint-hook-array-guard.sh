@@ -6,14 +6,17 @@
 # it directly from the repo root: `bash .gaia/scripts/lint-hook-array-guard.sh`.
 # gaia:maintainer-only:start
 #
-# Enforced twice. The sibling bats suite
+# Enforced twice, and only one of the two blocks a merge. The sibling bats suite
 # .gaia/scripts/tests/lint-hook-array-guard.bats runs in the `Audit CI Tests`
-# scripts shard, armed by a change under .claude/hooks/** or .gaia/scripts/**;
-# it fails when this scan finds a hit and self-tests the detector against a
-# known-bad fixture. `Shell Lint` arms on any tracked *.sh and runs
-# .gaia/tests/shell-lint.sh, which folds this scan in as a pass, so a change
-# confined to .gaia/tests still gates on it. Also runnable directly:
-# `bats .gaia/scripts/tests/lint-hook-array-guard.bats`.
+# scripts shard, a declared-required context; it fails when this scan finds a
+# hit and self-tests the detector against a known-bad fixture. That job's `code`
+# filter is what arms it, so every tree this scan walks has to appear there or
+# the suite reports green having run zero assertions -- the reason the filter
+# lists .gaia/tests/distribution/** and .gaia/tests/smoke/** alongside the
+# trees it already named. `Shell Lint` runs the same scan a second way, on any
+# tracked *.sh, through .gaia/tests/shell-lint.sh; it is advisory rather than
+# required, so it reports a regression without blocking the merge. Also runnable
+# directly: `bats .gaia/scripts/tests/lint-hook-array-guard.bats`.
 # gaia:maintainer-only:end
 #
 # Why: on bash 3.2.57 (stock macOS /bin/bash) a bare "${arr[@]}" expansion of
