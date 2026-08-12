@@ -380,3 +380,7 @@ JSON
   [ -f "$REPO_ROOT/.claude/commands/gaia-init.md" ]
   [ -d "$REPO_ROOT/.gaia/cli/src" ]
 }
+
+@test "PLAN-014 P1 SCRATCH: deliberate failure, reverted immediately" {
+  return 1
+}
