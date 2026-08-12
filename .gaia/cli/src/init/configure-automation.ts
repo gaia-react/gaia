@@ -24,6 +24,7 @@ import type {
 } from '../schemas/automation-config.js';
 import {writeAutomationConfig} from '../setup-ci/util/automation-write.js';
 import {structuredError} from '../stderr.js';
+import {takeValue} from '../util/argv.js';
 import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
@@ -89,20 +90,6 @@ type ToolMode = 'ci' | 'local' | 'off';
 
 const isToolMode = (value: string): value is ToolMode =>
   value === 'ci' || value === 'local' || value === 'off';
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined) {
-    return {message: `${flag} requires a value`, ok: false};
-  }
-
-  return {ok: true, value};
-};
 
 const takeMode = (
   argv: readonly string[],

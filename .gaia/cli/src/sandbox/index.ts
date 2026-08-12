@@ -16,6 +16,7 @@ import {existsSync, mkdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {lookupOwn, takeNonFlagValue} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {resolveMainWorktreeRoot} from '../util/main-root.js';
 import {mergeSandboxSettings} from './apply.js';
@@ -57,20 +58,6 @@ const failInvalid = (subcommand: string, message: string): number => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined || value.startsWith('--')) {
-    return {message: `${flag} requires a value`, ok: false};
-  }
-
-  return {ok: true, value};
-};
-
 /**
  * Generic `--flag value` tokenizer shared by every verb below (mirrors
  * `ping/index.ts`'s `parseArgvTokens`): collects raw `--flag value` pairs
@@ -92,7 +79,7 @@ const tokenize = (argv: readonly string[]): TokenizeResult => {
     if (token === '--json') {
       json = true;
     } else if (token !== undefined) {
-      const taken = takeValue(argv, index + 1, token);
+      const taken = takeNonFlagValue(argv, index + 1, token);
 
       if (!taken.ok) return taken;
       provided.set(token, taken.value);
@@ -695,7 +682,7 @@ export const run = (
     return EXIT_CODES.OK;
   }
 
-  const handler = SUBCOMMAND_HANDLERS[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS, subcommand);
 
   if (handler === undefined) {
     structuredError({

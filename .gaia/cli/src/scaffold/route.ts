@@ -16,6 +16,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {lookupOwn} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {writeFileIfAbsent} from './fs.js';
 import {renderTemplate} from './template.js';
@@ -353,7 +354,7 @@ type ResolvedNames = {
 
 const resolveNames = (kebabName: string, group: string): ResolvedNames => {
   const pascal = toPascalCase(kebabName);
-  const segment = GROUP_TO_SEGMENT[group] ?? '';
+  const segment = lookupOwn(GROUP_TO_SEGMENT, group) ?? '';
 
   return {
     groupSegment: segment,

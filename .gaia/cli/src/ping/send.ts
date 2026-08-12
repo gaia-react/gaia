@@ -19,6 +19,7 @@
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {readOrCreateProjectId, resolveStorageRoots} from '../storage/index.js';
+import {lookupOwn} from '../util/argv.js';
 
 export type PingEvent = 'init' | 'setup' | 'update';
 
@@ -41,7 +42,7 @@ const PLATFORM_LABELS: Readonly<Record<string, string>> = {
  * four-value enum rather than leaking Node's `darwin` / `win32` jargon.
  */
 export const normalizePlatform = (platform: string): string =>
-  PLATFORM_LABELS[platform] ?? 'other';
+  lookupOwn(PLATFORM_LABELS, platform) ?? 'other';
 
 const readGaiaVersion = (cwd: string): string => {
   try {

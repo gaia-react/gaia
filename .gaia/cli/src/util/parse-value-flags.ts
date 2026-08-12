@@ -4,6 +4,7 @@
  * Callers keep what differs: their own `Flags` type, their own flag-to-field
  * map, and their own validation of the collected record.
  */
+import {lookupOwn, takeValue} from './argv.js';
 
 /** Maps a `--flag` token to the state field its value is collected into. */
 export type ValueFlagMap<TField extends string> = Readonly<
@@ -28,32 +29,6 @@ type ValueFlagState<TField extends string> = {
   json: boolean;
 };
 
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
-  // which honestly reflects that `index` can run past the end of argv.
-  const value = argv.at(index);
-
-  if (value === undefined)
-    return {message: `${flag} requires a value`, ok: false};
-
-  return {ok: true, value};
-};
-
-// `token` may not be one of the map's known keys, and that absence is exactly
-// what routes to the unknown-flag branch below. The own-property guard is
-// load-bearing: a bare index reaches `Object.prototype`, so a token like
-// `constructor` or `toString` returns a truthy inherited value, skips the
-// unknown-flag branch, and consumes the following argv element as its value.
-const lookupValueFlag = <TField extends string>(
-  valueFlags: ValueFlagMap<TField>,
-  token: string
-): TField | undefined =>
-  Object.hasOwn(valueFlags, token) ? valueFlags[token] : undefined;
-
 const applyToken = <TField extends string>({
   argv,
   index,
@@ -67,7 +42,7 @@ const applyToken = <TField extends string>({
     return {advance: 0, ok: true};
   }
 
-  const field = lookupValueFlag(valueFlags, token);
+  const field = lookupOwn(valueFlags, token);
 
   if (field === undefined)
     return {message: `unknown flag: ${token}`, ok: false};

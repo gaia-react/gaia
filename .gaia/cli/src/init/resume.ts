@@ -21,6 +21,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {takeValue} from '../util/argv.js';
 import {run as runBootstrapEnv} from './bootstrap-env.js';
 import {run as runConfigureAutomation} from './configure-automation.js';
 import {run as runConfigureI18n} from './configure-i18n.js';
@@ -71,20 +72,6 @@ type FlagParseSuccess = {
 
 type Flags = {
   fromStep: number;
-};
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined) {
-    return {message: `${flag} requires a value`, ok: false};
-  }
-
-  return {ok: true, value};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {

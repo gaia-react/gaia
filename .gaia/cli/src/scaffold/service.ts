@@ -21,6 +21,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {lookupOwn} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {ensureDir, writeFileIfAbsent} from './fs.js';
 import {renderTemplate} from './template.js';
@@ -134,14 +135,8 @@ const ZOD_TYPE_BUILDERS: Record<string, () => string> = {
   string: () => 'z.string()',
 };
 
-// `ZOD_TYPE_BUILDERS` is a Record<string, ...>, so TS treats every key as
-// present, but `base` is caller-controlled and may genuinely not be a
-// builder key. A function's declared return type (unlike a local variable
-// annotation, which TS narrows back to the initializer's type via control
-// flow) is honored at call sites, so wrapping the read here widens it
-// without loosening the lookup table's own type.
 const getZodTypeBuilder = (base: string): (() => string) | undefined =>
-  ZOD_TYPE_BUILDERS[base];
+  lookupOwn(ZOD_TYPE_BUILDERS, base);
 
 const buildZodExpression = (typeToken: string): null | string => {
   const optional = typeToken.endsWith('?');

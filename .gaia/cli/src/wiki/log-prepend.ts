@@ -23,6 +23,7 @@ import {existsSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {lookupOwn, takeValue} from '../util/argv.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 
 const HELP_TEXT = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
@@ -33,6 +34,8 @@ const HELP_TEXT = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKI
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const VALID_DECISIONS = new Set(['RE_ANCHOR', 'SKIP', 'WORTHY']);
 const FRONTMATTER_FENCE = '---';
+
+type FlagKey = 'decision' | 'reason' | 'sha';
 
 type FlagParseFailure = {
   message: string;
@@ -52,22 +55,6 @@ type ParsedFlags = {
   sha: string;
 };
 
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined) {
-    return {message: `${flag} requires a value`, ok: false};
-  }
-
-  return {ok: true, value};
-};
-
-type FlagKey = 'decision' | 'reason' | 'sha';
-
 // Explicitly `| undefined` (rather than relying on the `Record`'s index
 // signature) so the `key === undefined` check below reflects a genuine
 // runtime possibility (an unrecognized flag) that TS can't otherwise see.
@@ -77,9 +64,6 @@ const FLAG_BY_TOKEN: Readonly<Record<string, FlagKey | undefined>> = {
   '--sha': 'sha',
 };
 
-const flagKeyFor = (token: string): FlagKey | undefined =>
-  Object.hasOwn(FLAG_BY_TOKEN, token) ? FLAG_BY_TOKEN[token] : undefined;
-
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   const values: Partial<Record<FlagKey, string>> = {};
 
@@ -87,7 +71,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     const token = argv[index];
 
     if (token !== undefined) {
-      const key = flagKeyFor(token);
+      const key = lookupOwn(FLAG_BY_TOKEN, token);
 
       if (key === undefined) {
         return {message: `unknown flag: ${token}`, ok: false};

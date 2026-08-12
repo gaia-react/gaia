@@ -24,6 +24,7 @@ import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {takeValue} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {markStepCompleted} from './util/state.js';
 
@@ -60,20 +61,6 @@ type FlagParseSuccess = {
 type Flags = {
   locales: [string, ...string[]];
   strip: boolean;
-};
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined) {
-    return {message: `${flag} requires a value`, ok: false};
-  }
-
-  return {ok: true, value};
 };
 
 const parseBool = (raw: string): boolean | null => {

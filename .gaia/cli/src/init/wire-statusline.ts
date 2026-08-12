@@ -27,6 +27,7 @@ import {homedir} from 'node:os';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {takeValue} from '../util/argv.js';
 import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = `Usage: gaia init wire-statusline --mode <global|project|skip>
@@ -66,20 +67,6 @@ type FlagParseSuccess = {
 
 type Flags = {
   mode: Mode;
-};
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined) {
-    return {message: `${flag} requires a value`, ok: false};
-  }
-
-  return {ok: true, value};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {

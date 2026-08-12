@@ -12,6 +12,7 @@ import {existsSync, mkdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {takeValue} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>] [--check]
@@ -53,21 +54,6 @@ type Flags = {
   check: boolean;
   date: string | undefined;
   version: string | undefined;
-};
-
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
-  // which honestly reflects that `index` can run past the end of argv.
-  const value = argv.at(index);
-
-  if (value === undefined)
-    return {message: `${flag} requires a value`, ok: false};
-
-  return {ok: true, value};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {

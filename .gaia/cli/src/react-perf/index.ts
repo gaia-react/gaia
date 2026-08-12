@@ -5,6 +5,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {lookupOwn} from '../util/argv.js';
 import {run as runReduce} from './reduce.js';
 
 const HELP_TEXT = `Usage: gaia react-perf <subcommand> [args]
@@ -34,7 +35,7 @@ export const run = async (argv: readonly string[]): Promise<number> => {
     return EXIT_CODES.OK;
   }
 
-  const handler = SUBCOMMAND_HANDLERS[subcommand];
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS, subcommand);
 
   if (handler !== undefined) {
     const result = await handler(rest);
