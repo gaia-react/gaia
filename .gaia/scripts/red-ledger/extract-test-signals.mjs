@@ -389,6 +389,12 @@ visit(sourceFile, []);
 // asked for, so that is a clean exit rather than a failure. The process.exit()
 // below is the one place it is safe: the pipe is already gone, so there is
 // nothing left to flush and nothing to truncate.
+//
+// The diagnostic failure paths above keep process.exit(N) and are outside this
+// idiom, which governs stdout only. They have no choice: a module-top-level
+// `return` is a SyntaxError in ESM, so exiting is the only way to stop the
+// script there. Each writes one short stderr line, which clears in a single
+// flush, and every caller keys on the exit code rather than on stderr content.
 process.stdout.on('error', (err) => {
   if (err.code === 'EPIPE') process.exit(0);
   throw err;
