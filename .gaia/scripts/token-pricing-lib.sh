@@ -94,7 +94,7 @@ gaia_resolve_rate_overlay() {
 #                             every other surface reads.
 #
 # Never fails the caller and never yields an empty table: every degrade lands on
-# the shipped table, which is the one property #1089 Layer 2 states outright.
+# the shipped table, which is the one property gaia-react/gaia#1089 Layer 2 states outright.
 gaia_apply_rate_overlay() {
   local shipped="$1" override="${2:-}"
   local overlay_path overlay keys merged

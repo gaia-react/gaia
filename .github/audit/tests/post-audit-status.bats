@@ -465,7 +465,7 @@ commit_mixed_diff() {
   return 0
 }
 
-# #794 narrowed. The surfaced short sha is an identifier a maintainer reads back
+# The surfaced short sha is an identifier a maintainer reads back
 # against the PR, so it must re-resolve to the sha the POST actually targeted,
 # and it must stay abbreviated: the hook falls back to printing the full sha
 # when its own re-resolution check fails, so a 40-hex value on this line means

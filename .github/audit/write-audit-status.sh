@@ -9,7 +9,7 @@
 # correction landed on one and silently left the others stale, and because each
 # copy guards a path a given PR may never exercise, the divergence survived CI
 # indefinitely and surfaced as one status meaning different things depending on
-# which path produced it (#1286). This script is the single copy.
+# which path produced it (gaia-react/gaia#1286). This script is the single copy.
 #
 # Usage:
 #   write-audit-status.sh --sha <sha> --base <pr-base-sha> [--require-marker]
@@ -46,7 +46,7 @@
 # success writers do not agree today and neither unification is behavior-
 # preserving: the two skip paths' `success_stamped` ordering depends on a bare
 # POST failing the step under `set -e`, while the clean-no-push path's
-# non-fatality is half the fix for #726 (an HTTP 422 on an unpushed sha turning
+# non-fatality is half the fix for gaia-react/gaia#726 (an HTTP 422 on an unpushed sha turning
 # an otherwise clean audit red). Consolidating the writers must not silently
 # pick a winner, so the divergence is carried as a flag and pinned per path by
 # this repo's bats suites. Whether the four SHOULD agree is a real question and

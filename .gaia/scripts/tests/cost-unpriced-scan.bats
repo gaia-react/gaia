@@ -85,7 +85,8 @@ scan() {
 }
 
 @test "detection is recomputed, so a row predating the unpriced field is still caught" {
-  # No stored `unpriced` at all, which is every row written before #1088 landed.
+  # No stored `unpriced` at all, which is every row written before the field
+  # existed.
   seed_row 2026-07-28T07:28:15Z
   run scan "$RATES_MISSING_SONNET"
   [ "$status" -eq 0 ]

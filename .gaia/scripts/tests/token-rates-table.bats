@@ -71,7 +71,8 @@ rate_for() {
 }
 
 @test "shipped table: claude-sonnet-5 keeps its two-window intro pricing" {
-  # Verified against two Sonnet-5-only ledger records; #1088 must not disturb it.
+  # Verified against two Sonnet-5-only ledger records; a rate-table change must
+  # not disturb it.
   [ "$(rate_for claude-sonnet-5 2026-07-30)" = "2 10" ]
   [ "$(rate_for claude-sonnet-5 2026-09-01)" = "3 15" ]
 }

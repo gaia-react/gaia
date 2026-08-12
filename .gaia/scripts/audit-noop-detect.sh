@@ -431,7 +431,7 @@ case "$SHAPE" in
     # early exit on a large early match SIGPIPEs the upstream writer, and the
     # pipeline's exit code collapses to that SIGPIPE, not grep's match. A
     # full audit report comfortably exceeds the pipe buffer, so this is the
-    # same hazard #748 removed from the success-present guard, not a
+    # same hazard gaia-react/gaia#748 removed from the success-present guard, not a
     # theoretical one. shellcheck disable=SC2016 (literal backticks, not a
     # command substitution).
     # shellcheck disable=SC2016

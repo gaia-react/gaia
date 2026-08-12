@@ -10,7 +10,7 @@
 # checkout's own copy of a file that also exists in the worktree) is a
 # different, equally valid file on disk, so the edit tools apply it with no
 # error: the write silently lands in the wrong checkout. This is the
-# silent-wrong-write footgun of tech-debt #841.
+# silent-wrong-write footgun of tech-debt gaia-react/gaia#841.
 #
 # Tree identity comes from one shared rule and one shared resolver, so this
 # guard never re-derives "which tree am I in":
@@ -24,7 +24,7 @@
 #   succeed into the wrong directory. A payload cwd that is relative, or absolute
 #   but not a checkout, is unusable and routes to the process cwd instead. The
 #   process cwd is the fallback, and it alone would leave the guard inert
-#   whenever the hook process sits outside the repository (tech-debt #940), which
+#   whenever the hook process sits outside the repository (tech-debt gaia-react/gaia#940), which
 #   is an ALLOW; reading the payload first is what keeps the guard live.
 #
 #   Which tree, and where main is: .gaia/scripts/main-root-lib.sh is the one
@@ -37,7 +37,7 @@
 #
 # Scope: the guard adjudicates "does this target resolve into the acting tree",
 # denying any write whose target lands in a different checkout -- the main
-# checkout (#841's own case) or a sibling linked worktree. The acting tree is the
+# checkout (gaia-react/gaia#841's own case) or a sibling linked worktree. The acting tree is the
 # worktree the payload cwd names; the target's own tree is compared against it,
 # so the question is answered from that one authoritative identity, not from main
 # alone. This is the defense-in-depth role isolation.md contracts: deny an
@@ -140,7 +140,7 @@ resolved_target_dir="$(CDPATH='' cd "$target_dir" 2>/dev/null && pwd -P)" || exi
 # protecting, and the ephemeral cache entries (spec-session locks,
 # audit-window breadcrumbs, and the rest) never had one either -- denying
 # them would block the sole correct write, not catch a wrong one (tech-debt
-# #934's class). A relpath the registry does not recognize at all (typo,
+# gaia-react/gaia#934's class). A relpath the registry does not recognize at all (typo,
 # stray, or genuinely unclassified) is NOT exempted here and falls through
 # to the ordinary cross-tree deny below, the same as before the cutover.
 #
@@ -197,7 +197,7 @@ file_root="$(gaia_resolve_tree_root "$target_dir")" || exit 0
 [[ -n "$file_root" ]] || exit 0
 
 # The target resolves into a checkout other than the acting tree: the main
-# checkout or a sibling worktree, both the #841 silent-wrong-write. The exempt
+# checkout or a sibling worktree, both the gaia-react/gaia#841 silent-wrong-write. The exempt
 # shared and main-anchored paths have already returned above, so a cross-tree
 # target reaching here is a real wrong-write, not a legitimate write-through to
 # main.
@@ -212,7 +212,7 @@ if [[ "$file_root" != "$current_root" ]]; then
   if [[ -n "${wg_local_reason:-}" ]]; then
     deny "BLOCKED: $wg_local_reason"
   fi
-  deny "BLOCKED: '$file_path' resolves to a different checkout ('$file_root') than the linked worktree this session works inside ('$current_root'). This is the silent-wrong-write footgun from tech-debt #841: a stale pre-switch absolute path is a real, valid file in another checkout (the main checkout or a sibling worktree), so the edit tools would apply it with no error. Resolve RESOLVED_ROOT fresh (git rev-parse --show-toplevel) and prefix file_path with it."
+  deny "BLOCKED: '$file_path' resolves to a different checkout ('$file_root') than the linked worktree this session works inside ('$current_root'). This is the silent-wrong-write footgun from tech-debt gaia-react/gaia#841: a stale pre-switch absolute path is a real, valid file in another checkout (the main checkout or a sibling worktree), so the edit tools would apply it with no error. Resolve RESOLVED_ROOT fresh (git rev-parse --show-toplevel) and prefix file_path with it."
 fi
 
 exit 0
