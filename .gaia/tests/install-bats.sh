@@ -86,7 +86,13 @@ trap cleanup EXIT
 archive="$tmpdir/bats-core-${BATS_VERSION}.tar.gz"
 url="https://github.com/bats-core/bats-core/archive/refs/tags/v${BATS_VERSION}.tar.gz"
 
-curl -fsSL "$url" -o "$archive"
+# --retry is not decoration here: eleven matrix legs start within seconds of
+# each other and every one of them fetches this archive, and codeload answers
+# part of that burst with a 503. A single unretried attempt failed four legs
+# of the first sharded run. curl treats a 5xx as a transient error, so --retry
+# covers exactly this case; --retry-max-time bounds the whole thing well
+# inside the leg's own cap rather than trading a flake for a hang.
+curl -fsSL --retry 5 --retry-delay 3 --retry-max-time 120 "$url" -o "$archive"
 
 if command -v sha256sum >/dev/null 2>&1; then
   printf '%s  %s\n' "$BATS_SHA256" "$archive" | sha256sum -c -
