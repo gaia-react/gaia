@@ -108,7 +108,7 @@ export const run = async (
   argv: readonly string[],
   options: RunOptions = {}
 ): Promise<number> => {
-  const subcommand = argv[0] as string | undefined;
+  const subcommand = argv[0];
   const rest = argv.slice(1);
 
   if (subcommand === undefined || HELP_TOKENS.has(subcommand)) {
@@ -123,7 +123,9 @@ export const run = async (
     const cwd = options.cwd ?? process.cwd();
     // A help request writes nothing, so it is readable from anywhere. Guard
     // only the invocations that would rewrite the tree.
-    const askingForHelp = rest.length > 0 && HELP_TOKENS.has(rest[0]);
+    const [firstRestToken] = rest;
+    const askingForHelp =
+      firstRestToken !== undefined && HELP_TOKENS.has(firstRestToken);
     const refusal = askingForHelp ? null : targetRefusal(cwd, subcommand);
 
     if (refusal !== null) return refusal;

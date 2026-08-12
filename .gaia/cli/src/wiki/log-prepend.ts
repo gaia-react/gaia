@@ -57,11 +57,13 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  if (index >= argv.length) {
+  const value = argv[index];
+
+  if (value === undefined) {
     return {message: `${flag} requires a value`, ok: false};
   }
 
-  return {ok: true, value: argv[index]};
+  return {ok: true, value};
 };
 
 type FlagKey = 'decision' | 'reason' | 'sha';
@@ -75,22 +77,28 @@ const FLAG_BY_TOKEN: Readonly<Record<string, FlagKey | undefined>> = {
   '--sha': 'sha',
 };
 
+const flagKeyFor = (token: string): FlagKey | undefined =>
+  Object.hasOwn(FLAG_BY_TOKEN, token) ? FLAG_BY_TOKEN[token] : undefined;
+
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   const values: Partial<Record<FlagKey, string>> = {};
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    const key = FLAG_BY_TOKEN[token];
 
-    if (key === undefined) {
-      return {message: `unknown flag: ${token}`, ok: false};
+    if (token !== undefined) {
+      const key = flagKeyFor(token);
+
+      if (key === undefined) {
+        return {message: `unknown flag: ${token}`, ok: false};
+      }
+
+      const taken = takeValue(argv, index + 1, token);
+
+      if (!taken.ok) return taken;
+      values[key] = taken.value;
+      index += 1;
     }
-
-    const taken = takeValue(argv, index + 1, token);
-
-    if (!taken.ok) return taken;
-    values[key] = taken.value;
-    index += 1;
   }
 
   const {decision, reason, sha} = values;
@@ -182,7 +190,7 @@ export const run = (
 
   const first = argv[0];
 
-  if (HELP_TOKENS.has(first)) {
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

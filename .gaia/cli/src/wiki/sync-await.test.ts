@@ -173,7 +173,15 @@ const buildRunner = (
     const index = counters.get(key) ?? 0;
     counters.set(key, index + 1);
 
-    return rule.results[Math.min(index, rule.results.length - 1)];
+    const result = rule.results[Math.min(index, rule.results.length - 1)];
+
+    if (result === undefined) {
+      throw new Error(
+        `buildRunner: rule for ${key} has an empty results array`
+      );
+    }
+
+    return result;
   };
 };
 

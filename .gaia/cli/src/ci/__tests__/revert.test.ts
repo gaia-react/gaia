@@ -308,8 +308,9 @@ describe('ci-revert', () => {
       const ledger = JSON.parse(
         readFileSync(sandbox.ledgerPath, 'utf8')
       ) as RevertLedger;
-      expect(ledger.attempts['99'].status).toBe('open');
-      expect(ledger.attempts['99'].revert_pr).toBe(137);
+      const attempt = ledger.attempts['99'];
+      expect(attempt?.status).toBe('open');
+      expect(attempt?.revert_pr).toBe(137);
     });
 
     test('exits with pr_not_merged when mergeCommit is null', () => {
@@ -445,7 +446,8 @@ describe('ci-revert', () => {
       const ledger = JSON.parse(
         readFileSync(sandbox.ledgerPath, 'utf8')
       ) as RevertLedger;
-      expect(ledger.attempts['99'].revert_pr).toBe(137);
+      const attempt = ledger.attempts['99'];
+      expect(attempt?.revert_pr).toBe(137);
     });
 
     test('reclaims a stale per-PR lock and proceeds', () => {
@@ -464,7 +466,8 @@ describe('ci-revert', () => {
       const ledger = JSON.parse(
         readFileSync(sandbox.ledgerPath, 'utf8')
       ) as RevertLedger;
-      expect(ledger.attempts['99'].revert_pr).toBe(137);
+      const attempt = ledger.attempts['99'];
+      expect(attempt?.revert_pr).toBe(137);
     });
 
     test('refuses when a fresh per-PR lock is held', () => {
@@ -497,7 +500,8 @@ describe('ci-revert', () => {
       const ledger = JSON.parse(
         readFileSync(sandbox.ledgerPath, 'utf8')
       ) as RevertLedger;
-      expect(ledger.attempts['99'].revert_pr).toBe(137);
+      const attempt = ledger.attempts['99'];
+      expect(attempt?.revert_pr).toBe(137);
     });
   });
 
@@ -527,8 +531,9 @@ describe('ci-revert', () => {
       const ledger = JSON.parse(
         readFileSync(sandbox.ledgerPath, 'utf8')
       ) as RevertLedger;
-      expect(ledger.attempts['99'].status).toBe('failed');
-      expect(ledger.attempts['99'].revert_pr).toBe(137);
+      const attempt = ledger.attempts['99'];
+      expect(attempt?.status).toBe('failed');
+      expect(attempt?.revert_pr).toBe(137);
     });
 
     test('exits non-zero on missing attempt', () => {

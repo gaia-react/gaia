@@ -35,22 +35,26 @@ const takeSourceValue = (
   argv: readonly string[],
   index: number
 ): {error: string} | {ok: true; value: string} => {
-  if (index >= argv.length || argv[index].length === 0) {
+  const value = argv[index];
+
+  if (value === undefined || value.length === 0) {
     return {error: '--source requires a path'};
   }
 
-  return {ok: true, value: argv[index]};
+  return {ok: true, value};
 };
 
 const takeSkipValue = (
   argv: readonly string[],
   index: number
 ): {error: string} | {ok: true; value: string} => {
-  if (index >= argv.length) {
+  const value = argv[index];
+
+  if (value === undefined) {
     return {error: '--skip requires a comma-separated list'};
   }
 
-  return {ok: true, value: argv[index]};
+  return {ok: true, value};
 };
 
 /** Post-loop validation, extracted so `parseArgs` itself stays flat. */

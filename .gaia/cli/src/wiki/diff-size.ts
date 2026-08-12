@@ -69,11 +69,9 @@ const parseLsTreeLine = (
   // ls-tree -l format: "<mode> <type> <object> <size>\t<path>"
   const meta = line.slice(0, tab).trim().split(/\s+/);
   const filePath = line.slice(tab + 1);
-
-  if (meta.length < 4) return undefined;
-
   const sizeToken = meta[3];
 
+  if (sizeToken === undefined) return undefined;
   if (sizeToken === '-') return undefined;
 
   const sizeBytes = Number.parseInt(sizeToken, 10);
@@ -142,10 +140,15 @@ const parseNumstatEntry = (
   if (entry.length === 0 || !entry.includes('\t')) return undefined;
 
   const parts = entry.split('\t');
-
-  if (parts.length < 3) return undefined;
-
   const [addedToken, removedToken, filePath] = parts;
+
+  if (
+    addedToken === undefined ||
+    removedToken === undefined ||
+    filePath === undefined
+  ) {
+    return undefined;
+  }
 
   if (!filePath.startsWith(WIKI_PREFIX)) return undefined;
   if (addedToken === '-' || removedToken === '-') return undefined;
@@ -223,11 +226,13 @@ const readFlagValue = (
   index: number,
   errorMessage: string
 ): FlagValueResult => {
-  if (index + 1 >= argv.length) {
+  const value = argv[index + 1];
+
+  if (value === undefined) {
     return {error: errorMessage};
   }
 
-  return {value: argv[index + 1]};
+  return {value};
 };
 
 type ArgsState = {

@@ -166,6 +166,18 @@ describe('wiki log-prepend', () => {
     expect(stdio.errors.join('')).toContain('--sha is required');
   });
 
+  test.each(['constructor', 'toString', 'valueOf', '__proto__'])(
+    'rejects a flag named after an Object.prototype key (%s)',
+    (token) => {
+      sandbox = setupSandbox(SAMPLE_LOG);
+
+      const exit = run([token, 'swallowed'], {cwd: sandbox.root});
+
+      expect(exit).toBe(1);
+      expect(stdio.errors.join('')).toContain(`unknown flag: ${token}`);
+    }
+  );
+
   test('rejects missing --reason', () => {
     sandbox = setupSandbox(SAMPLE_LOG);
 

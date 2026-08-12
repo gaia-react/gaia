@@ -187,8 +187,12 @@ describe('producer seam: sidecar -> post-findings-block.sh -> parseFindingsBlock
     const bases = ['a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40)];
 
     const prs: TallyPrRecord[] = prNumbers.map((prNumber, index) => {
+      const base = bases[index];
+
+      if (base === undefined)
+        throw new Error(`missing base for index ${index}`);
       const body = runProducer({
-        base: bases[index],
+        base,
         findings: [SEEDED_FINDING, CLASSLESS_FINDING],
         prNumber,
       });
@@ -211,11 +215,11 @@ describe('producer seam: sidecar -> post-findings-block.sh -> parseFindingsBlock
     });
 
     expect(result.candidate_count).toBe(1);
-    const [candidate] = result.candidates;
-
-    expect(candidate.finding_class).toBe('holistic/hardcoded-string');
-    expect(candidate.distinct_pr_count).toBe(3);
-    expect(candidate.severity_max).toBe('suggestion');
+    expect(result.candidates[0]).toMatchObject({
+      distinct_pr_count: 3,
+      finding_class: 'holistic/hardcoded-string',
+      severity_max: 'suggestion',
+    });
 
     expect(result.unclassified).not.toBeNull();
     expect(result.unclassified?.distinct_pr_count).toBe(3);
@@ -278,9 +282,9 @@ describe('producer seam: sidecar -> post-findings-block.sh -> parseFindingsBlock
     });
 
     expect(result.candidate_count).toBe(1);
-    expect(result.candidates[0]?.finding_class).toBe(
-      'holistic/hardcoded-string'
-    );
-    expect(result.candidates[0]?.distinct_pr_count).toBe(3);
+    expect(result.candidates[0]).toMatchObject({
+      distinct_pr_count: 3,
+      finding_class: 'holistic/hardcoded-string',
+    });
   });
 });

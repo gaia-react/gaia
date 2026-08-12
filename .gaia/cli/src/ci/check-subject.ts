@@ -103,10 +103,14 @@ const parseFlags = (
 };
 
 export const run = (argv: readonly string[]): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
+  const firstArgument = argv[0];
+
+  if (firstArgument === undefined || HELP_TOKENS.has(firstArgument)) {
     process.stdout.write(HELP_TEXT);
 
-    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+    return firstArgument === undefined ?
+        EXIT_CODES.UNKNOWN_SUBCOMMAND
+      : EXIT_CODES.OK;
   }
 
   const parsed = parseFlags(argv);

@@ -84,7 +84,8 @@ describe('scanRegionDeclarations', () => {
 
       const [declaration] = scanRegionDeclarations(sandbox.root, {}, [entry]);
 
-      expect(declaration.paths).toEqual([]);
+      expect(declaration).toBeDefined();
+      expect(declaration?.paths).toEqual([]);
     } finally {
       sandbox.cleanup();
     }
@@ -122,7 +123,8 @@ describe('scanRegionDeclarations', () => {
         [entry]
       );
 
-      expect(declaration.paths).toEqual([]);
+      expect(declaration).toBeDefined();
+      expect(declaration?.paths).toEqual([]);
     } finally {
       sandbox.cleanup();
     }
@@ -161,7 +163,8 @@ describe('scanRegionDeclarations', () => {
         [entry]
       );
 
-      expect(declaration.paths).toEqual(['a.md', 'z.md']);
+      expect(declaration).toBeDefined();
+      expect(declaration?.paths).toEqual(['a.md', 'z.md']);
     } finally {
       sandbox.cleanup();
     }

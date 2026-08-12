@@ -36,6 +36,8 @@ import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {parseValueFlags} from '../util/parse-value-flags.js';
+import type {ValueFlagMap} from '../util/parse-value-flags.js';
 import {maskRegion} from './region-markers.js';
 import type {RegionMalformation, RegionScan} from './region-markers.js';
 
@@ -91,22 +93,7 @@ type Flags = {
 type ParsedFlagsResult =
   {flags: Flags; ok: true} | {message: string; ok: false};
 
-const takeValue = (
-  argv: readonly string[],
-  index: number,
-  flag: string
-): {message: string; ok: false} | {ok: true; value: string} => {
-  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
-  // which honestly reflects that `index` can run past the end of argv.
-  const value = argv.at(index);
-
-  if (value === undefined)
-    return {message: `${flag} requires a value`, ok: false};
-
-  return {ok: true, value};
-};
-
-const VALUE_FLAGS: Readonly<Record<string, keyof Flags>> = {
+const VALUE_FLAGS: ValueFlagMap<keyof Flags> = {
   '--baseline': 'baseline',
   '--current': 'current',
   '--end-marker': 'endMarker',
@@ -114,36 +101,15 @@ const VALUE_FLAGS: Readonly<Record<string, keyof Flags>> = {
   '--start-marker': 'startMarker',
 };
 
-// `token` may not be one of VALUE_FLAGS' five known keys, and that absence is
-// exactly what routes to the unknown-flag branch below. The own-property guard
-// is load-bearing: a bare index reaches `Object.prototype`, so a token like
-// `constructor` or `toString` returns a truthy inherited value, skips the
-// unknown-flag branch, and consumes the following argv element as its value.
-const lookupValueFlag = (token: string): keyof Flags | undefined =>
-  Object.hasOwn(VALUE_FLAGS, token) ? VALUE_FLAGS[token] : undefined;
-
 const parseFlags = (argv: readonly string[]): ParsedFlagsResult => {
-  const collected: Partial<Record<keyof Flags, string>> = {};
-  let json = false;
+  const parsed = parseValueFlags(argv, VALUE_FLAGS);
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    const field = lookupValueFlag(token);
+  if (!parsed.ok) return parsed;
 
-    if (token === '--json') {
-      json = true;
-    } else if (field === undefined) {
-      return {message: `unknown flag: ${token}`, ok: false};
-    } else {
-      const taken = takeValue(argv, index + 1, token);
-
-      if (!taken.ok) return taken;
-      collected[field] = taken.value;
-      index += 1;
-    }
-  }
-
-  const {baseline, current, endMarker, latest, startMarker} = collected;
+  const {
+    collected: {baseline, current, endMarker, latest, startMarker},
+    json,
+  } = parsed.state;
 
   if (baseline === undefined)
     return {message: '--baseline is required', ok: false};
@@ -297,7 +263,9 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [firstArgument] = argv;
+
+  if (firstArgument !== undefined && HELP_TOKENS.has(firstArgument)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

@@ -34,7 +34,7 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
  * Returns the process exit code; the top-level caller `process.exit`s.
  */
 export const run = (argv: readonly string[]): number => {
-  const subcommand = argv[0] as string | undefined;
+  const subcommand = argv[0];
 
   if (subcommand === undefined) {
     process.stderr.write(HELP_TEXT);

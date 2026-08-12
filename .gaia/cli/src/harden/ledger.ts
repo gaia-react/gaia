@@ -438,14 +438,13 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
+  const [sub, ...rest] = argv;
+
+  if (sub === undefined || HELP_TOKENS.has(sub)) {
     process.stdout.write(HELP_TEXT);
 
-    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+    return sub === undefined ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
-
-  const sub = argv[0];
-  const rest = argv.slice(1);
 
   if (sub === 'list') return handleList(rest, options);
   if (sub === 'record') return handleRecord(rest, options);

@@ -210,6 +210,40 @@ const VALUE_FLAGS: Readonly<Record<string, ValueFlagHandler>> = {
 const lookupValueFlag = (token: string): undefined | ValueFlagHandler =>
   Object.hasOwn(VALUE_FLAGS, token) ? VALUE_FLAGS[token] : undefined;
 
+type ApplyTokenArgs = {
+  argv: readonly string[];
+  index: number;
+  state: ParseState;
+  token: string;
+};
+
+type TokenOutcome = {advance: number; ok: true} | {message: string; ok: false};
+
+const applyToken = ({
+  argv,
+  index,
+  state,
+  token,
+}: ApplyTokenArgs): TokenOutcome => {
+  if (token === '--json') {
+    state.json = true;
+
+    return {advance: 0, ok: true};
+  }
+
+  const handler = lookupValueFlag(token);
+
+  if (handler === undefined)
+    return {message: `unknown flag: ${token}`, ok: false};
+
+  const taken = takeValue(argv, index + 1, token);
+
+  if (!taken.ok) return taken;
+  handler(state, taken.value);
+
+  return {advance: 1, ok: true};
+};
+
 const parseFlags = (argv: readonly string[]): ParsedFlagsResult => {
   const state: ParseState = {
     absentPaths: [],
@@ -223,18 +257,12 @@ const parseFlags = (argv: readonly string[]): ParsedFlagsResult => {
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    const handler = lookupValueFlag(token);
 
-    if (token === '--json') {
-      state.json = true;
-    } else if (handler === undefined) {
-      return {message: `unknown flag: ${token}`, ok: false};
-    } else {
-      const taken = takeValue(argv, index + 1, token);
+    if (token !== undefined) {
+      const outcome = applyToken({argv, index, state, token});
 
-      if (!taken.ok) return taken;
-      handler(state, taken.value);
-      index += 1;
+      if (!outcome.ok) return outcome;
+      index += outcome.advance;
     }
   }
 
@@ -1848,7 +1876,9 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [firstArgument] = argv;
+
+  if (firstArgument !== undefined && HELP_TOKENS.has(firstArgument)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

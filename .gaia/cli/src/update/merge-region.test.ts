@@ -19,6 +19,13 @@ const END = '<!-- gaia:test:end -->';
 const placeholderCount = (body: string): number =>
   body.split('\n').filter((line) => line === REGION_PLACEHOLDER).length;
 
+const soleLine = (lines: string[]): string => {
+  const [line] = lines;
+  if (line === undefined) throw new Error('expected exactly one line');
+
+  return line;
+};
+
 describe('computeRegionMerge', () => {
   test('region-only divergence: verdict no-adopter-drift, all three sides masked region', () => {
     const baseline = ['old outside', START, 'region v1', END].join('\n');
@@ -474,7 +481,7 @@ describe('update merge-region (run)', () => {
     expect(exit).toBe(0);
     const lines = stdio.outputs.join('').split('\n').filter(Boolean);
     expect(lines).toHaveLength(1);
-    const report = JSON.parse(lines[0]) as RegionMergeReport;
+    const report = JSON.parse(soleLine(lines)) as RegionMergeReport;
     expect(report.verdict).toBe('conflict');
   });
 });

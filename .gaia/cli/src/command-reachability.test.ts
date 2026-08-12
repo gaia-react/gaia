@@ -156,8 +156,9 @@ const extractHandlerKeys = (source: string): string[] => {
 
   for (const line of handlerMapBody(source).split('\n')) {
     const match = HANDLER_KEY_PATTERN.exec(line);
+    const key = match?.[1];
 
-    if (match) keys.push(match[1]);
+    if (key !== undefined) keys.push(key);
   }
 
   return keys;
@@ -352,12 +353,16 @@ const parseSummaryLines = (helpText: string): SummaryLine[] => {
     const match = SUMMARY_LINE_PATTERN.exec(line);
 
     if (match !== null) {
-      const subcommands = match[2].trim();
+      const [, command, rawSubcommands] = match;
 
-      parsed.push({
-        command: match[1],
-        listed: subcommands === '' ? [] : subcommands.split('|'),
-      });
+      if (command !== undefined && rawSubcommands !== undefined) {
+        const subcommands = rawSubcommands.trim();
+
+        parsed.push({
+          command,
+          listed: subcommands === '' ? [] : subcommands.split('|'),
+        });
+      }
     }
   }
 

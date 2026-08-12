@@ -138,6 +138,8 @@ const handleViewVersions = (
   if (args[0] !== 'view' || args[2] !== 'versions') return undefined;
 
   const pkgName = args[1];
+  if (pkgName === undefined) return undefined;
+
   const list =
     fakeVersionLists?.[pkgName] ??
     (pkgName === 'eslint' ? eslintVersions : undefined) ??
@@ -156,6 +158,8 @@ const handleViewTime = (
   }
 
   const pkgName = args[1];
+  if (pkgName === undefined) return undefined;
+
   const times = fakeViewTimes?.[pkgName];
 
   if (times === null) {
@@ -177,6 +181,8 @@ const handleViewVersion = (
   }
 
   const pkgName = args[1];
+  if (pkgName === undefined) return undefined;
+
   const resolved = fakeViewVersions?.[pkgName];
 
   if (resolved === null) {

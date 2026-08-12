@@ -77,6 +77,8 @@ export const parseConventionalCommitHeader = (
 
   const {breaking, scope, type} = match.groups;
 
+  if (type === undefined) return undefined;
+
   return {
     breaking: breaking === '!',
     rest: trimmed.slice(match[0].length).trim(),

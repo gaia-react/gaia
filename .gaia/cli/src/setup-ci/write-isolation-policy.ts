@@ -39,13 +39,17 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
+  const firstArgument = argv[0];
+
+  if (firstArgument === undefined || HELP_TOKENS.has(firstArgument)) {
     process.stdout.write(HELP_TEXT);
 
-    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+    return firstArgument === undefined ?
+        EXIT_CODES.UNKNOWN_SUBCOMMAND
+      : EXIT_CODES.OK;
   }
 
-  const valueToken = argv[0];
+  const valueToken = firstArgument;
   const rest = argv.slice(1);
 
   if (rest.length > 0) {

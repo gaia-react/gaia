@@ -41,10 +41,12 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
     const token = argv[index];
 
     if (token === '--out-dir') {
-      if (index + 1 >= argv.length || argv[index + 1].startsWith('--')) {
+      const value = argv[index + 1];
+
+      if (value === undefined || value.startsWith('--')) {
         return {error: '--out-dir requires a path argument'};
       }
-      outDir = argv[index + 1];
+      outDir = value;
       index += 1;
     } else if (token === '--dry-run') {
       dryRun = true;
@@ -68,10 +70,12 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
+  const [first] = argv;
+
+  if (first === undefined || HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);
 
-    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+    return first === undefined ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
 
   const parsed = parseArgs(argv);

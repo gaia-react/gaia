@@ -72,7 +72,9 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  if (HELP_TOKENS.has(argv[0])) {
+  const first = argv[0];
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

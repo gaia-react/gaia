@@ -58,7 +58,7 @@ type FlagParseSuccess = {
 };
 
 type Flags = {
-  locales: string[];
+  locales: [string, ...string[]];
   strip: boolean;
 };
 
@@ -67,11 +67,13 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  if (index >= argv.length) {
+  const value = argv[index];
+
+  if (value === undefined) {
     return {message: `${flag} requires a value`, ok: false};
   }
 
-  return {ok: true, value: argv[index]};
+  return {ok: true, value};
 };
 
 const parseBool = (raw: string): boolean | null => {
@@ -82,20 +84,22 @@ const parseBool = (raw: string): boolean | null => {
   return null;
 };
 
-const parseLocales = (raw: string): null | string[] => {
+const parseLocales = (raw: string): [string, ...string[]] | null => {
   const parts = raw.split(',').flatMap((token) => {
     const trimmed = token.trim();
 
     return trimmed.length > 0 ? [trimmed] : [];
   });
 
-  if (parts.length === 0) return null;
+  const [head, ...tail] = parts;
+
+  if (head === undefined) return null;
 
   for (const code of parts) {
     if (!/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/u.test(code)) return null;
   }
 
-  return parts;
+  return [head, ...tail];
 };
 
 type FlagHandler = (
@@ -107,7 +111,8 @@ type FlagHandlerResult =
   {message: string; ok: false} | {ok: true; outcome: FlagOutcome};
 
 type FlagOutcome =
-  {kind: 'locales'; value: string[]} | {kind: 'strip'; value: boolean};
+  | {kind: 'locales'; value: [string, ...string[]]}
+  | {kind: 'strip'; value: boolean};
 
 const handleLocalesFlag: FlagHandler = (argv, index) => {
   const taken = takeValue(argv, index, '--locales');
@@ -142,27 +147,30 @@ const FLAG_HANDLERS = new Map<string, FlagHandler>([
 ]);
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
-  let locales: string[] | undefined;
+  let locales: [string, ...string[]] | undefined;
   let strip: boolean | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    const handler = FLAG_HANDLERS.get(token);
 
-    if (handler === undefined) {
-      return {message: `unknown flag: ${token}`, ok: false};
+    if (token !== undefined) {
+      const handler = FLAG_HANDLERS.get(token);
+
+      if (handler === undefined) {
+        return {message: `unknown flag: ${token}`, ok: false};
+      }
+
+      const result = handler(argv, index + 1);
+
+      if (!result.ok) return result;
+
+      if (result.outcome.kind === 'locales') {
+        locales = result.outcome.value;
+      } else {
+        strip = result.outcome.value;
+      }
+      index += 1;
     }
-
-    const result = handler(argv, index + 1);
-
-    if (!result.ok) return result;
-
-    if (result.outcome.kind === 'locales') {
-      locales = result.outcome.value;
-    } else {
-      strip = result.outcome.value;
-    }
-    index += 1;
   }
 
   if (locales === undefined) {
@@ -240,7 +248,9 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [first] = argv;
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -266,8 +276,8 @@ export const run = (
   if (!parsed.flags.strip) {
     try {
       updateLanguagesIndex(cwd, parsed.flags.locales);
-      const [first] = parsed.flags.locales as [string, ...string[]];
-      updateI18nFallback(cwd, first);
+      const [fallbackLocale] = parsed.flags.locales;
+      updateI18nFallback(cwd, fallbackLocale);
     } catch (error) {
       structuredError({
         code: 'configure_i18n_failed',

@@ -225,7 +225,7 @@ const expandPath = (
 ): {truncated: boolean; value: string} => {
   let end = start;
 
-  while (end < line.length && PATH_BODY_CHAR.test(line[end])) {
+  while (end < line.length && PATH_BODY_CHAR.test(line.charAt(end))) {
     end += 1;
   }
 
@@ -234,7 +234,7 @@ const expandPath = (
   return {
     truncated:
       end < line.length &&
-      PATH_TRUNCATING_METACHAR.test(line[end]) &&
+      PATH_TRUNCATING_METACHAR.test(line.charAt(end)) &&
       !value.endsWith('/'),
     value,
   };
@@ -244,7 +244,7 @@ const isVariableExpansionContext = (line: string, found: number): boolean => {
   let cursor = found - 1;
 
   while (cursor >= 0) {
-    const ch = line[cursor];
+    const ch = line.charAt(cursor);
 
     if (ch === '$') return true;
 
@@ -298,7 +298,7 @@ const consumeStep = (
   // (`/var/log/.gaia/...`); skip. The exception is shell variable
   // expansion (`$PROJECT_ROOT/.gaia/...`), where the static portion is
   // the project-relative path we care about.
-  const leading = found === 0 ? '' : stripped[found - 1];
+  const leading = found === 0 ? '' : stripped.charAt(found - 1);
   const isSubstring =
     leading.length > 0 &&
     PATH_BODY_CHAR.test(leading) &&
@@ -727,7 +727,9 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [firstArgument] = argv;
+
+  if (firstArgument !== undefined && HELP_TOKENS.has(firstArgument)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

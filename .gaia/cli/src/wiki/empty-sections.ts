@@ -108,11 +108,12 @@ const collectHeadings = (body: string, bodyLineOffset: number): Heading[] => {
       markLastHeadingHasContent(headings);
     } else {
       const match = ATX_HEADING_PATTERN.exec(line);
+      const hashes = match?.[1];
 
-      if (match !== null) {
+      if (match !== null && hashes !== undefined) {
         headings.push({
           hasContent: false,
-          level: match[1].length,
+          level: hashes.length,
           line: bodyLineOffset + index + 1,
           text: line.trim(),
         });
@@ -144,7 +145,7 @@ const findInBody = (
     // A heading's span is closed by the very next heading in document
     // order, whatever its level: if that next heading is deeper, this one
     // has a child (parent, not a leaf); otherwise the span held nothing.
-    const next = headings[index + 1] as Heading | undefined;
+    const next = headings[index + 1];
     const hasChildHeading = next !== undefined && next.level > heading.level;
 
     if (hasChildHeading) return [];

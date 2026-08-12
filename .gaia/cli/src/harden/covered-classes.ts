@@ -52,7 +52,9 @@ export const coveredClassesFromRules = (rulesDir: string): Set<string> => {
 
     if (body !== null) {
       for (const match of body.matchAll(MARKER_RE)) {
-        covered.add(match[1]);
+        const [, findingClass] = match;
+
+        if (findingClass !== undefined) covered.add(findingClass);
       }
     }
   }

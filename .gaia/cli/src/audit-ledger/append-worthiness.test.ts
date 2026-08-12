@@ -128,13 +128,14 @@ describe('append-worthiness', () => {
     expect(lines).toHaveLength(1);
 
     const [line] = lines;
-    expect(line.schema).toBe(1);
-    expect(line.file).toBe(TEST_FILE_REL);
-    expect(line.fullName).toBe('renders formatted price');
-    expect(line.verdict).toBe('keep');
-    expect(line.signal).toBe(redSignalFor('renders formatted price'));
-    expect(typeof line.auditedAt).toBe('string');
-    expect(line.auditedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(line).toMatchObject({
+      auditedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      file: TEST_FILE_REL,
+      fullName: 'renders formatted price',
+      schema: 1,
+      signal: redSignalFor('renders formatted price'),
+      verdict: 'keep',
+    });
   });
 
   test('carries the machine-checkable artifact for a non-keep verdict', () => {
@@ -146,10 +147,10 @@ describe('append-worthiness', () => {
     ]);
 
     const [line] = readLedger();
-    expect(line.verdict).toBe('delete');
-    expect(line.artifact).toBe(
-      'redundant-with: PriceTag › renders formatted price'
-    );
+    expect(line).toMatchObject({
+      artifact: 'redundant-with: PriceTag › renders formatted price',
+      verdict: 'delete',
+    });
   });
 
   test('appends rather than truncates across runs', () => {

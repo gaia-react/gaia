@@ -250,13 +250,13 @@ const readStdin = async (): Promise<string> => {
 };
 
 const parseCols = (args: readonly string[]): number | undefined => {
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-
+  for (const [index, arg] of args.entries()) {
     if (arg === '--cols') {
-      if (index + 1 >= args.length) return undefined;
+      const nextValue = args[index + 1];
 
-      const parsed = Number.parseInt(args[index + 1], 10);
+      if (nextValue === undefined) return undefined;
+
+      const parsed = Number.parseInt(nextValue, 10);
 
       return Number.isFinite(parsed) ? parsed : undefined;
     }
@@ -285,7 +285,7 @@ const resolveCols = (args: readonly string[]): number => {
 };
 
 export const run = async (args: readonly string[]): Promise<number> => {
-  const first = args[0] as string | undefined;
+  const first = args[0];
 
   if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);

@@ -43,7 +43,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {
-  const subcommand = argv[0] as string | undefined;
+  const subcommand = argv[0];
   const rest = argv.slice(1);
 
   if (subcommand === undefined || HELP_TOKENS.has(subcommand)) {

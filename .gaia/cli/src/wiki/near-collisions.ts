@@ -113,37 +113,40 @@ export type Collision = {
   slugB: string;
 };
 
-export const findCollisions = (
-  domainGroups: readonly DomainSlugs[],
+const collectDomainPairs = (
+  domain: string,
+  slugs: readonly string[],
   maxDistance: number
 ): Collision[] => {
-  const results: Collision[] = [];
+  const entries = slugs.map((slug) => ({norm: normalizeSlug(slug), slug}));
+  const pairs: Collision[] = [];
 
-  for (const {domain, slugs} of domainGroups) {
-    for (let index = 0; index < slugs.length; index += 1) {
-      const slugA = slugs[index];
-      const normA = normalizeSlug(slugA);
+  for (const [index, left] of entries.entries()) {
+    for (let next = index + 1; next < entries.length; next += 1) {
+      const right = entries[next];
 
-      for (
-        let otherIndex = index + 1;
-        otherIndex < slugs.length;
-        otherIndex += 1
-      ) {
-        const slugB = slugs[otherIndex];
-        const normB = normalizeSlug(slugB);
+      // Skip true duplicates (identical raw slug); that case can't
+      // happen on a real filesystem and is meaningless to flag.
+      if (right !== undefined && left.slug !== right.slug) {
+        const distance = levenshtein(left.norm, right.norm);
 
-        // Skip true duplicates (identical raw slug); that case can't
-        // happen on a real filesystem and is meaningless to flag.
-        if (slugA !== slugB) {
-          const distance = levenshtein(normA, normB);
-
-          if (distance <= maxDistance) {
-            results.push({distance, domain, slugA, slugB});
-          }
+        if (distance <= maxDistance) {
+          pairs.push({distance, domain, slugA: left.slug, slugB: right.slug});
         }
       }
     }
   }
+
+  return pairs;
+};
+
+export const findCollisions = (
+  domainGroups: readonly DomainSlugs[],
+  maxDistance: number
+): Collision[] => {
+  const results: Collision[] = domainGroups.flatMap(({domain, slugs}) =>
+    collectDomainPairs(domain, slugs, maxDistance)
+  );
 
   results.sort((left, right) => {
     if (left.domain !== right.domain)
@@ -177,11 +180,13 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  if (index >= argv.length) {
+  const value = argv[index];
+
+  if (value === undefined) {
     return {message: `${flag} requires a value`, ok: false};
   }
 
-  return {ok: true, value: argv[index]};
+  return {ok: true, value};
 };
 
 const parseFlags = (
@@ -222,7 +227,9 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const first = argv[0];
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

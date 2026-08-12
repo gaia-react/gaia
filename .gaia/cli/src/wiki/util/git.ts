@@ -187,16 +187,22 @@ const parseShortStat = (
   // literal/class on unanchored input, while still covering any realistic
   // file/line count (up to 999,999,999).
   const filesMatch = /(\d{1,9})\s+files?\s+changed/u.exec(stat);
+  const filesCaptured = filesMatch?.[1];
 
-  if (filesMatch !== null) filesChanged = Number.parseInt(filesMatch[1], 10);
+  if (filesCaptured !== undefined)
+    filesChanged = Number.parseInt(filesCaptured, 10);
 
   const insertMatch = /(\d{1,9})\s+insertions?\(\+\)/u.exec(stat);
+  const insertCaptured = insertMatch?.[1];
 
-  if (insertMatch !== null) insertions = Number.parseInt(insertMatch[1], 10);
+  if (insertCaptured !== undefined)
+    insertions = Number.parseInt(insertCaptured, 10);
 
   const deleteMatch = /(\d{1,9})\s+deletions?\(-\)/u.exec(stat);
+  const deleteCaptured = deleteMatch?.[1];
 
-  if (deleteMatch !== null) deletions = Number.parseInt(deleteMatch[1], 10);
+  if (deleteCaptured !== undefined)
+    deletions = Number.parseInt(deleteCaptured, 10);
 
   return {deletions, files_changed: filesChanged, insertions};
 };

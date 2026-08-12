@@ -175,6 +175,6 @@ describe('REGION_REGISTRY', () => {
       operand: '.gaia/scripts/write-audit-remits.sh',
       startMarker: '<!-- gaia:audit-remit:start -->',
     });
-    expect(entry.rewrites).toBe(rosterAgentPaths);
+    expect(entry?.rewrites).toBe(rosterAgentPaths);
   });
 });

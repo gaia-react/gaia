@@ -44,24 +44,28 @@ const validateMainRootCandidate = (
   candidate: string,
   expectedCommonDir: string
 ): void => {
-  let toplevel: string;
-  let commonDirRaw: string;
+  let output: string;
 
   try {
-    const output = execGaiaGit(
+    output = execGaiaGit(
       ['rev-parse', '--show-toplevel', '--git-common-dir'],
       candidate
     );
-    // Split on CRLF as well as LF. execGaiaGit only trims the whole string,
-    // so a CR on the first line would survive into `toplevel`, make
-    // sameRealPath throw, and reject a valid main root with the misleading
-    // "is not its own working-tree toplevel" error. This is the one
-    // chokepoint both resolvers route through, so it absorbs the cost.
-    [toplevel, commonDirRaw] = output.split(/\r?\n/);
   } catch {
     throw new Error(
       `resolveMainWorktreeRoot: candidate main root is not a git working tree: ${candidate}`
     );
+  }
+
+  // Split on CRLF as well as LF. execGaiaGit only trims the whole string,
+  // so a CR on the first line would survive into `toplevel`, make
+  // sameRealPath throw, and reject a valid main root with the misleading
+  // "is not its own working-tree toplevel" error. This is the one
+  // chokepoint both resolvers route through, so it absorbs the cost.
+  const [toplevel, commonDirRaw] = output.split(/\r?\n/);
+
+  if (toplevel === undefined || commonDirRaw === undefined) {
+    throw new Error(`malformed git rev-parse output: ${output}`);
   }
 
   if (!sameRealPath(toplevel, candidate)) {

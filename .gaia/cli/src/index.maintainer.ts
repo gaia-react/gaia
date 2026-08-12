@@ -70,7 +70,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {
-  const subcommand = argv[0] as string | undefined;
+  const subcommand = argv[0];
   const rest = argv.slice(1);
 
   if (subcommand === undefined || HELP_TOKENS.has(subcommand)) {
@@ -102,7 +102,7 @@ export const run = async (argv: readonly string[]): Promise<number> => {
 // test imports this module. Both binaries are invoked by explicit path
 // (`node .gaia/cli/gaia ...`), so argv[1] is this file; a test runner's
 // argv[1] is vitest, so the guard is false and no process.exit fires.
-const invokedPath = process.argv[1] as string | undefined;
+const invokedPath = process.argv[1];
 const isDirectRun =
   invokedPath !== undefined &&
   import.meta.url === pathToFileURL(realpathSync(invokedPath)).href;

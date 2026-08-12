@@ -168,11 +168,13 @@ const collectDeadPathsInLine = (
   const refs: DeadRef[] = [];
 
   for (const match of line.matchAll(PATH_TOKEN_PATTERN)) {
-    // The capture group `([^`\n]+?)` isn't inside an optional quantifier or
-    // alternation, so it always participates once `match` exists.
     const token = match[1];
 
-    if (isTrackedPath(token) && isDeadToken(ctx.cwd, token)) {
+    if (
+      token !== undefined &&
+      isTrackedPath(token) &&
+      isDeadToken(ctx.cwd, token)
+    ) {
       refs.push({filePath: ctx.filePath, line: lineNumber, path: token});
     }
   }

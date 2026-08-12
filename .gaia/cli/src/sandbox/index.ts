@@ -62,11 +62,13 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  if (index >= argv.length || argv[index].startsWith('--')) {
+  const value = argv[index];
+
+  if (value === undefined || value.startsWith('--')) {
     return {message: `${flag} requires a value`, ok: false};
   }
 
-  return {ok: true, value: argv[index]};
+  return {ok: true, value};
 };
 
 /**
@@ -89,7 +91,7 @@ const tokenize = (argv: readonly string[]): TokenizeResult => {
 
     if (token === '--json') {
       json = true;
-    } else {
+    } else if (token !== undefined) {
       const taken = takeValue(argv, index + 1, token);
 
       if (!taken.ok) return taken;
@@ -250,7 +252,9 @@ const printDetectResult = (result: DetectionResult, json: boolean): void => {
 };
 
 const runDetect = (argv: readonly string[]): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [first] = argv;
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(DETECT_HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -314,7 +318,9 @@ const printSeedResult = (
 };
 
 const runSeed = (argv: readonly string[]): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [first] = argv;
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(SEED_HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -422,7 +428,9 @@ const runApply = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [first] = argv;
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(APPLY_HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -522,7 +530,9 @@ const runRecord = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [first] = argv;
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(RECORD_HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -599,7 +609,9 @@ const runStatus = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [first] = argv;
+
+  if (first !== undefined && HELP_TOKENS.has(first)) {
     process.stdout.write(STATUS_HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -674,7 +686,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  const subcommand = argv[0] as string | undefined;
+  const subcommand = argv[0];
   const rest = argv.slice(1);
 
   if (subcommand === undefined || HELP_TOKENS.has(subcommand)) {

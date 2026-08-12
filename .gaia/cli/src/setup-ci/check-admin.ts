@@ -95,28 +95,30 @@ export const run = async (
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
 
-    if (HELP_TOKENS.has(token)) {
-      process.stdout.write(HELP_TEXT);
+    if (token !== undefined) {
+      if (HELP_TOKENS.has(token)) {
+        process.stdout.write(HELP_TEXT);
 
-      return EXIT_CODES.OK;
-    }
+        return EXIT_CODES.OK;
+      }
 
-    if (token === '--json') {
-      json = true;
-    } else if (token === '--owner') {
-      owner = argv[index + 1];
-      index += 1;
-    } else if (token === '--repo') {
-      repo = argv[index + 1];
-      index += 1;
-    } else {
-      structuredError({
-        code: 'invalid_arguments',
-        message: `unknown flag: ${token}`,
-        subcommand: 'setup-ci check-admin',
-      });
+      if (token === '--json') {
+        json = true;
+      } else if (token === '--owner') {
+        owner = argv[index + 1];
+        index += 1;
+      } else if (token === '--repo') {
+        repo = argv[index + 1];
+        index += 1;
+      } else {
+        structuredError({
+          code: 'invalid_arguments',
+          message: `unknown flag: ${token}`,
+          subcommand: 'setup-ci check-admin',
+        });
 
-      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+        return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      }
     }
   }
 

@@ -301,12 +301,13 @@ describe('wiki sync land', () => {
       ['git', 'fetch', '--prune', 'origin'],
     ] as const;
 
+    const observed = verbsAfterRevParse.map((call) => [
+      call.command,
+      ...call.args,
+    ]);
+
     for (const [index, prefix] of expected.entries()) {
-      const call = verbsAfterRevParse[index];
-      expect(call).toBeDefined();
-      const observed = [call.command, ...call.args];
-      const slice = observed.slice(0, prefix.length);
-      expect(slice).toEqual([...prefix]);
+      expect(observed[index]?.slice(0, prefix.length)).toEqual([...prefix]);
     }
   });
 

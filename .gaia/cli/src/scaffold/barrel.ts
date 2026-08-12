@@ -71,7 +71,11 @@ const findInsertIndex = (
   for (let index = bounds.start; index < bounds.end; index += 1) {
     const candidate = lines[index];
 
-    if (isExportFromLine(candidate) && newline.localeCompare(candidate) < 0) {
+    if (
+      candidate !== undefined &&
+      isExportFromLine(candidate) &&
+      newline.localeCompare(candidate) < 0
+    ) {
       return index;
     }
   }

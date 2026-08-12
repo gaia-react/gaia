@@ -70,19 +70,21 @@ const readFlags = (argv: readonly string[]): FlagReadResult => {
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
 
-    if (token === '--json') {
-      json = true;
-    } else if (token === '--params') {
-      paramsRaw = argv[index + 1];
-      index += 1;
-    } else if (token === '--returns') {
-      returns = argv[index + 1];
-      index += 1;
-    } else if (token.startsWith('--')) {
-      // Unknown flag: surface upstream as a usage error.
-      throw new Error(`unknown flag: ${token}`);
-    } else {
-      positional.push(token);
+    if (token !== undefined) {
+      if (token === '--json') {
+        json = true;
+      } else if (token === '--params') {
+        paramsRaw = argv[index + 1];
+        index += 1;
+      } else if (token === '--returns') {
+        returns = argv[index + 1];
+        index += 1;
+      } else if (token.startsWith('--')) {
+        // Unknown flag: surface upstream as a usage error.
+        throw new Error(`unknown flag: ${token}`);
+      } else {
+        positional.push(token);
+      }
     }
   }
 

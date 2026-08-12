@@ -76,7 +76,9 @@ export const run = (
   argv: readonly string[],
   options: {cwd?: string} = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+  const [firstArgument] = argv;
+
+  if (firstArgument !== undefined && HELP_TOKENS.has(firstArgument)) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
