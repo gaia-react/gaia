@@ -213,7 +213,7 @@ fi
 
 # The sha branch protection checks is the PR head on the REMOTE, not local HEAD.
 # On the empty-commit stamp path local HEAD is an un-pushed commit origin has
-# never seen, so a status posted there 422s and never lands (#726). Target the
+# never seen, so a status posted there 422s and never lands (gaia-react/gaia#726). Target the
 # pushed PR head instead (mirrors CI, which posts on pull_request.head.sha).
 #
 # `gh` resolves BOTH the repository and the current branch from its working

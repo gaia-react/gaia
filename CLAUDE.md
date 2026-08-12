@@ -31,7 +31,7 @@ Reactivity is biased toward action. It produces more alarm, more fixes, more sco
 3. **Don't cross-load domains.** Technical work → `wiki/modules/`, `wiki/concepts/`, `wiki/decisions/`, `wiki/components/`, `wiki/flows/`, `wiki/dependencies/`. Only pull from other domains when the task genuinely spans both.
 4. `wiki/hot.md` auto-loads at session start; it's a 200-word cache of "where we left off", not a fact store. Don't bloat it on updates.
 
-When writing or editing wiki body prose or code comments, follow `.claude/rules/wiki-style.md`: present tense only, no UAT references, no inline PR/commit/date-of-change references. Git history and `wiki/log.md` carry the historical record. (The rule auto-loads on edits to `wiki/**` or `app/**` via path-scoped activation.)
+When writing or editing wiki body prose, follow `.claude/rules/wiki-style.md`: present tense only, no UAT references, no inline PR/commit/date-of-change references in prose, and git history plus `wiki/log.md` carry the historical record. For code comments and test names, `.claude/rules/code-comments.md` decides what earns its place, including whether a GitHub issue or pull-request reference stays. (Both auto-load via path-scoped activation.)
 
 ## Memory Discipline
 

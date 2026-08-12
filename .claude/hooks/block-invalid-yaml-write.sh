@@ -3,7 +3,7 @@
 # .yml/.yaml file, or Markdown --- frontmatter) that newly breaks the YAML
 # region it targets, valid before this call, invalid after.
 #
-# tech-debt #867: Claude repeatedly authors invalid YAML plain scalars, most
+# tech-debt gaia-react/gaia#867: Claude repeatedly authors invalid YAML plain scalars, most
 # often a mid-sentence ": " (read as a mapping-key separator) or a stray " #"
 # (read as a comment, silently truncating the value), and only discovers it
 # when a downstream parser or lint fails, sometimes on an already-saved
@@ -96,7 +96,7 @@ def yaml_region(file_path, text):
 
 # A YAML comment must be preceded by whitespace, so `key: value #trailing`
 # parses cleanly and yaml.safe_load never raises: it just silently drops
-# everything from the ` #` onward. This is the second footgun tech-debt #867
+# everything from the ` #` onward. This is the second footgun tech-debt gaia-react/gaia#867
 # names ("sweep #9" -> "sweep"), and a successful parse can't surface it, so
 # it needs its own scan rather than living inside the try/except below.
 # Skips quoted/flow/block-scalar values (already immune by construction) and
@@ -237,7 +237,7 @@ if ! yaml_err=$(printf '%s' "$payload" | python3 -c "$PY_SCRIPT" 2>&1); then
 fi
 
 if [[ "$yaml_parse_failed" -eq 1 ]]; then
-  deny "BLOCKED: '$file_path' would newly produce broken YAML: $yaml_err. This is the plain-scalar footgun from tech-debt #867: a bare ': ' or ' #' inside prose, or a value starting with a YAML indicator character, reads as structural YAML, not text (the ' #' case parses fine and silently drops everything after it). Quote the value, or use a block scalar (| or >-), then re-check."
+  deny "BLOCKED: '$file_path' would newly produce broken YAML: $yaml_err. This is the plain-scalar footgun from tech-debt gaia-react/gaia#867: a bare ': ' or ' #' inside prose, or a value starting with a YAML indicator character, reads as structural YAML, not text (the ' #' case parses fine and silently drops everything after it). Quote the value, or use a block scalar (| or >-), then re-check."
 fi
 
 exit 0
