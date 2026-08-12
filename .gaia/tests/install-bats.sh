@@ -86,13 +86,16 @@ trap cleanup EXIT
 archive="$tmpdir/bats-core-${BATS_VERSION}.tar.gz"
 url="https://github.com/bats-core/bats-core/archive/refs/tags/v${BATS_VERSION}.tar.gz"
 
-# --retry is not decoration here: eleven matrix legs start within seconds of
-# each other and every one of them fetches this archive, and codeload answers
-# part of that burst with a 503. A single unretried attempt failed four legs
-# of the first sharded run. curl treats a 5xx as a transient error, so --retry
-# covers exactly this case; --retry-max-time bounds the whole thing well
-# inside the leg's own cap rather than trading a flake for a hang.
-curl -fsSL --retry 5 --retry-delay 3 --retry-max-time 120 "$url" -o "$archive"
+# Ten matrix legs fetch this same archive within seconds of each other, and
+# codeload answers part of that burst with 503s -- measured, not theorized: an
+# unretried curl failed four legs, and a fixed 3-second retry delay still lost
+# two more because the rejection outlasts a 15-second window. Omitting
+# --retry-delay is what buys exponential backoff (curl starts at 1s and
+# doubles), so the later attempts land after the burst has drained instead of
+# inside it. --retry-all-errors covers the connection-died case a bare --retry
+# leaves out, and --retry-max-time bounds the whole thing far inside the leg's
+# own 13-minute cap, so a flake can never become a hang.
+curl -fsSL --retry 8 --retry-all-errors --retry-max-time 180 "$url" -o "$archive"
 
 if command -v sha256sum >/dev/null 2>&1; then
   printf '%s  %s\n' "$BATS_SHA256" "$archive" | sha256sum -c -
