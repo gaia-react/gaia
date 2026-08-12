@@ -477,6 +477,14 @@ jobs:
               # without this line an edit to the pinned bats version or digest
               # would report `sandbox=false` and skip that leg's install too.
               - '.gaia/tests/install-bats.sh'
+              # The vendored archive that install step extracts. LOAD-BEARING
+              # for the same reason and by the same argument as the line above:
+              # a `.tar.gz` is reached by none of the four broad globs below,
+              # so without this line a change to the archive alone -- the half
+              # of a version bump that carries the actual bytes, or a swap of
+              # them -- would report `sandbox=false` and skip the leg whose
+              # install is what would have caught it at the digest check.
+              - '.gaia/tests/vendor/**'
               # doc-setup-gaia.bats greps the sandbox-decision block of the
               # /setup-gaia command doc, and pins its `.sandbox_recommended`
               # reader literal byte-identical against the schema writer key, so
