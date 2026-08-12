@@ -289,6 +289,7 @@ unowned:
   - ".gaia/templates/**"
   - ".gaia/tests/**/*.md"
   - ".gaia/tests/**/*.ts"
+  - ".gaia/tests/**/*.tsx"
   - ".gaia/tests/**/*.txt"
   - ".gaia/tests/**/*.json"
   - ".gaia/tests/**/*.tsv"
