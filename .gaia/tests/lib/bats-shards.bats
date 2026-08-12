@@ -25,7 +25,6 @@
 setup() {
   SCRIPT="$BATS_TEST_DIRNAME/../bats-shards.sh"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  SCRATCH_PATHS=()
   HOOKS_DIR_DEFAULT='.gaia/tests/hooks'
   SCRIPTS_TESTS_DIR_DEFAULT='.gaia/scripts/tests'
   AUDIT_TESTS_DIR_DEFAULT='.github/audit/tests'
@@ -36,11 +35,6 @@ setup() {
 
 teardown() {
   local p
-  for p in "${SCRATCH_PATHS[@]:-}"; do
-    if [ -n "$p" ]; then
-      rm -f "$p"
-    fi
-  done
   if [ -f "$BATS_TEST_TMPDIR/scratch-copies" ]; then
     while IFS= read -r p || [ -n "$p" ]; do
       if [ -n "$p" ]; then
@@ -116,22 +110,20 @@ check_no_empty_shard() {
 # rather than under $BATS_TEST_TMPDIR: the script derives its own REPO_ROOT
 # from `git -C "$(dirname BASH_SOURCE)" rev-parse --show-toplevel`, which
 # fails outright from a copy living under the OS temp directory, outside any
-# git working tree. The caller (an A* test body, never a $()-substituted
-# helper) is responsible for adding the returned path to SCRATCH_PATHS for
-# teardown() to remove: an append made inside this function, or inside a
-# doctor_* function called as `x="$(doctor_...)"`, runs in the command
-# substitution's own subshell and is silently lost when that subshell exits.
+# git working tree.
+#
+# The path is recorded here, in a FILE, and that spelling is load-bearing:
+# this function runs inside a command substitution, where an array append
+# would be made in the subshell and lost on exit, while a filesystem write
+# survives. Recording it here rather than at the call site is what lets
+# teardown() clean up after a doctor_* that returns early on an unmatched
+# anchor, which never reaches its caller at all. The file is per-test, so this
+# stays correct if the suite is ever run under `bats --jobs`.
 copy_sharder() {
   local dest
   dest="$(mktemp "$BATS_TEST_DIRNAME/.bats-shards-scratch.XXXXXX")"
   cp "$SCRIPT" "$dest"
   chmod +x "$dest"
-  # Recorded in a FILE rather than a shell array because this function runs
-  # inside a command substitution, and a subshell's array append is lost while
-  # its filesystem writes survive. That is what lets teardown() clean up after
-  # a doctor_* early return, which never reaches the caller that would have
-  # appended. The file is per-test, so this stays correct if the suite is ever
-  # run under `bats --jobs`.
   printf '%s\n' "$dest" >>"$BATS_TEST_TMPDIR/scratch-copies"
   printf '%s\n' "$dest"
 }
@@ -383,7 +375,6 @@ misc"
 @test "A1: dropped file reds the partition check" {
   local copy
   copy="$(doctor_dropped_file)"
-  SCRATCH_PATHS+=("$copy")
   run check_partition "$copy"
   [ "$status" -eq 1 ]
 }
@@ -391,7 +382,6 @@ misc"
 @test "A2: duplicated file reds the no-duplicates check" {
   local copy
   copy="$(doctor_duplicated_file)"
-  SCRATCH_PATHS+=("$copy")
   run check_no_duplicates "$copy"
   [ "$status" -eq 1 ]
 }
@@ -399,7 +389,6 @@ misc"
 @test "A3: an empty shard behind a bypassed guard reds the no-empty-shard check" {
   local copy dir
   copy="$(doctor_bypassed_zero_guard)"
-  SCRATCH_PATHS+=("$copy")
   dir="$BATS_TEST_TMPDIR/a3-empty-scripts"
   mkdir -p "$dir"
 

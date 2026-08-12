@@ -674,24 +674,37 @@ PY
 # checked invariant, per the sibling correction that a per-shard package list
 # is a silent-green hazard unless something checks the reduced set.
 
+# True when directory $1 holds at least one .bats. An unmatched glob stays
+# LITERAL rather than expanding to nothing, so `-e` on the first expansion is
+# the only way to tell a real match from the pattern itself. Lifted out of W9
+# so the fixture below can point it at a directory of its own: a precondition
+# only ever run against the healthy tree takes its passing branch every time,
+# and a later refactor that neuters it would restore the vacuous pass with
+# this suite still green.
+sandbox_suites_present() {
+  local dir="$1" suites
+  suites=("$dir"/*.bats)
+  [ -e "${suites[0]}" ] && return 0
+  echo "no .bats suites under $dir: W9 would assert nothing" >&2
+  return 1
+}
+
 @test "W9: no .gaia/tests/sandbox suite references zsh, python3, or require_yaml_parser" {
-  local hits
+  local hits rc
   local suites
-  # Preconditions, not ceremony. An unmatched glob stays LITERAL rather than
-  # expanding to nothing, so a renamed or emptied sandbox directory would hand
-  # grep a path that does not exist; swallowing that error reports green having
-  # scanned nothing. This is the one check in this suite that can assert
-  # nothing and still pass, and the sandbox leg's reduced package set is what
-  # depends on it, so it fails closed on both an absent directory and an empty
-  # one. Tested by `-e` on the first expansion, which is the only way to tell
-  # a literal pattern from a real match.
   require_repo_path -d "$REPO_ROOT/.gaia/tests/sandbox" "sandbox suite dir" || return 1
+  sandbox_suites_present "$REPO_ROOT/.gaia/tests/sandbox" || return 1
   suites=("$REPO_ROOT"/.gaia/tests/sandbox/*.bats)
-  [ -e "${suites[0]}" ] || {
-    echo "no .bats suites under .gaia/tests/sandbox: W9 would assert nothing" >&2
+  # grep exits 1 on a clean no-match and 2 on a hard error (an unreadable
+  # file, a bad pattern). A blanket `|| true` cannot tell those apart and
+  # would report green on the error, which is the same assert-nothing pass
+  # the precondition above exists to prevent, so only 1 is accepted.
+  rc=0
+  hits="$(grep -lE 'zsh|python3|require_yaml_parser' "${suites[@]}")" || rc=$?
+  [ "$rc" -le 1 ] || {
+    echo "W9: grep failed to scan the sandbox suites (exit $rc); nothing was asserted" >&2
     return 1
   }
-  hits="$(grep -lE 'zsh|python3|require_yaml_parser' "${suites[@]}" || true)"
   [ -z "$hits" ] || {
     echo "sandbox suite(s) reference a package the sandbox leg's install step does not carry:" >&2
     printf '%s\n' "$hits" >&2
@@ -719,4 +732,24 @@ PY
     echo "a fixture naming zsh was not caught" >&2
     return 1
   }
+}
+
+# Pairs with W9's preconditions the way every other check here pairs with its
+# own fixture: both vacuous-pass arms are driven against a directory of this
+# test's own, since neither arm ever fires against the healthy tree.
+@test "W9 adversarial: an empty or absent sandbox directory is caught" {
+  local empty="$BATS_TEST_TMPDIR/sandbox-empty"
+  local absent="$BATS_TEST_TMPDIR/sandbox-absent"
+  local populated="$BATS_TEST_TMPDIR/sandbox-populated"
+
+  mkdir -p "$empty" "$populated"
+  printf '#!/usr/bin/env bats\n' >"$populated/real.bats"
+
+  run sandbox_suites_present "$empty"
+  [ "$status" -eq 1 ]
+  run sandbox_suites_present "$absent"
+  [ "$status" -eq 1 ]
+  # The healthy arm, so a helper that simply always failed could not pass this.
+  run sandbox_suites_present "$populated"
+  [ "$status" -eq 0 ]
 }
