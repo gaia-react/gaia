@@ -446,5 +446,17 @@ const verdict = !sawA11yTest
     ? 'trivial'
     : 'non-trivial';
 
+// The shared .gaia/scripts stdout-exit idiom: guard, write, set exitCode,
+// never process.exit() after a stdout write. A pipe-backed stdout is
+// asynchronous on macOS, so exiting discards whatever has not cleared the 64KB
+// buffer while still reporting success. The one line below is far under that,
+// so the shape is here for uniformity rather than a live truncation. The
+// listener turns an early-closing reader into a clean exit instead of an
+// unhandled EPIPE; exiting inside it is safe because the pipe is already gone.
+process.stdout.on('error', (err) => {
+  if (err.code === 'EPIPE') process.exit(0);
+  throw err;
+});
+
 process.stdout.write(JSON.stringify({file: filePath, verdict, findings}) + '\n');
-process.exit(0);
+process.exitCode = 0;

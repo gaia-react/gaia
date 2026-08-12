@@ -373,12 +373,34 @@ function visit(node, ancestors) {
 
 visit(sourceFile, []);
 
+// The stdout-exit idiom every .gaia/scripts Node helper follows: install this
+// guard, write, then set process.exitCode. Never process.exit() after a stdout
+// write. Both halves are load-bearing and they fail in opposite directions.
+//
+// Exiting explicitly truncates. A pipe-backed stdout is asynchronous on macOS,
+// so process.exit() discards whatever has not flushed past the 64KB pipe
+// buffer while still reporting success. A large enough test file would hand
+// the RED gate a truncated record set and clear it on the tests whose records
+// were cut.
+//
+// Not exiting explicitly throws. A reader that stops early (`| head`) closes
+// the pipe mid-write, and with no listener node raises Unhandled 'error' on
+// process.stdout, prints a stack trace, and exits 1. The reader got what it
+// asked for, so that is a clean exit rather than a failure. The process.exit()
+// below is the one place it is safe: the pipe is already gone, so there is
+// nothing left to flush and nothing to truncate.
+//
+// The diagnostic failure paths above keep process.exit(N) and are outside this
+// idiom, which governs stdout only. They have no choice: a module-top-level
+// `return` is a SyntaxError in ESM, so exiting is the only way to stop the
+// script there. Each writes one short stderr line, which clears in a single
+// flush, and every caller keys on the exit code rather than on stderr content.
+process.stdout.on('error', (err) => {
+  if (err.code === 'EPIPE') process.exit(0);
+  throw err;
+});
+
 if (lines.length > 0) {
   process.stdout.write(lines.join('\n') + '\n');
 }
-// No process.exit() here. Every consumer reads this through a pipe, and a
-// pipe-backed stdout is asynchronous on macOS: exiting explicitly discards
-// whatever has not flushed past the 64KB pipe buffer, while still reporting
-// success. A large enough test file would hand the RED gate a truncated
-// record set and clear it on the tests whose records were cut.
 process.exitCode = 0;

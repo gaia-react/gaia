@@ -164,4 +164,9 @@ try {
   fail(`cannot append to ledger ${ledgerPath}: ${err.message}`, 7);
 }
 
-process.exit(0);
+// The shared .gaia/scripts stdout-exit idiom: never process.exit() on the
+// success path, so a pending stdout write is never truncated. This helper
+// reports through the ledger file and writes no stdout at all, which is why it
+// carries no EPIPE listener; the sibling helpers that do write one install it
+// beside their write.
+process.exitCode = 0;

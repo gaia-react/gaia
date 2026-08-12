@@ -170,6 +170,31 @@ run_lib() {
   [ "$status" -eq 0 ]
 }
 
+# A reader that stops early closes the pipe under the helper's feet. Without an
+# EPIPE listener on process.stdout, node raises Unhandled 'error' event, prints
+# a stack trace, and exits 1. The fixture has to out-write the 64KB pipe buffer
+# for the close to land mid-write; a small one drains in a single flush and the
+# assertion passes even unguarded.
+@test "helper exits 0 quietly when a large output meets an early-closing reader" {
+  local big="$BATS_TEST_TMPDIR/big.test.ts"
+  seq 1 3000 |
+    awk '{printf "test(\"generated case %s\", () => {\n  expect(%s).toBe(%s);\n});\n", $1, $1, $1}' \
+      >"$big"
+
+  # The full output must clear the buffer, else the early close proves nothing.
+  run bash -c "cd '$REPO_ROOT' && node '$HELPER' '$big' | wc -c"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | tr -d '[:space:]')" -gt 65536 ]
+
+  # stderr has to be captured from the same run whose stdout is closed early;
+  # sending stdout elsewhere to read stderr would remove the EPIPE entirely.
+  local err="$BATS_TEST_TMPDIR/epipe.err"
+  run bash -c "cd '$REPO_ROOT' && node '$HELPER' '$big' 2>'$err' | head -c 100 >/dev/null; echo \"\${PIPESTATUS[0]}\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "0" ]
+  [ ! -s "$err" ]
+}
+
 # --- shell lib: red_ledger_path ---
 
 @test "red_ledger_path with an explicit root joins it onto the tree-keyed ledger path" {
