@@ -264,7 +264,8 @@ while IFS= read -r path; do
 
     # In scope: require >=1 ledger line with schema 1, this file, this
     # fullName, and this CURRENT signal. A matching RED at a stale signal
-    # (test edited after its RED) does not count -> the edit-to-pass hole is
+    # (the test's executed content edited after its RED; a comment reword
+    # does not change the signal) does not count -> the edit-to-pass hole is
     # closed. A missing ledger file means zero matches -> deny.
     matched=0
     if [ -f "$ledger" ]; then
@@ -313,7 +314,7 @@ To unblock:
   1. Run \`pnpm test --run\` and confirm the test FAILS (RED) before the change that makes it pass.
   2. Then make the change that turns it green and commit.
 
-A RED is bound to the test's content: editing a test after its RED invalidates that RED, so a fresh failing run must be observed for the current body. Edits, renames, and refactors of tests already present at HEAD are out of scope and never demand a RED."
+A RED is bound to the test's comment-free content: rewording a comment inside a test leaves the signal unchanged and the RED still counts, but any change to what the test executes invalidates that RED, so a fresh failing run must be observed for the current body. Edits, renames, and refactors of tests already present at HEAD are out of scope and never demand a RED."
 
 # --arg safely escapes $reason; never interpolate dynamic values into the JSON.
 jq -n --arg r "$reason" '{

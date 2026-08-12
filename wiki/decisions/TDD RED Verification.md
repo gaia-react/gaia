@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-04
 created: 2026-06-04
-updated: 2026-06-24
+updated: 2026-08-12
 tags: [decision, tdd, hooks, quality]
 ---
 
@@ -20,11 +20,11 @@ Writing a test that starts green (either mirroring existing behavior or triviall
 
 A RED-observation ledger at `.gaia/local/red-ledger/` (machine-local, gitignored) stores per-test evidence from the last one-shot vitest run. Two hooks enforce the lifecycle:
 
-- **`capture-red-observations.sh`** (PostToolUse, Bash): after any one-shot vitest run, re-invokes vitest with `--reporter=json` scoped to the same target and records each genuinely-failing test. Each record stores `file`, `fullName`, a normalized content signal (deterministic hash of the test body), and `failureKind`. Collection and compile errors are excluded to avoid coarse false-REDs. Observe-only; always exits 0.
+- **`capture-red-observations.sh`** (PostToolUse, Bash): after any one-shot vitest run, re-invokes vitest with `--reporter=json` scoped to the same target and records each genuinely-failing test. Each record stores `file`, `fullName`, a normalized content signal (deterministic hash of the test's comment-free content), and `failureKind`. Collection and compile errors are excluded to avoid coarse false-REDs. Observe-only; always exits 0.
 
-- **`red-verify-commit-check.sh`** (PreToolUse, Bash deny): before `git commit`, walks every test file that is new at HEAD. For each new test, the hook computes the current content signal and looks it up in the ledger. A missing entry or a signal mismatch (test body changed since the RED was observed) denies the commit, naming the offending test. Fail-open on missing tooling or unparseable test files; fail-closed only for the clean case.
+- **`red-verify-commit-check.sh`** (PreToolUse, Bash deny): before `git commit`, walks every test file that is new at HEAD. For each new test, the hook computes the current content signal and looks it up in the ledger. A missing entry or a signal mismatch (the test's comment-free content changed since the RED was observed, which a comment reword does not trigger) denies the commit, naming the offending test. Fail-open on missing tooling or unparseable test files; fail-closed only for the clean case.
 
-The content signal is a normalized hash of the test body so that a cosmetic rename does not reuse a stale RED entry from a substantively different test.
+The content signal is a normalized hash of the test's comment-free content, so that a cosmetic rename does not reuse a stale RED entry from a substantively different test. Rewording a comment is likewise not a substantive change and does not expire the RED.
 
 ## Scope
 

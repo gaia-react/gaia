@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-23
 created: 2026-06-23
-updated: 2026-06-23
+updated: 2026-08-12
 tags: [decision, tdd, testing, audit, merge, quality]
 ---
 
@@ -89,9 +89,11 @@ When zero emergent test files changed, the gate is a no-op and allows the merge.
 The `signal` is the same `sha256`-of-normalized-test-call the RED ledger computes
 via `extract-test-signals.mjs` (wrapped by `.claude/hooks/lib/red-ledger.sh`),
 the same primitive the worthiness ledger writer uses, so the recomputed signal
-byte-matches the ledger. A line written before a later edit carries the old
-signal and never matches the recomputed current signal, so editing a test after
-its verdict invalidates the line, exactly like the RED gate's stale-signal
+byte-matches the ledger. The hash covers the test's comment-free content, so
+rewording a comment inside a test leaves the signal unchanged and a matching
+line still counts. A line written before an edit to what the test executes
+carries the old signal and never matches the recomputed current signal, so such
+an edit invalidates the line, exactly like the RED gate's stale-signal
 invalidation.
 
 ## Cost and latency
