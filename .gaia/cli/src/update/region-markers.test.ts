@@ -62,9 +62,9 @@ describe('scanRegion', () => {
   });
 
   test('identical start and end markers → inverted, and maskRegion leaves the source alone', () => {
-    // One line lands in both the start and end lists, so `startLine ===
-    // endLine`. Without the `>=` guard this scans as a zero-length region and
-    // maskRegion duplicates the marker line while masking nothing.
+    // One line matches both markers, so `startLine === endLine`. Without the
+    // `>=` guard this scans as a zero-length region and maskRegion duplicates
+    // the marker line while masking nothing.
     const source = ['a', START, 'b', 'c'].join('\n');
     expect(scanRegion(source, START, START)).toEqual({
       kind: 'malformed',
