@@ -493,44 +493,55 @@ const checkA11ySignal = () => {
 
 // --- Classify -----------------------------------------------------------------
 
-const emit = (classification) => {
-  process.stdout.write(
-    JSON.stringify({file: filePath, classification, reasons}) + '\n',
-  );
-  process.exit(0);
+// Returns the classification rather than emitting it, so the single stdout
+// write happens once at the tail. Each arm's checks run for their addReason
+// side effects, so `reasons` is only complete once this returns.
+const classify = () => {
+  if (!inCandidatePath()) {
+    addReason(
+      'path not in app/utils, app/services, app/hooks, or a .ts under app/components',
+    );
+    return 'emergent';
+  }
+
+  const hook = exportsHook();
+
+  // Condition 2 applies to every candidate file (hooks included: a hook with a
+  // module-level new Date() is still clock-dependent).
+  const cond2 = checkNonDeterminism();
+
+  if (hook) {
+    // HOOK path: condition 3 (whole-hook). Conditions 2 and the a11y signal still
+    // apply; conditions 4 (public async I/O export) is folded into the hook
+    // surface judgement (a hook is not an I/O service export).
+    const cond3 = checkHookSurface();
+    const a11yOk = checkA11ySignal();
+    return cond2 && cond3 && a11yOk ? 'strict' : 'emergent';
+  }
+
+  // NON-HOOK path: conditions 2 and 4, plus the a11y signal. Condition 3 is
+  // skipped for non-hook files.
+  const cond4 = checkAsyncIoExport();
+  const a11yOk = checkA11ySignal();
+
+  return cond2 && cond4 && a11yOk ? 'strict' : 'emergent';
 };
 
-if (!inCandidatePath()) {
-  addReason(
-    'path not in app/utils, app/services, app/hooks, or a .ts under app/components',
-  );
-  emit('emergent');
-}
+const classification = classify();
 
-const hook = exportsHook();
+// The shared .gaia/scripts stdout-exit idiom: guard, write, set exitCode,
+// never process.exit() after a stdout write. A pipe-backed stdout is
+// asynchronous on macOS, so exiting discards whatever has not cleared the 64KB
+// buffer while still reporting success. The one line below is far under that,
+// so the shape is here for uniformity rather than a live truncation. The
+// listener turns an early-closing reader into a clean exit instead of an
+// unhandled EPIPE; exiting inside it is safe because the pipe is already gone.
+process.stdout.on('error', (err) => {
+  if (err.code === 'EPIPE') process.exit(0);
+  throw err;
+});
 
-// Condition 2 applies to every candidate file (hooks included: a hook with a
-// module-level new Date() is still clock-dependent).
-const cond2 = checkNonDeterminism();
-
-if (hook) {
-  // HOOK path: condition 3 (whole-hook). Conditions 2 and the a11y signal still
-  // apply; conditions 4 (public async I/O export) is folded into the hook
-  // surface judgement (a hook is not an I/O service export).
-  const cond3 = checkHookSurface();
-  const a11yOk = checkA11ySignal();
-  if (cond2 && cond3 && a11yOk) {
-    emit('strict');
-  }
-  emit('emergent');
-}
-
-// NON-HOOK path: conditions 2 and 4, plus the a11y signal. Condition 3 is
-// skipped for non-hook files.
-const cond4 = checkAsyncIoExport();
-const a11yOk = checkA11ySignal();
-
-if (cond2 && cond4 && a11yOk) {
-  emit('strict');
-}
-emit('emergent');
+process.stdout.write(
+  JSON.stringify({file: filePath, classification, reasons}) + '\n',
+);
+process.exitCode = 0;
