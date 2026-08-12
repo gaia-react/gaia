@@ -33,6 +33,12 @@ run_helper() {
   run bash -c "cd '$REPO_ROOT' && node '$HELPER' '$1'"
 }
 
+# Feed the file's bytes through --stdin. run_helper takes no trailing argv, so
+# the stdin leg needs its own runner; both must reach the same helper.
+run_helper_stdin() {
+  run bash -c "cd '$REPO_ROOT' && cat '$1' | node '$HELPER' '$1' --stdin"
+}
+
 # Source the lib in a clean shell and run a function, from the repo root.
 run_lib() {
   run bash -c "cd '$REPO_ROOT' && set -uo pipefail && . '$LIB' && $1"
@@ -218,4 +224,230 @@ run_lib() {
   run bash -c "cd '$REPO_ROOT' && set -uo pipefail && . '$LIB' && . '$LIB' && red_ledger_path '$REPO_ROOT'"
   [ "$status" -eq 0 ]
   [ "$output" = "$REPO_ROOT/.gaia/local/red-ledger/$TREE_KEY/observations.jsonl" ]
+}
+
+# --- signal helper: comment-free content, fixture pairs ---
+
+@test "a comment-only edit does not rotate the signal, and pins to a known digest" {
+  run_helper "$FIX_REL/comment-a.test.ts"
+  [ "$status" -eq 0 ]
+  local sig_a
+  sig_a=$(printf '%s\n' "$output" | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+
+  run_helper "$FIX_REL/comment-b.test.ts"
+  [ "$status" -eq 0 ]
+  local sig_b
+  sig_b=$(printf '%s\n' "$output" | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+
+  [ -n "$sig_a" ]
+  [ "$sig_a" = "$sig_b" ]
+  [ "$sig_a" = "sha256:26fd52ef906dbbdbd213a15316025420b2b317022ed2572db0e5a68b14e5d754" ]
+}
+
+@test "an assertion absorbed into a comment rotates the signal, and pins each side" {
+  run_helper "$FIX_REL/absorb-a.test.ts"
+  [ "$status" -eq 0 ]
+  local sig_a
+  sig_a=$(printf '%s\n' "$output" | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+
+  run_helper "$FIX_REL/absorb-b.test.ts"
+  [ "$status" -eq 0 ]
+  local sig_b
+  sig_b=$(printf '%s\n' "$output" | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+
+  [ -n "$sig_a" ]
+  [ "$sig_a" != "$sig_b" ]
+  [ "$sig_a" = "sha256:36440c7f57cac008007a29ed7f02227095071ecd3b1358fc430b19eaaa377ac2" ]
+  [ "$sig_b" = "sha256:4713b19b36a174404558498a550b42e4a446ef8cd6c051f2f0565875c7abbefd" ]
+}
+
+@test "a tight inline comment does not fuse its neighbours" {
+  # fusion-pair.test.ts holds two tests sharing one title on purpose: two
+  # differently-titled tests always differ by title alone, which would make
+  # this check vacuous, so the two records are read positionally.
+  run_helper "$FIX_REL/fusion-pair.test.ts"
+  [ "$status" -eq 0 ]
+  local sig1 sig2
+  sig1=$(printf '%s\n' "$output" | sed -n '1p' | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+  sig2=$(printf '%s\n' "$output" | sed -n '2p' | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+  [ -n "$sig1" ]
+  [ -n "$sig2" ]
+  [ "$sig1" != "$sig2" ]
+}
+
+@test "a relocated @ts-expect-error directive keeps type-only and does not rotate the signal" {
+  run_helper "$FIX_REL/directive-a.test.ts"
+  [ "$status" -eq 0 ]
+  local kind_a sig_a
+  kind_a=$(printf '%s\n' "$output" | jq -r 'select(.fullName=="directive relocates") | .kind')
+  sig_a=$(printf '%s\n' "$output" | jq -r 'select(.fullName=="directive relocates") | .signal')
+
+  run_helper "$FIX_REL/directive-b.test.ts"
+  [ "$status" -eq 0 ]
+  local kind_b sig_b
+  kind_b=$(printf '%s\n' "$output" | jq -r 'select(.fullName=="directive relocates") | .kind')
+  sig_b=$(printf '%s\n' "$output" | jq -r 'select(.fullName=="directive relocates") | .signal')
+
+  [ "$kind_a" = "type-only" ]
+  [ "$kind_b" = "type-only" ]
+  [ -n "$sig_a" ]
+  [ "$sig_a" = "$sig_b" ]
+}
+
+# --- signal helper: `//` inside code vs a genuine comment, four positions ---
+
+@test "a slash-doubled code position rotates on mutation and holds on reword, all four positions" {
+  local title sig_base sig_mutated sig_reworded
+  for title in "slash in a string literal" "slash in a template literal" \
+    "slash in a regular expression" "slash in jsx text"; do
+    run_helper "$FIX_REL/slash-base.test.tsx"
+    [ "$status" -eq 0 ]
+    sig_base=$(printf '%s\n' "$output" | jq -r --arg n "$title" 'select(.fullName==$n) | .signal')
+
+    run_helper "$FIX_REL/slash-mutated.test.tsx"
+    [ "$status" -eq 0 ]
+    sig_mutated=$(printf '%s\n' "$output" | jq -r --arg n "$title" 'select(.fullName==$n) | .signal')
+
+    run_helper "$FIX_REL/slash-reworded.test.tsx"
+    [ "$status" -eq 0 ]
+    sig_reworded=$(printf '%s\n' "$output" | jq -r --arg n "$title" 'select(.fullName==$n) | .signal')
+
+    [ -n "$sig_base" ]
+    # Either half alone passes on a wrong implementation: the mutation half on
+    # the unchanged helper, the comment half on an over-excising one.
+    [ "$sig_base" != "$sig_mutated" ]
+    [ "$sig_base" = "$sig_reworded" ]
+  done
+}
+
+# --- signal helper: JSX text vs a JSX expression comment ---
+
+@test "changed JSX text rotates the signal" {
+  run_helper "$FIX_REL/jsx-text-a.test.tsx"
+  [ "$status" -eq 0 ]
+  local sig_a
+  sig_a=$(printf '%s\n' "$output" | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+
+  run_helper "$FIX_REL/jsx-text-b.test.tsx"
+  [ "$status" -eq 0 ]
+  local sig_b
+  sig_b=$(printf '%s\n' "$output" | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+
+  [ -n "$sig_a" ]
+  [ "$sig_a" != "$sig_b" ]
+}
+
+@test "a changed JSX expression comment does not rotate the signal" {
+  # The fixture places the {/* ... */} comment inside the trailing `>`
+  # token's swallow range, so this is the standing catcher for a
+  # merge-before-discard step order (README.md, "The signal computation").
+  run_helper "$FIX_REL/jsx-text-a.test.tsx"
+  [ "$status" -eq 0 ]
+  local sig_a
+  sig_a=$(printf '%s\n' "$output" | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+
+  run_helper "$FIX_REL/jsx-comment.test.tsx"
+  [ "$status" -eq 0 ]
+  local sig_comment
+  sig_comment=$(printf '%s\n' "$output" | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+
+  [ -n "$sig_a" ]
+  [ "$sig_a" = "$sig_comment" ]
+}
+
+# --- signal helper: one computation across disk, stdin, and the ledger writer ---
+
+# All three legs below assert a non-empty signal first: red_ledger_signals
+# fail-opens to empty when node is missing, and a run in which every leg
+# yields empty output would satisfy an equality check without proving
+# anything.
+
+@test "disk and --stdin emit the identical signal for the same fixture" {
+  run_helper "$FIX_REL/comment-a.test.ts"
+  [ "$status" -eq 0 ]
+  local sig_disk
+  sig_disk=$(printf '%s\n' "$output" | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+
+  run_helper_stdin "$FIX_REL/comment-a.test.ts"
+  [ "$status" -eq 0 ]
+  local sig_stdin
+  sig_stdin=$(printf '%s\n' "$output" | sed -E 's/.*"signal":"([^"]+)".*/\1/')
+
+  [ -n "$sig_disk" ]
+  [ "$sig_disk" = "$sig_stdin" ]
+}
+
+@test "the worthiness ledger writer records the same signal the helper emits directly" {
+  local fullname="captures bippy renders: active, canary resolves name + memo + timing"
+
+  run_helper "$FIX_REL/comment-a.test.ts"
+  [ "$status" -eq 0 ]
+  local sig_helper
+  sig_helper=$(printf '%s\n' "$output" | jq -r --arg n "$fullname" 'select(.fullName==$n) | .signal')
+  [ -n "$sig_helper" ]
+
+  local ledger="$BATS_TEST_TMPDIR/worthiness.jsonl"
+  run bash -c "cd '$REPO_ROOT' && WORTHINESS_LEDGER_PATH='$ledger' \
+    node .gaia/scripts/audit-ledger/append-worthiness.mjs \
+    '$FIX_REL/comment-a.test.ts' '$fullname' keep"
+  [ "$status" -eq 0 ]
+
+  local sig_ledger
+  sig_ledger=$(jq -r '.signal' "$ledger")
+  [ "$sig_helper" = "$sig_ledger" ]
+}
+
+@test "the helper reads no process.env, the static floor on a second computation" {
+  grep -qF -- 'process.env' "$HELPER" && return 1
+  true
+}
+
+# --- signal helper: corpus standing check over the union glob set ---
+
+@test "the helper over the whole union glob set has no duplicate signal per file, and pins its file/record counts" {
+  local files
+  files=$(git -C "$REPO_ROOT" ls-files 'app/**/*.test.ts' 'app/**/*.test.tsx' \
+    '.playwright/**/*.spec.ts' '.playwright/**/*.spec.tsx' \
+    '.playwright/**/*.test.ts' '.playwright/**/*.test.tsx')
+
+  local corpus="$BATS_TEST_TMPDIR/corpus.ndjson"
+  : > "$corpus"
+
+  local file_count=0
+  local record_count=0
+  local f dup n
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    file_count=$((file_count + 1))
+    run_helper "$f"
+    [ "$status" -eq 0 ]
+    if [ -n "$output" ]; then
+      # .playwright/e2e/legal-a11y.spec.ts emits zero records; a "same number
+      # of records" clause over it is satisfied by 0 == 0 and carries no
+      # weight on its own.
+      dup=$(printf '%s\n' "$output" | jq -r .signal | sort | uniq -d)
+      [ -z "$dup" ]
+      n=$(printf '%s\n' "$output" | grep -c '"fullName"')
+      record_count=$((record_count + n))
+      printf '%s\n' "$output" >> "$corpus"
+    fi
+  done <<< "$files"
+
+  # Refresh both by re-running the git ls-files command above and summing the
+  # helper's output line count across the result.
+  [ "$file_count" -eq 32 ]
+  [ "$record_count" -eq 138 ]
+
+  local bad_signal
+  bad_signal=$(jq -r '.signal' "$corpus" | grep -vE '^sha256:[0-9a-f]{64}$' || true)
+  [ -z "$bad_signal" ]
+
+  local shapes
+  shapes=$(jq -r '[keys_unsorted[]] | join(",")' "$corpus" | sort -u)
+  [ "$shapes" = "fullName,signal,kind" ]
+
+  # Zero in-scope tests classify type-only today, so this is a floor rather
+  # than a check; the real catcher for `kind` classification is the existing
+  # case at .gaia/tests/hooks/red-ledger-lib.bats:119-126, which must stay
+  # green.
 }
