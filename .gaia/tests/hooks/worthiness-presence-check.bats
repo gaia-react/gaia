@@ -129,10 +129,42 @@ run_merge_hook() {
 
 denied() { [[ "$output" == *'"permissionDecision": "deny"'* ]]; }
 
+# Absence assertion: fail the test when the hook denied. A bare `! denied` only
+# works as a test's final line -- `set -e` exempts a `!`-negated command from
+# aborting, so the moment a later line is appended it silently goes inert. This
+# form fails in any position (returns 1 when denied) and stays green as a final
+# line when allowed (the completed `if` exits 0). See .claude/rules/bats-assertions.md.
+refute_denied() { if denied; then return 1; fi; }
+
 # An emergent component test (.tsx under app/components/** classifies emergent).
 EMERGENT_TEST='import {expect, test} from "vitest";
 test("renders a label", () => {
   expect(true).toBe(true);
+});
+'
+
+# An emergent component test carrying an in-test `//` comment, used for the
+# comment-only-edit and absorbed-assertion cases below. PRE/POST differ only
+# in the comment's wording (a reword, not a deletion).
+COMMENT_EMERGENT_PRE='import {expect, test} from "vitest";
+test("renders a widget", () => {
+  // check the label
+  expect(true).toBe(true);
+});
+'
+COMMENT_EMERGENT_POST='import {expect, test} from "vitest";
+test("renders a widget", () => {
+  // verify the label text
+  expect(true).toBe(true);
+});
+'
+
+# Same test, but the trailing assertion is pulled onto the comment line: the
+# live `expect(...)` call is gone from executed code, so the signal changes.
+ABSORB_EMERGENT_PRE="$COMMENT_EMERGENT_PRE"
+ABSORB_EMERGENT_POST='import {expect, test} from "vitest";
+test("renders a widget", () => {
+  // check the label expect(true).toBe(true);
 });
 '
 
@@ -284,4 +316,68 @@ test("oops" => { syntax(((;'
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *"Worthiness presence gate"* ]]
+}
+
+@test "deny reason includes the unblock steps and the ledger-writer invocation" {
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- "To unblock:" <<<"$output"
+  grep -qF -- "node .gaia/scripts/audit-ledger/append-worthiness.mjs" <<<"$output"
+  denied
+}
+
+# --- comment-only edit vs. an assertion absorbed into a comment (UAT-005, UAT-014, UAT-008) ---
+
+@test "allows a comment-only reword after a matching verdict (emergent, UAT-005)" {
+  commit_file "app/components/Widget/tests/index.test.tsx" "$COMMENT_EMERGENT_PRE"
+  # Seed BEFORE the edit, against the pre-edit revision's real signal.
+  seed_matching "app/components/Widget/tests/index.test.tsx" "renders a widget"
+  commit_file "app/components/Widget/tests/index.test.tsx" "$COMMENT_EMERGENT_POST"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  refute_denied
+  grep -qF -- "renders a widget" <<<"$output" && return 1
+  true
+}
+
+@test "denies the same comment-reword fixture when the ledger's signal doesn't match (UAT-005 negative control)" {
+  commit_file "app/components/Widget/tests/index.test.tsx" "$COMMENT_EMERGENT_PRE"
+  seed_ledger "app/components/Widget/tests/index.test.tsx" "renders a widget" \
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000" "keep"
+  commit_file "app/components/Widget/tests/index.test.tsx" "$COMMENT_EMERGENT_POST"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  denied
+}
+
+@test "denies when a live assertion is absorbed into a comment after a matching verdict (emergent, UAT-014)" {
+  commit_file "app/components/Widget/tests/index.test.tsx" "$ABSORB_EMERGENT_PRE"
+  seed_matching "app/components/Widget/tests/index.test.tsx" "renders a widget"
+  commit_file "app/components/Widget/tests/index.test.tsx" "$ABSORB_EMERGENT_POST"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- "renders a widget" <<<"$output"
+  denied
+}
+
+@test "three-run transition: deny, then allow once a matching line is appended, then allow again (UAT-008, TST-009)" {
+  commit_file "app/components/Widget/tests/index.test.tsx" "$COMMENT_EMERGENT_PRE"
+  # Run 1: a non-matching literal seeded -- deny.
+  seed_ledger "app/components/Widget/tests/index.test.tsx" "renders a widget" \
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000" "keep"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+
+  # Run 2: append a line at the CURRENT signal -- allow.
+  seed_matching "app/components/Widget/tests/index.test.tsx" "renders a widget"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  refute_denied
+
+  # Run 3: unchanged -- allow again (idempotent).
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  refute_denied
 }

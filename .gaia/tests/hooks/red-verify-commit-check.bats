@@ -141,6 +141,31 @@ test("adds two numbers", () => {
 });
 '
 
+# A strict-surface test carrying an in-test `//` comment, used for the
+# comment-only-edit and absorbed-assertion cases below. PRE/POST differ only
+# in the comment's wording (a reword, not a deletion).
+COMMENT_STRICT_PRE='import {expect, test} from "vitest";
+test("adds two numbers", () => {
+  // sanity check
+  expect(1 + 1).toBe(2);
+});
+'
+COMMENT_STRICT_POST='import {expect, test} from "vitest";
+test("adds two numbers", () => {
+  // arithmetic sanity check
+  expect(1 + 1).toBe(2);
+});
+'
+
+# Same test, but the trailing assertion is pulled onto the comment line: the
+# live `expect(...)` call is gone from executed code, so the signal changes.
+ABSORB_STRICT_PRE="$COMMENT_STRICT_PRE"
+ABSORB_STRICT_POST='import {expect, test} from "vitest";
+test("adds two numbers", () => {
+  // sanity check expect(1 + 1).toBe(2);
+});
+'
+
 # --- new test with no matching RED -> deny ---
 
 @test "denies a new test with no ledger entry (never run)" {
@@ -485,4 +510,58 @@ test("uses wall-clock time", () => {
   [ "$status" -eq 0 ]
   denied
   [[ "$output" == *"adds two numbers"* ]]
+}
+
+@test "deny reason includes the TDD RED-verification header and the unblock steps" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- "TDD RED-verification" <<<"$output"
+  grep -qF -- "To unblock:" <<<"$output"
+  denied
+}
+
+# --- comment-only edit vs. an assertion absorbed into a comment (UAT-006, UAT-014, UAT-008) ---
+
+@test "denies when a live assertion is absorbed into a comment (strict, new-at-HEAD, runtime; UAT-006)" {
+  stage_file "app/utils/x/index.test.ts" "$ABSORB_STRICT_PRE"
+  # Seed the RED at the PRE-absorb signal (staged, working-tree content).
+  seed_matching_red "app/utils/x/index.test.ts" "adds two numbers"
+  stage_file "app/utils/x/index.test.ts" "$ABSORB_STRICT_POST"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- "adds two numbers" <<<"$output"
+  denied
+}
+
+@test "allows a comment-only reword after a matching RED (strict, new-at-HEAD, runtime; UAT-014 RED half)" {
+  stage_file "app/utils/x/index.test.ts" "$COMMENT_STRICT_PRE"
+  seed_matching_red "app/utils/x/index.test.ts" "adds two numbers"
+  stage_file "app/utils/x/index.test.ts" "$COMMENT_STRICT_POST"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  refute_denied
+  grep -qF -- "adds two numbers" <<<"$output" && return 1
+  true
+}
+
+@test "denies the same comment-reword fixture when the seeded RED signal doesn't match (UAT-014 RED half, negative control)" {
+  stage_file "app/utils/x/index.test.ts" "$COMMENT_STRICT_PRE"
+  seed_ledger "app/utils/x/index.test.ts" "adds two numbers" "sha256:staleoldsignal"
+  stage_file "app/utils/x/index.test.ts" "$COMMENT_STRICT_POST"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- "adds two numbers" <<<"$output"
+  denied
+}
+
+@test "the RED half of the three-run transition denies on the first run (comment-carrying, strict, new-at-HEAD, runtime; UAT-008)" {
+  stage_file "app/utils/x/index.test.ts" "$COMMENT_STRICT_PRE"
+  # A literal the current computation does not produce -- the same idiom as
+  # the existing signal-mismatch case above.
+  seed_ledger "app/utils/x/index.test.ts" "adds two numbers" "sha256:staleoldsignal"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- "adds two numbers" <<<"$output"
+  denied
 }
