@@ -16,6 +16,13 @@ setup() {
   SCRIPT="$THIS_DIR/../read-audit-ci-config.sh"
   [ -x "$SCRIPT" ] || skip "read-audit-ci-config.sh not executable"
 
+  # An inherited git environment overrides directory-based discovery, so an
+  # ambient GIT_DIR or GIT_WORK_TREE makes the sandbox's `git rev-parse
+  # --show-toplevel` resolve the host repo instead. The scripts under test
+  # write the audit-ci.yml that lookup lands on, so the fixture isolation below
+  # is what keeps them off the real one.
+  unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_CEILING_DIRECTORIES
+
   # Per-test sandbox: a fresh git repo so `git rev-parse --show-toplevel`
   # resolves inside the fixture tree, not the host repo.
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
@@ -881,6 +888,25 @@ append_in_sandbox() {
   ( cd "$SANDBOX" && "$SANDBOX/.gaia/scripts/append-audit-author.sh" "$@" )
 }
 
+# Replace the sandbox's reader with one that emits its `audit_authors=` line,
+# yields the CPU, then keeps writing. That line is not the real reader's last
+# either, so a consumer that stops reading there leaves it writing into a
+# closed pipe. The yield makes that ordering certain here; on a loaded
+# six-way-parallel runner it happens on its own, which is why the failure it
+# provokes is intermittent in CI and unreproducible on an idle machine.
+install_slow_reader() {
+  cat > "$SANDBOX/.gaia/scripts/read-audit-ci-config.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'gate_label=\n'
+printf 'audit_authors=alice=ci\n'
+sleep 0.2
+printf 'retrigger_workflows<<__GAIA_END__\n'
+printf 'Chromatic\n'
+printf '__GAIA_END__\n'
+STUB
+  chmod +x "$SANDBOX/.gaia/scripts/read-audit-ci-config.sh"
+}
+
 # --- 36. audit_authors round-trip: two-developer string resolves each login --
 
 @test "audit_authors append: two-developer string resolves each login" {
@@ -889,8 +915,13 @@ append_in_sandbox() {
   # required-check stub), priya is ci.
   install_append_helper >/dev/null
   stub_gh_confirms
-  append_in_sandbox stevensacks local
-  append_in_sandbox priya ci
+  # Through `run` rather than bare: a bare call aborts the test under `set -e`
+  # reporting only that the helper exited, and the helper's own stderr and exit
+  # code are lost with it.
+  run append_in_sandbox stevensacks local
+  [ "$status" -eq 0 ]
+  run append_in_sandbox priya ci
+  [ "$status" -eq 0 ]
 
   # The written value is the canonical space-separated pair string.
   [ "$(cat "$SANDBOX/.gaia/audit-ci.yml")" = 'audit_authors: "stevensacks=local priya=ci"' ]
@@ -922,7 +953,8 @@ override_label: run-audit"
 @test "audit_authors append preserves existing entries" {
   # A developer appending their pair must not drop a teammate's entry.
   install_append_helper >/dev/null
-  append_in_sandbox alice ci
+  run append_in_sandbox alice ci
+  [ "$status" -eq 0 ]
   run append_in_sandbox bob local
   [ "$status" -eq 0 ]
   [ "$output" = "alice=ci bob=local" ]
@@ -960,8 +992,10 @@ YAML
   # A developer who re-runs /setup-gaia flips their own mode
   # rather than stacking a second pair; teammates' entries are preserved.
   install_append_helper >/dev/null
-  append_in_sandbox stevensacks local
-  append_in_sandbox priya ci
+  run append_in_sandbox stevensacks local
+  [ "$status" -eq 0 ]
+  run append_in_sandbox priya ci
+  [ "$status" -eq 0 ]
   run append_in_sandbox stevensacks ci
   [ "$status" -eq 0 ]
   # Own prior pair dropped, re-appended at the end; priya preserved.
@@ -1005,4 +1039,20 @@ audit_authors: \"*=local\""
   written="$(cat "$SANDBOX/.gaia/audit-ci.yml")"
   [[ "$written" == *'*=ci'* ]]
   [[ "$written" != *'evil'* ]]
+}
+
+# --- 47. A reader still writing must not abort the helper (#1318) -----------
+
+@test "audit_authors append: a reader still writing does not abort the helper" {
+  # The helper reads the current value through the reader, so it owns the
+  # consumer end of that pipe. A consumer that stops reading first kills the
+  # reader with SIGPIPE, and `pipefail` promotes that 141 onto the command
+  # substitution the helper assigns from, aborting it under `set -e` with no
+  # value written and nothing on stderr naming the cause.
+  install_append_helper >/dev/null
+  install_slow_reader
+  run append_in_sandbox bob local
+  [ "$status" -eq 0 ]
+  [ "$output" = "alice=ci bob=local" ]
+  [ "$(cat "$SANDBOX/.gaia/audit-ci.yml")" = 'audit_authors: "alice=ci bob=local"' ]
 }

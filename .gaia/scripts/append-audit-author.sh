@@ -55,12 +55,21 @@ fi
 # Use the reader so the parse of the current value is identical to what the
 # resolver sees. The reader always emits an `audit_authors=` line; strip the
 # key prefix to recover the raw value (possibly empty).
+#
+# awk reads to EOF rather than `exit`ing on the match, and the `seen` flag
+# rather than `exit` is what keeps the first match. `audit_authors=` is not the
+# reader's last line, so exiting on it closes the pipe while the reader is
+# still writing, which kills it with SIGPIPE; `pipefail` then promotes that
+# 141 onto this command substitution and `set -e` aborts the helper with no
+# value written and nothing on stderr naming the cause. Whether the reader is
+# still writing at that moment is a scheduling race, so the abort is
+# intermittent and load-dependent.
 
 existing=""
 if [ -x "$script_dir/read-audit-ci-config.sh" ]; then
   existing=$(
     "$script_dir/read-audit-ci-config.sh" 2>/dev/null \
-      | awk -F= '/^audit_authors=/ { sub(/^audit_authors=/, ""); print; exit }'
+      | awk -F= '/^audit_authors=/ && !seen { sub(/^audit_authors=/, ""); print; seen = 1 }'
   )
 fi
 
