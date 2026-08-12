@@ -22,13 +22,14 @@ setup() {
   CHECKER="$PROJECT_ROOT/.gaia/scripts/verify-audit-roster.sh"
 
   # This suite runs the real TypeScript parser through tsx, which needs the
-  # CLI's node_modules. audit-ci-tests.yml runs `bats .gaia/scripts/tests/`
-  # wholesale on a lean box that installs only `bats` and `python3-yaml`: no
-  # actions/setup-node, no pnpm, no `pnpm install`. Skip cleanly there rather
-  # than failing a required PR check for an environment this suite cannot
-  # control. CI coverage comes from cli-tests.yml instead, which installs the
-  # CLI's dependencies and runs this file by name, so the skip never hides the
-  # binding: on that runner the guard is false and all six tests execute.
+  # CLI's node_modules. audit-ci-tests.yml runs this file inside whichever of
+  # the scripts-1 / scripts-2 shards it lands in, on a lean box that installs
+  # only `bats` and `python3-yaml`: no actions/setup-node, no pnpm, no
+  # `pnpm install`. Skip cleanly there rather than failing a required PR check
+  # for an environment this suite cannot control. CI coverage comes from
+  # cli-tests.yml instead, which installs the CLI's dependencies and runs
+  # this file by name, so the skip never hides the binding: on that runner the
+  # guard is false and all six tests execute.
   [ -d "$CLI_DIR/node_modules" ] || skip "no node_modules on this runner"
 
   START_MARKER='<!-- gaia:audit-remit:start -->'

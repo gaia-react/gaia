@@ -96,8 +96,9 @@ Visibility for a covered assertion is not coverage.
   the tranche was first read green. Both pass, so the reading was not disturbed and the
   tranche's claim now stands against a strictly larger set than the one it was first made
   against. **Step 4 (KEYS)** is where that tranche is
-  expected green and where this suite becomes a **required CI check** — added to the
-  `audit-ci-tests` bats manifest and kept required forever after (one of the three
+  expected green and where this suite becomes a **required CI check** — armed as its own
+  `concurrency` leg of the sharded `Audit CI Tests` workflow, whose aggregator job carries
+  the required context and kept required forever after (one of the three
   permanent defenses, alongside the resolver-singleton build check and the registry
   conformance check). **Done: it is armed.** See
   [Armed as a required CI check](#armed-as-a-required-ci-check).
@@ -837,17 +838,19 @@ B's appears) is what may never be weakened to move a number.
 
 ## Armed as a required CI check
 
-Step 4's arming, and what it does not need. `meter-gate.sh` runs as the last step of the
-`Audit CI Tests` job (`.github/workflows/audit-ci-tests.yml`), alongside the six bats
-suites that job already runs.
+Step 4's arming, and what it does not need. `meter-gate.sh` runs as the whole of the
+`concurrency` leg of the sharded `Audit CI Tests` workflow
+(`.github/workflows/audit-ci-tests.yml`), one of eleven matrix legs the aggregator job
+waits on before it reports the required context.
 
 **It needed no branch-protection change, and earlier drafts of this file were wrong to
 imply one.** `Audit CI Tests` is *already* a declared-required context
-(`.gaia/scripts/verify-required-checks.sh`, `REQUIRED_CONTEXTS`), so a step inside that job
-inherits the requirement. Arming would have needed a ruleset edit only if it meant adding a
-**new** job, creating a check context nobody requires yet — and it never had to mean that;
-this file always described arming as "added to the `audit-ci-tests` bats manifest," which
-is exactly a step inside the already-required job.
+(`.gaia/scripts/verify-required-checks.sh`, `REQUIRED_CONTEXTS`); that name now belongs to
+the aggregator job, which waits on every leg the matrix runs, so a leg the aggregator
+waits on inherits the requirement with no ruleset edit. Arming would have needed a ruleset
+edit only if it meant creating a check context nobody requires yet — and it never had to
+mean that; arming means running the suite as its own leg, feeding the job that already
+carries the requirement.
 
 **One thing is still the maintainer's, and it is a confirmation, not a cutover:** that the
 live GitHub ruleset really lists `Audit CI Tests`. `REQUIRED_CONTEXTS` is *intent*; the
