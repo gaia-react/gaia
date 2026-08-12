@@ -19,6 +19,12 @@ name: Distribution Audit (PR)
 # it. That is intended, not a misfire; the inline comment at the region-drift
 # check carries the reasoning.
 #
+# A third condition runs as its own step: every issue or pull-request reference
+# on a shipped non-Markdown file must name its repository, or an adopter reading
+# it is pointed at their own tracker. Like region drift, it is evaluated over
+# the whole shipped set rather than this PR's changed files. The step's own
+# comment carries why this job is its caller.
+#
 # Maintainer-only: `gaia-maintainer` and the release manifest exist only on the
 # GAIA team's clone; adopters never run GAIA releases. Release-excluded
 # alongside the other maintainer-only workflows (category 9); on an adopter
@@ -186,3 +192,28 @@ jobs:
           fi
 
           echo "Distribution gate: no unanswered newly-shipping files in this PR's changed set, and the region declaration matches a fresh scan."
+
+      # A third distribution-boundary condition, in its own step so its report
+      # is legible rather than buried under the gate above.
+      #
+      # `#NNN` resolves against whatever repository the reader is looking at. On
+      # a file GAIA ships, the reader is an adopter, so a bare number silently
+      # points at THEIR tracker. `.claude/rules/code-comments.md` requires the
+      # qualified `gaia-react/gaia#NNN` form on those files, and this is the
+      # caller that makes the requirement checkable rather than merely asserted.
+      #
+      # It runs HERE, rather than in a paths-filtered test job, for two reasons.
+      # Any shipped file can acquire a bare reference, so a filter narrow enough
+      # to name the surface would have to name nearly the whole tree, and this
+      # job already runs on every pull request with no filter. And the lint's
+      # file set is the COMMITTED manifest, which cannot see a brand-new shipped
+      # file -- but the step above fails the pull request until the manifest
+      # acknowledges every newly-shipping file this pull request touched, so the
+      # two compose into a complete check that neither is alone.
+      #
+      # `if: always()` is deliberately NOT set: when the gate above fails, the
+      # manifest is by definition not yet answering for this pull request's
+      # shipping surface, so this lint would be scanning an incomplete set and
+      # its verdict would not mean what it says.
+      - name: Gate unqualified issue references on shipped files
+        run: bash .gaia/scripts/lint-shipped-issue-refs.sh

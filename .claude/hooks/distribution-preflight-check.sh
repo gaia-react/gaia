@@ -24,11 +24,12 @@
 # reads to a later audit as accidental drift. See wiki/decisions/Deliberate
 # Configuration Asymmetries.md for the sibling cases.
 #
-# WHAT THIS DOES NOT MIRROR: the CI gate has a second, independent failure
-# condition, region-declaration drift, and this hook does not evaluate it. That
-# omission is deliberate. The claim above is that this hook is only ever a
-# cheaper way to find out what CI would have told you, and that holds only
-# while every arm here answers from the same state CI audits:
+# WHAT THIS DOES NOT MIRROR: the CI gate has two further independent failure
+# conditions, region-declaration drift and the shipped-issue-reference lint, and
+# this hook evaluates neither. Both omissions are deliberate, and for the same
+# reason. The claim above is that this hook is only ever a cheaper way to find
+# out what CI would have told you, and that holds only while every arm here
+# answers from the same state CI audits:
 #
 #   The missing arm qualifies, and the intersection is precisely what makes it
 #   qualify. The file map behind `missing` is a git ls-files walk, which reads
@@ -51,9 +52,16 @@
 #   Narrowing it to the changed set instead would enforce a different rule than
 #   CI's, which that workflow's own inline comment rules out.
 #
-# So region drift stays CI-only and does surface as a red check after the push.
-# That gap in local coverage is the accepted price of the guarantee that a deny
-# here always means a red check there.
+#   The issue-reference lint does not qualify either, and it fails the same
+#   test. It reads each shipped file's CONTENT off disk, so an uncommitted edit
+#   that adds or removes a bare reference moves its verdict, and it is scoped to
+#   the whole shipped set rather than the changed one for the same reason region
+#   drift is. Evaluated here it would deny on a working tree the PR never
+#   contains, which is exactly what the guarantee below forbids.
+#
+# So both stay CI-only and surface as a red check after the push. That gap in
+# local coverage is the accepted price of the guarantee that a deny here always
+# means a red check there.
 #
 # WHY `gh pr create` AND NOT `git push`: push-time would catch this one round
 # earlier, but it fires on every work-in-progress push to a branch that has no

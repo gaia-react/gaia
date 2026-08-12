@@ -319,6 +319,16 @@ jobs:
               # match no pattern here and skip the very suite that guards it.
               - '.gaia/hook-scopes.json'
               - '.gaia/hook-scopes.schema.json'
+              # lint-shipped-issue-refs.bats (.gaia/scripts/tests/) derives its
+              # scan set from the release manifest, and its release-boundary
+              # parity assertions read the manifest directly to check that the
+              # shipped-versus-excluded split .claude/rules/code-comments.md
+              # states in prose is still true. A manifest-only edit -- a release
+              # regeneration, a /distribution-audit answer -- is exactly what
+              # makes that prose stop being true, and it touches no other
+              # pattern here, so without this line the suite that guards it
+              # would skip on the very change that breaks it.
+              - '.gaia/manifest.json'
               # The INV-7 concurrency meter (.gaia/tests/concurrency/) and the
               # sources it drives. Most are already listed above -- it copies
               # .claude/hooks/**, .gaia/scripts/**, .gaia/statusline/** and
