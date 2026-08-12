@@ -94,12 +94,21 @@ fi
 # `;`, `)`, a quote, or a `}` closes it to the right. A reference does not
 # survive that: `(#726)` finds no opener, and `see #726.` finds no closer.
 #
-# The honest limit, stated rather than discovered later, and calibrated with
-# shapes people actually write rather than a contrived one: any reference on a
-# line that also carries an earlier `:` or `=` is exempted if a `,`, `;`, `)` or
-# quote follows it. `# TODO: fix #726, then remove` and `# Why: the hook denies
-# (#727).` are both missed. That is a FAIL-OPEN miss and it is accepted, but do
-# not read the surface as narrow. The other direction reds
+# The honest limit, stated rather than discovered later. A reference that
+# satisfies both halves above is exempted and missed, and the shapes that do are
+# ordinary rather than contrived, which is the part to take seriously:
+#
+#   # TODO: fix #726, then remove
+#   # Why: the hook denies (#727).
+#   # Why: see #728 }
+#
+# Read the mechanism above for what qualifies rather than generalizing from
+# these three, because both halves are narrower than "the line has a colon
+# somewhere": the leftward walk stops at a `;`, `{` or `}`, and the closer must
+# sit immediately after the digits (or after only spaces, before a `}`). So
+# `# Why: it fails; see #726,` and `# TODO: fix #727 then remove, please` are
+# both FLAGGED. That is a FAIL-OPEN miss and it is accepted. The other direction
+# reds
 # the build on a colour, which is a false positive on a line that has NO
 # correct repair -- the author cannot write `gaia-react/gaia#333` for a shade of
 # grey -- and this gate runs on every pull request. A two-digit candidate cannot

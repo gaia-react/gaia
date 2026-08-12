@@ -14,8 +14,11 @@
 # valid issue number and a valid CSS short hex colour, shipped CSS is in the
 # manifest, and the gate runs on every pull request -- so an unnarrowed detector
 # reds the build on a colour, which is a false positive with no correct repair.
-# The narrowing is punctuation-based and its accepted miss (`Fixes: #726;`) is
-# pinned below as a test rather than left to be rediscovered.
+# The narrowing is punctuation-based, and the accepted miss it buys is pinned
+# below as a test rather than left to be rediscovered. That pin carries ordinary
+# comment shapes (`# TODO: fix #727, then remove`), not just the tidy
+# `Fixes: #726;`, because the point of pinning it is to stop the next reader
+# underestimating how wide the fail-open surface is.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
@@ -197,9 +200,24 @@ run_linter() {
   # a `,`, `;`, `)` or quote follows the reference. Pinning realistic shapes
   # rather than a contrived one is the point, so the fail-open surface is not
   # underestimated by whoever reads this next.
-  fixture_file hooks/probe.sh $'# Fixes: #726;\n# TODO: fix #727, then remove\n# Why: the hook denies (#728).'
+  fixture_file hooks/probe.sh $'# Fixes: #726;\n# TODO: fix #727, then remove\n# Why: the hook denies (#728).\n# Why: see #729 }'
   run_linter
   [ "$status" -eq 0 ]
+}
+
+@test "the exemption is narrower than an earlier colon on the line" {
+  fixture_tree
+  fixture_manifest "hooks/probe.sh"
+  # The companion to the pin above, and the reason the header tells the reader
+  # to read the mechanism rather than generalize from the missed shapes. Both
+  # lines carry an earlier `:`, so "the line has a colon somewhere" would
+  # exempt them; the leftward walk stops at the `;` on the first, and the
+  # closer is not immediately after the digits on the second.
+  fixture_file hooks/probe.sh $'# Why: it fails; see #726,\n# TODO: fix #727 then remove, please'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "#726" <<<"$output"
+  grep -qF -- "#727" <<<"$output"
 }
 
 # 5. Fail-closed behaviour
