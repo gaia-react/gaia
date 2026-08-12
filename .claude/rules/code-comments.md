@@ -86,21 +86,20 @@ Worked examples:
 - **provenance**, a clause claiming only when the rows arrived — ``No stored `unpriced` at all, which is every row written before #1088 landed``
 - **unpaired**, and dropping the number leaves a title that stands — ``Tests for `.gaia/scripts/verify-required-checks.sh` (#807)``
 
+<!-- gaia:maintainer-only:start -->
 ## Audit
 
-Every reference on a shipped non-Markdown file names its repository. This command is the gate: silent on a conforming tree, and it produces a hit the moment an unqualified reference returns.
+GAIA maintainers: the audit is maintainer-only because the obligation it enforces is GAIA's own. On an adopter clone a `#NNN` in a file they edited means their tracker, so a gate demanding the `gaia-react/gaia` form there would be wrong, and both the gate and its runners are release-excluded for that reason.
+
+Every reference on a shipped non-Markdown file names its repository. One command is the gate, silent on a conforming tree and reporting `file:line` the moment an unqualified reference returns:
 
 ```bash
-jq -r '.files | keys[]' .gaia/manifest.json \
-  | grep -v '\.md$' \
-  | while IFS= read -r f; do
-      [ -f "$f" ] || continue
-      grep -nE '(^|[^A-Za-z0-9_/#-])#[0-9]{2,4}([^0-9A-Fa-f]|$)' "$f" | sed "s|^|$f:|"
-    done
+bash .gaia/scripts/lint-shipped-issue-refs.sh
 ```
 
-<!-- gaia:maintainer-only:start -->
-GAIA maintainers: the grep below is a candidate list, not a gate. It surfaces qualified and unqualified references alike and asserts no silence, so a human triages its output at block level, where any non-empty match is a candidate for a verdict rather than a finding. The strike-the-number test applies on all four surfaces it sweeps. The qualification obligation applies to the shipped half only: the shipped `.claude/hooks/` scripts, and the shipped `.github/**` helper scripts under `.github/audit/` and `.github/actions/**/lib/`. `.gaia/tests/`, `.gaia/scripts/tests/`, and `.github/audit/tests/` are release-excluded and exempt from it, as are the release-excluded workflows. Neither comment rule's activation globs reach a `.yml`, so neither auto-loads on one, but the gate does reach every `.yml` the manifest ships, workflows and composite actions and issue templates alike. `.github/workflows/code-review-audit.yml` is absent from the manifest because it is regenerated from a shipped CLI template the gate already covers.
+That script is the gate rather than a command transcribed here, so the rule and the thing enforcing it cannot drift apart. It derives its file set from `.gaia/manifest.json`, skips Markdown and binary assets, and exempts a CSS short hex colour (`#333` is both a valid issue number and a valid colour); the script's own header states the exemption's accepted miss. `Distribution Audit` runs it on every pull request, and `.gaia/scripts/tests/lint-shipped-issue-refs.bats` proves it reds on a regression and pins the release-boundary split the next paragraph states in prose.
+
+The grep below is a candidate list, not a gate. It surfaces qualified and unqualified references alike and asserts no silence, so a human triages its output at block level, where any non-empty match is a candidate for a verdict rather than a finding. The strike-the-number test applies on all four surfaces it sweeps. The qualification obligation applies to the shipped half only: the shipped `.claude/hooks/` scripts, and the shipped `.github/**` helper scripts under `.github/audit/` and `.github/actions/**/lib/`. `.gaia/tests/`, `.gaia/scripts/tests/`, and `.github/audit/tests/` are release-excluded and exempt from it, as are the release-excluded workflows. Neither comment rule's activation globs reach a `.yml`, so neither auto-loads on one, but the gate does reach every `.yml` the manifest ships, workflows and composite actions and issue templates alike. `.github/workflows/code-review-audit.yml` is absent from the manifest because it is regenerated from a shipped CLI template the gate already covers.
 
 ```bash
 grep -rnE '((^|[^A-Za-z0-9_/#-])|gaia-react/gaia)#[0-9]{2,4}([^0-9A-Fa-f]|$)' \

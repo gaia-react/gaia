@@ -77,6 +77,15 @@
 # wholesale via the .gaia/tests entry, so shipping it would ship a check nothing
 # on an adopter clone invokes.
 .gaia/scripts/lint-diff-name-only-quoting.sh
+# The shipped-issue-reference lint enforces GAIA's own authoring obligation: a
+# `#NNN` on a file GAIA ships must name gaia-react/gaia so an adopter reading it
+# is not pointed at their own tracker. Withheld because that obligation is
+# GAIA's, not the adopter's -- on an adopter clone a `#NNN` in a file they edited
+# means their tracker, and this gate would demand they mislabel it as GAIA's. Its
+# runners (the Distribution Audit workflow and its bats suite) are both
+# release-excluded, so shipping it would ship a check nothing on an adopter clone
+# invokes and whose verdict would be wrong there anyway.
+.gaia/scripts/lint-shipped-issue-refs.sh
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that
