@@ -228,7 +228,7 @@ jobs:
               # shard's bats step below invokes, and it sits at the top of
               # .gaia/tests/ too, matching none of the four .gaia/tests/*/
               # globs below, the same reasoning as the two entries above.
-              # Without this line an edit to the sharder -- its round-robin
+              # Without this line an edit to the sharder -- its weighted
               # split, its directory seam, its pinned-hook check -- would
               # report `code=false`, skip every shard's bats step, and green
               # the job having run the suites zero times.
@@ -574,8 +574,8 @@ jobs:
       # reason the apt step below names the legs it runs on rather than being
       # left uniform: a per-shard package list is only safe while something
       # checks that the named set still covers every leg that draws one of
-      # those files, and a round-robin reshuffle moves files between legs
-      # without touching this file. W10 in .gaia/tests/lib/audit-ci-shards.bats
+      # those files, and a reshuffle of the weighted split moves files
+      # between legs without touching this file. W10 in .gaia/tests/lib/audit-ci-shards.bats
       # is that check. It recomputes the leg-to-dependency map from the suites
       # themselves and reds when this list and that map disagree, in either
       # direction, which is what converts the reduced set from an assumption
@@ -622,7 +622,7 @@ jobs:
       # No apt at all: the sandbox tree provably needs neither python3-yaml nor
       # zsh (W9 above), so this leg only needs the pinned bats binary. A PR
       # that arms `sandbox` alone therefore runs no apt at all, instead of the
-      # 11x exposure a single shared install step across every leg would carry.
+      # exposure a single shared install step on every leg would carry.
       - if: matrix.shard == 'sandbox' && (steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch')
         name: Install bats
         run: bash .gaia/tests/install-bats.sh

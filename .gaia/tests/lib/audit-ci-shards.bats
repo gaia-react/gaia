@@ -919,6 +919,16 @@ EOF
     # is covered by existing there. A helper is shared by every suite beside
     # it, so this can report a package for a leg whose own suites name nothing;
     # that is the over-inclusive direction this check already prefers.
+    # Captured and status-checked for the same reason the sharder listing
+    # above is: consumed straight from a heredoc the sort's status is
+    # unobservable, and a failed sort yields an empty list, zero helper
+    # iterations, and "no helper names a package" at status 0.
+    rc=0
+    dirs="$(printf '%s' "$dirs" | LC_ALL=C sort -u)" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "shard_package_needs: could not sort $id's helper directories (exit $rc)" >&2
+      return 1
+    fi
     while IFS= read -r dir || [ -n "$dir" ]; do
       [ -n "$dir" ] || continue
       for helper in "$dir/helpers" "$dir/lib"; do
@@ -933,7 +943,7 @@ EOF
         fi
       done
     done <<EOF
-$(printf '%s' "$dirs" | LC_ALL=C sort -u)
+$dirs
 EOF
     if [ -n "$hits" ]; then
       found="$found$id

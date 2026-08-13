@@ -358,8 +358,14 @@ within_load_bound() {
 # Stated as a bound rather than a spread so it never flakes: it holds for every
 # input, including one file heavier than the whole rest of its group.
 @test "S9: each weighted group's shards respect the greedy load bound" {
-  local total largest
-  read -r total largest < <(discover_independent "$HOOKS_DIR_DEFAULT" | grep -v '/local-janitor\.bats$' | weight_profile)
+  local total largest pinned
+  # The held-out set is asked for rather than spelled out. Written as a literal
+  # it would name today's single pinned file, and the sharder invites pinning a
+  # second: that file would then stay in the profile while leaving the shards
+  # under test, inflating `total` and `largest` and loosening the bound instead
+  # of failing.
+  pinned="$(bash "$SCRIPT" files hooks-1)"
+  read -r total largest < <(discover_independent "$HOOKS_DIR_DEFAULT" | grep -vxF "$pinned" | weight_profile)
   run within_load_bound "$SCRIPT" "$total" "$largest" hooks-2 hooks-3 hooks-4
   [ "$status" -eq 0 ]
 
