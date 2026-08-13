@@ -13,6 +13,11 @@
 # none of the four things above (a `.bats` file does not decide who reviews
 # what, or whether a clearance is honored). They are covered instead by the
 # roster's own `.bats` globs, which dispatch a real member to review them.
+# The exclusion is enforced in the two matchers below rather than by the shape
+# of the list, because a `/**` entry sweeps in whatever sits under it: the
+# suites beside the gate scripts under `.github/audit/` are the live case, and
+# narrowing that entry to dodge them would fail open the moment a new gate
+# script lands under it unlisted.
 #
 # One literal list, no second copy anywhere. Entries ending in `/**` are
 # directory prefixes (every tracked file under them is machinery); every
@@ -77,6 +82,10 @@ EOF
 audit_path_is_machinery() {
   local path="$1" entry prefix
 
+  case "$path" in
+    *.bats) return 1 ;;
+  esac
+
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
     case "$entry" in
@@ -119,7 +128,8 @@ audit_delta_has_machinery() {
 # shell arrays ONCE, then tests each path against those arrays, so a caller
 # classifying every tracked file does not re-read the heredoc once per path the
 # way audit_path_is_machinery does. The membership semantics are byte-identical
-# to audit_path_is_machinery (exact match, or a `/**` directory-prefix match);
+# to audit_path_is_machinery (never a `.bats` suite; otherwise exact match, or a
+# `/**` directory-prefix match);
 # empty input lines are skipped, symmetric with audit_owners_for_paths, so the
 # digest walk can align this output line-for-line with that classifier's.
 audit_machinery_flags() {
@@ -143,21 +153,26 @@ EOF
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     hit=0
-    i=0
-    while [ "$i" -lt "$ne" ]; do
-      if [ "$path" = "${exact[$i]}" ]; then hit=1; break; fi
-      i=$((i + 1))
-    done
-    if [ "$hit" -eq 0 ]; then
-      i=0
-      while [ "$i" -lt "$np" ]; do
-        prefix="${prefixes[$i]}"
-        case "$path" in
-          "$prefix"*) hit=1; break ;;
-        esac
-        i=$((i + 1))
-      done
-    fi
+    case "$path" in
+      *.bats) ;;
+      *)
+        i=0
+        while [ "$i" -lt "$ne" ]; do
+          if [ "$path" = "${exact[$i]}" ]; then hit=1; break; fi
+          i=$((i + 1))
+        done
+        if [ "$hit" -eq 0 ]; then
+          i=0
+          while [ "$i" -lt "$np" ]; do
+            prefix="${prefixes[$i]}"
+            case "$path" in
+              "$prefix"*) hit=1; break ;;
+            esac
+            i=$((i + 1))
+          done
+        fi
+        ;;
+    esac
     printf '%s\t%d\n' "$path" "$hit"
   done
 }
