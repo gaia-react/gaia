@@ -8,7 +8,7 @@
 #     the deterministic candidates[]-exclusion half is task-tally-core's Vitest)
 #   - check-updates.sh dropped the stale "at error/warning severity" phrasing
 #     (directive #6; this file is swept in Phase 2, so Phase 1's doc-grep,
-#     `.gaia/tests/prose-audit/spec051-countability-prose.bats`, never touches it)
+#     `.gaia/tests/lib/doc-countability-prose.bats`, never touches it)
 #
 # The statusline half mirrors statusline-worktree.bats: a MAIN git checkout
 # with setup marked complete and no gaia-init gate file, so the right-side
