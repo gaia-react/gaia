@@ -35,6 +35,21 @@ setup() {
 
 teardown() {
   local p
+  # Unstage before unlinking, and from teardown rather than inline in the
+  # test: S13's probe below stages a path in the REAL index, so an abort
+  # between the stage and an inline undo (a failed assertion, SIGINT, a
+  # timeout) would strand the entry. That costs more than a leftover file --
+  # a dirty index makes every Code Audit Team member's dirty-scope check
+  # withhold its marker, and S13 itself reds on the stranded path until
+  # someone runs `git rm --cached` by hand.
+  if [ -f "$BATS_TEST_TMPDIR/staged-probes" ]; then
+    while IFS= read -r p || [ -n "$p" ]; do
+      if [ -n "$p" ]; then
+        git -C "$REPO_ROOT" rm --cached --quiet -- "$p" ||
+          echo "teardown: failed to unstage probe $p" >&2
+      fi
+    done <"$BATS_TEST_TMPDIR/staged-probes"
+  fi
   if [ -f "$BATS_TEST_TMPDIR/scratch-copies" ]; then
     while IFS= read -r p || [ -n "$p" ]; do
       if [ -n "$p" ]; then
@@ -373,18 +388,28 @@ misc"
 }
 
 # S13's allowlist: a tracked .bats file that no shard resolves, paired with
-# the runner that does execute it. Two fields per row, path prefix then
-# runner, so a reader can check the claim rather than take it on faith.
+# the runner that does execute it. Four tab-separated fields per row: the path
+# prefix, the file to look in, the LITERAL text that invokes the runner, and a
+# human label for the failure message.
 #
-# A prefix earns a row only by naming a runner that actually executes it. The
-# list is the whole point of the test: an orphan suite is invisible precisely
-# because nothing distinguishes "deliberately run elsewhere" from "run by
-# nothing", and this is where that distinction is written down.
+# The needle is carried per row rather than derived from the prefix, and that
+# is the difference between a check and a decoration. A derived needle is
+# whatever the prefix happens to spell -- `sandbox`, `concurrency` -- and those
+# words appear throughout the workflow's prose, `concurrency:` being a
+# top-level GitHub Actions key that is present no matter what. Such a grep
+# cannot fail: delete both matrix legs AND their run: steps and it still
+# matches, so the row would go on excusing seven suites that run nowhere,
+# which is the exact regression this test exists to catch. The invocation
+# line is the thing that disappears when the runner does, so it is what gets
+# matched.
 non_shard_runners() {
-  printf '%s\t%s\n' \
-    '.gaia/tests/sandbox/' 'the `sandbox` leg of audit-ci-tests.yml.s workflow matrix' \
-    '.gaia/tests/concurrency/' 'the `concurrency` leg of audit-ci-tests.yml.s workflow matrix' \
-    '.github/forensics/tests/' 'the delegation @test in .gaia/tests/forensics/unit.bats, which the misc shard runs'
+  printf '%s\t%s\t%s\t%s\n' \
+    '.gaia/tests/sandbox/' '.github/workflows/audit-ci-tests.yml' \
+    'bash .gaia/tests/sandbox/run-all.sh' 'the sandbox leg of the audit-ci-tests.yml matrix' \
+    '.gaia/tests/concurrency/' '.github/workflows/audit-ci-tests.yml' \
+    'bash .gaia/tests/concurrency/meter-gate.sh' 'the concurrency leg of the audit-ci-tests.yml matrix' \
+    '.github/forensics/tests/' '.gaia/tests/forensics/unit.bats' \
+    'run bats "$FORENSICS_DIR/tests/"' 'the delegation @test in .gaia/tests/forensics/unit.bats, which the misc shard runs'
 }
 
 # S13. Every tracked .bats file is executed by something.
@@ -410,7 +435,7 @@ non_shard_runners() {
 # breaks it; workflow-filter-coverage.bats (.gaia/scripts/tests/) is the guard
 # for that half.
 @test "S13: every tracked .bats file is run by a shard or a named non-shard runner" {
-  local tracked covered orphan prefix runner row allowlisted rc
+  local tracked covered orphans orphan prefix file needle label row allowlisted rc
   tracked="$(cd "$REPO_ROOT" && git ls-files '*.bats' | LC_ALL=C sort)"
   [ -n "$tracked" ] || {
     echo "git ls-files found no .bats files at all; the comparison would be vacuous" >&2
@@ -418,33 +443,33 @@ non_shard_runners() {
   }
   covered="$(union_of_shard_files "$SCRIPT" | LC_ALL=C sort -u)"
 
+  # Capture rather than iterate a process substitution, so comm's own status
+  # is checked instead of discarded: it exits non-zero on input its collation
+  # rejects, and a fail-open there would report zero orphans for the wrong
+  # reason. LC_ALL=C matches the sort the two operands were built with; under
+  # a differing ambient locale GNU comm reports disorder on inputs that are
+  # correctly sorted for C.
+  orphans="$(LC_ALL=C comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$covered"))" || {
+    echo "comm failed comparing the tracked suites against the shard union" >&2
+    return 1
+  }
+
   rc=0
   while IFS= read -r orphan || [ -n "$orphan" ]; do
     [ -n "$orphan" ] || continue
     allowlisted=0
     while IFS= read -r row || [ -n "$row" ]; do
-      prefix="${row%%$'\t'*}"
-      runner="${row##*$'\t'}"
+      IFS=$'\t' read -r prefix file needle label <<<"$row"
       case "$orphan" in
         "$prefix"*)
           allowlisted=1
           # Prove the named runner still exists rather than trusting the row:
-          # a stale allowlist entry would keep excusing a file whose runner
-          # was deleted, which is the same silent green one level up.
-          case "$prefix" in
-            .github/forensics/tests/)
-              grep -qF -- '.github/forensics/tests/' "$REPO_ROOT/.gaia/tests/forensics/unit.bats" || {
-                echo "allowlist claims $runner, but unit.bats no longer delegates" >&2
-                rc=1
-              }
-              ;;
-            *)
-              grep -qF -- "$(basename "${prefix%/}")" "$REPO_ROOT/.github/workflows/audit-ci-tests.yml" || {
-                echo "allowlist claims $runner, but the matrix no longer names it" >&2
-                rc=1
-              }
-              ;;
-          esac
+          # a stale entry would keep excusing a file whose runner was deleted,
+          # which is the same silent green one level up.
+          grep -qF -- "$needle" "$REPO_ROOT/$file" || {
+            echo "allowlist excuses $orphan via $label, but $file no longer contains: $needle" >&2
+            rc=1
+          }
           break
           ;;
       esac
@@ -453,7 +478,9 @@ non_shard_runners() {
       echo "orphan bats suite, no shard resolves it and no allowlist row names a runner: $orphan" >&2
       rc=1
     fi
-  done < <(comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$covered"))
+  done <<EOF
+$orphans
+EOF
 
   return "$rc"
 }
@@ -461,21 +488,22 @@ non_shard_runners() {
 @test "S13 adversarial: an orphan suite outside the seam is caught" {
   # The real failure shape: a .bats file tracked by git, in no seam directory
   # and on no allowlist prefix. Written into a directory the seam does not
-  # reach, then added to the index so `git ls-files` reports it, and removed
-  # from the index in teardown.
+  # reach, then added to the index so `git ls-files` reports it. Both undos are
+  # registered BEFORE the staging that needs them, so teardown reverses this
+  # even when an assertion below aborts the test.
   local dir rel
   dir="$REPO_ROOT/.gaia/tests/lib/fixtures"
   rel=".gaia/tests/lib/fixtures/s13-orphan-probe.bats"
-  write_trivial_bats "$REPO_ROOT/$rel" "S13-ORPHAN"
+  mkdir -p "$dir"
   printf '%s\n' "$REPO_ROOT/$rel" >>"$BATS_TEST_TMPDIR/scratch-copies"
-  (cd "$REPO_ROOT" && git add -N -- "$rel")
+  printf '%s\n' "$rel" >>"$BATS_TEST_TMPDIR/staged-probes"
+  write_trivial_bats "$REPO_ROOT/$rel" "S13-ORPHAN"
+  git -C "$REPO_ROOT" add -N -- "$rel"
 
   local tracked covered orphans
   tracked="$(cd "$REPO_ROOT" && git ls-files '*.bats' | LC_ALL=C sort)"
   covered="$(union_of_shard_files "$SCRIPT" | LC_ALL=C sort -u)"
-  orphans="$(comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$covered"))"
-
-  (cd "$REPO_ROOT" && git rm --cached --quiet -- "$rel" 2>/dev/null || true)
+  orphans="$(LC_ALL=C comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$covered"))"
 
   # `fixtures/` is a subdirectory of a seam root, and the seam globs *.bats
   # DIRECTLY inside its roots only, so this probe is genuinely unreached --
