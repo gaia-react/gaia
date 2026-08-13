@@ -35,21 +35,6 @@ setup() {
 
 teardown() {
   local p
-  # Unstage before unlinking, and from teardown rather than inline in the
-  # test: S13's probe below stages a path in the REAL index, so an abort
-  # between the stage and an inline undo (a failed assertion, SIGINT, a
-  # timeout) would strand the entry. That costs more than a leftover file --
-  # a dirty index makes every Code Audit Team member's dirty-scope check
-  # withhold its marker, and S13 itself reds on the stranded path until
-  # someone runs `git rm --cached` by hand.
-  if [ -f "$BATS_TEST_TMPDIR/staged-probes" ]; then
-    while IFS= read -r p || [ -n "$p" ]; do
-      if [ -n "$p" ]; then
-        git -C "$REPO_ROOT" rm --cached --quiet -- "$p" ||
-          echo "teardown: failed to unstage probe $p" >&2
-      fi
-    done <"$BATS_TEST_TMPDIR/staged-probes"
-  fi
   if [ -f "$BATS_TEST_TMPDIR/scratch-copies" ]; then
     while IFS= read -r p || [ -n "$p" ]; do
       if [ -n "$p" ]; then
@@ -398,7 +383,7 @@ misc"
 # words appear throughout the workflow's prose, `concurrency:` being a
 # top-level GitHub Actions key that is present no matter what. Such a grep
 # cannot fail: delete both matrix legs AND their run: steps and it still
-# matches, so the row would go on excusing seven suites that run nowhere,
+# matches, so the row would go on excusing every suite behind that prefix,
 # which is the exact regression this test exists to catch. The invocation
 # line is the thing that disappears when the runner does, so it is what gets
 # matched.
@@ -488,20 +473,31 @@ EOF
 @test "S13 adversarial: an orphan suite outside the seam is caught" {
   # The real failure shape: a .bats file tracked by git, in no seam directory
   # and on no allowlist prefix. Written into a directory the seam does not
-  # reach, then added to the index so `git ls-files` reports it. Both undos are
-  # registered BEFORE the staging that needs them, so teardown reverses this
-  # even when an assertion below aborts the test.
-  local dir rel
+  # reach, then staged so `git ls-files` reports it.
+  #
+  # Staged into a COPY of the index, never the repository's own. Writing the
+  # real index would make this the one test here that mutates shared repo
+  # state, and two documented invariants forbid it: run-bats-parallel.sh forks
+  # the six suite directories concurrently in one workspace, and a sibling
+  # suite derives its whole input population from `git ls-files`. It would also
+  # need an undo, whose own failure path (a contended index.lock) strands a
+  # staged-deleted path in the real index, which is exactly the dirty-tree
+  # state that makes every audit member withhold its marker. GIT_INDEX_FILE
+  # removes the hazard rather than reporting it: nothing to undo, so nothing
+  # that can fail to undo.
+  local dir rel git_dir index
   dir="$REPO_ROOT/.gaia/tests/lib/fixtures"
   rel=".gaia/tests/lib/fixtures/s13-orphan-probe.bats"
+  index="$BATS_TEST_TMPDIR/probe-index"
+  git_dir="$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir)"
+  cp "$git_dir/index" "$index"
   mkdir -p "$dir"
   printf '%s\n' "$REPO_ROOT/$rel" >>"$BATS_TEST_TMPDIR/scratch-copies"
-  printf '%s\n' "$rel" >>"$BATS_TEST_TMPDIR/staged-probes"
   write_trivial_bats "$REPO_ROOT/$rel" "S13-ORPHAN"
-  git -C "$REPO_ROOT" add -N -- "$rel"
+  GIT_INDEX_FILE="$index" git -C "$REPO_ROOT" add -N -- "$rel"
 
   local tracked covered orphans
-  tracked="$(cd "$REPO_ROOT" && git ls-files '*.bats' | LC_ALL=C sort)"
+  tracked="$(cd "$REPO_ROOT" && GIT_INDEX_FILE="$index" git ls-files '*.bats' | LC_ALL=C sort)"
   covered="$(union_of_shard_files "$SCRIPT" | LC_ALL=C sort -u)"
   orphans="$(LC_ALL=C comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$covered"))"
 
