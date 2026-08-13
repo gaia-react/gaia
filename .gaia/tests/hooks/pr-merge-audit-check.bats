@@ -728,11 +728,20 @@ assert_not_in_set() {
   assert_denied_by_json
 }
 
-# The converse, and the reason the witness above had to move off .editorconfig:
-# a path the allowlist carries sits OUTSIDE the fold, so adding one leaves the
-# frontend's digest where it was and its marker still valid. Pinning the band
-# from one side only would let a widening that swallowed a path the member does
-# read still green the row above.
+@test "UAT-011: a stale frontend marker does not clear a merge that adds a nested ownerless public asset" {
+  commit_files "app/x.ts" "export const x = 1"
+  write_marker "code-audit-frontend"
+  commit_files "public/logo.svg" "<svg></svg>"
+
+  run_merge_hook
+  assert_denied_by_json
+}
+
+# The converse, and the reason the .editorconfig witness above had to move to a
+# root Makefile: a path the allowlist carries sits OUTSIDE the fold, so adding
+# one leaves the frontend's digest where it was and its marker still valid.
+# Pinning the band from one side only would let a widening that swallowed a path
+# the member does read still green the rows above.
 @test "UAT-011: an allowlisted path added after the marker leaves that marker valid" {
   commit_files "app/x.ts" "export const x = 1"
   write_marker "code-audit-frontend"
@@ -939,7 +948,7 @@ assert_not_in_set() {
 # The hazard: a zero-match dispatch does NOT auto-allow. The hook falls
 # through to the legacy out-of-scope gate, which still demands the default
 # member's clearance unless every changed path is on its allowlist. An
-# in-scope-but-ownerless diff (root Dockerfile, public/**, ...) therefore
+# in-scope-but-ownerless diff (root Makefile, public/**, ...) therefore
 # resolves to an EMPTY dispatched set yet still DENIES without that
 # clearance; the oracle's ownerless probe is what covers it.
 # ---------------------------------------------------------------------------
@@ -1082,14 +1091,14 @@ assert_not_in_set() {
 @test "FC-4 no-deadlock: an ownerless in-scope file riding with a specialized member spawns the specialized member only" {
   # The dispatched set here is non-empty (the shell member owns y.sh), so the
   # hook takes the member-aware path and never reaches its legacy out-of-scope
-  # gate: the .editorconfig is audited by nobody. This is the gate's own
+  # gate: the Makefile is audited by nobody. This is the gate's own
   # documented behavior (FC-4's ownerless-plus-specialized row), not a defect,
   # and the oracle mirrors it exactly. Do NOT "fix" the oracle to add the
   # default member here: that would spawn a member the gate does not require,
   # breaking the no-useless-spawn half of the invariant.
   #
   # The witness must be BOTH ownerless and in-scope, which is a narrow set: the
-  # legacy gate allowlists wiki/, .claude/, .specify/, .gaia/, docs/, public/,
+  # legacy gate allowlists wiki/, .claude/, .specify/, .gaia/, docs/,
   # root *.md and three root literals outright, so none of those reaches this
   # path. A root Makefile qualifies -- no roster glob claims it and no arm of
   # the allowlist admits it.
