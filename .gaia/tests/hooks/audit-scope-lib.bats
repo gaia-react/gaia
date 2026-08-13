@@ -23,11 +23,8 @@ setup() {
   # One entry per arm of the allowlist, not just the first. The uniqueness
   # invariant below is what stops a second copy of this set appearing in another
   # tracked script and drifting from this one, and an arm it does not name is an
-  # arm that may be copied freely. Each string must be long enough to be unique
-  # to its arm: `public/*` alone occurs in ordinary path handling elsewhere, so
-  # the arm's full text is what gets searched.
+  # arm that may be copied freely.
   ALLOWLIST_LITERAL='wiki/*|.claude/*|.specify/*|.gaia/*|docs/*'
-  ALLOWLIST_ARM_PUBLIC='public/*) return 0 ;;'
   ALLOWLIST_ARM_ROOT='LICENSE|.gitignore|.editorconfig'
 }
 
@@ -57,7 +54,6 @@ extract_function() {
     grep -qxF ".claude/hooks/lib/audit-scope.sh" <<<"$matches" || return 1
   done <<EOF
 $ALLOWLIST_LITERAL
-$ALLOWLIST_ARM_PUBLIC
 $ALLOWLIST_ARM_ROOT
 EOF
 }
@@ -337,20 +333,21 @@ golden_run_hook() {
   true
 }
 
-# The paths no member holds a lens over, which the roster's `unowned:` block
-# declares and the allowlist now carries. One row for the nested tree and one
-# for the root literals, since they reach the case statement through different
-# arms (public/ must precede `*/*`; the literals cross no `/` at all).
-@test "golden table: nested public/ asset allows" {
+# public/ is NOT allowlisted, and this row is what keeps it that way: the tree
+# carries executed JavaScript under it, so the subtree stays in scope and a
+# public-only diff still denies without a marker.
+@test "golden table: nested public/ asset denies" {
   golden_setup
   golden_commit "public/logo.svg" "<svg></svg>"
   golden_run_hook
   golden_teardown
   [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
   true
 }
 
+# The root literals the allowlist does carry: no member holds a lens over
+# version-control or editor bookkeeping or the licence.
 @test "golden table: root bookkeeping literals allow" {
   golden_setup
   golden_commit ".editorconfig" "root = true" ".gitignore" "node_modules" \

@@ -107,14 +107,10 @@
 #        (honoring --base).
 #     2. Base unresolvable -> the default member (the hook's bypass returns
 #        1 there and the merge denies; fail-closed mirror).
-#     3. Base resolvable and the range empty -> nobody. This is the one step
-#        that is deliberately NOT a mirror: the hook's bypass still treats an
-#        empty range as unusable input, because it derives its base
-#        independently and can fall back to a local default branch that
-#        already carries this branch's commits. Here the range is the answer
-#        to the question actually asked, and a range with no files in it holds
-#        nothing for any member to read. See the arm itself for why the
-#        asymmetry must not be "fixed" from the gate's side.
+#     3. Empty diff -> the default member (the hook's bypass treats an empty
+#        diff as unusable input, not as "nothing to audit"; mirror it). The
+#        arm itself records why splitting "unresolvable" from "empty" here is
+#        a trap rather than the obvious cleanup it looks like.
 #     4. Otherwise classify every changed path via the shared out-of-scope
 #        allowlist predicate. Any path that predicate does not admit is IN
 #        SCOPE and prints the default member; all paths admitted prints
@@ -440,7 +436,7 @@ EOF
 # --- The ownerless probe ---------------------------------------------------
 
 ownerless_probe() {
-  local default_branch base changed changed_rc path
+  local default_branch base changed path
 
   if ! command -v audit_out_of_scope_allowlisted >/dev/null 2>&1; then
     echo "resolve-audit-spawn: ownership classifier unavailable, failing closed to code-audit-frontend" >&2
@@ -471,34 +467,32 @@ ownerless_probe() {
   # allowlisted out-of-scope path spawns a member it does not need, because the
   # allowlist never gets to recognize the path. The flag is what lets this
   # probe answer the question it is actually asking.
-  # git's exit status is captured rather than swallowed, because "the base did
-  # not resolve" and "the base resolved and the diff is empty" are different
-  # facts that both produce an empty string. Only the first is a reason to fail
-  # closed. What the status must NOT be is `tr`'s, which is 0 however badly git
-  # failed. The script's own `set -euo pipefail` already delivers that, so the
-  # restatement inside the substitution changes no behavior and is not load
-  # bearing; it is here so the arm reads correctly against a local edit to the
-  # script's options, and it mirrors how check_out_of_scope_pr spells the same
-  # pipeline in .claude/hooks/pr-merge-audit-check.sh.
-  changed_rc=0
-  changed="$(set -o pipefail; git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n')" \
-    || changed_rc=$?
-  if [ "$changed_rc" -ne 0 ]; then
+  # An empty result here is TWO facts wearing one empty string: the base did not
+  # resolve, or it resolved and the range holds no files. Only the first is a
+  # reason to fail closed, so telling them apart looks like an obvious
+  # improvement. It is not one, and the reason is worth stating because the
+  # cheap version of the fix is actively worse than this line.
+  #
+  # This probe exists to PREDICT the merge gate, so an answer of "nobody" is a
+  # promise that `gh pr merge` will clear. The gate derives its base through the
+  # same origin-then-local fallback chain this function does, so on any given
+  # pull request the two see the same range; an empty one therefore reaches the
+  # gate's own empty-range arm, which denies. Splitting the states HERE alone
+  # would make the oracle answer "nobody" for a pull request the gate then holds
+  # shut, with no member named to earn the marker that would open it. Splitting
+  # them on BOTH sides instead clears a merge on an empty range, and that range
+  # is only trustworthy when the base came from the remote: on the local
+  # fallback a default branch that already carries this branch's commits yields
+  # an empty range for a pull request that changes plenty.
+  #
+  # So the honest fix is to make both sides key on the base's provenance, not to
+  # capture a status here. Until then this stays fail-closed and costs one spawn
+  # on a branch with no commits on it, which is the cheap half of that trade.
+  changed="$(git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)"
+  if [ -z "$changed" ]; then
     echo "code-audit-frontend"
     return 0
   fi
-
-  # A resolvable base with nothing between it and HEAD owes nobody: there is no
-  # content for a member to hold a lens over.
-  #
-  # The merge gate deliberately does NOT mirror this arm; its own empty-range
-  # check stays a deny. It derives its base independently and can fall back to a
-  # local default branch that already carries this branch's commits, where an
-  # empty range does not prove an empty pull request. An operator who genuinely
-  # needs to merge one spawns the default member by hand and earns its marker.
-  # Do not "restore symmetry" by clearing the gate's empty-range arm: that
-  # trades a spawn nobody needed for a merge nobody reviewed.
-  [ -n "$changed" ] || return 0
 
   while IFS= read -r path; do
     [ -n "$path" ] || continue

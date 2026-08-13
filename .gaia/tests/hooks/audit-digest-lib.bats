@@ -241,12 +241,10 @@ mutate_commit() {
   printf 'root = true\n' > "$ROOT/.editorconfig"
   printf 'node_modules\n' > "$ROOT/.gitignore"
   printf 'MIT\n' > "$ROOT/LICENSE"
-  mkdir -p "$ROOT/public"
-  printf '<svg></svg>\n' > "$ROOT/public/logo.svg"
-  git -C "$ROOT" add .editorconfig .gitignore LICENSE public/logo.svg
+  git -C "$ROOT" add .editorconfig .gitignore LICENSE
   git -C "$ROOT" commit --quiet -m "add allowlisted paths"
 
-  for p in .editorconfig .gitignore LICENSE public/logo.svg; do
+  for p in .editorconfig .gitignore LICENSE; do
     refs="$(mutate_commit "$ROOT" "$p")"
     a="${refs% *}"; b="${refs#* }"
     da="$(digest_of "$ROOT" code-audit-frontend "$a")"

@@ -363,22 +363,22 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# 7. public/logo.svg (allowlisted, nested) -> empty. No member declares a lens
-#    over a static asset, and the roster's `unowned:` block says so; naming one
-#    made it certify a file outside its own remit. Test 6 above is the row that
-#    keeps this from reading as "the probe stopped dispatching": a root file
-#    that is in scope and ownerless still fails closed to the default member.
+# 7. public/logo.svg (ownerless in-scope, nested) -> code-audit-frontend.
+#    public/ is deliberately NOT allowlisted: the tree carries executed
+#    JavaScript under it, which is the default member's remit, so the subtree
+#    stays in scope and a change to any of it still earns a review.
 
-@test "nested ownerless public asset spawns nobody" {
+@test "nested ownerless public asset spawns code-audit-frontend" {
   write_full_roster
   stage public/logo.svg
   commit "chore"
   run run_oracle
   [ "$status" -eq 0 ]
-  [ -z "$output" ]
+  [ "$output" = "code-audit-frontend" ]
 }
 
-# 7b. The root bookkeeping literals the allowlist carries beside public/.
+# 7b. The root bookkeeping literals the allowlist does carry. Test 7 above is
+#     what keeps this from reading as "the probe stopped dispatching".
 
 @test "root bookkeeping files spawn nobody" {
   write_full_roster
@@ -754,36 +754,20 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# The pair to the control above, and the whole point of separating them: git
-# answers BOTH states with an empty string, so a probe that reads only the
-# string cannot tell "the base did not resolve" from "the base resolved and the
-# range is empty". The control must stay fail-closed while this one names
-# nobody; a regression that re-merges the two states greens one and reds the
-# other, never both.
+# The empty-range twin of the control above. git answers BOTH "the base did not
+# resolve" and "the base resolved and the range is empty" with an empty string,
+# and this probe deliberately treats them alike, because it exists to predict
+# the merge gate and the gate denies on both. Splitting them here alone would
+# have the oracle name nobody for a pull request the gate then holds shut. The
+# arm in the script carries the full reasoning; this row pins the behavior so
+# the "obvious cleanup" reds instead of shipping.
 
-@test "a resolvable base with a genuinely empty diff spawns nobody" {
+@test "a resolvable base with a genuinely empty diff still fails closed" {
   # setup() leaves `feature` at the same commit as `main`, so
   # merge-base(HEAD, main) resolves to HEAD itself and the three-dot range is
   # legitimately empty: a resolved base, not an unresolved one.
   write_full_roster
   run run_oracle
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
-@test "--base carries the empty-range answer too: a resolvable ref names nobody, an unresolvable one does not" {
-  write_full_roster
-  stage app/x.tsx; commit "feat"
-  # HEAD...HEAD is empty and resolvable, so the probe names nobody...
-  run run_oracle --base HEAD
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-
-  # ...while the same flag carrying a ref that does not resolve still fails
-  # closed. Both halves run here rather than leaning on the control above,
-  # because what this row is about is the two answers differing on the ONE
-  # code path --base reaches.
-  run run_oracle --base does-not-exist-ref
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-frontend" ]
 }

@@ -46,34 +46,42 @@
 # wins (a non-empty dispatched set means the legacy branch is never reached).
 #
 # Exit 0 iff the path is out-of-scope-allowlisted: wiki/, .claude/,
-# .specify/, .gaia/, docs/, public/, a root-level (no slash) *.md file, or one
-# of the three root bookkeeping literals.
+# .specify/, .gaia/, docs/, a root-level (no slash) *.md file, or one of the
+# three root bookkeeping literals.
 #
-# The public/ arm and the three literals carry paths that are ownerless in the
-# roster AND that no member has a lens for. `.gaia/audit-ci.yml`'s `unowned:`
-# block is where that judgement is declared ("nothing about it is worth a
-# specialist's review"); this is where it takes effect. Without them a one-line
-# .gitignore edit reached the default member, which then reviewed and certified
-# a file outside its own remit.
+# The three literals are files no member holds a lens over: version-control and
+# editor bookkeeping and the licence, read by people and executed by nothing.
+# Without them a one-line .gitignore edit reached the default member, which then
+# reviewed and certified a file outside its own remit.
 #
-# They sit in arms of their own rather than folded into the first arm: a
+# This is NOT a general implementation of `.gaia/audit-ci.yml`'s `unowned:`
+# block, and must not be grown into one by reading entries across from it. That
+# list is advisory: only the roster coverage checker reads it, so an entry there
+# suppresses no review and is safe to grant on a glance. An entry HERE is load
+# bearing, because it clears a merge with no member having read the diff, so it
+# has to be judged against what the path can actually contain rather than
+# against how the list describes it. `public/**` is the worked example of the
+# gap: `unowned:` characterises that set as executed by nothing, while the tree
+# carries a service worker under it, which is exactly what the default member
+# has a lens for. It stays in scope here for that reason.
+#
+# The literals sit in an arm of their own rather than folded into the first: a
 # maintainer-side uniqueness check matches that arm's text literally, and it is
 # what proves this set has no second copy drifting in another script, so the arm
-# stays byte-stable and additions go beside it. public/ must precede the `*/*`
-# arm to be reached at all; the three literals cross no `/`, so their position
-# relative to it is free.
+# stays byte-stable and additions go beside it. The literals cross no `/`, so
+# their position relative to the `*/*` arm is free; anything nested would have
+# to precede it to be reached at all.
 #
 # Widening this set moves all three consumers at once, which is what keeps them
 # in agreement: the spawn oracle stops naming a member, the merge gate stops
 # demanding that member's marker, and the digest fold stops rotating the
-# default member's digest over content it does not read. Narrowing it to only
+# default member's digest over content it does not read. Widening it for only
 # some consumers would deadlock a merge, since the member the gate waits on
 # would be one the oracle never names.
 
 audit_out_of_scope_allowlisted() {
   case "$1" in
     wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) return 0 ;;
-    public/*) return 0 ;;
     */*) return 1 ;;
     LICENSE|.gitignore|.editorconfig) return 0 ;;
     *.md) return 0 ;;

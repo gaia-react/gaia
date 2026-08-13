@@ -736,7 +736,7 @@ assert_not_in_set() {
 @test "UAT-011: an allowlisted path added after the marker leaves that marker valid" {
   commit_files "app/x.ts" "export const x = 1"
   write_marker "code-audit-frontend"
-  commit_files ".editorconfig" "root = true" "public/logo.svg" "<svg></svg>"
+  commit_files ".editorconfig" "root = true" ".gitignore" "node_modules"
 
   run_merge_hook
   assert_allowed_by_json
@@ -1051,14 +1051,27 @@ assert_not_in_set() {
   assert_allowed_by_json
 }
 
+@test "FC-4 no-deadlock: nested public/** (in-scope, ownerless) denies unmarked and allows once spawned" {
+  commit_files "public/logo.svg" "<svg></svg>"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-frontend" ]
+
+  run_merge_hook
+  assert_denied_by_json
+
+  write_markers_for_spawn_set "$set"
+  run_merge_hook
+  assert_allowed_by_json
+}
+
 @test "FC-4 no-deadlock: allowlisted ownerless paths spawn nobody, and no markers still allows" {
   # The other half of FC-4's agreement invariant. These paths hold no lens for
   # any member, so the oracle names nobody AND the gate demands nothing: the
   # two sides move together because both read the same allowlist. A widening
   # applied to only one of them is what would deadlock a merge -- the gate
   # waiting on a marker the oracle never names anyone to write.
-  commit_files "public/logo.svg" "<svg></svg>" ".gitignore" "node_modules" \
-    "LICENSE" "MIT"
+  commit_files ".gitignore" "node_modules" "LICENSE" "MIT" \
+    ".editorconfig" "root = true"
   set=$(spawn_set)
   [ -z "$set" ]
 
