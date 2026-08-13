@@ -12,14 +12,6 @@
 # contract is stated. Grep targets are ground-truthed against the actual
 # source text (backticks, arrows, and markdown emphasis break a naive
 # paraphrase), verified by hand against this tree before being written below.
-#
-# Parallel-execution note: the code-comment assertions against
-# compute-tally.ts, tally.ts, and finding-class.ts target files a sibling
-# task (task-tally-core) sweeps in the same parallel phase. Run standalone,
-# those two tests may fail while that sweep is still in flight; the
-# authoritative pass is the orchestrator's post-phase gate once both
-# sub-agents have landed. Every other test in this file is this task's own
-# surface and must pass standalone.
 
 # assert_absent_across <ERE pattern> <file...>
 # Fails the calling test if <pattern> (extended regex, case-insensitive)
@@ -110,8 +102,6 @@ setup() {
 }
 
 @test "UAT-010: compute-tally.ts and tally.ts drop the severity-gating comment phrasing" {
-  # Parallel-execution note (see file header): owned by task-tally-core; may
-  # still fail here if that sibling task has not yet landed its sweep.
   assert_absent_fixed_across "never qualify" "$TALLY_CORE" "$TALLY_EMIT"
   assert_absent_fixed_across "dropped before counting" "$TALLY_CORE" "$TALLY_EMIT"
   assert_absent_fixed_across "at countable severity" "$TALLY_CORE" "$TALLY_EMIT"
@@ -119,9 +109,6 @@ setup() {
 }
 
 @test "UAT-010: finding-class.ts drops the stale 'never reaches the tally, that is the only thing it means' claim" {
-  # Parallel-execution note (see file header): owned by task-tally-core; may
-  # still fail here if that sibling task has not yet landed its sweep.
-  #
   # Deliberately NOT a bare "never reaches the tally" check: the file's
   # top-of-file docstring makes a separate, still-true claim ("free-text
   # drift never reaches the tally") that is frozen, byte-intact prose outside

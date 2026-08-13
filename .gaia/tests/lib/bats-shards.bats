@@ -405,9 +405,10 @@ non_shard_runners() {
 # every one of those assertions passes while nothing runs the file. The check
 # greens, the suite never executes, and a regression in it merges.
 #
-# The blind spot is the whole tree outside the seam: `.gaia/tests/` holds a
-# dozen directories, six of them seam roots, and a suite dropped into any of
-# the others is unreached while every assertion above stays green.
+# The blind spot is every directory outside the seam. Most of `.gaia/tests/`
+# is outside it, and so is anywhere else in the repo a suite might land, so a
+# suite dropped into one of them is unreached while every assertion above
+# stays green.
 #
 # So this compares the shard union against `git ls-files`, the repo's own
 # answer to "what .bats files exist", rather than against a re-listing of the
