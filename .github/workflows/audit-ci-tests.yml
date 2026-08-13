@@ -235,6 +235,17 @@ jobs:
               # pinned bats version or digest would report `code=false` and
               # skip every non-sandbox leg's install.
               - '.gaia/tests/install-bats.sh'
+              # The vendored archive that install extracts. Redundant today:
+              # the `.gaia/tests/**` catch-all below already matches it.
+              # Listed deliberately anyway, the same convention the entry
+              # above and the `sandbox:` ones use, because that catch-all
+              # carries a standing motive to be narrowed -- its own comment
+              # records that it arms the full matrix, two pnpm installs
+              # included, on any `.gaia/tests` change. A narrowing that
+              # dropped the archive would leave a vendor-only edit skipping
+              # every non-sandbox install, and the digest check that would
+              # have caught a swapped blob runs inside exactly that install.
+              - '.gaia/tests/vendor/**'
               # The audit-guard-structural suite (.gaia/scripts/tests/) greps the
               # prose of these three instruction files for the no-op-guard wiring
               # (SPEC-025 plan DP-005). An instruction-only edit touches none of
@@ -446,7 +457,7 @@ jobs:
             #
             # Be honest about what that still costs, because it is a real change
             # in this job's posture rather than a free addition. Those four globs
-            # match 459 of 1471 tracked files, a bit under a third, but they are
+            # match a bit under a third of tracked files, but they are
             # the documentation and configuration types, so the PRs that arm
             # `sandbox` alone are the ones that used to run no step at all: a
             # wiki-only change now runs `apt-get update`, unless its paths also
@@ -460,10 +471,13 @@ jobs:
             # exposure is bounded to an apt install.
             # Read the four broad globs at the end of this list first: they
             # cover every committed .json/.md/.yml/.yaml, which is most of what
-            # these suites read. Only three entries above them are load-bearing
-            # on their own, the ones whose file type those globs do not reach:
-            # the suite dir itself (.bats), the CLI schema (.ts), and the .env
-            # guard hook (.sh). Each is marked below. The rest are redundant
+            # these suites read. The entries above them that are load-bearing on
+            # their own are the ones whose file type those globs do not reach,
+            # and each says so at its own entry rather than being counted or
+            # listed here, because a tally in this sentence goes stale the next
+            # time one is added and reads as completeness while it does. The
+            # file types that need such an entry are the ones no broad glob
+            # names: .bats, .ts, .sh, .tar.gz. The rest are redundant
             # today and kept deliberately, so that narrowing the broad globs
             # later cannot silently drop a suite's source; a reader auditing
             # completeness should know which is which rather than assume every
@@ -477,6 +491,14 @@ jobs:
               # without this line an edit to the pinned bats version or digest
               # would report `sandbox=false` and skip that leg's install too.
               - '.gaia/tests/install-bats.sh'
+              # The vendored archive that install step extracts. LOAD-BEARING
+              # for the same reason and by the same argument as the line above:
+              # a `.tar.gz` is reached by none of the four broad globs below,
+              # so without this line a change to the archive alone -- the half
+              # of a version bump that carries the actual bytes, or a swap of
+              # them -- would report `sandbox=false` and skip the leg whose
+              # install is what would have caught it at the digest check.
+              - '.gaia/tests/vendor/**'
               # doc-setup-gaia.bats greps the sandbox-decision block of the
               # /setup-gaia command doc, and pins its `.sandbox_recommended`
               # reader literal byte-identical against the schema writer key, so

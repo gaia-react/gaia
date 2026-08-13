@@ -21,7 +21,7 @@ tags: [decision, ci, performance, github-actions, bats]
 
 Splitting the required check name off the work is what lets `fail-fast: false` stop one failing shard from cancelling its siblings without also cancelling the check. The aggregator compares against `success` rather than enumerating failure states, so a conclusion GitHub adds later fails closed, and `always()` on its `if:` stops a skip-on-dependency-failure from satisfying a required context that ran nothing.
 
-`.gaia/tests/bats-shards.sh` owns shard assignment by discovering `.bats` files rather than reading a manifest, so a newly added suite joins a shard automatically instead of silently running nowhere. `.gaia/tests/install-bats.sh` installs bats pinned by version and digest.
+`.gaia/tests/bats-shards.sh` owns shard assignment by discovering `.bats` files rather than reading a manifest, so a newly added suite joins a shard automatically instead of silently running nowhere. `.gaia/tests/install-bats.sh` installs bats pinned by version and digest from a vendored archive under `.gaia/tests/vendor/`, so no leg fetches it.
 
 ## The constraint any further restructuring hits first
 
@@ -66,7 +66,7 @@ Suite cost is uneven, which is why the shard split is not a naive equal division
 
 Widening the matrix is not free, and two costs are measured rather than theoretical:
 
-- **Shared-host bursts.** Every bats leg fetches the same pinned archive within seconds of its siblings, and GitHub's codeload answers part of that burst with `503`. The download carries bounded exponential backoff, which converts the failure into latency (up to roughly two minutes on an affected leg) rather than removing it. Any change that adds legs widens this burst.
+- **Shared-host bursts.** Ten of the eleven legs run `apt-get update` within seconds of each other, and a mirror hash-sum mismatch on any one of them reds a declared-required context. The bats archive is vendored rather than fetched for exactly this reason: fetching it puts a second host in the same burst, and GitHub's codeload answers that burst with `503`s costing an affected leg roughly two minutes of backoff. Any change that adds legs, or that puts a fetch back on an install path, widens what is left.
 - **Fixed overhead multiplies.** Each leg pays provisioning, checkout, and install. Below roughly a minute of real work, a leg is mostly overhead.
 
 Total machine time rises with fan-out even as wall-clock falls. The thing being optimized here is human-facing latency on the critical path, not runner minutes.

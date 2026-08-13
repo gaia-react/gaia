@@ -148,6 +148,13 @@ auditors:
       # `unowned:` note on that exemption below.
       - ".gaia/scripts/token-rates.json"
       - ".gaia/release-exclude"
+      # The vendored bats archive .gaia/tests/install-bats.sh extracts onto
+      # every matrix leg of the bats workflow. Granted rather than declared
+      # unowned, even though no lens reads a tarball: a change to it is a
+      # change to the bytes a gate tool is built from, and the reviewer who
+      # can judge that is the one holding the script carrying the digest pin.
+      # An `unowned:` entry would let a swapped blob dispatch nobody.
+      - ".gaia/tests/vendor/**"
       - ".gaia/VERSION"
       - ".claude/settings.json"
       - ".github/CODEOWNERS"

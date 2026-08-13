@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# install-bats.sh: install a pinned, digest-verified bats-core release, so
-# every matrix leg of .github/workflows/audit-ci-tests.yml runs the exact
-# same bats binary regardless of which runner picks it up.
+# install-bats.sh: install a pinned, digest-verified bats-core release from a
+# vendored archive, so every matrix leg of
+# .github/workflows/audit-ci-tests.yml runs the exact same bats binary
+# regardless of which runner picks it up.
 #
 # An unpinned gate tool returns a different verdict on a different machine --
 # ubuntu-latest's `apt-get install bats` and a maintainer's `brew install
@@ -9,42 +10,63 @@
 # and report suites differently. `.github/workflows/shell-lint.yml` pins its
 # own linter binary for the identical reason. The digest is pinned, not just
 # the version, because a GitHub release TAG is mutable: the archive behind an
-# unchanged tag can be regenerated with different bytes, so version-only
-# pinning would let a changed upstream feed this script something the
-# version string alone cannot distinguish. Verify BEFORE extracting, and
-# never pipe curl into tar: a pipe streams bytes into the extractor before
-# anything can check them.
+# unchanged tag can be regenerated with different bytes, so a bump pinning
+# only the version cannot say which bytes it reviewed. With the archive
+# tracked, the check below is what catches a corrupted or swapped blob before
+# anything is extracted. Verify BEFORE extracting, and never pipe a stream
+# into tar: a pipe hands bytes to the extractor before anything can check
+# them.
 #
 # bats-core v1.14.0 publishes no release ASSET (an empty `assets` list on the
-# GitHub release), so this pins the auto-generated source archive at the tag
-# instead. GitHub's archive generation has changed before, which changes the
-# digest of an otherwise-unchanged tag; a mismatch here fails loudly rather
-# than installing something unverified, and the fix is a deliberate re-pin.
+# GitHub release), so the pin is the auto-generated source archive at the tag.
 #
-# To bump: change BATS_VERSION below, then compute the new digest by actually
-# downloading the archive (never copy a digest from anywhere, including a
-# plan or a commit message):
-#   curl -fsSL https://github.com/bats-core/bats-core/archive/refs/tags/v<X.Y.Z>.tar.gz | shasum -a 256
-# and paste the result into BATS_SHA256. This script's own pin was derived
-# with that exact command against the v1.14.0 tag.
+# The archive is a tracked file rather than a download because eleven matrix
+# legs install within seconds of each other, and codeload answers part of that
+# burst with 503s -- measured, not theorized: an unretried fetch failed four
+# legs, and a fixed 3-second retry delay still lost two more, because the
+# rejection outlasts a 15-second window. Exponential backoff turns it green
+# but leaves a third-party host on the pull-request critical path once per
+# leg, and the worst leg spent about 128 seconds inside that backoff,
+# comparable to an entire clean shard. Reading a tracked file removes the host
+# rather than absorbing it. There is deliberately no fallback download: a
+# missing archive fails loudly here, where falling back to the network would
+# restore the burst with nothing reporting that it had.
+#
+# To bump: change BATS_VERSION below, then download the archive and derive its
+# digest by hand (never copy a digest from anywhere, including a plan or a
+# commit message):
+#   curl -fsSL -o .gaia/tests/vendor/bats-core-<X.Y.Z>.tar.gz \
+#     https://github.com/bats-core/bats-core/archive/refs/tags/v<X.Y.Z>.tar.gz
+#   shasum -a 256 .gaia/tests/vendor/bats-core-<X.Y.Z>.tar.gz
+# Paste that digest into BATS_SHA256, commit the new archive, and delete the
+# one it replaces. `.gaia/tests/lib/install-bats.bats` reds on a bump that
+# skips any of those steps.
+#
+# Derive the digest from that fresh download and nowhere else, because no
+# check in the tree can catch it if you do not. The archive and the pin are
+# committed together and are therefore self-consistent by construction: a
+# wrong blob committed beside a digest taken from it satisfies the check
+# below, the guard suite, and every other check here. Upstream is the only
+# thing that disagrees, which is why the recipe above starts by asking it.
 #
 # Maintainer-only. `.gaia/tests` is wholesale release-excluded via
-# `.gaia/release-exclude`, so this never reaches an adopter.
+# `.gaia/release-exclude`, so neither this script nor the vendored archive
+# reaches an adopter.
 #
 # Usage:
 #   bash .gaia/tests/install-bats.sh
 #   bash .gaia/tests/install-bats.sh -h | --help
 #
-# No-op if `bats --version` already reports BATS_VERSION. Otherwise
-# downloads the archive, verifies its digest, extracts it, and runs
-# bats-core's own install.sh into /usr/local -- sudo when available and not
-# already root, otherwise attempted directly (CI is the supported context;
-# a non-root, sudo-less machine without write access to /usr/local fails
-# here with a permission error).
+# No-op if `bats --version` already reports BATS_VERSION. Otherwise verifies
+# the vendored archive's digest, extracts it, and runs bats-core's own
+# install.sh into /usr/local -- sudo when available and not already root,
+# otherwise attempted directly (CI is the supported context; a non-root,
+# sudo-less machine without write access to /usr/local fails here with a
+# permission error).
 #
-# Exit codes: 0 on install or no-op. Non-zero on download failure, digest
-# mismatch, extraction failure, or a post-install version that still does
-# not match BATS_VERSION.
+# Exit codes: 0 on install or no-op. Non-zero on a missing vendored archive,
+# digest mismatch, extraction failure, or a post-install version that still
+# does not match BATS_VERSION.
 set -euo pipefail
 
 BATS_VERSION='1.14.0'
@@ -77,25 +99,21 @@ if [ "$(installed_version)" = "$BATS_VERSION" ]; then
   exit 0
 fi
 
+REPO_ROOT="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel)"
+archive="$REPO_ROOT/.gaia/tests/vendor/bats-core-${BATS_VERSION}.tar.gz"
+
+if [ ! -f "$archive" ]; then
+  printf 'install-bats: no vendored archive for bats %s at %s\n' \
+    "$BATS_VERSION" "$archive" >&2
+  printf 'install-bats: a BATS_VERSION bump must commit the matching archive; see the bump recipe in this header.\n' >&2
+  exit 1
+fi
+
 tmpdir="$(mktemp -d)"
 cleanup() {
   rm -rf "$tmpdir"
 }
 trap cleanup EXIT
-
-archive="$tmpdir/bats-core-${BATS_VERSION}.tar.gz"
-url="https://github.com/bats-core/bats-core/archive/refs/tags/v${BATS_VERSION}.tar.gz"
-
-# Ten matrix legs fetch this same archive within seconds of each other, and
-# codeload answers part of that burst with 503s -- measured, not theorized: an
-# unretried curl failed four legs, and a fixed 3-second retry delay still lost
-# two more because the rejection outlasts a 15-second window. Omitting
-# --retry-delay is what buys exponential backoff (curl starts at 1s and
-# doubles), so the later attempts land after the burst has drained instead of
-# inside it. --retry-all-errors covers the connection-died case a bare --retry
-# leaves out, and --retry-max-time bounds the whole thing far inside the leg's
-# own 13-minute cap, so a flake can never become a hang.
-curl -fsSL --retry 8 --retry-all-errors --retry-max-time 180 "$url" -o "$archive"
 
 if command -v sha256sum >/dev/null 2>&1; then
   printf '%s  %s\n' "$BATS_SHA256" "$archive" | sha256sum -c -

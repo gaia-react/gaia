@@ -23,6 +23,7 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.gaia/*.json`
 - `.gaia/scripts/token-rates.json`
 - `.gaia/release-exclude`
+- `.gaia/tests/vendor/**`
 - `.gaia/VERSION`
 - `.claude/settings.json`
 - `.github/CODEOWNERS`
@@ -164,7 +165,7 @@ This lens activates only for `.bats` files.
 
 ## Conditional declarative-surface lens
 
-Several paths in your remit are not scripts, and the correctness core above and the shellcheck oracle both assume a script, so a diff touching only these would otherwise dispatch you with no stated lens. Read the remit region as the authority on which; deliberately no count here, because a number in this sentence rots the next time the roster grants one. They fall in two groups.
+Several paths in your remit are not scripts, and the correctness core above and the shellcheck oracle both assume a script, so a diff touching only these would otherwise dispatch you with no stated lens. Read the remit region as the authority on which; deliberately no count here, because a number in this sentence rots the next time the roster grants one, and for the same reason no count of the groups below either.
 
 **The declarative surfaces** — `.gaia/*.yml`, `.gaia/*.json`, `.gaia/scripts/token-rates.json`, `.gaia/release-exclude`, `.gaia/VERSION`, `.claude/settings.json`, `.github/CODEOWNERS` — are here because each one *decides* something the scripts merely execute, and that is what to review.
 
@@ -174,6 +175,8 @@ Several paths in your remit are not scripts, and the correctness core above and 
 - **Deterministic checks instead of shellcheck.** `.gaia/audit-ci.yml` has `bash .gaia/scripts/verify-audit-roster.sh`; the manifest and `release-exclude` have the distribution harness. Run whichever applies and fold the result in, on the same advisory footing as shellcheck.
 
 **The instruction prose** — `.claude/agents/code-audit-*.md` and `.claude/rules/**` — governs what this team reviews and how, so a diff touching only it changes the gate itself with no code to shellcheck. Review it as a contract: does a stated claim still hold against the machinery it describes (a glob list, a hook registration, an exit code), and does a widened or dropped instruction quietly retire a check? A sentence falsified by a roster or hook change is a finding here even though nothing executes it, because these files are what a dispatched member reads instead of deriving the answer.
+
+**The vendored artifact** — `.gaia/tests/vendor/**` — is an opaque blob that a gate tool is built from on every leg of the bats matrix. No oracle reads it and the correctness core assumes a script, so what is left to review is its **provenance**, and the one thing worth knowing is that provenance cannot be established from inside the repository. The archive and the `BATS_SHA256` pin that guards it are committed together, so they agree by construction: a swapped blob landing beside a matching updated pin passes the install's own digest check, the guard suite that compares the two, and every deterministic check in the tree. Confirm instead that the committed bytes are the archive the upstream project publishes at the pinned tag, and that the tag is the version the installer claims to install. A re-vendor whose provenance you cannot establish that way is a finding however clean the diff reads.
 
 This lens activates only for the non-script paths above, and it is additive: a diff carrying both a script and one of them gets both lenses.
 
