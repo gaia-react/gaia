@@ -923,6 +923,12 @@ EOF
     # above is: consumed straight from a heredoc the sort's status is
     # unobservable, and a failed sort yields an empty list, zero helper
     # iterations, and "no helper names a package" at status 0.
+    #
+    # Deliberately without an adversarial fixture, unlike the listing and grep
+    # arms around it: both of those fail on inputs a test can construct (a
+    # missing pinned hook, a mode-000 file), while this sorts a short string
+    # already in memory. The check is here for symmetry of shape, not because
+    # a reachable failure is being guarded.
     rc=0
     dirs="$(printf '%s' "$dirs" | LC_ALL=C sort -u)" || rc=$?
     if [ "$rc" -ne 0 ]; then
