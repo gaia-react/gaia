@@ -10,7 +10,7 @@
 # assertion fires if a future edit drops a sentence. A prose requirement
 # survives exactly as long as the next person editing those files remembers
 # it, which is not a mechanism, so this suite pins it the way
-# `.gaia/tests/prose-audit/spec051-countability-prose.bats` pins the
+# `.gaia/tests/lib/doc-countability-prose.bats` pins the
 # countable-findings rewrite: grep for the frozen literals, ground-truthed
 # against the actual source text, not a paraphrase.
 #

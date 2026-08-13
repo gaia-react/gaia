@@ -372,6 +372,153 @@ misc"
   [ "$files_count" -eq 2 ]
 }
 
+# S13's allowlist: a tracked .bats file that no shard resolves, paired with
+# the runner that does execute it. Four tab-separated fields per row: the path
+# prefix, the file to look in, the LITERAL text that invokes the runner, and a
+# human label for the failure message.
+#
+# A row's prefix must not reach further than its runner does. Two of them name
+# a directory because their runner takes the whole of one: sandbox/run-all.sh
+# globs `"$HERE"/*.bats`, and the forensics delegation runs a directory. The
+# concurrency row names a full file path instead, because meter-gate.sh pins
+# `SUITE="$HERE/concurrency.bats"` rather than globbing; as a directory prefix
+# it would excuse a second suite added beside that one while nothing ran it,
+# reproducing the silent green this test exists to catch, inside the waiver.
+#
+# The needle is carried per row rather than derived from the prefix, and that
+# is the difference between a check and a decoration. A derived needle is
+# whatever the prefix happens to spell -- `sandbox`, `concurrency` -- and those
+# words appear throughout the workflow's prose, `concurrency:` being a
+# top-level GitHub Actions key that is present no matter what. Such a grep
+# cannot fail: delete both matrix legs AND their run: steps and it still
+# matches, so the row would go on excusing every suite behind that prefix,
+# which is the exact regression this test exists to catch. The invocation
+# line is the thing that disappears when the runner does, so it is what gets
+# matched.
+non_shard_runners() {
+  printf '%s\t%s\t%s\t%s\n' \
+    '.gaia/tests/sandbox/' '.github/workflows/audit-ci-tests.yml' \
+    'bash .gaia/tests/sandbox/run-all.sh' 'the sandbox leg of the audit-ci-tests.yml matrix' \
+    '.gaia/tests/concurrency/concurrency.bats' '.github/workflows/audit-ci-tests.yml' \
+    'bash .gaia/tests/concurrency/meter-gate.sh' 'the concurrency leg of the audit-ci-tests.yml matrix' \
+    '.github/forensics/tests/' '.gaia/tests/forensics/unit.bats' \
+    'run bats "$FORENSICS_DIR/tests/"' 'the delegation @test in .gaia/tests/forensics/unit.bats, which the misc shard runs'
+}
+
+# S13. Every tracked .bats file is executed by something.
+#
+# The sharder's own partition checks (S1-S3) prove the shards agree with a
+# re-discovery of the SIX SEAM DIRECTORIES. That is a closed loop: a .bats
+# file in a seventh directory is outside both sides of the comparison, so
+# every one of those assertions passes while nothing runs the file. The check
+# greens, the suite never executes, and a regression in it merges.
+#
+# The blind spot is every directory outside the seam. Most of `.gaia/tests/`
+# is outside it, and so is anywhere else in the repo a suite might land, so a
+# suite dropped into one of them is unreached while every assertion above
+# stays green.
+#
+# So this compares the shard union against `git ls-files`, the repo's own
+# answer to "what .bats files exist", rather than against a re-listing of the
+# same six directories. Anything in the first set and not the second is an
+# orphan unless the allowlist above names its runner.
+#
+# Scope, honestly: this proves a file is REACHED, not that its assertions are
+# armed on the right pull requests. A suite in a shard whose guarded source is
+# missing from the workflow's `code:` filter still skips on the change that
+# breaks it; workflow-filter-coverage.bats (.gaia/scripts/tests/) is the guard
+# for that half.
+@test "S13: every tracked .bats file is run by a shard or a named non-shard runner" {
+  local tracked covered orphans orphan prefix file needle label row allowlisted rc
+  tracked="$(cd "$REPO_ROOT" && git ls-files '*.bats' | LC_ALL=C sort)"
+  [ -n "$tracked" ] || {
+    echo "git ls-files found no .bats files at all; the comparison would be vacuous" >&2
+    return 1
+  }
+  covered="$(union_of_shard_files "$SCRIPT" | LC_ALL=C sort -u)"
+
+  # Capture rather than iterate a process substitution, so comm's own status
+  # is checked instead of discarded: it exits non-zero on input its collation
+  # rejects, and a fail-open there would report zero orphans for the wrong
+  # reason. LC_ALL=C matches the sort the two operands were built with; under
+  # a differing ambient locale GNU comm reports disorder on inputs that are
+  # correctly sorted for C.
+  orphans="$(LC_ALL=C comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$covered"))" || {
+    echo "comm failed comparing the tracked suites against the shard union" >&2
+    return 1
+  }
+
+  rc=0
+  while IFS= read -r orphan || [ -n "$orphan" ]; do
+    [ -n "$orphan" ] || continue
+    allowlisted=0
+    while IFS= read -r row || [ -n "$row" ]; do
+      IFS=$'\t' read -r prefix file needle label <<<"$row"
+      case "$orphan" in
+        "$prefix"*)
+          allowlisted=1
+          # Prove the named runner still exists rather than trusting the row:
+          # a stale entry would keep excusing a file whose runner was deleted,
+          # which is the same silent green one level up.
+          grep -qF -- "$needle" "$REPO_ROOT/$file" || {
+            echo "allowlist excuses $orphan via $label, but $file no longer contains: $needle" >&2
+            rc=1
+          }
+          break
+          ;;
+      esac
+    done < <(non_shard_runners)
+    if [ "$allowlisted" -eq 0 ]; then
+      echo "orphan bats suite, no shard resolves it and no allowlist row names a runner: $orphan" >&2
+      rc=1
+    fi
+  done <<EOF
+$orphans
+EOF
+
+  return "$rc"
+}
+
+@test "S13 adversarial: an orphan suite outside the seam is caught" {
+  # The real failure shape: a .bats file tracked by git, in no seam directory
+  # and on no allowlist prefix. Written into a directory the seam does not
+  # reach, then staged so `git ls-files` reports it.
+  #
+  # Staged into a COPY of the index, never the repository's own. Writing the
+  # real index would make this the one test here that mutates shared repo
+  # state, and two documented invariants forbid it: run-bats-parallel.sh forks
+  # the six suite directories concurrently in one workspace, and a sibling
+  # suite derives its whole input population from `git ls-files`. It would also
+  # need an undo, whose own failure path (a contended index.lock) strands a
+  # staged-deleted path in the real index, which is exactly the dirty-tree
+  # state that makes every audit member withhold its marker. GIT_INDEX_FILE
+  # removes the hazard rather than reporting it: nothing to undo, so nothing
+  # that can fail to undo.
+  local dir rel git_dir index
+  dir="$REPO_ROOT/.gaia/tests/lib/fixtures"
+  rel=".gaia/tests/lib/fixtures/s13-orphan-probe.bats"
+  index="$BATS_TEST_TMPDIR/probe-index"
+  git_dir="$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir)"
+  cp "$git_dir/index" "$index"
+  mkdir -p "$dir"
+  printf '%s\n' "$REPO_ROOT/$rel" >>"$BATS_TEST_TMPDIR/scratch-copies"
+  write_trivial_bats "$REPO_ROOT/$rel" "S13-ORPHAN"
+  GIT_INDEX_FILE="$index" git -C "$REPO_ROOT" add -N -- "$rel"
+
+  local tracked covered orphans
+  tracked="$(cd "$REPO_ROOT" && GIT_INDEX_FILE="$index" git ls-files '*.bats' | LC_ALL=C sort)"
+  covered="$(union_of_shard_files "$SCRIPT" | LC_ALL=C sort -u)"
+  orphans="$(LC_ALL=C comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$covered"))"
+
+  # `fixtures/` is a subdirectory of a seam root, and the seam globs *.bats
+  # DIRECTLY inside its roots only, so this probe is genuinely unreached --
+  # which is exactly the blind spot S13 exists to name.
+  grep -qF -- "$rel" <<<"$orphans" || {
+    echo "an orphan .bats outside every seam root did not surface as uncovered" >&2
+    return 1
+  }
+}
+
 @test "A1: dropped file reds the partition check" {
   local copy
   copy="$(doctor_dropped_file)"

@@ -289,6 +289,18 @@ jobs:
               # skip every bats step, and green the job having run the very
               # assertion written to catch that edit zero times.
               - 'wiki/concepts/GAIA Audit.md'
+              # doc-countability-prose.bats (.gaia/tests/lib/) greps this page
+              # for the superseded classless-finding claims (a classless finding
+              # is "not a countable finding", "omitted from findings[]",
+              # "is ineligible") alongside the five code-audit-*.md sidecar
+              # contracts. The agent files are reached by the code-audit-*.md
+              # glob above and the three tally/schema sources by
+              # `.gaia/cli/src/**` below, but this page matches no other pattern
+              # here, so without this line a wiki-only edit restoring one of
+              # those claims would report `code=false`, skip every bats step,
+              # and green the job having run that assertion zero times. Same
+              # test-dir/source-dir pairing as the two entries above.
+              - 'wiki/concepts/Policy-Memory Loop.md'
               # The doc-setup-gaia-isolation and doc-gaia-init-isolation suites
               # (.gaia/tests/lib/) grep the /setup-gaia Phase 3.5 clause and the
               # /gaia-init Step 9 question block; trigger on the two command
