@@ -875,8 +875,8 @@ deferred.
 **Two dependency installs precede the step, and both are load-bearing.** Three scenarios
 drive real node code: `C4-04` and `C4-07` resolve `typescript` from the repo root, and
 `C3-05` runs the CLI's own `tsx` out of `.gaia/cli/node_modules`. The runner box is lean
-(the job apt-installs only `bats` and `python3-yaml`) and `.gaia/cli` is deliberately its
-own isolated pnpm workspace, so a repo-root install does not reach it — hence
+(this leg installs the vendored `bats` and runs no `apt` at all) and `.gaia/cli` is
+deliberately its own isolated pnpm workspace, so a repo-root install does not reach it — hence
 `pnpm install` **and** `pnpm -C .gaia/cli install`. Without both, three landed green
 scenarios go red for want of an npm install, which would read as a regression in the
 number rather than as the environment gap it is. **The five sibling suites under

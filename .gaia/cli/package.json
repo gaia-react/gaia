@@ -8,8 +8,8 @@
     "bundle:adopter": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --banner:js='import { createRequire as __createRequire } from \"node:module\"; const require = __createRequire(import.meta.url);' --outfile=gaia.tmp && printf '#!/usr/bin/env node\\n' | cat - gaia.tmp > gaia && rm gaia.tmp && chmod +x gaia && rm -rf templates && cp -r src/scaffold/templates templates && mkdir -p templates/workflows && cp -r src/automation/templates/workflows/. templates/workflows/",
     "bundle:maintainer": "esbuild src/index.maintainer.ts --bundle --platform=node --target=node20 --format=esm --banner:js='import { createRequire as __createRequire } from \"node:module\"; const require = __createRequire(import.meta.url);' --outfile=gaia-maintainer.tmp && printf '#!/usr/bin/env node\\n' | cat - gaia-maintainer.tmp > gaia-maintainer && rm gaia-maintainer.tmp && chmod +x gaia-maintainer",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
-    "lint": "eslint --max-warnings=0 --cache --cache-location ./node_modules/.cache/eslint src",
-    "lint:fix": "eslint --fix --max-warnings=0 --cache --cache-location ./node_modules/.cache/eslint src",
+    "lint": "eslint --max-warnings=0 --cache --cache-strategy content --cache-location ./node_modules/.cache/eslint src",
+    "lint:fix": "eslint --fix --max-warnings=0 --cache --cache-strategy content --cache-location ./node_modules/.cache/eslint src",
     "test": "vitest --passWithNoTests",
     "gaia": "tsx ./src/index.ts",
     "gaia-maintainer": "tsx ./src/index.maintainer.ts"

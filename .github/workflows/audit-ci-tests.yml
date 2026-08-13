@@ -570,16 +570,22 @@ jobs:
       # zsh backs four suites under .gaia/scripts/tests/ (audit-key-lib,
       # main-only-lib, debt-origin-lib, audit-window-lib), and those `skip`
       # SILENTLY when it is absent, so its absence looks identical to a clean
-      # tree rather than reporting red. That silent-skip hazard is why every
-      # bats leg gets this identical package set rather than a per-shard list:
-      # a shard-specific install could drop zsh from a leg that happens to draw
-      # one of those four files on a future round-robin reshuffle, and nothing
-      # would notice.
+      # tree rather than reporting red. That silent-skip hazard is the whole
+      # reason the apt step below names the legs it runs on rather than being
+      # left uniform: a per-shard package list is only safe while something
+      # checks that the named set still covers every leg that draws one of
+      # those files, and a round-robin reshuffle moves files between legs
+      # without touching this file. W10 in .gaia/tests/lib/audit-ci-shards.bats
+      # is that check. It recomputes the leg-to-dependency map from the suites
+      # themselves and reds when this list and that map disagree, in either
+      # direction, which is what converts the reduced set from an assumption
+      # into a checked invariant -- the same move W9 already makes for the
+      # sandbox leg's empty package set.
       #
+      # The bats install stays on every non-sandbox leg; only apt is narrowed.
       # This step covers only the `code` output: the `sandbox` leg installs
       # bats through its own step below, with no apt line at all, because
-      # .gaia/tests/sandbox/*.bats needs neither package (W9 in
-      # .gaia/tests/lib/audit-ci-shards.bats pins that as a checked invariant).
+      # .gaia/tests/sandbox/*.bats needs neither package (W9 pins that too).
       # Splitting the install this way, rather than admitting both outputs on
       # one shared step as the pre-shard job did, is what keeps a docs-only PR
       # (which arms `sandbox` but not `code`) from running `apt-get update` --
@@ -589,10 +595,27 @@ jobs:
       # bodies for the SAME step, and this way each step's script is covered by
       # exactly the filter that gates it.
       - if: matrix.shard != 'sandbox' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
-        name: Install bats and YAML parser
-        run: |
-          bash .gaia/tests/install-bats.sh
-          sudo apt-get update && sudo apt-get install -y python3-yaml zsh
+        name: Install pinned bats
+        run: bash .gaia/tests/install-bats.sh
+      # python3-yaml pins the parser (python3+pyyaml) rather than resting on
+      # whatever the runner image happens to preinstall, and it is installed
+      # beside zsh on the same legs rather than on a list of its own: two
+      # narrowly-gated apt steps would pay `apt-get update` twice on any leg
+      # needing both, which is every leg in this list except hooks-3.
+      #
+      # The list is not hand-picked. It is exactly the set of shards holding a
+      # suite that reaches for either dependency, by the four patterns W10
+      # names, which today is hooks-3 (block-invalid-yaml-write), lib (lint-yaml
+      # and the guard suite itself), scripts-1 (audit-window-lib,
+      # retrigger-reachability, workflow-filter-coverage,
+      # distribution-audit-pr-gate), and scripts-2 (audit-key-lib,
+      # debt-origin-lib, main-only-lib). The remaining seven legs run no apt at
+      # all. Do not edit this list by hand to make W10 pass:
+      # W10 failing means a suite moved legs, and the repair is to copy the set
+      # W10 names, which it derives from the suites rather than from here.
+      - if: contains(fromJSON('["hooks-3", "lib", "scripts-1", "scripts-2"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+        name: Install the YAML parser and zsh
+        run: sudo apt-get update && sudo apt-get install -y python3-yaml zsh
       # No apt at all: the sandbox tree provably needs neither python3-yaml nor
       # zsh (W9 above), so this leg only needs the pinned bats binary. A PR
       # that arms `sandbox` alone therefore runs no apt at all, instead of the
