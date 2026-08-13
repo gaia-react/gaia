@@ -67,8 +67,10 @@
 #
 # The literals sit in an arm of their own rather than folded into the first: a
 # maintainer-side uniqueness check matches that arm's text literally, and it is
-# what proves this set has no second copy drifting in another script, so the arm
-# stays byte-stable and additions go beside it. The literals cross no `/`, so
+# what proves this set has no second copy drifting in another shell script, so
+# the arm stays byte-stable and additions go beside it. That check restricts its
+# search to `*.sh`, so a copy landing in a `.mjs` or `.ts` consumer is the miss
+# it accepts. The literals cross no `/`, so
 # their position relative to the `*/*` arm is free; anything nested would have
 # to precede it to be reached at all.
 #

@@ -252,9 +252,17 @@ auditors:
 # yours to audit. Declare it with entries of your own (`.gaia/**`,
 # `.claude/**`) alongside whatever else your tree legitimately leaves unowned.
 unowned:
-  # Prose, assets and bookkeeping: read by people, executed by nothing. Root
-  # `*.md` never crosses a `/`, so it reaches the repository-root documents
-  # only.
+  # Prose, assets and bookkeeping that no member claims. Root `*.md` never
+  # crosses a `/`, so it reaches the repository-root documents only.
+  #
+  # Do not read this list as a claim that nothing under it executes, and do not
+  # carry an entry across into the merge gate's out-of-scope allowlist on that
+  # reading. `public/**` is the counter-example: it carries a service worker,
+  # which is exactly what the default member has a lens for, so it is declared
+  # unowned here and deliberately stays IN scope there. Unowned is advisory and
+  # suppresses no review; the allowlist clears a merge with no member having
+  # read the diff, so each of its entries is judged against what the path can
+  # actually contain. See the arm comment in `.claude/hooks/lib/audit-scope.sh`.
   - "*.md"
   - "LICENSE"
   - ".editorconfig"
