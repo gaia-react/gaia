@@ -41,7 +41,7 @@ Requires `shellcheck` (`brew install shellcheck`). Lints at a per-type severity 
 
 This is the deterministic backstop for the `code-audit-maintainer-shell` agent, which already treats shellcheck as an authoritative oracle but is model-dispatched and advisory-only. The agent keeps the lenses shellcheck cannot model (hook fail-open, stdin-JSON shape, `jq -n` injection safety).
 
-### Hooks tests (free, fast)
+### Hooks tests (free, slow)
 
 ```bash
 bats .gaia/tests/hooks/

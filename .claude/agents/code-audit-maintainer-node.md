@@ -133,7 +133,7 @@ For a changed file on the build/config surface in your remit (see "Remit and sel
 - **Compiler-config fitness.** A `.gaia/cli/tsconfig*.json` change must not silently weaken the type gate (disabling `strict`, loosening `noImplicitAny`) or change `target` / `module` in a way the esbuild bundle depends on.
 - **Tool-config fitness.** A `.gaia/cli/*.config.*` change must not silently weaken what the CLI's test and lint runs actually enforce: a narrowed `include` or widened `exclude` that drops suites from the run, a lowered coverage threshold, a disabled or downgraded lint rule, and any `setupFiles` entry, which executes arbitrary code in every CLI test run and so is read as code, not config.
 
-Lean on `pnpm typecheck` and `pnpm lint` as deterministic, advisory oracles where useful, run them and fold any relevant findings on the changed files into the report, but they never gate the marker on their own; they're a second opinion, not authoritative in the way a type error or lint failure already blocks the Quality Gate elsewhere in the workflow.
+Lean on `pnpm -C "$AUDIT_ROOT" lint:cli` and `pnpm -C "$AUDIT_ROOT/.gaia/cli" typecheck` as deterministic, advisory oracles where useful, run them and fold any relevant findings on the changed files into the report, but they never gate the marker on their own; they're a second opinion, not authoritative in the way a type error or lint failure already blocks the Quality Gate elsewhere in the workflow. Both are CLI-scoped on purpose: the repo-root `pnpm typecheck` and `pnpm lint` read none of your remit, since the root tsconfig's program contains no `.gaia/cli` file and the root ESLint config ignores `.gaia/**`. Neither CLI-scoped oracle reaches `.gaia/scripts/**/*.mjs`, so a changed `.mjs` script has no oracle and rests on your read of it.
 
 ## Findings grading
 
@@ -344,6 +344,6 @@ Best-effort: a write failure never blocks or alters the marker / stamp / push / 
 
 1. Resolve both diff bases and their changed-file lists; refuse the pass when the working tree is dirty within `changed`; self-skip on `full_changed` filtered to your remit; review `changed` filtered the same way.
 2. Read every in-remit changed file, plus (for source) its callers and its test siblings.
-3. Run `pnpm typecheck` and `pnpm lint` as advisory oracles.
+3. Run `pnpm -C "$AUDIT_ROOT" lint:cli` and `pnpm -C "$AUDIT_ROOT/.gaia/cli" typecheck` as advisory oracles; neither covers a changed `.gaia/scripts/**/*.mjs`.
 4. Collect candidates from the review dimensions; run each through the Finding Proof Gate.
 5. Produce the report; write the findings sidecar; then decide the marker, write it (or withhold it, recording the refusal) and, on a write, stamp the trailer, push the stamp commit, and call `post-audit-status.sh`.
