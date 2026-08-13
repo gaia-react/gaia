@@ -273,7 +273,11 @@ elif mode == 'stepshards':
             die('step %r has an unparseable fromJSON shard list' % wanted)
         if not isinstance(names, list) or not names:
             die('step %r names an empty shard list' % wanted)
-        for item in sorted(str(entry) for entry in names):
+        # Deduped, because the other side of W10's comparison is `sort -u`. A
+        # repeated id in the gate is harmless to GitHub, whose `contains` is a
+        # membership test, but an undeduped read here would red W10 while
+        # printing two lists that read as identical.
+        for item in sorted({str(entry) for entry in names}):
             print(item)
     if not seen:
         die('no step named %r in job %r' % (wanted, rest[0]))
@@ -823,8 +827,15 @@ sandbox_suites_present() {
 # gate, one per line, LC_ALL=C sorted. Takes both paths as arguments, never
 # reading $REPO_ROOT directly, so the fixture below can drive this same code
 # against a tree of its own -- the discipline this suite's header sets out.
+# The loop deliberately does NOT pipe into `sort`. Piping would put the whole
+# loop in a subshell, where the `return 1` below terminates only that subshell
+# and the function's status becomes `sort`'s, which is 0: a grep hard error
+# would abort the scan mid-way, truncate the shard list, and still report
+# success, so every `|| return 1` at this helper's call sites would be dead
+# code. Accumulate into a variable and sort afterwards, in the function's own
+# shell, so the error actually reaches the caller.
 shard_package_needs() {
-  local sharder="$1" root="$2" id rel abs rc hits
+  local sharder="$1" root="$2" id rel abs rc hits found=''
   for id in $(bash "$sharder" shards); do
     hits=''
     while IFS= read -r rel || [ -n "$rel" ]; do
@@ -848,12 +859,22 @@ shard_package_needs() {
         return 1
       fi
     done < <(bash "$sharder" files "$id")
-    [ -n "$hits" ] && printf '%s\n' "$id"
-  done | LC_ALL=C sort -u
+    if [ -n "$hits" ]; then
+      found="$found$id
+"
+    fi
+  done
+  [ -n "$found" ] || return 0
+  printf '%s' "$found" | LC_ALL=C sort -u
 }
 
 @test "W10: the apt step's shard list equals the legs that need zsh or a YAML parser" {
   local declared needed
+  # read_wf's reader imports yaml unconditionally, so without this gate a box
+  # without PyYAML reports a workflow defect for a missing local dependency,
+  # while every sibling check here skips. Fails rather than skips on CI, which
+  # is the behavior this suite's own gate helper already defines.
+  require_yaml_parser
   declared="$(read_wf stepshards "$WORKFLOW" shards 'Install the YAML parser and zsh')" || {
     echo "could not read the apt step's shard list" >&2
     return 1
@@ -877,6 +898,7 @@ shard_package_needs() {
 
 @test "W10 adversarial: dropping a needed shard from the apt step is caught" {
   local doctored="$BATS_TEST_TMPDIR/dropped.yml" declared needed
+  require_yaml_parser
 
   replace_line "$WORKFLOW" \
     "      - if: contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\", \"scripts-2\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
@@ -924,4 +946,105 @@ shard_package_needs() {
     return 1
   }
   true
+}
+
+# The matrix has eleven legs but the sharder names only nine, so W10's
+# recomputation reaches neither `sandbox` nor `concurrency`. W9 pins sandbox's
+# empty package set. This pins the other one, which the narrowed apt step
+# stopped serving: it drew both packages implicitly from the old
+# `matrix.shard != 'sandbox'` gate and now draws neither, leaving it the one
+# leg of eleven whose package set nothing asserted.
+
+# concurrency_tree_needs_packages <dir> — 0 when some file under $1 reaches for
+# zsh or a YAML parser by W10's own four patterns, 1 when none does. Same
+# argument-taking shape as the helpers above so the fixture drives this code
+# rather than a copy of it.
+concurrency_tree_needs_packages() {
+  local dir="$1" rc=0
+  grep -rqE 'command -v zsh|zsh -c|require_yaml_parser|import yaml' \
+    --include='*.bats' --include='*.sh' "$dir" || rc=$?
+  [ "$rc" -le 1 ] || {
+    echo "concurrency_tree_needs_packages: grep failed on $dir (exit $rc)" >&2
+    return 2
+  }
+  return "$rc"
+}
+
+@test "W10: the concurrency leg reaches for neither package the apt step dropped" {
+  local declared
+  require_yaml_parser
+  require_repo_path -d "$REPO_ROOT/.gaia/tests/concurrency" "concurrency tree" || return 1
+
+  declared="$(read_wf stepshards "$WORKFLOW" shards 'Install the YAML parser and zsh')" || return 1
+  grep -qx 'concurrency' <<<"$declared" && {
+    echo "the apt step names concurrency, but W10 derives its list from the sharder, which never emits it" >&2
+    return 1
+  }
+
+  # `run`, because a clean tree is the non-zero case and a bare call would
+  # abort the test under bats' `set -e` before the status could be read.
+  run concurrency_tree_needs_packages "$REPO_ROOT/.gaia/tests/concurrency"
+  [ "$status" -eq 1 ] || {
+    echo "a file under .gaia/tests/concurrency reaches for zsh or a YAML parser, but that leg's" >&2
+    echo "steps install neither. A zsh-gated test would skip silently there." >&2
+    grep -rlE 'command -v zsh|zsh -c|require_yaml_parser|import yaml' \
+      --include='*.bats' --include='*.sh' "$REPO_ROOT/.gaia/tests/concurrency" >&2
+    return 1
+  }
+}
+
+@test "W10 adversarial: a concurrency file reaching for zsh is caught" {
+  local dir="$BATS_TEST_TMPDIR/conc"
+  mkdir -p "$dir"
+  printf '#!/usr/bin/env bash\necho clean\n' >"$dir/clean.sh"
+  # The healthy arm first, so a helper that always reported "needs packages"
+  # could not pass this.
+  run concurrency_tree_needs_packages "$dir"
+  [ "$status" -eq 1 ]
+
+  printf '#!/usr/bin/env bash\ncommand -v zsh >/dev/null 2>&1 || exit 0\n' >"$dir/uses-zsh.sh"
+  run concurrency_tree_needs_packages "$dir"
+  [ "$status" -eq 0 ]
+}
+
+# Pins the error propagation directly. Before the pipeline came off this
+# helper, its `return 1` fired inside `| sort`'s subshell and the function
+# still exited 0, so a grep hard error truncated the scan and reported a clean
+# one. Nothing above catches that: the truncated list can still equal the
+# workflow's, which is exactly how it would green.
+@test "W10 adversarial: a grep hard error fails the scan rather than reporting it clean" {
+  local root="$BATS_TEST_TMPDIR/unreadable" status_ok status_err
+  if [ "$(id -u)" -eq 0 ]; then
+    skip "running as root; a chmod 000 file stays readable"
+  fi
+  mkdir -p "$root/hooks" "$root/clean"
+  printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/hooks/uses-zsh.bats"
+  printf '#!/usr/bin/env bats\n' >"$root/clean/plain.bats"
+
+  # Driven through `run`, not called directly: the whole point of this check is
+  # that the helper returns non-zero, and bats runs a test body under `set -e`,
+  # where a bare non-zero call aborts before its status can be read.
+  export HOOKS_DIR="$root/hooks" SCRIPTS_TESTS_DIR="$root/clean" \
+    AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
+    FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean"
+
+  # Healthy arm first, so a helper that always failed could not pass this.
+  run shard_package_needs "$BATS_SHARDS" "$root"
+  status_ok="$status"
+
+  printf '#!/usr/bin/env bats\n' >"$root/hooks/locked.bats"
+  chmod 000 "$root/hooks/locked.bats"
+  run shard_package_needs "$BATS_SHARDS" "$root"
+  status_err="$status"
+  chmod 644 "$root/hooks/locked.bats"
+  unset HOOKS_DIR SCRIPTS_TESTS_DIR AUDIT_TESTS_DIR LIB_DIR FORENSICS_DIR STATUSLINE_DIR
+
+  [ "$status_ok" -eq 0 ] || {
+    echo "the readable fixture tree did not scan cleanly (exit $status_ok)" >&2
+    return 1
+  }
+  [ "$status_err" -ne 0 ] || {
+    echo "an unreadable suite reported a clean scan; the grep error did not propagate" >&2
+    return 1
+  }
 }

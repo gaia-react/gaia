@@ -193,25 +193,41 @@ jobs:
       # then misses on all of its own entries -- buying nothing while looking
       # like it worked.
       #
-      # Scope, stated because it bounds the payoff: GitHub scopes a cache to the
-      # branch that wrote it plus that branch's descendants, and the jobs in this
-      # workflow do not run on `push` to main (see each `if:` above), so main
-      # never writes one. A pull request therefore pays the cold 80 seconds on
-      # its FIRST push and reads its own cache on every push after that, which is
-      # where this repository's pull requests spend nearly all their runs.
+      # THE KEY IS EXACT-MATCH ON EVERY TYPE INPUT, AND THERE ARE NO
+      # restore-keys. That is the correctness constraint, not conservatism.
+      # `eslint --print-config` resolves `parserOptions.projectService: true`
+      # here, so type-aware rules run at error severity
+      # (`no-floating-promises`, `no-unnecessary-condition`, `await-thenable`,
+      # `no-misused-promises`, `no-unsafe-assignment`). Those rules decide a
+      # file's verdict from OTHER files' types, while eslint's cache keys each
+      # entry on that file's own content alone. So a partial-match restore can
+      # serve a byte-unchanged consumer its stale clean entry after its provider
+      # changed, and `Vitest (.gaia/cli)` is a declared-required context whose
+      # gating run is the last push -- precisely the warm one. Reproduced: a
+      # provider switched from `(): void` to `(): Promise<void>` leaves the
+      # consumer's floating promise reported by a cold run and MISSED by a warm
+      # one. This job is also the only place `pnpm -C .gaia/cli lint` runs
+      # anywhere in the repository, so nothing else would catch it.
+      #
+      # Hashing all of `src` alongside the config, lockfile, and tsconfig makes
+      # a hit mean every input to every rule is byte-identical, which is the
+      # only condition under which a reused verdict is sound. A pull request
+      # that touches CLI source misses and lints cold, which is correct. The
+      # win is the rest: this job's `code:` filter also arms on
+      # `.github/workflows/**`, `.github/actions/**`, the root manifests, and
+      # the bats paths above, and a pull request touching only those gets a
+      # sound full hit.
+      #
+      # Scope, stated because it bounds the payoff further: GitHub scopes a
+      # cache to the branch that wrote it plus that branch's descendants, and
+      # the jobs in this workflow do not run on `push` to main (see each `if:`
+      # above), so main never writes one.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Restore the CLI eslint cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .gaia/cli/node_modules/.cache/eslint
-          # The key carries the SHA so every run saves a fresh entry, and
-          # restore-keys falls back to the newest entry from the same config and
-          # lockfile. Keying on the config and the lockfile means a rule change
-          # or a plugin bump starts a new cache lineage rather than reusing
-          # verdicts computed under the old rules.
-          key: eslint-cli-${{ runner.os }}-${{ hashFiles('.gaia/cli/eslint.config.mjs', '.gaia/cli/pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: |
-            eslint-cli-${{ runner.os }}-${{ hashFiles('.gaia/cli/eslint.config.mjs', '.gaia/cli/pnpm-lock.yaml') }}-
+          key: eslint-cli-${{ runner.os }}-${{ hashFiles('.gaia/cli/src/**', '.gaia/cli/eslint.config.mjs', '.gaia/cli/tsconfig.json', '.gaia/cli/pnpm-lock.yaml') }}
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Typecheck
         run: pnpm -C .gaia/cli typecheck
