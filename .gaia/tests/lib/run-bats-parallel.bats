@@ -206,6 +206,12 @@ count_default_dirs() {
 @test "T-B: every row names one real shard, its label matches, and the row set equals the shard set" {
   run bash -c "source '$RUNNER'; builtin_table"
   [ "$status" -eq 0 ]
+  # A zero-status run proves nothing on its own: builtin_table returns 0 even
+  # when the sharder dies, because printing nothing is how it fails closed.
+  # Without this the loop below iterates zero times and the set equality
+  # degenerates to "" = "", so the test would green over an empty table while
+  # asserting nothing about the runner's rows.
+  [ "${#lines[@]}" -gt 0 ]
   ids=''
   for row in "${lines[@]}"; do
     slug=$(printf '%s\n' "$row" | cut -f1)
@@ -230,6 +236,9 @@ count_default_dirs() {
   # Unsorted, because the runner replays logs in table order and this is what
   # keeps that order predictable.
   ordered=$(printf '%s\n' "$output" | cut -f3 | awk '{print $NF}')
+  # Same reason as T-B's row-count guard: an empty table would compare "" to ""
+  # and green while pinning no order at all.
+  [ -n "$ordered" ]
   [ "$ordered" = "$(bash "$SHARDER" shards)" ]
 }
 
