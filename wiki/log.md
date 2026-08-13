@@ -11,6 +11,21 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-13 f5152883 WORTHY - bats shards now split by weight not file count → wiki/decisions/Sharded CI Test Matrix.md updated in-commit
+- 2026-08-13 e0dc86d9 WORTHY - closed marker-strip coverage gap, cut CLI lint/apt cost → wiki/concepts/Release Workflow.md updated in-commit
+- 2026-08-13 44b74175 SKIP - test-only fix anchoring registry-path assertion on resolved main root, no behavior change
+- 2026-08-13 c01fa4b8 SKIP - worktree ledger-write instruction self-correction in skill prose; architecture already covered in wiki/concepts/Task Orchestration.md
+- 2026-08-13 b2946155 WORTHY - widened out-of-scope allowlist + ownerless-probe fail-closed/fail-open split → added to wiki/decisions/Code Audit Team.md
+- 2026-08-13 e7bf1c23 WORTHY - hand bats runner now driven from the shard partition → wiki/decisions/Sharded CI Test Matrix.md updated in-commit
+- 2026-08-13 46402f5e WORTHY - gated whole-repo oracles + CI breadcrumbs on non-empty/CI → wiki/concepts/Code Review Audit Agent.md, Code Review Audit CI.md updated in-commit
+- 2026-08-13 fd3616d3 SKIP - bats-suites-excluded-from-machinery fix already documented in wiki/decisions/Code Audit Team.md
+- 2026-08-13 ddeb38e2 WORTHY - scoped node audit oracles to CLI, parallelized shell-lint, batched-fixes guidance → wiki/concepts/PR Merge Workflow.md updated in-commit
+- 2026-08-13 b0479060 WORTHY - widened maintainer-path leak check to bare directories → wiki/concepts/GAIA Init Workflow.md updated in-commit
+- 2026-08-13 4116ba06 SKIP - test relocation + shard-coverage guard (S13), release-excluded .gaia/tests/, no adopter-facing fact
+- 2026-08-13 764ddebd WORTHY - vendored pinned bats archive, no leg fetches it → wiki/decisions/Sharded CI Test Matrix.md updated in-commit
+- 2026-08-13 05fd9a8f SKIP - widened array-guard scan to .gaia/tests already documented in wiki/concepts/Claude Hooks.md maintainer block
+- 2026-08-13 a2cb3db3 SKIP - wiki prose-only placeholder fix on Code Audit Team.md, already applied
+- 2026-08-13 fd087ad2 SKIP - prior wiki maintenance-chain commit (sync+lint through 4c58377), no new fact to sync
 - 2026-08-12 1459d7667 SKIP - moves comment standard into its own rule and deletes the guard; instruction-prose only
 - 2026-08-12 d2016b5fa WORTHY - adds wiki/decisions/Sharded CI Test Matrix.md ADR and wiki/index.md entry
 - 2026-08-12 24bfa7bfe WORTHY - shards Audit CI Tests across a job matrix and pins the bats install; documented by follow-up commit's new ADR wiki/decisions/Sharded CI Test Matrix.md

@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-07-09
 created: 2026-07-09
-updated: 2026-08-05
+updated: 2026-08-13
 tags: [decision, claude, audit, ci]
 ---
 
@@ -28,6 +28,8 @@ The twelve files under `.gaia/cli/templates/workflows/` are deliberately ownerle
 ## Ownership classifier
 
 Roster parsing and per-path ownership live in one shared, sourced module, `.claude/hooks/lib/audit-scope.sh`, that every dispatch resolver and the merge gate itself consult, rather than each parsing the roster on its own. It parses the roster (`.gaia/audit-ci.yml`'s `auditors:` block when present and non-empty, else the same built-in default roster, itself marker-wrapped for the maintainer-only entries) exactly once per run, and answers three separately-named questions that are never interchangeable: which paths the merge gate's out-of-scope allowlist covers, an ordered three-way classification for the `/update-gaia` self-mod bypass (out-of-scope / the audit workflow itself / in-scope), and which member, if any, owns a given path, resolved in the two precedence tiers above (every claimant's glob first, first-match-wins over roster order, then the default member's own declared globs, otherwise ownerless). Conflating any two of those questions is a merge-gate bypass, which is why they stay three distinct predicates in the one module instead of one generalized check.
+
+The out-of-scope allowlist names the lens-less root bookkeeping files no member's globs are meant to reach: `.gitignore`, `.editorconfig`, and `LICENSE`. `public/**` is deliberately not on it, since the tree carries executable JavaScript (a service-worker registration) under that prefix, so it stays in scope, owned by the default member's catch-all. One predicate serves three consumers, the merge gate's legacy fallback branch, the spawn oracle's ownerless probe, and the default member's digest fold, so widening the allowlist has to move all three together or a merge deadlocks: a path allowlisted in one but not the others resolves an empty dispatched set in one place and a nonzero one in another. The spawn oracle's ownerless probe distinguishes two states the naive git-exit-status read collapses into one: an **unresolvable base** still dispatches the default member (fail-closed), where an **empty range** (the base resolved, nothing changed against it) dispatches nobody. The merge gate does not mirror the empty-range half, since it derives its own base independently and can fall back to a local default branch already carrying the diff's commits.
 
 A sibling module, `.claude/hooks/lib/audit-machinery.sh`, holds the one list of **audit-machinery paths**: every file whose bytes can change what a member reviews, who reviews it, where a clearance lands, or whether a clearance is believed (the roster, the classifier and machinery modules themselves, the clearance writer and reader, the merge gate, the CI workflow and its bundled templates, the agent definitions, among others). A `.bats` suite is deliberately excluded, its bytes decide none of those four things; the suites are covered instead by the roster's own `.bats` globs (see below), which dispatch a real member to review them.
 
