@@ -535,17 +535,19 @@ assert_not_in_set() {
 
 # The witness here must be a root path in scope that NO member claims, or the
 # pair below stops exercising the zero-match legacy branch and silently becomes
-# two more member-aware cases. `Dockerfile` is not that path: the default member
-# claims it, along with the rest of the root tooling.
-@test "AND-aggregator: root .editorconfig-only diff denies without a marker (zero-match falls through to the legacy gate, not an auto-allow)" {
-  commit_files ".editorconfig" "root = true"
+# two more member-aware cases. Two candidates fail that bar for opposite
+# reasons: `Dockerfile` is claimed by the default member, and `.editorconfig` is
+# allowlisted outright, so it never reaches the legacy gate's denylist. A root
+# `Makefile` is neither.
+@test "AND-aggregator: root Makefile-only diff denies without a marker (zero-match falls through to the legacy gate, not an auto-allow)" {
+  commit_files "Makefile" "all:"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
 }
 
-@test "AND-aggregator: root .editorconfig-only diff allows once the legacy marker is present" {
-  commit_files ".editorconfig" "root = true"
+@test "AND-aggregator: root Makefile-only diff allows once the legacy marker is present" {
+  commit_files "Makefile" "all:"
   write_marker "code-audit-frontend"
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -717,22 +719,27 @@ assert_not_in_set() {
 # (earned before an ownerless in-scope path was added) no longer validates.
 # ---------------------------------------------------------------------------
 
-@test "UAT-011: a stale frontend marker does not clear a merge that adds an in-scope-but-ownerless .editorconfig" {
+@test "UAT-011: a stale frontend marker does not clear a merge that adds an in-scope-but-ownerless root Makefile" {
   commit_files "app/x.ts" "export const x = 1"
   write_marker "code-audit-frontend"
-  commit_files ".editorconfig" "root = true"
+  commit_files "Makefile" "all:"
 
   run_merge_hook
   assert_denied_by_json
 }
 
-@test "UAT-011: a stale frontend marker does not clear a merge that adds a nested ownerless public asset" {
+# The converse, and the reason the witness above had to move off .editorconfig:
+# a path the allowlist carries sits OUTSIDE the fold, so adding one leaves the
+# frontend's digest where it was and its marker still valid. Pinning the band
+# from one side only would let a widening that swallowed a path the member does
+# read still green the row above.
+@test "UAT-011: an allowlisted path added after the marker leaves that marker valid" {
   commit_files "app/x.ts" "export const x = 1"
   write_marker "code-audit-frontend"
-  commit_files "public/logo.svg" "<svg></svg>"
+  commit_files ".editorconfig" "root = true" "public/logo.svg" "<svg></svg>"
 
   run_merge_hook
-  assert_denied_by_json
+  assert_allowed_by_json
 }
 
 # ---------------------------------------------------------------------------
@@ -1020,20 +1027,20 @@ assert_not_in_set() {
 }
 
 @test "FC-4 no-deadlock: a root in-scope ownerless file denies unmarked and allows once spawned" {
-  commit_files ".editorconfig" "root = true"
+  commit_files "Makefile" "all:"
   set=$(spawn_set)
   [ "$set" = "code-audit-frontend" ]
 
-  # The hazard, made concrete: the dispatched set is empty (nothing OWNS
-  # .editorconfig -- the roster declares it unowned), but the legacy
-  # out-of-scope gate still denies, because a root file that is not *.md is
-  # in-scope. Writing no markers must still deny.
+  # The hazard, made concrete: the dispatched set is empty (nothing OWNS a root
+  # Makefile), but the legacy out-of-scope gate still denies, because a root
+  # file that is not *.md and not one of the allowlisted literals is in scope.
+  # Writing no markers must still deny.
   #
-  # The witness is a root file the roster declares `unowned:`, not merely one
-  # no glob happens to reach. Dockerfile used to serve here and no longer can:
-  # the default member claims it now, so the deny would come from the
-  # member-aware branch and this case would stop exercising the legacy gate at
-  # all while still passing.
+  # Two earlier witnesses no longer serve, for opposite reasons, and both would
+  # have kept passing while silently testing something else. Dockerfile is
+  # claimed by the default member, so its deny would come from the member-aware
+  # branch. .editorconfig is allowlisted outright, so it now allows and belongs
+  # to the row below instead.
   run_merge_hook
   assert_denied_by_json
 
@@ -1044,15 +1051,17 @@ assert_not_in_set() {
   assert_allowed_by_json
 }
 
-@test "FC-4 no-deadlock: nested public/** (in-scope, ownerless) denies unmarked and allows once spawned" {
-  commit_files "public/logo.svg" "<svg></svg>"
+@test "FC-4 no-deadlock: allowlisted ownerless paths spawn nobody, and no markers still allows" {
+  # The other half of FC-4's agreement invariant. These paths hold no lens for
+  # any member, so the oracle names nobody AND the gate demands nothing: the
+  # two sides move together because both read the same allowlist. A widening
+  # applied to only one of them is what would deadlock a merge -- the gate
+  # waiting on a marker the oracle never names anyone to write.
+  commit_files "public/logo.svg" "<svg></svg>" ".gitignore" "node_modules" \
+    "LICENSE" "MIT"
   set=$(spawn_set)
-  [ "$set" = "code-audit-frontend" ]
+  [ -z "$set" ]
 
-  run_merge_hook
-  assert_denied_by_json
-
-  write_markers_for_spawn_set "$set"
   run_merge_hook
   assert_allowed_by_json
 }
@@ -1067,10 +1076,11 @@ assert_not_in_set() {
   # breaking the no-useless-spawn half of the invariant.
   #
   # The witness must be BOTH ownerless and in-scope, which is a narrow set: the
-  # legacy gate allowlists wiki/, .claude/, .specify/, .gaia/, docs/ and root
-  # *.md outright, so none of those reaches this path. .editorconfig qualifies
-  # because the roster declares it unowned while the allowlist does not cover it.
-  commit_files ".editorconfig" "root = true" ".gaia/scripts/y.sh" "#!/bin/bash"
+  # legacy gate allowlists wiki/, .claude/, .specify/, .gaia/, docs/, public/,
+  # root *.md and three root literals outright, so none of those reaches this
+  # path. A root Makefile qualifies -- no roster glob claims it and no arm of
+  # the allowlist admits it.
+  commit_files "Makefile" "all:" ".gaia/scripts/y.sh" "#!/bin/bash"
   set=$(spawn_set)
   [ "$set" = "code-audit-maintainer-shell" ]
   write_markers_for_spawn_set "$set"

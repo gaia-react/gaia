@@ -96,24 +96,31 @@
 #   The merge deny-hook does NOT auto-allow on a zero-match dispatch. When
 #   the dispatch resolver returns an EMPTY set, the deny-hook falls through
 #   to a LEGACY single-signal gate that still requires the default member's
-#   clearance unless the diff passes its own out-of-scope allowlist (wiki/,
-#   .claude/, .specify/, .gaia/, docs/, root-level *.md). So a diff touching
-#   an IN-SCOPE-BUT-OWNERLESS file (a root .editorconfig, .gitignore, anything
-#   under public/**) resolves to an EMPTY dispatched set yet STILL denies the
-#   merge without that clearance. Answering "spawn nobody" there would
-#   deadlock the merge: the gate demands a marker that nothing is ever
-#   spawned to produce. This probe closes that hole by re-running the
-#   deny-hook's own allowlist logic locally:
+#   clearance unless the diff passes its own out-of-scope allowlist. So a diff
+#   touching an IN-SCOPE-BUT-OWNERLESS file (a root Makefile, say: claimed by
+#   no roster glob and admitted by no arm of the allowlist) resolves to an
+#   EMPTY dispatched set yet STILL denies the merge without that clearance.
+#   Answering "spawn nobody" there would deadlock the merge: the gate demands
+#   a marker that nothing is ever spawned to produce. This probe closes that
+#   hole by re-running the deny-hook's own allowlist logic locally:
 #     1. Resolve the diff base the same way the resolver and the hook do
 #        (honoring --base).
 #     2. Base unresolvable -> the default member (the hook's bypass returns
 #        1 there and the merge denies; fail-closed mirror).
-#     3. Empty diff -> the default member (the hook's bypass treats an empty
-#        diff as unusable input, not as "nothing to audit"; mirror it).
+#     3. Base resolvable and the range empty -> nobody. This is the one step
+#        that is deliberately NOT a mirror: the hook's bypass still treats an
+#        empty range as unusable input, because it derives its base
+#        independently and can fall back to a local default branch that
+#        already carries this branch's commits. Here the range is the answer
+#        to the question actually asked, and a range with no files in it holds
+#        nothing for any member to read. See the arm itself for why the
+#        asymmetry must not be "fixed" from the gate's side.
 #     4. Otherwise classify every changed path via the shared out-of-scope
-#        allowlist predicate. Any path outside {wiki/, .claude/, .specify/,
-#        .gaia/, docs/, root *.md} is IN SCOPE and prints the default member.
-#        All paths out of scope prints nothing.
+#        allowlist predicate. Any path that predicate does not admit is IN
+#        SCOPE and prints the default member; all paths admitted prints
+#        nothing. The admitted set lives in one place, the predicate itself
+#        (.claude/hooks/lib/audit-scope.sh), and is not restated here: a
+#        second copy is what lets the probe and the gate drift apart.
 #   The default member on this path is not a roster assumption and not
 #   per-member special-casing: it mirrors the deny-hook's own hardcoded
 #   legacy fallback, which is the sole authority on what clears that path.
@@ -433,7 +440,7 @@ EOF
 # --- The ownerless probe ---------------------------------------------------
 
 ownerless_probe() {
-  local default_branch base changed path
+  local default_branch base changed changed_rc path
 
   if ! command -v audit_out_of_scope_allowlisted >/dev/null 2>&1; then
     echo "resolve-audit-spawn: ownership classifier unavailable, failing closed to code-audit-frontend" >&2
@@ -464,11 +471,32 @@ ownerless_probe() {
   # allowlisted out-of-scope path spawns a member it does not need, because the
   # allowlist never gets to recognize the path. The flag is what lets this
   # probe answer the question it is actually asking.
-  changed="$(git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)"
-  if [ -z "$changed" ]; then
+  # git's exit status is captured rather than swallowed, because "the base did
+  # not resolve" and "the base resolved and the diff is empty" are different
+  # facts that both produce an empty string. Only the first is a reason to fail
+  # closed. `set -o pipefail` is already on for the script; it is restated
+  # inside the substitution so this arm reads correctly on its own, mirroring
+  # check_out_of_scope_pr in .claude/hooks/pr-merge-audit-check.sh. Without it
+  # the status would be `tr`'s, which is 0 however badly git failed.
+  changed_rc=0
+  changed="$(set -o pipefail; git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n')" \
+    || changed_rc=$?
+  if [ "$changed_rc" -ne 0 ]; then
     echo "code-audit-frontend"
     return 0
   fi
+
+  # A resolvable base with nothing between it and HEAD owes nobody: there is no
+  # content for a member to hold a lens over.
+  #
+  # The merge gate deliberately does NOT mirror this arm; its own empty-range
+  # check stays a deny. It derives its base independently and can fall back to a
+  # local default branch that already carries this branch's commits, where an
+  # empty range does not prove an empty pull request. An operator who genuinely
+  # needs to merge one spawns the default member by hand and earns its marker.
+  # Do not "restore symmetry" by clearing the gate's empty-range arm: that
+  # trades a spawn nobody needed for a merge nobody reviewed.
+  [ -n "$changed" ] || return 0
 
   while IFS= read -r path; do
     [ -n "$path" ] || continue

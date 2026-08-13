@@ -363,15 +363,30 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# 7. public/logo.svg (ownerless in-scope, nested) -> code-audit-frontend
+# 7. public/logo.svg (allowlisted, nested) -> empty. No member declares a lens
+#    over a static asset, and the roster's `unowned:` block says so; naming one
+#    made it certify a file outside its own remit. Test 6 above is the row that
+#    keeps this from reading as "the probe stopped dispatching": a root file
+#    that is in scope and ownerless still fails closed to the default member.
 
-@test "nested ownerless public asset spawns code-audit-frontend" {
+@test "nested ownerless public asset spawns nobody" {
   write_full_roster
   stage public/logo.svg
   commit "chore"
   run run_oracle
   [ "$status" -eq 0 ]
-  [ "$output" = "code-audit-frontend" ]
+  [ -z "$output" ]
+}
+
+# 7b. The root bookkeeping literals the allowlist carries beside public/.
+
+@test "root bookkeeping files spawn nobody" {
+  write_full_roster
+  stage .gitignore LICENSE .editorconfig
+  commit "chore"
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
 # 8. wiki/x.md + root Dockerfile (mixed out-of-scope + ownerless) ->
@@ -737,6 +752,33 @@ code-audit-maintainer-shell"
   run run_oracle --base does-not-exist-ref
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-frontend" ]
+}
+
+# The pair to the control above, and the whole point of separating them: git
+# answers BOTH states with an empty string, so a probe that reads only the
+# string cannot tell "the base did not resolve" from "the base resolved and the
+# range is empty". The control must stay fail-closed while this one names
+# nobody; a regression that re-merges the two states greens one and reds the
+# other, never both.
+
+@test "a resolvable base with a genuinely empty diff spawns nobody" {
+  # setup() leaves `feature` at the same commit as `main`, so
+  # merge-base(HEAD, main) resolves to HEAD itself and the three-dot range is
+  # legitimately empty: a resolved base, not an unresolved one.
+  write_full_roster
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "an empty diff reached through --base names nobody, while a bad ref still fails closed" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  # HEAD...HEAD is empty and resolvable; the same script run against a ref that
+  # does not resolve answers code-audit-frontend (the control above).
+  run run_oracle --base HEAD
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
 @test "control: an unreadable roster (non-executable resolver) fails closed to frontend" {

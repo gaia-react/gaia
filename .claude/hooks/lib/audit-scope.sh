@@ -8,7 +8,10 @@
 # Three different questions live here, and they are NOT the same question:
 #
 #   audit_out_of_scope_allowlisted the merge gate's out-of-scope allowlist,
-#                                  consulted only on its legacy branch
+#                                  consulted on its legacy branch, by the spawn
+#                                  oracle's ownerless probe, and by the digest
+#                                  fold; widening it must move all three or a
+#                                  merge deadlocks
 #   audit_self_mod_classify        an ORDERED THREE-WAY classification
 #                                  (out-of-scope / the audit workflow itself /
 #                                  in-scope), never a boolean
@@ -37,19 +40,41 @@
 # --- The merge gate's out-of-scope allowlist ---------------------------------
 #
 # The ONE literal. After this module exists, this case-arm literal occurs in
-# exactly one tracked file. Consulted only on the merge gate's legacy branch,
-# reached only when the roster dispatches nobody for the diff: a path can be
-# allowlisted here and roster-owned at the same time, and when it is, the
-# roster-owned path always wins (a non-empty dispatched set means the legacy
-# branch is never reached).
+# exactly one tracked file. On the merge gate it is reached only when the roster
+# dispatches nobody for the diff: a path can be allowlisted here and
+# roster-owned at the same time, and when it is, the roster-owned path always
+# wins (a non-empty dispatched set means the legacy branch is never reached).
 #
 # Exit 0 iff the path is out-of-scope-allowlisted: wiki/, .claude/,
-# .specify/, .gaia/, docs/, or a root-level (no slash) *.md file.
+# .specify/, .gaia/, docs/, public/, a root-level (no slash) *.md file, or one
+# of the three root bookkeeping literals.
+#
+# The public/ arm and the three literals carry paths that are ownerless in the
+# roster AND that no member has a lens for. `.gaia/audit-ci.yml`'s `unowned:`
+# block is where that judgement is declared ("nothing about it is worth a
+# specialist's review"); this is where it takes effect. Without them a one-line
+# .gitignore edit reached the default member, which then reviewed and certified
+# a file outside its own remit.
+#
+# They sit in arms of their own rather than folded into the first arm because
+# .gaia/tests/hooks/audit-scope-lib.bats matches that arm's text literally to
+# prove this set is defined in exactly one tracked file. public/ must precede
+# the `*/*` arm to be reached at all; the three literals cross no `/`, so their
+# position relative to it is free.
+#
+# Widening this set moves all three consumers at once, which is what keeps them
+# in agreement: the spawn oracle stops naming a member, the merge gate stops
+# demanding that member's marker, and the digest fold stops rotating the
+# default member's digest over content it does not read. Narrowing it to only
+# some consumers would deadlock a merge, since the member the gate waits on
+# would be one the oracle never names.
 
 audit_out_of_scope_allowlisted() {
   case "$1" in
     wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) return 0 ;;
+    public/*) return 0 ;;
     */*) return 1 ;;
+    LICENSE|.gitignore|.editorconfig) return 0 ;;
     *.md) return 0 ;;
     *) return 1 ;;
   esac

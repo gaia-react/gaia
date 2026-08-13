@@ -307,12 +307,52 @@ golden_run_hook() {
 }
 
 # The witness must be a root file in scope that no member's globs claim, or the
-# table loses its ownerless-in-scope row entirely. `.editorconfig` is that file.
-# The root tooling beside it (`Dockerfile`, `.npmrc`, `.nvmrc`, `.prettierignore`)
-# is claimed by the default member and would exercise the owned branch instead.
-@test "golden table: ownerless-but-in-scope root .editorconfig denies" {
+# table loses its ownerless-in-scope row entirely. A root `Makefile` is that
+# file. Two earlier witnesses no longer are, in two different ways, and the
+# table needs one that is neither: `Dockerfile` is claimed by the default
+# member, so it would exercise the owned branch; `.editorconfig` is now
+# allowlisted outright, so it would exercise the row below instead.
+@test "golden table: ownerless-but-in-scope root Makefile denies" {
   golden_setup
-  golden_commit ".editorconfig" "root = true"
+  golden_commit "Makefile" "all:"
+  golden_run_hook
+  golden_teardown
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
+  true
+}
+
+# The paths no member holds a lens over, which the roster's `unowned:` block
+# declares and the allowlist now carries. One row for the nested tree and one
+# for the root literals, since they reach the case statement through different
+# arms (public/ must precede `*/*`; the literals cross no `/` at all).
+@test "golden table: nested public/ asset allows" {
+  golden_setup
+  golden_commit "public/logo.svg" "<svg></svg>"
+  golden_run_hook
+  golden_teardown
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  true
+}
+
+@test "golden table: root bookkeeping literals allow" {
+  golden_setup
+  golden_commit ".editorconfig" "root = true" ".gitignore" "node_modules" \
+    "LICENSE" "MIT"
+  golden_run_hook
+  golden_teardown
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  true
+}
+
+# The fail-closed arm must survive the widening: a bookkeeping literal riding
+# with real source still denies, so the new arms cannot be read as a blanket
+# allow for any diff that happens to contain one.
+@test "golden table: root bookkeeping literals mixed with app/ source deny" {
+  golden_setup
+  golden_commit ".gitignore" "node_modules" "app/x.ts" "export const x = 1;"
   golden_run_hook
   golden_teardown
   [ "$status" -eq 0 ]
