@@ -14,7 +14,7 @@ Defined in `.claude/agents/code-audit-frontend.md`. Opus-class holistic reviewer
 
 Full spec: `.claude/agents/code-audit-frontend.md`.
 
-Reviews security, performance, code smells, architecture, robustness, and maintainability. Output is tiered: Critical (must fix) → Important (should fix) → Suggestions → What's done well. After its own pass, spawns three specialist subagents in parallel (React Patterns & Accessibility, TypeScript & Architecture, Translation) plus `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json` in a single tool call. Each subagent is gated on file scope so it doesn't spawn when there's nothing to review (e.g. no `.tsx` → skip Subagent 1).
+Reviews security, performance, code smells, architecture, robustness, and maintainability. Output is tiered: Critical (must fix) → Important (should fix) → Suggestions → What's done well. After its own pass, spawns three specialist subagents in parallel (React Patterns & Accessibility, TypeScript & Architecture, Translation) plus `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json` in a single tool call. Every dispatch is gated on scope so nothing spawns with nothing to review. Each subagent gates on file extension (e.g. no `.tsx` → skip Subagent 1). The three oracles gate on the weaker condition of an empty changed set: they scan the whole repo or the whole dependency tree by design, so a diff with no `.ts` in it must still run them, and only an empty diff proves they have nothing new to report.
 
 Knip runs pre-merge here (post-task by design) and its findings are bucketed advisory: real dead code, intentional library export (update `entry` globs), or implicit dependency (update `ignoreDependencies`). See [[knip]].
 
