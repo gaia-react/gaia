@@ -377,11 +377,13 @@ misc"
 # prefix, the file to look in, the LITERAL text that invokes the runner, and a
 # human label for the failure message.
 #
-# A row's prefix must not reach further than its runner does. Two of them name
-# a directory because their runner takes the whole of one: sandbox/run-all.sh
-# globs `"$HERE"/*.bats`, and the forensics delegation runs a directory. The
+# A row's prefix must not reach further than its runner does, and the trailing
+# slash is what says how far: allowlist_row_covers below matches a row ending
+# in `/` by prefix and every other row by exact path. Two rows name a directory
+# because their runner takes the whole of one: sandbox/run-all.sh globs
+# `"$HERE"/*.bats`, and the forensics delegation runs a directory. The
 # concurrency row names a full file path instead, because meter-gate.sh pins
-# `SUITE="$HERE/concurrency.bats"` rather than globbing; as a directory prefix
+# `SUITE="$HERE/concurrency.bats"` rather than globbing; matched as a prefix
 # it would excuse a second suite added beside that one while nothing ran it,
 # reproducing the silent green this test exists to catch, inside the waiver.
 #
@@ -403,6 +405,41 @@ non_shard_runners() {
     'bash .gaia/tests/concurrency/meter-gate.sh' 'the concurrency leg of the audit-ci-tests.yml matrix' \
     '.github/forensics/tests/' '.gaia/tests/forensics/unit.bats' \
     'run bats "$FORENSICS_DIR/tests/"' 'the delegation @test in .gaia/tests/forensics/unit.bats, which the misc shard runs'
+}
+
+# Whether allowlist prefix $2 covers orphan $1. A prefix ending in `/` names a
+# directory its runner takes whole, so it covers every suite beneath it; any
+# other prefix names one file and covers that path alone. Matching a file row
+# by prefix would also excuse a tracked `<that path>.disabled.bats` sitting
+# beside it, which nothing runs.
+allowlist_row_covers() {
+  local orphan="$1" prefix="$2"
+  case "$prefix" in
+    */)
+      case "$orphan" in
+        "$prefix"*) return 0 ;;
+      esac
+      ;;
+    *)
+      if [ "$orphan" = "$prefix" ]; then
+        return 0
+      fi
+      ;;
+  esac
+  return 1
+}
+
+# The allowlist row covering orphan $1 on stdout; non-zero when no row does.
+covering_row() {
+  local orphan="$1" row prefix rest
+  while IFS= read -r row || [ -n "$row" ]; do
+    IFS=$'\t' read -r prefix rest <<<"$row"
+    if allowlist_row_covers "$orphan" "$prefix"; then
+      printf '%s\n' "$row"
+      return 0
+    fi
+  done < <(non_shard_runners)
+  return 1
 }
 
 # S13. Every tracked .bats file is executed by something.
@@ -429,7 +466,7 @@ non_shard_runners() {
 # breaks it; workflow-filter-coverage.bats (.gaia/scripts/tests/) is the guard
 # for that half.
 @test "S13: every tracked .bats file is run by a shard or a named non-shard runner" {
-  local tracked covered orphans orphan prefix file needle label row allowlisted rc
+  local tracked covered orphans orphan prefix file needle label row rc
   tracked="$(cd "$REPO_ROOT" && git ls-files '*.bats' | LC_ALL=C sort)"
   [ -n "$tracked" ] || {
     echo "git ls-files found no .bats files at all; the comparison would be vacuous" >&2
@@ -451,24 +488,16 @@ non_shard_runners() {
   rc=0
   while IFS= read -r orphan || [ -n "$orphan" ]; do
     [ -n "$orphan" ] || continue
-    allowlisted=0
-    while IFS= read -r row || [ -n "$row" ]; do
+    if row="$(covering_row "$orphan")"; then
       IFS=$'\t' read -r prefix file needle label <<<"$row"
-      case "$orphan" in
-        "$prefix"*)
-          allowlisted=1
-          # Prove the named runner still exists rather than trusting the row:
-          # a stale entry would keep excusing a file whose runner was deleted,
-          # which is the same silent green one level up.
-          grep -qF -- "$needle" "$REPO_ROOT/$file" || {
-            echo "allowlist excuses $orphan via $label, but $file no longer contains: $needle" >&2
-            rc=1
-          }
-          break
-          ;;
-      esac
-    done < <(non_shard_runners)
-    if [ "$allowlisted" -eq 0 ]; then
+      # Prove the named runner still exists rather than trusting the row:
+      # a stale entry would keep excusing a file whose runner was deleted,
+      # which is the same silent green one level up.
+      grep -qF -- "$needle" "$REPO_ROOT/$file" || {
+        echo "allowlist excuses $orphan via $label, but $file no longer contains: $needle" >&2
+        rc=1
+      }
+    else
       echo "orphan bats suite, no shard resolves it and no allowlist row names a runner: $orphan" >&2
       rc=1
     fi
@@ -517,6 +546,46 @@ EOF
     echo "an orphan .bats outside every seam root did not surface as uncovered" >&2
     return 1
   }
+}
+
+@test "S13 adversarial: a file-path allowlist row does not excuse a suite beside it" {
+  # The waiver's own blind spot. `.gaia/tests/concurrency/concurrency.bats` is
+  # allowlisted because meter-gate.sh pins that one file; matched as a prefix,
+  # the row also excuses a tracked sibling whose name merely extends it, and
+  # nothing runs the sibling.
+  #
+  # Staged into a COPY of the index for the reason the probe above gives: a
+  # staged entry stranded in the real index is the dirty-tree state that makes
+  # every Code Audit Team member withhold its marker.
+  local dir rel git_dir index
+  dir="$REPO_ROOT/.gaia/tests/concurrency"
+  rel=".gaia/tests/concurrency/concurrency.bats.disabled.bats"
+  index="$BATS_TEST_TMPDIR/beside-index"
+  git_dir="$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir)"
+  cp "$git_dir/index" "$index"
+  mkdir -p "$dir"
+  printf '%s\n' "$REPO_ROOT/$rel" >>"$BATS_TEST_TMPDIR/scratch-copies"
+  write_trivial_bats "$REPO_ROOT/$rel" "S13-BESIDE"
+  GIT_INDEX_FILE="$index" git -C "$REPO_ROOT" add -N -- "$rel"
+
+  local tracked covered orphans
+  tracked="$(cd "$REPO_ROOT" && GIT_INDEX_FILE="$index" git ls-files '*.bats' | LC_ALL=C sort)"
+  covered="$(union_of_shard_files "$SCRIPT" | LC_ALL=C sort -u)"
+  orphans="$(LC_ALL=C comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$covered"))"
+
+  # No shard resolves it, so it reaches the allowlist as an orphan...
+  grep -qF -- "$rel" <<<"$orphans" || {
+    echo "the sibling suite did not reach the allowlist as an orphan" >&2
+    return 1
+  }
+  # ...and no row covers it, so S13 names it.
+  covering_row "$rel" && return 1
+
+  # The green half: the pinned file is still excused by its own row, and each
+  # directory row still covers an arbitrary suite beneath it.
+  covering_row '.gaia/tests/concurrency/concurrency.bats' >/dev/null || return 1
+  covering_row '.gaia/tests/sandbox/any-suite.bats' >/dev/null || return 1
+  covering_row '.github/forensics/tests/any-suite.bats' >/dev/null || return 1
 }
 
 @test "A1: dropped file reds the partition check" {

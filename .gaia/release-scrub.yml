@@ -161,9 +161,15 @@ transforms:
           - "e\\.g\\.\\s*`?SPEC-[0-9]{3,}"
 
       # ---- Release-excluded paths leaked into shipped surfaces ----
+      # Every directory alternative ends `\b`, never a trailing `/`. A trailing
+      # slash matches only a reference that continues past the directory name,
+      # so a bare-directory mention of the same release-excluded tree passes
+      # silently and ships an adopter a pointer to a path their clone lacks.
+      # `\b` covers both forms: `/` is a non-word character, so the boundary
+      # fires there too.
       - id: maintainer-paths
         description: "Release-excluded paths referenced in shipped surfaces"
-        pattern: "\\.gaia/cli/src/|\\.gaia/cli/test-fixtures/|\\.gaia/cli/__tests__/|\\.gaia/cli/health/|\\.gaia/cli/gaia-maintainer\\b|\\.specify/extensions/gaia/test/|\\.specify/specs/|\\.gaia/tests/|\\.gaia/scripts/tests/|\\.github/audit/tests/|\\.github/forensics/|\\.claude/rules/maintainers/"
+        pattern: "\\.gaia/cli/src\\b|\\.gaia/cli/test-fixtures\\b|\\.gaia/cli/__tests__\\b|\\.gaia/cli/health\\b|\\.gaia/cli/gaia-maintainer\\b|\\.specify/extensions/gaia/test\\b|\\.specify/specs\\b|\\.gaia/tests\\b|\\.gaia/scripts/tests\\b|\\.github/audit/tests\\b|\\.github/forensics\\b|\\.claude/rules/maintainers\\b"
         scope:
           - "CLAUDE.md"
           - ".claude/**"

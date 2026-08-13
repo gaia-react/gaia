@@ -1,3 +1,4 @@
+import {load as parseYaml} from 'js-yaml';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   mkdirSync,
@@ -8,6 +9,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {globToRegex, parseKeyPath, run} from './scrub.js';
 
 const JSON_STRIP_CONFIG = `
@@ -2029,5 +2031,80 @@ transforms:
     const out = stdio.outputs.join('');
     expect(out).toContain('uat-narrative');
     expect(out).toContain('excluded-titles');
+  });
+});
+
+// The shipped `maintainer-paths` alternation, read from
+// `.gaia/release-scrub.yml` itself rather than mirrored inline the way the
+// hermetic configs above are. The defect these tests pin lived in the config's
+// pattern, not in the engine, so a mirrored copy would have gone on passing
+// while the shipped alternation stayed narrow.
+const shippedMaintainerPathsPattern = (): RegExp => {
+  const configPath = path.join(
+    resolveRepoRootFromImportMeta(import.meta.url),
+    '.gaia',
+    'release-scrub.yml'
+  );
+  const config = parseYaml(readFileSync(configPath, 'utf8')) as {
+    transforms: {checks?: {id: string; pattern?: string}[]}[];
+  };
+  const pattern = config.transforms
+    .flatMap((transform) => transform.checks ?? [])
+    .find((check) => check.id === 'maintainer-paths')?.pattern;
+
+  if (pattern === undefined) {
+    throw new Error('no maintainer-paths check in .gaia/release-scrub.yml');
+  }
+
+  return new RegExp(pattern);
+};
+
+// Every release-excluded directory the shipped alternation names. A bare
+// mention of any one of them is a pointer an adopter's clone cannot follow.
+const RELEASE_EXCLUDED_DIRECTORIES = [
+  '.gaia/cli/src',
+  '.gaia/cli/test-fixtures',
+  '.gaia/cli/__tests__',
+  '.gaia/cli/health',
+  '.gaia/cli/gaia-maintainer',
+  '.specify/extensions/gaia/test',
+  '.specify/specs',
+  '.gaia/tests',
+  '.gaia/scripts/tests',
+  '.github/audit/tests',
+  '.github/forensics',
+  '.claude/rules/maintainers',
+];
+
+describe('shipped maintainer-paths check', () => {
+  test('flags a bare-directory reference, not just a path prefix', () => {
+    const pattern = shippedMaintainerPathsPattern();
+
+    // The bare form is the half that shipped silently: this leak check passed
+    // the line while the release runtime-dependency scan failed the build on it.
+    expect(
+      pattern.test("done < <(find .gaia/scripts .gaia/tests -name '*.sh')")
+    ).toBe(true);
+  });
+
+  test('flags every named directory in both bare and prefixed form', () => {
+    const pattern = shippedMaintainerPathsPattern();
+
+    for (const directory of RELEASE_EXCLUDED_DIRECTORIES) {
+      expect(pattern.test(`see ${directory} for the harness`)).toBe(true);
+      expect(pattern.test(`see ${directory}/run-all.sh for the harness`)).toBe(
+        true
+      );
+    }
+  });
+
+  test('does not flag a longer path that merely starts the same way', () => {
+    const pattern = shippedMaintainerPathsPattern();
+
+    expect(pattern.test('.gaia/testsuite/foo.sh')).toBe(false);
+    expect(pattern.test('.gaia/scripts/bats5.sh')).toBe(false);
+    expect(pattern.test('.gaia/cli/templates/workflows/tests.yml.tmpl')).toBe(
+      false
+    );
   });
 });
