@@ -69,10 +69,18 @@ run_in_repo() {
 
 # ========== gaia_registry_path ==========
 
-@test "gaia_registry_path: resolves to <repo-root>/.gaia/state-registry.json" {
+@test "gaia_registry_path: resolves to <main-root>/.gaia/state-registry.json" {
+  # Anchored on the resolved MAIN root, never on $REPO_ROOT (this file's own
+  # location). The two diverge whenever the suite runs from a linked worktree,
+  # and main's is the correct answer, so a $REPO_ROOT comparison reds on which
+  # checkout bats was invoked from rather than on anything the function does.
+  # The sibling test below pins that divergence against a constructed fixture
+  # whose main root is known without consulting this resolver.
+  local main_root
+  main_root="$(source "$SCRIPT_DIR/main-root-lib.sh" && gaia_resolve_main_root "$REPO_ROOT")"
   run_in_repo gaia_registry_path
   [ "$status" -eq 0 ]
-  [ "$output" = "$REGISTRY" ]
+  [ "$output" = "$main_root/.gaia/state-registry.json" ]
 }
 
 @test "gaia_registry_path: worktree-safe, resolves the MAIN checkout's registry from inside a linked worktree" {
