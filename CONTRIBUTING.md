@@ -86,14 +86,14 @@ For the full design, see `wiki/concepts/Wiki Sync.md`.
 
 ```bash
 bats .gaia/tests/hooks/                 # one suite directory
-bash .gaia/tests/run-bats-parallel.sh   # all nine shards, in parallel
+bash .gaia/tests/run-bats-parallel.sh   # every shard, in parallel
 ```
 
 Requires `bats-core` (`brew install bats-core`). Tests are deterministic, run in tmp git repos, take a few seconds total. Add to your local commit hook if you want them on every commit.
 
 The hooks directory covers the bulk of the wiki system: drift math, marker file behavior, hook input parsing, edge cases (missing state, unreachable SHA, malformed JSON). The other five directories cover the audit helpers, the shipped `.gaia/scripts`, the SPEC-ledger libs, forensics, and the statusline.
 
-CI reaches the same nine-shard partition through a different entry point. The `Audit CI Tests` workflow's `shards` matrix runs `bash .gaia/tests/bats-shards.sh run <shard-id>` once per leg, each shard on its own runner, so the slowest leg sets the wall clock rather than the sum; the hand run forks all nine shards on one box instead. The sharder discovers `.bats` files at run time, so a new suite file joins a shard with no matrix edit. See `wiki/decisions/Sharded CI Test Matrix.md`.
+CI reaches the same partition through a different entry point. The `Audit CI Tests` workflow's `shards` matrix runs `bash .gaia/tests/bats-shards.sh run <shard-id>` once per leg, each shard on its own runner, so the slowest leg sets the wall clock rather than the sum; the hand run forks every shard on one box instead. The sharder discovers `.bats` files at run time, so a new suite file joins a shard with no matrix edit. See `wiki/decisions/Sharded CI Test Matrix.md`.
 
 #### Smoke tests (manual, billable)
 
@@ -117,7 +117,7 @@ Before running `/gaia-release`, you should have:
 - [ ] `pnpm typecheck` clean
 - [ ] `pnpm lint` clean
 - [ ] `pnpm test:ci` clean
-- [ ] `bash .gaia/tests/run-bats-parallel.sh` clean (the nine shards CI runs)
+- [ ] `bash .gaia/tests/run-bats-parallel.sh` clean (the shards CI runs)
 - [ ] `/gaia-wiki sync` run, with all returned WORTHY commits resulting in defensible wiki edits
 - [ ] (Recommended) `bash .gaia/tests/smoke/run-all.sh` clean
 - [ ] Working tree clean

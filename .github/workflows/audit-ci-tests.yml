@@ -89,13 +89,13 @@ jobs:
     # `fail-fast: false` is load-bearing, not a default preference: one failing
     # shard must not cancel its siblings, or the aggregator adjudicates a
     # partial picture and a re-run loses information about every leg GitHub
-    # cancelled rather than ran. The matrix values are the nine bats-shards.sh
-    # shard ids plus the two workflow-level legs; audit-ci-shards.bats' W6
-    # checks the two stay in sync.
+    # cancelled rather than ran. The matrix values are the bats-shards.sh shard
+    # ids plus the two workflow-level legs; audit-ci-shards.bats' W6 checks the
+    # two stay in sync.
     strategy:
       fail-fast: false
       matrix:
-        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, audit, lib, misc, sandbox, concurrency]
+        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, lib, misc, sandbox, concurrency]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PRs that don't touch the audit scripts report this check green
@@ -206,7 +206,7 @@ jobs:
               # looks identical to a clean tree. Same test-dir/source-dir pairing
               # as the entries above.
               - '.gaia/tests/shell-lint.sh'
-              # run-bats-parallel.sh drives the same nine-shard partition
+              # run-bats-parallel.sh drives the same partition
               # the shard steps below invoke via .gaia/tests/bats-shards.sh,
               # but it is not itself a bats step. It remains the hand-run
               # entry point for that partition, and its own adversarial suite
@@ -600,20 +600,23 @@ jobs:
       # python3-yaml pins the parser (python3+pyyaml) rather than resting on
       # whatever the runner image happens to preinstall, and it is installed
       # beside zsh on the same legs rather than on a list of its own: two
-      # narrowly-gated apt steps would pay `apt-get update` twice on any leg
-      # needing both, which is every leg in this list except hooks-3.
+      # narrowly-gated apt steps would pay `apt-get update` twice on every leg
+      # needing both, which is most of this list.
       #
       # The list is not hand-picked. It is exactly the set of shards holding a
       # suite that reaches for either dependency, by the four patterns W10
-      # names, which today is hooks-3 (block-invalid-yaml-write), lib (lint-yaml
-      # and the guard suite itself), scripts-1 (audit-window-lib,
-      # retrigger-reachability, workflow-filter-coverage,
-      # distribution-audit-pr-gate), and scripts-2 (audit-key-lib,
-      # debt-origin-lib, main-only-lib). The remaining seven legs run no apt at
-      # all. Do not edit this list by hand to make W10 pass:
-      # W10 failing means a suite moved legs, and the repair is to copy the set
-      # W10 names, which it derives from the suites rather than from here.
-      - if: contains(fromJSON('["hooks-3", "lib", "scripts-1", "scripts-2"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+      # names; every other leg runs no apt at all. The suites behind it are
+      # deliberately NOT enumerated here. Which leg holds which suite is
+      # decided by the sharder's weighted assignment, so any list written down
+      # is one reshuffle from being wrong while reading as authoritative, and
+      # W10 recomputes the set from the suites either way. To see the current
+      # membership, run `shard_package_needs` out of
+      # .gaia/tests/lib/audit-ci-shards.bats.
+      #
+      # Do not edit this list by hand to make W10 pass: W10 failing means a
+      # suite moved legs, and the repair is to copy the set W10 names, which it
+      # derives from the suites rather than from here.
+      - if: contains(fromJSON('["hooks-3", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
         run: sudo apt-get update && sudo apt-get install -y python3-yaml zsh
       # No apt at all: the sandbox tree provably needs neither python3-yaml nor

@@ -25,16 +25,29 @@
 #
 # Why discovery over a checked-in file manifest: a manifest goes stale the
 # moment a .bats file is added, and it fails SILENTLY -- the new file runs in
-# no shard, the check greens, the pass count quietly drops. Round-robin over
-# a fresh directory listing puts every new file in a shard automatically. The
+# no shard, the check greens, the pass count quietly drops. Assigning over a
+# fresh directory listing puts every new file in a shard automatically. The
 # zero-files rule below is what keeps an empty directory from lying the same
 # way in the other direction: a green "all passed" over zero work.
 #
-# Assignment rules: hooks-1 is the pinned list below; hooks-2/3/4 round-robin
-# the rest of HOOKS_DIR (0-based index i -> hooks-$(( i % 3 + 2 )));
-# scripts-1/2 round-robin SCRIPTS_TESTS_DIR (i -> scripts-$(( i % 2 + 1 )));
-# audit and lib are their whole directories; misc is FORENSICS_DIR plus
+# Assignment rules: hooks-1 is the pinned list below; HOOKS_GREEDY_IDS split
+# the rest of HOOKS_DIR by weight, SCRIPTS_IDS split SCRIPTS_TESTS_DIR the same
+# way; audit and lib are their whole directories; misc is FORENSICS_DIR plus
 # STATUSLINE_DIR combined.
+#
+# Why weight rather than count. A shard's cost is the sum of its files'
+# runtimes, and file COUNT is a poor proxy for that: per-file setup dominates
+# per-test work here, so one 22-second file holds 185 @test and another holds
+# 1. Against a per-file timing of the whole suite, a file's SIZE IN BYTES
+# correlates with its runtime at r=0.80 where its @test count manages r=0.42.
+# Counting files therefore leaves shards that are even in files and lopsided in
+# minutes, and the local wall clock is the slowest shard.
+#
+# Size is read from the tree at discovery time, which is what keeps this pure
+# discovery. A checked-in table of per-file runtimes would be a better proxy
+# still, and it would reintroduce exactly the stale-manifest hazard this
+# script's whole design rejects: a new file would weigh nothing, and nothing
+# would say so.
 #
 # Directory seam: six variables below, each independently overridable from
 # the environment. A value beginning with `/` is used AS-IS; any other value
@@ -67,12 +80,33 @@ STATUSLINE_DIR="${STATUSLINE_DIR:-.gaia/tests/statusline}"
 # Cost floor, not correctness: a file-level sharder cannot split one file, and
 # local-janitor.bats is the heaviest file in the hooks suite (83 @test, each
 # doing a full git init plus a bare origin plus a push), so it anchors hooks-1
-# alone rather than folding into the round-robin split with the rest of
+# alone rather than folding into the weighted split with the rest of
 # HOOKS_DIR. An array so a future maintainer can pin a second file and add a
-# fourth hooks shard without archaeology.
+# fifth hooks shard without archaeology.
+#
+# It is also half of the partition's floor. This one file runs about 150
+# seconds and the whole AUDIT_TESTS_DIR shard runs about the same, and neither
+# splits further, so no arrangement of the weighted groups takes the slowest
+# shard below that. Group sizes are chosen against that floor rather than
+# against each other; `wiki/decisions/Sharded CI Test Matrix.md` carries the
+# measurements and why the groups stop where they do.
 PINNED_HOOKS=(local-janitor.bats)
 
-SHARD_IDS=(hooks-1 hooks-2 hooks-3 hooks-4 scripts-1 scripts-2 audit lib misc)
+# The two weighted groups, each listed once and in matrix order. Adding a shard
+# to a group is a one-word edit here: SHARD_IDS is built from these rather than
+# restated, so the id list and the assignment cannot disagree about how many
+# buckets a group has.
+HOOKS_GREEDY_IDS=(hooks-2 hooks-3 hooks-4)
+SCRIPTS_IDS=(scripts-1 scripts-2 scripts-3)
+
+SHARD_IDS=(
+  hooks-1
+  ${HOOKS_GREEDY_IDS[@]+"${HOOKS_GREEDY_IDS[@]}"}
+  ${SCRIPTS_IDS[@]+"${SCRIPTS_IDS[@]}"}
+  audit lib misc
+)
+
+TAB="$(printf '\t')"
 
 REPO_ROOT="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel)"
 
@@ -171,51 +205,98 @@ files_hooks1() {
   done
 }
 
-# 0-based index i over the sorted, pinned-subtracted HOOKS_DIR list goes to
-# hooks-$(( i % 3 + 2 )).
-hooks_round_robin() {
-  local target="$1" p base i mod rest
-  read_lines < <(discover_bats "$HOOKS_DIR")
-  rest=()
-  for p in ${lines[@]+"${lines[@]}"}; do
+# `<bytes><TAB><path>` for every discovered .bats file in the resolved $1,
+# heaviest first, path ascending within an equal size, so the walk order below
+# is total and depends on neither the directory order nor the locale. Pass
+# `pinned` as $2 to hold out PINNED_HOOKS, which files_hooks1 assigns instead.
+#
+# An unreadable file weighs 0 rather than aborting: it still lands in exactly
+# one shard, so the partition stays whole and only the balance degrades. The
+# alternative fails the whole listing over a file the sharder does not read.
+weighted_list() {
+  local dir="$1" mode="$2" p base abs size
+  while IFS= read -r p || [ -n "$p" ]; do
+    [ -n "$p" ] || continue
     base="${p##*/}"
-    if ! is_pinned_hook "$base"; then
-      rest+=("$p")
+    if [ "$mode" = pinned ] && is_pinned_hook "$base"; then
+      continue
     fi
-  done
-  i=0
-  for p in ${rest[@]+"${rest[@]}"}; do
-    mod=$((i % 3 + 2))
-    if [ "$mod" -eq "$target" ]; then
-      printf '%s\n' "$p"
+    case "$p" in
+      /*) abs="$p" ;;
+      *) abs="$REPO_ROOT/$p" ;;
+    esac
+    size=0
+    if [ -r "$abs" ]; then
+      size="$(wc -c <"$abs" | tr -d ' ')"
     fi
-    i=$((i + 1))
-  done
+    printf '%s%s%s\n' "$size" "$TAB" "$p"
+  done < <(discover_bats "$dir") | LC_ALL=C sort -t"$TAB" -k1,1nr -k2,2
 }
 
-# 0-based index i over the sorted SCRIPTS_TESTS_DIR list goes to
-# scripts-$(( i % 2 + 1 )).
-scripts_round_robin() {
-  local target="$1" p i mod
-  read_lines < <(discover_bats "$SCRIPTS_TESTS_DIR")
+# Greedy longest-processing-time assignment of directory $1's discovered files
+# across the shard ids from $4 on, printing the ones that land on target id $2.
+# $3 is `pinned` or `all`, forwarded to weighted_list.
+#
+# Walk the files heaviest first and give each to the lightest bucket so far,
+# ties to the lowest-numbered shard. LPT is not optimal, but the arrangement it
+# misses by is far inside the run-to-run noise of the runtimes it approximates,
+# and it needs no search, so the assignment stays a single pass a reader can
+# follow.
+greedy_bucket() {
+  local dir="$1" target="$2" mode="$3"
+  shift 3
+  local ids n i best target_idx id size p loads
+  ids=("$@")
+  n=$#
+
+  target_idx=-1
   i=0
-  for p in ${lines[@]+"${lines[@]}"}; do
-    mod=$((i % 2 + 1))
-    if [ "$mod" -eq "$target" ]; then
-      printf '%s\n' "$p"
+  for id in ${ids[@]+"${ids[@]}"}; do
+    if [ "$id" = "$target" ]; then
+      target_idx=$i
     fi
     i=$((i + 1))
   done
+  if [ "$target_idx" -lt 0 ]; then
+    printf 'bats-shards: %s is not one of this group'"'"'s shards\n' "$target" >&2
+    exit 2
+  fi
+
+  loads=()
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    loads+=(0)
+    i=$((i + 1))
+  done
+
+  while IFS="$TAB" read -r size p || [ -n "$p" ]; do
+    [ -n "$p" ] || continue
+    best=0
+    i=1
+    while [ "$i" -lt "$n" ]; do
+      if [ "${loads[$i]}" -lt "${loads[$best]}" ]; then
+        best=$i
+      fi
+      i=$((i + 1))
+    done
+    if [ "$best" -eq "$target_idx" ]; then
+      printf '%s\n' "$p"
+    fi
+    loads[best]=$((loads[best] + size))
+  done < <(weighted_list "$dir" "$mode")
 }
 
 files_for_shard() {
   case "$1" in
     hooks-1) files_hooks1 ;;
-    hooks-2) hooks_round_robin 2 ;;
-    hooks-3) hooks_round_robin 3 ;;
-    hooks-4) hooks_round_robin 4 ;;
-    scripts-1) scripts_round_robin 1 ;;
-    scripts-2) scripts_round_robin 2 ;;
+    hooks-*)
+      greedy_bucket "$HOOKS_DIR" "$1" pinned \
+        ${HOOKS_GREEDY_IDS[@]+"${HOOKS_GREEDY_IDS[@]}"}
+      ;;
+    scripts-*)
+      greedy_bucket "$SCRIPTS_TESTS_DIR" "$1" all \
+        ${SCRIPTS_IDS[@]+"${SCRIPTS_IDS[@]}"}
+      ;;
     audit) discover_bats "$AUDIT_TESTS_DIR" ;;
     lib) discover_bats "$LIB_DIR" ;;
     misc)

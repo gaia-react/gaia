@@ -11,9 +11,11 @@
 #
 # S1/S2/S3 independently re-discover the six directories rather than asking
 # the script to grade its own homework, and the adversarial fixtures (A1-A3)
-# mutate a scratch copy of the script to prove those three checks can
-# actually fail, following the discipline .gaia/tests/lib/run-bats-parallel.bats
-# sets for its own F1/F2 fixtures.
+# mutate a scratch copy of the script to prove those checks can actually fail,
+# following the discipline .gaia/tests/lib/run-bats-parallel.bats sets for its
+# own F1/F2 fixtures. S9 and A4 cover the second invariant the partition has to
+# hold: the weighted groups are split by weight, not by file count, and the
+# partition checks are blind to that on their own.
 #
 # Assertion style per .claude/rules/bats-assertions.md: no bare mid-test
 # [[ ... ]], POSIX [ ] and grep only, so a broken assertion still fails on
@@ -128,39 +130,46 @@ copy_sharder() {
   printf '%s\n' "$dest"
 }
 
-# A1 fixture: makes the first (0-based) unpinned hooks file match no
-# round-robin target on the copy, so it is assigned to no shard while every
-# shard the copy reports still exits 0 and stays non-empty. Proves
-# check_partition can fail.
+# The line number of greedy_bucket's assignment walk in copy $1. Matched by
+# shape, not by one exact spelling: a -F anchor pinned to today's variable
+# names silently stops matching the moment one is renamed, and a no-match
+# would splice nothing, leaving an undoctored copy that proves nothing. Every
+# fixture below splices into the top of this loop body, so each one skews the
+# assignment the same way for every shard the copy is asked about, which is
+# what keeps the doctored partition self-consistent rather than merely broken.
+greedy_walk_line() {
+  local anchor
+  anchor="$(grep -nE 'while IFS=.*read -r size p' "$1" | head -1 | cut -d: -f1)"
+  [ -n "$anchor" ] || return 1
+  printf '%s\n' "$anchor"
+}
+
+# A1 fixture: drops the heaviest file of each weighted group on the copy, so it
+# is assigned to no shard while every shard the copy reports still exits 0 and
+# stays non-empty. Proves check_partition can fail.
 doctor_dropped_file() {
   local dest anchor
   dest="$(copy_sharder a1-dropped.sh)"
-  # Matched by shape, not by one exact spelling: the loop it anchors on is
-  # written with bash 3.2's empty-array offset guard, and a -F anchor pinned to
-  # the bare "${rest[@]}" form silently stops matching the moment that guard is
-  # added or removed. A no-match would splice nothing, leaving an undoctored
-  # copy that proves nothing.
-  anchor="$(grep -nE 'for p in .*\$\{rest\[@\]' "$dest" | head -1 | cut -d: -f1)"
-  [ -n "$anchor" ] || return 1
+  anchor="$(greedy_walk_line "$dest")" || return 1
   awk -v a="$anchor" '
     { print }
-    NR == a { print "    if [ \"$i\" -eq 0 ]; then i=$((i + 1)); continue; fi" }
+    NR == a { print "    if [ -z \"${a1_seen:-}\" ]; then a1_seen=1; continue; fi" }
   ' "$dest" >"$dest.new"
   mv "$dest.new" "$dest"
   printf '%s\n' "$dest"
 }
 
-# A2 fixture: forces the first (0-based) scripts-tests file to also print
-# under scripts-2 on the copy, so it lands in both scripts-1 and scripts-2.
-# Proves check_no_duplicates can fail.
+# A2 fixture: forces each group's heaviest file to also print under the group's
+# SECOND shard on the copy. The unweighted walk already puts the first file it
+# sees on the first shard, so the file lands in both. Proves
+# check_no_duplicates can fail.
 doctor_duplicated_file() {
   local dest anchor
   dest="$(copy_sharder a2-duplicated.sh)"
-  anchor="$(grep -nF 'mod=$((i % 2 + 1))' "$dest" | head -1 | cut -d: -f1)"
-  [ -n "$anchor" ] || return 1
+  anchor="$(greedy_walk_line "$dest")" || return 1
   awk -v a="$anchor" '
     { print }
-    NR == a { print "    if [ \"$target\" -eq 2 ] && [ \"$i\" -eq 0 ]; then printf \"%s\\n\" \"$p\"; fi" }
+    NR == a { print "    if [ \"$target_idx\" -eq 1 ] && [ -z \"${a2_seen:-}\" ]; then a2_seen=1; printf \"%s\\n\" \"$p\"; fi" }
   ' "$dest" >"$dest.new"
   mv "$dest.new" "$dest"
   printf '%s\n' "$dest"
@@ -217,16 +226,17 @@ write_trivial_bats() {
   [ "$status" -eq 0 ]
 }
 
-@test "S4: shards prints exactly nine ids in the documented order" {
+@test "S4: shards prints exactly ten ids in the documented order" {
   run bash "$SCRIPT" shards
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 9 ]
+  [ "${#lines[@]}" -eq 10 ]
   expected="hooks-1
 hooks-2
 hooks-3
 hooks-4
 scripts-1
 scripts-2
+scripts-3
 audit
 lib
 misc"
@@ -283,26 +293,137 @@ misc"
   [ "$status" -eq 0 ]
 }
 
-@test "S9: no shard is unbalanced against a broken modulo" {
-  local n_hooks n_unpinned n_scripts hooks_cap scripts_cap id count
-  n_hooks=$(discover_independent "$HOOKS_DIR_DEFAULT" | wc -l | tr -d ' ')
-  n_unpinned=$((n_hooks - 1))
-  n_scripts=$(discover_independent "$SCRIPTS_TESTS_DIR_DEFAULT" | wc -l | tr -d ' ')
-  hooks_cap=$(((n_unpinned + 3 - 1) / 3 + 1))
-  scripts_cap=$(((n_scripts + 2 - 1) / 2 + 1))
-  for id in hooks-2 hooks-3 hooks-4; do
-    count=$(bash "$SCRIPT" files "$id" | wc -l | tr -d ' ')
-    if [ "$count" -gt "$hooks_cap" ]; then
-      return 1
+# Size of one path as `files` prints it: repo-relative for a path under the
+# sharder's own root, absolute for one reached through a seam override.
+bytes_of() {
+  case "$1" in
+    /*) wc -c <"$1" | tr -d ' ' ;;
+    *) wc -c <"$REPO_ROOT/$1" | tr -d ' ' ;;
+  esac
+}
+
+# The byte load of shard $2, under script $1.
+shard_bytes() {
+  local script="$1" id="$2" p total=0
+  while IFS= read -r p || [ -n "$p" ]; do
+    [ -n "$p" ] || continue
+    total=$((total + $(bytes_of "$p")))
+  done < <(bash "$script" files "$id")
+  printf '%s\n' "$total"
+}
+
+# `<total-bytes> <largest-file-bytes>` over the paths on stdin.
+weight_profile() {
+  local p size total=0 largest=0
+  while IFS= read -r p || [ -n "$p" ]; do
+    [ -n "$p" ] || continue
+    size=$(bytes_of "$p")
+    total=$((total + size))
+    if [ "$size" -gt "$largest" ]; then
+      largest=$size
     fi
   done
-  for id in scripts-1 scripts-2; do
-    count=$(bash "$SCRIPT" files "$id" | wc -l | tr -d ' ')
-    if [ "$count" -gt "$scripts_cap" ]; then
+  printf '%s %s\n' "$total" "$largest"
+}
+
+# 0 when every shard id from $4 on is within the greedy load bound implied by
+# the profile `<total> <largest>` in $2/$3 over $n buckets, 1 when one is over.
+within_load_bound() {
+  local script="$1" total="$2" largest="$3"
+  shift 3
+  local ids id cap load
+  ids=("$@")
+  cap=$((total / $# + largest))
+  for id in ${ids[@]+"${ids[@]}"}; do
+    load="$(shard_bytes "$script" "$id")"
+    if [ "$load" -gt "$cap" ]; then
+      echo "$id carries $load bytes, over the greedy bound of $cap" >&2
       return 1
     fi
   done
   return 0
+}
+
+# S9. Each weighted group's shards are actually balanced by weight.
+#
+# The bound is the one greedy list scheduling always satisfies, not a tuned
+# threshold: whichever file pushed a shard to its final load was placed while
+# that shard was the LIGHTEST, so the load before it was at most the mean, and
+# the load after it is at most the mean plus that one file. A shard exceeding
+# `total/n + largest` therefore did not come out of a lightest-bucket walk at
+# all. That is what fails if the assignment reverts to counting files, or
+# collapses a group onto one shard, while every partition check above (which
+# only cares WHICH shard a file lands in, never how heavy it is) stays green.
+#
+# Stated as a bound rather than a spread so it never flakes: it holds for every
+# input, including one file heavier than the whole rest of its group.
+@test "S9: each weighted group's shards respect the greedy load bound" {
+  local total largest
+  read -r total largest < <(discover_independent "$HOOKS_DIR_DEFAULT" | grep -v '/local-janitor\.bats$' | weight_profile)
+  run within_load_bound "$SCRIPT" "$total" "$largest" hooks-2 hooks-3 hooks-4
+  [ "$status" -eq 0 ]
+
+  read -r total largest < <(discover_independent "$SCRIPTS_TESTS_DIR_DEFAULT" | weight_profile)
+  run within_load_bound "$SCRIPT" "$total" "$largest" scripts-1 scripts-2 scripts-3
+  [ "$status" -eq 0 ]
+}
+
+# A4 fixture: makes every file weigh the same on the copy, which is the exact
+# regression S9 exists to catch -- greedy over equal weights degenerates to
+# round-robin over the sorted listing, i.e. back to counting files. The
+# lightest-bucket walk is untouched, so every shard stays non-empty and the
+# partition stays whole; only the balance goes.
+doctor_unweighted() {
+  local dest anchor
+  dest="$(copy_sharder)"
+  anchor="$(grep -nF 'size="$(wc -c <"$abs" | tr -d '"'"' '"'"')"' "$dest" | head -1 | cut -d: -f1)"
+  [ -n "$anchor" ] || return 1
+  awk -v a="$anchor" '
+    NR == a { print "      size=1"; next }
+    { print }
+  ' "$dest" >"$dest.new"
+  mv "$dest.new" "$dest"
+  printf '%s\n' "$dest"
+}
+
+# A seam directory whose round-robin split across three shards is lopsided and
+# whose weighted split is not: two heavy files at alternating positions in the
+# sorted listing land on the same shard when position decides, and on different
+# shards when weight does. Six files, so each of the three shards still draws
+# two under round-robin and none of them is empty either way.
+seed_lopsided_tree() {
+  local dir="$1" name
+  mkdir -p "$dir"
+  for name in s-a s-d; do
+    write_trivial_bats "$dir/$name.bats" "HEAVY-$name"
+    # Padded to a size the light files cannot approach, as one trailing comment
+    # line, so which shard holds the two heavy files is what decides the
+    # comparison.
+    head -c 1000 /dev/zero | tr '\0' '#' >>"$dir/$name.bats"
+  done
+  for name in s-b s-c s-e s-f; do
+    write_trivial_bats "$dir/$name.bats" "LIGHT-$name"
+  done
+}
+
+@test "A4: a group split by file count rather than weight reds the load bound" {
+  local dir copy total largest
+  dir="$BATS_TEST_TMPDIR/a4-scripts"
+  seed_lopsided_tree "$dir"
+  read -r total largest < <(printf '%s\n' "$dir"/*.bats | weight_profile)
+
+  # The healthy arm first, so a bound loose enough to pass anything could not
+  # pass this test.
+  SCRIPTS_TESTS_DIR="$dir" run within_load_bound "$SCRIPT" "$total" "$largest" scripts-1 scripts-2 scripts-3
+  [ "$status" -eq 0 ]
+
+  copy="$(doctor_unweighted)"
+  # The doctored copy still partitions the tree cleanly...
+  SCRIPTS_TESTS_DIR="$dir" run check_no_duplicates "$copy"
+  [ "$status" -eq 0 ]
+  # ...and is still caught, because the two heavy files landed together.
+  SCRIPTS_TESTS_DIR="$dir" run within_load_bound "$copy" "$total" "$largest" scripts-1 scripts-2 scripts-3
+  [ "$status" -eq 1 ]
 }
 
 @test "S11: a pinned hook missing from discovery is a fail-closed error" {
@@ -485,7 +606,7 @@ EOF
   # Staged into a COPY of the index, never the repository's own. Writing the
   # real index would make this the one test here that mutates shared repo
   # state, and two documented invariants forbid it: run-bats-parallel.sh forks
-  # the nine shards concurrently in one workspace, and a sibling
+  # every shard concurrently in one workspace, and a sibling
   # suite derives its whole input population from `git ls-files`. It would also
   # need an undo, whose own failure path (a contended index.lock) strands a
   # staged-deleted path in the real index, which is exactly the dirty-tree

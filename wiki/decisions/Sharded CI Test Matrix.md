@@ -10,13 +10,13 @@ tags: [decision, ci, performance, github-actions, bats]
 
 # Decision: Sharded CI Test Matrix
 
-`Audit CI Tests` is the whole pull-request critical path. It runs as a fan-out matrix of eleven legs plus a thin aggregator that carries the declared-required check name, because the bats work saturates a single runner's cores and the remaining lever is more runners.
+`Audit CI Tests` is the whole pull-request critical path. It runs as a fan-out matrix of twelve legs plus a thin aggregator that carries the declared-required check name, because the bats work saturates a single runner's cores and the remaining lever is more runners.
 
 ## Shape
 
 `.github/workflows/audit-ci-tests.yml` declares two jobs:
 
-- `shards`, a matrix of eleven legs: nine bats shards (`hooks-1` to `hooks-4`, `scripts-1`, `scripts-2`, `audit`, `lib`, `misc`), the `.gaia/tests/sandbox` conformance tree, and the INV-7 concurrency meter.
+- `shards`, a matrix of twelve legs: ten bats shards (`hooks-1` to `hooks-4`, `scripts-1` to `scripts-3`, `audit`, `lib`, `misc`), the `.gaia/tests/sandbox` conformance tree, and the INV-7 concurrency meter.
 - `audit-ci-tests`, which reads `needs.shards.result` and exits non-zero for anything other than `success`.
 
 Splitting the required check name off the work is what lets `fail-fast: false` stop one failing shard from cancelling its siblings without also cancelling the check. The aggregator compares against `success` rather than enumerating failure states, so a conclusion GitHub adds later fails closed, and `always()` on its `if:` stops a skip-on-dependency-failure from satisfying a required context that ran nothing.
@@ -50,7 +50,7 @@ A useful reconciliation is the sum of per-shard TAP plans against the pre-existi
 
 ## Entry-point equivalence
 
-`.gaia/tests/run-bats-parallel.sh` (the hand runner) and `.gaia/tests/bats-shards.sh` (the CI matrix) consume the same nine-shard partition, so one entry-point set covers both: the hand runner's `builtin_table()` derives its rows from the sharder rather than carrying an independent copy, and expanding each side's own rows to a sorted list of `.bats` entry points resolves to the same set. `.gaia/tests/forensics/unit.bats`'s delegation to `.github/forensics/tests/` is identical on both sides of that comparison, so it cancels and the check is over entry points, not transitive coverage.
+`.gaia/tests/run-bats-parallel.sh` (the hand runner) and `.gaia/tests/bats-shards.sh` (the CI matrix) consume the same partition, so one entry-point set covers both: the hand runner's `builtin_table()` derives its rows from the sharder rather than carrying an independent copy, and expanding each side's own rows to a sorted list of `.bats` entry points resolves to the same set. `.gaia/tests/forensics/unit.bats`'s delegation to `.github/forensics/tests/` is identical on both sides of that comparison, so it cancels and the check is over entry points, not transitive coverage.
 
 The workflow's own `shards` matrix is pinned to the sharder's shard list by `audit-ci-shards.bats` W6, so the sharder stands in for the CI side below.
 
@@ -75,23 +75,32 @@ The hand side expands the rows `builtin_table()` actually emits rather than aski
 
 ## Where the time goes
 
-Measured per leg on a clean run: the slowest shard is around 154 seconds, the aggregator about 3, and fixed per-leg overhead (runner provisioning, checkout, install) is on the order of 10 seconds. The install step spans roughly 10 to 20 seconds; the sandbox leg, which runs no apt, finishes it first. The concurrency leg runs 66 to 69 seconds against its 13-minute cap, so the cap constraint above binds the declared numbers rather than any real runtime.
+Measured per leg on a clean CI run: the aggregator takes about 3 seconds, and fixed per-leg overhead (runner provisioning, checkout, install) is on the order of 10 seconds. The install step spans roughly 10 to 20 seconds; the sandbox leg, which runs no apt, finishes it first. The concurrency leg runs 66 to 69 seconds against its 13-minute cap, so the cap constraint above binds the declared numbers rather than any real runtime.
+
+A hand run is a different measurement, because it forks every shard onto one box. Timed one file at a time the whole suite is roughly 1280 seconds of work over 200 files against a heaviest shard near 160, but forked together on an eight-performance-core machine it finishes in about 200 seconds of wall clock, each shard reporting 20 to 30 percent longer than it costs alone. Splitting a group lowers the heaviest shard without lowering the total, so past roughly the core count it promises wall clock the box cannot deliver. The two axes part company there: CI gives every leg its own runner and realizes a rebalance in full, and a hand run realizes the part of it that fits in the cores it has.
 
 Suite cost is uneven, which is why the shard split is not a naive equal division: the hooks and scripts directories dominate, and `local-janitor.bats` is heavy enough to be pinned alone as `hooks-1`.
+
+Within each of those two directories the split is by **file size in bytes**, not by file count. Per-file setup dominates per-test work here, so counting files balances the wrong quantity: one 22-second suite holds 185 `@test` and another holds 1. Against a per-file timing of every suite, a file's size predicts its runtime at r=0.80 where its `@test` count manages r=0.42. The sharder walks each directory's files heaviest first and gives each to the lightest shard so far, which is a single deterministic pass over data it already has.
+
+Two legs are irreducible and together set the floor. `local-janitor.bats` is one file, which a file-level sharder cannot split, and the whole `audit` directory is one shard; timed a file at a time each runs about 150 seconds, so no arrangement of the other groups puts the slowest shard below that. Group sizes are chosen against it: at two shards the scripts group binds the whole partition well above the floor, at three it drops below both irreducible legs, and at four it buys nothing.
+
+The hooks group stops at three shards even though a fourth would lower its own heaviest shard, because the gain does not survive either axis. On CI, splitting hooks further only exposes the next constraint underneath it, worth a few seconds unless the `lib` directory is split as well, and the pair costs three more legs. On a hand run it is worth less than that, for the reason the paragraph below gives.
 
 ## Levers not taken, and why
 
 - **A setup job that fetches shared state once.** Adds a third hop; see the ceiling above.
-- **Per-shard narrowed paths filters.** All eleven legs share one `steps:` block, so the filter is defined once and evaluated per leg. Narrowing per shard also breaks `.gaia/scripts/tests/workflow-filter-coverage.bats`, which requires every gate on a step to reach every literal path that step names, independently. `audit-ci-shards.bats` W7 pins the count at exactly one filter step.
+- **Per-shard narrowed paths filters.** Every leg shares one `steps:` block, so the filter is defined once and evaluated per leg. Narrowing per shard also breaks `.gaia/scripts/tests/workflow-filter-coverage.bats`, which requires every gate on a step to reach every literal path that step names, independently. `audit-ci-shards.bats` W7 pins the count at exactly one filter step.
 - **A checked-in shard manifest.** Fails silently: a new suite runs in no shard, every check greens, the pass count quietly drops.
+- **A checked-in table of per-file runtimes.** A better weight than file size, and the same silent-stale hazard as the manifest above wearing different clothes: a newly added suite weighs nothing, the shard holding it is under-counted, and nothing says so. Size is read from the tree at discovery time, so it is never stale and never absent.
 - **A per-shard package list.** Also a silent-green hazard, because the suites that need `python3-yaml` fail rather than skip when it is absent while the ones needing `zsh` skip quietly. The install is split by leg kind instead, and W9 pins the sandbox leg's reduced set.
-- **`bats --jobs`.** A live lever rather than a closed question. The reasoning that excludes it, that the runner is already CPU-saturated, describes nine shards sharing one box; a shard now runs one suite serially on its own four-core box, leaving cores idle.
+- **`bats --jobs`.** A live lever rather than a closed question. The reasoning that excludes it, that the runner is already CPU-saturated, describes every shard sharing one box; a shard now runs one suite serially on its own four-core box, leaving cores idle.
 
 ## Fan-out has its own costs
 
 Widening the matrix is not free, and two costs are measured rather than theoretical:
 
-- **Shared-host bursts.** Ten of the eleven legs run `apt-get update` within seconds of each other, and a mirror hash-sum mismatch on any one of them reds a declared-required context. The bats archive is vendored rather than fetched for exactly this reason: fetching it puts a second host in the same burst, and GitHub's codeload answers that burst with `503`s costing an affected leg roughly two minutes of backoff. Any change that adds legs, or that puts a fetch back on an install path, widens what is left.
+- **Shared-host bursts.** The legs that install a package run `apt-get update` within seconds of each other, and a mirror hash-sum mismatch on any one of them reds a declared-required context. The bats archive is vendored rather than fetched for exactly this reason: fetching it puts a second host in the same burst, and GitHub's codeload answers that burst with `503`s costing an affected leg roughly two minutes of backoff. Any change that adds legs, or that puts a fetch back on an install path, widens what is left.
 - **Fixed overhead multiplies.** Each leg pays provisioning, checkout, and install. Below roughly a minute of real work, a leg is mostly overhead.
 
 Total machine time rises with fan-out even as wall-clock falls. The thing being optimized here is human-facing latency on the critical path, not runner minutes.

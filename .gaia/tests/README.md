@@ -55,7 +55,7 @@ Requires `bats` (`brew install bats-core`). Tests are self-contained; they spin 
 bash .gaia/tests/run-bats-parallel.sh
 ```
 
-Forks the same nine-shard partition CI runs (`.gaia/tests/bats-shards.sh`), one bats process per shard, all on one box.
+Forks the same partition CI runs (`.gaia/tests/bats-shards.sh`), one bats process per shard, all on one box.
 
 ### Sandbox conformance tests (free, fast)
 

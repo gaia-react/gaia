@@ -2,8 +2,8 @@
 
 # Adversarial suite for .gaia/tests/run-bats-parallel.sh, the hand-run parallel
 # bats runner. The runner and .github/workflows/audit-ci-tests.yml consume the
-# same nine-shard partition from .gaia/tests/bats-shards.sh, the workflow one
-# shard per matrix leg and the runner all nine at once, so the workflow never
+# same partition from .gaia/tests/bats-shards.sh, the workflow one shard per
+# matrix leg and the runner every shard at once, so the workflow never
 # calls this script itself. The exit-code propagation this suite proves is
 # load-bearing on both paths: a bug that greens a failing suite wedges nothing
 # and lets everything through, which is the worse direction, and that same
