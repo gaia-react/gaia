@@ -840,7 +840,7 @@ B's appears) is what may never be weakened to move a number.
 
 Step 4's arming, and what it does not need. `meter-gate.sh` runs as the whole of the
 `concurrency` leg of the sharded `Audit CI Tests` workflow
-(`.github/workflows/audit-ci-tests.yml`), one of eleven matrix legs the aggregator job
+(`.github/workflows/audit-ci-tests.yml`), one of the matrix legs the aggregator job
 waits on before it reports the required context.
 
 **It needed no branch-protection change, and earlier drafts of this file were wrong to

@@ -209,7 +209,7 @@ jobs:
       # one. This job is also the only place `pnpm -C .gaia/cli lint` runs
       # anywhere in the repository, so nothing else would catch it.
       #
-      # Hashing all of `src` alongside the config, lockfile, and tsconfig makes
+      # Hashing all of `src` alongside the configs, lockfile, and tsconfig makes
       # a hit mean every input to every rule is byte-identical, which is the
       # only condition under which a reused verdict is sound. A pull request
       # that touches CLI source misses and lints cold, which is correct. The
@@ -227,7 +227,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .gaia/cli/node_modules/.cache/eslint
-          key: eslint-cli-${{ runner.os }}-${{ hashFiles('.gaia/cli/src/**', '.gaia/cli/eslint.config.mjs', '.gaia/cli/tsconfig.json', '.gaia/cli/pnpm-lock.yaml') }}
+          key: eslint-cli-${{ runner.os }}-${{ hashFiles('.gaia/cli/src/**', '.gaia/cli/eslint.config.mjs', '.gaia/cli/prettier.config.mjs', '.gaia/cli/tsconfig.json', '.gaia/cli/pnpm-lock.yaml') }}
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Typecheck
         run: pnpm -C .gaia/cli typecheck

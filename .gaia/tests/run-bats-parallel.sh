@@ -4,14 +4,14 @@
 # order.
 #
 # The hand-run entry point for this repo's bats suites. This and
-# `.github/workflows/audit-ci-tests.yml` consume the same nine-shard partition
+# `.github/workflows/audit-ci-tests.yml` consume the same partition
 # from `.gaia/tests/bats-shards.sh`: each shard leg of the CI matrix calls
-# `bats-shards.sh run <shard-id>` on its own box, while a hand run forks all
-# nine on this one. Sharing the partition is what makes a hand run a
+# `bats-shards.sh run <shard-id>` on its own box, while a hand run forks
+# every one of them on this one. Sharing the partition is what makes a hand run a
 # meaningful pre-push signal rather than a differently grouped approximation
 # of what CI will do. The shards are concurrency-safe in a shared workspace,
 # so forking them collapses the wall clock to roughly the slowest shard
-# instead of the sum of all nine.
+# instead of their sum.
 #
 # Maintainer-only. `.gaia/tests` is wholesale release-excluded via
 # `.gaia/release-exclude`, so this never reaches an adopter.

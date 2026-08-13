@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
 # Structural guard for .github/workflows/audit-ci-tests.yml's fan-out shape:
-# an 11-leg matrix job (`shards`) plus a thin aggregator (`audit-ci-tests`)
-# that carries the declared-required check name. This is C3 in
+# a matrix job (`shards`) plus a thin aggregator (`audit-ci-tests`) that
+# carries the declared-required check name. This is C3 in
 # .gaia/local/plans/PLAN-014/README.md; the checks below (W1-W10) each guard
 # one of the constraints that page's task doc lays out for this workflow,
 # since breaking any one of them wedges every pull request. W10 is the one
@@ -40,6 +40,22 @@ require_repo_path() {
   skip "$label not present"
 }
 
+# The chmod-000 fixtures below cannot arm as root, where a mode-000 file stays
+# readable. Same shape as the two gates around it, and for the same reason: on
+# CI the condition is not an environment difference to tolerate but a job that
+# stopped running as it was configured to, and a skip there is a green test
+# that asserted nothing.
+require_non_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    return 0
+  fi
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    echo "running as root on a CI runner, where a chmod 000 file stays readable, so this fixture would skip to green. This job is expected to run unprivileged." >&2
+    return 1
+  fi
+  skip "running as root; a chmod 000 file stays readable"
+}
+
 # Same shape as retrigger-reachability.bats' and workflow-filter-coverage.bats'
 # own gate: audit-ci-tests.yml installs python3-yaml in the same job that runs
 # this suite, so the CI branch FAILS rather than skips.
@@ -63,6 +79,12 @@ setup() {
   # Matches retrigger-reachability.bats' own constant: the self-heal poller
   # margin charged per hop of the needs: chain.
   POLLER_MARGIN_MIN=5
+  # The four patterns W10 detects a zsh or PyYAML dependency by, written once
+  # because three scans have to agree on them: two disagreeing copies would
+  # each report a defensible set and W10 would compare them against each other.
+  # The reasoning behind the four, and behind excluding bare `python3`, is in
+  # the W10 header below.
+  PKG_PATTERN='command -v zsh|zsh -c|require_yaml_parser|import yaml'
 
   require_repo_path -f "$WORKFLOW" "audit-ci-tests.yml" || return 1
   require_repo_path -f "$POLLER_WORKFLOW" "code-review-audit.yml" || return 1
@@ -264,9 +286,24 @@ elif mode == 'stepshards':
         # point of this mode is to report the list the workflow will actually
         # evaluate, and a hand-rolled split would disagree with GitHub the
         # first time the array is spaced or quoted differently.
-        found = re.search(r"fromJSON\(\s*'(\[[^']*\])'\s*\)", gate)
+        #
+        # Anchored at the start of the gate, and required to be the positive
+        # `contains(...)` form, because this mode reports a MEMBERSHIP list and
+        # every caller reads it as "the legs this step runs on". A gate written
+        # `!contains(fromJSON('[...]'), matrix.shard)` yields a byte-identical
+        # list while meaning the exact complement, so an unanchored search
+        # would report the step running on the legs it is the only one to skip.
+        # Refusing the shape is the safe direction: a gate this cannot read is
+        # a gate whose polarity nothing downstream has established.
+        found = re.match(
+            r"contains\(\s*fromJSON\(\s*'(\[[^']*\])'\s*\)\s*,\s*matrix\.shard\s*\)",
+            gate,
+        )
         if found is None:
-            die('step %r has no fromJSON shard list in its if:' % wanted)
+            die(
+                'step %r does not open with a positive '
+                "contains(fromJSON('[...]'), matrix.shard) gate: %r" % (wanted, gate)
+            )
         try:
             names = json.loads(found.group(1))
         except ValueError:
@@ -633,8 +670,8 @@ PY
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w6a.yml"
   replace_line "$WORKFLOW" \
-    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, audit, lib, misc, sandbox, concurrency]" \
-    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, audit, lib, misc, sandbox, concurrency, bogus]" \
+    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, lib, misc, sandbox, concurrency]" \
+    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, lib, misc, sandbox, concurrency, bogus]" \
     "$doctored"
 
   local matrix_list expected
@@ -647,8 +684,8 @@ PY
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w6b.yml"
   replace_line "$WORKFLOW" \
-    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, audit, lib, misc, sandbox, concurrency]" \
-    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, audit, misc, sandbox, concurrency]" \
+    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, lib, misc, sandbox, concurrency]" \
+    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, misc, sandbox, concurrency]" \
     "$doctored"
 
   local matrix_list expected
@@ -835,9 +872,21 @@ sandbox_suites_present() {
 # code. Accumulate into a variable and sort afterwards, in the function's own
 # shell, so the error actually reaches the caller.
 shard_package_needs() {
-  local sharder="$1" root="$2" id rel abs rc hits found=''
+  local sharder="$1" root="$2" id rel abs rc hits listing dirs dir helper found=''
   for id in $(bash "$sharder" shards); do
     hits=''
+    dirs=''
+    # Captured, and its status checked, rather than consumed straight from a
+    # process substitution: the sharder exits 2 on a shard that resolves zero
+    # files, and read from a `< <(...)` that status is unobservable. The loop
+    # would simply see no input and the shard would report "needs nothing",
+    # which is the fail-open this whole helper is written to avoid.
+    rc=0
+    listing="$(bash "$sharder" files "$id")" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "shard_package_needs: the sharder could not list $id (exit $rc)" >&2
+      return 1
+    fi
     while IFS= read -r rel || [ -n "$rel" ]; do
       [ -n "$rel" ] || continue
       # `files` prints repo-relative for a path under the sharder's own root
@@ -848,8 +897,10 @@ shard_package_needs() {
         /*) abs="$rel" ;;
         *) abs="$root/$rel" ;;
       esac
+      dirs="$dirs${abs%/*}
+"
       rc=0
-      grep -qE 'command -v zsh|zsh -c|require_yaml_parser|import yaml' "$abs" || rc=$?
+      grep -qE "$PKG_PATTERN" "$abs" || rc=$?
       # 0 is a match, 1 a clean miss, anything else a hard grep error. An
       # error must not read as "this shard needs nothing", so it propagates.
       if [ "$rc" -eq 0 ]; then
@@ -858,7 +909,48 @@ shard_package_needs() {
         echo "shard_package_needs: grep failed on $abs (exit $rc)" >&2
         return 1
       fi
-    done < <(bash "$sharder" files "$id")
+    done <<EOF
+$listing
+EOF
+    # The suites' own helpers, which are sourced INTO them: a helper reaching
+    # for either dependency arms the same silent skip the suite would, and a
+    # scan of `.bats` alone never sees it. They are reached from each suite's
+    # own directory rather than from a list of helper directories, so a new one
+    # is covered by existing there. A helper is shared by every suite beside
+    # it, so this can report a package for a leg whose own suites name nothing;
+    # that is the over-inclusive direction this check already prefers.
+    # Captured and status-checked for the same reason the sharder listing
+    # above is: consumed straight from a heredoc the sort's status is
+    # unobservable, and a failed sort yields an empty list, zero helper
+    # iterations, and "no helper names a package" at status 0.
+    #
+    # Deliberately without an adversarial fixture, unlike the listing and grep
+    # arms around it: both of those fail on inputs a test can construct (a
+    # missing pinned hook, a mode-000 file), while this sorts a short string
+    # already in memory. The check is here for symmetry of shape, not because
+    # a reachable failure is being guarded.
+    rc=0
+    dirs="$(printf '%s' "$dirs" | LC_ALL=C sort -u)" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "shard_package_needs: could not sort $id's helper directories (exit $rc)" >&2
+      return 1
+    fi
+    while IFS= read -r dir || [ -n "$dir" ]; do
+      [ -n "$dir" ] || continue
+      for helper in "$dir/helpers" "$dir/lib"; do
+        [ -d "$helper" ] || continue
+        rc=0
+        grep -rqE "$PKG_PATTERN" --include='*.sh' "$helper" || rc=$?
+        if [ "$rc" -eq 0 ]; then
+          hits=yes
+        elif [ "$rc" -ne 1 ]; then
+          echo "shard_package_needs: grep failed on $helper (exit $rc)" >&2
+          return 1
+        fi
+      done
+    done <<EOF
+$dirs
+EOF
     if [ -n "$hits" ]; then
       found="$found$id
 "
@@ -901,8 +993,8 @@ shard_package_needs() {
   require_yaml_parser
 
   replace_line "$WORKFLOW" \
+    "      - if: contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
     "      - if: contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\", \"scripts-2\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
-    "      - if: contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
     "$doctored"
 
   declared="$(read_wf stepshards "$doctored" shards 'Install the YAML parser and zsh')" || {
@@ -911,49 +1003,164 @@ shard_package_needs() {
   }
   needed="$(shard_package_needs "$BATS_SHARDS" "$REPO_ROOT")" || return 1
   [ "$declared" = "$needed" ] && {
-    echo "dropping scripts-2 from the apt step was not caught" >&2
+    echo "dropping scripts-3 from the apt step was not caught" >&2
     return 1
   }
   true
+}
+
+# A whole fake seam under $1: a `needs` directory the hooks shards draw from
+# and a `clean` one every other shard does, so both branches of the grep are
+# exercised against a tree the caller owns. Driving the real sharder with its
+# documented seam overrides is what keeps these fixtures honest -- it is the
+# same code path W10 runs.
+#
+# Each directory is filled with as many suites as the sharder has shards, which
+# is not padding: a shard resolving zero files is a fail-closed exit 2 that
+# shard_package_needs propagates, so a directory holding fewer suites than its
+# group has buckets would fail every fixture here for a reason none of them is
+# about. Deriving the count from the sharder keeps that true as groups resize.
+# local-janitor.bats is written because hooks-1 pins it by name; its body is
+# plain, so hooks-1 never joins the reported set.
+seed_seam_tree() {
+  local root="$1" n i
+  mkdir -p "$root/needs" "$root/clean"
+  n="$(bash "$BATS_SHARDS" shards | wc -l | tr -d ' ')"
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    printf '#!/usr/bin/env bats\n' >"$root/needs/plain-$i.bats"
+    printf '#!/usr/bin/env bats\n' >"$root/clean/plain-$i.bats"
+    i=$((i + 1))
+  done
+  printf '#!/usr/bin/env bats\n' >"$root/needs/local-janitor.bats"
+}
+
+# Runs shard_package_needs over a tree seeded by seed_seam_tree, with every
+# seam pointed at it.
+seam_tree_needs() {
+  local root="$1"
+  HOOKS_DIR="$root/needs" SCRIPTS_TESTS_DIR="$root/clean" \
+    AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
+    FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean" \
+    shard_package_needs "$BATS_SHARDS" "$root"
+}
+
+# The apt list is only meaningful as a MEMBERSHIP list, and a negated gate
+# produces a byte-identical one meaning the exact complement: the step would
+# run on every leg except the ones that need it, W10 would compare two equal
+# lists, and the check would green over the worst possible arrangement. This
+# pins that stepshards refuses the shape instead of reading it.
+@test "W10 adversarial: a negated apt gate is refused rather than read as the same list" {
+  local doctored="$BATS_TEST_TMPDIR/negated.yml" declared rc=0
+  require_yaml_parser
+
+  # Wrapped in ${{ }} because a bare leading `!` is a YAML tag indicator and
+  # the file would not parse at all, which is a different failure from the one
+  # under test. normalize() strips the wrapper, so the gate reaches the reader
+  # exactly as GitHub would evaluate it.
+  replace_line "$WORKFLOW" \
+    "      - if: contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
+    "      - if: \${{ !contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') }}" \
+    "$doctored"
+
+  declared="$(read_wf stepshards "$doctored" shards 'Install the YAML parser and zsh' 2>/dev/null)" || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "a negated gate was read as a shard list rather than refused:" >&2
+    printf '%s\n' "$declared" >&2
+    return 1
+  }
 }
 
 @test "W10 adversarial: a shard whose suite names zsh is detected wherever it lands" {
-  local root="$BATS_TEST_TMPDIR/tree" out
-  # A whole fake seam: one shard's directory holds a suite naming zsh and the
-  # other's does not, so both branches of the grep are exercised against a tree
-  # this test owns. Driving the real sharder with its documented seam overrides
-  # is what keeps this fixture honest -- it is the same code path W10 runs.
-  mkdir -p "$root/needs" "$root/clean"
-  printf '#!/usr/bin/env bats\n' >"$root/clean/plain.bats"
+  local root="$BATS_TEST_TMPDIR/tree" out reported
+  seed_seam_tree "$root"
   printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
 
-  out="$(HOOKS_DIR="$root/needs" SCRIPTS_TESTS_DIR="$root/clean" \
-         AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
-         FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean" \
-         shard_package_needs "$BATS_SHARDS" "$root")" || return 1
+  out="$(seam_tree_needs "$root")" || return 1
 
-  # hooks-1 pins local-janitor.bats by name and that file is absent from the
-  # fixture tree, so the sharder fails it closed and the loop above reports
-  # only the shards it could resolve. hooks-2 is the first round-robin leg, so
-  # the zsh-naming file lands there.
-  grep -qx 'hooks-2' <<<"$out" || {
-    echo "the shard holding a zsh-naming suite was not reported:" >&2
+  # Asserted as "exactly one hooks leg other than the pinned one", not as a
+  # named leg: which shard a file lands on is the weighted assignment's call,
+  # and pinning the answer here would make this fixture a second, silent copy
+  # of that assignment. What it is actually for is the claim in its own name --
+  # the file is detected wherever it lands.
+  reported="$(printf '%s\n' "$out" | grep -c .)"
+  [ "$reported" -eq 1 ] || {
+    echo "expected exactly one shard to be reported, got $reported:" >&2
     printf '%s\n' "$out" >&2
     return 1
   }
-  grep -qx 'audit' <<<"$out" && {
-    echo "a shard whose suites name nothing was reported as needing a package" >&2
+  grep -qE '^hooks-[0-9]+$' <<<"$out" || {
+    echo "the shard holding a zsh-naming suite was not a hooks leg:" >&2
+    printf '%s\n' "$out" >&2
+    return 1
+  }
+  grep -qx 'hooks-1' <<<"$out" && {
+    echo "hooks-1 holds only the plain pinned file, but was reported as needing a package" >&2
     return 1
   }
   true
 }
 
-# The matrix has eleven legs but the sharder names only nine, so W10's
-# recomputation reaches neither `sandbox` nor `concurrency`. W9 pins sandbox's
-# empty package set. This pins the other one, which the narrowed apt step
-# stopped serving: it drew both packages implicitly from the old
-# `matrix.shard != 'sandbox'` gate and now draws neither, leaving it the one
-# leg of eleven whose package set nothing asserted.
+@test "W10 adversarial: a helper sourced by a suite is detected, not just the suite" {
+  local root="$BATS_TEST_TMPDIR/helpers-tree" out reported
+  seed_seam_tree "$root"
+  # No .bats file names either dependency anywhere in this tree. The only
+  # mention is in a helper the suites source, which is the shape a scan of
+  # `.bats` alone cannot see: the suite would skip its zsh-gated tests silently
+  # on a leg the apt step never served.
+  mkdir -p "$root/needs/helpers"
+  printf '#!/usr/bin/env bash\ncommand -v zsh >/dev/null 2>&1 || return 0\n' \
+    >"$root/needs/helpers/zsh-gate.sh"
+
+  out="$(seam_tree_needs "$root")" || return 1
+
+  # Every hooks leg draws from the directory the helper sits beside, so all of
+  # them are reported: the helper is shared, and there is no way to tell from
+  # the tree which suites source it. Over-inclusive is the direction this scan
+  # is written to fail in.
+  reported="$(printf '%s\n' "$out" | grep -c .)"
+  [ "$reported" -ge 1 ] || {
+    echo "a helper naming zsh was not detected at all" >&2
+    return 1
+  }
+  grep -qE '^hooks-[0-9]+$' <<<"$out" || {
+    echo "the helper's own hooks legs were not reported:" >&2
+    printf '%s\n' "$out" >&2
+    return 1
+  }
+  grep -qE '^(audit|lib|misc|scripts-[0-9]+)$' <<<"$out" && {
+    echo "a shard drawing only from the clean directory was reported" >&2
+    return 1
+  }
+  true
+}
+
+@test "W10 adversarial: a shard that cannot be listed fails the scan rather than reporting it clean" {
+  local root="$BATS_TEST_TMPDIR/unlistable"
+  seed_seam_tree "$root"
+  printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
+
+  # Healthy arm first, so a helper that always failed could not pass this.
+  run seam_tree_needs "$root"
+  [ "$status" -eq 0 ]
+
+  # hooks-1 pins local-janitor.bats by name, so removing it makes the sharder
+  # exit 2 for that shard. Read from a process substitution that status is
+  # invisible and the leg silently reports "needs nothing"; the scan has to
+  # fail instead.
+  rm -f "$root/needs/local-janitor.bats"
+  run seam_tree_needs "$root"
+  [ "$status" -ne 0 ] || {
+    echo "a shard the sharder refused to list reported a clean scan" >&2
+    return 1
+  }
+}
+
+# `sandbox` and `concurrency` are matrix legs the sharder does not name, so
+# W10's recomputation reaches neither. W9 pins sandbox's empty package set.
+# This pins the other one, which the narrowed apt step stopped serving: it drew
+# both packages implicitly from the old `matrix.shard != 'sandbox'` gate and now
+# draws neither, leaving it the one leg whose package set nothing asserted.
 
 # concurrency_tree_needs_packages <dir> — 0 when some file under $1 reaches for
 # zsh or a YAML parser by W10's own four patterns, 1 when none does. Same
@@ -961,7 +1168,7 @@ shard_package_needs() {
 # rather than a copy of it.
 concurrency_tree_needs_packages() {
   local dir="$1" rc=0
-  grep -rqE 'command -v zsh|zsh -c|require_yaml_parser|import yaml' \
+  grep -rqE "$PKG_PATTERN" \
     --include='*.bats' --include='*.sh' "$dir" || rc=$?
   [ "$rc" -le 1 ] || {
     echo "concurrency_tree_needs_packages: grep failed on $dir (exit $rc)" >&2
@@ -984,10 +1191,19 @@ concurrency_tree_needs_packages() {
   # `run`, because a clean tree is the non-zero case and a bare call would
   # abort the test under bats' `set -e` before the status could be read.
   run concurrency_tree_needs_packages "$REPO_ROOT/.gaia/tests/concurrency"
+  # 2 is the helper's hard-error status, and it has to be told apart from 0
+  # here: both are "not 1", so folding them together would report a tree that
+  # was never successfully read as a tree that reaches for a package, sending
+  # the reader to look for a dependency that may not exist.
+  [ "$status" -ne 2 ] || {
+    echo "the scan over .gaia/tests/concurrency hard-errored, so nothing was established" >&2
+    printf '%s\n' "$output" >&2
+    return 1
+  }
   [ "$status" -eq 1 ] || {
     echo "a file under .gaia/tests/concurrency reaches for zsh or a YAML parser, but that leg's" >&2
     echo "steps install neither. A zsh-gated test would skip silently there." >&2
-    grep -rlE 'command -v zsh|zsh -c|require_yaml_parser|import yaml' \
+    grep -rlE "$PKG_PATTERN" \
       --include='*.bats' --include='*.sh' "$REPO_ROOT/.gaia/tests/concurrency" >&2
     return 1
   }
@@ -1005,6 +1221,17 @@ concurrency_tree_needs_packages() {
   printf '#!/usr/bin/env bash\ncommand -v zsh >/dev/null 2>&1 || exit 0\n' >"$dir/uses-zsh.sh"
   run concurrency_tree_needs_packages "$dir"
   [ "$status" -eq 0 ]
+
+  # The third status, and the reason the caller has to tell it apart from 0:
+  # an unreadable tree is neither "needs a package" nor "needs none".
+  require_non_root
+  chmod 000 "$dir"
+  run concurrency_tree_needs_packages "$dir"
+  chmod 755 "$dir"
+  [ "$status" -eq 2 ] || {
+    echo "an unreadable tree reported $status rather than the hard-error status" >&2
+    return 1
+  }
 }
 
 # Pins the error propagation directly. Before the pipeline came off this
@@ -1014,30 +1241,23 @@ concurrency_tree_needs_packages() {
 # workflow's, which is exactly how it would green.
 @test "W10 adversarial: a grep hard error fails the scan rather than reporting it clean" {
   local root="$BATS_TEST_TMPDIR/unreadable" status_ok status_err
-  if [ "$(id -u)" -eq 0 ]; then
-    skip "running as root; a chmod 000 file stays readable"
-  fi
-  mkdir -p "$root/hooks" "$root/clean"
-  printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/hooks/uses-zsh.bats"
-  printf '#!/usr/bin/env bats\n' >"$root/clean/plain.bats"
+  require_non_root
+  seed_seam_tree "$root"
+  printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
 
   # Driven through `run`, not called directly: the whole point of this check is
   # that the helper returns non-zero, and bats runs a test body under `set -e`,
   # where a bare non-zero call aborts before its status can be read.
-  export HOOKS_DIR="$root/hooks" SCRIPTS_TESTS_DIR="$root/clean" \
-    AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
-    FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean"
 
   # Healthy arm first, so a helper that always failed could not pass this.
-  run shard_package_needs "$BATS_SHARDS" "$root"
+  run seam_tree_needs "$root"
   status_ok="$status"
 
-  printf '#!/usr/bin/env bats\n' >"$root/hooks/locked.bats"
-  chmod 000 "$root/hooks/locked.bats"
-  run shard_package_needs "$BATS_SHARDS" "$root"
+  printf '#!/usr/bin/env bats\n' >"$root/needs/locked.bats"
+  chmod 000 "$root/needs/locked.bats"
+  run seam_tree_needs "$root"
   status_err="$status"
-  chmod 644 "$root/hooks/locked.bats"
-  unset HOOKS_DIR SCRIPTS_TESTS_DIR AUDIT_TESTS_DIR LIB_DIR FORENSICS_DIR STATUSLINE_DIR
+  chmod 644 "$root/needs/locked.bats"
 
   [ "$status_ok" -eq 0 ] || {
     echo "the readable fixture tree did not scan cleanly (exit $status_ok)" >&2

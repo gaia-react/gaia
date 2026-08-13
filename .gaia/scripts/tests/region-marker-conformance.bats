@@ -22,8 +22,8 @@ setup() {
   CHECKER="$PROJECT_ROOT/.gaia/scripts/verify-audit-roster.sh"
 
   # This suite runs the real TypeScript parser through tsx, which needs the
-  # CLI's node_modules. audit-ci-tests.yml runs this file inside whichever of
-  # the scripts-1 / scripts-2 shards it lands in, on a lean box that installs
+  # CLI's node_modules. audit-ci-tests.yml runs this file inside whichever
+  # scripts-* shard it lands in, on a lean box that installs
   # only `bats` and `python3-yaml`: no actions/setup-node, no pnpm, no
   # `pnpm install`. Skip cleanly there rather than failing a required PR check
   # for an environment this suite cannot control. CI coverage comes from
