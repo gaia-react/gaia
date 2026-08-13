@@ -1,27 +1,39 @@
 #!/usr/bin/env bats
 
 # Adversarial suite for .gaia/tests/run-bats-parallel.sh, the hand-run parallel
-# bats runner for this repo's suite directories. .github/workflows/audit-ci-tests.yml
-# no longer calls it; CI drives .gaia/tests/bats-shards.sh instead, one shard per
-# matrix leg. The exit-code propagation this suite proves is still load-bearing,
-# relocated rather than retired: a bug that greens a failing suite wedges nothing
+# bats runner. The runner and .github/workflows/audit-ci-tests.yml consume the
+# same nine-shard partition from .gaia/tests/bats-shards.sh, the workflow one
+# shard per matrix leg and the runner all nine at once, so the workflow never
+# calls this script itself. The exit-code propagation this suite proves is
+# load-bearing on both paths: a bug that greens a failing suite wedges nothing
 # and lets everything through, which is the worse direction, and that same
-# reasoning now lives in the aggregator job (which depends on every shard leg
+# reasoning lives in the aggregator job (which depends on every shard leg
 # succeeding to report the declared-required check) and in bats-shards.sh's own
 # fail-closed rules (a shard resolving zero files, or a pinned entry gone
 # missing, is an error rather than a silent green).
 #
-# Every fixture drives the runner through its --table seam with trivial commands
-# (true, false, printf, sleep, rm) and never forks bats, so this suite adds no
-# recursion and no meaningful contention when it runs inside .gaia/tests/lib/,
-# the directory the lib shard runs it from.
+# NOTHING here ever forks bats, which is what lets this suite run inside
+# .gaia/tests/lib/, the directory the lib shard runs it from, with no recursion
+# and no meaningful contention. Most fixtures reach that by driving the runner
+# through its --table seam with trivial commands (true, false, printf, sleep,
+# rm); the table-shape tests read builtin_table() back out by sourcing the
+# runner and ask bats-shards.sh for its shard ids only, never for a shard's
+# files and never for a run.
 #
 # Every @test that runs the runner as a runner passes an explicit
 # --log-dir "$BATS_TEST_TMPDIR", so nothing here can write into the log
-# directory an outer live invocation is using. The two exceptions are stated at
-# their own tests: the built-in-table test never runs a suite at all, and the
+# directory an outer live invocation is using. The exceptions are stated at
+# their own tests: the table-shape tests never run a suite at all, and the
 # default-log-directory test exists precisely to exercise the omitted flag and
 # confines the runner's self-created directory with RUNNER_TEMP instead.
+#
+# The two fail-closed tests are the only ones that invoke the runner with no
+# --table, and each runs a COPY of it from a scratch directory holding no
+# .gaia/tests/bats-shards.sh. That working directory is the honest limit of
+# those two checks: should a regression ever build rows despite an unreachable
+# sharder, a row's repo-relative command field resolves to nothing there and
+# the test reds harmlessly, where from the repo root it would fork a real shard
+# from inside the one already running this suite.
 #
 # Assertion style per .claude/rules/bats-assertions.md: no bare mid-test
 # [[ ... ]], POSIX [ ] and grep only, so a broken assertion still fails on
@@ -29,6 +41,7 @@
 
 setup() {
   RUNNER="$BATS_TEST_DIRNAME/../run-bats-parallel.sh"
+  SHARDER="$BATS_TEST_DIRNAME/../bats-shards.sh"
   TABLE="$BATS_TEST_TMPDIR/suites.tsv"
 }
 
@@ -172,13 +185,14 @@ count_default_dirs() {
   grep -qF -- 'missing log' <<<"$output"
 }
 
-@test "the built-in table has exactly six three-field rows and no quoted command" {
+@test "T-A: the built-in table is one three-field row per shard id, with no quoted or globbing command" {
   # Reads the table out of the runner by sourcing it, which the runner's
   # sourcing guard makes side-effect free. No suite runs, so there is no log
   # directory for this test to point anywhere.
   run bash -c "source '$RUNNER'; builtin_table"
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 6 ]
+  expected_rows=$(bash "$SHARDER" shards | wc -l | tr -d ' ')
+  [ "${#lines[@]}" -eq "$expected_rows" ]
   malformed=$(printf '%s\n' "$output" | awk -F'\t' 'NF != 3' | wc -l | tr -d ' ')
   [ "$malformed" -eq 0 ]
   # Pins the no-eval word-splitting precondition: a quote or a glob character in
@@ -187,6 +201,64 @@ count_default_dirs() {
   grep -q "['\"]" <<<"$commands" && return 1
   grep -q '[*?]' <<<"$commands" && return 1
   true
+}
+
+@test "T-B: every row names one real shard, its label matches, and the row set equals the shard set" {
+  run bash -c "source '$RUNNER'; builtin_table"
+  [ "$status" -eq 0 ]
+  ids=''
+  for row in "${lines[@]}"; do
+    slug=$(printf '%s\n' "$row" | cut -f1)
+    label=$(printf '%s\n' "$row" | cut -f2)
+    cmd=$(printf '%s\n' "$row" | cut -f3)
+    [ "$(printf '%s\n' "$cmd" | awk '{print $1, $2, $3}')" = 'bash .gaia/tests/bats-shards.sh run' ]
+    id=$(printf '%s\n' "$cmd" | awk '{print $NF}')
+    [ "$slug" = "$id" ]
+    # The label is what the runner prints as the group header and in the
+    # failure summary, so nothing else in this suite reads field 2.
+    [ "$label" = "shard $slug" ]
+    ids="$ids$id"$'\n'
+  done
+  # Equality in both directions: a superset would run a shard twice, a subset
+  # would drop one and still green.
+  [ "$(printf '%s' "$ids" | LC_ALL=C sort)" = "$(bash "$SHARDER" shards | LC_ALL=C sort)" ]
+}
+
+@test "T-C: table order follows the sharder's declared shard order" {
+  run bash -c "source '$RUNNER'; builtin_table"
+  [ "$status" -eq 0 ]
+  # Unsorted, because the runner replays logs in table order and this is what
+  # keeps that order predictable.
+  ordered=$(printf '%s\n' "$output" | cut -f3 | awk '{print $NF}')
+  [ "$ordered" = "$(bash "$SHARDER" shards)" ]
+}
+
+@test "T-D: a runner that cannot reach the sharder exits 2 rather than running a partial table" {
+  dir="$BATS_TEST_TMPDIR/no-sharder"
+  mkdir -p "$dir"
+  cp "$RUNNER" "$dir/run-bats-parallel.sh"
+  [ ! -e "$dir/bats-shards.sh" ]
+  # The runner runs from $dir, where the command field's repo-relative
+  # `.gaia/tests/bats-shards.sh` resolves to nothing. Should a regression ever
+  # build rows here anyway, they fail harmlessly instead of forking a real
+  # shard from inside the shard already running this suite.
+  [ ! -e "$dir/.gaia" ]
+  run bash -c "cd '$dir' && bash ./run-bats-parallel.sh --log-dir '$BATS_TEST_TMPDIR'"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'zero suites' <<<"$output"
+}
+
+@test "T-E: a sharder that fails after printing ids exits 2 and contributes no rows" {
+  dir="$BATS_TEST_TMPDIR/failing-sharder"
+  mkdir -p "$dir"
+  cp "$RUNNER" "$dir/run-bats-parallel.sh"
+  # Prints plausible ids and then dies. A runner that streamed the lookup into
+  # its rows would build two suites out of this and run them.
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" hooks-1 hooks-2\nexit 3\n' >"$dir/bats-shards.sh"
+  [ ! -e "$dir/.gaia" ]
+  run bash -c "cd '$dir' && bash ./run-bats-parallel.sh --log-dir '$BATS_TEST_TMPDIR'"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'zero suites' <<<"$output"
 }
 
 @test "with no --log-dir the runner creates a fresh directory that is unique per invocation" {
