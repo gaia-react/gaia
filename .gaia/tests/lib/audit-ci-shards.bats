@@ -3,9 +3,11 @@
 # Structural guard for .github/workflows/audit-ci-tests.yml's fan-out shape:
 # an 11-leg matrix job (`shards`) plus a thin aggregator (`audit-ci-tests`)
 # that carries the declared-required check name. This is C3 in
-# .gaia/local/plans/PLAN-014/README.md; the nine tests below (W1-W9) each
-# guard one of the five constraints that page's task doc lays out for this
-# workflow, since breaking any one of them wedges every pull request.
+# .gaia/local/plans/PLAN-014/README.md; the checks below (W1-W10) each guard
+# one of the constraints that page's task doc lays out for this workflow,
+# since breaking any one of them wedges every pull request. W10 is the one
+# addition that page does not name: it guards the per-leg apt list, which
+# postdates it.
 #
 # Every test drives its check through a helper that takes the workflow's path
 # as an argument, never a predicate written inline against the live file, so
@@ -83,6 +85,13 @@ setup() {
 #                         reads as uncapped downstream, so this distinguishes
 #                         "no cap declared" from "a cap that will not compare".
 #   matrix <job-id>       that job's strategy.matrix.shard list, one per line
+#   stepshards <job-id> <step-name>
+#                         the shard ids named by that step's
+#                         `contains(fromJSON('[...]'), matrix.shard)` gate, one
+#                         per line, sorted. Exits 2 when no step carries the
+#                         name, or when the one that does has no parseable,
+#                         non-empty list -- each of which would otherwise read
+#                         downstream as "this step gates on no shards".
 #   filtercount            total dorny/paths-filter steps in the whole file
 #   filterifs              one `<job-id>\t<normalized-if>` line per step, across
 #                         EVERY job, whose `if:` mentions steps.filter.outputs.
@@ -101,6 +110,7 @@ setup() {
 # such job. A caller must check the status.
 read_wf() {
   python3 - "$@" <<'PY'
+import json
 import re
 import sys
 
@@ -240,6 +250,33 @@ elif mode == 'aggok':
             found = True
             break
     print('yes' if found else 'no')
+elif mode == 'stepshards':
+    require_job(rest[0])
+    wanted = rest[1]
+    seen = False
+    for step in jobs[rest[0]].get('steps') or []:
+        if not isinstance(step, dict) or str(step.get('name', '')) != wanted:
+            continue
+        seen = True
+        gate = normalize(step.get('if', ''))
+        # The gate names its legs as a JSON array inside fromJSON(...). Read
+        # that array with a JSON parser rather than splitting on commas: the
+        # point of this mode is to report the list the workflow will actually
+        # evaluate, and a hand-rolled split would disagree with GitHub the
+        # first time the array is spaced or quoted differently.
+        found = re.search(r"fromJSON\(\s*'(\[[^']*\])'\s*\)", gate)
+        if found is None:
+            die('step %r has no fromJSON shard list in its if:' % wanted)
+        try:
+            names = json.loads(found.group(1))
+        except ValueError:
+            die('step %r has an unparseable fromJSON shard list' % wanted)
+        if not isinstance(names, list) or not names:
+            die('step %r names an empty shard list' % wanted)
+        for item in sorted(str(entry) for entry in names):
+            print(item)
+    if not seen:
+        die('no step named %r in job %r' % (wanted, rest[0]))
 elif mode == 'chain':
     try:
         margin = int(rest[0])
@@ -752,4 +789,139 @@ sandbox_suites_present() {
   # The healthy arm, so a helper that simply always failed could not pass this.
   run sandbox_suites_present "$populated"
   [ "$status" -eq 0 ]
+}
+
+# W10. The apt step's shard list stays equal to the set of legs that actually
+# draw a suite needing zsh or a YAML parser. W9 pins the sandbox leg's EMPTY
+# package set; this pins the reduced set on the legs that do get one, which is
+# the other half of the same argument: a per-shard package list is safe only
+# while something recomputes it from the suites. Both dependencies fail
+# asymmetrically, which is why this is a checked invariant rather than a
+# comment. zsh-gated tests `skip` silently, so a leg that lost zsh reports a
+# clean green having asserted nothing; the parser-gated suites fail loudly
+# under GITHUB_ACTIONS, so a leg that lost python3-yaml reds. Only the first is
+# invisible, and it is the one a round-robin reshuffle causes.
+#
+# Detection is deliberately over-inclusive rather than exact. Four patterns,
+# matched anywhere in a file including inside an adversarial fixture that only
+# prints the string: `command -v zsh` and `require_yaml_parser` catch a suite
+# using the established gates, and `zsh -c` and `import yaml` catch one that
+# reaches for either dependency without them, which is the case that would
+# otherwise go undetected. An over-match adds a package to a leg that did not
+# need it, which costs seconds; an under-match silently retires a suite's
+# assertions. Cost is the acceptable error here and silence is not.
+#
+# Bare `python3` is deliberately NOT a pattern, even though W9 uses it for the
+# sandbox leg. python3 itself is preinstalled on the runner; the package this
+# step installs is PyYAML, and a great many suites here shell out to python3
+# for structural JSON reads that need no YAML at all. Matching it would put
+# nearly every leg back on the list and undo the narrowing entirely.
+
+# shard_package_needs <bats-shards.sh> <repo-root>
+#
+# The shard ids holding at least one suite that names zsh or the YAML-parser
+# gate, one per line, LC_ALL=C sorted. Takes both paths as arguments, never
+# reading $REPO_ROOT directly, so the fixture below can drive this same code
+# against a tree of its own -- the discipline this suite's header sets out.
+shard_package_needs() {
+  local sharder="$1" root="$2" id rel abs rc hits
+  for id in $(bash "$sharder" shards); do
+    hits=''
+    while IFS= read -r rel || [ -n "$rel" ]; do
+      [ -n "$rel" ] || continue
+      # `files` prints repo-relative for a path under the sharder's own root
+      # and absolute for one reached through a seam override, the same split
+      # its own `run` re-absolutizes. Prefixing unconditionally would build
+      # <root>/<absolute> and grep would miss every file under an override.
+      case "$rel" in
+        /*) abs="$rel" ;;
+        *) abs="$root/$rel" ;;
+      esac
+      rc=0
+      grep -qE 'command -v zsh|zsh -c|require_yaml_parser|import yaml' "$abs" || rc=$?
+      # 0 is a match, 1 a clean miss, anything else a hard grep error. An
+      # error must not read as "this shard needs nothing", so it propagates.
+      if [ "$rc" -eq 0 ]; then
+        hits=yes
+      elif [ "$rc" -ne 1 ]; then
+        echo "shard_package_needs: grep failed on $abs (exit $rc)" >&2
+        return 1
+      fi
+    done < <(bash "$sharder" files "$id")
+    [ -n "$hits" ] && printf '%s\n' "$id"
+  done | LC_ALL=C sort -u
+}
+
+@test "W10: the apt step's shard list equals the legs that need zsh or a YAML parser" {
+  local declared needed
+  declared="$(read_wf stepshards "$WORKFLOW" shards 'Install the YAML parser and zsh')" || {
+    echo "could not read the apt step's shard list" >&2
+    return 1
+  }
+  needed="$(shard_package_needs "$BATS_SHARDS" "$REPO_ROOT")" || return 1
+
+  [ -n "$needed" ] || {
+    echo "no shard resolved a zsh or YAML-parser dependency; W10 would assert nothing" >&2
+    return 1
+  }
+  [ "$declared" = "$needed" ] || {
+    echo "the apt step's shard list and the suites disagree." >&2
+    echo "workflow names:" >&2
+    printf '%s\n' "$declared" >&2
+    echo "suites need:" >&2
+    printf '%s\n' "$needed" >&2
+    echo "Repair: copy the 'suites need' set into the step's fromJSON list." >&2
+    return 1
+  }
+}
+
+@test "W10 adversarial: dropping a needed shard from the apt step is caught" {
+  local doctored="$BATS_TEST_TMPDIR/dropped.yml" declared needed
+
+  replace_line "$WORKFLOW" \
+    "      - if: contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\", \"scripts-2\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
+    "      - if: contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
+    "$doctored"
+
+  declared="$(read_wf stepshards "$doctored" shards 'Install the YAML parser and zsh')" || {
+    echo "the doctored workflow did not parse" >&2
+    return 1
+  }
+  needed="$(shard_package_needs "$BATS_SHARDS" "$REPO_ROOT")" || return 1
+  [ "$declared" = "$needed" ] && {
+    echo "dropping scripts-2 from the apt step was not caught" >&2
+    return 1
+  }
+  true
+}
+
+@test "W10 adversarial: a shard whose suite names zsh is detected wherever it lands" {
+  local root="$BATS_TEST_TMPDIR/tree" out
+  # A whole fake seam: one shard's directory holds a suite naming zsh and the
+  # other's does not, so both branches of the grep are exercised against a tree
+  # this test owns. Driving the real sharder with its documented seam overrides
+  # is what keeps this fixture honest -- it is the same code path W10 runs.
+  mkdir -p "$root/needs" "$root/clean"
+  printf '#!/usr/bin/env bats\n' >"$root/clean/plain.bats"
+  printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
+
+  out="$(HOOKS_DIR="$root/needs" SCRIPTS_TESTS_DIR="$root/clean" \
+         AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
+         FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean" \
+         shard_package_needs "$BATS_SHARDS" "$root")" || return 1
+
+  # hooks-1 pins local-janitor.bats by name and that file is absent from the
+  # fixture tree, so the sharder fails it closed and the loop above reports
+  # only the shards it could resolve. hooks-2 is the first round-robin leg, so
+  # the zsh-naming file lands there.
+  grep -qx 'hooks-2' <<<"$out" || {
+    echo "the shard holding a zsh-naming suite was not reported:" >&2
+    printf '%s\n' "$out" >&2
+    return 1
+  }
+  grep -qx 'audit' <<<"$out" && {
+    echo "a shard whose suites name nothing was reported as needing a package" >&2
+    return 1
+  }
+  true
 }

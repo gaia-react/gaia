@@ -144,6 +144,16 @@ jobs:
               - '.gaia/scripts/tests/region-marker-conformance.bats'
               - '.gaia/scripts/write-audit-remits.sh'
               - '.gaia/scripts/verify-audit-roster.sh'
+              # The pinned bats install the conformance step above runs, and the
+              # vendored archive it extracts. Neither is reached by anything else
+              # in this list, so without these two lines a bump to the pinned
+              # version or digest -- or a swap of the archive bytes -- resolves
+              # `code=false`, skips the install and the suite, and greens this
+              # required check having proved nothing about the bats the bump
+              # introduced. Both halves of a bump are listed because they land in
+              # separate files and either alone must re-run the job.
+              - '.gaia/tests/install-bats.sh'
+              - '.gaia/tests/vendor/**'
               # The bundle-freshness gate below is this script, so an edit to
               # it must re-run the gate on its own pull request. Without this
               # line a change touching only the script resolves `code=false`,
@@ -170,6 +180,38 @@ jobs:
         with:
           install: cli
           cache-dependency-path: '.gaia/cli/pnpm-lock.yaml'
+      # The Lint step below runs eslint cold on every run, at about 80 seconds,
+      # which is most of this job. `.gaia/cli`'s lint script already writes a
+      # cache, but it writes it under node_modules, which `pnpm install` above
+      # recreates from the store each run, so nothing survives to be reused.
+      #
+      # `--cache-strategy content` in that script is what makes this cache worth
+      # restoring, and it is a correctness requirement rather than a tuning knob:
+      # eslint's default `metadata` strategy keys an entry on the file's mtime
+      # and size, and actions/checkout writes every file fresh, so every restored
+      # entry looks stale. A cache added without it restores, reports a hit, and
+      # then misses on all of its own entries -- buying nothing while looking
+      # like it worked.
+      #
+      # Scope, stated because it bounds the payoff: GitHub scopes a cache to the
+      # branch that wrote it plus that branch's descendants, and the jobs in this
+      # workflow do not run on `push` to main (see each `if:` above), so main
+      # never writes one. A pull request therefore pays the cold 80 seconds on
+      # its FIRST push and reads its own cache on every push after that, which is
+      # where this repository's pull requests spend nearly all their runs.
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Restore the CLI eslint cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .gaia/cli/node_modules/.cache/eslint
+          # The key carries the SHA so every run saves a fresh entry, and
+          # restore-keys falls back to the newest entry from the same config and
+          # lockfile. Keying on the config and the lockfile means a rule change
+          # or a plugin bump starts a new cache lineage rather than reusing
+          # verdicts computed under the old rules.
+          key: eslint-cli-${{ runner.os }}-${{ hashFiles('.gaia/cli/eslint.config.mjs', '.gaia/cli/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            eslint-cli-${{ runner.os }}-${{ hashFiles('.gaia/cli/eslint.config.mjs', '.gaia/cli/pnpm-lock.yaml') }}-
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Typecheck
         run: pnpm -C .gaia/cli typecheck
@@ -186,9 +228,17 @@ jobs:
       # and the suite reports skipped-and-green on every run. This job is the one
       # place the dependency exists, which makes it the only place the binding
       # between the parser and the two bash readers is actually asserted.
+      # The vendored, digest-pinned install, the same one every leg of
+      # audit-ci-tests.yml calls. `apt-get install -y bats` resolves to whatever
+      # ubuntu-latest currently ships, which is not the pinned version, so the
+      # conformance suite below was the one suite in this repository running
+      # under a different bats than every other -- exactly the divergence
+      # install-bats.sh's own header exists to argue against. It is also about
+      # twelve seconds cheaper, because it reads a tracked archive instead of
+      # running `apt-get update`.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Install bats
-        run: sudo apt-get update && sudo apt-get install -y bats
+        run: bash .gaia/tests/install-bats.sh
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run region-marker conformance suite
         run: bats .gaia/scripts/tests/region-marker-conformance.bats
@@ -245,11 +295,12 @@ jobs:
       #
       # This list stays narrow on purpose, and the narrowness is now backstopped
       # rather than merely tolerated: the scenario suite is the expensive part of
-      # this job and its inputs really are these paths. The one thing the
-      # narrowness used to be able to skip -- the release leak check, whose real
-      # input is every file that ships -- runs unconditionally in the
-      # shipped-surface job below, so a pull request touching only some other
-      # shipped file can no longer green a leak.
+      # this job and its inputs really are these paths. The two things the
+      # narrowness used to be able to skip -- the release leak check and the
+      # marker-strip scenario, whose real input is every file that ships -- both
+      # run unconditionally in the shipped-surface job below, so a pull request
+      # touching only some other shipped file can no longer green a leak or a
+      # botched strip.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         if: github.event_name == 'pull_request'
         id: filter
@@ -307,7 +358,8 @@ jobs:
         run: bash .gaia/tests/distribution/run-all.sh
 
   # The cheap half of the harness above, split out so it can run over the whole
-  # shipped surface. build-staging.sh stages every tracked file that
+  # shipped surface: build-staging.sh, and the marker-strip scenario that reads
+  # the same tree. build-staging.sh stages every tracked file that
   # .gaia/release-exclude does not withhold, resets the wiki sentinels, and runs
   # the scrub and runtime-dependency leak checks over the result, so its honest
   # input is the entire tree minus that exclude list, not the handful of paths
@@ -336,9 +388,10 @@ jobs:
   # narrowable and no filter at all.
   #
   # The cost, stated where the filter would have been: a checkout, a Node setup,
-  # and roughly a second of build-staging.sh on every pull request. What that
-  # buys is a leak check no pull request can skip by changing only a shipped file
-  # the harness filter above does not name.
+  # and two build-staging.sh runs on every pull request, about 15 seconds all
+  # told. What that buys is a leak check, and a marker-strip check, that no pull
+  # request can skip by changing only a shipped file the harness filter above
+  # does not name.
   shipped-surface-leak-check:
     name: Shipped-surface leak check
     # Advisory, not a declared-required context, and it must not become one. It
@@ -396,3 +449,24 @@ jobs:
         run: |
           staging="$(mktemp -d "$RUNNER_TEMP/release-staging.XXXXXX")"
           bash .gaia/tests/distribution/lib/build-staging.sh "$staging"
+      # The marker-strip scenario runs here as well as inside the harness job
+      # above, and this is the copy that gates. Its four assertions read
+      # `.claude/hooks/lib/*.sh`, `.gaia/scripts/*.sh`,
+      # `.gaia/statusline/gaia-statusline.sh`, `.gaia/audit-ci.yml`, and
+      # `.prettierignore`; every one of those sits OUTSIDE the harness job's
+      # `code:` filter, so a pull request adding a `# gaia:maintainer-only:`
+      # block to one of them resolved that filter false, skipped the harness,
+      # and first met the doubled-separator assertion at release.yml's
+      # pre-publish gate, several pull requests later. Its honest input is the
+      # whole shipped surface, which is this job's input and not the harness
+      # job's, so this is where it belongs (#1129).
+      #
+      # It builds its own staging tree rather than reusing the step above,
+      # which is what keeps it runnable standalone and inside run-all.sh for
+      # release.yml and distribution.yml. That second build is the entire cost:
+      # 3.3s measured end-to-end against a job that is otherwise 12s, versus
+      # ~170s for the alternative of widening the harness filter to reach the
+      # same files -- longer than the whole pull-request critical path, on
+      # every shell-touching pull request.
+      - name: Prove the marker strip left no fragment or doubled separator
+        run: bash .gaia/tests/distribution/03-marker-strip.sh
