@@ -1,3 +1,4 @@
+import {load as parseYaml} from 'js-yaml';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   mkdirSync,
@@ -8,6 +9,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {globToRegex, parseKeyPath, run} from './scrub.js';
 
 const JSON_STRIP_CONFIG = `
@@ -2029,5 +2031,111 @@ transforms:
     const out = stdio.outputs.join('');
     expect(out).toContain('uat-narrative');
     expect(out).toContain('excluded-titles');
+  });
+});
+
+// The shipped `maintainer-paths` alternation, read from
+// `.gaia/release-scrub.yml` itself rather than mirrored inline the way the
+// hermetic configs above are. The defect these tests pin lived in the config's
+// pattern, not in the engine, so a mirrored copy would have gone on passing
+// while the shipped alternation stayed narrow.
+const shippedMaintainerPathsSource = (): string => {
+  const configPath = path.join(
+    resolveRepoRootFromImportMeta(import.meta.url),
+    '.gaia',
+    'release-scrub.yml'
+  );
+  const config = parseYaml(readFileSync(configPath, 'utf8')) as {
+    transforms: {checks?: {id: string; pattern?: string}[]}[];
+  };
+  const pattern = config.transforms
+    .flatMap((transform) => transform.checks ?? [])
+    .find((check) => check.id === 'maintainer-paths')?.pattern;
+
+  if (pattern === undefined) {
+    throw new Error('no maintainer-paths check in .gaia/release-scrub.yml');
+  }
+
+  return pattern;
+};
+
+const shippedMaintainerPathsPattern = (): RegExp =>
+  new RegExp(shippedMaintainerPathsSource());
+
+// The alternation split back into the bare paths it matches, derived from the
+// shipped pattern rather than transcribed beside it. A transcribed list pins
+// only that an existing alternative was not narrowed, and the defect here was a
+// whole alternation written the wrong way, so a thirteenth entry added with a
+// trailing slash has to fail too. Derived from the config string rather than
+// from `RegExp.source`, which re-escapes every `/` so the source can be pasted
+// into a regex literal.
+const shippedMaintainerPathsAlternatives = (): string[] =>
+  shippedMaintainerPathsSource()
+    .split('|')
+    .map((alternative) =>
+      alternative
+        .replace(/\\b$/, '')
+        .split(String.raw`\.`)
+        .join('.')
+    );
+
+// Every release-excluded tree the alternation is meant to name. The derivation
+// above cannot see an alternative deleted outright, so this is the membership
+// floor it is checked against; it is not the input to the match assertions.
+const RELEASE_EXCLUDED_DIRECTORIES = [
+  '.gaia/cli/src',
+  '.gaia/cli/test-fixtures',
+  '.gaia/cli/__tests__',
+  '.gaia/cli/health',
+  '.gaia/cli/gaia-maintainer',
+  '.specify/extensions/gaia/test',
+  '.specify/specs',
+  '.gaia/tests',
+  '.gaia/scripts/tests',
+  '.github/audit/tests',
+  '.github/forensics',
+  '.claude/rules/maintainers',
+];
+
+describe('shipped maintainer-paths check', () => {
+  test('flags a bare-directory reference, not just a path prefix', () => {
+    const pattern = shippedMaintainerPathsPattern();
+
+    // The bare form is the half that shipped silently: this leak check passed
+    // the line while the release runtime-dependency scan failed the build on it.
+    expect(
+      pattern.test("done < <(find .gaia/scripts .gaia/tests -name '*.sh')")
+    ).toBe(true);
+  });
+
+  test('every alternative is boundary-anchored, never slash-terminated', () => {
+    for (const alternative of shippedMaintainerPathsSource().split('|')) {
+      expect(alternative.endsWith(String.raw`\b`)).toBe(true);
+    }
+  });
+
+  test('flags every alternative in both bare and prefixed form', () => {
+    const pattern = shippedMaintainerPathsPattern();
+
+    for (const bare of shippedMaintainerPathsAlternatives()) {
+      expect(pattern.test(`see ${bare} for the harness`)).toBe(true);
+      expect(pattern.test(`see ${bare}/run-all.sh for the harness`)).toBe(true);
+    }
+  });
+
+  test('still names every release-excluded tree it is meant to cover', () => {
+    expect(shippedMaintainerPathsAlternatives()).toEqual(
+      expect.arrayContaining(RELEASE_EXCLUDED_DIRECTORIES)
+    );
+  });
+
+  test('does not flag a longer path that merely starts the same way', () => {
+    const pattern = shippedMaintainerPathsPattern();
+
+    expect(pattern.test('.gaia/testsuite/foo.sh')).toBe(false);
+    expect(pattern.test('.gaia/scripts/bats5.sh')).toBe(false);
+    expect(pattern.test('.gaia/cli/templates/workflows/tests.yml.tmpl')).toBe(
+      false
+    );
   });
 });
