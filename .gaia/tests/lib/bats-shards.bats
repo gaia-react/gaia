@@ -377,6 +377,14 @@ misc"
 # prefix, the file to look in, the LITERAL text that invokes the runner, and a
 # human label for the failure message.
 #
+# A row's prefix must not reach further than its runner does. Two of them name
+# a directory because their runner takes the whole of one: sandbox/run-all.sh
+# globs `"$HERE"/*.bats`, and the forensics delegation runs a directory. The
+# concurrency row names a full file path instead, because meter-gate.sh pins
+# `SUITE="$HERE/concurrency.bats"` rather than globbing; as a directory prefix
+# it would excuse a second suite added beside that one while nothing ran it,
+# reproducing the silent green this test exists to catch, inside the waiver.
+#
 # The needle is carried per row rather than derived from the prefix, and that
 # is the difference between a check and a decoration. A derived needle is
 # whatever the prefix happens to spell -- `sandbox`, `concurrency` -- and those
@@ -391,7 +399,7 @@ non_shard_runners() {
   printf '%s\t%s\t%s\t%s\n' \
     '.gaia/tests/sandbox/' '.github/workflows/audit-ci-tests.yml' \
     'bash .gaia/tests/sandbox/run-all.sh' 'the sandbox leg of the audit-ci-tests.yml matrix' \
-    '.gaia/tests/concurrency/' '.github/workflows/audit-ci-tests.yml' \
+    '.gaia/tests/concurrency/concurrency.bats' '.github/workflows/audit-ci-tests.yml' \
     'bash .gaia/tests/concurrency/meter-gate.sh' 'the concurrency leg of the audit-ci-tests.yml matrix' \
     '.github/forensics/tests/' '.gaia/tests/forensics/unit.bats' \
     'run bats "$FORENSICS_DIR/tests/"' 'the delegation @test in .gaia/tests/forensics/unit.bats, which the misc shard runs'
