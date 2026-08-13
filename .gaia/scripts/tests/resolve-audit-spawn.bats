@@ -363,7 +363,10 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-frontend" ]
 }
 
-# 7. public/logo.svg (ownerless in-scope, nested) -> code-audit-frontend
+# 7. public/logo.svg (ownerless in-scope, nested) -> code-audit-frontend.
+#    public/ is deliberately NOT allowlisted: the tree carries executed
+#    JavaScript under it, which is the default member's remit, so the subtree
+#    stays in scope and a change to any of it still earns a review.
 
 @test "nested ownerless public asset spawns code-audit-frontend" {
   write_full_roster
@@ -372,6 +375,18 @@ code-audit-maintainer-shell"
   run run_oracle
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-frontend" ]
+}
+
+# 7b. The root bookkeeping literals the allowlist does carry. Test 7 above is
+#     what keeps this from reading as "the probe stopped dispatching".
+
+@test "root bookkeeping files spawn nobody" {
+  write_full_roster
+  stage .gitignore LICENSE .editorconfig
+  commit "chore"
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
 # 8. wiki/x.md + root Dockerfile (mixed out-of-scope + ownerless) ->
@@ -735,6 +750,24 @@ code-audit-maintainer-shell"
   write_full_roster
   stage app/x.tsx; commit "feat"
   run run_oracle --base does-not-exist-ref
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+# The empty-range twin of the control above. git answers BOTH "the base did not
+# resolve" and "the base resolved and the range is empty" with an empty string,
+# and this probe deliberately treats them alike, because it exists to predict
+# the merge gate and the gate denies on both. Splitting them here alone would
+# have the oracle name nobody for a pull request the gate then holds shut. The
+# arm in the script carries the full reasoning; this row pins the behavior so
+# the "obvious cleanup" reds instead of shipping.
+
+@test "a resolvable base with a genuinely empty diff still fails closed" {
+  # setup() leaves `feature` at the same commit as `main`, so
+  # merge-base(HEAD, main) resolves to HEAD itself and the three-dot range is
+  # legitimately empty: a resolved base, not an unresolved one.
+  write_full_roster
+  run run_oracle
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-frontend" ]
 }

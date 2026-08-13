@@ -8,7 +8,10 @@
 # Three different questions live here, and they are NOT the same question:
 #
 #   audit_out_of_scope_allowlisted the merge gate's out-of-scope allowlist,
-#                                  consulted only on its legacy branch
+#                                  consulted on its legacy branch, by the spawn
+#                                  oracle's ownerless probe, and by the digest
+#                                  fold; widening it must move all three or a
+#                                  merge deadlocks
 #   audit_self_mod_classify        an ORDERED THREE-WAY classification
 #                                  (out-of-scope / the audit workflow itself /
 #                                  in-scope), never a boolean
@@ -37,19 +40,52 @@
 # --- The merge gate's out-of-scope allowlist ---------------------------------
 #
 # The ONE literal. After this module exists, this case-arm literal occurs in
-# exactly one tracked file. Consulted only on the merge gate's legacy branch,
-# reached only when the roster dispatches nobody for the diff: a path can be
-# allowlisted here and roster-owned at the same time, and when it is, the
-# roster-owned path always wins (a non-empty dispatched set means the legacy
-# branch is never reached).
+# exactly one tracked file. On the merge gate it is reached only when the roster
+# dispatches nobody for the diff: a path can be allowlisted here and
+# roster-owned at the same time, and when it is, the roster-owned path always
+# wins (a non-empty dispatched set means the legacy branch is never reached).
 #
 # Exit 0 iff the path is out-of-scope-allowlisted: wiki/, .claude/,
-# .specify/, .gaia/, docs/, or a root-level (no slash) *.md file.
+# .specify/, .gaia/, docs/, a root-level (no slash) *.md file, or one of the
+# three root bookkeeping literals.
+#
+# The three literals are files no member holds a lens over: version-control and
+# editor bookkeeping and the licence, read by people and executed by nothing.
+# Without them a one-line .gitignore edit reached the default member, which then
+# reviewed and certified a file outside its own remit.
+#
+# This is NOT a general implementation of `.gaia/audit-ci.yml`'s `unowned:`
+# block, and must not be grown into one by reading entries across from it. That
+# list is advisory: only the roster coverage checker reads it, so an entry there
+# suppresses no review and is safe to grant on a glance. An entry HERE is load
+# bearing, because it clears a merge with no member having read the diff, so it
+# has to be judged against what the path can actually contain rather than
+# against how the list describes it. `public/**` is the worked example of the
+# gap: `unowned:` characterises that set as executed by nothing, while the tree
+# carries a service worker under it, which is exactly what the default member
+# has a lens for. It stays in scope here for that reason.
+#
+# The literals sit in an arm of their own rather than folded into the first: a
+# maintainer-side uniqueness check matches that arm's text literally, and it is
+# what proves this set has no second copy drifting in another shell script, so
+# the arm stays byte-stable and additions go beside it. That check restricts its
+# search to `*.sh`, so a copy landing in a `.mjs` or `.ts` consumer is the miss
+# it accepts. The literals cross no `/`, so
+# their position relative to the `*/*` arm is free; anything nested would have
+# to precede it to be reached at all.
+#
+# Widening this set moves all three consumers at once, which is what keeps them
+# in agreement: the spawn oracle stops naming a member, the merge gate stops
+# demanding that member's marker, and the digest fold stops rotating the
+# default member's digest over content it does not read. Widening it for only
+# some consumers would deadlock a merge, since the member the gate waits on
+# would be one the oracle never names.
 
 audit_out_of_scope_allowlisted() {
   case "$1" in
     wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) return 0 ;;
     */*) return 1 ;;
+    LICENSE|.gitignore|.editorconfig) return 0 ;;
     *.md) return 0 ;;
     *) return 1 ;;
   esac

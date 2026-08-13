@@ -20,7 +20,12 @@ setup() {
   SPAWN="$REPO_ROOT/.gaia/scripts/resolve-audit-spawn.sh"
   HOOK="$REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
 
+  # One entry per arm of the allowlist, not just the first. The uniqueness
+  # invariant below is what stops a second copy of this set appearing in another
+  # tracked script and drifting from this one, and an arm it does not name is an
+  # arm that may be copied freely.
   ALLOWLIST_LITERAL='wiki/*|.claude/*|.specify/*|.gaia/*|docs/*'
+  ALLOWLIST_ARM_ROOT='LICENSE|.gitignore|.editorconfig'
 }
 
 # Extract a named function's body (from its `name() {` line through the next
@@ -40,11 +45,17 @@ extract_function() {
 # case-arm literal lives in exactly one tracked file.
 # ---------------------------------------------------------------------------
 
-@test "exactly one classifier: the out-of-scope allowlist literal lives in one tracked file" {
-  matches="$(git -C "$REPO_ROOT" grep -lF -- "$ALLOWLIST_LITERAL" -- '*.sh')"
-  count="$(printf '%s\n' "$matches" | grep -c .)"
-  [ "$count" -eq 1 ]
-  grep -qxF ".claude/hooks/lib/audit-scope.sh" <<<"$matches" || return 1
+@test "exactly one classifier: every out-of-scope allowlist arm lives in one tracked file" {
+  while IFS= read -r lit; do
+    [ -n "$lit" ] || continue
+    matches="$(git -C "$REPO_ROOT" grep -lF -- "$lit" -- '*.sh')"
+    count="$(printf '%s\n' "$matches" | grep -c .)"
+    [ "$count" -eq 1 ] || return 1
+    grep -qxF ".claude/hooks/lib/audit-scope.sh" <<<"$matches" || return 1
+  done <<EOF
+$ALLOWLIST_LITERAL
+$ALLOWLIST_ARM_ROOT
+EOF
 }
 
 # ---------------------------------------------------------------------------
@@ -307,12 +318,53 @@ golden_run_hook() {
 }
 
 # The witness must be a root file in scope that no member's globs claim, or the
-# table loses its ownerless-in-scope row entirely. `.editorconfig` is that file.
-# The root tooling beside it (`Dockerfile`, `.npmrc`, `.nvmrc`, `.prettierignore`)
-# is claimed by the default member and would exercise the owned branch instead.
-@test "golden table: ownerless-but-in-scope root .editorconfig denies" {
+# table loses its ownerless-in-scope row entirely. A root `Makefile` is that
+# file. Two earlier witnesses no longer are, in two different ways, and the
+# table needs one that is neither: `Dockerfile` is claimed by the default
+# member, so it would exercise the owned branch; `.editorconfig` is now
+# allowlisted outright, so it would exercise the row below instead.
+@test "golden table: ownerless-but-in-scope root Makefile denies" {
   golden_setup
-  golden_commit ".editorconfig" "root = true"
+  golden_commit "Makefile" "all:"
+  golden_run_hook
+  golden_teardown
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
+  true
+}
+
+# public/ is NOT allowlisted, and this row is what keeps it that way: the tree
+# carries executed JavaScript under it, so the subtree stays in scope and a
+# public-only diff still denies without a marker.
+@test "golden table: nested public/ asset denies" {
+  golden_setup
+  golden_commit "public/logo.svg" "<svg></svg>"
+  golden_run_hook
+  golden_teardown
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
+  true
+}
+
+# The root literals the allowlist does carry: no member holds a lens over
+# version-control or editor bookkeeping or the licence.
+@test "golden table: root bookkeeping literals allow" {
+  golden_setup
+  golden_commit ".editorconfig" "root = true" ".gitignore" "node_modules" \
+    "LICENSE" "MIT"
+  golden_run_hook
+  golden_teardown
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  true
+}
+
+# The fail-closed arm must survive the widening: a bookkeeping literal riding
+# with real source still denies, so the new arms cannot be read as a blanket
+# allow for any diff that happens to contain one.
+@test "golden table: root bookkeeping literals mixed with app/ source deny" {
+  golden_setup
+  golden_commit ".gitignore" "node_modules" "app/x.ts" "export const x = 1;"
   golden_run_hook
   golden_teardown
   [ "$status" -eq 0 ]

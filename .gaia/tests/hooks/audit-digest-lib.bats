@@ -196,28 +196,29 @@ mutate_commit() {
 
 # ---------------------------------------------------------------------------
 # Determinism: the frontend digest folds the in-scope-but-ownerless set, so a
-# root .editorconfig change rotates it while a wiki file (allowlisted) does not.
+# root Makefile change rotates it while a wiki file (allowlisted) does not.
 #
 # The witness must be a root file that is in scope AND that no member's globs
 # claim, or this test rotates the digest through the ordinary owned-glob branch
-# and asserts nothing about the fold. `.editorconfig` is that file: it appears
-# in no roster glob, and it is not on the out-of-scope allowlist. Do not
-# substitute a root path the default member owns -- `Dockerfile`, `.npmrc`,
-# `.nvmrc`, `.prettierignore` and the rest of the root tooling are all claimed,
-# and using one leaves this guard hollow: deleting the fold from the digest
-# engine outright would still leave this suite green.
+# and asserts nothing about the fold. A root `Makefile` is that file: it appears
+# in no roster glob, and no arm of the out-of-scope allowlist admits it. Two
+# other candidates fail that bar in opposite ways and both leave the guard
+# hollow enough that deleting the fold outright would still green this suite.
+# `Dockerfile`, `.npmrc`, `.nvmrc`, `.prettierignore` and the rest of the root
+# tooling are claimed by the default member. `.editorconfig` is allowlisted, so
+# it now belongs to the non-rotating half below.
 # ---------------------------------------------------------------------------
 
-@test "determinism: an in-scope-but-ownerless root .editorconfig rotates the frontend digest; a wiki file does not" {
+@test "determinism: an in-scope-but-ownerless root Makefile rotates the frontend digest; a wiki file does not" {
   ROOT="$BATS_TEST_TMPDIR/ownerless"
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
-  echo "root = true" > "$ROOT/.editorconfig"
-  git -C "$ROOT" add .editorconfig
-  git -C "$ROOT" commit --quiet -m "add .editorconfig"
+  echo "all:" > "$ROOT/Makefile"
+  git -C "$ROOT" add Makefile
+  git -C "$ROOT" commit --quiet -m "add Makefile"
 
-  # An .editorconfig edit rotates the frontend digest (folded in).
-  refs="$(mutate_commit "$ROOT" ".editorconfig")"
+  # A Makefile edit rotates the frontend digest (folded in).
+  refs="$(mutate_commit "$ROOT" "Makefile")"
   a="${refs% *}"; b="${refs#* }"
   [ "$(digest_of "$ROOT" code-audit-frontend "$a")" != "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
 
@@ -225,6 +226,37 @@ mutate_commit() {
   refs="$(mutate_commit "$ROOT" "wiki/x.md")"
   a="${refs% *}"; b="${refs#* }"
   [ "$(digest_of "$ROOT" code-audit-frontend "$a")" = "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
+}
+
+# The fold's other boundary, at the layer the fold actually lives on. The paths
+# the allowlist admits are outside the frame, so editing one leaves the default
+# member's digest exactly where it was and its earned marker valid. Without this
+# row the boundary is pinned from the rotating side only, and a widening that
+# swallowed a path the member does read would go unnoticed here.
+
+@test "determinism: allowlisted ownerless paths do not rotate the frontend digest" {
+  ROOT="$BATS_TEST_TMPDIR/allowlisted"
+  mkdir -p "$ROOT"
+  seed_repo "$ROOT"
+  printf 'root = true\n' > "$ROOT/.editorconfig"
+  printf 'node_modules\n' > "$ROOT/.gitignore"
+  printf 'MIT\n' > "$ROOT/LICENSE"
+  git -C "$ROOT" add .editorconfig .gitignore LICENSE
+  git -C "$ROOT" commit --quiet -m "add allowlisted paths"
+
+  for p in .editorconfig .gitignore LICENSE; do
+    refs="$(mutate_commit "$ROOT" "$p")"
+    a="${refs% *}"; b="${refs#* }"
+    da="$(digest_of "$ROOT" code-audit-frontend "$a")"
+    # Anchor before comparing. Every assertion here is an equality between two
+    # digests, and digest_of prints nothing on its fail-closed path, so an
+    # engine that returned early would satisfy every iteration by comparing one
+    # empty string to another. The sibling rotating row is safe from this by
+    # shape, since it asserts inequality and two empties fail that; this one is
+    # not.
+    [ "${#da}" -eq 64 ] || return 1
+    [ "$da" = "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
+  done
 }
 
 # ---------------------------------------------------------------------------

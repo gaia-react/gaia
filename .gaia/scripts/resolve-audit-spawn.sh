@@ -96,24 +96,27 @@
 #   The merge deny-hook does NOT auto-allow on a zero-match dispatch. When
 #   the dispatch resolver returns an EMPTY set, the deny-hook falls through
 #   to a LEGACY single-signal gate that still requires the default member's
-#   clearance unless the diff passes its own out-of-scope allowlist (wiki/,
-#   .claude/, .specify/, .gaia/, docs/, root-level *.md). So a diff touching
-#   an IN-SCOPE-BUT-OWNERLESS file (a root .editorconfig, .gitignore, anything
-#   under public/**) resolves to an EMPTY dispatched set yet STILL denies the
-#   merge without that clearance. Answering "spawn nobody" there would
-#   deadlock the merge: the gate demands a marker that nothing is ever
-#   spawned to produce. This probe closes that hole by re-running the
-#   deny-hook's own allowlist logic locally:
+#   clearance unless the diff passes its own out-of-scope allowlist. So a diff
+#   touching an IN-SCOPE-BUT-OWNERLESS file (a root Makefile, say: claimed by
+#   no roster glob and admitted by no arm of the allowlist) resolves to an
+#   EMPTY dispatched set yet STILL denies the merge without that clearance.
+#   Answering "spawn nobody" there would deadlock the merge: the gate demands
+#   a marker that nothing is ever spawned to produce. This probe closes that
+#   hole by re-running the deny-hook's own allowlist logic locally:
 #     1. Resolve the diff base the same way the resolver and the hook do
 #        (honoring --base).
 #     2. Base unresolvable -> the default member (the hook's bypass returns
 #        1 there and the merge denies; fail-closed mirror).
 #     3. Empty diff -> the default member (the hook's bypass treats an empty
-#        diff as unusable input, not as "nothing to audit"; mirror it).
+#        diff as unusable input, not as "nothing to audit"; mirror it). The
+#        arm itself records why splitting "unresolvable" from "empty" here is
+#        a trap rather than the obvious cleanup it looks like.
 #     4. Otherwise classify every changed path via the shared out-of-scope
-#        allowlist predicate. Any path outside {wiki/, .claude/, .specify/,
-#        .gaia/, docs/, root *.md} is IN SCOPE and prints the default member.
-#        All paths out of scope prints nothing.
+#        allowlist predicate. Any path that predicate does not admit is IN
+#        SCOPE and prints the default member; all paths admitted prints
+#        nothing. The admitted set lives in one place, the predicate itself
+#        (.claude/hooks/lib/audit-scope.sh), and is not restated here: a
+#        second copy is what lets the probe and the gate drift apart.
 #   The default member on this path is not a roster assumption and not
 #   per-member special-casing: it mirrors the deny-hook's own hardcoded
 #   legacy fallback, which is the sole authority on what clears that path.
@@ -464,6 +467,27 @@ ownerless_probe() {
   # allowlisted out-of-scope path spawns a member it does not need, because the
   # allowlist never gets to recognize the path. The flag is what lets this
   # probe answer the question it is actually asking.
+  # An empty result here is TWO facts wearing one empty string: the base did not
+  # resolve, or it resolved and the range holds no files. Only the first is a
+  # reason to fail closed, so telling them apart looks like an obvious
+  # improvement. It is not one, and the reason is worth stating because the
+  # cheap version of the fix is actively worse than this line.
+  #
+  # This probe exists to PREDICT the merge gate, so an answer of "nobody" is a
+  # promise that `gh pr merge` will clear. The gate derives its base through the
+  # same origin-then-local fallback chain this function does, so on any given
+  # pull request the two see the same range; an empty one therefore reaches the
+  # gate's own empty-range arm, which denies. Splitting the states HERE alone
+  # would make the oracle answer "nobody" for a pull request the gate then holds
+  # shut, with no member named to earn the marker that would open it. Splitting
+  # them on BOTH sides instead clears a merge on an empty range, and that range
+  # is only trustworthy when the base came from the remote: on the local
+  # fallback a default branch that already carries this branch's commits yields
+  # an empty range for a pull request that changes plenty.
+  #
+  # So the honest fix is to make both sides key on the base's provenance, not to
+  # capture a status here. Until then this stays fail-closed and costs one spawn
+  # on a branch with no commits on it, which is the cheap half of that trade.
   changed="$(git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)"
   if [ -z "$changed" ]; then
     echo "code-audit-frontend"
