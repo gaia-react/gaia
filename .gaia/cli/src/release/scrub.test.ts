@@ -2039,7 +2039,7 @@ transforms:
 // hermetic configs above are. The defect these tests pin lived in the config's
 // pattern, not in the engine, so a mirrored copy would have gone on passing
 // while the shipped alternation stayed narrow.
-const shippedMaintainerPathsPattern = (): RegExp => {
+const shippedMaintainerPathsSource = (): string => {
   const configPath = path.join(
     resolveRepoRootFromImportMeta(import.meta.url),
     '.gaia',
@@ -2056,11 +2056,32 @@ const shippedMaintainerPathsPattern = (): RegExp => {
     throw new Error('no maintainer-paths check in .gaia/release-scrub.yml');
   }
 
-  return new RegExp(pattern);
+  return pattern;
 };
 
-// Every release-excluded directory the shipped alternation names. A bare
-// mention of any one of them is a pointer an adopter's clone cannot follow.
+const shippedMaintainerPathsPattern = (): RegExp =>
+  new RegExp(shippedMaintainerPathsSource());
+
+// The alternation split back into the bare paths it matches, derived from the
+// shipped pattern rather than transcribed beside it. A transcribed list pins
+// only that an existing alternative was not narrowed, and the defect here was a
+// whole alternation written the wrong way, so a thirteenth entry added with a
+// trailing slash has to fail too. Derived from the config string rather than
+// from `RegExp.source`, which re-escapes every `/` so the source can be pasted
+// into a regex literal.
+const shippedMaintainerPathsAlternatives = (): string[] =>
+  shippedMaintainerPathsSource()
+    .split('|')
+    .map((alternative) =>
+      alternative
+        .replace(/\\b$/, '')
+        .split(String.raw`\.`)
+        .join('.')
+    );
+
+// Every release-excluded tree the alternation is meant to name. The derivation
+// above cannot see an alternative deleted outright, so this is the membership
+// floor it is checked against; it is not the input to the match assertions.
 const RELEASE_EXCLUDED_DIRECTORIES = [
   '.gaia/cli/src',
   '.gaia/cli/test-fixtures',
@@ -2087,15 +2108,25 @@ describe('shipped maintainer-paths check', () => {
     ).toBe(true);
   });
 
-  test('flags every named directory in both bare and prefixed form', () => {
+  test('every alternative is boundary-anchored, never slash-terminated', () => {
+    for (const alternative of shippedMaintainerPathsSource().split('|')) {
+      expect(alternative.endsWith(String.raw`\b`)).toBe(true);
+    }
+  });
+
+  test('flags every alternative in both bare and prefixed form', () => {
     const pattern = shippedMaintainerPathsPattern();
 
-    for (const directory of RELEASE_EXCLUDED_DIRECTORIES) {
-      expect(pattern.test(`see ${directory} for the harness`)).toBe(true);
-      expect(pattern.test(`see ${directory}/run-all.sh for the harness`)).toBe(
-        true
-      );
+    for (const bare of shippedMaintainerPathsAlternatives()) {
+      expect(pattern.test(`see ${bare} for the harness`)).toBe(true);
+      expect(pattern.test(`see ${bare}/run-all.sh for the harness`)).toBe(true);
     }
+  });
+
+  test('still names every release-excluded tree it is meant to cover', () => {
+    expect(shippedMaintainerPathsAlternatives()).toEqual(
+      expect.arrayContaining(RELEASE_EXCLUDED_DIRECTORIES)
+    );
   });
 
   test('does not flag a longer path that merely starts the same way', () => {
