@@ -126,19 +126,138 @@ if [ "${#sh_scripts[@]}" -eq 0 ]; then
   exit 1
 fi
 
+# Concurrent shellcheck workers. One shellcheck invocation is single-threaded and
+# CPU-bound, so a pass costs the whole file list on one core; splitting the list
+# across workers costs the longest chunk. Capped rather than set to the core
+# count: on a 12-core machine 6 workers lint the tree in ~8.0s and 12 in ~6.6s,
+# so the last doubling buys under two seconds for twice the resident shellcheck
+# processes. `getconf _NPROCESSORS_ONLN` is the portable count -- macOS has no
+# `nproc` and the CI image has no `sysctl -n hw.ncpu` -- and a machine that
+# answers with nothing or with non-digits falls back to 2 rather than failing.
+JOBS_CAP=6
+detect_jobs() {
+  local n
+  n="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
+  case "$n" in
+    '' | *[!0-9]*) n=2 ;;
+  esac
+  if [ "$n" -lt 1 ]; then
+    n=1
+  fi
+  if [ "$n" -gt "$JOBS_CAP" ]; then
+    n="$JOBS_CAP"
+  fi
+  printf '%s\n' "$n"
+}
+JOBS="$(detect_jobs)"
+
+# Per-worker logs. Removed on every exit path, including the failing one.
+LINT_TMP="$(mktemp -d "${RUNNER_TEMP:-/tmp}/shell-lint.XXXXXX")"
+trap 'rm -rf "$LINT_TMP"' EXIT
+
+# Run one shellcheck pass over a file list, split across $JOBS concurrent
+# workers. Same fork/log/replay shape as .gaia/tests/run-bats-parallel.sh, and
+# for the same reason: concurrent workers cannot write to a shared stdout, or
+# findings from different chunks interleave differently on every run. Each
+# worker buffers to its own log; the logs replay after every worker is waited
+# on. The split is contiguous rather than round-robin so findings replay in the
+# same file order one serial invocation over the whole list prints them in. The
+# one divergence is cosmetic: shellcheck's trailing `For more information:`
+# wiki-link block is per invocation, so a run with findings in more than one
+# chunk prints that block more than once.
+#
+# Args: <slug> <severity> <file>...
+# Every pass split this way lets shellcheck read each file's own shebang, so
+# there is no dialect argument; the husky pass, which needs an explicit `-s sh`,
+# lints a single file and stays serial.
+# Returns 0 only when every worker exited 0. A worker's status is collected per
+# pid: a bare `wait` returns the last job's status only and would green a
+# finding in any other chunk.
+run_shellcheck_pass() {
+  local slug severity
+  slug="$1"
+  severity="$2"
+  shift 2
+
+  local files
+  files=("$@")
+
+  local total workers base rem w start len pids rc worker_rc log
+  total="${#files[@]}"
+  workers="$JOBS"
+  if [ "$workers" -gt "$total" ]; then
+    workers="$total"
+  fi
+  base=$((total / workers))
+  rem=$((total % workers))
+
+  # Every worker index below $workers gets at least one file, so no chunk is
+  # ever empty. An empty one would reach shellcheck as a bare invocation with no
+  # file operands, which exits non-zero on usage -- loud, not lie-green.
+  pids=()
+  w=0
+  while [ "$w" -lt "$workers" ]; do
+    start=$((w * base))
+    if [ "$w" -lt "$rem" ]; then
+      start=$((start + w))
+      len=$((base + 1))
+    else
+      start=$((start + rem))
+      len="$base"
+    fi
+    # Run from the repo root so the paths the linter prints are repo-relative.
+    (
+      cd "$REPO_ROOT" || exit 2
+      shellcheck --severity="$severity" --exclude="$TOOLING_EXCLUDE" "${files[@]:$start:$len}"
+    ) >"$LINT_TMP/$slug.$w.log" 2>&1 &
+    pids+=("$!")
+    w=$((w + 1))
+  done
+
+  rc=0
+  w=0
+  while [ "$w" -lt "$workers" ]; do
+    worker_rc=0
+    # `|| worker_rc=$?` rather than `if ! wait ...`, because inside an `if !`
+    # body $? is the negated status (0), not the command's. Nothing aborts
+    # early: every worker is waited on and every log replays even when the
+    # first one failed.
+    wait "${pids[$w]}" || worker_rc=$?
+    if [ "$worker_rc" -ne 0 ]; then
+      rc=1
+    fi
+    w=$((w + 1))
+  done
+
+  # Replay in worker order, never completion order.
+  w=0
+  while [ "$w" -lt "$workers" ]; do
+    log="$LINT_TMP/$slug.$w.log"
+    if [ -f "$log" ]; then
+      cat "$log"
+    else
+      # A worker that produced no log ran no lint, so its files went unchecked.
+      echo "ERROR: missing worker log $log" >&2
+      rc=1
+    fi
+    w=$((w + 1))
+  done
+
+  return "$rc"
+}
+
 # Run every pass before failing, so one invocation reports every finding across
 # all passes rather than hiding a later pass's findings behind an earlier one.
 status=0
 
-echo "--> shellcheck *.sh (severity=$SH_SEVERITY): ${#sh_scripts[@]} tracked scripts"
-# Run from the repo root so the paths the linter prints are repo-relative.
-if ! (cd "$REPO_ROOT" && shellcheck --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" ${sh_scripts[@]+"${sh_scripts[@]}"}); then
+echo "--> shellcheck *.sh (severity=$SH_SEVERITY, jobs=$JOBS): ${#sh_scripts[@]} tracked scripts"
+if ! run_shellcheck_pass sh "$SH_SEVERITY" ${sh_scripts[@]+"${sh_scripts[@]}"}; then
   status=1
 fi
 
 if [ "${#bats_scripts[@]}" -gt 0 ]; then
-  echo "--> shellcheck *.bats (severity=$BATS_SEVERITY): ${#bats_scripts[@]} tracked suites"
-  if ! (cd "$REPO_ROOT" && shellcheck --severity="$BATS_SEVERITY" --exclude="$TOOLING_EXCLUDE" ${bats_scripts[@]+"${bats_scripts[@]}"}); then
+  echo "--> shellcheck *.bats (severity=$BATS_SEVERITY, jobs=$JOBS): ${#bats_scripts[@]} tracked suites"
+  if ! run_shellcheck_pass bats "$BATS_SEVERITY" ${bats_scripts[@]+"${bats_scripts[@]}"}; then
     status=1
   fi
 fi

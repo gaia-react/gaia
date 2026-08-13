@@ -35,6 +35,17 @@ fi
 if [ -n "${SHELLCHECK_LOG:-}" ]; then
   printf '%s\n' "$*" >> "$SHELLCHECK_LOG"
 fi
+# Report a finding for exactly one named file, so a test can place a failure in
+# a chosen worker's chunk. Quoted inside the pattern, so a path is matched
+# literally rather than as a glob. Unset by default.
+if [ -n "${SHELLCHECK_FAIL_ON:-}" ]; then
+  case " $* " in
+    *" $SHELLCHECK_FAIL_ON "*)
+      printf 'In %s line 1:\nSC9999 (error): stub finding\n' "$SHELLCHECK_FAIL_ON"
+      exit 1
+      ;;
+  esac
+fi
 exit 0
 STUB
   chmod +x "$STUB_DIR/shellcheck"
@@ -80,4 +91,34 @@ teardown() {
   run env PATH="$STUB_DIR:$PATH" SHELLCHECK_LOG="$STUB_DIR/argv.log" bash "$GATE"
   [ "$status" -eq 0 ]
   grep -qE -- '(^| )-s sh( |$).*\.husky/pre-commit' "$STUB_DIR/argv.log"
+}
+
+# The *.sh and *.bats passes split their file list across concurrent shellcheck
+# workers, one buffered log each. Two ways that aggregation goes green over a
+# real finding, and one test for each end of the list: collecting the status of
+# only the last worker (what a bare `wait` returns), and collecting the status of
+# only the first. The gate discovers files in `git ls-files` order and slices
+# that list contiguously, so the first tracked path is always in the first
+# worker's chunk and the last is always in the last worker's. On a single-core
+# host both tests still assert the finding fails the gate, just without
+# distinguishing the two workers.
+
+@test "shell-lint fails closed on a finding in the FIRST worker's chunk" {
+  first_sh="$(git -C "$REPO_ROOT" ls-files '*.sh' | head -n 1)"
+  [ -n "$first_sh" ]
+  run env PATH="$STUB_DIR:$PATH" SHELLCHECK_FAIL_ON="$first_sh" bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+  # The failing worker's buffered log has to replay too, or the gate reds
+  # without ever naming what is broken.
+  grep -qF -- "In $first_sh line 1:" <<<"$output"
+}
+
+@test "shell-lint fails closed on a finding in the LAST worker's chunk" {
+  last_sh="$(git -C "$REPO_ROOT" ls-files '*.sh' | tail -n 1)"
+  [ -n "$last_sh" ]
+  run env PATH="$STUB_DIR:$PATH" SHELLCHECK_FAIL_ON="$last_sh" bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+  grep -qF -- "In $last_sh line 1:" <<<"$output"
 }

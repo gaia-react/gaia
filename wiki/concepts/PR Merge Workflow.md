@@ -170,6 +170,7 @@ The local fix loop reads the re-run carry-forward ledger (`.gaia/local/audit/<AU
 - If a Suggestion involves an architectural tradeoff, breaking change, or conflicting convention, the agent escalates it with documented rationale rather than auto-fixing; the operator must resolve the escalation before the marker is written.
 - Re-run linting and type checking after fixes.
 - Stage, commit, and push the fixes; HEAD must move so the next audit runs against the fixed tree.
+- **Land the whole round's fixes in one commit**, never one commit per finding. Each commit rotates the reporting member's content digest and buys a full re-dispatch to re-earn its marker, so a round repaired finding-by-finding pays for as many re-audits as the round had findings and clears no more than the single batched commit does. Fix everything the round reported, then commit and push once.
 - Re-spawn the audit agent on the new HEAD until it reports clean.
 
 #### Applying the audit's own Suggestions: digest economics
