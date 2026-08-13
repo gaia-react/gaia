@@ -14,7 +14,7 @@ defect this repository has actually shipped.
 | `shell-lint.sh` | CI, `shell-lint.yml` | shellcheck gate over every tracked `*.sh` and `*.bats`. Free, deterministic. Runs on any PR touching a shell script or bats suite. |
 | `hooks/` | CI, `audit-ci-tests.yml` | bats tests for the shell hooks. Free, deterministic, the largest tree here. |
 | `lib/` | CI, `audit-ci-tests.yml` | bats suite for the SPEC-ledger machinery under `.specify/extensions/gaia/lib/`. See `lib/README.md`. |
-| `forensics/` | CI, `audit-ci-tests.yml` | redaction and capture harness, via `forensics/run-all.sh`. |
+| `forensics/` | CI, `audit-ci-tests.yml` | redaction and capture harness. CI reaches it through the `misc` shard (`bash .gaia/tests/bats-shards.sh run misc`); `forensics/run-all.sh` is the hand-run entry point, also wired to `pnpm test:forensics`. |
 | `statusline/` | CI, `audit-ci-tests.yml` | bats tests for the shipped statusline script. |
 | `sandbox/` | CI, `audit-ci-tests.yml` | sandbox-enablement conformance greps, via `sandbox/run-all.sh`. Two tests self-skip in CI by design. A hand run recovers the docs-link check; the OS-level enforcement test needs `GAIA_SANDBOX_CAPABLE=1` and a repo-root `.env` on top of that, or it skips there too. |
 | `concurrency/` | CI, `audit-ci-tests.yml` | the INV-7 concurrency meter. Admits scenarios that are red by design, so it is adjudicated against `expected-status.txt` by `meter-gate.sh` rather than on its own exit status. See `concurrency/README.md`. |
@@ -48,6 +48,14 @@ bats .gaia/tests/hooks/
 ```
 
 Requires `bats` (`brew install bats-core`). Tests are self-contained; they spin up tmp git repos via `helpers/tmp-git-repo.sh` and feed synthetic JSON to hooks via `helpers/mock-hook-input.sh`.
+
+### All shards in parallel (free, slow)
+
+```bash
+bash .gaia/tests/run-bats-parallel.sh
+```
+
+Forks the same nine-shard partition CI runs (`.gaia/tests/bats-shards.sh`), one bats process per shard, all on one box.
 
 ### Sandbox conformance tests (free, fast)
 

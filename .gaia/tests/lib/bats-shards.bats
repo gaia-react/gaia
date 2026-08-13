@@ -185,19 +185,6 @@ doctor_bypassed_zero_guard() {
   printf '%s\n' "$dest"
 }
 
-# Directory of a builtin_table() row's command field: `bats X/` yields `X`;
-# `bash X/run-all.sh` yields `X` (its dirname). Used by S10 to derive the
-# pre-sharding six-directory surface without restating it by hand.
-extract_dir_from_cmd() {
-  local cmd="$1" path
-  path="${cmd#* }"
-  case "$path" in
-    *.sh) path="${path%/*}" ;;
-    */) path="${path%/}" ;;
-  esac
-  printf '%s\n' "$path"
-}
-
 # Writes a trivial single-@test .bats fixture whose test name and stdout are
 # both the given marker, so S12 can identify exactly which fixture ran. Built
 # from a variable rather than a literal `@test "..." {` line in this file's
@@ -316,24 +303,6 @@ misc"
     fi
   done
   return 0
-}
-
-@test "S10: the sharder's six roots equal run-bats-parallel.sh's builtin_table() surface" {
-  local runner row cmd dir dirs expected
-  runner="$BATS_TEST_DIRNAME/../run-bats-parallel.sh"
-  run bash -c "source '$runner'; builtin_table"
-  [ "$status" -eq 0 ]
-  dirs=""
-  for row in "${lines[@]}"; do
-    cmd="${row##*$'\t'}"
-    dir="$(extract_dir_from_cmd "$cmd")"
-    dirs="$dirs$dir"$'\n'
-  done
-  dirs="$(printf '%s' "$dirs" | LC_ALL=C sort -u)"
-  expected="$(printf '%s\n' \
-    "$HOOKS_DIR_DEFAULT" "$SCRIPTS_TESTS_DIR_DEFAULT" "$AUDIT_TESTS_DIR_DEFAULT" \
-    "$LIB_DIR_DEFAULT" "$FORENSICS_DIR_DEFAULT" "$STATUSLINE_DIR_DEFAULT" | LC_ALL=C sort -u)"
-  [ "$dirs" = "$expected" ]
 }
 
 @test "S11: a pinned hook missing from discovery is a fail-closed error" {
@@ -516,7 +485,7 @@ EOF
   # Staged into a COPY of the index, never the repository's own. Writing the
   # real index would make this the one test here that mutates shared repo
   # state, and two documented invariants forbid it: run-bats-parallel.sh forks
-  # the six suite directories concurrently in one workspace, and a sibling
+  # the nine shards concurrently in one workspace, and a sibling
   # suite derives its whole input population from `git ls-files`. It would also
   # need an undo, whose own failure path (a contended index.lock) strands a
   # staged-deleted path in the real index, which is exactly the dirty-tree

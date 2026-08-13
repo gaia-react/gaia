@@ -206,17 +206,23 @@ jobs:
               # looks identical to a clean tree. Same test-dir/source-dir pairing
               # as the entries above.
               - '.gaia/tests/shell-lint.sh'
-              # run-bats-parallel.sh is no longer what a bats step invokes --
-              # .gaia/tests/bats-shards.sh is -- but it remains the hand-run
-              # entry point for the six suite directories, and its own
-              # adversarial suite (.gaia/tests/lib/run-bats-parallel.bats,
-              # already listed below) sources it directly to read
-              # builtin_table() back out. It sits at the top of .gaia/tests/
-              # too, matching none of the four .gaia/tests/*/ globs below,
-              # exactly like the gate above. Without this line an edit to the
-              # runner would report `code=false`, skip every bats step, and
-              # green the job having run that suite's assertions against a
-              # stale copy.
+              # run-bats-parallel.sh drives the same nine-shard partition
+              # the shard steps below invoke via .gaia/tests/bats-shards.sh,
+              # but it is not itself a bats step. It remains the hand-run
+              # entry point for that partition, and its own adversarial suite
+              # (.gaia/tests/lib/run-bats-parallel.bats, already listed
+              # below) sources it directly to read builtin_table() back out.
+              # It sits at the top of .gaia/tests/, matching none of the four
+              # .gaia/tests/*/ globs below. Redundant today: the
+              # `.gaia/tests/**` catch-all below already matches it, the same
+              # as the vendored-archive entry further down. Listed
+              # deliberately anyway, because that catch-all carries a standing
+              # motive to be narrowed -- its own comment records that it arms
+              # the full matrix, two pnpm installs included, on any
+              # `.gaia/tests` change. A narrowing that dropped this path would
+              # leave a runner-only edit reporting `code=false`, skipping every
+              # bats step, and greening the job having run that suite's
+              # assertions against a stale copy.
               - '.gaia/tests/run-bats-parallel.sh'
               # bats-shards.sh is what every non-sandbox, non-concurrency
               # shard's bats step below invokes, and it sits at the top of

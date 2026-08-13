@@ -48,6 +48,31 @@ Two traps make naive measurement useless:
 
 A useful reconciliation is the sum of per-shard TAP plans against the pre-existing per-directory totals: a partition change that loses a file shows up as a count drop, where every check still greens.
 
+## Entry-point equivalence
+
+`.gaia/tests/run-bats-parallel.sh` (the hand runner) and `.gaia/tests/bats-shards.sh` (the CI matrix) consume the same nine-shard partition, so one entry-point set covers both: the hand runner's `builtin_table()` derives its rows from the sharder rather than carrying an independent copy, and expanding each side's own rows to a sorted list of `.bats` entry points resolves to the same set. `.gaia/tests/forensics/unit.bats`'s delegation to `.github/forensics/tests/` is identical on both sides of that comparison, so it cancels and the check is over entry points, not transitive coverage.
+
+The workflow's own `shards` matrix is pinned to the sharder's shard list by `audit-ci-shards.bats` W6, so the sharder stands in for the CI side below.
+
+Reproduce the check on any tree, comparing the two live expansions rather than two points in history:
+
+```bash
+bash -c '
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+hand="$(mktemp)"; ci="$(mktemp)"
+( . .gaia/tests/run-bats-parallel.sh; builtin_table ) | cut -f3 |
+  while read -r _bash _sharder _run id; do bash .gaia/tests/bats-shards.sh files "$id"; done |
+  LC_ALL=C sort > "$hand"
+bash .gaia/tests/bats-shards.sh shards |
+  while read -r id; do bash .gaia/tests/bats-shards.sh files "$id"; done |
+  LC_ALL=C sort > "$ci"
+diff "$hand" "$ci" && echo IDENTICAL
+'
+```
+
+The hand side expands the rows `builtin_table()` actually emits rather than asking the sharder for its id list twice, which is what keeps the check live: a runner that emitted eight rows, or the wrong ids, reds it.
+
 ## Where the time goes
 
 Measured per leg on a clean run: the slowest shard is around 154 seconds, the aggregator about 3, and fixed per-leg overhead (runner provisioning, checkout, install) is on the order of 10 seconds. The install step spans roughly 10 to 20 seconds; the sandbox leg, which runs no apt, finishes it first. The concurrency leg runs 66 to 69 seconds against its 13-minute cap, so the cap constraint above binds the declared numbers rather than any real runtime.
@@ -60,7 +85,7 @@ Suite cost is uneven, which is why the shard split is not a naive equal division
 - **Per-shard narrowed paths filters.** All eleven legs share one `steps:` block, so the filter is defined once and evaluated per leg. Narrowing per shard also breaks `.gaia/scripts/tests/workflow-filter-coverage.bats`, which requires every gate on a step to reach every literal path that step names, independently. `audit-ci-shards.bats` W7 pins the count at exactly one filter step.
 - **A checked-in shard manifest.** Fails silently: a new suite runs in no shard, every check greens, the pass count quietly drops.
 - **A per-shard package list.** Also a silent-green hazard, because the suites that need `python3-yaml` fail rather than skip when it is absent while the ones needing `zsh` skip quietly. The install is split by leg kind instead, and W9 pins the sandbox leg's reduced set.
-- **`bats --jobs`.** A live lever rather than a closed question. The reasoning that excludes it, that the runner is already CPU-saturated, describes six suites sharing one box; a shard now runs one suite serially on its own four-core box, leaving cores idle.
+- **`bats --jobs`.** A live lever rather than a closed question. The reasoning that excludes it, that the runner is already CPU-saturated, describes nine shards sharing one box; a shard now runs one suite serially on its own four-core box, leaving cores idle.
 
 ## Fan-out has its own costs
 

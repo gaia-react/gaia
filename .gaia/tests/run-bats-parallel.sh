@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# run-bats-parallel.sh: run the bats suite directories concurrently in one
+# run-bats-parallel.sh: run this repo's bats suites concurrently in one
 # invocation, capture each to its own log, and replay the logs in a fixed
 # order.
 #
-# The hand-run entry point for this repo's six bats suite directories.
-# `.github/workflows/audit-ci-tests.yml` does not call this: each shard leg of
-# its matrix calls `.gaia/tests/bats-shards.sh run <shard-id>` instead. The six
-# directories are concurrency-safe in a shared workspace, so running them
-# through this script collapses the wall clock to roughly the slowest suite
-# instead of the sum of all six.
+# The hand-run entry point for this repo's bats suites. This and
+# `.github/workflows/audit-ci-tests.yml` consume the same nine-shard partition
+# from `.gaia/tests/bats-shards.sh`: each shard leg of the CI matrix calls
+# `bats-shards.sh run <shard-id>` on its own box, while a hand run forks all
+# nine on this one. Sharing the partition is what makes a hand run a
+# meaningful pre-push signal rather than a differently grouped approximation
+# of what CI will do. The shards are concurrency-safe in a shared workspace,
+# so forking them collapses the wall clock to roughly the slowest shard
+# instead of the sum of all nine.
 #
 # Maintainer-only. `.gaia/tests` is wholesale release-excluded via
 # `.gaia/release-exclude`, so this never reaches an adopter.
@@ -17,7 +20,7 @@
 #   bash .gaia/tests/run-bats-parallel.sh [--table <file>] [--log-dir <dir>]
 #
 #   --table <file>    Tab-delimited suite table to run instead of the built-in
-#                     six. Test seam only: .gaia/tests/lib/run-bats-parallel.bats
+#                     one. Test seam only: .gaia/tests/lib/run-bats-parallel.bats
 #                     is the only caller that passes it.
 #   --log-dir <dir>   Where per-suite logs land. Omitted, the runner creates a
 #                     fresh unique directory of its own.
@@ -39,8 +42,8 @@
 # data, and word-splitting a fixed data field is the whole of the parsing.
 #
 # The default log directory is unique per invocation, which matters concretely:
-# this runner's own bats suite lives in `.gaia/tests/lib/`, one of the six
-# directories the runner forks, so a hand run of the whole table has an inner
+# this runner's own bats suite lives in `.gaia/tests/lib/`, which is the `lib`
+# shard the runner forks, so a hand run of the whole table has an inner
 # invocation (this suite, exercised via its own --table fixtures) running
 # concurrently with the outer live one. A shared default would let the
 # fail-closed missing-log rule below red on that overlap. The runner also
@@ -51,6 +54,11 @@
 # suite) and on macOS `/bin/bash` 3.2.57. No `mapfile`, no `declare -A`, no
 # `${var^^}`, no `wait -n`.
 set -euo pipefail
+
+# Where the sharder is looked up. Location-independent on purpose: it is what
+# lets the guard suite drive a copy of this script that sits beside a stub
+# sharder, or beside no sharder at all.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 TABLE_FILE=''
 LOG_DIR=''
@@ -65,19 +73,38 @@ die_usage() {
   exit 2
 }
 
-# Built-in suite table, in the order the six suite directories are grouped for
-# a hand run and therefore the order the logs replay in. One printf argument
-# group per row. The bats suite in .gaia/tests/lib/run-bats-parallel.bats
-# sources this file and calls this function to read the table back out, so it
-# stays a function with no side effects beyond its stdout.
+# Built-in suite table, one row per shard id the sharder prints, in the order
+# it prints them and therefore the order the logs replay in. The ids are asked
+# for rather than restated: a second copy would drift from the partition CI
+# runs, silently and in the direction of running less. The bats suite in
+# .gaia/tests/lib/run-bats-parallel.bats sources this file and calls this
+# function to read the table back out, so it stays a function with no side
+# effects beyond its stdout.
+#
+# Capture the id list and check the status BEFORE printing anything: a sharder
+# that dies part-way must contribute no rows at all, so main()'s empty-table
+# guard turns it into exit 2. Streaming the lookup into rows would emit
+# whatever the sharder managed before dying, and the run would then report a
+# green over less work than it claims. Returning non-zero instead is no help:
+# main() reads this through a process substitution, which hides a function's
+# exit status from `set -e`. Printing nothing is what fails closed.
+#
+# The command field stays repo-relative rather than interpolating $HERE. It is
+# data that survives `read -ra` word-splitting with no quote processing, so an
+# absolute path breaks the moment a checkout lives under a path containing a
+# space; the table's "run me from the repo root" contract holds instead.
 builtin_table() {
-  printf '%s\t%s\t%s\n' \
-    'github-audit' '.github/audit bats suites' 'bats .github/audit/tests/' \
-    'gaia-scripts' '.gaia/scripts bats suites' 'bats .gaia/scripts/tests/' \
-    'forensics' '.gaia/tests/forensics bats suites' 'bash .gaia/tests/forensics/run-all.sh' \
-    'hooks' '.gaia/tests/hooks bats suites' 'bats .gaia/tests/hooks/' \
-    'lib' '.gaia/tests/lib bats suites' 'bats .gaia/tests/lib/' \
-    'statusline' '.gaia/tests/statusline bats suites' 'bats .gaia/tests/statusline/'
+  local ids rc id
+  rc=0
+  ids="$(bash "$HERE/bats-shards.sh" shards)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    return 0
+  fi
+  while IFS= read -r id; do
+    if [ -n "$id" ]; then
+      printf '%s\tshard %s\tbash .gaia/tests/bats-shards.sh run %s\n' "$id" "$id" "$id"
+    fi
+  done <<<"$ids"
 }
 
 # Reads the table on stdin into the parallel slugs/labels/cmds arrays. Runs in
@@ -220,8 +247,8 @@ main() {
     i=$((i + 1))
   done
 
-  # Per-suite timing, recovering the per-suite breakdown that running six
-  # suites through one invocation would otherwise lose.
+  # Per-suite timing, recovering the per-suite breakdown that running every
+  # shard through one invocation would otherwise lose.
   local secs_file secs
   printf '\nPer-suite results:\n'
   i=0
@@ -253,7 +280,7 @@ main() {
 }
 
 # Sourcing guard: the bats suite sources this file to read builtin_table back out
-# without running the six suites. Direct invocation is unaffected.
+# without running any suite. Direct invocation is unaffected.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   main "$@"
 fi
