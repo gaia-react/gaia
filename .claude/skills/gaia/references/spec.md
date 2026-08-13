@@ -859,7 +859,7 @@ SPEC_FOLDER="${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"
 mkdir -p "$SPEC_FOLDER"
 ```
 
-Write the confirmed draft to `SPEC.md` inside that folder, `${SPEC_FOLDER}/SPEC.md`. This is the canonical save location, never anywhere else, never duplicate copies. The folder is the archival unit; sibling artifacts live beside `SPEC.md` in the same folder. A sibling's filename is the uppercased remainder of its flat form (`SPEC-NNN-<rest>.md` → `SPEC-NNN/<REST>.md`); any `SPEC-NNN-*` file is a sibling. `lib/spec-folderize.sh` applies this mapping for any legacy flat files.
+Write the confirmed draft to `SPEC.md` inside that folder, `${SPEC_FOLDER}/SPEC.md`. This is the canonical save location, never anywhere else, never duplicate copies. When this session runs inside a linked worktree, `${SPEC_FOLDER}` is out of reach of the ordinary `Edit`/`Write` tools, because the harness refuses a `file_path` resolving to the shared checkout; write it with `Bash` and read it back to confirm content and location, the same fallback `.claude/skills/gaia/references/plan.md` describes for the plan ledger. The folder is the archival unit; sibling artifacts live beside `SPEC.md` in the same folder. A sibling's filename is the uppercased remainder of its flat form (`SPEC-NNN-<rest>.md` → `SPEC-NNN/<REST>.md`); any `SPEC-NNN-*` file is a sibling. `lib/spec-folderize.sh` applies this mapping for any legacy flat files.
 
 Update the frontmatter `updated` field to today's date.
 
