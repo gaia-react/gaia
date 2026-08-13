@@ -56,11 +56,12 @@
 # .gitignore edit reached the default member, which then reviewed and certified
 # a file outside its own remit.
 #
-# They sit in arms of their own rather than folded into the first arm because
-# .gaia/tests/hooks/audit-scope-lib.bats matches that arm's text literally to
-# prove this set is defined in exactly one tracked file. public/ must precede
-# the `*/*` arm to be reached at all; the three literals cross no `/`, so their
-# position relative to it is free.
+# They sit in arms of their own rather than folded into the first arm: a
+# maintainer-side uniqueness check matches that arm's text literally, and it is
+# what proves this set has no second copy drifting in another script, so the arm
+# stays byte-stable and additions go beside it. public/ must precede the `*/*`
+# arm to be reached at all; the three literals cross no `/`, so their position
+# relative to it is free.
 #
 # Widening this set moves all three consumers at once, which is what keeps them
 # in agreement: the spawn oracle stops naming a member, the merge gate stops
