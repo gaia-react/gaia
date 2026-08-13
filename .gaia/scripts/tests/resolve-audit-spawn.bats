@@ -771,14 +771,21 @@ code-audit-maintainer-shell"
   [ -z "$output" ]
 }
 
-@test "an empty diff reached through --base names nobody, while a bad ref still fails closed" {
+@test "--base carries the empty-range answer too: a resolvable ref names nobody, an unresolvable one does not" {
   write_full_roster
   stage app/x.tsx; commit "feat"
-  # HEAD...HEAD is empty and resolvable; the same script run against a ref that
-  # does not resolve answers code-audit-frontend (the control above).
+  # HEAD...HEAD is empty and resolvable, so the probe names nobody...
   run run_oracle --base HEAD
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+
+  # ...while the same flag carrying a ref that does not resolve still fails
+  # closed. Both halves run here rather than leaning on the control above,
+  # because what this row is about is the two answers differing on the ONE
+  # code path --base reaches.
+  run run_oracle --base does-not-exist-ref
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
 }
 
 @test "control: an unreadable roster (non-executable resolver) fails closed to frontend" {

@@ -474,10 +474,12 @@ ownerless_probe() {
   # git's exit status is captured rather than swallowed, because "the base did
   # not resolve" and "the base resolved and the diff is empty" are different
   # facts that both produce an empty string. Only the first is a reason to fail
-  # closed. `set -o pipefail` is already on for the script; it is restated
-  # inside the substitution so this arm reads correctly on its own, mirroring
-  # check_out_of_scope_pr in .claude/hooks/pr-merge-audit-check.sh. Without it
-  # the status would be `tr`'s, which is 0 however badly git failed.
+  # closed. What the status must NOT be is `tr`'s, which is 0 however badly git
+  # failed. The script's own `set -euo pipefail` already delivers that, so the
+  # restatement inside the substitution changes no behavior and is not load
+  # bearing; it is here so the arm reads correctly against a local edit to the
+  # script's options, and it mirrors how check_out_of_scope_pr spells the same
+  # pipeline in .claude/hooks/pr-merge-audit-check.sh.
   changed_rc=0
   changed="$(set -o pipefail; git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n')" \
     || changed_rc=$?

@@ -20,7 +20,15 @@ setup() {
   SPAWN="$REPO_ROOT/.gaia/scripts/resolve-audit-spawn.sh"
   HOOK="$REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
 
+  # One entry per arm of the allowlist, not just the first. The uniqueness
+  # invariant below is what stops a second copy of this set appearing in another
+  # tracked script and drifting from this one, and an arm it does not name is an
+  # arm that may be copied freely. Each string must be long enough to be unique
+  # to its arm: `public/*` alone occurs in ordinary path handling elsewhere, so
+  # the arm's full text is what gets searched.
   ALLOWLIST_LITERAL='wiki/*|.claude/*|.specify/*|.gaia/*|docs/*'
+  ALLOWLIST_ARM_PUBLIC='public/*) return 0 ;;'
+  ALLOWLIST_ARM_ROOT='LICENSE|.gitignore|.editorconfig'
 }
 
 # Extract a named function's body (from its `name() {` line through the next
@@ -40,11 +48,18 @@ extract_function() {
 # case-arm literal lives in exactly one tracked file.
 # ---------------------------------------------------------------------------
 
-@test "exactly one classifier: the out-of-scope allowlist literal lives in one tracked file" {
-  matches="$(git -C "$REPO_ROOT" grep -lF -- "$ALLOWLIST_LITERAL" -- '*.sh')"
-  count="$(printf '%s\n' "$matches" | grep -c .)"
-  [ "$count" -eq 1 ]
-  grep -qxF ".claude/hooks/lib/audit-scope.sh" <<<"$matches" || return 1
+@test "exactly one classifier: every out-of-scope allowlist arm lives in one tracked file" {
+  while IFS= read -r lit; do
+    [ -n "$lit" ] || continue
+    matches="$(git -C "$REPO_ROOT" grep -lF -- "$lit" -- '*.sh')"
+    count="$(printf '%s\n' "$matches" | grep -c .)"
+    [ "$count" -eq 1 ] || return 1
+    grep -qxF ".claude/hooks/lib/audit-scope.sh" <<<"$matches" || return 1
+  done <<EOF
+$ALLOWLIST_LITERAL
+$ALLOWLIST_ARM_PUBLIC
+$ALLOWLIST_ARM_ROOT
+EOF
 }
 
 # ---------------------------------------------------------------------------

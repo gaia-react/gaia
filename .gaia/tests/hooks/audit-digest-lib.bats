@@ -249,7 +249,15 @@ mutate_commit() {
   for p in .editorconfig .gitignore LICENSE public/logo.svg; do
     refs="$(mutate_commit "$ROOT" "$p")"
     a="${refs% *}"; b="${refs#* }"
-    [ "$(digest_of "$ROOT" code-audit-frontend "$a")" = "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
+    da="$(digest_of "$ROOT" code-audit-frontend "$a")"
+    # Anchor before comparing. Every assertion here is an equality between two
+    # digests, and digest_of prints nothing on its fail-closed path, so an
+    # engine that returned early would satisfy every iteration by comparing one
+    # empty string to another. The sibling rotating row is safe from this by
+    # shape, since it asserts inequality and two empties fail that; this one is
+    # not.
+    [ "${#da}" -eq 64 ] || return 1
+    [ "$da" = "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
   done
 }
 
