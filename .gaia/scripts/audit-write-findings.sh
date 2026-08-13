@@ -17,7 +17,9 @@
 #
 # Usage
 #   audit-write-findings.sh --root <path> --member <name> --base <sha>
-#                           --findings <file>|-  [--help|-h]
+#                           --findings <file>|-
+#                           [--review-base <sha> --base-reason <token>]
+#                           [--anchor-tree <tree>] [--help|-h]
 #
 #     --root      REQUIRED. The audited working root. The sidecar lands under
 #                 <root>/.gaia/local/audit/, and the audit key's branch half is
@@ -29,7 +31,24 @@
 #     --findings  REQUIRED. Path to a JSON array of finding objects, or `-` to
 #                 read that array from stdin. `[]` is valid and meaningful: the
 #                 member ran and found nothing countable.
+#     --review-base OPTIONAL. The PER-MEMBER review base sha
+#                 (.github/audit/resolve-audit-base.sh --member), distinct from
+#                 --base above (the SHARED artifact key). Must be paired with
+#                 --base-reason: exactly one present is a usage error.
+#     --base-reason OPTIONAL. The reason token the resolver emitted for
+#                 --review-base. Paired with it as above.
+#     --anchor-tree OPTIONAL. The recorded tree of the clearance that anchored
+#                 the per-member base, or an empty value on every path where no
+#                 clearance anchored it. Independent of the pairing rule: valid
+#                 present or absent regardless of --review-base/--base-reason.
 #     --help | -h Usage, exit 0.
+#
+#   The pairing rule for --review-base/--base-reason is on flag PRESENCE, not
+#   value emptiness: exactly one present is exit 2 naming the missing flag;
+#   both present with an empty value is not an error, it just omits the
+#   resulting review_base key (an empty BASE_SHA is a documented, reachable
+#   state the agent fences already warn about, and keying the error to
+#   emptiness would make that state skip the report of record entirely).
 #
 # Path (frozen; the key gaia_audit_key computes)
 #   <root>/.gaia/local/audit/<base-sha>.<branch-slug>.<member>.findings.json
@@ -58,6 +77,16 @@
 #
 # Written shape (schema 1; the shape post-findings-block.sh merges)
 #   {"schema":1,"member":"<name>","findings":[ {<finding>}, ... ]}
+#   With --review-base and --base-reason both present and non-empty, one
+#   additive key:
+#   {"schema":1,"member":"<name>","findings":[...],
+#    "review_base":{"sha":"<review-base>","reason":"<base-reason>",
+#                   "anchor_tree":"<anchor-tree>"}}
+#   `anchor_tree` is present only when --anchor-tree was itself present with a
+#   non-empty value. `review_base` carries the per-member decision this
+#   member's fence made (SPEC lifecycle step 8: the base, the reason, and the
+#   clearance that anchored it) -- schema stays 1 because `.findings`, the
+#   only shape any reader depends on, is unchanged and this key is optional.
 #
 # Output contract
 #   Exit 0 and the written path on stdout, OR exit 0 and one decline line when
@@ -85,12 +114,19 @@ set -uo pipefail
 usage() {
   cat <<'EOF' >&2
 usage: audit-write-findings.sh --root <path> --member <name> --base <sha>
-                               --findings <file>|- [--help|-h]
+                               --findings <file>|-
+                               [--review-base <sha> --base-reason <token>]
+                               [--anchor-tree <tree>] [--help|-h]
 
-  --root      the audited working root (the sidecar lands under it).
-  --member    the Code Audit Team member writing the sidecar.
-  --base      the incremental audit base sha (keyed with this tree's branch).
-  --findings  a JSON array of finding objects, or `-` for stdin. `[]` is valid.
+  --root        the audited working root (the sidecar lands under it).
+  --member      the Code Audit Team member writing the sidecar.
+  --base        the incremental audit base sha (keyed with this tree's branch).
+  --findings    a JSON array of finding objects, or `-` for stdin. `[]` is valid.
+  --review-base the per-member review base sha. Must be paired with
+                --base-reason: exactly one present is a usage error.
+  --base-reason the resolver's reason token for --review-base.
+  --anchor-tree the clearance tree that anchored --review-base. Independently
+                optional; never part of the pairing rule.
 
 Each finding requires finding_class, severity (error|warning|suggestion), path,
 line, title, failure_mode, verified_by, and suggested_fix. area_tags is
@@ -108,6 +144,12 @@ ROOT=""
 MEMBER=""
 BASE=""
 FINDINGS_INPUT=""
+REVIEW_BASE=""
+REVIEW_BASE_SET=0
+BASE_REASON=""
+BASE_REASON_SET=0
+ANCHOR_TREE=""
+ANCHOR_TREE_SET=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -125,6 +167,21 @@ while [ "$#" -gt 0 ]; do
       ;;
     --findings)
       FINDINGS_INPUT="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --review-base)
+      REVIEW_BASE="${2:-}"
+      REVIEW_BASE_SET=1
+      shift 2 2>/dev/null || shift
+      ;;
+    --base-reason)
+      BASE_REASON="${2:-}"
+      BASE_REASON_SET=1
+      shift 2 2>/dev/null || shift
+      ;;
+    --anchor-tree)
+      ANCHOR_TREE="${2:-}"
+      ANCHOR_TREE_SET=1
       shift 2 2>/dev/null || shift
       ;;
     --help|-h)
@@ -146,6 +203,21 @@ for _pair in "root:$ROOT" "member:$MEMBER" "base:$BASE" "findings:$FINDINGS_INPU
     exit 2
   fi
 done
+
+# The pairing rule is on flag PRESENCE, never on value emptiness (see the
+# header's Usage section): exactly one of --review-base/--base-reason present
+# is a usage error naming the missing flag. Both present, even with an empty
+# value, is not an error here -- the render step below decides whether an
+# empty value omits the review_base key.
+if [ "$REVIEW_BASE_SET" -ne "$BASE_REASON_SET" ]; then
+  if [ "$REVIEW_BASE_SET" -eq 1 ]; then
+    err "--base-reason is required when --review-base is present"
+  else
+    err "--review-base is required when --base-reason is present"
+  fi
+  usage
+  exit 2
+fi
 
 command -v jq >/dev/null 2>&1 || {
   err "jq is required to write a findings sidecar"
@@ -250,18 +322,44 @@ mkdir -p "$audit_dir" || {
 #    and the merge-gate-adjacent readers treat those differently.
 # -----------------------------------------------------------------------------
 
+# HAS_REVIEW_BASE gates the whole additive object: the pair must be present
+# (already enforced above) AND both values non-empty. HAS_ANCHOR_TREE is
+# independent, matching the header's rule that --anchor-tree never enters the
+# pairing predicate.
+HAS_REVIEW_BASE=false
+if [ "$REVIEW_BASE_SET" -eq 1 ] && [ -n "$REVIEW_BASE" ] && [ -n "$BASE_REASON" ]; then
+  HAS_REVIEW_BASE=true
+fi
+HAS_ANCHOR_TREE=false
+if [ "$ANCHOR_TREE_SET" -eq 1 ] && [ -n "$ANCHOR_TREE" ]; then
+  HAS_ANCHOR_TREE=true
+fi
+
 tmp="$(mktemp "${audit_dir}/.audit-write-findings.XXXXXX" 2>/dev/null || true)"
 if [ -z "$tmp" ]; then
   err "cannot create temp file in '$audit_dir'"
   exit 2
 fi
 
+# review_base is appended the same way audit-write-clearance.sh appends its
+# optional supersedes block (audit-write-clearance.sh:354-375): a conditional
+# `+ (if ... then {...} else {} end)` on the same object literal, every value
+# passed through --arg so it stays escaped by construction.
 if ! printf '%s' "$raw" | jq -c \
   --arg member "$MEMBER" \
+  --argjson has_review_base "$HAS_REVIEW_BASE" \
+  --argjson has_anchor_tree "$HAS_ANCHOR_TREE" \
+  --arg review_base "$REVIEW_BASE" \
+  --arg base_reason "$BASE_REASON" \
+  --arg anchor_tree "$ANCHOR_TREE" \
   '{schema: 1, member: $member,
     findings: [.[]
       | . + {area_tags: (.area_tags
-             // [(if (.path | test("/")) then (.path | sub("/[^/]*$"; "")) else "." end)])}]}' \
+             // [(if (.path | test("/")) then (.path | sub("/[^/]*$"; "")) else "." end)])}]}
+   + (if $has_review_base
+      then {review_base: ({sha: $review_base, reason: $base_reason}
+            + (if $has_anchor_tree then {anchor_tree: $anchor_tree} else {} end))}
+      else {} end)' \
   > "$tmp"; then
   rm -f "$tmp"
   err "cannot render the findings sidecar"

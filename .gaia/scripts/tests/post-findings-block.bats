@@ -484,3 +484,94 @@ extract_payload() {
   command -v shellcheck >/dev/null 2>&1 || skip "shellcheck not available"
   shellcheck "$SCRIPT"
 }
+
+# review_bases: the merged per-member decision record (task-findings-record
+# contract D). Always present in the payload, possibly [].
+
+# write_sidecar_rb <member> <findings-json-array> <review_base-json-or-empty>
+write_sidecar_rb() {
+  local member="$1" findings="$2" review_base="$3"
+  if [ -n "$review_base" ]; then
+    jq -cn --arg m "$member" --argjson f "$findings" --argjson rb "$review_base" \
+      '{schema:1, member:$m, findings:$f, review_base:$rb}' \
+      > "$AUDIT_DIR/${AUDIT_KEY}.${member}.findings.json"
+  else
+    write_sidecar "$member" "$findings"
+  fi
+}
+
+@test "review_bases is [] when no sidecar carries the key" {
+  write_sidecar code-audit-frontend '[]'
+  stub_gh '[]'
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  payload="$(extract_payload)"
+  [ "$(jq -e 'has("review_bases")' <<<"$payload")" = "true" ]
+  [ "$(jq -c '.review_bases' <<<"$payload")" = "[]" ]
+}
+
+@test "review_bases carries one entry per sidecar carrying review_base, in sorted sidecar order" {
+  write_sidecar_rb code-audit-frontend '[]' '{"sha":"aaa111","reason":"member-clearance","anchor_tree":"treeA"}'
+  write_sidecar_rb code-audit-maintainer-shell '[]' '{"sha":"bbb222","reason":"team-signal","anchor_tree":""}'
+  stub_gh '[]'
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  payload="$(extract_payload)"
+  [ "$(jq '.review_bases | length' <<<"$payload")" = "2" ]
+  # AUDIT_KEY sorts "code-audit-frontend" before "code-audit-maintainer-shell".
+  first="$(jq -c '.review_bases[0]' <<<"$payload")"
+  second="$(jq -c '.review_bases[1]' <<<"$payload")"
+  [ "$(jq -r '.member' <<<"$first")" = "code-audit-frontend" ]
+  [ "$(jq -r '.sha' <<<"$first")" = "aaa111" ]
+  [ "$(jq -r '.reason' <<<"$first")" = "member-clearance" ]
+  [ "$(jq -r '.anchor_tree' <<<"$first")" = "treeA" ]
+  [ "$(jq -r '.member' <<<"$second")" = "code-audit-maintainer-shell" ]
+  [ "$(jq -r '.anchor_tree' <<<"$second")" = "" ]
+}
+
+@test "a sidecar with no review_base key contributes no review_bases entry" {
+  write_sidecar_rb code-audit-frontend '[]' '{"sha":"aaa111","reason":"member-clearance","anchor_tree":""}'
+  write_sidecar code-audit-maintainer-shell '[]'
+  stub_gh '[]'
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  payload="$(extract_payload)"
+  [ "$(jq '.review_bases | length' <<<"$payload")" = "1" ]
+  [ "$(jq -r '.review_bases[0].member' <<<"$payload")" = "code-audit-frontend" ]
+}
+
+@test "a malformed review_base (string instead of object) is skipped, named on stderr, findings still merge" {
+  member="code-audit-frontend"
+  findings='[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
+  jq -cn --arg m "$member" --argjson f "$findings" \
+    '{schema:1, member:$m, findings:$f, review_base:"not-an-object"}' \
+    > "$AUDIT_DIR/${AUDIT_KEY}.${member}.findings.json"
+  stub_gh '[]'
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  grep -qF "malformed review_base" <<<"$output"
+  payload="$(extract_payload)"
+  [ "$(jq '.findings | length' <<<"$payload")" = "1" ]
+  [ "$(jq -c '.review_bases' <<<"$payload")" = "[]" ]
+}
+
+@test "a malformed review_base (object missing sha) is skipped, named on stderr, findings still merge" {
+  write_sidecar_rb code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]' '{"reason":"member-clearance"}'
+  stub_gh '[]'
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  grep -qF "malformed review_base" <<<"$output"
+  payload="$(extract_payload)"
+  [ "$(jq '.findings | length' <<<"$payload")" = "1" ]
+  [ "$(jq -c '.review_bases' <<<"$payload")" = "[]" ]
+}
+
+@test "review_bases never leaks finding text (only member/sha/reason/anchor_tree)" {
+  write_sidecar_rb code-audit-frontend '[]' '{"sha":"aaa111","reason":"member-clearance","anchor_tree":"treeA"}'
+  stub_gh '[]'
+  run run_script --base "$BASE"
+  [ "$status" -eq 0 ]
+  payload="$(extract_payload)"
+  entry="$(jq -c '.review_bases[0]' <<<"$payload")"
+  [ "$(jq -r '[keys[]] | sort | join(",")' <<<"$entry")" = "anchor_tree,member,reason,sha" ]
+}

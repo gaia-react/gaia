@@ -142,6 +142,40 @@ LEDGER=".gaia/local/audit/${BASE_SHA}.rerun.json"
   grep -qF '${base}.code-audit-maintainer-prose.findings.json' <<<"$output" || return 1
 }
 
+BAD_LEDGER_LITERAL_KEY_BASE='```bash
+LEDGER=".gaia/local/audit/${KEY_BASE}.rerun.json"
+```
+'
+
+GOOD_LEDGER_VIA_KEY_LIB='```bash
+. .gaia/scripts/audit-key-lib.sh
+LEDGER=".gaia/local/audit/$(gaia_audit_key "$KEY_BASE").rerun.json"
+```
+'
+
+@test "fixture: a bare \${KEY_BASE}.rerun.json ledger literal fails assertion 1" {
+  local repo
+  repo="$(make_fixture_repo bad-ledger-key-base)"
+  write_agent_file "$repo" code-audit-frontend.md "$BAD_LEDGER_LITERAL_KEY_BASE"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_key_callers "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "code-audit-frontend.md" <<<"$output" || return 1
+  grep -qF '${KEY_BASE}.rerun.json' <<<"$output" || return 1
+  grep -qF "bare BASE_SHA/base literal sidecar-or-ledger paths found: 1" <<<"$output" || return 1
+}
+
+@test "fixture: a rerun path built through gaia_audit_key from KEY_BASE does not trip assertion 1" {
+  local repo
+  repo="$(make_fixture_repo good-ledger-key-base)"
+  write_agent_file "$repo" code-audit-frontend.md "$GOOD_LEDGER_VIA_KEY_LIB"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_key_callers "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "bare BASE_SHA/base literal sidecar-or-ledger paths found: 0" <<<"$output" || return 1
+  grep -qF "agent files naming a sidecar/ledger without a gaia_audit_key call: 0" <<<"$output" || return 1
+}
+
 @test "fixture: a leftover bad literal fails assertion 1 even when the file also calls gaia_audit_key elsewhere" {
   local repo
   repo="$(make_fixture_repo half-converted)"

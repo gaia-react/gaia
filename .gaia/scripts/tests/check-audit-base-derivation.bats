@@ -324,6 +324,49 @@ The retired form was BASE_SHA=$(git merge-base HEAD main)BASE_REF and nothing el
   grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
 }
 
+# KEY_BASE joins FULL_BASE in the by-name exemption (contract F). Its call
+# passes KEY_REF rather than BASE_REF, so the positive BASE_REF rule cannot
+# exempt it on its own; only the by-name check can, and only for the exact
+# name, not a lookalike.
+KEY_BASE_DERIVED_OK='Agent prose.
+```bash
+BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)"
+BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
+KEY_REF="$BASE_REF"
+KEY_BASE="$(git -C "$AUDIT_ROOT" merge-base "${KEY_REF}" HEAD 2>/dev/null || true)"
+```
+'
+
+# A variable that merely resembles KEY_BASE. The exemption is by name, so this
+# must still fail: widening it to "anything that looks like a key base" would
+# reopen the hole the by-name rule exists to close.
+SOME_OTHER_BARE_MERGE_BASE='Agent prose.
+```bash
+SOME_OTHER=$(git merge-base HEAD main)
+```
+Derived per .github/audit/resolve-audit-base.sh.
+'
+
+@test "fixture: KEY_BASE derived through KEY_REF is exempt by name, same as FULL_BASE" {
+  local repo
+  repo="$(make_fixture_repo key-base-derived-ok)"
+  write_agent_file "$repo" code-audit-frontend.md "$KEY_BASE_DERIVED_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a variable merely resembling KEY_BASE is not exempt by name" {
+  local repo
+  repo="$(make_fixture_repo some-other-bare)"
+  write_agent_file "$repo" code-audit-maintainer-node.md "$SOME_OTHER_BARE_MERGE_BASE"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+}
+
 # ---------- assertion 2: every BASE_SHA namer names the resolver ----------
 
 @test "fixture: a file naming BASE_SHA without ever naming the resolver fails assertion 2" {
@@ -836,6 +879,44 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" | sort -z)
   # Both calls are correctly ranged, so assertion 3 stays green and the line is
   # condemned by the token test alone.
   grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+}
+
+# KEY_BASE joined the `consumes` spelling list assertions 3 and 4 share
+# (contract F). No real derivation diffs against it today, but the net has to
+# catch a future one on the new variable exactly as it catches the other four
+# spellings.
+DIFF_KEY_BASE_TWO_DOT_NO_Z='Agent prose, per .github/audit/resolve-audit-base.sh.
+```bash
+changed=$(git -C "$AUDIT_ROOT" diff --name-only "${KEY_BASE}" -- x)
+```
+'
+
+DIFF_KEY_BASE_THREE_DOT_OK='Agent prose, per .github/audit/resolve-audit-base.sh.
+```bash
+changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${KEY_BASE}...HEAD" -- x)
+```
+'
+
+@test "fixture: a two-dot, unquoted diff on KEY_BASE fails both assertions 3 and 4" {
+  local repo
+  repo="$(make_fixture_repo diff-key-base-two-dot)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_KEY_BASE_TWO_DOT_NO_Z"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
+}
+
+@test "fixture: the three-dot -z form on KEY_BASE passes both assertions 3 and 4" {
+  local repo
+  repo="$(make_fixture_repo diff-key-base-three-dot)"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_KEY_BASE_THREE_DOT_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+  grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
 }
 
 # ---------- real repo: the standing guarantee ----------

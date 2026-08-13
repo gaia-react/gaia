@@ -86,14 +86,26 @@
 # Rendered block shape (frozen, matches parse-findings-block.ts)
 #   <!-- gaia-harden:findings:start -->
 #   <!--
-#   {"schema":1,"pr_number":N,"auditor":"local","findings":[ ... ]}
+#   {"schema":1,"pr_number":N,"auditor":"local","findings":[ ... ],
+#    "review_bases":[{"member":"...","sha":"...","reason":"...",
+#                     "anchor_tree":"..."}]}
 #   -->
 #   <!-- gaia-harden:findings:end -->
+#
+#   review_bases is ALWAYS present, possibly []. One entry per valid sidecar
+#   carrying a well-formed `review_base` (audit-write-findings.sh), built from
+#   that sidecar's .member, .review_base.sha, .review_base.reason, and
+#   .review_base.anchor_tree (the empty string when the sidecar omits it). A
+#   sidecar with no `review_base` key contributes no entry. `review_bases`
+#   carries no finding text -- it is the per-member decision record (SPEC
+#   lifecycle step 8), not a channel for anything the "Projection to the
+#   block" note above already excludes.
 #
 # Merge order
 #   Sidecar paths are sorted `LC_ALL=C sort` before merging, matching the
 #   dispatch resolver's own sort discipline, so the merged array's order is
-#   deterministic across runs given the same sidecar set.
+#   deterministic across runs given the same sidecar set. review_bases follows
+#   the same sorted sidecar order.
 #
 # Malformed sidecars (never crash, never silently vanish)
 #   A sidecar that is not valid JSON, or whose `.findings` is not a JSON
@@ -101,6 +113,13 @@
 #   OTHER valid sidecar is still posted. If every matched sidecar is
 #   malformed, the run declines `no sidecars` (there is nothing valid to
 #   post), each bad file still named individually on stderr first.
+#
+#   A malformed `review_base` on an otherwise-valid sidecar (a string instead
+#   of an object, or an object missing `sha`) is narrower: that ONE
+#   review_bases entry is skipped and named on stderr, but the sidecar's
+#   findings still merge normally. A jq failure while building review_bases
+#   degrades the whole array to `[]` with a stderr note rather than aborting
+#   the post -- the findings are the load-bearing half, review_bases a rider.
 #
 # Filename collision with a clearance marker: PROVABLY NONE
 #   A clearance marker/refusal/dispositions-sidecar is keyed to a member's
@@ -242,6 +261,37 @@ if [ "${#valid_files[@]}" -eq 0 ]; then
 fi
 
 # -----------------------------------------------------------------------------
+# 2b. Build review_bases: one entry per valid sidecar carrying a well-formed
+#     review_base, in the same sorted order valid_files already holds. A
+#     sidecar with no review_base contributes nothing; a malformed one (not an
+#     object, or missing sha) is skipped and named on stderr without touching
+#     that sidecar's findings, already accounted for above.
+# -----------------------------------------------------------------------------
+
+review_base_entries=()
+for f in ${valid_files[@]+"${valid_files[@]}"}; do
+  jq -e 'has("review_base")' "$f" >/dev/null 2>&1 || continue
+  if ! jq -e '(.review_base | type) == "object" and ((.review_base.sha // "") != "")' "$f" >/dev/null 2>&1; then
+    emit_error "malformed review_base, skipping entry: $f"
+    continue
+  fi
+  entry="$(jq -c '{member: (.member // ""), sha: .review_base.sha,
+                   reason: (.review_base.reason // ""),
+                   anchor_tree: (.review_base.anchor_tree // "")}' "$f" 2>/dev/null || true)"
+  [ -n "$entry" ] && review_base_entries+=("$entry")
+done
+
+review_bases="[]"
+if [ "${#review_base_entries[@]}" -gt 0 ]; then
+  if built="$(printf '%s\n' ${review_base_entries[@]+"${review_base_entries[@]}"} | jq -sc . 2>&1)" \
+    && printf '%s' "$built" | jq -e 'type == "array"' >/dev/null 2>&1; then
+    review_bases="$built"
+  else
+    emit_error "cannot render review_bases, degrading to []: $built"
+  fi
+fi
+
+# -----------------------------------------------------------------------------
 # 3. gh must be present and authenticated before anything gh-shaped happens
 #    (fail-safe asymmetry, exactly as post-audit-status.sh has it): the
 #    sidecars themselves are untouched either way.
@@ -292,7 +342,9 @@ m="${#valid_files[@]}"
 payload="$(jq -nc \
   --argjson pr "$PR" \
   --argjson findings "$merged_findings" \
-  '{schema: 1, pr_number: $pr, auditor: "local", findings: $findings}' 2>/dev/null || true)"
+  --argjson review_bases "$review_bases" \
+  '{schema: 1, pr_number: $pr, auditor: "local", findings: $findings,
+    review_bases: $review_bases}' 2>/dev/null || true)"
 if [ -z "$payload" ]; then
   emit_error "could not render the findings payload"
   emit_decline "post failed"
