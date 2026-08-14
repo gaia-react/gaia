@@ -314,6 +314,12 @@
       "why": "Reads .gaia/automation.json, a tracked repo-relative config file, not .gaia/local state; touches no tree-scoped state."
     },
     {
+      "hook": ".claude/hooks/lib/gaia-version.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Reads the tracked .gaia/VERSION file at a path its caller supplies; derives no root of its own and touches no tree-scoped state."
+    },
+    {
       "hook": ".claude/hooks/lib/red-ledger.sh",
       "scope": "per-tree",
       "state": ["red-ledger"],

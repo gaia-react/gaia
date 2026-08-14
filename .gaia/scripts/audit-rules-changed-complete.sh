@@ -62,6 +62,7 @@ GLOBAL_RULES_FILES="$(cat <<'EOF'
 .claude/hooks/lib/audit-clearance.sh
 .claude/hooks/lib/audit-digest.sh
 .claude/hooks/lib/audit-rules-changed.sh
+.claude/hooks/lib/gaia-version.sh
 .gaia/scripts/audit-write-clearance.sh
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-key-lib.sh

@@ -325,14 +325,22 @@ fi
 # ---------------------------------------------------------------------------
 # 6. Nothing pending: stamp success.
 #
-# A MISSING .gaia/VERSION reaches here identically to an empty one: the read is
-# a PIPELINE, so a failed redirect still leaves awk exiting 0 on no input and
-# the substitution yields "". Neither shape trips `set -e`, so both land on the
-# guard below having posted NOTHING.
+# A MISSING .gaia/VERSION reaches here identically to an empty one: the shared
+# normalizer answers "" for both by contract and exits 0, so neither shape trips
+# `set -e` and both land on the guard below having posted NOTHING. The version
+# this stamps is the same literal every reader compares against because both
+# sides derive it here.
 # ---------------------------------------------------------------------------
-version="$(tr -d '\r' < "$repo_root/.gaia/VERSION" | awk 'NF{print; exit}')"
-version="${version#"${version%%[![:space:]]*}"}"
-version="${version%"${version##*[![:space:]]}"}"
+version_lib="$repo_root/.claude/hooks/lib/gaia-version.sh"
+if [ -f "$version_lib" ]; then
+  # shellcheck source=/dev/null
+  . "$version_lib" 2>/dev/null || true
+fi
+if ! command -v gaia_read_version >/dev/null 2>&1; then
+  decline "version normalizer unavailable (.claude/hooks/lib/gaia-version.sh); skipping status."
+fi
+
+version="$(gaia_read_version "$repo_root/.gaia/VERSION")"
 if [ -z "$version" ]; then
   decline ".gaia/VERSION missing/empty; skipping status."
 fi

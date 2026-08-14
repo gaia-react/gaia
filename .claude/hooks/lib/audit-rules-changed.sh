@@ -44,6 +44,13 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 .claude/hooks/lib/audit-clearance.sh
 .claude/hooks/lib/audit-digest.sh
 .claude/hooks/lib/audit-rules-changed.sh
+# gaia-version.sh derives the version literal every producer stamps and every
+# reader compares for equality, so a change to it can make a standing clearance
+# stop matching. It is global for the same reason the stampers and readers that
+# used to hold the idiom inline (audit-stamp-trailer.sh, post-audit-status.sh,
+# pr-merge-audit-check.sh, resolve-audit-base.sh) already are: extracting the
+# logic must not quietly demote the tier it was reviewed under.
+.claude/hooks/lib/gaia-version.sh
 .gaia/scripts/audit-write-clearance.sh
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-key-lib.sh

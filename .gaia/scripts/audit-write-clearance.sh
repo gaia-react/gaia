@@ -124,12 +124,16 @@ err() {
   printf 'audit-write-clearance: %s\n' "$1" >&2
 }
 
-# Resolve the digest engine from THIS file's own on-disk location, never cwd,
-# never $ROOT: .gaia/scripts -> ../../.claude/hooks/lib.
+# Resolve the digest engine and the version normalizer from THIS file's own
+# on-disk location, never cwd, never $ROOT: .gaia/scripts -> ../../.claude/hooks/lib.
 _write_clearance_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
 if [ -n "${_write_clearance_lib_dir:-}" ] && [ -f "$_write_clearance_lib_dir/audit-digest.sh" ]; then
   # shellcheck source=/dev/null
   . "$_write_clearance_lib_dir/audit-digest.sh"
+fi
+if [ -n "${_write_clearance_lib_dir:-}" ] && [ -f "$_write_clearance_lib_dir/gaia-version.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_write_clearance_lib_dir/gaia-version.sh"
 fi
 
 # The ledger's key rule, shared with every other worktree-partitioned artifact.
@@ -280,11 +284,12 @@ sha="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
 # Version is the .gaia/VERSION literal under the root. Advisory data, never a
 # merge-gate contract.
 version=""
-version_file="${ROOT}/.gaia/VERSION"
-if [ -f "$version_file" ]; then
-  version="$(tr -d '\r' < "$version_file" | awk 'NF{print; exit}')"
-  version="${version#"${version%%[![:space:]]*}"}"
-  version="${version%"${version##*[![:space:]]}"}"
+if command -v gaia_read_version >/dev/null 2>&1; then
+  version="$(gaia_read_version "${ROOT}/.gaia/VERSION")"
+else
+  # Degrade exactly as an absent VERSION file does rather than failing the
+  # write: the marker's validity key is the digest above, not this field.
+  err "version normalizer unavailable (.claude/hooks/lib/gaia-version.sh); recording an empty version"
 fi
 
 # Two sidecar flags, because there are two sidecars and one field cannot answer

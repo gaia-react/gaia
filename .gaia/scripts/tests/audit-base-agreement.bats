@@ -247,6 +247,7 @@ make_repo() {
   cp "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" "$dir/.claude/hooks/lib/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$dir/.claude/hooks/lib/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" "$dir/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" "$dir/.claude/hooks/lib/"
   if [ "$include_machinery_lib" = "yes" ]; then
     cp "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" "$dir/.claude/hooks/lib/"
   fi

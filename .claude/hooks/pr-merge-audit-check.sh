@@ -169,8 +169,9 @@ fi
 _scope_lib="$_lib_dir/audit-scope.sh"
 _machinery_lib="$_lib_dir/audit-machinery.sh"
 _digest_lib="$_lib_dir/audit-digest.sh"
-if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ] || [ ! -f "$_digest_lib" ]; then
-  jq -n --arg r "PR merge gate: cannot load the ownership classifier or the digest engine (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, and .claude/hooks/lib/audit-digest.sh must all exist and be readable). Every marker check below is keyed to a member's content digest, and this gate's out-of-scope and self-mod-only bypasses depend on the classifier to know what a changed path is, so it denies rather than guess. Restore all three files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+_version_lib="$_lib_dir/gaia-version.sh"
+if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ] || [ ! -f "$_digest_lib" ] || [ ! -f "$_version_lib" ]; then
+  jq -n --arg r "PR merge gate: cannot load the ownership classifier, the digest engine, or the version normalizer (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, and .claude/hooks/lib/gaia-version.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one, and this gate's out-of-scope and self-mod-only bypasses depend on the classifier to know what a changed path is, so it denies rather than guess. Restore all four files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -185,6 +186,8 @@ fi
 . "$_machinery_lib"
 # shellcheck source=/dev/null
 . "$_digest_lib"
+# shellcheck source=/dev/null
+. "$_version_lib"
 
 # The shared disposition-ledger logic (disposition_offenders). C4 re-verifies
 # code-audit-frontend's dispositions whenever its own earned digest marker is
@@ -345,13 +348,7 @@ GAIA_AUDIT_TRAILER_RE='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a
 # empty. Shared by check_trailer and check_github_status: both compare a
 # stamped version field against the same literal.
 _gate_current_version() {
-  local v=""
-  if [ -f ".gaia/VERSION" ]; then
-    v=$(tr -d '\r' < ".gaia/VERSION" | awk 'NF{print; exit}')
-    v="${v#"${v%%[![:space:]]*}"}"
-    v="${v%"${v##*[![:space:]]}"}"
-  fi
-  printf '%s' "$v"
+  gaia_read_version ".gaia/VERSION"
 }
 
 # Trailer fallback: accept a GAIA-Audit trailer on HEAD when its version and

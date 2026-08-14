@@ -38,6 +38,12 @@
 #   version-file-missing: skip=false; .gaia/VERSION missing or empty
 #                             (defensive: matches the stamp helper's
 #                             "no stamp without VERSION" invariant)
+#   version-lib-unavailable: skip=false; the shared version normalizer
+#                             (.claude/hooks/lib/gaia-version.sh) could not
+#                             be loaded, so this side of the version equality
+#                             cannot be derived the same way the stamping
+#                             side derives it. Fail-open toward re-audit,
+#                             never a skip on a version we did not read.
 #   digest-recompute-failed: skip=false; the frontend content digest could
 #                             not be recomputed (missing sha256 tool,
 #                             unloadable classifier/machinery lib, or a
@@ -54,6 +60,7 @@
 #   0 always. The workflow consumes the four output lines.
 #
 # References
+#   Version normalizer: .claude/hooks/lib/gaia-version.sh
 #   Digest engine:    .claude/hooks/lib/audit-digest.sh
 #   Digest CLI:        .gaia/scripts/audit-member-digest.sh
 #   Stamp helper:      .claude/hooks/audit-stamp-trailer.sh
@@ -110,17 +117,22 @@ if [ -z "$repo_root" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Read .gaia/VERSION
+# Read .gaia/VERSION through the shared normalizer. Every producer and reader of
+# the trailer's version field goes through the same function, so this side of
+# the equality can never drift from the stamping side.
 # -----------------------------------------------------------------------------
 
-version_file="${repo_root}/.gaia/VERSION"
-cur_version=""
-if [ -f "$version_file" ]; then
-  # Strip CR, take first non-blank line, trim whitespace.
-  cur_version=$(tr -d '\r' < "$version_file" | awk 'NF{print; exit}')
-  cur_version="${cur_version#"${cur_version%%[![:space:]]*}"}"
-  cur_version="${cur_version%"${cur_version##*[![:space:]]}"}"
+version_lib="${repo_root}/.claude/hooks/lib/gaia-version.sh"
+if [ -f "$version_lib" ]; then
+  # shellcheck source=/dev/null
+  . "$version_lib" 2>/dev/null || true
 fi
+if ! command -v gaia_read_version >/dev/null 2>&1; then
+  emit "false" "" "" "version-lib-unavailable"
+  exit 0
+fi
+
+cur_version="$(gaia_read_version "${repo_root}/.gaia/VERSION")"
 
 if [ -z "$cur_version" ]; then
   emit "false" "" "" "version-file-missing"

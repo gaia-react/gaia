@@ -53,6 +53,7 @@ setup() {
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" "$SANDBOX/.claude/hooks/lib/audit-digest.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" "$SANDBOX/.claude/hooks/lib/gaia-version.sh"
   cp "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
   chmod +x "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
 }
@@ -518,5 +519,27 @@ reason=trailer-matches"
 matched_version=
 matched_tree=
 reason=digest-recompute-failed"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 22. The version normalizer is unavailable. The trailer below WOULD match, so
+# a fallback that read the version some other way would skip here; the point of
+# the branch is that this side of the equality is only ever derived the one way
+# the stamping side derives it, and refuses when it cannot be.
+# -----------------------------------------------------------------------------
+
+@test "version normalizer unavailable: skip=false reason=version-lib-unavailable" {
+  digest=$(current_digest)
+  tree=$(current_tree)
+  amend_with_trailers "GAIA-Audit: 1.2.3 ${digest} ${tree}"
+  rm -f "$SANDBOX/.claude/hooks/lib/gaia-version.sh"
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=false
+matched_version=
+matched_tree=
+reason=version-lib-unavailable"
   [ "$output" = "$expected" ]
 }
