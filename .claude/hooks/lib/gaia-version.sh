@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# gaia-version.sh: the one .gaia/VERSION read-and-normalize point. Sourced,
-# never executed; does no work at source time.
+# gaia-version.sh: the one .gaia/VERSION read-and-normalize point for the
+# GAIA-Audit version equality. Sourced, never executed; does no work at source
+# time. The scope is that equality rather than every read of the file anywhere:
+# the release workflow normalizes the same file differently and on purpose, to
+# gate a release against a git tag, and nothing here is meant to reach it.
 #
 # The literal this produces is the first field of the GAIA-Audit trailer and of
 # the GAIA-Audit commit-status description, and every reader compares it for
@@ -28,7 +31,17 @@ gaia_read_version() {
 
   if [ -n "$file" ] && [ -f "$file" ]; then
     # Strip CR, take the first non-blank line, trim surrounding whitespace.
-    v=$(tr -d '\r' < "$file" | awk 'NF{print; exit}') || v=""
+    #
+    # The gsub runs in its own pattern-less block so it fires BEFORE the NF
+    # test, which is what makes this one process equivalent to piping `tr -d
+    # '\r'` into `awk 'NF{print; exit}'`. Testing NF first instead would change
+    # the answer on a line holding only a CR: awk's default field separator is
+    # blank and newline, and CR is neither, so such a line has NF of 1, gets
+    # selected, and prints empty, turning a readable version file into a
+    # missing one. Doing it in one process rather than a pipe also keeps the
+    # result independent of the caller's `pipefail`, which five of the seven
+    # call sites set.
+    v=$(awk '{ gsub(/\r/, "") } NF { print; exit }' "$file" 2>/dev/null) || v=""
     v="${v#"${v%%[![:space:]]*}"}"
     v="${v%"${v##*[![:space:]]}"}"
   fi

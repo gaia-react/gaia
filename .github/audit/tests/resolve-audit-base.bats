@@ -928,7 +928,7 @@ assert_global_reset_for() {
 }
 
 # -----------------------------------------------------------------------------
-# Library availability. Three libs decide the answer and their absence resets
+# Library availability. Four libs decide the answer and their absence resets
 # to full scope; the clearance reader's absence is the CONTRAST, because it is
 # the same condition as the empty store every continuous-integration run has.
 # -----------------------------------------------------------------------------
@@ -963,6 +963,15 @@ assert_degraded_without() {
 
 @test "degraded: the rules-tier predicate cannot be sourced" {
   assert_degraded_without "audit-rules-changed.sh"
+}
+
+# The version normalizer is sourced ahead of the library block the other three
+# share, because the version gate answers before the walk starts. Folding it
+# down into that block would put its `command -v` probe below the call it
+# guards, where an absent lib is a command-not-found that aborts the resolver
+# under `set -euo pipefail` instead of degrading it.
+@test "degraded: the version normalizer cannot be sourced" {
+  assert_degraded_without "gaia-version.sh"
 }
 
 @test "an absent clearance reader falls back to the floor rather than degrading" {

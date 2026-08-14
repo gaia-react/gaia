@@ -50,6 +50,17 @@ setup() {
   [ "$output" = "1.6.1" ]
 }
 
+# A line holding only a CR is blank once the CR is stripped, so it is skipped
+# like any other blank line. This pins the ordering inside the reader rather
+# than a caller-visible nicety: CR is not awk's default field separator, so a
+# reader that tested for a non-blank line BEFORE stripping would select this
+# line, print nothing, and report a readable version file as missing.
+@test "a CR-only line is blank and is skipped, not selected" {
+  printf '\r\n1.6.1\n' > "$TMP/VERSION"
+  run gaia_read_version "$TMP/VERSION"
+  [ "$output" = "1.6.1" ]
+}
+
 @test "surrounding whitespace is trimmed" {
   printf '   1.6.1\t \n' > "$TMP/VERSION"
   run gaia_read_version "$TMP/VERSION"
@@ -79,15 +90,33 @@ setup() {
   [ -z "$output" ]
 }
 
-# The structural pin. `tr -d '\r'` paired with `awk 'NF{print; exit}'` is the
-# read half of the idiom; the helper is the only file allowed to hold it. A
-# site that grows its own copy again reds here rather than at the point, some
-# releases later, where the two literals stop matching.
+# The structural pin. A CR strip paired with a first-non-blank-line awk select
+# is the read half of the idiom; the helper is the only file allowed to hold
+# it. A site that grows its own copy again reds here rather than at the point,
+# some releases later, where the two literals stop matching.
+#
+# Both halves match on a regex rather than a fixed string, so a copy that
+# merely reshuffles quoting or spacing (`tr -d "\r"`, `NF {print; exit}`) is
+# still caught; the pin is scoped to `*.sh`, which is every surface that can
+# source the helper.
 
 @test "the read-and-normalize idiom lives in exactly one tracked file" {
-  hits="$(cd "$REPO_ROOT" && git grep -lF -- "tr -d '\\r'" -- '*.sh' \
-    | while IFS= read -r f; do
-        grep -qF -- "NF{print; exit}" "$f" && printf '%s\n' "$f"
-      done)"
-  [ "$hits" = ".claude/hooks/lib/gaia-version.sh" ]
+  cr_strip='(tr -d .\\r.|gsub\(/\\r/)'
+  first_line='NF[[:space:]]*\{[[:space:]]*print;[[:space:]]*exit'
+
+  # The candidate walk uses `if`, not `grep && printf`: an `if` whose condition
+  # is false still exits 0, so a final candidate that does not match cannot
+  # leave the loop non-zero and abort the test under bats' `set -e` before its
+  # own assertion runs.
+  hits=""
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if grep -qE -- "$first_line" "$REPO_ROOT/$f"; then
+      hits="${hits}${f}
+"
+    fi
+  done <<<"$(cd "$REPO_ROOT" && git grep -lE -- "$cr_strip" -- '*.sh')"
+
+  [ "$hits" = ".claude/hooks/lib/gaia-version.sh
+" ]
 }
