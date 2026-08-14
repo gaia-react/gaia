@@ -54,6 +54,14 @@
 # become `| LC_ALL=C sort -z`, or the sort re-joins the records on newlines and
 # undoes the fix. Both BSD sort (macOS) and GNU sort accept `-z`.
 #
+# A consumer that COUNTS rather than iterates takes `| tr -cd '\0' | wc -c`,
+# never the `| tr '\0' '\n' | wc -l` round-trip above. Translating the records
+# back to newlines makes a path holding a literal newline count twice, so on a
+# counting consumer the repair advertised for an iterating one REGRESSES the
+# site it was applied to: the pre-repair quoted spelling counted correctly,
+# because quoting never splits a record. `-z` fixes the byte fidelity; only
+# counting the separators themselves fixes the arithmetic.
+#
 # Reference fixes: .gaia/scripts/resolve-audit-members.sh (the `changed`
 # derivation) and .gaia/tests/shell-lint.sh (the three discovery loops).
 #
@@ -89,30 +97,19 @@
 # hides the call from it: `git diff --cached --name-only` and the `--staged`
 # spelling are never checked for `-z`. The `ls-files` half does not have this
 # shape of hole, because it walks an option region instead of matching a fixed
-# string, and closing the `diff` half means giving it that same walk plus
-# repairing what the walk then reaches. That is tracked as its own work rather
-# than folded in here (gaia-react/gaia#1392), whose body carries the site table;
-# the sites split two ways, and conflating them misdirects whoever scopes it.
+# string.
 #
-#   IN this gate's surface, so a widened walk reds on them directly:
-#     .claude/hooks/red-verify-commit-check.sh  the only one that fails OPEN --
-#                                               a C-quoted staged test path
-#                                               matches no `app/*` pattern, so
-#                                               the RED-verify glob filter drops
-#                                               it and the guard passes having
-#                                               checked nothing
-#     .github/workflows/forensics-triage.yml    fails closed (spurious abort)
-#     .github/workflows/code-review-audit.yml   count and diagnostic only
-#     .husky/pre-commit                         unaffected in practice: its arms
-#                                               `grep 'app/'`, and the C-quoted
-#                                               spelling still contains that
-#                                               substring. Anchoring the pattern
-#                                               turns all four into live misses
+# Closing the `diff` half means giving it that same walk and then repairing what
+# the walk reaches. Of those sites only .claude/hooks/red-verify-commit-check.sh
+# fails OPEN: a C-quoted staged test path matches no `app/*` pattern, so the
+# RED-verify glob filter drops it and that guard passes having checked nothing.
+# The rest fail closed, miscount, or are unaffected.
 #
-#   OUTSIDE it, reached by no walk of this gate, because the scan surface below
-#   matches no `.tmpl`: the two `code-review-audit.yml.tmpl` copies under
-#   .gaia/cli/. They are drift-pinned mirrors of the workflow above, so the same
-#   repair has to carry to them, but this gate will never be what says so.
+# gaia-react/gaia#1392 owns the site table and the per-site failure directions,
+# and is the ONE place they are maintained. A copy kept here drifts against it,
+# which is not a hypothetical: this block carried such a copy for two rounds and
+# was corrected in each, once for naming sites this gate's surface cannot reach
+# and once for omitting the in-surface site carrying the live defect.
 #
 # So: the surface this file claims is at zero for `ls-files` and for the bare
 # `diff --name-only` spelling, which is what the tests below pin. It is NOT a
