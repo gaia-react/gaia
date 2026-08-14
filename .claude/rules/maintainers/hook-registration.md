@@ -1,11 +1,12 @@
 ---
 paths:
   - '.claude/hooks/**/*.sh'
+  - '.claude/rules/**/*.md'
 ---
 
-# Hook Registration
+# Hook and Rule Registration
 
-Adding a `.sh` file under `.claude/hooks/**` carries registration obligations that no line of the diff shows. Whole-directory checkers enforce them from the bats suites `audit-ci-tests.yml` runs, and neither checker belongs to the Quality Gate or any agent's stated oracle set, so a change can pass every local check and every audit round and red afterward on a file nobody was told to touch.
+Adding a `.sh` file under `.claude/hooks/**`, or a `.md` file under `.claude/rules/**`, carries registration obligations that no line of the diff shows. Whole-directory checkers enforce them from the bats suites `audit-ci-tests.yml` runs, and neither checker belongs to the Quality Gate or any agent's stated oracle set, so a change can pass every local check and every audit round and red afterward on a file nobody was told to touch.
 
 ## Rule
 
@@ -20,13 +21,15 @@ bash .gaia/scripts/check-hook-scope-manifest.sh
 - **merely-shared**, the ordinary answer: add the path to `AUDIT_MERELY_SHARED_PATHS` in `.gaia/scripts/audit-rules-changed-complete.sh`.
 - **global**, only for a library whose every change must reset every member's incremental review anchor: add it to `AUDIT_GLOBAL_RULES_PATHS` in `.claude/hooks/lib/audit-rules-changed.sh` **and** to the lockstep `GLOBAL_RULES_FILES` copy in `.gaia/scripts/audit-rules-changed-complete.sh`. Edit both by hand rather than leaning on the check to catch a half-edit: the lockstep assertion reds when the list names a path the predicate does not match, but not the reverse, so adding to the predicate alone reports green and leaves the copy silently drifted. Choose this tier deliberately: a merely-shared library mis-tiered as global discards every member's anchor on every later change to it.
 
-The third tier, `member`, matches only `.claude/agents/<member>.md` and never applies to a hook. A file in no tier fails the partition assertion:
+**A file under `.claude/rules/**` needs a tier for the same reason.** That prefix is machinery too, so a new rule file lands in the same partition, and the same two tiers are reachable. Answer it the way the tier's generating rule reads: global is for scope and belief, never for criteria. A rule that decides what the gate does with a clearance is global (`quality-gate.md` and `pr-merge.md` are the two, and they are the whole list); a rule that decides how code should be written is a coding convention and is merely-shared, which is the answer for nearly every rule file. Getting this wrong toward global is what makes a one-word convention edit re-scope every dispatched member.
+
+The third tier, `member`, matches only `.claude/agents/<member>.md` and never applies to a hook or a rule. A file in no tier fails the partition assertion:
 
 ```bash
 bash .gaia/scripts/audit-rules-changed-complete.sh
 ```
 
-Run both before opening the pull request. The second walks tracked files, so `git add` the new hook first or it reports green on a file it cannot see. The first walks the directory itself and catches an untracked file either way.
+Run both before opening the pull request. The second walks tracked files, so `git add` the new file first or it reports green on one it cannot see. The first walks the directory itself and catches an untracked hook either way.
 
 ## Why
 
