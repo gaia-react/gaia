@@ -40,8 +40,8 @@ gaia_read_version() {
     # blank and newline, and CR is neither, so such a line has NF of 1, gets
     # selected, and prints empty, turning a readable version file into a
     # missing one. Doing it in one process rather than a pipe also keeps the
-    # result independent of the caller's `pipefail`, which five of the seven
-    # call sites set.
+    # result independent of whether the caller set `pipefail`, which the call
+    # sites disagree on.
     v=$(awk '{ gsub(/\r/, "") } NF { print; exit }' "$file" 2>/dev/null) || v=""
     v="${v#"${v%%[![:space:]]*}"}"
     v="${v%"${v##*[![:space:]]}"}"

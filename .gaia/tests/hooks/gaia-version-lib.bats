@@ -101,12 +101,14 @@ setup() {
 #
 # The pathspec reaches `*.yml` and `*.tmpl` as well as `*.sh`, because a
 # workflow `run:` block holds shell without being a `.sh` file and a workflow
-# template renders into one that does.
+# template renders into one that does. It stays a pathspec rather than every
+# tracked file, so a copy in a `.bats` suite, a `.yaml`, or an extensionless
+# hook such as `.husky/pre-commit` is still invisible to it.
 #
-# What it still cannot catch is a site spelling the read its own way: both
-# regexes are written against this idiom, so a reader that answers differently
-# rather than identically matches neither half. The assertion below covers that
-# direction for the one site outside the audit equality.
+# What it cannot catch at any pathspec is a site spelling the read its own way:
+# both regexes are written against this idiom, so a reader that answers
+# differently rather than identically matches neither half. The assertion below
+# covers that direction for the one site outside the audit equality.
 
 @test "the read-and-normalize idiom lives in exactly one tracked file" {
   cr_strip='(tr -d .\\r.|gsub\(/\\r/)'
@@ -138,10 +140,15 @@ setup() {
 # the idiom pin above, so this assertion is what holds the site to the helper.
 
 @test "the release gate reads .gaia/VERSION through the helper" {
+  # Reds rather than skips on an absent workflow. This suite and the workflow
+  # are both release-excluded, so they only ever coexist, and the one way the
+  # path goes false is a rename, which is exactly when a pin must not retire
+  # itself. The argument matcher accepts either quoting, since the majority of
+  # the call sites quote it and normalizing to that form is a correct edit.
   release_workflow="$REPO_ROOT/.github/workflows/release.yml"
-  [ -f "$release_workflow" ] || skip "release.yml not present"
+  [ -f "$release_workflow" ] || return 1
 
-  grep -qF -- 'gaia_read_version .gaia/VERSION' "$release_workflow"
+  grep -qE -- 'gaia_read_version[[:space:]]+"?\.gaia/VERSION"?' "$release_workflow"
   grep -qE -- 'cat[[:space:]]+\.gaia/VERSION' "$release_workflow" && return 1
   true
 }
