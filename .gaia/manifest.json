@@ -51,6 +51,7 @@
     ".claude/hooks/lib/audit-selfheal-paths.sh": "owned",
     ".claude/hooks/lib/gaia-active-plan.sh": "owned",
     ".claude/hooks/lib/gaia-ci-defer.sh": "owned",
+    ".claude/hooks/lib/gaia-version.sh": "owned",
     ".claude/hooks/lib/red-ledger.sh": "owned",
     ".claude/hooks/lib/repo-scope.sh": "owned",
     ".claude/hooks/lib/worthiness-ledger.sh": "owned",
@@ -649,7 +650,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-14T03:31:51.529Z",
+  "generated": "2026-08-14T05:11:29.253Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
