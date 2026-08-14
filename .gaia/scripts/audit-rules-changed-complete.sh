@@ -52,8 +52,9 @@ if [ -z "$repo_root" ]; then
   }
 fi
 
-# 1. Lockstep completeness. Same content as AUDIT_GLOBAL_RULES_PATHS, with
-# the `/**` entry spelled as a concrete probe path.
+# 1. Lockstep completeness. Same content as AUDIT_GLOBAL_RULES_PATHS. Every
+# entry there is an exact path, so this list is a byte-for-byte mirror with no
+# prefix entry to spell out as a probe.
 GLOBAL_RULES_FILES="$(cat <<'EOF'
 .gaia/VERSION
 .gaia/audit-ci.yml
@@ -76,6 +77,7 @@ GLOBAL_RULES_FILES="$(cat <<'EOF'
 .claude/hooks/pr-merge-audit-check.sh
 .github/audit/resolve-audit-base.sh
 .claude/rules/quality-gate.md
+.claude/rules/pr-merge.md
 EOF
 )"
 
@@ -120,6 +122,41 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 .claude/hooks/lib/repo-scope.sh
 .claude/hooks/lib/worthiness-ledger.sh
 .claude/hooks/local-janitor.sh
+# The coding-convention half of .claude/rules/. That directory is machinery by
+# a `/**` prefix, so every file under it needs a tier; the two that govern the
+# gate are global (see audit-rules-changed.sh) and these are the rest, listed
+# one by one because this matcher takes exact paths only. A `/**` form here
+# could not express the split: it would sweep the two global rules back in and
+# assertion 3 would red them as an overlap. Adding a rule file without adding
+# it here reds by name in assertion 3, which is the intended discovery path;
+# the maintainer-only hook-and-rule registration rule states the obligation.
+.claude/rules/accessibility.md
+.claude/rules/api-service.md
+.claude/rules/bats-assertions.md
+.claude/rules/code-comments.md
+.claude/rules/code-search.md
+.claude/rules/coding-guidelines.md
+.claude/rules/dep-audit.md
+.claude/rules/design-baseline.md
+.claude/rules/gaia-folder.md
+.claude/rules/i18n.md
+.claude/rules/instruction-files.md
+.claude/rules/knip.md
+# gaia:maintainer-only:start
+.claude/rules/maintainers/github-workflow-distribution.md
+.claude/rules/maintainers/hook-registration.md
+.claude/rules/maintainers/smoke.md
+# gaia:maintainer-only:end
+.claude/rules/playwright.md
+.claude/rules/react-router-docs.md
+.claude/rules/repo-relative-paths.md
+.claude/rules/routes.md
+.claude/rules/serena-cc-override.md
+.claude/rules/shell-cwd.md
+.claude/rules/state-pattern.md
+.claude/rules/storybook.md
+.claude/rules/tailwind.md
+.claude/rules/wiki-style.md
 # gaia:maintainer-only:start
 .gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl
 # gaia:maintainer-only:end

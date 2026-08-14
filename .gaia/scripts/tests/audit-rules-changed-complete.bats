@@ -91,7 +91,7 @@ make_sandbox() {
   # AUDIT_GLOBAL_RULES_PATHS heredoc too makes it classified by both tiers at
   # once. The insert must land before the heredoc's own EOF terminator, not
   # merely at the end of the file, or the literal is untouched.
-  awk '{print} /^\.claude\/rules\/\*\*$/{print ".claude/hooks/local-janitor.sh"}' \
+  awk '{print} /^\.claude\/rules\/pr-merge\.md$/{print ".claude/hooks/local-janitor.sh"}' \
     "$RULES_LIB" > "$SB/.claude/hooks/lib/audit-rules-changed.sh"
   git -C "$SB" add -A
 

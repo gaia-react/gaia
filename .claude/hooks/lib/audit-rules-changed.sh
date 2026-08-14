@@ -10,6 +10,18 @@
 # anchor, because the rules the anchor was judged sound under have moved. This
 # is the GLOBAL tier: AUDIT_GLOBAL_RULES_PATHS below.
 #
+# The generating rule is about SCOPE and BELIEF, never about CRITERIA. A
+# coding-convention rule under .claude/rules/ changes how code should be
+# written, not which paths a member owns or whether a clearance is honored,
+# so it is NOT global. An anchor records that a member READ a surface, and
+# rewording a convention does not un-read it; what a convention change owes is
+# a fresh clearance for the diff under review, and .claude/rules/** sits in
+# AUDIT_MACHINERY_PATHS, so that is already owed. Holding criteria to
+# invalidate anchors would ask this merge gate to re-sweep every owned surface
+# for retroactive conformance, which is not the job it does, at the price of
+# making a one-word rule edit the most expensive change in the repository.
+# The two rules that DO decide gate mechanics are named individually below.
+#
 # A member's own agent definition (.claude/agents/<member>.md) is a second,
 # narrower case: it decides only what that one member reviews and how, so it
 # resets only that member's anchor. This is the MEMBER tier.
@@ -29,6 +41,13 @@
 # skipping (a `#` line there falls through to its exact-match arm and can
 # never equal a real path); that accident is not good enough here, because
 # this file's literal is also walked as DATA by the completeness check.
+#
+# No entry below ends in `/**`, so the prefix arm and the `*.bats` early
+# return decide nothing today. Both are retained deliberately: they keep this
+# matcher's semantics identical to audit_path_is_machinery, which still
+# carries `/**` entries and still excludes suites, so a `/**` entry re-added
+# here inherits the exclusion instead of silently losing it. Deleting either
+# arm as dead code is what would introduce the defect.
 #
 # The `# gaia:maintainer-only` markers around resolve-audit-spawn.sh mark it
 # release-excluded; an adopter bundle must not carry a bare reference to a
@@ -63,7 +82,14 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 .claude/hooks/post-audit-status.sh
 .claude/hooks/pr-merge-audit-check.sh
 .github/audit/resolve-audit-base.sh
-.claude/rules/**
+# The two rules under .claude/rules/ that govern the gate rather than the
+# code. quality-gate.md decides the deterministic checks a member's clearance
+# stands on, and pr-merge.md decides the marker handshake: where the gate
+# looks for a clearance and when one is believed. Every other rule in that
+# directory is coding convention, is merely shared, and is enumerated in
+# AUDIT_MERELY_SHARED_PATHS in .gaia/scripts/audit-rules-changed-complete.sh.
+.claude/rules/quality-gate.md
+.claude/rules/pr-merge.md
 EOF
 )"
 

@@ -142,12 +142,22 @@ add_commit() {
 
 # Add a commit touching a gate-machinery path (matches the `.claude/rules/**`
 # machinery prefix), for RT-006 coverage. Deliberately NOT a path any single
-# member owns exclusively, so the rotation is attributable to machinery.
+# member owns exclusively, so the rotation is attributable to machinery. The
+# path is merely-shared rather than global, which is what the flat machinery
+# arm wants: a global path would trip both arms and stop isolating this one.
 add_machinery_commit() {
   mkdir -p "$SANDBOX/.claude/rules"
   echo "rule" > "$SANDBOX/.claude/rules/new-rule.md"
   git -C "$SANDBOX" add .claude/rules/new-rule.md
   git -C "$SANDBOX" commit --quiet -m "machinery change"
+}
+
+# Add a commit touching a GLOBAL-tier path, for the per-member reset arm.
+add_global_rules_commit() {
+  mkdir -p "$SANDBOX/.claude/rules"
+  echo "gate rule" > "$SANDBOX/.claude/rules/quality-gate.md"
+  git -C "$SANDBOX" add .claude/rules/quality-gate.md
+  git -C "$SANDBOX" commit --quiet -m "global rules change"
 }
 
 # Add a machinery commit whose PATH carries a non-ASCII byte. Under git's
@@ -674,8 +684,8 @@ assert_global_reset_for() {
   return 0
 }
 
-@test "global tier: a convention rule change resets the member" {
-  assert_global_reset_for ".claude/rules/new-rule.md"
+@test "global tier: a gate-governing rule change resets the member" {
+  assert_global_reset_for ".claude/rules/quality-gate.md"
 }
 
 @test "global tier: an ownership classifier change resets the member" {
@@ -732,6 +742,28 @@ assert_global_reset_for() {
   [ "$output" = "$(m_key)" ]
 }
 
+# A coding-convention rule is machinery, so it still rotates every digest and
+# still resets the shared base; what it must NOT do is discard a member's
+# incremental anchor. Held global, this one path re-scoped the entire roster to
+# full review on any convention edit, which is the cost that made rule edits
+# get deferred rather than made.
+@test "a coding-convention rule under .claude/rules/ resets nobody in the member form" {
+  add_commit a
+  base="$(stamp_anchor)"
+  commit_append ".claude/rules/tailwind.md"
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(m_base)" = "$base" ]
+  [ "$(m_reason)" = "team-signal" ]
+  grep -qF "rules-reset-global" <<<"$stderr" && return 1
+
+  run --separate-stderr run_member "$OTHER_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(m_base)" = "$base" ]
+  [ "$(m_reason)" = "team-signal" ]
+}
+
 # -----------------------------------------------------------------------------
 # Both signal arms drive the reset. Only the trailer arm was covered before, so
 # the status arm could have regressed with the suite green.
@@ -743,14 +775,14 @@ assert_global_reset_for() {
   base_tree="$(tree_of HEAD)"
   install_gh_array_mock \
     "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${DIGEST} ${base_tree}\"}]"
-  commit_append ".claude/rules/new-rule.md"
+  commit_append ".claude/rules/quality-gate.md"
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
   [ "$(m_base)" = "main" ]
   [ "$(m_base)" != "$base" ]
   [ "$(m_reason)" = "rules-reset-global" ]
-  grep -qF ".claude/rules/new-rule.md" <<<"$stderr"
+  grep -qF ".claude/rules/quality-gate.md" <<<"$stderr"
 }
 
 @test "the status arm anchors the member form when no trailer exists" {
@@ -1065,7 +1097,7 @@ assert_degraded_without() {
 @test "the member form prints four lines on a reset path" {
   add_commit a
   stamp_anchor >/dev/null
-  add_machinery_commit
+  add_global_rules_commit
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
@@ -1170,7 +1202,7 @@ assert_degraded_without() {
 @test "reason token: rules-reset-global" {
   add_commit a
   stamp_anchor >/dev/null
-  add_machinery_commit
+  add_global_rules_commit
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
   [ "$(m_reason)" = "rules-reset-global" ]

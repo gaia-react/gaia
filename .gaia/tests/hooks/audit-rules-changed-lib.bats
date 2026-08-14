@@ -44,13 +44,29 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
-@test "a .claude/rules/anything.md path matches via the /** prefix" {
-  run audit_path_is_global_rule ".claude/rules/anything.md"
+@test "the two gate-governing rules under .claude/rules/ are global" {
+  run audit_path_is_global_rule ".claude/rules/quality-gate.md"
+  [ "$status" -eq 0 ]
+
+  run audit_path_is_global_rule ".claude/rules/pr-merge.md"
   [ "$status" -eq 0 ]
 }
 
-@test "a .bats path under .claude/rules/ does not match" {
-  run audit_path_is_global_rule ".claude/rules/anything.bats"
+# The split this pins: a convention rule still rotates every digest (it is
+# machinery), but it no longer throws away a sound anchor. A regression here
+# reads as a green suite and a roster that silently re-reads its whole owned
+# surface on every rule edit, so it is asserted by name rather than by prefix.
+@test "a coding-convention rule under .claude/rules/ is not global" {
+  run audit_path_is_global_rule ".claude/rules/tailwind.md"
+  [ "$status" -ne 0 ]
+
+  run audit_path_is_global_rule ".claude/rules/code-comments.md"
+  [ "$status" -ne 0 ]
+
+  run audit_path_is_global_rule ".claude/rules/maintainers/hook-registration.md"
+  [ "$status" -ne 0 ]
+
+  run audit_path_is_global_rule ".claude/rules/anything-new.md"
   [ "$status" -ne 0 ]
 }
 
