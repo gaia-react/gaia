@@ -683,11 +683,17 @@ jobs:
             # should be small (a typo, a stale import). A sprawling diff is
             # a red flag -- the agent is likely undoing intentional PR work
             # rather than fixing a defect. Refuse and surface for human review.
-            files_changed="$(git diff --cached --name-only | wc -l | tr -d ' ')"
+            #
+            # The count reads the NUL separators themselves rather than
+            # translating them back to newlines: a `| tr '\0' '\n' | wc -l`
+            # round-trip would count a path holding a literal newline twice and
+            # refuse a compliant self-heal. The diagnostic below does translate,
+            # because it is read by a human.
+            files_changed="$(set -o pipefail; git diff --cached --name-only -z | tr -cd '\0' | wc -c | tr -d ' ')"
             if [ "$files_changed" -gt 10 ]; then
               echo "code-review-audit: self-heal would touch $files_changed files (>10) -- refusing." >&2
               echo "Files staged:" >&2
-              git diff --cached --name-only >&2
+              git diff --cached --name-only -z | tr '\0' '\n' >&2
               git reset >/dev/null
               {
                 echo "pushed=false"

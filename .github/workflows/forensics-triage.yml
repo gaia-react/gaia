@@ -600,8 +600,17 @@ jobs:
           # Stage edits so `git diff --staged` reflects everything the
           # model touched (including new files and deletions).
           git add -A
-          touched_file="${RUNNER_TEMP}/forensics/touched-paths.txt"
-          git diff --staged --name-only > "$touched_file"
+          # `.nul`, not `.txt`: the file is NUL-delimited, and its path is also
+          # published as a step output, so the extension is the only signal a
+          # later consumer has that a plain line-reader would swallow the whole
+          # file as one record.
+          touched_file="${RUNNER_TEMP}/forensics/touched-paths.nul"
+          # NUL-delimited, read back with a matching `mapfile -d ''` below.
+          # Without `-z` git C-quotes a path carrying a non-ASCII byte, and
+          # check-scope.sh would then be handed `"forensics/caf\303\251.md"`,
+          # a literal that matches no scope pattern, so the re-check aborts a
+          # legitimate fix instead of clearing it.
+          git diff --staged --name-only -z > "$touched_file"
           set_outputs "touched_file=$touched_file"
 
           if [ ! -s "$touched_file" ]; then
@@ -612,7 +621,7 @@ jobs:
           # Re-run check-scope on the actual touched paths. This is the
           # post-step UAT-007 / UAT-014 backstop: even if the model lied
           # about its proposed paths, the diff has to clear scope.
-          mapfile -t touched < "$touched_file"
+          mapfile -d '' -t touched < "$touched_file"
           touched_scope="${RUNNER_TEMP}/forensics/touched-scope.json"
           "$FORENSICS_DIR/check-scope.sh" "${touched[@]}" > "$touched_scope"
           if [ "$(jq -r '.ok' "$touched_scope")" != "true" ]; then
@@ -632,7 +641,7 @@ jobs:
           # explicit `[ -f ... ]` guard is needed here.
           unexpected="${RUNNER_TEMP}/forensics/unexpected-paths.txt"
           : > "$unexpected"
-          while IFS= read -r p; do
+          while IFS= read -r -d '' p; do
             [ -z "$p" ] && continue
             if ! grep -Fxq -- "$p" "$PROPOSED_PATHS_FILE"; then
               printf '%s\n' "$p" >> "$unexpected"

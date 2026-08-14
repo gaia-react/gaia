@@ -75,12 +75,13 @@
 #                       with no failure mode behind it.
 #   an option-less   -- `-z` is accepted anywhere in the call's OPTION region,
 #   -z position         which ends at the first token not starting with `-` or
-#                       at an explicit `--`. Unlike `diff --name-only`, whose
-#                       `-z` is anchored immediately after the call, `ls-files`
-#                       idiomatically carries selector options first
-#                       (`--others --exclude-standard -z`). Terminating the walk
-#                       at the option region is what stops a pathspec carrying
-#                       the token from vouching for a call that still quotes.
+#                       at an explicit `--`. `ls-files` idiomatically carries
+#                       selector options first (`--others --exclude-standard
+#                       -z`), and `diff` carries `--cached` or `--staged` ahead
+#                       of `--name-only`, so both halves read the region rather
+#                       than a fixed position. Terminating the walk at the first
+#                       non-option is what stops a pathspec carrying the token
+#                       from vouching for a call that still quotes.
 #
 # `git status --porcelain` is the third member of this family and is deliberately
 # OUT of the declared surface rather than merely unreached. Its dominant shape in
@@ -90,30 +91,26 @@
 # Claiming it here would red the gate on call sites that carry no failure mode,
 # which is how a gate gets bypassed rather than fixed.
 #
-# One FAIL-OPEN in the `diff --name-only` half, stated here rather than left to
-# be rediscovered, because it is the shape this gate is least able to see and the
-# one a reader would otherwise assume is covered. The detector matches the call
-# as a LITERAL SUBSTRING, so any option written between `diff` and `--name-only`
-# hides the call from it: `git diff --cached --name-only` and the `--staged`
-# spelling are never checked for `-z`. The `ls-files` half does not have this
-# shape of hole, because it walks an option region instead of matching a fixed
-# string.
+# So: the surface this file claims is at zero for `ls-files` and for every
+# option spelling of `diff --name-only`, which is what the tests below pin. The
+# `diff` half reads its option region rather than a fixed string, so an OPTION
+# written between `diff` and `--name-only` -- `--cached`, `--staged`, or any
+# other -- no longer hides the call. A positional REVISION in that position
+# still does, and that limit is stated with the other blind spots below rather
+# than left to be read out of this sentence.
 #
-# Closing the `diff` half means giving it that same walk and then repairing what
-# the walk reaches. Of those sites only .claude/hooks/red-verify-commit-check.sh
-# fails OPEN: a C-quoted staged test path matches no `app/*` pattern, so the
-# RED-verify glob filter drops it and that guard passes having checked nothing.
-# The rest fail closed or are unaffected. None miscounts: git C-quotes a path
-# holding a newline onto ONE line, so a quoted line count already equals the
-# record count, which is the same fact the counting paragraph above turns on.
-#
-# gaia-react/gaia#1392 owns the site table and the per-site failure directions,
-# and is the ONE place they are maintained. A second copy kept here has nothing
-# keeping it true, so it states the hole and defers the enumeration.
-#
-# So: the surface this file claims is at zero for `ls-files` and for the bare
-# `diff --name-only` spelling, which is what the tests below pin. It is NOT a
-# claim about every option spelling of `diff`.
+# The sibling plumbing commands come along with that, and the reason is worth
+# stating so a maintainer who meets the red does not read it as a misfire. The
+# matched text is now the bare `diff`, so every `diff-*` plumbing spelling is
+# reached on one mechanism: the tail (`-index`, `-tree`, `-files`) is dash-led,
+# so the walk continues past it into the real options and finds `--name-only`
+# there. The set is stated by that shared property rather than enumerated,
+# because an enumeration of it goes one command short the same way a list of
+# option spellings does. The demand is CORRECT on all of them: each quotes a
+# path exactly as `git diff` does. None is invoked in this tree today, so this
+# is reach the widening brought rather than coverage anyone asked for, and it
+# is left in place because narrowing the match to exclude them would trade a
+# fail-closed demand that is right for a blind spot that is not.
 #
 # Sibling gate: .gaia/scripts/check-audit-base-derivation.sh's assertion 4 makes
 # the same claim about the audit agents' prose. This file is deliberately not
@@ -160,7 +157,7 @@ fi
 
 # scan_file <path>: print one `file:line: message` per unquoted call.
 #
-# Four discriminations, each earning its place on a real line in this
+# Three discriminations, each earning its place on a real line in this
 # repository rather than on symmetry:
 #
 #   invoked  -- the text immediately before the call is a `git` invocation,
@@ -171,19 +168,18 @@ fi
 #               sits inside a markdown code span, so it is prose. Without it,
 #               the audit workflow's agent prompt is a hit, where a code span
 #               instructs a model to run the command.
-#   anchored -- for `diff --name-only`, ` -z` must sit IMMEDIATELY after the
-#               call, not merely somewhere in it. Unanchored, a pathspec
-#               carrying the token vouches for a call that still quotes. The
-#               same discrimination assertion 4 in
-#               check-audit-base-derivation.sh makes, for the same reason.
 #   in-option-region
-#            -- for `ls-files`, whose selector options idiomatically precede
-#               `-z`, the anchored rule above would reject every real call. The
-#               walk accepts `-z` as a standalone token anywhere in the option
-#               region and stops at the first token not beginning with `-`, or
-#               at an explicit `--`. That termination is what preserves the
-#               anchored rule's actual guarantee: a pathspec cannot vouch for
-#               the call, because the walk never reaches one.
+#            -- both halves accept `-z` as a standalone token anywhere in the
+#               call's option region, and stop at the first token not beginning
+#               with `-`, or at an explicit `--`. A fixed position would be
+#               wrong for either: `ls-files` idiomatically carries selectors
+#               first (`--others --exclude-standard -z`), and `diff` carries
+#               `--cached` or `--staged` before `--name-only`. Terminating the
+#               walk is what keeps the guarantee a fixed position was there to
+#               give: a pathspec cannot vouch for the call, because the walk
+#               never reaches one. `diff` is on the surface only when the walk
+#               finds `--name-only` in that region, so a plain `git diff` and a
+#               `git diff --quiet` are never candidates.
 #
 # Full-line comments are skipped outright, which covers both a shell comment and
 # a `#` line inside a workflow `run:` block.
@@ -217,8 +213,19 @@ fi
 #   - A single-quoted string containing a literal `git diff --name-only` reads
 #     as an invocation. This is the sharper reason `*.bats` is out of scope.
 #
-# One further FALSE NEGATIVE, unrelated to backticks and equally tokenizer-bound:
-#   - A call assembled through a variable (`$GIT diff --name-only`).
+# Two further FALSE NEGATIVES, unrelated to backticks:
+#   - A call assembled through a variable (`$GIT diff --name-only`), which is
+#     equally tokenizer-bound.
+#   - `--name-only` written AFTER a positional revision (`git diff HEAD
+#     --name-only`, `git diff "$base...HEAD" --name-only`). The walk terminates
+#     at the revision, because a revision is exactly what a non-option token
+#     looks like, so the option region never reaches the flag and the call is
+#     classified off-surface. This is a fail-OPEN miss of the gate's own class,
+#     and it is the price of the termination rule: the same stop is what keeps
+#     a pathspec from vouching for a call that quotes. Distinguishing a revision
+#     from a pathspec needs git's own argument parser, not a scanner. Every call
+#     in this tree writes its options first, which is the idiom the fix hints
+#     advertise, so nothing here is missed today.
 #
 # Out of scope entirely: `-z` does not, on its own, survive a path containing a
 # literal newline when the consumer re-splits on newlines via `tr`. That is a
@@ -227,14 +234,15 @@ fi
 scan_file() {
   local f="$1"
   awk -v file="$f" '
-    # ls_verdict(window): walk the option region of an `ls-files` call, setting
-    # has_z when a standalone -z appears in it and existence_only when
-    # --error-unmatch does. Both are deliberately global: awk has no other way
-    # to return a pair. The walk stops at the first token that is not an option,
-    # which is exactly where a pathspec would begin, so a pathspec can never
-    # vouch for the call.
-    function ls_verdict(window,   n, i, tok, arr) {
+    # option_walk(window): walk the option region following a call, setting
+    # has_z when a standalone -z appears in it, has_name_only when --name-only
+    # does, and existence_only when --error-unmatch does. All three are
+    # deliberately global: awk has no other way to return a tuple. The walk
+    # stops at the first token that is not an option, which is exactly where a
+    # pathspec would begin, so a pathspec can never vouch for the call.
+    function option_walk(window,   n, i, tok, arr) {
       has_z = 0
+      has_name_only = 0
       existence_only = 0
       n = split(window, arr, "[ \t]+")
       for (i = 1; i <= n; i++) {
@@ -242,21 +250,42 @@ scan_file() {
         # Leading whitespace in the window yields an empty first field; it is
         # not a token, and skipping it must not terminate the walk.
         if (tok == "") continue
+        # Trailing shell punctuation is not part of the option. A substitution
+        # that closes against its last option -- `$(git diff --cached
+        # --name-only)`, `"$(git ls-files -z)"` -- yields `--name-only)` and
+        # `-z)"`, which match no option the walk looks for and are not pathspecs
+        # either, so without this the first is missed and the second is a false
+        # positive on a compliant call. The double quote is in the class
+        # BECAUSE the assigned-and-quoted form `x="$(...)"` is the common one,
+        # and stripping every character except that one leaves the walk blind
+        # to precisely the spelling most calls are written in. It cannot make a
+        # quoted pathspec vouch for a call: `"-z"` still begins with a quote
+        # after the strip, so it terminates the walk as a non-option. A literal
+        # single quote is absent from the class because this awk program sits
+        # inside a single-quoted shell string, and it is not needed: a command
+        # substitution cannot close against one.
+        sub(/[")`;|&]+$/, "", tok)
         if (tok == "--") break
         if (substr(tok, 1, 1) != "-") break
         if (tok == "-z") has_z = 1
+        if (tok == "--name-only") has_name_only = 1
         if (tok == "--error-unmatch") existence_only = 1
       }
     }
     BEGIN {
+      # callname is what is matched in the text; calllabel is what the report
+      # names. They differ for `diff` because the surface is the call PLUS the
+      # --name-only the walk finds in its option region, and only the walk can
+      # see that: the text between the two is an open set of selectors.
       ncalls = 2
-      callname[1] = "diff --name-only"
-      callname[2] = "ls-files"
+      callname[1] = "diff";     calllabel[1] = "diff --name-only"
+      callname[2] = "ls-files"; calllabel[2] = "ls-files"
     }
     /^[[:space:]]*#/ { next }
     {
       for (c = 1; c <= ncalls; c++) {
       call = callname[c]
+      label = calllabel[c]
       calllen = length(call)
       consumed = 0
       rest = $0
@@ -286,12 +315,13 @@ scan_file() {
         # the shapes it produces.
         if (prefix ~ /[=(]`/) inspan = 0
 
-        if (call == "ls-files") {
-          ls_verdict(window)
+        option_walk(window)
+        if (call == "ls-files")
           quoted_ok = (has_z || existence_only)
-        } else {
-          quoted_ok = (index(window, " -z") == 1)
-        }
+        else
+          # A `diff` with no --name-only in its option region is off the surface
+          # entirely rather than a passing hit, so it can never be reported.
+          quoted_ok = (!has_name_only || has_z)
 
         if (invoked && !inspan && !quoted_ok)
           # The message deliberately does NOT put `git` in front of the call
@@ -299,7 +329,7 @@ scan_file() {
           # detector and the gate flags its own diagnostic. Caught by running
           # the gate over its own tree, which is the cheapest possible proof
           # that the "invoked" discrimination works.
-          printf "%s:%d: %s without -z: a C-quoted non-ASCII path stops matching in the consumer\n", file, NR, call
+          printf "%s:%d: %s without -z: a C-quoted non-ASCII path stops matching in the consumer\n", file, NR, label
         consumed = abs + calllen - 1
         rest = substr($0, consumed + 1)
       }
