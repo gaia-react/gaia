@@ -153,8 +153,10 @@ EOF
 }
 
 missing3=0
+scanned3=0
 while IFS= read -r line; do
   [ -n "$line" ] || continue
+  scanned3=$((scanned3 + 1))
   path="${line%%$'\t'*}"
   flag="${line##*$'\t'}"
   [ "$flag" = "1" ] || continue
@@ -180,6 +182,18 @@ while IFS= read -r line; do
     missing3=$((missing3 + 1))
   fi
 done < <(git -C "$repo_root" -c core.quotepath=false ls-files -z | tr '\0' '\n' | audit_machinery_flags)
+
+# An empty read is a broken discovery, never a clean partition. This loop reads
+# from a process substitution, whose failure `pipefail` cannot see, and every
+# counter it feeds lives inside its body, so a failing walk leaves the partition
+# check passing at exit 0 while the two checks above still report normally --
+# the vacuous half is invisible in the output. Every real tree carries tracked
+# files, so zero rows means the discovery is wrong rather than the tree. The
+# three sibling discoveries hard-error on this identical condition.
+if [ "$scanned3" -eq 0 ]; then
+  printf 'audit-rules-changed-complete.sh: ERROR: the tracked-file walk yielded no rows; the partition check scanned nothing\n' >&2
+  exit 1
+fi
 
 if [ "$missing1" -gt 0 ]; then
   printf 'audit-rules-changed-complete.sh: %d global-rules file(s) unmatched by AUDIT_GLOBAL_RULES_PATHS\n' "$missing1" >&2

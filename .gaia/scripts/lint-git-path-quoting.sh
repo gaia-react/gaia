@@ -80,8 +80,25 @@
 # where quoting cannot change the verdict, and its remaining instances sit in
 # adopter-facing workflow templates that regenerate through `bundle:adopter`.
 # Claiming it here would red the gate on call sites that carry no failure mode,
-# which is how a gate gets bypassed rather than fixed. The two commands this file
-# does claim are at zero and stay at zero.
+# which is how a gate gets bypassed rather than fixed.
+#
+# One FAIL-OPEN in the `diff --name-only` half, stated here rather than left to
+# be rediscovered, because it is the shape this gate is least able to see and the
+# one a reader would otherwise assume is covered. The detector matches the call
+# as a LITERAL SUBSTRING, so any option written between `diff` and `--name-only`
+# hides the call from it: `git diff --cached --name-only` and the `--staged`
+# spelling are never checked for `-z`. The `ls-files` half does not have this
+# shape of hole, because it walks an option region instead of matching a fixed
+# string, and closing the `diff` half means giving it that same walk plus
+# repairing the call sites the walk then reaches, in `.husky/pre-commit`, the
+# forensics workflow, and the audit workflow's three mirrored copies. That is
+# tracked as its own work rather than folded in here (gaia-react/gaia#1392); of
+# the sites involved only .claude/hooks/red-verify-commit-check.sh fails open,
+# where a C-quoted staged test path slips past the RED-verify glob filter.
+#
+# So: the surface this file claims is at zero for `ls-files` and for the bare
+# `diff --name-only` spelling, which is what the tests below pin. It is NOT a
+# claim about every option spelling of `diff`.
 #
 # Sibling gate: .gaia/scripts/check-audit-base-derivation.sh's assertion 4 makes
 # the same claim about the audit agents' prose. This file is deliberately not
