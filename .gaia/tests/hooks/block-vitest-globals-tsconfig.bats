@@ -73,7 +73,7 @@ run_hook_multiedit() {
   assert_blocked_by_exit
 }
 
-@test "every JSON spelling of the slash is blocked" {
+@test "every JSON spelling of the slash, in any case, is blocked" {
   # The escape lives in the file content, not the transport: the payload's own
   # JSON encoding is decoded before the content match runs, so what reaches the
   # match is literally `vitest\/globals` or `vitest\u002fglobals`. A tsconfig
@@ -81,6 +81,11 @@ run_hook_multiedit() {
   # slash alone lets two spellings of one config through, silently: the block is
   # this hook's only output, so an evasion is indistinguishable from a write
   # that had nothing to block.
+  #
+  # The fourth entry is not a valid JSON escape: RFC 8259 fixes the introducer
+  # as lowercase `u`, so no config loader decodes it to a slash. It pins the
+  # case-insensitive over-blocking the guard prefers on unparseable input, not a
+  # closed evasion; the three spellings before it carry that claim.
   #
   # Assertions are inlined rather than delegated to assert_blocked_by_exit for
   # the reason the family-spelling loop above states: that helper leans on
