@@ -95,11 +95,19 @@
 # option spelling of `diff --name-only`, which is what the tests below pin. The
 # `diff` half reads its option region rather than a fixed string, so a selector
 # written between `diff` and `--name-only` -- `--cached`, `--staged`, or any
-# other -- no longer hides the call. What it does NOT claim is the sibling
-# plumbing commands: `git diff-index` and `git diff-tree` quote the same way and
-# are outside the declared surface, deliberately, because neither is invoked in
-# this tree and a gate that reds on a shape with no call site here is asserting
-# about nothing.
+# other -- no longer hides the call.
+#
+# The sibling plumbing commands come along with that, and the reason is worth
+# stating so a maintainer who meets the red does not read it as a misfire. The
+# matched text is now the bare `diff`, which occurs inside `diff-index` and
+# `diff-tree` too; the following `-index` / `-tree` begins with a dash, so the
+# walk continues past it into the real options and finds `--name-only` there.
+# `git diff-tree --name-only` and `git diff-index --name-only` are therefore
+# reported, and the demand is CORRECT on them: both quote a path exactly as
+# `git diff` does. Neither is invoked in this tree today, so this is reach the
+# widening brought rather than coverage anyone asked for, and it is left in
+# place because narrowing the match to exclude them would trade a fail-closed
+# demand that is right for a blind spot that is not.
 #
 # Sibling gate: .gaia/scripts/check-audit-base-derivation.sh's assertion 4 makes
 # the same claim about the audit agents' prose. This file is deliberately not
@@ -230,11 +238,19 @@ scan_file() {
         if (tok == "") continue
         # Trailing shell punctuation is not part of the option. A substitution
         # that closes against its last option -- `$(git diff --cached
-        # --name-only)`, `$(git ls-files -z)` -- yields `--name-only)` and
-        # `-z)`, which match no option the walk looks for and are not pathspecs
+        # --name-only)`, `"$(git ls-files -z)"` -- yields `--name-only)` and
+        # `-z)"`, which match no option the walk looks for and are not pathspecs
         # either, so without this the first is missed and the second is a false
-        # positive on a compliant call.
-        sub(/[)`;|&]+$/, "", tok)
+        # positive on a compliant call. The double quote is in the class
+        # BECAUSE the assigned-and-quoted form `x="$(...)"` is the common one,
+        # and stripping every character except that one leaves the walk blind
+        # to precisely the spelling most calls are written in. It cannot make a
+        # quoted pathspec vouch for a call: `"-z"` still begins with a quote
+        # after the strip, so it terminates the walk as a non-option. A literal
+        # single quote is absent from the class because this awk program sits
+        # inside a single-quoted shell string, and it is not needed: a command
+        # substitution cannot close against one.
+        sub(/[")`;|&]+$/, "", tok)
         if (tok == "--") break
         if (substr(tok, 1, 1) != "-") break
         if (tok == "-z") has_z = 1

@@ -290,6 +290,57 @@ run_linter() {
   [ "$status" -eq 0 ]
 }
 
+# `x="$(...)"` is the spelling most calls in this tree are actually written in,
+# and it is the one where the option region ends in `)"` rather than `)`. A walk
+# that strips every trailing character except the quote is blind to exactly that
+# form: the first of these reds on the pre-widening detector and must keep
+# reding, and the second is a compliant call that must never be reported.
+@test "a quoted substitution closing against --name-only is still flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nb="$(git diff --name-only)"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a quoted --cached substitution closing against --name-only is flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nc="$(git diff --cached --name-only)"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a quoted substitution closing against ls-files -z passes" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\ne="$(git ls-files -z)"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# A quoted pathspec must not vouch for the call just because the strip reaches
+# its closing quote: `"-z"` still begins with a quote afterwards, so the walk
+# terminates on it as a non-option rather than reading it as the flag.
+@test "a quoted -z pathspec does not vouch for the call" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nchanged=$(git diff --name-only -- "-z")'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+# Matching the bare `diff` reaches the plumbing spellings, whose `-index` /
+# `-tree` tail is itself dash-led so the walk continues into the real options.
+# The demand is correct there (both quote exactly as `git diff` does), and the
+# header says so; this pins the behavior the header describes.
+@test "a diff-tree --name-only call is reached and flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfiles=$(git diff-tree --no-commit-id --name-only -r HEAD)'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
 # The scanner walks every occurrence of the matched text on a line, and
 # `--diff-filter` contains one. Only the first is in command position, so the
 # `invoked` test is what stops the same call being reported twice.

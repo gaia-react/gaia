@@ -240,8 +240,29 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   [ "$status" -eq 0 ]
   output_has "refused=true"
   output_has "refused_reason=file-count"
+  # The count itself, not only the reason token. Every wrong value above the
+  # threshold yields the same token, so a reason-only assertion cannot tell a
+  # correct count from an over-count, and over-counting is the direction that
+  # refuses compliant self-heals.
+  output_has "refused_count=11"
   output_has "refused_reason=governance-surface" && return 1
   return 0
+}
+
+# The other side of the same boundary. Without it the count could read high by
+# any amount and every assertion above would still pass, because the reason and
+# the count would both simply be larger.
+@test "an exactly-10-file app/-only self-heal is not refused on file-count" {
+  local body i
+  body="$(extract_step_body 'Commit and push self-heal')"
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    echo "export const v$i = $((i + 100));" > "$SANDBOX/app/f$i.ts"
+  done
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  output_has "refused_reason=file-count" && return 1
+  output_has "pushed=true"
 }
 
 # -----------------------------------------------------------------------------
