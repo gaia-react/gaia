@@ -121,8 +121,16 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 # Staged test files new/modified at HEAD, filtered to the vitest include glob
 # (app/**/*.test.ts|tsx, confirmed against vitest.config.ts: './app/**/*.test.{ts,tsx}').
 # A pure deletion/rename-away cannot add a new passing test, so --diff-filter=ACM.
+#
+# `-z` is what makes the glob filter below reachable at all: without it git
+# C-quotes a path carrying a non-ASCII byte, so `app/café.test.ts` arrives as
+# `"app/caf\303\251.test.ts"`, matches no `app/*` case, and the gate exits
+# having verified nothing. The records are translated back to newlines because
+# the consumer reads them from a here-doc; a path holding a literal newline is
+# the separate, far rarer class .gaia/scripts/lint-git-path-quoting.sh declares
+# out of its scope.
 # ---------------------------------------------------------------------------
-staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
+staged=$(git diff --cached --name-only -z --diff-filter=ACM 2>/dev/null | tr '\0' '\n' || true)
 [ -n "$staged" ] || exit 0
 
 # The shared main-root resolver, sourced from this hook's own checkout via

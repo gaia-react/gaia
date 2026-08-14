@@ -22,10 +22,16 @@ fi
 # it, so a deletion-only commit is exactly when the skipped `pnpm typecheck`
 # earns its keep. lint-staged and `vitest --changed` both no-op safely on a
 # staged deletion, so the arms cost nothing when there is nothing left to lint.
-HAS_APP_CHANGED=$(git diff --cached --name-only --diff-filter=ACDM | grep 'app/' || true)
-HAS_TEST_CHANGED=$(git diff --cached --name-only --diff-filter=ACDM | grep 'test/' || true)
-HAS_STORYBOOK_CHANGED=$(git diff --cached --name-only --diff-filter=ACDM | grep '.storybook/' || true)
-HAS_PLAYWRIGHT_CHANGED=$(git diff --cached --name-only --diff-filter=ACDM | grep '.playwright/' || true)
+#
+# `-z` on all four: without it git C-quotes a path carrying a non-ASCII byte,
+# and the four unanchored greps below survive that only by accident, because
+# `"app/caf\303\251.tsx"` still contains the substring `app/`. Anchoring any of
+# these greps to `^app/` at any later point would turn all four into silent
+# misses, so the fix belongs on the producer rather than on the four consumers.
+HAS_APP_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep 'app/' || true)
+HAS_TEST_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep 'test/' || true)
+HAS_STORYBOOK_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep '.storybook/' || true)
+HAS_PLAYWRIGHT_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep '.playwright/' || true)
 
 if [ -n "$HAS_APP_CHANGED" ] || [ -n "$HAS_TEST_CHANGED" ] || [ -n "$HAS_STORYBOOK_CHANGED" ] || [ -n "$HAS_PLAYWRIGHT_CHANGED" ]
 then

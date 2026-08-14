@@ -23,6 +23,12 @@
 #   literal pre-fix line copied from each site; the paths are the real ones so a
 #   reader can trace a failing test back to what it was written for.
 #
+#   `#1392` makes it binding for the `diff` half's option spellings: a fixed
+#   substring match could not see `--cached` or `--staged`, so the group under
+#   "3a. The diff option region" pairs two pre-fix site fixtures with the
+#   negative controls that keep the widened match from claiming a diff call
+#   which prints no paths at all.
+#
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # The linter resolves its scan surface with `git ls-files` relative to cwd, so
@@ -205,15 +211,94 @@ run_linter() {
   [ "$status" -eq 0 ]
 }
 
-# `-z` must sit immediately after the call. Unanchored, a pathspec carrying the
-# token would vouch for a call that still quotes -- the same discrimination
-# assertion 4 in check-audit-base-derivation.sh makes, and for the same reason.
+# `-z` is accepted anywhere in the option region and nowhere after it. The walk
+# terminates at the first non-option token, which is exactly where a pathspec
+# begins, so a pathspec carrying the token cannot vouch for a call that still
+# quotes -- the same discrimination assertion 4 in
+# check-audit-base-derivation.sh makes, and for the same reason.
 @test "a -z appearing later in the call does not vouch for it" {
   fixture_repo
   fixture_file probe.sh $'#!/usr/bin/env bash\nchanged=$(git diff --name-only "${base}...HEAD" -- "docs/a -z b.md")'
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+# 3a. The diff option region: every spelling, not one fixed string
+#
+# `#1392` makes the option-region walk binding for the `diff` half, the way
+# `#1229` and `#1389` are binding for the two halves' first shapes: a detector
+# that matched `diff --name-only` as a fixed substring could not see a selector
+# written between the two words, so `--cached` and `--staged` went unchecked.
+# The two fixtures below are the literal pre-fix lines from the sites the
+# widened walk reaches, so a green here means the guard reds where the hole
+# actually was rather than where it was convenient to demonstrate. The first is
+# the only site of the eight that failed OPEN.
+
+@test "reds against the pre-fix red-verify-commit-check.sh --cached derivation" {
+  fixture_repo
+  fixture_file .claude/hooks/red-verify-commit-check.sh \
+    $'#!/usr/bin/env bash\nstaged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/red-verify-commit-check.sh:2" <<<"$output"
+}
+
+@test "reds against the pre-fix forensics-triage.yml --staged derivation" {
+  fixture_repo
+  fixture_file .github/workflows/forensics-triage.yml \
+    $'jobs:\n  a:\n    steps:\n      - run: |\n          git diff --staged --name-only > "$touched_file"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".github/workflows/forensics-triage.yml:5" <<<"$output"
+}
+
+# The report names the surface, not the matched text. `diff` alone is what the
+# scanner finds; `--name-only` is what the walk finds in the option region, and
+# a reader given only the former could not tell which call was meant.
+@test "a --cached hit is reported against the diff --name-only surface" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nstaged=$(git diff --cached --name-only)'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "diff --name-only without -z" <<<"$output"
+}
+
+@test "a --cached call carrying -z passes" {
+  fixture_repo
+  fixture_file probe.sh \
+    $'#!/usr/bin/env bash\nstaged=$(git diff --cached --name-only -z --diff-filter=ACM | tr \'\\0\' \'\\n\')'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# Widening the match from `diff --name-only` to `diff` puts every diff call in
+# front of the scanner, so the walk is the only thing keeping the surface where
+# it was declared. Both of these are real shapes in this tree and neither
+# produces path output at all.
+@test "a diff call with no --name-only is off the surface" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nif ! git diff --quiet; then git add -u; fi'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a diff --name-status call is off the surface" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nchanged=$(git diff --cached --name-status "${base}...HEAD")'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# The scanner walks every occurrence of the matched text on a line, and
+# `--diff-filter` contains one. Only the first is in command position, so the
+# `invoked` test is what stops the same call being reported twice.
+@test "a --diff-filter option does not produce a second report for one call" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nstaged=$(git diff --cached --name-only --diff-filter=ACM)'
+  run_linter
+  [ "$status" -eq 1 ]
+  [ "$(grep -cF -- "probe.sh:2" <<<"$output")" -eq 1 ]
 }
 
 @test "an untracked script is not scanned" {
@@ -404,4 +489,13 @@ run_linter() {
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- "tr " <<<"$output"
+}
+
+# A command substitution closing against its last option yields `-z)`, which is
+# neither the option the walk looks for nor a pathspec that should terminate it.
+@test "an ls-files call whose -z closes the substitution passes" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfiles=$(git ls-files -z)'
+  run_linter
+  [ "$status" -eq 0 ]
 }
