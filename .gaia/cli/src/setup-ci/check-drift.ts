@@ -142,12 +142,16 @@ const classifyDrift = (args: ClassifyDriftArgs): DriftClassification => {
 
     return {state: freshRender === onDisk ? 'in_sync' : 'drifted'};
   } catch (error) {
+    // `tool` carries a ToolId everywhere else a payload names one, so the
+    // scheduler gets its own key rather than borrowing that field for a
+    // filename a consumer would have to special-case.
     structuredError({
       code: 'render_failed',
       error: error instanceof Error ? error.message : String(error),
       subcommand: 'setup-ci check-drift',
-      tool:
-        target.kind === 'scheduler' ? SCHEDULER_WORKFLOW_FILENAME : target.tool,
+      ...(target.kind === 'scheduler' ?
+        {workflow: SCHEDULER_WORKFLOW_FILENAME}
+      : {tool: target.tool}),
     });
 
     return {exitCode: EXIT_CODES.CONFIG_INVALID};

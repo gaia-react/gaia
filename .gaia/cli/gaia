@@ -15357,6 +15357,14 @@ var run4 = (argv, options = {}) => {
     ...parsed.tools.map((tool) => ({ kind: "tool", tool })),
     { kind: "scheduler" }
   ];
+  const requested = new Set(parsed.tools);
+  const unrendered = (buildSchedulerVars(configResult.config)?.scheduler_tools ?? []).filter((tool) => !requested.has(tool));
+  if (unrendered.length > 0) {
+    process.stderr.write(
+      `scheduler: calls ${unrendered.join(", ")}, which --tools did not render; those files must exist in ${parsed.outDir} or every scheduled run fails
+`
+    );
+  }
   for (const target of targets) {
     renderOneTarget({
       config: configResult.config,
@@ -21886,7 +21894,7 @@ var classifyDrift2 = (args) => {
       code: "render_failed",
       error: error51 instanceof Error ? error51.message : String(error51),
       subcommand: "setup-ci check-drift",
-      tool: target.kind === "scheduler" ? SCHEDULER_WORKFLOW_FILENAME : target.tool
+      ...target.kind === "scheduler" ? { workflow: SCHEDULER_WORKFLOW_FILENAME } : { tool: target.tool }
     });
     return { exitCode: EXIT_CODES.CONFIG_INVALID };
   }

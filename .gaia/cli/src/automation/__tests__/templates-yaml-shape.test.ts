@@ -174,6 +174,23 @@ describe('scheduler YAML shape', () => {
     expect(uncovered).toEqual([]);
   });
 
+  // A job's own `permissions` block replaces the workflow-level grant for that
+  // job instead of adding to it, so any scope the block omits is `none` there.
+  // The union test above reads only the workflow-level block and cannot see
+  // this. `decide` runs `gh pr list`, which needs `pull-requests`; without it
+  // the call 403s on a private repo, `set -euo pipefail` fails the job, and
+  // every `needs: decide` call job is skipped.
+  test('grants the decide job every scope its own step reads', () => {
+    const scheduler = load(renderScheduler()) as {
+      jobs: {decide: {permissions: Record<string, string>}};
+    };
+
+    expect(scheduler.jobs.decide.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+    });
+  });
+
   test('calls one reusable workflow per CI-mode tool', () => {
     const scheduler = load(renderScheduler()) as {
       jobs: Record<string, unknown>;

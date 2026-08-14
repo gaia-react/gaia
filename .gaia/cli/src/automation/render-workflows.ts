@@ -20,6 +20,7 @@ import {resolveRepoRoot} from '../util/repo-root.js';
 import {SCHEDULER_WORKFLOW_FILENAME} from './paths.js';
 import {renderedWorkflowFilename, renderWorkflowFor} from './render.js';
 import type {RenderTarget} from './render.js';
+import {buildSchedulerVars} from './workflow-vars.js';
 
 const HELP_TEXT = `Usage: gaia automation render-workflows --out-dir <path> [--tools <csv>] [--dry-run]
 
@@ -308,6 +309,22 @@ export const run = (
     ...parsed.tools.map((tool): RenderTarget => ({kind: 'tool', tool})),
     {kind: 'scheduler'},
   ];
+  // A `--tools` subset therefore leaves the scheduler calling workflow files
+  // this run does not write. GitHub resolves every `uses:` at run start and
+  // fails the whole run when one is missing, so an unrendered tool takes down
+  // the scheduler rather than skipping its own job. Warn rather than fail:
+  // the missing files may already be on disk from an earlier render.
+  const requested = new Set<string>(parsed.tools);
+  const unrendered = (
+    buildSchedulerVars(configResult.config)?.scheduler_tools ?? []
+  ).filter((tool) => !requested.has(tool));
+
+  if (unrendered.length > 0) {
+    process.stderr.write(
+      `scheduler: calls ${unrendered.join(', ')}, which --tools did not render; ` +
+        `those files must exist in ${parsed.outDir} or every scheduled run fails\n`
+    );
+  }
 
   for (const target of targets) {
     renderOneTarget({

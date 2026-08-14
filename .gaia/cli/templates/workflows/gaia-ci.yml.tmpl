@@ -54,6 +54,11 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      # The `gh pr list` pre-filter below reads pull requests. Omitting this
+      # leaves `pull-requests` at `none`, which 403s on a private repo, and
+      # the step's `set -euo pipefail` turns that into a failed `decide` that
+      # skips every call job.
+      pull-requests: read
     outputs:
       due: ${{ steps.decide.outputs.due }}
     steps:

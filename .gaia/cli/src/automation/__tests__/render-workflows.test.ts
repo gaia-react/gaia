@@ -96,6 +96,33 @@ describe('automation render-workflows', () => {
     );
   });
 
+  // The scheduler covers every CI-mode tool whatever `--tools` says, so a
+  // subset render leaves it calling files that were never written, and a
+  // missing `uses:` target fails the run before any job starts.
+  test('warns when --tools leaves a scheduler-called workflow unrendered', () => {
+    sandbox.writeConfig(allFourCi);
+    const outDir = path.join(sandbox.root, '.github', 'workflows');
+
+    const exit = run(['--out-dir', outDir, '--tools', 'wiki'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).toBe(0);
+    expect(io.errors.join('')).toContain(
+      'scheduler: calls update-deps, pnpm-audit, stale-branches, which --tools did not render'
+    );
+  });
+
+  test('warns about no unrendered tool when every tool is rendered', () => {
+    sandbox.writeConfig(allFourCi);
+    const outDir = path.join(sandbox.root, '.github', 'workflows');
+
+    const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
+
+    expect(exit).toBe(0);
+    expect(io.errors.join('')).not.toContain('scheduler: calls');
+  });
+
   test('writes nothing in --dry-run mode and reports per-tool byte counts', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
