@@ -61,10 +61,10 @@
 # surface is at zero and stays at zero; it does not claim the templates and then
 # leave live instances in them unreached.
 #
-# Sibling gate: .gaia/scripts/lint-git-path-quoting.sh, which scans the
-# same workflow YAML for a different class. The two are kept separate because
-# their scan surfaces differ (that one also reads *.sh and .husky/*) and their
-# discriminations share nothing.
+# Sibling gate: .gaia/scripts/lint-git-path-quoting.sh, which scans the same
+# workflow YAML for a different class. The two are kept separate because their
+# scan surfaces differ (that one also reads *.sh, .husky/*, and the fenced
+# blocks of tracked markdown) and their discriminations share nothing.
 
 set -euo pipefail
 

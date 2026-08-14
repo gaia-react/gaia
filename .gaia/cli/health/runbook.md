@@ -173,7 +173,21 @@ EXCLUDE_REGEX="/tmp/gaia-audit-exclude.$$"
 INCLUDE="/tmp/gaia-audit-include.$$"
 trap 'rm -rf "$STAGING" "$ALL_TRACKED" "$EXCLUDE_REGEX" "$INCLUDE"' EXIT
 mkdir -p "$STAGING"
-git ls-files > "$ALL_TRACKED"
+# `-z` stops git's default core.quotePath C-quoting a non-ASCII tracked path
+# into this list; rsync would then look the quoted spelling up literally and
+# either drop the file from the staging tree or error. The stream is translated
+# back to newlines rather than read as NUL records because both consumers below
+# are newline-oriented: `grep -f` reads a newline-delimited pattern file, and
+# macOS ships openrsync, which has no `--from0`.
+# The subshell sets pipefail because the pipe otherwise hides a git failure
+# behind `tr`'s exit 0: the list comes out empty, the exclude grep yields an
+# empty include list, rsync copies nothing, and every check below passes having
+# staged no files at all. That is the same lie-green this whole staging build
+# exists to catch, so the discovery fails loudly instead.
+if ! (set -o pipefail; git ls-files -z | tr '\0' '\n' > "$ALL_TRACKED"); then
+  printf 'ls-files discovery failed\n' >&2
+  exit 1
+fi
 # The maintainer CLI is the single compiler of .gaia/release-exclude; the audit
 # staging build invokes it rather than re-deriving the pattern set inline.
 # Fail-closed: a nonzero exit aborts instead of copying every tracked file.
