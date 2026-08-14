@@ -17,18 +17,23 @@ import {
 import type {AutomationConfig, ToolId} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
-import {workflowPartialsDirectory, workflowTemplatePath} from './paths.js';
-import {renderWorkflowTemplate} from './render.js';
-import {buildWorkflowVars} from './workflow-vars.js';
+import {SCHEDULER_WORKFLOW_FILENAME} from './paths.js';
+import {renderedWorkflowFilename, renderWorkflowFor} from './render.js';
+import type {RenderTarget} from './render.js';
+import {buildSchedulerVars} from './workflow-vars.js';
 
 const HELP_TEXT = `Usage: gaia automation render-workflows --out-dir <path> [--tools <csv>] [--dry-run]
 
-  Renders one workflow YAML per CI-mode tool from .gaia/automation.json.
+  Renders one workflow YAML per CI-mode tool from .gaia/automation.json,
+  plus the ${SCHEDULER_WORKFLOW_FILENAME} scheduler that fans out to them.
 
   --out-dir <path>     Required. Where to write the rendered files.
                        Created with mkdir -p semantics if missing.
   --tools <csv>        Optional. Comma-separated subset of:
                        ${TOOL_IDS.join(', ')}. Defaults to all four.
+                       The scheduler always covers every CI-mode tool in
+                       the config, since it is one file describing all of
+                       them; a subset here narrows the per-tool files only.
   --dry-run            Optional. Print what would be written; do not
                        touch the filesystem.
   --config <path>      Reserved. Override of .gaia/automation.json
@@ -181,38 +186,43 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   };
 };
 
-type RenderOneToolOptions = {
+type RenderTargetOptions = {
   config: AutomationConfig;
   dryRun: boolean;
   outDir: string;
-  partialsDir: string;
-  tool: ToolId;
+  target: RenderTarget;
+};
+
+// Why a target is disabled, for the stderr line. The scheduler has one
+// reason; a tool names the mode that ruled it out.
+const skipReason = (config: AutomationConfig, target: RenderTarget): string => {
+  if (target.kind === 'scheduler') return 'no tool in ci mode';
+
+  const toolConfig = config[TOOL_ID_TO_CONFIG_KEY[target.tool]] as {
+    mode: string;
+  };
+
+  return `mode=${toolConfig.mode}`;
 };
 
 // Extracted so the loop in `run` is a single flat call: each early `return`
 // here plays the role `continue` would in the loop, without adding nesting.
-const renderOneTool = (options: RenderOneToolOptions): void => {
-  const {config, dryRun, outDir, partialsDir, tool} = options;
-  const vars = buildWorkflowVars(config, tool);
+const renderOneTarget = (options: RenderTargetOptions): void => {
+  const {config, dryRun, outDir, target} = options;
+  const label = target.kind === 'scheduler' ? 'scheduler' : target.tool;
+  const rendered = renderWorkflowFor(config, target);
 
-  if (vars === null) {
-    const toolConfig = config[TOOL_ID_TO_CONFIG_KEY[tool]] as {mode: string};
-    process.stderr.write(`${tool}: skipped (mode=${toolConfig.mode})\n`);
+  if (rendered === null) {
+    process.stderr.write(`${label}: skipped (${skipReason(config, target)})\n`);
 
     return;
   }
 
-  const rendered = renderWorkflowTemplate(
-    workflowTemplatePath(tool),
-    partialsDir,
-    vars
-  );
-
-  const outPath = path.join(outDir, `gaia-ci-${tool}.yml`);
+  const outPath = path.join(outDir, renderedWorkflowFilename(target));
 
   if (dryRun) {
     process.stdout.write(
-      `${tool}: ${String(rendered.length)} bytes -> ${outPath}\n`
+      `${label}: ${String(rendered.length)} bytes -> ${outPath}\n`
     );
 
     return;
@@ -288,19 +298,40 @@ export const run = (
     return EXIT_CODES.CONFIG_INVALID;
   }
 
-  const partialsDir = workflowPartialsDirectory();
-
   if (!parsed.dryRun) {
     mkdirSync(parsed.outDir, {recursive: true});
   }
 
-  for (const tool of parsed.tools) {
-    renderOneTool({
+  // The scheduler is rendered from the whole config rather than from
+  // `--tools`: it is one file naming every CI-mode tool, so a subset render
+  // would drop the call jobs for the tools the subset did not name.
+  const targets: RenderTarget[] = [
+    ...parsed.tools.map((tool): RenderTarget => ({kind: 'tool', tool})),
+    {kind: 'scheduler'},
+  ];
+  // A `--tools` subset therefore leaves the scheduler calling workflow files
+  // this run does not write. GitHub resolves every `uses:` at run start and
+  // fails the whole run when one is missing, so an unrendered tool takes down
+  // the scheduler rather than skipping its own job. Warn rather than fail:
+  // the missing files may already be on disk from an earlier render.
+  const requested = new Set<string>(parsed.tools);
+  const unrendered = (
+    buildSchedulerVars(configResult.config)?.scheduler_tools ?? []
+  ).filter((tool) => !requested.has(tool));
+
+  if (unrendered.length > 0) {
+    process.stderr.write(
+      `scheduler: calls ${unrendered.join(', ')}, which --tools did not render; ` +
+        `those files must exist in ${parsed.outDir} or every scheduled run fails\n`
+    );
+  }
+
+  for (const target of targets) {
+    renderOneTarget({
       config: configResult.config,
       dryRun: parsed.dryRun,
       outDir: parsed.outDir,
-      partialsDir,
-      tool,
+      target,
     });
   }
 

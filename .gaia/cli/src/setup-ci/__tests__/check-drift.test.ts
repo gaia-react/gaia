@@ -2,11 +2,16 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {
+  SCHEDULER_WORKFLOW_FILENAME,
   workflowPartialsDirectory,
+  workflowSchedulerTemplatePath,
   workflowTemplatePath,
 } from '../../automation/paths.js';
 import {renderWorkflowTemplate} from '../../automation/render.js';
-import {buildWorkflowVars} from '../../automation/workflow-vars.js';
+import {
+  buildSchedulerVars,
+  buildWorkflowVars,
+} from '../../automation/workflow-vars.js';
 import {TOOL_IDS} from '../../schemas/automation-config.js';
 import type {ToolId} from '../../schemas/automation-config.js';
 import {run} from '../check-drift.js';
@@ -75,6 +80,24 @@ const writeFreshWorkflows = (
       );
     }
   }
+};
+
+const writeFreshScheduler = (sandbox: Sandbox): void => {
+  const vars = buildSchedulerVars({...VALID_BASE_CONFIG, setup_complete: true});
+
+  if (vars === null) return;
+
+  const workflowsDir = path.join(sandbox.root, '.github', 'workflows');
+  mkdirSync(workflowsDir, {recursive: true});
+  writeFileSync(
+    path.join(workflowsDir, SCHEDULER_WORKFLOW_FILENAME),
+    renderWorkflowTemplate(
+      workflowSchedulerTemplatePath(),
+      workflowPartialsDirectory(),
+      vars
+    ),
+    'utf8'
+  );
 };
 
 describe('setup-ci check-drift', () => {
@@ -181,6 +204,80 @@ describe('setup-ci check-drift', () => {
     expect(parsed.drifted).toEqual([]);
     expect(parsed.missing).toEqual([]);
     expect(new Set(parsed.in_sync)).toEqual(new Set(['update-deps', 'wiki']));
+  });
+
+  test('reports the scheduler as in_sync when its rendered file matches', () => {
+    sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
+    writeFreshWorkflows(sandbox, TOOL_IDS);
+    writeFreshScheduler(sandbox);
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as {
+      scheduler: string;
+    };
+    expect(parsed.scheduler).toBe('in_sync');
+  });
+
+  // The tool workflows can all be in sync while the one file carrying the
+  // crons is stale or absent, in which case nothing fires at all.
+  test('reports the scheduler as missing while every tool is in_sync', () => {
+    sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
+    writeFreshWorkflows(sandbox, TOOL_IDS);
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as {
+      in_sync: ToolId[];
+      scheduler: string;
+    };
+    expect(parsed.scheduler).toBe('missing');
+    expect(new Set(parsed.in_sync)).toEqual(new Set(TOOL_IDS));
+  });
+
+  test('reports the scheduler as drifted when its bytes diverge', () => {
+    sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
+    writeFreshWorkflows(sandbox, TOOL_IDS);
+    writeFreshScheduler(sandbox);
+    writeFileSync(
+      path.join(
+        sandbox.root,
+        '.github',
+        'workflows',
+        SCHEDULER_WORKFLOW_FILENAME
+      ),
+      '# drifted contents\n',
+      'utf8'
+    );
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as {
+      scheduler: string;
+    };
+    expect(parsed.scheduler).toBe('drifted');
+  });
+
+  test('reports the scheduler as disabled when no tool is in ci mode', () => {
+    sandbox.writeConfig({
+      ...VALID_BASE_CONFIG,
+      pnpm_audit: {mode: 'off'},
+      setup_complete: true,
+      stale_branches: {mode: 'off'},
+      update_deps: {mode: 'off'},
+      wiki: {mode: 'off'},
+    });
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as {
+      scheduler: string;
+    };
+    expect(parsed.scheduler).toBe('disabled');
   });
 
   test('exits non-zero with config_missing when .gaia/automation.json is absent', () => {

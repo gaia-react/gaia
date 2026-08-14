@@ -26,6 +26,13 @@ export const githubWorkflowsDirectory = (repoRoot: string): string =>
 export const workflowFilePath = (repoRoot: string, tool: ToolId): string =>
   path.join(githubWorkflowsDirectory(repoRoot), `gaia-ci-${tool}.yml`);
 
+/**
+ * The rendered scheduler workflow: the one file carrying a `schedule:`.
+ * Deliberately not `gaia-ci-<something>.yml`, so the guards that enumerate
+ * the per-tool set by that prefix keep matching exactly the four tools.
+ */
+export const SCHEDULER_WORKFLOW_FILENAME = 'gaia-ci.yml';
+
 const TEMPLATES_RELATIVE_DIR = path.join('templates', 'workflows');
 
 const resolveTemplatesDirectory = (): string => {
@@ -36,6 +43,9 @@ const resolveTemplatesDirectory = (): string => {
 
 export const workflowTemplatePath = (tool: ToolId): string =>
   path.join(resolveTemplatesDirectory(), `gaia-ci-${tool}.yml.tmpl`);
+
+export const workflowSchedulerTemplatePath = (): string =>
+  path.join(resolveTemplatesDirectory(), 'gaia-ci.yml.tmpl');
 
 export const workflowAuditTemplatePath = (): string =>
   path.join(resolveTemplatesDirectory(), 'code-review-audit.yml.tmpl');

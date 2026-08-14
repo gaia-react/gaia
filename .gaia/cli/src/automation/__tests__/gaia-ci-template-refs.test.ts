@@ -1,6 +1,7 @@
 /**
- * Maintainer drift-guard for the outbound references in the four
- * `gaia-ci-*` workflow templates.
+ * Maintainer drift-guard for the outbound references in the rendered
+ * `gaia-ci` workflow templates: the four per-tool ones and the scheduler
+ * that calls them.
  *
  * These templates render into an adopter's `.github/workflows/`, but the
  * maintainer repo runs none of them, so, unlike `code-review-audit.yml`
@@ -13,7 +14,7 @@
  *
  * This guard pins an explicit contract, the skills and CLI leaf commands
  * each template is expected to invoke, and asserts four things:
- *   1. the on-disk `gaia-ci-*` template set matches the contract keys, so a
+ *   1. the on-disk `gaia-ci` template set matches the contract keys, so a
  *      new template forces a contract entry;
  *   2. every declared reference still appears in its template, so a silent
  *      drop or divergence of the invocation fails here;
@@ -48,24 +49,39 @@ import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import type {ToolId} from '../../schemas/automation-config.js';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
-import {workflowTemplatePath} from '../paths.js';
+import {workflowSchedulerTemplatePath, workflowTemplatePath} from '../paths.js';
 
 type TemplateContract = {
   readonly cli: readonly string[];
   readonly skills: readonly string[];
 };
 
+// A contract key is a tool id, or `scheduler` for the `gaia-ci.yml` template
+// that calls the tool workflows.
+type TemplateKey = 'scheduler' | ToolId;
+
 // The GAIA skills (`/<slug>`) and CLI leaf commands (`gaia <path>`) each
-// `gaia-ci-*` template invokes. `pnpm-audit` and `stale-branches` are pure
-// `gh`/shell and invoke neither; adding a GAIA invocation to either one must
-// record it here, or test 2 does not cover it. Typing the map as
-// `Record<ToolId, ...>` forces an entry when a new tool id is added.
-const TEMPLATE_CONTRACT: Readonly<Record<ToolId, TemplateContract>> = {
+// template invokes. `pnpm-audit` and `stale-branches` are pure `gh`/shell and
+// invoke neither; adding a GAIA invocation to either one must record it here,
+// or test 2 does not cover it. Typing the map as `Record<TemplateKey, ...>`
+// forces an entry when a new tool id is added.
+//
+// The scheduler earns its entry the same way a tool does, and needs it more:
+// its `cron-decide` call is the single gate in front of every tool, so a
+// rename that left it stale would stop all scheduled maintenance at once
+// rather than one tool's.
+const TEMPLATE_CONTRACT: Readonly<Record<TemplateKey, TemplateContract>> = {
   'pnpm-audit': {cli: [], skills: []},
+  scheduler: {cli: ['automation cron-decide'], skills: []},
   'stale-branches': {cli: [], skills: []},
   'update-deps': {cli: ['update-deps run'], skills: ['update-deps']},
   wiki: {cli: ['wiki sync land'], skills: ['gaia-wiki']},
 };
+
+const templatePathFor = (key: TemplateKey): string =>
+  key === 'scheduler' ?
+    workflowSchedulerTemplatePath()
+  : workflowTemplatePath(key);
 
 const escapeRegExp = (value: string): string =>
   value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
@@ -144,10 +160,13 @@ const templatesDir = path.dirname(workflowTemplatePath('wiki'));
 const cliSrc = path.join(repoRoot, '.gaia', 'cli', 'src');
 const ready = existsSync(templatesDir) && existsSync(cliSrc);
 
-const discoverTemplateTools = (): string[] =>
+// `gaia-ci.yml.tmpl` has no tool segment and resolves to `scheduler`, so the
+// one template that is not a tool still has to appear in the contract.
+const discoverTemplateKeys = (): string[] =>
   readdirSync(templatesDir)
-    .map((name) => /^gaia-ci-(.+)\.yml\.tmpl$/u.exec(name)?.[1])
-    .filter((tool): tool is string => tool !== undefined)
+    .map((name) => /^gaia-ci(?:-(.+))?\.yml\.tmpl$/u.exec(name))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => match[1] ?? 'scheduler')
     .toSorted((a, b) => a.localeCompare(b));
 
 // Contract entries whose declared invocation no longer appears in the
@@ -156,7 +175,7 @@ const collectMissingReferences = (): string[] => {
   const missing: string[] = [];
 
   for (const [tool, contract] of Object.entries(TEMPLATE_CONTRACT)) {
-    const template = readFileSync(workflowTemplatePath(tool as ToolId), 'utf8');
+    const template = readFileSync(templatePathFor(tool as TemplateKey), 'utf8');
 
     for (const slug of contract.skills) {
       if (!template.includes(`/${slug}`)) missing.push(`${tool}: /${slug}`);
@@ -201,7 +220,7 @@ const collectUndeclaredSkillRefs = (): string[] => {
   const undeclared: string[] = [];
 
   for (const [tool, contract] of Object.entries(TEMPLATE_CONTRACT)) {
-    const template = readFileSync(workflowTemplatePath(tool as ToolId), 'utf8');
+    const template = readFileSync(templatePathFor(tool as TemplateKey), 'utf8');
     const declared = new Set(contract.skills);
 
     for (const ref of extractSkillRefs(template)) {
@@ -216,9 +235,9 @@ const collectUndeclaredSkillRefs = (): string[] => {
 
 describe('gaia-ci-* template reference drift-guard', () => {
   test.skipIf(!ready)(
-    'the on-disk gaia-ci-* template set matches the contract keys',
+    'the on-disk gaia-ci template set matches the contract keys',
     () => {
-      expect(discoverTemplateTools()).toEqual(
+      expect(discoverTemplateKeys()).toEqual(
         Object.keys(TEMPLATE_CONTRACT).toSorted((a, b) => a.localeCompare(b))
       );
     }

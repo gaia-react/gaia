@@ -14561,12 +14561,14 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 var automationConfigPath = (repoRoot) => path.join(repoRoot, ".gaia", "automation.json");
+var SCHEDULER_WORKFLOW_FILENAME = "gaia-ci.yml";
 var TEMPLATES_RELATIVE_DIR = path.join("templates", "workflows");
 var resolveTemplatesDirectory = () => {
   const here = fileURLToPath(import.meta.url);
   return path.join(path.dirname(here), TEMPLATES_RELATIVE_DIR);
 };
 var workflowTemplatePath = (tool) => path.join(resolveTemplatesDirectory(), `gaia-ci-${tool}.yml.tmpl`);
+var workflowSchedulerTemplatePath = () => path.join(resolveTemplatesDirectory(), "gaia-ci.yml.tmpl");
 var workflowAuditTemplatePath = () => path.join(resolveTemplatesDirectory(), "code-review-audit.yml.tmpl");
 var workflowPartialsDirectory = () => path.join(resolveTemplatesDirectory(), "partials");
 
@@ -15060,38 +15062,6 @@ var substituteVars = (raw, vars) => {
 };
 var renderTemplate = (templatePath, vars) => substituteVars(readFileSync3(templatePath, "utf8"), vars);
 
-// src/automation/render.ts
-var PARTIAL_PATTERN = /(?<!\$)\{\{>\s*partials\/([\w-]+)\s*\}\}/gu;
-var readPartialBody = (partialsDir, name) => {
-  const partialPath = path3.join(partialsDir, `${name}.yml.tmpl`);
-  try {
-    return readFileSync4(partialPath, "utf8");
-  } catch (error51) {
-    const cause = error51 instanceof Error ? error51.message : String(error51);
-    throw new Error(
-      `partial '${name}' could not be read at ${partialPath}: ${cause}`
-    );
-  }
-};
-var resolvePartials = (raw, partialsDir) => raw.replaceAll(PARTIAL_PATTERN, (_match, name) => {
-  const body = readPartialBody(partialsDir, name);
-  if (body.includes("{{>")) {
-    throw new Error(
-      `partial '${name}' contains '{{>'; partials may not include other partials`
-    );
-  }
-  return body;
-});
-var renderWorkflowTemplate = (templatePath, partialsDir, vars) => {
-  const raw = readFileSync4(templatePath, "utf8");
-  const resolved = resolvePartials(raw, partialsDir);
-  const engineVars = {};
-  for (const [key, value] of Object.entries(vars)) {
-    engineVars[key] = typeof value === "number" ? String(value) : value;
-  }
-  return substituteVars(resolved, engineVars);
-};
-
 // src/automation/workflow-vars.ts
 var CRON_BY_SCHEDULE = {
   daily: "0 4 * * *",
@@ -15121,6 +15091,8 @@ var buildWorkflowVars = (config2, tool) => {
   const schedule = "schedule" in toolConfig && toolConfig.schedule !== void 0 ? toolConfig.schedule : DEFAULT_SCHEDULE_BY_TOOL[tool];
   return {
     config_key: configKey,
+    // Read by the scheduler template, not by the tool template: a tool
+    // workflow carries no `schedule:` of its own.
     cron: cronForSchedule(schedule),
     // stale-branches doesn't open a PR, so auto-merge is suppressed.
     // The auto-merge partial gates its body on this flag.
@@ -15136,16 +15108,85 @@ var buildWorkflowVars = (config2, tool) => {
     workflow_name: WORKFLOW_NAME_BY_TOOL[tool]
   };
 };
+var SCHEDULER_WORKFLOW_NAME = "GAIA CI";
+var buildSchedulerVars = (config2) => {
+  const cronByTool = /* @__PURE__ */ new Map();
+  for (const tool of TOOL_IDS) {
+    const vars = buildWorkflowVars(config2, tool);
+    if (vars !== null) cronByTool.set(tool, vars.cron);
+  }
+  if (cronByTool.size === 0) return null;
+  const distinctCrons = [...new Set(cronByTool.values())];
+  return {
+    scheduler_crons: distinctCrons.toSorted((a, b) => a.localeCompare(b)),
+    // Each entry is one `decide_tool` argument list, tool and its own cron
+    // composed in a single expression. Emitting the two as separate template
+    // vars would let them be paired up wrongly downstream, and a tool handed
+    // another tool's cron never matches its fired schedule and silently stops
+    // running.
+    scheduler_decisions: [...cronByTool].map(
+      ([tool, cron]) => `${tool} '${cron}'`
+    ),
+    scheduler_tools: [...cronByTool.keys()],
+    workflow_name: SCHEDULER_WORKFLOW_NAME
+  };
+};
+
+// src/automation/render.ts
+var PARTIAL_PATTERN = /(?<!\$)\{\{>\s*partials\/([\w-]+)\s*\}\}/gu;
+var readPartialBody = (partialsDir, name) => {
+  const partialPath = path3.join(partialsDir, `${name}.yml.tmpl`);
+  try {
+    return readFileSync4(partialPath, "utf8");
+  } catch (error51) {
+    const cause = error51 instanceof Error ? error51.message : String(error51);
+    throw new Error(
+      `partial '${name}' could not be read at ${partialPath}: ${cause}`
+    );
+  }
+};
+var resolvePartials = (raw, partialsDir) => raw.replaceAll(PARTIAL_PATTERN, (_match, name) => {
+  const body = readPartialBody(partialsDir, name);
+  if (body.includes("{{>")) {
+    throw new Error(
+      `partial '${name}' contains '{{>'; partials may not include other partials`
+    );
+  }
+  return body;
+});
+var renderWorkflowTemplate = (templatePath, partialsDir, vars) => {
+  const raw = readFileSync4(templatePath, "utf8");
+  const resolved = resolvePartials(raw, partialsDir);
+  const engineVars = Object.fromEntries(
+    Object.entries(vars)
+  );
+  return substituteVars(resolved, engineVars);
+};
+var renderedWorkflowFilename = (target) => target.kind === "scheduler" ? SCHEDULER_WORKFLOW_FILENAME : `gaia-ci-${target.tool}.yml`;
+var renderWorkflowFor = (config2, target) => {
+  const vars = target.kind === "scheduler" ? buildSchedulerVars(config2) : buildWorkflowVars(config2, target.tool);
+  if (vars === null) return null;
+  const templatePath = target.kind === "scheduler" ? workflowSchedulerTemplatePath() : workflowTemplatePath(target.tool);
+  return renderWorkflowTemplate(
+    templatePath,
+    workflowPartialsDirectory(),
+    vars
+  );
+};
 
 // src/automation/render-workflows.ts
 var HELP_TEXT4 = `Usage: gaia automation render-workflows --out-dir <path> [--tools <csv>] [--dry-run]
 
-  Renders one workflow YAML per CI-mode tool from .gaia/automation.json.
+  Renders one workflow YAML per CI-mode tool from .gaia/automation.json,
+  plus the ${SCHEDULER_WORKFLOW_FILENAME} scheduler that fans out to them.
 
   --out-dir <path>     Required. Where to write the rendered files.
                        Created with mkdir -p semantics if missing.
   --tools <csv>        Optional. Comma-separated subset of:
                        ${TOOL_IDS.join(", ")}. Defaults to all four.
+                       The scheduler always covers every CI-mode tool in
+                       the config, since it is one file describing all of
+                       them; a subset here narrows the per-tool files only.
   --dry-run            Optional. Print what would be written; do not
                        touch the filesystem.
   --config <path>      Reserved. Override of .gaia/automation.json
@@ -15238,24 +15279,24 @@ var parseArgs2 = (argv) => {
     tools: state.tools
   };
 };
-var renderOneTool = (options) => {
-  const { config: config2, dryRun, outDir, partialsDir, tool } = options;
-  const vars = buildWorkflowVars(config2, tool);
-  if (vars === null) {
-    const toolConfig = config2[TOOL_ID_TO_CONFIG_KEY[tool]];
-    process.stderr.write(`${tool}: skipped (mode=${toolConfig.mode})
+var skipReason = (config2, target) => {
+  if (target.kind === "scheduler") return "no tool in ci mode";
+  const toolConfig = config2[TOOL_ID_TO_CONFIG_KEY[target.tool]];
+  return `mode=${toolConfig.mode}`;
+};
+var renderOneTarget = (options) => {
+  const { config: config2, dryRun, outDir, target } = options;
+  const label = target.kind === "scheduler" ? "scheduler" : target.tool;
+  const rendered = renderWorkflowFor(config2, target);
+  if (rendered === null) {
+    process.stderr.write(`${label}: skipped (${skipReason(config2, target)})
 `);
     return;
   }
-  const rendered = renderWorkflowTemplate(
-    workflowTemplatePath(tool),
-    partialsDir,
-    vars
-  );
-  const outPath = path4.join(outDir, `gaia-ci-${tool}.yml`);
+  const outPath = path4.join(outDir, renderedWorkflowFilename(target));
   if (dryRun) {
     process.stdout.write(
-      `${tool}: ${String(rendered.length)} bytes -> ${outPath}
+      `${label}: ${String(rendered.length)} bytes -> ${outPath}
 `
     );
     return;
@@ -15308,17 +15349,27 @@ var run4 = (argv, options = {}) => {
     });
     return EXIT_CODES.CONFIG_INVALID;
   }
-  const partialsDir = workflowPartialsDirectory();
   if (!parsed.dryRun) {
     mkdirSync2(parsed.outDir, { recursive: true });
   }
-  for (const tool of parsed.tools) {
-    renderOneTool({
+  const targets = [
+    ...parsed.tools.map((tool) => ({ kind: "tool", tool })),
+    { kind: "scheduler" }
+  ];
+  const requested = new Set(parsed.tools);
+  const unrendered = (buildSchedulerVars(configResult.config)?.scheduler_tools ?? []).filter((tool) => !requested.has(tool));
+  if (unrendered.length > 0) {
+    process.stderr.write(
+      `scheduler: calls ${unrendered.join(", ")}, which --tools did not render; those files must exist in ${parsed.outDir} or every scheduled run fails
+`
+    );
+  }
+  for (const target of targets) {
+    renderOneTarget({
       config: configResult.config,
       dryRun: parsed.dryRun,
       outDir: parsed.outDir,
-      partialsDir,
-      tool
+      target
     });
   }
   return EXIT_CODES.OK;
@@ -28479,15 +28530,15 @@ var processRegion = (raw, index, context) => {
   }
   const decl = parsedDecl.declaration;
   const commandArgv = [decl.interpreter, decl.operand, ...decl.args];
-  const skipReason = computeSkipReason(decl, {
+  const skipReason2 = computeSkipReason(decl, {
     absentPaths: absentPathSet,
     conflicted: conflictedSet,
     skipRegions: skipRegionSet
   });
-  if (skipReason !== void 0) {
+  if (skipReason2 !== void 0) {
     report.skipped.push({
       argv: commandArgv,
-      reason: skipReason,
+      reason: skipReason2,
       regionId: decl.id
     });
     return;
@@ -29325,10 +29376,10 @@ var classifyTouchedDomains = (commit2) => {
 };
 var classifyArchSuppressibleChore = (commit2, header) => {
   const { body } = commit2;
-  const suppressible = (label, skipReason) => ARCH_BODY_PATTERN.test(body) ? {
+  const suppressible = (label, skipReason2) => ARCH_BODY_PATTERN.test(body) ? {
     reason: `${label}: body mentions architecture / decision`,
     suggestion: "WORTHY"
-  } : { reason: skipReason, suggestion: "SKIP" };
+  } : { reason: skipReason2, suggestion: "SKIP" };
   if (matchesPrefix(header, "chore", "deps")) {
     return suppressible("chore(deps)", "chore(deps): version bump only");
   }
