@@ -83,6 +83,7 @@
     ".claude/rules/dep-audit.md": "owned",
     ".claude/rules/design-baseline.md": "owned",
     ".claude/rules/gaia-folder.md": "owned",
+    ".claude/rules/hook-registration.md": "owned",
     ".claude/rules/i18n.md": "owned",
     ".claude/rules/instruction-files.md": "owned",
     ".claude/rules/knip.md": "owned",
@@ -647,7 +648,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-13T23:06:22.158Z",
+  "generated": "2026-08-14T00:57:56.633Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
