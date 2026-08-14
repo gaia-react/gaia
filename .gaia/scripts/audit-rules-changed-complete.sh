@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# audit-rules-changed-complete.sh: the two-tier reset-predicate completeness
+# check.
+#
+# Contract A carves a GLOBAL and a MEMBER tier out of the shared machinery
+# set (audit-machinery.sh) for a different decision than machinery-set
+# membership: whether a standing per-member review anchor is still sound, not
+# whether a fresh clearance is required. A gate-machinery file silently left
+# out of AUDIT_GLOBAL_RULES_PATHS fails in the UNDER-resetting direction: it
+# still rotates every member's digest (so the merge gate still demands a
+# fresh clearance), but a member's stale anchor from before that file changed
+# would be trusted as sound review coverage when it is not.
+#
+# Assertions 1 and 2 both check the same hardcoded lockstep list against the
+# two libraries, so a NEW global-rules file missing from that list is missing
+# from both and stays green -- neither can catch the case this check exists
+# for. Assertion 3 is the one that can: it walks the machinery set from the
+# outside (every tracked file audit_path_is_machinery flags) and demands each
+# lands in exactly one of the three tiers, so a machinery file nobody
+# classified anywhere reds by name instead of silently defaulting to
+# merely-shared.
+#
+# Bash 3.2 compatible. Never `cd` (outside the source-time lib resolution).
+set -uo pipefail
+
+# Source both libraries from THIS script's own on-disk location, never cwd:
+# .gaia/scripts -> ../../.claude/hooks/lib.
+_self_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -n "${_self_lib_dir:-}" ] && [ -f "$_self_lib_dir/audit-rules-changed.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_self_lib_dir/audit-rules-changed.sh"
+fi
+if [ -n "${_self_lib_dir:-}" ] && [ -f "$_self_lib_dir/audit-machinery.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_self_lib_dir/audit-machinery.sh"
+fi
+
+if ! command -v audit_path_is_global_rule >/dev/null 2>&1 || ! command -v audit_path_is_member_rule >/dev/null 2>&1; then
+  printf 'audit-rules-changed-complete.sh: rules-changed library unavailable\n' >&2
+  exit 1
+fi
+if ! command -v audit_machinery_flags >/dev/null 2>&1; then
+  printf 'audit-rules-changed-complete.sh: machinery library unavailable\n' >&2
+  exit 1
+fi
+
+repo_root="${1:-}"
+if [ -z "$repo_root" ]; then
+  repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+    printf 'audit-rules-changed-complete.sh: not a git repository and no repo_root argument given\n' >&2
+    exit 2
+  }
+fi
+
+# 1. Lockstep completeness. Same content as AUDIT_GLOBAL_RULES_PATHS, with
+# the `/**` entry spelled as a concrete probe path.
+GLOBAL_RULES_FILES="$(cat <<'EOF'
+.gaia/VERSION
+.gaia/audit-ci.yml
+.claude/hooks/lib/audit-scope.sh
+.claude/hooks/lib/audit-machinery.sh
+.claude/hooks/lib/audit-clearance.sh
+.claude/hooks/lib/audit-digest.sh
+.claude/hooks/lib/audit-rules-changed.sh
+.gaia/scripts/audit-write-clearance.sh
+.gaia/scripts/audit-member-digest.sh
+.gaia/scripts/audit-key-lib.sh
+.gaia/scripts/main-root-lib.sh
+.gaia/scripts/resolve-audit-members.sh
+# gaia:maintainer-only:start
+.gaia/scripts/resolve-audit-spawn.sh
+# gaia:maintainer-only:end
+.claude/hooks/audit-stamp-trailer.sh
+.claude/hooks/post-audit-status.sh
+.claude/hooks/pr-merge-audit-check.sh
+.github/audit/resolve-audit-base.sh
+.claude/rules/quality-gate.md
+EOF
+)"
+
+missing1=0
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  case "$f" in "#"*) continue ;; esac
+  if ! audit_path_is_global_rule "$f"; then
+    printf 'global-rules file not matched by audit_path_is_global_rule: %s\n' "$f" >&2
+    missing1=$((missing1 + 1))
+  fi
+done <<EOF
+$GLOBAL_RULES_FILES
+EOF
+
+# 2. Global rules are a subset of machinery: a global rule that rotates no
+# member's digest would demand no fresh clearance for the very file that
+# resets everyone's anchor.
+missing2=0
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  case "$f" in "#"*) continue ;; esac
+  if ! audit_path_is_machinery "$f"; then
+    printf 'global-rules file not covered by audit_path_is_machinery: %s\n' "$f" >&2
+    missing2=$((missing2 + 1))
+  fi
+done <<EOF
+$GLOBAL_RULES_FILES
+EOF
+
+# 3. The machinery set is fully partitioned: every machinery file is global,
+# a member's own agent definition, or explicitly merely-shared -- never zero
+# of the three, never more than one.
+AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
+.claude/hooks/audit-disposition-check.sh
+.claude/hooks/block-selfheal-paths.sh
+.claude/hooks/lib/audit-dispositions.sh
+.claude/hooks/lib/audit-selfheal-paths.sh
+.claude/hooks/lib/gaia-active-plan.sh
+.claude/hooks/lib/gaia-ci-defer.sh
+.claude/hooks/lib/red-ledger.sh
+.claude/hooks/lib/repo-scope.sh
+.claude/hooks/lib/worthiness-ledger.sh
+.claude/hooks/local-janitor.sh
+# gaia:maintainer-only:start
+.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl
+# gaia:maintainer-only:end
+.gaia/cli/templates/workflows/code-review-audit.yml.tmpl
+.gaia/scripts/audit-machinery-complete.sh
+.gaia/scripts/audit-rules-changed-complete.sh
+.gaia/scripts/audit-noop-detect.sh
+.gaia/scripts/audit-write-findings.sh
+.gaia/scripts/link-worktree.sh
+.gaia/scripts/read-audit-ci-config.sh
+.github/audit/audit-success-present.sh
+.github/audit/check-trailer.sh
+.github/audit/cra-status-upsert.sh
+.github/audit/gate-pending-members.sh
+.github/audit/resolve-check-base.sh
+.github/audit/write-audit-status.sh
+.github/workflows/code-review-audit.yml
+EOF
+)"
+
+_audit_rules_changed_complete_path_is_merely_shared() {
+  local path="$1" entry
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    case "$entry" in "#"*) continue ;; esac
+    [ "$path" = "$entry" ] && return 0
+  done <<EOF
+$AUDIT_MERELY_SHARED_PATHS
+EOF
+  return 1
+}
+
+missing3=0
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  path="${line%%$'\t'*}"
+  flag="${line##*$'\t'}"
+  [ "$flag" = "1" ] || continue
+
+  member=""
+  case "$path" in
+    .claude/agents/code-audit-*.md)
+      member="${path#.claude/agents/}"
+      member="${member%.md}"
+      ;;
+  esac
+
+  hits=0
+  if audit_path_is_global_rule "$path"; then hits=$((hits + 1)); fi
+  if [ -n "$member" ] && audit_path_is_member_rule "$path" "$member"; then hits=$((hits + 1)); fi
+  if _audit_rules_changed_complete_path_is_merely_shared "$path"; then hits=$((hits + 1)); fi
+
+  if [ "$hits" -eq 0 ]; then
+    printf 'machinery file classified by none of global, member, or merely-shared: %s\n' "$path" >&2
+    missing3=$((missing3 + 1))
+  elif [ "$hits" -gt 1 ]; then
+    printf 'machinery file classified by more than one tier (overlap): %s\n' "$path" >&2
+    missing3=$((missing3 + 1))
+  fi
+done < <(git -C "$repo_root" ls-files | audit_machinery_flags)
+
+if [ "$missing1" -gt 0 ]; then
+  printf 'audit-rules-changed-complete.sh: %d global-rules file(s) unmatched by AUDIT_GLOBAL_RULES_PATHS\n' "$missing1" >&2
+fi
+if [ "$missing2" -gt 0 ]; then
+  printf 'audit-rules-changed-complete.sh: %d global-rules file(s) not covered by AUDIT_MACHINERY_PATHS\n' "$missing2" >&2
+fi
+if [ "$missing3" -gt 0 ]; then
+  printf 'audit-rules-changed-complete.sh: %d machinery file(s) failing the global/member/merely-shared partition\n' "$missing3" >&2
+fi
+
+if [ "$missing1" -gt 0 ] || [ "$missing2" -gt 0 ] || [ "$missing3" -gt 0 ]; then
+  exit 1
+fi
+exit 0

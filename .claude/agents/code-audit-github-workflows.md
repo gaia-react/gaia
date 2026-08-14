@@ -50,9 +50,10 @@ if [ -z "$FULL_BASE" ]; then
   exit 1
 fi
 full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
-# BASE_SHA, not a lowercase local: every handshake invocation below passes
-# `--base "$BASE_SHA"`, and shell state does NOT persist between an agent's
-# Bash calls, so each of those calls re-runs this snippet, and the AUDIT_ROOT
+# BASE_SHA and KEY_BASE, not lowercase locals: every handshake invocation
+# below passes `--base "$KEY_BASE"` and scopes its review off `$BASE_SHA`,
+# and shell state does NOT persist between an agent's Bash calls, so each
+# of those calls re-runs this snippet, and the AUDIT_ROOT
 # derivation above it that this snippet depends on. A name mismatch here makes
 # --base expand empty, which audit-write-findings.sh rejects outright (the
 # report of record is never written) and which audit-write-clearance.sh
@@ -60,20 +61,31 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>
 # briefs nothing.
 #
 # BASE_SHA is the INCREMENTAL base: the newest ancestor of HEAD this PR
-# already cleared, resolved by .github/audit/resolve-audit-base.sh. It scopes
-# your review, and it keys your findings sidecar and the shared re-run ledger,
-# so every co-dispatched member and every reader of those artifacts has to
-# reach it through this same call or they key two different ledgers. The
-# self-skip arm uses FULL_BASE instead; the paragraph below this block is why
-# the two cannot be one value.
-BASE_REF="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh)"
+# already cleared, resolved by .github/audit/resolve-audit-base.sh --member.
+# It returns the most recent ancestor carrying a clean-audit signal under the
+# current .gaia/VERSION (a GAIA-Audit trailer, a commit status, or this
+# member's own earned clearance), or origin/main when none exists, and it
+# scopes your review. KEY_BASE keys your findings sidecar and the shared
+# re-run ledger instead: it is the SAME shared pull-request-wide base every
+# co-dispatched member resolves, so every reader of those artifacts reaches
+# one key rather than a per-member key that would leave the consolidated
+# findings block missing a whole member's findings. The self-skip arm uses
+# FULL_BASE instead; the paragraph below this block is why the three cannot
+# be one value.
+BASE_OUT="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh --member code-audit-github-workflows)"
+BASE_REF="$(printf '%s\n' "$BASE_OUT" | sed -n 1p)"     # <sha> | origin/main | origin/<base-ref> | main
+BASE_REASON="$(printf '%s\n' "$BASE_OUT" | sed -n 2p)"
+KEY_REF="$(printf '%s\n' "$BASE_OUT" | sed -n 3p)"
+ANCHOR_TREE="$(printf '%s\n' "$BASE_OUT" | sed -n 4p)"
 BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
+KEY_BASE="$(git -C "$AUDIT_ROOT" merge-base "${KEY_REF}" HEAD 2>/dev/null || true)"
 # An empty BASE_SHA does NOT make the diff below fail: git resolves the
 # empty left side to HEAD, so `changed` comes back empty with status 0 and
 # is indistinguishable from a genuinely empty increment. Say so here,
 # where the silence is created, rather than leaving it to the handshake
 # three steps down that rejects --base "".
 [ -n "$BASE_SHA" ] || printf 'resolve-audit-base returned no base; review scope is unreliable\n' >&2
+[ -n "$KEY_BASE" ] || printf 'resolve-audit-base returned no shared key base; artifact keying is unreliable\n' >&2
 changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
 # `Read` returns WORKING-TREE bytes while your clearance attests to a digest
 # over HEAD (`git ls-tree HEAD`, .claude/hooks/lib/audit-digest.sh), so a pass
@@ -98,7 +110,7 @@ if [ -n "$dirty_in_scope" ]; then printf 'DIRTY IN REVIEW SCOPE:\n%s\n' "$dirty_
 
 Two lists, two jobs. `full_changed` decides **whether you run at all**: filter it against your remit globs, and self-skip when nothing matches. `changed` decides **what you review**: filter it the same way and review only what it names. The two lists differ once this PR has passed a clean round, because `BASE_SHA` then starts at that round's commit while `FULL_BASE` stays at the fork point.
 
-They cannot be collapsed back into one value. Your marker is invalid at HEAD exactly when your content digest rotated, and a digest rotates on a change to a file you own or to shared gate machinery. The owned-file case is safe on the increment alone, since an owned file that changed after the last clean round is in it. The machinery case usually is too, because the resolver resets to full scope when machinery moved between the cleared commit and HEAD. But that reset **fails open** when the classifier libs will not load, and then the increment carries the machinery file and nothing else. When that file is outside your globs, self-skipping on `changed` writes no marker while membership, resolved over the whole PR diff, still demands one, and the merge deadlocks with nothing left that can clear it. `full_changed` is what closes that hole.
+They cannot be collapsed back into one value. Your marker is invalid at HEAD exactly when your content digest rotated, and a digest rotates on a change to a file you own or to shared gate machinery. The owned-file case is safe on the increment alone, since an owned file that changed after the last clean round is in it. The machinery case is not: a merely-shared machinery change resets neither the global nor the member reset tier, so it legitimately produces an increment carrying nothing in your remit while membership, resolved over the whole PR diff, still demands your clearance. Self-skipping on `changed` there would write no marker while membership still demands one, and the merge would deadlock with nothing left that can clear it. `full_changed` is what closes that hole.
 
 **If no `full_changed` path matches, skip cleanly**: write no marker (there is nothing to gate), do not call `audit-stamp-trailer.sh` or `post-audit-status.sh`, and return a one-line note that no changed file fell in your remit. This arm requires a resolved `FULL_BASE`. An empty one makes `full_changed` empty too, at status 0, so an unresolvable membership scope is indistinguishable here from a genuine no-match; the guard in the snippet above stops before this point rather than letting that read as a clean skip. Skip only on an empty `full_changed` that a real base produced.
 
@@ -192,7 +204,10 @@ Every command below consumes `$AUDIT_ROOT`, and each Bash call re-runs the deriv
 findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-github-workflows \
-  --base "$BASE_SHA" \
+  --base "$KEY_BASE" \
+  --review-base "$BASE_SHA" \
+  --base-reason "$BASE_REASON" \
+  --anchor-tree "$ANCHOR_TREE" \
   --findings - <<'FINDINGS'
 [ ...the findings array, one object per finding; [] when you found nothing... ]
 FINDINGS
@@ -208,7 +223,7 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-github-workflows \
   --provenance earned \
-  --base "$BASE_SHA")"
+  --base "$KEY_BASE")"
 ```
 
 The shared writer derives your content digest internally from `--root`, resolves the filename from it, writes atomically, and prints the marker path it wrote. Every write lands unconditionally: it replaces whatever marker was already on disk for this digest, there is no carried provenance to out-rank, only earned or refused.
@@ -220,10 +235,10 @@ bash .gaia/scripts/audit-write-clearance.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-github-workflows \
   --provenance refused \
-  --base "$BASE_SHA"
+  --base "$KEY_BASE"
 ```
 
-`--base` is what makes the refusal self-describing. A refusal blocks the merge and is retired only by its own author, so an operator who cannot learn what you refused on can neither repair it nor legitimately supersede it: superseding requires stating a reason they are not in a position to state. With `--base` the writer derives the re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`) from the findings sidecar you wrote in step 0, so `remaining[]` names every open finding with its path, line, failure mode and recommended repair. Pass the same `BASE_SHA` you gave the sidecar writer. The ledger is non-gating and best-effort: it never blocks a merge, no hook reads it, and a failure there never fails your marker write. Your `remaining[]` entries are rebuilt from your sidecar on every round, so a finding it no longer names is closed; a co-dispatched member's entries are never touched.
+`--base` is what makes the refusal self-describing. A refusal blocks the merge and is retired only by its own author, so an operator who cannot learn what you refused on can neither repair it nor legitimately supersede it: superseding requires stating a reason they are not in a position to state. With `--base` the writer derives the re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`) from the findings sidecar you wrote in step 0, so `remaining[]` names every open finding with its path, line, failure mode and recommended repair. Pass the same `KEY_BASE` you gave the sidecar writer. The ledger is non-gating and best-effort: it never blocks a merge, no hook reads it, and a failure there never fails your marker write. Your `remaining[]` entries are rebuilt from your sidecar on every round, so a finding it no longer names is closed; a co-dispatched member's entries are never touched.
 
 Passing `--base` on the earned write too is what retires your ledger entries: the writer moves them into `fixed_last_round[]` stamped with the sha that closed them, and removes the ledger file once no member has anything left. Without it, a repaired finding lingers in `remaining[]` and the next round's fixer acts on work that is already done.
 
@@ -234,7 +249,7 @@ marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-github-workflows \
   --provenance earned \
-  --base "$BASE_SHA" \
+  --base "$KEY_BASE" \
   --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
 ```
 
@@ -296,14 +311,17 @@ The finding-recurrence tally reads PR comments for a machine-readable findings b
 findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-github-workflows \
-  --base "$BASE_SHA" \
+  --base "$KEY_BASE" \
+  --review-base "$BASE_SHA" \
+  --base-reason "$BASE_REASON" \
+  --anchor-tree "$ANCHOR_TREE" \
   --findings - <<'FINDINGS'
 [ ...the findings array, one object per finding; [] when you found nothing... ]
 FINDINGS
 )"
 ```
 
-Pass the same `BASE_SHA` you already resolved at the start of the run (see "Remit and self-skip" above), never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-github-workflows.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable, so an unresolvable key skips the write rather than inventing a fallback path no reader looks under.
+Pass the same `KEY_BASE` you already resolved at the start of the run (see "Remit and self-skip" above), never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-github-workflows.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable, so an unresolvable key skips the write rather than inventing a fallback path no reader looks under. `--review-base`, `--base-reason`, and `--anchor-tree` carry the per-member decision record (the review base, the resolver's reason token, and the anchoring clearance's recorded tree) into the sidecar's `review_base` object; pass all three from the same single resolver invocation "Remit and self-skip" already made.
 
 **Stage nothing: the array goes in through the quoted heredoc above, never through a file.** Members dispatched in one parallel wave share a session scratchpad, so any fixed staging filename is a filename every member picks: one member's array reaches another member's published sidecar under that member's name, and a file left by an earlier round republishes as a fresh report. Neither is visible downstream, because the sidecar is your report of record and the no-op classifier reads it to tell a real pass from a lost one. The audit key does not rotate between rounds, so naming the staging file after it would not close the second case. Keep the delimiter quoted (`<<'FINDINGS'`): that is what holds a `$` or a backtick inside your finding text literal.
 

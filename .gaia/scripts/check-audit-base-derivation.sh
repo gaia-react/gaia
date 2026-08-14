@@ -53,6 +53,19 @@
 #      `merge-base` call is the nearest `IDENT=` to its left, and `FULL_BASE`
 #      is the only name allowed to own a call that does not pass `BASE_REF`.
 #
+#      A second bare merge-base is exempted the same way: `KEY_BASE`, the
+#      shared, pull-request-wide artifact key base every dispatched member
+#      keys its findings sidecar, its slice of the re-run ledger, and its
+#      clearance record against. It is resolved from the SAME resolver call
+#      as the review base -- line 3 of the `--member` form output, the exact
+#      line the argument-less form prints on its own -- then merge-based
+#      against HEAD for a stable sha, exactly as `BASE_SHA` is. It is not a
+#      review base and never scopes what a member reviews. Its call passes
+#      `KEY_REF`, never `BASE_REF`, so the positive BASE_REF rule above
+#      cannot exempt it; the by-name exemption is the only way to admit it
+#      without opening the assertion to every branch a member decides to key
+#      against.
+#
 #   2. Every file that NAMES `BASE_SHA` also names `resolve-audit-base.sh`.
 #      A token-presence net over the whole file, not a call-shape check: the
 #      grep is a fixed-string match, so the sentence explaining where the
@@ -91,16 +104,22 @@
 #      Same shape as (1): a wide fixed-string net (`diff --name-only`) narrowed
 #      in awk, where the discriminations are expressible. A call is a violation
 #      when it names ANY spelling of the review base (`resolve-audit-base.sh`,
-#      `BASE_REF`, `BASE_SHA`, `FULL_BASE`) and carries no `...` range.
+#      `BASE_REF`, `BASE_SHA`, `FULL_BASE`, `KEY_BASE`) and carries no `...`
+#      range.
 #
-#      All four spellings, not only the pre-merge-base ones, because what makes
-#      a call wrong is the two-dot comparison and NOT which variable reached
-#      it: `git diff --name-only "${BASE_SHA}"` compares against the working
-#      tree exactly as `"$BASE_REF"` does. A rule keyed to the raw-base
-#      spellings alone would police a member's choice of variable while
-#      missing a two-dot diff on the correct one, which is the likelier drift.
-#      This assertion says nothing about WHICH spelling a call should use; the
-#      three-dot range is the whole requirement.
+#      All five spellings, not only the pre-merge-base ones, because what
+#      makes a call wrong is the two-dot comparison and NOT which variable
+#      reached it: `git diff --name-only "${BASE_SHA}"` compares against the
+#      working tree exactly as `"$BASE_REF"` does. A rule keyed to the
+#      raw-base spellings alone would police a member's choice of variable
+#      while missing a two-dot diff on the correct one, which is the likelier
+#      drift. `KEY_BASE` joins the net for the same reason though no call
+#      consumes it in a diff today: what makes a call wrong is the two-dot
+#      comparison, not which variable reached it, so a future two-dot diff on
+#      the new variable must still be caught rather than reaching a spelling
+#      the net does not know. This assertion says nothing about WHICH
+#      spelling a call should use; the three-dot range is the whole
+#      requirement.
 #
 #      Scoped per CALL by three walls: the next `diff --name-only` (without
 #      which the window runs to end of line and a two-dot call is vouched for
@@ -282,10 +301,11 @@ GAIA_AUDIT_DIFF_CALL='diff --name-only'
 # applying the two discriminations the ERE cannot express. A line survives
 # when it carries at least one `merge-base` call that neither takes BASE_REF
 # inside its own argument list (the resolver-derived shape this check
-# requires) nor is owned by FULL_BASE (the self-skip base and the default
-# member's waive-eligibility base, deliberately exempt). Both tests are per
-# CALL, never per line: "its own argument list" ends at the `)` that closes
-# the call, so a BASE_REF named anywhere after that vouches for nothing.
+# requires) nor is owned by FULL_BASE or KEY_BASE (the self-skip base, the
+# default member's waive-eligibility base, and the shared artifact-key base,
+# all deliberately exempt). Both tests are per CALL, never per line: "its own
+# argument list" ends at the `)` that closes the call, so a BASE_REF named
+# anywhere after that vouches for nothing.
 #
 # `sub` on a copy removes only the FIRST two colon-delimited fields, so a
 # colon inside the content itself never shifts the boundary. The owning
@@ -365,7 +385,7 @@ _gaia_drop_full_base_matches() {
           name = substr(left, RSTART, RLENGTH - 1)
           left = substr(left, RSTART + RLENGTH)
         }
-        if (name != "FULL_BASE") { print; next }
+        if (name != "FULL_BASE" && name != "KEY_BASE") { print; next }
         consumed += pos + 9
         rest = substr(content, consumed + 1)
       }
@@ -462,10 +482,14 @@ _gaia_keep_diff_matches_missing() {
         # `"$BASE_REF"` does. Keying on the pre-merge-base spellings alone
         # would police which variable a member names while missing a two-dot
         # diff on the correct one, which is the likelier drift by far.
+        # KEY_BASE joins the list for the same reason: no call consumes it in
+        # a diff today, but a future one would be the identical two-dot
+        # defect on a variable the net did not yet know.
         consumes = index(window, "resolve-audit-base.sh") > 0 \
                 || index(window, "BASE_REF") > 0 \
                 || index(window, "BASE_SHA") > 0 \
-                || index(window, "FULL_BASE") > 0
+                || index(window, "FULL_BASE") > 0 \
+                || index(window, "KEY_BASE") > 0
 
         # A base-consuming call must carry the token, and `anchored` decides
         # WHERE. Unanchored for `...`, whose correct forms put it on either

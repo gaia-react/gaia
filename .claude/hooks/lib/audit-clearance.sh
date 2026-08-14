@@ -131,3 +131,59 @@ clearance_member_refused() {
   p="$(clearance_refused_path "$root" "$digest" "$member")"
   clearance_refusal_acceptable "$p" "$member" "$digest"
 }
+
+# clearance_scan <root> <member> <provenance> -> "<tree>\t<version>\t<sha>\t<path>" lines
+# The enumerating counterpart to the digest-keyed predicates above: a caller
+# that holds a member and a provenance but no digest (the per-member base
+# resolver, choosing among this member's own history) cannot ask
+# clearance_acceptable anything. This walks every artifact in the member's
+# <provenance> family and applies the SAME well-formedness key
+# (clearance_acceptable's digest/member/provenance equality), read from the
+# filename instead of supplied by the caller. It is still not an anti-forgery
+# defense, only proof a record is writer-shaped.
+#
+# The recorded TREE is the field callers match on, not the sha: a clean-round
+# stamp amends HEAD (rewriting the sha a moments-old clearance recorded) while
+# preserving the tree. `.version` and `.sha` are advisory and may come back
+# empty when the body predates that field; `.tree` is never empty for an
+# accepted record. Callers must never match on an empty value (the writer
+# applies no empty-guard to the recorded fields it emits).
+#
+# jq REQUIRED, fail-closed: absent jq prints nothing and returns 1, same as
+# every other predicate here -- it must never degrade to a bare filename scan.
+# Returns 0 iff at least one line was emitted. Output order is unspecified
+# (glob order happens to be lexical, but callers must not depend on it).
+clearance_scan() {
+  local root="$1" member="$2" provenance="$3"
+  local dir ext file base stem digest tree version sha any=1
+  command -v jq >/dev/null 2>&1 || return 1
+  case "$provenance" in
+    earned) ext="ok" ;;
+    refused) ext="refused" ;;
+    *) return 1 ;;
+  esac
+  dir="${root}/.gaia/local/audit"
+  [ -d "$dir" ] || return 1
+  for file in "$dir"/*."$ext"; do
+    [ -e "$file" ] || continue
+    base="$(basename "$file")"
+    stem="${base%."$ext"}"
+    if [ "$member" != "$CLEARANCE_DEFAULT_MEMBER" ]; then
+      case "$stem" in
+        *".$member") stem="${stem%."$member"}" ;;
+        *) continue ;;
+      esac
+    fi
+    digest="$(clearance_field "$file" digest)"
+    [ -n "$digest" ] && [ "$digest" = "$stem" ] || continue
+    [ "$(clearance_field "$file" member)" = "$member" ] || continue
+    [ "$(clearance_field "$file" provenance)" = "$provenance" ] || continue
+    tree="$(clearance_field "$file" tree)"
+    [ -n "$tree" ] || continue
+    version="$(clearance_field "$file" version)"
+    sha="$(clearance_field "$file" sha)"
+    printf '%s\t%s\t%s\t%s\n' "$tree" "$version" "$sha" "$file"
+    any=0
+  done
+  return "$any"
+}

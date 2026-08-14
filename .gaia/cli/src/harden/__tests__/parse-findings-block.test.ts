@@ -216,6 +216,46 @@ describe('parseFindingsBlock', () => {
     expect(parseFindingsBlock(body)).toEqual({auditor: '', findings: []});
   });
 
+  test('tolerates an additive review_bases key without altering the parsed result', () => {
+    const findings = [
+      {
+        area_tags: ['app/components'],
+        finding_class: 'react-doctor/no-generic-handler-names',
+        severity: 'warning',
+      },
+    ];
+    const withoutReviewBases = block(
+      JSON.stringify({auditor: 'local', findings, pr_number: 42, schema: 1})
+    );
+    const withReviewBases = block(
+      JSON.stringify({
+        auditor: 'local',
+        findings,
+        pr_number: 42,
+        review_bases: [
+          {
+            anchor_tree: 'abc123',
+            member: 'code-audit-frontend',
+            reason: 'member-clearance',
+            sha: 'deadbeef',
+          },
+        ],
+        schema: 1,
+      })
+    );
+
+    // Pin the concrete shape as well as the relation: an equality alone stays
+    // green if a regression makes both sides null, which asserts nothing about
+    // additive-key tolerance.
+    expect(parseFindingsBlock(withReviewBases)).toEqual({
+      auditor: 'local',
+      findings,
+    });
+    expect(parseFindingsBlock(withReviewBases)).toEqual(
+      parseFindingsBlock(withoutReviewBases)
+    );
+  });
+
   test('accepts every declared reject reason', () => {
     // Type-level assertion: RejectReason is exactly the four drop paths.
     const reasons: RejectReason[] = [

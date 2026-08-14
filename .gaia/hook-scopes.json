@@ -284,6 +284,12 @@
       "why": "A pure path-list matcher with no root parameter and no filesystem access at all."
     },
     {
+      "hook": ".claude/hooks/lib/audit-rules-changed.sh",
+      "scope": "any",
+      "state": [],
+      "why": "A pure path-list matcher with no root parameter and no filesystem access at all."
+    },
+    {
       "hook": ".claude/hooks/lib/audit-scope.sh",
       "scope": "any",
       "state": [],

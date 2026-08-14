@@ -385,3 +385,66 @@ STUB
   run shellcheck "$WRITER"
   [ "$status" -eq 0 ]
 }
+
+# review_base: the per-member decision record (--review-base/--base-reason/
+# --anchor-tree). The pairing predicate is on flag PRESENCE, never on value
+# emptiness (contract D / task-findings-record acceptance 3).
+
+write_rb() {
+  printf '%s' "$1" | bash "$WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" --findings - "${@:2}"
+}
+
+@test "review_base: with none of the three flags, no review_base key at all" {
+  write_rb "[$(complete_finding)]" >/dev/null
+  [ "$(jq -e 'has("review_base")' "$EXPECTED")" = "false" ]
+}
+
+@test "review_base: both flags present and non-empty writes the additive key verbatim" {
+  write_rb "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance >/dev/null
+  [ "$(jq -r '.review_base.sha' "$EXPECTED")" = "deadbeef" ]
+  [ "$(jq -r '.review_base.reason' "$EXPECTED")" = "member-clearance" ]
+  [ "$(jq -e '.review_base | has("anchor_tree")' "$EXPECTED")" = "false" ]
+}
+
+@test "review_base: --anchor-tree present and non-empty carries its value" {
+  write_rb "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance --anchor-tree treesha >/dev/null
+  [ "$(jq -r '.review_base.anchor_tree' "$EXPECTED")" = "treesha" ]
+}
+
+@test "review_base: findings array is byte-identical with or without the flags" {
+  write_rb "[$(complete_finding)]" >/dev/null
+  plain="$(jq -c '.findings' "$EXPECTED")"
+  write_rb "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance --anchor-tree treesha >/dev/null
+  withflags="$(jq -c '.findings' "$EXPECTED")"
+  [ "$plain" = "$withflags" ]
+}
+
+@test "review_base: exactly one of --review-base/--base-reason present exits 2, names the missing flag, writes nothing" {
+  run write_rb "[$(complete_finding)]" --review-base deadbeef
+  [ "$status" -eq 2 ]
+  grep -qF -- "--base-reason is required" <<<"$output"
+  [ ! -f "$EXPECTED" ]
+
+  run write_rb "[$(complete_finding)]" --base-reason member-clearance
+  [ "$status" -eq 2 ]
+  grep -qF -- "--review-base is required" <<<"$output"
+  [ ! -f "$EXPECTED" ]
+}
+
+@test "review_base: both present but one carrying an EMPTY value exits 0, writes the sidecar, omits review_base -- no error" {
+  run write_rb "[$(complete_finding)]" --review-base "" --base-reason member-clearance
+  [ "$status" -eq 0 ]
+  [ -f "$EXPECTED" ]
+  [ "$(jq -e 'has("review_base")' "$EXPECTED")" = "false" ]
+
+  run write_rb "[$(complete_finding)]" --review-base deadbeef --base-reason ""
+  [ "$status" -eq 0 ]
+  [ -f "$EXPECTED" ]
+  [ "$(jq -e 'has("review_base")' "$EXPECTED")" = "false" ]
+}
+
+@test "review_base: --anchor-tree present with an empty value omits anchor_tree but keeps review_base" {
+  write_rb "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance --anchor-tree "" >/dev/null
+  [ "$(jq -e 'has("review_base")' "$EXPECTED")" = "true" ]
+  [ "$(jq -e '.review_base | has("anchor_tree")' "$EXPECTED")" = "false" ]
+}

@@ -1,12 +1,13 @@
 #!/usr/bin/env bats
 #
-# The five Code Audit Team members must resolve ONE review base, and the
-# artifacts keyed off it must be readable by the consumers that read them.
+# The five Code Audit Team members resolve DIFFERENT per-member review bases
+# but must share ONE artifact KEY, and the artifacts keyed off it must be
+# readable by the consumers that read them.
 #
 # `gaia_audit_key` (.gaia/scripts/audit-key-lib.sh) is
-# `<base_sha>.<branch-slug>`, and co-dispatched members share a branch, so
-# the keys agree exactly when the base shas agree. Two members resolving the
-# base two different ways therefore write and read two different ledgers:
+# `<key_base>.<branch-slug>`, and co-dispatched members share a branch, so
+# the keys agree exactly when KEY_BASE agrees. Two members resolving KEY_BASE
+# two different ways therefore write and read two different ledgers:
 # `post-findings-block.sh` globs one key and silently finds nothing under the
 # other, so a whole member's findings drop out of the consolidated PR block
 # with no error anywhere.
@@ -16,13 +17,20 @@
 # stamped clean round. A member whose prose drifts to a private derivation
 # reds here.
 #
-# Five probes:
-#   1. base + key agreement across all five members
+# Probes:
+#   1. KEY_BASE + key agreement across all five members, matching what the
+#      merge-time producer resolves; non-vacuous on a fixture whose key has
+#      genuinely narrowed
 #   1b. the reviewed range is HEAD's content, not the working tree's, and the
 #       fork point rather than an advanced ref tip
+#   1c. two co-dispatched members resolving DIFFERENT review bases from one
+#       shared key -- the case a single base cannot serve
 #   2. post-findings-block.sh reads a specialist's sidecar
-#   3. the self-skip deadlock: a machinery-only increment with the
-#      classifier libs unloadable
+#   3. the self-skip deadlock: a merely-shared machinery increment carrying
+#      nothing in a member's remit, and the two-tier split it demonstrates
+#   3b. the degraded arm: an unloadable classifier lib resets every member to
+#       full scope
+#   3c. the non-agent callers still invoke the resolver argument-lessly
 #   4. the eligibility-widening fence: presence and fork-point resolution,
 #      unfiltered distinctness from the review-scope set, the review-scope
 #      fence staying untouched, no empty-base guard, and write-side/verify-side
@@ -211,8 +219,15 @@ extract_eligibility_fence() {
 # repo-relative path. <name> names the directory; the caller commits into it.
 # `include_machinery_lib` (arg 2, default "yes") decides whether
 # .claude/hooks/lib/audit-machinery.sh is present: omitting it is what puts
-# resolve-audit-base.sh's RT-006 check into its fail-open arm, which probe 3
-# needs.
+# resolve-audit-base.sh's classifier-load check into its `degraded` arm.
+# Every other predicate library the resolver and its per-member arm reach for
+# is copied UNCONDITIONALLY: without audit-rules-changed.sh every fixture
+# would take the degraded arm regardless of this switch, and without
+# audit-clearance.sh the per-member arm has no store to read, so the
+# two-bases probe below would fail for a reason it never names.
+# audit-write-clearance.sh and audit-member-digest.sh are copied too, which
+# that probe needs to write a real clearance with the real writer against the
+# real digest engine.
 make_repo() {
   local name="$1" include_machinery_lib="${2:-yes}"
   local dir="$BATS_TEST_TMPDIR/$name"
@@ -223,8 +238,15 @@ make_repo() {
   cp "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" "$dir/.gaia/scripts/"
   cp "$REPO_ROOT/.gaia/scripts/post-findings-block.sh" "$dir/.gaia/scripts/"
   chmod +x "$dir/.gaia/scripts/post-findings-block.sh"
+  cp "$REPO_ROOT/.gaia/scripts/audit-write-clearance.sh" "$dir/.gaia/scripts/"
+  chmod +x "$dir/.gaia/scripts/audit-write-clearance.sh"
+  cp "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" "$dir/.gaia/scripts/"
+  chmod +x "$dir/.gaia/scripts/audit-member-digest.sh"
   cp "$REPO_ROOT/.gaia/audit-ci.yml" "$dir/.gaia/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$dir/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" "$dir/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$dir/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" "$dir/.claude/hooks/lib/"
   if [ "$include_machinery_lib" = "yes" ]; then
     cp "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" "$dir/.claude/hooks/lib/"
   fi
@@ -254,6 +276,9 @@ commit_file() {
 # printf-built digest rather than a hashed one keeps this off `shasum`, whose
 # flags differ between BSD and GNU (.claude/rules/bats-assertions.md), and
 # matches how .github/audit/tests/resolve-audit-base.bats builds its own.
+# Content-preserving matters beyond the trailer test itself: a per-member
+# anchor matches on the TREE a clearance recorded, and the stamp must not move
+# it out from under a clearance written just before the stamp lands.
 stamp_clean_round() {
   local repo="$1" digest tree
   digest="$(printf '%064d' 0)"
@@ -288,15 +313,23 @@ elig_eval() {
 ${trailer}"
 }
 
-# base_sha_for <member> <repo>
+# base_sha_for <member> <repo>: the per-member review base, BASE_SHA.
 base_sha_for() {
   fence_eval "$1" "$2" 'printf "%s\n" "${BASE_SHA:-}"'
 }
 
-# audit_key_for <member> <repo>
+# key_base_for <member> <repo>: the shared, pull-request-wide artifact key
+# base, KEY_BASE. Members may legitimately disagree on BASE_SHA; they must
+# never disagree on this.
+key_base_for() {
+  fence_eval "$1" "$2" 'printf "%s\n" "${KEY_BASE:-}"'
+}
+
+# audit_key_for <member> <repo>: gaia_audit_key over KEY_BASE, never BASE_SHA
+# -- the artifact key is keyed to the SHARED base, not the per-member one.
 audit_key_for() {
   local repo="$2" base
-  base="$(base_sha_for "$1" "$repo")" || return 1
+  base="$(key_base_for "$1" "$repo")" || return 1
   ( . "$repo/.gaia/scripts/audit-key-lib.sh" && gaia_audit_key "$base" "$repo" )
 }
 
@@ -313,38 +346,44 @@ owners_of() {
       | awk -F'\t' '$2 != "-" { print $2 }' | LC_ALL=C sort -u )
 }
 
-# ---------- probe 1: base + key agreement ------------------------------------
+# ---------- probe 1: KEY_BASE + key agreement, and it matches merge-time ----
 
-@test "all five members resolve the same base and the same audit key after a stamped clean round" {
+@test "all five members resolve the same KEY_BASE and the same audit key, matching the merge-time producer" {
   local repo
   repo="$(make_repo agreement)"
   git -C "$repo" checkout -q -b feat
   commit_file "$repo" "app/a.txt" "commit A"
   commit_file "$repo" "app/b.txt" "commit B"
   stamp_clean_round "$repo"
-  # The post-clean-pass push: touches no machinery, so RT-006 does not reset
-  # the base and the increment is genuinely narrower than the whole PR.
+  # The post-clean-pass push: touches no machinery, so the argument-less
+  # form's flat machinery reset does not fire and KEY_BASE is genuinely
+  # narrower than the whole PR.
   commit_file "$repo" "app/c.txt" "advisory prose fix after clean pass"
 
   local full_base
   full_base="$(git -C "$repo" merge-base HEAD main)"
 
-  local expected_base expected_key m base key
-  expected_base="$(base_sha_for code-audit-frontend "$repo")"
+  local expected_key_base expected_key m key_base key
+  expected_key_base="$(key_base_for code-audit-frontend "$repo")"
   expected_key="$(audit_key_for code-audit-frontend "$repo")"
 
-  # Not vacuous: the resolver must actually have advanced past the whole-PR
-  # fork point. If it had not, every member would agree on the full base and
+  # Not vacuous: a legitimate reset resolves KEY_BASE exactly to the whole-PR
+  # fork point (contract C: rules-reset-global, rules-reset-member, and
+  # machinery-reset all yield it), so this clause belongs on a fixture built
+  # to exercise the narrowed path, never as a general assertion. If KEY_BASE
+  # had not actually advanced, every member would agree on the fork point and
   # this test would pass while proving nothing.
-  [ -n "$expected_base" ]
-  [ "$expected_base" != "$full_base" ]
+  [ -n "$expected_key_base" ]
+  [ "$expected_key_base" != "$full_base" ]
   [ -n "$expected_key" ]
 
+  # Key agreement: every member resolves the same KEY_BASE and the same
+  # gaia_audit_key. The invariant that survives per-member review bases.
   for m in "${MEMBERS[@]}"; do
-    base="$(base_sha_for "$m" "$repo")"
+    key_base="$(key_base_for "$m" "$repo")"
     key="$(audit_key_for "$m" "$repo")"
-    if [ "$base" != "$expected_base" ]; then
-      printf 'member %s resolved base %s, expected %s\n' "$m" "$base" "$expected_base"
+    if [ "$key_base" != "$expected_key_base" ]; then
+      printf 'member %s resolved KEY_BASE %s, expected %s\n' "$m" "$key_base" "$expected_key_base"
       return 1
     fi
     if [ "$key" != "$expected_key" ]; then
@@ -352,6 +391,102 @@ owners_of() {
       return 1
     fi
   done
+
+  # Merge-time agreement: the key every member resolves equals the key the
+  # merge-time producer resolves, driven the way
+  # post-findings-block-on-merge.sh does it -- the ARGUMENT-LESS resolver,
+  # then merge-base against HEAD. Line 3 of the --member form is this exact
+  # code path's output, so equality here is what proves it, rather than
+  # trusting that the two cannot drift because they are described as one.
+  local reader_ref reader_base
+  reader_ref="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh)"
+  reader_base="$(git -C "$repo" merge-base "$reader_ref" HEAD)"
+  [ "$reader_base" = "$expected_key_base" ] || {
+    printf 'the merge-time producer resolved %s, members resolved KEY_BASE %s\n' "$reader_base" "$expected_key_base" >&2
+    return 1
+  }
+}
+
+# ---------- probe 1c: two members, two bases, one key -----------------------
+#
+# The probe the whole SPEC exists for. A member holding its own earned
+# clearance narrows its review base past the whole-team floor while a sibling
+# with no such clearance stays on the floor -- and both still key their
+# artifacts identically, because KEY_BASE never reads the per-member arm.
+
+@test "two co-dispatched members resolve DIFFERENT review bases from one shared key" {
+  local repo m n c1_sha c2_sha
+
+  repo="$(make_repo two-bases)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "app/a.txt" "commit A"
+  stamp_clean_round "$repo"
+  c1_sha="$(git -C "$repo" rev-parse HEAD)"
+
+  m="code-audit-maintainer-shell"
+  n="code-audit-github-workflows"
+
+  # M's own review, ahead of the whole-team floor: an earned clearance
+  # written by the REAL writer against the REAL digest engine, never a
+  # hand-built body.
+  commit_file "$repo" ".gaia/scripts/fixture-two-bases.sh" "M's own review"
+  c2_sha="$(git -C "$repo" rev-parse HEAD)"
+  run "$repo/.gaia/scripts/audit-write-clearance.sh" --root "$repo" --member "$m" --provenance earned
+  [ "$status" -eq 0 ]
+
+  # HEAD moves past C2 with no further whole-team signal and nothing in
+  # either member's remit or reset tier.
+  commit_file "$repo" "app/c-two-bases.txt" "advances HEAD past M's clearance"
+
+  local full_base
+  full_base="$(git -C "$repo" merge-base HEAD main)"
+
+  local base_m base_n
+  base_m="$(base_sha_for "$m" "$repo")"
+  base_n="$(base_sha_for "$n" "$repo")"
+  [ "$base_m" = "$c2_sha" ] || {
+    printf 'M resolved base %s, expected its own clearance at %s\n' "$base_m" "$c2_sha" >&2
+    return 1
+  }
+  [ "$base_n" = "$c1_sha" ] || {
+    printf 'N resolved base %s, expected the whole-team floor at %s\n' "$base_n" "$c1_sha" >&2
+    return 1
+  }
+  [ "$base_m" != "$base_n" ] || {
+    printf 'both members resolved the same base %s; the fixture proves nothing\n' "$base_m" >&2
+    return 1
+  }
+
+  local key_m key_n
+  key_m="$(audit_key_for "$m" "$repo")"
+  key_n="$(audit_key_for "$n" "$repo")"
+  [ -n "$key_m" ]
+  [ "$key_m" = "$key_n" ] || {
+    printf 'members resolved disagreeing keys: %s vs %s\n' "$key_m" "$key_n" >&2
+    return 1
+  }
+
+  # UAT-013: demonstrated by the member's OWN derivation, not by the
+  # resolver's output alone. M's narrower base makes its own `changed` set
+  # strictly smaller than N's, and both smaller than the whole-PR diff.
+  local changed_m changed_n full_diff m_lines n_lines full_lines
+  changed_m="$(fence_eval "$m" "$repo" 'printf "%s\n" "${changed:-}"')"
+  changed_n="$(fence_eval "$n" "$repo" 'printf "%s\n" "${changed:-}"')"
+  full_diff="$(git -C "$repo" diff --name-only "${full_base}...HEAD")"
+  m_lines="$(grep -c . <<<"$changed_m" || true)"
+  n_lines="$(grep -c . <<<"$changed_n" || true)"
+  full_lines="$(grep -c . <<<"$full_diff" || true)"
+
+  [ "$m_lines" -lt "$n_lines" ] || {
+    printf 'M (member-clearance) reviewed %s files, N (team-signal) reviewed %s; expected M strictly narrower\n' \
+      "$m_lines" "$n_lines" >&2
+    return 1
+  }
+  [ "$n_lines" -lt "$full_lines" ] || {
+    printf 'N reviewed %s files, the whole-PR diff is %s; expected N strictly narrower\n' \
+      "$n_lines" "$full_lines" >&2
+    return 1
+  }
 }
 
 # ---------- probe 1b: the review scope is HEAD, not the working tree ---------
@@ -532,39 +667,36 @@ STUB
 
 # ---------- probe 3: the self-skip deadlock ----------------------------------
 #
-# The one case a single base cannot serve. A member's marker is invalid at
-# HEAD exactly when its digest rotated, and a digest rotates on an owned-file
-# change OR a machinery change. The owned-file case is safe under one base:
-# the owned file is in the increment, so the member does not self-skip. The
-# machinery case is normally safe too, because RT-006 resets the base to full
-# scope. But that check FAILS OPEN when the classifier libs will not load
-# (resolve-audit-base.sh's `libs unavailable` arm), and then the increment
-# carries only the machinery file. A member that does not own that file sees
-# an empty increment, self-skips, and writes no marker -- while membership,
-# resolved over the whole PR diff, still demands one. The merge deadlocks
-# with nothing left to clear it.
+# The one case a single review base cannot serve, and the MAINLINE case for
+# the two-tier split rather than a corner one. A member's marker is invalid
+# at HEAD exactly when its digest rotated, and a digest rotates on an
+# owned-file change OR a machinery change. The owned-file case is safe under
+# the incremental base alone, since an owned file that changed after the last
+# clean round is in it. The machinery case is not, when the machinery is
+# MERELY SHARED: the two-tier reset predicate (audit-rules-changed.sh) resets
+# neither the global nor the member tier on it, by design, so it legitimately
+# produces an increment carrying nothing in a member's remit while
+# membership, resolved over the whole PR diff, still demands that member's
+# clearance. A member that self-skipped on the increment would write no
+# marker while membership still demands one, deadlocking the merge with
+# nothing left to clear it.
 #
 # So the self-skip arm reads the WHOLE-PR list and the review reads the
 # increment. Each member is probed with a machinery path OUTSIDE its own
 # remit (that is what makes its increment empty) and an owned path inside it.
+# `.claude/hooks/lib/audit-clearance.sh`, which three of these members used
+# for this purpose before, is now a GLOBAL RULE (it resets every member's
+# per-member base), so `.claude/hooks/local-janitor.sh` -- merely shared,
+# owned by none of the four -- replaces it.
 
 # probe_deadlock <member> <owned-path> <machinery-path-outside-remit>
 probe_deadlock() {
   local member="$1" owned="$2" machinery="$3" repo
-  repo="$(make_repo "deadlock-${member}" no)"
+  repo="$(make_repo "deadlock-${member}")"
   git -C "$repo" checkout -q -b feat
   commit_file "$repo" "$owned" "owned change"
   stamp_clean_round "$repo"
   commit_file "$repo" "$machinery" "machinery change"
-
-  # The fail-open arm is genuinely exercised, not assumed: the resolver says
-  # so on stderr and still emits the incremental candidate.
-  local resolver_err
-  resolver_err="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh 2>&1 >/dev/null)"
-  grep -qF "RT-006 base-reset check skipped" <<<"$resolver_err" || {
-    printf 'expected the fail-open arm, got: %s\n' "$resolver_err"
-    return 1
-  }
 
   local incremental full
   incremental="$(fence_eval "$member" "$repo" 'printf "%s\n" "${changed:-}"')"
@@ -600,6 +732,34 @@ probe_deadlock() {
     printf '%s: absent from whole-PR owners %s\n' "$member" "$full_owners"
     return 1
   }
+
+  # The two-tier split, proved on the member's own resolved reason: a
+  # merely-shared machinery change resets neither reset tier, so the
+  # per-member arm must never answer with a *-reset token here.
+  local member_err member_reason
+  member_err="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh --member "$member" 2>&1 >/dev/null)"
+  member_reason="$(grep -oE 'reason=[a-z-]+' <<<"$member_err" | head -n1 | cut -d= -f2)"
+  case "$member_reason" in
+    team-signal | member-clearance) ;;
+    *)
+      printf '%s: --member resolved reason %s, expected team-signal or member-clearance: %s\n' \
+        "$member" "$member_reason" "$member_err" >&2
+      return 1
+      ;;
+  esac
+
+  # The argument-less form, on the SAME fixture, legitimately resets: contract
+  # C keeps the flat machinery reset on the shared key. This is not a failure
+  # -- it is the clearest single proof the two-tier split exists at all, the
+  # same commit resets the shared base and does not reset the member's own.
+  local shared_err shared_reason
+  shared_err="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh 2>&1 >/dev/null)"
+  shared_reason="$(grep -oE 'reason=[a-z-]+' <<<"$shared_err" | head -n1 | cut -d= -f2)"
+  [ "$shared_reason" = "machinery-reset" ] || {
+    printf 'the argument-less form resolved reason %s on the same fixture, expected machinery-reset: %s\n' \
+      "$shared_reason" "$shared_err" >&2
+    return 1
+  }
   return 0
 }
 
@@ -607,11 +767,11 @@ probe_deadlock() {
   probe_deadlock code-audit-maintainer-shell \
     ".claude/rules/fixture-rule.md" ".github/workflows/code-review-audit.yml"
   probe_deadlock code-audit-github-workflows \
-    ".github/workflows/fixture-ci.yml" ".claude/hooks/lib/audit-clearance.sh"
+    ".github/workflows/fixture-ci.yml" ".claude/hooks/local-janitor.sh"
   probe_deadlock code-audit-maintainer-node \
-    ".gaia/cli/src/fixture.ts" ".claude/hooks/lib/audit-clearance.sh"
+    ".gaia/cli/src/fixture.ts" ".claude/hooks/local-janitor.sh"
   probe_deadlock code-audit-maintainer-prose \
-    ".claude/skills/fixture/SKILL.md" ".claude/hooks/lib/audit-clearance.sh"
+    ".claude/skills/fixture/SKILL.md" ".claude/hooks/local-janitor.sh"
 }
 
 @test "deadlock: each specialist's self-skip prose is wired to the whole-PR list" {
@@ -626,6 +786,66 @@ probe_deadlock() {
       return 1
     }
   done
+}
+
+# ---------- the degraded arm resets everyone to full scope ------------------
+#
+# With a classifier/machinery/rules library unloadable, neither reset tier
+# can be evaluated, so the resolver widens to full scope on BOTH forms rather
+# than narrowing on an anchor whose soundness it cannot establish. This is the
+# retired probe-3 fixture shape (a repo missing audit-machinery.sh), given its
+# correct job now that RT-006's old fail-open arm no longer exists.
+
+@test "an unloadable machinery lib resets every member to full scope with reason degraded" {
+  local repo m
+
+  repo="$(make_repo degraded-arm no)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "app/a.txt" "commit A"
+  stamp_clean_round "$repo"
+  commit_file "$repo" "app/c.txt" "advisory prose fix after clean pass"
+
+  local full_base
+  full_base="$(git -C "$repo" merge-base HEAD main)"
+
+  for m in "${MEMBERS[@]}"; do
+    local base reason
+    base="$(base_sha_for "$m" "$repo")"
+    reason="$(fence_eval "$m" "$repo" 'printf "%s\n" "${BASE_REASON:-}"')"
+    [ "$base" = "$full_base" ] || {
+      printf '%s: BASE_SHA %s advanced past the fork point %s despite an unloadable machinery lib\n' \
+        "$m" "$base" "$full_base" >&2
+      return 1
+    }
+    [ "$reason" = "degraded" ] || {
+      printf '%s: reason %s, expected degraded\n' "$m" "$reason" >&2
+      return 1
+    }
+  done
+}
+
+# ---------- the four non-agent callers still invoke the resolver argument-lessly ----
+#
+# UAT-015 enumerates nine resolver call sites; the five agent definitions are
+# the ones UAT-016 deliberately moves onto --member (proved above). These
+# four resolve the SHARED pull-request-wide base, which is what keys every
+# artifact and what the merge-time producer must agree with, so none of them
+# may grow a --member flag.
+
+@test "the four non-agent callers still invoke the resolver argument-lessly" {
+  local out
+  out="$(git -C "$REPO_ROOT" grep -n "resolve-audit-base.sh" -- \
+    .github/workflows/code-review-audit.yml \
+    .gaia/cli/templates/workflows/code-review-audit.yml.tmpl \
+    .gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl \
+    .claude/hooks/post-findings-block-on-merge.sh)"
+  [ -n "$out" ]
+  grep -qF -- "--member" <<<"$out" && {
+    printf 'a non-agent caller now passes --member, which resolves a per-member base rather than the shared key: %s\n' \
+      "$out" >&2
+    return 1
+  }
+  return 0
 }
 
 # ---------- probe 3b: the membership list survives an unusual path -----------

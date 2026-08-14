@@ -13,14 +13,20 @@
 #
 # Over `.claude/agents/`, TWO assertions:
 #
-#   1. No bare `${BASE_SHA}.`/`${base}.` sidecar or ledger path literal
-#      survives anywhere. That shell-interpolated shape (`${BASE_SHA}.<member
-#      or nothing>.findings.json`, `${BASE_SHA}.rerun.json`, or the same with
-#      `${base}`) is exactly the pre-4.1 collision this task removes: the raw
-#      base sha (or a caller's lowercase alias for it) used as the whole key,
-#      with no branch discriminator. `gaia_audit_key`'s own output variable
-#      (conventionally `${AUDIT_KEY}`) is a different token, so a converted
-#      caller never trips this pattern.
+#   1. No bare `${BASE_SHA}.`/`${base}.`/`${KEY_BASE}.` sidecar or ledger path
+#      literal survives anywhere. That shell-interpolated shape
+#      (`${BASE_SHA}.<member or nothing>.findings.json`,
+#      `${BASE_SHA}.rerun.json`, or the same with `${base}` or `${KEY_BASE}`)
+#      is exactly the pre-4.1 collision this task removes: the raw base sha
+#      (or a caller's alias for it) used as the whole key, with no branch
+#      discriminator. `KEY_BASE` is the value most likely to tempt a
+#      hand-built path, because it IS the key half of the key -- the shared,
+#      pull-request-wide base every dispatched member keys its artifacts
+#      against -- so a caller reaching for it directly reproduces the exact
+#      collision this check exists to reject. `gaia_audit_key`'s own output
+#      variable (conventionally `${AUDIT_KEY}`) is a different token, so a
+#      compliant caller that routes `KEY_BASE` through it never trips this
+#      pattern.
 #   2. Every file that NAMES a findings sidecar or the re-run ledger (mentions
 #      `findings.json` or `rerun.json` at all) also MENTIONS `gaia_audit_key`
 #      somewhere in that same file. This is a token-presence net over the
@@ -67,10 +73,10 @@
 # here means a definition has drifted back to hand-building a path from a
 # bare base sha, which is the collision this key exists to remove.
 
-# Assertion 1's bad-literal pattern: `${BASE_SHA}.` or `${base}.`, optionally
-# followed by a member-name segment (`code-audit-frontend.`), then the
-# sidecar or ledger filename.
-GAIA_AUDIT_KEY_BAD_LITERAL_PATTERN='\$\{(BASE_SHA|base)\}\.([A-Za-z0-9_-]+\.)?(findings|rerun)\.json'
+# Assertion 1's bad-literal pattern: `${BASE_SHA}.`, `${base}.`, or
+# `${KEY_BASE}.`, optionally followed by a member-name segment
+# (`code-audit-frontend.`), then the sidecar or ledger filename.
+GAIA_AUDIT_KEY_BAD_LITERAL_PATTERN='\$\{(BASE_SHA|base|KEY_BASE)\}\.([A-Za-z0-9_-]+\.)?(findings|rerun)\.json'
 
 # Assertion 2's "names the artifact at all" net: deliberately looser than the
 # bad-literal pattern above. A compliant file names these artifacts via

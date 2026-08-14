@@ -46,6 +46,7 @@
     ".claude/hooks/lib/audit-digest.sh": "owned",
     ".claude/hooks/lib/audit-dispositions.sh": "owned",
     ".claude/hooks/lib/audit-machinery.sh": "owned",
+    ".claude/hooks/lib/audit-rules-changed.sh": "owned",
     ".claude/hooks/lib/audit-scope.sh": "owned",
     ".claude/hooks/lib/audit-selfheal-paths.sh": "owned",
     ".claude/hooks/lib/gaia-active-plan.sh": "owned",
@@ -202,6 +203,7 @@
     ".gaia/scripts/audit-machinery-complete.sh": "owned",
     ".gaia/scripts/audit-member-digest.sh": "owned",
     ".gaia/scripts/audit-noop-detect.sh": "owned",
+    ".gaia/scripts/audit-rules-changed-complete.sh": "owned",
     ".gaia/scripts/audit-window-lib.sh": "owned",
     ".gaia/scripts/audit-write-clearance.sh": "owned",
     ".gaia/scripts/audit-write-findings.sh": "owned",
@@ -645,7 +647,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-11T22:11:55.709Z",
+  "generated": "2026-08-13T23:06:22.158Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

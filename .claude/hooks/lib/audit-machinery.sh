@@ -43,6 +43,7 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .gaia/scripts/audit-key-lib.sh
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-machinery-complete.sh
+.gaia/scripts/audit-rules-changed-complete.sh
 .claude/hooks/lib/audit-dispositions.sh
 .gaia/scripts/resolve-audit-members.sh
 # gaia:maintainer-only:start
