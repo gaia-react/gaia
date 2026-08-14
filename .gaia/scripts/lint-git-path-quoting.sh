@@ -63,7 +63,7 @@
 # counting the separators themselves fixes the arithmetic.
 #
 # Reference fixes: .gaia/scripts/resolve-audit-members.sh (the `changed`
-# derivation) and .gaia/tests/shell-lint.sh (the three discovery loops).
+# derivation) and .gaia/tests/shell-lint.sh (its discovery loops).
 #
 # Two `ls-files` shapes are deliberately NOT flagged, and each is a closed
 # property of the call text rather than a judgment about its consumer:
@@ -108,10 +108,8 @@
 # record count, which is the same fact the counting paragraph above turns on.
 #
 # gaia-react/gaia#1392 owns the site table and the per-site failure directions,
-# and is the ONE place they are maintained. A copy kept here drifts against it,
-# which is not a hypothetical: this block carried such a copy for two rounds and
-# was corrected in each, once for naming sites this gate's surface cannot reach
-# and once for omitting the in-surface site carrying the live defect.
+# and is the ONE place they are maintained. A second copy kept here has nothing
+# keeping it true, so it states the hole and defers the enumeration.
 #
 # So: the surface this file claims is at zero for `ls-files` and for the bare
 # `diff --name-only` spelling, which is what the tests below pin. It is NOT a
@@ -120,8 +118,8 @@
 # Sibling gate: .gaia/scripts/check-audit-base-derivation.sh's assertion 4 makes
 # the same claim about the audit agents' prose. This file is deliberately not
 # folded into it: that check's remit is the audit-base derivation, and its
-# `consumes` predicate keys on BASE_REF / BASE_SHA / FULL_BASE / the resolver
-# name, none of which any shell call site here mentions.
+# `consumes` predicate keys on the audit-base variable spellings and the
+# resolver name, none of which any shell call site here mentions.
 
 set -euo pipefail
 
@@ -134,7 +132,7 @@ set -euo pipefail
 #
 # `*.bats` is deliberately NOT in this list, and the omission is load-bearing
 # rather than an oversight. The bats suites are where this class is DEMONSTRATED:
-# .gaia/scripts/tests/check-audit-base-derivation.bats carries five
+# .gaia/scripts/tests/check-audit-base-derivation.bats carries
 # intentionally-unquoted agent-prose fixtures that assertion 4 must catch, and
 # sibling suites run an unquoted `diff --name-only` under `core.quotePath=true`
 # as the positive control proving git really does quote.
@@ -191,8 +189,8 @@ fi
 # a `#` line inside a workflow `run:` block.
 #
 # Known blind spots, stated rather than discovered later, and split by which
-# WAY they fail, because that is the part that matters and an earlier draft of
-# this block got it wrong by calling them all fail-closed.
+# WAY they fail, because that is the part that matters: they are not all
+# fail-closed, and treating them alike hides the ones that are not.
 #
 # The backtick boundary is stated as a RULE rather than as a list of shapes,
 # deliberately. An enumeration of shapes is always one shape short, and each
