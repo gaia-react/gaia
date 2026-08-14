@@ -616,10 +616,13 @@ jobs:
           # Surface untracked files for transparency. The agent or
           # claude-code-action may leave runtime artifacts (e.g. .claude-pr/)
           # behind; .gitignore should cover known cases. We never stage them.
-          untracked="$(git ls-files --others --exclude-standard | wc -l | tr -d ' ')"
+          # NUL-delimited so a non-ASCII path is reported as itself rather than
+          # in git's C-quoted spelling; the subshell sets pipefail because the
+          # step's shell is `bash -e` without it.
+          untracked="$(set -o pipefail; git -c core.quotepath=false ls-files --others --exclude-standard -z | tr '\0' '\n' | wc -l | tr -d ' ')"
           if [ "$untracked" -gt 0 ]; then
             echo "code-review-audit: $untracked untracked file(s) left behind by audit (NOT staged):" >&2
-            git ls-files --others --exclude-standard | head -20 >&2
+            git -c core.quotepath=false ls-files --others --exclude-standard -z | tr '\0' '\n' | head -20 >&2
           fi
 
           # Self-heal scope gate. One refusal set

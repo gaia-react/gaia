@@ -49,7 +49,7 @@ ALL_TRACKED="$SCRATCH/all-tracked.txt"
 EXCLUDE_REGEX="$SCRATCH/exclude-regex.txt"
 INCLUDE="$SCRATCH/include.txt"
 
-git -C "$PROJECT_ROOT" ls-files > "$ALL_TRACKED"
+git -C "$PROJECT_ROOT" -c core.quotepath=false ls-files -z | tr '\0' '\n' > "$ALL_TRACKED"
 
 # The maintainer CLI is the single compiler of .gaia/release-exclude into
 # anchored regexes; this harness invokes it rather than re-deriving the pattern

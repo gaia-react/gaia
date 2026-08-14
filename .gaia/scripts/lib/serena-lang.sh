@@ -174,7 +174,7 @@ serena_effective_languages() {
 serena_manifest_languages() {
   local root="$1"
   local seen=" " f base token
-  while IFS= read -r f; do
+  while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
     base=${f##*/}
     token=""
@@ -193,7 +193,7 @@ serena_manifest_languages() {
       *" $token "*) ;;
       *) seen="$seen$token "; printf '%s\n' "$token" ;;
     esac
-  done < <(git -C "$root" ls-files 2>/dev/null)
+  done < <(git -C "$root" -c core.quotepath=false ls-files -z 2>/dev/null)
 }
 
 # --- Top-level drift detector -----------------------------------------------

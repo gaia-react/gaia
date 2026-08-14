@@ -179,7 +179,7 @@ while IFS= read -r line; do
     printf 'machinery file classified by more than one tier (overlap): %s\n' "$path" >&2
     missing3=$((missing3 + 1))
   fi
-done < <(git -C "$repo_root" ls-files | audit_machinery_flags)
+done < <(git -C "$repo_root" -c core.quotepath=false ls-files -z | tr '\0' '\n' | audit_machinery_flags)
 
 if [ "$missing1" -gt 0 ]; then
   printf 'audit-rules-changed-complete.sh: %d global-rules file(s) unmatched by AUDIT_GLOBAL_RULES_PATHS\n' "$missing1" >&2

@@ -69,14 +69,15 @@
 .gaia/scripts/check-resolver-singleton.sh
 # Task 7.3's check asserts this repository still qualifies for git's merge refusal on the tracked wiki state file; its only runner (audit-ci-tests.yml and its bats suite) is already maintainer-only, and an adopter cannot act on the failure.
 .gaia/scripts/check-wiki-state-collision.sh
-# The diff-quoting lint guards GAIA's own framework shell and its CI workflow
-# YAML against an unquoted `diff --name-only`. Withheld on exactly the reasoning
+# The git path-quoting lint guards GAIA's own framework shell and its CI
+# workflow YAML against an unquoted `diff --name-only` or `ls-files`, either of
+# which lets git C-quote a path the caller then parses. Withheld on the reasoning
 # .gaia/tests/shell-lint.sh gives for itself -- adopters run GAIA's bash but
 # never author it, so a linter over the framework's own shell has no adopter
 # surface -- and shell-lint.sh, its only runner, is already release-excluded
 # wholesale via the .gaia/tests entry, so shipping it would ship a check nothing
 # on an adopter clone invokes.
-.gaia/scripts/lint-diff-name-only-quoting.sh
+.gaia/scripts/lint-git-path-quoting.sh
 # The workflow run-interpolation lint guards GAIA's own CI workflow YAML and
 # composite actions against a `${{ }}` expression substituted into a `run:`
 # script body. Withheld on the same reasoning as the diff-quoting lint above,
