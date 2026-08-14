@@ -119,9 +119,12 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 .claude/hooks/lib/repo-scope.sh
 .claude/hooks/lib/worthiness-ledger.sh
 .claude/hooks/local-janitor.sh
+# gaia:maintainer-only:start
 .gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl
+# gaia:maintainer-only:end
 .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
 .gaia/scripts/audit-machinery-complete.sh
+.gaia/scripts/audit-rules-changed-complete.sh
 .gaia/scripts/audit-noop-detect.sh
 .gaia/scripts/audit-write-findings.sh
 .gaia/scripts/link-worktree.sh
@@ -140,6 +143,7 @@ _audit_rules_changed_complete_path_is_merely_shared() {
   local path="$1" entry
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
+    case "$entry" in "#"*) continue ;; esac
     [ "$path" = "$entry" ] && return 0
   done <<EOF
 $AUDIT_MERELY_SHARED_PATHS

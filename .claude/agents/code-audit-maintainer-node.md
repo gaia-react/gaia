@@ -60,9 +60,10 @@ if [ -z "$FULL_BASE" ]; then
   exit 1
 fi
 full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
-# BASE_SHA, not a lowercase local: every handshake invocation below passes
-# `--base "$KEY_BASE"`, and shell state does NOT persist between an agent's
-# Bash calls, so each of those calls re-runs this snippet, and the AUDIT_ROOT
+# BASE_SHA and KEY_BASE, not lowercase locals: every handshake invocation
+# below passes `--base "$KEY_BASE"` and scopes its review off `$BASE_SHA`,
+# and shell state does NOT persist between an agent's Bash calls, so each
+# of those calls re-runs this snippet, and the AUDIT_ROOT
 # derivation above it that this snippet depends on. A name mismatch here makes
 # --base expand empty, which audit-write-findings.sh rejects outright (the
 # report of record is never written) and which audit-write-clearance.sh

@@ -244,6 +244,13 @@ describe('parseFindingsBlock', () => {
       })
     );
 
+    // Pin the concrete shape as well as the relation: an equality alone stays
+    // green if a regression makes both sides null, which asserts nothing about
+    // additive-key tolerance.
+    expect(parseFindingsBlock(withReviewBases)).toEqual({
+      auditor: 'local',
+      findings,
+    });
     expect(parseFindingsBlock(withReviewBases)).toEqual(
       parseFindingsBlock(withoutReviewBases)
     );
