@@ -77,12 +77,20 @@
 # wholesale via the .gaia/tests entry, so shipping it would ship a check nothing
 # on an adopter clone invokes.
 .gaia/scripts/lint-diff-name-only-quoting.sh
-# The workflow run-interpolation lint guards GAIA's own CI workflow YAML against
-# a `${{ }}` expression substituted into a `run:` script body. Withheld on the
-# same reasoning as the diff-quoting lint above: its declared scan surface is
-# `.github/workflows/`, which the release excludes wholesale, and shell-lint.sh,
-# its only runner, is release-excluded too, so shipping it would ship a check
-# that on an adopter clone has neither a runner nor anything to scan.
+# The workflow run-interpolation lint guards GAIA's own CI workflow YAML and
+# composite actions against a `${{ }}` expression substituted into a `run:`
+# script body. Withheld on the same reasoning as the diff-quoting lint above,
+# and on that reasoning ALONE: shell-lint.sh, its only runner, is
+# release-excluded wholesale via the `.gaia/tests` entry, so shipping this file
+# would ship a check nothing on an adopter clone invokes.
+#
+# Note what is deliberately NOT claimed here, because it is false and would be
+# the premise a future maintainer re-litigates this decision from: an adopter
+# clone does have a populated scan surface. This file excludes 11 of the 13
+# tracked workflows individually rather than excluding the directory, so
+# `tests.yml` and `chromatic.yml` ship, and `bundle:adopter` renders further
+# workflows into an adopter's `.github/workflows/` from templates the manifest
+# ships. The withhold rests on the absent runner, not on an empty surface.
 .gaia/scripts/lint-workflow-run-interpolation.sh
 # The shipped-issue-reference lint enforces GAIA's own authoring obligation: a
 # `#NNN` on a file GAIA ships must name gaia-react/gaia so an adopter reading it

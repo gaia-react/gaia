@@ -175,6 +175,71 @@ jobs:
   grep -qF -- "blanks.yml:7:" <<<"$output"
 }
 
+# The three tests below pin block-scalar header shapes that are legal YAML and
+# whose bodies Actions runs normally. Each one, before the header pattern was
+# widened, sent the header down the inline arm and left every line of the body
+# unscanned -- a fail-open on a real shape rather than a declared blind spot.
+
+@test "a comment after the block-scalar indicator does not hide the body" {
+  fixture_repo
+  fixture_workflow commented-header.yml 'jobs:
+  t:
+    steps:
+      - run: | # note
+          echo "${{ steps.x.outputs.y }}"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "commented-header.yml:5:" <<<"$output"
+}
+
+@test "indentation and chomping indicators in either order do not hide the body" {
+  fixture_repo
+  fixture_workflow indicator-order.yml 'jobs:
+  t:
+    steps:
+      - name: A
+        run: |2-
+          echo "${{ steps.x.outputs.y }}"
+      - name: B
+        run: |-2
+          echo "${{ steps.a.outputs.b }}"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "indicator-order.yml:6:" <<<"$output"
+  grep -qF -- "indicator-order.yml:9:" <<<"$output"
+}
+
+@test "a folded scalar with a trailing comment does not hide the body" {
+  fixture_repo
+  fixture_workflow folded.yml 'jobs:
+  t:
+    steps:
+      - run: >- # folded
+          echo "${{ steps.x.outputs.y }}"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "folded.yml:5:" <<<"$output"
+}
+
+# The gate scans composite actions too: workflows here invoke them, so stopping
+# at the first `uses:` hop would enforce the class only on the callers.
+
+@test "flags an expression in a composite action run body" {
+  TMP="$(mktemp -d -t run-interp-lint-XXXXXX)"
+  git -C "$TMP" init -q .
+  mkdir -p "$TMP/.github/actions/thing"
+  printf '%s\n' 'runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        echo "${{ steps.x.outputs.y }}"' > "$TMP/.github/actions/thing/action.yml"
+  git -C "$TMP" add -A
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "action.yml:6:" <<<"$output"
+}
+
 @test "errors rather than greening when nothing is scanned" {
   TMP="$(mktemp -d -t run-interp-lint-XXXXXX)"
   git -C "$TMP" init -q .

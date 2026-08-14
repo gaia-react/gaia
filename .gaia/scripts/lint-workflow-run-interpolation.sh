@@ -43,7 +43,15 @@
 # class: substitution happens before bash parses, so a value containing a
 # newline ends the comment and the remainder of the value begins a new command.
 #
-# Scan surface: `.github/workflows/` only. The adopter workflow TEMPLATES under
+# Scan surface: `.github/workflows/` and the composite actions under
+# `.github/actions/*/action.yml`. A composite action's `run:` steps are the same
+# shell-by-another-name as a workflow's and carry the identical hazard, and the
+# workflows here invoke them, so scanning the callers but not the callees would
+# leave the class enforced only up to the first `uses:` hop. Every composite
+# action in this tree is at zero today, so this is coverage held rather than
+# instances repaired.
+#
+# The adopter workflow TEMPLATES under
 # .gaia/cli/src/automation/templates/workflows/ carry instances of this same
 # textual class and are deliberately OUT of this gate's declared surface, not
 # merely unreached by it: they are a separate distribution surface that
@@ -67,7 +75,9 @@ set -euo pipefail
 scan_files=()
 while IFS= read -r f; do
   scan_files+=("$f")
-done < <(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml' | LC_ALL=C sort)
+done < <(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml' \
+                      '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
+           | LC_ALL=C sort)
 
 # An empty scan set is a hard error, never a clean tree. The loop above reads
 # from a process substitution, whose failure `set -o pipefail` cannot see, so a
@@ -77,7 +87,7 @@ done < <(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml' | LC_
 # failure gates exist to stop. Every real tree carries tracked workflows, so an
 # empty result means the discovery is wrong rather than the tree.
 if [ "${#scan_files[@]}" -eq 0 ]; then
-  echo "lint-workflow-run-interpolation: ERROR: no tracked workflows matched the scan surface; nothing was scanned" >&2
+  echo "lint-workflow-run-interpolation: ERROR: no tracked workflows or composite actions matched the scan surface; nothing was scanned" >&2
   exit 1
 fi
 
@@ -122,10 +132,26 @@ scan_file() {
       if ($0 ~ /^[[:space:]]*(-[[:space:]]+)?run:/) {
         runcol = index($0, "run:")
         value = substr($0, runcol + 4)
-        # `|`, `|-`, `>`, `>+`, `|2` and friends: a block scalar header carries
-        # nothing but the indicator, so anything else on the line is inline
-        # content.
-        if (value ~ /^[[:space:]]*[|>][-+]?[0-9]*[[:space:]]*$/) {
+        # `|`, `|-`, `>`, `>+`, `|2`, `|2-` and friends: a block scalar header
+        # carries nothing but the indicator and an optional comment, so anything
+        # else on the line is inline content.
+        #
+        # Two details this pattern is deliberately loose about, both because
+        # tightening either buys a false negative and neither can produce a false
+        # positive on real YAML:
+        #   - `[-+0-9]*` accepts the chomping and indentation indicators in
+        #     EITHER order, because YAML permits both (`|2-` and `|-2`). Spelling
+        #     it `[-+]?[0-9]*` matches only one order and sends the other down
+        #     the inline arm, which skips the whole body.
+        #   - `(#.*)?` accepts a trailing comment. `run: | # note` is legal YAML
+        #     that Actions accepts and whose body parses normally; without this,
+        #     the header falls to the inline arm and every line of the body goes
+        #     unscanned.
+        # An expression inside that trailing comment is not scanned, and that is
+        # correct rather than a gap: the comment is part of the header line, not
+        # of the block scalar, so it never reaches the script text Actions
+        # substitutes into.
+        if (value ~ /^[[:space:]]*[|>][-+0-9]*[[:space:]]*(#.*)?$/) {
           inrun = 1
         } else {
           inrun = 0
