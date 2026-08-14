@@ -3,9 +3,13 @@ import type {
   AutomationConfig,
   ToolId,
 } from '../../schemas/automation-config.js';
-import {workflowPartialsDirectory, workflowTemplatePath} from '../paths.js';
+import {
+  workflowPartialsDirectory,
+  workflowSchedulerTemplatePath,
+  workflowTemplatePath,
+} from '../paths.js';
 import {renderWorkflowTemplate} from '../render.js';
-import {buildWorkflowVars} from '../workflow-vars.js';
+import {buildSchedulerVars, buildWorkflowVars} from '../workflow-vars.js';
 
 const baseConfig: AutomationConfig = {
   pnpm_audit: {mode: 'ci', schedule: 'daily'},
@@ -16,6 +20,17 @@ const baseConfig: AutomationConfig = {
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
+};
+
+const renderScheduler = (): string => {
+  const vars = buildSchedulerVars(baseConfig);
+  if (vars === null) throw new Error('unexpected null scheduler vars');
+
+  return renderWorkflowTemplate(
+    workflowSchedulerTemplatePath(),
+    workflowPartialsDirectory(),
+    vars
+  );
 };
 
 const renderForTool = (tool: ToolId): string => {
@@ -46,5 +61,9 @@ describe('workflow template snapshots', () => {
 
   test('gaia-ci-stale-branches.yml matches snapshot', () => {
     expect(renderForTool('stale-branches')).toMatchSnapshot();
+  });
+
+  test('gaia-ci.yml matches snapshot', () => {
+    expect(renderScheduler()).toMatchSnapshot();
   });
 });

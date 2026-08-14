@@ -5,9 +5,13 @@ import type {
   AutomationConfig,
   ToolId,
 } from '../../schemas/automation-config.js';
-import {workflowPartialsDirectory, workflowTemplatePath} from '../paths.js';
+import {
+  workflowPartialsDirectory,
+  workflowSchedulerTemplatePath,
+  workflowTemplatePath,
+} from '../paths.js';
 import {renderWorkflowTemplate} from '../render.js';
-import {buildWorkflowVars} from '../workflow-vars.js';
+import {buildSchedulerVars, buildWorkflowVars} from '../workflow-vars.js';
 
 const baseConfig: AutomationConfig = {
   pnpm_audit: {mode: 'ci', schedule: 'daily'},
@@ -36,6 +40,9 @@ const JobSchema = z.object({
   'timeout-minutes': z.number(),
 });
 
+// A tool workflow carries no `schedule:`: `gaia-ci.yml` is the only
+// scheduled entry point, and it reaches these through `workflow_call`.
+// `workflow_dispatch` stays so a tool can still be run by hand.
 const WorkflowSchema = z.object({
   concurrency: z.object({
     'cancel-in-progress': z.literal(false),
@@ -45,11 +52,49 @@ const WorkflowSchema = z.object({
   jobs: z.record(z.string(), JobSchema),
   name: z.string(),
   on: z.object({
+    schedule: z.undefined().optional(),
+    workflow_call: z.unknown(),
+    workflow_dispatch: z.unknown(),
+  }),
+  permissions: z.record(z.string(), z.string()),
+});
+
+// The scheduler's own shape: one `decide` job with steps, then one
+// `uses:`-only call job per CI-mode tool.
+const CallJobSchema = z.object({
+  if: z.string(),
+  needs: z.string(),
+  secrets: z.literal('inherit'),
+  uses: z.string(),
+});
+
+const SchedulerSchema = z.object({
+  jobs: z.object({
+    decide: JobSchema.extend({
+      outputs: z.record(z.string(), z.string()),
+      permissions: z.record(z.string(), z.string()),
+    }),
+  }),
+  name: z.string(),
+  on: z.object({
     schedule: z.array(z.object({cron: z.string()})).min(1),
     workflow_dispatch: z.unknown(),
   }),
   permissions: z.record(z.string(), z.string()),
 });
+
+const byText = (a: string, b: string): number => a.localeCompare(b);
+
+const renderScheduler = (): string => {
+  const vars = buildSchedulerVars(baseConfig);
+  if (vars === null) throw new Error('unexpected null scheduler vars');
+
+  return renderWorkflowTemplate(
+    workflowSchedulerTemplatePath(),
+    workflowPartialsDirectory(),
+    vars
+  );
+};
 
 const renderForTool = (tool: ToolId): string => {
   const vars = buildWorkflowVars(baseConfig, tool);
@@ -96,5 +141,88 @@ describe('workflow YAML shape', () => {
     expect(parsed.permissions.contents).toBe('write');
     expect(parsed.permissions['pull-requests']).toBe('write');
     expect(parsed.permissions.issues).toBe('write');
+  });
+});
+
+describe('scheduler YAML shape', () => {
+  test('passes the SchedulerSchema', () => {
+    const result = SchedulerSchema.safeParse(load(renderScheduler()));
+    const issues = result.success ? '' : JSON.stringify(result.error.issues);
+
+    expect(issues).toBe('');
+  });
+
+  // The scheduler's `permissions` must cover the union of what the called
+  // workflows declare: a callee's own block can narrow the caller's grant but
+  // never widen it, so a permission missing here is silently absent in every
+  // tool run the scheduler starts.
+  test('grants the union of every called workflow permission', () => {
+    const scheduler = load(renderScheduler()) as {
+      permissions: Record<string, string>;
+    };
+    const required = tools.flatMap((tool) => {
+      const parsed = load(renderForTool(tool)) as {
+        permissions: Record<string, string>;
+      };
+
+      return Object.entries(parsed.permissions);
+    });
+    const uncovered = required.filter(
+      ([scope, level]) => scheduler.permissions[scope] !== level
+    );
+
+    expect(uncovered).toEqual([]);
+  });
+
+  test('calls one reusable workflow per CI-mode tool', () => {
+    const scheduler = load(renderScheduler()) as {
+      jobs: Record<string, unknown>;
+    };
+    const callJobs = tools.map((tool) =>
+      CallJobSchema.parse(scheduler.jobs[tool])
+    );
+
+    expect(callJobs.map((job) => job.uses)).toEqual(
+      tools.map((tool) => `./.github/workflows/gaia-ci-${tool}.yml`)
+    );
+  });
+
+  // The `decide` script gates each tool on a cron literal, and nothing else
+  // in the rendered file ties the two together: a tool handed a sibling's
+  // cron still parses, still schedules, and simply never matches its own
+  // fired tick again. Bind each rendered argument pair back to the tool's own
+  // `buildWorkflowVars` cron so a transposition fails here.
+  test('gates each tool on its own cron in the decide script', () => {
+    const rendered = renderScheduler();
+    const pairs = [...rendered.matchAll(/decide_tool (\S+) '([^']+)'/gu)].map(
+      ([, tool, cron]) => `${tool} ${cron}`
+    );
+    const expected = tools.map((tool) => {
+      const vars = buildWorkflowVars(baseConfig, tool);
+      if (vars === null) throw new Error(`unexpected null vars for ${tool}`);
+
+      return `${tool} ${vars.cron}`;
+    });
+
+    expect(pairs.toSorted(byText)).toEqual(expected.toSorted(byText));
+  });
+
+  // Every distinct tool cron reaches the scheduler's `schedule:`. A cron
+  // dropped here is a tool that silently never fires again, since its own
+  // workflow no longer carries one.
+  test('schedules every distinct tool cron exactly once', () => {
+    const scheduler = load(renderScheduler()) as {
+      on: {schedule: {cron: string}[]};
+    };
+    const crons: string[] = scheduler.on.schedule.map((entry) => entry.cron);
+    const toolCrons: string[] = tools.map((tool) => {
+      const vars = buildWorkflowVars(baseConfig, tool);
+      if (vars === null) throw new Error(`unexpected null vars for ${tool}`);
+
+      return vars.cron;
+    });
+    const distinctToolCrons: string[] = [...new Set(toolCrons)];
+
+    expect(crons.toSorted(byText)).toEqual(distinctToolCrons.toSorted(byText));
   });
 });

@@ -666,9 +666,9 @@ When `setup_complete: true` AND `RECONFIGURE` is NOT set, probe for template dri
 .gaia/cli/gaia setup-ci check-audit-drift --json
 ```
 
-`check-drift` returns `{drifted: ToolId[], missing: ToolId[], in_sync: ToolId[]}`; `check-audit-drift` returns `{state: "in_sync" | "drifted" | "missing"}`.
+`check-drift` returns `{drifted: ToolId[], missing: ToolId[], in_sync: ToolId[], scheduler: "disabled" | "drifted" | "in_sync" | "missing"}`; `check-audit-drift` returns `{state: "in_sync" | "drifted" | "missing"}`. `scheduler` covers `gaia-ci.yml`, the one file carrying the crons; `disabled` means no tool is in CI mode, so there is nothing to schedule.
 
-If `drifted.length === 0 && missing.length === 0` AND `check-audit-drift` state is `"in_sync"`, print exactly:
+If `drifted.length === 0 && missing.length === 0` AND `scheduler` is `"in_sync"` or `"disabled"` AND `check-audit-drift` state is `"in_sync"`, print exactly:
 
 ```
 GAIA CI is already configured. Pass --reconfigure to rotate tokens or change tool selection.
@@ -679,6 +679,7 @@ Do not modify any file; fall through to Phase 5. Otherwise (drift or missing cro
 > The .github/workflows files have drifted from the bundled templates.
 >
 > Cron workflows, Drifted: <drifted-list-or-(none)> | Missing: <missing-list-or-(none)>
+> Scheduler (gaia-ci.yml), <in_sync|drifted|missing|disabled>
 > Audit workflow, <in_sync|drifted|missing>
 >
 > - **Re-render workflows** (Recommended): regenerate only the drifted/missing cron files and re-install the audit workflow from the current templates, then commit on a branch and open a PR. Keeps tool selection and token unchanged.
@@ -785,7 +786,7 @@ AskUserQuestion:
 
 > Which bot token will GAIA CI use to authenticate workflow steps that hit the Anthropic API?
 >
-> The same repo-scoped secret authenticates all GAIA CI workflows, both the scheduled cron jobs (`gaia-ci-*.yml`) and the `code-review-audit.yml` PR gate. The audit honors either token type.
+> The same repo-scoped secret authenticates all GAIA CI workflows, both the scheduled entry point (`gaia-ci.yml`) and the per-tool workflows it calls (`gaia-ci-*.yml`) and the `code-review-audit.yml` PR gate. The audit honors either token type.
 >
 > - **CLAUDE_CODE_OAUTH_TOKEN** (default for Claude Code subscribers)
 > - **ANTHROPIC_API_KEY** (default for direct Anthropic API customers)
@@ -854,7 +855,7 @@ On either answer, run **Verify presence** for `<NAME>` (both paths require the c
 .gaia/cli/gaia automation render-workflows --out-dir .github/workflows
 ```
 
-Capture the JSON list of written cron-workflow paths. Then install the audit workflow unconditionally:
+This writes one `gaia-ci-<tool>.yml` per CI-mode tool plus `gaia-ci.yml`, the single scheduled workflow that decides which tools have work and calls only those. Capture the list of written cron-workflow paths. Then install the audit workflow unconditionally:
 
 ```bash
 .gaia/cli/gaia automation install-audit-workflow --out-dir .github/workflows
@@ -963,10 +964,10 @@ touch .gaia/local/setup-in-progress
 Stage the generated workflow files plus `.gaia/automation.json` and the audit-policy `.gaia/audit-ci.yml`, commit, and push to the default branch. The admin push clears **classic** branch protection (`enforce_admins: false`, `restrictions: null`), so no reorder is needed. A **repository ruleset** is a separate enforcement layer these settings do not govern: if the org or repo protects the default branch with a ruleset that requires a PR (or restricts direct pushes) and does not list the pushing admin as a bypass actor, the push is rejected (`GH006`) even for an admin. Do not assume the push lands, branch on its result below:
 
 ```bash
-git add .github/workflows/gaia-ci-*.yml .github/workflows/code-review-audit.yml .gaia/automation.json .gaia/audit-ci.yml
+git add .github/workflows/gaia-ci*.yml .github/workflows/code-review-audit.yml .gaia/automation.json .gaia/audit-ci.yml
 git commit -m "chore(gaia-ci): finalize CI setup, verified workflow_dispatch run
 
-Adds .github/workflows/gaia-ci-*.yml, installs
+Adds .github/workflows/gaia-ci.yml and the gaia-ci-*.yml it calls, installs
 .github/workflows/code-review-audit.yml PR gate, and flips
 .gaia/automation.json:setup_complete to true."
 git push origin <default-branch>
@@ -985,7 +986,7 @@ rm -f .gaia/local/setup-in-progress
 - **Push succeeded.** Print:
 
   ```
-  GAIA CI is active on <default-branch>. Workflows: <list>. The first scheduled cron fires at the times encoded in .github/workflows/gaia-ci-*.yml; run any workflow on demand via the Actions tab's "Run workflow" button or `gh workflow run <file>`.
+  GAIA CI is active on <default-branch>. Workflows: <list>. The first scheduled cron fires at the times encoded in .github/workflows/gaia-ci.yml, which decides which tools have work and calls only those; run any workflow on demand via the Actions tab's "Run workflow" button or `gh workflow run <file>`.
   ```
 
 - **Push rejected** (non-zero exit, e.g. `GH006`, `protected branch`, `pre-receive`). Do NOT print the success line. The finalize commit is on local `<default-branch>` but not on the remote. Surface the error verbatim and print:
@@ -1029,7 +1030,7 @@ Reached when the drift probe found drift and the adopter picked "Re-render workf
 git checkout -b chore/gaia-ci-rerender
 .gaia/cli/gaia automation render-workflows --out-dir .github/workflows
 .gaia/cli/gaia automation install-audit-workflow --out-dir .github/workflows
-git add .github/workflows/gaia-ci-*.yml .github/workflows/code-review-audit.yml
+git add .github/workflows/gaia-ci*.yml .github/workflows/code-review-audit.yml
 git commit -m "chore(gaia-ci): re-render workflows from updated templates"
 git push -u origin chore/gaia-ci-rerender
 gh pr create --base <default-branch> --head chore/gaia-ci-rerender \

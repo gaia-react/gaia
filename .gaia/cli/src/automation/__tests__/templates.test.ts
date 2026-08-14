@@ -94,12 +94,17 @@ describe('workflow templates: gaia-ci-wiki', () => {
     );
   });
 
-  test('declares cron 0 4 * * * (daily) and workflow_dispatch', () => {
+  // The cron lives in gaia-ci.yml, which reaches this workflow through
+  // workflow_call. A schedule here would fire a second run for the same tick
+  // and bill GitHub's whole-minute job floor twice.
+  test('declares workflow_call and workflow_dispatch, and no schedule', () => {
     const on = doc.on as {
-      schedule: {cron: string}[];
+      schedule?: unknown;
+      workflow_call: unknown;
       workflow_dispatch: unknown;
     };
-    expect(on.schedule[0]?.cron).toBe('0 4 * * *');
+    expect(on.schedule).toBeUndefined();
+    expect(on.workflow_call).toBeDefined();
     expect(on.workflow_dispatch).toBeDefined();
   });
 
@@ -157,11 +162,6 @@ describe('workflow templates: gaia-ci-update-deps', () => {
   const rendered = renderForTool('update-deps');
   const doc = parseRendered(rendered);
 
-  test('declares cron 0 4 * * 0 (weekly Sunday)', () => {
-    const on = doc.on as {schedule: {cron: string}[]};
-    expect(on.schedule[0]?.cron).toBe('0 4 * * 0');
-  });
-
   test('uses concurrency group gaia-ci-update-deps', () => {
     expect((doc.concurrency as {group: string}).group).toBe(
       'gaia-ci-update-deps'
@@ -217,11 +217,6 @@ describe('workflow templates: gaia-ci-pnpm-audit', () => {
   const rendered = renderForTool('pnpm-audit');
   const doc = parseRendered(rendered);
 
-  test('declares cron 0 4 * * * (daily)', () => {
-    const on = doc.on as {schedule: {cron: string}[]};
-    expect(on.schedule[0]?.cron).toBe('0 4 * * *');
-  });
-
   test('uses concurrency group gaia-ci-pnpm-audit', () => {
     expect((doc.concurrency as {group: string}).group).toBe(
       'gaia-ci-pnpm-audit'
@@ -254,11 +249,6 @@ describe('workflow templates: gaia-ci-pnpm-audit', () => {
 describe('workflow templates: gaia-ci-stale-branches', () => {
   const rendered = renderForTool('stale-branches');
   const doc = parseRendered(rendered);
-
-  test('declares cron 0 4 1-7 * 0 (first Sunday of month)', () => {
-    const on = doc.on as {schedule: {cron: string}[]};
-    expect(on.schedule[0]?.cron).toBe('0 4 1-7 * 0');
-  });
 
   test('uses concurrency group gaia-ci-stale-branches', () => {
     expect((doc.concurrency as {group: string}).group).toBe(

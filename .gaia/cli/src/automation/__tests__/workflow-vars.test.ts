@@ -3,7 +3,11 @@ import type {
   AutomationConfig,
   ToolId,
 } from '../../schemas/automation-config.js';
-import {buildWorkflowVars, cronForSchedule} from '../workflow-vars.js';
+import {
+  buildSchedulerVars,
+  buildWorkflowVars,
+  cronForSchedule,
+} from '../workflow-vars.js';
 
 const baseConfig: AutomationConfig = {
   pnpm_audit: {mode: 'ci', schedule: 'daily'},
@@ -152,5 +156,59 @@ describe('buildWorkflowVars', () => {
       ];
       expect(flags.filter(Boolean)).toHaveLength(1);
     }
+  });
+});
+
+describe('buildSchedulerVars', () => {
+  test('lists every CI-mode tool paired with its own cron', () => {
+    expect(buildSchedulerVars(baseConfig)).toEqual({
+      scheduler_crons: ['0 4 * * *', '0 4 * * 0', '0 4 1-7 * 0'],
+      scheduler_decisions: [
+        "wiki '0 4 * * *'",
+        "update-deps '0 4 * * 0'",
+        "pnpm-audit '0 4 * * *'",
+        "stale-branches '0 4 1-7 * 0'",
+      ],
+      scheduler_tools: ['wiki', 'update-deps', 'pnpm-audit', 'stale-branches'],
+      workflow_name: 'GAIA CI',
+    });
+  });
+
+  test('omits a tool that is not in ci mode, and its cron with it', () => {
+    const config: AutomationConfig = {
+      ...baseConfig,
+      stale_branches: {mode: 'off'},
+      update_deps: {mode: 'local'},
+    };
+
+    expect(buildSchedulerVars(config)).toEqual({
+      scheduler_crons: ['0 4 * * *'],
+      scheduler_decisions: ["wiki '0 4 * * *'", "pnpm-audit '0 4 * * *'"],
+      scheduler_tools: ['wiki', 'pnpm-audit'],
+      workflow_name: 'GAIA CI',
+    });
+  });
+
+  test('drops a cron once its only tool leaves ci mode', () => {
+    const config: AutomationConfig = {
+      ...baseConfig,
+      stale_branches: {mode: 'off'},
+    };
+
+    expect(buildSchedulerVars(config)?.scheduler_crons).not.toContain(
+      '0 4 1-7 * 0'
+    );
+  });
+
+  test('returns null when no tool is in ci mode', () => {
+    const config: AutomationConfig = {
+      ...baseConfig,
+      pnpm_audit: {mode: 'off'},
+      stale_branches: {mode: 'off'},
+      update_deps: {mode: 'off'},
+      wiki: {mode: 'off'},
+    };
+
+    expect(buildSchedulerVars(config)).toBeNull();
   });
 });

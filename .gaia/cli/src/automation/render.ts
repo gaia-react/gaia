@@ -1,11 +1,12 @@
 /**
- * Workflow YAML render pipeline: partial resolver + per-tool renderer.
+ * Workflow YAML render pipeline: partial resolver + workflow renderer.
  *
- * The four `gaia-ci-<tool>.yml.tmpl` files include shared partials via a
- * mustache-style `{{> partials/<name> }}` token. This module resolves
- * those includes (recursion depth one; partials may not include other
- * partials), then hands the resulting string to the scaffold engine's
- * `substituteVars` core for variable / section / each substitution.
+ * The `gaia-ci-<tool>.yml.tmpl` files and the `gaia-ci.yml.tmpl` scheduler
+ * include shared partials via a mustache-style `{{> partials/<name> }}`
+ * token. This module resolves those includes (recursion depth one; partials
+ * may not include other partials), then hands the resulting string to the
+ * scaffold engine's `substituteVars` core for variable / section / each
+ * substitution.
  *
  * Keeping the partial resolver in `automation/` rather than extending
  * `scaffold/template.ts` keeps the scaffolder engine minimal and confines
@@ -15,7 +16,18 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {substituteVars} from '../scaffold/template.js';
 import type {TemplateVars} from '../scaffold/template.js';
-import type {WorkflowTemplateVars} from './workflow-vars.js';
+import type {AutomationConfig, ToolId} from '../schemas/automation-config.js';
+import {
+  SCHEDULER_WORKFLOW_FILENAME,
+  workflowPartialsDirectory,
+  workflowSchedulerTemplatePath,
+  workflowTemplatePath,
+} from './paths.js';
+import {buildSchedulerVars, buildWorkflowVars} from './workflow-vars.js';
+import type {
+  SchedulerTemplateVars,
+  WorkflowTemplateVars,
+} from './workflow-vars.js';
 
 // Negative lookbehind on `$` keeps GitHub Actions expressions like
 // `${{ secrets.X }}` intact (the scaffold engine's scalar regex applies
@@ -65,20 +77,62 @@ export const resolvePartials = (raw: string, partialsDir: string): string =>
 export const renderWorkflowTemplate = (
   templatePath: string,
   partialsDir: string,
-  vars: WorkflowTemplateVars
+  vars: SchedulerTemplateVars | WorkflowTemplateVars
 ): string => {
   const raw = readFileSync(templatePath, 'utf8');
   const resolved = resolvePartials(raw, partialsDir);
 
-  // WorkflowTemplateVars is a strict subset of TemplateVars (string |
-  // boolean | number); the engine accepts string|boolean|string[]. Numbers
-  // are stringified by the substitution core as expected, but we widen to
-  // satisfy the engine's looser type.
-  const engineVars: TemplateVars = {};
-
-  for (const [key, value] of Object.entries(vars)) {
-    engineVars[key] = typeof value === 'number' ? String(value) : value;
-  }
+  // Every field of both vars types is already a TemplateVars value
+  // (string | boolean | string[]); the annotation is only needed because
+  // `Object.entries` widens a union parameter's values to `any`.
+  const engineVars: TemplateVars = Object.fromEntries(
+    Object.entries<TemplateVars[string]>(vars)
+  );
 
   return substituteVars(resolved, engineVars);
+};
+
+/** Which workflow to render: one tool's, or the scheduler that calls them. */
+export type RenderTarget = {kind: 'scheduler'} | {kind: 'tool'; tool: ToolId};
+
+/** The filename a rendered target is written to under `.github/workflows`. */
+export const renderedWorkflowFilename = (target: RenderTarget): string =>
+  target.kind === 'scheduler' ?
+    SCHEDULER_WORKFLOW_FILENAME
+  : `gaia-ci-${target.tool}.yml`;
+
+/**
+ * Render one target's workflow YAML, or `null` when the config disables it:
+ * a tool whose mode is not `ci`, or a scheduler with no CI-mode tool to
+ * schedule.
+ *
+ * The single place that pairs a target with its template, its vars, and the
+ * partials directory. `render-workflows` writes what this returns and
+ * `setup-ci check-drift` byte-compares against it, so the two cannot come to
+ * different conclusions about what a fresh render is. A drift checker that
+ * re-implemented the pipeline would report `in_sync` against a render the
+ * writer would never produce, and `/setup-gaia` would skip a re-render that
+ * was genuinely needed.
+ */
+export const renderWorkflowFor = (
+  config: AutomationConfig,
+  target: RenderTarget
+): null | string => {
+  const vars =
+    target.kind === 'scheduler' ?
+      buildSchedulerVars(config)
+    : buildWorkflowVars(config, target.tool);
+
+  if (vars === null) return null;
+
+  const templatePath =
+    target.kind === 'scheduler' ?
+      workflowSchedulerTemplatePath()
+    : workflowTemplatePath(target.tool);
+
+  return renderWorkflowTemplate(
+    templatePath,
+    workflowPartialsDirectory(),
+    vars
+  );
 };

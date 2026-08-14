@@ -49,11 +49,11 @@ describe('audit-template dogfood drift-guard', () => {
 });
 
 /**
- * Artifact drift-guard (tech-debt 730, extended from one file to all twelve):
+ * Artifact drift-guard (tech-debt 730, extended from one file to the whole directory):
  * `.gaia/cli/templates/workflows/` is a committed *build artifact*, a
  * byte-identical copy of `.gaia/cli/src/automation/templates/workflows/`
  * produced by `bundle:adopter`'s `cp -r .../workflows/. templates/workflows/`
- * step. These twelve files are deliberately ownerless for the Code Audit
+ * step. These files are deliberately ownerless for the Code Audit
  * Team (a script pins them, so no member reviews them);
  * this suite is the pin that trade rests on. Both directories are tracked,
  * committed, maintainer-only paths (`.gaia/cli/src` is release-excluded
@@ -87,7 +87,7 @@ const rmCommand = (relative: string): string =>
 describe('audit-template artifact drift-guard (source vs. committed artifact, all templates)', () => {
   const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
   // The source directory holding every template `workflowAuditTemplatePath()`
-  // resolves one of; walking its parent reaches all twelve, partials included.
+  // resolves one of; walking its parent reaches every one, partials included.
   const sourceDir = path.dirname(workflowAuditTemplatePath());
   const artifactDir = path.join(
     repoRoot,
@@ -101,11 +101,12 @@ describe('audit-template artifact drift-guard (source vs. committed artifact, al
   const artifactFiles = listFilesRelative(artifactDir);
 
   test('enumeration finds every template, partials included (floor, not a pin)', () => {
-    // Today: 4 gaia-ci-*.yml workflows + code-review-audit.yml + 8 partials
-    // under partials/ = 13. A walk that silently found zero files would pass
-    // every per-file assertion below and test nothing, so assert the floor
-    // explicitly rather than trusting the per-file checks to catch it.
-    expect(sourceFiles.length).toBeGreaterThanOrEqual(13);
+    // Today: 4 gaia-ci-*.yml workflows + the gaia-ci.yml scheduler that calls
+    // them + code-review-audit.yml + 8 partials under partials/ = 14. A walk
+    // that silently found zero files would pass every per-file assertion below
+    // and test nothing, so assert the floor explicitly rather than trusting the
+    // per-file checks to catch it.
+    expect(sourceFiles.length).toBeGreaterThanOrEqual(14);
   });
 
   test('every source template is byte-identical to its committed artifact copy', () => {

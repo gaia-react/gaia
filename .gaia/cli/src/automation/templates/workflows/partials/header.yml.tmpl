@@ -5,7 +5,12 @@ name: {{workflow_name}}
 # Source of truth: .gaia/automation.json + the workflow templates
 # bundled with the gaia CLI.
 
+# No `schedule:` here. `gaia-ci.yml` is the one scheduled entry point: it
+# asks each due tool whether it has work and calls only the ones that answer
+# `run`. GitHub bills every job a whole-minute minimum, so a tool waking its
+# own cron paid that floor to reach a decision the scheduler has already made.
+# `workflow_call` is how the scheduler reaches this workflow; the manual
+# `workflow_dispatch` entry point is unchanged and runs it in full.
 on:
+  workflow_call: {}
   workflow_dispatch: {}
-  schedule:
-    - cron: '{{cron}}'
