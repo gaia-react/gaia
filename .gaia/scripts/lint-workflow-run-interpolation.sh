@@ -39,7 +39,7 @@
 # selective is not. The repair is always the same two lines and never wrong.
 #
 # Comment lines inside a `run:` body are scanned rather than skipped, unlike the
-# sibling diff-quoting guard which skips them. A `#` does not neutralize this
+# sibling path-quoting guard which skips them. A `#` does not neutralize this
 # class: substitution happens before bash parses, so a value containing a
 # newline ends the comment and the remainder of the value begins a new command.
 #
@@ -61,7 +61,7 @@
 # surface is at zero and stays at zero; it does not claim the templates and then
 # leave live instances in them unreached.
 #
-# Sibling gate: .gaia/scripts/lint-diff-name-only-quoting.sh, which scans the
+# Sibling gate: .gaia/scripts/lint-git-path-quoting.sh, which scans the
 # same workflow YAML for a different class. The two are kept separate because
 # their scan surfaces differ (that one also reads *.sh and .husky/*) and their
 # discriminations share nothing.
@@ -73,11 +73,12 @@ set -euo pipefail
 # with a read loop rather than `mapfile`, which is bash 4+, because these
 # scripts run on stock macOS /bin/bash (3.2.57).
 scan_files=()
-while IFS= read -r f; do
+while IFS= read -r -d '' f; do
   scan_files+=("$f")
-done < <(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml' \
+done < <(git -c core.quotepath=false ls-files -z \
+                      '.github/workflows/*.yml' '.github/workflows/*.yaml' \
                       '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
-           | LC_ALL=C sort)
+           | LC_ALL=C sort -z)
 
 # An empty scan set is a hard error, never a clean tree. The loop above reads
 # from a process substitution, whose failure `set -o pipefail` cannot see, so a

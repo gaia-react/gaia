@@ -166,7 +166,7 @@ main() {
   local count
   count=${#slugs[@]}
   # Fail closed on an empty table. A green "all passed" over zero suites is the
-  # lie-green class .gaia/scripts/lint-diff-name-only-quoting.sh hard-errors on
+  # lie-green class .gaia/scripts/lint-git-path-quoting.sh hard-errors on
   # for its own empty scan set, and .gaia/tests/shell-lint.sh for its discovery.
   if [ "$count" -eq 0 ]; then
     printf 'run-bats-parallel: suite table yielded zero suites, refusing to report success\n' >&2

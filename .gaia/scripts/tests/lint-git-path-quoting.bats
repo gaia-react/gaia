@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# Tests for .gaia/scripts/lint-diff-name-only-quoting.sh: the static gate that
-# flags an executed `git diff --name-only` which omits `-z`, so git's default
-# `core.quotePath` cannot C-quote a path the caller then parses.
+# Tests for .gaia/scripts/lint-git-path-quoting.sh: the static gate that flags
+# an executed `git diff --name-only` or `git ls-files` which omits `-z`, so
+# git's default `core.quotePath` cannot C-quote a path the caller then parses.
 #
 # Two jobs, the same pair the sibling array-guard suite carries: prove the
 # detector fires on a known-bad fixture in each scanned file type (shell, husky
@@ -9,10 +9,19 @@
 # a comment, a markdown code span, a string constant, an untracked file), and
 # assert the real scanned tree is clean so a regression fails CI.
 #
-# One test is load-bearing beyond coverage. `#1229`'s Suggested fix makes it
-# binding that the guard red against a historical site in its PRE-FIX form, or
-# it asserts nothing about the class it was written for; "reds against the
-# pre-fix worthiness-presence-check.sh derivation" is that test.
+# Two groups of tests are load-bearing beyond coverage, and both exist because a
+# guard that has never been shown to red against a real historical instance has
+# asserted nothing about the class it was written for.
+#
+#   `#1229` makes that binding for the `diff --name-only` half: "reds against
+#   the pre-fix worthiness-presence-check.sh derivation" is that test.
+#
+#   `#1389` makes it binding for the `ls-files` half, and names five discovery
+#   call sites the extended guard must red against in their PRE-FIX form. The
+#   five `@test`s under "the five pre-fix ls-files discovery sites" are that
+#   requirement, one per site. Their point is the fixture BODY, which is the
+#   literal pre-fix line copied from each site; the paths are the real ones so a
+#   reader can trace a failing test back to what it was written for.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
@@ -23,7 +32,7 @@
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  LINTER="$REPO_ROOT/.gaia/scripts/lint-diff-name-only-quoting.sh"
+  LINTER="$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh"
   TMP=""
 }
 
@@ -34,7 +43,7 @@ teardown() {
 
 # fixture_repo: an initialized git repo in $TMP with no files yet.
 fixture_repo() {
-  TMP="$(mktemp -d -t diff-quoting-lint-XXXXXX)"
+  TMP="$(mktemp -d -t git-path-quoting-lint-XXXXXX)"
   git -C "$TMP" init -q .
 }
 
@@ -266,6 +275,117 @@ run_linter() {
   fixture_file probe.bats $'@test "x" {\n  quoted="$(git diff --name-only "${base}...HEAD")"\n}'
   run_linter
   [ "$status" -eq 0 ]
+}
+
+# 3b. The ls-files half of the class
+
+# The five pre-fix discovery sites `#1389` names. Each fixture body is that
+# site's literal pre-fix line, so a green here means the guard would have caught
+# the class where it actually recurred, not merely where it was convenient to
+# demonstrate. The last two are the irony that made the issue concrete: both
+# guards for this class were themselves instances of it.
+
+@test "reds against the pre-fix shell-lint.sh *.sh discovery" {
+  fixture_repo
+  fixture_file .gaia/tests/shell-lint.sh \
+    $'#!/usr/bin/env bash\ndone < <(git -C "$REPO_ROOT" ls-files \'*.sh\')'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/tests/shell-lint.sh:2" <<<"$output"
+}
+
+@test "reds against the pre-fix shell-lint.sh *.bats discovery" {
+  fixture_repo
+  fixture_file .gaia/tests/shell-lint.sh \
+    $'#!/usr/bin/env bash\ndone < <(git -C "$REPO_ROOT" ls-files \'*.bats\')'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/tests/shell-lint.sh:2" <<<"$output"
+}
+
+@test "reds against the pre-fix shell-lint.sh husky-hook discovery" {
+  fixture_repo
+  fixture_file .gaia/tests/shell-lint.sh \
+    $'#!/usr/bin/env bash\ndone < <(git -C "$REPO_ROOT" ls-files \'.husky/*\')'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/tests/shell-lint.sh:2" <<<"$output"
+}
+
+@test "reds against this guard's own pre-fix discovery" {
+  fixture_repo
+  fixture_file .gaia/scripts/lint-git-path-quoting.sh \
+    $'#!/usr/bin/env bash\ndone < <(git ls-files \'*.sh\' \'.husky/*\' \'.github/workflows/*.yml\' | LC_ALL=C sort)'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/scripts/lint-git-path-quoting.sh:2" <<<"$output"
+}
+
+@test "reds against the pre-fix lint-workflow-run-interpolation.sh discovery" {
+  fixture_repo
+  fixture_file .gaia/scripts/lint-workflow-run-interpolation.sh \
+    $'#!/usr/bin/env bash\ndone < <(git ls-files \'.github/workflows/*.yml\' \'.github/workflows/*.yaml\' \\\n           | LC_ALL=C sort)'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/scripts/lint-workflow-run-interpolation.sh:2" <<<"$output"
+}
+
+# The option-region walk, in both directions. `ls-files` carries its selectors
+# before `-z`, so the anchored rule the `diff --name-only` half uses would
+# reject every real call; terminating the walk at the first non-option is what
+# keeps a pathspec from vouching in its place.
+
+@test "an ls-files call carrying -z passes" {
+  fixture_repo
+  fixture_file probe.sh \
+    $'#!/usr/bin/env bash\nwhile IFS= read -r -d \'\' f; do :; done < <(git ls-files -z \'*.sh\')'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "an ls-files call whose -z follows selector options passes" {
+  fixture_repo
+  fixture_file probe.sh \
+    $'#!/usr/bin/env bash\nn=$(git ls-files --others --exclude-standard -z | tr \'\\0\' \'\\n\' | wc -l)'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a -z inside an ls-files pathspec does not vouch for the call" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfiles=$(git ls-files -- "docs/a -z b.md")'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+# `--error-unmatch` makes the call an existence assertion whose contract is its
+# exit status; git documents it that way and every such call in this tree
+# discards stdout. Demanding `-z` there would be a change with no failure mode.
+@test "an --error-unmatch existence assertion is exempt" {
+  fixture_repo
+  fixture_file probe.sh \
+    $'#!/usr/bin/env bash\ngit -C "$root" ls-files --error-unmatch -- "$p" >/dev/null 2>&1'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "an ls-files call inside a markdown code span is prose, not an invocation" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file .github/workflows/ci.yml \
+    $'jobs:\n  a:\n    steps:\n      - run: |\n          echo "Walk `git ls-files` first."'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "an unquoted ls-files is reported as ls-files and hinted with its own idiom" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfor f in $(git ls-files); do :; done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "ls-files without -z" <<<"$output"
+  grep -qF -- "read -r -d" <<<"$output"
 }
 
 # 4. Reporting contract

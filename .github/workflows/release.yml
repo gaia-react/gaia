@@ -107,7 +107,14 @@ jobs:
           # contains tracked files (no .DS_Store, node_modules, build
           # artifacts, etc.), then filter out paths matched by
           # .gaia/release-exclude.
-          git ls-files > /tmp/all-tracked.txt
+          #
+          # NUL-delimited: git C-quotes a path carrying a non-ASCII byte under
+          # its default `core.quotePath`, and the quoted spelling names no file
+          # on disk, so rsync's --files-from would drop it from the tarball
+          # without failing the release. The subshell sets pipefail because the
+          # step's shell is `bash -e` without it, so a git failure would
+          # otherwise be masked by `tr` exiting 0.
+          (set -o pipefail; git -c core.quotepath=false ls-files -z | tr '\0' '\n' > /tmp/all-tracked.txt)
           # The maintainer CLI is the single compiler of .gaia/release-exclude
           # into anchored regexes; every release surface invokes it rather than
           # re-deriving the pattern set inline. Fail-closed: a nonzero exit

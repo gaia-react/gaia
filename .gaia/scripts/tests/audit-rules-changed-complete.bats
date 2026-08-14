@@ -102,6 +102,26 @@ make_sandbox() {
   grep -qF "more than one tier (overlap): .claude/hooks/local-janitor.sh" <<<"$err"
 }
 
+# The partition check's counters all live inside its read loop, and the loop
+# reads from a process substitution whose failure `pipefail` cannot see, so a
+# broken tracked-file walk would leave assertion 3 vacuously passing while the
+# two assertions above still reported normally. An untracked sandbox is the
+# cheapest way to drive the walk to zero rows without breaking git itself.
+@test "fail-closed: a tracked-file walk yielding no rows is an error, not a clean partition" {
+  SB="$BATS_TEST_TMPDIR/norows"
+  mkdir -p "$SB/.gaia/scripts" "$SB/.claude/hooks/lib"
+  cp "$CHECK" "$SB/.gaia/scripts/audit-rules-changed-complete.sh"
+  chmod +x "$SB/.gaia/scripts/audit-rules-changed-complete.sh"
+  cp "$RULES_LIB" "$SB/.claude/hooks/lib/audit-rules-changed.sh"
+  cp "$MACHINERY_LIB" "$SB/.claude/hooks/lib/audit-machinery.sh"
+  # Initialized but nothing staged, so `ls-files` is legitimately empty.
+  git -C "$SB" init -q
+
+  run bash "$SB/.gaia/scripts/audit-rules-changed-complete.sh" "$SB"
+  [ "$status" -ne 0 ]
+  grep -qF -- "scanned nothing" <<<"$output"
+}
+
 @test "fail-closed: a copy with neither library exits non-zero" {
   SB="$BATS_TEST_TMPDIR/nolib"
   mkdir -p "$SB/.gaia/scripts"

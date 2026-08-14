@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
 # husky hook, then three repo-authored guards shellcheck cannot model: the hook
-# array-guard (.gaia/scripts/lint-hook-array-guard.sh), the diff-quoting
-# guard (.gaia/scripts/lint-diff-name-only-quoting.sh), and the workflow
+# array-guard (.gaia/scripts/lint-hook-array-guard.sh), the git path-quoting
+# guard (.gaia/scripts/lint-git-path-quoting.sh), and the workflow
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
@@ -102,20 +102,28 @@ fi
 #
 # Collected with a read loop rather than `mapfile`: mapfile is bash 4+, and these
 # scripts are authored and run on stock macOS /bin/bash (3.2.57).
+#
+# NUL-delimited, because under git's default `core.quotePath` a tracked path
+# carrying a non-ASCII byte prints C-quoted (`"caf\303\251.sh"`). The quoted
+# form fails the `[ -f ]` test every consumer applies and is dropped silently,
+# so the pass reports clean having never opened the file. The empty-set guard
+# below cannot catch that: the other files match normally, so the set is not
+# empty. `.gaia/scripts/lint-git-path-quoting.sh` is the check that keeps this
+# whole family quoted.
 sh_scripts=()
-while IFS= read -r f; do
+while IFS= read -r -d '' f; do
   sh_scripts+=("$f")
-done < <(git -C "$REPO_ROOT" ls-files '*.sh')
+done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '*.sh')
 
 bats_scripts=()
-while IFS= read -r f; do
+while IFS= read -r -d '' f; do
   bats_scripts+=("$f")
-done < <(git -C "$REPO_ROOT" ls-files '*.bats')
+done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '*.bats')
 
 husky_hooks=()
-while IFS= read -r f; do
+while IFS= read -r -d '' f; do
   husky_hooks+=("$f")
-done < <(git -C "$REPO_ROOT" ls-files '.husky/*')
+done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '.husky/*')
 
 # Guard the expansion below: on bash 3.2 a bare "${sh_scripts[@]}" over an EMPTY
 # array aborts with `unbound variable` under `set -u`. An empty *.sh result also
@@ -288,14 +296,16 @@ if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-array-guard.sh
   status=1
 fi
 
-# Fold in the diff-quoting guard, for the same reason as the array guard: the
-# linter above cannot model it, and the class has been fixed five times by hand
-# and never once by a check. It reaches further than the passes above -- its
-# scan surface includes .github/workflows/*.yml, whose `run:` blocks are shell
-# that no *.sh glob sees. Run from the repo root so its `git ls-files` resolves
-# and the file:line it prints is repo-relative.
-echo "--> lint-diff-name-only-quoting (C-quoted paths from an unquoted diff)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-diff-name-only-quoting.sh"); then
+# Fold in the git path-quoting guard, for the same reason as the array guard:
+# the linter above cannot model it, and the class has been fixed seven times by
+# hand and never once by a check. It reaches further than the passes above --
+# its scan surface includes .github/workflows/*.yml, whose `run:` blocks are
+# shell that no *.sh glob sees. It also guards this file's own three discovery
+# loops above, which is how the class reached them in the first place. Run from
+# the repo root so its own discovery resolves and the file:line it prints is
+# repo-relative.
+echo "--> lint-git-path-quoting (C-quoted paths from an unquoted diff or ls-files)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh"); then
   status=1
 fi
 

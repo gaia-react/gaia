@@ -61,7 +61,7 @@ FIXTURE_EOF
 git -C "$SRC" init -q
 git -C "$SRC" add -A
 ALL_TRACKED="$FIXTURE/all-tracked.txt"
-git -C "$SRC" ls-files > "$ALL_TRACKED"
+git -C "$SRC" -c core.quotepath=false ls-files -z | tr '\0' '\n' > "$ALL_TRACKED"
 
 # The shared compiler: the single production source every executable surface
 # now invokes. Fail-closed.

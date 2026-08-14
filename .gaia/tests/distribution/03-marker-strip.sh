@@ -40,7 +40,7 @@ EXCLUDE_REGEX="$(mktemp)"
 INCLUDE="$(mktemp)"
 trap 'rm -rf "$STAGING" "$ALL_TRACKED" "$EXCLUDE_REGEX" "$INCLUDE"' EXIT
 
-git -C "$PROJECT_ROOT" ls-files > "$ALL_TRACKED"
+git -C "$PROJECT_ROOT" -c core.quotepath=false ls-files -z | tr '\0' '\n' > "$ALL_TRACKED"
 # Same single-compiler invocation build-staging.sh uses, so this second walk
 # filters source files through the identical exclude set. Fail-closed.
 if ! "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release exclude-regex \

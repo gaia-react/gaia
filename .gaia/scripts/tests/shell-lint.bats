@@ -69,17 +69,17 @@ teardown() {
   grep -qF -- "shell-lint passed" <<<"$output"
 }
 
-# The same wiring assertion for the diff-quoting guard. Its own correctness is
-# covered by lint-diff-name-only-quoting.bats; this covers only that the gate
+# The same wiring assertion for the git path-quoting guard. Its own correctness
+# is covered by lint-git-path-quoting.bats; this covers only that the gate
 # still invokes it, which is the class the sibling assertion above exists for.
 
-@test "shell-lint folds in the diff-quoting guard pass and stays green on a clean tree" {
+@test "shell-lint folds in the git path-quoting guard pass and stays green on a clean tree" {
   run env PATH="$STUB_DIR:$PATH" bash "$GATE"
   [ "$status" -eq 0 ]
   # The guard's OWN stderr proof line, for the same reason as above: it appears
   # only if the guard actually ran, so a future edit dropping the invocation but
   # leaving the header echo is caught.
-  grep -qF -- "lint-diff-name-only-quoting: clean" <<<"$output"
+  grep -qF -- "lint-git-path-quoting: clean" <<<"$output"
 }
 
 # The same wiring assertion for the workflow run-interpolation guard. Its own

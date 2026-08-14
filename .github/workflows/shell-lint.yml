@@ -73,7 +73,7 @@ jobs:
               # greens the check having linted nothing.
               - '.husky/**'
               # The gate folds in two guards whose scan surface is the workflow
-              # `run:` blocks rather than any *.sh file: lint-diff-name-only-
+              # `run:` blocks rather than any *.sh file: lint-git-path-
               # quoting.sh and lint-workflow-run-interpolation.sh. Both are named
               # because this line is the sole CI path for each, so retiring
               # either one must not read as licence to drop it. Without this line
