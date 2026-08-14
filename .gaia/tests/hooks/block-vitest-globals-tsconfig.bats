@@ -92,11 +92,13 @@ run_hook_multiedit() {
   done
 }
 
-@test "an escaped slash elsewhere in a tsconfig is allowed" {
-  # The abstain half of the widened match: a backslash-escaped path separator is
-  # ordinary in a tsconfig, so widening the alternation must not turn every one
-  # of them into a block.
-  run_hook_edit "tsconfig.json" '"paths": {"@app\/*": ["app/*"]}'
+@test "vitest beside an escaped slash but without globals is allowed" {
+  # The abstain half of the widened match, and it discriminates rather than
+  # merely abstaining: the payload carries `vitest` and every escape spelling
+  # the alternation now recognises, and is allowed only because `globals` does
+  # not follow. A widening that dropped the trailing anchor would block an
+  # ordinary path alias, which is what makes this the case worth pinning.
+  run_hook_edit "tsconfig.json" '"paths": {"@vitest\/helpers/*": ["test/*"], "@vitest\u002futils/*": ["test/*"]}'
   assert_allowed_by_exit
 }
 
