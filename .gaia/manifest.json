@@ -188,9 +188,10 @@
     ".gaia/cli/templates/workflows/gaia-ci-wiki.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/auth-env.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/auto-merge.yml.tmpl": "owned",
-    ".gaia/cli/templates/workflows/partials/checkout-setup.yml.tmpl": "owned",
+    ".gaia/cli/templates/workflows/partials/checkout.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/concurrency.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/header.yml.tmpl": "owned",
+    ".gaia/cli/templates/workflows/partials/node-setup.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/pre-run-skip.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/quality-gate.yml.tmpl": "owned",
     ".gaia/hook-scopes.json": "owned",
@@ -647,7 +648,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-13T23:06:22.158Z",
+  "generated": "2026-08-14T02:19:35.808Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

@@ -101,11 +101,11 @@ describe('audit-template artifact drift-guard (source vs. committed artifact, al
   const artifactFiles = listFilesRelative(artifactDir);
 
   test('enumeration finds every template, partials included (floor, not a pin)', () => {
-    // Today: 4 gaia-ci-*.yml workflows + code-review-audit.yml + 7 partials
-    // under partials/ = 12. A walk that silently found zero files would pass
+    // Today: 4 gaia-ci-*.yml workflows + code-review-audit.yml + 8 partials
+    // under partials/ = 13. A walk that silently found zero files would pass
     // every per-file assertion below and test nothing, so assert the floor
     // explicitly rather than trusting the per-file checks to catch it.
-    expect(sourceFiles.length).toBeGreaterThanOrEqual(12);
+    expect(sourceFiles.length).toBeGreaterThanOrEqual(13);
   });
 
   test('every source template is byte-identical to its committed artifact copy', () => {

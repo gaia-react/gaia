@@ -16,8 +16,9 @@ jobs:
       wave_b_count: ${{ steps.emit_updates.outputs.wave_b_count }}
       decision: ${{ steps.pre_run.outputs.decision }}
     steps:
-{{> partials/checkout-setup }}
+{{> partials/checkout }}
 {{> partials/pre-run-skip }}
+{{> partials/node-setup }}
 {{> partials/quality-gate }}
 {{#enable_major_bump_split}}
       - name: Emit update-deps plan
@@ -114,7 +115,8 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.run.outputs.wave_b_matrix) }}
     steps:
-{{> partials/checkout-setup }}
+{{> partials/checkout }}
+{{> partials/node-setup }}
       - name: Create per-group branch
         id: branch
         env:
