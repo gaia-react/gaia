@@ -53,8 +53,8 @@ if [ -z "$repo_root" ]; then
 fi
 
 # 1. Lockstep completeness. Same content as AUDIT_GLOBAL_RULES_PATHS. Every
-# entry there is now an exact path, so this list is a byte-for-byte mirror
-# with no prefix entry to spell out as a probe.
+# entry there is an exact path, so this list is a byte-for-byte mirror with no
+# prefix entry to spell out as a probe.
 GLOBAL_RULES_FILES="$(cat <<'EOF'
 .gaia/VERSION
 .gaia/audit-ci.yml
@@ -129,7 +129,7 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 # could not express the split: it would sweep the two global rules back in and
 # assertion 3 would red them as an overlap. Adding a rule file without adding
 # it here reds by name in assertion 3, which is the intended discovery path;
-# .claude/rules/maintainers/hook-registration.md states the obligation.
+# the maintainer-only hook-and-rule registration rule states the obligation.
 .claude/rules/accessibility.md
 .claude/rules/api-service.md
 .claude/rules/bats-assertions.md

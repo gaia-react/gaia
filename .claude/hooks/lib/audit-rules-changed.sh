@@ -42,6 +42,13 @@
 # never equal a real path); that accident is not good enough here, because
 # this file's literal is also walked as DATA by the completeness check.
 #
+# No entry below ends in `/**`, so the prefix arm and the `*.bats` early
+# return decide nothing today. Both are retained deliberately: they keep this
+# matcher's semantics identical to audit_path_is_machinery, which still
+# carries `/**` entries and still excludes suites, so a `/**` entry re-added
+# here inherits the exclusion instead of silently losing it. Deleting either
+# arm as dead code is what would introduce the defect.
+#
 # The `# gaia:maintainer-only` markers around resolve-audit-spawn.sh mark it
 # release-excluded; an adopter bundle must not carry a bare reference to a
 # file the adopter does not have.
