@@ -101,9 +101,12 @@ setup() {
 #
 # The accepted miss is the `*.sh` pathspec: a workflow `run:` block holds shell
 # without being a `.sh` file, so an eighth copy inlined into one reds nowhere.
-# Widening to `*.yml` is not the fix it looks like, because `release.yml`
-# normalizes the same file on purpose and differently, so a naive widening reds
-# on a deliberate exclusion rather than on a copy.
+# Widening the pathspec alone catches nothing, though. Both regexes are written
+# against this idiom, and the one `.yml` that reads the same file spells it
+# `cat .gaia/VERSION | tr -d '[:space:]'`, which matches neither half. Catching
+# an inlined copy would mean loosening the regexes as well, and that is the step
+# to be careful with: `release.yml` normalizes this file deliberately and
+# differently, for tag equality rather than for the audit equality pinned here.
 
 @test "the read-and-normalize idiom lives in exactly one tracked file" {
   cr_strip='(tr -d .\\r.|gsub\(/\\r/)'
