@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # lint-git-path-quoting.sh: flag every executed `git diff --name-only` and every
-# executed `git ls-files` that omits `-z`, across the framework's tracked shell
-# and its CI workflow YAML. Exit 1 with a file:line report on any hit, exit 0
-# when clean. Run it directly from the repo root:
-# `bash .gaia/scripts/lint-git-path-quoting.sh`.
+# executed `git ls-files` that omits `-z`, across the framework's tracked shell,
+# its CI workflow YAML, and the fenced code blocks of its tracked markdown. Exit
+# 1 with a file:line report on any hit, exit 0 when clean. Run it directly from
+# the repo root: `bash .gaia/scripts/lint-git-path-quoting.sh`.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -91,6 +91,33 @@
 # Claiming it here would red the gate on call sites that carry no failure mode,
 # which is how a gate gets bypassed rather than fixed.
 #
+# A fenced code block on a tracked markdown page IS on the declared surface, and
+# the reason is that several of them are executed instruction rather than
+# illustration: an always-loaded rule tells the agent to run that page's steps as
+# written, so the snippet is a live call site. Three carried this class at once,
+# in the quality gate's own skip check, in the wiki-sync added-page count feeding
+# the consolidate trigger, and in the health runbook's staging-tree discovery,
+# and no check could see any of them.
+#
+# The discriminator is FENCE STATE, never a path glob enumerating which pages are
+# executed. A glob is an enumeration, and an enumeration goes one page short the
+# same way a list of option spellings does; fence state is a closed property of
+# the text. An illustrative mention of a path-listing command is idiomatically a
+# code span, which the `inspan` rule below already treats as prose, so the two
+# rules partition markdown between them: outside a fence nothing is scanned at
+# all, and inside one nothing is prose. Swept across every tracked markdown page
+# in this repository, that partition reported the live defects and nothing else,
+# which is what makes the rule affordable as well as closed.
+#
+# Its blind spots, both stated as consequences of that one rule:
+#   - An illustrative fenced block that DELIBERATELY shows an unquoted call as a
+#     counter-example is flagged. That is FAIL-CLOSED, and the repair is to write
+#     the counter-example as a code span or to let it carry `-z`.
+#   - Fence tracking is a toggle over lines opening with ``` or ~~~, so a page
+#     whose fences do not balance inverts the polarity from that point on. Every
+#     markdown renderer this repository's pages are read through requires them to
+#     balance, so an unbalanced page is already broken for its reader.
+#
 # So: the surface this file claims is at zero for `ls-files` and for every
 # option spelling of `diff --name-only`, which is what the tests below pin. The
 # `diff` half reads its option region rather than a fixed string, so an OPTION
@@ -120,8 +147,10 @@
 
 set -euo pipefail
 
-# Scan surface: tracked shell, the extensionless husky hooks, and the workflow
-# YAML whose `run:` blocks are shell by another name. `git ls-files` rather than
+# Scan surface: tracked shell, the extensionless husky hooks, the workflow YAML
+# whose `run:` blocks are shell by another name, and tracked markdown, whose
+# fenced blocks are shell by another name on any page a rule tells the agent to
+# execute. `git ls-files` rather than
 # a filesystem walk, so an untracked scratch script or a vendored dependency is
 # never scanned; the same discovery .gaia/tests/shell-lint.sh uses. Collected
 # with a read loop rather than `mapfile`, which is bash 4+, because these
@@ -139,7 +168,7 @@ set -euo pipefail
 scan_files=()
 while IFS= read -r -d '' f; do
   scan_files+=("$f")
-done < <(git -c core.quotepath=false ls-files -z '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workflows/*.yaml' | LC_ALL=C sort -z)
+done < <(git -c core.quotepath=false ls-files -z '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workflows/*.yaml' '*.md' | LC_ALL=C sort -z)
 
 # An empty scan set is a hard error, never a clean tree. The loop above reads
 # from a process substitution, whose failure `set -o pipefail` cannot see, so a
@@ -157,17 +186,23 @@ fi
 
 # scan_file <path>: print one `file:line: message` per unquoted call.
 #
-# Three discriminations, each earning its place on a real line in this
+# Four discriminations, each earning its place on a real line in this
 # repository rather than on symmetry:
 #
 #   invoked  -- the text immediately before the call is a `git` invocation,
 #               optionally carrying -C/-c options. Without it,
 #               check-audit-base-derivation.sh's GAIA_AUDIT_DIFF_CALL is a hit:
 #               the call is that variable's VALUE, not a command.
+#   in-fence -- markdown only, and the whole of what makes a documentation page
+#               scannable without making it noisy: a line is a candidate when a
+#               fence delimiter has opened and none has closed it. Every other
+#               line on the page is prose and is never read.
 #   in-span  -- an odd number of backticks before the call on the line means it
 #               sits inside a markdown code span, so it is prose. Without it,
 #               the audit workflow's agent prompt is a hit, where a code span
-#               instructs a model to run the command.
+#               instructs a model to run the command. It is switched off inside
+#               a fence, where a code span cannot nest and an odd count is a
+#               legacy substitution instead.
 #   in-option-region
 #            -- both halves accept `-z` as a standalone token anywhere in the
 #               call's option region, and stop at the first token not beginning
@@ -233,7 +268,12 @@ fi
 # asserts otherwise.
 scan_file() {
   local f="$1"
-  awk -v file="$f" '
+  # Fence gating applies to markdown alone. On every other file type is_md stays
+  # 0, so infence never leaves 0 and both rules below are inert -- the shell and
+  # YAML halves scan exactly the lines they always did.
+  local is_md=0
+  case "$f" in *.md) is_md=1 ;; esac
+  awk -v file="$f" -v is_md="$is_md" '
     # option_walk(window): walk the option region following a call, setting
     # has_z when a standalone -z appears in it, has_name_only when --name-only
     # does, and existence_only when --error-unmatch does. All three are
@@ -281,6 +321,13 @@ scan_file() {
       callname[1] = "diff";     calllabel[1] = "diff --name-only"
       callname[2] = "ls-files"; calllabel[2] = "ls-files"
     }
+    # A fence delimiter toggles the state and is never itself scanned. The
+    # opening line carries the info string (```bash), which is not a call.
+    is_md && /^[[:space:]]*(```|~~~)/ { infence = !infence; next }
+    # Outside a fence, markdown is prose in full: a paragraph naming a
+    # path-listing command is documentation, not a call site, whether or not its
+    # author wrapped it in a code span.
+    is_md && !infence { next }
     /^[[:space:]]*#/ { next }
     {
       for (c = 1; c <= ncalls; c++) {
@@ -302,7 +349,12 @@ scan_file() {
         invoked = (prefix ~ /(^|[^[:alnum:]_.-])git( +-[^ ]+( +[^- ][^ ]*)?)* +$/)
 
         ticks = gsub(/`/, "`", prefix)
-        inspan = (ticks % 2 == 1)
+        # Inside a fenced block the in-span test is not merely unnecessary, it is
+        # wrong: a markdown code span cannot nest inside a fence, so an odd
+        # backtick count there is a legacy command substitution or a literal
+        # backtick in shell, never prose. Leaving the test on would hand every
+        # fenced snippet a fail-open escape the shell surface does not have.
+        inspan = (!infence && ticks % 2 == 1)
         # An odd backtick count alone cannot tell a markdown code span from a
         # LEGACY COMMAND SUBSTITUTION -- the two are textually identical, and
         # reading `changed=`git diff --name-only "$B"`` as prose is a fail-OPEN

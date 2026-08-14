@@ -5,9 +5,10 @@
 #
 # Two jobs, the same pair the sibling array-guard suite carries: prove the
 # detector fires on a known-bad fixture in each scanned file type (shell, husky
-# hook, workflow YAML) and stays quiet on every legitimate shape (a `-z` call,
-# a comment, a markdown code span, a string constant, an untracked file), and
-# assert the real scanned tree is clean so a regression fails CI.
+# hook, workflow YAML, a fenced block in markdown) and stays quiet on every
+# legitimate shape (a `-z` call, a comment, a markdown code span, unfenced
+# markdown prose, a string constant, an untracked file), and assert the real
+# scanned tree is clean so a regression fails CI.
 #
 # Two groups of tests are load-bearing beyond coverage, and both exist because a
 # guard that has never been shown to red against a real historical instance has
@@ -28,6 +29,12 @@
 #   "3a. The diff option region" pairs two pre-fix site fixtures with the
 #   negative controls that keep the widened match from claiming a diff call
 #   which prints no paths at all.
+#
+#   `#1400` makes it binding for the markdown half, and names three executed
+#   documentation snippets the widened guard must red against in their PRE-FIX
+#   form. The three `@test`s under "3c. The markdown half" are that requirement,
+#   one per site, paired with the controls that keep the fence rule from
+#   claiming the illustrative mentions that surround them.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
@@ -69,7 +76,7 @@ run_linter() {
 
 # 1. The real scanned tree is clean (regression gate)
 
-@test "the real scanned tree (shell + husky + workflow YAML) passes the lint" {
+@test "the real scanned tree (shell + husky + workflow YAML + markdown) passes the lint" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
@@ -388,7 +395,10 @@ run_linter() {
 # is the lie-green failure it exists to stop elsewhere.
 @test "an empty scan set is a hard error, not a clean tree" {
   fixture_repo
-  fixture_file README.md $'nothing scannable here'
+  # A plain text file is off every half of the surface, so the scan set is empty
+  # with the repository still non-empty. Markdown cannot play this part: its
+  # fenced blocks are scanned, so a tracked `.md` makes the set non-empty.
+  fixture_file notes.txt $'nothing scannable here'
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- "nothing was scanned" <<<"$output"
@@ -416,8 +426,8 @@ run_linter() {
   [ "$status" -eq 0 ]
 }
 
-# The scan surface stops at shell, husky hooks and workflow YAML. The bats
-# suites are deliberately outside it: check-audit-base-derivation.bats carries
+# The scan surface stops at shell, husky hooks, workflow YAML and markdown. The
+# bats suites are deliberately outside it: check-audit-base-derivation.bats carries
 # five intentionally-unquoted agent-prose fixtures for assertion 4, and five
 # sibling suites run an unquoted `diff --name-only` under `core.quotePath=true`
 # as the positive control proving the hazard is real. A scanner reading raw
@@ -543,6 +553,91 @@ run_linter() {
   [ "$status" -eq 1 ]
   grep -qF -- "ls-files without -z" <<<"$output"
   grep -qF -- "read -r -d" <<<"$output"
+}
+
+# 3c. The markdown half: an executed snippet on a documentation page
+
+# The three sites `#1400` names, each in its PRE-FIX form, one per test. Their
+# point is the fixture BODY, the literal pre-fix line copied from the page; the
+# paths are the real ones so a reader can trace a failing test back to what it
+# was written for. The first of the three was repaired by hand before any check
+# could see it, so its fixture is the only remaining record that the widened
+# detector would have caught it.
+
+@test "reds against the pre-fix Quality Gate.md staged-file skip check" {
+  fixture_repo
+  fixture_file 'wiki/decisions/Quality Gate.md' \
+    $'# Quality Gate\n\nQuick check:\n\n```bash\ngit diff --cached --name-only | grep -E \'\\.(ts|tsx)$\'\n```'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "wiki/decisions/Quality Gate.md:6" <<<"$output"
+}
+
+@test "reds against the pre-fix wiki-sync added-page count" {
+  fixture_repo
+  fixture_file .claude/skills/gaia/references/wiki/sync.md \
+    $'### 9b. Count added pages per domain\n\n```bash\ngit diff --name-only --diff-filter=A "$CONSOLIDATED_SHA"..HEAD -- \\\n  wiki/decisions/ wiki/concepts/\n```'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/skills/gaia/references/wiki/sync.md:4" <<<"$output"
+}
+
+@test "reds against the pre-fix health-runbook staging discovery" {
+  fixture_repo
+  fixture_file .gaia/cli/health/runbook.md \
+    $'```bash\nALL_TRACKED="/tmp/gaia-audit-all"\ngit ls-files > "$ALL_TRACKED"\n```'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/cli/health/runbook.md:3" <<<"$output"
+}
+
+# The fence rule in both directions. Outside a fence nothing is scanned, which
+# is what keeps every prose mention of a path-listing command across this
+# repository's markdown from becoming a finding; inside one nothing is prose.
+
+@test "a call outside a fence is prose, not an invocation" {
+  fixture_repo
+  fixture_file docs/guide.md \
+    $'Run git diff --name-only "$B...HEAD" to list the changed files.'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a fenced call carrying -z passes" {
+  fixture_repo
+  fixture_file docs/guide.md $'```bash\ngit ls-files -z \'*.sh\' | tr \'\\0\' \'\\n\'\n```'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# The toggle has to close as well as open, or every line after the first fenced
+# block on a page reads as fenced and the prose half of the rule stops existing.
+@test "a call between two fenced blocks is outside the fence" {
+  fixture_repo
+  fixture_file docs/guide.md \
+    $'```bash\necho one\n```\n\nThen git ls-files lists them.\n\n```bash\necho two\n```'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a tilde fence is tracked like a backtick fence" {
+  fixture_repo
+  fixture_file docs/guide.md $'~~~bash\ngit ls-files > list.txt\n~~~'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "docs/guide.md:2" <<<"$output"
+}
+
+# A code span cannot nest inside a fence, so the in-span test is switched off
+# there. This exact shape is the fail-OPEN miss the shell half still carries
+# ("a substitution opening after a quote is missed"): inside a fence the odd
+# backtick count is a legacy substitution rather than prose, and it is caught.
+@test "a backtick substitution inside a fence is not read as a code span" {
+  fixture_repo
+  fixture_file docs/guide.md $'```bash\nfiles="`git ls-files`"\n```'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "docs/guide.md:2" <<<"$output"
 }
 
 # 4. Reporting contract
