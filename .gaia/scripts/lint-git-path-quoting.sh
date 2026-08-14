@@ -30,8 +30,8 @@
 # for `ls-files` -- a variant the guard's first shape could not see, which is how
 # the class recurred in five discovery call sites INCLUDING this file's own.
 #
-# Fix a `diff --name-only` hit with the idiom the repository already uses in
-# seven places:
+# Fix a `diff --name-only` hit with the idiom the repository already uses
+# throughout:
 #
 #   changed="$(git diff --name-only -z "${base}...HEAD" | tr '\0' '\n')"
 #
@@ -103,7 +103,9 @@
 # the walk reaches. Of those sites only .claude/hooks/red-verify-commit-check.sh
 # fails OPEN: a C-quoted staged test path matches no `app/*` pattern, so the
 # RED-verify glob filter drops it and that guard passes having checked nothing.
-# The rest fail closed, miscount, or are unaffected.
+# The rest fail closed or are unaffected. None miscounts: git C-quotes a path
+# holding a newline onto ONE line, so a quoted line count already equals the
+# record count, which is the same fact the counting paragraph above turns on.
 #
 # gaia-react/gaia#1392 owns the site table and the per-site failure directions,
 # and is the ONE place they are maintained. A copy kept here drifts against it,
@@ -134,8 +136,8 @@ set -euo pipefail
 # rather than an oversight. The bats suites are where this class is DEMONSTRATED:
 # .gaia/scripts/tests/check-audit-base-derivation.bats carries five
 # intentionally-unquoted agent-prose fixtures that assertion 4 must catch, and
-# five sibling suites run an unquoted `diff --name-only` under
-# `core.quotePath=true` as the positive control proving git really does quote.
+# sibling suites run an unquoted `diff --name-only` under `core.quotePath=true`
+# as the positive control proving git really does quote.
 # A scanner reading raw lines cannot tell a fixture string from an executed
 # call, so including them would demand "fixes" that delete the evidence the
 # class exists.
@@ -165,12 +167,12 @@ fi
 #
 #   invoked  -- the text immediately before the call is a `git` invocation,
 #               optionally carrying -C/-c options. Without it,
-#               .gaia/scripts/check-audit-base-derivation.sh:278 is a hit: the
-#               call is the VALUE of GAIA_AUDIT_DIFF_CALL, not a command.
+#               check-audit-base-derivation.sh's GAIA_AUDIT_DIFF_CALL is a hit:
+#               the call is that variable's VALUE, not a command.
 #   in-span  -- an odd number of backticks before the call on the line means it
 #               sits inside a markdown code span, so it is prose. Without it,
-#               .github/workflows/code-review-audit.yml:486 is a hit: an agent
-#               prompt instructing a model to run the command.
+#               the audit workflow's agent prompt is a hit, where a code span
+#               instructs a model to run the command.
 #   anchored -- for `diff --name-only`, ` -z` must sit IMMEDIATELY after the
 #               call, not merely somewhere in it. Unanchored, a pathspec
 #               carrying the token vouches for a call that still quotes. The
