@@ -33,18 +33,45 @@ const renderForTool = (tool: ToolId): string => {
 const parseRendered = (raw: string): Record<string, unknown> =>
   load(raw) as Record<string, unknown>;
 
-const stepNames = (doc: Record<string, unknown>): readonly string[] => {
-  const jobs = doc.jobs as {run: {steps: readonly {name: string}[]}};
+type RenderedStep = {readonly if?: string; readonly name: string};
 
-  return jobs.run.steps.map((step) => step.name);
+// Throws rather than returning `[]` for an unknown job: a job name that
+// resolves to nothing would make an absence assertion below pass against
+// nothing at all.
+const jobSteps = (
+  doc: Record<string, unknown>,
+  job: string
+): readonly RenderedStep[] => {
+  const jobs = doc.jobs as Record<string, {steps: readonly RenderedStep[]}>;
+  const found = jobs[job];
+
+  if (found === undefined) {
+    throw new Error(`rendered workflow declares no job named '${job}'`);
+  }
+
+  return found.steps;
 };
 
-const expectedSteps = [
-  'Checkout',
+const stepNames = (doc: Record<string, unknown>): readonly string[] =>
+  jobSteps(doc, 'run').map((step) => step.name);
+
+// The setup a skipped tick must not pay for, and the `if:` that spares it.
+// The negative form is what lets one partial serve both the `run` job and a
+// job gated at the job level with no `pre_run` step of its own.
+const GATED_SETUP_STEPS = [
   'Setup pnpm',
   'Setup Node',
   'Install dependencies',
-  'Pre-run skip - open gaia-ci PR or cron-decide',
+] as const;
+
+const SKIP_GATE = "steps.pre_run.outputs.decision != 'skip'";
+
+const PRE_RUN_STEP = 'Pre-run skip - open gaia-ci PR or cron-decide';
+
+const expectedSteps = [
+  'Checkout',
+  PRE_RUN_STEP,
+  ...GATED_SETUP_STEPS,
   'Quality Gate',
 ] as const;
 
@@ -156,6 +183,21 @@ describe('workflow templates: gaia-ci-update-deps', () => {
 
   test('emits the auto-merge step', () => {
     expect(rendered).toContain('gh pr merge "$pr_number" --auto --squash');
+  });
+
+  // The wave-B fan-out is gated at the job level and runs no `pre_run` step,
+  // so `steps.pre_run.outputs.decision` is absent there. The `!= 'skip'` gate
+  // the setup partial carries is true against an absent output; an `== 'run'`
+  // gate would skip the install and leave every wave-B `pnpm add` without a
+  // node_modules to add to.
+  test('keeps the wave-B setup reachable without a pre_run step', () => {
+    const waveB = jobSteps(doc, 'wave_b');
+    const gates = GATED_SETUP_STEPS.map(
+      (name) => waveB.find((step) => step.name === name)?.if
+    );
+
+    expect(waveB.map((step) => step.name)).not.toContain(PRE_RUN_STEP);
+    expect(gates).toEqual(GATED_SETUP_STEPS.map(() => SKIP_GATE));
   });
 
   test('does NOT emit wiki, pnpm-audit, or stale-branch logic', () => {
@@ -295,6 +337,33 @@ describe('workflow templates: cross-tool invariants', () => {
       expect(rendered).toContain('pnpm lint');
     }
   );
+
+  // A skipped tick still bills a whole runner minute, rounded up, on the
+  // private repositories most adopters run this on. Asking `cron-decide`
+  // after the install means every skip pays for an install it never uses,
+  // so the decision comes first and the setup is gated on it.
+  test.each(tools)(
+    'decides whether to skip before installing anything (%s)',
+    (tool) => {
+      const names = stepNames(parseRendered(renderForTool(tool)));
+      const setupAt = GATED_SETUP_STEPS.map((name) => names.indexOf(name));
+
+      expect(setupAt).not.toContain(-1);
+      expect(Math.min(...setupAt)).toBeGreaterThan(names.indexOf(PRE_RUN_STEP));
+    }
+  );
+
+  // All three, not the install alone: setup-node's `cache: 'pnpm'` post step
+  // saves the store unconditionally, so an ungated setup-node above a skipped
+  // install fails the job saving a store nothing created.
+  test.each(tools)('gates every setup step on the decision (%s)', (tool) => {
+    const steps = jobSteps(parseRendered(renderForTool(tool)), 'run');
+    const gates = GATED_SETUP_STEPS.map(
+      (name) => steps.find((step) => step.name === name)?.if
+    );
+
+    expect(gates).toEqual(GATED_SETUP_STEPS.map(() => SKIP_GATE));
+  });
 });
 
 describe('workflow templates: push re-authentication (issue #581)', () => {

@@ -38,15 +38,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Pre-run skip - open gaia-ci PR or cron-decide
         id: pre_run
@@ -77,6 +68,25 @@ jobs:
           fi
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
+
+      # Setup sits after the skip decision so a tick that skips does not pay
+      # for an install it never uses. All three steps carry the gate, not the
+      # install alone: setup-node's \`cache: 'pnpm'\` post step saves the pnpm
+      # store unconditionally, and saving a store no install created fails the
+      # job. The gate reads \`!= 'skip'\` so this same setup also runs in a job
+      # gated at the job level, which has no \`pre_run\` step of its own.
+      - name: Setup pnpm
+        if: steps.pre_run.outputs.decision != 'skip'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Setup Node
+        if: steps.pre_run.outputs.decision != 'skip'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+      - name: Install dependencies
+        if: steps.pre_run.outputs.decision != 'skip'
+        run: pnpm install --frozen-lockfile
 
       - name: Quality Gate
         if: steps.pre_run.outputs.decision == 'run'
@@ -222,15 +232,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Pre-run skip - open gaia-ci PR or cron-decide
         id: pre_run
@@ -261,6 +262,25 @@ jobs:
           fi
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
+
+      # Setup sits after the skip decision so a tick that skips does not pay
+      # for an install it never uses. All three steps carry the gate, not the
+      # install alone: setup-node's \`cache: 'pnpm'\` post step saves the pnpm
+      # store unconditionally, and saving a store no install created fails the
+      # job. The gate reads \`!= 'skip'\` so this same setup also runs in a job
+      # gated at the job level, which has no \`pre_run\` step of its own.
+      - name: Setup pnpm
+        if: steps.pre_run.outputs.decision != 'skip'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Setup Node
+        if: steps.pre_run.outputs.decision != 'skip'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+      - name: Install dependencies
+        if: steps.pre_run.outputs.decision != 'skip'
+        run: pnpm install --frozen-lockfile
 
       - name: Quality Gate
         if: steps.pre_run.outputs.decision == 'run'
@@ -342,15 +362,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Pre-run skip - open gaia-ci PR or cron-decide
         id: pre_run
@@ -381,6 +392,25 @@ jobs:
           fi
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
+
+      # Setup sits after the skip decision so a tick that skips does not pay
+      # for an install it never uses. All three steps carry the gate, not the
+      # install alone: setup-node's \`cache: 'pnpm'\` post step saves the pnpm
+      # store unconditionally, and saving a store no install created fails the
+      # job. The gate reads \`!= 'skip'\` so this same setup also runs in a job
+      # gated at the job level, which has no \`pre_run\` step of its own.
+      - name: Setup pnpm
+        if: steps.pre_run.outputs.decision != 'skip'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Setup Node
+        if: steps.pre_run.outputs.decision != 'skip'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+      - name: Install dependencies
+        if: steps.pre_run.outputs.decision != 'skip'
+        run: pnpm install --frozen-lockfile
 
       - name: Quality Gate
         if: steps.pre_run.outputs.decision == 'run'
@@ -527,14 +557,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      # Setup sits after the skip decision so a tick that skips does not pay
+      # for an install it never uses. All three steps carry the gate, not the
+      # install alone: setup-node's \`cache: 'pnpm'\` post step saves the pnpm
+      # store unconditionally, and saving a store no install created fails the
+      # job. The gate reads \`!= 'skip'\` so this same setup also runs in a job
+      # gated at the job level, which has no \`pre_run\` step of its own.
       - name: Setup pnpm
+        if: steps.pre_run.outputs.decision != 'skip'
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Setup Node
+        if: steps.pre_run.outputs.decision != 'skip'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
       - name: Install dependencies
+        if: steps.pre_run.outputs.decision != 'skip'
         run: pnpm install --frozen-lockfile
 
       - name: Create per-group branch
@@ -653,15 +693,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Pre-run skip - open gaia-ci PR or cron-decide
         id: pre_run
@@ -692,6 +723,25 @@ jobs:
           fi
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
+
+      # Setup sits after the skip decision so a tick that skips does not pay
+      # for an install it never uses. All three steps carry the gate, not the
+      # install alone: setup-node's \`cache: 'pnpm'\` post step saves the pnpm
+      # store unconditionally, and saving a store no install created fails the
+      # job. The gate reads \`!= 'skip'\` so this same setup also runs in a job
+      # gated at the job level, which has no \`pre_run\` step of its own.
+      - name: Setup pnpm
+        if: steps.pre_run.outputs.decision != 'skip'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Setup Node
+        if: steps.pre_run.outputs.decision != 'skip'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+      - name: Install dependencies
+        if: steps.pre_run.outputs.decision != 'skip'
+        run: pnpm install --frozen-lockfile
 
       - name: Quality Gate
         if: steps.pre_run.outputs.decision == 'run'
