@@ -42,6 +42,8 @@ jobs:
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Verify .gaia/VERSION matches tag
+        env:
+          TAG_VERSION: ${{ steps.version.outputs.version }}
         run: |
           # Read the file through the shared normalizer rather than a second
           # idiom. This gate compares against a git tag rather than against the
@@ -53,7 +55,6 @@ jobs:
           # yields the empty string, mismatches the tag, and fails this step.
           . .claude/hooks/lib/gaia-version.sh
           FILE_VERSION="$(gaia_read_version .gaia/VERSION)"
-          TAG_VERSION="${{ steps.version.outputs.version }}"
           if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
             echo "::error::Tag $TAG_VERSION does not match .gaia/VERSION ($FILE_VERSION). Run /gaia-release before tagging."
             exit 1
@@ -61,8 +62,9 @@ jobs:
 
       - name: Extract CHANGELOG section
         id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           # Extract from "## [$VERSION]" up to (but not including) the next "## [" heading.
           awk -v ver="$VERSION" '
             $0 ~ "^## \\["ver"\\]" { found=1; print; next }
@@ -98,8 +100,9 @@ jobs:
         run: bash .gaia/scripts/verify-cli-bundle-fresh.sh
 
       - name: Stage release tree
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
           # Drive the staged file set from `git ls-files` so it only
           # contains tracked files (no .DS_Store, node_modules, build
           # artifacts, etc.), then filter out paths matched by
@@ -140,14 +143,14 @@ jobs:
           fi
 
       - name: Bundle-time scrub (marker-strip + leak-check)
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          ./.gaia/cli/gaia-maintainer release scrub "/tmp/gaia-${TAG}"
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: ./.gaia/cli/gaia-maintainer release scrub "/tmp/gaia-${TAG}"
 
       - name: Verify runtime dependencies
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          ./.gaia/cli/gaia-maintainer release runtime-deps --staging "/tmp/gaia-${TAG}"
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: ./.gaia/cli/gaia-maintainer release runtime-deps --staging "/tmp/gaia-${TAG}"
 
       # Pre-publish distribution-test gate. Runs Layers 0+1+2 against an
       # independently-staged tree (build-staging.sh re-runs the same
@@ -164,18 +167,19 @@ jobs:
         run: bash .gaia/tests/distribution/run-all.sh
 
       - name: Build tarball
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
           tar -czf "gaia-${TAG}.tar.gz" -C /tmp "gaia-${TAG}"
           echo "Tarball contents (first 30):"
           tar -tzf "gaia-${TAG}.tar.gz" | head -30
-          echo "Total entries: $(tar -tzf gaia-${TAG}.tar.gz | wc -l)"
+          echo "Total entries: $(tar -tzf "gaia-${TAG}.tar.gz" | wc -l)"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
           gh release create "$TAG" \
             "gaia-${TAG}.tar.gz" \
             --title "$TAG" \

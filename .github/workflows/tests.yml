@@ -78,9 +78,10 @@ jobs:
         id: chore-deps
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -eu
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
             skip="$(bash .gaia/scripts/chore-deps-skip.sh "$PR_TITLE")"
           else
             skip=false

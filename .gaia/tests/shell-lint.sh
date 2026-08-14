@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
-# husky hook, then two repo-authored guards shellcheck cannot model: the hook
-# array-guard (.gaia/scripts/lint-hook-array-guard.sh) and the diff-quoting
-# guard (.gaia/scripts/lint-diff-name-only-quoting.sh).
+# husky hook, then three repo-authored guards shellcheck cannot model: the hook
+# array-guard (.gaia/scripts/lint-hook-array-guard.sh), the diff-quoting
+# guard (.gaia/scripts/lint-diff-name-only-quoting.sh), and the workflow
+# run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
 #
@@ -295,6 +296,18 @@ fi
 # and the file:line it prints is repo-relative.
 echo "--> lint-diff-name-only-quoting (C-quoted paths from an unquoted diff)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-diff-name-only-quoting.sh"); then
+  status=1
+fi
+
+# Fold in the workflow run-interpolation guard, for the same reason as the two
+# above: shellcheck never sees this class at all. A `${{ }}` expression in a
+# `run:` body is substituted into the script TEXT before bash parses it, so the
+# hazard exists in the YAML layer that no shell linter reads -- shellcheck is
+# handed the body only after the expression is already gone. Run from the repo
+# root so its `git ls-files` resolves and the file:line it prints is
+# repo-relative.
+echo "--> lint-workflow-run-interpolation (\${{ }} substituted into run: script text)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-workflow-run-interpolation.sh"); then
   status=1
 fi
 
