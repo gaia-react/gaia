@@ -642,6 +642,19 @@ run_linter() {
   grep -qF -- "docs/guide.md:3" <<<"$output"
 }
 
+# The same-run-length nesting shape, which the length rule alone cannot see: an
+# info string is what makes a ```bash line inside a ```markdown block an opener
+# rather than the close. This page renders as one well-formed block, so nothing
+# about it looks wrong to a reader either.
+@test "a nested opener of equal run length does not close the fence" {
+  fixture_repo
+  fixture_file docs/guide.md \
+    $'```markdown\n```bash\ngit ls-files > list.txt\n```\n```'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "docs/guide.md:3" <<<"$output"
+}
+
 @test "a delimiter of the other character does not close a fence" {
   fixture_repo
   fixture_file docs/guide.md \

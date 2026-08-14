@@ -346,8 +346,15 @@ scan_file() {
         sub(/^[[:space:]>]*/, "", delim)
         dchar = substr(delim, 1, 1)
         dlen = length(delim)
+        # A closer carries no info string, which CommonMark requires and which
+        # is the only thing separating a close from a nested open of the SAME
+        # run length: inside a ```markdown block, a ```bash line is content.
+        # Without this the scanner leaves the fence there and reads the nested
+        # body as prose, and that page renders as one well-formed block, so
+        # unlike an unbalanced page it never announces itself to its reader.
+        tail = substr($0, RSTART + RLENGTH)
         if (!infence) { infence = 1; fencechar = dchar; fencelen = dlen }
-        else if (dchar == fencechar && dlen >= fencelen) { infence = 0 }
+        else if (dchar == fencechar && dlen >= fencelen && tail ~ /^[[:space:]]*$/) { infence = 0 }
         next
       }
     }
