@@ -329,16 +329,37 @@ run_linter() {
   grep -qF -- "probe.sh:2" <<<"$output"
 }
 
-# Matching the bare `diff` reaches the plumbing spellings, whose `-index` /
-# `-tree` tail is itself dash-led so the walk continues into the real options.
-# The demand is correct there (both quote exactly as `git diff` does), and the
-# header says so; this pins the behavior the header describes.
+# Matching the bare `diff` reaches every `diff-*` plumbing spelling, whose tail
+# is itself dash-led so the walk continues into the real options. The demand is
+# correct there (each quotes exactly as `git diff` does), and the header says
+# so; these pin the behavior the header describes, on two different tails so
+# the claim is about the mechanism rather than about one command.
 @test "a diff-tree --name-only call is reached and flagged" {
   fixture_repo
   fixture_file probe.sh $'#!/usr/bin/env bash\nfiles=$(git diff-tree --no-commit-id --name-only -r HEAD)'
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a diff-files --name-only call is reached and flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfiles=$(git diff-files --name-only)'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+# The fail-OPEN limit the blind-spot block states: a positional revision written
+# before `--name-only` terminates the walk, because a revision is exactly what a
+# non-option token looks like. Pinned rather than left as prose, the same way the
+# backtick rule's two error directions are, so the day it stops being true is a
+# red test rather than a silently stale paragraph.
+@test "a --name-only after a positional revision is missed, fail-open by design" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nchanged=$(git diff HEAD --name-only)'
+  run_linter
+  [ "$status" -eq 0 ]
 }
 
 # The scanner walks every occurrence of the matched text on a line, and

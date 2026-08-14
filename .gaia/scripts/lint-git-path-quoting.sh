@@ -93,21 +93,24 @@
 #
 # So: the surface this file claims is at zero for `ls-files` and for every
 # option spelling of `diff --name-only`, which is what the tests below pin. The
-# `diff` half reads its option region rather than a fixed string, so a selector
+# `diff` half reads its option region rather than a fixed string, so an OPTION
 # written between `diff` and `--name-only` -- `--cached`, `--staged`, or any
-# other -- no longer hides the call.
+# other -- no longer hides the call. A positional REVISION in that position
+# still does, and that limit is stated with the other blind spots below rather
+# than left to be read out of this sentence.
 #
 # The sibling plumbing commands come along with that, and the reason is worth
 # stating so a maintainer who meets the red does not read it as a misfire. The
-# matched text is now the bare `diff`, which occurs inside `diff-index` and
-# `diff-tree` too; the following `-index` / `-tree` begins with a dash, so the
-# walk continues past it into the real options and finds `--name-only` there.
-# `git diff-tree --name-only` and `git diff-index --name-only` are therefore
-# reported, and the demand is CORRECT on them: both quote a path exactly as
-# `git diff` does. Neither is invoked in this tree today, so this is reach the
-# widening brought rather than coverage anyone asked for, and it is left in
-# place because narrowing the match to exclude them would trade a fail-closed
-# demand that is right for a blind spot that is not.
+# matched text is now the bare `diff`, so every `diff-*` plumbing spelling is
+# reached on one mechanism: the tail (`-index`, `-tree`, `-files`) is dash-led,
+# so the walk continues past it into the real options and finds `--name-only`
+# there. The set is stated by that shared property rather than enumerated,
+# because an enumeration of it goes one command short the same way a list of
+# option spellings does. The demand is CORRECT on all of them: each quotes a
+# path exactly as `git diff` does. None is invoked in this tree today, so this
+# is reach the widening brought rather than coverage anyone asked for, and it
+# is left in place because narrowing the match to exclude them would trade a
+# fail-closed demand that is right for a blind spot that is not.
 #
 # Sibling gate: .gaia/scripts/check-audit-base-derivation.sh's assertion 4 makes
 # the same claim about the audit agents' prose. This file is deliberately not
@@ -210,8 +213,19 @@ fi
 #   - A single-quoted string containing a literal `git diff --name-only` reads
 #     as an invocation. This is the sharper reason `*.bats` is out of scope.
 #
-# One further FALSE NEGATIVE, unrelated to backticks and equally tokenizer-bound:
-#   - A call assembled through a variable (`$GIT diff --name-only`).
+# Two further FALSE NEGATIVES, unrelated to backticks:
+#   - A call assembled through a variable (`$GIT diff --name-only`), which is
+#     equally tokenizer-bound.
+#   - `--name-only` written AFTER a positional revision (`git diff HEAD
+#     --name-only`, `git diff "$base...HEAD" --name-only`). The walk terminates
+#     at the revision, because a revision is exactly what a non-option token
+#     looks like, so the option region never reaches the flag and the call is
+#     classified off-surface. This is a fail-OPEN miss of the gate's own class,
+#     and it is the price of the termination rule: the same stop is what keeps
+#     a pathspec from vouching for a call that quotes. Distinguishing a revision
+#     from a pathspec needs git's own argument parser, not a scanner. Every call
+#     in this tree writes its options first, which is the idiom the fix hints
+#     advertise, so nothing here is missed today.
 #
 # Out of scope entirely: `-z` does not, on its own, survive a path containing a
 # literal newline when the consumer re-splits on newlines via `tr`. That is a
