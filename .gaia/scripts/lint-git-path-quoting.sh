@@ -90,11 +90,29 @@
 # spelling are never checked for `-z`. The `ls-files` half does not have this
 # shape of hole, because it walks an option region instead of matching a fixed
 # string, and closing the `diff` half means giving it that same walk plus
-# repairing the call sites the walk then reaches, in `.husky/pre-commit`, the
-# forensics workflow, and the audit workflow's three mirrored copies. That is
-# tracked as its own work rather than folded in here (gaia-react/gaia#1392); of
-# the sites involved only .claude/hooks/red-verify-commit-check.sh fails open,
-# where a C-quoted staged test path slips past the RED-verify glob filter.
+# repairing what the walk then reaches. That is tracked as its own work rather
+# than folded in here (gaia-react/gaia#1392), whose body carries the site table;
+# the sites split two ways, and conflating them misdirects whoever scopes it.
+#
+#   IN this gate's surface, so a widened walk reds on them directly:
+#     .claude/hooks/red-verify-commit-check.sh  the only one that fails OPEN --
+#                                               a C-quoted staged test path
+#                                               matches no `app/*` pattern, so
+#                                               the RED-verify glob filter drops
+#                                               it and the guard passes having
+#                                               checked nothing
+#     .github/workflows/forensics-triage.yml    fails closed (spurious abort)
+#     .github/workflows/code-review-audit.yml   count and diagnostic only
+#     .husky/pre-commit                         unaffected in practice: its arms
+#                                               `grep 'app/'`, and the C-quoted
+#                                               spelling still contains that
+#                                               substring. Anchoring the pattern
+#                                               turns all four into live misses
+#
+#   OUTSIDE it, reached by no walk of this gate, because the scan surface below
+#   matches no `.tmpl`: the two `code-review-audit.yml.tmpl` copies under
+#   .gaia/cli/. They are drift-pinned mirrors of the workflow above, so the same
+#   repair has to carry to them, but this gate will never be what says so.
 #
 # So: the surface this file claims is at zero for `ls-files` and for the bare
 # `diff --name-only` spelling, which is what the tests below pin. It is NOT a
