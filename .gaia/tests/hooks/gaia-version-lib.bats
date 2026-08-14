@@ -99,14 +99,14 @@ setup() {
 # merely reshuffles quoting or spacing (`tr -d "\r"`, `NF {print; exit}`) is
 # still caught.
 #
-# The accepted miss is the `*.sh` pathspec: a workflow `run:` block holds shell
-# without being a `.sh` file, so an eighth copy inlined into one reds nowhere.
-# Widening the pathspec alone catches nothing, though. Both regexes are written
-# against this idiom, and the one `.yml` that reads the same file spells it
-# `cat .gaia/VERSION | tr -d '[:space:]'`, which matches neither half. Catching
-# an inlined copy would mean loosening the regexes as well, and that is the step
-# to be careful with: `release.yml` normalizes this file deliberately and
-# differently, for tag equality rather than for the audit equality pinned here.
+# The pathspec reaches `*.yml` and `*.tmpl` as well as `*.sh`, because a
+# workflow `run:` block holds shell without being a `.sh` file and a workflow
+# template renders into one that does.
+#
+# What it still cannot catch is a site spelling the read its own way: both
+# regexes are written against this idiom, so a reader that answers differently
+# rather than identically matches neither half. The assertion below covers that
+# direction for the one site outside the audit equality.
 
 @test "the read-and-normalize idiom lives in exactly one tracked file" {
   cr_strip='(tr -d .\\r.|gsub\(/\\r/)'
@@ -123,8 +123,25 @@ setup() {
       hits="${hits}${f}
 "
     fi
-  done <<<"$(cd "$REPO_ROOT" && git grep -lE -- "$cr_strip" -- '*.sh')"
+  done <<<"$(cd "$REPO_ROOT" && git grep -lE -- "$cr_strip" -- '*.sh' '*.yml' '*.tmpl')"
 
   [ "$hits" = ".claude/hooks/lib/gaia-version.sh
 " ]
+}
+
+# The release gate compares this file's literal to a git tag rather than to the
+# audit equality, so a read that drifts there fails no clearance and surfaces
+# instead at a release tag, which is the expensive place to meet it. The
+# spelling it drifts to is the risk this pins: a whole-file whitespace strip
+# resolves a two-non-blank-line VERSION to a concatenation present nowhere in
+# the file and matching no tag anyone could cut, and it matches neither half of
+# the idiom pin above, so this assertion is what holds the site to the helper.
+
+@test "the release gate reads .gaia/VERSION through the helper" {
+  release_workflow="$REPO_ROOT/.github/workflows/release.yml"
+  [ -f "$release_workflow" ] || skip "release.yml not present"
+
+  grep -qF -- 'gaia_read_version .gaia/VERSION' "$release_workflow"
+  grep -qE -- 'cat[[:space:]]+\.gaia/VERSION' "$release_workflow" && return 1
+  true
 }

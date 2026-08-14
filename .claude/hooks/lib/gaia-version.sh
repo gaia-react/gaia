@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# gaia-version.sh: the one .gaia/VERSION read-and-normalize point for the
-# GAIA-Audit version equality. Sourced, never executed; does no work at source
-# time. The scope is that equality rather than every read of the file anywhere:
-# the release workflow normalizes the same file differently and on purpose, to
-# gate a release against a git tag, and nothing here is meant to reach it.
+# gaia-version.sh: the one .gaia/VERSION read-and-normalize point for the gates
+# that compare its literal. Sourced, never executed; does no work at source
+# time. The GAIA-Audit version equality is the demanding consumer and the reason
+# the normalization has to be a function rather than an idiom; the release
+# workflow's tag-equality gate calls it as well, because "what version does this
+# file declare" has one answer regardless of what the caller compares it to.
 #
 # The literal this produces is the first field of the GAIA-Audit trailer and of
 # the GAIA-Audit commit-status description, and every reader compares it for
