@@ -1,0 +1,35 @@
+---
+paths:
+  - '.claude/hooks/**/*.sh'
+---
+
+# Hook Registration
+
+Adding a `.sh` file under `.claude/hooks/**` carries registration obligations that no line of the diff shows. Whole-directory checkers enforce them from the bats suites `audit-ci-tests.yml` runs, and neither checker belongs to the Quality Gate or any agent's stated oracle set, so a change can pass every local check and every audit round and red afterward on a file nobody was told to touch.
+
+## Rule
+
+**Every `.sh` under `.claude/hooks/**` needs an entry in `.gaia/hook-scopes.json`.** The entry declares the tree the hook's state belongs to (`scope`: `main-only`, `per-tree`, or `any`), its `state` tokens, and a `why`. A missing entry fails the manifest's coverage assertion:
+
+```bash
+bash .gaia/scripts/check-hook-scope-manifest.sh
+```
+
+**A file under `.claude/hooks/lib/**` additionally needs a tier.** That prefix is gate machinery, and every machinery file must land in exactly one tier of the reset-predicate partition. Two of the three tiers are reachable for a hook library:
+
+- **merely-shared**, the ordinary answer: add the path to `AUDIT_MERELY_SHARED_PATHS` in `.gaia/scripts/audit-rules-changed-complete.sh`.
+- **global**, only for a library whose every change must reset every member's incremental review anchor: add it to `AUDIT_GLOBAL_RULES_PATHS` in `.claude/hooks/lib/audit-rules-changed.sh` **and** to the lockstep `GLOBAL_RULES_FILES` copy in `.gaia/scripts/audit-rules-changed-complete.sh`. Edit both by hand rather than leaning on the check to catch a half-edit: the lockstep assertion reds when the list names a path the predicate does not match, but not the reverse, so adding to the predicate alone reports green and leaves the copy silently drifted. Choose this tier deliberately: a merely-shared library mis-tiered as global discards every member's anchor on every later change to it.
+
+The third tier, `member`, matches only `.claude/agents/<member>.md` and never applies to a hook. A file in no tier fails the partition assertion:
+
+```bash
+bash .gaia/scripts/audit-rules-changed-complete.sh
+```
+
+Run both before opening the pull request. The second walks tracked files, so `git add` the new hook first or it reports green on a file it cannot see. The first walks the directory itself and catches an untracked file either way.
+
+## Why
+
+The defect is an *absence* rather than a diff line. No reviewer reading the change can see a manifest entry that was never written, and only a checker enumerating the whole directory can. Nothing in the change under review hints that either obligation exists, so the miss survives per-phase gates and pre-merge audit rounds alike and surfaces only in CI, costing a full round plus a re-audit of every dispatched member once the repair commit moves HEAD.
+
+Guards of that shape need an instruction surface pointing at them, which is what this rule is.
