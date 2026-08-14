@@ -32,6 +32,20 @@
 # next same-or-shallower heading, so an H2's H3 children stay inside it and an
 # H3's H3 siblings do not.
 #
+# The same hazard reappears WITHIN a section, and two needles here are chosen
+# against it: a bare `fixes` is satisfied by unrelated prose in the section
+# that owns the keyword rule, and a bare `Closes #N` by a second occurrence in
+# the section that owns the drop path. Each needle below is pinned to text only
+# its own clause can produce; prove any new one by deleting the clause it
+# guards and watching the test go red.
+#
+# Extraction constraint: the terminator arm matches a `#`-prefixed line with no
+# fence tracking, so a shell comment at column 0 inside a fenced block would
+# read as an H1 and truncate the haystack early. No section read here carries
+# one. The error direction is over-strict (a truncated haystack fails, it never
+# passes falsely), so adding such a fenced example is a deliberate choice that
+# reds this suite rather than a silent hole.
+#
 # Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
@@ -74,10 +88,14 @@ extract_section() {
 @test "the commit step names the alternate closing-keyword spellings" {
   # `Closes` is not the only spelling GitHub acts on; a rule naming it alone
   # reads as a ban on one word rather than on the keyword family.
+  #
+  # The needle is the keyword pair as written, not the bare words: this same
+  # section's step 3 reads "Implement all fixes in the unit", so a bare
+  # `fixes` needle is satisfied by prose that has nothing to do with the rule
+  # and stays green when step 4 drops the spelling.
   section="$(extract_section '## Resolve the selected unit')"
   [ -n "$section" ]
-  grep -Eiq "fixes" <<<"$section"
-  grep -Eiq "resolves" <<<"$section"
+  grep -qF -- '`fixes` / `resolves`' <<<"$section"
 }
 
 @test "the commit step names the squash concatenation as the reason" {
@@ -102,9 +120,13 @@ extract_section() {
 }
 
 @test "the drop path also corrects the PR body and releases the claim" {
+  # Pins the correction step, not the bare `Closes #N` token: the section's
+  # closing paragraph carries that token too, so a token needle greens even
+  # with the correction step deleted, which is the outcome this invariant
+  # exists to prevent.
   section="$(extract_section '### Dropping a member after its commits are written')"
   [ -n "$section" ]
-  grep -qF -- "Closes #N" <<<"$section"
+  grep -qF -- "line from the PR body" <<<"$section"
   grep -qF -- "--remove-label debt:in-progress" <<<"$section"
 }
 

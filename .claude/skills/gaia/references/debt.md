@@ -268,7 +268,7 @@ Runs after the pick, the claim, and the Fix-time security screen above, and befo
 
 This screen mirrors the Fix-time security screen's mechanism but is **unconditional** (visibility-independent): repo visibility has no bearing on whether a fix needs a SPEC. Like the security screen, it sits before isolation for the same reason, a divert or handoff happens before any branch exists.
 
-Its position ahead of implementation is **load-bearing** for the same reason too: a member peeled here has no commits, so the handoff owes no commit-message rewrite. A reordering that moved this screen after the commit step of "Resolve the selected unit" would put every peel on the drop path in `### Dropping a member after its commits are written`.
+Its position ahead of implementation is **load-bearing** for the same reason the security screen's is: a member peeled here has no commits, so the handoff owes no commit-message rewrite.
 
 ## Pre-flight isolation (branch vs worktree)
 
@@ -329,7 +329,7 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
 
   On confirmed `MERGED`, each member's `Closes #N` already closed its issue, and a closed issue leaves the open backlog and the count on its own, so stripping `debt:in-progress` here is best-effort/cosmetic: `gh issue edit <n> --remove-label debt:in-progress` for each member, ignoring failure. A queued `--auto` merge that has not yet landed is still in progress: leave its claim in place; close-on-merge and the next fix's reconcile settle it once the merge completes.
 
-  On confirmed `MERGED`, also **verify the close set**, one `gh issue view <n> --json state` per issue: every member of the **intended close set** must read `CLOSED`, and every member dropped from the unit during this run must read `OPEN`. Report any mismatch loudly, naming the issue. A dropped member reading `CLOSED` was closed by a stale trailer with nothing fixed, so reopen it (`gh issue reopen <n>`), strip `debt:in-progress`, and touch the sentinel to return it to the backlog. This check is the only step that reads the outcome rather than the intent, and the failure it catches is silent in every other direction: a wrongly-closed issue is indistinguishable from a fixed one.
+  On confirmed `MERGED`, also **verify the close set**, one `gh issue view <n> --json state` per issue: every member of the **intended close set**, the members whose `Closes #N` lines the PR body carries at merge time, must read `CLOSED`, and every member dropped from the unit during this run, including one peeled by the security screen or the spec screen, must read `OPEN`. Report any mismatch loudly, naming the issue. A dropped member reading `CLOSED` was closed by a stale trailer with nothing fixed, so reopen it (`gh issue reopen <n>`), strip `debt:in-progress`, and touch the sentinel to return it to the backlog. This check is the only step that reads the outcome rather than the intent, and the failure it catches is silent in every other direction: a wrongly-closed issue is indistinguishable from a fixed one.
 
   On `MERGED`, run post-merge cleanup by isolation mode:
   - **Feature-branch isolation:** unchanged. `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`. (Run ends here; see `## Cost record (run end)`.)
