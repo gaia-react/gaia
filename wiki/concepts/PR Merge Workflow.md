@@ -76,7 +76,7 @@ Spawning the local agent when CI has already stamped the marker is redundant; sk
 
 #### Before the first dispatch: verify your own work
 
-The gate is the most expensive feedback in the workflow, and it is a **merge** gate. Every dispatched member reads its whole owned surface, so a round costs 60-110k tokens per member and several minutes. Spending one to learn something a local check would have reported is a straight loss: it consumes the round that should be finding what the author cannot see, and each repair moves HEAD, rotating the digest and buying another full round.
+The gate is the most expensive feedback in the workflow, and it is a **merge** gate. The **first** dispatch on a branch has no earned clearance to anchor on, so every member reads its whole owned surface: 60-110k tokens per member and several minutes. Spending that to learn something a local check would have reported is a straight loss, because it consumes the round that should be finding what the author cannot see. Each repair then moves HEAD and rotates the digest, buying another round, and what that round costs depends on the scope it actually resolves rather than being another full read, see [[#Applying the audit's own Suggestions: digest economics]].
 
 The failure shape is specific and worth naming, because it does not look like a mistake while it is happening. New parsing, matching, or extraction logic is written; it handles the shapes the author thought of; a member finds a shape it mishandles; the fix ships; the next round finds another. Each round is individually productive, so the loop feels like progress while it is really a debugging session billed at audit rates. Three rounds to converge on one hand-rolled parser is the canonical case.
 
@@ -171,17 +171,31 @@ The local fix loop reads the re-run carry-forward ledger (`.gaia/local/audit/<AU
 - If a Suggestion involves an architectural tradeoff, breaking change, or conflicting convention, the agent escalates it with documented rationale rather than auto-fixing; the operator must resolve the escalation before the marker is written.
 - Re-run linting and type checking after fixes.
 - Stage, commit, and push the fixes; HEAD must move so the next audit runs against the fixed tree.
-- **Land the whole round's fixes in one commit**, never one commit per finding. Each commit rotates the reporting member's content digest and buys a full re-dispatch to re-earn its marker, so a round repaired finding-by-finding pays for as many re-audits as the round had findings and clears no more than the single batched commit does. Fix everything the round reported, then commit and push once.
+- **Land the whole round's fixes in one commit**, never one commit per finding. Each commit rotates the reporting member's content digest and buys a re-dispatch to re-earn its marker, so a round repaired finding-by-finding pays for as many re-audits as the round had findings and clears no more than the single batched commit does. Fix everything the round reported, then commit and push once.
+- **Sweep the round's touched files for comment and prose repairs before the last dispatch.** A re-dispatch this round is already being paid, so a correction that rides it adds no marginal audit cost, which is the first arm of the digest economics below. Doing the sweep here also removes most of the need to decide the question after a member has already cleared, which is the expensive place to decide it.
 - Re-spawn the audit agent on the new HEAD until it reports clean.
 
 #### Applying the audit's own Suggestions: digest economics
 
-Applying an in-scope Suggestion or an accepted finding is a content edit, so it rotates the reporting member's content digest, invalidates its marker, and forces a fresh re-dispatch of that member (~60-110k tokens) to re-earn the clearance. The cost decides whether to fold it into this PR:
+Applying an in-scope Suggestion or an accepted finding is a content edit, so it rotates the reporting member's content digest, invalidates its marker, and forces a fresh re-dispatch of that member to re-earn the clearance. **Price that re-dispatch by the scope it resolves, not at full scope by default.** A re-dispatched member re-reads its whole owned surface only when it has nothing to anchor on: `.github/audit/resolve-audit-base.sh --member <member>` resolves a per-member review base, and every member scopes its review to the delta from that base to HEAD (`.claude/agents/code-audit-frontend.md`, "Incremental scope"). Full scope is the reset case, not the default one.
+
+The resolver names the reason it chose on line 2 of its `--member` output, and the review scope on line 1 is full only for these:
+
+- `no-anchor`, no usable clearance in range. This is the state of every first dispatch on a branch.
+- `rules-reset-global`, a path in the gate's global-rules set changed since the anchor.
+- `rules-reset-member`, this member's own agent definition changed since the anchor.
+- `degraded` or `no-version`, the resolver could not source a required library or read `.gaia/VERSION`, so it fails safe to full scope.
+
+On `member-clearance` and `team-signal` the member holds an anchor and reviews a delta. `machinery-reset` is deliberately absent from that list: a merely-shared machinery change resets the shared artifact-keying base on line 3 while line 1's review scope holds.
+
+Against that pricing, the two arms are:
 
 - **The member's digest is already rotating in this PR**, you are already changing files it owns this round (the ordinary audit → fix → re-audit loop) or a gate-machinery path every member's digest folds in. The re-dispatch is already being paid, so **apply the Suggestion in the same PR**: the fix rides a re-review that happens anyway and adds no marginal audit cost.
-- **The PR is already clean and the member is already marked**, with nothing else rotating its digest. Folding one more nit in buys a full re-dispatch of that member solely to re-earn the marker. **Accept-and-note instead**: record the Suggestion for a follow-up rather than folding it in, unless it is consequential enough that the re-dispatch is worth paying.
+- **The PR is already clean and the member is already marked**, with nothing else rotating its digest. Folding one more nit in does buy a re-dispatch, but for a comment-only or prose-only repair on a branch that still holds an anchor, that re-dispatch is a delta review of the one edit plus the member's fixed dispatch overhead, not a 60-110k full round. **Apply it**, unless the edit itself trips a reset above (touching the global-rules set or the member's own agent definition rotates the review back to full scope) or the member is unanchored. **Accept-and-note** is for those reset cases, for an unanchored member, and for a finding big enough to deserve its own change, not for a one-line correction.
 
-Both arms assume the Suggestion is correct. A Suggestion is a finding, not a specification: it can assert a mechanism the member inferred rather than verified, and a claim about third-party behavior is where that is likeliest and hardest to spot. Verify the claim against the library's own source or a runnable probe before applying it, most of all when the fix is prose that ships as guidance, where implementing it verbatim turns a reviewer's error into a documented one that reads as reviewed. The re-dispatch these economics already price in re-reviews the edit and usually catches it, but only after a full extra round.
+Accept-and-note is not free either, and pricing only the re-dispatch hides its cost: a deferred Suggestion leaves a known defect in the tree and moves the repair to a follow-up that has to rebuild the context this round already holds. Weigh both sides before deferring.
+
+Both arms assume the Suggestion is correct. A Suggestion is a finding, not a specification: it can assert a mechanism the member inferred rather than verified, and a claim about third-party behavior is where that is likeliest and hardest to spot. Verify the claim against the library's own source or a runnable probe before applying it, most of all when the fix is prose that ships as guidance, where implementing it verbatim turns a reviewer's error into a documented one that reads as reviewed. The re-dispatch these economics already price in re-reviews the edit and usually catches it, but only after an extra round.
 
 This is operator guidance about **in-scope Suggestions and accepted findings**, distinct from **in-flight-fix promotion** (the audit's own automatic same-run repair of a qualifying **out-of-scope** finding through the self-heal path; see [[Audit Disposition and Debt Fix]]). In-flight-fix promotion is the audit repairing out-of-scope debt itself as it reviews; this is the operator deciding whether an in-scope Suggestion is worth folding into an already-marked PR. They do not overlap.
 
