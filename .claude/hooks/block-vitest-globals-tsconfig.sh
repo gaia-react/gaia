@@ -29,7 +29,14 @@ if echo "$file_path" | grep -qiE 'tsconfig[^/]*\.json'; then
   # non-object edits[] entry aborts the whole read, which would empty the
   # scanned text and allow the write.
   scanned_text=$(echo "$input" | jq -r '[.tool_input.new_string? // empty, .tool_input.content? // empty, (.tool_input.edits[]?.new_string? // empty)] | join("\n")' 2>/dev/null)
-  if echo "$scanned_text" | grep -qi 'vitest/globals'; then
+  # JSON spells `/` three ways inside a string, and a tsconfig loader decodes
+  # all three to the same banned `vitest/globals`. The payload's own JSON
+  # encoding is already gone by here, so these are escapes in the file content
+  # being written, not in the transport. Honest limit: `\u` can spell every
+  # other character of the string too, an unbounded space this alternation
+  # leaves open; closing the slash class is where a guard that answers with a
+  # remedy rather than a build failure stops chasing.
+  if echo "$scanned_text" | grep -qiE 'vitest(/|\\/|\\u002f)globals'; then
     echo "BLOCKED: Do not add vitest/globals to a tsconfig. Instead, add explicit imports in each test file: import {describe, expect, test} from 'vitest'" >&2
     exit 2
   fi

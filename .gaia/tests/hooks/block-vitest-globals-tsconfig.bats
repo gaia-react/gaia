@@ -73,6 +73,40 @@ run_hook_multiedit() {
   assert_blocked_by_exit
 }
 
+@test "every JSON spelling of the slash, in any case, is blocked" {
+  # The escape lives in the file content, not the transport: the payload's own
+  # JSON encoding is decoded before the content match runs, so what reaches the
+  # match is literally `vitest\/globals` or `vitest\u002fglobals`. A tsconfig
+  # loader decodes each to the same banned string, so a match taking the literal
+  # slash alone lets two spellings of one config through, silently: the block is
+  # this hook's only output, so an evasion is indistinguishable from a write
+  # that had nothing to block.
+  #
+  # The fourth entry is not a valid JSON escape: RFC 8259 fixes the introducer
+  # as lowercase `u`, so no config loader decodes it to a slash. It pins the
+  # case-insensitive over-blocking the guard prefers on unparseable input, not a
+  # closed evasion; the three spellings before it carry that claim.
+  #
+  # Assertions are inlined rather than delegated to assert_blocked_by_exit for
+  # the reason the family-spelling loop above states: that helper leans on
+  # errexit, which an `||` list disables for the whole function body.
+  for spelling in 'vitest/globals' 'vitest\/globals' 'vitest\u002fglobals' 'Vitest\U002FGlobals'; do
+    run_hook_edit "tsconfig.json" "\"types\": [\"$spelling\"]"
+    [ "$status" -eq 2 ] || { echo "not blocked for $spelling (status=$status)" >&2; return 1; }
+    grep -qF -- 'BLOCKED' <<<"$output" || { echo "no BLOCKED reason for $spelling" >&2; return 1; }
+  done
+}
+
+@test "vitest beside an escaped slash but without globals is allowed" {
+  # The abstain half of the widened match, and it discriminates rather than
+  # merely abstaining: the payload carries `vitest` and every escape spelling
+  # the alternation now recognises, and is allowed only because `globals` does
+  # not follow. A widening that dropped the trailing anchor would block an
+  # ordinary path alias, which is what makes this the case worth pinning.
+  run_hook_edit "tsconfig.json" '"paths": {"@vitest\/helpers/*": ["test/*"], "@vitest\u002futils/*": ["test/*"]}'
+  assert_allowed_by_exit
+}
+
 @test "an absolute path to tsconfig.json is blocked" {
   run_hook_edit "/Users/you/projects/my-app/tsconfig.json" '"types": ["vitest/globals"]'
   assert_blocked_by_exit
