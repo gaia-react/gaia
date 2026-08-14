@@ -234,6 +234,8 @@ Re-read `gh repo view --json visibility` immediately before acting (a repo can f
 
 This member-level screen is the **backstop** to the offer-time exclusion in "Recommend and present" above: on a non-PRIVATE repo a security-class issue is already withheld from the offered batch, so this screen mainly guarantees the invariant for a member reached via **Other**.
 
+**Its position ahead of implementation is load-bearing, not incidental.** A member peeled here has no commits, so the peel is complete once its claim is stripped. Moving this screen after the commit step of "Resolve the selected unit" would put every peel on the drop path in `### Dropping a member after its commits are written` and owe each one that section's commit-message rewrite.
+
 A security-class issue's detail never reaches a public PR, the PR comment, or the Actions log.
 
 ## Fix-time spec screen
@@ -266,6 +268,8 @@ Runs after the pick, the claim, and the Fix-time security screen above, and befo
 
 This screen mirrors the Fix-time security screen's mechanism but is **unconditional** (visibility-independent): repo visibility has no bearing on whether a fix needs a SPEC. Like the security screen, it sits before isolation for the same reason, a divert or handoff happens before any branch exists.
 
+Its position ahead of implementation is **load-bearing** for the same reason too: a member peeled here has no commits, so the handoff owes no commit-message rewrite. A reordering that moved this screen after the commit step of "Resolve the selected unit" would put every peel on the drop path in `### Dropping a member after its commits are written`.
+
 ## Pre-flight isolation (branch vs worktree)
 
 This section runs once per fix, single issue or batch, after the security screen and the spec screen above and before the fix unit's branch or worktree exists. Ordering rationale: the security screen can divert and stop a security-class fix, and the spec screen can hand off and stop a spec-class fix, before any branch exists, so isolation runs after both and a diverted or handed-off fix never creates a worktree.
@@ -285,10 +289,20 @@ The **fix unit** is the selected (non-diverted) member set: a single issue, or e
 1. **Confirm the handler class for the unit.** Each member issue's emitted `handler` field carries an advisory `prompt`, `plan`, or `spec`, or, for a fieldless human-filed issue, `null`; the full vocabulary is three-valued (`prompt` | `plan` | `spec`). The **spec-versus-implement** determination is owned by the Fix-time spec screen above, before isolation: by the time this step runs, every surviving member is `prompt`/`plan` (a spec-class member was either downgraded and kept, or peeled and handed off there). This step grades **prompt-versus-plan** the same way as today: `prompt` when confined to one file with no public-contract change and no cross-module ripple, `plan` otherwise. The unit's effective class is the **maximum** over members: `plan` if any member is `plan` (or any fix is cross-module / contract-changing), else `prompt`. A multi-issue batch is usually `plan`. State the honest class before implementing so the human knows the scope, exactly as today's single-issue rule does.
 2. **The unit is already isolated.** `## Pre-flight isolation (branch vs worktree)` above already cut the branch or created the worktree before this step, on the frozen name (`debt/<issue-number>-<slug>` single, `debt/<members-joined-by-dash>-batch` batch). This step does no branch creation of its own.
 3. **Implement all fixes in the unit** on the one branch, following the project's normal conventions (TDD, surgical changes).
-4. **Run the Quality Gate** (`.claude/rules/quality-gate.md`) once for the combined diff, then commit and push.
+4. **Run the Quality Gate** (`.claude/rules/quality-gate.md`) once for the combined diff, then commit and push. **No commit message on the branch carries a closing keyword against an issue number**, not `Closes #N`, and not the `fixes` / `resolves` spellings GitHub acts on identically; name a member as a bare `#N` where a message has to name one. A squash merge concatenates the branch's commit bodies into the merge commit message and GitHub reads closing keywords out of that message, so a trailer written here closes its issue on merge whatever the PR body says. Keeping it out of every commit is what leaves step 5's PR body the **sole carrier**, and only a sole carrier is correctable when a member is dropped.
 5. **Open one PR** with `gh pr create`. The PR body includes **one `Closes #N` line per member issue** (GitHub's auto-close keyword) so the single merge closes every issue in the unit natively. Security-class detail still never reaches a public PR: a security-class issue is either withheld from the offered batch or peeled and diverted by the screen above, so no security-class member ever reaches a public `Closes #N` PR.
 
 The PR is an ordinary in-scope source change: it passes the **same** Code Audit Team marker gate as any feature PR, one gate for the combined diff. Let the normal gate produce a real marker; do not bypass, fake, or pre-empt it. Getting that marker and completing the merge are covered under *Drive the PR to merge* below.
+
+### Dropping a member after its commits are written
+
+A member can leave the unit after step 4 has written commits, when its fix is reverted or its premise falls over mid-implementation. Three corrections, all of them required:
+
+1. Strip its claim (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel, so it re-enters the open count and a peer session's offer.
+2. Remove its `Closes #N` line from the PR body.
+3. **Rewrite every commit message on the branch that closes it**, `git commit --amend` for the tip commit and an interactive rewrite for an older one, then force-push. Step 4's rule means there is normally nothing to rewrite; read `git log --format=%B origin/main..HEAD` and check anyway, because a surviving trailer reaches the squash-merge message and closes the issue as `COMPLETED` with nothing fixed, and no other step in this playbook reads commit bodies.
+
+The **intended close set** is the unit as it stands after every drop: exactly the members whose `Closes #N` lines the PR body carries at merge time. *Drive the PR to merge* below verifies that the merge closed that set and nothing else.
 
 ## Touch the debt-count sentinel
 
@@ -314,6 +328,8 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
 - **Merge, then verify before cleanup.** Run `gh pr merge <N> --squash --delete-branch`; if branch protection rejects with "base branch policy prohibits the merge", add `--auto` (never `--admin` without explicit permission) so GitHub queues the merge behind the remaining required checks (Tests, Chromatic). Bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes). If it is still queued when the poll window closes, report "merge queued via --auto; completes when checks pass" and return **without** cleanup: deleting the local branch, or discarding the worktree, before `MERGED` strands it against an open PR.
 
   On confirmed `MERGED`, each member's `Closes #N` already closed its issue, and a closed issue leaves the open backlog and the count on its own, so stripping `debt:in-progress` here is best-effort/cosmetic: `gh issue edit <n> --remove-label debt:in-progress` for each member, ignoring failure. A queued `--auto` merge that has not yet landed is still in progress: leave its claim in place; close-on-merge and the next fix's reconcile settle it once the merge completes.
+
+  On confirmed `MERGED`, also **verify the close set**, one `gh issue view <n> --json state` per issue: every member of the **intended close set** must read `CLOSED`, and every member dropped from the unit during this run must read `OPEN`. Report any mismatch loudly, naming the issue. A dropped member reading `CLOSED` was closed by a stale trailer with nothing fixed, so reopen it (`gh issue reopen <n>`), strip `debt:in-progress`, and touch the sentinel to return it to the backlog. This check is the only step that reads the outcome rather than the intent, and the failure it catches is silent in every other direction: a wrongly-closed issue is indistinguishable from a fixed one.
 
   On `MERGED`, run post-merge cleanup by isolation mode:
   - **Feature-branch isolation:** unchanged. `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`. (Run ends here; see `## Cost record (run end)`.)
@@ -384,5 +400,6 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - **Security screen before any public PR.** A security-class selected issue diverts via the visibility gate on PUBLIC/INTERNAL; only a confirmed-PRIVATE repo fixes it as a normal fix PR.
 - **Spec screen before any implementation.** A confirmed spec-class member never joins a fix PR: it hands off to `/gaia-spec` and parks with `debt:spec-pending`; the peel is unconditional, on every repo.
 - **Claim before contest.** `/gaia-debt fix` claims each selected member with the gaia-owned `debt:in-progress` label the instant a unit is picked, before the security screen and isolation, which excludes it from the open count and a peer session's offer. The claim releases on a controlled stop or a security divert, is best-effort cleared on merge, and is recovered by the fix-start reconcile after an ungraceful session death. The `debt:`-namespaced label is gaia-owned, so reconcile only ever strips `debt:in-progress`, never a human-set label.
+- **The PR body is the sole `Closes` carrier.** No commit message on the branch closes an issue, so dropping a member stays correctable by editing the PR body; a member dropped after its commits exist also gets those commit messages rewritten, and the post-merge close-set check catches a stale trailer that reaches the merge by any other route.
 - **Difficulty grading never gates anything.** No `/gaia-debt` path requires a `difficulty:*` label to be present.
 - Use repo-relative paths only.
