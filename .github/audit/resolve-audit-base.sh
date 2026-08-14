@@ -78,7 +78,8 @@
 #     rules-reset-global  a global-rules path changed between anchor and HEAD
 #     rules-reset-member  this member's own agent definition changed
 #     machinery-reset     the argument-less flat machinery reset fired
-#     degraded            classifier, machinery, or rules lib not sourceable
+#     degraded            classifier, machinery, rules, or version lib not
+#                         sourceable
 #     no-version          .gaia/VERSION missing or empty
 #
 # Exit code
@@ -313,13 +314,19 @@ fi
 # anchor arm.
 # -----------------------------------------------------------------------------
 
-version_file="${repo_root}/.gaia/VERSION"
-cur_version=""
-if [ -f "$version_file" ]; then
-  cur_version=$(tr -d '\r' < "$version_file" | awk 'NF{print; exit}')
-  cur_version="${cur_version#"${cur_version%%[![:space:]]*}"}"
-  cur_version="${cur_version%"${cur_version##*[![:space:]]}"}"
+# Sourced here rather than in the library block below, because that block sits
+# after this read and the version gate has to answer before the walk starts.
+version_lib="${repo_root}/.claude/hooks/lib/gaia-version.sh"
+if [ -f "$version_lib" ]; then
+  # shellcheck source=/dev/null
+  . "$version_lib" 2>/dev/null || true
 fi
+if ! command -v gaia_read_version >/dev/null 2>&1; then
+  echo "resolve-audit-base: version normalizer unavailable (gaia-version.sh); resetting to full scope (${main_ref})." >&2
+  emit "$main_ref" degraded ""
+fi
+
+cur_version="$(gaia_read_version "${repo_root}/.gaia/VERSION")"
 if [ -z "$cur_version" ]; then
   emit "$main_ref" no-version ""
 fi

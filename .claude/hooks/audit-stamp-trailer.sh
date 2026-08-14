@@ -68,6 +68,10 @@ if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-digest.sh" ]; then
   # shellcheck source=/dev/null
   . "$_lib_dir/audit-digest.sh"
 fi
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/gaia-version.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/gaia-version.sh"
+fi
 
 # -----------------------------------------------------------------------------
 # Output helpers
@@ -142,10 +146,12 @@ if [ ! -f "$version_file" ]; then
   exit 0
 fi
 
-# trim leading + trailing whitespace (incl. trailing newline)
-agent_version=$(tr -d '\r' < "$version_file" | awk 'NF{print; exit}')
-agent_version="${agent_version#"${agent_version%%[![:space:]]*}"}"
-agent_version="${agent_version%"${agent_version##*[![:space:]]}"}"
+if ! command -v gaia_read_version >/dev/null 2>&1; then
+  emit_decline "version normalizer unavailable (lib/gaia-version.sh)"
+  exit 0
+fi
+
+agent_version="$(gaia_read_version "$version_file")"
 
 if [ -z "$agent_version" ]; then
   emit_decline "version file empty"

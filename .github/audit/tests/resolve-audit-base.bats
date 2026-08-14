@@ -77,16 +77,17 @@ setup() {
 
   # Provision the predicate libs on disk (the resolver sources them from
   # "$repo_root/.claude/hooks/lib/"). NOT committed: they only have to be
-  # loadable, never digest input (this script computes no digest). All four
-  # are provisioned because all four now decide the answer: without the
-  # classifier, the machinery matcher or the rules-tier predicate the
-  # resolver resets to full scope, and without the clearance reader the
-  # per-member anchor arm is disabled.
+  # loadable, never digest input (this script computes no digest). All five
+  # are provisioned because all five now decide the answer: without the
+  # classifier, the machinery matcher, the rules-tier predicate or the version
+  # normalizer the resolver resets to full scope, and without the clearance
+  # reader the per-member anchor arm is disabled.
   mkdir -p "$SANDBOX/.claude/hooks/lib"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" "$SANDBOX/.claude/hooks/lib/audit-rules-changed.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" "$SANDBOX/.claude/hooks/lib/gaia-version.sh"
 
   # The trailer/status digest field (C3 field 2) is never compared by this
   # script (only the version, field 1, gates the base), so every fixture

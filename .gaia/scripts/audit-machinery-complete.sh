@@ -40,6 +40,7 @@ GATE_MACHINERY_FILES="$(cat <<'EOF'
 .claude/hooks/lib/audit-digest.sh
 .claude/hooks/lib/audit-dispositions.sh
 .claude/hooks/lib/audit-selfheal-paths.sh
+.claude/hooks/lib/gaia-version.sh
 .gaia/scripts/audit-write-clearance.sh
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-machinery-complete.sh
