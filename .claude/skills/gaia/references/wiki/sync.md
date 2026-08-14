@@ -233,7 +233,7 @@ git diff --name-only --diff-filter=A -z "$CONSOLIDATED_SHA"..HEAD -- \
   | tr '\0' '\n'
 ```
 
-`-z` and the `tr` back to newlines are both load-bearing, and the direction they fail in is a silent under-trigger. Under git's default `core.quotePath` a path carrying a non-ASCII byte prints C-quoted, so an added `wiki/concepts/Café.md` arrives as `"wiki/concepts/Caf\303\251.md"`. Its parent directory then reads as `"wiki` rather than `wiki/concepts`, which splits one domain's pages across two group keys and drops each below the threshold in 9c. `-z` turns the quoting off; the `tr` gives the grouping bare paths again.
+`-z` and the `tr` back to newlines are both load-bearing, and the direction they fail in is a silent under-trigger. Under git's default `core.quotePath` a path carrying a non-ASCII byte prints C-quoted, so an added `wiki/concepts/Café.md` arrives as `"wiki/concepts/Caf\303\251.md"`. Its parent directory then reads as `"wiki/concepts`, a distinct key from the bare `wiki/concepts` its unquoted siblings group under, which splits one domain's pages across two keys and drops each below the threshold in 9c. `-z` turns the quoting off; the `tr` gives the grouping bare paths again.
 
 Group the output by parent directory (the domain). Count pages per domain. Skip files in `wiki/_archived/` (handled by the path filter, `_archived/` is not in the list).
 

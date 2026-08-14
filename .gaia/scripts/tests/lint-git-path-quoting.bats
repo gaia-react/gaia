@@ -628,6 +628,41 @@ run_linter() {
   grep -qF -- "docs/guide.md:2" <<<"$output"
 }
 
+# The three shapes a delimiter that is merely COUNTED gets wrong. The first is
+# the one no parity check over the page can find: the inner opener and the outer
+# closer leave the page balanced, so the region reads as prose while the page
+# stays well-formed for its reader. `.github/forensics/prompt.md` carries it.
+
+@test "a fenced block nested inside a longer fence is still scanned" {
+  fixture_repo
+  fixture_file docs/guide.md \
+    $'````markdown\n```bash\ngit ls-files > list.txt\n```\n````'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "docs/guide.md:3" <<<"$output"
+}
+
+@test "a delimiter of the other character does not close a fence" {
+  fixture_repo
+  fixture_file docs/guide.md \
+    $'```bash\n~~~\ngit ls-files > list.txt\n```'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "docs/guide.md:3" <<<"$output"
+}
+
+# A blockquoted fence is how a page quotes a prompt an agent is told to run
+# verbatim, so it is executed instruction rather than illustration by
+# construction. `.claude/skills/gaia/references/audit.md` carries it.
+@test "a fence carrying a blockquote prefix is entered" {
+  fixture_repo
+  fixture_file docs/guide.md \
+    $'  > ```bash\n  > git ls-files > list.txt\n  > ```'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "docs/guide.md:2" <<<"$output"
+}
+
 # A code span cannot nest inside a fence, so the in-span test is switched off
 # there. This exact shape is the fail-OPEN miss the shell half still carries
 # ("a substitution opening after a quote is missed"): inside a fence the odd

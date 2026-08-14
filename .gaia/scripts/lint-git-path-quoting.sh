@@ -109,14 +109,20 @@
 # in this repository, that partition reported the live defects and nothing else,
 # which is what makes the rule affordable as well as closed.
 #
-# Its blind spots, both stated as consequences of that one rule:
+# What the fence rule reads is stated in the scanner beside the code that does
+# it: a closer matches the opener's character and length, and a leading `>` is
+# part of the delimiter's run. Its remaining blind spots:
 #   - An illustrative fenced block that DELIBERATELY shows an unquoted call as a
 #     counter-example is flagged. That is FAIL-CLOSED, and the repair is to write
 #     the counter-example as a code span or to let it carry `-z`.
-#   - Fence tracking is a toggle over lines opening with ``` or ~~~, so a page
-#     whose fences do not balance inverts the polarity from that point on. Every
-#     markdown renderer this repository's pages are read through requires them to
-#     balance, so an unbalanced page is already broken for its reader.
+#   - A page whose fences do not balance inverts the polarity from the unclosed
+#     delimiter onward. FAIL-OPEN past that point, and unlike the nesting case
+#     a parity count over the page does detect it, because the page really is
+#     unbalanced and renders wrong for its human reader too.
+#   - An indented code block, the four-space form carrying no delimiter at all,
+#     is never entered and so is never scanned. FAIL-OPEN. Nothing distinguishes
+#     it from an indented continuation line without parsing the block structure
+#     the delimiters make free, and no page in this tree executes one.
 #
 # So: the surface this file claims is at zero for `ls-files` and for every
 # option spelling of `diff --name-only`, which is what the tests below pin. The
@@ -150,11 +156,11 @@ set -euo pipefail
 # Scan surface: tracked shell, the extensionless husky hooks, the workflow YAML
 # whose `run:` blocks are shell by another name, and tracked markdown, whose
 # fenced blocks are shell by another name on any page a rule tells the agent to
-# execute. `git ls-files` rather than
-# a filesystem walk, so an untracked scratch script or a vendored dependency is
-# never scanned; the same discovery .gaia/tests/shell-lint.sh uses. Collected
-# with a read loop rather than `mapfile`, which is bash 4+, because these
-# scripts run on stock macOS /bin/bash (3.2.57).
+# execute. `git ls-files` rather than a filesystem walk, so an untracked scratch
+# script or a vendored dependency is never scanned; the same discovery that
+# .gaia/tests/shell-lint.sh uses. Collected with a read loop rather than
+# `mapfile`, which is bash 4+, because these scripts run on stock macOS
+# /bin/bash (3.2.57).
 #
 # `*.bats` is deliberately NOT in this list, and the omission is load-bearing
 # rather than an oversight. The bats suites are where this class is DEMONSTRATED:
@@ -321,9 +327,30 @@ scan_file() {
       callname[1] = "diff";     calllabel[1] = "diff --name-only"
       callname[2] = "ls-files"; calllabel[2] = "ls-files"
     }
-    # A fence delimiter toggles the state and is never itself scanned. The
+    # A fence delimiter changes the state and is never itself scanned; the
     # opening line carries the info string (```bash), which is not a call.
-    is_md && /^[[:space:]]*(```|~~~)/ { infence = !infence; next }
+    #
+    # A bare toggle is wrong in two ways that both fail OPEN, and both land on
+    # the executed-instruction pages this half exists for. It closes on the
+    # opener of a NESTED block, so a ```bash inside a ````markdown wrapper
+    # reads as prose from there to the outer close, and the page still balances
+    # so no parity check can see it. And it never opens on a fence carrying a
+    # blockquote prefix, which is how a page quotes a prompt an agent is told to
+    # run verbatim. So the delimiter is remembered rather than counted: a closer
+    # must be the same character and at least as long as the opener that is
+    # open, the rule CommonMark itself uses, and the leading run may carry `>`.
+    # No apostrophe anywhere in this block: it sits in a single-quoted string.
+    is_md {
+      if (match($0, /^[[:space:]>]*(```+|~~~+)/)) {
+        delim = substr($0, RSTART, RLENGTH)
+        sub(/^[[:space:]>]*/, "", delim)
+        dchar = substr(delim, 1, 1)
+        dlen = length(delim)
+        if (!infence) { infence = 1; fencechar = dchar; fencelen = dlen }
+        else if (dchar == fencechar && dlen >= fencelen) { infence = 0 }
+        next
+      }
+    }
     # Outside a fence, markdown is prose in full: a paragraph naming a
     # path-listing command is documentation, not a call site, whether or not its
     # author wrapped it in a code span.
