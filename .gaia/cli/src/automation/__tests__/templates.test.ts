@@ -35,13 +35,21 @@ const parseRendered = (raw: string): Record<string, unknown> =>
 
 type RenderedStep = {readonly if?: string; readonly name: string};
 
+// Throws rather than returning `[]` for an unknown job: a job name that
+// resolves to nothing would make an absence assertion below pass against
+// nothing at all.
 const jobSteps = (
   doc: Record<string, unknown>,
   job: string
 ): readonly RenderedStep[] => {
   const jobs = doc.jobs as Record<string, {steps: readonly RenderedStep[]}>;
+  const found = jobs[job];
 
-  return jobs[job]?.steps ?? [];
+  if (found === undefined) {
+    throw new Error(`rendered workflow declares no job named '${job}'`);
+  }
+
+  return found.steps;
 };
 
 const stepNames = (doc: Record<string, unknown>): readonly string[] =>

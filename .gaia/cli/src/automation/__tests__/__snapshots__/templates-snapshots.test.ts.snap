@@ -69,23 +69,12 @@ jobs:
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
 
-      # pnpm, Node, and the frozen-lockfile install are the expensive half of
-      # job setup, and they sit after the skip decision rather than before it.
-      # A tick that decides to skip would otherwise pay a full install to
-      # learn it has no work, and a private repository bills that in whole
-      # rounded-up runner minutes. The decision itself needs neither: it runs
-      # \`gh\` and the committed \`.gaia/cli/gaia\` bundle, both of which work
-      # against the runner's preinstalled Node.
-      #
-      # All three carry the gate, not the install alone. setup-node's
-      # \`cache: 'pnpm'\` post step saves the pnpm store unconditionally, so an
-      # ungated setup-node above a skipped install would fail the job saving a
-      # store that nothing created.
-      #
-      # The condition is \`!= 'skip'\` rather than \`== 'run'\` so this same
-      # partial serves a job gated at the job level with no \`pre_run\` step of
-      # its own: there the output is absent, which is not 'skip', so the setup
-      # runs.
+      # Setup sits after the skip decision so a tick that skips does not pay
+      # for an install it never uses. All three steps carry the gate, not the
+      # install alone: setup-node's \`cache: 'pnpm'\` post step saves the pnpm
+      # store unconditionally, and saving a store no install created fails the
+      # job. The gate reads \`!= 'skip'\` so this same setup also runs in a job
+      # gated at the job level, which has no \`pre_run\` step of its own.
       - name: Setup pnpm
         if: steps.pre_run.outputs.decision != 'skip'
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -274,23 +263,12 @@ jobs:
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
 
-      # pnpm, Node, and the frozen-lockfile install are the expensive half of
-      # job setup, and they sit after the skip decision rather than before it.
-      # A tick that decides to skip would otherwise pay a full install to
-      # learn it has no work, and a private repository bills that in whole
-      # rounded-up runner minutes. The decision itself needs neither: it runs
-      # \`gh\` and the committed \`.gaia/cli/gaia\` bundle, both of which work
-      # against the runner's preinstalled Node.
-      #
-      # All three carry the gate, not the install alone. setup-node's
-      # \`cache: 'pnpm'\` post step saves the pnpm store unconditionally, so an
-      # ungated setup-node above a skipped install would fail the job saving a
-      # store that nothing created.
-      #
-      # The condition is \`!= 'skip'\` rather than \`== 'run'\` so this same
-      # partial serves a job gated at the job level with no \`pre_run\` step of
-      # its own: there the output is absent, which is not 'skip', so the setup
-      # runs.
+      # Setup sits after the skip decision so a tick that skips does not pay
+      # for an install it never uses. All three steps carry the gate, not the
+      # install alone: setup-node's \`cache: 'pnpm'\` post step saves the pnpm
+      # store unconditionally, and saving a store no install created fails the
+      # job. The gate reads \`!= 'skip'\` so this same setup also runs in a job
+      # gated at the job level, which has no \`pre_run\` step of its own.
       - name: Setup pnpm
         if: steps.pre_run.outputs.decision != 'skip'
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -415,23 +393,12 @@ jobs:
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
 
-      # pnpm, Node, and the frozen-lockfile install are the expensive half of
-      # job setup, and they sit after the skip decision rather than before it.
-      # A tick that decides to skip would otherwise pay a full install to
-      # learn it has no work, and a private repository bills that in whole
-      # rounded-up runner minutes. The decision itself needs neither: it runs
-      # \`gh\` and the committed \`.gaia/cli/gaia\` bundle, both of which work
-      # against the runner's preinstalled Node.
-      #
-      # All three carry the gate, not the install alone. setup-node's
-      # \`cache: 'pnpm'\` post step saves the pnpm store unconditionally, so an
-      # ungated setup-node above a skipped install would fail the job saving a
-      # store that nothing created.
-      #
-      # The condition is \`!= 'skip'\` rather than \`== 'run'\` so this same
-      # partial serves a job gated at the job level with no \`pre_run\` step of
-      # its own: there the output is absent, which is not 'skip', so the setup
-      # runs.
+      # Setup sits after the skip decision so a tick that skips does not pay
+      # for an install it never uses. All three steps carry the gate, not the
+      # install alone: setup-node's \`cache: 'pnpm'\` post step saves the pnpm
+      # store unconditionally, and saving a store no install created fails the
+      # job. The gate reads \`!= 'skip'\` so this same setup also runs in a job
+      # gated at the job level, which has no \`pre_run\` step of its own.
       - name: Setup pnpm
         if: steps.pre_run.outputs.decision != 'skip'
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -591,23 +558,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      # pnpm, Node, and the frozen-lockfile install are the expensive half of
-      # job setup, and they sit after the skip decision rather than before it.
-      # A tick that decides to skip would otherwise pay a full install to
-      # learn it has no work, and a private repository bills that in whole
-      # rounded-up runner minutes. The decision itself needs neither: it runs
-      # \`gh\` and the committed \`.gaia/cli/gaia\` bundle, both of which work
-      # against the runner's preinstalled Node.
-      #
-      # All three carry the gate, not the install alone. setup-node's
-      # \`cache: 'pnpm'\` post step saves the pnpm store unconditionally, so an
-      # ungated setup-node above a skipped install would fail the job saving a
-      # store that nothing created.
-      #
-      # The condition is \`!= 'skip'\` rather than \`== 'run'\` so this same
-      # partial serves a job gated at the job level with no \`pre_run\` step of
-      # its own: there the output is absent, which is not 'skip', so the setup
-      # runs.
+      # Setup sits after the skip decision so a tick that skips does not pay
+      # for an install it never uses. All three steps carry the gate, not the
+      # install alone: setup-node's \`cache: 'pnpm'\` post step saves the pnpm
+      # store unconditionally, and saving a store no install created fails the
+      # job. The gate reads \`!= 'skip'\` so this same setup also runs in a job
+      # gated at the job level, which has no \`pre_run\` step of its own.
       - name: Setup pnpm
         if: steps.pre_run.outputs.decision != 'skip'
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -768,23 +724,12 @@ jobs:
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
 
-      # pnpm, Node, and the frozen-lockfile install are the expensive half of
-      # job setup, and they sit after the skip decision rather than before it.
-      # A tick that decides to skip would otherwise pay a full install to
-      # learn it has no work, and a private repository bills that in whole
-      # rounded-up runner minutes. The decision itself needs neither: it runs
-      # \`gh\` and the committed \`.gaia/cli/gaia\` bundle, both of which work
-      # against the runner's preinstalled Node.
-      #
-      # All three carry the gate, not the install alone. setup-node's
-      # \`cache: 'pnpm'\` post step saves the pnpm store unconditionally, so an
-      # ungated setup-node above a skipped install would fail the job saving a
-      # store that nothing created.
-      #
-      # The condition is \`!= 'skip'\` rather than \`== 'run'\` so this same
-      # partial serves a job gated at the job level with no \`pre_run\` step of
-      # its own: there the output is absent, which is not 'skip', so the setup
-      # runs.
+      # Setup sits after the skip decision so a tick that skips does not pay
+      # for an install it never uses. All three steps carry the gate, not the
+      # install alone: setup-node's \`cache: 'pnpm'\` post step saves the pnpm
+      # store unconditionally, and saving a store no install created fails the
+      # job. The gate reads \`!= 'skip'\` so this same setup also runs in a job
+      # gated at the job level, which has no \`pre_run\` step of its own.
       - name: Setup pnpm
         if: steps.pre_run.outputs.decision != 'skip'
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
