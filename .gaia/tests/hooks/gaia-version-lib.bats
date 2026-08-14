@@ -97,8 +97,13 @@ setup() {
 #
 # Both halves match on a regex rather than a fixed string, so a copy that
 # merely reshuffles quoting or spacing (`tr -d "\r"`, `NF {print; exit}`) is
-# still caught; the pin is scoped to `*.sh`, which is every surface that can
-# source the helper.
+# still caught.
+#
+# The accepted miss is the `*.sh` pathspec: a workflow `run:` block holds shell
+# without being a `.sh` file, so an eighth copy inlined into one reds nowhere.
+# Widening to `*.yml` is not the fix it looks like, because `release.yml`
+# normalizes the same file on purpose and differently, so a naive widening reds
+# on a deliberate exclusion rather than on a copy.
 
 @test "the read-and-normalize idiom lives in exactly one tracked file" {
   cr_strip='(tr -d .\\r.|gsub\(/\\r/)'

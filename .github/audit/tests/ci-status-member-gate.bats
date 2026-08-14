@@ -743,10 +743,12 @@ run_comment_step() {
 # merge gate is satisfied with no local audit run", which is the exact opposite
 # of what happened, and the only truthful signal is buried in the step log.
 #
-# Both triggers land on the same `exit 0`: `tr -d '\r' < .gaia/VERSION | awk` is
-# a PIPELINE, so a MISSING file leaves awk with no input -- it prints nothing and
-# exits 0 -- and the substitution yields "" exactly as an EMPTY file does. Under
-# `set -e` neither shape fails the step.
+# All three triggers land on the same `exit 0`. A MISSING and an EMPTY
+# .gaia/VERSION are one case by the shared normalizer's own contract: absent,
+# unreadable, and blank all yield "" and exit 0, so neither shape fails the step
+# under `set -e`. The third trigger is an unloadable normalizer
+# (.claude/hooks/lib/gaia-version.sh), which declines onto the same
+# `success_stamped=false` line rather than reading the version some other way.
 # -----------------------------------------------------------------------------
 
 @test "out-of-scope skip: an empty .gaia/VERSION posts no status and publishes success_stamped=false" {
@@ -771,6 +773,24 @@ run_comment_step() {
   commit_docs_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
   rm -f "$SANDBOX/.gaia/VERSION"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
+# The third trigger. .gaia/VERSION is perfectly readable here; what is gone is
+# the normalizer that reads it. The interesting half is the SECOND assertion:
+# declining is only correct if it declines rather than falling back to reading
+# the version some other way, because a second reading is the divergence the
+# shared helper exists to remove.
+@test "out-of-scope skip: an unloadable version normalizer posts no status and publishes success_stamped=false" {
+  body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
+  commit_docs_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  rm -f "$SANDBOX/.claude/hooks/lib/gaia-version.sh"
 
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
