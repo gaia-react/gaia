@@ -39,6 +39,29 @@ extract_array_slugs() {
   ' "$1" | grep -oE "'[A-Za-z0-9/_-]+'" | tr -d "'"
 }
 
+# extract_array_slugs_or_fail <finding-class.ts> <ARRAY_PREFIX>: the same, and
+# fails loudly when the sweep returns nothing. Without this the awk exact-line
+# test is a fail-open discovery: an edit that leaves the array intact but
+# changes its declaration line, `export const HOLISTIC_FINDING_CLASSES:
+# readonly string[] = [`, compiles clean, resolves every import, and makes the
+# helper print nothing. Both consumers loop with `for slug in $(...)`, so a
+# zero-slug sweep runs the body zero times and the test reports ok, retiring
+# the coupling between the schema and the five agent definitions with no
+# signal anywhere. Guard per array rather than over the four concatenated: with
+# only one prefix renamed the other three still populate a combined list, so a
+# combined check passes vacuously over exactly the members the caller is
+# sweeping for. Same reasoning, and same shape, as extract_section_or_fail in
+# doc-audit-remedy-set.bats.
+extract_array_slugs_or_fail() {
+  local out
+  out="$(extract_array_slugs "$1" "$2")"
+  [ -n "$out" ] || {
+    echo "no ${2}_FINDING_CLASSES members swept from ${1}; the array's declaration line likely changed shape, and a loop here would pass vacuously" >&2
+    return 1
+  }
+  printf '%s\n' "$out"
+}
+
 # assert_assignment_line <section> <slug> <prefix> <file>: fails unless
 # <section> contains a line matching the frozen shape (slug, criterion, and
 # "Not" clause together, one line, no wrapping). `.` stands in for a literal
@@ -328,12 +351,16 @@ setup() {
 # reads.
 
 @test "group G (maintainer-tree scope): every HOLISTIC_FINDING_CLASSES, RULE_FINDING_CLASSES, WORKFLOW_FINDING_CLASSES, and PROSE_FINDING_CLASSES member is named by at least one of the five members' prose" {
-  local slug found f
-  for slug in \
-    $(extract_array_slugs "$FINDING_CLASS" HOLISTIC) \
-    $(extract_array_slugs "$FINDING_CLASS" RULE) \
-    $(extract_array_slugs "$FINDING_CLASS" WORKFLOW) \
-    $(extract_array_slugs "$FINDING_CLASS" PROSE); do
+  local slug found f holistic rule workflow prose
+  # Each array is swept and guarded on its own line, because a command
+  # substitution inside a `for` list discards its own exit status: a
+  # zero-slug sweep there would contribute no words and the loop would run on
+  # over the other three, which is the vacuous pass the wrapper exists to stop.
+  holistic="$(extract_array_slugs_or_fail "$FINDING_CLASS" HOLISTIC)" || return 1
+  rule="$(extract_array_slugs_or_fail "$FINDING_CLASS" RULE)" || return 1
+  workflow="$(extract_array_slugs_or_fail "$FINDING_CLASS" WORKFLOW)" || return 1
+  prose="$(extract_array_slugs_or_fail "$FINDING_CLASS" PROSE)" || return 1
+  for slug in $holistic $rule $workflow $prose; do
     found=0
     for f in "${MEMBERS[@]}"; do
       grep -Fq -- "$slug" "$f" && { found=1; break; }
@@ -354,10 +381,11 @@ setup() {
 # section-wide match against a holistic slug string.
 
 @test "group H: code-audit-frontend.md's Holistic mirror bullet covers every HOLISTIC_FINDING_CLASSES member" {
-  local slug mirror_line
+  local slug mirror_line holistic
   mirror_line="$(grep -F -- 'Holistic (your own cross-cutting findings):' "$FRONTEND")"
   [ -n "$mirror_line" ] || { echo "Holistic mirror bullet not found in $FRONTEND" >&2; return 1; }
-  for slug in $(extract_array_slugs "$FINDING_CLASS" HOLISTIC); do
+  holistic="$(extract_array_slugs_or_fail "$FINDING_CLASS" HOLISTIC)" || return 1
+  for slug in $holistic; do
     grep -Fq -- "$slug" <<<"$mirror_line" || {
       echo "Holistic mirror bullet in $FRONTEND is missing $slug" >&2
       return 1
