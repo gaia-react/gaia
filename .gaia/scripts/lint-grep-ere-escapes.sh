@@ -159,6 +159,16 @@ fi
 #   - Any backslash-escaped letter outside the six-letter allowlist, including
 #     the ones both implementations currently treat as a literal.
 #
+# FALSE POSITIVE, a third direction, and the one worth naming explicitly because
+# the demanded edit is not a repair the author can make sense of:
+#   - A grep pattern quoted inside ANOTHER tool's program text, as in
+#     `awk '/grep -E "a\tb"/ { print }'`. The escape belongs to awk's regex,
+#     which has its own portability rules, but the scan sees a `grep` in what
+#     looks like command position. Telling the two apart needs a shell
+#     tokenizer, which is more machinery than this gate is worth; no such shape
+#     exists in this tree, and the escape hatch is to build the pattern in a
+#     variable, which the scan does not read into either.
+#
 # `$'...'` is NOT a hit, and the discrimination is load-bearing rather than
 # cosmetic: `$'\r'` is one of the repairs this gate's own hint text advertises.
 # Inside ANSI-C quoting the shell expands the escape and grep receives a real
@@ -178,13 +188,23 @@ scan_file() {
     # `grep -qE .(^|[^/\\])\.gaia/local.` carries a `|` inside its pattern, and
     # a terminator scan that could not see quotes would stop in the middle of
     # the pattern and read half of it.
-    function scan_window(w,   n, i, c, nxt, q, ansi, substdepth, prev) {
+    function scan_window(w,   n, i, c, nxt, q, ansi, substdepth, intick, prev) {
       n = length(w)
       q = ""
       ansi = 0
       substdepth = 0
+      intick = 0
       for (i = 1; i <= n; i++) {
         c = substr(w, i, 1)
+        # A legacy backtick substitution is the same shell output as `$(...)` and
+        # is skipped for the same reason: `"^key:`printf .\r.`?$"` is the gate.s
+        # own advertised repair written in the older spelling. Backticks do not
+        # nest, so a flag is the whole state; the closing tick is matched here
+        # rather than by the quote machinery below, which never sees one.
+        if (intick) {
+          if (c == "`") intick = 0
+          continue
+        }
         # A command substitution is shell OUTPUT rather than regex text: it runs
         # before grep is invoked, so no escape inside one ever reaches the
         # pattern. `"$(printf .\r.)"` is one of the repairs this gate advertises,
@@ -196,10 +216,15 @@ scan_file() {
           else if (c == ")") substdepth--
           continue
         }
-        # Not inside single quotes, where `$(` is two literal characters.
+        # Neither form is entered from inside single quotes, where `$(` and a
+        # backtick are literal characters the shell never acts on.
         if (q != "\047" && c == "$" && substr(w, i + 1, 1) == "(") {
           substdepth = 1
           i++
+          continue
+        }
+        if (q != "\047" && c == "`") {
+          intick = 1
           continue
         }
         if (q == "") {

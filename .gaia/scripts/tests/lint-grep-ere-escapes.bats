@@ -1,4 +1,10 @@
 #!/usr/bin/env bats
+# SC2016 is intentional file-wide: every fixture body is single-quoted precisely
+# so the `$` anchors and the backslash escapes reach the fixture file as literal
+# text. The unexpanded escape IS the thing under test, so letting the shell
+# expand one would delete the evidence.
+# shellcheck disable=SC2016
+#
 # Tests for .gaia/scripts/lint-grep-ere-escapes.sh: the static gate that flags a
 # backslash-escaped letter inside an extended-regex grep pattern, where BSD grep
 # and GNU grep resolve POSIX's undefined behaviour differently and the same
@@ -154,6 +160,18 @@ grep -qE '^v[[:digit:]]+\$' input.txt"
   fixture_repo
   fixture_script "grep -qE \$'^key:\\r?\$' input.txt
 grep -qE \"^key:\$(printf '\\r')?\$\" input.txt"
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
+}
+
+# The legacy spelling of the substitution repair above. It is reachable in the
+# workflow `run:` bodies and the *.tmpl templates this gate scans, neither of
+# which shellcheck reads, so nothing else in the pipeline discourages a backtick
+# there.
+@test "greens on the legacy backtick spelling of the substitution repair" {
+  fixture_repo
+  fixture_script 'grep -qE "^key:`printf '"'"'\r'"'"'`?$" input.txt'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "clean" <<<"$output"
