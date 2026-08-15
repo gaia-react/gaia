@@ -13,6 +13,6 @@ Exit 0 real, 1 no-op, 2 usage error. On a no-op, re-dispatch **exactly once** ag
 
 **Pass a count when you know one.** A truncated write parses fine and reads as a real result, so existence-plus-parses alone reproduces the same collapse inside a file that exists.
 
-**Poll the file, not the notification.** The artifact is on disk, so never block on a completion signal that may not arrive.
+**Poll the file, not the notification.** The artifact is on disk, so never block on a completion signal that may not arrive. Tear down each watch you arm the moment you hold its artifact: a report you end up reading somewhere else leaves the loop with no exit condition left to satisfy.
 
-Full contract, including the hardened retry prefix: the `No-op guard` section of `.claude/skills/gaia/references/spec.md`. This rule is deliberately not path-scoped; the decision happens while composing a dispatch, which no file edit announces.
+Full contract, including the hardened retry prefix: the `No-op guard` section of `.claude/skills/gaia/references/spec.md`. Path-scoping this rule would break it: the decision happens while composing a dispatch, which no file edit announces.
