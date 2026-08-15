@@ -76,6 +76,18 @@ assert_assignment_line() {
       }
 }
 
+# Drops every `gaia:maintainer-only` block, reproducing what the bundle scrub
+# leaves on an adopter clone. Group I reads a member through this rather than
+# reading the file directly, because a route stated only inside those markers
+# is present in the maintainer tree and absent everywhere it is needed.
+strip_maintainer_only() {
+  awk '
+    /gaia:maintainer-only:start/ { skip = 1; next }
+    /gaia:maintainer-only:end/   { skip = 0; next }
+    skip != 1
+  ' "$1"
+}
+
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 
@@ -370,6 +382,50 @@ setup() {
       return 1
     }
   done
+}
+
+# --- Group I: an assigning member can still reach the classes it omits -----
+#
+# Group G is satisfied when ANY ONE of the five members names a slug, and
+# code-audit-frontend.md's mirror satisfies it alone. So nothing above pins
+# that a member which ASSIGNS holistic classes can reach the ones its own
+# assignment section leaves out. code-audit-github-workflows.md is the case
+# that matters: its assignment section separates six root causes, its sidecar
+# example assigns `holistic/secret-exposure`, which is not one of the six, and
+# the schema pointer covering the rest is release-excluded reading anyway. The
+# route is asserted on the SCRUBBED text because a pointer stated only inside
+# `gaia:maintainer-only` markers is present in this tree and absent on the
+# adopter clone that needs it.
+
+@test "group I: code-audit-github-workflows.md keeps an adopter-visible route to the full holistic vocabulary" {
+  local scrubbed
+  scrubbed="$(strip_maintainer_only "$WORKFLOWS")"
+  [ -n "$scrubbed" ] || {
+    echo "scrubbing $WORKFLOWS left nothing to read" >&2
+    return 1
+  }
+  printf '%s\n' "$scrubbed" | grep -Fq -- 'code-audit-frontend.md' || {
+    echo "no adopter-visible route from $WORKFLOWS to the enumerating member" >&2
+    return 1
+  }
+  printf '%s\n' "$scrubbed" | grep -Fq -- 'Per-bucket' || {
+    echo "$WORKFLOWS names the enumerating member but not the section that enumerates" >&2
+    return 1
+  }
+}
+
+@test "group I: the holistic classes code-audit-github-workflows.md's own examples assign are reachable (non-vacuity)" {
+  local scrubbed
+  scrubbed="$(strip_maintainer_only "$WORKFLOWS")"
+  # The example at the sidecar Shape block assigns a holistic class the
+  # assignment section does not carry a line for. That is legitimate ONLY
+  # while the route above exists, so this pins the pair together: drop the
+  # route and the file is left assigning a class it cannot reach.
+  printf '%s\n' "$scrubbed" | grep -Fq -- 'holistic/secret-exposure' || return 0
+  printf '%s\n' "$scrubbed" | grep -Fq -- 'code-audit-frontend.md' || {
+    echo "$WORKFLOWS assigns holistic/secret-exposure with no route to the set that defines it" >&2
+    return 1
+  }
 }
 
 # --- Group H: the schema and the frontend mirror agree ---------------------
