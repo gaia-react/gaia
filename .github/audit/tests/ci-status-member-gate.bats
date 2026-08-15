@@ -421,7 +421,8 @@ run_comment_step() {
 # defaults here are the ordinary clean run ("no fixes needed"), so a test binds
 # only the field it is about.
 run_audit_complete_step() {
-  local body="$1" post_failed="${2:-}"
+  local body="$1" post_failed="${2:-}" success_stamped="${3:-}" members_pending="${4:-}" \
+        success_live="${5:-}" read_failed="${6:-}" push_fixes="${7:-true}"
   ( cd "$SANDBOX" \
     && RUNNER_TEMP="$RUNNER_TEMP_DIR" \
        PR_NUMBER="1" \
@@ -429,7 +430,11 @@ run_audit_complete_step() {
        REFUSED="false" \
        REFUSED_COUNT="0" \
        REFUSED_REASON="" \
-       PUSH_FIXES="true" \
+       PUSH_FIXES="$push_fixes" \
+       MEMBERS_PENDING="$members_pending" \
+       SUCCESS_STAMPED="$success_stamped" \
+       SUCCESS_LIVE="$success_live" \
+       READ_FAILED="$read_failed" \
        POST_FAILED="$post_failed" \
        bash "$body" )
 }
@@ -1923,17 +1928,75 @@ run_audit_complete_step() {
   # twice, so a body-wide positive grep is satisfied by prose alone and cannot
   # fail -- while a body-wide negative grep reds on a comment edit that changes
   # nothing GitHub ever renders. Both directions have to read the artifact.
+  # Anchored on THIS field's own opening words, not a bare `output[summary]=`.
+  # The step emits two such fields -- this check run and a per-job mirror inside
+  # poll_and_stamp -- so the looser match unions both, and the positive
+  # assertion would then read "some summary here names GAIA-Audit", which the
+  # sibling can satisfy on its own. Same read-the-wrong-text failure this test
+  # exists to catch, one level down.
   body="$(extract_step_body 'Re-trigger and stamp required checks on new HEAD')"
-  summary="$(grep -F 'output[summary]=' "$body")"
-  [ -n "$summary" ]
+  summary="$(grep -F 'output[summary]=Audit completed' "$body")"
   grep -qF "GAIA-Audit" <<<"$summary"
   grep -qF "status on this SHA records" <<<"$summary" && return 1
   return 0
 }
 
-@test "audit-complete comment: says nothing about the stamp when the POST was not rejected" {
+@test "audit-complete comment: a stamp step that declined is surfaced, not read as a clean finish" {
+  # A rejected POST is one of five ways those stamp steps end with nothing
+  # stamped. Reporting only that one would leave the other four -- an absent
+  # .gaia/VERSION, an unrecomputable digest, an unproven-clean audit -- reading
+  # as "complete: no fixes needed" beside a shut gate.
   body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" ""
+  run run_audit_complete_step "$body" "" "false"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "code-review-audit complete" "$COMMENT_LOG"
+  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
+}
+
+@test "audit-complete comment: a co-dispatched pending member is named, not reported as green" {
+  body="$(extract_step_body 'Status - audit complete')"
+  run run_audit_complete_step "$body" "" "false" "code-audit-maintainer-shell"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "pending, not green" "$COMMENT_LOG"
+  grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
+}
+
+@test "audit-complete comment: an already-live success is not warned about" {
+  # success_stamped is `false` on this path too -- the writer hoists it before
+  # the non-clobber guard -- so a no-stamp arm that ignored success_live would
+  # tell the author the gate is shut while it is green.
+  body="$(extract_step_body 'Status - audit complete')"
+  run run_audit_complete_step "$body" "" "false" "code-audit-maintainer-shell" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "code-review-audit complete" "$COMMENT_LOG"
+  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG" && return 1
+  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "audit-complete comment: advisory mode invents no merge-gate warning" {
+  # push_fixes=false runs NEITHER stamp step, so every output is empty. Testing
+  # the no-stamp arm for "not true" rather than the literal `false` would attach
+  # a gate warning to every advisory run, which posts no status by design.
+  body="$(extract_step_body 'Status - audit complete')"
+  run run_audit_complete_step "$body" "" "" "" "" "" "false"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "advisory (push_fixes=false)" "$COMMENT_LOG"
+  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "audit-complete comment: says nothing about the stamp when the status landed" {
+  body="$(extract_step_body 'Status - audit complete')"
+  run run_audit_complete_step "$body" "" "true"
   [ "$status" -eq 0 ]
 
   [ -f "$COMMENT_LOG" ]

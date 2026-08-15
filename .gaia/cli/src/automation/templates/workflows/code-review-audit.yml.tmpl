@@ -1408,9 +1408,23 @@ jobs:
           PUSH_FIXES: ${{ steps.config.outputs.push_fixes }}
           # Whichever of the two stamp steps this run reached; they are mutually
           # exclusive, and a step that did not run contributes an empty string.
-          # This comment is the only one covering either path, so without it a
-          # rejected POST would leave "complete: no fixes needed" standing beside
-          # a shut merge gate.
+          # This comment is the only one covering either path, so without these a
+          # shut gate would leave "complete: no fixes needed" standing beside it.
+          #
+          # The full set the two skip comments read, not just post_failed: a
+          # rejected POST is one of five ways those stamp steps end with nothing
+          # stamped, and reporting one of the five would make the silence on the
+          # other four read as a clean finish.
+          #
+          # `||` is safe on every one of them. The two steps cannot both run, a
+          # skipped step contributes '', and the only non-empty falsy-looking
+          # value any of them takes is the literal `false` on success_stamped,
+          # which GitHub expressions treat as a truthy non-empty string, so it is
+          # never silently replaced by the other step's empty output.
+          MEMBERS_PENDING: ${{ steps.push-status.outputs.members_pending || steps.clean-status.outputs.members_pending }}
+          SUCCESS_STAMPED: ${{ steps.push-status.outputs.success_stamped || steps.clean-status.outputs.success_stamped }}
+          SUCCESS_LIVE: ${{ steps.push-status.outputs.success_live || steps.clean-status.outputs.success_live }}
+          READ_FAILED: ${{ steps.push-status.outputs.read_failed || steps.clean-status.outputs.read_failed }}
           POST_FAILED: ${{ steps.push-status.outputs.post_failed || steps.clean-status.outputs.post_failed }}
         run: |
           set -eu
@@ -1429,10 +1443,26 @@ jobs:
           fi
           # Appended rather than substituted: what the audit DID is still true
           # and still worth reporting, and the stamp is a separate fact about
-          # whether the gate opened.
+          # whether the gate opened. Same ladder, in the same order, as the two
+          # skip comments; only the leading clause differs.
+          #
+          # An EMPTY success_stamped means neither stamp step ran at all, which
+          # is the ordinary shape of advisory mode (push_fixes=false posts no
+          # status by design). So the no-stamp arm tests for the literal `false`
+          # the writer emits when it ran and declined, never for "not true":
+          # "not true" would attach a merge-gate warning to every advisory run,
+          # inventing a problem the mode does not have.
           stamp=""
-          if [ "${POST_FAILED:-}" = "true" ]; then
-            stamp=". But the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
+          if [ "${SUCCESS_LIVE:-}" != "true" ]; then
+            if [ "${POST_FAILED:-}" = "true" ]; then
+              stamp=". But the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
+            elif [ "${READ_FAILED:-}" = "true" ]; then
+              stamp=". But the current GAIA-Audit status could not be read, so the stamp step stood down having posted nothing and the gate's state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
+            elif [ -n "${MEMBERS_PENDING:-}" ]; then
+              stamp=". But this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, so GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
+            elif [ "${SUCCESS_STAMPED:-}" = "false" ]; then
+              stamp=". But NO GAIA-Audit commit status was stamped on HEAD, so the merge gate is NOT satisfied. Most likely .gaia/VERSION is missing/empty, the frontend digest could not be recomputed, or the audit was not proven clean; see the stamp step's log. Restore .gaia/VERSION, or run a local audit, to clear the gate"
+            fi
           fi
           bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
             "code-review-audit complete: ${mode}${stamp}"
