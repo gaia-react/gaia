@@ -293,9 +293,11 @@ echo \"\$grepped\""
 # The header names two shapes the scan reports that are not defects, and states
 # the repair for each. Both halves of that are claims about what this guard
 # does, and prose making such a claim decays silently while a test re-checks
-# itself, so each shape is pinned here: the hit it produces, and the edit that
-# actually clears it. Two rounds of this suite's own review turned on a repair
-# sentence that was wrong, which is what these four tests exist to prevent.
+# itself, so each shape is pinned here in three parts: the hit it produces, an
+# edit that does NOT clear it, and the one that does. Two rounds of this suite's
+# own review turned on a repair sentence that was wrong, and the non-clearing
+# fixture is the half that catches that particular wrongness, since a header
+# offering a hatch that does nothing is exactly what those rounds found.
 
 @test "flags a grep pattern quoted inside another tool's program text" {
   fixture_repo
@@ -305,10 +307,20 @@ echo \"\$grepped\""
   grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
 }
 
-# The stated repair, and the reason the pattern-in-a-variable hatch is NOT
-# stated for this shape: an assignment line still carrying the grep token keeps
-# the hit, so only the escaped letter's own line matters.
-@test "the awk shape clears only once the escape leaves the grep line" {
+# The non-clearing half, and the reason the header does NOT offer the
+# pattern-in-a-variable hatch for this shape: an assignment line still carrying
+# the grep token keeps the hit.
+@test "the awk shape still flags with its program hoisted into a variable" {
+  fixture_repo
+  fixture_script 'prog='"'"'/grep -E "a\tb"/ { print }'"'"'
+awk "$prog" f'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
+
+# The clearing half: only the escaped letter's own line matters.
+@test "the awk shape clears once the escape leaves the grep line" {
   fixture_repo
   fixture_script 'esc='"'"'a\tb'"'"'
 awk "/grep -E \"$esc\"/ { print }" f'
@@ -325,18 +337,20 @@ awk "/grep -E \"$esc\"/ { print }" f'
   grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
 }
 
-# The stated repair for that shape. Hoisting the PATTERN into a variable does
-# not clear it, because the escape is in the comment rather than the pattern;
-# the fixture pins both halves so the header cannot drift back to claiming one
-# hatch covers both shapes.
-@test "the trailing-comment shape clears by moving the comment, not the pattern" {
+# The non-clearing half for this shape: hoisting the PATTERN changes nothing,
+# because the escape is in the comment rather than the pattern.
+@test "the trailing-comment shape still flags with its pattern hoisted" {
   fixture_repo
   fixture_script 'RE="^x$"
 grep -qE "$RE" f  # tolerate \t here'
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
 
+# The clearing half: the comment has to move, and the full-line skip is what
+# then reaches it.
+@test "the trailing-comment shape clears once the comment moves to its own line" {
   fixture_repo
   fixture_script '# tolerate \t here
 grep -qE "^x$" f'
