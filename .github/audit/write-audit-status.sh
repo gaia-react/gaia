@@ -54,6 +54,14 @@
 # its cause in a step log, and on the two skip paths it also SUPPRESSED the
 # comment step, so the case most in need of an explanation produced none.
 #
+# THE HONEST LIMIT OF THAT SIGNAL: `post_failed` covers the SUCCESS post alone.
+# The pending POST below swallows its own rejection through a bare `|| true` and
+# publishes nothing, so on that path the comment steps still read a non-empty
+# `members_pending` and tell the author the gate is pending when no pending
+# status was ever posted. It fails closed and it self-heals -- running the
+# dispatched members locally posts a success -- so the gap is a wrong
+# explanation rather than a wrong gate, and closing it is a separate change.
+#
 # Two suites cover this script: one drives it directly for its argument
 # contract, and one executes all five call sites as the workflow runs them.
 
