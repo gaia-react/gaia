@@ -195,10 +195,18 @@ check_labels() {
 # under an existing key (`path=wiki/concepts/PR Merge Workflow.md`). A
 # space-intolerant pattern reports every such key as malformed, which on the
 # blocking `--pre-file` path would refuse a correct filing outright. The greedy
-# form plus the anchored ` line=<int> -->` tail is the same split
-# `.claude/skills/gaia/references/debt.md`'s own capture performs, so this gate
-# and the drain agree on what a key is by construction.
-readonly KEY_RE='^<!-- gaia-debt-key: v1 class=[^ ]+ path=.+ line=[0-9]+ -->$'
+# form plus the anchored ` line=<int> -->` tail performs the same split
+# `.claude/skills/gaia/references/debt.md`'s own capture performs.
+#
+# The `\r?` before the end anchor is the CRLF tolerance, and it is what keeps
+# that agreement true rather than merely intended. GitHub returns a body with
+# the line endings the client submitted, and a browser textarea submits CRLF, so
+# an issue created or edited in the web UI carries a trailing carriage return.
+# The drain's own capture is an unanchored substring match and accepts that line
+# happily; an end-anchored pattern without `\r?` does not, so the two would
+# disagree on exactly the bodies a human touched last, and `--sweep` would
+# report an exact key as malformed.
+readonly KEY_RE='^<!-- gaia-debt-key: v1 class=[^ ]+ path=.+ line=[0-9]+ -->\r?$'
 
 # A key CANDIDATE is any line that opens with the key comment, well-formed or
 # not. Counting candidates apart from well-formed keys is what lets a malformed
@@ -245,7 +253,10 @@ check_body() {
   # every increment is discarded when the loop ends. That failure is silent and
   # green, which is the one outcome a gate must never produce.
   local paths
-  paths="$(printf '%s\n' "$body" | sed -nE 's/^<!-- gaia-debt-key: v1 class=[^ ]+ path=(.+) line=[0-9]+ -->$/\1/p')"
+  # Same CRLF tolerance as KEY_RE, for the same reason. Without it a web-edited
+  # body's key extracts no path at all, so the repo-relative test below silently
+  # examines nothing.
+  paths="$(printf '%s\n' "$body" | sed -nE 's/^<!-- gaia-debt-key: v1 class=[^ ]+ path=(.+) line=[0-9]+ -->\r?$/\1/p')"
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     case "$path" in
@@ -274,7 +285,11 @@ run_pre_file() {
   # `--label a --label b` argv most naturally hands them over. Empty entries
   # are dropped rather than counted as a label named "".
   labels="$(printf '%s' "$labels_csv" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  body="$(cat "$body_file")"
+  # `|| fatal` for the same reason the two gh reads below carry one: a bare
+  # assignment under `set -e` propagates `cat`'s exit 1, which this script
+  # documents as "findings were reported", so an unreadable file that passed the
+  # `[ -f ]` test above would tell the caller to fix findings it never printed.
+  body="$(cat "$body_file")" || fatal "could not read the body file: $body_file"
 
   check_labels "pre-file" "$labels"
   check_body "pre-file" "$body"

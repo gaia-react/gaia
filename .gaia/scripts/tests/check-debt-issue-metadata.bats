@@ -2,12 +2,19 @@
 # Tests for .gaia/scripts/check-debt-issue-metadata.sh, the filing-time gate over
 # a tech-debt issue's label set and dedup key.
 #
-# Every test here drives `--pre-file`, the blocking mode, which reads no network
-# and needs no `gh`. The two advisory modes (`--issue`, `--sweep`) share all of
-# their checking with `--pre-file` through `check_labels` / `check_body`, so
-# covering the offline mode covers the logic; what the gh modes add on top is
-# transport plus the corpus-calibrated anachronism check, which needs a live
-# tracker to be worth asserting against and is verified by hand instead.
+# Most tests drive `--pre-file`, the blocking mode, which reads no network and
+# needs no `gh`. The two advisory modes (`--issue`, `--sweep`) share all of their
+# checking with `--pre-file` through `check_labels` / `check_body`, so the
+# offline tests cover that logic once for all three.
+#
+# What the gh modes add on top is transport plus the corpus-calibrated
+# anachronism check, and that check is the script's only logic no `--pre-file`
+# test reaches. It is covered here through a `gh` stub placed on PATH rather
+# than against the real tracker: a stub makes the whole surface hermetic and
+# deterministic, including the arms a live tracker cannot be made to exhibit on
+# demand (an empty backlog, a corpus with no provenance at all, a `gh` that
+# fails). Asserting the anachronism boundary against a live backlog would also
+# be asserting against data that changes under the test.
 #
 # The suite's job is to prove each guard can FAIL. A gate is only worth its
 # context if the red case is demonstrated: the green case is already green
@@ -322,4 +329,137 @@ refute_code() {
 @test "--pre-file with no --labels exits 2 rather than passing an empty label set" {
   run bash "$CHECK" --pre-file --body-file "$BODY"
   [ "$status" -eq 2 ]
+}
+
+# ---------------------------------------------------------------------------
+# The two advisory gh modes, driven through a stub
+#
+# `stub_gh <corpus-json> [view-json]` puts a `gh` on PATH ahead of any real one
+# and makes it answer `issue list` with <corpus-json> and `issue view` with
+# [view-json]. `stub_gh_failing` makes every call exit non-zero, which is how
+# the environment-error arm is reached without breaking anyone's auth.
+# ---------------------------------------------------------------------------
+
+stub_gh() {
+  mkdir -p "$TMP/bin"
+  printf '%s\n' "$1" >"$TMP/corpus.json"
+  printf '%s\n' "${2:-[]}" >"$TMP/view.json"
+  cat >"$TMP/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+# $1 is `issue`, $2 is the subcommand.
+case "$2" in
+  list) cat "$STUB_DIR/corpus.json" ;;
+  view) cat "$STUB_DIR/view.json" ;;
+  *) exit 1 ;;
+esac
+EOF
+  chmod +x "$TMP/bin/gh"
+  export STUB_DIR="$TMP"
+  export PATH="$TMP/bin:$PATH"
+}
+
+stub_gh_failing() {
+  mkdir -p "$TMP/bin"
+  printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/gh"
+  chmod +x "$TMP/bin/gh"
+  export PATH="$TMP/bin:$PATH"
+}
+
+# One issue carrying provenance, filed early; one carrying the rollout marker,
+# filed later. The second is the anachronism.
+CORPUS_ANACHRONISM='[
+  {"number":100,"createdAt":"2026-08-01T00:00:00Z",
+   "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"}],
+   "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\n<!-- gaia-debt-origin: branch=main -->"},
+  {"number":200,"createdAt":"2026-08-09T00:00:00Z",
+   "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"},{"name":"debt:pre-provenance"}],
+   "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"}
+]'
+
+@test "RED: --sweep flags the rollout marker on an issue filed after provenance began" {
+  stub_gh "$CORPUS_ANACHRONISM"
+  run bash "$CHECK" --sweep
+  [ "$status" -eq 1 ]
+  assert_code "pre-provenance-anachronism"
+  grep -qF -- "#200" <<<"$output" || return 1
+  # The earlier issue legitimately predates nothing and must not be flagged.
+  grep -qF -- "#100" <<<"$output" && return 1
+  true
+}
+
+@test "--sweep leaves the rollout marker alone on an issue filed before provenance began" {
+  # Same corpus with the dates swapped: the marked issue is now the older one,
+  # which is exactly the cohort the marker exists to name.
+  stub_gh '[
+    {"number":100,"createdAt":"2026-08-09T00:00:00Z",
+     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"}],
+     "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\n<!-- gaia-debt-origin: branch=main -->"},
+    {"number":200,"createdAt":"2026-08-01T00:00:00Z",
+     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"},{"name":"debt:pre-provenance"}],
+     "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"}
+  ]'
+  run bash "$CHECK" --sweep
+  [ "$status" -eq 0 ]
+}
+
+@test "--sweep disables the anachronism check when no issue carries provenance" {
+  # No boundary exists, so nothing can be on the wrong side of it. The marker
+  # must not be flagged on a repo that has not started writing provenance.
+  stub_gh '[
+    {"number":200,"createdAt":"2026-08-09T00:00:00Z",
+     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"},{"name":"debt:pre-provenance"}],
+     "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"}
+  ]'
+  run bash "$CHECK" --sweep
+  [ "$status" -eq 0 ]
+}
+
+@test "--sweep reports an empty backlog rather than reporting a clean check" {
+  stub_gh '[]'
+  run bash "$CHECK" --sweep
+  [ "$status" -eq 0 ]
+  grep -qF -- "nothing was checked" <<<"$output" || return 1
+}
+
+@test "--sweep applies the shared label and body checks to a live-shaped corpus" {
+  stub_gh '[
+    {"number":300,"createdAt":"2026-08-09T00:00:00Z",
+     "labels":[{"name":"tech-debt"},{"name":"severity:important"}],
+     "body":"no key here"}
+  ]'
+  run bash "$CHECK" --sweep
+  [ "$status" -eq 1 ]
+  assert_code "surface-count"
+  assert_code "missing-dedup-key"
+}
+
+@test "a CRLF body from the web UI is not reported as a malformed key" {
+  # GitHub returns the line endings the client submitted, and a browser textarea
+  # submits CRLF, so an issue last edited in the web UI carries a trailing \r.
+  # The drain's own capture is unanchored and accepts it; this gate must too.
+  stub_gh '[
+    {"number":400,"createdAt":"2026-08-09T00:00:00Z",
+     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"}],
+     "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\r\nsome prose\r\n"}
+  ]'
+  run bash "$CHECK" --sweep
+  [ "$status" -eq 0 ]
+}
+
+@test "a gh failure exits 2, not the findings status" {
+  stub_gh_failing
+  run bash "$CHECK" --sweep
+  [ "$status" -eq 2 ]
+}
+
+@test "--issue reports on a single issue through the same shared checks" {
+  stub_gh "$CORPUS_ANACHRONISM" '{
+    "number":200,"createdAt":"2026-08-09T00:00:00Z",
+    "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"debt:pre-provenance"}],
+    "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"
+  }'
+  run bash "$CHECK" --issue 200
+  [ "$status" -eq 1 ]
+  assert_code "surface-count"
+  assert_code "pre-provenance-anachronism"
 }
