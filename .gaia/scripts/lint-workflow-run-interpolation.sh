@@ -138,14 +138,22 @@ fi
 #                               than the `run` key. Blank lines stay in the body.
 #   inline        `run: cmd` -- the value is on the key's own line.
 #
-# Known blind spots, stated rather than discovered later. Both are FALSE
+# Known blind spots, stated rather than discovered later. All three are FALSE
 # NEGATIVES bounded by how rare the shape is in real workflows:
 #   - A multi-line PLAIN (unquoted, no `|`/`>`) scalar continuing onto following
 #     lines is read as inline, so only its first line is scanned.
 #   - A `run:` written as a quoted flow scalar spanning lines is likewise read
 #     as inline.
-# Neither shape appears in this repository, and `actionlint` plus review cover
-# the authoring of new steps; the block form is what every step here uses.
+#   - A partial include sitting INSIDE a `run:` body ends the scan there, per
+#     the exclusion below, so the rest of that body goes unread. Mustache emits
+#     a standalone partial at the tag's own indentation, so a column-0 include
+#     can splice deeper-indented lines back into the same rendered block
+#     scalar. Scanning the partial's own file does not recover them: a fragment
+#     holding only body lines carries no `run:` key, so read standalone it has
+#     no block for them to be inside. Every include in this tree sits at step
+#     or document level rather than inside a body, which is what bounds this.
+# None of the three appears in this repository, and `actionlint` plus review
+# cover the authoring of new steps; the block form is what every step here uses.
 scan_file() {
   local f="$1"
   awk -v file="$f" '

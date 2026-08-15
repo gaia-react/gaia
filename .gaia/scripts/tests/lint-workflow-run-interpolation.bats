@@ -236,8 +236,7 @@ jobs:
 # at the first `uses:` hop would enforce the class only on the callers.
 
 @test "flags an expression in a composite action run body" {
-  TMP="$(mktemp -d -t run-interp-lint-XXXXXX)"
-  git -C "$TMP" init -q .
+  fixture_repo
   mkdir -p "$TMP/.github/actions/thing"
   printf '%s\n' 'runs:
   using: composite
@@ -395,8 +394,7 @@ jobs:
 }
 
 @test "errors rather than greening when nothing is scanned" {
-  TMP="$(mktemp -d -t run-interp-lint-XXXXXX)"
-  git -C "$TMP" init -q .
+  fixture_repo
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- "nothing was scanned" <<<"$output"
