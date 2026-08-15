@@ -358,6 +358,25 @@ If the marker is withheld, surface:
 
 > Audit marker NOT written. Address findings (or explicitly acknowledge the tradeoff), commit, and re-invoke this agent on the new HEAD.
 
+## Holistic class assignment
+
+The holistic bucket names language-neutral root causes, so each class is assigned from the finding itself rather than from the file it sits in: a `.bats` suite, a hook, a gate script, a JSON policy file, and a rule page can all carry the same one. Assign the class whose criterion a finding matches unambiguously, and when none does, `holistic/unclassified` is the correct record and the nearest-looking class is not.
+
+- `holistic/hollow-assertion`: a check's match region admits a state the construct it names forbids, so you can point at an edit that breaks the construct and leaves the check green. Not a check that is absent, skipped, or deleted, where nothing claims the construct at all.
+- `holistic/uncoupled-restatement`: prose states a contract, mechanism, scope, or guarantee carrying a stable greppable identifier (a function name, a flag, an exit code, a marker string, a path glob), and the implementation behind that identifier does something else, so a reader who acts on the sentence acts wrongly. Not a disagreement whose referent greps to nothing, which enumerates no set of restating sites and therefore selects no remedy.
+- `holistic/stale-figure`: a bare count, tally, or cardinality in a comment, a `@test` name, a docblock, or a changelog line disagrees with the number of things it counts, which you settle by counting them. Not a claim about behaviour or scope that merely contains a number, which is an uncoupled restatement.
+- `holistic/unarmed-guard`: a correct check's arming condition (its glob, manifest entry, changed-file list, or trigger path) covers less than the surface the rule governs, so the diff that creates the obligation is the one that skips the check. Not a check that runs and decides wrongly, where the arming reaches the surface and the logic is the defect.
+- `holistic/fail-open-discovery`: a scanner's own discovery step (a `find`, a glob, a `git diff --name-only`) drops an input from the set it walks, and the scan then reports clean over input it never read. Not a check that ran and had its verdict dropped, which is the swallowed error.
+- `holistic/partial-cause-reporting`: a diagnostic or status message names one cause of the condition it reports and stays silent on a sibling cause that reaches the same state, so an operator repairs the wrong thing. Not a check that detects only one of those causes, where the gap is in what is examined rather than in what is said.
+
+Three neighbour pairs drift under load, and each is settled by one sentence rather than by re-reasoning it per finding. The third carries the most weight on this surface: a discarded `$?` and an input that never entered a scanned set read alike in a shell script and route to different classes.
+
+A check that cannot fail is a hollow assertion; a sentence a reader would act wrongly on is an uncoupled restatement.
+
+A bare count or cardinality is a stale figure; any other disagreeing claim is an uncoupled restatement.
+
+A discarded exit status is the already-seeded swallowed error; an element that never entered the scanned set is a fail-open discovery.
+
 ## Findings sidecar (local run record)
 
 The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments for a machine-readable findings block; CI never dispatches you, so nothing you find has ever reached that record before. Close that gap yourself, and give a withheld marker something to brief: on **every LOCAL pass**, clean or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set); it never applies there, since CI never runs you.
@@ -380,7 +399,7 @@ FINDINGS
 
 Pass the same `KEY_BASE` you already resolved at the start of the run (see "Remit and self-skip" above), never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-maintainer-shell.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable, so an unresolvable key skips the write rather than inventing a fallback path no reader looks under. `--review-base`, `--base-reason`, and `--anchor-tree` carry the per-member decision record (the review base, the resolver's reason token, and the anchoring clearance's recorded tree) into the sidecar's `review_base` object; pass all three from the same single resolver invocation "Remit and self-skip" already made.
 
-**Stage nothing: the array goes in through the quoted heredoc above, never through a file.** Members dispatched in one parallel wave share a session scratchpad, so any fixed staging filename is a filename every member picks: one member's array reaches another member's published sidecar under that member's name, and a file left by an earlier round republishes as a fresh report. Neither is visible downstream, because the sidecar is your report of record and the no-op classifier reads it to tell a real pass from a lost one. The audit key does not rotate between rounds, so naming the staging file after it would not close the second case. Keep the delimiter quoted (`<<'FINDINGS'`): that is what holds a `$` or a backtick inside your finding text literal.
+**Stage nothing: the array goes in through the quoted heredoc above, never through a file.** Members dispatched in one parallel wave share a session scratchpad, so any fixed staging filename is a filename every member picks: one member's array reaches another member's published sidecar under that member's name, and a file left by an earlier round republishes as a fresh report. Neither is visible downstream, because the sidecar is your report of record and the no-op classifier reads it to tell a real pass from a lost one. The audit key is `<base-sha>.<branch-slug>` (`.gaia/scripts/audit-key-lib.sh`) over a shared base that advances only when a clean round stamps its trailer, so naming the staging file after it closes neither case: every member co-dispatched in one wave resolves that same shared base, and therefore the same key, so a key-named file is still a filename every member picks, and a round that withholds a marker advances nothing, so the re-dispatch that follows recomputes the key it just used. Keep the delimiter quoted (`<<'FINDINGS'`): that is what holds a `$` or a backtick inside your finding text literal.
 
 Shape (one entry per finding; the writer rejects the write and names the offending index if any required field is missing):
 

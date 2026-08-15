@@ -16,8 +16,10 @@
 # stale staging file holding another member's findings.
 #
 # The fix is stdin, not a better filename. A name derived from the audit key
-# closes the cross-member collision but not the stale-round one, because the
-# key is a base sha plus a branch and rotates between neither. Reading the
+# closes neither case, because the key is a base sha plus a branch slug over a
+# shared base every co-dispatched member resolves alike, and that base advances
+# only when a clean round stamps its trailer, so the re-dispatch after a
+# withheld round recomputes the key it just used. Reading the
 # array from stdin removes the staging file, so there is no name to collide on
 # and nothing to leave behind.
 #

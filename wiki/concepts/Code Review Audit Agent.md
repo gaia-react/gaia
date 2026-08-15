@@ -105,7 +105,13 @@ To swap a library: remove its extension file, add one for the replacement. The m
 
 ## Finding emission
 
-`finding_class` follows a per-bucket convention: oracle buckets use the tool's own id prefixed (`react-doctor/...`, `axe/...`, `knip/...`, `cve/...`); holistic and rule-subagent buckets draw from a constrained vocabulary seeded in the agent definition. A finding with no stable class is omitted from the findings block but may still appear in the prose report.
+`finding_class` follows a per-bucket convention: oracle buckets use the tool's own id prefixed (`react-doctor/...`, `axe/...`, `knip/...`, `cve/...`); holistic and rule-subagent buckets draw from a constrained vocabulary seeded in the `finding_class` schema, not in the agent definition. The frontend member carries a mirror of it; the schema is authoritative.
+
+<!-- gaia:maintainer-only:start -->
+The schema lives at `.gaia/cli/src/schemas/finding-class.ts`.
+<!-- gaia:maintainer-only:end -->
+
+A finding with no stable class is not omitted: it is stamped `holistic/unclassified` and included, and it surfaces as the distinct unclassified recurrence signal.
 
 The CI workflow appends structured findings as an HTML-comment block at the end of its PR comment (framed by `<!-- gaia-harden:findings:start -->` / `<!-- gaia-harden:findings:end -->` sentinel lines). The cross-machine tally in [[Policy-Memory Loop]] reads this block via `gh` when computing recurring-finding candidates.
 

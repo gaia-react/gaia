@@ -207,7 +207,10 @@ When `unclassified` is non-null, present it to the engineer as a distinct signal
 
 - It is NEVER placed in the draftable candidate set. `/gaia-harden` NEVER drafts a path-scoped rule, a deterministic-check sketch, a skill scaffold, or any other artifact for it.
 - It carries no approve / decline / defer / redirect action; there is nothing to ask the engineer to disposition here.
-- It has no decline: it re-surfaces on every tally until the maintainer seeds a `finding_class` that reclassifies the cluster's findings, or the underlying findings age out of the rolling 90-day window.
+- Seeding a class does **not** reclassify the cluster's findings. The tally buckets each finding on the literal class string its pull request recorded, so a finding written down as classless stays classless until it ages out of the window. Seeding reaches forward only, to what a member assigns next.
+- Because of that, the signal carries a **suppression**, recorded the way a decline is: `.gaia/cli/gaia harden-ledger record --finding-class holistic/unclassified --pr-count <distinct_pr_count>`, passing the count the signal currently carries. The signal falls silent, and it returns once the window's distinct-pull-request count rises at least 3 above the recorded one, measured against the stored count rather than against a window that decays underneath it.
+- The suppression is machine-local: the ledger is gitignored and per-checkout, so it silences the nudge for the maintainer who records it while the change it discharges is committed and shared. Every other clone keeps seeing the nudge until the cluster ages out.
+- The nudge is rendered by the statusline from a cached count, so the discharge is only observable once that cache refreshes.
 
 Then proceed to `## Publish approved changes (end of run)`, which publishes only what the candidate loop approved (this section authors nothing, so it never triggers a publish on its own).
 
@@ -304,4 +307,4 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - Recommend exactly one form per candidate, with rationale; check edit-vs-new first; bias to the lowest-context-weight form. Never reflexively author a prose rule.
 - Factor the efficacy lens (Axis 3) into the recommendation and rationale: a recurring finding proves the problem, not the fix. When the recommended form is prose and no cheap evidence shows it would change behavior, surface that as a defer/decline signal for the human, never as an auto-decline.
 - This loop keys only on `finding_class` recurrence from the PR window.
-- The `unclassified` signal is never a draftable candidate and is never auto-drafted: it carries no approve/decline/defer/redirect action and authors no artifact. It re-surfaces every tally until a class is seeded or its findings age out of the 90-day window.
+- The `unclassified` signal is never a draftable candidate and is never auto-drafted: it carries no approve/decline/defer/redirect action and authors no artifact. It carries a suppression recorded against the classless fallback, and it re-surfaces once the window's distinct-pull-request count rises at least 3 above the count it was suppressed at, or its findings age out of the 90-day window. Relaxing this guardrail is deliberate: seeding provably cannot shrink the cluster it answers, so without a suppression a maintainer who does exactly the right thing is nagged for it for up to ninety days. No later change widens this further without the same justification.

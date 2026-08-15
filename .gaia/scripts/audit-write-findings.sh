@@ -56,11 +56,14 @@
 #   so the acting tree's own branch is the discriminator.
 #
 # Per-finding shape (every field REQUIRED unless noted)
-#   finding_class  non-empty string. The closed holistic vocabulary the
-#                  Code Audit Team members enumerate (see
-#                  .claude/agents/code-audit-frontend.md, "Per-bucket
-#                  finding_class convention"), or `holistic/unclassified`
-#                  when no seeded class fits.
+#   finding_class  non-empty string. The closed vocabulary the finding_class
+#                  schema seeds across its four closed buckets (holistic,
+#                  rule, workflow, prose) plus the open oracle-tool id space
+#                  (react-doctor/, axe/, knip/, cve/), or
+#                  `holistic/unclassified` when no seeded class fits.
+# gaia:maintainer-only:start
+#   The schema lives at .gaia/cli/src/schemas/finding-class.ts.
+# gaia:maintainer-only:end
 #   severity       one of error | warning | suggestion (Critical -> error,
 #                  Important -> warning, Suggestion -> suggestion).
 #   path           repo-relative POSIX path of the defect.
