@@ -246,14 +246,23 @@ grep -Eq \"\$pattern\" < <(sed -E 's/\t/ /g' input.txt)"
 }
 
 # -F has no regex at all, -P is PCRE where every escape here is defined and
-# identical, and -G is a BRE, a separate class this gate does not claim. Each
-# also wins over an earlier -E, because grep honours the last matcher option.
+# identical, and -G is a BRE, a separate class this gate does not claim.
+#
+# The last two fixtures are a CONFLICTING bundle, pinned in both orders because
+# the platforms disagree on it and the gate must not depend on that
+# disagreement: BSD grep honours the last matcher letter, making -FE extended
+# and -EF fixed, while GNU grep refuses either order with exit 2 and
+# `conflicting matchers specified`. So no escape inside one can silently
+# diverge, which is why the gate reads both as not-extended rather than
+# resolving them.
 @test "greens on a matcher other than extended regex" {
   fixture_repo
   fixture_script "grep -qF 'a\tb' input.txt
 grep -qP 'a\tb' input.txt
 grep -q 'a\tb' input.txt
-grep -EF 'a\tb' input.txt"
+grep -qG 'a\tb' input.txt
+grep -EF 'a\tb' input.txt
+grep -FE 'a\tb' input.txt"
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "clean" <<<"$output"

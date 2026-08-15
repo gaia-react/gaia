@@ -279,11 +279,22 @@ scan_file() {
     # `-E --color=always`). The walk stops at the first token that is not an
     # option, which is where the pattern begins.
     #
-    # `-F`, `-P`, and `-G` set a DIFFERENT matcher, and each one wins over an
-    # earlier `-E` because grep honours the last matcher option given. In all
-    # three the class does not apply: `-F` has no regex at all, `-P` is PCRE
-    # where every escape here is defined and identical, and `-G` is a BRE, whose
-    # backslash rules are a separate class this gate does not claim.
+    # `-F`, `-P`, and `-G` select a DIFFERENT matcher, and any of them anywhere
+    # in the bundle clears extended mode here. In all three the class does not
+    # apply: `-F` has no regex at all, `-P` is PCRE where every escape here is
+    # defined and identical, and `-G` is a BRE, whose backslash rules are a
+    # separate class this gate does not claim.
+    #
+    # A bundle naming TWO matchers (`-EF`, `-FE`) is therefore read as
+    # not-extended rather than resolved, and that is deliberate. The two
+    # platforms disagree about what such a call even means, and neither runs it
+    # as a portable extended match: BSD grep honours the LAST matcher letter, so
+    # `-FE` is extended there while `-EF` is fixed, and GNU grep refuses the
+    # pair outright, `conflicting matchers specified` and exit 2, in either
+    # order. A call like that is already broken on GNU, loudly and before the
+    # pattern is ever read, which is a different failure from the silent
+    # inversion this gate exists for. Resolving the bundle instead would flag an
+    # escape inside a command that cannot run on the platform the flag names.
     function ere_mode(w, isegrep,   nt, t, tok, o, cl, last, ere, skipnext) {
       ere = isegrep
       skipnext = 0
