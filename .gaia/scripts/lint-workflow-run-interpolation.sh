@@ -74,11 +74,11 @@
 #   - The mustache placeholders (`{{tool_id}}`) that appear inside these bodies
 #     are NOT confusable with an Actions expression: the detector matches the
 #     literal `${{`, and a mustache tag carries no `$`.
-#   - A mustache SECTION tag (`{{#x}}`, `{{^x}}`, `{{/x}}`) fences part of a
-#     body from column 0, which read by indentation alone is a dedent out of the
-#     block. That shape does not occur in a real workflow, so it arrives with
-#     this surface rather than pre-existing it, and left unhandled it would end
-#     the scan early and leave the rest of the body unread while the gate still
+#   - A SECTION tag (`{{#x}}`, `{{^x}}`, `{{/x}}`) fences part of a body from
+#     column 0, which read by indentation alone is a dedent out of the block.
+#     That shape does not occur in a real workflow, so it arrives with this
+#     surface rather than pre-existing it, and left unhandled it would end the
+#     scan early and leave the rest of the body unread while the gate still
 #     printed clean. The in-body test below treats a section tag as
 #     continuation for that reason; see the comment there for why an include is
 #     deliberately excluded from the same treatment.
@@ -145,13 +145,15 @@ fi
 #   - A `run:` written as a quoted flow scalar spanning lines is likewise read
 #     as inline.
 #   - A partial include sitting INSIDE a `run:` body ends the scan there, per
-#     the exclusion below, so the rest of that body goes unread. Mustache emits
-#     a standalone partial at the tag's own indentation, so a column-0 include
-#     can splice deeper-indented lines back into the same rendered block
-#     scalar. Scanning the partial's own file does not recover them: a fragment
-#     holding only body lines carries no `run:` key, so read standalone it has
-#     no block for them to be inside. Every include in this tree sits at step
-#     or document level rather than inside a body, which is what bounds this.
+#     the exclusion below, so the rest of that body goes unread. The resolver
+#     replaces the include token with the partial's bytes verbatim and applies
+#     no indentation of its own, so a column-0 include splices the fragment's
+#     authored, deeper indentation straight back into the same rendered block
+#     scalar. Scanning the partial's own file does not recover those lines: a
+#     fragment holding only body lines carries no `run:` key, so read
+#     standalone it has no block for them to be inside. Every include in this
+#     tree sits at step or document level rather than inside a body, which is
+#     what bounds this.
 # None of the three appears in this repository, and `actionlint` plus review
 # cover the authoring of new steps; the block form is what every step here uses.
 scan_file() {
@@ -164,14 +166,16 @@ scan_file() {
       if (inrun) {
         # A blank line belongs to the block scalar rather than ending it.
         if ($0 ~ /^[[:space:]]*$/) next
-        # A mustache SECTION tag (`{{#x}}`, `{{^x}}`, `{{/x}}`) is written at
-        # column 0 in these templates so that the renderer, which deletes a
-        # standalone tag line whole, leaves the surrounding body contiguous and
-        # correctly indented. Read by column alone it is a dedent to column 1,
-        # which would end the block and leave every remaining body line
-        # unscanned while the gate still printed clean. Treat it as
-        # continuation, and scan the line itself, since a tag may carry body
-        # content after it on the same line.
+        # A SECTION tag (`{{#x}}`, `{{^x}}`, `{{/x}}`) is written at column 0 in
+        # these templates. The renderer replaces a `{{#x}}`...`{{/x}}` pair with
+        # the text between the tags, consuming the tag text but not the newline
+        # that ended its line, so each tag renders as a BLANK line rather than
+        # vanishing, and a blank line belongs to the block scalar rather than
+        # ending it. In the template, though, the tag is a line at column 1,
+        # which read by column alone is a dedent that would end the block and
+        # leave every remaining body line unscanned while the gate still printed
+        # clean. Treat it as continuation, and scan the line itself, since a tag
+        # may carry body content after it on the same line.
         #
         # The partial-include form `{{> x }}` is deliberately NOT continuation.
         # An include splices a whole document region rather than fencing lines
