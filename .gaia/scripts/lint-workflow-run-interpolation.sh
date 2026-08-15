@@ -43,23 +43,52 @@
 # class: substitution happens before bash parses, so a value containing a
 # newline ends the comment and the remainder of the value begins a new command.
 #
-# Scan surface: `.github/workflows/` and the composite actions under
-# `.github/actions/*/action.yml`. A composite action's `run:` steps are the same
-# shell-by-another-name as a workflow's and carry the identical hazard, and the
-# workflows here invoke them, so scanning the callers but not the callees would
-# leave the class enforced only up to the first `uses:` hop. Every composite
-# action in this tree is at zero today, so this is coverage held rather than
-# instances repaired.
+# Scan surface: `.github/workflows/`, the composite actions under
+# `.github/actions/*/action.yml`, and the adopter workflow templates under
+# .gaia/cli/src/automation/templates/workflows/ (including its `partials/`). A
+# composite action's `run:` steps are the same shell-by-another-name as a
+# workflow's and carry the identical hazard, and the workflows here invoke them,
+# so scanning the callers but not the callees would leave the class enforced
+# only up to the first `uses:` hop. Every composite action in this tree is at
+# zero today, so that half is coverage held rather than instances repaired.
 #
-# The adopter workflow TEMPLATES under
-# .gaia/cli/src/automation/templates/workflows/ carry instances of this same
-# textual class and are deliberately OUT of this gate's declared surface, not
-# merely unreached by it: they are a separate distribution surface that
-# regenerates through `bundle:adopter`, their expressions are GitHub-controlled
-# context values rather than step outputs, and they are tracked as their own
-# tech-debt item. The distinction that matters is that this gate's declared
-# surface is at zero and stays at zero; it does not claim the templates and then
-# leave live instances in them unreached.
+# The templates render into an ADOPTER's own CI, so the invariant an
+# un-indirected expression rests on is inherited by every adopter clone and by
+# every future edit to a template, where neither this repo's review nor the
+# adopter's can see it. That is the same reason the class is a gate rather than
+# a review habit, applied one distribution hop further out. The expressions
+# there are GitHub-controlled context values rather than step outputs, which is
+# a weaker risk profile, and it is deliberately not adjudicated here for the
+# same reason the producer of any other expression is not: an exemption list for
+# "safe" producers reintroduces the case-by-case judgment whose absence of
+# enforcement is the defect.
+#
+# Three properties of the template surface the scan depends on:
+#   - `.tmpl`, not `.yml`, hence the separate globs below.
+#   - A `partials/` file is a FRAGMENT that is not parseable as a standalone
+#     workflow: its indentation context is supplied by whatever includes it, and
+#     it may open mid-step. The `run:`-body locator holds anyway because it is
+#     purely relative -- it compares each body line's indentation against the
+#     column of the `run:` key it just read, never against an absolute depth or
+#     a document structure -- so a fragment scans exactly as a whole file does.
+#   - The mustache placeholders (`{{tool_id}}`) that appear inside these bodies
+#     are NOT confusable with an Actions expression: the detector matches the
+#     literal `${{`, and a mustache tag carries no `$`.
+#   - A SECTION tag (`{{#x}}`, `{{^x}}`, `{{/x}}`) fences part of a body from
+#     column 0, which read by indentation alone is a dedent out of the block.
+#     That shape does not occur in a real workflow, so it arrives with this
+#     surface rather than pre-existing it, and left unhandled it would end the
+#     scan early and leave the rest of the body unread while the gate still
+#     printed clean. The in-body test below treats a section tag as
+#     continuation for that reason; see the comment there for why an include is
+#     deliberately excluded from the same treatment.
+#
+# `.gaia/cli/templates/workflows/` is a build artifact copied from `src/` by
+# `bundle:adopter` and is deliberately NOT scanned. Scanning both would report
+# every hit twice, and scanning the artifact alone would name a file the repair
+# must not hand-edit. Artifact-equals-source is held by
+# `audit-template-dogfood.test.ts` and `verify-cli-bundle-fresh.sh`, so a repair
+# to the source that never regenerates fails there rather than here.
 #
 # Sibling gate: .gaia/scripts/lint-git-path-quoting.sh, which scans the same
 # workflow YAML for a different class. The two are kept separate because their
@@ -72,12 +101,17 @@ set -euo pipefail
 # is never scanned; the same discovery .gaia/tests/shell-lint.sh uses. Collected
 # with a read loop rather than `mapfile`, which is bash 4+, because these
 # scripts run on stock macOS /bin/bash (3.2.57).
+#
+# A git pathspec glob is matched without FNM_PATHNAME, so its `*` crosses `/`.
+# The one templates glob therefore reaches `partials/` and any directory added
+# under it later, which is why there is no second glob for the fragments.
 scan_files=()
 while IFS= read -r -d '' f; do
   scan_files+=("$f")
 done < <(git -c core.quotepath=false ls-files -z \
                       '.github/workflows/*.yml' '.github/workflows/*.yaml' \
                       '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
+                      '.gaia/cli/src/automation/templates/workflows/*.tmpl' \
            | LC_ALL=C sort -z)
 
 # An empty scan set is a hard error, never a clean tree. The loop above reads
@@ -88,7 +122,7 @@ done < <(git -c core.quotepath=false ls-files -z \
 # failure gates exist to stop. Every real tree carries tracked workflows, so an
 # empty result means the discovery is wrong rather than the tree.
 if [ "${#scan_files[@]}" -eq 0 ]; then
-  echo "lint-workflow-run-interpolation: ERROR: no tracked workflows or composite actions matched the scan surface; nothing was scanned" >&2
+  echo "lint-workflow-run-interpolation: ERROR: no tracked workflows, composite actions, or workflow templates matched the scan surface; nothing was scanned" >&2
   exit 1
 fi
 
@@ -104,14 +138,24 @@ fi
 #                               than the `run` key. Blank lines stay in the body.
 #   inline        `run: cmd` -- the value is on the key's own line.
 #
-# Known blind spots, stated rather than discovered later. Both are FALSE
+# Known blind spots, stated rather than discovered later. All three are FALSE
 # NEGATIVES bounded by how rare the shape is in real workflows:
 #   - A multi-line PLAIN (unquoted, no `|`/`>`) scalar continuing onto following
 #     lines is read as inline, so only its first line is scanned.
 #   - A `run:` written as a quoted flow scalar spanning lines is likewise read
 #     as inline.
-# Neither shape appears in this repository, and `actionlint` plus review cover
-# the authoring of new steps; the block form is what every step here uses.
+#   - A partial include sitting INSIDE a `run:` body ends the scan there, per
+#     the exclusion below, so the rest of that body goes unread. The resolver
+#     replaces the include token with the partial's bytes verbatim and applies
+#     no indentation of its own, so a column-0 include splices the fragment's
+#     authored, deeper indentation straight back into the same rendered block
+#     scalar. Scanning the partial's own file does not recover those lines: a
+#     fragment holding only body lines carries no `run:` key, so read
+#     standalone it has no block for them to be inside. Every include in this
+#     tree sits at step or document level rather than inside a body, which is
+#     what bounds this.
+# None of the three appears in this repository, and `actionlint` plus review
+# cover the authoring of new steps; the block form is what every step here uses.
 scan_file() {
   local f="$1"
   awk -v file="$f" '
@@ -122,6 +166,38 @@ scan_file() {
       if (inrun) {
         # A blank line belongs to the block scalar rather than ending it.
         if ($0 ~ /^[[:space:]]*$/) next
+        # A SECTION tag (`{{#x}}`, `{{^x}}`, `{{/x}}`) is written at column 0 in
+        # these templates. The renderer replaces a `{{#x}}`...`{{/x}}` pair with
+        # the text between the tags, consuming the tag text but not the newline
+        # that ended its line, so each tag renders as a BLANK line rather than
+        # vanishing, and a blank line belongs to the block scalar rather than
+        # ending it. In the template, though, the tag is a line at column 1,
+        # which read by column alone is a dedent that would end the block and
+        # leave every remaining body line unscanned while the gate still printed
+        # clean. Treat it as continuation, and scan the line itself, since a tag
+        # may carry body content after it on the same line.
+        #
+        # The partial-include form `{{> x }}` is deliberately NOT continuation.
+        # An include splices a whole document region rather than fencing lines
+        # of this body, so latching across one would carry `inrun` into the
+        # `matrix:` and `env:` mappings that follow an include in these
+        # templates and false-flag the very `env:` form this gate prescribes.
+        # An include therefore falls through to the column test below and ends
+        # the block, which is what it does today.
+        #
+        # A bare `{{x}}` interpolation at column 0 is likewise not continuation:
+        # it renders to text at column 0, which would terminate the block scalar
+        # in the rendered YAML too, so treating it as a dedent matches what
+        # Actions would see.
+        tag = $0
+        sub(/^[[:space:]]+/, "", tag)
+        if (substr(tag, 1, 2) == "{{") {
+          c = substr(tag, 3, 1)
+          if (c == "#" || c == "^" || c == "/") {
+            if (index($0, "${{") > 0) report(FNR)
+            next
+          }
+        }
         col = match($0, /[^ ]/)
         if (col > runcol) {
           if (index($0, "${{") > 0) report(FNR)

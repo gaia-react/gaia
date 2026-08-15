@@ -78,9 +78,10 @@
 # wholesale via the .gaia/tests entry, so shipping it would ship a check nothing
 # on an adopter clone invokes.
 .gaia/scripts/lint-git-path-quoting.sh
-# The workflow run-interpolation lint guards GAIA's own CI workflow YAML and
-# composite actions against a `${{ }}` expression substituted into a `run:`
-# script body. Withheld on the same reasoning as the diff-quoting lint above,
+# The workflow run-interpolation lint guards GAIA's own CI workflow YAML, its
+# composite actions, and the adopter workflow templates it renders CI from,
+# against a `${{ }}` expression substituted into a `run:` script body. Withheld
+# on the same reasoning as the diff-quoting lint above,
 # and on that reasoning ALONE: shell-lint.sh, its only runner, is
 # release-excluded wholesale via the `.gaia/tests` entry, so shipping this file
 # would ship a check nothing on an adopter clone invokes.
