@@ -76,6 +76,24 @@ assert_assignment_line() {
       }
 }
 
+# Drops every `gaia:maintainer-only` block, reproducing what the bundle scrub
+# leaves on an adopter clone. Group I reads a member through this rather than
+# reading the file directly, because a route stated only inside those markers
+# is present in the maintainer tree and absent everywhere it is needed.
+strip_maintainer_only() {
+  # Rule order mirrors marker-strip.ts's own branch order, including the two
+  # cases a naive start/end pair gets wrong: a line carrying BOTH markers is a
+  # self-contained block and drops alone rather than opening one, and an
+  # end-without-start line is kept, not swallowed.
+  awk '
+    skip == 1 && /gaia:maintainer-only:end/ { skip = 0; next }
+    skip == 1 { next }
+    /gaia:maintainer-only:start/ && /gaia:maintainer-only:end/ { next }
+    /gaia:maintainer-only:start/ { skip = 1; next }
+    { print }
+  ' "$1"
+}
+
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 
@@ -370,6 +388,44 @@ setup() {
       return 1
     }
   done
+}
+
+# --- Group I: an assigning member can still reach the classes it omits -----
+#
+# Group G is satisfied when ANY ONE of the five members names a slug, and
+# code-audit-frontend.md's mirror satisfies it alone. So nothing above pins
+# that a member which ASSIGNS holistic classes can reach the ones its own
+# assignment section leaves out. code-audit-github-workflows.md is the case
+# that matters: its assignment section separates six root causes, its sidecar
+# example assigns `holistic/secret-exposure`, which is not one of the six, and
+# the schema pointer covering the rest is release-excluded reading anyway. The
+# route is asserted on the SCRUBBED text because a pointer stated only inside
+# `gaia:maintainer-only` markers is present in this tree and absent on the
+# adopter clone that needs it.
+
+@test "group I: code-audit-github-workflows.md keeps an adopter-visible route to the full holistic vocabulary" {
+  local scrubbed
+  scrubbed="$(strip_maintainer_only "$WORKFLOWS")"
+  [ -n "$scrubbed" ] || {
+    echo "scrubbing $WORKFLOWS left nothing to read" >&2
+    return 1
+  }
+  printf '%s\n' "$scrubbed" | grep -Fq -- 'code-audit-frontend.md' || {
+    echo "no adopter-visible route from $WORKFLOWS to the enumerating member" >&2
+    return 1
+  }
+  printf '%s\n' "$scrubbed" | grep -Fq -- 'Per-bucket' || {
+    echo "$WORKFLOWS names the enumerating member but not the section that enumerates" >&2
+    return 1
+  }
+  # Asserted on the TARGET, not on the pointer: greping the pointing file
+  # proves only that the sentence names a heading, so renaming the heading in
+  # code-audit-frontend.md would leave an adopter-visible pointer citing a
+  # section that does not exist with every check in the tree still green.
+  grep -Fq -- '### Per-bucket `finding_class` convention' "$FRONTEND" || {
+    echo "the section $WORKFLOWS points at is missing from $FRONTEND" >&2
+    return 1
+  }
 }
 
 # --- Group H: the schema and the frontend mirror agree ---------------------
