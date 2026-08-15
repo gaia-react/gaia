@@ -521,4 +521,68 @@ describe('computeTally', () => {
 
     expect(windowClasses(prs)).toEqual(['axe/color-contrast']);
   });
+
+  const fallbackPrs = [3, 2, 1].map((n) =>
+    pr(n, [
+      {
+        area_tags: [],
+        finding_class: 'holistic/unclassified',
+        severity: 'warning',
+      },
+    ])
+  );
+
+  test('the fallback branch is suppressible', () => {
+    const suppressed = computeTally({
+      coveredClass: noCover,
+      prs: fallbackPrs,
+      suppressedClass: () => true,
+      windowDays: 90,
+    });
+
+    expect(suppressed.unclassified).toBeNull();
+
+    const notSuppressed = computeTally({
+      coveredClass: noCover,
+      prs: fallbackPrs,
+      suppressedClass: () => false,
+      windowDays: 90,
+    });
+
+    expect(notSuppressed.unclassified).not.toBeNull();
+  });
+
+  test('the suppression predicate receives the fallback class and its own distinct-PR count', () => {
+    const seen: [string, number][] = [];
+
+    computeTally({
+      coveredClass: noCover,
+      prs: fallbackPrs,
+      suppressedClass: (findingClass, currentPrCount) => {
+        seen.push([findingClass, currentPrCount]);
+
+        return false;
+      },
+      windowDays: 90,
+    });
+
+    expect(seen).toEqual([['holistic/unclassified', 3]]);
+  });
+
+  test('the fallback is still not a candidate under suppression or without it', () => {
+    for (const suppressedClass of [(): boolean => true, (): boolean => false]) {
+      const result = computeTally({
+        coveredClass: noCover,
+        prs: fallbackPrs,
+        suppressedClass,
+        windowDays: 90,
+      });
+
+      expect(
+        result.candidates.some(
+          (c) => c.finding_class === 'holistic/unclassified'
+        )
+      ).toBe(false);
+    }
+  });
 });

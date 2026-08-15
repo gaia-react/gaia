@@ -95,6 +95,94 @@ const stubGh = (prs: unknown[]): ProcessResult => ({
 const parseStdout = (out: string[]): Record<string, unknown> =>
   JSON.parse(out.join('').trim()) as Record<string, unknown>;
 
+type FakeLedger = {
+  has: (findingClass: string) => boolean;
+  runLedger: (argv: readonly string[]) => ProcessResult;
+};
+
+type FakeStore = Map<string, {declined_at_pr_count: number}>;
+
+const fakeFlag = (
+  argv: readonly string[],
+  name: string
+): string | undefined => {
+  const index = argv.indexOf(name);
+
+  return index === -1 ? undefined : argv[index + 1];
+};
+
+const fakeRecord = (store: FakeStore, argv: readonly string[]): void => {
+  const findingClass = fakeFlag(argv, '--finding-class');
+  const prCount = Number(fakeFlag(argv, '--pr-count'));
+
+  if (findingClass !== undefined) {
+    store.set(findingClass, {declined_at_pr_count: prCount});
+  }
+};
+
+const fakeIsSuppressed = (
+  store: FakeStore,
+  argv: readonly string[]
+): number => {
+  const findingClass = fakeFlag(argv, '--finding-class') ?? '';
+  const currentPrCount = Number(fakeFlag(argv, '--current-pr-count'));
+  const entry = store.get(findingClass);
+
+  if (entry === undefined) return 1;
+
+  return currentPrCount - entry.declined_at_pr_count < 3 ? 0 : 1;
+};
+
+// Mirrors `handlePrune`'s fallback exemption (FC-7b): a
+// `holistic/unclassified` entry survives regardless of the window-classes set.
+const fakePrune = (store: FakeStore, argv: readonly string[]): void => {
+  const windowClasses = new Set(
+    (fakeFlag(argv, '--window-classes') ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+  );
+
+  for (const findingClass of [...store.keys()].filter(
+    (key) => key !== 'holistic/unclassified' && !windowClasses.has(key)
+  )) {
+    store.delete(findingClass);
+  }
+};
+
+// A fake, stateful `runLedger` over an in-memory store keyed on
+// `finding_class`, dispatching on the subcommand each `argv` carries
+// (`record`, `prune`, `is-suppressed`) the same way the real
+// `harden-ledger` CLI does, so a test can drive the composed
+// suppress-then-prune call site in `run()` without spawning a process.
+const makeFakeLedger = (): FakeLedger => {
+  const store: FakeStore = new Map();
+
+  const runLedger = (argv: readonly string[]): ProcessResult => {
+    const [, subcommand] = argv;
+
+    if (subcommand === 'record') {
+      fakeRecord(store, argv);
+
+      return {exitCode: 0, stderr: '', stdout: ''};
+    }
+
+    if (subcommand === 'is-suppressed') {
+      return {exitCode: fakeIsSuppressed(store, argv), stderr: '', stdout: ''};
+    }
+
+    if (subcommand === 'prune') {
+      fakePrune(store, argv);
+
+      return {exitCode: 0, stderr: '', stdout: ''};
+    }
+
+    return {exitCode: 1, stderr: '', stdout: ''};
+  };
+
+  return {has: (findingClass) => store.has(findingClass), runLedger};
+};
+
 describe('harden-tally run', () => {
   let sandbox: Sandbox;
   let stdout: ReturnType<typeof captureStdout>;
@@ -655,6 +743,44 @@ describe('harden-tally run', () => {
     const printed = parseStdout(stdout.out);
     expect(printed.gh_ok).toBe(true);
     expect(printed.candidate_count).toBe(0);
+  });
+
+  test('a fallback suppression recorded between two run() calls survives the intervening prune and silences unclassified', () => {
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(
+      stubGh(
+        [3, 2, 1].map((n) =>
+          ghPr(n, [
+            findingsComment(n, 'ci', [
+              {
+                area_tags: [],
+                finding_class: 'holistic/unclassified',
+                severity: 'warning',
+              },
+            ]),
+          ])
+        )
+      )
+    );
+
+    const fake = makeFakeLedger();
+
+    run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+    expect(parseStdout(stdout.out).unclassified).not.toBeNull();
+
+    fake.runLedger([
+      'harden-ledger',
+      'record',
+      '--finding-class',
+      'holistic/unclassified',
+      '--pr-count',
+      '3',
+    ]);
+
+    stdout.out.length = 0;
+    run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+
+    expect(parseStdout(stdout.out).unclassified).toBeNull();
+    expect(fake.has('holistic/unclassified')).toBe(true);
   });
 
   test('queries the 90-day merged-PR window via gh', () => {

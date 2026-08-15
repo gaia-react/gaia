@@ -39,10 +39,13 @@ const ORACLE_PREFIXES: readonly FindingClassPrefix[] = [
 ];
 
 /**
- * Closed-vocabulary members for the holistic bucket. Seeded from the audit
+ * Closed-vocabulary members for the holistic bucket: one closed set of
+ * root-cause names with no scope dimension. Some are seeded from the audit
  * agent's stable cross-cutting dimensions and the project-specific rules it
- * enforces. Deliberately small: seed only classes the agent can reliably and
- * repeatably assign. When in doubt, leave a class out.
+ * enforces; others are language-neutral root causes derived from the
+ * maintainer surface, and an adopter's own audit can legitimately assign one
+ * of those too. Deliberately small: seed only classes the agent can reliably
+ * and repeatably assign. When in doubt, leave a class out.
  */
 export const HOLISTIC_FINDING_CLASSES = [
   'holistic/missing-auth-check',
@@ -55,6 +58,12 @@ export const HOLISTIC_FINDING_CLASSES = [
   'holistic/business-logic-in-component',
   'holistic/hardcoded-string',
   'holistic/non-null-assertion',
+  'holistic/hollow-assertion',
+  'holistic/uncoupled-restatement',
+  'holistic/stale-figure',
+  'holistic/unarmed-guard',
+  'holistic/fail-open-discovery',
+  'holistic/partial-cause-reporting',
 ] as const;
 
 export type HolisticFindingClass = (typeof HOLISTIC_FINDING_CLASSES)[number];
