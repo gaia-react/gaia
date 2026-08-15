@@ -1918,9 +1918,16 @@ run_audit_complete_step() {
   # status, and its check-run summary is a DURABLE artifact -- unlike the
   # terminal comment, nothing later corrects it. So the summary may point at the
   # status but must not claim what it records.
+  # Scoped to the emitted field, not the whole `run:` body. extract_step_body
+  # returns the body WITH its comments, and this step's comments name GAIA-Audit
+  # twice, so a body-wide positive grep is satisfied by prose alone and cannot
+  # fail -- while a body-wide negative grep reds on a comment edit that changes
+  # nothing GitHub ever renders. Both directions have to read the artifact.
   body="$(extract_step_body 'Re-trigger and stamp required checks on new HEAD')"
-  grep -qF "GAIA-Audit" "$body"
-  grep -qF "status on this SHA records" "$body" && return 1
+  summary="$(grep -F 'output[summary]=' "$body")"
+  [ -n "$summary" ]
+  grep -qF "GAIA-Audit" <<<"$summary"
+  grep -qF "status on this SHA records" <<<"$summary" && return 1
   return 0
 }
 

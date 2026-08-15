@@ -948,9 +948,9 @@ jobs:
           # to `pending` and lets the local, member-aware producer clear it.
           #
           # This step carries an `id:`, so the writer's members_pending /
-          # success_stamped / success_live / read_failed outputs are read by the
-          # terminal comment step. They exist so the author is never told the gate
-          # is satisfied while the status says otherwise.
+          # success_stamped / post_failed / success_live / read_failed outputs are
+          # read by the terminal comment step. They exist so the author is never
+          # told the gate is satisfied while the status says otherwise.
           bash .github/audit/write-audit-status.sh \
             --sha "${HEAD_SHA}" \
             --base "${PR_BASE_SHA}"
@@ -1017,8 +1017,11 @@ jobs:
           #
           # 1. Stamp a `code-review-audit` check run on the new HEAD with
           #    conclusion=success. The audit just produced the new tree,
-          #    so it is vouching for its own output; the GAIA-Audit commit
-          #    status stamped above records the version+tree binding.
+          #    so it is vouching for its own output. The version+tree
+          #    binding lives in the separate GAIA-Audit commit status,
+          #    which is the required check; a rejected status POST does
+          #    not fail the stamp step, so this check run can land on a
+          #    HEAD carrying no such status.
           # 2. Dispatch every workflow listed in `retrigger_workflows`
           #    against the PR branch. `workflow_dispatch` IS allowed
           #    under GITHUB_TOKEN (unlike push), so the dispatched runs
