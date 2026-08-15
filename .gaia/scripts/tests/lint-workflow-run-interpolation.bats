@@ -285,7 +285,11 @@ jobs:
 }
 
 # Mustache placeholders carry no `$`, so they are never confusable with an
-# Actions expression; only the literal `${{` is a hit.
+# Actions expression; only the literal `${{` is a hit. The placeholders sit
+# ABOVE the section tag deliberately: below it they would be in a region the
+# detector only reaches because a section tag is treated as continuation, and
+# the test would then pass on either behaviour instead of on the
+# discrimination it names.
 @test "greens on a template whose only braces are mustache placeholders" {
   fixture_repo
   fixture_template gaia-ci-thing.yml.tmpl 'jobs:
@@ -296,10 +300,73 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-{{#enable_auto_merge}}
           branch="gaia-ci/{{tool_id}}/$(date -u +%Y%m%d)"
-          gh pr create --head "$branch" --base "$DEFAULT_BRANCH"
-{{/enable_auto_merge}}'
+          gh pr create --head "$branch" --base "$DEFAULT_BRANCH"'
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
+}
+
+# A section tag fences part of a body from column 0. Read by indentation alone
+# that is a dedent out of the block, which would leave every line after it
+# unscanned while the gate still printed clean.
+@test "a column-0 mustache section tag does not end the run body" {
+  fixture_repo
+  fixture_template gaia-ci-thing.yml.tmpl 'jobs:
+  run:
+    steps:
+      - name: Open PR
+        run: |
+          set -euo pipefail
+{{#enable_diff_size_check}}
+          echo "gated"
+{{/enable_diff_size_check}}
+          gh pr create --base "${{ github.event.repository.default_branch }}"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "gaia-ci-thing.yml.tmpl:10:" <<<"$output"
+}
+
+# A section tag is not always alone on its line: these templates put body
+# content after the tag to control what the renderer emits. That content is
+# script text like any other, so the tag line is scanned rather than skipped.
+@test "an expression on the section-tag line itself is flagged" {
+  fixture_repo
+  fixture_template gaia-ci-thing.yml.tmpl 'jobs:
+  run:
+    steps:
+      - name: Emit
+        run: |
+          set -euo pipefail
+{{#each tools}}          echo "${{ github.repository }}"
+{{/each}}          echo done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "gaia-ci-thing.yml.tmpl:7:" <<<"$output"
+}
+
+# An include splices a whole document region rather than fencing lines of this
+# body, so it must NOT latch the way a section tag does: the mappings that
+# follow one carry the very `env:` form this gate prescribes.
+#
+# The `run:` key here sits shallower than the content after the include, which
+# is the whole point of the fixture. Where the following content dedents past
+# the `run:` column instead, the block ends on the column test and the fixture
+# passes whether or not includes are excluded, proving nothing. Today's
+# templates are all of that second shape, so this hazard is held rather than
+# repaired, and the fixture has to construct the depth relationship the tree
+# does not currently supply.
+@test "a partial include ends the run body rather than continuing it" {
+  fixture_repo
+  fixture_template partials/emit.yml.tmpl '    - shell: bash
+      run: |
+        set -euo pipefail
+        echo hi
+{{> partials/extra }}
+        env:
+          GROUP: ${{ matrix.group }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "clean" <<<"$output"

@@ -71,9 +71,17 @@
 #     purely relative -- it compares each body line's indentation against the
 #     column of the `run:` key it just read, never against an absolute depth or
 #     a document structure -- so a fragment scans exactly as a whole file does.
-#   - The mustache placeholders (`{{tool_id}}`, `{{#section}}`) that appear
-#     inside these bodies are NOT confusable with an Actions expression: the
-#     detector matches the literal `${{`, and a mustache tag carries no `$`.
+#   - The mustache placeholders (`{{tool_id}}`) that appear inside these bodies
+#     are NOT confusable with an Actions expression: the detector matches the
+#     literal `${{`, and a mustache tag carries no `$`.
+#   - A mustache SECTION tag (`{{#x}}`, `{{^x}}`, `{{/x}}`) fences part of a
+#     body from column 0, which read by indentation alone is a dedent out of the
+#     block. That shape does not occur in a real workflow, so it arrives with
+#     this surface rather than pre-existing it, and left unhandled it would end
+#     the scan early and leave the rest of the body unread while the gate still
+#     printed clean. The in-body test below treats a section tag as
+#     continuation for that reason; see the comment there for why an include is
+#     deliberately excluded from the same treatment.
 #
 # `.gaia/cli/templates/workflows/` is a build artifact copied from `src/` by
 # `bundle:adopter` and is deliberately NOT scanned. Scanning both would report
@@ -148,6 +156,36 @@ scan_file() {
       if (inrun) {
         # A blank line belongs to the block scalar rather than ending it.
         if ($0 ~ /^[[:space:]]*$/) next
+        # A mustache SECTION tag (`{{#x}}`, `{{^x}}`, `{{/x}}`) is written at
+        # column 0 in these templates so that the renderer, which deletes a
+        # standalone tag line whole, leaves the surrounding body contiguous and
+        # correctly indented. Read by column alone it is a dedent to column 1,
+        # which would end the block and leave every remaining body line
+        # unscanned while the gate still printed clean. Treat it as
+        # continuation, and scan the line itself, since a tag may carry body
+        # content after it on the same line.
+        #
+        # The partial-include form `{{> x }}` is deliberately NOT continuation.
+        # An include splices a whole document region rather than fencing lines
+        # of this body, so latching across one would carry `inrun` into the
+        # `matrix:` and `env:` mappings that follow an include in these
+        # templates and false-flag the very `env:` form this gate prescribes.
+        # An include therefore falls through to the column test below and ends
+        # the block, which is what it does today.
+        #
+        # A bare `{{x}}` interpolation at column 0 is likewise not continuation:
+        # it renders to text at column 0, which would terminate the block scalar
+        # in the rendered YAML too, so treating it as a dedent matches what
+        # Actions would see.
+        tag = $0
+        sub(/^[[:space:]]+/, "", tag)
+        if (substr(tag, 1, 2) == "{{") {
+          c = substr(tag, 3, 1)
+          if (c == "#" || c == "^" || c == "/") {
+            if (index($0, "${{") > 0) report(FNR)
+            next
+          }
+        }
         col = match($0, /[^ ]/)
         if (col > runcol) {
           if (index($0, "${{") > 0) report(FNR)
