@@ -325,6 +325,14 @@ jobs:
               # and green the job having run that assertion zero times. Same
               # test-dir/source-dir pairing as the two entries above.
               - 'wiki/concepts/Policy-Memory Loop.md'
+              # doc-countability-prose.bats now greps this page too, for the
+              # two corrected classless-finding claims (a classless finding
+              # is "omitted from the findings block" / is "seeded in the
+              # agent definition"). It matches no other pattern here, so
+              # without this line a wiki-only edit reintroducing either claim
+              # would report `code=false`, skip every bats step, and green
+              # the job having run that assertion zero times.
+              - 'wiki/concepts/Code Review Audit Agent.md'
               # The doc-setup-gaia-isolation and doc-gaia-init-isolation suites
               # (.gaia/tests/lib/) grep the /setup-gaia Phase 3.5 clause and the
               # /gaia-init Step 9 question block; trigger on the two command

@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "cases": {
+    "01-comment-satisfies-doc-needle": {
+      "expected": "holistic/hollow-assertion",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-shell"],
+      "reason": "the grep needle that asserts the instruction is present also matches an unrelated HTML comment, so deleting the instruction itself leaves the check green"
+    },
+    "02-icon-only-button-role-query": {
+      "expected": "holistic/hollow-assertion",
+      "group": "corpus",
+      "owning_members": ["code-audit-frontend"],
+      "reason": "the accessible-name role query resolves against a parent landmark's label, so a missing accessible name on the button itself still satisfies the query"
+    },
+    "03-pickup-field-restatement": {
+      "expected": "holistic/uncoupled-restatement",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-prose"],
+      "reason": "the page names a wiki/hot.md field as the resume-point mechanism, and the actual implementation reads a different, unrelated source and never touches that field"
+    },
+    "04-required-check-name-drift": {
+      "expected": "holistic/uncoupled-restatement",
+      "group": "corpus",
+      "owning_members": ["code-audit-github-workflows"],
+      "reason": "the comment names a required-check id that branch protection no longer registers under that name, so a reader acting on the comment looks for the wrong check"
+    },
+    "05-debounce-mode-count": {
+      "expected": "holistic/stale-figure",
+      "group": "corpus",
+      "owning_members": ["code-audit-frontend"],
+      "reason": "the describe title's stated count of four modes disagrees with the three entries in the array the suite actually iterates"
+    },
+    "06-decline-field-count-docblock": {
+      "expected": "holistic/stale-figure",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-node"],
+      "reason": "the docblock's stated field count and list disagree with the type literal below it, which carries one more field than the docblock names"
+    },
+    "07-shell-lint-path-filter-gap": {
+      "expected": "holistic/unarmed-guard",
+      "group": "corpus",
+      "owning_members": ["code-audit-github-workflows"],
+      "reason": "the workflow's trigger path filter is narrower than the file set its own shellcheck step lints, so a change under the excluded directory never triggers the otherwise-correct check"
+    },
+    "08-marker-digest-empty-skip": {
+      "expected": "holistic/unarmed-guard",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-node"],
+      "reason": "the freshness comparison only runs when the remit-matched file list is non-empty, so an empty list short-circuits past the check entirely rather than being evaluated by it"
+    },
+    "09-registry-completeness-glob-gap": {
+      "expected": "holistic/fail-open-discovery",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-shell"],
+      "reason": "the script's own find pattern never matches the .mdx extension the registry format accepts, so those files never enter the set it checks and it reports clean over files it never looked at"
+    },
+    "10-covered-classes-partial-merge": {
+      "expected": "holistic/fail-open-discovery",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-node"],
+      "reason": "the coverage-collecting function reads only one of three vocabulary arrays, so rule- and workflow-bucket classes never enter the set it reports as covered"
+    },
+    "11-noop-detect-stale-vs-missing-marker": {
+      "expected": "holistic/partial-cause-reporting",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-shell"],
+      "reason": "the same message covers both a genuinely stale marker and a marker that was never written at all, pointing an operator at the wrong one of the two causes"
+    },
+    "12-ledger-status-margin-vs-window-failure": {
+      "expected": "holistic/partial-cause-reporting",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-node"],
+      "reason": "the same suppressed-status message covers both a genuinely low recurrence count and a failed window read that defaults the count to zero, naming only the first cause"
+    },
+    "13-duplicated-gate-command-text": {
+      "expected": "prose/redundant-instruction",
+      "group": "declined",
+      "owning_members": ["code-audit-maintainer-prose"],
+      "reason": "the same quality-gate command sequence is duplicated in this page instead of pointed at, and the copy has drifted out of step with the rule page it restates; this is the already-seeded duplicated-instruction shape, not a holistic class"
+    },
+    "14-deictic-check-above-reference": {
+      "expected": "holistic/unclassified",
+      "group": "declined",
+      "owning_members": ["code-audit-maintainer-prose"],
+      "reason": "a positional reference ('the check above') has gone stale after a reorganization moved unrelated content between the reference and its intended referent; this shape was evaluated and declined for seeding, and no closed-vocabulary class covers it"
+    },
+    "15-self-referential-status-line": {
+      "expected": "holistic/unclassified",
+      "group": "declined",
+      "owning_members": ["code-audit-maintainer-prose"],
+      "reason": "a status line frames its own past coverage rather than stating current scope directly; this shape was evaluated and declined for seeding on habitat grounds, and no closed-vocabulary class covers it"
+    },
+    "16-bundle-freshness-empty-list-skip": {
+      "expected": "holistic/unclassified",
+      "group": "ambiguous",
+      "owning_members": ["code-audit-maintainer-shell"],
+      "reason": "genuinely matches two seeded definitions with no canonical tie-break settling it: the same discovery listing both gates whether the comparison runs at all (an arming-condition reading) and supplies what gets compared (a discovery-omission reading), and no tie-break sentence covers this pair"
+    },
+    "17-timeout-hook-race-assertion": {
+      "expected": "holistic/unclassified",
+      "group": "ambiguous",
+      "owning_members": ["code-audit-frontend"],
+      "reason": "matches none of the closed vocabulary: a timing-dependent race between a fixed delay and a state flush is a real defect, but it is not a match-region defect, a restatement, a count, an arming gap, a discovery gap, or a reporting gap, and no rule, workflow, or prose class covers it either"
+    },
+    "18-config-flag-typo-tolerance": {
+      "expected": "holistic/unclassified",
+      "group": "ambiguous",
+      "owning_members": ["code-audit-maintainer-node"],
+      "reason": "matches none of the closed vocabulary: an unrecognized flag is silently dropped rather than rejected, which is a real defect but not a discarded exit status (the already-seeded swallowed-error meaning) and not a discovery step that omits an input, since no file or input set is being walked here at all"
+    }
+  }
+}

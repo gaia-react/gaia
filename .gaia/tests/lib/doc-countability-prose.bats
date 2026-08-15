@@ -67,6 +67,7 @@ setup() {
     "$ROOT/.claude/agents/code-audit-maintainer-prose.md"
   )
   WIKI_PAGE="$ROOT/wiki/concepts/Policy-Memory Loop.md"
+  AUDIT_AGENT_PAGE="$ROOT/wiki/concepts/Code Review Audit Agent.md"
   TALLY_CORE="$ROOT/.gaia/cli/src/harden/compute-tally.ts"
   TALLY_EMIT="$ROOT/.gaia/cli/src/harden/tally.ts"
   FINDING_CLASS="$ROOT/.gaia/cli/src/schemas/finding-class.ts"
@@ -154,4 +155,19 @@ setup() {
     }
   done
   return 0
+}
+
+# --- wiki/concepts/Code Review Audit Agent.md (DOC-006: escaped the sweep
+# above, guarded here) -------------------------------------------------
+
+@test "DOC-006: Code Review Audit Agent.md deletes the classless 'omitted from the findings block' claim" {
+  assert_absent_fixed_across "omitted from the findings block" "$AUDIT_AGENT_PAGE"
+}
+
+@test "DOC-006: Code Review Audit Agent.md deletes the 'seeded in the agent definition' claim" {
+  assert_absent_fixed_across "seeded in the agent definition" "$AUDIT_AGENT_PAGE"
+}
+
+@test "DOC-006: Code Review Audit Agent.md states a classless finding is stamped holistic/unclassified" {
+  grep -Fq "holistic/unclassified" "$AUDIT_AGENT_PAGE"
 }
