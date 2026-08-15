@@ -401,8 +401,16 @@ fetch_corpus() {
 # stops reporting the mislabeled issues that fall behind it. Under-reporting on
 # an advisory mode is the safe direction, but it is still wrong, and it gets
 # worse exactly as the backlog gets healthier.
+# `sort:created-asc` is load-bearing, not a tidy. `gh issue list` returns
+# created-descending by default, and the boundary is a MINIMUM over `createdAt`,
+# so a saturated `--limit` would drop exactly the oldest issues that define it
+# and the epoch would jump forward silently, reinstating the drift this split
+# exists to remove at a higher threshold. Ascending order makes a saturated cap
+# drop the newest instead, and dropping the newest cannot move a minimum. Not
+# reachable today at a few hundred issues against a cap of 1000, but the drain
+# walks that number up monotonically and never back down.
 fetch_epoch_corpus() {
-  gh issue list --label tech-debt --state all --limit 1000 \
+  gh issue list --label tech-debt --state all --search "sort:created-asc" --limit 1000 \
     --json createdAt,body
 }
 

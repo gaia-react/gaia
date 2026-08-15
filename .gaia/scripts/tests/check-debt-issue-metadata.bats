@@ -340,15 +340,35 @@ refute_code() {
 # the environment-error arm is reached without breaking anyone's auth.
 # ---------------------------------------------------------------------------
 
+# stub_gh <open-corpus> [view-json] [all-corpus]
+#
+# The stub is deliberately STATE-AWARE. The script makes two different `gh
+# issue list` calls: the swept set is `--state open`, while the provenance
+# boundary is resolved from `--state all`, because the boundary is a fact about
+# the whole history and an open-only derivation drifts forward as drains close
+# the oldest issues. A stub that answered both calls with the same bytes would
+# make that entire distinction invisible to every assertion here, so reverting
+# the one token `all` to `open` would leave the suite green.
+#
+# <all-corpus> defaults to <open-corpus>, which keeps every test that does not
+# care about the split reading as before.
 stub_gh() {
   mkdir -p "$TMP/bin"
-  printf '%s\n' "$1" >"$TMP/corpus.json"
+  printf '%s\n' "$1" >"$TMP/corpus.open.json"
   printf '%s\n' "${2:-[]}" >"$TMP/view.json"
+  printf '%s\n' "${3:-$1}" >"$TMP/corpus.all.json"
   cat >"$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-# $1 is `issue`, $2 is the subcommand.
-case "$2" in
-  list) cat "$STUB_DIR/corpus.json" ;;
+# $1 is `issue`, $2 is the subcommand. The remaining argv is scanned for
+# `--state all` so the two list calls can be told apart.
+sub="$2"
+state=open
+for a in "$@"; do
+  [ "$prev" = "--state" ] && state="$a"
+  prev="$a"
+done
+case "$sub" in
+  list) cat "$STUB_DIR/corpus.$state.json" ;;
   view) cat "$STUB_DIR/view.json" ;;
   *) exit 1 ;;
 esac
@@ -476,4 +496,39 @@ CORPUS_ANACHRONISM='[
   run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "malformed-dedup-key"
+}
+
+@test "RED: the provenance boundary comes from the whole history, not the open set" {
+  # The fixture that separates the two derivations. The earliest provenance-
+  # carrying issue is CLOSED (2026-08-01); the earliest one still open is much
+  # later (2026-08-10); and the marked issue sits between them (2026-08-05).
+  #
+  #   boundary from the open set  -> 2026-08-10, and 08-05 is BEFORE it, so the
+  #                                  marked issue looks like a legitimate member
+  #                                  of the pre-provenance cohort. Not flagged.
+  #   boundary from all issues    -> 2026-08-01, and 08-05 is AFTER it, so the
+  #                                  marker is a backfill. Flagged.
+  #
+  # This is the drift in miniature: closing the oldest provenance-carrying issue
+  # is exactly what a drain does, and it silently stops the check reporting
+  # everything left behind the new boundary.
+  stub_gh '[
+    {"number":500,"createdAt":"2026-08-10T00:00:00Z",
+     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"}],
+     "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\n<!-- gaia-debt-origin: branch=main -->"},
+    {"number":501,"createdAt":"2026-08-05T00:00:00Z",
+     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"},{"name":"debt:pre-provenance"}],
+     "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"}
+  ]' '[]' '[
+    {"createdAt":"2026-08-01T00:00:00Z",
+     "body":"<!-- gaia-debt-key: v1 class=c path=app/z.ts line=9 -->\n<!-- gaia-debt-origin: branch=main -->"},
+    {"createdAt":"2026-08-10T00:00:00Z",
+     "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\n<!-- gaia-debt-origin: branch=main -->"},
+    {"createdAt":"2026-08-05T00:00:00Z",
+     "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"}
+  ]'
+  run bash "$CHECK" --sweep
+  [ "$status" -eq 1 ]
+  assert_code "pre-provenance-anachronism"
+  grep -qF -- "2026-08-01T00:00:00Z" <<<"$output" || return 1
 }
