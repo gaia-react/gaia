@@ -46,6 +46,17 @@ fixture_workflow() {
   git -C "$TMP" add -A
 }
 
+# fixture_template <relpath> <body>: write <body> to the adopter workflow
+# template source at $TMP/.gaia/cli/src/automation/templates/workflows/<relpath>
+# and track it. <relpath> may name a subdirectory (`partials/x.yml.tmpl`).
+# Call fixture_repo first.
+fixture_template() {
+  local dest="$TMP/.gaia/cli/src/automation/templates/workflows/$1"
+  mkdir -p "$( dirname "$dest" )"
+  printf '%s\n' "$2" > "$dest"
+  git -C "$TMP" add -A
+}
+
 # run_linter: run the gate from inside the fixture repo.
 run_linter() {
   run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
@@ -238,6 +249,82 @@ jobs:
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- "action.yml:6:" <<<"$output"
+}
+
+# The gate also scans the adopter workflow templates. They render into an
+# adopter's own CI, so an un-indirected expression there inherits the class one
+# distribution hop past anything this repo's review can see.
+
+@test "flags an expression in an adopter workflow template" {
+  fixture_repo
+  fixture_template gaia-ci-thing.yml.tmpl 'jobs:
+  run:
+    steps:
+      - name: Open PR
+        run: |
+          set -euo pipefail
+          branch="gaia-ci/{{tool_id}}/$(date -u +%Y%m%d)"
+          gh pr create --head "$branch" --base "${{ github.event.repository.default_branch }}"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "gaia-ci-thing.yml.tmpl:8:" <<<"$output"
+}
+
+# A partial is a fragment: it opens mid-step at whatever depth its includer
+# supplies, and it is not parseable as a standalone workflow. The `run:`-body
+# locator is purely relative to the column of the `run:` key, so it holds.
+@test "flags an expression in a partial fragment with no document structure" {
+  fixture_repo
+  fixture_template partials/auto-merge.yml.tmpl '      - name: Open and auto-merge PR
+        run: |
+          set -euo pipefail
+          gh pr create --base "${{ github.event.repository.default_branch }}"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "auto-merge.yml.tmpl:4:" <<<"$output"
+}
+
+# Mustache placeholders carry no `$`, so they are never confusable with an
+# Actions expression; only the literal `${{` is a hit.
+@test "greens on a template whose only braces are mustache placeholders" {
+  fixture_repo
+  fixture_template gaia-ci-thing.yml.tmpl 'jobs:
+  run:
+    steps:
+      - name: Open PR
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+{{#enable_auto_merge}}
+          branch="gaia-ci/{{tool_id}}/$(date -u +%Y%m%d)"
+          gh pr create --head "$branch" --base "$DEFAULT_BRANCH"
+{{/enable_auto_merge}}'
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
+}
+
+# `.gaia/cli/templates/workflows/` is a build artifact copied from `src/`.
+# Scanning it as well would report every hit twice and name a file the repair
+# must not hand-edit; artifact-equals-source is held elsewhere.
+@test "does not scan the bundled template artifact" {
+  fixture_repo
+  fixture_template gaia-ci-thing.yml.tmpl 'jobs:
+  run:
+    steps:
+      - run: echo ok'
+  mkdir -p "$TMP/.gaia/cli/templates/workflows"
+  printf '%s\n' 'jobs:
+  run:
+    steps:
+      - run: |
+          gh pr create --base "${{ github.event.repository.default_branch }}"' \
+    > "$TMP/.gaia/cli/templates/workflows/gaia-ci-thing.yml.tmpl"
+  git -C "$TMP" add -A
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
 }
 
 @test "errors rather than greening when nothing is scanned" {

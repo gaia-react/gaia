@@ -85,6 +85,12 @@ jobs:
               # The run-interpolation guard also scans the composite actions,
               # which the glob above does not reach.
               - '.github/actions/**'
+              # …and the adopter workflow templates, which nothing above
+              # reaches either. Those render into an adopter's own CI, so a
+              # template-only PR resolving `shell=false` would green the check
+              # having left unscanned the one surface whose defects this repo's
+              # review is the last place able to see.
+              - '.gaia/cli/src/automation/templates/workflows/**'
               # Subsumed by the glob above and kept deliberately: it is the
               # explicit record that this gate re-runs on a change to itself,
               # which survives any later narrowing of that glob.

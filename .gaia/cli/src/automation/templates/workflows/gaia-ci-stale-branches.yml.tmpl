@@ -18,12 +18,14 @@ jobs:
 {{#enable_stale_branch_delete}}
       - name: Delete branches merged > 30 days ago
         if: steps.pre_run.outputs.decision == 'run'
+        env:
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           cutoff=$(date -u -d '30 days ago' +%s 2>/dev/null || date -u -v-30d +%s)
           # Walk all branches except the default branch and delete any whose merged-PR head is older than the cutoff.
-          default=$(gh api repos/${{ github.repository }} --jq '.default_branch' 2>/dev/null || echo "main")
-          gh api repos/${{ github.repository }}/branches --paginate --jq '.[].name' \
+          default=$(gh api "repos/$REPO" --jq '.default_branch' 2>/dev/null || echo "main")
+          gh api "repos/$REPO/branches" --paginate --jq '.[].name' \
             | grep -vF "$default" \
             | while read -r br; do
                 # Skip if there's an open PR with this branch as head.
@@ -35,7 +37,7 @@ jobs:
                 merged_ts=$(date -u -d "$merged_at" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$merged_at" +%s)
                 if [ "$merged_ts" -lt "$cutoff" ]; then
                   echo "deleting stale branch: $br (merged $merged_at)"
-                  gh api -X DELETE repos/${{ github.repository }}/git/refs/heads/$br
+                  gh api -X DELETE "repos/$REPO/git/refs/heads/$br"
                 fi
               done
 {{/enable_stale_branch_delete}}

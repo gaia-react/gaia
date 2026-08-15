@@ -121,11 +121,12 @@ jobs:
         id: branch
         env:
           GROUP: ${{ matrix.group }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           branch="gaia-ci/{{tool_id}}/wave-b/${GROUP}-$(date -u +%Y%m%d-%H%M%S)"
-          git fetch origin "${{ github.event.repository.default_branch }}"
-          git checkout -B "$branch" "origin/${{ github.event.repository.default_branch }}"
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout -B "$branch" "origin/$DEFAULT_BRANCH"
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           echo "name=$branch" >> "$GITHUB_OUTPUT"
@@ -166,6 +167,7 @@ jobs:
         env:
           GROUP: ${{ matrix.group }}
           BRANCH: ${{ steps.branch.outputs.name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           if [ -z "$(git status --porcelain)" ]; then
@@ -190,6 +192,6 @@ jobs:
             --body "Per-group major-bump PR opened by GAIA CI ({{workflow_name}}). Group: \`${GROUP}\`. Review the migration carefully; wave-B PRs are not auto-merged." \
             --label gaia-ci,{{needs_human_review_label}} \
             --head "$BRANCH" \
-            --base "${{ github.event.repository.default_branch }}")
+            --base "$DEFAULT_BRANCH")
           echo "wave-B PR opened: $pr_url"
 {{/enable_major_bump_split}}

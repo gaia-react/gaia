@@ -43,23 +43,44 @@
 # class: substitution happens before bash parses, so a value containing a
 # newline ends the comment and the remainder of the value begins a new command.
 #
-# Scan surface: `.github/workflows/` and the composite actions under
-# `.github/actions/*/action.yml`. A composite action's `run:` steps are the same
-# shell-by-another-name as a workflow's and carry the identical hazard, and the
-# workflows here invoke them, so scanning the callers but not the callees would
-# leave the class enforced only up to the first `uses:` hop. Every composite
-# action in this tree is at zero today, so this is coverage held rather than
-# instances repaired.
+# Scan surface: `.github/workflows/`, the composite actions under
+# `.github/actions/*/action.yml`, and the adopter workflow templates under
+# .gaia/cli/src/automation/templates/workflows/ (including its `partials/`). A
+# composite action's `run:` steps are the same shell-by-another-name as a
+# workflow's and carry the identical hazard, and the workflows here invoke them,
+# so scanning the callers but not the callees would leave the class enforced
+# only up to the first `uses:` hop. Every composite action in this tree is at
+# zero today, so that half is coverage held rather than instances repaired.
 #
-# The adopter workflow TEMPLATES under
-# .gaia/cli/src/automation/templates/workflows/ carry instances of this same
-# textual class and are deliberately OUT of this gate's declared surface, not
-# merely unreached by it: they are a separate distribution surface that
-# regenerates through `bundle:adopter`, their expressions are GitHub-controlled
-# context values rather than step outputs, and they are tracked as their own
-# tech-debt item. The distinction that matters is that this gate's declared
-# surface is at zero and stays at zero; it does not claim the templates and then
-# leave live instances in them unreached.
+# The templates render into an ADOPTER's own CI, so the invariant an
+# un-indirected expression rests on is inherited by every adopter clone and by
+# every future edit to a template, where neither this repo's review nor the
+# adopter's can see it. That is the same reason the class is a gate rather than
+# a review habit, applied one distribution hop further out. The expressions
+# there are GitHub-controlled context values rather than step outputs, which is
+# a weaker risk profile, and it is deliberately not adjudicated here for the
+# same reason the producer of any other expression is not: an exemption list for
+# "safe" producers reintroduces the case-by-case judgment whose absence of
+# enforcement is the defect.
+#
+# Three properties of the template surface the scan depends on:
+#   - `.tmpl`, not `.yml`, hence the separate globs below.
+#   - A `partials/` file is a FRAGMENT that is not parseable as a standalone
+#     workflow: its indentation context is supplied by whatever includes it, and
+#     it may open mid-step. The `run:`-body locator holds anyway because it is
+#     purely relative -- it compares each body line's indentation against the
+#     column of the `run:` key it just read, never against an absolute depth or
+#     a document structure -- so a fragment scans exactly as a whole file does.
+#   - The mustache placeholders (`{{tool_id}}`, `{{#section}}`) that appear
+#     inside these bodies are NOT confusable with an Actions expression: the
+#     detector matches the literal `${{`, and a mustache tag carries no `$`.
+#
+# `.gaia/cli/templates/workflows/` is a build artifact copied from `src/` by
+# `bundle:adopter` and is deliberately NOT scanned. Scanning both would report
+# every hit twice, and scanning the artifact alone would name a file the repair
+# must not hand-edit. Artifact-equals-source is held by
+# `audit-template-dogfood.test.ts` and `verify-cli-bundle-fresh.sh`, so a repair
+# to the source that never regenerates fails there rather than here.
 #
 # Sibling gate: .gaia/scripts/lint-git-path-quoting.sh, which scans the same
 # workflow YAML for a different class. The two are kept separate because their
@@ -72,12 +93,17 @@ set -euo pipefail
 # is never scanned; the same discovery .gaia/tests/shell-lint.sh uses. Collected
 # with a read loop rather than `mapfile`, which is bash 4+, because these
 # scripts run on stock macOS /bin/bash (3.2.57).
+#
+# A git pathspec glob is matched without FNM_PATHNAME, so its `*` crosses `/`.
+# The one templates glob therefore reaches `partials/` and any directory added
+# under it later, which is why there is no second glob for the fragments.
 scan_files=()
 while IFS= read -r -d '' f; do
   scan_files+=("$f")
 done < <(git -c core.quotepath=false ls-files -z \
                       '.github/workflows/*.yml' '.github/workflows/*.yaml' \
                       '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
+                      '.gaia/cli/src/automation/templates/workflows/*.tmpl' \
            | LC_ALL=C sort -z)
 
 # An empty scan set is a hard error, never a clean tree. The loop above reads
@@ -88,7 +114,7 @@ done < <(git -c core.quotepath=false ls-files -z \
 # failure gates exist to stop. Every real tree carries tracked workflows, so an
 # empty result means the discovery is wrong rather than the tree.
 if [ "${#scan_files[@]}" -eq 0 ]; then
-  echo "lint-workflow-run-interpolation: ERROR: no tracked workflows or composite actions matched the scan surface; nothing was scanned" >&2
+  echo "lint-workflow-run-interpolation: ERROR: no tracked workflows, composite actions, or workflow templates matched the scan surface; nothing was scanned" >&2
   exit 1
 fi
 
