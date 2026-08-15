@@ -712,6 +712,37 @@ describe('harden-tally run', () => {
     expect((pruneCall ?? [])[idx + 1]).toBe('axe/color-contrast');
   });
 
+  test('leaves the ledger unpruned when the window read failed', () => {
+    vi.spyOn(runProcess, 'runGh').mockReturnValue({
+      exitCode: 4,
+      stderr: 'gh: not authenticated',
+      stdout: '',
+    });
+
+    const fake = makeFakeLedger();
+    fake.runLedger([
+      'harden-ledger',
+      'record',
+      '--finding-class',
+      'knip/exports',
+      '--pr-count',
+      '4',
+    ]);
+
+    const ledgerCalls: string[][] = [];
+    run([], {
+      cwd: sandbox.root,
+      runLedger: (argv) => {
+        ledgerCalls.push([...argv]);
+
+        return fake.runLedger(argv);
+      },
+    });
+
+    expect(ledgerCalls.find((call) => call.includes('prune'))).toBeUndefined();
+    expect(fake.has('knip/exports')).toBe(true);
+  });
+
   test('falls back to candidate_count 0 and gh_ok false when gh fails (non-fatal)', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue({
       exitCode: 4,

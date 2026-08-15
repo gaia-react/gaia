@@ -198,8 +198,12 @@ export const run = (
     windowDays: WINDOW_DAYS,
   });
 
-  // Self-clean the ledger: drop declines whose class no longer recurs.
-  pruneLedger({cwd, runLedger, windowClasses: windowClasses(prs)});
+  // Self-clean the ledger: drop declines whose class no longer recurs. Gated on
+  // `ghOk` because a failed window read also yields an empty `prs`, which the
+  // prune would read as authoritative evidence that every declined class
+  // stopped recurring and wipe the ledger. An unread window is not evidence, so
+  // this fails closed, matching `makeLedgerSuppressionPredicate`.
+  if (ghOk) pruneLedger({cwd, runLedger, windowClasses: windowClasses(prs)});
 
   // Emit `gh_ok` at the I/O boundary so a gh outage is distinguishable from an
   // all-clear. It stays off the pure `TallyResult`: the tally core cannot know
