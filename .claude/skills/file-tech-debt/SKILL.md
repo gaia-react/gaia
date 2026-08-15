@@ -50,10 +50,18 @@ If no match exists:
 4. **Check the metadata before creating, and do not create on a finding.** Pass the exact label set the create call is about to carry, comma-separated, together with the body file built in sub-step 2:
 
    ```bash
+   # Graded filing, when a grade is in hand:
    bash .gaia/scripts/check-debt-issue-metadata.sh --pre-file \
      --labels "tech-debt,severity:<tier>,surface:<side>,difficulty:<grade>" \
      --body-file "$body_file"
+
+   # Ungraded filing, when no grade is available:
+   bash .gaia/scripts/check-debt-issue-metadata.sh --pre-file \
+     --labels "tech-debt,severity:<tier>,surface:<side>" \
+     --body-file "$body_file"
    ```
+
+   Two forms, matching sub-step 5's two `gh issue create` forms exactly. The ungraded form **drops the `difficulty:` entry** rather than passing it empty or with the placeholder still in it, for the same reason the create call does. The check rejects both of those, correctly: an unfilled placeholder is the shape an omitted grade most often arrives in, and letting it through would file the literal text as a label.
 
    Exit `0` is clean, `1` names one finding per line, `2` is a usage or environment error. On `1`, fix the label set or the body and re-run; do not file. On `2`, the check itself could not run: report that and do not treat it as a pass.
 

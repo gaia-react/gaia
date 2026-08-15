@@ -374,9 +374,9 @@ check_one_issue() {
   fi
 }
 
-# The `createdAt` of the earliest open issue whose body carries a provenance
-# line, or empty when none does. Empty disables the anachronism check rather
-# than failing it: a repo that has not started writing provenance has no
+# The `createdAt` of the earliest issue, open or closed, whose body carries a
+# provenance line, or empty when none does. Empty disables the anachronism check
+# rather than failing it: a repo that has not started writing provenance has no
 # boundary to be on the wrong side of.
 PROVENANCE_EPOCH=""
 
@@ -393,8 +393,21 @@ fetch_corpus() {
     --json number,createdAt,labels,body
 }
 
+# The corpus the provenance boundary is derived from, which is deliberately NOT
+# the swept set. The boundary is "when did provenance start writing here", and
+# that is a fact about the whole history, not about what happens to be open now.
+# Deriving it from the open set alone makes it drift forward every time a drain
+# closes the earliest provenance-carrying issue, and each step forward silently
+# stops reporting the mislabeled issues that fall behind it. Under-reporting on
+# an advisory mode is the safe direction, but it is still wrong, and it gets
+# worse exactly as the backlog gets healthier.
+fetch_epoch_corpus() {
+  gh issue list --label tech-debt --state all --limit 1000 \
+    --json createdAt,body
+}
+
 run_issue() {
-  local number="$1" corpus obj
+  local number="$1" epoch_corpus obj
   require_gh
   case "$number" in
     '' | *[!0-9]*) fatal "--issue needs an issue number" ;;
@@ -405,8 +418,8 @@ run_issue() {
   # were reported" status, so an auth or network failure would read as a clean
   # run with an unlucky exit code. Routing it to 2 keeps the three-way contract
   # honest. The blocking `--pre-file` mode is unaffected, being hermetic.
-  corpus="$(fetch_corpus)" || fatal "could not read the tech-debt backlog through gh"
-  resolve_provenance_epoch "$corpus"
+  epoch_corpus="$(fetch_epoch_corpus)" || fatal "could not read the tech-debt history through gh"
+  resolve_provenance_epoch "$epoch_corpus"
 
   obj="$(gh issue view "$number" --json number,createdAt,labels,body)" ||
     fatal "could not read issue #$number through gh"
@@ -414,7 +427,7 @@ run_issue() {
 }
 
 run_sweep() {
-  local corpus count i obj
+  local corpus epoch_corpus count obj
   require_gh
 
   corpus="$(fetch_corpus)" || fatal "could not read the tech-debt backlog through gh"
@@ -428,14 +441,21 @@ run_sweep() {
     return 0
   fi
 
-  resolve_provenance_epoch "$corpus"
+  epoch_corpus="$(fetch_epoch_corpus)" || fatal "could not read the tech-debt history through gh"
+  resolve_provenance_epoch "$epoch_corpus"
 
-  i=0
-  while [ "$i" -lt "$count" ]; do
-    obj="$(printf '%s' "$corpus" | jq -c ".[$i]")"
+  # One `jq` for the whole corpus, streamed a record per line, rather than one
+  # `jq` per index. The indexed form re-parsed the entire document on every
+  # iteration and, with the fetch capped at 1000 issues, spent up to four
+  # thousand forks on a sweep.
+  #
+  # Fed by a redirect rather than a pipe, for the reason this file keeps
+  # repeating: `check_one_issue` calls `finding`, which increments a counter in
+  # the caller's shell, and a piped `while` runs in a subshell that discards it.
+  while IFS= read -r obj; do
+    [ -n "$obj" ] || continue
     check_one_issue "$obj"
-    i=$((i + 1))
-  done
+  done < <(printf '%s' "$corpus" | jq -c '.[]')
 
   echo "$PROG: checked $count open tech-debt issue(s)" >&2
 }
