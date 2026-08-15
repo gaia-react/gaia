@@ -97,6 +97,7 @@
     ".claude/rules/shell-cwd.md": "owned",
     ".claude/rules/state-pattern.md": "owned",
     ".claude/rules/storybook.md": "owned",
+    ".claude/rules/subagent-dispatch.md": "owned",
     ".claude/rules/tailwind.md": "owned",
     ".claude/rules/wiki-style.md": "owned",
     ".claude/settings.json": "shared",
@@ -651,7 +652,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-15T06:24:22.271Z",
+  "generated": "2026-08-15T21:11:25.459Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

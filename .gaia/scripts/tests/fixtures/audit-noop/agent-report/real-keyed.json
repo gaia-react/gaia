@@ -1,0 +1,7 @@
+{
+  "verdicts": [
+    { "case": "01", "verdict": "pass" },
+    { "case": "02", "verdict": "fail" },
+    { "case": "03", "verdict": "pass" }
+  ]
+}

@@ -155,6 +155,7 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 .claude/rules/shell-cwd.md
 .claude/rules/state-pattern.md
 .claude/rules/storybook.md
+.claude/rules/subagent-dispatch.md
 .claude/rules/tailwind.md
 .claude/rules/wiki-style.md
 # gaia:maintainer-only:start
