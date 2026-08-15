@@ -134,7 +134,9 @@ refute_code() {
   assert_code "severity-value"
 }
 
-@test "two difficulty: labels are rejected, while zero is not" {
+@test "two difficulty: labels are rejected" {
+  # The zero case is the separate ungraded-filing test above; this one asserts
+  # only the two-label half, which is what its name now says.
   run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,difficulty:hard" --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "difficulty-count"
@@ -144,6 +146,45 @@ refute_code() {
   run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter,difficulty:trivial' --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "difficulty-value"
+}
+
+# --- the shapes an unquoted value expansion used to let through ------------
+#
+# Each of these greened the gate before the value loop read its input line-wise.
+# They are grouped because they share one cause: a value reached the check as
+# shell syntax rather than as data. The empty case is the one a caller actually
+# hits, since the recipe substitutes placeholders into this argv.
+
+@test "RED: an empty namespace value is a finding, not an absence" {
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:,surface:adopter' --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "severity-value"
+  # The count check cannot catch this: `severity:` is one label, so the count
+  # is correct and only the value is wrong.
+  refute_code "severity-count"
+}
+
+@test "RED: an unfilled difficulty placeholder is a finding, not a dropped flag" {
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter,difficulty:' --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "difficulty-value"
+}
+
+@test "RED: two values crammed into one label are rejected, not checked separately" {
+  # Both halves are individually legal, so a word-splitting loop passed this.
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter maintainer' --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "surface-value"
+}
+
+@test "RED: a glob in a label value is reported as one finding, not expanded" {
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:*' --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "surface-value"
+  # The bad case: the glob expanded against the working directory and the run
+  # reported a finding per repository-root entry instead of one naming the label.
+  grep -qF -- "CHANGELOG.md" <<<"$output" && return 1
+  grep -qF -- "1 finding(s)" <<<"$output" || return 1
 }
 
 @test "a filing with no tech-debt label is rejected" {
@@ -179,6 +220,28 @@ refute_code() {
   run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "duplicate-dedup-key"
+}
+
+@test "RED: a malformed key line is reported even when a valid key stands beside it" {
+  # The ladder this replaced stopped at the first arm that held, so a valid key
+  # made every later check unreachable. The stray line is not inert: the
+  # debt-count refresher collects covered paths with a looser scan than this
+  # gate's shape test, so the bogus path would enter that set.
+  {
+    good_body
+    printf '<!-- gaia-debt-key: v1 class=x path=app/bogus.ts line=nope -->\n'
+  } >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "malformed-dedup-key"
+}
+
+@test "a body carrying only a prose mention of the key has no key, rather than a malformed one" {
+  printf 'This issue predates the `<!-- gaia-debt-key: -->` wrapper entirely.\n' >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "missing-dedup-key"
+  refute_code "malformed-dedup-key"
 }
 
 @test "a repository path containing spaces is a valid key path" {

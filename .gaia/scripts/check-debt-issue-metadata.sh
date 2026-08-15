@@ -89,8 +89,50 @@ count_ns() {
 }
 
 # values_ns <labels-newline-list> <namespace-prefix>: the values, prefix stripped.
+# A label that is the bare prefix yields an empty line rather than no line, so
+# the count of lines out always equals the count of labels in.
 values_ns() {
   printf '%s\n' "$1" | sed -n "s/^$2//p"
+}
+
+# check_ns_values <subject> <labels> <prefix> <permitted set> <namespace name>
+#
+# Report every value in one namespace that is not in its permitted set.
+#
+# Two properties here are load-bearing, and neither is style. The values are
+# read a line at a time out of a process substitution rather than word-split out
+# of an unquoted `$(...)` in a `for` list. An unquoted command substitution is
+# split on IFS and then glob-expanded, which silently converts one bad label
+# into something the checks accept: `surface:adopter maintainer` would be tested
+# as two separate values that are each individually legal, and `surface:*` would
+# expand against the working directory and report one finding per file in the
+# repository root instead of one finding naming the label. And the loop is fed
+# by a redirect rather than a pipe, because `finding` increments a counter in
+# the caller's shell and a piped `while` runs in a subshell that discards every
+# increment, which greens the gate while printing its own findings.
+check_ns_values() {
+  local subject="$1" labels="$2" prefix="$3" permitted="$4" ns="$5" v count
+  count="$(count_ns "$labels" "$prefix")"
+  # Nothing in this namespace: return before the loop, because an absent
+  # namespace and a single empty-valued one both yield no text, and only the
+  # second is a defect.
+  [ "$count" -gt 0 ] || return 0
+  while IFS= read -r v; do
+    # An empty value is its own defect rather than an absence. `severity:` with
+    # nothing after the colon still counts as one label, so the count check
+    # above passes, and a vocabulary loop that skipped empties would see nothing
+    # to reject: between them the two checks would let it through. This is the
+    # most reachable bad shape, because the recipe substitutes placeholders into
+    # this argv and an unfilled `difficulty:<grade>` arrives in exactly it.
+    if [ -z "$v" ]; then
+      finding "$subject" "$ns-value" "\`$prefix\` carries an empty value"
+      continue
+    fi
+    if ! in_set "$v" "$permitted"; then
+      finding "$subject" "$ns-value" "\`$prefix$v\` is outside the permitted set ($permitted)"
+    fi
+  done < <(values_ns "$labels" "$prefix")
+  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -115,11 +157,7 @@ check_labels() {
   if [ "$n" -ne 1 ]; then
     finding "$subject" "severity-count" "expected exactly one \`severity:\` label, found $n"
   fi
-  for v in $(values_ns "$labels" 'severity:'); do
-    if ! in_set "$v" "$SEVERITY_VALUES"; then
-      finding "$subject" "severity-value" "\`severity:$v\` is outside the permitted set ($SEVERITY_VALUES)"
-    fi
-  done
+  check_ns_values "$subject" "$labels" 'severity:' "$SEVERITY_VALUES" "severity"
 
   # Exactly one surface. Unlike severity there is no fallback band: an
   # unlabeled issue is simply unfiled against the adopter/maintainer split
@@ -128,11 +166,7 @@ check_labels() {
   if [ "$n" -ne 1 ]; then
     finding "$subject" "surface-count" "expected exactly one \`surface:\` label, found $n"
   fi
-  for v in $(values_ns "$labels" 'surface:'); do
-    if ! in_set "$v" "$SURFACE_VALUES"; then
-      finding "$subject" "surface-value" "\`surface:$v\` is outside the permitted set ($SURFACE_VALUES)"
-    fi
-  done
+  check_ns_values "$subject" "$labels" 'surface:' "$SURFACE_VALUES" "surface"
 
   # Difficulty is optional by design: a filing that did not read the cited code
   # omits the grade rather than guessing one. So zero is clean and two is not,
@@ -141,11 +175,7 @@ check_labels() {
   if [ "$n" -gt 1 ]; then
     finding "$subject" "difficulty-count" "expected at most one \`difficulty:\` label, found $n"
   fi
-  for v in $(values_ns "$labels" 'difficulty:'); do
-    if ! in_set "$v" "$DIFFICULTY_VALUES"; then
-      finding "$subject" "difficulty-value" "\`difficulty:$v\` is outside the permitted set ($DIFFICULTY_VALUES)"
-    fi
-  done
+  check_ns_values "$subject" "$labels" 'difficulty:' "$DIFFICULTY_VALUES" "difficulty"
 
   return 0
 }
@@ -170,19 +200,41 @@ check_labels() {
 # and the drain agree on what a key is by construction.
 readonly KEY_RE='^<!-- gaia-debt-key: v1 class=[^ ]+ path=.+ line=[0-9]+ -->$'
 
+# A key CANDIDATE is any line that opens with the key comment, well-formed or
+# not. Counting candidates apart from well-formed keys is what lets a malformed
+# key be reported while a valid one stands beside it. Testing only for the
+# absence of a well-formed key cannot see that case, and the case is not
+# harmless: `.gaia/scripts/debt-count-refresh.sh` collects covered paths with a
+# looser `scan` than this file's shape test, so a malformed second key line
+# contributes its bogus path to the set the statusline nudge suppression reads,
+# even though dedup identity itself is unaffected (the drain's own capture takes
+# the first well-formed match).
+#
+# Anchoring on the line start is also what preserves the deliberate tolerance
+# for a key mentioned inside running prose, which a correction comment quoting
+# the format legitimately does.
+readonly KEY_CANDIDATE_RE='^<!-- gaia-debt-key:'
+
 # check_body <subject> <body-text>
 check_body() {
-  local subject="$1" body="$2" keylines n path
+  local subject="$1" body="$2" wellformed candidates path
 
-  keylines="$(printf '%s\n' "$body" | grep -cE "$KEY_RE" || true)"
-  n="$(printf '%s\n' "$body" | grep -c 'gaia-debt-key:' || true)"
+  wellformed="$(printf '%s\n' "$body" | grep -cE "$KEY_RE" || true)"
+  candidates="$(printf '%s\n' "$body" | grep -cE "$KEY_CANDIDATE_RE" || true)"
 
-  if [ "$keylines" -eq 0 ] && [ "$n" -eq 0 ]; then
+  # Three independent verdicts, not a chain. Written as separate `if`s rather
+  # than an `if/elif` ladder because a body can carry more than one of these
+  # defects at once, and the ladder's later arms were unreachable whenever an
+  # earlier one held: one valid key plus one malformed key line satisfied the
+  # "a well-formed key exists" arm and reported nothing at all.
+  if [ "$candidates" -eq 0 ] && [ "$wellformed" -eq 0 ]; then
     finding "$subject" "missing-dedup-key" "the body carries no \`gaia-debt-key\` line"
-  elif [ "$keylines" -eq 0 ]; then
-    finding "$subject" "malformed-dedup-key" "a \`gaia-debt-key\` line is present but does not match the v1 shape"
-  elif [ "$keylines" -gt 1 ]; then
-    finding "$subject" "duplicate-dedup-key" "expected exactly one \`gaia-debt-key\` line, found $keylines"
+  fi
+  if [ "$candidates" -gt "$wellformed" ]; then
+    finding "$subject" "malformed-dedup-key" "$((candidates - wellformed)) \`gaia-debt-key\` line(s) do not match the v1 shape"
+  fi
+  if [ "$wellformed" -gt 1 ]; then
+    finding "$subject" "duplicate-dedup-key" "expected exactly one \`gaia-debt-key\` line, found $wellformed"
   fi
 
   # Path shape, checked only on a key that already parsed. Reported separately
@@ -316,10 +368,16 @@ run_issue() {
     '' | *[!0-9]*) fatal "--issue needs an issue number" ;;
   esac
 
-  corpus="$(fetch_corpus)"
+  # `|| fatal` rather than a bare assignment: under `set -e` a failing `gh`
+  # would propagate its own exit 1, which is this script's documented "findings
+  # were reported" status, so an auth or network failure would read as a clean
+  # run with an unlucky exit code. Routing it to 2 keeps the three-way contract
+  # honest. The blocking `--pre-file` mode is unaffected, being hermetic.
+  corpus="$(fetch_corpus)" || fatal "could not read the tech-debt backlog through gh"
   resolve_provenance_epoch "$corpus"
 
-  obj="$(gh issue view "$number" --json number,createdAt,labels,body)"
+  obj="$(gh issue view "$number" --json number,createdAt,labels,body)" ||
+    fatal "could not read issue #$number through gh"
   check_one_issue "$obj"
 }
 
@@ -327,7 +385,7 @@ run_sweep() {
   local corpus count i obj
   require_gh
 
-  corpus="$(fetch_corpus)"
+  corpus="$(fetch_corpus)" || fatal "could not read the tech-debt backlog through gh"
   count="$(printf '%s' "$corpus" | jq 'length')"
 
   # An empty corpus is reported, never silently green. A `gh` that returned
