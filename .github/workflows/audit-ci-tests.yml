@@ -409,8 +409,8 @@ jobs:
               # three tests grep it for the prose pinning the unclassified
               # signal, and the .claude/skills/gaia/references/ entries above
               # name other files only, so without this line an edit to it
-              # alone skips every shard and greens having run those three
-              # assertions zero times.
+              # alone skips every code-gated shard, where that suite lives,
+              # and greens having run those three assertions zero times.
               - '.gaia/statusline/**'
               - '.gaia/tests/statusline/**'
               - '.claude/skills/gaia/references/harden.md'
