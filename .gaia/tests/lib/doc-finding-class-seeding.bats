@@ -81,10 +81,16 @@ assert_assignment_line() {
 # reading the file directly, because a route stated only inside those markers
 # is present in the maintainer tree and absent everywhere it is needed.
 strip_maintainer_only() {
+  # Rule order mirrors marker-strip.ts's own branch order, including the two
+  # cases a naive start/end pair gets wrong: a line carrying BOTH markers is a
+  # self-contained block and drops alone rather than opening one, and an
+  # end-without-start line is kept, not swallowed.
   awk '
+    skip == 1 && /gaia:maintainer-only:end/ { skip = 0; next }
+    skip == 1 { next }
+    /gaia:maintainer-only:start/ && /gaia:maintainer-only:end/ { next }
     /gaia:maintainer-only:start/ { skip = 1; next }
-    /gaia:maintainer-only:end/   { skip = 0; next }
-    skip != 1
+    { print }
   ' "$1"
 }
 
@@ -412,18 +418,12 @@ setup() {
     echo "$WORKFLOWS names the enumerating member but not the section that enumerates" >&2
     return 1
   }
-}
-
-@test "group I: the holistic classes code-audit-github-workflows.md's own examples assign are reachable (non-vacuity)" {
-  local scrubbed
-  scrubbed="$(strip_maintainer_only "$WORKFLOWS")"
-  # The example at the sidecar Shape block assigns a holistic class the
-  # assignment section does not carry a line for. That is legitimate ONLY
-  # while the route above exists, so this pins the pair together: drop the
-  # route and the file is left assigning a class it cannot reach.
-  printf '%s\n' "$scrubbed" | grep -Fq -- 'holistic/secret-exposure' || return 0
-  printf '%s\n' "$scrubbed" | grep -Fq -- 'code-audit-frontend.md' || {
-    echo "$WORKFLOWS assigns holistic/secret-exposure with no route to the set that defines it" >&2
+  # Asserted on the TARGET, not on the pointer: greping the pointing file
+  # proves only that the sentence names a heading, so renaming the heading in
+  # code-audit-frontend.md would leave an adopter-visible pointer citing a
+  # section that does not exist with every check in the tree still green.
+  grep -Fq -- '### Per-bucket `finding_class` convention' "$FRONTEND" || {
+    echo "the section $WORKFLOWS points at is missing from $FRONTEND" >&2
     return 1
   }
 }
