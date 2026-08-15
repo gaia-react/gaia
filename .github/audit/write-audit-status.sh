@@ -13,7 +13,6 @@
 #
 # Usage:
 #   write-audit-status.sh --sha <sha> --base <pr-base-sha> [--require-marker]
-#                         [--success-post-non-fatal]
 #   write-audit-status.sh --sha <sha> --force-pending <description>
 #
 # Two modes, because the five call sites are two shapes and pretending
@@ -27,30 +26,33 @@
 #                           `pending`. The local-mode stand-down, where CI runs
 #                           no audit at all, so there is nothing to clear.
 #
-# Modifiers, gated mode only. Both qualify the success path, which stand-down
-# mode does not have, so passing either with --force-pending is refused rather
-# than ignored:
-#   --require-marker            Post nothing unless the frontend member's clean
-#                               marker exists for the recomputed digest. The
-#                               clean-no-push path's proven-clean check.
-#   --success-post-non-fatal    Log instead of failing when the success POST is
-#                               rejected. See "POST fatality" below.
+# Modifier, gated mode only. It qualifies the success path, which stand-down
+# mode does not have, so passing it with --force-pending is refused rather than
+# ignored:
+#   --require-marker        Post nothing unless the frontend member's clean
+#                           marker exists for the recomputed digest. The
+#                           clean-no-push path's proven-clean check.
 #
 # Step outputs. When $GITHUB_OUTPUT is set this writes `members_pending`,
-# `success_stamped`, and, from the shared non-clobber read, `success_live` /
-# `read_failed`, which the terminal comment step reads so it can never claim a
-# stamp that did not happen. Callers with no `id:` simply have no one reading
-# them, which is why only the two skip paths consume the last two.
+# `success_stamped`, `post_failed`, and, from the shared non-clobber read,
+# `success_live` / `read_failed`, which the terminal comment steps read so they
+# can never claim a stamp that did not happen. Callers with no `id:` simply have
+# no one reading them.
 #
-# POST FATALITY IS A PARAMETER, NOT A POLICY, AND THAT IS DELIBERATE. The four
-# success writers do not agree today and neither unification is behavior-
-# preserving: the two skip paths' `success_stamped` ordering depends on a bare
-# POST failing the step under `set -e`, while the clean-no-push path's
-# non-fatality is half the fix for gaia-react/gaia#726 (an HTTP 422 on an unpushed sha turning
-# an otherwise clean audit red). Consolidating the writers must not silently
-# pick a winner, so the divergence is carried as a flag and pinned per path by
-# this repo's bats suites. Whether the four SHOULD agree is a real question and
-# a separate one.
+# A REJECTED STATUS POST NEVER FAILS THE STEP, ON ANY PATH. The merge gate fails
+# closed without help: nothing posted means the required GAIA-Audit context is
+# absent, and an absent required check shuts the button exactly as a `pending`
+# one does. So redding the job protects nothing, and it misattributes the
+# failure -- the audit itself passed, and a red `code-review-audit` check says it
+# did not. gaia-react/gaia#726 is the shape this prevents: an HTTP 422 on an
+# unpushed sha turned an otherwise-clean audit red. Targeting the pushed head
+# closed that particular 422, but a rate limit, a 5xx, or an auth blip rejects a
+# POST the same way and is not closed by anything.
+#
+# The author's signal is `post_failed` instead, which the terminal comment steps
+# report by name. That is the more diagnostic half of the trade: a red job buries
+# its cause in a step log, and on the two skip paths it also SUPPRESSED the
+# comment step, so the case most in need of an explanation produced none.
 #
 # Two suites cover this script: one drives it directly for its argument
 # contract, and one executes all five call sites as the workflow runs them.
@@ -58,7 +60,7 @@
 set -eu
 
 usage() {
-  echo "usage: write-audit-status.sh --sha <sha> (--base <sha> | --force-pending <desc>) [--require-marker] [--success-post-non-fatal]" >&2
+  echo "usage: write-audit-status.sh --sha <sha> (--base <sha> | --force-pending <desc>) [--require-marker]" >&2
 }
 
 sha=""
@@ -67,7 +69,6 @@ force_pending=""
 have_base=0
 have_force_pending=0
 require_marker=0
-success_post_non_fatal=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -82,8 +83,6 @@ while [ "$#" -gt 0 ]; do
       force_pending="$2"; have_force_pending=1; shift 2 ;;
     --require-marker)
       require_marker=1; shift ;;
-    --success-post-non-fatal)
-      success_post_non_fatal=1; shift ;;
     *)
       # STOP on an unrecognized argument rather than carrying on with a
       # half-understood invocation. This script decides whether a merge gate
@@ -112,14 +111,13 @@ if [ "$have_force_pending" -eq 1 ] && [ -z "$force_pending" ]; then
   exit 2
 fi
 
-# Both modifiers qualify the SUCCESS path, and stand-down mode has none: it can
-# only ever post pending. Accepting them there would be a well-spelled,
+# The modifier qualifies the SUCCESS path, and stand-down mode has none: it can
+# only ever post pending. Accepting it there would be a well-spelled,
 # meaningless combination sitting next to a parser that refuses a misspelled
 # one, so refuse it on the same fail-closed grounds. This also keeps the flag
 # space honest -- every combination the parser accepts is one a caller uses.
-if [ "$have_force_pending" -eq 1 ] \
-  && { [ "$require_marker" -eq 1 ] || [ "$success_post_non_fatal" -eq 1 ]; }; then
-  echo "write-audit-status: --require-marker / --success-post-non-fatal qualify the success path and are meaningless with --force-pending" >&2
+if [ "$have_force_pending" -eq 1 ] && [ "$require_marker" -eq 1 ]; then
+  echo "write-audit-status: --require-marker qualifies the success path and is meaningless with --force-pending" >&2
   exit 2
 fi
 
@@ -345,23 +343,21 @@ if [ -z "$version" ]; then
   decline ".gaia/VERSION missing/empty; skipping status."
 fi
 
-if [ "$success_post_non_fatal" -eq 1 ]; then
-  if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
-      --method POST \
-      --field state=success \
-      --field context=GAIA-Audit \
-      --field description="${version} ${frontend_digest} ${tree_sha}"; then
-    decline "GAIA-Audit status POST to ${sha} failed (non-fatal); local merge path will re-stamp."
-  fi
-else
-  gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
+if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
     --method POST \
     --field state=success \
     --field context=GAIA-Audit \
-    --field description="${version} ${frontend_digest} ${tree_sha}"
+    --field description="${version} ${frontend_digest} ${tree_sha}"; then
+  # `post_failed` distinguishes THIS no-stamp from the ones `decline` reports
+  # above, and the two are different repairs: re-run the workflow to re-POST,
+  # versus restore the .gaia/VERSION or the digest engine the earlier exits are
+  # about. Emitted before decline so the more specific fact is available to a
+  # reader that also sees `success_stamped=false`.
+  emit "post_failed=true"
+  decline "GAIA-Audit status POST to ${sha} was rejected; nothing stamped and the merge gate stays shut. Re-run this workflow, or run a local audit, to stamp it."
 fi
 
-# Last, so a POST that returned non-zero records as no-stamp: the bare `gh api`
-# above fails the step under `set -e`, but an output written first would outlive
-# a later reshape that tolerated the failure.
+# Last, so a POST that returned non-zero cannot reach it. The reject branch above
+# publishes `success_stamped=false` explicitly through `decline` rather than
+# leaning on this ordering, so the claim survives a reshape that moves it.
 emit "success_stamped=true"

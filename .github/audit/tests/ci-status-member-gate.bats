@@ -230,9 +230,9 @@ status_read_fails() {
 }
 
 # Make the status POST (the WRITE) fail, standing in for the HTTP 422 that
-# turned a clean audit red before #726, or any transient API error. The four
-# writers do NOT agree on what that means -- three let it fail the step, one
-# logs and carries on -- so this fixture is what pins the divergence.
+# turned a clean audit red before #726, or any transient API error. All four
+# writers give one answer to it -- log, publish post_failed, and carry on -- and
+# this fixture is what pins that answer on each of them.
 status_post_fails() {
   export GH_POST_FAILS=1
 }
@@ -404,7 +404,7 @@ run_step() {
 # Run the terminal comment step's body against the stubbed upsert, with the
 # outputs it consumes from the out-of-scope status step bound explicitly.
 run_comment_step() {
-  local body="$1" members_pending="$2" success_stamped="$3" success_live="${4:-}" read_failed="${5:-}"
+  local body="$1" members_pending="$2" success_stamped="$3" success_live="${4:-}" read_failed="${5:-}" post_failed="${6:-}"
   ( cd "$SANDBOX" \
     && RUNNER_TEMP="$RUNNER_TEMP_DIR" \
        PR_NUMBER="1" \
@@ -412,6 +412,25 @@ run_comment_step() {
        SUCCESS_STAMPED="$success_stamped" \
        SUCCESS_LIVE="$success_live" \
        READ_FAILED="$read_failed" \
+       POST_FAILED="$post_failed" \
+       bash "$body" )
+}
+
+# The audit-complete comment reads a different env set from the skip comments:
+# push-fixes' outcome fields, plus the two stamp steps' post_failed outputs. The
+# defaults here are the ordinary clean run ("no fixes needed"), so a test binds
+# only the field it is about.
+run_audit_complete_step() {
+  local body="$1" post_failed="${2:-}"
+  ( cd "$SANDBOX" \
+    && RUNNER_TEMP="$RUNNER_TEMP_DIR" \
+       PR_NUMBER="1" \
+       PUSHED="false" \
+       REFUSED="false" \
+       REFUSED_COUNT="0" \
+       REFUSED_REASON="" \
+       PUSH_FIXES="true" \
+       POST_FAILED="$post_failed" \
        bash "$body" )
 }
 
@@ -1740,37 +1759,45 @@ run_comment_step() {
 }
 
 # -----------------------------------------------------------------------------
-# What a FAILED success POST does, pinned per writer because they do not agree.
+# What a FAILED success POST does. ONE ANSWER, PINNED ON ALL FOUR WRITERS.
 #
-# THIS SECTION PINS A DIVERGENCE, NOT A RULE. Three of the four success writers
-# leave the `gh api` bare, so a rejected POST fails the step under `set -e` and
-# reds the job. The clean-no-push writer wraps it in `if ! ... ; then <log>`,
-# deliberately: #726 was an HTTP 422 on an unpushed sha turning an otherwise
-# clean audit red, and non-fatality is half of that fix
-# (.github/audit/tests/ci-clean-no-push-status.bats states both halves).
+# A rejected POST never fails the step, on any path. The reasoning is that the
+# merge gate already fails closed without help: no status posted means the
+# required GAIA-Audit context is absent, and an absent required check shuts the
+# button exactly as a `pending` one does. So redding the job adds no protection,
+# and it misattributes the failure -- the audit itself passed, and a red
+# `code-review-audit` check tells the author their review did not.
 #
-# Recorded here as the current answer on each path, so consolidating the writers
-# cannot quietly pick one. Whether the four SHOULD agree, and on which answer,
-# is a separate question from whether they agree today; neither unification is
-# behavior-preserving, because the two skip paths' `success_stamped` output
-# ordering depends on the bare POST failing the step.
+# The signal the author gets instead is `post_failed`, published as a step
+# output and reported by the terminal comment step, which names the rejection as
+# the cause. That is strictly more diagnostic than a red job whose only
+# explanation sits in a step log -- and on the two skip paths a red job SUPPRESSED
+# the comment step entirely, so the case most in need of an explanation got none.
+#
+# Each writer must therefore reach the POST, survive its rejection, and claim no
+# stamp. `success_stamped=false` is published EXPLICITLY on this path rather than
+# inferred from the emit-last ordering, so a future reshape cannot lose it.
 # -----------------------------------------------------------------------------
 
-@test "push path: a rejected success POST fails the step (bare gh api under set -e)" {
+@test "push path: a rejected success POST does not fail the step" {
   body="$(extract_step_body 'Write GAIA-Audit commit status')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
   status_post_fails
 
   run run_step "$body" "$sha"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 0 ]
 
-  # It really did attempt the success POST; the step failed on the rejection
+  # It really did attempt the success POST; the step survived the rejection
   # rather than short-circuiting somewhere earlier.
   grep -qF "state=success" "$POST_LOG"
+  grep -qF "post_failed=true" "$STEP_OUTPUT"
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+  grep -qF "success_stamped=true" "$STEP_OUTPUT" && return 1
+  return 0
 }
 
-@test "clean-no-push: a rejected success POST does NOT fail the step (#726 non-fatality)" {
+@test "clean-no-push: a rejected success POST does not fail the step" {
   body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
   commit_app_only_diff
   write_frontend_marker
@@ -1781,36 +1808,116 @@ run_comment_step() {
   [ "$status" -eq 0 ]
 
   grep -qF "state=success" "$POST_LOG"
-  # ...and it says so, rather than swallowing the failure silently.
-  grep -qF "non-fatal" <<<"$output"
+  grep -qF "post_failed=true" "$STEP_OUTPUT"
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+  # ...and it says so on stderr, rather than swallowing the failure silently.
+  grep -qF "rejected" <<<"$output"
 }
 
-@test "out-of-scope skip: a rejected success POST fails the step" {
+@test "out-of-scope skip: a rejected success POST does not fail the step" {
   body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
   commit_docs_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
   status_post_fails
 
   run run_step "$body" "$sha"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 0 ]
 
   grep -qF "state=success" "$POST_LOG"
-  # success_stamped is written AFTER the POST precisely so a rejected POST
-  # leaves no claim of a stamp behind.
+  grep -qF "post_failed=true" "$STEP_OUTPUT"
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
   grep -qF "success_stamped=true" "$STEP_OUTPUT" && return 1
   return 0
 }
 
-@test "chore-deps skip: a rejected success POST fails the step" {
+@test "chore-deps skip: a rejected success POST does not fail the step" {
   body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
   status_post_fails
 
   run run_step "$body" "$sha"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 0 ]
 
   grep -qF "state=success" "$POST_LOG"
+  grep -qF "post_failed=true" "$STEP_OUTPUT"
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
   grep -qF "success_stamped=true" "$STEP_OUTPUT" && return 1
+  return 0
+}
+
+@test "a rejected success POST is not confused with a bowed-out one: post_failed is absent when nothing was attempted" {
+  # The two causes of "no stamp" are different repairs -- restore .gaia/VERSION
+  # versus re-run the workflow -- so the output that distinguishes them must not
+  # fire on the path that never reached the POST at all.
+  body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
+  commit_docs_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  : > "$SANDBOX/.gaia/VERSION"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+  grep -qF "post_failed=true" "$STEP_OUTPUT" && return 1
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# What the AUTHOR is told when the POST was rejected.
+#
+# Non-fatality moves the burden of explaining a shut gate off the job conclusion
+# and onto the terminal comment, so each comment step must name the rejection
+# rather than fall through to the generic not-stamped message, whose stated
+# cause (a missing .gaia/VERSION) would send the author to repair a file that is
+# fine.
+# -----------------------------------------------------------------------------
+
+@test "out-of-scope comment: a rejected POST is reported as the cause, not a missing VERSION" {
+  body="$(extract_step_body 'Status - skipped (no source changes)')"
+  run run_comment_step "$body" "" "false" "" "" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
+  grep -qF "rejected" "$COMMENT_LOG"
+  grep -qF ".gaia/VERSION is missing" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "chore-deps comment: a rejected POST is reported as the cause, not a missing VERSION" {
+  body="$(extract_step_body 'Status - skipped (chore-deps PR)')"
+  run run_comment_step "$body" "" "false" "" "" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
+  grep -qF "rejected" "$COMMENT_LOG"
+  grep -qF ".gaia/VERSION is missing" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "audit-complete comment: a rejected POST on the stamp step is surfaced, not reported as plain success" {
+  # This step has no member/stamp branches of its own -- it reports what the
+  # audit DID -- so an unqualified "complete" line reads as green while the gate
+  # is shut. It is the only comment covering the push and clean-no-push paths.
+  body="$(extract_step_body 'Status - audit complete')"
+  run run_audit_complete_step "$body" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "code-review-audit complete" "$COMMENT_LOG"
+  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
+}
+
+@test "audit-complete comment: says nothing about the stamp when the POST was not rejected" {
+  body="$(extract_step_body 'Status - audit complete')"
+  run run_audit_complete_step "$body" ""
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "code-review-audit complete" "$COMMENT_LOG"
+  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG" && return 1
   return 0
 }

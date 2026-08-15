@@ -772,6 +772,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Write GAIA-Audit commit status
+        id: push-status
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
@@ -799,11 +800,17 @@ jobs:
           # .github/audit/write-audit-status.sh owns the fail-closed rule these
           # five terminal paths share -- never stamp on an unrecomputable digest,
           # never clobber a live success -- as one copy rather than five (gaia-react/gaia#1286).
+          #
+          # This step carries an `id:` so its post_failed output reaches the
+          # terminal "Status - audit complete" comment. A rejected status POST no
+          # longer reds this step, so that comment is the only place an author is
+          # told the gate is shut (gaia-react/gaia#1296).
           bash .github/audit/write-audit-status.sh \
             --sha "${AUDIT_SHA:-}" \
             --base "${PR_BASE_SHA}"
 
       - name: Write GAIA-Audit commit status (clean, no push)
+        id: clean-status
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
@@ -849,16 +856,17 @@ jobs:
           # will merge, even if the agent left an unpushed local commit that moved
           # the runner's HEAD off it without changing content.
           #
-          # --success-post-non-fatal: gaia-react/gaia#726 was an HTTP 422 on an unpushed sha
-          # turning an otherwise-clean audit RED under `set -eu`. A failed status
-          # side-effect must never red a clean audit; the local merge path
-          # re-stamps. This writer is the only one that takes that answer, and
-          # .github/audit/write-audit-status.sh explains why it is a parameter.
+          # A rejected status POST never reds any of the four stamp paths, so
+          # this one asks for nothing special: gaia-react/gaia#726 was an HTTP
+          # 422 on an unpushed sha turning an otherwise-clean audit RED under
+          # `set -eu`, and .github/audit/write-audit-status.sh now settles that
+          # for every writer rather than for this one alone. This step carries an
+          # `id:` so its post_failed output reaches the terminal "Status - audit
+          # complete" comment.
           bash .github/audit/write-audit-status.sh \
             --sha "${HEAD_SHA}" \
             --base "${PR_BASE_SHA}" \
-            --require-marker \
-            --success-post-non-fatal
+            --require-marker
 
       - name: Stand down (local-mode, no override)
         if: |
@@ -1176,6 +1184,7 @@ jobs:
           SUCCESS_STAMPED: ${{ steps.chore-deps-status.outputs.success_stamped }}
           SUCCESS_LIVE: ${{ steps.chore-deps-status.outputs.success_live }}
           READ_FAILED: ${{ steps.chore-deps-status.outputs.read_failed }}
+          POST_FAILED: ${{ steps.chore-deps-status.outputs.post_failed }}
         run: |
           set -eu
           # chore(deps) / chore(deps-dev) PRs skip the expensive frontend audit
@@ -1213,6 +1222,16 @@ jobs:
               "code-review-audit skipped: chore(deps) PR, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
             exit 0
           fi
+          # The stamp step reached the POST and GitHub rejected it. Checked
+          # before the generic no-stamp branch below, whose stated cause is a
+          # missing .gaia/VERSION: that would send the author to repair a file
+          # that is fine. A rejected POST no longer reds the stamp step, so this
+          # comment is the whole signal.
+          if [ "${POST_FAILED:-}" = "true" ]; then
+            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
+              "code-review-audit skipped: chore(deps) PR, but the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
+            exit 0
+          fi
           # The stamp step bowed out having posted NOTHING (unrecomputable frontend
           # digest, or .gaia/VERSION missing/empty). The gate fails closed, so a
           # bare "skipped" line would claim the opposite of what happened.
@@ -1233,6 +1252,7 @@ jobs:
           SUCCESS_STAMPED: ${{ steps.oos-status.outputs.success_stamped }}
           SUCCESS_LIVE: ${{ steps.oos-status.outputs.success_live }}
           READ_FAILED: ${{ steps.oos-status.outputs.read_failed }}
+          POST_FAILED: ${{ steps.oos-status.outputs.post_failed }}
         run: |
           set -eu
           # Checked BEFORE members_pending, which is still non-empty on this
@@ -1268,6 +1288,16 @@ jobs:
           if [ -n "${MEMBERS_PENDING:-}" ]; then
             bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
+            exit 0
+          fi
+          # The status step reached the POST and GitHub rejected it. Checked
+          # before the branch below, whose stated cause is a missing
+          # .gaia/VERSION: that would send the author to repair a file that is
+          # fine. A rejected POST no longer reds the status step, so this comment
+          # is the whole signal.
+          if [ "${POST_FAILED:-}" = "true" ]; then
+            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
+              "code-review-audit skipped: no files in the frontend auditor's scope, but the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
             exit 0
           fi
           # The status step can also bow out having posted NOTHING (.gaia/VERSION
@@ -1367,6 +1397,12 @@ jobs:
           REFUSED_COUNT: ${{ steps.push-fixes.outputs.refused_count }}
           REFUSED_REASON: ${{ steps.push-fixes.outputs.refused_reason }}
           PUSH_FIXES: ${{ steps.config.outputs.push_fixes }}
+          # Whichever of the two stamp steps this run reached; they are mutually
+          # exclusive, and a step that did not run contributes an empty string.
+          # This comment is the only one covering either path, so without it a
+          # rejected POST would leave "complete: no fixes needed" standing beside
+          # a shut merge gate.
+          POST_FAILED: ${{ steps.push-status.outputs.post_failed || steps.clean-status.outputs.post_failed }}
         run: |
           set -eu
           if [ "$PUSH_FIXES" = "false" ]; then
@@ -1382,5 +1418,12 @@ jobs:
           else
             mode="no fixes needed"
           fi
+          # Appended rather than substituted: what the audit DID is still true
+          # and still worth reporting, and the stamp is a separate fact about
+          # whether the gate opened.
+          stamp=""
+          if [ "${POST_FAILED:-}" = "true" ]; then
+            stamp=". But the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
+          fi
           bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit complete: $mode"
+            "code-review-audit complete: ${mode}${stamp}"
