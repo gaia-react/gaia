@@ -288,6 +288,63 @@ echo \"\$grepped\""
   grep -qF -- "clean" <<<"$output"
 }
 
+# --- the declared false positives ------------------------------------------
+
+# The header names two shapes the scan reports that are not defects, and states
+# the repair for each. Both halves of that are claims about what this guard
+# does, and prose making such a claim decays silently while a test re-checks
+# itself, so each shape is pinned here: the hit it produces, and the edit that
+# actually clears it. Two rounds of this suite's own review turned on a repair
+# sentence that was wrong, which is what these four tests exist to prevent.
+
+@test "flags a grep pattern quoted inside another tool's program text" {
+  fixture_repo
+  fixture_script 'awk '"'"'/grep -E "a\tb"/ { print }'"'"' f'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
+
+# The stated repair, and the reason the pattern-in-a-variable hatch is NOT
+# stated for this shape: an assignment line still carrying the grep token keeps
+# the hit, so only the escaped letter's own line matters.
+@test "the awk shape clears only once the escape leaves the grep line" {
+  fixture_repo
+  fixture_script 'esc='"'"'a\tb'"'"'
+awk "/grep -E \"$esc\"/ { print }" f'
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
+}
+
+@test "flags a trailing shell comment after the call" {
+  fixture_repo
+  fixture_script 'grep -qE "^x$" f  # tolerate \t here'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
+
+# The stated repair for that shape. Hoisting the PATTERN into a variable does
+# not clear it, because the escape is in the comment rather than the pattern;
+# the fixture pins both halves so the header cannot drift back to claiming one
+# hatch covers both shapes.
+@test "the trailing-comment shape clears by moving the comment, not the pattern" {
+  fixture_repo
+  fixture_script 'RE="^x$"
+grep -qE "$RE" f  # tolerate \t here'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+
+  fixture_repo
+  fixture_script '# tolerate \t here
+grep -qE "^x$" f'
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
+}
+
 # --- the scan surface ------------------------------------------------------
 
 @test "flags a pattern in a workflow run body" {

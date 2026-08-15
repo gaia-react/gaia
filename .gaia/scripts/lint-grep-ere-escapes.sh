@@ -161,13 +161,16 @@ fi
 #
 # FALSE POSITIVE, a third direction, and the one worth naming explicitly because
 # in each case the demanded edit is not a repair the author can make sense of.
-# Neither shape exists in this tree, and for both the escape hatch is to build
-# the pattern in a variable, which the scan does not read into either:
+# Neither shape occurs in this tree, which is what the gate running clean over
+# it establishes. Each carries its own repair, because they do not share one:
 #   - A grep pattern quoted inside ANOTHER tool's program text, as in
 #     `awk '/grep -E "a\tb"/ { print }'`. The escape belongs to awk's regex,
 #     which has its own portability rules, but the scan sees a `grep` in what
 #     looks like command position. Telling the two apart needs a shell
-#     tokenizer, which is more machinery than this gate is worth.
+#     tokenizer, which is more machinery than this gate is worth. Hoisting the
+#     program into a variable does NOT clear it, because the assignment line
+#     still carries the grep token; only moving the escaped letter itself onto a
+#     line holding no grep token does.
 #   - A TRAILING SHELL COMMENT after the call, as in
 #     `grep -qE "^x$" f  # tolerate \t here`. The unquoted-terminator set below
 #     stops the walk at a shell metacharacter, and `#` is deliberately not in
@@ -175,7 +178,10 @@ fi
 #     it is an ordinary character a pattern may legitimately contain, which the
 #     scan cannot tell apart without tokenizing. Fail-closed is the right side
 #     to err on here, but the demanded repair points at a comment rather than at
-#     any regex, so it is named rather than left to be discovered.
+#     any regex, so it is named rather than left to be discovered. There is no
+#     pattern-side repair at all: hoisting the pattern into a variable leaves
+#     the hit, because the escape is in the comment. Move the comment to its own
+#     line, where the full-line skip below reaches it, or reword it.
 #
 # `$'...'` is NOT a hit, and the discrimination is load-bearing rather than
 # cosmetic: `$'\r'` is one of the repairs this gate's own hint text advertises.
