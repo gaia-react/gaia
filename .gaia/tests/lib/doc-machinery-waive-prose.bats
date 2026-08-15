@@ -108,8 +108,12 @@ normalize_ws() {
 # extract_paragraph_from_lead <file> <literal-lead>
 # Prints the paragraph whose first line contains <literal-lead>, up to the
 # next blank line. The lead is matched with awk's index() rather than a
-# regex, so a lead carrying `*` or `.` needs no escaping and the -v
-# backslash-stripping hazard documented in this file's header cannot bite.
+# regex, so a lead carrying `*` or `.` is compared literally and needs no
+# escaping. That is a different hazard from the -v backslash stripping this
+# file's header documents, which index() does NOT remove: awk strips a
+# backslash out of a -v value before any comparison happens. Every lead
+# passed below is backslash-free, which is what makes this safe; a lead
+# carrying one would need the backslash doubled at the call site.
 extract_paragraph_from_lead() {
   awk -v lead="$2" '
     index($0, lead) { found=1 }
@@ -403,6 +407,35 @@ setup() {
 # whole population the changed-files path term exists to serve. The identity
 # assertion below is the same instrument Group 6 uses on the routing
 # paragraph, and it pins the paragraphs whole rather than by fragment.
+@test "Group 8: the disqualifier lead-in is identical across all three prose surfaces" {
+  # The lead-in carries the claim that the two terms only ever narrow the
+  # eligible set. A rewrite on one surface saying they widen it, or dropping
+  # the "must clear both" half, contradicts the rule while leaving the
+  # fragment assertion above green, because that fragment stops at "waived".
+  # FRONTEND states the same paragraph behind a `**Disqualifiers.**` label
+  # (task doc F3), which is a heading for the pair rather than part of the
+  # claim, so it is stripped before comparing rather than treated as drift.
+  local lead first cur f
+  lead='Two disqualifiers narrow what may be waived'
+  first=""
+  for f in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
+    cur="$(extract_paragraph_from_lead "$f" "$lead" | normalize_ws)"
+    cur="${cur#\*\*Disqualifiers.\*\* }"
+    [ -n "$cur" ] || {
+      echo "no lead-in paragraph found in $f" >&2
+      return 1
+    }
+    if [ -z "$first" ]; then
+      first="$cur"
+    else
+      [ "$cur" = "$first" ] || {
+        echo "disqualifier lead-in in $f diverges from $WIKI after whitespace normalization" >&2
+        return 1
+      }
+    fi
+  done
+}
+
 @test "Group 8: both disqualifier paragraphs are identical across all three prose surfaces" {
   local lead first cur f
   for lead in \

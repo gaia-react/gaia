@@ -294,6 +294,14 @@ jobs:
               # out-of-scope disposition rule on this page; it is a source the
               # suite guards, and it matches no other pattern here.
               - 'wiki/concepts/PR Merge Workflow.md'
+              # The same suite greps this page as the THIRD surface stating
+              # the out-of-scope waive rule, and its cross-surface assertions
+              # compare all three against each other, so an edit here alone is
+              # exactly the drift they exist to catch. It matches no other
+              # pattern here: without this entry that edit would report
+              # `code=false`, skip every bats step, and green the job having
+              # run those assertions zero times.
+              - 'wiki/concepts/Audit Disposition and Debt Fix.md'
               # doc-audit-verification-gate.bats (.gaia/tests/lib/) greps this
               # page's description of the classification-verification round.
               # It is the THIRD surface stating the Run-vs-Skip criterion, and
