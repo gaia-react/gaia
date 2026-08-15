@@ -16688,6 +16688,85 @@ var writeDeclineLedger = (repoRoot, ledger) => {
   atomicWriteFileSync(target, serialized);
 };
 
+// src/schemas/finding-class.ts
+var ORACLE_PREFIXES = [
+  "react-doctor",
+  "axe",
+  "knip",
+  "cve"
+];
+var HOLISTIC_FINDING_CLASSES = [
+  "holistic/missing-auth-check",
+  "holistic/secret-exposure",
+  "holistic/n-plus-one",
+  "holistic/unnecessary-rerender",
+  "holistic/unhandled-promise-rejection",
+  "holistic/swallowed-error",
+  "holistic/over-permissive-zod",
+  "holistic/business-logic-in-component",
+  "holistic/hardcoded-string",
+  "holistic/non-null-assertion",
+  "holistic/hollow-assertion",
+  "holistic/uncoupled-restatement",
+  "holistic/stale-figure",
+  "holistic/unarmed-guard",
+  "holistic/fail-open-discovery",
+  "holistic/partial-cause-reporting"
+];
+var OUT_OF_SCOPE_FALLBACK_FINDING_CLASS = "holistic/unclassified";
+var RULE_FINDING_CLASSES = [
+  "rule/use-effect-derived-state",
+  "rule/use-effect-state-reset",
+  "rule/unnecessary-use-callback",
+  "rule/missing-effect-cleanup",
+  "rule/generic-handler-name",
+  "rule/switch-statement",
+  "rule/interface-declaration",
+  "rule/z-enum",
+  "rule/array-generic-syntax",
+  "rule/thin-route-violation"
+];
+var WORKFLOW_FINDING_CLASSES = [
+  "workflow/script-injection",
+  "workflow/unsafe-pull-request-target",
+  "workflow/unpinned-action",
+  "workflow/broad-permissions"
+];
+var PROSE_FINDING_CLASSES = [
+  "prose/excessive-length",
+  "prose/deep-nesting",
+  "prose/high-indirection",
+  "prose/redundant-instruction"
+];
+var CLOSED_VOCABULARY = /* @__PURE__ */ new Set([
+  ...HOLISTIC_FINDING_CLASSES,
+  ...RULE_FINDING_CLASSES,
+  ...WORKFLOW_FINDING_CLASSES,
+  ...PROSE_FINDING_CLASSES
+]);
+var splitPrefix = (value) => {
+  const separatorIndex = value.indexOf("/");
+  if (separatorIndex === -1) return void 0;
+  return {
+    prefix: value.slice(0, separatorIndex),
+    slug: value.slice(separatorIndex + 1)
+  };
+};
+var isOraclePrefix = (prefix) => ORACLE_PREFIXES.includes(prefix);
+var isOracleFindingClass = (findingClass) => {
+  const parts = splitPrefix(findingClass);
+  return parts !== void 0 && isOraclePrefix(parts.prefix);
+};
+var isValidFindingClass = (value) => {
+  const parts = splitPrefix(value);
+  if (parts === void 0) return false;
+  if (isOraclePrefix(parts.prefix)) return parts.slug.length > 0;
+  return CLOSED_VOCABULARY.has(value);
+};
+var FindingClassSchema = external_exports.string().refine(isValidFindingClass, {
+  message: "finding_class must match the per-bucket convention (oracle id or controlled vocabulary)"
+});
+
 // src/harden/ledger.ts
 var HELP_TEXT11 = `Usage: gaia harden-ledger <subcommand> [args]
 
@@ -16707,6 +16786,7 @@ var HELP_TEXT11 = `Usage: gaia harden-ledger <subcommand> [args]
   prune --window-classes <c1,c2,...>
     Remove any decline entry whose finding_class is not in the comma-separated
     set (no qualifying evidence left in the window). Idempotent.
+    An entry keyed on the classless fallback is exempt and always kept.
 `;
 var HELP_TOKENS11 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var RESURFACE_THRESHOLD = 3;
@@ -16935,7 +17015,7 @@ var handlePrune = (argv, options) => {
     windowClasses2.split(",").map((value) => value.trim()).filter((value) => value.length > 0)
   );
   const kept = ledger.declines.filter(
-    (decline) => keep.has(decline.finding_class)
+    (decline) => decline.finding_class === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS || keep.has(decline.finding_class)
   );
   if (kept.length !== ledger.declines.length) {
     writeDeclineLedger(repoRoot, { ...ledger, declines: kept });
@@ -16962,79 +17042,6 @@ var run12 = (argv, options = {}) => {
 
 // src/harden/tally.ts
 import path9 from "node:path";
-
-// src/schemas/finding-class.ts
-var ORACLE_PREFIXES = [
-  "react-doctor",
-  "axe",
-  "knip",
-  "cve"
-];
-var HOLISTIC_FINDING_CLASSES = [
-  "holistic/missing-auth-check",
-  "holistic/secret-exposure",
-  "holistic/n-plus-one",
-  "holistic/unnecessary-rerender",
-  "holistic/unhandled-promise-rejection",
-  "holistic/swallowed-error",
-  "holistic/over-permissive-zod",
-  "holistic/business-logic-in-component",
-  "holistic/hardcoded-string",
-  "holistic/non-null-assertion"
-];
-var OUT_OF_SCOPE_FALLBACK_FINDING_CLASS = "holistic/unclassified";
-var RULE_FINDING_CLASSES = [
-  "rule/use-effect-derived-state",
-  "rule/use-effect-state-reset",
-  "rule/unnecessary-use-callback",
-  "rule/missing-effect-cleanup",
-  "rule/generic-handler-name",
-  "rule/switch-statement",
-  "rule/interface-declaration",
-  "rule/z-enum",
-  "rule/array-generic-syntax",
-  "rule/thin-route-violation"
-];
-var WORKFLOW_FINDING_CLASSES = [
-  "workflow/script-injection",
-  "workflow/unsafe-pull-request-target",
-  "workflow/unpinned-action",
-  "workflow/broad-permissions"
-];
-var PROSE_FINDING_CLASSES = [
-  "prose/excessive-length",
-  "prose/deep-nesting",
-  "prose/high-indirection",
-  "prose/redundant-instruction"
-];
-var CLOSED_VOCABULARY = /* @__PURE__ */ new Set([
-  ...HOLISTIC_FINDING_CLASSES,
-  ...RULE_FINDING_CLASSES,
-  ...WORKFLOW_FINDING_CLASSES,
-  ...PROSE_FINDING_CLASSES
-]);
-var splitPrefix = (value) => {
-  const separatorIndex = value.indexOf("/");
-  if (separatorIndex === -1) return void 0;
-  return {
-    prefix: value.slice(0, separatorIndex),
-    slug: value.slice(separatorIndex + 1)
-  };
-};
-var isOraclePrefix = (prefix) => ORACLE_PREFIXES.includes(prefix);
-var isOracleFindingClass = (findingClass) => {
-  const parts = splitPrefix(findingClass);
-  return parts !== void 0 && isOraclePrefix(parts.prefix);
-};
-var isValidFindingClass = (value) => {
-  const parts = splitPrefix(value);
-  if (parts === void 0) return false;
-  if (isOraclePrefix(parts.prefix)) return parts.slug.length > 0;
-  return CLOSED_VOCABULARY.has(value);
-};
-var FindingClassSchema = external_exports.string().refine(isValidFindingClass, {
-  message: "finding_class must match the per-bucket convention (oracle id or controlled vocabulary)"
-});
 
 // src/harden/compute-tally.ts
 var RECURRENCE_THRESHOLD = 3;
@@ -17117,7 +17124,7 @@ var computeTally = ({
   for (const [findingClass, aggregate] of byClass) {
     const distinctPrCount = aggregate.prNumbers.length;
     if (findingClass === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS) {
-      if (distinctPrCount >= RECURRENCE_THRESHOLD) {
+      if (distinctPrCount >= RECURRENCE_THRESHOLD && !suppressedClass(findingClass, distinctPrCount)) {
         unclassified = {
           area_tags: aggregate.areaTags,
           distinct_pr_count: distinctPrCount,
