@@ -355,10 +355,19 @@ _respawn_breadcrumb() {
 # --- The digest-marker-presence filter (mints nothing) ---------------------
 #
 # Reads a newline-separated member list on $1, prints the members whose valid
-# CURRENT-digest earned marker is NOT already present. This is the digest
-# analog of the deleted carry-forward cf_filter: a simple presence check, no
-# anchor selection, no delta computation, no ancestry check. Pure query: the
-# digest batch and the clearance reader only read.
+# CURRENT-digest earned marker is NOT already present, and the members whose
+# earned marker IS present but is outranked by a live same-digest refusal.
+# This is the digest analog of the deleted carry-forward cf_filter: a simple
+# presence check, no anchor selection, no delta computation, no ancestry
+# check. Pure query: the digest batch and the clearance reader only read.
+#
+# Refusal precedence is the merge hook's rule (pr-merge-audit-check.sh reads
+# the refusal family before the earned family), and this filter answers a
+# different question for the same state, so the two must agree on it. They
+# would not agree without the refusal read below: the writer publishes a
+# refusal BESIDE any same-digest earned marker rather than replacing it, so a
+# cleared-only filter reports "nobody owed" while the merge stays denied, and
+# the operator is told there is no member left to run.
 #
 # The digest lib, the clearance lib, or the digest batch itself being
 # unavailable disables the whole feature and passes the list through
@@ -416,7 +425,8 @@ digest_marker_filter() {
     [ -n "$m" ] || continue
     digest="$(_member_digest "$m")" || digest=""
     cleared=false
-    if [ -n "$digest" ] && clearance_member_cleared "$repo_root" "$digest" "$m"; then
+    if [ -n "$digest" ] && clearance_member_cleared "$repo_root" "$digest" "$m" \
+       && ! clearance_member_refused "$repo_root" "$digest" "$m"; then
       cleared=true
     fi
     _respawn_breadcrumb "$m" "$digest" "$cleared" || true

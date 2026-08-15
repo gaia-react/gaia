@@ -336,6 +336,50 @@ setup() {
   true
 }
 
+# The three assertions below pin the amendment the path terms alone no longer
+# decide. Group 6's identity test makes the five files agree with each other;
+# it cannot tell whether what they agree on matches the owner section, which is
+# exactly how the paragraph drifted from a two-term rule to a four-term one
+# while staying byte-identical everywhere.
+
+@test "Group 6: each member's routing paragraph requires the finding to clear both disqualifiers" {
+  local f para
+  for f in "${ALL_AGENTS[@]}"; do
+    para="$(extract_orchestrator_paragraph "$f")"
+    printf '%s\n' "$para" | grep -qF -- "clears both disqualifiers" || {
+      echo "$f's routing paragraph does not require clearing both disqualifiers" >&2
+      return 1
+    }
+  done
+}
+
+@test "Group 6: each member's routing paragraph delegates to the owner section" {
+  local f para
+  for f in "${ALL_AGENTS[@]}"; do
+    para="$(extract_orchestrator_paragraph "$f")"
+    printf '%s\n' "$para" | grep -qF -- 'wiki/concepts/PR Merge Workflow.md' || {
+      echo "$f's routing paragraph does not name the owner page" >&2
+      return 1
+    }
+    printf '%s\n' "$para" | grep -qF -- "governs wherever this summary and it differ" || {
+      echo "$f's routing paragraph does not defer to the owner section on a conflict" >&2
+      return 1
+    }
+  done
+}
+
+@test "Group 6: no member's routing paragraph still states the retired two-term waive rule" {
+  local f para
+  for f in "${ALL_AGENTS[@]}"; do
+    para="$(extract_orchestrator_paragraph "$f")"
+    printf '%s\n' "$para" | grep -qF -- "and files it as a tech-debt issue otherwise" && {
+      echo "$f's routing paragraph still states the retired two-term waive rule" >&2
+      return 1
+    }
+  done
+  true
+}
+
 # --- Group 7: the label literal ----------------------------------------------
 
 @test "Group 7: section B-mw's abuse-check paragraph names the resolved offender label" {

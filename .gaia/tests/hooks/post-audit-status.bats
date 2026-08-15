@@ -21,6 +21,12 @@
 #   7. no PR and no upstream                -> head_sha falls back to local HEAD, so
 #      the sha guard does not fire and the run reaches the POST
 #   8. detached HEAD at the PR head sha (the CI checkout shape) -> posts
+#   9. a writer-shaped REFUSAL               -> posts state=failure on the pushed
+#      head, including when the same digest's earned marker sits beside it, with
+#      a description that carries neither the cleared shape nor a version in
+#      field 1; a refusal naming another member declines on the same
+#      well-formedness key the success arm uses, and the pushed-head guards
+#      apply to the failure state too
 #
 # Case 5 is the regression this suite exists to pin. The GAIA-Audit trailer
 # stamp is content-preserving by design, so a stamp commit that exists only
@@ -121,6 +127,25 @@ write_marker() {
   mkdir -p "$(dirname "$path")"
   printf '{"version":"1.2.3","schema":3,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
     "$member" "$digest" "$tree" "$sha" "$sidecar" > "$path"
+  printf '%s\n' "$path"
+}
+
+# Write a writer-shaped schema-3 REFUSAL for MEMBER, keyed to MEMBER's OWN
+# content digest at REPO's current HEAD, and print its path. The refusal twin of
+# write_marker above; only such an artifact reaches the hook's failure arm.
+write_refusal() {
+  local member="${1:-code-audit-frontend}" digest tree sha path
+  digest=$(digest_of "$REPO" "$member")
+  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  sha=$(git -C "$REPO" rev-parse HEAD)
+  if [ "$member" = "code-audit-frontend" ]; then
+    path="$REPO/.gaia/local/audit/${digest}.refused"
+  else
+    path="$REPO/.gaia/local/audit/${digest}.${member}.refused"
+  fi
+  mkdir -p "$(dirname "$path")"
+  printf '{"version":"1.2.3","schema":3,"member":"%s","provenance":"refused","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
+    "$member" "$digest" "$tree" "$sha" > "$path"
   printf '%s\n' "$path"
 }
 
@@ -365,4 +390,117 @@ assert_no_post() {
   [ "$status" -eq 0 ]
   [ "$output" = "status: posted GAIA-Audit success ${short}" ]
   grep -qF -- "repos/gaia-react/gaia/statuses/${pushed_sha}" "$API_CALLS" || return 1
+}
+
+# -----------------------------------------------------------------------------
+# Refusal arm: the compensating failure status
+# -----------------------------------------------------------------------------
+# Refusal precedence has a server-side signal only if the refusal itself posts
+# one. GitHub's auto-merge fires on the required GAIA-Audit status and never
+# runs the merge hook that honors a refusal, so a refusal landing behind an
+# already-green status merges over it unless a failure post retracts that green.
+# These arms pin the post, its state, and the description shape that keeps it
+# unreadable as cleared.
+
+@test "refusal for the current digest: posts the failure status on the pushed head" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+
+  refusal=$(write_refusal code-audit-frontend)
+  digest=$(digest_of "$REPO" code-audit-frontend)
+  short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
+
+  cd "$REPO"
+  run "$HOOK_ABS" "$refusal"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: posted GAIA-Audit failure ${short}" ]
+
+  grep -qF -- "repos/gaia-react/gaia/statuses/${pushed_sha}" "$API_CALLS" || return 1
+  grep -qF -- "state=failure" "$API_CALLS" || return 1
+  grep -qF -- "context=GAIA-Audit" "$API_CALLS" || return 1
+}
+
+@test "refusal description carries neither the cleared shape nor a version in field 1" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+
+  refusal=$(write_refusal code-audit-frontend)
+  digest=$(digest_of "$REPO" code-audit-frontend)
+  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  cd "$REPO"
+  run "$HOOK_ABS" "$refusal"
+
+  [ "$status" -eq 0 ]
+  # Names the refusing member and the exact content, so an operator can find
+  # the artifact on disk.
+  grep -qF -- "description=refused by code-audit-frontend ${digest}" "$API_CALLS" || return 1
+  # And can never be read as cleared by a state-blind reader.
+  grep -qF -- "description=1.2.3 ${digest} ${tree}" "$API_CALLS" && return 1
+  true
+}
+
+@test "refusal posts even when the earned marker for the same digest is present" {
+  # The incident shape: an earlier wave cleared and posted success, a later wave
+  # of the same member refused the same content. The writer publishes the
+  # refusal BESIDE the earned marker rather than replacing it, so both are on
+  # disk and the refusal must still post its retraction.
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+
+  write_marker code-audit-frontend >/dev/null
+  refusal=$(write_refusal code-audit-frontend)
+  short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
+
+  cd "$REPO"
+  run "$HOOK_ABS" "$refusal"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: posted GAIA-Audit failure ${short}" ]
+  grep -qF -- "state=failure" "$API_CALLS" || return 1
+}
+
+@test "refusal whose body names another member: declines as not a valid clearance" {
+  # The failure arm reuses the same well-formedness key the success arm does,
+  # so a refusal that is not this member's own for this digest posts nothing.
+  push_head_to_upstream
+  install_gh_stub "$(git -C "$REPO" rev-parse HEAD)"
+
+  digest=$(digest_of "$REPO" code-audit-frontend)
+  path="$REPO/.gaia/local/audit/${digest}.refused"
+  mkdir -p "$(dirname "$path")"
+  printf '{"version":"1.2.3","schema":3,"member":"code-audit-maintainer-shell","provenance":"refused","digest":"%s","tree":"t","sha":"s"}\n' \
+    "$digest" > "$path"
+
+  cd "$REPO"
+  run "$HOOK_ABS" "$path"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: marker not a valid clearance" ]
+  assert_no_post || return 1
+}
+
+@test "refusal on un-pushed tree-changing work: declines rather than posting" {
+  # The pushed-head guards apply to both states. Declining here is the
+  # fail-safe direction: the local gate still denies the merge, and a head the
+  # audit never covered carries no success to retract.
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+
+  echo "unpushed change" >> "$REPO/README.md"
+  git -C "$REPO" add README.md
+  git -C "$REPO" commit --quiet -m "unpushed"
+  refusal=$(write_refusal code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABS" "$refusal"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: audited tree not on pushed head" ]
+  assert_no_post || return 1
 }

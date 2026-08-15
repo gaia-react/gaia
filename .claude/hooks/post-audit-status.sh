@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# post-audit-status.sh, post the GAIA-Audit success commit status on HEAD.
+# post-audit-status.sh, post the GAIA-Audit commit status on HEAD.
 #
 # Purpose
 #   Called by a Code Audit Team member's agent (code-audit-frontend at
@@ -13,13 +13,31 @@
 #   for its own call; the member-aware gate below is the precondition for the
 #   POST itself.
 #
+#   Handed a REFUSAL instead, it posts state=failure and skips the member-aware
+#   gate. That arm is what gives refusal precedence a server-side signal: the
+#   local merge hook honors a refusal over any same-digest earned marker, but
+#   GitHub's auto-merge merges on the required status alone and never runs that
+#   hook, so without a compensating post a refusal written after a sibling
+#   member's clean pass already posted success leaves the success standing.
+#   The refusal writer (.gaia/scripts/audit-write-clearance.sh) makes this call
+#   itself on the local path, so the signal is a mechanism rather than a step an
+#   agent has to remember.
+#
+#   Honest limit: the pushed-head guards below apply to both states, so a
+#   refusal written against work that is not what the pull request head carries
+#   declines rather than posting. That is the fail-safe direction (the local
+#   gate still denies the merge, and an un-audited pushed head carries no
+#   success to retract), and it keeps this hook from ever posting about content
+#   the caller did not audit.
+#
 # Invocation
 #   .claude/hooks/post-audit-status.sh <marker-path>
 #
-#   <marker-path>  The marker file the calling member's agent just wrote
+#   <marker-path>  The clearance artifact the calling member's agent just wrote
 #                  (.gaia/local/audit/<digest>.ok for code-audit-frontend,
 #                  .gaia/local/audit/<digest>.<member>.ok for a specialized
-#                  member, <digest> the member's own 64-hex content digest).
+#                  member, <digest> the member's own 64-hex content digest;
+#                  the same two names with a .refused extension for a refusal).
 #                  Its existence gates this call; the agent passes the path
 #                  it wrote in the marker step.
 #
@@ -47,6 +65,7 @@
 #   0 , Posted successfully OR declined (precondition failed). One stdout
 #        marker line is always emitted; the audit caller surfaces it. Lines:
 #          status: posted GAIA-Audit success <short-sha>
+#          status: posted GAIA-Audit failure <short-sha>
 #        Decline lines (prefix "status: declined: "):
 #          marker absent
 #          marker not a valid clearance
@@ -76,6 +95,8 @@
 #     positional fields; field 2 is the digest) matches what every
 #     state-aware GAIA-Audit reader accepts as cleared, and state=success
 #     distinguishes it from the CI local-mode stand-down's pending sentinel.
+#     The refusal description carries neither shape, for the same reason that
+#     sentinel does not.
 
 set -euo pipefail
 
@@ -106,6 +127,10 @@ fi
 
 emit_posted() {
   printf 'status: posted GAIA-Audit success %s\n' "$1"
+}
+
+emit_posted_failure() {
+  printf 'status: posted GAIA-Audit failure %s\n' "$1"
 }
 
 emit_decline() {
@@ -145,7 +170,26 @@ if [ -z "$marker_member_part" ]; then
 else
   marker_member="${marker_member_part#.}"
 fi
-if ! clearance_acceptable "$marker" "$marker_member" "$marker_digest"; then
+# Two modes, decided by the artifact the caller wrote, and nothing else is a
+# clearance. An EARNED marker posts success, gated below on every dispatched
+# member having cleared. A REFUSAL posts failure, and skips that gate: the
+# refusal IS the member's answer, so waiting for a roster to clear before
+# reporting it would be waiting for the condition it contradicts.
+#
+# The failure post exists because the local merge hook is not the only merge
+# path. GitHub's auto-merge consults the required GAIA-Audit status alone and
+# never reaches the hook that honors refusal precedence, so a refusal written
+# after a sibling member's clean pass already posted success would leave that
+# success standing and the pull request merging over a live refusal. Posting
+# failure for the same head retracts it; the latest status for a context wins,
+# and a later success post from a genuine clean pass overwrites this in turn,
+# so a refusal can never strand a pull request it no longer applies to.
+post_state=""
+if clearance_acceptable "$marker" "$marker_member" "$marker_digest"; then
+  post_state="success"
+elif clearance_refusal_acceptable "$marker" "$marker_member" "$marker_digest"; then
+  post_state="failure"
+else
   emit_decline "marker not a valid clearance"
   exit 0
 fi
@@ -288,7 +332,7 @@ fi
 # member set is the vacuous pass this gate exists to prevent. That arm
 # declines.
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
-if [ -x "$resolver" ]; then
+if [ "$post_state" = "success" ] && [ -x "$resolver" ]; then
   resolver_rc=0
   members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
   if [ "$resolver_rc" -ne 0 ]; then
@@ -317,7 +361,18 @@ fi
 # Description (C3): three positional fields "<version> <frontend-digest>
 # <tree>". Every dispatched member's clearance is earned (there is no
 # carried provenance), so the shape is fixed: no branch, no CLI flag.
-desc="${version} ${frontend_digest} ${tree_sha}"
+#
+# The refusal description deliberately does NOT carry that cleared shape (its
+# field 1 is a fixed word that can never be a version, field 2 a member name
+# that can never be a 64-hex digest), mirroring the CI stand-down's sentinel:
+# defense in depth behind the state-aware readers, which already reject any
+# non-success state. It names the refusing member and the exact content digest,
+# which is what an operator needs to find the artifact on disk.
+if [ "$post_state" = "failure" ]; then
+  desc="refused by ${marker_member} ${marker_digest}"
+else
+  desc="${version} ${frontend_digest} ${tree_sha}"
+fi
 
 # Anchored for the same reason as the `gh pr view` above, and with the same
 # limits: a subdirectory normalization, not a cross-tree guarantee.
@@ -329,7 +384,7 @@ fi
 
 if gh api "repos/${repo}/statuses/${head_sha}" \
   --method POST \
-  --field state=success \
+  --field state="${post_state}" \
   --field context=GAIA-Audit \
   --field description="${desc}" >/dev/null 2>&1; then
   # Surface the sha we POSTed to, head_sha, which the sha guard above has already
@@ -342,7 +397,11 @@ if gh api "repos/${repo}/statuses/${head_sha}" \
     emit_error "posted-sha mismatch: surfaced ${posted_short} does not resolve to POSTed ${head_sha}"
     posted_short="$head_sha"
   fi
-  emit_posted "$posted_short"
+  if [ "$post_state" = "failure" ]; then
+    emit_posted_failure "$posted_short"
+  else
+    emit_posted "$posted_short"
+  fi
   exit 0
 fi
 
