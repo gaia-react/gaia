@@ -15,4 +15,4 @@ Exit 0 real, 1 no-op, 2 usage error. On a no-op, re-dispatch **exactly once** ag
 
 **Poll the file, not the notification.** The artifact is on disk, so never block on a completion signal that may not arrive. Tear down each watch you arm the moment you hold its artifact: a report you end up reading somewhere else leaves the loop with no exit condition left to satisfy.
 
-Full contract, including the hardened retry prefix: the `No-op guard` section of `.claude/skills/gaia/references/spec.md`. Path-scoping it would break it: the decision happens while composing a dispatch, which no file edit announces.
+Full contract, including the hardened retry prefix: the `No-op guard` section of `.claude/skills/gaia/references/spec.md`. Path-scoping this rule would break it: the decision happens while composing a dispatch, which no file edit announces.
