@@ -400,13 +400,14 @@ setup() {
 }
 
 # The presence assertions above pin five short literals per surface, which
-# leaves every other sentence of the two disqualifier paragraphs free to
-# diverge on one surface while all of them stay green. The sentence bounding
-# the authored-inconsistency term is the costly one to lose: without it the
-# term disqualifies every finding on a file the change touches, which is the
-# whole population the changed-files path term exists to serve. The identity
-# assertion below is the same instrument Group 6 uses on the routing
-# paragraph, and it pins the paragraphs whole rather than by fragment.
+# leaves every other sentence of the lead-in and the two term paragraphs free
+# to diverge on one surface while all of them stay green. The sentence
+# bounding the authored-inconsistency term is the costly one to lose: without
+# it the term disqualifies every finding on a file the change touches, which
+# is the whole population the changed-files path term exists to serve. The
+# two identity assertions below close that gap with the same instrument
+# Group 6 uses on the routing paragraph, pinning the lead-in and then both
+# term paragraphs whole rather than by fragment.
 @test "Group 8: the disqualifier lead-in is identical across all three prose surfaces" {
   # The lead-in carries the claim that the two terms only ever narrow the
   # eligible set. A rewrite on one surface saying they widen it, or dropping
