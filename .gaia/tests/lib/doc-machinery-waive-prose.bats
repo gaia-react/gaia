@@ -105,6 +105,19 @@ normalize_ws() {
   tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
 }
 
+# extract_paragraph_from_lead <file> <literal-lead>
+# Prints the paragraph whose first line contains <literal-lead>, up to the
+# next blank line. The lead is matched with awk's index() rather than a
+# regex, so a lead carrying `*` or `.` needs no escaping and the -v
+# backslash-stripping hazard documented in this file's header cannot bite.
+extract_paragraph_from_lead() {
+  awk -v lead="$2" '
+    index($0, lead) { found=1 }
+    found && NF==0 { exit }
+    found { print }
+  ' "$1"
+}
+
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 
@@ -380,6 +393,38 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- "Two disqualifiers narrow what may be waived" || return 1
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "Two disqualifiers narrow what may be waived" || return 1
+}
+
+# The presence assertions above pin five short literals per surface, which
+# leaves every other sentence of the two disqualifier paragraphs free to
+# diverge on one surface while all of them stay green. The sentence bounding
+# the authored-inconsistency term is the costly one to lose: without it the
+# term disqualifies every finding on a file the change touches, which is the
+# whole population the changed-files path term exists to serve. The identity
+# assertion below is the same instrument Group 6 uses on the routing
+# paragraph, and it pins the paragraphs whole rather than by fragment.
+@test "Group 8: both disqualifier paragraphs are identical across all three prose surfaces" {
+  local lead first cur f
+  for lead in \
+    '**The change authored the inconsistency.**' \
+    '**A pointer written into shipped content owes a tracked destination.**'; do
+    first=""
+    for f in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
+      cur="$(extract_paragraph_from_lead "$f" "$lead" | normalize_ws)"
+      [ -n "$cur" ] || {
+        echo "no paragraph led by '$lead' found in $f" >&2
+        return 1
+      }
+      if [ -z "$first" ]; then
+        first="$cur"
+      else
+        [ "$cur" = "$first" ] || {
+          echo "paragraph led by '$lead' in $f diverges from $WIKI after whitespace normalization" >&2
+          return 1
+        }
+      fi
+    done
+  done
 }
 
 # --- Group 9: the heading treatment is frozen (Contract 4) ------------------
