@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-08-11
+updated: 2026-08-15
 tags: [release, claude, adopter, drift]
 ---
 
@@ -114,7 +114,7 @@ The refresh is a **3-way text classify** (the audit template is static, so there
 
 The audit workflow is **adopter-tunable**: `conflict` never clobbers adopter edits (self-hosted runners, extra secrets wiring, concurrency, extra steps), it emits a sidecar patch and defers to a manual `/setup-gaia` refresh, mirroring the `shared` drift rule. The rendered `gaia-ci` workflows stay disposable (regenerated wholesale on `/setup-gaia --reconfigure`); only the audit workflow gets the 3-way.
 
-`gaia-ci.yml` is the single scheduled entry point. It carries every distinct tool cron, and when one fires it asks each tool due on that cron whether it has work, then calls only the ones that answer `run` as reusable workflows. Each `gaia-ci-<tool>.yml` therefore carries `workflow_call` and `workflow_dispatch` and no `schedule` of its own, and behaves identically whether the scheduler calls it or an adopter runs it by hand. GitHub bills every job a whole-minute minimum, so a tool waking its own cron paid that floor just to reach a decision; one scheduler pays it once per fired cron instead. `gaia setup-ci check-drift` reports the scheduler alongside the per-tool files, on the same states plus `disabled` for a config with no CI-mode tool.
+`gaia-ci.yml` is the single scheduled entry point. It carries every distinct tool cron, and when one fires it asks each tool due on that cron whether it has work, then calls only the ones that answer `run` as reusable workflows. Each `gaia-ci-<tool>.yml` therefore carries `workflow_call` and `workflow_dispatch` and no `schedule` of its own, and behaves identically whether the scheduler calls it or an adopter runs it by hand. GitHub bills every job a whole-minute minimum, so a tool waking its own cron paid that floor just to reach a decision; one scheduler pays it once per fired cron instead. Each rendered `gaia-ci-*` job splits its shared setup into a `checkout` partial and a separate `node-setup` partial (pnpm, Node, `pnpm install --frozen-lockfile`), with the pre-run skip decision between them: the decision needs only the `gh` CLI and the committed `.gaia/cli/gaia` bundle, neither of which needs an install, so a tick that skips no longer pays for checkout, pnpm, Node, and a frozen-lockfile install before learning it had no work. `gaia setup-ci check-drift` reports the scheduler alongside the per-tool files, on the same states plus `disabled` for a config with no CI-mode tool.
 
 The `gaia-ci-*` templates pin their third-party actions (checkout, setup-node, and siblings) by full commit SHA with a resolved-tag comment, not by a mutable major tag, so a force-moved upstream tag cannot execute in an adopter's job holding that job's token. A CLI guard keeps the pins from drifting from the maintainer's own live workflows: it asserts every template action is SHA-pinned and that each pin equals the one the corresponding live workflow runs, so a weekly action bump has to land in the live workflow first and fails the guard until the template pin is mirrored to match. `/setup-gaia` (not `/update-gaia`) is what delivers a re-rendered `gaia-ci-*` workflow to an adopter, since these templates regenerate wholesale rather than merge.
 
