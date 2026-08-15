@@ -21,6 +21,12 @@ assert_absent_across() {
   shift
   local f
   for f in "$@"; do
+    # An absence assertion has to prove it opened the file. grep exits 2 on a
+    # missing or renamed path, so the `&&` arm never fires and the helper
+    # returns 0, reporting a stale phrase absent from a file it never read.
+    # Unconditional rather than leaning on a sibling presence test: several of
+    # the paths this suite names carry no presence assertion at all.
+    [ -f "$f" ] || { echo "absence assertion target ${f} does not exist" >&2; return 1; }
     grep -Eiq -- "$pattern" "$f" && {
       echo "stale phrase /${pattern}/ survives in ${f}" >&2
       return 1
@@ -38,6 +44,8 @@ assert_absent_fixed_across() {
   shift
   local f
   for f in "$@"; do
+    # Same fail-open as the sibling helper above, same reason.
+    [ -f "$f" ] || { echo "absence assertion target ${f} does not exist" >&2; return 1; }
     grep -Fiq -- "$needle" "$f" && {
       echo "stale phrase '${needle}' survives in ${f}" >&2
       return 1
@@ -67,6 +75,7 @@ setup() {
     "$ROOT/.claude/agents/code-audit-maintainer-prose.md"
   )
   WIKI_PAGE="$ROOT/wiki/concepts/Policy-Memory Loop.md"
+  AUDIT_AGENT_PAGE="$ROOT/wiki/concepts/Code Review Audit Agent.md"
   TALLY_CORE="$ROOT/.gaia/cli/src/harden/compute-tally.ts"
   TALLY_EMIT="$ROOT/.gaia/cli/src/harden/tally.ts"
   FINDING_CLASS="$ROOT/.gaia/cli/src/schemas/finding-class.ts"
@@ -154,4 +163,19 @@ setup() {
     }
   done
   return 0
+}
+
+# --- wiki/concepts/Code Review Audit Agent.md (DOC-006: escaped the sweep
+# above, guarded here) -------------------------------------------------
+
+@test "DOC-006: Code Review Audit Agent.md deletes the classless 'omitted from the findings block' claim" {
+  assert_absent_fixed_across "omitted from the findings block" "$AUDIT_AGENT_PAGE"
+}
+
+@test "DOC-006: Code Review Audit Agent.md deletes the 'seeded in the agent definition' claim" {
+  assert_absent_fixed_across "seeded in the agent definition" "$AUDIT_AGENT_PAGE"
+}
+
+@test "DOC-006: Code Review Audit Agent.md states a classless finding is stamped holistic/unclassified" {
+  grep -Fq "holistic/unclassified" "$AUDIT_AGENT_PAGE"
 }

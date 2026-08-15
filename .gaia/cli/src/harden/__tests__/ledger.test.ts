@@ -14,6 +14,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../../exit.js';
 import {declineLedgerPath} from '../../schemas/decline-ledger.js';
 import type {DeclineLedger} from '../../schemas/decline-ledger.js';
+import {isValidFindingClass} from '../../schemas/finding-class.js';
 import {run} from '../ledger.js';
 
 type Sandbox = {
@@ -281,6 +282,94 @@ describe('harden-ledger', () => {
 
       const ledger = readLedger(sandbox.ledgerPath);
       expect(ledger.declines).toHaveLength(0);
+    });
+
+    test('keeps a fallback-keyed entry against a disjoint window set, still removes a non-exempt entry', () => {
+      run(
+        [
+          'record',
+          '--finding-class',
+          'holistic/unclassified',
+          '--pr-count',
+          '5',
+        ],
+        {cwd: sandbox.root}
+      );
+
+      const code = run(['prune', '--window-classes', 'knip/exports'], {
+        cwd: sandbox.root,
+      });
+
+      expect(code).toBe(EXIT_CODES.OK);
+
+      const ledger = readLedger(sandbox.ledgerPath);
+      const classes = ledger.declines.map((d) => d.finding_class);
+      expect(classes).toContain('knip/exports');
+      expect(classes).toContain('holistic/unclassified');
+      expect(classes).not.toContain('knip/types');
+    });
+
+    test('keeps a fallback-keyed entry against an empty window set (the failed-gh-read path)', () => {
+      run(
+        [
+          'record',
+          '--finding-class',
+          'holistic/unclassified',
+          '--pr-count',
+          '5',
+        ],
+        {cwd: sandbox.root}
+      );
+
+      const code = run(['prune', '--window-classes', ''], {cwd: sandbox.root});
+
+      expect(code).toBe(EXIT_CODES.OK);
+
+      const ledger = readLedger(sandbox.ledgerPath);
+      expect(ledger.declines).toEqual([
+        expect.objectContaining({finding_class: 'holistic/unclassified'}),
+      ]);
+    });
+  });
+
+  describe('fallback-key round trip', () => {
+    test('record / is-suppressed round-trips on the classless fallback without widening the closed vocabulary', () => {
+      run(
+        [
+          'record',
+          '--finding-class',
+          'holistic/unclassified',
+          '--pr-count',
+          '27',
+        ],
+        {cwd: sandbox.root}
+      );
+
+      const belowMargin = run(
+        [
+          'is-suppressed',
+          '--finding-class',
+          'holistic/unclassified',
+          '--current-pr-count',
+          '29',
+        ],
+        {cwd: sandbox.root}
+      );
+      expect(belowMargin).toBe(EXIT_CODES.OK);
+
+      const atMargin = run(
+        [
+          'is-suppressed',
+          '--finding-class',
+          'holistic/unclassified',
+          '--current-pr-count',
+          '30',
+        ],
+        {cwd: sandbox.root}
+      );
+      expect(atMargin).not.toBe(EXIT_CODES.OK);
+
+      expect(isValidFindingClass('holistic/unclassified')).toBe(false);
     });
   });
 

@@ -71,6 +71,27 @@ describe('schemas/finding-class', () => {
       expect(isValidFindingClass('holistic/something-made-up')).toBe(false);
     });
 
+    test.each([
+      'holistic/hollow-assertions',
+      'holistic/hollow_assertion',
+      'holistic/uncoupled-restatements',
+      'holistic/uncoupled-restatement-prose',
+      'holistic/stale-figures',
+      'holistic/stale-count',
+      'holistic/unarmed-guards',
+      'holistic/unarmed-check',
+      'holistic/fail-open-discoveries',
+      'holistic/failopen-discovery',
+      'holistic/partial-cause-report',
+      'holistic/partial-cause-reporting-2',
+    ])(
+      'rejects a near-miss spelling of each seeded maintainer-surface member: %s',
+      (value) => {
+        expect(FindingClassSchema.safeParse(value).success).toBe(false);
+        expect(isValidFindingClass(value)).toBe(false);
+      }
+    );
+
     test('rejects an unseeded rule member (closed bucket)', () => {
       expect(
         FindingClassSchema.safeParse('rule/totally-invented').success

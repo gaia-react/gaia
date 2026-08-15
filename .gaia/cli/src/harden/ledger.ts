@@ -27,6 +27,7 @@ import {
   writeDeclineLedger,
 } from '../schemas/decline-ledger.js';
 import type {DeclineLedger} from '../schemas/decline-ledger.js';
+import {OUT_OF_SCOPE_FALLBACK_FINDING_CLASS} from '../schemas/finding-class.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 
@@ -48,6 +49,7 @@ const HELP_TEXT = `Usage: gaia harden-ledger <subcommand> [args]
   prune --window-classes <c1,c2,...>
     Remove any decline entry whose finding_class is not in the comma-separated
     set (no qualifying evidence left in the window). Idempotent.
+    An entry keyed on the classless fallback is exempt and always kept.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -420,8 +422,10 @@ const handlePrune = (argv: readonly string[], options: RunOptions): number => {
       .filter((value) => value.length > 0)
   );
 
-  const kept = ledger.declines.filter((decline) =>
-    keep.has(decline.finding_class)
+  const kept = ledger.declines.filter(
+    (decline) =>
+      decline.finding_class === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS ||
+      keep.has(decline.finding_class)
   );
 
   // Idempotent: only write when the prune actually removes an entry.

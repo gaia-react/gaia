@@ -13,8 +13,11 @@
  * `severity_max` is a running max across the recurrence, not an eligibility
  * gate. A classless finding (the `holistic/unclassified` fallback) recurs the
  * same way but routes to the separate `unclassified` signal instead: it is
- * never a candidate, never covered, and never suppressed. Findings repeated
- * within a single PR still collapse to one distinct-PR increment either way.
+ * never a candidate and never covered, but it is subject to the decline
+ * ledger's suppression, so a maintainer who seeds the vocabulary a cluster
+ * was missing can discharge the signal rather than see it re-surface every
+ * tally. Findings repeated within a single PR still collapse to one
+ * distinct-PR increment either way.
  */
 import {
   isOracleFindingClass,
@@ -219,10 +222,14 @@ export const computeTally = ({
   for (const [findingClass, aggregate] of byClass) {
     const distinctPrCount = aggregate.prNumbers.length;
 
-    // The classless bucket is subject to the threshold only: never covered,
-    // never suppressed, never a candidate (see the module docblock).
+    // The classless bucket is never covered and never a candidate, but its
+    // surfacing is now gated by the decline ledger's suppression too (see the
+    // module docblock).
     if (findingClass === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS) {
-      if (distinctPrCount >= RECURRENCE_THRESHOLD) {
+      if (
+        distinctPrCount >= RECURRENCE_THRESHOLD &&
+        !suppressedClass(findingClass, distinctPrCount)
+      ) {
         unclassified = {
           area_tags: aggregate.areaTags,
           distinct_pr_count: distinctPrCount,
@@ -261,9 +268,10 @@ export const computeTally = ({
  * The set of valid finding_class values with qualifying recurrence evidence
  * (>= threshold distinct PRs, any severity) in the window, before any
  * suppression/coverage filtering. Excludes the classless `unclassified`
- * bucket, which never enters the decline ledger (see the module docblock).
- * The ledger-prune pass consumes this so it can drop decline entries whose
- * class no longer recurs.
+ * bucket by construction; the ledger prune exempts a fallback-keyed entry
+ * explicitly (see `handlePrune` in `ledger.ts`) rather than relying on this
+ * list to preserve it. The ledger-prune pass consumes this so it can drop
+ * decline entries whose class no longer recurs.
  */
 export const windowClasses = (prs: readonly TallyPrRecord[]): string[] => {
   const byClass = aggregateByClass(prs);

@@ -61,7 +61,13 @@ teardown() {
 # A `gaia` binary stub answering the two subcommands check-updates.sh calls:
 # `update-deps run --emit-updates <file>` (writes an empty plan) and
 # `harden-tally` (emits candidate_count 0 plus an `unclassified` object shaped
-# by $MOCK_GH_OK / $MOCK_UNCLASSIFIED_COUNT from the test's environment).
+# by $MOCK_GH_OK / $MOCK_UNCLASSIFIED_COUNT / $MOCK_UNCLASSIFIED_SUPPRESSED
+# from the test's environment). $MOCK_UNCLASSIFIED_SUPPRESSED=true mirrors
+# compute-tally.ts's suppressed-fallback shape: a successful gh window read
+# (gh_ok true) whose classless recurrence the decline ledger suppresses,
+# which computeTally reports as `unclassified: null` same as the gh-failure
+# case, but with `gh_ok: true` so check-updates.sh treats it as a fresh
+# reading rather than falling back to the previous cached count.
 write_mock_gaia() {
   cat > "$1" <<'EOF'
 #!/usr/bin/env bash
@@ -80,6 +86,8 @@ case "$1" in
   harden-tally)
     if [ "${MOCK_GH_OK:-true}" = "false" ]; then
       printf '{"candidate_count":0,"unclassified":null,"gh_ok":false,"window_days":90}'
+    elif [ "${MOCK_UNCLASSIFIED_SUPPRESSED:-false}" = "true" ]; then
+      printf '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90}'
     else
       printf '{"candidate_count":0,"unclassified":{"distinct_pr_count":%s,"pr_numbers":[401,405,409],"area_tags":["app/routes"],"severity_max":"suggestion"},"gh_ok":true,"window_days":90}' "${MOCK_UNCLASSIFIED_COUNT:-3}"
     fi
@@ -145,6 +153,28 @@ run_statusline_with_cache() {
   [ "$status" -eq 0 ]
   jq . "$CACHE_FILE" >/dev/null
   [ "$(jq -r '.hardenUnclassifiedCount' "$CACHE_FILE")" = "5" ]
+}
+
+# UAT-007: both delivery channels clear once a maintainer records the
+# suppression -- the refresher writes 0 into the cache, and the statusline
+# rendered against that same cache carries no unclassified nudge.
+@test "the rendered statusline carries no unclassified segment once the tally reports a suppressed fallback" {
+  CACHE_FILE="$REFRESH_ROOT/.gaia/local/cache/shared/update-check.json"
+  printf '{"checkedAt":0,"hardenCandidateCount":0,"hardenUnclassifiedCount":5}' > "$CACHE_FILE"
+  run env MOCK_GH_OK=true MOCK_UNCLASSIFIED_SUPPRESSED=true bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
+  [ "$status" -eq 0 ]
+  jq . "$CACHE_FILE" >/dev/null
+  [ "$(jq -r '.hardenUnclassifiedCount' "$CACHE_FILE")" = "0" ]
+
+  # Render against the refresher's own cache file (every field it wrote),
+  # not a hand-built one, so the assertion covers the field the refresher
+  # actually wrote rather than a synthetic stand-in.
+  cp "$CACHE_FILE" "$MAIN/.gaia/local/cache/shared/update-check.json"
+  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  [ "$status" -eq 0 ]
+  grep -qF -- "unclassified recurring" <<<"$output" && return 1
+  true
 }
 
 # --- doc-grep: harden.md presents the unclassified signal (UAT-008, review half) ---

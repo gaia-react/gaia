@@ -325,6 +325,14 @@ jobs:
               # and green the job having run that assertion zero times. Same
               # test-dir/source-dir pairing as the two entries above.
               - 'wiki/concepts/Policy-Memory Loop.md'
+              # doc-countability-prose.bats now greps this page too, for the
+              # two corrected classless-finding claims (a classless finding
+              # is "omitted from the findings block" / is "seeded in the
+              # agent definition"). It matches no other pattern here, so
+              # without this line a wiki-only edit reintroducing either claim
+              # would report `code=false`, skip every bats step, and green
+              # the job having run that assertion zero times.
+              - 'wiki/concepts/Code Review Audit Agent.md'
               # The doc-setup-gaia-isolation and doc-gaia-init-isolation suites
               # (.gaia/tests/lib/) grep the /setup-gaia Phase 3.5 clause and the
               # /gaia-init Step 9 question block; trigger on the two command
@@ -394,11 +402,18 @@ jobs:
               # segment, and the audit nudge's project_drift suppression) and
               # .gaia/scripts/debt-count-refresh.sh (the coveredPaths that
               # suppression keys on). Both refreshers are already covered by
-              # the .gaia/scripts/** glob above, so only the two statusline
-              # dirs need listing here -- but narrowing that glob would stop
-              # arming this suite on two of the three sources it guards.
+              # the .gaia/scripts/** glob above, so only the statusline dirs
+              # and harden.md need listing here -- but narrowing that glob
+              # would stop arming this suite on two of its sources.
+              # harden.md is the third source it reads as real repo text:
+              # three tests grep it for the prose pinning the unclassified
+              # signal, and the .claude/skills/gaia/references/ entries above
+              # name other files only, so without this line an edit to it
+              # alone skips every code-gated shard, where that suite lives,
+              # and greens having run those three assertions zero times.
               - '.gaia/statusline/**'
               - '.gaia/tests/statusline/**'
+              - '.claude/skills/gaia/references/harden.md'
               # retrigger-reachability.bats (.gaia/scripts/tests/) reads every
               # workflow in .github/workflows/ and the retrigger_workflows knob
               # in .gaia/audit-ci.yml, so both are sources it guards. Without
