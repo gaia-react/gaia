@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
-# husky hook, then three repo-authored guards shellcheck cannot model: the hook
+# husky hook, then four repo-authored guards shellcheck cannot model: the hook
 # array-guard (.gaia/scripts/lint-hook-array-guard.sh), the git path-quoting
-# guard (.gaia/scripts/lint-git-path-quoting.sh), and the workflow
-# run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh).
+# guard (.gaia/scripts/lint-git-path-quoting.sh), the workflow
+# run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
+# and the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
 #
@@ -318,6 +319,21 @@ fi
 # repo-relative.
 echo "--> lint-workflow-run-interpolation (\${{ }} substituted into run: script text)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-workflow-run-interpolation.sh"); then
+  status=1
+fi
+
+# Fold in the grep ERE-escape guard, for the same reason as the three above:
+# the linter above models the shell AROUND a regex and never the regex itself.
+# POSIX leaves a backslash before a letter undefined in an ERE, and BSD grep
+# (macOS) expands `\r` `\t` `\d` where GNU grep (the runner) matches the bare
+# letter, so a pattern authored and verified locally means something else in CI.
+# That is the class this gate reaches that the passes above cannot: it is
+# invisible to shellcheck, invisible to a suite run on the authoring platform,
+# and it fails toward a check that quietly passes. Run from the repo root so its
+# `git ls-files` discovery resolves and the file:line it prints is
+# repo-relative.
+echo "--> lint-grep-ere-escapes (BSD-vs-GNU regex escapes in a grep -E pattern)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh"); then
   status=1
 fi
 
