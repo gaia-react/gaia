@@ -177,6 +177,20 @@ grep -qE \"^key:\$(printf '\\r')?\$\" input.txt"
   grep -qF -- "clean" <<<"$output"
 }
 
+# The backtick skip must END at the closing tick. A skip that ran to end of line
+# would swallow every escape after a substitution while the gate still printed
+# clean, which is the lie-green direction: the pattern below carries a correct
+# substitution AND a real defect, and only the defect may be reported.
+@test "a closed backtick substitution does not mask a later escape" {
+  fixture_repo
+  fixture_script 'grep -qE "^a`printf '"'"'\r'"'"'`b\tc$" input.txt'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+  grep -qF -- '\r in an extended-regex grep pattern' <<<"$output" && return 1
+  true
+}
+
 @test "greens on the tr normalization repair" {
   fixture_repo
   fixture_script "tr -d '\r' < input.txt | grep -qE '^key:\$'"
