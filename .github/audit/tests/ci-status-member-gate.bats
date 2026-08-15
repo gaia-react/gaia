@@ -1971,6 +1971,38 @@ run_audit_complete_step() {
   grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
 }
 
+@test "all three terminal comment ladders test their arms in one order" {
+  # Every other test here binds ONE arm and asserts ONE message, so none of them
+  # can see order at all: reordering a ladder leaves every message byte-identical
+  # and the suite green. That is not an oversight in those tests, it is the
+  # nature of the invariant -- the arms are mutually exclusive today, so a drift
+  # is genuinely invisible until the day the writer's pending POST stops
+  # swallowing its rejection, at which point post_failed and members_pending
+  # co-occur and two ladders hand an author different instructions for one state.
+  #
+  # An invariant that only bites in the future is exactly the kind prose cannot
+  # hold, because nothing re-reads prose on the day it starts mattering.
+  local expected="SUCCESS_LIVE READ_FAILED MEMBERS_PENDING POST_FAILED SUCCESS_STAMPED"
+  local step body order
+  for step in \
+    'Status - skipped (chore-deps PR)' \
+    'Status - skipped (no source changes)' \
+    'Status - audit complete'
+  do
+    body="$(extract_step_body "$step")"
+    # `:-}` anchored, so the bare ${MEMBERS_PENDING} interpolations inside the
+    # message strings are not mistaken for guard positions.
+    order="$(grep -oE '\$\{(SUCCESS_LIVE|READ_FAILED|MEMBERS_PENDING|POST_FAILED|SUCCESS_STAMPED):-\}' "$body" \
+      | sed 's/[^A-Z_]//g' | tr '\n' ' ' | sed 's/ $//')"
+    if [ "$order" != "$expected" ]; then
+      echo "ladder drift in '${step}'" >&2
+      echo "  expected: ${expected}" >&2
+      echo "  actual:   ${order}" >&2
+      return 1
+    fi
+  done
+}
+
 @test "audit-complete comment: an unreadable status is reported as unknown, not as pending" {
   # The one arm of the five with no coverage when the ladder landed, and the
   # harness had a slot for it, so the gap read as covered. Without a test, an
