@@ -625,3 +625,166 @@ _noop_write_findings() {
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]
 }
+
+# agent-report-file: the generic file-backed report contract for a dispatch
+# composed at the point of need.
+#
+# The shape separates "the agent wrote nothing" from "the agent wrote an empty
+# answer", so an empty report is REAL for the same reason spec-findings-file's
+# empty findings array is. Without that separation an absent report is
+# indistinguishable from a clean result, and the likeliest reading of a missing
+# report is the one a caller must not draw, so the failure is biased toward
+# false confidence (gaia-react/gaia#1409).
+#
+# The count assertions pin the same collapse one level down: existence-plus-
+# parses alone was not sufficient in the field, because a truncated write
+# parses fine and reads as a real result. Only the caller knows its own
+# denominator, so only the caller can assert it.
+
+@test "agent-report-file: top-level array is REAL" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "agent-report-file: EMPTY top-level array is REAL (an empty answer is a real result)" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-empty-array.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "agent-report-file: --report-key names the container holding the array" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-keyed.json" \
+    --report-key verdicts
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "agent-report-file: EMPTY --report-key array is REAL" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-keyed-empty.json" \
+    --report-key verdicts
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "agent-report-file: absent path is NO-OP" {
+  run "$SCRIPT" --shape agent-report-file --path "$BATS_TEST_TMPDIR/never-written.json"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "agent-report-file: malformed JSON is NO-OP" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/malformed.json"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "agent-report-file: a parsing scalar is NO-OP (parses, but is not a report container)" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/scalar.json"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "agent-report-file: an object without the named key is NO-OP" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/wrong-key.json" \
+    --report-key verdicts
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "agent-report-file: an object with no --report-key is NO-OP (the top level must be the array)" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-keyed.json"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "agent-report-file: harness-reminder-echo return is NO-OP" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/shared/reminder-echo.txt"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+# --expect-count / --min-count: the caller's own denominator
+
+@test "agent-report-file: --expect-count matching the array length is REAL" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --expect-count 3
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "agent-report-file: a SHORT report under --expect-count is NO-OP (a truncated write parses fine)" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --expect-count 18
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "agent-report-file: a LONG report over --expect-count is NO-OP (exact means exact)" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --expect-count 2
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "agent-report-file: --expect-count 0 accepts a deliberate empty answer" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-empty-array.json" \
+    --expect-count 0
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "agent-report-file: --expect-count applies through --report-key" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-keyed.json" \
+    --report-key verdicts --expect-count 3
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "agent-report-file: --min-count met is REAL" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --min-count 3
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "agent-report-file: --min-count exceeded is REAL (a floor is not a ceiling)" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --min-count 1
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "agent-report-file: --min-count unmet is NO-OP" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-empty-array.json" \
+    --min-count 1
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+# Usage errors specific to the count assertions
+
+@test "usage error: --expect-count and --min-count together exits 2" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --expect-count 3 --min-count 1
+  [ "$status" -eq 2 ]
+}
+
+@test "usage error: a non-integer --expect-count exits 2, never a silent permanent no-op" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --expect-count three
+  [ "$status" -eq 2 ]
+}
+
+@test "usage error: a negative --min-count exits 2" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --min-count -1
+  [ "$status" -eq 2 ]
+}
+
+@test "agent-report-file: the count flags are ignored for other shapes (no crash, no false gate)" {
+  run "$SCRIPT" --shape spec-findings-file --path "$FIX/spec-findings/real-empty.json" \
+    --expect-count 18
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}

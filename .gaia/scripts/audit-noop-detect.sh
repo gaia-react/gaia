@@ -14,7 +14,7 @@
 # invariant).
 #
 # Usage:
-#   audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>] [--marker <MARKER_PATH>] [--findings <FINDINGS_PATH>]
+#   audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>] [--marker <MARKER_PATH>] [--findings <FINDINGS_PATH>] [--report-key <KEY>] [--expect-count <N> | --min-count <N>]
 #
 #   --shape       one of the caller shape ids below (FC-2).
 #   --path        file-backed shape: the expected output file, which the
@@ -38,6 +38,16 @@
 #                 below for the lost-report gate this argument enables when
 #                 passed, and its member-identity binding. Omit it to keep the
 #                 marker-only short-circuit. Ignored for every other shape.
+#   --report-key  optional; honored ONLY for --shape agent-report-file. Names
+#                 the top-level object key holding the report array. Omit it
+#                 when the agent writes a bare top-level array. Ignored for
+#                 every other shape.
+#   --expect-count / --min-count
+#                 optional and mutually exclusive; honored ONLY for --shape
+#                 agent-report-file. The caller's own denominator, asserted as
+#                 an exact length or a floor. A non-integer, a negative value,
+#                 or both flags together is a usage error rather than a silent
+#                 permanent no-op. Ignored for every other shape.
 #
 # Caller shapes (FC-2), REAL iff:
 #   spec-selfreview-file  file exists AND `jq -e .` parses AND (top-level is
@@ -52,6 +62,22 @@
 #                         present); plus --audit-md, when given, must exist
 #   plan-findings         parses AND `.dimension` present AND `.findings`
 #                         is an array
+#   agent-report-file     the generic contract for a dispatch composed at the
+#                         point of need, which inherits none of the per-flow
+#                         shapes above. File exists AND parses AND the report
+#                         array resolves (the top-level value, or --report-key's
+#                         value when passed) AND, when --expect-count or
+#                         --min-count is passed, its length satisfies that
+#                         assertion. An empty array with no count assertion is
+#                         REAL, for the same reason spec-findings-file's is:
+#                         the distinction being preserved is "the agent wrote
+#                         nothing" versus "the agent wrote an empty answer",
+#                         and only the second is a result. A caller that knows
+#                         its own denominator asserts it, because existence-
+#                         plus-parses alone is not sufficient: a truncated
+#                         write parses fine and reads as a real result, which
+#                         reproduces the same collapse one level down, inside a
+#                         file that exists.
 #   cra-specialist        trimmed content == "No violations found." OR the
 #                         content carries a finding block, detected by a
 #                         backticked `` `<path>:<line>` `` token. Deliberately
@@ -117,11 +143,12 @@ set -uo pipefail
 
 usage() {
   cat <<'EOF' >&2
-usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>] [--marker <MARKER_PATH>] [--findings <FINDINGS_PATH>]
+usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>] [--marker <MARKER_PATH>] [--findings <FINDINGS_PATH>] [--report-key <KEY>] [--expect-count <N> | --min-count <N>]
 
   --shape  one of: spec-selfreview-file, spec-findings-file,
            spec-verdict-file, applier-summary, plan-findings,
-           cra-specialist, cra-refuter, audit-team-member
+           cra-specialist, cra-refuter, audit-team-member,
+           agent-report-file
   --path   file-backed shape: expected output file.
            return-conformance shape: captured-return temp file.
   --audit-md  optional; honored only for --shape applier-summary.
@@ -131,6 +158,13 @@ usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_
               member's findings sidecar; when passed, the EARNED marker
               short-circuit also requires it (lost-report detection). It does
               not gate the refusal arm.
+  --report-key   optional; honored only for --shape agent-report-file. The
+                 top-level key holding the report array. Omit for a bare
+                 top-level array.
+  --expect-count optional; honored only for --shape agent-report-file. Exact
+                 report length. Mutually exclusive with --min-count.
+  --min-count    optional; honored only for --shape agent-report-file. Minimum
+                 report length. Mutually exclusive with --expect-count.
 
 exit 0 = real (stdout `real`, or `refused` for a withheld clearance),
 1 = noop, 2 = usage error.
@@ -163,6 +197,9 @@ TARGET_PATH=""
 AUDIT_MD=""
 MARKER_PATH=""
 FINDINGS_PATH=""
+REPORT_FIELD=""
+EXPECT_COUNT=""
+MIN_COUNT=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -186,6 +223,18 @@ while [ "$#" -gt 0 ]; do
       FINDINGS_PATH="${2:-}"
       shift 2 2>/dev/null || shift
       ;;
+    --report-key)
+      REPORT_FIELD="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --expect-count)
+      EXPECT_COUNT="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --min-count)
+      MIN_COUNT="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
     *)
       echo "audit-noop-detect: unrecognized argument: $1" >&2
       usage
@@ -201,7 +250,7 @@ if [ -z "$SHAPE" ] || [ -z "$TARGET_PATH" ]; then
 fi
 
 case "$SHAPE" in
-  spec-selfreview-file|spec-findings-file|spec-verdict-file|applier-summary|plan-findings|cra-specialist|cra-refuter|audit-team-member)
+  spec-selfreview-file|spec-findings-file|spec-verdict-file|applier-summary|plan-findings|cra-specialist|cra-refuter|audit-team-member|agent-report-file)
     ;;
   *)
     echo "audit-noop-detect: unknown --shape '$SHAPE'" >&2
@@ -210,9 +259,34 @@ case "$SHAPE" in
     ;;
 esac
 
+# Count-assertion validation, ahead of every predicate so a malformed
+# denominator can never be mistaken for a short report. The check is on the
+# argument's form only; whether a shape honors a count is the shape's own
+# business, matching how --audit-md, --marker, and --findings are ignored
+# outside the one shape each serves.
+if [ -n "$EXPECT_COUNT" ] && [ -n "$MIN_COUNT" ]; then
+  echo "audit-noop-detect: --expect-count and --min-count are mutually exclusive" >&2
+  usage
+  exit 2
+fi
+# An unvalidated non-integer would make the jq comparison below compare a
+# number against a string, which is always false, so every run would classify
+# NO-OP and the caller would burn its one retry on a dispatch that was never
+# broken. Fail loudly on the argument instead.
+for _acd_count in "$EXPECT_COUNT" "$MIN_COUNT"; do
+  [ -n "$_acd_count" ] || continue
+  case "$_acd_count" in
+    *[!0-9]*|"")
+      echo "audit-noop-detect: count must be a non-negative integer, got '$_acd_count'" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
 # ---------- file-backed shapes: absent path is always NO-OP ----------
 case "$SHAPE" in
-  spec-selfreview-file|spec-findings-file|spec-verdict-file)
+  spec-selfreview-file|spec-findings-file|spec-verdict-file|agent-report-file)
     [ -f "$TARGET_PATH" ] || noop
     ;;
 esac
@@ -264,6 +338,38 @@ case "$SHAPE" in
   plan-findings)
     [ -f "$TARGET_PATH" ] || noop
     if jq -e '(.dimension != null) and (.findings | type == "array")' "$TARGET_PATH" >/dev/null 2>&1; then
+      real
+    else
+      noop
+    fi
+    ;;
+
+  agent-report-file)
+    # `--arg` rather than interpolation: the key and the count cross into jq as
+    # data, so a caller value carrying jq syntax cannot become jq program text.
+    # That is also why the count arrives as a string and is compared through
+    # `tonumber`. The two count flags are mutually exclusive (enforced above),
+    # so concatenating them yields whichever one was passed, or the empty
+    # string when neither was, and the empty case never reaches `--arg n`
+    # because no count test is built for it.
+    #
+    # `try getpath` rather than `.[$f]`: indexing a non-object top level raises,
+    # and a raise leaves jq's exit status meaning something other than "the
+    # predicate was false". Catching it to null collapses that case onto the
+    # same false the wrong-key case already produces, so every not-a-report
+    # shape classifies NO-OP through one path.
+    # shellcheck disable=SC2016  # $f is jq's --arg binding, not a shell expansion.
+    _acd_report='if $f == "" then . else (try getpath([$f]) catch null) end'
+    if [ -n "$EXPECT_COUNT" ]; then
+      _acd_count_test="and (($_acd_report | length) == (\$n | tonumber))"
+    elif [ -n "$MIN_COUNT" ]; then
+      _acd_count_test="and (($_acd_report | length) >= (\$n | tonumber))"
+    else
+      _acd_count_test=""
+    fi
+    if jq -e --arg f "$REPORT_FIELD" --arg n "${EXPECT_COUNT}${MIN_COUNT}" \
+         "($_acd_report | type == \"array\") $_acd_count_test" \
+         "$TARGET_PATH" >/dev/null 2>&1; then
       real
     else
       noop
