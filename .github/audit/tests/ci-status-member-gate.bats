@@ -1911,6 +1911,19 @@ run_audit_complete_step() {
   grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
 }
 
+@test "self-heal re-stamp check run does not assert that a GAIA-Audit status landed" {
+  # Making the stamp step non-fatal un-skipped this one. It carries an implicit
+  # success(), so before that change a rejected POST reddened the stamp step and
+  # this step never ran; now it runs on a HEAD that may carry no GAIA-Audit
+  # status, and its check-run summary is a DURABLE artifact -- unlike the
+  # terminal comment, nothing later corrects it. So the summary may point at the
+  # status but must not claim what it records.
+  body="$(extract_step_body 'Re-trigger and stamp required checks on new HEAD')"
+  grep -qF "GAIA-Audit" "$body"
+  grep -qF "status on this SHA records" "$body" && return 1
+  return 0
+}
+
 @test "audit-complete comment: says nothing about the stamp when the POST was not rejected" {
   body="$(extract_step_body 'Status - audit complete')"
   run run_audit_complete_step "$body" ""

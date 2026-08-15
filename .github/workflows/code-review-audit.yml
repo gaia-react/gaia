@@ -1042,6 +1042,12 @@ jobs:
             exit 0
           fi
 
+          # The summary points at the GAIA-Audit status rather than asserting
+          # what it says. This step carries an implicit success(), and a rejected
+          # status POST no longer fails the stamp step above, so this one now
+          # runs on a HEAD that may carry no status at all; a summary claiming
+          # the binding was recorded would be a durable artifact contradicting
+          # the terminal comment the same run writes (gaia-react/gaia#1296).
           gh api "repos/${GITHUB_REPOSITORY}/check-runs" \
             --method POST \
             --field name=code-review-audit \
@@ -1049,7 +1055,7 @@ jobs:
             --field status=completed \
             --field conclusion=success \
             --field 'output[title]=code-review-audit (re-stamped on self-heal HEAD)' \
-            --field 'output[summary]=Audit completed on the parent commit and produced the self-heal changes that advanced HEAD to this SHA. The GAIA-Audit commit status on this SHA records the version + tree binding.' \
+            --field 'output[summary]=Audit completed on the parent commit and produced the self-heal changes that advanced HEAD to this SHA. The version + tree binding lives in the GAIA-Audit commit status, which a separate step posts and which is the required check; read that status rather than this check run for whether the gate is satisfied.' \
             >/dev/null \
             || echo "code-review-audit: failed to stamp check run on ${AUDIT_SHA}; continuing." >&2
 
