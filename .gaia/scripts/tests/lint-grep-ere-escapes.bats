@@ -248,6 +248,12 @@ grep -Eq \"\$pattern\" < <(sed -E 's/\t/ /g' input.txt)"
 # -F has no regex at all, -P is PCRE where every escape here is defined and
 # identical, and -G is a BRE, a separate class this gate does not claim.
 #
+# Each non-extended fixture carries an E for the clearing clause to act on,
+# except the bare `grep -q`. Without one, the call is already not-extended
+# before any clause runs, so the fixture passes whether or not the clause it
+# names still exists: `grep -qG` pinned nothing, and deleting G from the code
+# left every test green.
+#
 # The last two fixtures are a CONFLICTING bundle, pinned in both orders because
 # the platforms disagree on it and the gate must not depend on that
 # disagreement: BSD grep honours the last matcher letter, making -FE extended
@@ -258,9 +264,9 @@ grep -Eq \"\$pattern\" < <(sed -E 's/\t/ /g' input.txt)"
 @test "greens on a matcher other than extended regex" {
   fixture_repo
   fixture_script "grep -qF 'a\tb' input.txt
-grep -qP 'a\tb' input.txt
+grep -qEP 'a\tb' input.txt
 grep -q 'a\tb' input.txt
-grep -qG 'a\tb' input.txt
+grep -qEG 'a\tb' input.txt
 grep -EF 'a\tb' input.txt
 grep -FE 'a\tb' input.txt"
   run_linter
