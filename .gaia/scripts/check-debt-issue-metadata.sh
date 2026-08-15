@@ -198,15 +198,17 @@ check_labels() {
 # form plus the anchored ` line=<int> -->` tail performs the same split
 # `.claude/skills/gaia/references/debt.md`'s own capture performs.
 #
-# The `\r?` before the end anchor is the CRLF tolerance, and it is what keeps
-# that agreement true rather than merely intended. GitHub returns a body with
-# the line endings the client submitted, and a browser textarea submits CRLF, so
-# an issue created or edited in the web UI carries a trailing carriage return.
-# The drain's own capture is an unanchored substring match and accepts that line
-# happily; an end-anchored pattern without `\r?` does not, so the two would
-# disagree on exactly the bodies a human touched last, and `--sweep` would
-# report an exact key as malformed.
-readonly KEY_RE='^<!-- gaia-debt-key: v1 class=[^ ]+ path=.+ line=[0-9]+ -->\r?$'
+# CRLF is handled by normalizing the body before it reaches these patterns (see
+# `check_body`), never by an escape inside the pattern itself. `\r` in an ERE is
+# BSD-only: GNU grep reads a backslash before an ordinary character as that
+# character, so `-->\r?$` means "an optional literal r" on Linux. That spelling
+# is worse than no tolerance at all, because it inverts by platform. It matches
+# a CRLF key on macOS and not on Linux, matches a key ending in a stray literal
+# `r` on Linux and not on macOS, and GNU sed accepts `\r` where GNU grep does
+# not, so the shape test and the path extraction below would disagree with each
+# other on the same body. Normalizing once removes the divergence instead of
+# relocating it.
+readonly KEY_RE='^<!-- gaia-debt-key: v1 class=[^ ]+ path=.+ line=[0-9]+ -->$'
 
 # A key CANDIDATE is any line that opens with the key comment, well-formed or
 # not. Counting candidates apart from well-formed keys is what lets a malformed
@@ -226,6 +228,20 @@ readonly KEY_CANDIDATE_RE='^<!-- gaia-debt-key:'
 # check_body <subject> <body-text>
 check_body() {
   local subject="$1" body="$2" wellformed candidates path
+
+  # Strip carriage returns before anything reads the body. GitHub returns a body
+  # with the line endings the client submitted, and a browser textarea submits
+  # CRLF, so an issue created or edited in the web UI carries a trailing `\r` on
+  # every line. The drain's own capture is an unanchored substring match and
+  # accepts that; the end-anchored patterns below would not, so without this the
+  # gate and the drain would disagree on exactly the bodies a human touched
+  # last, and `--sweep` would report an exact key as malformed.
+  #
+  # Done here with `tr` rather than as a `\r?` in each pattern because that
+  # escape is BSD-only and would make the gate's verdict depend on which platform
+  # ran it. One normalization also keeps the shape test and the path extraction
+  # reading the same bytes, which per-pattern escapes did not.
+  body="$(printf '%s\n' "$body" | tr -d '\r')"
 
   wellformed="$(printf '%s\n' "$body" | grep -cE "$KEY_RE" || true)"
   candidates="$(printf '%s\n' "$body" | grep -cE "$KEY_CANDIDATE_RE" || true)"
@@ -253,10 +269,11 @@ check_body() {
   # every increment is discarded when the loop ends. That failure is silent and
   # green, which is the one outcome a gate must never produce.
   local paths
-  # Same CRLF tolerance as KEY_RE, for the same reason. Without it a web-edited
-  # body's key extracts no path at all, so the repo-relative test below silently
-  # examines nothing.
-  paths="$(printf '%s\n' "$body" | sed -nE 's/^<!-- gaia-debt-key: v1 class=[^ ]+ path=(.+) line=[0-9]+ -->\r?$/\1/p')"
+  # No CRLF handling here: the body was normalized at the top of this function,
+  # so this program and KEY_RE above read identical bytes. A per-pattern escape
+  # would not have given that, since GNU sed accepts `\r` where GNU grep does
+  # not, leaving the shape test and this extraction disagreeing on one body.
+  paths="$(printf '%s\n' "$body" | sed -nE 's/^<!-- gaia-debt-key: v1 class=[^ ]+ path=(.+) line=[0-9]+ -->$/\1/p')"
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     case "$path" in

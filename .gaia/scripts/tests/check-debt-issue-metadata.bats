@@ -463,3 +463,17 @@ CORPUS_ANACHRONISM='[
   assert_code "surface-count"
   assert_code "pre-provenance-anachronism"
 }
+
+@test "a key line ending in a literal r is malformed, on every platform" {
+  # The inverse of the CRLF fixture, and the reason the tolerance is a `tr`
+  # rather than a `\r?` in the pattern. That escape is BSD-only: it matches a
+  # carriage return on macOS and a literal `r` on Linux, so a pattern carrying
+  # it accepts this line on exactly one of the two platforms. Pinning both
+  # directions is what makes the platform-independence checkable rather than
+  # asserted, since either fixture alone passes under the broken spelling on the
+  # platform that happens to agree with it.
+  printf '<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->r\n' >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "malformed-dedup-key"
+}

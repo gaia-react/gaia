@@ -5,6 +5,7 @@
   "permissions": {
     "allow": [
       "Bash(bash .gaia/scripts/audit-write-clearance.sh:*)",
+      "Bash(bash .gaia/scripts/check-debt-issue-metadata.sh:*)",
       "Bash(bash .gaia/scripts/debt-origin-lib.sh:*)",
       "Bash(bash .gaia/scripts/plan-archive.sh:*)",
       "Bash(bash .gaia/scripts/plan-resume-point.sh:*)",
