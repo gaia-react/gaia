@@ -416,13 +416,19 @@ run_comment_step() {
        bash "$body" )
 }
 
-# The audit-complete comment reads a different env set from the skip comments:
-# push-fixes' outcome fields, plus the two stamp steps' post_failed outputs. The
-# defaults here are the ordinary clean run ("no fixes needed"), so a test binds
-# only the field it is about.
+# The audit-complete comment reads push-fixes' outcome fields on top of the same
+# five stamp-step outputs the skip comments read. The defaults here are the
+# ordinary clean run ("no fixes needed"), so a test binds only the field it is
+# about.
+#
+# THE FIVE SHARED FIELDS ARE IN run_comment_step's ORDER, deliberately. Both
+# helpers are called from adjacent tests with five same-named positional
+# arguments, so a mismatched order does not error, it binds the wrong field and
+# yields a test that passes for a reason other than the one it names. push_fixes
+# is appended last because the sibling has no equivalent.
 run_audit_complete_step() {
-  local body="$1" post_failed="${2:-}" success_stamped="${3:-}" members_pending="${4:-}" \
-        success_live="${5:-}" read_failed="${6:-}" push_fixes="${7:-true}"
+  local body="$1" members_pending="${2:-}" success_stamped="${3:-}" success_live="${4:-}" \
+        read_failed="${5:-}" post_failed="${6:-}" push_fixes="${7:-true}"
   ( cd "$SANDBOX" \
     && RUNNER_TEMP="$RUNNER_TEMP_DIR" \
        PR_NUMBER="1" \
@@ -1908,7 +1914,7 @@ run_audit_complete_step() {
   # audit DID -- so an unqualified "complete" line reads as green while the gate
   # is shut. It is the only comment covering the push and clean-no-push paths.
   body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "true"
+  run run_audit_complete_step "$body" "" "" "" "" "true"
   [ "$status" -eq 0 ]
 
   [ -f "$COMMENT_LOG" ]
@@ -1957,7 +1963,7 @@ run_audit_complete_step() {
 
 @test "audit-complete comment: a co-dispatched pending member is named, not reported as green" {
   body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "" "false" "code-audit-maintainer-shell"
+  run run_audit_complete_step "$body" "code-audit-maintainer-shell" "false"
   [ "$status" -eq 0 ]
 
   [ -f "$COMMENT_LOG" ]
@@ -1965,12 +1971,29 @@ run_audit_complete_step() {
   grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
 }
 
+@test "audit-complete comment: an unreadable status is reported as unknown, not as pending" {
+  # The one arm of the five with no coverage when the ladder landed, and the
+  # harness had a slot for it, so the gap read as covered. Without a test, an
+  # edit that drops or reorders this arm falls through to the members-pending
+  # one, which asserts "pending, not green" -- a claim about a status this path
+  # could not read.
+  body="$(extract_step_body 'Status - audit complete')"
+  run run_audit_complete_step "$body" "code-audit-maintainer-shell" "false" "" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "could not be read" "$COMMENT_LOG"
+  grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
+  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
+  return 0
+}
+
 @test "audit-complete comment: an already-live success is not warned about" {
   # success_stamped is `false` on this path too -- the writer hoists it before
   # the non-clobber guard -- so a no-stamp arm that ignored success_live would
   # tell the author the gate is shut while it is green.
   body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "" "false" "code-audit-maintainer-shell" "true"
+  run run_audit_complete_step "$body" "code-audit-maintainer-shell" "false" "true"
   [ "$status" -eq 0 ]
 
   [ -f "$COMMENT_LOG" ]

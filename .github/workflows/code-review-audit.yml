@@ -1443,23 +1443,34 @@ jobs:
           fi
           # Appended rather than substituted: what the audit DID is still true
           # and still worth reporting, and the stamp is a separate fact about
-          # whether the gate opened. Same ladder, in the same order, as the two
-          # skip comments; only the leading clause differs.
+          # whether the gate opened.
           #
-          # An EMPTY success_stamped means neither stamp step ran at all, which
-          # is the ordinary shape of advisory mode (push_fixes=false posts no
-          # status by design). So the no-stamp arm tests for the literal `false`
-          # the writer emits when it ran and declined, never for "not true":
-          # "not true" would attach a merge-gate warning to every advisory run,
-          # inventing a problem the mode does not have.
+          # Same arms in the same literal order as the two skip comments, with
+          # ONE deliberate difference: the final arm tests for the literal
+          # `false` where they test `!= "true"`. That is not a style choice. An
+          # EMPTY success_stamped here means neither stamp step ran at all, the
+          # ordinary shape of advisory mode (push_fixes=false posts no status by
+          # design), so `!= "true"` would attach a merge-gate warning to every
+          # advisory run. The skip comments have no such state -- their stamp
+          # step always runs -- which is why the same predicate is right there
+          # and wrong here.
+          #
+          # KEEP THE ORDER IN SYNC RATHER THAN REASONING ABOUT IT. Hoisting the
+          # post_failed arm is inert only while the pending POST swallows its own
+          # rejection and never emits post_failed; the writer's header names
+          # closing that as a separate change, and on the day it lands, an arm
+          # order that had drifted would tell an author here to re-run the
+          # workflow while the skip comments tell them to run the dispatched
+          # members locally. That is the divergence-between-copies shape
+          # gaia-react/gaia#1286 exists to remove.
           stamp=""
           if [ "${SUCCESS_LIVE:-}" != "true" ]; then
-            if [ "${POST_FAILED:-}" = "true" ]; then
-              stamp=". But the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
-            elif [ "${READ_FAILED:-}" = "true" ]; then
-              stamp=". But the current GAIA-Audit status could not be read, so the stamp step stood down having posted nothing and the gate's state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
+            if [ "${READ_FAILED:-}" = "true" ]; then
+              stamp=". But this diff dispatches ${MEMBERS_PENDING}, and the current GAIA-Audit status could not be read, so the stamp step stood down having posted nothing and the gate's state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
             elif [ -n "${MEMBERS_PENDING:-}" ]; then
               stamp=". But this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, so GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
+            elif [ "${POST_FAILED:-}" = "true" ]; then
+              stamp=". But the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
             elif [ "${SUCCESS_STAMPED:-}" = "false" ]; then
               stamp=". But NO GAIA-Audit commit status was stamped on HEAD, so the merge gate is NOT satisfied. Most likely .gaia/VERSION is missing/empty, the frontend digest could not be recomputed, or the audit was not proven clean; see the stamp step's log. Restore .gaia/VERSION, or run a local audit, to clear the gate"
             fi
