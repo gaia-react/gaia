@@ -24,9 +24,8 @@ assert_absent_across() {
     # An absence assertion has to prove it opened the file. grep exits 2 on a
     # missing or renamed path, so the `&&` arm never fires and the helper
     # returns 0, reporting a stale phrase absent from a file it never read.
-    # Every path this suite names also carries a presence test, which reds on a
-    # rename today, but that backstop is implicit: narrowing one presence test
-    # later would turn this fail-open silent again.
+    # Unconditional rather than leaning on a sibling presence test: several of
+    # the paths this suite names carry no presence assertion at all.
     [ -f "$f" ] || { echo "absence assertion target ${f} does not exist" >&2; return 1; }
     grep -Eiq -- "$pattern" "$f" && {
       echo "stale phrase /${pattern}/ survives in ${f}" >&2
