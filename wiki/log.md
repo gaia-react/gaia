@@ -11,6 +11,26 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-15 108f26d2 WORTHY - GAIA-Audit success-POST fatality settled across all four writers → wiki/concepts/Code Review Audit CI.md updated in-commit
+- 2026-08-15 389b3899 SKIP - test-only: drops decaying call-site count from a comment
+- 2026-08-15 6480e862 WORTHY - adopter workflow template expressions bound through env: → wiki/concepts/Release Workflow.md
+- 2026-08-15 e8a44ba5 WORTHY - lint-git-path-quoting.sh reaches an executed doc code snippet → wiki/concepts/Release Workflow.md
+- 2026-08-15 019b8dba WORTHY - NUL-delimited Quality Gate skip check → wiki/decisions/Quality Gate.md updated in-commit
+- 2026-08-15 e69effa6 WORTHY - priced audit re-dispatch by scope it resolves → wiki/concepts/PR Merge Workflow.md updated in-commit
+- 2026-08-15 89aafd2d WORTHY - split .claude/rules blanket out of GLOBAL reset tier into merely-shared → wiki/decisions/Code Audit Team.md
+- 2026-08-15 41adbd45 WORTHY - lint-git-path-quoting.sh walks the diff option region → wiki/concepts/Release Workflow.md
+- 2026-08-15 83778b44 WORTHY - lint-git-path-quoting.sh widened to git ls-files → wiki/concepts/Release Workflow.md
+- 2026-08-15 ed9cc21d WORTHY - new lint-workflow-run-interpolation.sh shell-lint check → wiki/concepts/Release Workflow.md
+- 2026-08-15 0342a779 WORTHY - release.yml reads .gaia/VERSION through the shared normalizer → wiki/concepts/Release Workflow.md
+- 2026-08-15 f30071ed WORTHY - verify comment falsifiable claims before first dispatch → wiki/concepts/PR Merge Workflow.md updated in-commit
+- 2026-08-15 bac3cffd WORTHY - derived .gaia/VERSION literal in one shared normalizer → wiki/concepts/Release Workflow.md
+- 2026-08-15 c6817459 WORTHY - vitest/globals guard matches all three slash spellings → wiki/concepts/Claude Hooks.md updated in-commit
+- 2026-08-15 d9dd4b93 WORTHY - collapsed four gaia-ci crons into one scheduler → wiki/concepts/Update Workflow.md, wiki/dependencies/pnpm-audit.md updated in-commit
+- 2026-08-15 945c6ed6 WORTHY - gaia-ci skip decision now runs before install → wiki/concepts/Update Workflow.md
+- 2026-08-15 289a48d0 WORTHY - PR body is sole Closes carrier for gaia-debt → wiki/concepts/Audit Disposition and Debt Fix.md updated in-commit
+- 2026-08-15 ad8897a2 WORTHY - named hook-registration obligation (hook-scopes.json + machinery tier) on an instruction surface → wiki/decisions/Code Audit Team.md
+- 2026-08-15 05289d19 WORTHY - per-member incremental review base Phase 1 → wiki/concepts/Audit Disposition and Debt Fix.md, Code Review Audit Agent.md, Code Review Audit CI.md, PR Merge Workflow.md updated in-commit
+- 2026-08-15 4cff58dd SKIP - prior wiki-sync landing commit (through f515288), its constituent changes already logged under their own SHAs
 - 2026-08-13 f5152883 WORTHY - bats shards now split by weight not file count → wiki/decisions/Sharded CI Test Matrix.md updated in-commit
 - 2026-08-13 e0dc86d9 WORTHY - closed marker-strip coverage gap, cut CLI lint/apt cost → wiki/concepts/Release Workflow.md updated in-commit
 - 2026-08-13 44b74175 SKIP - test-only fix anchoring registry-path assertion on resolved main root, no behavior change

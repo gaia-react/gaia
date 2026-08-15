@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-07-09
 created: 2026-07-09
-updated: 2026-08-13
+updated: 2026-08-15
 tags: [decision, claude, audit, ci]
 ---
 
@@ -102,6 +102,14 @@ A bats-only diff therefore dispatches `code-audit-maintainer-shell` and requires
 ### The declarative half of the machinery is owned too
 
 `code-audit-maintainer-shell` also owns the roster itself and the release scrub's config (`.gaia/*.yml`, which generalizes the bare `.gaia/audit-ci.yml`), the manifest that decides what ships plus the state and hook-scope registries and their schemas (`.gaia/*.json`), the release exclusion list (`.gaia/release-exclude`), the version literal the clearance writer stamps into every marker (`.gaia/VERSION`), the hook registrations (`.claude/settings.json`), the review-ownership file (`.github/CODEOWNERS`), the model-pricing table the bash cost tooling reads (`.gaia/scripts/token-rates.json`), the rules directory (`.claude/rules/**`), and the `code-audit-*` agent definitions that produce clearances. Every one of those is an audit-machinery path (see [[#Ownership classifier]] above): a commit that rewrites the roster, an agent definition, or the version literal changes what a member reviews, who reviews it, or whether a clearance is believed, exactly the surface this member already gates, so without these globs such a commit matched no member and merged unaudited. The application-scope default member has no remit over shell or roster config, the workflows member's remit stays the live workflow and action YAML, and the CLI-TypeScript member's remit stays `.gaia/cli/src/**`'s enumerated extensions plus its build/config surface (`package.json`, `pnpm-lock.yaml`, `tsconfig*.json`), so the shell member is the fit for the rest. This fills the unowned corner of the machinery set that is meant to have an owner, everything except the twelve pinned build-artifact templates under `.gaia/cli/templates/workflows/`, which stay deliberately ownerless (see Roster shape above).
+
+### Reset-predicate tiers for the per-member incremental review base
+
+A per-member incremental review resolves its base against a **reset-predicate partition** over three tiers, computed by `.claude/hooks/lib/audit-rules-changed.sh` and mirrored in lockstep by `.gaia/scripts/audit-rules-changed-complete.sh`: **global** (a changed path resets every dispatched member's anchor to full scope), **merely-shared** (an exact-path list, the ordinary tier for a hook library or rule file more than one member's clearance depends on but that is not itself gate-critical), and **member** (matches only a member's own `.claude/agents/<name>.md`, resetting that member alone). A path in no tier fails the partition assertion.
+
+The generating rule for GLOBAL is scope and belief, never criteria: which paths a member owns, how its digest is computed, whether a clearance is believed. A coding-convention rule under `.claude/rules/**` changes how code should be written, not any of that, and an anchor records that a member already READ a surface, which a reworded convention does not un-read; what the convention change owes is a fresh clearance for the diff under review, already required because `.claude/rules/**` sits in `AUDIT_MACHINERY_PATHS`. GLOBAL therefore keeps only `quality-gate.md` and `pr-merge.md`, the two rules that decide gate mechanics; every other rule file is enumerated in `AUDIT_MERELY_SHARED_PATHS` instead.
+
+Adding a `.sh` under `.claude/hooks/**` needs a matching entry in `.gaia/hook-scopes.json` (`bash .gaia/scripts/check-hook-scope-manifest.sh` asserts coverage), and a file under `.claude/hooks/lib/**` additionally needs a tier assignment in the partition above (`bash .gaia/scripts/audit-rules-changed-complete.sh` asserts it). `.claude/rules/maintainers/hook-registration.md`, path-scoped to `.claude/hooks/**/*.sh`, names both obligations at edit time; neither previously appeared on any instruction surface, only inside the whole-directory checkers enforcing them.
 <!-- gaia:maintainer-only:end -->
 
 ## Deterministic roster check
