@@ -16,21 +16,24 @@
 #      guaranteed to have, for the status sha, the recomputed frontend
 #      digest (C1) that keys the marker lookup, AND the description.
 #   2. Make the status POST non-fatal so a failed side-effect never reds a
-#      clean audit.
+#      clean audit. #1296 extended that answer to all four success writers, so
+#      it is now the writer's only behavior rather than this path's opt-in.
 #
 # The workflow YAML is not directly unit-testable, so this suite inspects the
 # in-tree step block (the same approach required-check-registration.bats uses).
 # It lives under .github/audit/tests/ so the CI bats runner (audit-ci-tests.yml,
 # check name "Audit CI Tests") executes it.
 #
-# BOTH PROPERTIES NOW LIVE IN TWO PLACES, AND THIS SUITE PINS BOTH ENDS. #1286
-# moved the shared status-writing logic out of the five terminal steps and into
-# .github/audit/write-audit-status.sh, so the step supplies the inputs
-# (--sha from the event payload, --require-marker, --success-post-non-fatal) and
-# the writer implements them. Asserting only the step would leave the writer
-# free to ignore a flag; asserting only the writer would leave this path free to
-# stop passing one. The behavioral counterpart -- these steps actually EXECUTED
-# against a gh mock -- is ci-status-member-gate.bats.
+# THE TWO PROPERTIES NOW LIVE AT DIFFERENT ENDS, AND THIS SUITE PINS EACH WHERE
+# IT LIVES. #1286 moved the shared status-writing logic out of the five terminal
+# steps and into .github/audit/write-audit-status.sh, so the step supplies the
+# inputs (--sha from the event payload, --require-marker) and the writer
+# implements them. Property 1 is asserted at both ends, because a flag nobody
+# reads and a flag nobody passes fail the same way. Property 2 is asserted at the
+# writer end alone: #1296 settled non-fatality for every success writer, so this
+# path no longer opts into it and there is no step-end input to pin. The
+# behavioral counterpart -- these steps actually EXECUTED against a gh mock -- is
+# ci-status-member-gate.bats.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -125,13 +128,24 @@ setup() {
 }
 
 @test "clean-no-push status POST is non-fatal (guarded, never reds a clean audit)" {
-  # Non-fatality is now a flag this path asks for and the writer honours, and
-  # this path is the ONLY one that asks: the other three success writers leave
-  # the POST bare on purpose. Both ends asserted, because a flag nobody reads
-  # and a flag nobody passes fail the same way -- silently, and only on the
-  # transient API error this guard exists for.
-  run grep -F -- '--success-post-non-fatal' "$STEP"
-  [ "$status" -eq 0 ]
+  # Non-fatality is a property of the writer now, not a flag this path asks for:
+  # every success writer gets the same answer, so there is no opt-in left to
+  # forget. Asserted at the writer end alone for that reason -- pinning it at the
+  # step end would be pinning the ABSENCE of an argument, which any unrelated
+  # edit satisfies.
   run grep -F 'if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}"' "$WRITER"
+  [ "$status" -eq 0 ]
+
+  # ...and no UNGUARDED spelling sits beside it. The writer POSTs to that
+  # endpoint exactly twice -- pending, trailed by `|| true`, and success, headed
+  # by `if !` -- so a bare third call, or either of these two losing its guard,
+  # breaks the count. That bare shape under `set -eu` is what reddened a clean
+  # audit, and it is one deleted token away from returning.
+  total=$(grep -cF 'gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}"' "$WRITER")
+  guarded=$(grep -cF 'if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}"' "$WRITER")
+  [ "$total" -eq 2 ]
+  [ "$guarded" -eq 1 ]
+  # The other one is the pending POST, non-fatal by its own trailing `|| true`.
+  run grep -F -- '--field description="${desc}" || true' "$WRITER"
   [ "$status" -eq 0 ]
 }

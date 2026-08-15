@@ -94,23 +94,32 @@ run_writer() {
 }
 
 @test "a success-path modifier is refused in stand-down mode, not ignored" {
-  # Both modifiers qualify the success path and stand-down mode has none, so
-  # every such combination is meaningless. Refusing them keeps the flag space
-  # honest -- each combination the parser accepts is one a caller actually uses
-  # -- and it applies the same fail-closed reasoning the unrecognized-argument
-  # branch already uses: this script decides whether a merge gate opens, so a
+  # The modifier qualifies the success path and stand-down mode has none, so the
+  # combination is meaningless. Refusing it keeps the flag space honest -- each
+  # combination the parser accepts is one a caller actually uses -- and it
+  # applies the same fail-closed reasoning the unrecognized-argument branch
+  # already uses: this script decides whether a merge gate opens, so a
   # well-spelled nonsense combination should stop as surely as a typo does.
   run run_writer --sha deadbeef --force-pending "local mode" --require-marker
   [ "$status" -eq 2 ]
   grep -qF "meaningless with --force-pending" <<<"$output"
 
-  run run_writer --sha deadbeef --force-pending "local mode" --success-post-non-fatal
-  [ "$status" -eq 2 ]
-  grep -qF "meaningless with --force-pending" <<<"$output"
-
-  # ...and they stay legal in the mode that has a success path.
-  run run_writer --sha "" --base cafebabe --require-marker --success-post-non-fatal
+  # ...and it stays legal in the mode that has a success path.
+  run run_writer --sha "" --base cafebabe --require-marker
   [ "$status" -eq 0 ]
+}
+
+@test "the retired non-fatality flag is refused, not silently accepted" {
+  # #1296 settled POST fatality for every writer and removed the flag that
+  # carried the divergence. A caller still passing it is running against an
+  # understanding of this script that no longer holds, so the
+  # unrecognized-argument branch must catch it rather than let it read as a
+  # request the script honors. This is the fail-closed direction and the loud
+  # one: the step fails immediately with the flag named, which is a one-line
+  # repair, versus silently proceeding under a contract the caller misread.
+  run run_writer --sha deadbeef --base cafebabe --success-post-non-fatal
+  [ "$status" -eq 2 ]
+  grep -qF "unrecognized argument" <<<"$output"
 }
 
 # -----------------------------------------------------------------------------
