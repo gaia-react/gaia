@@ -230,8 +230,14 @@ setup() {
   grep -qF -- "difficulty grades how much design the fix needs" "$VOCAB" || return 1
 }
 
-@test "UAT-004: SKILL.md's step 6 states the exactly-one-severity-exactly-one-difficulty invariant" {
-  grep -qF -- "exactly one severity label and exactly one difficulty label" "$VOCAB" || return 1
+@test "UAT-004: SKILL.md's step 6 states the exactly-one invariant for each mandatory namespace, and for the optional grade" {
+  # Severity and surface are mandatory and stated together; difficulty is
+  # stated conditionally, because a filing that did not read the cited code
+  # omits the grade rather than guessing one. Both halves are pinned, so a
+  # rewrite cannot quietly promote the grade to mandatory or demote either
+  # mandatory label to optional.
+  grep -qF -- "**exactly one** severity label and **exactly one** surface label" "$VOCAB" || return 1
+  grep -qF -- "a filing that carries a difficulty grade (see step 7) carries exactly one difficulty label as well" "$VOCAB" || return 1
 }
 
 @test "SKILL.md carries the three rider paragraphs beside the rubric block" {
@@ -240,19 +246,26 @@ setup() {
   grep -qF -- "carry no information about the finding" "$VOCAB" || return 1
 }
 
-@test "UAT-005: the label loop creates all three difficulty labels and still creates the five pre-existing ones" {
+@test "UAT-005: the label loop creates all three difficulty labels, both surface labels, and still creates the five pre-existing ones" {
   grep -qF -- "for label in tech-debt severity:critical severity:important severity:suggestion" "$VOCAB" || return 1
+  grep -qF -- "surface:adopter surface:maintainer" "$VOCAB" || return 1
   grep -qF -- "difficulty:easy difficulty:medium difficulty:hard wontfix; do" "$VOCAB" || return 1
 }
 
-@test "the label-loop prose count says eight, and the stale 'all five labels' phrasing is gone" {
-  grep -qF -- "Create all eight labels idempotently" "$VOCAB" || return 1
+@test "the label-loop prose count says ten, and the stale 'all five labels' / 'all eight labels' phrasings are gone" {
+  # The count in the prose and the number of entries in the loop are two
+  # statements of one fact, and only the loop is executable, so the prose is
+  # the half that rots. Pinning the current count plus every superseded one is
+  # what makes a future label addition fail here instead of shipping a comment
+  # that undercounts its own loop.
+  grep -qF -- "Create all ten labels idempotently" "$VOCAB" || return 1
   assert_absent_fixed_across "all five labels" "$VOCAB"
+  assert_absent_fixed_across "all eight labels" "$VOCAB"
 }
 
-@test "UAT-004: both gh issue create forms carry --body-file, graded and ungraded" {
-  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label difficulty:<grade> --body-file "$body_file"' "$VOCAB" || return 1
-  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --body-file "$body_file"' "$VOCAB" || return 1
+@test "UAT-004: both gh issue create forms carry --body-file and the mandatory surface label, graded and ungraded" {
+  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --label difficulty:<grade> --body-file "$body_file"' "$VOCAB" || return 1
+  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --body-file "$body_file"' "$VOCAB" || return 1
 }
 
 @test "UAT-004: the issue-body schema section carries no difficulty line, and no capital-D Difficulty: line exists anywhere" {

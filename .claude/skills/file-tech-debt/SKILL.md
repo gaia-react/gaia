@@ -45,19 +45,43 @@ If step 2 found a matching open issue, or a declined-closed one, stop, do not fi
 If no match exists:
 
 1. Create the labels idempotently first (step 6), a pre-existing label is not an error.
-2. Build the full issue body (step 5) in a gitignored body-file, not inline. Give the file a per-run-unique name under `.gaia/local/audit/` (for example `.gaia/local/audit/issue-body-<something-unique>.md`). The name must be unique because sub-step 4 below deletes it: two runs sharing one fixed name (CI plus a local run, the same pair step 3 guards against) would race, and one run's cleanup would delete the other's in-flight body out from under it.
+2. Build the full issue body (step 5) in a gitignored body-file, not inline. Give the file a per-run-unique name under `.gaia/local/audit/` (for example `.gaia/local/audit/issue-body-<something-unique>.md`). The name must be unique because the create-and-cleanup sub-step below deletes it: two runs sharing one fixed name (CI plus a local run, the same pair sub-step 3 below guards against) would race, and one run's cleanup would delete the other's in-flight body out from under it.
 3. Re-check the dedup query from step 2 immediately before creating, this shrinks the race window where a concurrent run (CI plus a local run, for instance) files the same finding twice. It is the same path+line matching basis as step 2, so a reclassification that lands between your first check and now still resolves to the already-open issue. Prefer a search-or-update path over a blind create when your environment supports it.
-4. Create the issue with the form that matches whether a grade is available, then delete the body file **in a second, separate Bash tool call**. A filing that has a difficulty grade in hand (step 7) uses the graded form; a filing with no grade drops the `--label difficulty:<grade>` flag entirely rather than passing it empty or with a placeholder:
+4. **Check the metadata before creating, and do not create on a finding.** Pass the exact label set the create call is about to carry, comma-separated, together with the body file built in sub-step 2:
+
+   ```bash
+   # Graded filing, when a grade is in hand:
+   bash .gaia/scripts/check-debt-issue-metadata.sh --pre-file \
+     --labels "tech-debt,severity:<tier>,surface:<side>,difficulty:<grade>" \
+     --body-file "$body_file"
+
+   # Ungraded filing, when no grade is available:
+   bash .gaia/scripts/check-debt-issue-metadata.sh --pre-file \
+     --labels "tech-debt,severity:<tier>,surface:<side>" \
+     --body-file "$body_file"
+   ```
+
+   Two forms, matching sub-step 5's two `gh issue create` forms exactly. The ungraded form **drops the `difficulty:` entry** rather than passing it empty or with the placeholder still in it, for the same reason the create call does. The check rejects both of those, correctly: an unfilled placeholder is the shape an omitted grade most often arrives in, and letting it through would file the literal text as a label.
+
+   Exit `0` is clean, `1` names one finding per line, `2` is a usage or environment error. On `1`, fix the label set or the body and re-run; do not file. On `2`, the check itself could not run: report that and do not treat it as a pass.
+
+   **Why this blocks rather than advises.** Every rule the check enforces was already written in the prose above before the check existed, and every one of them was violated anyway. The label set is the one part of a filing that no later step re-reads, so a mistake there is silent until a drainer trips over it weeks later, by which time the code that would have justified the right grade has moved. The check reads no network and needs no `gh`, so this gate costs one local call and cannot fail for a reason outside the filing.
+
+   **What it does not check.** It verifies the label vocabulary, the counts, and the key's shape. It cannot verify that the grade you chose is the grade the rubric gives: whether a fix carries a design decision is a judgment about code, and a passing check is not evidence that step 7 was applied honestly. The mechanical half is enforced here; the rubric half stays yours.
+
+5. Create the issue with the form that matches whether a grade is available, then delete the body file **in a second, separate Bash tool call**. A filing that has a difficulty grade in hand (step 7) uses the graded form; a filing with no grade drops the `--label difficulty:<grade>` flag entirely rather than passing it empty or with a placeholder:
 
 ```bash
 body_file=.gaia/local/audit/issue-body-<something-unique>.md
 
 # Graded filing, when a grade is in hand:
-gh issue create --label tech-debt --label severity:<tier> --label difficulty:<grade> --body-file "$body_file"
+gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --label difficulty:<grade> --body-file "$body_file"
 
 # Ungraded filing, when no grade is available:
-gh issue create --label tech-debt --label severity:<tier> --body-file "$body_file"
+gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --body-file "$body_file"
 ```
+
+The `surface:<side>` flag is on both forms because the surface label is not optional the way the grade is: a filing that has not read the cited code still knows which side of the adopter/maintainer split its cited path sits on.
 
 **Never** pass `--body <argv>` here. CI runs this command with `--verbose`, and `--verbose` echoes argv into the public Actions log, so an inline `--body` string leaks the finding (and anything sensitive quoted inside it) into a public log. Always route the body through `--body-file` (or stdin); the body must never reach argv.
 
@@ -166,7 +190,7 @@ Build a self-contained issue body with these parts, in order:
 
 ## 6. Labels
 
-Every out-of-scope non-security issue this recipe files carries `tech-debt` plus **exactly one** severity label; a filing that carries a difficulty grade (see step 7) carries exactly one severity label and exactly one difficulty label. Map the finding's report tier to the label like this:
+Every out-of-scope non-security issue this recipe files carries `tech-debt` plus **exactly one** severity label and **exactly one** surface label; a filing that carries a difficulty grade (see step 7) carries exactly one difficulty label as well. Map the finding's report tier to the severity label like this:
 
 | Report tier | Label |
 |---|---|
@@ -174,14 +198,26 @@ Every out-of-scope non-security issue this recipe files carries `tech-debt` plus
 | Important | `severity:important` |
 | Suggestion | `severity:suggestion` |
 
+The surface label records **who can observe the defect**, which is a different question from how bad it is and from how hard it is to fix:
+
+| Label | The defect is |
+|---|---|
+| `surface:adopter` | observable by an adopter: something GAIA ships misbehaves, misleads, or blocks them. |
+| `surface:maintainer` | observable only in the GAIA maintainer repository: continuous integration, release-excluded tests, maintainer-only tooling. |
+
+Resolve it from the cited path first: a release-excluded path is `surface:maintainer`, a shipped path is `surface:adopter`. Then override that default when the failure mode contradicts it, because the two do come apart. A defect in a shipped file that is only reachable through a maintainer-only runner is `surface:maintainer` even though the file ships, and a maintainer-only script whose wrong output is copied into an adopter-facing artifact is `surface:adopter` even though the script does not. The path is the prior, the failure mode is the verdict.
+
+Unlike severity, this label has no fallback: an unlabeled issue is not sorted into a default band, it is simply unfiled against the split. Exactly one is required on every filing.
+
 See step 7 for the difficulty label's three permitted values and the rubric for choosing between them.
 
 A finding that gets deliberately declined (closed without fixing) carries GitHub's `wontfix` label, that's what step 2 checks for to avoid re-filing it.
 
-Create all eight labels idempotently before the first filing in a run, a label that already exists is not an error:
+Create all ten labels idempotently before the first filing in a run, a label that already exists is not an error:
 
 ```bash
 for label in tech-debt severity:critical severity:important severity:suggestion \
+             surface:adopter surface:maintainer \
              difficulty:easy difficulty:medium difficulty:hard wontfix; do
   gh label create "$label" --color <hex> 2>/dev/null || true
 done
@@ -244,7 +280,7 @@ The marker is only accurate when applied at the moment provenance starts writing
 
 The marker changes no displayed number and no consumer gates on it, so it is additive.
 
-Do not add `debt:pre-provenance` to step 6's idempotent label-creation loop: the rollout is a one-time per-repository step, not a per-filing one, and adding it would make that loop's "all eight labels" comment wrong.
+Do not add `debt:pre-provenance` to step 6's idempotent label-creation loop: the rollout is a one-time per-repository step, not a per-filing one, and adding it would make that loop's "all ten labels" comment wrong.
 
 ## Brake self-check
 
@@ -270,13 +306,18 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 - `.gaia/scripts/debt-count-refresh.sh`
 - `.claude/hooks/debt-session-reconcile.sh`
 - `.claude/skills/gaia/references/debt.md`
+- `.gaia/scripts/check-debt-issue-metadata.sh`
 <!-- gaia:maintainer-only:start -->
-- Tests: `.gaia/tests/hooks/debt-sentinel-touch.bats`, `.gaia/tests/hooks/debt-session-reconcile.bats`, `.gaia/scripts/tests/debt-count-refresh.bats`, `.gaia/tests/statusline/audit-nudge-drift-suppression.bats`
+- Tests: `.gaia/tests/hooks/debt-sentinel-touch.bats`, `.gaia/tests/hooks/debt-session-reconcile.bats`, `.gaia/scripts/tests/debt-count-refresh.bats`, `.gaia/tests/statusline/audit-nudge-drift-suppression.bats`, `.gaia/scripts/tests/check-debt-issue-metadata.bats`
 <!-- gaia:maintainer-only:end -->
+
+`check-debt-issue-metadata.sh` is the newest member and the only one that gates on a label spelling rather than merely tolerating one. It hardcodes all three permitted value sets (`severity:`, `surface:`, `difficulty:`) and the key's line shape, so it is the consumer a spelling change breaks first and loudest, which is the intended direction: a rename that forgets this file fails a filing immediately instead of degrading a count silently.
 
 The governed set also includes the `debt:in-progress` claim label: `.claude/skills/gaia/references/debt.md` creates and applies it as the `/gaia-debt` in-progress claim, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count. This recipe never creates or applies `debt:in-progress` itself. The same holds for `debt:spec-pending`: `debt.md` creates and applies it as the `/gaia-debt` design-first handoff park label, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count too. This recipe never creates or applies `debt:spec-pending` itself.
 
-The `difficulty:` namespace (step 7) is a label spelling, so it is within this lockstep contract's scope, but no consumer gates on it, verified against all five named above: `.gaia/scripts/debt-count-refresh.sh` filters by excluding two specific label names (`debt:in-progress` and `debt:spec-pending`) and ignores anything else, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the issue body and parses no labels, `.gaia/statusline/gaia-statusline.sh` parses no labels, `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward, and `.claude/skills/gaia/references/debt.md` surfaces it in output only, never to gate a path (`debt.md`'s own Guardrails: "Difficulty grading never gates anything"). Renaming the namespace therefore requires zero gating changes to any of the five.
+The `surface:` namespace (step 6) is a label spelling and within this contract's scope. Verified against every consumer named above: none of them reads it. `.gaia/scripts/debt-count-refresh.sh` excludes exactly two label names and ignores the rest, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the body and parses no labels at all, `.gaia/statusline/gaia-statusline.sh` parses no labels, `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward, and `.claude/skills/gaia/references/debt.md` neither sorts, clusters, nor gates on it. The one consumer that does read it is `check-debt-issue-metadata.sh`, which is where the requirement is enforced rather than merely stated. Renaming the namespace therefore means editing step 6 and that script, and nothing else.
+
+The `difficulty:` namespace (step 7) is a label spelling, so it is within this lockstep contract's scope, but no consumer gates on it, verified against all five originally named above: `.gaia/scripts/debt-count-refresh.sh` filters by excluding two specific label names (`debt:in-progress` and `debt:spec-pending`) and ignores anything else, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the issue body and parses no labels, `.gaia/statusline/gaia-statusline.sh` parses no labels, `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward, and `.claude/skills/gaia/references/debt.md` surfaces it in output only, never to gate a path (`debt.md`'s own Guardrails: "Difficulty grading never gates anything"). Renaming the namespace therefore requires zero gating changes to any of the five.
 
 Provenance (the `gaia-debt-origin` line, see "Provenance line" above) is a separate line and joins none of that lockstep set. Adding, removing, or renaming a provenance field requires no change to any deterministic consumer of the dedup key. No consumer reads the issue body positionally, so a second HTML comment beside the dedup key is safe: `.claude/hooks/lib/audit-dispositions.sh` reconstructs the wrapped dedup key and tests it as a substring, and `.claude/skills/gaia/references/debt.md` captures on the literal `<!-- gaia-debt-key: ` prefix; neither reads past it. The keyless `<path>:<line>` fallback cannot false-match a provenance field either, since no provenance field yields a colon followed by digits. The `debt:pre-provenance` label is additive too: no consumer gates on it. The helper deliberately inverts `audit-key-lib.sh`'s fail-closed rule, printing `unknown` in a slot it cannot resolve rather than refusing to print a partial line; that inversion is deliberate, not a bug to "fix" into agreement.
 
