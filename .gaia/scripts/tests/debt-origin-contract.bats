@@ -183,6 +183,12 @@ strip_common_indent() {
   # rollout command byte-identically, and that command's --jq program
   # contains the literal `<!-- gaia-debt-origin:`. It is a release note
   # quoting a command, not an emitting route; do not "clean up" this entry.
+  #
+  # check-debt-issue-metadata.sh is a READER, not an emitter: it tests for the
+  # line's presence to calibrate when provenance began writing in a given
+  # repository, so that the pre-provenance cohort marker can be told apart from
+  # a backfill without hardcoding a date that is wrong on every clone but one.
+  # It writes no provenance and restates none of the field vocabulary.
   local got f
   got="$(git -C "$REPO_ROOT" grep -lF -- "gaia-debt-origin" -- "${EXCLUDE_PATHSPEC[@]}")"
   while IFS= read -r f; do
@@ -196,6 +202,7 @@ strip_common_indent() {
         "wiki/concepts/PR Merge Workflow.md" | \
         ".claude/skills/file-tech-debt/SKILL.md" | \
         ".gaia/scripts/debt-origin-lib.sh" | \
+        ".gaia/scripts/check-debt-issue-metadata.sh" | \
         "wiki/concepts/Audit Disposition and Debt Fix.md" | \
         "CHANGELOG.md") ;;
       *)

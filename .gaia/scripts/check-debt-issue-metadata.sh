@@ -1,0 +1,396 @@
+#!/usr/bin/env bash
+# check-debt-issue-metadata.sh: validate the label set and dedup key a tech-debt
+# filing carries, against the rules `.claude/skills/file-tech-debt/SKILL.md`
+# states. Exit 0 when clean, 1 on any finding, 2 on a usage or environment
+# error. Run it from the repository root.
+#
+# Three modes, two of them offline:
+#
+#   --pre-file --labels <csv> --body-file <path>
+#       The blocking mode. Validates a filing that has NOT happened yet, from
+#       the label set about to reach `gh issue create` argv and the body file
+#       step 4 of the recipe already builds. Reads no network and needs no
+#       `gh`, so the gate in front of every filing is hermetic.
+#
+#   --issue <N>
+#       Advisory. Validates one already-filed issue, read through `gh`.
+#
+#   --sweep
+#       Advisory. Validates every open `tech-debt` issue. This is the mode that
+#       answers "what is already wrong", and it relabels nothing: the repair for
+#       an existing issue is a human decision per issue, not a sweep.
+#
+# Why a script and not another paragraph. Every rule enforced below was already
+# stated in prose in SKILL.md before this gate existed, and every one of them
+# was violated anyway, because prose that nothing reads back is a convention
+# rather than a check. The filing routes are models; the label set they emit is
+# the one artifact of a filing that no later step re-reads, so a mistake there
+# is silent until a drainer trips over it weeks later. This is the read-back.
+#
+# The `surface:` namespace is the one rule here that SKILL.md did not previously
+# state. The two labels existed in the tracker and were applied by hand often
+# enough to look like a convention, while being documented nowhere and emitted
+# by no filing route. Step 6 of the recipe now defines them; this gate is what
+# makes that definition checkable.
+
+set -euo pipefail
+
+readonly PROG="check-debt-issue-metadata"
+
+# The permitted value sets, byte-for-byte, from steps 6 and 7 of the recipe in
+# `.claude/skills/file-tech-debt/SKILL.md`. That file owns the vocabulary and
+# the rubric for choosing within it; this one owns nothing but the read-back, so
+# a value outside a set is reported as a finding rather than tolerated as a
+# variant. The recipe's lockstep note lists this script as a consumer for
+# exactly that reason: a spelling changed there and not here fails a filing
+# immediately, which is the loud direction to fail in.
+readonly SEVERITY_VALUES="critical important suggestion"
+readonly SURFACE_VALUES="adopter maintainer"
+readonly DIFFICULTY_VALUES="easy medium hard"
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  check-debt-issue-metadata.sh --pre-file --labels <csv> --body-file <path>
+  check-debt-issue-metadata.sh --issue <N>
+  check-debt-issue-metadata.sh --sweep
+EOF
+  exit 2
+}
+
+fatal() {
+  echo "$PROG: ERROR: $*" >&2
+  exit 2
+}
+
+# Findings accumulate here rather than printing as they are found, so one
+# subject's findings stay contiguous in the output and the exit status is
+# decided once, at the end.
+FINDING_COUNT=0
+
+# finding <subject> <code> <message>
+finding() {
+  echo "$1: $2: $3"
+  FINDING_COUNT=$((FINDING_COUNT + 1))
+}
+
+# in_set <needle> <space-separated set>: exit 0 when present.
+in_set() {
+  local needle="$1" set="$2" v
+  for v in $set; do
+    [ "$v" = "$needle" ] && return 0
+  done
+  return 1
+}
+
+# count_ns <labels-newline-list> <namespace-prefix>: how many labels carry it.
+count_ns() {
+  printf '%s\n' "$1" | grep -c "^$2" || true
+}
+
+# values_ns <labels-newline-list> <namespace-prefix>: the values, prefix stripped.
+values_ns() {
+  printf '%s\n' "$1" | sed -n "s/^$2//p"
+}
+
+# ---------------------------------------------------------------------------
+# The label checks. `labels` arrives as a newline-separated list, already
+# normalized by whichever mode read it, so the checks below never care whether
+# the source was argv or `gh --json labels`.
+# ---------------------------------------------------------------------------
+
+# check_labels <subject> <labels-newline-list>
+check_labels() {
+  local subject="$1" labels="$2" n v
+
+  if ! printf '%s\n' "$labels" | grep -qx 'tech-debt'; then
+    finding "$subject" "missing-tech-debt" "no \`tech-debt\` label"
+  fi
+
+  # Exactly one severity. Zero is the common defect (the ordering query's
+  # `else` branch silently files it into the suggestion band, so it never
+  # surfaces as an error at drain time); two is rarer and worse, because the
+  # band an issue sorts into then depends on jq's index() order.
+  n="$(count_ns "$labels" 'severity:')"
+  if [ "$n" -ne 1 ]; then
+    finding "$subject" "severity-count" "expected exactly one \`severity:\` label, found $n"
+  fi
+  for v in $(values_ns "$labels" 'severity:'); do
+    if ! in_set "$v" "$SEVERITY_VALUES"; then
+      finding "$subject" "severity-value" "\`severity:$v\` is outside the permitted set ($SEVERITY_VALUES)"
+    fi
+  done
+
+  # Exactly one surface. Unlike severity there is no fallback band: an
+  # unlabeled issue is simply unfiled against the adopter/maintainer split
+  # that decides who the defect is visible to.
+  n="$(count_ns "$labels" 'surface:')"
+  if [ "$n" -ne 1 ]; then
+    finding "$subject" "surface-count" "expected exactly one \`surface:\` label, found $n"
+  fi
+  for v in $(values_ns "$labels" 'surface:'); do
+    if ! in_set "$v" "$SURFACE_VALUES"; then
+      finding "$subject" "surface-value" "\`surface:$v\` is outside the permitted set ($SURFACE_VALUES)"
+    fi
+  done
+
+  # Difficulty is optional by design: a filing that did not read the cited code
+  # omits the grade rather than guessing one. So zero is clean and two is not,
+  # and a present grade must still be in the vocabulary.
+  n="$(count_ns "$labels" 'difficulty:')"
+  if [ "$n" -gt 1 ]; then
+    finding "$subject" "difficulty-count" "expected at most one \`difficulty:\` label, found $n"
+  fi
+  for v in $(values_ns "$labels" 'difficulty:'); do
+    if ! in_set "$v" "$DIFFICULTY_VALUES"; then
+      finding "$subject" "difficulty-value" "\`difficulty:$v\` is outside the permitted set ($DIFFICULTY_VALUES)"
+    fi
+  done
+
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# The body checks.
+# ---------------------------------------------------------------------------
+
+# The dedup key, matched as the whole line shape rather than a loose substring,
+# so a key with a missing field or a non-integer line reads as malformed rather
+# than as absent. `path` is required to be repo-relative POSIX: a leading slash
+# or a backslash means an absolute or Windows path reached the key, and every
+# consumer of the key compares it against repo-relative paths.
+#
+# `path` is a GREEDY `.+`, not `[^ ]+`, and that is load-bearing rather than
+# lazy: repository paths legally contain spaces, and this repository has one
+# under an existing key (`path=wiki/concepts/PR Merge Workflow.md`). A
+# space-intolerant pattern reports every such key as malformed, which on the
+# blocking `--pre-file` path would refuse a correct filing outright. The greedy
+# form plus the anchored ` line=<int> -->` tail is the same split
+# `.claude/skills/gaia/references/debt.md`'s own capture performs, so this gate
+# and the drain agree on what a key is by construction.
+readonly KEY_RE='^<!-- gaia-debt-key: v1 class=[^ ]+ path=.+ line=[0-9]+ -->$'
+
+# check_body <subject> <body-text>
+check_body() {
+  local subject="$1" body="$2" keylines n path
+
+  keylines="$(printf '%s\n' "$body" | grep -cE "$KEY_RE" || true)"
+  n="$(printf '%s\n' "$body" | grep -c 'gaia-debt-key:' || true)"
+
+  if [ "$keylines" -eq 0 ] && [ "$n" -eq 0 ]; then
+    finding "$subject" "missing-dedup-key" "the body carries no \`gaia-debt-key\` line"
+  elif [ "$keylines" -eq 0 ]; then
+    finding "$subject" "malformed-dedup-key" "a \`gaia-debt-key\` line is present but does not match the v1 shape"
+  elif [ "$keylines" -gt 1 ]; then
+    finding "$subject" "duplicate-dedup-key" "expected exactly one \`gaia-debt-key\` line, found $keylines"
+  fi
+
+  # Path shape, checked only on a key that already parsed. Reported separately
+  # from the shape check above so a caller sees which half is wrong.
+  #
+  # Fed by a here-doc rather than a pipe on purpose: `finding` increments a
+  # counter in the caller's shell, and a piped `while` runs in a subshell where
+  # every increment is discarded when the loop ends. That failure is silent and
+  # green, which is the one outcome a gate must never produce.
+  local paths
+  paths="$(printf '%s\n' "$body" | sed -nE 's/^<!-- gaia-debt-key: v1 class=[^ ]+ path=(.+) line=[0-9]+ -->$/\1/p')"
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+      /* | *\\*)
+        finding "$subject" "dedup-key-path" "\`path=$path\` is not a repo-relative POSIX path"
+        ;;
+    esac
+  done <<EOF
+$paths
+EOF
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Mode: --pre-file
+# ---------------------------------------------------------------------------
+
+run_pre_file() {
+  local labels_csv="$1" body_file="$2" labels body
+
+  [ -n "$labels_csv" ] || fatal "--pre-file requires --labels"
+  [ -n "$body_file" ] || fatal "--pre-file requires --body-file"
+  [ -f "$body_file" ] || fatal "body file not found: $body_file"
+
+  # Accept the labels comma-separated, which is how a caller assembling
+  # `--label a --label b` argv most naturally hands them over. Empty entries
+  # are dropped rather than counted as a label named "".
+  labels="$(printf '%s' "$labels_csv" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  body="$(cat "$body_file")"
+
+  check_labels "pre-file" "$labels"
+  check_body "pre-file" "$body"
+
+  # The rollout marker is never a filing-time label. It stamps the cohort that
+  # predates provenance, so applying it to a filing happening now asserts the
+  # opposite of the truth and destroys the only distinction the marker draws.
+  # Unconditional here: no body test can rescue it, because the filing IS after
+  # provenance landed by construction.
+  #
+  # Written as an `if`, not `grep ... && finding ...`: an AND-list whose left
+  # side fails carries a non-zero status, and under `set -e` that aborts the
+  # script on the clean case. The same trap `.claude/rules/bats-assertions.md`
+  # documents for test bodies applies to any `set -e` script.
+  if printf '%s\n' "$labels" | grep -qx 'debt:pre-provenance'; then
+    finding "pre-file" "pre-provenance-on-new-filing" "\`debt:pre-provenance\` is a one-time rollout marker and must never be applied by a filing"
+  fi
+
+  # The claim and park labels belong to the drain, not the filing. The recipe
+  # says so; nothing checked it.
+  if printf '%s\n' "$labels" | grep -qE '^debt:(in-progress|spec-pending)$'; then
+    finding "pre-file" "drain-label-on-new-filing" "\`debt:in-progress\` / \`debt:spec-pending\` are applied by the drain, never by a filing"
+  fi
+
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Modes: --issue and --sweep. Both read through `gh`.
+# ---------------------------------------------------------------------------
+
+require_gh() {
+  command -v gh >/dev/null 2>&1 || fatal "gh not found on PATH; --issue and --sweep need it (--pre-file does not)"
+  command -v jq >/dev/null 2>&1 || fatal "jq not found on PATH; --issue and --sweep need it (--pre-file does not)"
+}
+
+# check_one_issue <json-object>: one issue's worth of checks, from the JSON
+# shape both gh modes below produce.
+check_one_issue() {
+  local obj="$1" number labels body
+  number="$(printf '%s' "$obj" | jq -r '.number')"
+  labels="$(printf '%s' "$obj" | jq -r '.labels[].name')"
+  body="$(printf '%s' "$obj" | jq -r '.body // ""')"
+
+  check_labels "#$number" "$labels"
+  check_body "#$number" "$body"
+
+  # The rollout-marker anachronism, calibrated from the corpus rather than from
+  # a hardcoded date. The cohort marker means "filed before provenance landed in
+  # THIS repository", and that moment falls on a different date in every clone,
+  # so no literal date belongs in this script. The earliest issue carrying a
+  # `gaia-debt-origin` line is when provenance started writing here; the marker
+  # on anything filed at or after that instant is a backfill, which the recipe
+  # names as the one thing the marker must never be.
+  if printf '%s\n' "$labels" | grep -qx 'debt:pre-provenance'; then
+    local created
+    created="$(printf '%s' "$obj" | jq -r '.createdAt')"
+    # `gh` returns `createdAt` Z-normalized RFC 3339, so a lexicographic
+    # comparison is chronological. Same property the ordering query in
+    # `.claude/skills/gaia/references/debt.md` relies on for its sort.
+    if [ -n "$PROVENANCE_EPOCH" ] && [[ "$created" > "$PROVENANCE_EPOCH" ]]; then
+      finding "#$number" "pre-provenance-anachronism" \
+        "carries \`debt:pre-provenance\` but was filed at $created, after provenance began writing here ($PROVENANCE_EPOCH)"
+    fi
+  fi
+}
+
+# The `createdAt` of the earliest open issue whose body carries a provenance
+# line, or empty when none does. Empty disables the anachronism check rather
+# than failing it: a repo that has not started writing provenance has no
+# boundary to be on the wrong side of.
+PROVENANCE_EPOCH=""
+
+resolve_provenance_epoch() {
+  local corpus="$1"
+  PROVENANCE_EPOCH="$(printf '%s' "$corpus" | jq -r '
+    [ .[] | select((.body // "") | test("<!-- gaia-debt-origin:")) | .createdAt ]
+    | sort | .[0] // ""
+  ')"
+}
+
+fetch_corpus() {
+  gh issue list --label tech-debt --state open --limit 1000 \
+    --json number,createdAt,labels,body
+}
+
+run_issue() {
+  local number="$1" corpus obj
+  require_gh
+  case "$number" in
+    '' | *[!0-9]*) fatal "--issue needs an issue number" ;;
+  esac
+
+  corpus="$(fetch_corpus)"
+  resolve_provenance_epoch "$corpus"
+
+  obj="$(gh issue view "$number" --json number,createdAt,labels,body)"
+  check_one_issue "$obj"
+}
+
+run_sweep() {
+  local corpus count i obj
+  require_gh
+
+  corpus="$(fetch_corpus)"
+  count="$(printf '%s' "$corpus" | jq 'length')"
+
+  # An empty corpus is reported, never silently green. A `gh` that returned
+  # nothing and a backlog that is genuinely empty look identical from the exit
+  # status alone, and only one of them means "nothing to check".
+  if [ "$count" -eq 0 ]; then
+    echo "$PROG: the open tech-debt backlog is empty; nothing was checked" >&2
+    return 0
+  fi
+
+  resolve_provenance_epoch "$corpus"
+
+  i=0
+  while [ "$i" -lt "$count" ]; do
+    obj="$(printf '%s' "$corpus" | jq -c ".[$i]")"
+    check_one_issue "$obj"
+    i=$((i + 1))
+  done
+
+  echo "$PROG: checked $count open tech-debt issue(s)" >&2
+}
+
+# ---------------------------------------------------------------------------
+
+main() {
+  local mode="" labels="" body_file="" issue=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --pre-file) mode="pre-file" ;;
+      --sweep) mode="sweep" ;;
+      --issue)
+        mode="issue"
+        shift
+        issue="${1:-}"
+        ;;
+      --labels)
+        shift
+        labels="${1:-}"
+        ;;
+      --body-file)
+        shift
+        body_file="${1:-}"
+        ;;
+      -h | --help) usage ;;
+      *) fatal "unknown argument: $1" ;;
+    esac
+    shift || true
+  done
+
+  case "$mode" in
+    pre-file) run_pre_file "$labels" "$body_file" ;;
+    issue) run_issue "$issue" ;;
+    sweep) run_sweep ;;
+    *) usage ;;
+  esac
+
+  if [ "$FINDING_COUNT" -gt 0 ]; then
+    echo "$PROG: $FINDING_COUNT finding(s)" >&2
+    exit 1
+  fi
+  echo "$PROG: clean" >&2
+  exit 0
+}
+
+main "$@"

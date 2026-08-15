@@ -6,7 +6,7 @@ The ordering is a pure, source-checkable sort over the issues' severity labels a
 
 ## Execution model, READ FIRST
 
-Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the fix unit is chosen and isolated the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There are **up to two** up-front interactive decisions, in order: (1) the candidate/batch pick, only when the backlog holds two or more issues, and (2) the isolation-mode pick (`## Pre-flight isolation (branch vs worktree)` below), resolved through the shared isolation reference: on `main`/`master` the team's isolation policy decides whether this surfaces a prompt at all, and on any other branch it is always a silent forced worktree with no prompt. After both, the flow does not pause for confirmation. Pause only when input is genuinely needed (those two picks) or something unexpected blocks the path (a security-class diversion, a rejected push, a gate that will not go green). Resolve **one fix unit** per invocation, a single issue or a user-confirmed related batch; the skill never auto-advances to an unrelated issue.
+Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the fix unit is chosen and isolated the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There are **up to two** up-front interactive decisions, in order: (1) the candidate/batch pick, only when the backlog holds two or more issues, and (2) the isolation-mode pick (`## Pre-flight isolation (branch vs worktree)` below), resolved through the shared isolation reference: on `main`/`master` the team's isolation policy decides whether this surfaces a prompt at all, and on any other branch it is always a silent forced worktree with no prompt. After both, the flow does not pause for confirmation. Pause only when input is genuinely needed (those two picks) or something unexpected blocks the path (a security-class diversion, an issue whose premise the staleness screen finds no longer holds, a rejected push, a gate that will not go green). Resolve **one fix unit** per invocation, a single issue or a user-confirmed related batch; the skill never auto-advances to an unrelated issue.
 
 The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). Once the PR is up it drives straight through to merge with no second confirmation, resolving the PR to completion the standard way: the same Code Audit Team marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
 
@@ -103,6 +103,20 @@ A shared directory alone is too weak to cluster on (a whole `app/services/` dire
 
 **In-progress exclusion (fix only).** `fix` derives an `inProgress` flag per issue from the `labels` field the ordering query above already fetches (true when the issue carries `debt:in-progress`) and excludes every in-progress issue from both the candidate pool and the clustering pass above: an in-progress issue neither offers itself as a candidate nor drags a sibling into a batch. `fix` derives a `specPending` flag the same way (true when the issue carries `debt:spec-pending`) and excludes every handed-off issue from the candidate pool and the clustering pass exactly as `debt:in-progress` issues are excluded: this is the "leaves the re-offer pool" half of the parked-state contract (the debt-count half lives in `.gaia/scripts/debt-count-refresh.sh`). `list` still shows in-progress and spec-pending issues and `why` still reports them, annotated `[spec pending]` (see below); only `fix`'s candidate set narrows.
 
+### Staleness probe (all subcommands)
+
+An issue asserts things about the tree: the dedup key's `path=`, the `file:line` locations its body cites, and any count its suggested fix depends on. Nothing re-checks those when the backlog is read, so an issue whose subject was renamed, moved, or already fixed keeps offering itself and still reads as actionable. Draining one that way documents a change that is not the change the code needs.
+
+Run the cheap half of that verification here, over every candidate, from the `key.path` the ordering query already emits. Test the path against the index, not the filesystem, so an untracked build artifact sitting at the path does not read as a live source file:
+
+```bash
+git ls-files --error-unmatch -- "<path>" >/dev/null 2>&1 || echo "path gone"
+```
+
+This probe is **advisory, and annotates only**. A missing path is a strong signal and not a verdict: a finding can stay entirely real while the file it cites is renamed out from under the issue, and the correct repair is sometimes the issue and sometimes the code. So `list` marks the issue `[stale: path gone]`, `why` reports it, and `fix` still offers it with the annotation carried into the option description, which puts the choice in front of the fact instead of behind it. An issue whose emitted `key` is `null` has no path to probe and is annotated nothing: a missing key is not evidence of staleness.
+
+What this probe deliberately does not do is re-resolve the body's cited `file:line` locations or re-derive its stated counts. Both need the body read closely against real code, one issue at a time, and paying that for every open issue on every `list` would make the cheapest subcommand the most expensive one. That half runs once, against the one issue about to be fixed, in `## Fix-time staleness screen` below. The two tiers are deliberately split on cost: cheap and total here, expensive and single-target there.
+
 ## Fix a specific issue (direct-number path)
 
 Runs only when Argument parsing above resolved a direct issue-number target:
@@ -191,7 +205,7 @@ Honor whatever the human picks or types into **Other**. If a typed value is not 
 
 ## Claim the fix unit
 
-This runs in `fix` only, as the **first** step after the pick above, before the Fix-time security screen and before Pre-flight isolation (branch/worktree) below. Claiming immediately after the pick, ahead of either of those steps, minimizes the window in which a peer session also picks the same ticket.
+This runs in `fix` only, as the **first** step after the pick above, before the Fix-time security, staleness, and spec screens and before Pre-flight isolation (branch/worktree) below. Claiming immediately after the pick, ahead of all of those steps, minimizes the window in which a peer session also picks the same ticket.
 
 Ensure the label exists, idempotently:
 
@@ -217,7 +231,7 @@ Then, for a single issue or **every member of a confirmed batch**:
 
 The label spelling is the same shared contract `.gaia/scripts/debt-count-refresh.sh` reads to exclude claimed issues from the open count.
 
-Because the claim happens here, before the security screen below, any member that screen later peels and diverts already carries `debt:in-progress`; that screen strips it.
+Because the claim happens here, before the screens below, any member one of them later peels already carries `debt:in-progress`; the peeling screen strips it.
 
 ## Fix-time security screen
 
@@ -238,9 +252,47 @@ This member-level screen is the **backstop** to the offer-time exclusion in "Rec
 
 A security-class issue's detail never reaches a public PR, the PR comment, or the Actions log.
 
+## Fix-time staleness screen
+
+Runs after the pick, the claim, and the Fix-time security screen above, and **before** the Fix-time spec screen below. It screens **every member of the selected fix unit** (a single issue, or every surviving member after the security screen peels any security-class member) by reading each member's cited code and each member's comments. Reading either needs no branch, which is why this screen sits with the other pre-isolation screens: a unit that fails here stops before any branch or worktree exists.
+
+**Why it runs before the spec screen.** The spec screen decides whether a fix needs a SPEC by reading the cited code. If the citations no longer resolve, that judgment is made against the wrong code, so the verification has to come first. Its position ahead of implementation is load-bearing for the same reason the security screen's and the spec screen's are: a unit stopped here has no commits, so the stop owes no commit-message rewrite.
+
+**This screen blocks.** It is not an advisory note in the run's output. The failure it exists to prevent is a fix that faithfully implements an issue describing a tree that no longer exists, and the drainer is the same agent that would read its own advisory and rationalize past it. On any mismatch, do not drain: release the unit and hand the decision back, because the two repairs (correct the issue, or fix the code) are not the drainer's to choose between.
+
+### 1. Re-verify the body's assertions against the tree
+
+Per member, in order, and stop at the first mismatch:
+
+1. **The dedup key's `path=` resolves.** The advisory probe in `### Staleness probe (all subcommands)` above already annotated this; here it is a verdict rather than an annotation.
+2. **Every `file:line` the body cites resolves to a real line in the named file**, and the line still carries what the body says is there. Reading the surrounding lines is the point: a citation that resolves to a *different* statement is worse than one that does not resolve at all, because it looks correct.
+3. **Every count the fix depends on re-derives.** A body that says "41 `unowned:` entries at `<path>:239-298`" is asserting a number and a range. Re-derive both. A count the suggested fix does not depend on is not worth stopping over; a count it is built around is the fix's premise.
+
+**On a mismatch:** report it precisely, naming the member, the assertion, and what the tree says instead. Then release the unit exactly as a controlled stop does: strip `debt:in-progress` from every claimed member (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`), so the issue re-enters the open count and a peer session's offer. Do not edit the issue to repair the drift and do not proceed on a re-derived premise: which of the issue and the code is wrong is the operator's call. (Run ends here; see `## Cost record (run end)`.)
+
+**On a batch**, a single failing member does not condemn the unit: peel that member, release its claim alone, and proceed with the survivors, the same shape the security screen's peel takes. If every member fails, the run stops as above.
+
+### 2. Read the issue's comments
+
+The drain reads issue bodies and nothing else, while the established practice for "the suggested fix turned out to be wrong" is to post a correction comment and leave the body standing. Those two facts compose into a drainer that rebuilds work a comment already recorded as reverted. So the drain reads comments, here, for the selected members only:
+
+```bash
+gh issue view <n> --json comments
+```
+
+**Per member, not per backlog.** This call is deliberately absent from the backlog read in `## Read and order the backlog`, and that placement is the whole cost argument. Comments are unbounded text; the backlog read runs over every open issue on every `list`, `why`, and `fix`; and the corrections that matter only matter for the one unit about to be fixed. Paying for comments across the whole open set to serve a single-issue question is the trade this placement refuses. One extra call per selected member, once per run, is the honest price.
+
+Classify what the comments say against the body, newest comment winning where two comments disagree:
+
+- **Nothing that touches the body's claims** → the body governs; proceed.
+- **A correction that supersedes part of the body** (a wrong suggested fix, a re-graded `Handler:` line, a corrected citation) → the comment governs that part. State plainly, before implementing, which comment supersedes which part of the body, so the human sees the substitution rather than inferring it from the diff. A re-graded `Handler:` feeds the Fix-time spec screen below as that member's handler value, in place of the body's line.
+- **A comment reporting the fix as already implemented, already reverted, or unsafe as specified** → this is not a correction to apply, it is the issue's premise failing. Treat it exactly as a mismatch in part 1: peel or stop, release the claim, report. Rebuilding something a comment records as deliberately reverted is the single worst outcome this screen exists to prevent, and it is indistinguishable from ordinary progress in the resulting diff.
+
+A comment is a durable correction channel, and this screen is what makes that true. Nothing here asks a corrector to duplicate the correction into the body; a body edit is still the stronger form because it reaches every reader, and both are read.
+
 ## Fix-time spec screen
 
-Runs after the pick, the claim, and the Fix-time security screen above, and before "## Pre-flight isolation (branch vs worktree)" below. It screens **every member of the selected fix unit** (a single issue, or every surviving member of a confirmed batch) by reading each member's **cited code**. Reading cited code needs no branch, which is why this screen runs before isolation: a wholly spec-class unit hands off before any branch or worktree exists.
+Runs after the pick, the claim, the Fix-time security screen, and the Fix-time staleness screen above, and before "## Pre-flight isolation (branch vs worktree)" below. It screens **every member of the selected fix unit** (a single issue, or every surviving member of a confirmed batch) by reading each member's **cited code**. Reading cited code needs no branch, which is why this screen runs before isolation: a wholly spec-class unit hands off before any branch or worktree exists. Every surviving member reaching this point has had its citations verified and its comments read, so this screen grades against code the issue really describes, and against a `Handler:` value a comment may already have re-graded.
 
 **This screen owns the spec-versus-implement determination**, resolving the advisory `Handler` line **symmetrically**, exactly as the Handler line is advisory for `prompt`/`plan`:
 
@@ -272,7 +324,7 @@ Its position ahead of implementation is **load-bearing** for the same reason the
 
 ## Pre-flight isolation (branch vs worktree)
 
-This section runs once per fix, single issue or batch, after the security screen and the spec screen above and before the fix unit's branch or worktree exists. Ordering rationale: the security screen can divert and stop a security-class fix, and the spec screen can hand off and stop a spec-class fix, before any branch exists, so isolation runs after both and a diverted or handed-off fix never creates a worktree.
+This section runs once per fix, single issue or batch, after the security screen, the staleness screen, and the spec screen above, and before the fix unit's branch or worktree exists. Ordering rationale: each of those three can end the run before any branch exists, the security screen by diverting a security-class fix, the staleness screen by releasing a unit whose premise no longer holds, and the spec screen by handing off a spec-class fix, so isolation runs after all three and a diverted, released, or handed-off fix never creates a worktree.
 
 **Branch naming.** Single-issue fix: `debt/<issue-number>-<slug>` (`<slug>` a 2-4 word kebab-case reduction of the issue title). Batch fix: `debt/<members-joined-by-dash>-batch`, members ascending, e.g. `debt/42-45-47-batch`: naming every member lets `git branch --list` (in the reconcile above) protect non-lowest batch members past branch-cut without leaning on the age grace. Whichever isolation mode runs, including the forced worktree, the branch carries this name.
 
@@ -370,11 +422,11 @@ Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWork
 
 ## list subcommand
 
-Run the ordering command above, then the clustering pass, and print the backlog in sorted order: per issue, the number, title, severity band, age, cluster membership when it has any (e.g. `[batches with #B #C: same file app/foo/index.ts]`), `[in progress]` when the issue carries `debt:in-progress`, `[needs spec]` when its emitted `handler` field is `"spec"` and it does not carry `debt:spec-pending`, `[spec pending]` when it carries `debt:spec-pending`, and `[difficulty: <grade>]` (e.g. `[difficulty: medium]`) from the emitted `difficulty` field when it is non-null; an issue whose `difficulty` is `null` gets no difficulty annotation at all. The two spec annotations key on distinct signals, the emitted `handler` field versus the label, so an un-drained spec-class issue is never conflated with a handed-off one. `list` shows every open issue, including in-progress and spec-pending ones: it does not exclude them and it does not reconcile stale claims. Author nothing and prompt for nothing.
+Run the ordering command above, then the clustering pass and the staleness probe, and print the backlog in sorted order: per issue, the number, title, severity band, age, cluster membership when it has any (e.g. `[batches with #B #C: same file app/foo/index.ts]`), `[in progress]` when the issue carries `debt:in-progress`, `[needs spec]` when its emitted `handler` field is `"spec"` and it does not carry `debt:spec-pending`, `[spec pending]` when it carries `debt:spec-pending`, `[stale: path gone]` when the staleness probe found its dedup-key `path=` absent from the index, and `[difficulty: <grade>]` (e.g. `[difficulty: medium]`) from the emitted `difficulty` field when it is non-null; an issue whose `difficulty` is `null` gets no difficulty annotation at all. The two spec annotations key on distinct signals, the emitted `handler` field versus the label, so an un-drained spec-class issue is never conflated with a handed-off one. `list` shows every open issue, including in-progress and spec-pending ones: it does not exclude them and it does not reconcile stale claims. Author nothing and prompt for nothing.
 
 ## why subcommand
 
-Run the ordering command and the clustering pass, find the issue whose number matches the argument. Explain it: where it sits in the ordering (its severity band and its position among equal-severity issues by age), its recommended handler class (the issue's emitted `handler` field, or your on-the-fly classification for a fieldless issue where `handler` is `null`), and the rationale. Also report its difficulty grade from the emitted `difficulty` field (e.g. `medium`) when it is non-null; when `difficulty` is `null`, `why` says nothing about difficulty rather than reporting a default grade. The handler class is how far the change reaches, the grade is how much design the fix needs, a distinct axis. Also report whether it is part of a related cluster, which issue(s) it would batch with, and the shared signal (same `path`, or same `class` and dirname). Also report the issue's claim status: whether it currently carries `debt:in-progress` (in progress) or not; `why` does not reconcile stale claims. For a spec-class issue (`handler` equal to `"spec"`), also report its spec routing ("routes through /gaia-spec") and, symmetrically, whether it carries `debt:spec-pending` (already handed off) or not. If no open `tech-debt` issue matches the number, say so and print the ordered backlog. Author nothing and prompt for nothing.
+Run the ordering command and the clustering pass, find the issue whose number matches the argument. Explain it: where it sits in the ordering (its severity band and its position among equal-severity issues by age), its recommended handler class (the issue's emitted `handler` field, or your on-the-fly classification for a fieldless issue where `handler` is `null`), and the rationale. Also report its difficulty grade from the emitted `difficulty` field (e.g. `medium`) when it is non-null; when `difficulty` is `null`, `why` says nothing about difficulty rather than reporting a default grade. The handler class is how far the change reaches, the grade is how much design the fix needs, a distinct axis. Also report whether it is part of a related cluster, which issue(s) it would batch with, and the shared signal (same `path`, or same `class` and dirname). Also report the issue's claim status: whether it currently carries `debt:in-progress` (in progress) or not; `why` does not reconcile stale claims. Report the staleness probe's result too: whether the dedup key's `path=` still resolves in the index, and, when it does not, that a `fix` run would verify the rest of the issue's assertions before draining it. `why` runs the cheap probe only, never the fix-time re-verification, so it stays a read of the backlog rather than a read of the code. For a spec-class issue (`handler` equal to `"spec"`), also report its spec routing ("routes through /gaia-spec") and, symmetrically, whether it carries `debt:spec-pending` (already handed off) or not. If no open `tech-debt` issue matches the number, say so and print the ordered backlog. Author nothing and prompt for nothing.
 
 ## Cost record (run end)
 
@@ -385,6 +437,7 @@ Every path that ends a `/gaia-debt` run appends exactly one cost record, the run
 - Zero remaining candidates.
 - Claiming the fix unit losing the race to a peer session (single issue, or every batch member).
 - The security screen diverting every member.
+- The staleness screen releasing every member, whether on a body assertion that no longer holds or on a comment recording the fix as already implemented, reverted, or unsafe. This path opened no PR, so it passes no `--github-*` flags.
 - The spec screen handing off: the whole-unit-spec-class case stops the run here (a per-member handoff within a surviving batch also records via this same run-end tally). This path opened no PR, so it passes no `--github-*` flags; the record correctly carries no artifact.
 - Driving the PR to merge: `MERGED` cleanup, a still-queued `--auto` merge, or a controlled stop before merge.
 - Worktree mode's isolation-context continuation prompt.
@@ -398,6 +451,8 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - **Within-band FIFO, severity-first.** Highest severity first, oldest first within a band. Cross-band fairness / anti-starvation is out of scope.
 - **The skill drives the merge, never the gate.** The happy path runs start to finish with no merge-time confirmation: it resolves the fix PR to completion through the standard PR Merge Workflow's marker handshake, running `gh pr merge` only once a real marker exists for HEAD. Never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's gate.
 - **Security screen before any public PR.** A security-class selected issue diverts via the visibility gate on PUBLIC/INTERNAL; only a confirmed-PRIVATE repo fixes it as a normal fix PR.
+- **Staleness screen before any implementation, and it blocks.** No member is drained on an assertion nobody re-checked. The cheap half (does the dedup key's `path=` still resolve) annotates every candidate at backlog-read time; the expensive half (do the cited `file:line` locations and the stated counts still hold, and do the issue's comments correct or retract the body) runs once, against the selected unit. A member whose premise no longer holds is released, never repaired in place and never drained on a re-derived premise: choosing between fixing the issue and fixing the code belongs to the operator.
+- **Comments are read, for the selected unit only.** A correction posted as a comment reaches the drainer. The backlog read stays body-only on purpose, because comments are unbounded text and it runs over the whole open set.
 - **Spec screen before any implementation.** A confirmed spec-class member never joins a fix PR: it hands off to `/gaia-spec` and parks with `debt:spec-pending`; the peel is unconditional, on every repo.
 - **Claim before contest.** `/gaia-debt fix` claims each selected member with the gaia-owned `debt:in-progress` label the instant a unit is picked, before the security screen and isolation, which excludes it from the open count and a peer session's offer. The claim releases on a controlled stop or a security divert, is best-effort cleared on merge, and is recovered by the fix-start reconcile after an ungraceful session death. The `debt:`-namespaced label is gaia-owned, so reconcile only ever strips `debt:in-progress`, never a human-set label.
 - **The PR body is the sole `Closes` carrier.** No commit message on the branch closes an issue, so dropping a member stays correctable by editing the PR body; a member dropped after its commits exist also gets those commit messages rewritten, and the post-merge close-set check catches a stale trailer that reaches the merge by any other route.

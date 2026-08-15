@@ -21,7 +21,8 @@
 #   3. the post-merge block verifies the set of issues the merge actually
 #      closed against the set the run intended to close, which is what turns a
 #      silent wrong outcome into a visible one;
-#   4. both pre-implementation peels (the security screen and the spec screen)
+#   4. all three pre-implementation peels (the security, staleness, and spec
+#      screens)
 #      state that their position ahead of the commit step is load-bearing, so a
 #      later reordering onto the drop path is a deliberate act rather than an
 #      accident.
@@ -139,10 +140,17 @@ extract_section() {
   grep -qF -- "gh issue reopen" <<<"$section"
 }
 
-# --- 4. the two pre-implementation peels pin their ordering -----------------
+# --- 4. the three pre-implementation peels pin their ordering ---------------
 
 @test "the security screen states its pre-implementation position is load-bearing" {
   section="$(extract_section '## Fix-time security screen')"
+  [ -n "$section" ]
+  grep -Eiq "load-bearing" <<<"$section"
+  grep -Eiq "no commits" <<<"$section"
+}
+
+@test "the staleness screen states its pre-implementation position is load-bearing" {
+  section="$(extract_section '## Fix-time staleness screen')"
   [ -n "$section" ]
   grep -Eiq "load-bearing" <<<"$section"
   grep -Eiq "no commits" <<<"$section"
