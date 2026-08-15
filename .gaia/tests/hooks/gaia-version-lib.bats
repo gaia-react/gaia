@@ -68,7 +68,7 @@ setup() {
 }
 
 # The absent-file and empty-file cases are one contract, not two: both yield
-# the empty string and exit 0, because the five call sites disagree on what a
+# the empty string and exit 0, because the call sites disagree on what a
 # missing file means and the helper must not flatten those policies.
 
 @test "an absent file yields the empty string and exits 0" {
